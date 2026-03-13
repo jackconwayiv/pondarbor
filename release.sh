@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd /app/backend
+cd backend
 python manage.py migrate
 python manage.py collectstatic --noinput

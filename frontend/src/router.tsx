@@ -1,5 +1,5 @@
 import { createBrowserRouter } from "react-router";
-import HomePage from "./HomePage";
+import App from "./App";
 import AppLayout from "./layout";
 import NotFoundPage from "./NotFoundPage";
 import { usersRoutes } from "./routes";
@@ -11,7 +11,7 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <HomePage />,
+        element: <App />,
       },
       ...usersRoutes,
       {

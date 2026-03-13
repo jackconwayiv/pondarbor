@@ -10,4 +10,5 @@ psycopg[binary]
 django-allauth
 python-jose
 PyJWT
+cryptography
 requests

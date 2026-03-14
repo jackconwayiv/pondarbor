@@ -3,16 +3,12 @@ import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider } from "react-router";
+import { AppSessionProvider } from "./auth/AppSessionProvider";
 import "./index.css";
 import { router } from "./router";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    {/* <Auth0Provider
-      domain="dev-val01p2eow801kgu.us.auth0.com"
-      clientId="0Ua0O4s3VCyFkf5uHGv7QR4CKp10Kzc9"
-      authorizationParams={{ redirect_uri: window.location.origin }}
-    > */}
     <Auth0Provider
       domain={import.meta.env.VITE_AUTH0_DOMAIN!}
       clientId={import.meta.env.VITE_AUTH0_CLIENT_ID!}
@@ -24,7 +20,9 @@ createRoot(document.getElementById("root")!).render(
       cacheLocation="localstorage"
     >
       <ChakraProvider value={defaultSystem}>
-        <RouterProvider router={router} />
+        <AppSessionProvider>
+          <RouterProvider router={router} />
+        </AppSessionProvider>
       </ChakraProvider>
     </Auth0Provider>
   </StrictMode>,

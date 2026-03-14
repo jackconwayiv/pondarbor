@@ -1,91 +1,22 @@
 import { useAuth0 } from "@auth0/auth0-react";
-import { Box, Button, Heading, Stack, Text } from "@chakra-ui/react";
-import { useEffect, useRef } from "react";
-
-function getErrorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "string") return err;
-  return "";
-}
-
-function isConsentRequiredError(err: unknown): boolean {
-  const message = getErrorMessage(err);
-  return message.includes("Consent required");
-}
+import {
+  Avatar,
+  Box,
+  Button,
+  Circle,
+  Float,
+  Heading,
+  HStack,
+  Stack,
+  Text,
+} from "@chakra-ui/react";
+import { useAppSession } from "./auth/AppSessionContext";
 
 function App() {
-  const {
-    isLoading,
-    isAuthenticated,
-    error,
-    loginWithRedirect,
-    logout: auth0Logout,
-    user,
-    getAccessTokenSilently,
-    getAccessTokenWithPopup,
-  } = useAuth0();
+  const { loginWithRedirect } = useAuth0();
 
-  const hasSynced = useRef(false);
-
-  useEffect(() => {
-    const syncProfile = async () => {
-      if (!isAuthenticated || !user || hasSynced.current) return;
-
-      hasSynced.current = true;
-
-      try {
-        const token = await (async (): Promise<string> => {
-          try {
-            return await getAccessTokenSilently({
-              authorizationParams: {
-                audience: import.meta.env.VITE_AUTH0_API_AUDIENCE,
-                scope: "openid profile email",
-              },
-            });
-          } catch (err: unknown) {
-            if (isConsentRequiredError(err)) {
-              const popupToken = await getAccessTokenWithPopup({
-                authorizationParams: {
-                  audience: import.meta.env.VITE_AUTH0_API_AUDIENCE,
-                  scope: "openid profile email",
-                },
-              });
-
-              if (!popupToken) {
-                throw new Error("No access token returned from popup auth.");
-              }
-
-              return popupToken;
-            }
-
-            throw err;
-          }
-        })();
-
-        const response = await fetch(
-          `${import.meta.env.VITE_API_BASE_URL ?? ""}/users/sync-profile/`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(user),
-          },
-        );
-
-        if (!response.ok) {
-          const text = await response.text();
-          throw new Error(`Sync failed (${response.status}): ${text}`);
-        }
-      } catch (err: unknown) {
-        hasSynced.current = false;
-        console.error("Profile sync failed:", err);
-      }
-    };
-
-    syncProfile().catch((err: unknown) => console.error(err));
-  }, [isAuthenticated, user, getAccessTokenSilently, getAccessTokenWithPopup]);
+  const { isLoading, isAuthenticated, error, logout, auth0User, sessionUser } =
+    useAppSession();
 
   if (isLoading) {
     return (
@@ -105,42 +36,96 @@ function App() {
     <Box bg="white" minH="100vh" p={8}>
       {isAuthenticated ? (
         <Stack maxW="lg" mx="auto" align="flex-start">
-          {user && (
+          {sessionUser?.user?.email && (
             <Text fontSize="lg">
-              Logged in as <b>{user.email}</b>
+              Logged in as <b>{sessionUser.user.email}</b>
             </Text>
           )}
+
           <Heading color="black" as="h1" size="lg">
             User Profile
           </Heading>
-          <pre
-            style={{
-              background: "#f7fafc",
-              padding: "1rem",
-              borderRadius: "0.375rem",
-              width: "100%",
-              overflow: "auto",
-            }}
+
+          <Box
+            bg="gray.50"
+            p={4}
+            borderRadius="md"
+            width="100%"
+            overflow="auto"
           >
-            {JSON.stringify(user, null, 2)}
-          </pre>
-          <Button
-            colorScheme="blue"
-            onClick={() =>
-              auth0Logout({
-                logoutParams: { returnTo: window.location.origin },
-              })
-            }
-          >
+            <Stack gap="8">
+              {auth0User && (
+                <HStack gap="4">
+                  <Avatar.Root>
+                    <Avatar.Fallback
+                      name={
+                        sessionUser?.profile?.display_name ??
+                        auth0User.name ??
+                        auth0User.email ??
+                        "User"
+                      }
+                    />
+                    <Avatar.Image
+                      src={sessionUser?.profile?.avatar_url ?? undefined}
+                    />
+                    <Float placement="bottom-end" offsetX="1" offsetY="1">
+                      <Circle
+                        bg={
+                          sessionUser?.profile.status === "approved"
+                            ? "green.500"
+                            : "yellow.500"
+                        }
+                        size="8px"
+                        outline="0.2em solid"
+                        outlineColor="bg"
+                      />
+                    </Float>
+                  </Avatar.Root>
+
+                  <Stack gap="0">
+                    <Text color="fg.muted">
+                      {sessionUser?.profile?.display_name ??
+                        auth0User.name ??
+                        "Unnamed user"}
+                    </Text>
+                    <Text textStyle="sm">{auth0User.nickname ?? "—"}</Text>
+                    <Text textStyle="sm">{auth0User.email ?? "—"}</Text>
+                  </Stack>
+                </HStack>
+              )}
+
+              {/* <Box>
+                <Text fontWeight="bold" mb={2}>
+                  App Profile
+                </Text>
+                <Stack gap="1">
+                  <Text>
+                    <b>Display name:</b>{" "}
+                    {sessionUser?.profile?.display_name ?? "—"}
+                  </Text>
+                  <Text>
+                    <b>Timezone:</b> {sessionUser?.profile?.timezone ?? "—"}
+                  </Text>
+                  <Text>
+                    <b>Status:</b> {sessionUser?.profile?.status ?? "—"}
+                  </Text>
+                </Stack>
+              </Box> */}
+            </Stack>
+          </Box>
+
+          <Button colorScheme="blue" onClick={logout}>
             Logout
           </Button>
         </Stack>
       ) : (
         <Stack maxW="md" mx="auto" align="center">
-          {error && <Text color="red.500">Error: {error.message}</Text>}
+          {error && <Text color="red.500">Error: {error}</Text>}
+
           <Heading as="h1" size="lg" color="black">
             Welcome to PondArbor
           </Heading>
+
           <Button
             colorScheme="blue"
             onClick={() =>
@@ -155,6 +140,7 @@ function App() {
           >
             Sign up
           </Button>
+
           <Button
             variant="outline"
             colorScheme="blue"

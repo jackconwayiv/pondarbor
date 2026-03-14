@@ -14,14 +14,22 @@ User = get_user_model()
 def serialize_me(user):
     profile = user.profile
     return {
-        "id": user.id,
-        "email": user.email,
-        "display_name": profile.display_name,
-        "avatar_url": profile.avatar_url,
-        "timezone": profile.timezone,
-        "status": profile.status,
-        "is_authenticated": True,
-        "is_approved": profile.status == "approved",
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "username": user.username,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "is_authenticated": True,
+            "is_approved": profile.status == "approved",
+        },
+        "profile": {
+            "auth0_sub": profile.auth0_sub,
+            "display_name": profile.display_name,
+            "avatar_url": profile.avatar_url,
+            "timezone": profile.timezone,
+            "status": profile.status,
+        },
     }
 
 
@@ -126,17 +134,28 @@ def sync_profile(request):
     user = request.user
     profile = user.profile
 
+    auth0_sub = request.data.get("sub")
+    email = request.data.get("email")
     display_name = request.data.get("display_name") or request.data.get("name")
     avatar_url = request.data.get("avatar_url") or request.data.get("picture")
     first_name = request.data.get("given_name")
     last_name = request.data.get("family_name")
 
+    if email:
+        user.email = email
+
     if first_name:
         user.first_name = first_name
+
     if last_name:
         user.last_name = last_name
+
+    if auth0_sub:
+        profile.auth0_sub = auth0_sub
+
     if display_name:
         profile.display_name = display_name
+
     if avatar_url:
         profile.avatar_url = avatar_url
 

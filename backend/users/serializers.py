@@ -2,15 +2,27 @@ from django.contrib.auth.models import User
 from rest_framework import serializers
 
 
-class MeSerializer(serializers.Serializer):
+class SessionUserSerializer(serializers.Serializer):
     id = serializers.IntegerField()
-    email = serializers.EmailField()
-    display_name = serializers.CharField(allow_blank=True)
-    avatar_url = serializers.CharField(allow_blank=True)
-    timezone = serializers.CharField()
-    status = serializers.CharField()
+    email = serializers.EmailField(allow_blank=True)
+    username = serializers.CharField()
+    first_name = serializers.CharField(allow_blank=True)
+    last_name = serializers.CharField(allow_blank=True)
     is_authenticated = serializers.BooleanField()
     is_approved = serializers.BooleanField()
+
+
+class ProfileSerializer(serializers.Serializer):
+    auth0_sub = serializers.CharField(allow_blank=True, allow_null=True)
+    display_name = serializers.CharField(allow_blank=True)
+    avatar_url = serializers.CharField(allow_blank=True)
+    timezone = serializers.CharField(allow_blank=True)
+    status = serializers.CharField(allow_blank=True)
+
+
+class MeSerializer(serializers.Serializer):
+    user = SessionUserSerializer()
+    profile = ProfileSerializer()
 
 
 class SignupSerializer(serializers.Serializer):

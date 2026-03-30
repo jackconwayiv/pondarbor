@@ -23,10 +23,17 @@ SESSION_AUTH_BACKEND = "django.contrib.auth.backends.ModelBackend"
 
 def get_or_create_profile(user):
     """Users created before Profile existed can lack a row; prevents 500 in /me and sync."""
+    display_name_max = Profile._meta.get_field("display_name").max_length
+    default_display_name = (user.email.split("@")[0] if user.email else "")
+    default_display_name = (
+        default_display_name
+        if len(default_display_name) <= display_name_max
+        else default_display_name[:display_name_max]
+    )
     profile, _ = Profile.objects.get_or_create(
         user=user,
         defaults={
-            "display_name": (user.email.split("@")[0] if user.email else ""),
+            "display_name": default_display_name,
             "timezone": PROFILE_TIMEZONE_DEFAULT,
         },
     )

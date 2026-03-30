@@ -8,6 +8,8 @@ import {
 } from "@chakra-ui/react";
 import { Link, Outlet } from "react-router";
 
+import { pondarborLogoSrc } from "./publicAsset";
+
 export default function AppLayout() {
   return (
     <Box
@@ -33,7 +35,7 @@ export default function AppLayout() {
           <ChakraLink asChild colorPalette="gray" variant="plain">
             <Link to="/">
               <Image
-                src="/pondarborlogo.png"
+                src={pondarborLogoSrc()}
                 alt="PondArbor"
                 boxSize="40px"
                 objectFit="contain"

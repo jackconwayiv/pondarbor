@@ -14,6 +14,11 @@ class Auth0TokenAuthentication(BaseAuthentication):
     keyword = "Bearer"
 
     def authenticate(self, request):
+        if not settings.AUTH0_DOMAIN or not settings.AUTH0_API_AUDIENCE:
+            raise exceptions.AuthenticationFailed(
+                "Auth0 is not configured (AUTH0_DOMAIN / AUTH0_API_AUDIENCE)."
+            )
+
         auth = get_authorization_header(request).split()
 
         if not auth:

@@ -1,11 +1,12 @@
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from .models import PROFILE_TIMEZONE_DEFAULT
+from .auth0_backend import Auth0TokenAuthentication
+from .models import PROFILE_TIMEZONE_DEFAULT, Profile
 from .permissions import IsApprovedUser
 from .serializers import (
     LoginSerializer,
@@ -19,8 +20,20 @@ UserModel = get_user_model()
 SESSION_AUTH_BACKEND = "django.contrib.auth.backends.ModelBackend"
 
 
+def get_or_create_profile(user):
+    """Users created before Profile existed can lack a row; prevents 500 in /me and sync."""
+    profile, _ = Profile.objects.get_or_create(
+        user=user,
+        defaults={
+            "display_name": (user.email.split("@")[0] if user.email else ""),
+            "timezone": PROFILE_TIMEZONE_DEFAULT,
+        },
+    )
+    return profile
+
+
 def serialize_me(user):
-    profile = user.profile
+    profile = get_or_create_profile(user)
     return {
         "user": {
             "id": user.id,
@@ -78,7 +91,7 @@ def signup(request):
         password=password,
     )
 
-    profile = user.profile
+    profile = get_or_create_profile(user)
     profile.display_name = display_name or email.split("@")[0]
     profile.timezone = timezone
     profile.save()
@@ -132,6 +145,7 @@ def csrf(request):
 
 
 @api_view(["POST"])
+@authentication_classes([Auth0TokenAuthentication])
 @permission_classes([IsAuthenticated])
 def sync_profile(request):
     """Bootstrap session after Auth0 login. Identity is enforced in Auth0TokenAuthentication."""
@@ -142,7 +156,7 @@ def sync_profile(request):
 @permission_classes([IsAuthenticated])
 def patch_me_profile(request):
     """Update only the authenticated user's profile preferences."""
-    profile = request.user.profile
+    profile = get_or_create_profile(request.user)
     serializer = ProfileUpdateSerializer(data=request.data, partial=True)
     serializer.is_valid(raise_exception=True)
     for field, value in serializer.validated_data.items():

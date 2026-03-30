@@ -125,6 +125,8 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
+          // Avoid sending Django session cookies: SessionAuthentication + POST can trigger CSRF 403.
+          credentials: "omit",
           body: JSON.stringify({}),
         },
       );
@@ -268,7 +270,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       const response = await fetch(`${base}/api/v1/users/me/profile/`, {
         method: "PATCH",
         headers,
-        credentials: "include",
+        credentials: "omit",
         body: JSON.stringify(patch),
       });
 

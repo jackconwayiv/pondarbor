@@ -1,8 +1,28 @@
 import json
 
 from django.conf import settings
-from django.http import Http404
+from django.contrib.staticfiles.storage import staticfiles_storage
+from django.http import Http404, HttpResponseRedirect
 from django.shortcuts import render
+
+
+def _built_public_asset_url(name: str) -> str:
+    try:
+        return staticfiles_storage.url(name)
+    except ValueError:
+        return f"{settings.STATIC_URL.rstrip('/')}/{name.lstrip('/')}"
+
+
+def redirect_favicon_svg(request):
+    return HttpResponseRedirect(_built_public_asset_url("favicon.svg"))
+
+
+def redirect_pondarbor_logo_png(request):
+    return HttpResponseRedirect(_built_public_asset_url("pondarborlogo.png"))
+
+
+def redirect_icons_svg(request):
+    return HttpResponseRedirect(_built_public_asset_url("icons.svg"))
 
 
 def spa_index(request):
@@ -28,5 +48,7 @@ def spa_index(request):
         {
             "vite_js": vite_js,
             "vite_css": vite_css,
+            "favicon_href": _built_public_asset_url("favicon.svg"),
+            "pondarbor_logo_src": _built_public_asset_url("pondarborlogo.png"),
         },
     )

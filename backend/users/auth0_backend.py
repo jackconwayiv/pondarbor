@@ -66,14 +66,17 @@ class Auth0TokenAuthentication(BaseAuthentication):
         rsa_key = next(
             (
                 {
-                    "kty": key["kty"],
-                    "kid": key["kid"],
-                    "use": key["use"],
-                    "n": key["n"],
-                    "e": key["e"],
+                    "kty": key.get("kty"),
+                    "kid": key.get("kid"),
+                    "use": key.get("use"),
+                    "n": key.get("n"),
+                    "e": key.get("e"),
                 }
                 for key in jwks.get("keys", [])
                 if key.get("kid") == unverified_header.get("kid")
+                and key.get("kty")
+                and key.get("n")
+                and key.get("e")
             ),
             None,
         )
@@ -172,7 +175,13 @@ class Auth0TokenAuthentication(BaseAuthentication):
             user = User.objects.filter(email=email).first()
 
         if user is None:
-            user = User.objects.create_user(email=email, password=None)
+            try:
+                user = User.objects.create_user(email=email, password=None)
+            except IntegrityError:
+                # Concurrent sync requests can race user creation.
+                user = User.objects.filter(email=email).first()
+                if user is None:
+                    raise
 
         user.email = email
         user.first_name = given_name

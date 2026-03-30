@@ -1,4 +1,5 @@
 from django.contrib.auth import authenticate, get_user_model, login, logout
+from django.db import IntegrityError
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import status
 from rest_framework.authentication import SessionAuthentication
@@ -30,13 +31,17 @@ def get_or_create_profile(user):
         if len(default_display_name) <= display_name_max
         else default_display_name[:display_name_max]
     )
-    profile, _ = Profile.objects.get_or_create(
-        user=user,
-        defaults={
-            "display_name": default_display_name,
-            "timezone": PROFILE_TIMEZONE_DEFAULT,
-        },
-    )
+    try:
+        profile, _ = Profile.objects.get_or_create(
+            user=user,
+            defaults={
+                "display_name": default_display_name,
+                "timezone": PROFILE_TIMEZONE_DEFAULT,
+            },
+        )
+    except IntegrityError:
+        # Concurrent bootstrap calls can race on profile creation.
+        profile = Profile.objects.get(user=user)
     return profile
 
 

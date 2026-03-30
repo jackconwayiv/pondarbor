@@ -76,11 +76,20 @@ class Auth0TokenAuthentication(BaseAuthentication):
                 "Unable to parse authentication token."
             )
 
-        userinfo = {}
         email = payload.get("email")
         auth0_sub = payload.get("sub")
+        given_name = payload.get("given_name") or ""
+        family_name = payload.get("family_name") or ""
+        full_name = payload.get("name") or ""
+        picture = payload.get("picture") or ""
 
-        if not email:
+        userinfo: dict = {}
+        need_email = not email
+        # Access tokens for a custom API audience typically omit OIDC profile claims
+        # (picture, name). ID token and /userinfo include them for Google etc.
+        need_profile = not picture or not (full_name or given_name or family_name)
+
+        if need_email or need_profile:
             try:
                 userinfo_response = requests.get(
                     f"https://{settings.AUTH0_DOMAIN}/userinfo",
@@ -89,20 +98,27 @@ class Auth0TokenAuthentication(BaseAuthentication):
                 )
                 userinfo_response.raise_for_status()
                 userinfo = userinfo_response.json()
-                email = userinfo.get("email")
-                auth0_sub = auth0_sub or userinfo.get("sub")
             except requests.RequestException:
-                raise exceptions.AuthenticationFailed(
-                    "Email not provided by token, and /userinfo lookup failed."
-                )
+                if need_email:
+                    raise exceptions.AuthenticationFailed(
+                        "Email not provided by token, and /userinfo lookup failed."
+                    )
+                userinfo = {}
+
+        if userinfo:
+            email = email or userinfo.get("email")
+            auth0_sub = auth0_sub or userinfo.get("sub")
+            if not given_name:
+                given_name = userinfo.get("given_name") or ""
+            if not family_name:
+                family_name = userinfo.get("family_name") or ""
+            if not full_name:
+                full_name = userinfo.get("name") or ""
+            if not picture:
+                picture = userinfo.get("picture") or ""
 
         if not email:
             raise exceptions.AuthenticationFailed("Email not provided by Auth0.")
-
-        given_name = payload.get("given_name") or userinfo.get("given_name") or ""
-        family_name = payload.get("family_name") or userinfo.get("family_name") or ""
-        full_name = payload.get("name") or userinfo.get("name") or ""
-        picture = payload.get("picture") or userinfo.get("picture") or ""
 
         email = User.objects.normalize_email(email).lower()
 

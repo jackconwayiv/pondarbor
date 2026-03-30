@@ -1,4 +1,6 @@
 import { useAuth0 } from "@auth0/auth0-react";
+
+import { auth0InteractiveLoginParams } from "./auth/auth0LoginParams";
 import {
   Avatar,
   Box,
@@ -107,11 +109,9 @@ function App() {
             colorPalette="lilypad"
             onClick={() =>
               loginWithRedirect({
-                authorizationParams: {
+                authorizationParams: auth0InteractiveLoginParams({
                   screen_hint: "signup",
-                  audience: import.meta.env.VITE_AUTH0_API_AUDIENCE,
-                  scope: "openid profile email",
-                },
+                }),
               })
             }
           >
@@ -122,10 +122,7 @@ function App() {
             colorPalette="pond"
             onClick={() =>
               loginWithRedirect({
-                authorizationParams: {
-                  audience: import.meta.env.VITE_AUTH0_API_AUDIENCE,
-                  scope: "openid profile email",
-                },
+                authorizationParams: auth0InteractiveLoginParams(),
               })
             }
           >

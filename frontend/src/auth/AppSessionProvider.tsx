@@ -300,6 +300,8 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     auth0Logout({
       logoutParams: {
         returnTo: window.location.origin,
+        // Also sign out of the IdP (e.g. Google) when supported, so the next login can pick another account.
+        federated: true,
       },
     });
   }, [auth0Logout]);

@@ -198,3 +198,32 @@ AUTH0_API_AUDIENCE = os.getenv("AUTH0_API_AUDIENCE")
 # Optional: token `iss` when it differs from https://{AUTH0_DOMAIN}/ (custom domain setups).
 AUTH0_ISSUER = os.getenv("AUTH0_ISSUER")
 AUTH0_ALGORITHMS = ["RS256"]
+
+# Logs go to stderr so Gunicorn / Appliku "App Logs" shows tracebacks for 500s.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "{levelname} {asctime} {name} {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": os.getenv("DJANGO_LOG_LEVEL", "INFO"),
+    },
+    "loggers": {
+        "django.request": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+    },
+}

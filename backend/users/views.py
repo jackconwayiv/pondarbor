@@ -1,3 +1,5 @@
+import logging
+
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.db import IntegrityError
 from django.views.decorators.csrf import ensure_csrf_cookie
@@ -20,6 +22,8 @@ from .serializers import (
 UserModel = get_user_model()
 
 SESSION_AUTH_BACKEND = "django.contrib.auth.backends.ModelBackend"
+
+logger = logging.getLogger(__name__)
 
 
 def get_or_create_profile(user):
@@ -162,7 +166,14 @@ def csrf(request):
 @permission_classes([IsAuthenticated])
 def sync_profile(request):
     """Bootstrap session after Auth0 login. Identity is enforced in Auth0TokenAuthentication."""
-    return Response(MeSerializer(serialize_me(request.user)).data)
+    try:
+        return Response(MeSerializer(serialize_me(request.user)).data)
+    except Exception:
+        logger.exception(
+            "sync_profile failed user_pk=%s",
+            getattr(request.user, "pk", None),
+        )
+        raise
 
 
 @api_view(["PATCH"])

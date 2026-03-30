@@ -2,17 +2,16 @@ import { useAuth0 } from "@auth0/auth0-react";
 import {
   Avatar,
   Box,
-  Button,
   Circle,
   Float,
   Heading,
   HStack,
-  Link as ChakraLink,
   Stack,
   Text,
 } from "@chakra-ui/react";
 import { Link as RouterLink } from "react-router";
 import { useAppSession } from "./auth/AppSessionContext";
+import PondButton from "./PondButton";
 
 function App() {
   const { loginWithRedirect } = useAuth0();
@@ -23,11 +22,10 @@ function App() {
   if (isLoading) {
     return (
       <Box
-        bg="white"
-        minH="100vh"
         display="flex"
         alignItems="center"
         justifyContent="center"
+        minH="40vh"
       >
         <Text fontSize="lg">Loading…</Text>
       </Box>
@@ -35,91 +33,82 @@ function App() {
   }
 
   return (
-    <Box bg="white" minH="100vh" p={8}>
+    <Stack maxW="lg" align="flex-start" gap="6">
       {isAuthenticated ? (
-        <Stack maxW="lg" mx="auto" align="flex-start">
+        <>
           {sessionUser?.user?.email && (
             <Text fontSize="lg">
               Logged in as <b>{sessionUser.user.email}</b>
             </Text>
           )}
 
-          <Heading color="black" as="h1" size="lg">
+          <Heading as="h1" size="lg">
             Home
           </Heading>
 
-          <Box
-            bg="gray.50"
-            p={4}
-            borderRadius="md"
-            width="100%"
-            overflow="auto"
-          >
-            <Stack gap="8">
-              {auth0User && (
-                <HStack gap="4">
-                  <Avatar.Root>
-                    <Avatar.Fallback
-                      name={
-                        sessionUser?.profile?.display_name ??
-                        auth0User.name ??
-                        auth0User.email ??
-                        "User"
+          <Stack gap="8" width="100%">
+            {auth0User && (
+              <HStack gap="4" align="flex-start">
+                <Avatar.Root>
+                  <Avatar.Fallback
+                    name={
+                      sessionUser?.profile?.display_name ??
+                      auth0User.name ??
+                      auth0User.email ??
+                      "User"
+                    }
+                  />
+                  <Avatar.Image
+                    src={sessionUser?.profile?.avatar_url ?? undefined}
+                  />
+                  <Float placement="bottom-end" offsetX="1" offsetY="1">
+                    <Circle
+                      bg={
+                        sessionUser?.user?.is_approved ? "lilypad.solid" : "nautical.solid"
                       }
+                      size="8px"
+                      outline="0.2em solid"
+                      outlineColor="bg"
                     />
-                    <Avatar.Image
-                      src={sessionUser?.profile?.avatar_url ?? undefined}
-                    />
-                    <Float placement="bottom-end" offsetX="1" offsetY="1">
-                      <Circle
-                        bg={
-                          sessionUser?.user?.is_approved
-                            ? "green.500"
-                            : "yellow.500"
-                        }
-                        size="8px"
-                        outline="0.2em solid"
-                        outlineColor="bg"
-                      />
-                    </Float>
-                  </Avatar.Root>
+                  </Float>
+                </Avatar.Root>
 
-                  <Stack gap="0">
-                    <Text color="fg.muted">
-                      {sessionUser?.profile?.display_name ??
-                        auth0User.name ??
-                        "Unnamed user"}
-                    </Text>
-                    <Text textStyle="sm">{auth0User.nickname ?? "—"}</Text>
-                    <Text textStyle="sm">{auth0User.email ?? "—"}</Text>
-                  </Stack>
-                </HStack>
-              )}
+                <Stack gap="0">
+                  <Text>
+                    {sessionUser?.profile?.display_name ??
+                      auth0User.name ??
+                      "Unnamed user"}
+                  </Text>
+                  <Text textStyle="sm">{auth0User.nickname ?? "—"}</Text>
+                  <Text textStyle="sm">{auth0User.email ?? "—"}</Text>
+                </Stack>
+              </HStack>
+            )}
 
-              <ChakraLink asChild>
-                <RouterLink to="/profile">
-                  <Button colorScheme="blue" variant="outline">
-                    View profile
-                  </Button>
-                </RouterLink>
-              </ChakraLink>
-            </Stack>
-          </Box>
+            <RouterLink
+              to="/profile"
+              style={{ textDecoration: "none", color: "inherit" }}
+            >
+                <PondButton colorPalette="sky">
+                  View profile
+                </PondButton>
+            </RouterLink>
+          </Stack>
 
-          <Button colorScheme="blue" onClick={logout}>
+          <PondButton colorPalette="nautical" onClick={logout}>
             Logout
-          </Button>
-        </Stack>
+          </PondButton>
+        </>
       ) : (
-        <Stack maxW="md" mx="auto" align="center">
-          {error && <Text color="red.500">Error: {error}</Text>}
+        <>
+          {error && <Text color="fg">Error: {error}</Text>}
 
-          <Heading as="h1" size="lg" color="black">
+          <Heading as="h1" size="lg">
             Welcome to PondArbor
           </Heading>
 
-          <Button
-            colorScheme="blue"
+          <PondButton
+            colorPalette="lilypad"
             onClick={() =>
               loginWithRedirect({
                 authorizationParams: {
@@ -131,11 +120,10 @@ function App() {
             }
           >
             Sign up
-          </Button>
+          </PondButton>
 
-          <Button
-            variant="outline"
-            colorScheme="blue"
+          <PondButton
+            colorPalette="pond"
             onClick={() =>
               loginWithRedirect({
                 authorizationParams: {
@@ -146,10 +134,10 @@ function App() {
             }
           >
             Log in
-          </Button>
-        </Stack>
+          </PondButton>
+        </>
       )}
-    </Box>
+    </Stack>
   );
 }
 

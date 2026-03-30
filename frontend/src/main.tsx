@@ -1,5 +1,6 @@
 import { Auth0Provider } from "@auth0/auth0-react";
-import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
+import { ChakraProvider } from "@chakra-ui/react";
+import { system } from "./theme/system";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider } from "react-router";
@@ -19,7 +20,7 @@ createRoot(document.getElementById("root")!).render(
       }}
       cacheLocation="localstorage"
     >
-      <ChakraProvider value={defaultSystem}>
+      <ChakraProvider value={system}>
         <AppSessionProvider>
           <RouterProvider router={router} />
         </AppSessionProvider>

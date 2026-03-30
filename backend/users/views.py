@@ -5,6 +5,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
+from .models import PROFILE_TIMEZONE_DEFAULT
 from .permissions import IsApprovedUser
 from .serializers import (
     LoginSerializer,
@@ -67,7 +68,10 @@ def signup(request):
     email = serializer.validated_data["email"]
     password = serializer.validated_data["password"]
     display_name = serializer.validated_data.get("display_name", "").strip()
-    timezone = serializer.validated_data.get("timezone", "").strip() or "UTC"
+    timezone = (
+        serializer.validated_data.get("timezone", "").strip()
+        or PROFILE_TIMEZONE_DEFAULT
+    )
 
     user = UserModel.objects.create_user(
         email=email,

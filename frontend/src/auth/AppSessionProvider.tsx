@@ -29,11 +29,6 @@ function isConsentRequiredError(err: unknown): boolean {
   return getErrorMessage(err).includes("Consent required");
 }
 
-function readCsrfToken(): string | null {
-  const m = document.cookie.match(/csrftoken=([^;]+)/);
-  return m?.[1] ?? null;
-}
-
 function loadCachedSession(): {
   sessionUser: SessionUser;
   accessToken: string | null;
@@ -159,6 +154,33 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     isAuthenticated,
   ]);
 
+  const getApiAccessToken = useCallback(async () => {
+    // PATCH endpoints expect a Bearer token for the custom Auth0 auth backend.
+    // Avoid relying on the cached `accessToken` state, which can be null/stale.
+    try {
+      return await getAccessTokenSilently({
+        authorizationParams: {
+          audience: import.meta.env.VITE_AUTH0_API_AUDIENCE,
+          scope: "openid profile email",
+        },
+      });
+    } catch (err: unknown) {
+      if (isConsentRequiredError(err)) {
+        const popupToken = await getAccessTokenWithPopup({
+          authorizationParams: {
+            audience: import.meta.env.VITE_AUTH0_API_AUDIENCE,
+            scope: "openid profile email",
+          },
+        });
+        if (!popupToken) {
+          throw new Error("No access token returned from popup auth.");
+        }
+        return popupToken;
+      }
+      throw err;
+    }
+  }, [getAccessTokenSilently, getAccessTokenWithPopup]);
+
   useEffect(() => {
     if (auth0Loading) return;
 
@@ -234,15 +256,14 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
   const patchMyProfile = useCallback(
     async (patch: ProfilePatch) => {
       const base = apiBase();
+      // Always fetch a fresh token for the PATCH request.
+      const token = await getApiAccessToken();
+      setAccessToken(token);
+
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
       };
-      if (accessToken) {
-        headers.Authorization = `Bearer ${accessToken}`;
-      } else {
-        const csrf = readCsrfToken();
-        if (csrf) headers["X-CSRFToken"] = csrf;
-      }
 
       const response = await fetch(`${base}/api/v1/users/me/profile/`, {
         method: "PATCH",
@@ -258,9 +279,9 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
 
       const data = (await response.json()) as SessionUser;
       setSessionUser(data);
-      saveCachedSession(data, accessToken);
+      saveCachedSession(data, token);
     },
-    [accessToken],
+    [getApiAccessToken],
   );
 
   const logout = useCallback(() => {

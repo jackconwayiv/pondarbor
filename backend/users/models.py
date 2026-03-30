@@ -54,13 +54,18 @@ class User(AbstractUser):
         return self.email
 
 
+PROFILE_TIMEZONE_DEFAULT = "America/Phoenix"
+
+
 class Profile(models.Model):
     user = models.OneToOneField(
         User, on_delete=models.CASCADE, related_name="profile"
     )
     display_name = models.CharField(max_length=150, blank=True)
     avatar_url = models.URLField(blank=True)
-    timezone = models.CharField(max_length=64, default="UTC")
+    timezone = models.CharField(
+        max_length=64, default=PROFILE_TIMEZONE_DEFAULT
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

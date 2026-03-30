@@ -2,7 +2,7 @@ from django.conf import settings
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
-from .models import Profile
+from .models import PROFILE_TIMEZONE_DEFAULT, Profile
 
 
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)
@@ -11,5 +11,5 @@ def create_user_profile(sender, instance, created, **kwargs):
         Profile.objects.create(
             user=instance,
             display_name=(instance.email.split("@")[0] if instance.email else ""),
-            timezone="UTC",
+            timezone=PROFILE_TIMEZONE_DEFAULT,
         )

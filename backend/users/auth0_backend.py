@@ -141,9 +141,11 @@ class Auth0TokenAuthentication(BaseAuthentication):
 
         profile = getattr(user, "profile", None)
         if profile:
-            if full_name:
+            # Do not clobber profile fields the user may have edited via PATCH;
+            # only seed from Auth0/IdP when the field is still empty.
+            if full_name and not (profile.display_name or "").strip():
                 profile.display_name = full_name
-            if picture:
+            if picture and not (profile.avatar_url or "").strip():
                 profile.avatar_url = picture
             profile.save()
 

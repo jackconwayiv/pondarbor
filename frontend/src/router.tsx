@@ -3,7 +3,6 @@ import App from "./App";
 import AppLayout from "./layout";
 import NotFoundPage from "./NotFoundPage";
 import ProfilePage from "./ProfilePage";
-import { usersRoutes } from "./routes";
 
 export const router = createBrowserRouter([
   {
@@ -18,7 +17,6 @@ export const router = createBrowserRouter([
         path: "profile",
         element: <ProfilePage />,
       },
-      ...usersRoutes,
       {
         path: "*",
         element: <NotFoundPage />,

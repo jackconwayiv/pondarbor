@@ -1,7 +1,6 @@
 import {
   Avatar,
   Box,
-  Button,
   Circle,
   Float,
   Heading,
@@ -20,6 +19,7 @@ import {
   getSortedIanaTimeZones,
   timeZoneOptionsForValue,
 } from "./timezones";
+import PondButton from "./PondButton";
 
 export default function ProfilePage() {
   const {
@@ -109,22 +109,24 @@ export default function ProfilePage() {
       <Stack gap="4" align="start" maxW="lg">
         {sessionError ? (
           <>
-            <Text fontWeight="semibold" color="red.400">
+            <Text fontWeight="semibold" color="fg">
               Could not load your profile from the API.
             </Text>
-            <Text color="fg.muted" fontSize="sm">
+            <Text fontSize="sm">
               {sessionError}
             </Text>
-            <Text color="fg.muted" fontSize="sm">
+            <Text fontSize="sm">
               Check that the backend is running,{" "}
               <code>VITE_API_BASE_URL</code> points to it (e.g.{" "}
               <code>http://127.0.0.1:8000</code>), and CORS allows this origin.
             </Text>
           </>
         ) : (
-          <Text color="fg.muted">No profile loaded yet.</Text>
+          <Text>No profile loaded yet.</Text>
         )}
-        <Button onClick={() => void refreshSession()}>Retry</Button>
+        <PondButton colorPalette="sky" onClick={() => void refreshSession()}>
+          Retry
+        </PondButton>
       </Stack>
     );
   }
@@ -136,7 +138,7 @@ export default function ProfilePage() {
       <Heading size="lg">Profile</Heading>
 
       <Stack gap="3">
-        <Text textStyle="sm" color="fg.muted">
+        <Text textStyle="sm" fontWeight="semibold">
           Account
         </Text>
         <Stack gap="1">
@@ -165,7 +167,7 @@ export default function ProfilePage() {
 
       {!isEditing ? (
         <Stack gap="4">
-          <Text textStyle="sm" color="fg.muted">
+          <Text textStyle="sm" fontWeight="semibold">
             App profile
           </Text>
           <HStack gap="4" align="flex-start">
@@ -176,7 +178,9 @@ export default function ProfilePage() {
               <Avatar.Image src={profile.avatar_url || undefined} />
               <Float placement="bottom-end" offsetX="1" offsetY="1">
                 <Circle
-                  bg={user.is_approved ? "green.500" : "yellow.500"}
+                  bg={
+                    user.is_approved ? "lilypad.solid" : "nautical.solid"
+                  }
                   size="8px"
                   outline="0.2em solid"
                   outlineColor="bg"
@@ -187,51 +191,53 @@ export default function ProfilePage() {
               <Text fontWeight="medium">
                 {profile.display_name || "—"}
               </Text>
-              <Text textStyle="sm" color="fg.muted">
-                Timezone: {profile.timezone || "—"}
-              </Text>
+              <Text textStyle="sm">Timezone: {profile.timezone || "—"}</Text>
             </Stack>
           </HStack>
-          <Button colorScheme="blue" alignSelf="flex-start" onClick={beginEdit}>
+          <PondButton
+            colorPalette="sky"
+            alignSelf="flex-start"
+            onClick={beginEdit}
+          >
             Edit profile
-          </Button>
+          </PondButton>
         </Stack>
       ) : (
         <Box as="form" onSubmit={handleSave}>
           <Stack gap="4">
-            <Text textStyle="sm" color="fg.muted">
+            <Text textStyle="sm" fontWeight="semibold">
               Edit app profile
             </Text>
             {saveError && (
-              <Text color="red.500" role="alert">
+              <Text color="fg" role="alert">
                 {saveError}
               </Text>
             )}
             <Stack gap="2">
               <Text textStyle="sm">Display name</Text>
               <Input
+                colorPalette="sky"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="Nickname"
-                bg="bg.subtle"
               />
             </Stack>
             <Stack gap="2">
               <Text textStyle="sm">Avatar URL</Text>
               <Input
+                colorPalette="sky"
                 value={avatarUrl}
                 onChange={(e) => setAvatarUrl(e.target.value)}
                 placeholder="https://…"
-                bg="bg.subtle"
               />
             </Stack>
             <Stack gap="2">
               <Text textStyle="sm">Timezone</Text>
               <NativeSelectRoot size="md">
                 <NativeSelectField
+                  colorPalette="sky"
                   value={timezone || "UTC"}
                   onChange={(e) => setTimezone(e.target.value)}
-                  bg="bg.subtle"
                 >
                   {editTimezoneOptions.map((tz) => (
                     <option key={tz} value={tz}>
@@ -242,22 +248,22 @@ export default function ProfilePage() {
               </NativeSelectRoot>
             </Stack>
             <Stack direction="row" gap="3">
-              <Button
+              <PondButton
                 type="submit"
-                colorScheme="blue"
+                colorPalette="sky"
                 loading={saving}
                 disabled={saving}
               >
                 Save
-              </Button>
-              <Button
+              </PondButton>
+              <PondButton
                 type="button"
-                variant="outline"
+                colorPalette="nautical"
                 onClick={cancelEdit}
                 disabled={saving}
               >
                 Cancel
-              </Button>
+              </PondButton>
             </Stack>
           </Stack>
         </Box>

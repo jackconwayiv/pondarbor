@@ -54,8 +54,13 @@ else:
     _cors_parsed = [o.strip() for o in _cors_env_raw.split(",") if o.strip()]
     CORS_ALLOWED_ORIGINS = _cors_parsed if _cors_parsed else list(_DEFAULT_CORS_ORIGINS)
 
-# Needed when the SPA uses fetch(..., credentials: "include") (profile PATCH).
-CORS_ALLOW_CREDENTIALS = True
+# django-cors-headers: cannot use ALLOW_ALL_ORIGINS and ALLOW_CREDENTIALS together.
+# DEBUG: allow any origin (dev when SPA calls :8000 directly). Prefer Vite proxy + same-origin fetch.
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
+    CORS_ALLOW_CREDENTIALS = False
+else:
+    CORS_ALLOW_CREDENTIALS = True
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 

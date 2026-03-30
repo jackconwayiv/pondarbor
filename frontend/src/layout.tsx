@@ -8,9 +8,13 @@ import {
 } from "@chakra-ui/react";
 import { Link, Outlet } from "react-router";
 
+import { useAppSession } from "./auth/AppSessionContext";
+import PondButton from "./PondButton";
 import { pondarborLogoSrc } from "./publicAsset";
 
 export default function AppLayout() {
+  const { isAuthenticated, logout } = useAppSession();
+
   return (
     <Box
       flex="1"
@@ -55,6 +59,16 @@ export default function AppLayout() {
           <ChakraLink asChild colorPalette="gray" variant="plain">
             <Link to="/profile">Profile</Link>
           </ChakraLink>
+
+          {isAuthenticated ? (
+            <PondButton
+              size="sm"
+              colorPalette="nautical"
+              onClick={logout}
+            >
+              Logout
+            </PondButton>
+          ) : null}
         </HStack>
         <Spacer />
       </Flex>

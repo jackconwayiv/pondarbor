@@ -16,7 +16,7 @@ import PondButton from "./PondButton";
 function App() {
   const { loginWithRedirect } = useAuth0();
 
-  const { isLoading, isAuthenticated, error, logout, auth0User, sessionUser } =
+  const { isLoading, isAuthenticated, error, auth0User, sessionUser } =
     useAppSession();
 
   if (isLoading) {
@@ -94,10 +94,6 @@ function App() {
                 </PondButton>
             </RouterLink>
           </Stack>
-
-          <PondButton colorPalette="nautical" onClick={logout}>
-            Logout
-          </PondButton>
         </>
       ) : (
         <>

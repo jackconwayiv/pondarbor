@@ -1,6 +1,10 @@
+import json
+import logging
+
 import requests
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db import IntegrityError, OperationalError
 from jose import jwt
 from rest_framework import exceptions
 from rest_framework.authentication import BaseAuthentication, get_authorization_header
@@ -10,6 +14,21 @@ from common.jwks import get_auth0_jwks
 from .models import Profile
 
 User = get_user_model()
+
+logger = logging.getLogger(__name__)
+
+
+def _auth0_issuer() -> str:
+    raw = (settings.AUTH0_ISSUER or "").strip()
+    if raw:
+        return raw if raw.endswith("/") else f"{raw}/"
+    return f"https://{settings.AUTH0_DOMAIN}/"
+
+
+def _clip(value: str, max_len: int) -> str:
+    if not value or max_len <= 0:
+        return value
+    return value if len(value) <= max_len else value[:max_len]
 
 
 class Auth0TokenAuthentication(BaseAuthentication):
@@ -70,7 +89,7 @@ class Auth0TokenAuthentication(BaseAuthentication):
                 rsa_key,
                 algorithms=settings.AUTH0_ALGORITHMS,
                 audience=settings.AUTH0_API_AUDIENCE,
-                issuer=f"https://{settings.AUTH0_DOMAIN}/",
+                issuer=_auth0_issuer(),
             )
         except jwt.ExpiredSignatureError:
             raise exceptions.AuthenticationFailed("Token expired.")
@@ -104,7 +123,12 @@ class Auth0TokenAuthentication(BaseAuthentication):
                     timeout=5,
                 )
                 userinfo_response.raise_for_status()
-                userinfo = userinfo_response.json()
+                try:
+                    userinfo = userinfo_response.json()
+                except (json.JSONDecodeError, ValueError):
+                    userinfo = {}
+                if not isinstance(userinfo, dict):
+                    userinfo = {}
             except requests.RequestException:
                 if need_email:
                     raise exceptions.AuthenticationFailed(
@@ -128,6 +152,17 @@ class Auth0TokenAuthentication(BaseAuthentication):
             raise exceptions.AuthenticationFailed("Email not provided by Auth0.")
 
         email = User.objects.normalize_email(email).lower()
+        email = _clip(email, User._meta.get_field("email").max_length)
+
+        fn_max = User._meta.get_field("first_name").max_length
+        ln_max = User._meta.get_field("last_name").max_length
+        sub_max = User._meta.get_field("auth0_sub").max_length
+        given_name = _clip(given_name, fn_max)
+        family_name = _clip(family_name, ln_max)
+        full_name = _clip(full_name, Profile._meta.get_field("display_name").max_length)
+        picture = _clip(picture, Profile._meta.get_field("avatar_url").max_length)
+        if auth0_sub:
+            auth0_sub = _clip(auth0_sub, sub_max)
 
         user = None
         if auth0_sub:
@@ -144,7 +179,16 @@ class Auth0TokenAuthentication(BaseAuthentication):
         user.last_name = family_name
         if auth0_sub:
             user.auth0_sub = auth0_sub
-        user.save()
+        try:
+            user.save()
+        except IntegrityError as exc:
+            logger.warning("Auth0 user save integrity error for %s", email, exc_info=True)
+            raise exceptions.AuthenticationFailed(
+                "Could not sync account (identity conflict). Try again or contact support."
+            ) from exc
+        except OperationalError:
+            logger.exception("Auth0 user save database error for %s", email)
+            raise
 
         try:
             profile = user.profile
@@ -157,7 +201,11 @@ class Auth0TokenAuthentication(BaseAuthentication):
                 profile.display_name = full_name
             if picture and not (profile.avatar_url or "").strip():
                 profile.avatar_url = picture
-            profile.save()
+            try:
+                profile.save()
+            except (IntegrityError, OperationalError):
+                logger.exception("Auth0 profile save failed for %s", email)
+                raise
 
         auth_payload = {"token": token, "payload": payload}
         return (user, auth_payload)

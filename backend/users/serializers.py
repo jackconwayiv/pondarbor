@@ -30,7 +30,9 @@ class MeSerializer(serializers.Serializer):
 
 class ProfileUpdateSerializer(serializers.Serializer):
     display_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
-    avatar_url = serializers.URLField(required=False, allow_blank=True)
+    avatar_url = serializers.URLField(
+        required=False, allow_blank=True, max_length=2048
+    )
     timezone = serializers.CharField(required=False, allow_blank=True, max_length=64)
 
 

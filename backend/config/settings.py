@@ -195,4 +195,6 @@ ACCOUNT_EMAIL_VERIFICATION = "none"
 
 AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN")
 AUTH0_API_AUDIENCE = os.getenv("AUTH0_API_AUDIENCE")
+# Optional: token `iss` when it differs from https://{AUTH0_DOMAIN}/ (custom domain setups).
+AUTH0_ISSUER = os.getenv("AUTH0_ISSUER")
 AUTH0_ALGORITHMS = ["RS256"]

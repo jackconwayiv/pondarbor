@@ -1,15 +1,25 @@
 import {
+  Avatar,
   Box,
   Button,
+  Circle,
+  Float,
   Heading,
+  HStack,
   Input,
+  NativeSelectField,
+  NativeSelectRoot,
   Separator,
   Stack,
   Text,
 } from "@chakra-ui/react";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Navigate } from "react-router";
 import { useAppSession } from "./auth/AppSessionContext";
+import {
+  getSortedIanaTimeZones,
+  timeZoneOptionsForValue,
+} from "./timezones";
 
 export default function ProfilePage() {
   const {
@@ -30,18 +40,25 @@ export default function ProfilePage() {
   const isEditingRef = useRef(false);
   isEditingRef.current = isEditing;
 
+  const allZones = useMemo(() => getSortedIanaTimeZones(), []);
+
+  const editTimezoneOptions = useMemo(
+    () => timeZoneOptionsForValue(timezone || sessionUser?.profile.timezone, allZones),
+    [timezone, sessionUser?.profile.timezone, allZones],
+  );
+
   useEffect(() => {
     if (!sessionUser || isEditingRef.current) return;
     setDisplayName(sessionUser.profile.display_name ?? "");
     setAvatarUrl(sessionUser.profile.avatar_url ?? "");
-    setTimezone(sessionUser.profile.timezone ?? "");
+    setTimezone(sessionUser.profile.timezone ?? "UTC");
   }, [sessionUser]);
 
   const beginEdit = () => {
     if (!sessionUser) return;
     setDisplayName(sessionUser.profile.display_name ?? "");
     setAvatarUrl(sessionUser.profile.avatar_url ?? "");
-    setTimezone(sessionUser.profile.timezone ?? "");
+    setTimezone(sessionUser.profile.timezone ?? "UTC");
     setSaveError(null);
     setIsEditing(true);
   };
@@ -52,7 +69,7 @@ export default function ProfilePage() {
     if (sessionUser) {
       setDisplayName(sessionUser.profile.display_name ?? "");
       setAvatarUrl(sessionUser.profile.avatar_url ?? "");
-      setTimezone(sessionUser.profile.timezone ?? "");
+      setTimezone(sessionUser.profile.timezone ?? "UTC");
     }
   };
 
@@ -147,30 +164,34 @@ export default function ProfilePage() {
       <Separator />
 
       {!isEditing ? (
-        <Stack gap="3">
+        <Stack gap="4">
           <Text textStyle="sm" color="fg.muted">
             App profile
           </Text>
-          <Stack gap="1">
-            <Text>
-              <Text as="span" fontWeight="semibold">
-                Display name:{" "}
+          <HStack gap="4" align="flex-start">
+            <Avatar.Root size="lg">
+              <Avatar.Fallback
+                name={profile.display_name || user.email || "User"}
+              />
+              <Avatar.Image src={profile.avatar_url || undefined} />
+              <Float placement="bottom-end" offsetX="1" offsetY="1">
+                <Circle
+                  bg={user.is_approved ? "green.500" : "yellow.500"}
+                  size="8px"
+                  outline="0.2em solid"
+                  outlineColor="bg"
+                />
+              </Float>
+            </Avatar.Root>
+            <Stack gap="1">
+              <Text fontWeight="medium">
+                {profile.display_name || "—"}
               </Text>
-              {profile.display_name || "—"}
-            </Text>
-            <Text>
-              <Text as="span" fontWeight="semibold">
-                Avatar URL:{" "}
+              <Text textStyle="sm" color="fg.muted">
+                Timezone: {profile.timezone || "—"}
               </Text>
-              {profile.avatar_url || "—"}
-            </Text>
-            <Text>
-              <Text as="span" fontWeight="semibold">
-                Timezone:{" "}
-              </Text>
-              {profile.timezone || "—"}
-            </Text>
-          </Stack>
+            </Stack>
+          </HStack>
           <Button colorScheme="blue" alignSelf="flex-start" onClick={beginEdit}>
             Edit profile
           </Button>
@@ -206,12 +227,19 @@ export default function ProfilePage() {
             </Stack>
             <Stack gap="2">
               <Text textStyle="sm">Timezone</Text>
-              <Input
-                value={timezone}
-                onChange={(e) => setTimezone(e.target.value)}
-                placeholder="e.g. America/New_York"
-                bg="bg.subtle"
-              />
+              <NativeSelectRoot size="md">
+                <NativeSelectField
+                  value={timezone || "UTC"}
+                  onChange={(e) => setTimezone(e.target.value)}
+                  bg="bg.subtle"
+                >
+                  {editTimezoneOptions.map((tz) => (
+                    <option key={tz} value={tz}>
+                      {tz}
+                    </option>
+                  ))}
+                </NativeSelectField>
+              </NativeSelectRoot>
             </Stack>
             <Stack direction="row" gap="3">
               <Button

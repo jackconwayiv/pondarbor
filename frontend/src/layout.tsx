@@ -19,6 +19,10 @@ export default function AppLayout() {
           <ChakraLink asChild>
             <Link to="/users">Users</Link>
           </ChakraLink>
+
+          <ChakraLink asChild>
+            <Link to="/profile">Profile</Link>
+          </ChakraLink>
         </HStack>
         <Spacer />
       </Flex>

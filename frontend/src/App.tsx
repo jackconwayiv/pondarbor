@@ -7,38 +7,18 @@ import {
   Float,
   Heading,
   HStack,
-  Input,
+  Link as ChakraLink,
   Stack,
   Text,
 } from "@chakra-ui/react";
-import { useEffect, useState, type FormEvent } from "react";
+import { Link as RouterLink } from "react-router";
 import { useAppSession } from "./auth/AppSessionContext";
 
 function App() {
   const { loginWithRedirect } = useAuth0();
 
-  const {
-    isLoading,
-    isAuthenticated,
-    error,
-    logout,
-    auth0User,
-    sessionUser,
-    patchMyProfile,
-  } = useAppSession();
-
-  const [displayName, setDisplayName] = useState("");
-  const [avatarUrl, setAvatarUrl] = useState("");
-  const [timezone, setTimezone] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!sessionUser) return;
-    setDisplayName(sessionUser.profile.display_name ?? "");
-    setAvatarUrl(sessionUser.profile.avatar_url ?? "");
-    setTimezone(sessionUser.profile.timezone ?? "");
-  }, [sessionUser]);
+  const { isLoading, isAuthenticated, error, logout, auth0User, sessionUser } =
+    useAppSession();
 
   if (isLoading) {
     return (
@@ -54,23 +34,6 @@ function App() {
     );
   }
 
-  const handleProfileSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setSaveError(null);
-    setSaving(true);
-    try {
-      await patchMyProfile({
-        display_name: displayName,
-        avatar_url: avatarUrl,
-        timezone: timezone || "UTC",
-      });
-    } catch (err: unknown) {
-      setSaveError(err instanceof Error ? err.message : "Update failed");
-    } finally {
-      setSaving(false);
-    }
-  };
-
   return (
     <Box bg="white" minH="100vh" p={8}>
       {isAuthenticated ? (
@@ -82,7 +45,7 @@ function App() {
           )}
 
           <Heading color="black" as="h1" size="lg">
-            User Profile
+            Home
           </Heading>
 
           <Box
@@ -133,61 +96,13 @@ function App() {
                 </HStack>
               )}
 
-              {sessionUser && (
-                <Box as="form" onSubmit={handleProfileSubmit}>
-                  <Text fontWeight="bold" mb={2}>
-                    Edit app profile
-                  </Text>
-                  {saveError && (
-                    <Text color="red.500" mb={2}>
-                      {saveError}
-                    </Text>
-                  )}
-                  <Stack gap="3">
-                    <Box>
-                      <Text textStyle="sm" mb={1}>
-                        Display name
-                      </Text>
-                      <Input
-                        value={displayName}
-                        onChange={(e) => setDisplayName(e.target.value)}
-                        placeholder="Nickname"
-                        bg="white"
-                      />
-                    </Box>
-                    <Box>
-                      <Text textStyle="sm" mb={1}>
-                        Avatar URL
-                      </Text>
-                      <Input
-                        value={avatarUrl}
-                        onChange={(e) => setAvatarUrl(e.target.value)}
-                        placeholder="https://…"
-                        bg="white"
-                      />
-                    </Box>
-                    <Box>
-                      <Text textStyle="sm" mb={1}>
-                        Timezone
-                      </Text>
-                      <Input
-                        value={timezone}
-                        onChange={(e) => setTimezone(e.target.value)}
-                        placeholder="e.g. America/New_York"
-                        bg="white"
-                      />
-                    </Box>
-                    <Button
-                      type="submit"
-                      colorScheme="blue"
-                      loading={saving}
-                      alignSelf="flex-start"
-                    >
-                      Save profile
-                    </Button>
-                  </Stack>
-                </Box>
-              )}
+              <ChakraLink asChild>
+                <RouterLink to="/profile">
+                  <Button colorScheme="blue" variant="outline">
+                    View profile
+                  </Button>
+                </RouterLink>
+              </ChakraLink>
             </Stack>
           </Box>
 

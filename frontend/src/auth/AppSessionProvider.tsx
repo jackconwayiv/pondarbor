@@ -9,6 +9,8 @@ import {
   type ProfilePatch,
 } from "./AppSessionContext";
 
+import { auth0AccountPickerLoginParams } from "./auth0LoginParams";
+
 type AppSessionProviderProps = {
   children: ReactNode;
 };
@@ -71,6 +73,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     user: auth0User,
     getAccessTokenSilently,
     getAccessTokenWithPopup,
+    loginWithRedirect,
     logout: auth0Logout,
   } = useAuth0();
 
@@ -81,9 +84,12 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
 
   const hasInitialized = useRef(false);
   const lastAuth0Sub = useRef<string | null>(null);
+  const pickAccountHandledRef = useRef(false);
+  /** True while local logout runs — Auth0 can still report authenticated until the client clears, which would otherwise retrigger bootstrap and open consent popups. */
+  const isLoggingOutRef = useRef(false);
 
   const bootstrapSession = useCallback(async () => {
-    if (!isAuthenticated || !auth0User) return;
+    if (!isAuthenticated || !auth0User || isLoggingOutRef.current) return;
 
     setIsBootstrapping(true);
     setBootstrapError(null);
@@ -185,6 +191,25 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
 
   useEffect(() => {
     if (auth0Loading) return;
+    if (isAuthenticated) {
+      pickAccountHandledRef.current = false;
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("reauth") !== "pick_account") return;
+    if (pickAccountHandledRef.current) return;
+    pickAccountHandledRef.current = true;
+    params.delete("reauth");
+    const q = params.toString();
+    const path = `${window.location.pathname}${q ? `?${q}` : ""}${window.location.hash}`;
+    window.history.replaceState({}, "", path);
+    void loginWithRedirect({
+      authorizationParams: auth0AccountPickerLoginParams(),
+    });
+  }, [auth0Loading, isAuthenticated, loginWithRedirect]);
+
+  useEffect(() => {
+    if (auth0Loading) return;
 
     if (!isAuthenticated) {
       setSessionUser(null);
@@ -228,6 +253,8 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
 
     // After a failed sync, bootstrapError is set; do not hammer the API every effect run.
     if (bootstrapError) return;
+
+    if (isLoggingOutRef.current) return;
 
     void bootstrapSession();
   }, [auth0Loading, isAuthenticated, auth0User, bootstrapSession, sessionUser, bootstrapError]);
@@ -289,20 +316,39 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     [getApiAccessToken],
   );
 
-  const logout = useCallback(() => {
+  const clearLocalSession = useCallback(() => {
     setSessionUser(null);
     setAccessToken(null);
     setBootstrapError(null);
     hasInitialized.current = false;
     lastAuth0Sub.current = null;
     clearCachedSession();
+  }, []);
 
+  const logout = useCallback(async () => {
+    isLoggingOutRef.current = true;
+    clearLocalSession();
+    try {
+      // Do not redirect to Auth0 `/v2/logout`: that ends the Auth0 SSO session and
+      // forces Universal Login again. Local-only logout keeps Google/IdP + Auth0
+      // sessions so the next `loginWithRedirect` can resume SSO.
+      await auth0Logout({ openUrl: false });
+    } finally {
+      isLoggingOutRef.current = false;
+    }
+  }, [auth0Logout, clearLocalSession]);
+
+  const switchUser = useCallback(() => {
+    clearLocalSession();
+    const returnTo = new URL(window.location.origin);
+    returnTo.pathname = "/";
+    returnTo.searchParams.set("reauth", "pick_account");
     auth0Logout({
       logoutParams: {
-        returnTo: window.location.origin,
+        returnTo: returnTo.toString(),
       },
     });
-  }, [auth0Logout]);
+  }, [auth0Logout, clearLocalSession]);
 
   const sessionPending =
     isAuthenticated &&
@@ -322,6 +368,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       updateProfileLocally,
       patchMyProfile,
       logout,
+      switchUser,
     }),
     [
       sessionUser,
@@ -336,6 +383,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       updateProfileLocally,
       patchMyProfile,
       logout,
+      switchUser,
     ],
   );
 

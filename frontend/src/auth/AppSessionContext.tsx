@@ -38,7 +38,8 @@ export type AppSessionContextValue = {
   refreshSession: () => Promise<void>;
   updateProfileLocally: (patch: Partial<Profile>) => void;
   patchMyProfile: (patch: ProfilePatch) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  switchUser: () => void;
 };
 
 export const AppSessionContext = createContext<

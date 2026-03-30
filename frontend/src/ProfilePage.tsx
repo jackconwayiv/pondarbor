@@ -29,6 +29,8 @@ export default function ProfilePage() {
     error: sessionError,
     patchMyProfile,
     refreshSession,
+    logout,
+    switchUser,
   } = useAppSession();
 
   const [isEditing, setIsEditing] = useState(false);
@@ -124,6 +126,14 @@ export default function ProfilePage() {
         ) : (
           <Text>No profile loaded yet.</Text>
         )}
+        <HStack gap="3" align="center" flexWrap="wrap">
+          <PondButton size="sm" colorPalette="lilypad" onClick={switchUser}>
+            Switch user
+          </PondButton>
+          <PondButton size="sm" colorPalette="nautical" onClick={logout}>
+            Log out
+          </PondButton>
+        </HStack>
         <PondButton colorPalette="sky" onClick={() => void refreshSession()}>
           Retry
         </PondButton>
@@ -135,41 +145,11 @@ export default function ProfilePage() {
 
   return (
     <Stack gap="6" maxW="lg" align="stretch">
-      <Heading size="lg">Profile</Heading>
 
-      <Stack gap="3">
-        <Text textStyle="sm" fontWeight="semibold">
-          Account
-        </Text>
-        <Stack gap="1">
-          <Text>
-            <Text as="span" fontWeight="semibold">
-              Email:{" "}
-            </Text>
-            {user.email}
-          </Text>
-          <Text>
-            <Text as="span" fontWeight="semibold">
-              Account status:{" "}
-            </Text>
-            {user.account_status}
-          </Text>
-          <Text>
-            <Text as="span" fontWeight="semibold">
-              Approved:{" "}
-            </Text>
-            {user.is_approved ? "Yes" : "No"}
-          </Text>
-        </Stack>
-      </Stack>
-
-      <Separator />
+      <Heading size="lg">Your Profile</Heading>
 
       {!isEditing ? (
         <Stack gap="4">
-          <Text textStyle="sm" fontWeight="semibold">
-            App profile
-          </Text>
           <HStack gap="4" align="flex-start">
             <Avatar.Root size="lg">
               <Avatar.Fallback
@@ -206,7 +186,7 @@ export default function ProfilePage() {
         <Box as="form" onSubmit={handleSave}>
           <Stack gap="4">
             <Text textStyle="sm" fontWeight="semibold">
-              Edit app profile
+              Edit profile
             </Text>
             {saveError && (
               <Text color="fg" role="alert">
@@ -268,6 +248,27 @@ export default function ProfilePage() {
           </Stack>
         </Box>
       )}
+      
+      <Separator />
+      <Stack gap="3">
+      <Heading size="lg">Your Account</Heading>
+        <Stack gap="1">
+          <Text>
+            {user.email}
+          </Text>
+          <Text color={user.is_approved ? "#B7D394" : "#E9A14A"}>
+            {user.is_approved ? "Approved" : "Awaiting Approval"}
+          </Text>
+        </Stack>
+      </Stack>
+      <HStack gap="3" align="center" flexWrap="wrap">
+        <PondButton size="sm" colorPalette="lilypad" onClick={switchUser}>
+          Switch user
+        </PondButton>
+        <PondButton size="sm" colorPalette="nautical" onClick={logout}>
+          Log out
+        </PondButton>
+      </HStack>
     </Stack>
   );
 }

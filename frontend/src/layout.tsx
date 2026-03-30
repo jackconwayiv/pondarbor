@@ -9,11 +9,13 @@ import {
 import { Link, Outlet } from "react-router";
 
 import { useAppSession } from "./auth/AppSessionContext";
-import PondButton from "./PondButton";
 import { pondarborLogoSrc } from "./publicAsset";
 
 export default function AppLayout() {
-  const { isAuthenticated, logout } = useAppSession();
+  const { isAuthenticated, auth0User } = useAppSession();
+
+  // `auth0User` is cleared when the Auth0 client logs out; rely on it so nav stays in sync.
+  const showProfileNav = isAuthenticated && !!auth0User;
 
   return (
     <Box
@@ -56,18 +58,10 @@ export default function AppLayout() {
             <Link to="/">Pond Arbor</Link>
           </ChakraLink>
 
-          <ChakraLink asChild colorPalette="gray" variant="plain">
-            <Link to="/profile">Profile</Link>
-          </ChakraLink>
-
-          {isAuthenticated ? (
-            <PondButton
-              size="sm"
-              colorPalette="nautical"
-              onClick={logout}
-            >
-              Logout
-            </PondButton>
+          {showProfileNav ? (
+            <ChakraLink asChild colorPalette="gray" variant="plain">
+              <Link to="/profile">Profile</Link>
+            </ChakraLink>
           ) : null}
         </HStack>
         <Spacer />

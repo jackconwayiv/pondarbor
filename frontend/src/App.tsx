@@ -1,6 +1,6 @@
 import { useAuth0 } from "@auth0/auth0-react";
 
-import { auth0InteractiveLoginParams } from "./auth/auth0LoginParams";
+import { auth0DefaultLoginParams } from "./auth/auth0LoginParams";
 import {
   Avatar,
   Box,
@@ -105,29 +105,30 @@ function App() {
             Welcome to PondArbor
           </Heading>
 
-          <PondButton
-            colorPalette="lilypad"
-            onClick={() =>
-              loginWithRedirect({
-                authorizationParams: auth0InteractiveLoginParams({
-                  screen_hint: "signup",
-                }),
-              })
-            }
-          >
-            Sign up
-          </PondButton>
-
-          <PondButton
-            colorPalette="pond"
-            onClick={() =>
-              loginWithRedirect({
-                authorizationParams: auth0InteractiveLoginParams(),
-              })
-            }
-          >
-            Log in
-          </PondButton>
+          <HStack gap="3" align="center" flexWrap="wrap">
+            <PondButton
+              colorPalette="pond"
+              onClick={() =>
+                loginWithRedirect({
+                  authorizationParams: auth0DefaultLoginParams(),
+                })
+              }
+            >
+              Log in
+            </PondButton>
+            <PondButton
+              colorPalette="lilypad"
+              onClick={() =>
+                loginWithRedirect({
+                  authorizationParams: auth0DefaultLoginParams({
+                    screen_hint: "signup",
+                  }),
+                })
+              }
+            >
+              Sign up
+            </PondButton>
+          </HStack>
         </>
       )}
     </Stack>

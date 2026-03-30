@@ -2,11 +2,9 @@ import type { User } from "@auth0/auth0-react";
 import { createContext, useContext } from "react";
 
 export type Profile = {
-  auth0_sub: string | null;
   display_name: string;
   avatar_url: string;
   timezone: string;
-  status: string;
 };
 
 export type AppUser = {
@@ -17,12 +15,18 @@ export type AppUser = {
   last_name: string;
   is_authenticated: boolean;
   is_approved: boolean;
+  account_status: string;
+  auth0_sub?: string | null;
 };
 
 export type SessionUser = {
   user: AppUser;
   profile: Profile;
 };
+
+export type ProfilePatch = Partial<
+  Pick<Profile, "display_name" | "avatar_url" | "timezone">
+>;
 
 export type AppSessionContextValue = {
   sessionUser: SessionUser | null;
@@ -33,6 +37,7 @@ export type AppSessionContextValue = {
   error: string | null;
   refreshSession: () => Promise<void>;
   updateProfileLocally: (patch: Partial<Profile>) => void;
+  patchMyProfile: (patch: ProfilePatch) => Promise<void>;
   logout: () => void;
 };
 

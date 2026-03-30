@@ -3,7 +3,7 @@ Full-stack app using Django/DRF (backend) and React/TypeScript/Chakra UI (fronte
 
 ## Dev
 Run locally with Docker Compose: `docker compose up --build`
-Frontend: `http://localhost:5173` • Backend: `http://localhost:8000` • Health: `/users/health/`
+Frontend: `http://localhost:5173` • Backend: `http://localhost:8000` • Health: `/api/v1/users/health/` (legacy `/users/health/` still mounted)
 
 ## Deploy
 Appliku deploys this as a **single app**.

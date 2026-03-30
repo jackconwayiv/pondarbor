@@ -66,6 +66,8 @@ INSTALLED_APPS = [
     "corsheaders",
     # Site apps
     "users.apps.UsersConfig",
+    "quotes.apps.QuotesConfig",
+    "whatiff.apps.WhatiffConfig",
     # allauth
     "allauth",
     "allauth.account",
@@ -146,6 +148,15 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+AUTH_USER_MODEL = "users.User"
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "pondarbor",
+    }
+}
+
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "users.auth0_backend.Auth0TokenAuthentication",
@@ -161,7 +172,7 @@ AUTHENTICATION_BACKENDS = [
     "allauth.account.auth_backends.AuthenticationBackend",
 ]
 
-LOGIN_REDIRECT_URL = "/users/me/"
+LOGIN_REDIRECT_URL = "/api/v1/users/me/"
 LOGOUT_REDIRECT_URL = "/accounts/login/"
 
 SITE_ID = 1

@@ -1,28 +1,37 @@
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from rest_framework import serializers
+
+
+UserModel = get_user_model()
 
 
 class SessionUserSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     email = serializers.EmailField(allow_blank=True)
-    username = serializers.CharField()
+    username = serializers.CharField(allow_blank=True)
     first_name = serializers.CharField(allow_blank=True)
     last_name = serializers.CharField(allow_blank=True)
     is_authenticated = serializers.BooleanField()
     is_approved = serializers.BooleanField()
+    auth0_sub = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    account_status = serializers.CharField()
 
 
 class ProfileSerializer(serializers.Serializer):
-    auth0_sub = serializers.CharField(allow_blank=True, allow_null=True)
     display_name = serializers.CharField(allow_blank=True)
     avatar_url = serializers.CharField(allow_blank=True)
     timezone = serializers.CharField(allow_blank=True)
-    status = serializers.CharField(allow_blank=True)
 
 
 class MeSerializer(serializers.Serializer):
     user = SessionUserSerializer()
     profile = ProfileSerializer()
+
+
+class ProfileUpdateSerializer(serializers.Serializer):
+    display_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
+    avatar_url = serializers.URLField(required=False, allow_blank=True)
+    timezone = serializers.CharField(required=False, allow_blank=True, max_length=64)
 
 
 class SignupSerializer(serializers.Serializer):
@@ -32,8 +41,8 @@ class SignupSerializer(serializers.Serializer):
     timezone = serializers.CharField(required=False, allow_blank=True)
 
     def validate_email(self, value):
-        email = value.strip().lower()
-        if User.objects.filter(email__iexact=email).exists():
+        email = UserModel.objects.normalize_email(value).lower()
+        if UserModel.objects.filter(email__iexact=email).exists():
             raise serializers.ValidationError("A user with this email already exists.")
         return email
 

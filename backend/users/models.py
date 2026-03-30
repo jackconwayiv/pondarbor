@@ -1,27 +1,69 @@
-from django.conf import settings
+from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
 
 
-class Profile(models.Model):
-    class Status(models.TextChoices):
+class UserManager(BaseUserManager):
+    use_in_migrations = True
+
+    def _create_user(self, email, password, **extra_fields):
+        if not email:
+            raise ValueError("Email is required")
+        email = self.normalize_email(email).lower()
+        user = self.model(email=email, **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
+
+    def create_user(self, email, password=None, **extra_fields):
+        extra_fields.setdefault("is_staff", False)
+        extra_fields.setdefault("is_superuser", False)
+        return self._create_user(email, password, **extra_fields)
+
+    def create_superuser(self, email, password=None, **extra_fields):
+        extra_fields.setdefault("is_staff", True)
+        extra_fields.setdefault("is_superuser", True)
+        if extra_fields.get("is_staff") is not True:
+            raise ValueError("Superuser must have is_staff=True")
+        if extra_fields.get("is_superuser") is not True:
+            raise ValueError("Superuser must have is_superuser=True")
+        return self._create_user(email, password, **extra_fields)
+
+
+class User(AbstractUser):
+    class AccountStatus(models.TextChoices):
         PENDING = "pending", "Pending Approval"
         APPROVED = "approved", "Approved"
         REJECTED = "rejected", "Rejected"
         SUSPENDED = "suspended", "Suspended"
 
-    user = models.OneToOneField(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile"
-    )
+    username = models.CharField(max_length=150, blank=True)
+    email = models.EmailField(unique=True)
     auth0_sub = models.CharField(max_length=255, unique=True, null=True, blank=True)
+    account_status = models.CharField(
+        max_length=20,
+        choices=AccountStatus.choices,
+        default=AccountStatus.PENDING,
+    )
+
+    USERNAME_FIELD = "email"
+    REQUIRED_FIELDS = []
+
+    objects = UserManager()
+
+    def __str__(self):
+        return self.email
+
+
+class Profile(models.Model):
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name="profile"
+    )
     display_name = models.CharField(max_length=150, blank=True)
     avatar_url = models.URLField(blank=True)
     timezone = models.CharField(max_length=64, default="UTC")
-    status = models.CharField(
-        max_length=20, choices=Status.choices, default=Status.PENDING
-    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return self.display_name or self.user.username
+        return self.display_name or self.user.email

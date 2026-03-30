@@ -7,16 +7,38 @@ import {
   Float,
   Heading,
   HStack,
+  Input,
   Stack,
   Text,
 } from "@chakra-ui/react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useAppSession } from "./auth/AppSessionContext";
 
 function App() {
   const { loginWithRedirect } = useAuth0();
 
-  const { isLoading, isAuthenticated, error, logout, auth0User, sessionUser } =
-    useAppSession();
+  const {
+    isLoading,
+    isAuthenticated,
+    error,
+    logout,
+    auth0User,
+    sessionUser,
+    patchMyProfile,
+  } = useAppSession();
+
+  const [displayName, setDisplayName] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState("");
+  const [timezone, setTimezone] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!sessionUser) return;
+    setDisplayName(sessionUser.profile.display_name ?? "");
+    setAvatarUrl(sessionUser.profile.avatar_url ?? "");
+    setTimezone(sessionUser.profile.timezone ?? "");
+  }, [sessionUser]);
 
   if (isLoading) {
     return (
@@ -31,6 +53,23 @@ function App() {
       </Box>
     );
   }
+
+  const handleProfileSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setSaveError(null);
+    setSaving(true);
+    try {
+      await patchMyProfile({
+        display_name: displayName,
+        avatar_url: avatarUrl,
+        timezone: timezone || "UTC",
+      });
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : "Update failed");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <Box bg="white" minH="100vh" p={8}>
@@ -71,7 +110,7 @@ function App() {
                     <Float placement="bottom-end" offsetX="1" offsetY="1">
                       <Circle
                         bg={
-                          sessionUser?.profile.status === "approved"
+                          sessionUser?.user?.is_approved
                             ? "green.500"
                             : "yellow.500"
                         }
@@ -94,23 +133,61 @@ function App() {
                 </HStack>
               )}
 
-              {/* <Box>
-                <Text fontWeight="bold" mb={2}>
-                  App Profile
-                </Text>
-                <Stack gap="1">
-                  <Text>
-                    <b>Display name:</b>{" "}
-                    {sessionUser?.profile?.display_name ?? "—"}
+              {sessionUser && (
+                <Box as="form" onSubmit={handleProfileSubmit}>
+                  <Text fontWeight="bold" mb={2}>
+                    Edit app profile
                   </Text>
-                  <Text>
-                    <b>Timezone:</b> {sessionUser?.profile?.timezone ?? "—"}
-                  </Text>
-                  <Text>
-                    <b>Status:</b> {sessionUser?.profile?.status ?? "—"}
-                  </Text>
-                </Stack>
-              </Box> */}
+                  {saveError && (
+                    <Text color="red.500" mb={2}>
+                      {saveError}
+                    </Text>
+                  )}
+                  <Stack gap="3">
+                    <Box>
+                      <Text textStyle="sm" mb={1}>
+                        Display name
+                      </Text>
+                      <Input
+                        value={displayName}
+                        onChange={(e) => setDisplayName(e.target.value)}
+                        placeholder="Nickname"
+                        bg="white"
+                      />
+                    </Box>
+                    <Box>
+                      <Text textStyle="sm" mb={1}>
+                        Avatar URL
+                      </Text>
+                      <Input
+                        value={avatarUrl}
+                        onChange={(e) => setAvatarUrl(e.target.value)}
+                        placeholder="https://…"
+                        bg="white"
+                      />
+                    </Box>
+                    <Box>
+                      <Text textStyle="sm" mb={1}>
+                        Timezone
+                      </Text>
+                      <Input
+                        value={timezone}
+                        onChange={(e) => setTimezone(e.target.value)}
+                        placeholder="e.g. America/New_York"
+                        bg="white"
+                      />
+                    </Box>
+                    <Button
+                      type="submit"
+                      colorScheme="blue"
+                      loading={saving}
+                      alignSelf="flex-start"
+                    >
+                      Save profile
+                    </Button>
+                  </Stack>
+                </Box>
+              )}
             </Stack>
           </Box>
 

@@ -6,6 +6,7 @@ import {
   type AppSessionContextValue,
   type Profile,
   type SessionUser,
+  type ProfilePatch,
 } from "./AppSessionContext";
 
 type AppSessionProviderProps = {
@@ -13,6 +14,10 @@ type AppSessionProviderProps = {
 };
 
 const SESSION_STORAGE_KEY = "pondarbor.app-session";
+
+function apiBase(): string {
+  return import.meta.env.VITE_API_BASE_URL ?? "";
+}
 
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -22,6 +27,11 @@ function getErrorMessage(err: unknown): string {
 
 function isConsentRequiredError(err: unknown): boolean {
   return getErrorMessage(err).includes("Consent required");
+}
+
+function readCsrfToken(): string | null {
+  const m = document.cookie.match(/csrftoken=([^;]+)/);
+  return m?.[1] ?? null;
 }
 
 function loadCachedSession(): {
@@ -113,14 +123,14 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       })();
 
       const response = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL ?? ""}/users/sync-profile/`,
+        `${apiBase()}/api/v1/users/sync-profile/`,
         {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify(auth0User),
+          body: JSON.stringify({}),
         },
       );
 
@@ -215,6 +225,38 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     [accessToken],
   );
 
+  const patchMyProfile = useCallback(
+    async (patch: ProfilePatch) => {
+      const base = apiBase();
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (accessToken) {
+        headers.Authorization = `Bearer ${accessToken}`;
+      } else {
+        const csrf = readCsrfToken();
+        if (csrf) headers["X-CSRFToken"] = csrf;
+      }
+
+      const response = await fetch(`${base}/api/v1/users/me/profile/`, {
+        method: "PATCH",
+        headers,
+        credentials: "include",
+        body: JSON.stringify(patch),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Profile update failed (${response.status}): ${text}`);
+      }
+
+      const data = (await response.json()) as SessionUser;
+      setSessionUser(data);
+      saveCachedSession(data, accessToken);
+    },
+    [accessToken],
+  );
+
   const logout = useCallback(() => {
     setSessionUser(null);
     setAccessToken(null);
@@ -240,6 +282,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       error: bootstrapError,
       refreshSession,
       updateProfileLocally,
+      patchMyProfile,
       logout,
     }),
     [
@@ -252,6 +295,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       bootstrapError,
       refreshSession,
       updateProfileLocally,
+      patchMyProfile,
       logout,
     ],
   );

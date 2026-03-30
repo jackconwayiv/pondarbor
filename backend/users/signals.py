@@ -10,7 +10,6 @@ def create_user_profile(sender, instance, created, **kwargs):
     if created:
         Profile.objects.create(
             user=instance,
-            display_name=instance.email.split("@")[0] if instance.email else "",
+            display_name=(instance.email.split("@")[0] if instance.email else ""),
             timezone="UTC",
-            status="pending",
         )

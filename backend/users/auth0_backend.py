@@ -4,7 +4,8 @@ from django.contrib.auth import get_user_model
 from jose import jwt
 from rest_framework import exceptions
 from rest_framework.authentication import BaseAuthentication, get_authorization_header
-from users.models import Profile
+
+from common.jwks import get_auth0_jwks
 
 User = get_user_model()
 
@@ -26,12 +27,8 @@ class Auth0TokenAuthentication(BaseAuthentication):
 
         token = auth[1].decode("utf-8")
 
-        jwks_url = f"https://{settings.AUTH0_DOMAIN}/.well-known/jwks.json"
-
         try:
-            jwks_response = requests.get(jwks_url, timeout=5)
-            jwks_response.raise_for_status()
-            jwks = jwks_response.json()
+            jwks = get_auth0_jwks()
         except requests.RequestException:
             raise exceptions.AuthenticationFailed("Unable to fetch Auth0 JWKS.")
 
@@ -107,47 +104,32 @@ class Auth0TokenAuthentication(BaseAuthentication):
         full_name = payload.get("name") or userinfo.get("name") or ""
         picture = payload.get("picture") or userinfo.get("picture") or ""
 
-        user = None
+        email = User.objects.normalize_email(email).lower()
 
+        user = None
         if auth0_sub:
-            existing_profile = (
-                Profile.objects.select_related("user")
-                .filter(auth0_sub=auth0_sub)
-                .first()
-            )
-            if existing_profile:
-                user = existing_profile.user
+            user = User.objects.filter(auth0_sub=auth0_sub).first()
 
         if user is None:
             user = User.objects.filter(email=email).first()
 
         if user is None:
-            base_username = email.split("@")[0]
-            username = base_username
-            counter = 1
-
-            while User.objects.filter(username=username).exists():
-                username = f"{base_username}{counter}"
-                counter += 1
-
-            user = User.objects.create_user(
-                username=username,
-                email=email,
-            )
+            user = User.objects.create_user(email=email, password=None)
 
         user.email = email
         user.first_name = given_name
         user.last_name = family_name
+        if auth0_sub:
+            user.auth0_sub = auth0_sub
         user.save()
 
         profile = getattr(user, "profile", None)
         if profile:
-            if full_name and hasattr(profile, "display_name"):
+            if full_name:
                 profile.display_name = full_name
-            if picture and hasattr(profile, "avatar_url"):
+            if picture:
                 profile.avatar_url = picture
-            if auth0_sub and hasattr(profile, "auth0_sub"):
-                profile.auth0_sub = auth0_sub
             profile.save()
 
-        return (user, token)
+        auth_payload = {"token": token, "payload": payload}
+        return (user, auth_payload)

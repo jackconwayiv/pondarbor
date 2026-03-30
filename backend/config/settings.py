@@ -41,14 +41,21 @@ CSRF_TRUSTED_ORIGINS = [
     if origin.strip()
 ]
 
-CORS_ALLOWED_ORIGINS = [
-    origin.strip()
-    for origin in os.getenv(
-        "CORS_ALLOWED_ORIGINS",
-        "http://localhost:5173,http://127.0.0.1:5173",
-    ).split(",")
-    if origin.strip()
+# If CORS_ALLOWED_ORIGINS is set but empty in .env, the list becomes [] and preflight fails
+# with "No 'Access-Control-Allow-Origin' header".
+_DEFAULT_CORS_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
 ]
+_cors_env_raw = os.getenv("CORS_ALLOWED_ORIGINS")
+if _cors_env_raw is None:
+    CORS_ALLOWED_ORIGINS = list(_DEFAULT_CORS_ORIGINS)
+else:
+    _cors_parsed = [o.strip() for o in _cors_env_raw.split(",") if o.strip()]
+    CORS_ALLOWED_ORIGINS = _cors_parsed if _cors_parsed else list(_DEFAULT_CORS_ORIGINS)
+
+# Needed when the SPA uses fetch(..., credentials: "include") (profile PATCH).
+CORS_ALLOW_CREDENTIALS = True
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 

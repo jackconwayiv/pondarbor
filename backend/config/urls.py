@@ -16,5 +16,8 @@ urlpatterns = [
     path("favicon.svg", redirect_favicon_svg),
     path("pondarborlogo.png", redirect_pondarbor_logo_png),
     path("icons.svg", redirect_icons_svg),
+    # SPA entrypoint: allow direct navigation to client routes like /profile.
+    # Keep this last so API/admin/static routes still win first.
     path("", spa_index),
+    path("<path:route>", spa_index),
 ]

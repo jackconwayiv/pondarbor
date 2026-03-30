@@ -226,6 +226,9 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       return;
     }
 
+    // After a failed sync, bootstrapError is set; do not hammer the API every effect run.
+    if (bootstrapError) return;
+
     void bootstrapSession();
   }, [auth0Loading, isAuthenticated, auth0User, bootstrapSession, sessionUser, bootstrapError]);
 

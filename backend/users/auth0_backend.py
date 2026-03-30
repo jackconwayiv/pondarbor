@@ -7,6 +7,8 @@ from rest_framework.authentication import BaseAuthentication, get_authorization_
 
 from common.jwks import get_auth0_jwks
 
+from .models import Profile
+
 User = get_user_model()
 
 
@@ -144,8 +146,11 @@ class Auth0TokenAuthentication(BaseAuthentication):
             user.auth0_sub = auth0_sub
         user.save()
 
-        profile = getattr(user, "profile", None)
-        if profile:
+        try:
+            profile = user.profile
+        except Profile.DoesNotExist:
+            profile = None
+        if profile is not None:
             # Do not clobber profile fields the user may have edited via PATCH;
             # only seed from Auth0/IdP when the field is still empty.
             if full_name and not (profile.display_name or "").strip():

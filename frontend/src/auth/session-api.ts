@@ -7,6 +7,7 @@ export async function fetchAppSession(accessToken: string) {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
     },
+    credentials: "omit",
     body: JSON.stringify({}),
   });
 

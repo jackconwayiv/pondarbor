@@ -16,6 +16,7 @@ export default function ProfilePage() {
     sessionUser,
     isAuthenticated,
     isLoading,
+    error: sessionError,
     patchMyProfile,
     refreshSession,
   } = useAppSession();
@@ -88,8 +89,24 @@ export default function ProfilePage() {
 
   if (!sessionUser) {
     return (
-      <Stack gap="4" align="start">
-        <Text color="fg.muted">No profile loaded yet.</Text>
+      <Stack gap="4" align="start" maxW="lg">
+        {sessionError ? (
+          <>
+            <Text fontWeight="semibold" color="red.400">
+              Could not load your profile from the API.
+            </Text>
+            <Text color="fg.muted" fontSize="sm">
+              {sessionError}
+            </Text>
+            <Text color="fg.muted" fontSize="sm">
+              Check that the backend is running,{" "}
+              <code>VITE_API_BASE_URL</code> points to it (e.g.{" "}
+              <code>http://127.0.0.1:8000</code>), and CORS allows this origin.
+            </Text>
+          </>
+        ) : (
+          <Text color="fg.muted">No profile loaded yet.</Text>
+        )}
         <Button onClick={() => void refreshSession()}>Retry</Button>
       </Stack>
     );

@@ -185,6 +185,12 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       clearCachedSession();
     }
 
+    // Recover stale state: ref says initialized but React has no session (e.g. cache cleared).
+    if (hasInitialized.current && !sessionUser && !bootstrapError) {
+      hasInitialized.current = false;
+      clearCachedSession();
+    }
+
     if (hasInitialized.current) return;
 
     const cached = loadCachedSession();
@@ -197,7 +203,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     }
 
     void bootstrapSession();
-  }, [auth0Loading, isAuthenticated, auth0User, bootstrapSession]);
+  }, [auth0Loading, isAuthenticated, auth0User, bootstrapSession, sessionUser, bootstrapError]);
 
   const refreshSession = useCallback(async () => {
     hasInitialized.current = false;
@@ -272,13 +278,19 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     });
   }, [auth0Logout]);
 
+  const sessionPending =
+    isAuthenticated &&
+    !!auth0User &&
+    !sessionUser &&
+    !bootstrapError;
+
   const value: AppSessionContextValue = useMemo(
     () => ({
       sessionUser,
       auth0User: auth0User ?? null,
       accessToken,
       isAuthenticated,
-      isLoading: auth0Loading || isBootstrapping,
+      isLoading: auth0Loading || isBootstrapping || sessionPending,
       error: bootstrapError,
       refreshSession,
       updateProfileLocally,
@@ -292,6 +304,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       isAuthenticated,
       auth0Loading,
       isBootstrapping,
+      sessionPending,
       bootstrapError,
       refreshSession,
       updateProfileLocally,

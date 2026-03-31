@@ -13,6 +13,7 @@ import {
 import { Link as RouterLink } from "react-router";
 import { useAppSession } from "./auth/AppSessionContext";
 import PondButton from "./PondButton";
+import { fullBleedStackProps } from "./responsive";
 import { fetchUpcomingBirthdays, type UpcomingBirthday } from "./users/api";
 
 const LILYPAD_WEDGE_CLIP_PATH =
@@ -101,7 +102,7 @@ function App() {
   }
 
   return (
-    <Stack flex="1" minH="full" gap="0" m={{ base: "-4", md: "-6" }}>
+    <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
       <Box bg="bg" px={{ base: "4", md: "6" }} py={{ base: "6", md: "6" }}>
         <Stack gap="3" maxW="3xl">
           <Heading as="h1" size={{ base: "lg", md: "xl" }}>

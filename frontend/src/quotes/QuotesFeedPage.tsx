@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useSearchParams } from "react-router";
 import PondButton from "../PondButton";
 import { useAppSession } from "../auth/AppSessionContext";
+import { fullBleedStackProps, usePrefersCoarsePointer } from "../responsive";
 import { APP_TEXT_SIZES } from "../theme/typography";
 import PublicQuotesPage from "./PublicQuotesPage";
 import QuoteCardBase from "./QuoteCardBase";
@@ -38,9 +39,10 @@ function parseQuoteTab(value: string | null): QuoteTab {
 /** Shared look for field placeholders (faint + clearly not real values). */
 const quotePlaceholderFieldProps = {
   _placeholder: {
-    color: "fg.subtle",
+    color: "gray.500",
     fontStyle: "italic",
-    opacity: 0.75,
+    opacity: 0.72,
+    fontSize: "sm",
   },
 } as const;
 
@@ -194,6 +196,7 @@ function QuoteCard({
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [cardSuccess, setCardSuccess] = useState<string | null>(null);
+  const prefersCoarsePointer = usePrefersCoarsePointer();
   const editorContainerRef = useRef<HTMLDivElement | null>(null);
   const confirmDeleteButtonRef = useRef<HTMLButtonElement | null>(null);
   const isDirty =
@@ -294,7 +297,7 @@ function QuoteCard({
   }, [isEditing, resetEdit]);
 
   useEffect(() => {
-    if (!isEditing) return;
+    if (!isEditing || prefersCoarsePointer) return;
 
     const handlePointerDown = (event: MouseEvent | TouchEvent) => {
       const target = event.target as Node | null;
@@ -309,12 +312,13 @@ function QuoteCard({
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("touchstart", handlePointerDown);
     };
-  }, [cancelEditing, isEditing]);
+  }, [cancelEditing, isEditing, prefersCoarsePointer]);
 
   return (
     <QuoteCardBase
       quote={quote}
       ownerText={quote.owner.email}
+      suppressReadOnlyQuote={isEditing}
       isClickable={canEdit}
       onClick={() => {
         if (!canEdit || isEditing) return;
@@ -795,7 +799,7 @@ export default function QuotesFeedPage() {
       : visibleQuotes.filter((quote) => quote.id === editingQuoteId);
 
   return (
-    <Stack flex="1" minH="full" gap="0" m={{ base: "-4", md: "-6" }}>
+    <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
       <Tabs.Root
         value={activeTab}
         display="flex"
@@ -907,7 +911,7 @@ export default function QuotesFeedPage() {
                   </Collapsible.Trigger>
                   <PondButton
                     type="button"
-                    colorPalette="sky"
+                    colorPalette="lilypad"
                     loading={saving}
                     disabled={saving || body.trim().length === 0}
                     onClick={() => void onSaveQuote()}

@@ -2,6 +2,7 @@ import { Box, Heading, Stack, Text } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router";
 import PondButton from "../PondButton";
+import { fullBleedStackProps } from "../responsive";
 import { APP_TEXT_SIZES } from "../theme/typography";
 import { fetchPublicQuotesByUser } from "./api";
 import QuoteCardBase from "./QuoteCardBase";
@@ -53,7 +54,7 @@ export default function PublicUserQuotesPage() {
   const visibleQuotes = quotes.slice(startIndex, endIndex);
 
   return (
-    <Stack flex="1" minH="full" gap="0" m={{ base: "-4", md: "-6" }}>
+    <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
       <Box bg="bg" px={{ base: "4", md: "6" }} py={{ base: "6", md: "6" }}>
         <Heading size="lg" maxW="3xl">
           Public quotes by {email ?? "Unknown user"}

@@ -1,5 +1,10 @@
 /* Minimal shell; layout and typography live in Chakra theme (src/theme/system.ts). */
 html,
+body {
+  overflow-x: hidden;
+}
+
+html,
 body,
 #root {
   height: 100%;

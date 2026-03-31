@@ -18,6 +18,8 @@ import { useIsMobile } from "./responsive";
 
 /** Wordmark font; fixed look (no route-based styling). */
 const NAV_WORDMARK_FONT = '"Brush Script MT", "Segoe Script", cursive';
+const NAV_WORDMARK_FONT_SIZE = "calc(2em + 6px)";
+const NAV_WORDMARK_LINE_HEIGHT = "1.1";
 
 /** Nav bar links: no underline; no sticky focus/hover chrome after click. */
 const navBarLinkProps = {
@@ -74,6 +76,8 @@ export default function AppLayout() {
       display="flex"
       flexDirection="column"
       minH="100%"
+      w="100%"
+      maxW="100%"
       bg="bg"
       color="fg"
     >
@@ -132,8 +136,8 @@ export default function AppLayout() {
                           fontFamily={NAV_WORDMARK_FONT}
                           fontWeight="normal"
                           letterSpacing="normal"
-                          fontSize="calc(2em + 6px)"
-                          lineHeight="1.1"
+                          fontSize={NAV_WORDMARK_FONT_SIZE}
+                          lineHeight={NAV_WORDMARK_LINE_HEIGHT}
                           onClick={() => setIsMobileMenuOpen(false)}
                         >
                           <Link to="/">Pond Arbor</Link>
@@ -163,12 +167,23 @@ export default function AppLayout() {
               {...navBarLinkProps}
             >
               <Link to="/">
-                <Image
-                  src={pondarborLogoSrc()}
-                  alt="PondArbor"
-                  boxSize="40px"
-                  objectFit="contain"
-                />
+                <Box
+                  display="inline-flex"
+                  alignItems="center"
+                  justifyContent="center"
+                  lineHeight={NAV_WORDMARK_LINE_HEIGHT}
+                  fontSize={NAV_WORDMARK_FONT_SIZE}
+                >
+                  <Image
+                    src={pondarborLogoSrc()}
+                    alt="PondArbor"
+                    h="1.1em"
+                    w="auto"
+                    maxH="1.1em"
+                    objectFit="contain"
+                    display="block"
+                  />
+                </Box>
               </Link>
             </ChakraLink>
           </HStack>
@@ -182,8 +197,8 @@ export default function AppLayout() {
               fontFamily={NAV_WORDMARK_FONT}
               fontWeight="normal"
               letterSpacing="normal"
-              fontSize="calc(2em + 6px)"
-              lineHeight="1.1"
+              fontSize={NAV_WORDMARK_FONT_SIZE}
+              lineHeight={NAV_WORDMARK_LINE_HEIGHT}
               mx={{ base: "4", md: "6" }}
             >
               <Link to="/">Pond Arbor</Link>
@@ -217,8 +232,19 @@ export default function AppLayout() {
         </HStack>
         <Spacer />
       </Flex>
-      <Box as="main" flex="1" p={{ base: "4", md: "6" }} bg="bg" display="flex" flexDirection="column" minH="0">
-        <Box flex="1" minH="0" display="flex" flexDirection="column">
+      <Box
+        as="main"
+        flex="1"
+        minW={0}
+        w="100%"
+        maxW="100%"
+        p={{ base: "4", md: "6" }}
+        bg="bg"
+        display="flex"
+        flexDirection="column"
+        minH="0"
+      >
+        <Box flex="1" minH="0" minW={0} w="100%" display="flex" flexDirection="column">
           <Outlet />
         </Box>
       </Box>

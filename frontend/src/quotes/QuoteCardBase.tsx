@@ -6,6 +6,8 @@ import type { Quote } from "./types";
 type QuoteCardBaseProps = {
   quote: Quote;
   ownerText: string;
+  /** When true, hide read-only body and label chips (e.g. while inline editor is open). */
+  suppressReadOnlyQuote?: boolean;
   isClickable?: boolean;
   onClick?: () => void;
   rightMetaSlot?: ReactNode;
@@ -22,6 +24,7 @@ function formatDateForCard(value: string | null): string | null {
 export default function QuoteCardBase({
   quote,
   ownerText,
+  suppressReadOnlyQuote = false,
   isClickable = false,
   onClick,
   rightMetaSlot,
@@ -54,13 +57,16 @@ export default function QuoteCardBase({
           {rightMetaSlot ?? <Text fontSize={APP_TEXT_SIZES.meta}>{ownerText}</Text>}
         </HStack>
 
-        <HStack align="flex-start" justify="space-between" gap="1">
-          <Text whiteSpace="pre-wrap" flex="1">
-            {quote.body}
-          </Text>
-        </HStack>
+        {!suppressReadOnlyQuote ? (
+          <HStack align="flex-start" justify="space-between" gap="1">
+            <Text whiteSpace="pre-wrap" flex="1">
+              {quote.body}
+            </Text>
+          </HStack>
+        ) : null}
 
-        {attributionLabels.length > 0 || tagLabels.length > 0 ? (
+        {!suppressReadOnlyQuote &&
+        (attributionLabels.length > 0 || tagLabels.length > 0) ? (
           <HStack align="start" gap="2">
             <HStack flexWrap="wrap" gap="1">
               {attributionLabels.map((label) => (

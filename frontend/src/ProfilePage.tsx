@@ -15,6 +15,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate } from "react-router";
 import { useAppSession } from "./auth/AppSessionContext";
+import { fullBleedStackProps } from "./responsive";
 import { APP_TEXT_SIZES } from "./theme/typography";
 import {
   getSortedIanaTimeZones,
@@ -195,7 +196,7 @@ export default function ProfilePage() {
       };
 
   return (
-    <Stack flex="1" minH="full" gap="0" m={{ base: "-4", md: "-6" }}>
+    <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
       <Tabs.Root
         value={activeTab}
         display="flex"

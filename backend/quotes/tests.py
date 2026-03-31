@@ -34,6 +34,21 @@ class QuotesApiTests(TestCase):
         self.assertIsNotNone(body["created_at"])
         self.assertEqual(body["labels"], [])
 
+    def test_attribution_by_email_stores_full_user_email_as_label_name(self):
+        create_resp = self.alice_client.post(
+            "/api/v1/quotes/",
+            {
+                "body": "Cited",
+                "labels": [{"kind": "attribution", "email": self.bob.email}],
+            },
+            format="json",
+        )
+        self.assertEqual(create_resp.status_code, 201)
+        labels = create_resp.json()["labels"]
+        self.assertEqual(len(labels), 1)
+        self.assertEqual(labels[0]["name"], self.bob.email)
+        self.assertEqual(labels[0]["linked_user_id"], self.bob.id)
+
     def test_private_quote_tagged_in_is_visible_in_feed(self):
         # Alice saves a private quote and attributes it to Bob.
         create_resp = self.alice_client.post(

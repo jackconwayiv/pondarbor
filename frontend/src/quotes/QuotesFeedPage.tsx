@@ -33,6 +33,24 @@ function parseCsv(raw: string): string[] {
     .filter((x) => x.length > 0);
 }
 
+/** API stores full `User.email` in label `name` for linked attributions; use `email` in payloads only for strings that look like addresses (DRF validates `email`). */
+function isLikelyEmail(value: string): boolean {
+  const v = value.trim();
+  return v.length > 0 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+}
+
+function attributionInputFromValue(value: string): {
+  kind: "attribution";
+  name?: string;
+  email?: string;
+} {
+  const trimmed = value.trim();
+  if (isLikelyEmail(trimmed)) {
+    return { kind: "attribution", email: trimmed.toLowerCase() };
+  }
+  return { kind: "attribution", name: trimmed };
+}
+
 function appendCsvValue(existing: string, value: string): string {
   const items = parseCsv(existing);
   if (items.some((x) => x.toLowerCase() === value.toLowerCase())) {
@@ -171,11 +189,11 @@ function QuoteCard({
     try {
       const tags = parseCsv(editTagsCsv);
       const attributionNames = parseCsv(editAttributionNamesCsv);
-      const attributionEmails = parseCsv(editAttributionEmailsCsv);
+      const attributionEmailsOrLinkedNames = parseCsv(editAttributionEmailsCsv);
       const labelsPayload: NonNullable<QuotePatchPayload["labels"]> = [
         ...tags.map((name) => ({ kind: "tag" as const, name })),
         ...attributionNames.map((name) => ({ kind: "attribution" as const, name })),
-        ...attributionEmails.map((email) => ({ kind: "attribution" as const, email })),
+        ...attributionEmailsOrLinkedNames.map((v) => attributionInputFromValue(v)),
       ];
 
       const payload: QuotePatchPayload = {
@@ -575,7 +593,7 @@ export default function QuotesFeedPage() {
     try {
       const tags = parseCsv(tagsCsv);
       const attributionNames = parseCsv(attributionNamesCsv);
-      const attributionEmails = parseCsv(attributionEmailsCsv);
+      const attributionEmailsOrLinkedNames = parseCsv(attributionEmailsCsv);
 
       const payload: QuoteCreatePayload = {
         body: trimmed,
@@ -592,10 +610,7 @@ export default function QuotesFeedPage() {
           kind: "attribution" as const,
           name,
         })),
-        ...attributionEmails.map((email) => ({
-          kind: "attribution" as const,
-          email,
-        })),
+        ...attributionEmailsOrLinkedNames.map((v) => attributionInputFromValue(v)),
       ];
       if (labels.length > 0) {
         payload.labels = labels;

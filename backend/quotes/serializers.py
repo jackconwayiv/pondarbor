@@ -3,17 +3,52 @@ from django.db import transaction
 from rest_framework import serializers
 
 from quotes.models import Quote, QuoteLabel, QuoteLabelAssignment
-from users.models import Profile
 
 User = get_user_model()
 
 
-def _display_name_for_user(user: User) -> str:
-    # Prefer profile display_name when present.
-    try:
-        return (user.profile.display_name or "").strip() or user.email
-    except Profile.DoesNotExist:
-        return user.email
+def sync_labels_for_quote(*, quote: Quote, owner: User, labels_in: list[dict]) -> None:
+    """Replace quote labels. Linked attributions store the canonical User.email in `name` for matching."""
+    desired_label_ids: list[int] = []
+
+    for item in labels_in:
+        kind = item["kind"]
+        email = (item.get("email") or "").strip().lower() if item.get("email") else ""
+        name = (item.get("name") or "").strip()
+
+        linked_user = None
+        if email:
+            linked_user = User.objects.filter(email__iexact=email).first()
+
+        if kind == QuoteLabel.Kind.ATTRIBUTION.value:
+            if linked_user is not None:
+                name = linked_user.email
+                linked_user_fk = linked_user
+            else:
+                linked_user_fk = None
+                if not name:
+                    # Unknown address: keep full normalized email (domain intact).
+                    name = email
+        else:
+            linked_user_fk = None
+
+        label, _ = QuoteLabel.objects.get_or_create(
+            owner=owner,
+            kind=kind,
+            name=name,
+            linked_user=linked_user_fk,
+        )
+        desired_label_ids.append(label.id)
+
+    desired_label_ids = list(dict.fromkeys(desired_label_ids))
+
+    QuoteLabelAssignment.objects.filter(quote=quote).delete()
+    QuoteLabelAssignment.objects.bulk_create(
+        [
+            QuoteLabelAssignment(quote=quote, label_id=label_id)
+            for label_id in desired_label_ids
+        ]
+    )
 
 
 class QuoteLabelInputSerializer(serializers.Serializer):
@@ -120,53 +155,9 @@ class QuoteCreateSerializer(serializers.Serializer):
         )
 
         if labels_in:
-            self._sync_labels(quote=quote, owner=owner, labels_in=labels_in)
+            sync_labels_for_quote(quote=quote, owner=owner, labels_in=labels_in)
 
         return quote
-
-    def _sync_labels(self, *, quote: Quote, owner: User, labels_in: list[dict]):
-        # Replace semantics: create needed labels + replace join rows.
-        desired_label_ids: list[int] = []
-
-        for item in labels_in:
-            kind = item["kind"]
-            email = (item.get("email") or "").strip().lower() if item.get("email") else ""
-            name = (item.get("name") or "").strip()
-
-            linked_user = None
-            if email:
-                linked_user = User.objects.filter(email__iexact=email).first()
-
-            if not name:
-                if linked_user is not None:
-                    name = _display_name_for_user(linked_user)
-                else:
-                    # For unknown emails, preserve input "email" as the label name.
-                    name = email
-
-            if kind == QuoteLabel.Kind.ATTRIBUTION.value and linked_user is not None:
-                linked_user_fk = linked_user
-            else:
-                linked_user_fk = None
-
-            label, _ = QuoteLabel.objects.get_or_create(
-                owner=owner,
-                kind=kind,
-                name=name,
-                linked_user=linked_user_fk,
-            )
-            desired_label_ids.append(label.id)
-
-        # Avoid duplicate join-row inserts (unique constraint on quote+label).
-        desired_label_ids = list(dict.fromkeys(desired_label_ids))
-
-        QuoteLabelAssignment.objects.filter(quote=quote).delete()
-        QuoteLabelAssignment.objects.bulk_create(
-            [
-                QuoteLabelAssignment(quote=quote, label_id=label_id)
-                for label_id in desired_label_ids
-            ]
-        )
 
 
 class QuotePatchSerializer(serializers.Serializer):
@@ -198,49 +189,7 @@ class QuotePatchSerializer(serializers.Serializer):
         instance.save()
 
         if labels_in is not None:
-            owner = instance.owner
-            self._sync_labels(quote=instance, owner=owner, labels_in=labels_in)
+            sync_labels_for_quote(quote=instance, owner=instance.owner, labels_in=labels_in)
 
         return instance
-
-    def _sync_labels(self, *, quote: Quote, owner: User, labels_in: list[dict]):
-        desired_label_ids: list[int] = []
-
-        for item in labels_in:
-            kind = item["kind"]
-            email = (item.get("email") or "").strip().lower() if item.get("email") else ""
-            name = (item.get("name") or "").strip()
-
-            linked_user = None
-            if email:
-                linked_user = User.objects.filter(email__iexact=email).first()
-
-            if not name:
-                if linked_user is not None:
-                    name = _display_name_for_user(linked_user)
-                else:
-                    name = email
-
-            if kind == QuoteLabel.Kind.ATTRIBUTION.value and linked_user is not None:
-                linked_user_fk = linked_user
-            else:
-                linked_user_fk = None
-
-            label, _ = QuoteLabel.objects.get_or_create(
-                owner=owner,
-                kind=kind,
-                name=name,
-                linked_user=linked_user_fk,
-            )
-            desired_label_ids.append(label.id)
-
-        desired_label_ids = list(dict.fromkeys(desired_label_ids))
-
-        QuoteLabelAssignment.objects.filter(quote=quote).delete()
-        QuoteLabelAssignment.objects.bulk_create(
-            [
-                QuoteLabelAssignment(quote=quote, label_id=label_id)
-                for label_id in desired_label_ids
-            ]
-        )
 

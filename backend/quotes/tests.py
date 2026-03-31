@@ -34,6 +34,25 @@ class QuotesApiTests(TestCase):
         self.assertIsNotNone(body["created_at"])
         self.assertEqual(body["labels"], [])
 
+    def test_attribution_unknown_email_returns_400(self):
+        resp = self.alice_client.post(
+            "/api/v1/quotes/",
+            {
+                "body": "Cited",
+                "labels": [{"kind": "attribution", "email": "not-a-user@example.com"}],
+            },
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        payload = resp.json()
+        errs = payload.get("labels") or payload.get("detail") or []
+        if isinstance(errs, str):
+            errs = [errs]
+        self.assertTrue(
+            any("not currently registered" in str(e).lower() for e in errs),
+            msg=payload,
+        )
+
     def test_attribution_by_email_stores_full_user_email_as_label_name(self):
         create_resp = self.alice_client.post(
             "/api/v1/quotes/",

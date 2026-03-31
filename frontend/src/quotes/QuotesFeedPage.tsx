@@ -26,6 +26,20 @@ import type { Quote, QuoteCreatePayload, QuoteLabel, QuotePatchPayload } from ".
 
 const PAGE_SIZE = 10;
 
+/** Shared look for field placeholders (faint + clearly not real values). */
+const quotePlaceholderFieldProps = {
+  _placeholder: {
+    color: "fg.subtle",
+    fontStyle: "italic",
+    opacity: 0.75,
+  },
+} as const;
+
+const PLACEHOLDER_QUICK_BODY = "Paste or type a quote...";
+const PLACEHOLDER_TAGS = "poetry, lyrics, musings";
+const PLACEHOLDER_ATTRIBUTION_NAMES = "David Bowie, Cormac McCarthy";
+const PLACEHOLDER_ATTRIBUTION_EMAILS = "friend@example.com, editor@example.com";
+
 function parseCsv(raw: string): string[] {
   return raw
     .split(",")
@@ -298,7 +312,11 @@ function QuoteCard({
               )}
             </HStack>
             {cardSuccess ? <Text>{cardSuccess}</Text> : null}
-            {deleteError ? <Text role="alert">{deleteError}</Text> : null}
+            {deleteError ? (
+              <Text role="alert" color="red.600" fontWeight="medium">
+                {deleteError}
+              </Text>
+            ) : null}
             {isEditing ? (
               <Box borderWidth="1px" borderColor="border" borderRadius="md" p="3">
                 <Stack gap="3">
@@ -320,6 +338,8 @@ function QuoteCard({
                       value={editBody}
                       onChange={(e) => setEditBody(e.target.value)}
                       minH="100px"
+                      placeholder={PLACEHOLDER_QUICK_BODY}
+                      {...quotePlaceholderFieldProps}
                     />
                   </Stack>
                   <HStack align="start">
@@ -375,6 +395,8 @@ function QuoteCard({
                     <Input
                       value={editTagsCsv}
                       onChange={(e) => setEditTagsCsv(e.target.value)}
+                      placeholder={PLACEHOLDER_TAGS}
+                      {...quotePlaceholderFieldProps}
                     />
                   </Stack>
                   <Stack>
@@ -411,6 +433,8 @@ function QuoteCard({
                     <Input
                       value={editAttributionNamesCsv}
                       onChange={(e) => setEditAttributionNamesCsv(e.target.value)}
+                      placeholder={PLACEHOLDER_ATTRIBUTION_NAMES}
+                      {...quotePlaceholderFieldProps}
                     />
                   </Stack>
                   <Stack>
@@ -447,6 +471,8 @@ function QuoteCard({
                     <Input
                       value={editAttributionEmailsCsv}
                       onChange={(e) => setEditAttributionEmailsCsv(e.target.value)}
+                      placeholder={PLACEHOLDER_ATTRIBUTION_EMAILS}
+                      {...quotePlaceholderFieldProps}
                     />
                   </Stack>
                   <HStack>
@@ -470,7 +496,11 @@ function QuoteCard({
                       Cancel
                     </PondButton>
                   </HStack>
-                  {editError ? <Text role="alert">{editError}</Text> : null}
+                  {editError ? (
+                    <Text role="alert" color="red.600" fontWeight="medium">
+                      {editError}
+                    </Text>
+                  ) : null}
                 </Stack>
               </Box>
             ) : null}
@@ -681,8 +711,9 @@ export default function QuotesFeedPage() {
           <Textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            placeholder="Paste or type a quote..."
+            placeholder={PLACEHOLDER_QUICK_BODY}
             minH="120px"
+            {...quotePlaceholderFieldProps}
           />
           <details>
             <summary>More details (optional)</summary>
@@ -736,7 +767,8 @@ export default function QuotesFeedPage() {
                 <Input
                   value={tagsCsv}
                   onChange={(e) => setTagsCsv(e.target.value)}
-                  placeholder="poetry, grief, writing"
+                  placeholder={PLACEHOLDER_TAGS}
+                  {...quotePlaceholderFieldProps}
                 />
               </Stack>
               <Stack>
@@ -768,7 +800,8 @@ export default function QuotesFeedPage() {
                 <Input
                   value={attributionNamesCsv}
                   onChange={(e) => setAttributionNamesCsv(e.target.value)}
-                  placeholder="Mary Oliver, Toni Morrison"
+                  placeholder={PLACEHOLDER_ATTRIBUTION_NAMES}
+                  {...quotePlaceholderFieldProps}
                 />
               </Stack>
               <Stack>
@@ -802,7 +835,8 @@ export default function QuotesFeedPage() {
                 <Input
                   value={attributionEmailsCsv}
                   onChange={(e) => setAttributionEmailsCsv(e.target.value)}
-                  placeholder="friend@example.com, editor@example.com"
+                  placeholder={PLACEHOLDER_ATTRIBUTION_EMAILS}
+                  {...quotePlaceholderFieldProps}
                 />
               </Stack>
             </Stack>
@@ -815,7 +849,11 @@ export default function QuotesFeedPage() {
               Refresh
             </PondButton>
           </HStack>
-          {error ? <Text role="alert">{error}</Text> : null}
+          {error ? (
+            <Text role="alert" color="red.600" fontWeight="medium">
+              {error}
+            </Text>
+          ) : null}
           {success ? <Text>{success}</Text> : null}
         </Stack>
       </Box>

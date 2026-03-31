@@ -6,6 +6,11 @@ from quotes.models import Quote, QuoteLabel, QuoteLabelAssignment
 
 User = get_user_model()
 
+# Exposed in API error payload under `labels` when a client sends a syntactic email with no User.
+UNKNOWN_ATTRIBUTION_EMAIL_USER_MESSAGE = (
+    "That user is not currently registered on the site."
+)
+
 
 def sync_labels_for_quote(*, quote: Quote, owner: User, labels_in: list[dict]) -> None:
     """Replace quote labels. Linked attributions store the canonical User.email in `name` for matching."""
@@ -21,14 +26,15 @@ def sync_labels_for_quote(*, quote: Quote, owner: User, labels_in: list[dict]) -
             linked_user = User.objects.filter(email__iexact=email).first()
 
         if kind == QuoteLabel.Kind.ATTRIBUTION.value:
-            if linked_user is not None:
+            if email:
+                if linked_user is None:
+                    raise serializers.ValidationError(
+                        {"labels": [UNKNOWN_ATTRIBUTION_EMAIL_USER_MESSAGE]}
+                    )
                 name = linked_user.email
                 linked_user_fk = linked_user
             else:
                 linked_user_fk = None
-                if not name:
-                    # Unknown address: keep full normalized email (domain intact).
-                    name = email
         else:
             linked_user_fk = None
 

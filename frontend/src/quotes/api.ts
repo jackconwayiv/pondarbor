@@ -9,6 +9,21 @@ function apiBase(): string {
   return import.meta.env.VITE_API_BASE_URL ?? "";
 }
 
+/** Prefer DRF field / detail messages for 400 responses (e.g. unknown attribution email). */
+function drfErrorToMessage(bodyText: string): string | null {
+  try {
+    const data = JSON.parse(bodyText) as Record<string, unknown>;
+    const pick = (v: unknown): string | null => {
+      if (typeof v === "string") return v;
+      if (Array.isArray(v) && v.length > 0 && typeof v[0] === "string") return v[0];
+      return null;
+    };
+    return pick(data.labels) ?? pick(data.detail) ?? pick(data.non_field_errors);
+  } catch {
+    return null;
+  }
+}
+
 function authHeaders(accessToken: string | null): Record<string, string> {
   if (!accessToken) {
     throw new Error("Missing API access token. Refresh your session and try again.");
@@ -43,7 +58,8 @@ export async function createQuote(
   });
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Failed to save quote (${response.status}): ${text}`);
+    const msg = drfErrorToMessage(text);
+    throw new Error(msg ?? `Failed to save quote (${response.status}): ${text}`);
   }
   return (await response.json()) as Quote;
 }
@@ -61,7 +77,8 @@ export async function patchQuote(
   });
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Failed to update quote (${response.status}): ${text}`);
+    const msg = drfErrorToMessage(text);
+    throw new Error(msg ?? `Failed to update quote (${response.status}): ${text}`);
   }
   return (await response.json()) as Quote;
 }

@@ -1,7 +1,6 @@
 import {
   Box,
   Collapsible,
-  Heading,
   HStack,
   Input,
   NativeSelectField,
@@ -332,9 +331,10 @@ function QuoteCard({
               padding: 0,
               margin: 0,
               lineHeight: 1,
-              fontSize: "1.5rem",
+              fontSize: "2rem",
               cursor: deleteBusy ? "not-allowed" : "pointer",
               opacity: savingEdit || deleteBusy ? 0.5 : 1,
+              color: "#5c5c5c",
             }}
             disabled={deleteBusy}
             onClick={(e) => {
@@ -545,7 +545,7 @@ function QuoteCard({
                         void onSaveEdit();
                       }}
                     >
-                      Save changes
+                      Save
                     </PondButton>
                     <PondButton
                       size="sm"
@@ -574,7 +574,7 @@ function QuoteCard({
                         void onDelete();
                       }}
                     >
-                      {confirmDelete ? "Confirm Delete Quote" : "Delete Quote"}
+                      {confirmDelete ? "Confirm Delete" : "Delete"}
                     </PondButton>
                   </HStack>
                   {editError ? (
@@ -795,60 +795,74 @@ export default function QuotesFeedPage() {
       : visibleQuotes.filter((quote) => quote.id === editingQuoteId);
 
   return (
-    <Stack gap="6" maxW="3xl">
-      <Heading size="lg">Quotes</Heading>
+    <Stack flex="1" minH="full" gap="0" m={{ base: "-4", md: "-6" }}>
       <Tabs.Root
         value={activeTab}
+        display="flex"
+        flexDirection="column"
+        flex="1"
+        minH="full"
         onValueChange={(details) => setActiveTab(parseQuoteTab(details.value))}
         variant="plain"
       >
-        <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1">
-          <Tabs.Trigger
-            value="add"
-            bg={activeTab === "add" ? "lilypad.solid" : undefined}
-            color={activeTab === "add" ? "black" : undefined}
-            borderTopRadius="md"
-            borderBottomRadius="0"
-            px="4"
-            py="2"
-            fontWeight="medium"
-            _hover={{ bg: activeTab === "add" ? "lilypad.solid" : "transparent" }}
-            _selected={{ bg: "lilypad.solid", color: "black" }}
-          >
-            Add Quote
-          </Tabs.Trigger>
-          <Tabs.Trigger
-            value="my"
-            bg={activeTab === "my" ? "lilypad.solid" : undefined}
-            color={activeTab === "my" ? "black" : undefined}
-            borderTopRadius="md"
-            borderBottomRadius="0"
-            px="4"
-            py="2"
-            fontWeight="medium"
-            _hover={{ bg: activeTab === "my" ? "lilypad.solid" : "transparent" }}
-            _selected={{ bg: "lilypad.solid", color: "black" }}
-          >
-            My Quotes
-          </Tabs.Trigger>
-          <Tabs.Trigger
-            value="public"
-            bg={activeTab === "public" ? "lilypad.solid" : undefined}
-            color={activeTab === "public" ? "black" : undefined}
-            borderTopRadius="md"
-            borderBottomRadius="0"
-            px="4"
-            py="2"
-            fontWeight="medium"
-            _hover={{ bg: activeTab === "public" ? "lilypad.solid" : "transparent" }}
-            _selected={{ bg: "lilypad.solid", color: "black" }}
-          >
-            Public Quotes
-          </Tabs.Trigger>
-        </Tabs.List>
+        <Box bg="bg" px={{ base: "4", md: "6" }} py={{ base: "6", md: "6" }}>
+          <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" maxW="3xl">
+            <Tabs.Trigger
+              value="add"
+              bg={activeTab === "add" ? "lilypad.solid" : undefined}
+              color={activeTab === "add" ? "black" : undefined}
+              borderTopRadius="md"
+              borderBottomRadius="0"
+              px="4"
+              py="2"
+              fontWeight="medium"
+              _hover={{ bg: activeTab === "add" ? "lilypad.solid" : "transparent" }}
+              _selected={{ bg: "lilypad.solid", color: "black" }}
+            >
+              Add
+            </Tabs.Trigger>
+            <Tabs.Trigger
+              value="my"
+              bg={activeTab === "my" ? "lilypad.solid" : undefined}
+              color={activeTab === "my" ? "black" : undefined}
+              borderTopRadius="md"
+              borderBottomRadius="0"
+              px="4"
+              py="2"
+              fontWeight="medium"
+              _hover={{ bg: activeTab === "my" ? "lilypad.solid" : "transparent" }}
+              _selected={{ bg: "lilypad.solid", color: "black" }}
+            >
+              List
+            </Tabs.Trigger>
+            <Tabs.Trigger
+              value="public"
+              bg={activeTab === "public" ? "lilypad.solid" : undefined}
+              color={activeTab === "public" ? "black" : undefined}
+              borderTopRadius="md"
+              borderBottomRadius="0"
+              px="4"
+              py="2"
+              fontWeight="medium"
+              _hover={{ bg: activeTab === "public" ? "lilypad.solid" : "transparent" }}
+              _selected={{ bg: "lilypad.solid", color: "black" }}
+            >
+              Explore
+            </Tabs.Trigger>
+          </Tabs.List>
+        </Box>
 
-        <Tabs.Content value="add">
-          <Stack gap="3">
+        <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
+          <Tabs.Content value="add">
+            <Box
+              maxW="3xl"
+              bg="bg"
+              borderWidth="1px"
+              borderColor="border"
+              borderRadius="xl"
+              p={{ base: "4", md: "6" }}
+            >
+              <Stack gap="3" pt="0">
               <Textarea
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
@@ -1040,72 +1054,128 @@ export default function QuotesFeedPage() {
                 </Text>
               ) : null}
               {success ? <Text>{success}</Text> : null}
-          </Stack>
-        </Tabs.Content>
+              </Stack>
+            </Box>
+          </Tabs.Content>
 
-        <Tabs.Content value="my">
-          <Stack gap="3">
-            {loadingFeed ? <Text fontSize={APP_TEXT_SIZES.helper}>Loading…</Text> : null}
-            {quotes.length === 0 ? <Text>No quotes yet.</Text> : null}
-            {visibleQuotesForRender.map((quote) => (
-              <QuoteCard
-                key={quote.id}
-                quote={quote}
-                getApiAccessToken={getApiAccessToken}
-                viewerUserId={sessionUser?.user.id ?? null}
-                onSuggestionsChanged={loadSuggestions}
-                tagSuggestions={tagSuggestions}
-                attributionSuggestions={attributionSuggestions}
-                onQuoteUpdated={(next) =>
-                  setQuotes((prev) => prev.map((q) => (q.id === next.id ? next : q)))
-                }
-                onQuoteDeleted={(quoteId) =>
-                  setQuotes((prev) => {
-                    setEditingQuoteId((current) => (current === quoteId ? null : current));
-                    return prev.filter((q) => q.id !== quoteId);
-                  })
-                }
-                isEditing={editingQuoteId === quote.id}
-                onBeginEditing={() => setEditingQuoteId(quote.id)}
-                onEndEditing={() => setEditingQuoteId((current) => (current === quote.id ? null : current))}
-              />
-            ))}
-            {editingQuoteId == null && total > PAGE_SIZE ? (
-              <HStack justify="space-between">
-                <Text fontSize={APP_TEXT_SIZES.helper}>
-                  Showing {startIndex + 1}-{endIndex} of {total}
-                </Text>
-                <HStack>
-                  <PondButton
-                    type="button"
-                    size="sm"
-                    colorPalette="nautical"
-                    onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
-                    disabled={safePage === 0}
-                  >
-                    ←
-                  </PondButton>
-                  <Text fontSize={APP_TEXT_SIZES.helper}>
-                    Page {safePage + 1} / {totalPages}
-                  </Text>
-                  <PondButton
-                    type="button"
-                    size="sm"
-                    colorPalette="nautical"
-                    onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
-                    disabled={safePage >= totalPages - 1}
-                  >
-                    →
-                  </PondButton>
-                </HStack>
-              </HStack>
-            ) : null}
-          </Stack>
-        </Tabs.Content>
+          <Tabs.Content value="my">
+            <Stack gap="3" pt="0" maxW="3xl">
+              {loadingFeed ? <Text fontSize={APP_TEXT_SIZES.helper}>Loading…</Text> : null}
+              {quotes.length === 0 ? <Text>No quotes yet.</Text> : null}
+              {editingQuoteId == null &&
+              total > PAGE_SIZE &&
+              visibleQuotes.length === PAGE_SIZE ? (
+                <Box
+                  bg="bg"
+                  borderWidth="1px"
+                  borderColor="border"
+                  borderRadius="xl"
+                  p={{ base: "4", md: "4" }}
+                >
+                  <HStack justify="space-between" flexWrap="wrap" gap="3">
+                    <Text fontSize={APP_TEXT_SIZES.helper}>
+                      Showing {startIndex + 1}-{endIndex} of {total}
+                    </Text>
+                    <HStack>
+                      <PondButton
+                        type="button"
+                        size="sm"
+                        colorPalette="nautical"
+                        onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+                        disabled={safePage === 0}
+                      >
+                        ←
+                      </PondButton>
+                      <Text fontSize={APP_TEXT_SIZES.helper}>
+                        Page {safePage + 1} / {totalPages}
+                      </Text>
+                      <PondButton
+                        type="button"
+                        size="sm"
+                        colorPalette="nautical"
+                        onClick={() =>
+                          setCurrentPage((p) => Math.min(totalPages - 1, p + 1))
+                        }
+                        disabled={safePage >= totalPages - 1}
+                      >
+                        →
+                      </PondButton>
+                    </HStack>
+                  </HStack>
+                </Box>
+              ) : null}
+              {visibleQuotesForRender.map((quote) => (
+                <QuoteCard
+                  key={quote.id}
+                  quote={quote}
+                  getApiAccessToken={getApiAccessToken}
+                  viewerUserId={sessionUser?.user.id ?? null}
+                  onSuggestionsChanged={loadSuggestions}
+                  tagSuggestions={tagSuggestions}
+                  attributionSuggestions={attributionSuggestions}
+                  onQuoteUpdated={(next) =>
+                    setQuotes((prev) => prev.map((q) => (q.id === next.id ? next : q)))
+                  }
+                  onQuoteDeleted={(quoteId) =>
+                    setQuotes((prev) => {
+                      setEditingQuoteId((current) => (current === quoteId ? null : current));
+                      return prev.filter((q) => q.id !== quoteId);
+                    })
+                  }
+                  isEditing={editingQuoteId === quote.id}
+                  onBeginEditing={() => setEditingQuoteId(quote.id)}
+                  onEndEditing={() =>
+                    setEditingQuoteId((current) => (current === quote.id ? null : current))
+                  }
+                />
+              ))}
+              {editingQuoteId == null && total > PAGE_SIZE ? (
+                <Box
+                  bg="bg"
+                  borderWidth="1px"
+                  borderColor="border"
+                  borderRadius="xl"
+                  p={{ base: "4", md: "4" }}
+                >
+                  <HStack justify="space-between" flexWrap="wrap" gap="3">
+                    <Text fontSize={APP_TEXT_SIZES.helper}>
+                      Showing {startIndex + 1}-{endIndex} of {total}
+                    </Text>
+                    <HStack>
+                      <PondButton
+                        type="button"
+                        size="sm"
+                        colorPalette="nautical"
+                        onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+                        disabled={safePage === 0}
+                      >
+                        ←
+                      </PondButton>
+                      <Text fontSize={APP_TEXT_SIZES.helper}>
+                        Page {safePage + 1} / {totalPages}
+                      </Text>
+                      <PondButton
+                        type="button"
+                        size="sm"
+                        colorPalette="nautical"
+                        onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
+                        disabled={safePage >= totalPages - 1}
+                      >
+                        →
+                      </PondButton>
+                    </HStack>
+                  </HStack>
+                </Box>
+              ) : null}
+            </Stack>
+          </Tabs.Content>
 
-        <Tabs.Content value="public">
-          <PublicQuotesPage />
-        </Tabs.Content>
+          <Tabs.Content value="public">
+            <Stack pt="0" maxW="3xl">
+              <PublicQuotesPage />
+            </Stack>
+          </Tabs.Content>
+        </Box>
       </Tabs.Root>
     </Stack>
   );

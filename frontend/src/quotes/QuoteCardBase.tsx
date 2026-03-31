@@ -34,14 +34,16 @@ export default function QuoteCardBase({
 
   return (
     <Box
-      borderWidth="1px"
-      borderColor="border"
-      p="3"
-      borderRadius="md"
       cursor={isClickable ? "pointer" : "default"}
       onClick={onClick}
+      bg="bg"
+      borderWidth="1px"
+      borderColor="border"
+      borderRadius="xl"
+      px={{ base: "4", md: "4" }}
+      py={{ base: "3", md: "3" }}
     >
-      <Stack gap="1.5">
+      <Stack gap="1">
         <HStack align="center" gap="2">
           {displayDate ? (
             <Text fontSize={APP_TEXT_SIZES.meta}>{displayDate}</Text>
@@ -52,7 +54,7 @@ export default function QuoteCardBase({
           {rightMetaSlot ?? <Text fontSize={APP_TEXT_SIZES.meta}>{ownerText}</Text>}
         </HStack>
 
-        <HStack align="flex-start" justify="space-between" gap="1.5">
+        <HStack align="flex-start" justify="space-between" gap="1">
           <Text whiteSpace="pre-wrap" flex="1">
             {quote.body}
           </Text>
@@ -78,7 +80,7 @@ export default function QuoteCardBase({
                 <Tag.Root
                   key={`base-tag-${quote.id}-${label.id}`}
                   size="sm"
-                  colorPalette="sky"
+                  colorPalette="orange"
                   variant="subtle"
                 >
                   <Tag.Label>{label.name}</Tag.Label>

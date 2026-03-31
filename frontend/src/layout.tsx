@@ -1,22 +1,56 @@
 import {
   Box,
+  Button,
   Flex,
   HStack,
   Image,
   Link as ChakraLink,
+  Popover,
   Spacer,
   Stack,
 } from "@chakra-ui/react";
 import { useMemo, useState } from "react";
-import { Link, Outlet } from "react-router";
+import { Link, Outlet, useLocation } from "react-router";
 
 import { useAppSession } from "./auth/AppSessionContext";
-import PondButton from "./PondButton";
 import { pondarborLogoSrc } from "./publicAsset";
 import { useIsMobile } from "./responsive";
 
+/** Wordmark font; fixed look (no route-based styling). */
+const NAV_WORDMARK_FONT = '"Brush Script MT", "Segoe Script", cursive';
+
+/** Nav bar links: no underline; no sticky focus/hover chrome after click. */
+const navBarLinkProps = {
+  textDecoration: "none",
+  borderBottom: "none",
+  boxShadow: "none",
+  _hover: {
+    textDecoration: "none",
+    borderBottom: "none",
+    boxShadow: "none",
+  },
+  _active: {
+    textDecoration: "none",
+    borderBottom: "none",
+    boxShadow: "none",
+  },
+  _visited: {
+    textDecoration: "none",
+  },
+  _focus: {
+    outline: "none",
+    boxShadow: "none",
+  },
+  _focusVisible: {
+    outline: "2px solid",
+    outlineColor: "rgba(0, 0, 0, 0.45)",
+    outlineOffset: "2px",
+  },
+} as const;
+
 export default function AppLayout() {
   const { isAuthenticated, auth0User } = useAppSession();
+  const location = useLocation();
   const isMobile = useIsMobile();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -50,64 +84,139 @@ export default function AppLayout() {
         align="center"
         bg="lilypad.solid"
       >
-        <HStack gap="4">
-          {isMobile && (
-            <PondButton
-              size="sm"
-              colorPalette="sky"
-              aria-label={isMobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
-              onClick={() => setIsMobileMenuOpen((open) => !open)}
+        <HStack gap="4" align="center">
+          <HStack gap="2" align="center">
+            {isMobile && (
+              <Popover.Root
+                open={isMobileMenuOpen}
+                onOpenChange={(e) => setIsMobileMenuOpen(e.open)}
+                positioning={{ placement: "bottom-start", gutter: 8 }}
+                size="md"
+              >
+                <Popover.Trigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-label={
+                      isMobileMenuOpen ? "Close navigation menu" : "Open navigation menu"
+                    }
+                    bg="transparent"
+                    _hover={{ bg: "transparent" }}
+                    _active={{ bg: "transparent" }}
+                    _focus={{ boxShadow: "none" }}
+                    _focusVisible={{ boxShadow: "none", outline: "none" }}
+                    px="2"
+                    minW="auto"
+                    lineHeight="1"
+                    fontSize="lg"
+                  >
+                    {isMobileMenuOpen ? "✕" : "☰"}
+                  </Button>
+                </Popover.Trigger>
+                <Popover.Positioner>
+                  <Popover.Content
+                    borderWidth="1px"
+                    borderColor="border"
+                    minW="min(280px, calc(100dvw - 2rem))"
+                    w="max-content"
+                    maxW="calc(100dvw - 2rem)"
+                  >
+                    <Popover.Body py="3" px="0">
+                      <Stack gap="3" align="flex-start" px="5">
+                        <ChakraLink
+                          asChild
+                          colorPalette="gray"
+                          variant="plain"
+                          {...navBarLinkProps}
+                          fontFamily={NAV_WORDMARK_FONT}
+                          fontWeight="normal"
+                          letterSpacing="normal"
+                          fontSize="calc(2em + 6px)"
+                          lineHeight="1.1"
+                          onClick={() => setIsMobileMenuOpen(false)}
+                        >
+                          <Link to="/">Pond Arbor</Link>
+                        </ChakraLink>
+                        {navLinks.map((link) => (
+                          <ChakraLink
+                            key={link.to}
+                            asChild
+                            colorPalette="gray"
+                            variant="plain"
+                            {...navBarLinkProps}
+                            onClick={() => setIsMobileMenuOpen(false)}
+                          >
+                            <Link to={link.to}>{link.label}</Link>
+                          </ChakraLink>
+                        ))}
+                      </Stack>
+                    </Popover.Body>
+                  </Popover.Content>
+                </Popover.Positioner>
+              </Popover.Root>
+            )}
+            <ChakraLink
+              asChild
+              colorPalette="gray"
+              variant="plain"
+              {...navBarLinkProps}
             >
-              {isMobileMenuOpen ? "✕" : "☰"}
-            </PondButton>
-          )}
-          <ChakraLink asChild colorPalette="gray" variant="plain">
-            <Link to="/">
-              <Image
-                src={pondarborLogoSrc()}
-                alt="PondArbor"
-                boxSize="40px"
-                objectFit="contain"
-              />
-            </Link>
-          </ChakraLink>
+              <Link to="/">
+                <Image
+                  src={pondarborLogoSrc()}
+                  alt="PondArbor"
+                  boxSize="40px"
+                  objectFit="contain"
+                />
+              </Link>
+            </ChakraLink>
+          </HStack>
 
-          <ChakraLink
-            asChild
-            colorPalette="gray"
-            variant="plain"
-            fontWeight="bold"
-          >
-            <Link to="/">Pond Arbor</Link>
-          </ChakraLink>
+          {!isMobile && (
+            <ChakraLink
+              asChild
+              colorPalette="gray"
+              variant="plain"
+              {...navBarLinkProps}
+              fontFamily={NAV_WORDMARK_FONT}
+              fontWeight="normal"
+              letterSpacing="normal"
+              fontSize="calc(2em + 6px)"
+              lineHeight="1.1"
+              mx={{ base: "4", md: "6" }}
+            >
+              <Link to="/">Pond Arbor</Link>
+            </ChakraLink>
+          )}
 
           {!isMobile &&
-            navLinks.map((link) => (
-              <ChakraLink key={link.to} asChild colorPalette="gray" variant="plain">
-                <Link to={link.to}>{link.label}</Link>
-              </ChakraLink>
-            ))}
+            navLinks.map((link) => {
+              const sectionActive =
+                link.to === "/profile"
+                  ? location.pathname.startsWith("/profile")
+                  : location.pathname.startsWith("/quotes") ||
+                    location.pathname.includes("/public-quotes");
+              return (
+                <ChakraLink
+                  key={link.to}
+                  asChild
+                  colorPalette="gray"
+                  variant="plain"
+                  {...navBarLinkProps}
+                  fontWeight={sectionActive ? "bold" : "normal"}
+                  color={sectionActive ? "white" : undefined}
+                  textShadow={
+                    sectionActive ? "0 1px 2px rgba(0, 0, 0, 0.35)" : undefined
+                  }
+                >
+                  <Link to={link.to}>{link.label}</Link>
+                </ChakraLink>
+              );
+            })}
         </HStack>
         <Spacer />
       </Flex>
-      {isMobile && isMobileMenuOpen && (
-        <Box bg="lilypad.solid" px="6" py="3">
-          <Stack gap="2" align="flex-start">
-            {navLinks.map((link) => (
-              <ChakraLink
-                key={link.to}
-                asChild
-                colorPalette="gray"
-                variant="plain"
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                <Link to={link.to}>{link.label}</Link>
-              </ChakraLink>
-            ))}
-          </Stack>
-        </Box>
-      )}
-
       <Box as="main" flex="1" p={{ base: "4", md: "6" }} bg="bg" display="flex" flexDirection="column" minH="0">
         <Box flex="1" minH="0" display="flex" flexDirection="column">
           <Outlet />

@@ -1,9 +1,8 @@
-import { createBrowserRouter } from "react-router";
+import { createBrowserRouter, Navigate } from "react-router";
 import App from "./App";
 import AppLayout from "./layout";
 import NotFoundPage from "./NotFoundPage";
 import ProfilePage from "./ProfilePage";
-import PublicQuotesPage from "./quotes/PublicQuotesPage";
 import PublicUserQuotesPage from "./quotes/PublicUserQuotesPage";
 import QuotesFeedPage from "./quotes/QuotesFeedPage";
 
@@ -26,7 +25,7 @@ export const router = createBrowserRouter([
       },
       {
         path: "quotes/public",
-        element: <PublicQuotesPage />,
+        element: <Navigate to="/quotes?tab=public" replace />,
       },
       {
         path: "users/:email/public-quotes",

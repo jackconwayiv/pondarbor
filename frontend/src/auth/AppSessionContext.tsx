@@ -5,6 +5,7 @@ export type Profile = {
   display_name: string;
   avatar_url: string;
   timezone: string;
+  birth_date: string | null;
 };
 
 export type AppUser = {
@@ -25,7 +26,7 @@ export type SessionUser = {
 };
 
 export type ProfilePatch = Partial<
-  Pick<Profile, "display_name" | "avatar_url" | "timezone">
+  Pick<Profile, "display_name" | "avatar_url" | "timezone" | "birth_date">
 >;
 
 export type AppSessionContextValue = {

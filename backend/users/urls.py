@@ -10,6 +10,7 @@ from users.views import (
     patch_me_profile,
     signup,
     sync_profile,
+    upcoming_birthdays,
 )
 from quotes.views import user_public_quotes
 
@@ -19,6 +20,7 @@ urlpatterns = [
     path("me/", me),
     path("me/profile/", patch_me_profile),
     path("approved-check/", approved_check),
+    path("upcoming-birthdays/", upcoming_birthdays),
     path("signup/", signup),
     path("login/", login_view),
     path("logout/", logout_view),

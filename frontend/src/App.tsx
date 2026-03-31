@@ -1,4 +1,5 @@
 import { useAuth0 } from "@auth0/auth0-react";
+import { useEffect, useState } from "react";
 
 import { auth0DefaultLoginParams } from "./auth/auth0LoginParams";
 import {
@@ -14,12 +15,71 @@ import {
 import { Link as RouterLink } from "react-router";
 import { useAppSession } from "./auth/AppSessionContext";
 import PondButton from "./PondButton";
+import { fetchUpcomingBirthdays, type UpcomingBirthday } from "./users/api";
+
+const MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+function birthdayMessage(birthday: UpcomingBirthday): string {
+  const monthName = MONTH_NAMES[birthday.birth_month - 1] ?? String(birthday.birth_month);
+  return `${birthday.display_name}'s birthday is ${monthName} ${birthday.birth_day}!`;
+}
 
 function App() {
   const { loginWithRedirect } = useAuth0();
 
-  const { isLoading, isAuthenticated, error, auth0User, sessionUser } =
+  const {
+    isLoading,
+    isAuthenticated,
+    error,
+    auth0User,
+    sessionUser,
+    getApiAccessToken,
+  } =
     useAppSession();
+  const [upcomingBirthdays, setUpcomingBirthdays] = useState<UpcomingBirthday[]>([]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadUpcomingBirthdays() {
+      if (!isAuthenticated || !sessionUser?.user?.is_approved) {
+        if (!isCancelled) {
+          setUpcomingBirthdays([]);
+        }
+        return;
+      }
+
+      try {
+        const token = await getApiAccessToken();
+        const birthdays = await fetchUpcomingBirthdays(token);
+        if (!isCancelled) {
+          setUpcomingBirthdays(birthdays);
+        }
+      } catch {
+        if (!isCancelled) {
+          setUpcomingBirthdays([]);
+        }
+      }
+    }
+
+    void loadUpcomingBirthdays();
+    return () => {
+      isCancelled = true;
+    };
+  }, [isAuthenticated, sessionUser?.user?.is_approved, getApiAccessToken]);
 
   if (isLoading) {
     return (
@@ -91,10 +151,27 @@ function App() {
               to="/profile"
               style={{ textDecoration: "none", color: "inherit" }}
             >
-                <PondButton colorPalette="sky">
-                  View profile
-                </PondButton>
+                {!sessionUser?.profile?.birth_date && (
+                  <PondButton colorPalette="sky">
+                    Edit Profile
+                  </PondButton>
+                )}
             </RouterLink>
+
+            {sessionUser?.user?.is_approved && upcomingBirthdays.length > 0 && (
+              <Stack gap="2" width="100%">
+                <Heading as="h2" size="md">
+                  🎉 Birthday Notice!
+                </Heading>
+                <Stack gap="1">
+                  {upcomingBirthdays.map((birthday) => (
+                    <Text key={`${birthday.display_name}-${birthday.birth_month}-${birthday.birth_day}`}>
+                      {birthdayMessage(birthday)}
+                    </Text>
+                  ))}
+                </Stack>
+              </Stack>
+            )}
           </Stack>
         </>
       ) : (

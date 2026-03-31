@@ -12,14 +12,24 @@ import {
   Stack,
   Text,
 } from "@chakra-ui/react";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router";
 import { useAppSession } from "./auth/AppSessionContext";
 import {
   getSortedIanaTimeZones,
   timeZoneOptionsForValue,
 } from "./timezones";
+import { useIsMobile } from "./responsive";
 import PondButton from "./PondButton";
+
+function formatBirthDateForDisplay(value: string | null | undefined): string {
+  if (!value) return "—";
+  const [year, month, day] = value.split("-");
+  if (!year || !month || !day) return value;
+  return `${month}/${day}/${year}`;
+}
+
+type EditableField = "display_name" | "avatar_url" | "timezone" | "birth_date";
 
 export default function ProfilePage() {
   const {
@@ -33,65 +43,82 @@ export default function ProfilePage() {
     switchUser,
   } = useAppSession();
 
-  const [isEditing, setIsEditing] = useState(false);
+  const [activeField, setActiveField] = useState<EditableField | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
-  const [timezone, setTimezone] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [timezone, setTimezone] = useState("UTC");
+  const [birthDate, setBirthDate] = useState("");
+  const [savingField, setSavingField] = useState<EditableField | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const isEditingRef = useRef(false);
-  isEditingRef.current = isEditing;
+  const isMobile = useIsMobile();
 
   const allZones = useMemo(() => getSortedIanaTimeZones(), []);
-
   const editTimezoneOptions = useMemo(
-    () => timeZoneOptionsForValue(timezone || sessionUser?.profile.timezone, allZones),
-    [timezone, sessionUser?.profile.timezone, allZones],
+    () => timeZoneOptionsForValue(timezone || "UTC", allZones),
+    [timezone, allZones],
   );
 
   useEffect(() => {
-    if (!sessionUser || isEditingRef.current) return;
-    setDisplayName(sessionUser.profile.display_name ?? "");
-    setAvatarUrl(sessionUser.profile.avatar_url ?? "");
-    setTimezone(sessionUser.profile.timezone ?? "UTC");
-  }, [sessionUser]);
-
-  const beginEdit = () => {
     if (!sessionUser) return;
     setDisplayName(sessionUser.profile.display_name ?? "");
     setAvatarUrl(sessionUser.profile.avatar_url ?? "");
     setTimezone(sessionUser.profile.timezone ?? "UTC");
-    setSaveError(null);
-    setIsEditing(true);
+    setBirthDate(sessionUser.profile.birth_date ?? "");
+  }, [sessionUser]);
+
+  const resetFieldDraft = (field: EditableField) => {
+    if (!sessionUser) return;
+    if (field === "display_name") setDisplayName(sessionUser.profile.display_name ?? "");
+    if (field === "avatar_url") setAvatarUrl(sessionUser.profile.avatar_url ?? "");
+    if (field === "timezone") setTimezone(sessionUser.profile.timezone ?? "UTC");
+    if (field === "birth_date") setBirthDate(sessionUser.profile.birth_date ?? "");
   };
 
-  const cancelEdit = () => {
-    setSaveError(null);
-    setIsEditing(false);
-    if (sessionUser) {
-      setDisplayName(sessionUser.profile.display_name ?? "");
-      setAvatarUrl(sessionUser.profile.avatar_url ?? "");
-      setTimezone(sessionUser.profile.timezone ?? "UTC");
+  const commitField = async (field: EditableField) => {
+    if (!sessionUser || savingField) return;
+
+    const nextValue =
+      field === "display_name"
+        ? displayName
+        : field === "avatar_url"
+          ? avatarUrl
+          : field === "timezone"
+            ? timezone || "UTC"
+            : birthDate || null;
+
+    const currentValue =
+      field === "display_name"
+        ? sessionUser.profile.display_name
+        : field === "avatar_url"
+          ? sessionUser.profile.avatar_url
+          : field === "timezone"
+            ? sessionUser.profile.timezone
+            : sessionUser.profile.birth_date;
+
+    if (nextValue === currentValue) {
+      setActiveField(null);
+      return;
     }
-  };
 
-  const handleSave = async (e: FormEvent) => {
-    e.preventDefault();
     setSaveError(null);
-    setSaving(true);
+    setSavingField(field);
     try {
-      await patchMyProfile({
-        display_name: displayName,
-        avatar_url: avatarUrl,
-        timezone: timezone || "UTC",
-      });
-      await refreshSession();
-      setIsEditing(false);
+      await patchMyProfile({ [field]: nextValue });
+      setActiveField(null);
     } catch (err: unknown) {
       setSaveError(err instanceof Error ? err.message : "Update failed");
+      resetFieldDraft(field);
+      setActiveField(null);
     } finally {
-      setSaving(false);
+      setSavingField(null);
     }
+  };
+
+  const cancelActiveField = () => {
+    if (!activeField) return;
+    resetFieldDraft(activeField);
+    setSaveError(null);
+    setActiveField(null);
   };
 
   if (isLoading) {
@@ -114,13 +141,10 @@ export default function ProfilePage() {
             <Text fontWeight="semibold" color="fg">
               Could not load your profile from the API.
             </Text>
+            <Text fontSize="sm">{sessionError}</Text>
             <Text fontSize="sm">
-              {sessionError}
-            </Text>
-            <Text fontSize="sm">
-              Check that the backend is running,{" "}
-              <code>VITE_API_BASE_URL</code> points to it (e.g.{" "}
-              <code>http://127.0.0.1:8000</code>), and CORS allows this origin.
+              Check that the backend is running, <code>VITE_API_BASE_URL</code> points to
+              it (e.g. <code>http://127.0.0.1:8000</code>), and CORS allows this origin.
             </Text>
           </>
         ) : (
@@ -142,120 +166,212 @@ export default function ProfilePage() {
   }
 
   const { user, profile } = sessionUser;
+  const fieldBusy = (field: EditableField) => savingField === field;
 
   return (
     <Stack gap="6" maxW="lg" align="stretch">
-
       <Heading size="lg">Your Profile</Heading>
+      <Text textStyle="sm" color="fg.muted">
+        Tap or click any profile field to edit. Tap away to save, or use Done/Cancel.
+      </Text>
 
-      {!isEditing ? (
-        <Stack gap="4">
-          <HStack gap="4" align="flex-start">
-            <Avatar.Root size="lg">
-              <Avatar.Fallback
-                name={profile.display_name || user.email || "User"}
-              />
-              <Avatar.Image src={profile.avatar_url || undefined} />
-              <Float placement="bottom-end" offsetX="1" offsetY="1">
-                <Circle
-                  bg={
-                    user.is_approved ? "lilypad.solid" : "nautical.solid"
-                  }
-                  size="8px"
-                  outline="0.2em solid"
-                  outlineColor="bg"
-                />
-              </Float>
-            </Avatar.Root>
-            <Stack gap="1">
-              <Text fontWeight="medium">
-                {profile.display_name || "—"}
-              </Text>
-              <Text textStyle="sm">Timezone: {profile.timezone || "—"}</Text>
-            </Stack>
-          </HStack>
-          <PondButton
-            colorPalette="sky"
-            alignSelf="flex-start"
-            onClick={beginEdit}
+      <Stack gap="4">
+        <HStack gap="4" align="flex-start">
+          <Avatar.Root
+            size="lg"
+            cursor="pointer"
+            onClick={() => {
+              setSaveError(null);
+              setActiveField("avatar_url");
+            }}
           >
-            Edit profile
-          </PondButton>
-        </Stack>
-      ) : (
-        <Box as="form" onSubmit={handleSave}>
-          <Stack gap="4">
-            <Text textStyle="sm" fontWeight="semibold">
-              Edit profile
-            </Text>
+            <Avatar.Fallback name={profile.display_name || user.email || "User"} />
+            <Avatar.Image src={profile.avatar_url || undefined} />
+            <Float placement="bottom-end" offsetX="1" offsetY="1">
+              <Circle
+                bg={user.is_approved ? "lilypad.solid" : "nautical.solid"}
+                size="8px"
+                outline="0.2em solid"
+                outlineColor="bg"
+              />
+            </Float>
+          </Avatar.Root>
+
+          <Stack gap="3" flex="1">
+            {activeField === "avatar_url" && (
+              <Stack gap="1">
+                <Text textStyle="sm">Avatar URL</Text>
+                <Input
+                  autoFocus
+                  colorPalette="sky"
+                  value={avatarUrl}
+                  onChange={(e) => setAvatarUrl(e.target.value)}
+                  onBlur={() => void commitField("avatar_url")}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void commitField("avatar_url");
+                    }
+                    if (e.key === "Escape") {
+                      resetFieldDraft("avatar_url");
+                      setSaveError(null);
+                      setActiveField(null);
+                    }
+                  }}
+                  placeholder="https://…"
+                  disabled={fieldBusy("avatar_url")}
+                />
+              </Stack>
+            )}
+
+            <Stack gap="1">
+              <Text textStyle="sm">Display name</Text>
+              {activeField === "display_name" ? (
+                <Input
+                  autoFocus
+                  colorPalette="sky"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  onBlur={() => void commitField("display_name")}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void commitField("display_name");
+                    }
+                    if (e.key === "Escape") {
+                      resetFieldDraft("display_name");
+                      setSaveError(null);
+                      setActiveField(null);
+                    }
+                  }}
+                  placeholder="Nickname"
+                  disabled={fieldBusy("display_name")}
+                />
+              ) : (
+                <Text
+                  fontWeight="medium"
+                  cursor="pointer"
+                  textDecor="underline"
+                  textUnderlineOffset="3px"
+                  onClick={() => {
+                    setSaveError(null);
+                    setActiveField("display_name");
+                  }}
+                >
+                  {profile.display_name || "—"}
+                </Text>
+              )}
+            </Stack>
+
+            <Stack gap="1">
+              <Text textStyle="sm">Timezone</Text>
+              {activeField === "timezone" ? (
+                <NativeSelectRoot size="md">
+                  <NativeSelectField
+                    autoFocus
+                    colorPalette="sky"
+                    value={timezone || "UTC"}
+                    onChange={(e) => setTimezone(e.target.value)}
+                    onBlur={() => void commitField("timezone")}
+                  >
+                    {editTimezoneOptions.map((tz) => (
+                      <option key={tz} value={tz}>
+                        {tz}
+                      </option>
+                    ))}
+                  </NativeSelectField>
+                </NativeSelectRoot>
+              ) : (
+                <Text
+                  textStyle="sm"
+                  cursor="pointer"
+                  textDecor="underline"
+                  textUnderlineOffset="3px"
+                  onClick={() => {
+                    setSaveError(null);
+                    setActiveField("timezone");
+                  }}
+                >
+                  {profile.timezone || "—"}
+                </Text>
+              )}
+            </Stack>
+
+            <Stack gap="1">
+              <Text textStyle="sm">Birthday</Text>
+              {activeField === "birth_date" ? (
+                <Input
+                  autoFocus
+                  colorPalette="sky"
+                  type="date"
+                  value={birthDate}
+                  onChange={(e) => setBirthDate(e.target.value)}
+                  onBlur={() => void commitField("birth_date")}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void commitField("birth_date");
+                    }
+                    if (e.key === "Escape") {
+                      resetFieldDraft("birth_date");
+                      setSaveError(null);
+                      setActiveField(null);
+                    }
+                  }}
+                  disabled={fieldBusy("birth_date")}
+                />
+              ) : (
+                <Text
+                  textStyle="sm"
+                  cursor="pointer"
+                  textDecor="underline"
+                  textUnderlineOffset="3px"
+                  onClick={() => {
+                    setSaveError(null);
+                    setActiveField("birth_date");
+                  }}
+                >
+                  {formatBirthDateForDisplay(profile.birth_date)}
+                </Text>
+              )}
+            </Stack>
+
+            {isMobile && activeField && (
+              <HStack gap="2">
+                <PondButton
+                  size="sm"
+                  colorPalette="sky"
+                  onClick={() => void commitField(activeField)}
+                  loading={!!savingField}
+                  disabled={!!savingField}
+                >
+                  Done
+                </PondButton>
+                <PondButton
+                  size="sm"
+                  colorPalette="nautical"
+                  onClick={cancelActiveField}
+                  disabled={!!savingField}
+                >
+                  Cancel
+                </PondButton>
+              </HStack>
+            )}
+
             {saveError && (
-              <Text color="fg" role="alert">
+              <Text color="fg" role="alert" textStyle="sm">
                 {saveError}
               </Text>
             )}
-            <Stack gap="2">
-              <Text textStyle="sm">Display name</Text>
-              <Input
-                colorPalette="sky"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Nickname"
-              />
-            </Stack>
-            <Stack gap="2">
-              <Text textStyle="sm">Avatar URL</Text>
-              <Input
-                colorPalette="sky"
-                value={avatarUrl}
-                onChange={(e) => setAvatarUrl(e.target.value)}
-                placeholder="https://…"
-              />
-            </Stack>
-            <Stack gap="2">
-              <Text textStyle="sm">Timezone</Text>
-              <NativeSelectRoot size="md">
-                <NativeSelectField
-                  colorPalette="sky"
-                  value={timezone || "UTC"}
-                  onChange={(e) => setTimezone(e.target.value)}
-                >
-                  {editTimezoneOptions.map((tz) => (
-                    <option key={tz} value={tz}>
-                      {tz}
-                    </option>
-                  ))}
-                </NativeSelectField>
-              </NativeSelectRoot>
-            </Stack>
-            <Stack direction="row" gap="3">
-              <PondButton
-                type="submit"
-                colorPalette="sky"
-                loading={saving}
-                disabled={saving}
-              >
-                Save
-              </PondButton>
-              <PondButton
-                type="button"
-                colorPalette="nautical"
-                onClick={cancelEdit}
-                disabled={saving}
-              >
-                Cancel
-              </PondButton>
-            </Stack>
           </Stack>
-        </Box>
-      )}
-      
+        </HStack>
+      </Stack>
+
       <Separator />
       <Stack gap="3">
-      <Heading size="lg">Your Account</Heading>
+        <Heading size="lg">Your Account</Heading>
         <Stack gap="1">
-          <Text>
-            {user.email}
-          </Text>
+          <Text>{user.email}</Text>
           <Text color={user.is_approved ? "#B7D394" : "#E9A14A"}>
             {user.is_approved ? "Approved" : "Awaiting Approval"}
           </Text>

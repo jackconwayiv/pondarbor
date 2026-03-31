@@ -1,27 +1,14 @@
-import { Box, Heading, Stack, Text } from "@chakra-ui/react";
-import { useEffect, useMemo, useState } from "react";
+import { Stack, Text } from "@chakra-ui/react";
+import { useEffect, useState } from "react";
 import PondButton from "../PondButton";
 import { fetchAllPublicQuotes } from "./api";
+import QuoteCardBase from "./QuoteCardBase";
 import type { Quote } from "./types";
 
 const PAGE_SIZE = 10;
 
 function PublicQuoteCard({ quote }: { quote: Quote }) {
-  const labels = useMemo(
-    () => quote.labels.map((l) => `${l.kind}: ${l.name}`).join(" • "),
-    [quote.labels],
-  );
-
-  return (
-    <Box borderWidth="1px" borderColor="border" p="4" borderRadius="md">
-      <Stack gap="2">
-        <Text whiteSpace="pre-wrap">{quote.body}</Text>
-        <Text textStyle="sm">Owner: {quote.owner.email}</Text>
-        <Text textStyle="sm">Captured: {new Date(quote.created_at).toLocaleString()}</Text>
-        {labels ? <Text textStyle="sm">Labels: {labels}</Text> : null}
-      </Stack>
-    </Box>
-  );
+  return <QuoteCardBase quote={quote} ownerText={quote.owner.email} />;
 }
 
 export default function PublicQuotesPage() {
@@ -58,7 +45,6 @@ export default function PublicQuotesPage() {
 
   return (
     <Stack gap="6" maxW="3xl">
-      <Heading size="lg">Public Quotes</Heading>
       {isLoading ? <Text>Loading…</Text> : null}
       {error ? <Text role="alert">{error}</Text> : null}
       {!isLoading && !error && quotes.length === 0 ? <Text>No public quotes yet.</Text> : null}

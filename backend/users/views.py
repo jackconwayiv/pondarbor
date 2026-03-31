@@ -1,7 +1,9 @@
 import logging
+from datetime import timedelta
 
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.db import IntegrityError
+from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import status
 from rest_framework.authentication import SessionAuthentication
@@ -15,6 +17,7 @@ from .permissions import IsApprovedUser
 from .serializers import (
     LoginSerializer,
     MeSerializer,
+    UpcomingBirthdaySerializer,
     ProfileUpdateSerializer,
     SignupSerializer,
 )
@@ -67,6 +70,7 @@ def serialize_me(user):
             "display_name": profile.display_name,
             "avatar_url": profile.avatar_url,
             "timezone": profile.timezone,
+            "birth_date": profile.birth_date,
         },
     }
 
@@ -87,6 +91,49 @@ def me(request):
 @permission_classes([IsApprovedUser])
 def approved_check(request):
     return Response({"ok": True, "message": "You are approved."})
+
+
+@api_view(["GET"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsApprovedUser])
+def upcoming_birthdays(request):
+    today = timezone.localdate()
+    window_offsets_by_month_day = {}
+    for offset in range(-2, 8):
+        day = today + timedelta(days=offset)
+        window_offsets_by_month_day[(day.month, day.day)] = offset
+
+    profiles = Profile.objects.select_related("user").filter(
+        user__account_status=UserModel.AccountStatus.APPROVED,
+        birth_date__isnull=False,
+    )
+
+    rows = []
+    for profile in profiles:
+        birth_date = profile.birth_date
+        month_day = (birth_date.month, birth_date.day)
+        offset = window_offsets_by_month_day.get(month_day)
+        if offset is None:
+            continue
+        rows.append(
+            {
+                "offset": offset,
+                "display_name": profile.display_name,
+                "birth_month": birth_date.month,
+                "birth_day": birth_date.day,
+            }
+        )
+
+    rows.sort(key=lambda row: (row["offset"], row["display_name"].lower()))
+    payload = [
+        {
+            "display_name": row["display_name"],
+            "birth_month": row["birth_month"],
+            "birth_day": row["birth_day"],
+        }
+        for row in rows
+    ]
+    return Response(UpcomingBirthdaySerializer(payload, many=True).data)
 
 
 @api_view(["POST"])

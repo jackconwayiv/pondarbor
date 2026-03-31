@@ -21,6 +21,7 @@ class ProfileSerializer(serializers.Serializer):
     display_name = serializers.CharField(allow_blank=True)
     avatar_url = serializers.CharField(allow_blank=True)
     timezone = serializers.CharField(allow_blank=True)
+    birth_date = serializers.DateField(allow_null=True)
 
 
 class MeSerializer(serializers.Serializer):
@@ -34,6 +35,13 @@ class ProfileUpdateSerializer(serializers.Serializer):
         required=False, allow_blank=True, max_length=2048
     )
     timezone = serializers.CharField(required=False, allow_blank=True, max_length=64)
+    birth_date = serializers.DateField(required=False, allow_null=True)
+
+
+class UpcomingBirthdaySerializer(serializers.Serializer):
+    display_name = serializers.CharField()
+    birth_month = serializers.IntegerField(min_value=1, max_value=12)
+    birth_day = serializers.IntegerField(min_value=1, max_value=31)
 
 
 class SignupSerializer(serializers.Serializer):

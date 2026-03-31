@@ -1,27 +1,15 @@
-import { Box, Heading, Stack, Text } from "@chakra-ui/react";
-import { useEffect, useMemo, useState } from "react";
+import { Heading, Stack, Text } from "@chakra-ui/react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router";
 import PondButton from "../PondButton";
 import { fetchPublicQuotesByUser } from "./api";
+import QuoteCardBase from "./QuoteCardBase";
 import type { Quote } from "./types";
 
 const PAGE_SIZE = 10;
 
 function PublicUserQuoteCard({ quote }: { quote: Quote }) {
-  const labels = useMemo(
-    () => quote.labels.map((l) => `${l.kind}: ${l.name}`).join(" • "),
-    [quote.labels],
-  );
-
-  return (
-    <Box borderWidth="1px" borderColor="border" p="4" borderRadius="md">
-      <Stack gap="2">
-        <Text whiteSpace="pre-wrap">{quote.body}</Text>
-        <Text textStyle="sm">Captured: {new Date(quote.created_at).toLocaleString()}</Text>
-        {labels ? <Text textStyle="sm">Labels: {labels}</Text> : null}
-      </Stack>
-    </Box>
-  );
+  return <QuoteCardBase quote={quote} ownerText={quote.owner.email} />;
 }
 
 export default function PublicUserQuotesPage() {

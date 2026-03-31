@@ -117,6 +117,7 @@ class Auth0TokenAuthentication(BaseAuthentication):
         # Access tokens for a custom API audience typically omit OIDC profile claims
         # (picture, name). ID token and /userinfo include them for Google etc.
         need_profile = not picture or not (full_name or given_name or family_name)
+        userinfo_lookup_failed = False
 
         if need_email or need_profile:
             try:
@@ -133,10 +134,9 @@ class Auth0TokenAuthentication(BaseAuthentication):
                 if not isinstance(userinfo, dict):
                     userinfo = {}
             except requests.RequestException:
-                if need_email:
-                    raise exceptions.AuthenticationFailed(
-                        "Email not provided by token, and /userinfo lookup failed."
-                    )
+                # Do not hard-fail yet. We may still resolve a known user by `sub`
+                # and reuse stored email/profile data.
+                userinfo_lookup_failed = True
                 userinfo = {}
 
         if userinfo:
@@ -151,7 +151,19 @@ class Auth0TokenAuthentication(BaseAuthentication):
             if not picture:
                 picture = userinfo.get("picture") or ""
 
+        # Resiliency: Access tokens for custom API audiences can omit `email`.
+        # If /userinfo is unavailable but we can resolve a previously-synced user by sub,
+        # reuse that user's stored email rather than failing auth for known accounts.
+        if not email and auth0_sub:
+            existing_user = User.objects.filter(auth0_sub=auth0_sub).first()
+            if existing_user and existing_user.email:
+                email = existing_user.email
+
         if not email:
+            if userinfo_lookup_failed:
+                raise exceptions.AuthenticationFailed(
+                    "Email not provided by token, and /userinfo lookup failed."
+                )
             raise exceptions.AuthenticationFailed("Email not provided by Auth0.")
 
         email = User.objects.normalize_email(email).lower()

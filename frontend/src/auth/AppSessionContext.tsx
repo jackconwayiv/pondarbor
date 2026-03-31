@@ -35,6 +35,7 @@ export type AppSessionContextValue = {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
+  getApiAccessToken: () => Promise<string>;
   refreshSession: () => Promise<void>;
   updateProfileLocally: (patch: Partial<Profile>) => void;
   patchMyProfile: (patch: ProfilePatch) => Promise<void>;

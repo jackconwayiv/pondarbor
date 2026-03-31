@@ -59,10 +59,18 @@ export default function AppLayout() {
           </ChakraLink>
 
           {showProfileNav ? (
-            <ChakraLink asChild colorPalette="gray" variant="plain">
-              <Link to="/profile">Profile</Link>
-            </ChakraLink>
+            <>
+              <ChakraLink asChild colorPalette="gray" variant="plain">
+                <Link to="/profile">Profile</Link>
+              </ChakraLink>
+              <ChakraLink asChild colorPalette="gray" variant="plain">
+                <Link to="/quotes">Quotes</Link>
+              </ChakraLink>
+            </>
           ) : null}
+          <ChakraLink asChild colorPalette="gray" variant="plain">
+            <Link to="/quotes/public">Public Quotes</Link>
+          </ChakraLink>
         </HStack>
         <Spacer />
       </Flex>

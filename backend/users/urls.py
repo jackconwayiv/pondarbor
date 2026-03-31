@@ -11,6 +11,7 @@ from users.views import (
     signup,
     sync_profile,
 )
+from quotes.views import user_public_quotes
 
 urlpatterns = [
     path("health/", health),
@@ -22,4 +23,5 @@ urlpatterns = [
     path("login/", login_view),
     path("logout/", logout_view),
     path("sync-profile/", sync_profile),
+    path("<str:email>/public-quotes/", user_public_quotes),
 ]

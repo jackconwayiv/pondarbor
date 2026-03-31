@@ -1,6 +1,9 @@
 from django.contrib.auth import get_user_model
+from django.http import Http404
+from django.test import RequestFactory
 from django.test import TestCase
 from rest_framework.test import APIClient
+from users.frontend_views import spa_index
 
 User = get_user_model()
 
@@ -112,3 +115,18 @@ class UserVisibilityTests(TestCase):
         self.assertEqual(body["user"]["email"], "alice@example.com")
         self.assertEqual(body["user"]["id"], alice.id)
         self.assertNotIn("bob@example.com", str(body))
+
+
+class SpaRoutingTests(TestCase):
+    def test_spa_index_accepts_catch_all_route_kwarg(self):
+        request = RequestFactory().get("/quotes")
+        try:
+            response = spa_index(request, route="quotes")
+        except Http404:
+            # Valid in environments where frontend build artifacts are absent.
+            return
+        except TypeError as exc:
+            self.fail(f"spa_index should accept catch-all route kwarg: {exc}")
+
+        # Valid in environments where frontend build artifacts are present.
+        self.assertEqual(response.status_code, 200)

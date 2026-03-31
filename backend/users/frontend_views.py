@@ -25,7 +25,7 @@ def redirect_icons_svg(request):
     return HttpResponseRedirect(_built_public_asset_url("icons.svg"))
 
 
-def spa_index(request):
+def spa_index(request, route=None):
     manifest_path = (
         settings.BASE_DIR.parent / "frontend" / "dist" / ".vite" / "manifest.json"
     )

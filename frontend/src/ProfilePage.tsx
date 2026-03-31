@@ -15,6 +15,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router";
 import { useAppSession } from "./auth/AppSessionContext";
+import { APP_TEXT_SIZES } from "./theme/typography";
 import {
   getSortedIanaTimeZones,
   timeZoneOptionsForValue,
@@ -124,7 +125,7 @@ export default function ProfilePage() {
   if (isLoading) {
     return (
       <Box py="8">
-        <Text fontSize="lg">Loading…</Text>
+        <Text fontSize={{ base: "md", md: "lg" }}>Loading…</Text>
       </Box>
     );
   }
@@ -135,14 +136,14 @@ export default function ProfilePage() {
 
   if (!sessionUser) {
     return (
-      <Stack gap="4" align="start" maxW="lg">
+      <Stack gap="4" align="start" maxW="3xl">
         {sessionError ? (
           <>
             <Text fontWeight="semibold" color="fg">
               Could not load your profile from the API.
             </Text>
-            <Text fontSize="sm">{sessionError}</Text>
-            <Text fontSize="sm">
+            <Text fontSize={APP_TEXT_SIZES.helper}>{sessionError}</Text>
+            <Text fontSize={APP_TEXT_SIZES.helper}>
               Check that the backend is running, <code>VITE_API_BASE_URL</code> points to
               it (e.g. <code>http://127.0.0.1:8000</code>), and CORS allows this origin.
             </Text>
@@ -169,9 +170,9 @@ export default function ProfilePage() {
   const fieldBusy = (field: EditableField) => savingField === field;
 
   return (
-    <Stack gap="6" maxW="lg" align="stretch">
+    <Stack gap="6" maxW="3xl" align="stretch">
       <Heading size="lg">Your Profile</Heading>
-      <Text textStyle="sm" color="fg.muted">
+      <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
         Tap or click any profile field to edit. Tap away to save, or use Done/Cancel.
       </Text>
 
@@ -200,7 +201,7 @@ export default function ProfilePage() {
           <Stack gap="3" flex="1">
             {activeField === "avatar_url" && (
               <Stack gap="1">
-                <Text textStyle="sm">Avatar URL</Text>
+                <Text fontSize={APP_TEXT_SIZES.label}>Avatar URL</Text>
                 <Input
                   autoFocus
                   colorPalette="sky"
@@ -225,7 +226,7 @@ export default function ProfilePage() {
             )}
 
             <Stack gap="1">
-              <Text textStyle="sm">Display name</Text>
+              <Text fontSize={APP_TEXT_SIZES.label}>Display name</Text>
               {activeField === "display_name" ? (
                 <Input
                   autoFocus
@@ -264,7 +265,7 @@ export default function ProfilePage() {
             </Stack>
 
             <Stack gap="1">
-              <Text textStyle="sm">Timezone</Text>
+              <Text fontSize={APP_TEXT_SIZES.label}>Timezone</Text>
               {activeField === "timezone" ? (
                 <NativeSelectRoot size="md">
                   <NativeSelectField
@@ -283,7 +284,7 @@ export default function ProfilePage() {
                 </NativeSelectRoot>
               ) : (
                 <Text
-                  textStyle="sm"
+                  fontSize={APP_TEXT_SIZES.body}
                   cursor="pointer"
                   textDecor="underline"
                   textUnderlineOffset="3px"
@@ -298,7 +299,7 @@ export default function ProfilePage() {
             </Stack>
 
             <Stack gap="1">
-              <Text textStyle="sm">Birthday</Text>
+              <Text fontSize={APP_TEXT_SIZES.label}>Birthday</Text>
               {activeField === "birth_date" ? (
                 <Input
                   autoFocus
@@ -322,7 +323,7 @@ export default function ProfilePage() {
                 />
               ) : (
                 <Text
-                  textStyle="sm"
+                  fontSize={APP_TEXT_SIZES.body}
                   cursor="pointer"
                   textDecor="underline"
                   textUnderlineOffset="3px"
@@ -359,7 +360,7 @@ export default function ProfilePage() {
             )}
 
             {saveError && (
-              <Text color="fg" role="alert" textStyle="sm">
+              <Text color="fg" role="alert" fontSize={APP_TEXT_SIZES.helper}>
                 {saveError}
               </Text>
             )}

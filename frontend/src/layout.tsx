@@ -30,7 +30,6 @@ export default function AppLayout() {
             { to: "/quotes", label: "Quotes" },
           ]
         : []),
-      { to: "/quotes/public", label: "Public Quotes" },
     ],
     [showProfileNav],
   );
@@ -43,19 +42,25 @@ export default function AppLayout() {
       minH="100%"
       bg="bg"
       color="fg"
-      borderWidth="1px"
-      borderColor="border"
     >
       <Flex
         as="header"
-        px="6"
+        px={{ base: "4", md: "6" }}
         py="4"
         align="center"
-        bg="bg"
-        borderBottomWidth="1px"
-        borderColor="border"
+        bg="lilypad.solid"
       >
         <HStack gap="4">
+          {isMobile && (
+            <PondButton
+              size="sm"
+              colorPalette="sky"
+              aria-label={isMobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
+              onClick={() => setIsMobileMenuOpen((open) => !open)}
+            >
+              {isMobileMenuOpen ? "✕" : "☰"}
+            </PondButton>
+          )}
           <ChakraLink asChild colorPalette="gray" variant="plain">
             <Link to="/">
               <Image
@@ -84,19 +89,9 @@ export default function AppLayout() {
             ))}
         </HStack>
         <Spacer />
-        {isMobile && (
-          <PondButton
-            size="sm"
-            colorPalette="sky"
-            aria-label={isMobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
-            onClick={() => setIsMobileMenuOpen((open) => !open)}
-          >
-            {isMobileMenuOpen ? "✕" : "☰"}
-          </PondButton>
-        )}
       </Flex>
       {isMobile && isMobileMenuOpen && (
-        <Box borderBottomWidth="1px" borderColor="border" px="6" py="3">
+        <Box bg="lilypad.solid" px="6" py="3">
           <Stack gap="2" align="flex-start">
             {navLinks.map((link) => (
               <ChakraLink
@@ -113,8 +108,10 @@ export default function AppLayout() {
         </Box>
       )}
 
-      <Box as="main" flex="1" p="6" bg="bg">
-        <Outlet />
+      <Box as="main" flex="1" p={{ base: "4", md: "6" }} bg="bg" display="flex" flexDirection="column" minH="0">
+        <Box flex="1" minH="0" display="flex" flexDirection="column">
+          <Outlet />
+        </Box>
       </Box>
     </Box>
   );

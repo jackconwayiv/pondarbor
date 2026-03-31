@@ -1,5 +1,6 @@
 import { Box, HStack, Spacer, Stack, Tag, Text } from "@chakra-ui/react";
 import type { ReactNode } from "react";
+import { APP_TEXT_SIZES } from "../theme/typography";
 import type { Quote } from "./types";
 
 type QuoteCardBaseProps = {
@@ -43,12 +44,12 @@ export default function QuoteCardBase({
       <Stack gap="1.5">
         <HStack align="center" gap="2">
           {displayDate ? (
-            <Text textStyle="xs">{displayDate}</Text>
+            <Text fontSize={APP_TEXT_SIZES.meta}>{displayDate}</Text>
           ) : (
             <Box />
           )}
           <Spacer />
-          {rightMetaSlot ?? <Text textStyle="xs">{ownerText}</Text>}
+          {rightMetaSlot ?? <Text fontSize={APP_TEXT_SIZES.meta}>{ownerText}</Text>}
         </HStack>
 
         <HStack align="flex-start" justify="space-between" gap="1.5">

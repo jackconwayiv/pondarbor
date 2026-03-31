@@ -9,11 +9,13 @@ import { forwardRef } from "react";
  *   using the currently selected `colorPalette`.
  */
 const PondButton = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ variant, _hover, colorPalette, ...props }, ref) => {
+  ({ variant, _hover, colorPalette, borderRadius, size, ...props }, ref) => {
     return (
       <ChakraButton
         ref={ref}
         variant={variant ?? "solid"}
+        size={size ?? "md"}
+        borderRadius={borderRadius ?? "xl"}
         colorPalette={colorPalette}
         _hover={{
           // Outline-like hover: white background + colored border.

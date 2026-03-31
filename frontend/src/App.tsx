@@ -3,12 +3,10 @@ import { useEffect, useState } from "react";
 
 import { auth0DefaultLoginParams } from "./auth/auth0LoginParams";
 import {
-  Avatar,
   Box,
-  Circle,
-  Float,
   Heading,
   HStack,
+  SimpleGrid,
   Stack,
   Text,
 } from "@chakra-ui/react";
@@ -16,6 +14,9 @@ import { Link as RouterLink } from "react-router";
 import { useAppSession } from "./auth/AppSessionContext";
 import PondButton from "./PondButton";
 import { fetchUpcomingBirthdays, type UpcomingBirthday } from "./users/api";
+
+const LILYPAD_WEDGE_CLIP_PATH =
+  "polygon(0% 0%, 43% 0%, 46% 12%, 48% 24%, 50% 36%, 52% 24%, 54% 12%, 57% 0%, 100% 0%, 100% 100%, 0% 100%)";
 
 const MONTH_NAMES = [
   "January",
@@ -50,6 +51,11 @@ function App() {
   } =
     useAppSession();
   const [upcomingBirthdays, setUpcomingBirthdays] = useState<UpcomingBirthday[]>([]);
+  const nickname =
+    sessionUser?.profile?.display_name ??
+    auth0User?.nickname ??
+    auth0User?.name ??
+    "friend";
 
   useEffect(() => {
     let isCancelled = false;
@@ -95,119 +101,132 @@ function App() {
   }
 
   return (
-    <Stack maxW="lg" align="flex-start" gap="6">
-      {isAuthenticated ? (
-        <>
-          {sessionUser?.user?.email && (
-            <Text fontSize="lg">
-              Logged in as <b>{sessionUser.user.email}</b>
-            </Text>
-          )}
-
-          <Heading as="h1" size="lg">
-            Home
+    <Stack flex="1" minH="full" gap="0" m={{ base: "-4", md: "-6" }}>
+      <Box bg="bg" px={{ base: "4", md: "6" }} py={{ base: "6", md: "6" }}>
+        <Stack gap="3" maxW="3xl">
+          <Heading as="h1" size={{ base: "lg", md: "xl" }}>
+            {isAuthenticated ? `Welcome to Pond Arbor, ${nickname}!` : "Welcome to Pond Arbor!"}
           </Heading>
 
-          <Stack gap="8" width="100%">
-            {auth0User && (
-              <HStack gap="4" align="flex-start">
-                <Avatar.Root>
-                  <Avatar.Fallback
-                    name={
-                      sessionUser?.profile?.display_name ??
-                      auth0User.name ??
-                      auth0User.email ??
-                      "User"
-                    }
-                  />
-                  <Avatar.Image
-                    src={sessionUser?.profile?.avatar_url ?? undefined}
-                  />
-                  <Float placement="bottom-end" offsetX="1" offsetY="1">
-                    <Circle
-                      bg={
-                        sessionUser?.user?.is_approved ? "lilypad.solid" : "nautical.solid"
-                      }
-                      size="8px"
-                      outline="0.2em solid"
-                      outlineColor="bg"
-                    />
-                  </Float>
-                </Avatar.Root>
-
-                <Stack gap="0">
-                  <Text>
-                    {sessionUser?.profile?.display_name ??
-                      auth0User.name ??
-                      "Unnamed user"}
-                  </Text>
-                  <Text textStyle="sm">{auth0User.nickname ?? "—"}</Text>
-                  <Text textStyle="sm">{auth0User.email ?? "—"}</Text>
-                </Stack>
-              </HStack>
-            )}
-
-            <RouterLink
-              to="/profile"
-              style={{ textDecoration: "none", color: "inherit" }}
-            >
-                {!sessionUser?.profile?.birth_date && (
-                  <PondButton colorPalette="sky">
-                    Edit Profile
-                  </PondButton>
-                )}
-            </RouterLink>
-
-            {sessionUser?.user?.is_approved && upcomingBirthdays.length > 0 && (
-              <Stack gap="2" width="100%">
-                <Heading as="h2" size="md">
-                  🎉 Birthday Notice!
-                </Heading>
+          {isAuthenticated ? (
+            <Stack gap="2" width="100%">
+              {sessionUser?.user?.is_approved && upcomingBirthdays.length > 0 ? (
                 <Stack gap="1">
                   {upcomingBirthdays.map((birthday) => (
-                    <Text key={`${birthday.display_name}-${birthday.birth_month}-${birthday.birth_day}`}>
+                    <Text
+                      key={`${birthday.display_name}-${birthday.birth_month}-${birthday.birth_day}`}
+                      textStyle={{ base: "sm", md: "md" }}
+                    >
                       {birthdayMessage(birthday)}
                     </Text>
                   ))}
                 </Stack>
-              </Stack>
-            )}
-          </Stack>
-        </>
-      ) : (
-        <>
-          {error && <Text color="fg">Error: {error}</Text>}
+              ) : null}
+            </Stack>
+          ) : (
+            <HStack gap="3" align="center" flexWrap="wrap">
+              <PondButton
+                colorPalette="sky"
+                onClick={() =>
+                  loginWithRedirect({
+                    authorizationParams: auth0DefaultLoginParams(),
+                  })
+                }
+              >
+                Log in
+              </PondButton>
+              <PondButton
+                colorPalette="lilypad"
+                onClick={() =>
+                  loginWithRedirect({
+                    authorizationParams: auth0DefaultLoginParams({
+                      screen_hint: "signup",
+                    }),
+                  })
+                }
+              >
+                Sign up
+              </PondButton>
+            </HStack>
+          )}
+          {!isAuthenticated && error && <Text color="fg">Error: {error}</Text>}
+        </Stack>
+      </Box>
 
-          <Heading as="h1" size="lg">
-            Welcome to PondArbor
-          </Heading>
+      <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
+        <Box maxW="3xl">
+          <SimpleGrid columns={{ base: 2, md: 3 }} gap={{ base: "4", md: "6" }}>
+            {[
+              { to: "/profile", label: "Profile" },
+              { to: "/quotes", label: "Quotes" },
+            ].map((tile) => {
+              const card = (
+                <Box
+                  bg={isAuthenticated ? "lilypad.solid" : "#A4B89A"}
+                  borderRadius="9999px"
+                  borderWidth="20px"
+                  borderColor={isAuthenticated ? "lilypad.solid" : "#A4B89A"}
+                  aspectRatio={1}
+                  p={{ base: "4", md: "6" }}
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="center"
+                  textAlign="center"
+                  position="relative"
+                  boxShadow="md"
+                  transform="translateZ(0)"
+                  overflow="hidden"
+                  clipPath={LILYPAD_WEDGE_CLIP_PATH}
+                  transition="background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease"
+                  cursor={isAuthenticated ? "pointer" : "not-allowed"}
+                  _hover={
+                    isAuthenticated
+                      ? {
+                          bg: "bg",
+                          transform: "scale(1.02)",
+                          boxShadow: "xl",
+                        }
+                      : undefined
+                  }
+                  _active={
+                    isAuthenticated
+                      ? {
+                          bg: "bg",
+                          transform: "scale(0.99)",
+                          boxShadow: "lg",
+                        }
+                      : undefined
+                  }
+                >
+                  <Heading
+                    as="h2"
+                    size={{ base: "md", md: "lg" }}
+                    position="relative"
+                    zIndex={2}
+                    color={isAuthenticated ? "fg" : "gray.600"}
+                  >
+                    {tile.label}
+                  </Heading>
+                </Box>
+              );
 
-          <HStack gap="3" align="center" flexWrap="wrap">
-            <PondButton
-              colorPalette="pond"
-              onClick={() =>
-                loginWithRedirect({
-                  authorizationParams: auth0DefaultLoginParams(),
-                })
+              if (!isAuthenticated) {
+                return <Box key={tile.to}>{card}</Box>;
               }
-            >
-              Log in
-            </PondButton>
-            <PondButton
-              colorPalette="lilypad"
-              onClick={() =>
-                loginWithRedirect({
-                  authorizationParams: auth0DefaultLoginParams({
-                    screen_hint: "signup",
-                  }),
-                })
-              }
-            >
-              Sign up
-            </PondButton>
-          </HStack>
-        </>
-      )}
+
+              return (
+                <RouterLink
+                  key={tile.to}
+                  to={tile.to}
+                  style={{ textDecoration: "none", color: "inherit", display: "block" }}
+                >
+                  {card}
+                </RouterLink>
+              );
+            })}
+          </SimpleGrid>
+        </Box>
+      </Box>
     </Stack>
   );
 }

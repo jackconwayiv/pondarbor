@@ -5,6 +5,7 @@ import {
   defineSemanticTokens,
   defineTokens,
 } from "@chakra-ui/react";
+import { BRAND_COLORS } from "./tokens";
 
 /**
  * Single source of truth for PondArbor UI (Chakra v3 system).
@@ -25,20 +26,23 @@ export const system = createSystem(
             // Sky Blue:    #7CB7DF
             // Lilypad:     #B7D394
             // Soft Marigold / Pond Orange: #E9A14A
-            sky: { value: "#7CB7DF" },
-            skyStrong: { value: "#7CB7DF" },
-            skySubtle: { value: "#7CB7DF" },
-            pondBlue: { value: "#7CB7DF" },
-            pondBlueStrong: { value: "#7CB7DF" },
-            pondBlueSubtle: { value: "#7CB7DF" },
+            sky: { value: BRAND_COLORS.skyBlue },
+            skyStrong: { value: BRAND_COLORS.skyBlue },
+            skySubtle: { value: BRAND_COLORS.skyBlue },
+            pondBlue: { value: BRAND_COLORS.skyBlue },
+            pondBlueStrong: { value: BRAND_COLORS.skyBlue },
+            pondBlueSubtle: { value: BRAND_COLORS.skyBlue },
 
-            lilypad: { value: "#B7D394" },
-            lilypadStrong: { value: "#B7D394" },
-            lilypadSubtle: { value: "#B7D394" },
+            lilypad: { value: BRAND_COLORS.lilypad },
+            lilypadStrong: { value: BRAND_COLORS.lilypad },
+            lilypadSubtle: { value: BRAND_COLORS.lilypad },
 
-            nautical: { value: "#E9A14A" },
-            nauticalStrong: { value: "#E9A14A" },
-            nauticalSubtle: { value: "#E9A14A" },
+            orange: { value: BRAND_COLORS.orange },
+            orangeStrong: { value: BRAND_COLORS.orange },
+            orangeSubtle: { value: BRAND_COLORS.orange },
+            nautical: { value: BRAND_COLORS.orange },
+            nauticalStrong: { value: BRAND_COLORS.orange },
+            nauticalSubtle: { value: BRAND_COLORS.orange },
           },
         }),
       },
@@ -126,6 +130,41 @@ export const system = createSystem(
               value: {
                 _light: "{colors.pond.nauticalStrong}",
                 _dark: "{colors.pond.nauticalStrong}",
+              },
+            },
+          },
+          orange: {
+            contrast: { value: { _light: "#000000", _dark: "#000000" } },
+            fg: { value: { _light: "#000000", _dark: "#000000" } },
+            subtle: {
+              value: {
+                _light: "{colors.pond.orangeSubtle}",
+                _dark: "{colors.pond.orangeSubtle}",
+              },
+            },
+            muted: { value: { _light: "{colors.pond.orange}", _dark: "{colors.pond.orange}" } },
+            emphasized: {
+              value: {
+                _light: "{colors.pond.orangeStrong}",
+                _dark: "{colors.pond.orangeStrong}",
+              },
+            },
+            solid: {
+              value: {
+                _light: "{colors.pond.orange}",
+                _dark: "{colors.pond.orange}",
+              },
+            },
+            focusRing: {
+              value: {
+                _light: "{colors.pond.orangeStrong}",
+                _dark: "{colors.pond.orangeStrong}",
+              },
+            },
+            border: {
+              value: {
+                _light: "{colors.pond.orangeStrong}",
+                _dark: "{colors.pond.orangeStrong}",
               },
             },
           },

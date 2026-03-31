@@ -11,3 +11,10 @@ body,
   flex-direction: column;
   min-height: 100%;
 }
+
+/* Prevent iOS Safari focus auto-zoom on form controls. */
+input,
+textarea,
+select {
+  font-size: max(16px, 1rem);
+}

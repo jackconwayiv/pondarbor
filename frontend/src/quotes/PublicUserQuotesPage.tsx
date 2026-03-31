@@ -2,6 +2,7 @@ import { Heading, Stack, Text } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router";
 import PondButton from "../PondButton";
+import { APP_TEXT_SIZES } from "../theme/typography";
 import { fetchPublicQuotesByUser } from "./api";
 import QuoteCardBase from "./QuoteCardBase";
 import type { Quote } from "./types";
@@ -62,7 +63,7 @@ export default function PublicUserQuotesPage() {
       ))}
       {total > PAGE_SIZE ? (
         <Stack gap="2">
-          <Text textStyle="sm">
+          <Text fontSize={APP_TEXT_SIZES.helper}>
             Showing {startIndex + 1}-{endIndex} of {total}
           </Text>
           <Stack direction="row" align="center">
@@ -75,7 +76,7 @@ export default function PublicUserQuotesPage() {
             >
               ←
             </PondButton>
-            <Text textStyle="sm">
+            <Text fontSize={APP_TEXT_SIZES.helper}>
               Page {safePage + 1} / {totalPages}
             </Text>
             <PondButton

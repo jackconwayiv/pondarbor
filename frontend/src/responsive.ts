@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
-export const DESKTOP_MIN_WIDTH_PX = 1024;
+// Align with Chakra default `md` breakpoint (48em ~= 768px).
+export const DESKTOP_MIN_WIDTH_PX = 768;
 
 function getIsMobileViewport() {
   if (typeof window === "undefined") return false;

@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useSearchParams } from "react-router";
 import PondButton from "../PondButton";
 import { useAppSession } from "../auth/AppSessionContext";
+import { APP_TEXT_SIZES } from "../theme/typography";
 import PublicQuotesPage from "./PublicQuotesPage";
 import QuoteCardBase from "./QuoteCardBase";
 import {
@@ -374,11 +375,11 @@ function QuoteCard({
               >
                 <Stack gap="3">
                   <HStack align="center">
-                    <Text textStyle="sm" fontWeight="semibold">
+                    <Text fontSize={APP_TEXT_SIZES.label} fontWeight="semibold">
                       Quote Editor
                     </Text>
                     <Text
-                      textStyle="sm"
+                      fontSize={APP_TEXT_SIZES.helper}
                       fontWeight="bold"
                       color={isDirty ? "red.500" : "transparent"}
                     >
@@ -391,7 +392,7 @@ function QuoteCard({
                     </Text>
                   ) : null}
                   <Stack>
-                    <Text textStyle="sm">Body</Text>
+                    <Text fontSize={APP_TEXT_SIZES.label}>Body</Text>
                     <Textarea
                       value={editBody}
                       onChange={(e) => setEditBody(e.target.value)}
@@ -402,7 +403,7 @@ function QuoteCard({
                   </Stack>
                   <HStack align="start">
                     <Stack flex="1">
-                      <Text textStyle="sm">Date of quotation</Text>
+                      <Text fontSize={APP_TEXT_SIZES.label}>Date of quotation</Text>
                       <Input
                         type="date"
                         value={editDateOfQuote}
@@ -410,7 +411,7 @@ function QuoteCard({
                       />
                     </Stack>
                     <Stack flex="1">
-                      <Text textStyle="sm">Visibility</Text>
+                      <Text fontSize={APP_TEXT_SIZES.label}>Visibility</Text>
                       <NativeSelectRoot>
                         <NativeSelectField
                           value={editVisibility}
@@ -427,7 +428,7 @@ function QuoteCard({
                     </Stack>
                   </HStack>
                   <Stack>
-                    <Text textStyle="sm">Tags (comma-separated)</Text>
+                    <Text fontSize={APP_TEXT_SIZES.label}>Tags (comma-separated)</Text>
                     <HStack flexWrap="wrap">
                       {tagSuggestions.map((label) => (
                         (() => {
@@ -458,7 +459,7 @@ function QuoteCard({
                     />
                   </Stack>
                   <Stack>
-                    <Text textStyle="sm">Attributions by name (comma-separated)</Text>
+                    <Text fontSize={APP_TEXT_SIZES.label}>Attributions by name (comma-separated)</Text>
                     <HStack flexWrap="wrap">
                       {attributionSuggestions
                         .filter((l) => !l.linked_user_id)
@@ -496,7 +497,7 @@ function QuoteCard({
                     />
                   </Stack>
                   <Stack>
-                    <Text textStyle="sm">Attributions by email (comma-separated)</Text>
+                    <Text fontSize={APP_TEXT_SIZES.label}>Attributions by email (comma-separated)</Text>
                     <HStack flexWrap="wrap">
                       {attributionSuggestions
                         .filter((l) => !!l.linked_user_id)
@@ -768,9 +769,9 @@ export default function QuotesFeedPage() {
   }
   if (!sessionUser) {
     return (
-      <Stack gap="4" maxW="lg">
+      <Stack gap="4" maxW="3xl">
         <Text fontWeight="semibold">Reconnecting your API session…</Text>
-        <Text textStyle="sm">
+        <Text fontSize={APP_TEXT_SIZES.helper}>
           {sessionError || "You are authenticated, but the API session is not ready yet."}
         </Text>
         <HStack>
@@ -904,7 +905,7 @@ export default function QuotesFeedPage() {
                   <Stack mt="3" gap="3">
                   <HStack align="start">
                     <Stack flex="1">
-                      <Text textStyle="sm">Date of quotation</Text>
+                      <Text fontSize={APP_TEXT_SIZES.label}>Date of quotation</Text>
                       <Input
                         type="date"
                         value={dateOfQuote}
@@ -912,7 +913,7 @@ export default function QuotesFeedPage() {
                       />
                     </Stack>
                     <Stack flex="1">
-                      <Text textStyle="sm">Visibility</Text>
+                      <Text fontSize={APP_TEXT_SIZES.label}>Visibility</Text>
                       <NativeSelectRoot>
                         <NativeSelectField
                           value={visibility}
@@ -927,7 +928,7 @@ export default function QuotesFeedPage() {
                     </Stack>
                   </HStack>
                   <Stack>
-                    <Text textStyle="sm">Tags (comma-separated)</Text>
+                    <Text fontSize={APP_TEXT_SIZES.label}>Tags (comma-separated)</Text>
                     <HStack flexWrap="wrap">
                       {tagSuggestions.map((label) => (
                         (() => {
@@ -961,7 +962,7 @@ export default function QuotesFeedPage() {
                     />
                   </Stack>
                   <Stack>
-                    <Text textStyle="sm">Attributions by name (comma-separated)</Text>
+                    <Text fontSize={APP_TEXT_SIZES.label}>Attributions by name (comma-separated)</Text>
                     <HStack flexWrap="wrap">
                       {attributionSuggestions
                         .filter((l) => !l.linked_user_id)
@@ -994,7 +995,7 @@ export default function QuotesFeedPage() {
                     />
                   </Stack>
                   <Stack>
-                    <Text textStyle="sm">
+                    <Text fontSize={APP_TEXT_SIZES.label}>
                       Attributions by user email (comma-separated) (shares with user)
                     </Text>
                     <HStack flexWrap="wrap">
@@ -1044,7 +1045,7 @@ export default function QuotesFeedPage() {
 
         <Tabs.Content value="my">
           <Stack gap="3">
-            {loadingFeed ? <Text textStyle="sm">Loading…</Text> : null}
+            {loadingFeed ? <Text fontSize={APP_TEXT_SIZES.helper}>Loading…</Text> : null}
             {quotes.length === 0 ? <Text>No quotes yet.</Text> : null}
             {visibleQuotesForRender.map((quote) => (
               <QuoteCard
@@ -1071,7 +1072,7 @@ export default function QuotesFeedPage() {
             ))}
             {editingQuoteId == null && total > PAGE_SIZE ? (
               <HStack justify="space-between">
-                <Text textStyle="sm">
+                <Text fontSize={APP_TEXT_SIZES.helper}>
                   Showing {startIndex + 1}-{endIndex} of {total}
                 </Text>
                 <HStack>
@@ -1084,7 +1085,7 @@ export default function QuotesFeedPage() {
                   >
                     ←
                   </PondButton>
-                  <Text textStyle="sm">
+                  <Text fontSize={APP_TEXT_SIZES.helper}>
                     Page {safePage + 1} / {totalPages}
                   </Text>
                   <PondButton

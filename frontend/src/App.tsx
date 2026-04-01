@@ -154,7 +154,7 @@ function App() {
         </Stack>
       </Box>
 
-      <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
+      <Box flex="1" bg="transparent" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
         <Box maxW="3xl">
           <SimpleGrid columns={{ base: 2, md: 3 }} gap={{ base: "4", md: "6" }}>
             {[

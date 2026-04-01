@@ -9,7 +9,7 @@ import { BRAND_COLORS } from "./tokens";
 
 /**
  * Single source of truth for PondArbor UI (Chakra v3 system).
- * White chrome, black typography, Verdana, sky vs nautical button palettes.
+ * Sky page canvas; white `bg` panels; green nav (`lilypad`); Verdana; sky/nautical button palettes.
  */
 export const system = createSystem(
   defaultConfig,

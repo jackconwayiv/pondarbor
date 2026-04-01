@@ -1,7 +1,9 @@
 /* Minimal shell; layout and typography live in Chakra theme (src/theme/system.ts). */
+/* Page canvas: sky blue (matches `sky.solid` / BRAND_COLORS.skyBlue in src/theme/tokens.ts). */
 html,
 body {
   overflow-x: hidden;
+  background-color: #7cb7df;
 }
 
 html,

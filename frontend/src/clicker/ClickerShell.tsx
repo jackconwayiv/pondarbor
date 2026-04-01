@@ -26,7 +26,7 @@ export function ClickerPageShell({
         minH="0"
         display="flex"
         flexDirection="column"
-        bg="sky.solid"
+        bg="transparent"
         px={{ base: "3", md: "4" }}
         py={{ base: "1", md: "2" }}
       >

@@ -82,7 +82,7 @@ export default function AppLayout() {
       minH="100%"
       w="100%"
       maxW="100%"
-      bg="bg"
+      bg="sky.solid"
       color="fg"
     >
       <Flex
@@ -245,8 +245,14 @@ export default function AppLayout() {
         minW={0}
         w="100%"
         maxW="100%"
-        p={isClickerRoute ? 0 : { base: "4", md: "6" }}
-        bg={isClickerRoute ? "sky.solid" : "bg"}
+        {...(isClickerRoute
+          ? { p: 0 }
+          : {
+              px: { base: "4", md: "6" },
+              pb: { base: "4", md: "6" },
+              pt: 0,
+            })}
+        bg="transparent"
         display="flex"
         flexDirection="column"
         minH="0"

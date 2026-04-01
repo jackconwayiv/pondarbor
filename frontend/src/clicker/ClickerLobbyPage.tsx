@@ -86,7 +86,7 @@ export default function ClickerLobbyPage() {
         </Heading>
         <Text fontSize={{ base: "sm", md: "md" }} color="fg">
           Welcome! Tap the pond to earn energy, then spend it in the shop on upgrades that grow your pond.
-          Fertility, oxygen, verdancy, and wildlife build up over time and unlock new purchases.
+          Oxygen, vegetation, and abundance build up over time and unlock new purchases.
         </Text>
         <Text fontSize={APP_TEXT_SIZES.meta} color="gray.700">
           Progress is saved automatically while you play. Use Reset below only if you want to start a new pond from

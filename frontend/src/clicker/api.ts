@@ -1,20 +1,34 @@
-import { KNOWN_UPGRADE_KEYS } from "./upgrades";
+import { KNOWN_UPGRADE_IDS, PRIMARY_RESOURCE_IDS, clampOwnedStacksForUpgrade, getUpgradeDef } from "./catalog";
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 6;
+
+export const CATALOG_CONTENT_VERSION = 4;
 
 export type ClickerGameStateV1 = {
-  count: number;
-  /** Passively generated / spendable ecosystem resources. */
-  fertility: number;
+  energy: number;
   oxygen: number;
-  verdancy: number;
-  wildlife: number;
-  /** Upgrade id (string) → level (0 = not owned). */
+  vegetation: number;
+  abundance: number;
+  /** Upgrade id (string) -> number owned (stacks). */
   owned_upgrades: Record<string, number>;
-  /** Most-recent purchase first (slider left); ids as in `owned_upgrades` keys. */
+  /** Most-recent purchase first. */
   owned_upgrade_order: string[];
-  /** Once true, shop keeps showing that upgrade after reveal even if energy drops. */
+  /** Sticky reveal flags by upgrade id. */
   revealed_upgrades: Record<string, boolean>;
+  /** Mechanic unlock flags for future systems. */
+  unlocked_mechanics: string[];
+  /** Bumped when catalog content changes meaningfully (migration hook). */
+  catalog_version: number;
+  /** Prestige currency (stub for future ascension). */
+  prestige_points: number;
+  prestige_upgrades: Record<string, number>;
+  /** Timed buffs (stub). */
+  active_buffs: Array<{ id: string; expires_at_ms: number }>;
+  /** Lifetime stats (stub). */
+  statistics: {
+    total_clicks: number;
+    total_energy_earned: number;
+  };
 };
 
 export type ClickerStateResponse = {
@@ -35,14 +49,19 @@ function numField(raw: Record<string, unknown>, key: string, fallback: number): 
 /** Fresh default save (new game / reset). */
 export function createDefaultClickerState(): ClickerGameStateV1 {
   return {
-    count: 0,
-    fertility: 0,
+    energy: 0,
     oxygen: 0,
-    verdancy: 0,
-    wildlife: 0,
+    vegetation: 0,
+    abundance: 0,
     owned_upgrades: {},
     owned_upgrade_order: [],
     revealed_upgrades: {},
+    unlocked_mechanics: [],
+    catalog_version: CATALOG_CONTENT_VERSION,
+    prestige_points: 0,
+    prestige_upgrades: {},
+    active_buffs: [],
+    statistics: { total_clicks: 0, total_energy_earned: 0 },
   };
 }
 
@@ -55,13 +74,13 @@ export function normalizeOwnedUpgradeOrder(
     Object.entries(owned)
       .filter(([, lv]) => typeof lv === "number" && lv > 0)
       .map(([k]) => k)
-      .filter((k) => KNOWN_UPGRADE_KEYS.has(k)),
+      .filter((k) => KNOWN_UPGRADE_IDS.has(k)),
   );
   const out: string[] = [];
   const seen = new Set<string>();
   if (Array.isArray(raw)) {
     for (const item of raw) {
-      if (typeof item !== "string" || !KNOWN_UPGRADE_KEYS.has(item)) continue;
+      if (typeof item !== "string" || !KNOWN_UPGRADE_IDS.has(item)) continue;
       if (!ownedKeys.has(item) || seen.has(item)) continue;
       out.push(item);
       seen.add(item);
@@ -78,15 +97,17 @@ export function normalizeClickerState(raw: unknown): ClickerGameStateV1 {
     return createDefaultClickerState();
   }
   const o = raw as Record<string, unknown>;
-  const count =
-    typeof o.count === "number" && Number.isFinite(o.count) ? Math.max(0, o.count) : 0;
+  const energy = numField(o, "energy", 0);
   const owned_upgrades: Record<string, number> = {};
   if (o.owned_upgrades && typeof o.owned_upgrades === "object" && o.owned_upgrades !== null) {
     const ou = o.owned_upgrades as Record<string, unknown>;
     for (const [k, v] of Object.entries(ou)) {
-      if (!KNOWN_UPGRADE_KEYS.has(k)) continue;
+      if (!KNOWN_UPGRADE_IDS.has(k)) continue;
       if (typeof v === "number" && Number.isFinite(v) && v > 0) {
-        owned_upgrades[k] = Math.floor(v);
+        const def = getUpgradeDef(k);
+        const n = Math.floor(v);
+        if (n <= 0) continue;
+        owned_upgrades[k] = def ? clampOwnedStacksForUpgrade(k, n) : n;
       }
     }
   }
@@ -94,30 +115,91 @@ export function normalizeClickerState(raw: unknown): ClickerGameStateV1 {
   if (o.revealed_upgrades && typeof o.revealed_upgrades === "object" && o.revealed_upgrades !== null) {
     const rv = o.revealed_upgrades as Record<string, unknown>;
     for (const [k, v] of Object.entries(rv)) {
-      if (!KNOWN_UPGRADE_KEYS.has(k)) continue;
+      if (!KNOWN_UPGRADE_IDS.has(k)) continue;
       if (v === true) {
         revealed_upgrades[k] = true;
       }
     }
   }
-  /** Legacy v1 saves had no resource pools; start at 0 so income from owned upgrades fills them. */
-  const fertility = numField(o, "fertility", 0);
   const oxygen = numField(o, "oxygen", 0);
-  const verdancy = numField(o, "verdancy", 0);
-  const wildlife = numField(o, "wildlife", 0);
+  const vegetation = numField(o, "vegetation", 0);
+  const abundance = numField(o, "abundance", 0);
 
   const owned_upgrade_order = normalizeOwnedUpgradeOrder(o.owned_upgrade_order, owned_upgrades);
+  const unlocked_mechanics = Array.isArray(o.unlocked_mechanics)
+    ? o.unlocked_mechanics.filter((x): x is string => typeof x === "string")
+    : [];
+
+  const catalog_version =
+    typeof o.catalog_version === "number" && Number.isFinite(o.catalog_version)
+      ? Math.max(0, Math.floor(o.catalog_version))
+      : CATALOG_CONTENT_VERSION;
+
+  const prestige_points = numField(o, "prestige_points", 0);
+
+  const prestige_upgrades: Record<string, number> = {};
+  if (o.prestige_upgrades && typeof o.prestige_upgrades === "object" && o.prestige_upgrades !== null) {
+    const pu = o.prestige_upgrades as Record<string, unknown>;
+    for (const [k, v] of Object.entries(pu)) {
+      if (typeof v === "number" && Number.isFinite(v) && v > 0) {
+        prestige_upgrades[k] = Math.floor(v);
+      }
+    }
+  }
+
+  const active_buffs: Array<{ id: string; expires_at_ms: number }> = [];
+  if (Array.isArray(o.active_buffs)) {
+    for (const item of o.active_buffs) {
+      if (!item || typeof item !== "object") continue;
+      const b = item as Record<string, unknown>;
+      const id = b.id;
+      const expires_at_ms = b.expires_at_ms;
+      if (typeof id === "string" && typeof expires_at_ms === "number" && Number.isFinite(expires_at_ms)) {
+        active_buffs.push({ id, expires_at_ms });
+      }
+    }
+  }
+
+  let statistics = { total_clicks: 0, total_energy_earned: 0 };
+  if (o.statistics && typeof o.statistics === "object" && o.statistics !== null) {
+    const s = o.statistics as Record<string, unknown>;
+    statistics = {
+      total_clicks: numField(s, "total_clicks", 0),
+      total_energy_earned: numField(s, "total_energy_earned", 0),
+    };
+  }
 
   return {
-    count,
-    fertility,
+    energy,
     oxygen,
-    verdancy,
-    wildlife,
+    vegetation,
+    abundance,
     owned_upgrades,
     owned_upgrade_order,
     revealed_upgrades,
+    unlocked_mechanics,
+    catalog_version,
+    prestige_points,
+    prestige_upgrades,
+    active_buffs,
+    statistics,
   };
+}
+
+export function normalizeClickerStateForSchema(
+  raw: unknown,
+  schemaVersion: number | undefined,
+): ClickerGameStateV1 {
+  if (schemaVersion !== SCHEMA_VERSION) {
+    return createDefaultClickerState();
+  }
+  const normalized = normalizeClickerState(raw);
+  for (const resourceId of PRIMARY_RESOURCE_IDS) {
+    if (!Number.isFinite(normalized[resourceId])) {
+      normalized[resourceId] = 0;
+    }
+  }
+  return normalized;
 }
 
 function apiBase(): string {

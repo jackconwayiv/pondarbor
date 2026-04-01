@@ -27,3 +27,67 @@
   animation: pondFloatPad var(--pond-pad-dur, 4s) ease-in-out infinite;
   animation-delay: var(--pond-pad-delay, 0s);
 }
+
+@keyframes pondFloatDenizen {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) translateY(0);
+  }
+  50% {
+    transform: translate(-50%, -50%) translateY(-4px);
+  }
+}
+
+.pondDenizen {
+  animation: pondFloatDenizen var(--pond-denizen-dur, 5.5s) ease-in-out infinite;
+  animation-delay: var(--pond-denizen-delay, 0s);
+}
+
+/*
+ * Fish: slow meandering loop. Emoji can’t change facing by itself, but the whole
+ * glyph is mirrored with scaleX(-1) whenever the path moves left (default 🐟
+ * render is treated as facing right).
+ */
+@keyframes pondFishSwim {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) translate(0, 0) scaleX(1) rotate(0deg);
+  }
+  8% {
+    transform: translate(-50%, -50%) translate(20px, -14px) scaleX(1) rotate(8deg);
+  }
+  16% {
+    transform: translate(-50%, -50%) translate(26px, 4px) scaleX(1) rotate(10deg);
+  }
+  24% {
+    transform: translate(-50%, -50%) translate(12px, 22px) scaleX(-1) rotate(-6deg);
+  }
+  33% {
+    transform: translate(-50%, -50%) translate(-10px, 26px) scaleX(-1) rotate(-8deg);
+  }
+  41% {
+    transform: translate(-50%, -50%) translate(-24px, 14px) scaleX(-1) rotate(-10deg);
+  }
+  50% {
+    transform: translate(-50%, -50%) translate(-28px, -6px) scaleX(-1) rotate(-6deg);
+  }
+  58% {
+    transform: translate(-50%, -50%) translate(-16px, -20px) scaleX(1) rotate(6deg);
+  }
+  66% {
+    transform: translate(-50%, -50%) translate(4px, -24px) scaleX(1) rotate(10deg);
+  }
+  75% {
+    transform: translate(-50%, -50%) translate(22px, -16px) scaleX(1) rotate(12deg);
+  }
+  83% {
+    transform: translate(-50%, -50%) translate(24px, 2px) scaleX(1) rotate(6deg);
+  }
+  91% {
+    transform: translate(-50%, -50%) translate(10px, 8px) scaleX(-1) rotate(-4deg);
+  }
+}
+
+.pondFish {
+  animation: pondFishSwim 50s ease-in-out infinite;
+}

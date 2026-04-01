@@ -1,11 +1,18 @@
 import { KNOWN_UPGRADE_KEYS } from "./upgrades";
 
-const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 2;
 
 export type ClickerGameStateV1 = {
   count: number;
+  /** Passively generated / spendable ecosystem resources. */
+  fertility: number;
+  oxygen: number;
+  verdancy: number;
+  wildlife: number;
   /** Upgrade id (string) → level (0 = not owned). */
   owned_upgrades: Record<string, number>;
+  /** Most-recent purchase first (slider left); ids as in `owned_upgrades` keys. */
+  owned_upgrade_order: string[];
   /** Once true, shop keeps showing that upgrade after reveal even if energy drops. */
   revealed_upgrades: Record<string, boolean>;
 };
@@ -19,12 +26,53 @@ export type ClickerStateResponse = {
   server_time: string;
 };
 
-/** Fresh default save (new game / reset). */
-export function createDefaultClickerState(): ClickerGameStateV1 {
-  return { count: 0, owned_upgrades: {}, revealed_upgrades: {} };
+function numField(raw: Record<string, unknown>, key: string, fallback: number): number {
+  const v = raw[key];
+  if (typeof v !== "number" || !Number.isFinite(v)) return fallback;
+  return Math.max(0, v);
 }
 
-/** Normalizes API JSON; strips unknown upgrade keys (legacy lily_* ids). Keeps fractional energy. */
+/** Fresh default save (new game / reset). */
+export function createDefaultClickerState(): ClickerGameStateV1 {
+  return {
+    count: 0,
+    fertility: 0,
+    oxygen: 0,
+    verdancy: 0,
+    wildlife: 0,
+    owned_upgrades: {},
+    owned_upgrade_order: [],
+    revealed_upgrades: {},
+  };
+}
+
+/** Reconcile saved order with current owned set; append missing owned ids by numeric id. */
+export function normalizeOwnedUpgradeOrder(
+  raw: unknown,
+  owned: Record<string, number>,
+): string[] {
+  const ownedKeys = new Set(
+    Object.entries(owned)
+      .filter(([, lv]) => typeof lv === "number" && lv > 0)
+      .map(([k]) => k)
+      .filter((k) => KNOWN_UPGRADE_KEYS.has(k)),
+  );
+  const out: string[] = [];
+  const seen = new Set<string>();
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      if (typeof item !== "string" || !KNOWN_UPGRADE_KEYS.has(item)) continue;
+      if (!ownedKeys.has(item) || seen.has(item)) continue;
+      out.push(item);
+      seen.add(item);
+    }
+  }
+  const missing = [...ownedKeys].filter((k) => !seen.has(k)).sort((a, b) => Number(a) - Number(b));
+  out.push(...missing);
+  return out;
+}
+
+/** Normalizes API JSON; strips unknown upgrade keys for the current upgrade ecosystem set. */
 export function normalizeClickerState(raw: unknown): ClickerGameStateV1 {
   if (!raw || typeof raw !== "object") {
     return createDefaultClickerState();
@@ -52,9 +100,22 @@ export function normalizeClickerState(raw: unknown): ClickerGameStateV1 {
       }
     }
   }
+  /** Legacy v1 saves had no resource pools; start at 0 so income from owned upgrades fills them. */
+  const fertility = numField(o, "fertility", 0);
+  const oxygen = numField(o, "oxygen", 0);
+  const verdancy = numField(o, "verdancy", 0);
+  const wildlife = numField(o, "wildlife", 0);
+
+  const owned_upgrade_order = normalizeOwnedUpgradeOrder(o.owned_upgrade_order, owned_upgrades);
+
   return {
     count,
+    fertility,
+    oxygen,
+    verdancy,
+    wildlife,
     owned_upgrades,
+    owned_upgrade_order,
     revealed_upgrades,
   };
 }
@@ -101,5 +162,3 @@ export async function saveClickerState(
   }
   return (await response.json()) as ClickerStateResponse;
 }
-
-export { SCHEMA_VERSION };

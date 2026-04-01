@@ -64,11 +64,15 @@ export default function AppLayout() {
         ? [
             { to: "/profile", label: "Profile" },
             { to: "/quotes", label: "Quotes" },
+            { to: "/clicker", label: "Clicker" },
           ]
         : []),
     ],
     [showProfileNav],
   );
+
+  const isClickerRoute =
+    location.pathname === "/clicker" || location.pathname.startsWith("/clicker/");
 
   return (
     <Box
@@ -210,8 +214,11 @@ export default function AppLayout() {
               const sectionActive =
                 link.to === "/profile"
                   ? location.pathname.startsWith("/profile")
-                  : location.pathname.startsWith("/quotes") ||
-                    location.pathname.includes("/public-quotes");
+                  : link.to === "/clicker"
+                    ? location.pathname === "/clicker" ||
+                      location.pathname.startsWith("/clicker/")
+                    : location.pathname.startsWith("/quotes") ||
+                      location.pathname.includes("/public-quotes");
               return (
                 <ChakraLink
                   key={link.to}
@@ -238,8 +245,8 @@ export default function AppLayout() {
         minW={0}
         w="100%"
         maxW="100%"
-        p={{ base: "4", md: "6" }}
-        bg="bg"
+        p={isClickerRoute ? 0 : { base: "4", md: "6" }}
+        bg={isClickerRoute ? "sky.solid" : "bg"}
         display="flex"
         flexDirection="column"
         minH="0"

@@ -160,6 +160,7 @@ function App() {
             {[
               { to: "/profile", label: "Profile" },
               { to: "/quotes", label: "Quotes" },
+              { to: "/clicker", label: "Pond Clicker" },
             ].map((tile) => {
               const card = (
                 <Box

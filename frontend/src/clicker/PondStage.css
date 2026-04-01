@@ -1,0 +1,29 @@
+@keyframes pondRippleExpand {
+  from {
+    transform: translate(-50%, -50%) scale(0.12);
+    opacity: 0.5;
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0;
+  }
+}
+
+@keyframes pondFloatPad {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) translateY(0);
+  }
+  50% {
+    transform: translate(-50%, -50%) translateY(-5px);
+  }
+}
+
+.pondRipple {
+  animation: pondRippleExpand 0.65s ease-out forwards;
+}
+
+.pondPad {
+  animation: pondFloatPad var(--pond-pad-dur, 4s) ease-in-out infinite;
+  animation-delay: var(--pond-pad-delay, 0s);
+}

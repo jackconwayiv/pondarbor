@@ -5,6 +5,7 @@ import NotFoundPage from "./NotFoundPage";
 import ProfilePage from "./ProfilePage";
 import PublicUserQuotesPage from "./quotes/PublicUserQuotesPage";
 import QuotesFeedPage from "./quotes/QuotesFeedPage";
+import ClickerPage from "./clicker/ClickerPage";
 
 export const router = createBrowserRouter([
   {
@@ -22,6 +23,10 @@ export const router = createBrowserRouter([
       {
         path: "quotes",
         element: <QuotesFeedPage />,
+      },
+      {
+        path: "clicker",
+        element: <ClickerPage />,
       },
       {
         path: "quotes/public",

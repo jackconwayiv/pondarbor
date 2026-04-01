@@ -134,6 +134,29 @@ function authHeaders(accessToken: string | null): Record<string, string> {
   };
 }
 
+/** Pull a short message from DRF-style JSON errors (`detail`, etc.). */
+function formatClickerApiError(status: number, bodyText: string, verb: "load" | "save"): string {
+  const trimmed = bodyText.trim();
+  let detail: string | undefined;
+  if (trimmed.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+      const d = parsed.detail;
+      if (typeof d === "string") detail = d;
+      else if (Array.isArray(d) && d.every((x) => typeof x === "string")) detail = d.join(" ");
+    } catch {
+      // keep raw body below
+    }
+  }
+  if (detail) {
+    return `Failed to ${verb} clicker state (${status}): ${detail}`;
+  }
+  if (trimmed) {
+    return `Failed to ${verb} clicker state (${status}): ${trimmed}`;
+  }
+  return `Failed to ${verb} clicker state (${status})`;
+}
+
 export async function fetchClickerState(accessToken: string | null): Promise<ClickerStateResponse> {
   const response = await fetch(`${apiBase()}/api/v1/clicker/state/`, {
     method: "GET",
@@ -141,7 +164,8 @@ export async function fetchClickerState(accessToken: string | null): Promise<Cli
     credentials: "omit",
   });
   if (!response.ok) {
-    throw new Error(`Failed to load clicker state (${response.status})`);
+    const text = await response.text();
+    throw new Error(formatClickerApiError(response.status, text, "load"));
   }
   return (await response.json()) as ClickerStateResponse;
 }
@@ -158,7 +182,7 @@ export async function saveClickerState(
   });
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Failed to save clicker state (${response.status}): ${text}`);
+    throw new Error(formatClickerApiError(response.status, text, "save"));
   }
   return (await response.json()) as ClickerStateResponse;
 }

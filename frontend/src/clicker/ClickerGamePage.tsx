@@ -1,10 +1,17 @@
 import { Box, Flex, Grid, GridItem, Heading, Stack, Text } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
 import { APP_TEXT_SIZES } from "../theme/typography";
-import { fetchClickerState, normalizeClickerState, saveClickerState, type ClickerGameStateV1 } from "./api";
+import {
+  createDefaultClickerState,
+  fetchClickerState,
+  normalizeClickerState,
+  saveClickerState,
+  type ClickerGameStateV1,
+} from "./api";
 import PondStage from "./PondStage";
 import { ClickerPageShell } from "./ClickerShell";
 import {
@@ -127,9 +134,9 @@ function ClickerResourceHud({
     ) : null;
 
   return (
-    <Stack gap="2" w="full">
-      <Box display={{ base: "block", md: "none" }} borderWidth="1px" borderColor="border" borderRadius="md" bg="bg" p="2">
-        <Stack gap="1.5">
+    <Stack gap="1.5" w="full">
+      <Box display={{ base: "block", md: "none" }} borderWidth="1px" borderColor="border" borderRadius="md" bg="bg" py="1.5" px="2">
+        <Stack gap="1">
           <Flex align="center" flexWrap="wrap" gap="2" columnGap="3" rowGap="0" w="full">
             <Text fontSize="lg" fontWeight="semibold">
               {RESOURCE_SYMBOLS.energy} Energy: {formatHudResourceAmount(count)}
@@ -176,9 +183,10 @@ function ClickerResourceHud({
         borderColor="border"
         borderRadius="md"
         bg="bg"
-        p="3"
+        py="2"
+        px="3"
       >
-        <Stack gap="2">
+        <Stack gap="1.5">
           <Flex align="center" flexWrap="wrap" gap="3" columnGap="4" rowGap="1" w="full">
             <Text fontSize={{ md: "xl", lg: "2xl" }} fontWeight="semibold">
               {RESOURCE_SYMBOLS.energy} Energy: {formatHudResourceAmount(count)}
@@ -257,7 +265,8 @@ function UpgradeCard({
       borderWidth="1px"
       borderColor="border"
       borderRadius="md"
-      p={{ base: "1.5", md: "2" }}
+      py={{ base: "1", md: "1.5" }}
+      px={{ base: "1.5", md: "2" }}
       bg="bg"
       h="full"
       minH="0"
@@ -270,7 +279,7 @@ function UpgradeCard({
         borderRadius="sm"
         bg={classMeta.accent}
         opacity={0.9}
-        mb="1.5"
+        mb="1"
       />
       <Flex justify="space-between" align="flex-start" gap="2" w="full">
         <Text
@@ -363,6 +372,10 @@ function isShopPurchasableNow(
   return canAffordCost(energy, eco, cost);
 }
 
+function isClickerAuthFailureMessage(msg: string): boolean {
+  return msg.includes("(401)") || msg.includes("(403)");
+}
+
 function OwnedChip({ def, level }: { def: UpgradeDef; level: number }) {
   const fx = effectSummary(def);
   const classMeta = getUpgradeClassPresentation(def.class);
@@ -372,7 +385,7 @@ function OwnedChip({ def, level }: { def: UpgradeDef; level: number }) {
       borderColor="border"
       borderRadius="md"
       px="3"
-      py="2"
+      py="1.5"
       bg="bg"
       flexShrink={0}
     >
@@ -396,7 +409,14 @@ function OwnedChip({ def, level }: { def: UpgradeDef; level: number }) {
 }
 
 export default function ClickerGamePage() {
-  const { accessToken, isAuthenticated } = useAppSession();
+  const navigate = useNavigate();
+  const {
+    isAuthenticated,
+    sessionUser,
+    isLoading: sessionLoading,
+    error: sessionError,
+    getApiAccessToken,
+  } = useAppSession();
   const [count, setCount] = useState(0);
   const [fertility, setFertility] = useState(0);
   const [oxygen, setOxygen] = useState(0);
@@ -410,7 +430,12 @@ export default function ClickerGamePage() {
   const [lastSyncedEnergy, setLastSyncedEnergy] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveAuthBlocked, setSaveAuthBlocked] = useState(false);
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("loading");
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [confirmServerReset, setConfirmServerReset] = useState(false);
+  const [serverResetBusy, setServerResetBusy] = useState(false);
+  const [serverResetError, setServerResetError] = useState<string | null>(null);
   const shopCarouselRef = useRef<HTMLDivElement | null>(null);
   const ownedRef = useRef<Record<string, number>>({});
   /** Keep in sync every render so passive ticks and taps never see a stale upgrade set (effect-only sync lagged one frame behind state). */
@@ -438,12 +463,24 @@ export default function ClickerGamePage() {
     revealed_upgrades: revealedUpgrades,
   };
 
-  useEffect(() => {
-    if (!isAuthenticated) {
-      return;
+  const performServerResetAndReload = useCallback(async () => {
+    setServerResetBusy(true);
+    setServerResetError(null);
+    try {
+      const token = await getApiAccessToken();
+      await saveClickerState(token, createDefaultClickerState());
+      setConfirmServerReset(false);
+      setLoadError(null);
+      setLoadAttempt((n) => n + 1);
+    } catch (e) {
+      setServerResetError(e instanceof Error ? e.message : "Reset failed");
+    } finally {
+      setServerResetBusy(false);
     }
-    if (!accessToken) {
-      queueMicrotask(() => setLoadStatus("loading"));
+  }, [getApiAccessToken]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !sessionUser) {
       return;
     }
 
@@ -453,7 +490,8 @@ export default function ClickerGamePage() {
       setLoadStatus("loading");
       setLoadError(null);
       try {
-        const res = await fetchClickerState(accessToken);
+        const token = await getApiAccessToken();
+        const res = await fetchClickerState(token);
         if (cancelled) return;
         const normalized = normalizeClickerState(res.state);
         setCount(normalized.count);
@@ -475,6 +513,8 @@ export default function ClickerGamePage() {
           setLastSyncedEnergy(null);
         }
         setLoadStatus("ready");
+        setSaveAuthBlocked(false);
+        setSaveError(null);
       } catch (e) {
         if (!cancelled) {
           setLoadError(e instanceof Error ? e.message : "Failed to load");
@@ -486,28 +526,34 @@ export default function ClickerGamePage() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, accessToken]);
+  }, [isAuthenticated, sessionUser, loadAttempt, getApiAccessToken]);
 
   useEffect(() => {
-    if (!isAuthenticated || !accessToken || loadStatus !== "ready") return;
+    if (!isAuthenticated || !sessionUser || loadStatus !== "ready" || saveAuthBlocked) return;
 
     const tick = () => {
       void (async () => {
         try {
           setSaveError(null);
-          const res = await saveClickerState(accessToken, stateRef.current);
+          const token = await getApiAccessToken();
+          const res = await saveClickerState(token, stateRef.current);
           if (res.state && typeof res.state.count === "number") {
             setLastSyncedEnergy(res.state.count);
           }
+          setSaveAuthBlocked(false);
         } catch (e) {
-          setSaveError(e instanceof Error ? e.message : "Save failed");
+          const msg = e instanceof Error ? e.message : "Save failed";
+          setSaveError(msg);
+          if (isClickerAuthFailureMessage(msg)) {
+            setSaveAuthBlocked(true);
+          }
         }
       })();
     };
 
     const id = window.setInterval(tick, SAVE_INTERVAL_MS);
     return () => window.clearInterval(id);
-  }, [isAuthenticated, accessToken, loadStatus]);
+  }, [isAuthenticated, sessionUser, loadStatus, getApiAccessToken, saveAuthBlocked]);
 
   useEffect(() => {
     if (!isAuthenticated || loadStatus !== "ready") return;
@@ -636,7 +682,19 @@ export default function ClickerGamePage() {
     );
   }
 
-  if (!accessToken || loadStatus === "loading") {
+  if (isAuthenticated && !sessionUser && !sessionLoading) {
+    return (
+      <ClickerPageShell>
+        <Box maxW="7xl" mx="auto">
+          <Text fontSize={{ base: "sm", md: "md" }} color="fg">
+            {sessionError ?? "Could not load your account session. Try signing in again."}
+          </Text>
+        </Box>
+      </ClickerPageShell>
+    );
+  }
+
+  if (sessionLoading || !sessionUser || loadStatus === "loading") {
     return (
       <ClickerPageShell>
         <Text fontSize={{ base: "sm", md: "md" }}>Loading…</Text>
@@ -645,15 +703,68 @@ export default function ClickerGamePage() {
   }
 
   if (loadStatus === "error") {
+    const is403 = (loadError ?? "").includes("403");
     return (
       <ClickerPageShell>
         <Box maxW="7xl" mx="auto">
-          <Text fontWeight="semibold" color="fg">
-            Could not load your game state.
-          </Text>
-          <Text mt="1" fontSize={APP_TEXT_SIZES.helper} color="fg">
-            {loadError ?? "Failed to load game state."}
-          </Text>
+          <Stack gap="3">
+            <Box>
+              <Text fontWeight="semibold" color="fg">
+                Could not load your game state.
+              </Text>
+              <Text mt="1" fontSize={APP_TEXT_SIZES.helper} color="fg">
+                {loadError ?? "Failed to load game state."}
+              </Text>
+              {is403 ? (
+                <Text mt="2" fontSize={APP_TEXT_SIZES.helper} color="gray.600">
+                  This is usually a sign-in or session issue (the server rejected the request), not a bad save file.
+                  Try signing out and back in, or use Try again after your connection is stable.
+                </Text>
+              ) : null}
+            </Box>
+            {serverResetError ? (
+              <Text role="alert" fontSize={APP_TEXT_SIZES.helper} color="red.600" fontWeight="medium">
+                {serverResetError}
+              </Text>
+            ) : null}
+            <Flex flexWrap="wrap" gap="2" align="center">
+              <PondButton type="button" size="md" colorPalette="nautical" onClick={() => navigate("/clicker")}>
+                Back to lobby
+              </PondButton>
+              <PondButton
+                type="button"
+                size="md"
+                colorPalette="nautical"
+                variant="outline"
+                onClick={() => setLoadAttempt((n) => n + 1)}
+              >
+                Try again
+              </PondButton>
+              <PondButton
+                type="button"
+                size="md"
+                colorPalette="nautical"
+                variant="outline"
+                loading={serverResetBusy}
+                disabled={serverResetBusy}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!confirmServerReset) {
+                    setConfirmServerReset(true);
+                    setServerResetError(null);
+                    return;
+                  }
+                  void performServerResetAndReload();
+                }}
+              >
+                {confirmServerReset ? "Confirm reset" : "Reset saved game"}
+              </PondButton>
+            </Flex>
+            <Text fontSize={APP_TEXT_SIZES.meta} color="gray.600">
+              Reset replaces your pond on the server with a fresh game (same as lobby). If you still see errors, the API
+              may be rejecting your account session.
+            </Text>
+          </Stack>
         </Box>
       </ClickerPageShell>
     );
@@ -663,20 +774,27 @@ export default function ClickerGamePage() {
 
   return (
     <ClickerPageShell>
-      <Stack gap={{ base: "2", md: "3" }} w="full">
+      <Stack gap={{ base: "1.5", md: "2" }} w="full">
         <ClickerResourceHud count={count} passiveRate={passiveRate} eco={eco} ecoRates={ecoRates} />
         {saveError ? (
-          <Text fontSize={APP_TEXT_SIZES.helper} color="orange.600">
-            {saveError}
-          </Text>
+          <Stack gap="1">
+            <Text fontSize={APP_TEXT_SIZES.helper} color="orange.600">
+              {saveError}
+            </Text>
+            {saveAuthBlocked ? (
+              <Text fontSize={APP_TEXT_SIZES.meta} color="gray.700">
+                Your session may have expired. Try logging out and logging back in.
+              </Text>
+            ) : null}
+          </Stack>
         ) : null}
 
         <Grid
           templateColumns={{ base: "1fr", md: "minmax(260px, 1.1fr) minmax(240px, 1fr)" }}
-          gap={{ base: 3, md: 4 }}
+          gap={{ base: 2, md: 3 }}
           alignItems="start"
         >
-          <Stack gap="3" order={{ base: 1, md: 1 }} w="full" minW="0">
+          <Stack gap="2" order={{ base: 1, md: 1 }} w="full" minW="0">
             <PondStage
               energy={count}
               onClickPond={() =>
@@ -684,16 +802,16 @@ export default function ClickerGamePage() {
               }
             />
             {ownedList.length > 0 ? (
-              <Stack gap="1.5" w="full">
+              <Stack gap="1" w="full">
                 <Heading as="h2" size="xs">
                   Owned ({ownedList.length})
                 </Heading>
                 <Flex
-                  gap="2"
+                  gap="1.5"
                   w="full"
                   overflowX={{ base: "auto", md: "visible" }}
                   flexWrap={{ base: "nowrap", md: "wrap" }}
-                  pb={{ base: "1", md: "0" }}
+                  pb={{ base: "0.5", md: "0" }}
                   style={{ scrollSnapType: "x mandatory" }}
                 >
                   {ownedListOrdered.map((def) => (
@@ -706,18 +824,18 @@ export default function ClickerGamePage() {
             ) : null}
           </Stack>
 
-          <Stack gap="2" order={{ base: 2, md: 2 }} w="full" minW="0" minH="0">
+          <Stack gap="1.5" order={{ base: 2, md: 2 }} w="full" minW="0" minH="0">
             {shopOrdered.length > 0 ? (
               <>
                 <Heading as="h2" size="xs">
                   Shop
                 </Heading>
-                <Stack display={{ base: "flex", md: "none" }} gap="1.5">
+                <Stack display={{ base: "flex", md: "none" }} gap="1">
                   <Flex
                     ref={shopCarouselRef}
-                    gap="2"
+                    gap="1.5"
                     overflowX="auto"
-                    pb="1"
+                    pb="0.5"
                     style={{ scrollSnapType: "x mandatory" }}
                   >
                     {shopOrdered.map((def) => {
@@ -748,7 +866,7 @@ export default function ClickerGamePage() {
                 <Grid
                   display={{ base: "none", md: "grid" }}
                   templateColumns="repeat(2, minmax(0, 1fr))"
-                  gap="2"
+                  gap="1.5"
                   w="full"
                   alignItems="stretch"
                 >

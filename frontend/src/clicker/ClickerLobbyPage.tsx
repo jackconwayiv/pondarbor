@@ -10,7 +10,13 @@ import { ClickerPageShell } from "./ClickerShell";
 
 export default function ClickerLobbyPage() {
   const navigate = useNavigate();
-  const { accessToken, isAuthenticated } = useAppSession();
+  const {
+    isAuthenticated,
+    sessionUser,
+    isLoading,
+    error: sessionError,
+    getApiAccessToken,
+  } = useAppSession();
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
@@ -28,19 +34,19 @@ export default function ClickerLobbyPage() {
   }, [confirmReset]);
 
   const performReset = useCallback(async () => {
-    if (!accessToken) return;
     setResetBusy(true);
     setResetError(null);
     try {
+      const token = await getApiAccessToken();
       const fresh = createDefaultClickerState();
-      await saveClickerState(accessToken, fresh);
+      await saveClickerState(token, fresh);
       setConfirmReset(false);
     } catch (e) {
       setResetError(e instanceof Error ? e.message : "Reset failed");
     } finally {
       setResetBusy(false);
     }
-  }, [accessToken]);
+  }, [getApiAccessToken]);
 
   if (!isAuthenticated) {
     return (
@@ -52,7 +58,19 @@ export default function ClickerLobbyPage() {
     );
   }
 
-  if (!accessToken) {
+  if (isAuthenticated && !sessionUser && !isLoading) {
+    return (
+      <ClickerPageShell>
+        <Box maxW="lg" mx="auto">
+          <Text fontSize={{ base: "sm", md: "md" }} color="fg">
+            {sessionError ?? "Could not load your account session. Try signing in again."}
+          </Text>
+        </Box>
+      </ClickerPageShell>
+    );
+  }
+
+  if (isLoading || !sessionUser) {
     return (
       <ClickerPageShell>
         <Text fontSize={{ base: "sm", md: "md" }}>Loading…</Text>

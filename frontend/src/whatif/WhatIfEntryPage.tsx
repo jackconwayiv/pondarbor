@@ -31,6 +31,7 @@ import {
   savePlayerToken,
   type WhatIfQuestionAdmin,
 } from "./api";
+import { useIsMobile } from "../responsive";
 import WhatIfShell from "./WhatIfShell";
 import { whatifInputProps } from "./whatifFieldProps";
 
@@ -76,7 +77,8 @@ export default function WhatIfEntryPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { sessionUser, isAuthenticated, getApiAccessToken } = useAppSession();
-  const [activeTab, setActiveTab] = useState<EntryTab>("new");
+  const isMobile = useIsMobile();
+  const [activeTab, setActiveTab] = useState<EntryTab>(isMobile ? "join" : "new");
   const [joinCode, setJoinCode] = useState("");
   const [resumeCode, setResumeCode] = useState("");
   const [name, setName] = useState("");
@@ -101,7 +103,7 @@ export default function WhatIfEntryPage() {
   const [proposeError, setProposeError] = useState<string | null>(null);
   const [proposeSuccess, setProposeSuccess] = useState<string | null>(null);
   const [proposeOpen, setProposeOpen] = useState(false);
-  const lastPlayerTabRef = useRef<PlayerTab>("new");
+  const lastPlayerTabRef = useRef<PlayerTab>(isMobile ? "join" : "new");
   const lastAdminTabRef = useRef<AdminTab>("admin-list");
 
   const defaultName = useMemo(() => {

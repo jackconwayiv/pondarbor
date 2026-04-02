@@ -1,4 +1,6 @@
-import type { AuthorizationParams } from "@auth0/auth0-react";
+import type { AuthorizationParams, RedirectLoginOptions } from "@auth0/auth0-react";
+
+import { safeAuthReturnTo } from "./safeAuthReturnTo";
 
 const base = (): Pick<AuthorizationParams, "audience" | "scope"> => ({
   audience: import.meta.env.VITE_AUTH0_API_AUDIENCE,
@@ -28,5 +30,23 @@ export function auth0AccountPickerLoginParams(
     ...base(),
     prompt: "select_account",
     ...extra,
+  };
+}
+
+/**
+ * Merge into `loginWithRedirect(...)` so Auth0 returns the user to a safe in-app path
+ * after Universal Login (via SDK default `onRedirectCallback` or our router-aware one).
+ */
+export function auth0LoginWithReturnTo(
+  returnPath: string,
+  extra?: RedirectLoginOptions,
+): RedirectLoginOptions {
+  const safe = safeAuthReturnTo(returnPath) ?? "/";
+  return {
+    ...extra,
+    appState: {
+      ...extra?.appState,
+      returnTo: safe,
+    },
   };
 }

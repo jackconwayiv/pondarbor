@@ -1,0 +1,288 @@
+import type { WhatIfSessionState } from "./types";
+
+export type WhatIfQuestionAdmin = {
+  id: number;
+  prompt: string;
+  answer_1: string;
+  answer_2: string;
+  answer_3: string;
+  answer_4: string;
+  answer_5: string;
+  answer_6: string;
+  is_active: boolean;
+  sessions_used_count: number;
+  total_responses: number;
+  total_scores: number;
+  total_skips: number;
+  created_at: string;
+  updated_at: string;
+};
+
+const PLAYER_TOKEN_PREFIX = "whatif.playerToken:";
+const HOST_TOKEN_PREFIX = "whatif.hostToken:";
+
+function apiBase(): string {
+  return import.meta.env.VITE_API_BASE_URL ?? "";
+}
+
+function authHeaders(accessToken: string | null): Record<string, string> {
+  if (!accessToken) return { "Content-Type": "application/json" };
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  };
+}
+
+export function playerTokenStorageKey(code: string): string {
+  return `${PLAYER_TOKEN_PREFIX}${code.toUpperCase()}`;
+}
+
+export function savePlayerToken(code: string, token: string): void {
+  sessionStorage.setItem(playerTokenStorageKey(code), token);
+}
+
+export function loadPlayerToken(code: string): string | null {
+  return sessionStorage.getItem(playerTokenStorageKey(code));
+}
+
+export function hostTokenStorageKey(code: string): string {
+  return `${HOST_TOKEN_PREFIX}${code.toUpperCase()}`;
+}
+
+export function saveHostToken(code: string, token: string): void {
+  sessionStorage.setItem(hostTokenStorageKey(code), token);
+}
+
+export function loadHostToken(code: string): string | null {
+  return sessionStorage.getItem(hostTokenStorageKey(code));
+}
+
+/** Requires a logged-in user (Bearer); does not create a player row. */
+export async function createWhatIfSession(accessToken: string): Promise<{
+  short_code: string;
+  host_secret: string;
+}> {
+  const response = await fetch(`${apiBase()}/api/v1/whatif/sessions/`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    credentials: "omit",
+  });
+  if (response.status === 401 || response.status === 403) {
+    throw new Error("Sign in to create a game.");
+  }
+  if (!response.ok) throw new Error(`Failed to create session (${response.status})`);
+  return (await response.json()) as { short_code: string; host_secret: string };
+}
+
+/** Logged-in host only; re-fetches host_secret for an existing room you own. */
+export async function resumeHostingSession(
+  accessToken: string,
+  code: string,
+): Promise<{ short_code: string; host_secret: string; status: string }> {
+  const response = await fetch(
+    `${apiBase()}/api/v1/whatif/sessions/${code.toUpperCase()}/resume-host/`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      credentials: "omit",
+    },
+  );
+  if (response.status === 401 || response.status === 403) {
+    const text = await response.text();
+    let detail = "You cannot resume hosting this room.";
+    try {
+      const j = JSON.parse(text) as { detail?: string };
+      if (typeof j.detail === "string") detail = j.detail;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail);
+  }
+  if (!response.ok) throw new Error(`Failed to resume hosting (${response.status})`);
+  return (await response.json()) as { short_code: string; host_secret: string; status: string };
+}
+
+export async function joinWhatIfSession(
+  code: string,
+  displayName: string,
+  accessToken: string | null,
+): Promise<{ player_secret: string }> {
+  const response = await fetch(`${apiBase()}/api/v1/whatif/sessions/${code.toUpperCase()}/join/`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify({ display_name: displayName }),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to join game (${response.status}): ${text}`);
+  }
+  return (await response.json()) as { player_secret: string };
+}
+
+export async function fetchWhatIfTvState(
+  code: string,
+  since?: number,
+): Promise<WhatIfSessionState | null> {
+  const query = new URLSearchParams();
+  if (typeof since === "number") query.set("since", String(since));
+  const response = await fetch(
+    `${apiBase()}/api/v1/whatif/sessions/${code.toUpperCase()}/${query.toString() ? `?${query}` : ""}`,
+    { method: "GET", cache: "no-store" },
+  );
+  if (response.status === 304) return null;
+  if (!response.ok) throw new Error(`Failed to fetch session (${response.status})`);
+  return (await response.json()) as WhatIfSessionState;
+}
+
+export async function fetchWhatIfHandState(
+  code: string,
+  playerToken: string,
+  since?: number,
+): Promise<WhatIfSessionState | null> {
+  const query = new URLSearchParams();
+  if (typeof since === "number") query.set("since", String(since));
+  const response = await fetch(
+    `${apiBase()}/api/v1/whatif/sessions/${code.toUpperCase()}/hand/${query.toString() ? `?${query}` : ""}`,
+    {
+      method: "GET",
+      cache: "no-store",
+      headers: { "X-Whatif-Player-Token": playerToken },
+    },
+  );
+  if (response.status === 304) return null;
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to fetch hand state (${response.status}): ${text}`);
+  }
+  return (await response.json()) as WhatIfSessionState;
+}
+
+export async function postWhatIfAction(
+  code: string,
+  payload: {
+    type:
+      | "start_game"
+      | "toggle_ready"
+      | "pick_subject"
+      | "vote"
+      | "reveal"
+      | "next_turn"
+      | "skip";
+    option_index?: number;
+    target_player_id?: number;
+  },
+  opts: { playerToken?: string | null; hostToken?: string | null },
+): Promise<WhatIfSessionState> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (opts.playerToken) headers["X-Whatif-Player-Token"] = opts.playerToken;
+  if (opts.hostToken) headers["X-Whatif-Host-Token"] = opts.hostToken;
+  const response = await fetch(`${apiBase()}/api/v1/whatif/sessions/${code.toUpperCase()}/action/`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Action failed (${response.status}): ${text}`);
+  }
+  return (await response.json()) as WhatIfSessionState;
+}
+
+export async function listWhatIfQuestions(
+  accessToken: string,
+  q?: string,
+): Promise<WhatIfQuestionAdmin[]> {
+  const params = new URLSearchParams();
+  if (q?.trim()) params.set("q", q.trim());
+  const response = await fetch(
+    `${apiBase()}/api/v1/whatif/questions/${params.toString() ? `?${params}` : ""}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+  if (!response.ok) throw new Error(`Failed to list questions (${response.status})`);
+  return (await response.json()) as WhatIfQuestionAdmin[];
+}
+
+export async function createWhatIfQuestion(
+  accessToken: string,
+  payload: Pick<
+    WhatIfQuestionAdmin,
+    "prompt" | "answer_1" | "answer_2" | "answer_3" | "answer_4" | "answer_5" | "answer_6" | "is_active"
+  >,
+): Promise<WhatIfQuestionAdmin> {
+  const response = await fetch(`${apiBase()}/api/v1/whatif/questions/`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(`Failed to create question (${response.status})`);
+  return (await response.json()) as WhatIfQuestionAdmin;
+}
+
+export async function patchWhatIfQuestion(
+  accessToken: string,
+  id: number,
+  payload: Partial<
+    Pick<
+      WhatIfQuestionAdmin,
+      "prompt" | "answer_1" | "answer_2" | "answer_3" | "answer_4" | "answer_5" | "answer_6" | "is_active"
+    >
+  >,
+): Promise<WhatIfQuestionAdmin> {
+  const response = await fetch(`${apiBase()}/api/v1/whatif/questions/${id}/`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(`Failed to update question (${response.status})`);
+  return (await response.json()) as WhatIfQuestionAdmin;
+}
+
+export async function deleteWhatIfQuestion(accessToken: string, id: number): Promise<void> {
+  const response = await fetch(`${apiBase()}/api/v1/whatif/questions/${id}/`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+  if (!response.ok) throw new Error(`Failed to delete question (${response.status})`);
+}
+
+export async function bulkImportWhatIfQuestions(
+  accessToken: string,
+  text: string,
+): Promise<{ created_count: number; questions: WhatIfQuestionAdmin[] }> {
+  const response = await fetch(`${apiBase()}/api/v1/whatif/questions/bulk-import/`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ text }),
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Failed to import questions (${response.status}): ${body}`);
+  }
+  return (await response.json()) as { created_count: number; questions: WhatIfQuestionAdmin[] };
+}
+

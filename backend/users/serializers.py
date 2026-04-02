@@ -13,6 +13,7 @@ class SessionUserSerializer(serializers.Serializer):
     last_name = serializers.CharField(allow_blank=True)
     is_authenticated = serializers.BooleanField()
     is_approved = serializers.BooleanField()
+    is_staff = serializers.BooleanField()
     auth0_sub = serializers.CharField(allow_blank=True, allow_null=True, required=False)
     account_status = serializers.CharField()
 

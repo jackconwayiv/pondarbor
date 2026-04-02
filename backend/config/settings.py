@@ -79,7 +79,7 @@ INSTALLED_APPS = [
     # Site apps
     "users.apps.UsersConfig",
     "quotes.apps.QuotesConfig",
-    "whatiff.apps.WhatiffConfig",
+    "whatif.apps.WhatifConfig",
     "clicker.apps.ClickerConfig",
     # allauth
     "allauth",

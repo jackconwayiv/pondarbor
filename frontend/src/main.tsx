@@ -5,6 +5,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider } from "react-router";
 import { AppSessionProvider } from "./auth/AppSessionProvider";
+import { safeAuthReturnTo } from "./auth/safeAuthReturnTo";
 import "./index.css";
 import { router } from "./router";
 
@@ -19,6 +20,13 @@ createRoot(document.getElementById("root")!).render(
         scope: "openid profile email",
       }}
       cacheLocation="localstorage"
+      onRedirectCallback={(appState) => {
+        const raw = appState?.returnTo;
+        const path =
+          typeof raw === "string" ? safeAuthReturnTo(raw) : null;
+        const dest = path ?? window.location.pathname;
+        void router.navigate(dest, { replace: true });
+      }}
     >
       <ChakraProvider value={system}>
         <AppSessionProvider>

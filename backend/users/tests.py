@@ -209,10 +209,10 @@ class UsersApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["app"], "quotes")
 
-    def test_whatiff_health_reachable_under_api_v1(self):
-        response = self.client.get("/api/v1/whatiff/health/")
+    def test_whatif_health_reachable_under_api_v1(self):
+        response = self.client.get("/api/v1/whatif/health/")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["app"], "whatiff")
+        self.assertEqual(response.json()["app"], "whatif")
 
 
 class UserVisibilityTests(TestCase):

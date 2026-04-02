@@ -63,6 +63,7 @@ def serialize_me(user):
             "last_name": user.last_name,
             "is_authenticated": True,
             "is_approved": user.account_status == UserModel.AccountStatus.APPROVED,
+            "is_staff": user.is_staff,
             "auth0_sub": user.auth0_sub or None,
             "account_status": user.account_status,
         },

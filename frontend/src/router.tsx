@@ -8,6 +8,12 @@ import QuotesFeedPage from "./quotes/QuotesFeedPage";
 import ClickerGamePage from "./clicker/ClickerGamePage";
 import ClickerLayout from "./clicker/ClickerLayout";
 import ClickerLobbyPage from "./clicker/ClickerLobbyPage";
+import WhatIfLayout from "./whatif/WhatIfLayout";
+import WhatIfEntryPage from "./whatif/WhatIfEntryPage";
+import WhatIfAdminPage from "./whatif/WhatIfAdminPage";
+import WhatIfLobbyPage from "./whatif/WhatIfLobbyPage";
+import WhatIfPlayPage from "./whatif/WhatIfPlayPage";
+import WhatIfHandPage from "./whatif/WhatIfHandPage";
 
 export const router = createBrowserRouter([
   {
@@ -32,6 +38,17 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <ClickerLobbyPage /> },
           { path: "play", element: <ClickerGamePage /> },
+        ],
+      },
+      {
+        path: "whatif",
+        element: <WhatIfLayout />,
+        children: [
+          { index: true, element: <WhatIfEntryPage /> },
+          { path: "admin", element: <WhatIfAdminPage /> },
+          { path: "lobby/:code", element: <WhatIfLobbyPage /> },
+          { path: "play/:code", element: <WhatIfPlayPage /> },
+          { path: "hand/:code", element: <WhatIfHandPage /> },
         ],
       },
       {

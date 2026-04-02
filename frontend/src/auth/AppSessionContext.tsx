@@ -16,6 +16,7 @@ export type AppUser = {
   last_name: string;
   is_authenticated: boolean;
   is_approved: boolean;
+  is_staff?: boolean;
   account_status: string;
   auth0_sub?: string | null;
 };

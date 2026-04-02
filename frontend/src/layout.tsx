@@ -60,6 +60,7 @@ export default function AppLayout() {
   const showProfileNav = isAuthenticated && !!auth0User;
   const navLinks = useMemo(
     () => [
+      { to: "/whatif", label: "Whatif" },
       ...(showProfileNav
         ? [
             { to: "/profile", label: "Profile" },

@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from whatif import rules
 from whatif.models import WhatIfPlayer, WhatIfQuestion, WhatIfSession
 
 
@@ -27,16 +28,26 @@ class SessionActionSerializer(serializers.Serializer):
             "reveal",
             "next_turn",
             "skip",
+            "set_player_paused",
         ]
     )
     option_index = serializers.IntegerField(required=False)
     target_player_id = serializers.IntegerField(required=False)
+    paused = serializers.BooleanField(required=False)
 
 
 class WhatIfPlayerSerializer(serializers.ModelSerializer):
     class Meta:
         model = WhatIfPlayer
-        fields = ["id", "display_name", "avatar_emoji", "score", "skips_remaining", "ready_to_start"]
+        fields = [
+            "id",
+            "display_name",
+            "avatar_emoji",
+            "score",
+            "skips_remaining",
+            "ready_to_start",
+            "paused",
+        ]
 
 
 class WhatIfQuestionPublicSerializer(serializers.ModelSerializer):
@@ -83,6 +94,7 @@ class WhatIfQuestionAdminSerializer(serializers.ModelSerializer):
 
 class WhatIfSessionPublicSerializer(serializers.ModelSerializer):
     players = WhatIfPlayerSerializer(many=True, read_only=True)
+    win_score = serializers.SerializerMethodField()
 
     class Meta:
         model = WhatIfSession
@@ -93,7 +105,11 @@ class WhatIfSessionPublicSerializer(serializers.ModelSerializer):
             "state_version",
             "state",
             "players",
+            "win_score",
             "created_at",
             "updated_at",
         ]
+
+    def get_win_score(self, _obj: WhatIfSession) -> int:
+        return rules.WIN_SCORE
 

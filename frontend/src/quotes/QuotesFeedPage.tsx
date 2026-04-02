@@ -16,7 +16,7 @@ import { Navigate, useSearchParams } from "react-router";
 import PondButton from "../PondButton";
 import { useAppSession } from "../auth/AppSessionContext";
 import { fullBleedStackProps, usePrefersCoarsePointer } from "../responsive";
-import { APP_TEXT_SIZES } from "../theme/typography";
+import { APP_TEXT_SIZES, FIELD_PLACEHOLDER_PROPS } from "../theme/typography";
 import PublicQuotesPage from "./PublicQuotesPage";
 import QuoteCardBase from "./QuoteCardBase";
 import {
@@ -35,16 +35,6 @@ function parseQuoteTab(value: string | null): QuoteTab {
   if (value === "my" || value === "public") return value;
   return "add";
 }
-
-/** Shared look for field placeholders (faint + clearly not real values). */
-const quotePlaceholderFieldProps = {
-  _placeholder: {
-    color: "gray.500",
-    fontStyle: "italic",
-    opacity: 0.72,
-    fontSize: "sm",
-  },
-} as const;
 
 const PLACEHOLDER_QUICK_BODY = "Paste or type a quote...";
 const PLACEHOLDER_TAGS = "poetry, lyrics, musings";
@@ -402,7 +392,7 @@ function QuoteCard({
                       onChange={(e) => setEditBody(e.target.value)}
                       minH="100px"
                       placeholder={PLACEHOLDER_QUICK_BODY}
-                      {...quotePlaceholderFieldProps}
+                      {...FIELD_PLACEHOLDER_PROPS}
                     />
                   </Stack>
                   <HStack align="start">
@@ -459,7 +449,7 @@ function QuoteCard({
                       value={editTagsCsv}
                       onChange={(e) => setEditTagsCsv(e.target.value)}
                       placeholder={PLACEHOLDER_TAGS}
-                      {...quotePlaceholderFieldProps}
+                      {...FIELD_PLACEHOLDER_PROPS}
                     />
                   </Stack>
                   <Stack>
@@ -497,7 +487,7 @@ function QuoteCard({
                       value={editAttributionNamesCsv}
                       onChange={(e) => setEditAttributionNamesCsv(e.target.value)}
                       placeholder={PLACEHOLDER_ATTRIBUTION_NAMES}
-                      {...quotePlaceholderFieldProps}
+                      {...FIELD_PLACEHOLDER_PROPS}
                     />
                   </Stack>
                   <Stack>
@@ -535,7 +525,7 @@ function QuoteCard({
                       value={editAttributionEmailsCsv}
                       onChange={(e) => setEditAttributionEmailsCsv(e.target.value)}
                       placeholder={PLACEHOLDER_ATTRIBUTION_EMAILS}
-                      {...quotePlaceholderFieldProps}
+                      {...FIELD_PLACEHOLDER_PROPS}
                     />
                   </Stack>
                   <HStack>
@@ -880,7 +870,7 @@ export default function QuotesFeedPage() {
                 onChange={(e) => setBody(e.target.value)}
                 placeholder={PLACEHOLDER_QUICK_BODY}
                 minH="120px"
-                {...quotePlaceholderFieldProps}
+                {...FIELD_PLACEHOLDER_PROPS}
               />
               <Collapsible.Root
                 open={isMoreDetailsOpen}
@@ -984,7 +974,7 @@ export default function QuotesFeedPage() {
                         setTagsCsv((prev) => normalizeCsv(prev));
                       }}
                       placeholder={PLACEHOLDER_TAGS}
-                      {...quotePlaceholderFieldProps}
+                      {...FIELD_PLACEHOLDER_PROPS}
                     />
                   </Stack>
                   <Stack>
@@ -1017,7 +1007,7 @@ export default function QuotesFeedPage() {
                       value={attributionNamesCsv}
                       onChange={(e) => setAttributionNamesCsv(e.target.value)}
                       placeholder={PLACEHOLDER_ATTRIBUTION_NAMES}
-                      {...quotePlaceholderFieldProps}
+                      {...FIELD_PLACEHOLDER_PROPS}
                     />
                   </Stack>
                   <Stack>
@@ -1054,7 +1044,7 @@ export default function QuotesFeedPage() {
                       value={attributionEmailsCsv}
                       onChange={(e) => setAttributionEmailsCsv(e.target.value)}
                       placeholder={PLACEHOLDER_ATTRIBUTION_EMAILS}
-                      {...quotePlaceholderFieldProps}
+                      {...FIELD_PLACEHOLDER_PROPS}
                     />
                   </Stack>
                   </Stack>

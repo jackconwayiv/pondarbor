@@ -5,6 +5,8 @@ export type WhatIfPlayer = {
   score: number;
   skips_remaining: number;
   ready_to_start?: boolean;
+  /** Host may pause disconnected players; their vote is not required to reveal. */
+  paused?: boolean;
 };
 
 export type WhatIfQuestion = {
@@ -52,6 +54,8 @@ export type WhatIfSessionState = {
     | "ended";
   challenge_mode: boolean;
   state_version: number;
+  /** Points needed to win (from server `WHATIF_WIN_SCORE`). */
+  win_score?: number;
   state: WhatIfRoundState;
   players?: WhatIfPlayer[];
   created_at?: string;

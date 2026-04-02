@@ -174,9 +174,11 @@ export async function postWhatIfAction(
       | "vote"
       | "reveal"
       | "next_turn"
-      | "skip";
+      | "skip"
+      | "set_player_paused";
     option_index?: number;
     target_player_id?: number;
+    paused?: boolean;
   },
   opts: { playerToken?: string | null; hostToken?: string | null },
 ): Promise<WhatIfSessionState> {

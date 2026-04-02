@@ -337,6 +337,254 @@ class WhatIfApiTests(TestCase):
         )
         self.assertEqual(wrong_actor.status_code, 403)
 
+    def test_reveal_when_paused_player_skipped_for_vote_quorum(self):
+        code, host_secret, _owner = self._create_session()
+        p1 = self._join(code, "John")
+        p2 = self._join(code, "Maya")
+        p3 = self._join(code, "Pat")
+        _mark_all_players_ready(code)
+        start = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "start_game"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        self.assertEqual(start.status_code, 200)
+        cids = start.json()["state"]["subject_candidate_ids"]
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "pick_subject", "target_player_id": cids[0]},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        pat = WhatIfPlayer.objects.get(session__short_code=code, display_name="Pat")
+        pause = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "set_player_paused", "target_player_id": pat.id, "paused": True},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        self.assertEqual(pause.status_code, 200)
+        pat_payload = next(pl for pl in pause.json()["players"] if pl["display_name"] == "Pat")
+        self.assertTrue(pat_payload["paused"])
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 2},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 2},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p2,
+        )
+        reveal = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "reveal"},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.assertEqual(reveal.status_code, 200)
+        self.assertEqual(reveal.json()["status"], "post_results")
+
+    @patch("whatif.views.ROUND_TRANSITION_SECONDS", 0)
+    def test_next_turn_skips_paused_player_in_rotation(self):
+        code, host_secret, _owner = self._create_session()
+        p1 = self._join(code, "John")
+        p2 = self._join(code, "Maya")
+        p3 = self._join(code, "Pat")
+        _mark_all_players_ready(code)
+        start = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "start_game"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        self.assertEqual(start.status_code, 200)
+        john_id = WhatIfPlayer.objects.get(session__short_code=code, display_name="John").id
+        maya_id = WhatIfPlayer.objects.get(session__short_code=code, display_name="Maya").id
+        pat_id = WhatIfPlayer.objects.get(session__short_code=code, display_name="Pat").id
+        self.assertEqual(start.json()["state"]["active_player_id"], john_id)
+        cids = start.json()["state"]["subject_candidate_ids"]
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "pick_subject", "target_player_id": cids[0]},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        for tok in (p1, p2, p3):
+            self.client.post(
+                f"/api/v1/whatif/sessions/{code}/action/",
+                {"type": "vote", "option_index": 3},
+                format="json",
+                HTTP_X_WHATIF_PLAYER_TOKEN=tok,
+            )
+        reveal = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "reveal"},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.assertEqual(reveal.status_code, 200)
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "set_player_paused", "target_player_id": maya_id, "paused": True},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        advance = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "next_turn"},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.assertEqual(advance.status_code, 200)
+        self.assertEqual(advance.json()["state"]["active_player_id"], pat_id)
+
+    def test_resume_mid_voting_requires_vote_before_reveal(self):
+        """Resuming someone after others voted while they were paused re-adds them to the quorum."""
+        code, host_secret, _owner = self._create_session()
+        p1 = self._join(code, "John")
+        p2 = self._join(code, "Maya")
+        p3 = self._join(code, "Pat")
+        _mark_all_players_ready(code)
+        start = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "start_game"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        self.assertEqual(start.status_code, 200)
+        pat_id = WhatIfPlayer.objects.get(session__short_code=code, display_name="Pat").id
+        cids = start.json()["state"]["subject_candidate_ids"]
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "pick_subject", "target_player_id": cids[0]},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "set_player_paused", "target_player_id": pat_id, "paused": True},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 2},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 2},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p2,
+        )
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "set_player_paused", "target_player_id": pat_id, "paused": False},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        blocked = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "reveal"},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.assertEqual(blocked.status_code, 400)
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 2},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p3,
+        )
+        reveal = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "reveal"},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.assertEqual(reveal.status_code, 200)
+
+    def test_paused_player_cannot_vote(self):
+        code, host_secret, _owner = self._create_session()
+        p1 = self._join(code, "John")
+        p2 = self._join(code, "Maya")
+        self._join(code, "Pat")
+        _mark_all_players_ready(code)
+        start = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "start_game"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        cids = start.json()["state"]["subject_candidate_ids"]
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "pick_subject", "target_player_id": cids[0]},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        maya = WhatIfPlayer.objects.get(session__short_code=code, display_name="Maya")
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "set_player_paused", "target_player_id": maya.id, "paused": True},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        bad_vote = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 1},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p2,
+        )
+        self.assertEqual(bad_vote.status_code, 400)
+
+    def test_cannot_pause_active_player_during_voting(self):
+        code, host_secret, _owner = self._create_session()
+        p1 = self._join(code, "John")
+        p2 = self._join(code, "Maya")
+        p3 = self._join(code, "Pat")
+        _mark_all_players_ready(code)
+        start = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "start_game"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        cids = start.json()["state"]["subject_candidate_ids"]
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "pick_subject", "target_player_id": cids[0]},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        john = WhatIfPlayer.objects.get(session__short_code=code, display_name="John")
+        self.assertEqual(start.json()["state"]["active_player_id"], john.id)
+        block = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "set_player_paused", "target_player_id": john.id, "paused": True},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        self.assertEqual(block.status_code, 400)
+
+    def test_set_player_paused_requires_host(self):
+        code, host_secret, _owner = self._create_session()
+        p1 = self._join(code, "John")
+        p2 = self._join(code, "Maya")
+        john = WhatIfPlayer.objects.get(session__short_code=code, display_name="John")
+        r = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "set_player_paused", "target_player_id": john.id, "paused": True},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p2,
+        )
+        self.assertEqual(r.status_code, 403)
+
     def test_legacy_prompt_without_subject_placeholder_uses_fallback(self):
         WhatIfQuestion.objects.all().delete()
         WhatIfQuestion.objects.create(

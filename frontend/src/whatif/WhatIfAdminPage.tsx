@@ -45,7 +45,7 @@ export default function WhatIfAdminPage() {
   const [bulkText, setBulkText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"list" | "edit" | "bulk">("edit");
+  const [activeTab, setActiveTab] = useState<"list" | "edit" | "bulk">("list");
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const confirmDeleteButtonRef = useRef<HTMLButtonElement | null>(null);
   const isStaff = !!sessionUser?.user?.is_staff;
@@ -202,20 +202,6 @@ export default function WhatIfAdminPage() {
             </Heading>
             <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" maxW="full" flexWrap="wrap">
               <Tabs.Trigger
-                value="edit"
-                bg={activeTab === "edit" ? "lilypad.solid" : undefined}
-                color={activeTab === "edit" ? "black" : undefined}
-                borderTopRadius="md"
-                borderBottomRadius="0"
-                px="4"
-                py="2"
-                fontWeight="medium"
-                _hover={{ bg: activeTab === "edit" ? "lilypad.solid" : "transparent" }}
-                _selected={{ bg: "lilypad.solid", color: "black" }}
-              >
-                Create / edit
-              </Tabs.Trigger>
-              <Tabs.Trigger
                 value="list"
                 bg={activeTab === "list" ? "lilypad.solid" : undefined}
                 color={activeTab === "list" ? "black" : undefined}
@@ -227,7 +213,21 @@ export default function WhatIfAdminPage() {
                 _hover={{ bg: activeTab === "list" ? "lilypad.solid" : "transparent" }}
                 _selected={{ bg: "lilypad.solid", color: "black" }}
               >
-                Question list
+                Question List
+              </Tabs.Trigger>
+              <Tabs.Trigger
+                value="edit"
+                bg={activeTab === "edit" ? "lilypad.solid" : undefined}
+                color={activeTab === "edit" ? "black" : undefined}
+                borderTopRadius="md"
+                borderBottomRadius="0"
+                px="4"
+                py="2"
+                fontWeight="medium"
+                _hover={{ bg: activeTab === "edit" ? "lilypad.solid" : "transparent" }}
+                _selected={{ bg: "lilypad.solid", color: "black" }}
+              >
+                Add Question
               </Tabs.Trigger>
               <Tabs.Trigger
                 value="bulk"
@@ -241,7 +241,7 @@ export default function WhatIfAdminPage() {
                 _hover={{ bg: activeTab === "bulk" ? "lilypad.solid" : "transparent" }}
                 _selected={{ bg: "lilypad.solid", color: "black" }}
               >
-                Bulk import
+                Bulk Import
               </Tabs.Trigger>
             </Tabs.List>
           </Stack>
@@ -274,11 +274,10 @@ export default function WhatIfAdminPage() {
                       1) {q.answer_1} | 2) {q.answer_2} | 3) {q.answer_3} | 4) {q.answer_4} | 5) {q.answer_5} | 6){" "}
                       {q.answer_6}
                     </Text>
-                    <HStack gap="2" flexWrap="wrap">
+                    <HStack gap="2" flexWrap="wrap" justify="flex-end" w="100%">
                       <PondButton
                         type="button"
                         colorPalette="lilypad"
-                        alignSelf="flex-start"
                         onClick={() => {
                           beginEdit(q);
                           setActiveTab("edit");
@@ -289,7 +288,6 @@ export default function WhatIfAdminPage() {
                       <PondButton
                         type="button"
                         colorPalette="orange"
-                        alignSelf="flex-start"
                         ref={confirmDeleteId === q.id ? confirmDeleteButtonRef : undefined}
                         onClick={() => {
                           if (confirmDeleteId !== q.id) {
@@ -321,28 +319,15 @@ export default function WhatIfAdminPage() {
                 <Text fontSize="sm" color="gray.600">
                   Note: is_active currently defaults true in this editor.
                 </Text>
-                <HStack gap="2" flexWrap="wrap">
-                  <PondButton
-                    type="button"
-                    colorPalette="lilypad"
-                    alignSelf="flex-start"
-                    onClick={() => void saveQuestion()}
-                    loading={busy}
-                  >
-                    {editingId == null ? "Create question" : "Update question"}
-                  </PondButton>
-                  <PondButton
-                    type="button"
-                    colorPalette="orange"
-                    alignSelf="flex-start"
-                    onClick={() => {
-                      beginCreate();
-                      setActiveTab("list");
-                    }}
-                  >
-                    Cancel
-                  </PondButton>
-                </HStack>
+                <PondButton
+                  type="button"
+                  colorPalette="lilypad"
+                  alignSelf="flex-end"
+                  onClick={() => void saveQuestion()}
+                  loading={busy}
+                >
+                  {editingId == null ? "Create question" : "Update question"}
+                </PondButton>
               </Stack>
             </Tabs.Content>
 
@@ -350,7 +335,7 @@ export default function WhatIfAdminPage() {
               <Stack gap="2">
                 <Text fontWeight="medium">Bulk import (numbered blocks)</Text>
                 <Textarea value={bulkText} onChange={(e) => setBulkText(e.target.value)} minH="240px" placeholder={exampleBulk} {...whatifInputProps} />
-                <PondButton type="button" colorPalette="lilypad" alignSelf="flex-start" onClick={() => void runBulkImport()} loading={busy}>
+                <PondButton type="button" colorPalette="lilypad" alignSelf="flex-end" onClick={() => void runBulkImport()} loading={busy}>
                   Import questions
                 </PondButton>
               </Stack>

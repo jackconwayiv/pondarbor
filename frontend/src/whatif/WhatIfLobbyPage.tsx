@@ -1,5 +1,5 @@
 import { Code, Heading, HStack, Stack, Text } from "@chakra-ui/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 
 import PondButton from "../PondButton";
@@ -20,17 +20,15 @@ export default function WhatIfLobbyPage() {
   const [state, setState] = useState<WhatIfSessionState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  /** Last seen `state_version` for polling — ref avoids re-running the effect on every update (StrictMode-safe). */
-  const sinceVersionRef = useRef<number | undefined>(undefined);
   const hostToken = useMemo(() => loadHostToken(roomCode), [roomCode]);
 
   useEffect(() => {
     let cancelled = false;
     async function poll() {
       try {
-        const next = await fetchWhatIfTvState(roomCode, sinceVersionRef.current);
+        // No `since=` — avoids HTTP 304, which Vite's dev proxy often surfaces as 502.
+        const next = await fetchWhatIfTvState(roomCode);
         if (!cancelled && next) {
-          sinceVersionRef.current = next.state_version;
           setState(next);
           if (next.status !== "open" && next.status !== "pre_lobby") {
             navigate(`/whatif/play/${roomCode}`);
@@ -40,7 +38,6 @@ export default function WhatIfLobbyPage() {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load lobby");
       }
     }
-    sinceVersionRef.current = undefined;
     void poll();
     const id = window.setInterval(() => void poll(), POLL_MS);
     return () => {

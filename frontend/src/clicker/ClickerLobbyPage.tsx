@@ -53,7 +53,7 @@ export default function ClickerLobbyPage() {
     return (
       <ClickerPageShell>
         <Box maxW="lg" mx="auto">
-          <Text textStyle={{ base: "sm", md: "md" }}>Sign in to play Pond Clicker.</Text>
+          <Text textStyle={{ base: "sm", md: "md" }}>Sign in to play PondClicker.</Text>
         </Box>
       </ClickerPageShell>
     );
@@ -100,7 +100,7 @@ export default function ClickerLobbyPage() {
           >
             <Stack gap="4">
               <Heading as="h1" size="lg">
-                Pond Clicker
+                PondClicker
               </Heading>
               <Text fontSize={{ base: "sm", md: "md" }} color="fg">
                 Welcome! Tap the pond to earn energy, then spend it in the shop on upgrades that grow your pond.

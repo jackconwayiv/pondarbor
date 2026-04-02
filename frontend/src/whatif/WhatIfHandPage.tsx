@@ -1,6 +1,6 @@
 import { useAuth0 } from "@auth0/auth0-react";
 import { Avatar, Box, Checkbox, Code, Heading, HStack, Input, SimpleGrid, Stack, Text } from "@chakra-ui/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
 
 import PondButton from "../PondButton";
@@ -30,7 +30,6 @@ export default function WhatIfHandPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const sinceVersionRef = useRef<number | undefined>(undefined);
   const [name, setName] = useState("");
   const defaultDisplayName = useMemo(
     () => sessionUser?.profile?.display_name ?? "",
@@ -48,16 +47,15 @@ export default function WhatIfHandPage() {
     let cancelled = false;
     async function poll() {
       try {
-        const next = await fetchWhatIfHandState(roomCode, token, sinceVersionRef.current);
+        // Always fetch full state (no `since=`) so we never rely on HTTP 304 — Vite's dev proxy often maps 304 → 502.
+        const next = await fetchWhatIfHandState(roomCode, token);
         if (!cancelled && next) {
-          sinceVersionRef.current = next.state_version;
           setState(next);
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load hand");
       }
     }
-    sinceVersionRef.current = undefined;
     void poll();
     const id = window.setInterval(() => void poll(), POLL_MS);
     return () => {
@@ -99,7 +97,6 @@ export default function WhatIfHandPage() {
     setError(null);
     try {
       const next = await postWhatIfAction(roomCode, payload, { playerToken });
-      sinceVersionRef.current = next.state_version;
       setState(next);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Action failed");
@@ -202,7 +199,11 @@ export default function WhatIfHandPage() {
   const activeName = playerList.find((p) => p.id === activeId)?.display_name ?? "Active player";
   const answers = state?.state?.question?.answers ?? {};
   const votedIds = state?.state?.voted_player_ids ?? [];
-  const allPlayersVoted = playerList.length > 0 && votedIds.length >= playerList.length;
+  const eligibleVoterIds = new Set(playerList.filter((p) => !p.paused).map((p) => p.id));
+  const allPlayersVoted =
+    playerList.length > 0 &&
+    (eligibleVoterIds.size === 0 || [...eligibleVoterIds].every((id) => votedIds.includes(id)));
+  const imPaused = !!me?.paused;
   const myVote = state?.state?.your_vote ?? null;
   const waitUntil = state?.state?.next_turn_not_before ? new Date(state.state.next_turn_not_before).getTime() : 0;
   const canAdvance = nowMs >= waitUntil;
@@ -229,6 +230,12 @@ export default function WhatIfHandPage() {
             </Heading>
             <Code fontSize="2em">{roomCode}</Code>
           </HStack>
+          {imPaused ? (
+            <Text p="3" borderRadius="md" bg="orange.100" color="gray.800" fontWeight="medium">
+              You&apos;re paused by the host. Your vote isn&apos;t needed this round; ask them to tap Resume on the TV
+              when you&apos;re back.
+            </Text>
+          ) : null}
           {(state?.status === "open" || state?.status === "pre_lobby") && me ? (
             <Stack gap="2" alignSelf="flex-start" maxW="100%">
               <Checkbox.Root
@@ -259,7 +266,7 @@ export default function WhatIfHandPage() {
           {needSubjectPick && isActive ? <Text fontWeight="medium">Pick who this round is about:</Text> : null}
           {myVote ? (
             <Text color="gray.700">
-              You voted for {myVote} - {answers[String(myVote)]}
+              You voted for {answers[String(myVote)] ?? String(myVote)}
             </Text>
           ) : null}
           {state?.status === "voting" && isActive ? (
@@ -270,6 +277,7 @@ export default function WhatIfHandPage() {
                 alignSelf="flex-start"
                 onClick={() => void action({ type: "reveal" })}
                 loading={busy}
+                disabled={busy || imPaused}
               >
                 Reveal votes
               </PondButton>
@@ -295,6 +303,7 @@ export default function WhatIfHandPage() {
                     alignSelf="flex-start"
                     onClick={() => void action({ type: "next_turn" })}
                     loading={busy}
+                    disabled={busy || imPaused}
                   >
                     {nextPlayerName}&apos;s turn
                   </PondButton>
@@ -328,6 +337,7 @@ export default function WhatIfHandPage() {
                   w="100%"
                   whiteSpace="normal"
                   textAlign="center"
+                  disabled={busy || imPaused}
                   _hover={{
                     bg: "white",
                     color: "black",
@@ -371,7 +381,7 @@ export default function WhatIfHandPage() {
                       w="100%"
                       whiteSpace="normal"
                       textAlign="center"
-                      disabled={!!myVote}
+                      disabled={!!myVote || imPaused}
                       visibility={isHiddenAfterVote ? "hidden" : "visible"}
                       pointerEvents={isHiddenAfterVote ? "none" : "auto"}
                       _hover={{

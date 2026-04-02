@@ -21,6 +21,9 @@ import WhatIfShell from "./WhatIfShell";
 import { whatifInputProps } from "./whatifFieldProps";
 
 type EntryTab = "new" | "continue" | "join" | "admin-edit" | "admin-list" | "admin-bulk";
+type PlayerTab = "new" | "continue" | "join";
+type AdminTab = "admin-edit" | "admin-list" | "admin-bulk";
+type OuterSection = "player" | "admin";
 
 const ENTRY_TAB_VALUES: EntryTab[] = ["new", "continue", "join", "admin-edit", "admin-list", "admin-bulk"];
 type QuestionDraft = {
@@ -64,6 +67,8 @@ export default function WhatIfEntryPage() {
   const [bulkText, setBulkText] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const confirmDeleteButtonRef = useRef<HTMLButtonElement | null>(null);
+  const lastPlayerTabRef = useRef<PlayerTab>("new");
+  const lastAdminTabRef = useRef<AdminTab>("admin-list");
 
   const defaultName = useMemo(() => {
     return sessionUser?.profile?.display_name || "Guest";
@@ -103,6 +108,14 @@ export default function WhatIfEntryPage() {
     if (tab.startsWith("admin") && !isStaff) return;
     setActiveTab(tab);
   }, [searchParams, isStaff]);
+
+  useEffect(() => {
+    if (activeTab === "new" || activeTab === "continue" || activeTab === "join") {
+      lastPlayerTabRef.current = activeTab;
+    } else if (activeTab === "admin-edit" || activeTab === "admin-list" || activeTab === "admin-bulk") {
+      lastAdminTabRef.current = activeTab;
+    }
+  }, [activeTab]);
 
   async function loadQuestions() {
     if (!isAuthenticated || !isStaff) return;
@@ -256,6 +269,281 @@ export default function WhatIfEntryPage() {
     }
   }
 
+  const outerSection: OuterSection = activeTab.startsWith("admin") ? "admin" : "player";
+  const playerTabValue: PlayerTab =
+    activeTab === "new" || activeTab === "continue" || activeTab === "join" ? activeTab : lastPlayerTabRef.current;
+  const adminTabValue: AdminTab =
+    activeTab === "admin-edit" || activeTab === "admin-list" || activeTab === "admin-bulk"
+      ? activeTab
+      : lastAdminTabRef.current;
+
+  const playerTabTriggers = (
+    <>
+      <Tabs.Trigger
+        value="join"
+        bg={playerTabValue === "join" ? "lilypad.solid" : undefined}
+        color={playerTabValue === "join" ? "black" : undefined}
+        borderTopRadius="md"
+        borderBottomRadius="0"
+        px="4"
+        py="2"
+        fontWeight="medium"
+        _hover={{ bg: playerTabValue === "join" ? "lilypad.solid" : "transparent" }}
+        _selected={{ bg: "lilypad.solid", color: "black" }}
+      >
+        Join Game
+      </Tabs.Trigger>
+      <Tabs.Trigger
+        value="new"
+        bg={playerTabValue === "new" ? "lilypad.solid" : undefined}
+        color={playerTabValue === "new" ? "black" : undefined}
+        borderTopRadius="md"
+        borderBottomRadius="0"
+        px="4"
+        py="2"
+        fontWeight="medium"
+        _hover={{ bg: playerTabValue === "new" ? "lilypad.solid" : "transparent" }}
+        _selected={{ bg: "lilypad.solid", color: "black" }}
+      >
+        Host Game
+      </Tabs.Trigger>
+      <Tabs.Trigger
+        value="continue"
+        bg={playerTabValue === "continue" ? "lilypad.solid" : undefined}
+        color={playerTabValue === "continue" ? "black" : undefined}
+        borderTopRadius="md"
+        borderBottomRadius="0"
+        px="4"
+        py="2"
+        fontWeight="medium"
+        _hover={{ bg: playerTabValue === "continue" ? "lilypad.solid" : "transparent" }}
+        _selected={{ bg: "lilypad.solid", color: "black" }}
+      >
+        Resume Game
+      </Tabs.Trigger>
+    </>
+  );
+
+  const adminTabTriggers = (
+    <>
+      <Tabs.Trigger
+        value="admin-list"
+        bg={adminTabValue === "admin-list" ? "lilypad.solid" : undefined}
+        color={adminTabValue === "admin-list" ? "black" : undefined}
+        borderTopRadius="md"
+        borderBottomRadius="0"
+        px="4"
+        py="2"
+        fontWeight="medium"
+        _hover={{ bg: adminTabValue === "admin-list" ? "lilypad.solid" : "transparent" }}
+        _selected={{ bg: "lilypad.solid", color: "black" }}
+      >
+        Question List
+      </Tabs.Trigger>
+      <Tabs.Trigger
+        value="admin-edit"
+        bg={adminTabValue === "admin-edit" ? "lilypad.solid" : undefined}
+        color={adminTabValue === "admin-edit" ? "black" : undefined}
+        borderTopRadius="md"
+        borderBottomRadius="0"
+        px="4"
+        py="2"
+        fontWeight="medium"
+        _hover={{ bg: adminTabValue === "admin-edit" ? "lilypad.solid" : "transparent" }}
+        _selected={{ bg: "lilypad.solid", color: "black" }}
+      >
+        Add Question
+      </Tabs.Trigger>
+      <Tabs.Trigger
+        value="admin-bulk"
+        bg={adminTabValue === "admin-bulk" ? "lilypad.solid" : undefined}
+        color={adminTabValue === "admin-bulk" ? "black" : undefined}
+        borderTopRadius="md"
+        borderBottomRadius="0"
+        px="4"
+        py="2"
+        fontWeight="medium"
+        _hover={{ bg: adminTabValue === "admin-bulk" ? "lilypad.solid" : "transparent" }}
+        _selected={{ bg: "lilypad.solid", color: "black" }}
+      >
+        Bulk Import
+      </Tabs.Trigger>
+    </>
+  );
+
+  const playerTabPanels = (
+    <>
+      <Tabs.Content value="join" pt="4">
+        <Stack gap="4">
+          <Text fontSize="sm" color="gray.700">
+            Join this device as a player with the room code from the host.
+          </Text>
+          <Input
+            placeholder="4-letter code"
+            value={joinCode}
+            onChange={(e) => setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4))}
+            {...whatifInputProps}
+          />
+          <Input
+            placeholder={`Display name (default: ${defaultName})`}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            maxLength={80}
+            {...whatifInputProps}
+          />
+          <PondButton
+            type="button"
+            colorPalette="lilypad"
+            alignSelf="flex-start"
+            onClick={() => void handleJoin()}
+            loading={busy}
+          >
+            Join on this phone
+          </PondButton>
+        </Stack>
+      </Tabs.Content>
+
+      <Tabs.Content value="new" pt="4">
+        <Stack gap="4">
+          <Text color="gray.700">
+            {isAuthenticated
+              ? "Creates a room and records you as the host (not as a player). Open the lobby on the TV, then join on your phone to play."
+              : "Sign in to create a game."}
+          </Text>
+          <PondButton
+            type="button"
+            colorPalette="lilypad"
+            alignSelf="flex-start"
+            onClick={() => void handleCreate()}
+            loading={busy}
+            disabled={!isAuthenticated}
+          >
+            Create new game
+          </PondButton>
+        </Stack>
+      </Tabs.Content>
+
+      <Tabs.Content value="continue" pt="4">
+        <Stack gap="4">
+          <Text fontSize="sm" color="gray.700">
+            Reconnect TV / lobby controls after a crash or new browser window. Sign in as the host and enter your
+            four-letter room code. This does not add you as a player.
+          </Text>
+          <Input
+            placeholder="4-letter room code"
+            value={resumeCode}
+            onChange={(e) => setResumeCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4))}
+            {...whatifInputProps}
+          />
+          <PondButton
+            type="button"
+            colorPalette="lilypad"
+            alignSelf="flex-start"
+            onClick={() => void handleResumeHosting()}
+            loading={busy}
+            disabled={!isAuthenticated}
+          >
+            Continue hosting
+          </PondButton>
+        </Stack>
+      </Tabs.Content>
+    </>
+  );
+
+  const adminTabPanels = (
+    <>
+      <Tabs.Content value="admin-list" pt="4">
+        <Stack gap="3">
+          <Text fontWeight="medium">All questions ({questions.length})</Text>
+          <HStack gap="2" align="end">
+            <Stack gap="1" flex="1">
+              <Text fontSize="sm" color="gray.700">
+                Search prompt
+              </Text>
+              <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by prompt..." {...whatifInputProps} />
+            </Stack>
+            <PondButton type="button" colorPalette="lilypad" onClick={() => void loadQuestions()} loading={adminBusy}>
+              Refresh
+            </PondButton>
+          </HStack>
+          {questions.map((q) => (
+            <Stack key={q.id} p="3" borderWidth="1px" borderColor="border" borderRadius="md" bg="bg">
+              <Text fontWeight="medium">
+                #{q.id} {q.is_active ? "(active)" : "(inactive)"} - used {q.sessions_used_count} sessions
+              </Text>
+              <Text>{q.prompt}</Text>
+              <Text fontSize="sm" color="gray.700">
+                1) {q.answer_1} | 2) {q.answer_2} | 3) {q.answer_3} | 4) {q.answer_4} | 5) {q.answer_5} | 6) {q.answer_6}
+              </Text>
+              <HStack gap="2" flexWrap="wrap" justify="flex-end" w="100%">
+                <PondButton
+                  type="button"
+                  colorPalette="lilypad"
+                  onClick={() => {
+                    beginEditQuestion(q);
+                    setActiveTab("admin-edit");
+                  }}
+                >
+                  Edit
+                </PondButton>
+                <PondButton
+                  type="button"
+                  colorPalette="orange"
+                  ref={confirmDeleteId === q.id ? confirmDeleteButtonRef : undefined}
+                  onClick={() => {
+                    if (confirmDeleteId !== q.id) {
+                      setConfirmDeleteId(q.id);
+                      return;
+                    }
+                    void removeQuestion(q.id);
+                  }}
+                  loading={adminBusy && confirmDeleteId === q.id}
+                >
+                  {confirmDeleteId === q.id ? "Confirm Delete" : "Delete"}
+                </PondButton>
+              </HStack>
+            </Stack>
+          ))}
+        </Stack>
+      </Tabs.Content>
+
+      <Tabs.Content value="admin-edit" pt="4">
+        <Stack gap="2">
+          <Text fontWeight="medium">{editingId == null ? "Create question" : `Edit question #${editingId}`}</Text>
+          <Input value={draft.prompt} onChange={(e) => setDraft((d) => ({ ...d, prompt: e.target.value }))} placeholder='Prompt with "{subject}"' {...whatifInputProps} />
+          <Input value={draft.answer_1} onChange={(e) => setDraft((d) => ({ ...d, answer_1: e.target.value }))} placeholder="Answer 1" {...whatifInputProps} />
+          <Input value={draft.answer_2} onChange={(e) => setDraft((d) => ({ ...d, answer_2: e.target.value }))} placeholder="Answer 2" {...whatifInputProps} />
+          <Input value={draft.answer_3} onChange={(e) => setDraft((d) => ({ ...d, answer_3: e.target.value }))} placeholder="Answer 3" {...whatifInputProps} />
+          <Input value={draft.answer_4} onChange={(e) => setDraft((d) => ({ ...d, answer_4: e.target.value }))} placeholder="Answer 4" {...whatifInputProps} />
+          <Input value={draft.answer_5} onChange={(e) => setDraft((d) => ({ ...d, answer_5: e.target.value }))} placeholder="Answer 5" {...whatifInputProps} />
+          <Input value={draft.answer_6} onChange={(e) => setDraft((d) => ({ ...d, answer_6: e.target.value }))} placeholder="Answer 6" {...whatifInputProps} />
+          <Text fontSize="sm" color="gray.600">
+            Note: is_active currently defaults true in this editor.
+          </Text>
+          <PondButton
+            type="button"
+            colorPalette="lilypad"
+            alignSelf="flex-end"
+            onClick={() => void saveQuestion()}
+            loading={adminBusy}
+          >
+            {editingId == null ? "Create question" : "Update question"}
+          </PondButton>
+        </Stack>
+      </Tabs.Content>
+
+      <Tabs.Content value="admin-bulk" pt="4">
+        <Stack gap="2">
+          <Text fontWeight="medium">Bulk import (numbered blocks)</Text>
+          <Textarea value={bulkText} onChange={(e) => setBulkText(e.target.value)} minH="240px" placeholder={exampleBulk} {...whatifInputProps} />
+          <PondButton type="button" colorPalette="lilypad" alignSelf="flex-end" onClick={() => void runBulkImport()} loading={adminBusy}>
+            Import questions
+          </PondButton>
+        </Stack>
+      </Tabs.Content>
+    </>
+  );
+
   return (
     <WhatIfShell>
       <Stack gap="5">
@@ -267,288 +555,111 @@ export default function WhatIfEntryPage() {
           phone at <Code>/whatif/hand/ROOM</Code>.
         </Text>
 
-        <Tabs.Root
-          value={activeTab}
-          variant="plain"
-          onValueChange={(details) => {
-            setActiveTab(details.value as EntryTab);
-            setError(null);
-          }}
-        >
-          <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" maxW="full" flexWrap="wrap">
-            <Tabs.Trigger
-              value="new"
-              bg={activeTab === "new" ? "lilypad.solid" : undefined}
-              color={activeTab === "new" ? "black" : undefined}
-              borderTopRadius="md"
-              borderBottomRadius="0"
-              px="4"
-              py="2"
-              fontWeight="medium"
-              _hover={{ bg: activeTab === "new" ? "lilypad.solid" : "transparent" }}
-              _selected={{ bg: "lilypad.solid", color: "black" }}
+        {isStaff ? (
+          <Tabs.Root
+            id="whatif-entry-outer"
+            value={outerSection}
+            variant="plain"
+            onValueChange={(details) => {
+              const v = details.value as OuterSection;
+              if (v === "player") setActiveTab(lastPlayerTabRef.current);
+              else setActiveTab(lastAdminTabRef.current);
+              setError(null);
+            }}
+          >
+            <Tabs.List
+              borderBottomWidth="2px"
+              borderColor="border"
+              gap="2"
+              w="100%"
+              maxW="full"
+              flexWrap="wrap"
+              justifyContent="flex-end"
             >
-              New Game
-            </Tabs.Trigger>
-            <Tabs.Trigger
-              value="continue"
-              bg={activeTab === "continue" ? "lilypad.solid" : undefined}
-              color={activeTab === "continue" ? "black" : undefined}
-              borderTopRadius="md"
-              borderBottomRadius="0"
-              px="4"
-              py="2"
-              fontWeight="medium"
-              _hover={{ bg: activeTab === "continue" ? "lilypad.solid" : "transparent" }}
-              _selected={{ bg: "lilypad.solid", color: "black" }}
-            >
-              Resume
-            </Tabs.Trigger>
-            <Tabs.Trigger
-              value="join"
-              bg={activeTab === "join" ? "lilypad.solid" : undefined}
-              color={activeTab === "join" ? "black" : undefined}
-              borderTopRadius="md"
-              borderBottomRadius="0"
-              px="4"
-              py="2"
-              fontWeight="medium"
-              _hover={{ bg: activeTab === "join" ? "lilypad.solid" : "transparent" }}
-              _selected={{ bg: "lilypad.solid", color: "black" }}
-            >
-              Join
-            </Tabs.Trigger>
-            {isStaff ? (
               <Tabs.Trigger
-                value="admin-edit"
-                bg={activeTab === "admin-edit" ? "lilypad.solid" : undefined}
-                color={activeTab === "admin-edit" ? "black" : undefined}
+                value="player"
+                bg={outerSection === "player" ? "lilypad.solid" : undefined}
+                color={outerSection === "player" ? "black" : undefined}
                 borderTopRadius="md"
                 borderBottomRadius="0"
-                px="4"
-                py="2"
-                fontWeight="medium"
-                _hover={{ bg: activeTab === "admin-edit" ? "lilypad.solid" : "transparent" }}
+                px="5"
+                py="2.5"
+                fontWeight="semibold"
+                _hover={{ bg: outerSection === "player" ? "lilypad.solid" : "transparent" }}
                 _selected={{ bg: "lilypad.solid", color: "black" }}
               >
-                Add ?
+                Player
               </Tabs.Trigger>
-            ) : null}
-            {isStaff ? (
               <Tabs.Trigger
-                value="admin-list"
-                bg={activeTab === "admin-list" ? "lilypad.solid" : undefined}
-                color={activeTab === "admin-list" ? "black" : undefined}
+                value="admin"
+                bg={outerSection === "admin" ? "lilypad.solid" : undefined}
+                color={outerSection === "admin" ? "black" : undefined}
                 borderTopRadius="md"
                 borderBottomRadius="0"
-                px="4"
-                py="2"
-                fontWeight="medium"
-                _hover={{ bg: activeTab === "admin-list" ? "lilypad.solid" : "transparent" }}
+                px="5"
+                py="2.5"
+                fontWeight="semibold"
+                _hover={{ bg: outerSection === "admin" ? "lilypad.solid" : "transparent" }}
                 _selected={{ bg: "lilypad.solid", color: "black" }}
               >
-                ? List
+                Admin
               </Tabs.Trigger>
-            ) : null}
-            {isStaff ? (
-              <Tabs.Trigger
-                value="admin-bulk"
-                bg={activeTab === "admin-bulk" ? "lilypad.solid" : undefined}
-                color={activeTab === "admin-bulk" ? "black" : undefined}
-                borderTopRadius="md"
-                borderBottomRadius="0"
-                px="4"
-                py="2"
-                fontWeight="medium"
-                _hover={{ bg: activeTab === "admin-bulk" ? "lilypad.solid" : "transparent" }}
-                _selected={{ bg: "lilypad.solid", color: "black" }}
-              >
-                Import ?s
-              </Tabs.Trigger>
-            ) : null}
-          </Tabs.List>
+            </Tabs.List>
 
-          <Tabs.Content value="new" pt="4">
-            <Stack gap="4">
-              <Text color="gray.700">
-                {isAuthenticated
-                  ? "Creates a room and records you as the host (not as a player). Open the lobby on the TV, then join on your phone to play."
-                  : "Sign in to create a game."}
-              </Text>
-              <PondButton
-                type="button"
-                colorPalette="lilypad"
-                alignSelf="flex-start"
-                onClick={() => void handleCreate()}
-                loading={busy}
-                disabled={!isAuthenticated}
+            <Tabs.Content value="player" pt="4">
+              <Tabs.Root
+                id="whatif-entry-player"
+                value={playerTabValue}
+                variant="plain"
+                onValueChange={(details) => {
+                  const v = details.value as PlayerTab;
+                  lastPlayerTabRef.current = v;
+                  setActiveTab(v);
+                  setError(null);
+                }}
               >
-                Create new game
-              </PondButton>
-            </Stack>
-          </Tabs.Content>
-
-          <Tabs.Content value="continue" pt="4">
-            <Stack gap="4">
-              <Text fontSize="sm" color="gray.700">
-                Reconnect TV / lobby controls after a crash or new browser window. Sign in as the host and enter your
-                four-letter room code. This does not add you as a player.
-              </Text>
-              <Input
-                placeholder="4-letter room code"
-                value={resumeCode}
-                onChange={(e) => setResumeCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4))}
-                {...whatifInputProps}
-              />
-              <PondButton
-                type="button"
-                colorPalette="lilypad"
-                alignSelf="flex-start"
-                onClick={() => void handleResumeHosting()}
-                loading={busy}
-                disabled={!isAuthenticated}
-              >
-                Continue hosting
-              </PondButton>
-            </Stack>
-          </Tabs.Content>
-
-          <Tabs.Content value="join" pt="4">
-            <Stack gap="4">
-              <Text fontSize="sm" color="gray.700">
-                Join this device as a player with the room code from the host.
-              </Text>
-              <Input
-                placeholder="4-letter code"
-                value={joinCode}
-                onChange={(e) => setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4))}
-                {...whatifInputProps}
-              />
-              <Input
-                placeholder={`Display name (default: ${defaultName})`}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                maxLength={80}
-                {...whatifInputProps}
-              />
-              <PondButton
-                type="button"
-                colorPalette="lilypad"
-                alignSelf="flex-start"
-                onClick={() => void handleJoin()}
-                loading={busy}
-              >
-                Join on this phone
-              </PondButton>
-            </Stack>
-          </Tabs.Content>
-
-          {isStaff ? (
-            <Tabs.Content value="admin-edit" pt="4">
-              <Stack gap="2">
-                <Text fontWeight="medium">{editingId == null ? "Create question" : `Edit question #${editingId}`}</Text>
-                <Input value={draft.prompt} onChange={(e) => setDraft((d) => ({ ...d, prompt: e.target.value }))} placeholder='Prompt with "{subject}"' {...whatifInputProps} />
-                <Input value={draft.answer_1} onChange={(e) => setDraft((d) => ({ ...d, answer_1: e.target.value }))} placeholder="Answer 1" {...whatifInputProps} />
-                <Input value={draft.answer_2} onChange={(e) => setDraft((d) => ({ ...d, answer_2: e.target.value }))} placeholder="Answer 2" {...whatifInputProps} />
-                <Input value={draft.answer_3} onChange={(e) => setDraft((d) => ({ ...d, answer_3: e.target.value }))} placeholder="Answer 3" {...whatifInputProps} />
-                <Input value={draft.answer_4} onChange={(e) => setDraft((d) => ({ ...d, answer_4: e.target.value }))} placeholder="Answer 4" {...whatifInputProps} />
-                <Input value={draft.answer_5} onChange={(e) => setDraft((d) => ({ ...d, answer_5: e.target.value }))} placeholder="Answer 5" {...whatifInputProps} />
-                <Input value={draft.answer_6} onChange={(e) => setDraft((d) => ({ ...d, answer_6: e.target.value }))} placeholder="Answer 6" {...whatifInputProps} />
-                <Text fontSize="sm" color="gray.600">
-                  Note: is_active currently defaults true in this editor.
-                </Text>
-                <HStack gap="2" flexWrap="wrap">
-                  <PondButton type="button" colorPalette="lilypad" alignSelf="flex-start" onClick={() => void saveQuestion()} loading={adminBusy}>
-                    {editingId == null ? "Create question" : "Update question"}
-                  </PondButton>
-                  <PondButton
-                    type="button"
-                    colorPalette="orange"
-                    alignSelf="flex-start"
-                    onClick={() => {
-                      beginCreateQuestion();
-                      setActiveTab("admin-list");
-                    }}
-                  >
-                    Cancel
-                  </PondButton>
-                </HStack>
-              </Stack>
+                <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" maxW="full" flexWrap="wrap">
+                  {playerTabTriggers}
+                </Tabs.List>
+                {playerTabPanels}
+              </Tabs.Root>
             </Tabs.Content>
-          ) : null}
 
-          {isStaff ? (
-            <Tabs.Content value="admin-list" pt="4">
-              <Stack gap="3">
-                <Text fontWeight="medium">All questions ({questions.length})</Text>
-                <HStack gap="2" align="end">
-                  <Stack gap="1" flex="1">
-                    <Text fontSize="sm" color="gray.700">
-                      Search prompt
-                    </Text>
-                    <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by prompt..." {...whatifInputProps} />
-                  </Stack>
-                  <PondButton type="button" colorPalette="lilypad" onClick={() => void loadQuestions()} loading={adminBusy}>
-                    Refresh
-                  </PondButton>
-                </HStack>
-                {questions.map((q) => (
-                  <Stack key={q.id} p="3" borderWidth="1px" borderColor="border" borderRadius="md" bg="bg">
-                    <Text fontWeight="medium">
-                      #{q.id} {q.is_active ? "(active)" : "(inactive)"} - used {q.sessions_used_count} sessions
-                    </Text>
-                    <Text>{q.prompt}</Text>
-                    <Text fontSize="sm" color="gray.700">
-                      1) {q.answer_1} | 2) {q.answer_2} | 3) {q.answer_3} | 4) {q.answer_4} | 5) {q.answer_5} | 6){" "}
-                      {q.answer_6}
-                    </Text>
-                    <HStack gap="2" flexWrap="wrap">
-                      <PondButton
-                        type="button"
-                        colorPalette="lilypad"
-                        alignSelf="flex-start"
-                        onClick={() => {
-                          beginEditQuestion(q);
-                          setActiveTab("admin-edit");
-                        }}
-                      >
-                        Edit
-                      </PondButton>
-                      <PondButton
-                        type="button"
-                        colorPalette="orange"
-                        alignSelf="flex-start"
-                        ref={confirmDeleteId === q.id ? confirmDeleteButtonRef : undefined}
-                        onClick={() => {
-                          if (confirmDeleteId !== q.id) {
-                            setConfirmDeleteId(q.id);
-                            return;
-                          }
-                          void removeQuestion(q.id);
-                        }}
-                        loading={adminBusy && confirmDeleteId === q.id}
-                      >
-                        {confirmDeleteId === q.id ? "Confirm Delete" : "Delete"}
-                      </PondButton>
-                    </HStack>
-                  </Stack>
-                ))}
-              </Stack>
+            <Tabs.Content value="admin" pt="4">
+              <Tabs.Root
+                id="whatif-entry-admin"
+                value={adminTabValue}
+                variant="plain"
+                onValueChange={(details) => {
+                  const v = details.value as AdminTab;
+                  lastAdminTabRef.current = v;
+                  setActiveTab(v);
+                  setError(null);
+                }}
+              >
+                <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" maxW="full" flexWrap="wrap">
+                  {adminTabTriggers}
+                </Tabs.List>
+                {adminTabPanels}
+              </Tabs.Root>
             </Tabs.Content>
-          ) : null}
-
-          {isStaff ? (
-            <Tabs.Content value="admin-bulk" pt="4">
-              <Stack gap="2">
-                <Text fontWeight="medium">Bulk import (numbered blocks)</Text>
-                <Textarea value={bulkText} onChange={(e) => setBulkText(e.target.value)} minH="240px" placeholder={exampleBulk} {...whatifInputProps} />
-                <PondButton type="button" colorPalette="lilypad" alignSelf="flex-start" onClick={() => void runBulkImport()} loading={adminBusy}>
-                  Import questions
-                </PondButton>
-              </Stack>
-            </Tabs.Content>
-          ) : null}
-        </Tabs.Root>
+          </Tabs.Root>
+        ) : (
+          <Tabs.Root
+            id="whatif-entry-player-only"
+            value={playerTabValue}
+            variant="plain"
+            onValueChange={(details) => {
+              setActiveTab(details.value as EntryTab);
+              setError(null);
+            }}
+          >
+            <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" maxW="full" flexWrap="wrap">
+              {playerTabTriggers}
+            </Tabs.List>
+            {playerTabPanels}
+          </Tabs.Root>
+        )}
 
         {error ? (
           <Text role="alert" color="red.600">

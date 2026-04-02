@@ -125,14 +125,22 @@ def _player_ids_in_turn_order(session: WhatIfSession) -> list[int]:
 
 
 def _next_turn_player_id(session: WhatIfSession, state: dict) -> int | None:
+    """Next player in join order who is not paused; None if every player is paused."""
     ordered = _player_ids_in_turn_order(session)
     if not ordered:
         return None
+    pause_map = {p.id: p.paused for p in session.players.all()}
     current_id = state.get("active_player_id")
     if current_id not in ordered:
-        return ordered[0]
-    i = ordered.index(current_id)
-    return ordered[(i + 1) % len(ordered)]
+        start_idx = 0
+    else:
+        start_idx = (ordered.index(current_id) + 1) % len(ordered)
+    for step in range(len(ordered)):
+        idx = (start_idx + step) % len(ordered)
+        pid = ordered[idx]
+        if not pause_map.get(pid, False):
+            return pid
+    return None
 
 
 def _render_question_prompt(question: WhatIfQuestion, *, subject_name: str) -> str:
@@ -178,11 +186,15 @@ def _setup_turn(session: WhatIfSession, *, next_player_id: int) -> bool:
         return False
 
     session.status = WhatIfSession.Status.TURN
-    player_ids = [p.id for p in session.players.all().order_by("created_at", "id")]
+    rows = list(session.players.all().order_by("created_at", "id"))
+    player_ids = [p.id for p in rows]
+    non_paused_ids = [p.id for p in rows if not p.paused]
+    # Prefer subject pool = non-paused only when at least two are in play (baton target is never paused).
+    subject_pool = non_paused_ids if len(non_paused_ids) >= 2 else player_ids
     subject_candidate_ids: list[int] = []
     if session.challenge_mode:
         subject_candidate_ids = two_subject_candidate_ids(
-            player_ids=player_ids,
+            player_ids=subject_pool,
             active_player_id=next_player_id,
             subject_times=subject_times,
         )
@@ -260,6 +272,8 @@ def _version_not_modified_response(session: WhatIfSession, request):
     ):
         resp = Response(status=status.HTTP_304_NOT_MODIFIED)
         resp["ETag"] = f'"{session.state_version}"'
+        # Explicit length helps some HTTP proxies (e.g. Vite dev server) handle 304 without turning it into 502.
+        resp["Content-Length"] = "0"
         return resp
     return None
 
@@ -457,7 +471,7 @@ def _require_player(session: WhatIfSession, request) -> WhatIfPlayer | Response:
 def _resolve_actor_for_action(
     session: WhatIfSession, request, action_type: str
 ) -> tuple[WhatIfPlayer | None, Response | None]:
-    """Returns (player_or_none, error_response). start_game requires host token; other actions require player token."""
+    """Returns (player_or_none, error_response). Host-only: start_game, set_player_paused. Others need player token."""
     player = _find_player_for_request(session, request)
     host_hdr = request.headers.get("X-Whatif-Host-Token", "").strip()
     host_ok = bool(host_hdr and str(session.host_secret) == host_hdr)
@@ -466,6 +480,14 @@ def _resolve_actor_for_action(
         if not host_ok:
             return None, Response(
                 {"detail": "Only the host can start the game from the lobby."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return None, None
+
+    if action_type == "set_player_paused":
+        if not host_ok:
+            return None, Response(
+                {"detail": "Only the host can pause or resume players."},
                 status=status.HTTP_403_FORBIDDEN,
             )
         return None, None
@@ -480,8 +502,23 @@ def _resolve_actor_for_action(
 
 def _all_players_voted(session: WhatIfSession, state: dict) -> bool:
     votes = state.get("votes", {})
-    all_ids = [p.id for p in session.players.all()]
-    return len(votes.keys()) >= len(all_ids)
+    voted_ids = {int(k) for k in votes.keys()}
+    eligible = [p.id for p in session.players.all() if not p.paused]
+    if not eligible:
+        return True
+    return all(pid in voted_ids for pid in eligible)
+
+
+def _pause_blocked_for_active_player(session: WhatIfSession, state: dict, target_id: int) -> bool:
+    """Cannot pause the active player while they must drive the TV (subject, reveal, next turn)."""
+    ap = state.get("active_player_id")
+    if ap is None or int(ap) != int(target_id):
+        return False
+    return session.status in (
+        WhatIfSession.Status.TURN,
+        WhatIfSession.Status.VOTING,
+        WhatIfSession.Status.POST_RESULTS,
+    )
 
 
 @api_view(["POST"])
@@ -504,17 +541,18 @@ def session_action(request, code: str):
         if action_type == "start_game":
             if session.status not in [WhatIfSession.Status.OPEN, WhatIfSession.Status.PRE_LOBBY]:
                 return Response({"detail": "Game already started."}, status=status.HTTP_400_BAD_REQUEST)
-            players = list(session.players.all())
-            if len(players) < 2:
+            players_ordered = list(session.players.all().order_by("created_at", "id"))
+            if len(players_ordered) < 2:
                 return Response({"detail": "At least two players are required."}, status=status.HTTP_400_BAD_REQUEST)
-            if not all(p.ready_to_start for p in players):
+            if not all(p.ready_to_start for p in players_ordered):
                 return Response(
                     {"detail": "Every player must mark ready on their phone before the host can start."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            session.challenge_mode = len(players) >= 2
+            session.challenge_mode = len(players_ordered) >= 2
             session.save(update_fields=["challenge_mode", "updated_at"])
-            first_player_id = players[0].id
+            first_non_paused = next((p.id for p in players_ordered if not p.paused), None)
+            first_player_id = first_non_paused if first_non_paused is not None else players_ordered[0].id
             _setup_turn(session, next_player_id=first_player_id)
 
         elif action_type == "toggle_ready":
@@ -532,6 +570,14 @@ def session_action(request, code: str):
         elif action_type == "pick_subject":
             if session.status != WhatIfSession.Status.TURN:
                 return Response({"detail": "Subject pick is only allowed during turn state."}, status=400)
+            pick_actor = WhatIfPlayer.objects.select_for_update().filter(id=actor.id, session_id=session.id).first()
+            if pick_actor is None:
+                return Response({"detail": "Player not found in this session."}, status=400)
+            if pick_actor.paused:
+                return Response(
+                    {"detail": "You are paused by the host. Ask them to resume you."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             if not session.challenge_mode:
                 return Response({"detail": "Subject pick is not active for this session."}, status=400)
             if state.get("active_player_id") != actor.id:
@@ -581,6 +627,14 @@ def session_action(request, code: str):
         elif action_type == "vote":
             if session.status != WhatIfSession.Status.VOTING:
                 return Response({"detail": "Not in voting state."}, status=400)
+            vote_pl = WhatIfPlayer.objects.select_for_update().filter(id=actor.id, session_id=session.id).first()
+            if vote_pl is None:
+                return Response({"detail": "Player not found in this session."}, status=400)
+            if vote_pl.paused:
+                return Response(
+                    {"detail": "You are paused by the host. Ask them to resume you."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             option_index = serializer.validated_data.get("option_index")
             if option_index is None or option_index not in [1, 2, 3, 4, 5, 6]:
                 return Response({"detail": "option_index must be an integer from 1 to 6."}, status=400)
@@ -607,6 +661,14 @@ def session_action(request, code: str):
         elif action_type == "reveal":
             if session.status != WhatIfSession.Status.VOTING:
                 return Response({"detail": "Reveal is only allowed during voting."}, status=400)
+            reveal_pl = WhatIfPlayer.objects.select_for_update().filter(id=actor.id, session_id=session.id).first()
+            if reveal_pl is None:
+                return Response({"detail": "Player not found in this session."}, status=400)
+            if reveal_pl.paused:
+                return Response(
+                    {"detail": "You are paused by the host. Ask them to resume you."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             if state.get("active_player_id") != actor.id:
                 return Response({"detail": "Only the active player can reveal votes."}, status=403)
             if not _all_players_voted(session, state):
@@ -658,6 +720,14 @@ def session_action(request, code: str):
         elif action_type == "next_turn":
             if session.status != WhatIfSession.Status.POST_RESULTS:
                 return Response({"detail": "Not ready for next turn."}, status=400)
+            next_pl = WhatIfPlayer.objects.select_for_update().filter(id=actor.id, session_id=session.id).first()
+            if next_pl is None:
+                return Response({"detail": "Player not found in this session."}, status=400)
+            if next_pl.paused:
+                return Response(
+                    {"detail": "You are paused by the host. Ask them to resume you."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             if state.get("active_player_id") != actor.id:
                 return Response({"detail": "Only the active player can advance to next turn."}, status=403)
             not_before = state.get("next_turn_not_before")
@@ -672,12 +742,23 @@ def session_action(request, code: str):
                     pass
             next_player_id = _next_turn_player_id(session, state)
             if next_player_id is None:
-                return Response({"detail": "No players available."}, status=400)
+                return Response(
+                    {"detail": "All players are paused; resume someone on the TV scoreboard before the next turn."},
+                    status=400,
+                )
             _setup_turn(session, next_player_id=next_player_id)
 
         elif action_type == "skip":
             if session.status != WhatIfSession.Status.TURN:
                 return Response({"detail": "Skip is only allowed during turn state."}, status=400)
+            skip_pl = WhatIfPlayer.objects.select_for_update().filter(id=actor.id, session_id=session.id).first()
+            if skip_pl is None:
+                return Response({"detail": "Player not found in this session."}, status=400)
+            if skip_pl.paused:
+                return Response(
+                    {"detail": "You are paused by the host. Ask them to resume you."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             if state.get("active_player_id") != actor.id:
                 return Response({"detail": "Only the active player can skip."}, status=403)
             if actor.skips_remaining <= 0:
@@ -687,6 +768,35 @@ def session_action(request, code: str):
                 WhatIfQuestion.objects.filter(id=question_id).update(total_skips=F("total_skips") + 1)
             WhatIfPlayer.objects.filter(id=actor.id).update(skips_remaining=F("skips_remaining") - 1)
             _setup_turn(session, next_player_id=actor.id)
+
+        elif action_type == "set_player_paused":
+            target_id = serializer.validated_data.get("target_player_id")
+            paused_flag = serializer.validated_data.get("paused")
+            if target_id is None:
+                return Response({"detail": "target_player_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+            if paused_flag is None:
+                return Response({"detail": "paused (boolean) is required."}, status=status.HTTP_400_BAD_REQUEST)
+            target = (
+                WhatIfPlayer.objects.select_for_update()
+                .filter(id=target_id, session_id=session.id)
+                .first()
+            )
+            if target is None:
+                return Response({"detail": "Player not found in this session."}, status=status.HTTP_400_BAD_REQUEST)
+            if paused_flag and _pause_blocked_for_active_player(session, state, target.id):
+                return Response(
+                    {
+                        "detail": (
+                            "Cannot pause the active player while they must drive this phase "
+                            "(choose subject, reveal votes, or next turn). Unpause others first or wait."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            target.paused = bool(paused_flag)
+            target.save(update_fields=["paused", "updated_at"])
+            session.state_version = F("state_version") + 1
+            session.save(update_fields=["state_version", "updated_at"])
 
     session.refresh_from_db()
     payload = WhatIfSessionPublicSerializer(session).data

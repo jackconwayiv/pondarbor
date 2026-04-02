@@ -1,13 +1,30 @@
-import { Code, Grid, GridItem, Heading, HStack, Stack, Text } from "@chakra-ui/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Code, Grid, GridItem, Heading, HStack, IconButton, Stack, Text } from "@chakra-ui/react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 
 import PondButton from "../PondButton";
-import { fetchWhatIfTvState } from "./api";
+import { fetchWhatIfTvState, loadHostToken, postWhatIfAction } from "./api";
 import WhatIfShell from "./WhatIfShell";
-import type { WhatIfSessionState } from "./types";
+import type { WhatIfPlayer, WhatIfSessionState } from "./types";
 
 const POLL_MS = 2000;
+
+function PauseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="1.35em" height="1.35em" fill="currentColor" aria-hidden>
+      <rect x="5" y="4" width="5" height="16" rx="1" />
+      <rect x="14" y="4" width="5" height="16" rx="1" />
+    </svg>
+  );
+}
+
+function PlayIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="1.35em" height="1.35em" fill="currentColor" aria-hidden>
+      <path d="M8 5v14l11-7L8 5z" />
+    </svg>
+  );
+}
 
 export default function WhatIfPlayPage() {
   const navigate = useNavigate();
@@ -15,22 +32,22 @@ export default function WhatIfPlayPage() {
   const roomCode = code.toUpperCase();
   const [state, setState] = useState<WhatIfSessionState | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const sinceVersionRef = useRef<number | undefined>(undefined);
+  const [hostBusy, setHostBusy] = useState(false);
+  const hostToken = useMemo(() => loadHostToken(roomCode), [roomCode]);
 
   useEffect(() => {
     let cancelled = false;
     async function poll() {
       try {
-        const next = await fetchWhatIfTvState(roomCode, sinceVersionRef.current);
+        // No `since=` — avoids HTTP 304, which Vite's dev proxy often surfaces as 502.
+        const next = await fetchWhatIfTvState(roomCode);
         if (!cancelled && next) {
-          sinceVersionRef.current = next.state_version;
           setState(next);
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load game state");
       }
     }
-    sinceVersionRef.current = undefined;
     void poll();
     const id = window.setInterval(() => void poll(), POLL_MS);
     return () => {
@@ -45,10 +62,14 @@ export default function WhatIfPlayPage() {
   const votedPlayers = votedPlayerIds
     .map((id) => (state?.players ?? []).find((p) => p.id === id))
     .filter((p): p is NonNullable<typeof p> => p != null);
+  const eligibleVoters = (state?.players ?? []).filter((p) => !p.paused);
+  const eligibleVoterIds = new Set(eligibleVoters.map((p) => p.id));
   const allVotesIn =
     state?.status === "voting" &&
     (state?.players?.length ?? 0) > 0 &&
-    votedPlayerIds.length >= (state?.players?.length ?? 0);
+    (eligibleVoterIds.size === 0
+      ? true
+      : [...eligibleVoterIds].every((id) => votedPlayerIds.includes(id)));
   const voteRows = Object.entries(state?.state?.vote_counts ?? {}).sort(
     (a, b) => Number(b[1]) - Number(a[1]) || Number(a[0]) - Number(b[0]),
   );
@@ -57,7 +78,10 @@ export default function WhatIfPlayPage() {
     topVoteCount > 0
       ? voteRows
           .filter(([, count]) => Number(count) === topVoteCount)
-          .map(([option]) => `${option}. ${state?.state?.question?.answers?.[option] ?? ""}`)
+          .map(([option]) => {
+            const label = state?.state?.question?.answers?.[option]?.trim();
+            return label && label !== "" ? label : "(unknown)";
+          })
       : [];
   const roundScoreRows = Object.entries(state?.state?.round_scores ?? {})
     .filter(([, points]) => Number(points) > 0)
@@ -98,6 +122,37 @@ export default function WhatIfPlayPage() {
   const scoreboardRows = [...((state?.players ?? []).slice())].sort(
     (a, b) => b.score - a.score || a.display_name.localeCompare(b.display_name),
   );
+
+  const canHostManagePause =
+    !!hostToken &&
+    state != null &&
+    (state.status === "turn" || state.status === "voting" || state.status === "post_results");
+
+  function hostCannotPausePlayer(p: WhatIfPlayer): boolean {
+    if (p.paused) return false;
+    const ap = state?.state?.active_player_id;
+    if (p.id !== ap) return false;
+    const st = state?.status;
+    return st === "turn" || st === "voting" || st === "post_results";
+  }
+
+  async function handleSetPlayerPaused(p: WhatIfPlayer, paused: boolean) {
+    if (!hostToken) return;
+    setHostBusy(true);
+    setError(null);
+    try {
+      const next = await postWhatIfAction(
+        roomCode,
+        { type: "set_player_paused", target_player_id: p.id, paused },
+        { hostToken },
+      );
+      setState(next);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Host action failed");
+    } finally {
+      setHostBusy(false);
+    }
+  }
 
   return (
     <WhatIfShell maxW="5xl" withPanel={false}>
@@ -210,9 +265,32 @@ export default function WhatIfPlayPage() {
 
           <GridItem minW={0} w="100%">
             <Stack gap="2" w="100%">
+              <Stack
+                gap="2"
+                p="4"
+                borderWidth="1px"
+                borderColor="border"
+                borderRadius="xl"
+                bg="bg"
+                w="100%"
+              >
+                <Text
+                  fontSize="28px"
+                  fontWeight="bold"
+                  letterSpacing="0.2em"
+                  textAlign="center"
+                  color="fg"
+                  lineHeight="1.1"
+                >
+                  SCOREBOARD
+                </Text>
+                <Text textAlign="center" color="gray.700" fontSize="sm">
+                  The first player to {state?.win_score ?? 25} points wins!
+                </Text>
+              </Stack>
               {scoreboardRows.length > 0 ? (
                 scoreboardRows.map((p) => (
-                  <Text
+                  <HStack
                     key={p.id}
                     borderWidth="1px"
                     borderColor="black"
@@ -220,9 +298,46 @@ export default function WhatIfPlayPage() {
                     px="4"
                     py="4"
                     bg="bg"
+                    justify="space-between"
+                    align="center"
+                    gap="3"
+                    w="100%"
                   >
-                    {p.avatar_emoji} {p.display_name} - {p.score} pts
-                  </Text>
+                    <HStack flex="1" minW={0} gap="2" align="baseline">
+                      <Text>
+                        {p.avatar_emoji} {p.display_name} - {p.score} pts
+                      </Text>
+                      {p.paused ? (
+                        <Text color="gray.600" fontSize="sm" fontWeight="medium">
+                          (paused)
+                        </Text>
+                      ) : null}
+                    </HStack>
+                    {canHostManagePause ? (
+                      <IconButton
+                        type="button"
+                        aria-label={p.paused ? `Resume ${p.display_name}` : `Pause ${p.display_name}`}
+                        title={
+                          p.paused
+                            ? "Resume — they can vote and take other actions in this round if the game has not moved on yet."
+                            : hostCannotPausePlayer(p)
+                              ? "Cannot pause the active player during their turn, voting reveal, or score transition."
+                              : `Pause ${p.display_name} (their vote is not required until you resume them)`
+                        }
+                        size="sm"
+                        variant="outline"
+                        colorPalette={p.paused ? "lilypad" : "orange"}
+                        flexShrink={0}
+                        minW="10"
+                        minH="10"
+                        loading={hostBusy}
+                        disabled={hostBusy || (!p.paused && hostCannotPausePlayer(p))}
+                        onClick={() => void handleSetPlayerPaused(p, !p.paused)}
+                      >
+                        {p.paused ? <PlayIcon /> : <PauseIcon />}
+                      </IconButton>
+                    ) : null}
+                  </HStack>
                 ))
               ) : (
                 <Text

@@ -124,6 +124,8 @@ class WhatIfPlayer(models.Model):
     score = models.IntegerField(default=0)
     skips_remaining = models.PositiveIntegerField(default=1)
     ready_to_start = models.BooleanField(default=False)
+    # Host can pause disconnected players so voting can proceed without their ballot.
+    paused = models.BooleanField(default=False)
     player_secret = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

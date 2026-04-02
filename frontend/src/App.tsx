@@ -169,12 +169,13 @@ function App() {
         <Box maxW="3xl">
           <SimpleGrid columns={{ base: 2, md: 3 }} gap={{ base: "4", md: "6" }}>
             {HOME_LILYPAD_TILES.map((tile) => {
+              const tileInteractive = isAuthenticated || tile.to === "/whatif";
               const card = (
                 <Box
-                  bg={isAuthenticated ? "lilypad.solid" : "#A4B89A"}
+                  bg={tileInteractive ? "lilypad.solid" : "#A4B89A"}
                   borderRadius="9999px"
                   borderWidth="20px"
-                  borderColor={isAuthenticated ? "lilypad.solid" : "#A4B89A"}
+                  borderColor={tileInteractive ? "lilypad.solid" : "#A4B89A"}
                   aspectRatio={1}
                   p={{ base: "4", md: "6" }}
                   display="flex"
@@ -187,9 +188,9 @@ function App() {
                   overflow="hidden"
                   clipPath={LILYPAD_WEDGE_CLIP_PATH}
                   transition="background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease"
-                  cursor={isAuthenticated ? "pointer" : "not-allowed"}
+                  cursor={tileInteractive ? "pointer" : "not-allowed"}
                   _hover={
-                    isAuthenticated
+                    tileInteractive
                       ? {
                           bg: "bg",
                           transform: "scale(1.02)",
@@ -201,7 +202,7 @@ function App() {
                         }
                   }
                   _active={
-                    isAuthenticated
+                    tileInteractive
                       ? {
                           bg: "bg",
                           transform: "scale(0.99)",
@@ -216,7 +217,7 @@ function App() {
                       size={{ base: "md", md: "lg" }}
                       position="relative"
                       zIndex={2}
-                      color={isAuthenticated ? "fg" : "gray.600"}
+                      color={tileInteractive ? "fg" : "gray.600"}
                       lineHeight="1.2"
                     >
                       {tile.label}
@@ -227,7 +228,7 @@ function App() {
                       fontSize={{ base: "2xs", md: "xs" }}
                       lineHeight="1.35"
                       fontWeight="medium"
-                      color={isAuthenticated ? "fg" : "gray.600"}
+                      color={tileInteractive ? "fg" : "gray.600"}
                       opacity={0}
                       maxHeight="0"
                       overflow="hidden"
@@ -242,7 +243,7 @@ function App() {
                 </Box>
               );
 
-              if (!isAuthenticated) {
+              if (!tileInteractive) {
                 return <Box key={tile.to}>{card}</Box>;
               }
 

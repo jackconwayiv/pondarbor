@@ -1,4 +1,16 @@
-import { Code, Heading, HStack, Input, Stack, Tabs, Text, Textarea } from "@chakra-ui/react";
+import {
+  Box,
+  Checkbox,
+  Code,
+  Collapsible,
+  Heading,
+  HStack,
+  Input,
+  Stack,
+  Tabs,
+  Text,
+  Textarea,
+} from "@chakra-ui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 
@@ -9,9 +21,11 @@ import {
   createWhatIfSession,
   createWhatIfQuestion,
   deleteWhatIfQuestion,
+  fetchWhatIfPendingCount,
   joinWhatIfSession,
   listWhatIfQuestions,
   patchWhatIfQuestion,
+  proposeWhatIfQuestion,
   resumeHostingSession,
   saveHostToken,
   savePlayerToken,
@@ -47,6 +61,17 @@ const EMPTY_DRAFT: QuestionDraft = {
   is_active: true,
 };
 
+type ProposeDraft = Omit<QuestionDraft, "is_active">;
+const EMPTY_PROPOSE: ProposeDraft = {
+  prompt: "",
+  answer_1: "",
+  answer_2: "",
+  answer_3: "",
+  answer_4: "",
+  answer_5: "",
+  answer_6: "",
+};
+
 export default function WhatIfEntryPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -58,6 +83,8 @@ export default function WhatIfEntryPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isStaff = !!sessionUser?.user?.is_staff;
+  const canProposeQuestions =
+    isAuthenticated && !isStaff && (sessionUser?.profile?.whatif_completed_session ?? false);
   const [adminBusy, setAdminBusy] = useState(false);
   const [adminError, setAdminError] = useState<string | null>(null);
   const [questions, setQuestions] = useState<WhatIfQuestionAdmin[]>([]);
@@ -67,6 +94,13 @@ export default function WhatIfEntryPage() {
   const [bulkText, setBulkText] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const confirmDeleteButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [showRejected, setShowRejected] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [proposeDraft, setProposeDraft] = useState<ProposeDraft>(EMPTY_PROPOSE);
+  const [proposeBusy, setProposeBusy] = useState(false);
+  const [proposeError, setProposeError] = useState<string | null>(null);
+  const [proposeSuccess, setProposeSuccess] = useState<string | null>(null);
+  const [proposeOpen, setProposeOpen] = useState(false);
   const lastPlayerTabRef = useRef<PlayerTab>("new");
   const lastAdminTabRef = useRef<AdminTab>("admin-list");
 
@@ -123,8 +157,12 @@ export default function WhatIfEntryPage() {
     setAdminError(null);
     try {
       const token = await getApiAccessToken();
-      const items = await listWhatIfQuestions(token, query);
+      const [items, pending] = await Promise.all([
+        listWhatIfQuestions(token, query, { showRejected }),
+        fetchWhatIfPendingCount(token),
+      ]);
       setQuestions(items);
+      setPendingCount(pending);
     } catch (e) {
       setAdminError(e instanceof Error ? e.message : "Failed to load questions");
     } finally {
@@ -136,7 +174,25 @@ export default function WhatIfEntryPage() {
     if (!isAuthenticated || !isStaff) return;
     void loadQuestions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, isStaff]);
+  }, [isAuthenticated, isStaff, showRejected]);
+
+  async function setReviewStatus(id: number, review_status: "approved" | "rejected") {
+    if (!isAuthenticated || !isStaff) return;
+    setAdminBusy(true);
+    setAdminError(null);
+    try {
+      const token = await getApiAccessToken();
+      await patchWhatIfQuestion(token, id, {
+        review_status,
+        is_active: review_status === "approved",
+      });
+      await loadQuestions();
+    } catch (e) {
+      setAdminError(e instanceof Error ? e.message : "Update failed");
+    } finally {
+      setAdminBusy(false);
+    }
+  }
 
   function beginCreateQuestion() {
     setEditingId(null);
@@ -248,9 +304,17 @@ export default function WhatIfEntryPage() {
     }
   }
 
+  function sanitizeDisplayNameInput(raw: string): string {
+    return raw
+      .split("")
+      .filter((ch) => /^[A-Za-z0-9 ]$/.test(ch))
+      .join("")
+      .slice(0, 12);
+  }
+
   async function handleJoin() {
     const code = joinCode.trim().toUpperCase();
-    const displayName = (name.trim() || defaultName).slice(0, 80);
+    const displayName = sanitizeDisplayNameInput(name.trim() || defaultName) || "Guest";
     if (code.length !== 4) {
       setError("Room code must be exactly 4 letters.");
       return;
@@ -266,6 +330,23 @@ export default function WhatIfEntryPage() {
       setError(e instanceof Error ? e.message : "Unable to join");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function submitPropose() {
+    if (!canProposeQuestions) return;
+    setProposeBusy(true);
+    setProposeError(null);
+    setProposeSuccess(null);
+    try {
+      const token = await getApiAccessToken();
+      await proposeWhatIfQuestion(token, proposeDraft);
+      setProposeDraft(EMPTY_PROPOSE);
+      setProposeSuccess("Submitted for review. Thanks!");
+    } catch (e) {
+      setProposeError(e instanceof Error ? e.message : "Could not submit");
+    } finally {
+      setProposeBusy(false);
     }
   }
 
@@ -387,8 +468,8 @@ export default function WhatIfEntryPage() {
           <Input
             placeholder={`Display name (default: ${defaultName})`}
             value={name}
-            onChange={(e) => setName(e.target.value)}
-            maxLength={80}
+            onChange={(e) => setName(sanitizeDisplayNameInput(e.target.value))}
+            maxLength={12}
             {...whatifInputProps}
           />
           <PondButton
@@ -454,14 +535,32 @@ export default function WhatIfEntryPage() {
     <>
       <Tabs.Content value="admin-list" pt="4">
         <Stack gap="3">
-          <Text fontWeight="medium">All questions ({questions.length})</Text>
-          <HStack gap="2" align="end">
-            <Stack gap="1" flex="1">
+          <HStack justify="space-between" flexWrap="wrap" gap="3">
+            <Text fontWeight="medium">All questions ({questions.length})</Text>
+            {pendingCount > 0 ? (
+              <Text fontWeight="bold" color="orange.solid">
+                Unreviewed: {pendingCount}
+              </Text>
+            ) : null}
+          </HStack>
+          <HStack gap="2" align="end" flexWrap="wrap">
+            <Stack gap="1" flex="1" minW="200px">
               <Text fontSize="sm" color="gray.700">
                 Search prompt
               </Text>
               <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by prompt..." {...whatifInputProps} />
             </Stack>
+            <Checkbox.Root
+              checked={showRejected}
+              onCheckedChange={() => setShowRejected((v) => !v)}
+              colorPalette="lilypad"
+            >
+              <Checkbox.HiddenInput />
+              <Checkbox.Control>
+                <Checkbox.Indicator />
+              </Checkbox.Control>
+              <Checkbox.Label>Show rejected</Checkbox.Label>
+            </Checkbox.Root>
             <PondButton type="button" colorPalette="lilypad" onClick={() => void loadQuestions()} loading={adminBusy}>
               Refresh
             </PondButton>
@@ -469,13 +568,37 @@ export default function WhatIfEntryPage() {
           {questions.map((q) => (
             <Stack key={q.id} p="3" borderWidth="1px" borderColor="border" borderRadius="md" bg="bg">
               <Text fontWeight="medium">
-                #{q.id} {q.is_active ? "(active)" : "(inactive)"} - used {q.sessions_used_count} sessions
+                #{q.id} {q.review_status === "pending" ? "(pending)" : q.is_active ? "(active)" : "(inactive)"} - used{" "}
+                {q.sessions_used_count} sessions
               </Text>
               <Text>{q.prompt}</Text>
               <Text fontSize="sm" color="gray.700">
                 1) {q.answer_1} | 2) {q.answer_2} | 3) {q.answer_3} | 4) {q.answer_4} | 5) {q.answer_5} | 6) {q.answer_6}
               </Text>
               <HStack gap="2" flexWrap="wrap" justify="flex-end" w="100%">
+                {q.review_status === "pending" ? (
+                  <>
+                    <PondButton
+                      type="button"
+                      colorPalette="lilypad"
+                      size="sm"
+                      loading={adminBusy}
+                      onClick={() => void setReviewStatus(q.id, "approved")}
+                    >
+                      Approve
+                    </PondButton>
+                    <PondButton
+                      type="button"
+                      variant="outline"
+                      colorPalette="orange"
+                      size="sm"
+                      loading={adminBusy}
+                      onClick={() => void setReviewStatus(q.id, "rejected")}
+                    >
+                      Reject
+                    </PondButton>
+                  </>
+                ) : null}
                 <PondButton
                   type="button"
                   colorPalette="lilypad"
@@ -660,6 +783,114 @@ export default function WhatIfEntryPage() {
             {playerTabPanels}
           </Tabs.Root>
         )}
+
+        {canProposeQuestions ? (
+          <Box borderWidth="1px" borderColor="border" borderRadius="md" bg="bg" p="4">
+            <Collapsible.Root open={proposeOpen} onOpenChange={(details) => setProposeOpen(details.open)}>
+              <Collapsible.Trigger asChild>
+                <button
+                  type="button"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    width: "100%",
+                    textAlign: "left",
+                    fontSize: "1rem",
+                    fontWeight: 600,
+                    color: "inherit",
+                    cursor: "pointer",
+                    background: "transparent",
+                    border: "none",
+                    padding: 0,
+                    margin: 0,
+                  }}
+                >
+                  <Text
+                    as="span"
+                    transform={proposeOpen ? "rotate(90deg)" : "rotate(0deg)"}
+                    transition="transform 0.15s ease"
+                    lineHeight="1"
+                    flexShrink={0}
+                  >
+                    ›
+                  </Text>
+                  <Text as="span" flex="1">
+                    Propose a question
+                  </Text>
+                </button>
+              </Collapsible.Trigger>
+              <Collapsible.Content>
+                <Stack gap="3" pt="3">
+                  <Text fontSize="sm" color="gray.700">
+                    Suggest a prompt for staff to review. Approved questions may appear in future sessions.
+                  </Text>
+                  {proposeSuccess ? (
+                    <Text color="fg" fontWeight="medium">
+                      {proposeSuccess}
+                    </Text>
+                  ) : null}
+                  {proposeError ? (
+                    <Text color="red.fg" fontSize="sm">
+                      {proposeError}
+                    </Text>
+                  ) : null}
+                  <Input
+                    value={proposeDraft.prompt}
+                    onChange={(e) => setProposeDraft((d) => ({ ...d, prompt: e.target.value }))}
+                    placeholder='Prompt with "{subject}"'
+                    {...whatifInputProps}
+                  />
+                  <Input
+                    value={proposeDraft.answer_1}
+                    onChange={(e) => setProposeDraft((d) => ({ ...d, answer_1: e.target.value }))}
+                    placeholder="Answer 1"
+                    {...whatifInputProps}
+                  />
+                  <Input
+                    value={proposeDraft.answer_2}
+                    onChange={(e) => setProposeDraft((d) => ({ ...d, answer_2: e.target.value }))}
+                    placeholder="Answer 2"
+                    {...whatifInputProps}
+                  />
+                  <Input
+                    value={proposeDraft.answer_3}
+                    onChange={(e) => setProposeDraft((d) => ({ ...d, answer_3: e.target.value }))}
+                    placeholder="Answer 3"
+                    {...whatifInputProps}
+                  />
+                  <Input
+                    value={proposeDraft.answer_4}
+                    onChange={(e) => setProposeDraft((d) => ({ ...d, answer_4: e.target.value }))}
+                    placeholder="Answer 4"
+                    {...whatifInputProps}
+                  />
+                  <Input
+                    value={proposeDraft.answer_5}
+                    onChange={(e) => setProposeDraft((d) => ({ ...d, answer_5: e.target.value }))}
+                    placeholder="Answer 5"
+                    {...whatifInputProps}
+                  />
+                  <Input
+                    value={proposeDraft.answer_6}
+                    onChange={(e) => setProposeDraft((d) => ({ ...d, answer_6: e.target.value }))}
+                    placeholder="Answer 6"
+                    {...whatifInputProps}
+                  />
+                  <PondButton
+                    type="button"
+                    colorPalette="lilypad"
+                    alignSelf="flex-end"
+                    onClick={() => void submitPropose()}
+                    loading={proposeBusy}
+                  >
+                    Submit proposal
+                  </PondButton>
+                </Stack>
+              </Collapsible.Content>
+            </Collapsible.Root>
+          </Box>
+        ) : null}
 
         {error ? (
           <Text role="alert" color="red.600">

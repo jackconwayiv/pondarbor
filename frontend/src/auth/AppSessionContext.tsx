@@ -6,6 +6,8 @@ export type Profile = {
   avatar_url: string;
   timezone: string;
   birth_date: string | null;
+  /** True after the user has finished at least one WhatIf session (server-set). */
+  whatif_completed_session?: boolean;
 };
 
 export type AppUser = {

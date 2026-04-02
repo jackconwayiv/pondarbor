@@ -51,6 +51,11 @@ class WhatIfSession(models.Model):
 
 
 class WhatIfQuestion(models.Model):
+    class ReviewStatus(models.TextChoices):
+        APPROVED = "approved", "Approved"
+        PENDING = "pending", "Pending"
+        REJECTED = "rejected", "Rejected"
+
     prompt = models.TextField()
     answer_1 = models.CharField(max_length=255)
     answer_2 = models.CharField(max_length=255)
@@ -65,6 +70,21 @@ class WhatIfQuestion(models.Model):
     total_skips = models.PositiveIntegerField(default=0)
 
     is_active = models.BooleanField(default=True)
+    review_status = models.CharField(
+        max_length=20,
+        choices=ReviewStatus.choices,
+        default=ReviewStatus.APPROVED,
+        db_index=True,
+    )
+    proposed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="whatif_questions_proposed",
+    )
+    deleted_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -97,6 +117,7 @@ class WhatIfQuestionSession(models.Model):
         related_name="question_usages",
     )
     used_at = models.DateTimeField(auto_now_add=True)
+    skipped_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         constraints = [

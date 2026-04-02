@@ -13,7 +13,12 @@ export type WhatIfQuestion = {
   id: number;
   prompt: string;
   answers: Record<string, string>;
+  proposed_by?: { display_name: string; avatar_url: string } | null;
 };
+
+export type WhatIfSubjectOption =
+  | { kind: "player"; player_id: number }
+  | { kind: "challenge" };
 
 export type WhatIfRoundState = {
   active_player_id?: number | null;
@@ -27,6 +32,12 @@ export type WhatIfRoundState = {
   challenge_target_player_id?: number | null;
   /** Two non-active players chosen for the active player to pick between as round subject (3+ players). */
   subject_candidate_ids?: number[];
+  subject_options?: WhatIfSubjectOption[];
+  duel?: { step: string; challenged_player_id?: number | null } | null;
+  voting_deadline_at?: string | null;
+  reveal_flairs?: string[];
+  pending_question_skip_by_player_id?: number | null;
+  skip_ui_suppressed_for_question_id?: number | null;
   /** Times each player id has been the round subject this session. */
   subject_times?: Record<string, number>;
   next_turn_not_before?: string | null;
@@ -61,4 +72,3 @@ export type WhatIfSessionState = {
   created_at?: string;
   updated_at?: string;
 };
-

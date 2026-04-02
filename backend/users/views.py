@@ -72,6 +72,7 @@ def serialize_me(user):
             "avatar_url": profile.avatar_url,
             "timezone": profile.timezone,
             "birth_date": profile.birth_date,
+            "whatif_completed_session": profile.whatif_completed_session,
         },
     }
 

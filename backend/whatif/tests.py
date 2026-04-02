@@ -1,9 +1,11 @@
 import random
 from collections import Counter
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from whatif.models import WhatIfGameResult, WhatIfPlayer, WhatIfQuestion, WhatIfSession
@@ -388,7 +390,7 @@ class WhatIfApiTests(TestCase):
         self.assertEqual(reveal.status_code, 200)
         self.assertEqual(reveal.json()["status"], "post_results")
 
-    @patch("whatif.views.ROUND_TRANSITION_SECONDS", 0)
+    @patch("whatif.constants.ROUND_TRANSITION_SECONDS", 0)
     def test_next_turn_skips_paused_player_in_rotation(self):
         code, host_secret, _owner = self._create_session()
         p1 = self._join(code, "John")
@@ -797,6 +799,190 @@ class WhatIfApiTests(TestCase):
         self.assertEqual(pick.status_code, 200, pick.json())
         self.assertEqual(pick.json()["status"], "voting")
         self.assertIsNotNone(pick.json()["state"].get("question"))
+
+    @patch("whatif.views.random.random", return_value=0.0)
+    def test_duel_voting_auto_reveals_on_session_get_after_deadline(self, _mock_random):
+        """Duel round + lazy auto-reveal when deadline is past (simulated via state); GET session applies it."""
+        code, host_secret, _owner = self._create_session()
+        p1 = self._join(code, "John")
+        p2 = self._join(code, "Maya")
+        self._join(code, "Pat")
+        _mark_all_players_ready(code)
+        start = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "start_game"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        self.assertEqual(start.status_code, 200)
+        john_id = WhatIfPlayer.objects.get(session__short_code=code, display_name="John").id
+        maya_id = WhatIfPlayer.objects.get(session__short_code=code, display_name="Maya").id
+        self.assertEqual(start.json()["state"]["active_player_id"], john_id)
+        opts = start.json()["state"]["subject_options"]
+        self.assertTrue(any(o.get("kind") == "challenge" for o in opts))
+        c1 = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "pick_subject", "challenge": True},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.assertEqual(c1.status_code, 200, c1.json())
+        self.assertEqual(c1.json()["state"]["duel"]["step"], "pick_opponent")
+        c2 = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "pick_duel_opponent", "target_player_id": maya_id},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.assertEqual(c2.status_code, 200, c2.json())
+        cand = c2.json()["state"]["subject_candidate_ids"]
+        self.assertEqual(len(cand), 2)
+        subject_pick = cand[0]
+        c3 = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "pick_subject", "target_player_id": subject_pick},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.assertEqual(c3.status_code, 200, c3.json())
+        self.assertEqual(c3.json()["status"], "voting")
+        self.assertEqual(c3.json()["state"]["duel"]["step"], "voting")
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 1},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        sess = WhatIfSession.objects.get(short_code=code)
+        self.assertEqual(sess.status, WhatIfSession.Status.VOTING)
+        st = dict(sess.state or {})
+        st["voting_deadline_at"] = (timezone.now() - timedelta(seconds=5)).isoformat()
+        sess.state = st
+        sess.save(update_fields=["state", "updated_at"])
+        polled = self.client.get(f"/api/v1/whatif/sessions/{code}/")
+        self.assertEqual(polled.status_code, 200)
+        self.assertEqual(polled.json()["status"], "post_results")
+        st_out = polled.json()["state"]
+        self.assertIsInstance(st_out.get("reveal_flairs"), list)
+        self.assertIn("revealed_at", st_out)
+
+    @patch("whatif.views.random.random", return_value=1.0)
+    def test_voting_question_skip_non_active_requests_active_approves(self, _mock_random):
+        """Voting-phase skip: non-active requests, only active can approve (combined flow check)."""
+        code, host_secret, _owner = self._create_session()
+        p1 = self._join(code, "John")
+        p2 = self._join(code, "Maya")
+        p3 = self._join(code, "Pat")
+        _mark_all_players_ready(code)
+        start = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "start_game"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        self.assertEqual(start.status_code, 200)
+        cids = start.json()["state"]["subject_candidate_ids"]
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "pick_subject", "target_player_id": cids[0]},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 2},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        req = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "request_question_skip"},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p2,
+        )
+        self.assertEqual(req.status_code, 200, req.json())
+        self.assertEqual(req.json()["status"], "voting")
+        self.assertIsNotNone(req.json()["state"].get("pending_question_skip_by_player_id"))
+        maya_id = WhatIfPlayer.objects.get(session__short_code=code, display_name="Maya").id
+        self.assertEqual(int(req.json()["state"]["pending_question_skip_by_player_id"]), maya_id)
+        self.assertEqual(
+            int(req.json()["state"]["active_player_id"]),
+            WhatIfPlayer.objects.get(session__short_code=code, display_name="John").id,
+        )
+        bad = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "resolve_question_skip", "approve": True},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p3,
+        )
+        self.assertEqual(bad.status_code, 403)
+        ok = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "resolve_question_skip", "approve": True},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.assertEqual(ok.status_code, 200, ok.json())
+        self.assertEqual(ok.json()["status"], "voting")
+        body = ok.json()
+        self.assertEqual(body["state"].get("votes"), {})
+        self.assertIsNotNone(body["state"].get("challenge_target_player_id"))
+        self.assertEqual(body["state"].get("duel"), None)
+        self.assertIsNotNone(body["state"].get("question_id"))
+
+    @patch("whatif.views.random.random", return_value=0.0)
+    def test_question_skip_keeps_challenge_subject_and_duel(self, _mock_random):
+        """After skip during challenge voting, same subject and duelists; new question; still voting."""
+        code, host_secret, _owner = self._create_session()
+        p1 = self._join(code, "John")
+        p2 = self._join(code, "Maya")
+        self._join(code, "Pat")
+        _mark_all_players_ready(code)
+        start = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "start_game"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        self.assertEqual(start.status_code, 200)
+        maya_id = WhatIfPlayer.objects.get(session__short_code=code, display_name="Maya").id
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "pick_subject", "challenge": True},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        pick_opp = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "pick_duel_opponent", "target_player_id": maya_id},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.assertEqual(pick_opp.status_code, 200, pick_opp.json())
+        cids = pick_opp.json()["state"]["subject_candidate_ids"]
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "pick_subject", "target_player_id": cids[0]},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        before = self.client.get(f"/api/v1/whatif/sessions/{code}/").json()
+        self.assertEqual(before["status"], "voting")
+        self.assertEqual(before["state"]["duel"]["step"], "voting")
+        challenge_target = before["state"]["challenge_target_player_id"]
+        skip_resp = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "request_question_skip"},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.assertEqual(skip_resp.status_code, 200, skip_resp.json())
+        after = skip_resp.json()
+        self.assertEqual(after["status"], "voting")
+        self.assertEqual(after["state"]["challenge_target_player_id"], challenge_target)
+        self.assertEqual(after["state"]["duel"]["step"], "voting")
+        self.assertEqual(int(after["state"]["duel"]["challenged_player_id"]), maya_id)
+        self.assertEqual(after["state"]["votes"], {})
 
 
 class WhatIfAdminApiTests(TestCase):

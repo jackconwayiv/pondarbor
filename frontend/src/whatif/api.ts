@@ -10,6 +10,9 @@ export type WhatIfQuestionAdmin = {
   answer_5: string;
   answer_6: string;
   is_active: boolean;
+  review_status?: string;
+  proposed_by?: number | null;
+  deleted_at?: string | null;
   sessions_used_count: number;
   total_responses: number;
   total_scores: number;
@@ -171,14 +174,19 @@ export async function postWhatIfAction(
       | "start_game"
       | "toggle_ready"
       | "pick_subject"
+      | "pick_duel_opponent"
       | "vote"
       | "reveal"
       | "next_turn"
       | "skip"
+      | "request_question_skip"
+      | "resolve_question_skip"
       | "set_player_paused";
     option_index?: number;
     target_player_id?: number;
     paused?: boolean;
+    challenge?: boolean;
+    approve?: boolean;
   },
   opts: { playerToken?: string | null; hostToken?: string | null },
 ): Promise<WhatIfSessionState> {
@@ -199,12 +207,24 @@ export async function postWhatIfAction(
   return (await response.json()) as WhatIfSessionState;
 }
 
+export async function fetchWhatIfPendingCount(accessToken: string): Promise<number> {
+  const response = await fetch(`${apiBase()}/api/v1/whatif/questions/pending-count/`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) throw new Error(`Failed to fetch pending count (${response.status})`);
+  const body = (await response.json()) as { pending_count: number };
+  return body.pending_count;
+}
+
 export async function listWhatIfQuestions(
   accessToken: string,
   q?: string,
+  options?: { showRejected?: boolean },
 ): Promise<WhatIfQuestionAdmin[]> {
   const params = new URLSearchParams();
   if (q?.trim()) params.set("q", q.trim());
+  if (options?.showRejected) params.set("show_rejected", "1");
   const response = await fetch(
     `${apiBase()}/api/v1/whatif/questions/${params.toString() ? `?${params}` : ""}`,
     {
@@ -216,6 +236,28 @@ export async function listWhatIfQuestions(
   );
   if (!response.ok) throw new Error(`Failed to list questions (${response.status})`);
   return (await response.json()) as WhatIfQuestionAdmin[];
+}
+
+export async function proposeWhatIfQuestion(
+  accessToken: string,
+  payload: Pick<
+    WhatIfQuestionAdmin,
+    "prompt" | "answer_1" | "answer_2" | "answer_3" | "answer_4" | "answer_5" | "answer_6"
+  >,
+): Promise<WhatIfQuestionAdmin> {
+  const response = await fetch(`${apiBase()}/api/v1/whatif/questions/propose/`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Failed to propose question (${response.status}): ${text}`);
+  }
+  return (await response.json()) as WhatIfQuestionAdmin;
 }
 
 export async function createWhatIfQuestion(
@@ -243,7 +285,15 @@ export async function patchWhatIfQuestion(
   payload: Partial<
     Pick<
       WhatIfQuestionAdmin,
-      "prompt" | "answer_1" | "answer_2" | "answer_3" | "answer_4" | "answer_5" | "answer_6" | "is_active"
+      | "prompt"
+      | "answer_1"
+      | "answer_2"
+      | "answer_3"
+      | "answer_4"
+      | "answer_5"
+      | "answer_6"
+      | "is_active"
+      | "review_status"
     >
   >,
 ): Promise<WhatIfQuestionAdmin> {

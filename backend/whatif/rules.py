@@ -86,3 +86,107 @@ def pick_winner_at_or_above_threshold(score_by_player: dict[int, int]) -> int | 
     top_players = [pid for pid, score in eligible.items() if score == top_score]
     return top_players[0] if len(top_players) == 1 else None
 
+
+def two_subject_candidate_ids_duel(
+    *,
+    player_ids: list[int],
+    subject_times: dict[str, int],
+) -> list[int]:
+    """Pick two distinct subjects for the challenge round; active may be included."""
+    if len(player_ids) < 2:
+        return player_ids[:]
+    pool = list(player_ids)
+    counts = {pid: int(subject_times.get(str(pid), 0)) for pid in pool}
+    min_c = min(counts.values())
+    tier1 = [pid for pid in pool if counts[pid] == min_c]
+    if len(tier1) >= 2:
+        return sorted(random.sample(tier1, 2))
+    first = tier1[0]
+    rest = [pid for pid in pool if pid != first]
+    min_rest = min(counts[pid] for pid in rest)
+    tier2 = [pid for pid in rest if counts[pid] == min_rest]
+    second = random.choice(tier2)
+    return sorted([first, second])
+
+
+def evaluate_duel_scores(
+    *,
+    votes: dict[int, int],
+    active_player_id: int,
+    challenged_player_id: int,
+) -> dict[int, int]:
+    """Challenge round: same option +4 each; different -2 each (caller applies floor at DB)."""
+    a = votes.get(active_player_id)
+    b = votes.get(challenged_player_id)
+    if a is None or b is None:
+        return {}
+    if a == b:
+        return {active_player_id: 4, challenged_player_id: 4}
+    return {active_player_id: -2, challenged_player_id: -2}
+
+
+def reveal_flairs(
+    *,
+    total_players_in_room: int,
+    votes: dict[int, int],
+    round_scores: dict[int, int],
+    subject_player_id: int | None,
+) -> list[str]:
+    """
+    Return flair labels in display order: Obviously, Selfless, Splitskies, Whiff.
+    Conditions use cast votes only (partial rounds after deadline).
+    """
+    if not votes:
+        return []
+    n_players = total_players_in_room
+    breakdown = vote_breakdown(votes)
+    values = list(votes.values())
+    n_votes = len(votes)
+
+    obviously = False
+    selfless = False
+    splitskies = False
+    whiff = False
+
+    if n_players >= 3 and n_votes >= 3 and len(set(values)) == 1:
+        obviously = True
+
+    if n_players >= 3 and n_votes >= 3 and len(breakdown) == n_votes:
+        whiff = True
+
+    if n_players >= 4 and len(breakdown) >= 2:
+        top = max(breakdown.values()) if breakdown else 0
+        if top >= 2:
+            winners = [opt for opt, c in breakdown.items() if c == top]
+            if len(winners) >= 2:
+                splitskies = True
+
+    if (
+        n_players >= 3
+        and subject_player_id is not None
+        and round_scores
+        and subject_player_id in round_scores
+        and round_scores.get(subject_player_id, 0) <= 0
+    ):
+        if any(pid != subject_player_id and round_scores.get(pid, 0) > 0 for pid in round_scores):
+            selfless = True
+    elif (
+        n_players >= 3
+        and subject_player_id is not None
+        and round_scores
+        and subject_player_id not in round_scores
+    ):
+        if any(round_scores.get(pid, 0) > 0 for pid in round_scores):
+            selfless = True
+
+    out: list[str] = []
+    if obviously:
+        out.append("Obviously!")
+    if selfless:
+        out.append("Selfless!")
+    if splitskies:
+        out.append("Splitskies!")
+    if whiff:
+        out.append("Whiff!")
+    return out
+

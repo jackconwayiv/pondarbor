@@ -1,4 +1,4 @@
-import { Box, Heading, HStack, Input, Stack, Tabs, Text, Textarea } from "@chakra-ui/react";
+import { Box, Checkbox, Heading, HStack, Input, Stack, Tabs, Text, Textarea } from "@chakra-ui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import PondButton from "../PondButton";
@@ -7,6 +7,7 @@ import {
   bulkImportWhatIfQuestions,
   createWhatIfQuestion,
   deleteWhatIfQuestion,
+  fetchWhatIfPendingCount,
   listWhatIfQuestions,
   patchWhatIfQuestion,
   type WhatIfQuestionAdmin,
@@ -48,6 +49,8 @@ export default function WhatIfAdminPage() {
   const [activeTab, setActiveTab] = useState<"list" | "edit" | "bulk">("list");
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const confirmDeleteButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [showRejected, setShowRejected] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
   const isStaff = !!sessionUser?.user?.is_staff;
 
   const exampleBulk = useMemo(
@@ -62,8 +65,12 @@ export default function WhatIfAdminPage() {
     setError(null);
     try {
       const token = await getApiAccessToken();
-      const items = await listWhatIfQuestions(token, query);
+      const [items, pending] = await Promise.all([
+        listWhatIfQuestions(token, query, { showRejected }),
+        fetchWhatIfPendingCount(token),
+      ]);
       setQuestions(items);
+      setPendingCount(pending);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load questions");
     } finally {
@@ -74,7 +81,7 @@ export default function WhatIfAdminPage() {
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, isStaff]);
+  }, [isAuthenticated, isStaff, showRejected]);
 
   useEffect(() => {
     if (confirmDeleteId == null) return;
@@ -153,6 +160,24 @@ export default function WhatIfAdminPage() {
     }
   }
 
+  async function setReviewStatus(id: number, review_status: "approved" | "rejected") {
+    if (!isAuthenticated || !isStaff) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const token = await getApiAccessToken();
+      await patchWhatIfQuestion(token, id, {
+        review_status,
+        is_active: review_status === "approved",
+      });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Update failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function runBulkImport() {
     if (!isAuthenticated || !isStaff) return;
     setBusy(true);
@@ -197,9 +222,16 @@ export default function WhatIfAdminPage() {
       >
         <Box bg="bg" px={{ base: "4", md: "6" }} py={{ base: "6", md: "6" }}>
           <Stack gap="3" maxW="5xl">
-            <Heading as="h1" size="lg">
-              Whatif Admin - Questions
-            </Heading>
+            <HStack justify="space-between" align="center" flexWrap="wrap" gap="3">
+              <Heading as="h1" size="lg">
+                Whatif Admin - Questions
+              </Heading>
+              {pendingCount > 0 ? (
+                <Text fontWeight="bold" color="orange.solid">
+                  Unreviewed submissions: {pendingCount}
+                </Text>
+              ) : null}
+            </HStack>
             <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" maxW="full" flexWrap="wrap">
               <Tabs.Trigger
                 value="list"
@@ -252,13 +284,24 @@ export default function WhatIfAdminPage() {
             <Tabs.Content value="list">
               <Stack gap="3">
                 <Text fontWeight="medium">All questions ({questions.length})</Text>
-                <HStack gap="2" align="end">
-                  <Stack gap="1" flex="1">
+                <HStack gap="2" align="end" flexWrap="wrap">
+                  <Stack gap="1" flex="1" minW="200px">
                     <Text fontSize="sm" color="gray.700">
                       Search prompt
                     </Text>
                     <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by prompt..." {...whatifInputProps} />
                   </Stack>
+                  <Checkbox.Root
+                    checked={showRejected}
+                    onCheckedChange={() => setShowRejected((v) => !v)}
+                    colorPalette="lilypad"
+                  >
+                    <Checkbox.HiddenInput />
+                    <Checkbox.Control>
+                      <Checkbox.Indicator />
+                    </Checkbox.Control>
+                    <Checkbox.Label>Show rejected</Checkbox.Label>
+                  </Checkbox.Root>
                   <PondButton type="button" colorPalette="lilypad" onClick={() => void load()} loading={busy}>
                     Refresh
                   </PondButton>
@@ -267,7 +310,8 @@ export default function WhatIfAdminPage() {
                 {questions.map((q) => (
                   <Stack key={q.id} p="3" borderWidth="1px" borderColor="border" borderRadius="md" bg="bg">
                     <Text fontWeight="medium">
-                      #{q.id} {q.is_active ? "(active)" : "(inactive)"} - used {q.sessions_used_count} sessions
+                      #{q.id} {q.review_status === "pending" ? "(pending)" : q.is_active ? "(active)" : "(inactive)"}{" "}
+                      - used {q.sessions_used_count} sessions
                     </Text>
                     <Text>{q.prompt}</Text>
                     <Text fontSize="sm" color="gray.700">
@@ -275,6 +319,29 @@ export default function WhatIfAdminPage() {
                       {q.answer_6}
                     </Text>
                     <HStack gap="2" flexWrap="wrap" justify="flex-end" w="100%">
+                      {q.review_status === "pending" ? (
+                        <>
+                          <PondButton
+                            type="button"
+                            colorPalette="lilypad"
+                            size="sm"
+                            loading={busy}
+                            onClick={() => void setReviewStatus(q.id, "approved")}
+                          >
+                            Approve
+                          </PondButton>
+                          <PondButton
+                            type="button"
+                            variant="outline"
+                            colorPalette="orange"
+                            size="sm"
+                            loading={busy}
+                            onClick={() => void setReviewStatus(q.id, "rejected")}
+                          >
+                            Reject
+                          </PondButton>
+                        </>
+                      ) : null}
                       <PondButton
                         type="button"
                         colorPalette="lilypad"

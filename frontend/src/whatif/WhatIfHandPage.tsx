@@ -1,6 +1,17 @@
 import { useAuth0 } from "@auth0/auth0-react";
-import { Avatar, Box, Checkbox, Code, Heading, HStack, Input, SimpleGrid, Stack, Text } from "@chakra-ui/react";
-import { useEffect, useMemo, useState } from "react";
+import {
+  Avatar,
+  Box,
+  Checkbox,
+  Code,
+  Heading,
+  HStack,
+  Input,
+  SimpleGrid,
+  Stack,
+  Text,
+} from "@chakra-ui/react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
 
 import PondButton from "../PondButton";
@@ -18,6 +29,11 @@ import { whatifInputProps } from "./whatifFieldProps";
 import type { WhatIfPlayer, WhatIfSessionState } from "./types";
 
 const POLL_MS = 2000;
+const DISPLAY_NAME_RE = /^[A-Za-z0-9 ]*$/;
+
+function sanitizeDisplayNameInput(raw: string): string {
+  return raw.split("").filter((ch) => DISPLAY_NAME_RE.test(ch)).join("").slice(0, 12);
+}
 
 export default function WhatIfHandPage() {
   const { code = "" } = useParams();
@@ -25,20 +41,34 @@ export default function WhatIfHandPage() {
   const navigate = useNavigate();
   const roomCode = code.toUpperCase();
   const { loginWithRedirect } = useAuth0();
-  const { sessionUser, isAuthenticated, getApiAccessToken } = useAppSession();
+  const { sessionUser, isAuthenticated, getApiAccessToken, refreshSession } = useAppSession();
   const [state, setState] = useState<WhatIfSessionState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [name, setName] = useState("");
+  const [confirmSkip, setConfirmSkip] = useState(false);
+  const confirmSkipRef = useRef<HTMLButtonElement | null>(null);
   const defaultDisplayName = useMemo(
     () => sessionUser?.profile?.display_name ?? "",
     [sessionUser?.profile?.display_name],
   );
   const playerToken = useMemo(() => loadPlayerToken(roomCode), [roomCode]);
+  const endedProfileRefreshRef = useRef(false);
 
   useEffect(() => {
-    if (defaultDisplayName) setName(defaultDisplayName);
+    endedProfileRefreshRef.current = false;
+  }, [roomCode]);
+
+  useEffect(() => {
+    if (!isAuthenticated || state?.status !== "ended") return;
+    if (endedProfileRefreshRef.current) return;
+    endedProfileRefreshRef.current = true;
+    void refreshSession();
+  }, [isAuthenticated, refreshSession, state?.status]);
+
+  useEffect(() => {
+    if (defaultDisplayName) setName(sanitizeDisplayNameInput(defaultDisplayName));
   }, [defaultDisplayName]);
 
   useEffect(() => {
@@ -47,7 +77,6 @@ export default function WhatIfHandPage() {
     let cancelled = false;
     async function poll() {
       try {
-        // Always fetch full state (no `since=`) so we never rely on HTTP 304 — Vite's dev proxy often maps 304 → 502.
         const next = await fetchWhatIfHandState(roomCode, token);
         if (!cancelled && next) {
           setState(next);
@@ -65,18 +94,41 @@ export default function WhatIfHandPage() {
   }, [roomCode, playerToken]);
 
   useEffect(() => {
-    // Keep post-results timer-driven UI ("next turn" button) reactive.
     if (state?.status !== "post_results") return;
     const id = window.setInterval(() => setNowMs(Date.now()), 250);
     return () => window.clearInterval(id);
   }, [state?.status]);
+
+  useEffect(() => {
+    if (state?.status !== "voting") return;
+    const id = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [state?.status]);
+
+  useEffect(() => {
+    if (!confirmSkip) return;
+    function onPointerDown(ev: PointerEvent) {
+      if (confirmSkipRef.current?.contains(ev.target as Node)) return;
+      setConfirmSkip(false);
+    }
+    function onKey(ev: KeyboardEvent) {
+      if (ev.key === "Escape") setConfirmSkip(false);
+    }
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [confirmSkip]);
 
   async function handleJoin() {
     setBusy(true);
     setError(null);
     try {
       const token = isAuthenticated ? await getApiAccessToken() : null;
-      const displayName = (name.trim() || defaultDisplayName || "Guest").slice(0, 80);
+      const raw = name.trim() || sanitizeDisplayNameInput(defaultDisplayName) || "Guest";
+      const displayName = raw.slice(0, 12);
       const joined = await joinWhatIfSession(roomCode, displayName, token);
       savePlayerToken(roomCode, joined.player_secret);
       window.location.reload();
@@ -87,11 +139,7 @@ export default function WhatIfHandPage() {
     }
   }
 
-  async function action(payload: {
-    type: "toggle_ready" | "pick_subject" | "vote" | "reveal" | "next_turn" | "skip";
-    option_index?: number;
-    target_player_id?: number;
-  }) {
+  async function action(payload: Parameters<typeof postWhatIfAction>[1]) {
     if (!playerToken) return;
     setBusy(true);
     setError(null);
@@ -159,12 +207,15 @@ export default function WhatIfHandPage() {
               flex="1"
               minW={0}
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => setName(sanitizeDisplayNameInput(e.target.value))}
               placeholder={defaultDisplayName ? `Display name (${defaultDisplayName})` : "Display name"}
-              maxLength={80}
+              maxLength={12}
               {...whatifInputProps}
             />
           </HStack>
+          <Text fontSize="xs" color="gray.600">
+            Letters, numbers, and spaces only (max 12 characters).
+          </Text>
 
           <PondButton
             type="button"
@@ -190,19 +241,61 @@ export default function WhatIfHandPage() {
   const me = state?.state?.you;
   const playerList = state?.players ?? [];
   const isActive = !!me && me.id === state?.state?.active_player_id;
+  const duel = state?.state?.duel;
   const subjectCandidateIds = state?.state?.subject_candidate_ids ?? [];
+  const subjectOptions = state?.state?.subject_options ?? [];
   const subjectCandidates = subjectCandidateIds
     .map((id) => playerList.find((p) => p.id === id))
     .filter((p): p is WhatIfPlayer => p != null);
-  const needSubjectPick = state?.status === "turn" && subjectCandidates.length > 0 && !state?.state?.challenge_target_player_id;
+
+  const needPickOpponent = state?.status === "turn" && duel?.step === "pick_opponent";
+  const needDuelSubjectPick = state?.status === "turn" && duel?.step === "pick_subject";
+  const needNormalSubjectPick =
+    state?.status === "turn" &&
+    !duel?.step &&
+    !state?.state?.challenge_target_player_id &&
+    subjectCandidates.length > 0;
+  const needSubjectTiles =
+    state?.status === "turn" &&
+    !state?.state?.challenge_target_player_id &&
+    !needPickOpponent &&
+    !needDuelSubjectPick &&
+    (subjectOptions.length > 0 || needNormalSubjectPick);
+
   const activeId = state?.state?.active_player_id;
   const activeName = playerList.find((p) => p.id === activeId)?.display_name ?? "Active player";
   const answers = state?.state?.question?.answers ?? {};
   const votedIds = state?.state?.voted_player_ids ?? [];
   const eligibleVoterIds = new Set(playerList.filter((p) => !p.paused).map((p) => p.id));
-  const allPlayersVoted =
-    playerList.length > 0 &&
-    (eligibleVoterIds.size === 0 || [...eligibleVoterIds].every((id) => votedIds.includes(id)));
+
+  const duelVoting = duel?.step === "voting" && duel.challenged_player_id != null;
+  const allPlayersVoted = (() => {
+    if (playerList.length === 0) return false;
+    if (duelVoting && activeId != null) {
+      const ch = duel!.challenged_player_id!;
+      for (const pid of [activeId, ch]) {
+        const pl = playerList.find((p) => p.id === pid);
+        if (pl && !pl.paused && !votedIds.includes(pid)) return false;
+      }
+      return true;
+    }
+    if (eligibleVoterIds.size === 0) return true;
+    return [...eligibleVoterIds].every((id) => votedIds.includes(id));
+  })();
+
+  const deadlineIso = state?.state?.voting_deadline_at;
+  const secsLeft =
+    deadlineIso && state?.status === "voting"
+      ? Math.max(0, Math.floor((new Date(deadlineIso).getTime() - nowMs) / 1000))
+      : 0;
+  const coarseCountdown =
+    state?.status === "voting" && secsLeft <= 10 ? Math.min(10, Math.ceil(secsLeft / 2) * 2) : null;
+
+  const canReveal =
+    state?.status === "voting" &&
+    isActive &&
+    (allPlayersVoted || (deadlineIso != null && new Date(deadlineIso).getTime() <= nowMs));
+
   const imPaused = !!me?.paused;
   const myVote = state?.state?.your_vote ?? null;
   const waitUntil = state?.state?.next_turn_not_before ? new Date(state.state.next_turn_not_before).getTime() : 0;
@@ -220,15 +313,95 @@ export default function WhatIfHandPage() {
     me != null ? Number(state?.state?.round_scores?.[String(me.id)] ?? 0) : 0;
   const myRoundPointsPhrase = myRoundPoints === 1 ? "1 point" : `${myRoundPoints} points`;
 
+  const qid = state?.state?.question_id ?? null;
+  const skipSuppressed = state?.state?.skip_ui_suppressed_for_question_id === qid;
+  const pendingSkipId = state?.state?.pending_question_skip_by_player_id ?? null;
+  const showSkipButton =
+    state?.status === "voting" &&
+    !duelVoting &&
+    !imPaused &&
+    me &&
+    me.skips_remaining > 0 &&
+    !skipSuppressed &&
+    !pendingSkipId;
+
+  const challengedPlayerId = duel?.challenged_player_id ?? null;
+  const challengerName = playerList.find((p) => p.id === challengedPlayerId)?.display_name ?? "Player";
+  const isChallengedPlayerWaitingOnSubject =
+    needDuelSubjectPick && !isActive && me != null && challengedPlayerId != null && me.id === challengedPlayerId;
+  const isDuelist =
+    duelVoting && me && activeId != null && (me.id === activeId || me.id === duel?.challenged_player_id);
+
   return (
     <WhatIfShell withPanel={false}>
       <Stack gap="5">
+        {pendingSkipId && isActive && me && pendingSkipId !== me.id ? (
+          <Box
+            role="dialog"
+            aria-modal="true"
+            p="4"
+            borderRadius="xl"
+            borderWidth="2px"
+            borderColor="orange.solid"
+            bg="orange.50"
+          >
+            <Stack gap="3">
+              <Text fontWeight="bold">
+                {playerList.find((p) => p.id === pendingSkipId)?.display_name ?? "A player"} wants to spend their Skip
+                on this question. Do you agree?
+              </Text>
+              <HStack gap="3" flexWrap="wrap">
+                <PondButton
+                  type="button"
+                  colorPalette="lilypad"
+                  size="sm"
+                  loading={busy}
+                  onClick={() => void action({ type: "resolve_question_skip", approve: false })}
+                >
+                  Keep Question
+                </PondButton>
+                <PondButton
+                  type="button"
+                  colorPalette="orange"
+                  size="sm"
+                  loading={busy}
+                  onClick={() => void action({ type: "resolve_question_skip", approve: true })}
+                >
+                  Confirm Skip
+                </PondButton>
+              </HStack>
+            </Stack>
+          </Box>
+        ) : null}
+
         <Stack gap="3" p="4" borderWidth="1px" borderColor="border" borderRadius="xl" bg="bg">
-          <HStack justify="space-between" align="center" w="100%" gap="3">
-            <Heading as="h1" size="xl">
+          <HStack justify="space-between" align="center" w="100%" gap="3" flexWrap="wrap">
+            <Heading as="h1" size="xl" flex="1" minW="0">
               {me ? `${me.avatar_emoji} ${me.display_name}'s hand` : "Your hand"}
             </Heading>
-            <Code fontSize="2em">{roomCode}</Code>
+            {showSkipButton ? (
+              <PondButton
+                ref={confirmSkip ? confirmSkipRef : undefined}
+                type="button"
+                colorPalette="orange"
+                flexShrink={0}
+                disabled={busy || imPaused}
+                onClick={() => {
+                  if (!confirmSkip) {
+                    setConfirmSkip(true);
+                    return;
+                  }
+                  void action({ type: "request_question_skip" });
+                  setConfirmSkip(false);
+                }}
+              >
+                {confirmSkip ? "Confirm Skip" : "Vote to Skip"}
+              </PondButton>
+            ) : state?.status !== "ended" ? (
+              <Code flexShrink={0} fontSize="2em">
+                {roomCode}
+              </Code>
+            ) : null}
           </HStack>
           {imPaused ? (
             <Text p="3" borderRadius="md" bg="orange.100" color="gray.800" fontWeight="medium">
@@ -260,28 +433,50 @@ export default function WhatIfHandPage() {
             </Stack>
           ) : null}
           {state?.state?.question ? <Text fontWeight="bold">{state.state.question.prompt}</Text> : null}
-          {needSubjectPick && !isActive ? (
+          {needPickOpponent && !isActive ? (
+            <Text color="gray.700">Waiting for {activeName} to challenge someone…</Text>
+          ) : null}
+          {isChallengedPlayerWaitingOnSubject ? (
+            <Text color="gray.700">
+              {activeName} has challenged YOU! Waiting for {activeName} to choose the challenge subject.
+            </Text>
+          ) : needDuelSubjectPick && !isActive ? (
+            <Text color="gray.700">Waiting for {activeName} to choose the challenge subject…</Text>
+          ) : null}
+          {duelVoting && !isDuelist ? (
+            <Text color="gray.700">
+              {activeName} and {challengerName} are in a challenge round!
+            </Text>
+          ) : null}
+          {needSubjectTiles && !needPickOpponent && !needDuelSubjectPick && !isActive ? (
             <Text color="gray.700">Waiting for {activeName} to choose who this round is about…</Text>
           ) : null}
-          {needSubjectPick && isActive ? <Text fontWeight="medium">Pick who this round is about:</Text> : null}
+          {needSubjectTiles && isActive && !needPickOpponent && !needDuelSubjectPick ? (
+            <Text fontWeight="medium">Pick who this round is about:</Text>
+          ) : null}
+          {needPickOpponent && isActive ? <Text fontWeight="medium">Who do you challenge?</Text> : null}
+          {needDuelSubjectPick && isActive ? <Text fontWeight="medium">Pick the subject for this challenge:</Text> : null}
           {myVote ? (
             <Text color="gray.700">
               You voted for {answers[String(myVote)] ?? String(myVote)}
             </Text>
           ) : null}
-          {state?.status === "voting" && isActive ? (
-            allPlayersVoted ? (
-              <PondButton
-                type="button"
-                colorPalette="lilypad"
-                alignSelf="flex-start"
-                onClick={() => void action({ type: "reveal" })}
-                loading={busy}
-                disabled={busy || imPaused}
-              >
-                Reveal votes
-              </PondButton>
-            ) : null
+          {state?.status === "voting" && coarseCountdown != null && coarseCountdown > 0 ? (
+            <Text fontWeight="bold" fontSize="lg" color="orange.solid">
+              Auto-reveal in ~{coarseCountdown}s
+            </Text>
+          ) : null}
+          {state?.status === "voting" && isActive && canReveal ? (
+            <PondButton
+              type="button"
+              colorPalette="lilypad"
+              alignSelf="flex-start"
+              onClick={() => void action({ type: "reveal" })}
+              loading={busy}
+              disabled={busy || imPaused}
+            >
+              Reveal votes
+            </PondButton>
           ) : null}
           {state?.status === "post_results" ? (
             <Stack gap="2">
@@ -321,46 +516,150 @@ export default function WhatIfHandPage() {
           ) : null}
         </Stack>
 
-        {needSubjectPick && isActive ? (
+        {needPickOpponent && isActive ? (
           <Stack gap="3" w="100%">
             <SimpleGrid columns={2} gap="3" w="100%">
-              {subjectCandidates.map((p) => (
-                <PondButton
-                  key={p.id}
-                  type="button"
-                  bg="white"
-                  color="black"
-                  borderWidth="20px"
-                  borderColor="transparent"
-                  borderRadius="xl"
-                  minH="180px"
-                  w="100%"
-                  whiteSpace="normal"
-                  textAlign="center"
-                  disabled={busy || imPaused}
-                  _hover={{
-                    bg: "white",
-                    color: "black",
-                    borderColor: "lilypad.solid",
-                    borderWidth: "20px",
-                  }}
-                  onClick={() => void action({ type: "pick_subject", target_player_id: p.id })}
-                >
-                  <Stack gap="2" align="center" justify="center">
-                    <Text fontSize="4xl" lineHeight="1">
-                      {p.avatar_emoji}
-                    </Text>
-                    <Text fontSize="xl" fontWeight="semibold">
-                      {p.display_name}
-                    </Text>
-                  </Stack>
-                </PondButton>
-              ))}
+              {playerList
+                .filter((p) => p.id !== activeId)
+                .map((p) => (
+                  <PondButton
+                    key={p.id}
+                    type="button"
+                    bg="white"
+                    color="black"
+                    borderWidth="16px"
+                    borderColor="transparent"
+                    borderRadius="xl"
+                    minH="160px"
+                    w="100%"
+                    whiteSpace="normal"
+                    textAlign="center"
+                    disabled={busy || imPaused}
+                    _hover={{
+                      bg: "white",
+                      color: "black",
+                      borderColor: "lilypad.solid",
+                      borderWidth: "16px",
+                    }}
+                    onClick={() => void action({ type: "pick_duel_opponent", target_player_id: p.id })}
+                  >
+                    <Stack gap="2" align="center" justify="center">
+                      <Text fontSize="4xl" lineHeight="1">
+                        {p.avatar_emoji}
+                      </Text>
+                      <Text fontSize="xl" fontWeight="semibold">
+                        {p.display_name}
+                      </Text>
+                    </Stack>
+                  </PondButton>
+                ))}
             </SimpleGrid>
           </Stack>
         ) : null}
 
-        {state?.status === "voting" ? (
+        {(needDuelSubjectPick || needNormalSubjectPick) && isActive ? (
+          <Stack gap="3" w="100%">
+            <SimpleGrid columns={2} gap="3" w="100%">
+              {subjectOptions.length > 0
+                ? subjectOptions.map((opt, i) =>
+                    opt.kind === "challenge" ? (
+                      <PondButton
+                        key={`ch-${i}`}
+                        type="button"
+                        bg="orange.50"
+                        color="black"
+                        borderWidth="10px"
+                        borderColor="orange.solid"
+                        borderRadius="xl"
+                        minH="160px"
+                        w="100%"
+                        whiteSpace="normal"
+                        textAlign="center"
+                        disabled={busy || imPaused}
+                        _hover={{
+                          bg: "orange.100",
+                          color: "black",
+                          borderColor: "orange.solid",
+                          borderWidth: "10px",
+                        }}
+                        onClick={() => void action({ type: "pick_subject", challenge: true })}
+                      >
+                        <Text fontSize="xl" fontWeight="bold">
+                          Challenge!
+                        </Text>
+                      </PondButton>
+                    ) : (
+                      <PondButton
+                        key={opt.player_id}
+                        type="button"
+                        bg="white"
+                        color="black"
+                        borderWidth="16px"
+                        borderColor="transparent"
+                        borderRadius="xl"
+                        minH="160px"
+                        w="100%"
+                        whiteSpace="normal"
+                        textAlign="center"
+                        disabled={busy || imPaused}
+                        _hover={{
+                          bg: "white",
+                          color: "black",
+                          borderColor: "lilypad.solid",
+                          borderWidth: "16px",
+                        }}
+                        onClick={() =>
+                          void action({ type: "pick_subject", target_player_id: opt.player_id })
+                        }
+                      >
+                        <Stack gap="2" align="center" justify="center">
+                          <Text fontSize="4xl" lineHeight="1">
+                            {playerList.find((p) => p.id === opt.player_id)?.avatar_emoji}
+                          </Text>
+                          <Text fontSize="xl" fontWeight="semibold">
+                            {playerList.find((p) => p.id === opt.player_id)?.display_name}
+                          </Text>
+                        </Stack>
+                      </PondButton>
+                    ),
+                  )
+                : subjectCandidates.map((p) => (
+                    <PondButton
+                      key={p.id}
+                      type="button"
+                      bg="white"
+                      color="black"
+                      borderWidth="16px"
+                      borderColor="transparent"
+                      borderRadius="xl"
+                      minH="160px"
+                      w="100%"
+                      whiteSpace="normal"
+                      textAlign="center"
+                      disabled={busy || imPaused}
+                      _hover={{
+                        bg: "white",
+                        color: "black",
+                        borderColor: "lilypad.solid",
+                        borderWidth: "16px",
+                      }}
+                      onClick={() => void action({ type: "pick_subject", target_player_id: p.id })}
+                    >
+                      <Stack gap="2" align="center" justify="center">
+                        <Text fontSize="4xl" lineHeight="1">
+                          {p.avatar_emoji}
+                        </Text>
+                        <Text fontSize="xl" fontWeight="semibold">
+                          {p.display_name}
+                        </Text>
+                      </Stack>
+                    </PondButton>
+                  ))}
+            </SimpleGrid>
+          </Stack>
+        ) : null}
+
+        {state?.status === "voting" && (!duelVoting || isDuelist) ? (
           <Stack gap="3">
             <SimpleGrid columns={2} gap="3">
               {Object.entries(answers)
@@ -374,10 +673,10 @@ export default function WhatIfHandPage() {
                       type="button"
                       bg="white"
                       color="black"
-                      borderWidth="20px"
+                      borderWidth="16px"
                       borderColor="transparent"
                       borderRadius="xl"
-                      minH="180px"
+                      minH="150px"
                       w="100%"
                       whiteSpace="normal"
                       textAlign="center"
@@ -388,7 +687,7 @@ export default function WhatIfHandPage() {
                         bg: "white",
                         color: "black",
                         borderColor: "lilypad.solid",
-                        borderWidth: "20px",
+                        borderWidth: "16px",
                       }}
                       onClick={() => void action({ type: "vote", option_index: idx })}
                     >
@@ -396,7 +695,7 @@ export default function WhatIfHandPage() {
                         <Text fontSize="2xl" opacity={0.25} lineHeight="1">
                           {idx}
                         </Text>
-                        <Text fontSize="xl" fontWeight="semibold">
+                        <Text fontSize="lg" fontWeight="semibold">
                           {answer}
                         </Text>
                       </Stack>
@@ -442,4 +741,3 @@ export default function WhatIfHandPage() {
     </WhatIfShell>
   );
 }
-

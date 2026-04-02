@@ -35,6 +35,7 @@ class UsersApiTests(TestCase):
         self.assertNotIn("status", body["profile"])
         self.assertEqual(body["profile"]["display_name"], "Nick")
         self.assertIsNone(body["profile"]["birth_date"])
+        self.assertFalse(body["profile"]["whatif_completed_session"])
 
     def test_me_requires_authentication(self):
         response = self.client.get("/api/v1/users/me/")
@@ -48,6 +49,7 @@ class UsersApiTests(TestCase):
         body = response.json()
         self.assertEqual(body["user"]["email"], "self@example.com")
         self.assertEqual(body["user"]["id"], user.id)
+        self.assertFalse(body["profile"]["whatif_completed_session"])
 
     def test_patch_profile_updates_preferences_and_returns_full_me(self):
         user = User.objects.create_user(email="edit@example.com", password="secret12345")

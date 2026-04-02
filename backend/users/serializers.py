@@ -23,6 +23,7 @@ class ProfileSerializer(serializers.Serializer):
     avatar_url = serializers.CharField(allow_blank=True)
     timezone = serializers.CharField(allow_blank=True)
     birth_date = serializers.DateField(allow_null=True)
+    whatif_completed_session = serializers.BooleanField()
 
 
 class MeSerializer(serializers.Serializer):

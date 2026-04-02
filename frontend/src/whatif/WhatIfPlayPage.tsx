@@ -1,4 +1,4 @@
-import { Code, Grid, GridItem, Heading, HStack, IconButton, Stack, Text } from "@chakra-ui/react";
+import { Avatar, Code, Grid, GridItem, Heading, HStack, IconButton, Stack, Text } from "@chakra-ui/react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 
@@ -33,7 +33,14 @@ export default function WhatIfPlayPage() {
   const [state, setState] = useState<WhatIfSessionState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hostBusy, setHostBusy] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const hostToken = useMemo(() => loadHostToken(roomCode), [roomCode]);
+
+  useEffect(() => {
+    if (state?.status !== "voting") return;
+    const id = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [state?.status]);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,6 +65,28 @@ export default function WhatIfPlayPage() {
 
   const activeId = state?.state?.active_player_id;
   const activePlayer = (state?.players ?? []).find((p) => p.id === activeId);
+  const duel = state?.state?.duel;
+  const challengedId = duel?.challenged_player_id ?? null;
+  const duelVoting =
+    state?.status === "voting" && duel?.step === "voting" && challengedId != null;
+  const challengedPlayer =
+    challengedId != null ? (state?.players ?? []).find((p) => p.id === challengedId) : undefined;
+  const needPickChallengeTarget =
+    state?.status === "turn" && duel?.step === "pick_opponent";
+  const needChallengeSubjectPick =
+    state?.status === "turn" && duel?.step === "pick_subject" && challengedId != null;
+  const duelPostResults =
+    state?.status === "post_results" && duel?.step === "voting" && challengedId != null;
+  const challengeRevealHeadline = (() => {
+    if (!duelPostResults || activeId == null || challengedId == null) return null;
+    const raw = state?.state?.votes ?? {};
+    const na = Number(raw[String(activeId)]);
+    const nb = Number(raw[String(challengedId)]);
+    if (!Number.isFinite(na) || !Number.isFinite(nb)) {
+      return "Challenge round complete.";
+    }
+    return na === nb ? "Challenge successful!" : "Challenge failed!";
+  })();
   const votedPlayerIds = state?.state?.voted_player_ids ?? [];
   const votedPlayers = votedPlayerIds
     .map((id) => (state?.players ?? []).find((p) => p.id === id))
@@ -84,20 +113,23 @@ export default function WhatIfPlayPage() {
           })
       : [];
   const roundScoreRows = Object.entries(state?.state?.round_scores ?? {})
-    .filter(([, points]) => Number(points) > 0)
+    .filter(([, points]) => Number(points) !== 0)
     .map(([id, points]) => {
       const playerId = Number(id);
       const p = (state?.players ?? []).find((row) => row.id === playerId);
-      const bonusLabel = playerId === activeId && Number(points) > 1 ? " (active player)" : "";
+      const n = Number(points);
+      const sign = n > 0 ? "+" : "";
+      const bonusLabel = playerId === activeId && n > 1 ? " (active player)" : "";
       return p
-        ? `${p.avatar_emoji} ${p.display_name}: +${points}${bonusLabel}`
-        : `Player ${id}: +${points}${bonusLabel}`;
+        ? `${p.avatar_emoji} ${p.display_name}: ${sign}${n}${bonusLabel}`
+        : `Player ${id}: ${sign}${n}${bonusLabel}`;
     });
-  const finalScores = state?.state?.final_scores ?? [];
+  const flairPrefix =
+    state?.status === "post_results" || state?.status === "ended"
+      ? (state?.state?.reveal_flairs ?? []).join(" ")
+      : "";
   const winnerId = state?.state?.winner_player_id;
   const winnerPlayer = winnerId != null ? (state?.players ?? []).find((p) => p.id === winnerId) : undefined;
-  const winnerScore =
-    winnerPlayer?.score ?? finalScores.find((row) => row.player_id === winnerId)?.score;
 
   const voterEmojisByOption = useMemo(() => {
     const st = state?.status;
@@ -131,8 +163,18 @@ export default function WhatIfPlayPage() {
   function hostCannotPausePlayer(p: WhatIfPlayer): boolean {
     if (p.paused) return false;
     const ap = state?.state?.active_player_id;
-    if (p.id !== ap) return false;
+    const duel = state?.state?.duel;
     const st = state?.status;
+    const ch = duel?.challenged_player_id;
+    if (ch != null && (duel?.step === "voting" || duel?.step === "pick_subject")) {
+      if (p.id === ap || p.id === ch) {
+        return st === "turn" || st === "voting" || st === "post_results";
+      }
+    }
+    if (ch != null && duel?.step === "voting" && st === "post_results") {
+      if (p.id === ap || p.id === ch) return true;
+    }
+    if (p.id !== ap) return false;
     return st === "turn" || st === "voting" || st === "post_results";
   }
 
@@ -187,23 +229,33 @@ export default function WhatIfPlayPage() {
                 </HStack>
                 <Text fontSize="2xl" fontWeight="bold">
                   {state?.status === "ended"
-                    ? winnerPlayer && winnerScore != null
-                      ? `${winnerPlayer.display_name} wins with ${winnerScore} points!`
+                    ? winnerPlayer
+                      ? `${flairPrefix ? `${flairPrefix} ` : ""}Game over! ${winnerPlayer.display_name} wins!`
                       : "Game over!"
                     : state?.status === "voting"
                       ? allVotesIn
                         ? "All votes are in!"
-                        : "Everybody vote!"
+                        : duelVoting && activePlayer && challengedPlayer
+                          ? `${activePlayer.display_name} and ${challengedPlayer.display_name} are in a challenge round!`
+                          : "Everybody vote!"
                       : state?.status === "post_results"
-                        ? roundScoreRows.length === 0
-                          ? "No top votes."
-                          : winningOptions.length > 1
-                            ? `Top votes: ${winningOptions.join("  |  ")}`
-                            : winningOptions.length === 1
-                              ? `Top vote: ${winningOptions[0]}`
-                              : "Votes revealed"
+                        ? `${flairPrefix ? `${flairPrefix} ` : ""}${
+                            challengeRevealHeadline != null
+                              ? challengeRevealHeadline
+                              : roundScoreRows.length === 0
+                                ? "No top votes."
+                                : winningOptions.length > 1
+                                  ? `Top votes: ${winningOptions.join(" & ")}`
+                                  : winningOptions.length === 1
+                                    ? `Top vote: ${winningOptions[0]}`
+                                    : "Votes revealed"
+                          }`
                         : activePlayer
-                          ? `${activePlayer.display_name} is choosing this round's subject!`
+                          ? needPickChallengeTarget
+                            ? `${activePlayer.display_name} is choosing who to challenge!`
+                            : needChallengeSubjectPick
+                              ? `${activePlayer.display_name} is choosing who this challenge is about!`
+                              : `${activePlayer.display_name} is choosing this round's subject!`
                           : "Waiting for game start"}
                 </Text>
                 {state?.status === "post_results" ? (
@@ -222,6 +274,19 @@ export default function WhatIfPlayPage() {
                   <Text fontSize="xl" fontWeight="semibold">
                     {state.state.question.prompt}
                   </Text>
+                  {state.state.question.proposed_by?.display_name ? (
+                    <HStack gap="2" align="center">
+                      {state.state.question.proposed_by.avatar_url ? (
+                        <Avatar.Root size="sm">
+                          <Avatar.Image src={state.state.question.proposed_by.avatar_url} />
+                          <Avatar.Fallback name={state.state.question.proposed_by.display_name} />
+                        </Avatar.Root>
+                      ) : null}
+                      <Text fontSize="sm" color="gray.700">
+                        Question submitted by {state.state.question.proposed_by.display_name}
+                      </Text>
+                    </HStack>
+                  ) : null}
                   <Stack gap="2">
                     {Object.entries(state.state.question.answers).map(([k, answer]) => {
                       const idx = Number(k);
@@ -247,6 +312,21 @@ export default function WhatIfPlayPage() {
                 </Stack>
               ) : null}
 
+              {state?.status === "voting" && state.state.voting_deadline_at ? (
+                <Text fontSize="sm" color="gray.700">
+                  {(() => {
+                    const left = Math.max(
+                      0,
+                      Math.floor(
+                        (new Date(state.state.voting_deadline_at!).getTime() - nowMs) / 1000,
+                      ),
+                    );
+                    return left <= 10 && left > 0
+                      ? `Auto-reveal in ~${Math.min(10, Math.ceil(left / 2) * 2)}s`
+                      : null;
+                  })()}
+                </Text>
+              ) : null}
               {state?.status === "voting" ? (
                 <Stack gap="2" p="4" borderWidth="1px" borderColor="border" borderRadius="xl" bg="bg">
                   <Text fontWeight="medium">Votes cast:</Text>

@@ -14,6 +14,7 @@ class WhatIfQuestionAdmin(admin.ModelAdmin):
     list_display = (
         "id",
         "prompt",
+        "review_status",
         "sessions_used_count",
         "total_responses",
         "total_scores",
@@ -21,7 +22,7 @@ class WhatIfQuestionAdmin(admin.ModelAdmin):
         "is_active",
     )
     search_fields = ("prompt",)
-    list_filter = ("is_active",)
+    list_filter = ("is_active", "review_status")
 
 
 @admin.register(WhatIfSession)

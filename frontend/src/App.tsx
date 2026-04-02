@@ -19,6 +19,17 @@ import { fetchUpcomingBirthdays, type UpcomingBirthday } from "./users/api";
 const LILYPAD_WEDGE_CLIP_PATH =
   "polygon(0% 0%, 43% 0%, 46% 12%, 48% 24%, 50% 36%, 52% 24%, 54% 12%, 57% 0%, 100% 0%, 100% 100%, 0% 100%)";
 
+const LILYPAD_HOVER_HINT_VISIBLE = {
+  opacity: 1,
+  maxHeight: "4.5rem",
+} as const;
+
+const HOME_LILYPAD_TILES = [
+  { to: "/quotes", label: "Quotes", hoverText: "archive of user-recorded quotes" },
+  { to: "/clicker", label: "PondClicker", hoverText: "idle pond-growing game" },
+  { to: "/whatif", label: "WhatIf", hoverText: "multiplayer party game" },
+] as const;
+
 const MONTH_NAMES = [
   "January",
   "February",
@@ -157,11 +168,7 @@ function App() {
       <Box flex="1" bg="transparent" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
         <Box maxW="3xl">
           <SimpleGrid columns={{ base: 2, md: 3 }} gap={{ base: "4", md: "6" }}>
-            {[
-              { to: "/profile", label: "Profile" },
-              { to: "/quotes", label: "Quotes" },
-              { to: "/clicker", label: "Pond Clicker" },
-            ].map((tile) => {
+            {HOME_LILYPAD_TILES.map((tile) => {
               const card = (
                 <Box
                   bg={isAuthenticated ? "lilypad.solid" : "#A4B89A"}
@@ -187,8 +194,11 @@ function App() {
                           bg: "bg",
                           transform: "scale(1.02)",
                           boxShadow: "xl",
+                          "& .lilypad-hover-hint": LILYPAD_HOVER_HINT_VISIBLE,
                         }
-                      : undefined
+                      : {
+                          "& .lilypad-hover-hint": LILYPAD_HOVER_HINT_VISIBLE,
+                        }
                   }
                   _active={
                     isAuthenticated
@@ -200,15 +210,35 @@ function App() {
                       : undefined
                   }
                 >
-                  <Heading
-                    as="h2"
-                    size={{ base: "md", md: "lg" }}
-                    position="relative"
-                    zIndex={2}
-                    color={isAuthenticated ? "fg" : "gray.600"}
-                  >
-                    {tile.label}
-                  </Heading>
+                  <Stack gap="1" align="center" justify="center" w="full" minH="0" px="0.5">
+                    <Heading
+                      as="h2"
+                      size={{ base: "md", md: "lg" }}
+                      position="relative"
+                      zIndex={2}
+                      color={isAuthenticated ? "fg" : "gray.600"}
+                      lineHeight="1.2"
+                    >
+                      {tile.label}
+                    </Heading>
+                    <Text
+                      className="lilypad-hover-hint"
+                      textAlign="center"
+                      fontSize={{ base: "2xs", md: "xs" }}
+                      lineHeight="1.35"
+                      fontWeight="medium"
+                      color={isAuthenticated ? "fg" : "gray.600"}
+                      opacity={0}
+                      maxHeight="0"
+                      overflow="hidden"
+                      transitionProperty="opacity, max-height"
+                      transitionDuration="0.2s"
+                      transitionTimingFunction="ease"
+                      px="1"
+                    >
+                      {tile.hoverText}
+                    </Text>
+                  </Stack>
                 </Box>
               );
 
@@ -217,13 +247,18 @@ function App() {
               }
 
               return (
-                <RouterLink
+                <Box
                   key={tile.to}
-                  to={tile.to}
-                  style={{ textDecoration: "none", color: "inherit", display: "block" }}
+                  asChild
+                  display="block"
+                  textDecoration="none"
+                  color="inherit"
+                  _focusVisible={{
+                    "& .lilypad-hover-hint": LILYPAD_HOVER_HINT_VISIBLE,
+                  }}
                 >
-                  {card}
-                </RouterLink>
+                  <RouterLink to={tile.to}>{card}</RouterLink>
+                </Box>
               );
             })}
           </SimpleGrid>

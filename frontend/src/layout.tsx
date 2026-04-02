@@ -1,17 +1,22 @@
 import {
+  Avatar,
   Box,
   Button,
   Flex,
   HStack,
   Image,
   Link as ChakraLink,
-  Popover,
+  Menu,
   Spacer,
-  Stack,
 } from "@chakra-ui/react";
-import { useMemo, useState } from "react";
-import { Link, Outlet, useLocation } from "react-router";
+import { useAuth0 } from "@auth0/auth0-react";
+import { useMemo } from "react";
+import { Link, Outlet, useLocation, useNavigate } from "react-router";
 
+import {
+  auth0AccountPickerLoginParams,
+  auth0DefaultLoginParams,
+} from "./auth/auth0LoginParams";
 import { useAppSession } from "./auth/AppSessionContext";
 import { pondarborLogoSrc } from "./publicAsset";
 import { useIsMobile } from "./responsive";
@@ -50,30 +55,108 @@ const navBarLinkProps = {
   },
 } as const;
 
+function isDesktopNavRouteActive(pathname: string, to: string): boolean {
+  switch (to) {
+    case "/quotes":
+      return pathname.startsWith("/quotes") || pathname.includes("/public-quotes");
+    case "/clicker":
+      return pathname === "/clicker" || pathname.startsWith("/clicker/");
+    case "/whatif":
+      return pathname === "/whatif" || pathname.startsWith("/whatif/");
+    default:
+      return false;
+  }
+}
+
 export default function AppLayout() {
-  const { isAuthenticated, auth0User } = useAppSession();
+  const { loginWithRedirect } = useAuth0();
+  const { isAuthenticated, auth0User, sessionUser, logout, switchUser } = useAppSession();
   const location = useLocation();
+  const navigate = useNavigate();
   const isMobile = useIsMobile();
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // `auth0User` is cleared when the Auth0 client logs out; rely on it so nav stays in sync.
   const showProfileNav = isAuthenticated && !!auth0User;
-  const navLinks = useMemo(
-    () => [
-      { to: "/whatif", label: "Whatif" },
-      ...(showProfileNav
+  const desktopNavLinks = useMemo(
+    () =>
+      showProfileNav
         ? [
-            { to: "/profile", label: "Profile" },
             { to: "/quotes", label: "Quotes" },
-            { to: "/clicker", label: "Clicker" },
+            { to: "/clicker", label: "PondClicker" },
+            { to: "/whatif", label: "WhatIf" },
           ]
-        : []),
-    ],
+        : [{ to: "/whatif", label: "WhatIf" }],
     [showProfileNav],
   );
 
   const isClickerRoute =
     location.pathname === "/clicker" || location.pathname.startsWith("/clicker/");
+
+  const accountMenu =
+    showProfileNav ? (
+      <Menu.Root positioning={{ placement: "bottom-end", gutter: 8 }}>
+        <Menu.Trigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label="Open account menu"
+            bg="transparent"
+            _hover={{ bg: "transparent" }}
+            _active={{ bg: "transparent" }}
+            _focus={{ boxShadow: "none" }}
+            _focusVisible={{ boxShadow: "none", outline: "none" }}
+            px="1"
+            minW="auto"
+            h="auto"
+          >
+            <Avatar.Root size="sm">
+              <Avatar.Fallback
+                name={
+                  sessionUser?.profile.display_name ||
+                  auth0User?.name ||
+                  auth0User?.email ||
+                  "User"
+                }
+              />
+              <Avatar.Image
+                src={
+                  sessionUser?.profile.avatar_url || auth0User?.picture || undefined
+                }
+              />
+            </Avatar.Root>
+          </Button>
+        </Menu.Trigger>
+        <Menu.Positioner>
+          <Menu.Content minW="48">
+            <Menu.Item
+              value="profile"
+              onSelect={() => {
+                navigate("/profile");
+              }}
+            >
+              Profile
+            </Menu.Item>
+            <Menu.Item
+              value="logout"
+              onSelect={() => {
+                void logout();
+              }}
+            >
+              Log Out
+            </Menu.Item>
+            <Menu.Item
+              value="switch-user"
+              onSelect={() => {
+                switchUser();
+              }}
+            >
+              Switch User
+            </Menu.Item>
+          </Menu.Content>
+        </Menu.Positioner>
+      </Menu.Root>
+    ) : null;
 
   return (
     <Box
@@ -92,24 +175,19 @@ export default function AppLayout() {
         py="4"
         align="center"
         bg="lilypad.solid"
+        position="relative"
+        w="100%"
       >
-        <HStack gap="4" align="center">
-          <HStack gap="2" align="center">
-            {isMobile && (
-              <Popover.Root
-                open={isMobileMenuOpen}
-                onOpenChange={(e) => setIsMobileMenuOpen(e.open)}
-                positioning={{ placement: "bottom-start", gutter: 8 }}
-                size="md"
-              >
-                <Popover.Trigger asChild>
+        {isMobile ? (
+          <>
+            <Box flex="1" display="flex" justifyContent="flex-start" minW={0}>
+              <Menu.Root positioning={{ placement: "bottom-start", gutter: 8 }}>
+                <Menu.Trigger asChild>
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    aria-label={
-                      isMobileMenuOpen ? "Close navigation menu" : "Open navigation menu"
-                    }
+                    aria-label="Open navigation menu"
                     bg="transparent"
                     _hover={{ bg: "transparent" }}
                     _active={{ bg: "transparent" }}
@@ -120,125 +198,208 @@ export default function AppLayout() {
                     lineHeight="1"
                     fontSize="lg"
                   >
-                    {isMobileMenuOpen ? "✕" : "☰"}
+                    ☰
                   </Button>
-                </Popover.Trigger>
-                <Popover.Positioner>
-                  <Popover.Content
-                    borderWidth="1px"
-                    borderColor="border"
-                    minW="min(280px, calc(100dvw - 2rem))"
-                    w="max-content"
-                    maxW="calc(100dvw - 2rem)"
-                  >
-                    <Popover.Body py="3" px="0">
-                      <Stack gap="3" align="flex-start" px="5">
-                        <ChakraLink
-                          asChild
-                          colorPalette="gray"
-                          variant="plain"
-                          {...navBarLinkProps}
-                          fontFamily={NAV_WORDMARK_FONT}
-                          fontWeight="normal"
-                          letterSpacing="normal"
-                          fontSize={NAV_WORDMARK_FONT_SIZE}
-                          lineHeight={NAV_WORDMARK_LINE_HEIGHT}
-                          onClick={() => setIsMobileMenuOpen(false)}
+                </Menu.Trigger>
+                <Menu.Positioner>
+                  <Menu.Content minW="48">
+                    <Menu.Item
+                      value="home"
+                      onSelect={() => {
+                        navigate("/");
+                      }}
+                    >
+                      Home
+                    </Menu.Item>
+                    {showProfileNav ? (
+                      <>
+                        <Menu.Item
+                          value="quotes"
+                          onSelect={() => {
+                            navigate("/quotes");
+                          }}
                         >
-                          <Link to="/">Pond Arbor</Link>
-                        </ChakraLink>
-                        {navLinks.map((link) => (
-                          <ChakraLink
-                            key={link.to}
-                            asChild
-                            colorPalette="gray"
-                            variant="plain"
-                            {...navBarLinkProps}
-                            onClick={() => setIsMobileMenuOpen(false)}
-                          >
-                            <Link to={link.to}>{link.label}</Link>
-                          </ChakraLink>
-                        ))}
-                      </Stack>
-                    </Popover.Body>
-                  </Popover.Content>
-                </Popover.Positioner>
-              </Popover.Root>
-            )}
-            <ChakraLink
-              asChild
-              colorPalette="gray"
-              variant="plain"
-              {...navBarLinkProps}
+                          Quotes
+                        </Menu.Item>
+                        <Menu.Item
+                          value="clicker"
+                          onSelect={() => {
+                            navigate("/clicker");
+                          }}
+                        >
+                          Clicker
+                        </Menu.Item>
+                        <Menu.Item
+                          value="whatif"
+                          onSelect={() => {
+                            navigate("/whatif");
+                          }}
+                        >
+                          WhatIf
+                        </Menu.Item>
+                      </>
+                    ) : (
+                      <>
+                        <Menu.Item
+                          value="login"
+                          onSelect={() => {
+                            void loginWithRedirect({
+                              authorizationParams: auth0DefaultLoginParams(),
+                            });
+                          }}
+                        >
+                          Log In
+                        </Menu.Item>
+                        <Menu.Item
+                          value="sign-up"
+                          onSelect={() => {
+                            void loginWithRedirect({
+                              authorizationParams: auth0AccountPickerLoginParams(),
+                            });
+                          }}
+                        >
+                          Sign Up
+                        </Menu.Item>
+                        <Menu.Item
+                          value="whatif"
+                          onSelect={() => {
+                            navigate("/whatif");
+                          }}
+                        >
+                          WhatIf
+                        </Menu.Item>
+                      </>
+                    )}
+                  </Menu.Content>
+                </Menu.Positioner>
+              </Menu.Root>
+            </Box>
+            <Box
+              position="absolute"
+              left="50%"
+              transform="translateX(-50%)"
+              zIndex={1}
+              maxW="calc(100% - 7rem)"
+              textAlign="center"
             >
-              <Link to="/">
-                <Box
-                  display="inline-flex"
-                  alignItems="center"
-                  justifyContent="center"
-                  lineHeight={NAV_WORDMARK_LINE_HEIGHT}
-                  fontSize={NAV_WORDMARK_FONT_SIZE}
-                >
-                  <Image
-                    src={pondarborLogoSrc()}
-                    alt="PondArbor"
-                    h="1.1em"
-                    w="auto"
-                    maxH="1.1em"
-                    objectFit="contain"
-                    display="block"
-                  />
-                </Box>
-              </Link>
-            </ChakraLink>
-          </HStack>
+              <ChakraLink
+                asChild
+                colorPalette="gray"
+                variant="plain"
+                {...navBarLinkProps}
+                fontFamily={NAV_WORDMARK_FONT}
+                fontWeight="normal"
+                letterSpacing="normal"
+                fontSize={NAV_WORDMARK_FONT_SIZE}
+                lineHeight={NAV_WORDMARK_LINE_HEIGHT}
+              >
+                <Link to="/">Pond Arbor</Link>
+              </ChakraLink>
+            </Box>
+            <Box flex="1" display="flex" justifyContent="flex-end" minW={0}>
+              {accountMenu}
+            </Box>
+          </>
+        ) : (
+          <>
+            <HStack gap="4" align="center">
+              <ChakraLink
+                asChild
+                colorPalette="gray"
+                variant="plain"
+                {...navBarLinkProps}
+              >
+                <Link to="/">
+                  <Box
+                    display="inline-flex"
+                    alignItems="center"
+                    justifyContent="center"
+                    lineHeight={NAV_WORDMARK_LINE_HEIGHT}
+                    fontSize={NAV_WORDMARK_FONT_SIZE}
+                  >
+                    <Image
+                      src={pondarborLogoSrc()}
+                      alt="PondArbor"
+                      h="1.1em"
+                      w="auto"
+                      maxH="1.1em"
+                      objectFit="contain"
+                      display="block"
+                    />
+                  </Box>
+                </Link>
+              </ChakraLink>
 
-          {!isMobile && (
-            <ChakraLink
-              asChild
-              colorPalette="gray"
-              variant="plain"
-              {...navBarLinkProps}
-              fontFamily={NAV_WORDMARK_FONT}
-              fontWeight="normal"
-              letterSpacing="normal"
-              fontSize={NAV_WORDMARK_FONT_SIZE}
-              lineHeight={NAV_WORDMARK_LINE_HEIGHT}
-              mx={{ base: "4", md: "6" }}
-            >
-              <Link to="/">Pond Arbor</Link>
-            </ChakraLink>
-          )}
+              <ChakraLink
+                asChild
+                colorPalette="gray"
+                variant="plain"
+                {...navBarLinkProps}
+                fontFamily={NAV_WORDMARK_FONT}
+                fontWeight="normal"
+                letterSpacing="normal"
+                fontSize={NAV_WORDMARK_FONT_SIZE}
+                lineHeight={NAV_WORDMARK_LINE_HEIGHT}
+                mx={{ base: "4", md: "6" }}
+              >
+                <Link to="/">Pond Arbor</Link>
+              </ChakraLink>
 
-          {!isMobile &&
-            navLinks.map((link) => {
-              const sectionActive =
-                link.to === "/profile"
-                  ? location.pathname.startsWith("/profile")
-                  : link.to === "/clicker"
-                    ? location.pathname === "/clicker" ||
-                      location.pathname.startsWith("/clicker/")
-                    : location.pathname.startsWith("/quotes") ||
-                      location.pathname.includes("/public-quotes");
-              return (
-                <ChakraLink
-                  key={link.to}
-                  asChild
-                  colorPalette="gray"
-                  variant="plain"
-                  {...navBarLinkProps}
-                  fontWeight={sectionActive ? "bold" : "normal"}
-                  color={sectionActive ? "white" : undefined}
-                  textShadow={
-                    sectionActive ? "0 1px 2px rgba(0, 0, 0, 0.35)" : undefined
-                  }
-                >
-                  <Link to={link.to}>{link.label}</Link>
-                </ChakraLink>
-              );
-            })}
-        </HStack>
-        <Spacer />
+              {desktopNavLinks.map((link) => {
+                const active = isDesktopNavRouteActive(location.pathname, link.to);
+                return (
+                  <ChakraLink
+                    key={link.to}
+                    asChild
+                    colorPalette="gray"
+                    variant="plain"
+                    {...navBarLinkProps}
+                    fontWeight="normal"
+                    color={active ? "white" : "black"}
+                    _visited={{
+                      ...navBarLinkProps._visited,
+                      color: active ? "white" : "black",
+                    }}
+                    _hover={{
+                      ...navBarLinkProps._hover,
+                      color: active ? "white" : "black",
+                    }}
+                    _active={{
+                      ...navBarLinkProps._active,
+                      color: active ? "white" : "black",
+                    }}
+                  >
+                    <Link to={link.to}>
+                      <Box
+                        as="span"
+                        position="relative"
+                        display="inline-block"
+                        lineHeight={NAV_WORDMARK_LINE_HEIGHT}
+                      >
+                        {/* Keep width stable: bold text is always in-flow, normal text is overlaid when inactive. */}
+                        <Box as="span" fontWeight="bold" opacity={active ? 1 : 0}>
+                          {link.label}
+                        </Box>
+                        <Box
+                          as="span"
+                          position="absolute"
+                          top={0}
+                          left={0}
+                          fontWeight="normal"
+                          opacity={active ? 0 : 1}
+                        >
+                          {link.label}
+                        </Box>
+                      </Box>
+                    </Link>
+                  </ChakraLink>
+                );
+              })}
+            </HStack>
+            <Spacer />
+            {accountMenu}
+          </>
+        )}
       </Flex>
       <Box
         as="main"

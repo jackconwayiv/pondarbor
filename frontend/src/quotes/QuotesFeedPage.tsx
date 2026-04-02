@@ -809,63 +809,71 @@ export default function QuotesFeedPage() {
         onValueChange={(details) => setActiveTab(parseQuoteTab(details.value))}
         variant="plain"
       >
-        <Box bg="bg" px={{ base: "4", md: "6" }} py={{ base: "6", md: "6" }}>
-          <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" maxW="3xl">
-            <Tabs.Trigger
-              value="add"
-              bg={activeTab === "add" ? "lilypad.solid" : undefined}
-              color={activeTab === "add" ? "black" : undefined}
-              borderTopRadius="md"
-              borderBottomRadius="0"
-              px="4"
-              py="2"
-              fontWeight="medium"
-              _hover={{ bg: activeTab === "add" ? "lilypad.solid" : "transparent" }}
-              _selected={{ bg: "lilypad.solid", color: "black" }}
-            >
-              Add
-            </Tabs.Trigger>
-            <Tabs.Trigger
-              value="my"
-              bg={activeTab === "my" ? "lilypad.solid" : undefined}
-              color={activeTab === "my" ? "black" : undefined}
-              borderTopRadius="md"
-              borderBottomRadius="0"
-              px="4"
-              py="2"
-              fontWeight="medium"
-              _hover={{ bg: activeTab === "my" ? "lilypad.solid" : "transparent" }}
-              _selected={{ bg: "lilypad.solid", color: "black" }}
-            >
-              List
-            </Tabs.Trigger>
-            <Tabs.Trigger
-              value="public"
-              bg={activeTab === "public" ? "lilypad.solid" : undefined}
-              color={activeTab === "public" ? "black" : undefined}
-              borderTopRadius="md"
-              borderBottomRadius="0"
-              px="4"
-              py="2"
-              fontWeight="medium"
-              _hover={{ bg: activeTab === "public" ? "lilypad.solid" : "transparent" }}
-              _selected={{ bg: "lilypad.solid", color: "black" }}
-            >
-              Explore
-            </Tabs.Trigger>
-          </Tabs.List>
-        </Box>
-
         <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
-          <Tabs.Content value="add">
-            <Box
-              maxW="3xl"
-              bg="bg"
-              borderWidth="1px"
+          <Box
+            maxW="3xl"
+            w="100%"
+            mx="auto"
+            bg="bg"
+            borderWidth="1px"
+            borderColor="border"
+            borderRadius="xl"
+            overflow="hidden"
+          >
+            <Tabs.List
+              px={{ base: "4", md: "6" }}
+              pt={{ base: "4", md: "4" }}
+              pb="0"
+              borderBottomWidth="1px"
               borderColor="border"
-              borderRadius="xl"
-              p={{ base: "4", md: "6" }}
+              gap="1"
+              w="100%"
             >
+              <Tabs.Trigger
+                value="add"
+                bg={activeTab === "add" ? "lilypad.solid" : undefined}
+                color={activeTab === "add" ? "black" : undefined}
+                borderTopRadius="md"
+                borderBottomRadius="0"
+                px="4"
+                py="2"
+                fontWeight="medium"
+                _hover={{ bg: activeTab === "add" ? "lilypad.solid" : "transparent" }}
+                _selected={{ bg: "lilypad.solid", color: "black" }}
+              >
+                Add Quote
+              </Tabs.Trigger>
+              <Tabs.Trigger
+                value="my"
+                bg={activeTab === "my" ? "lilypad.solid" : undefined}
+                color={activeTab === "my" ? "black" : undefined}
+                borderTopRadius="md"
+                borderBottomRadius="0"
+                px="4"
+                py="2"
+                fontWeight="medium"
+                _hover={{ bg: activeTab === "my" ? "lilypad.solid" : "transparent" }}
+                _selected={{ bg: "lilypad.solid", color: "black" }}
+              >
+                My Quotes
+              </Tabs.Trigger>
+              <Tabs.Trigger
+                value="public"
+                bg={activeTab === "public" ? "lilypad.solid" : undefined}
+                color={activeTab === "public" ? "black" : undefined}
+                borderTopRadius="md"
+                borderBottomRadius="0"
+                px="4"
+                py="2"
+                fontWeight="medium"
+                _hover={{ bg: activeTab === "public" ? "lilypad.solid" : "transparent" }}
+                _selected={{ bg: "lilypad.solid", color: "black" }}
+              >
+                Explore Archive
+              </Tabs.Trigger>
+            </Tabs.List>
+
+            <Tabs.Content value="add" p={{ base: "4", md: "6" }}>
               <Stack gap="3" pt="0">
               <Textarea
                 value={body}
@@ -1059,11 +1067,10 @@ export default function QuotesFeedPage() {
               ) : null}
               {success ? <Text>{success}</Text> : null}
               </Stack>
-            </Box>
-          </Tabs.Content>
+            </Tabs.Content>
 
-          <Tabs.Content value="my">
-            <Stack gap="3" pt="0" maxW="3xl">
+            <Tabs.Content value="my" p={{ base: "4", md: "6" }}>
+            <Stack gap="3" pt="0">
               {loadingFeed ? <Text fontSize={APP_TEXT_SIZES.helper}>Loading…</Text> : null}
               {quotes.length === 0 ? <Text>No quotes yet.</Text> : null}
               {editingQuoteId == null &&
@@ -1172,13 +1179,14 @@ export default function QuotesFeedPage() {
                 </Box>
               ) : null}
             </Stack>
-          </Tabs.Content>
+            </Tabs.Content>
 
-          <Tabs.Content value="public">
-            <Stack pt="0" maxW="3xl">
+            <Tabs.Content value="public" p={{ base: "4", md: "6" }}>
+            <Stack pt="0">
               <PublicQuotesPage />
             </Stack>
-          </Tabs.Content>
+            </Tabs.Content>
+          </Box>
         </Box>
       </Tabs.Root>
     </Stack>

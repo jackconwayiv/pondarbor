@@ -34,8 +34,46 @@ from whatif.serializers import (
     WhatIfSessionPublicSerializer,
 )
 
-AVATAR_EMOJIS = ["🦊", "🐻", "🐼", "🐸", "🦉", "🐧", "🐙", "🦁", "🐯", "🦄", "🐢", "🐠"]
+AVATAR_EMOJIS = [
+    "🦊",
+    "🐻",
+    "🐼",
+    "🐸",
+    "🦉",
+    "🐧",
+    "🐙",
+    "🦁",
+    "🐯",
+    "🐢",
+    "🐠",
+    "🐟",
+    "🦈",
+    "🐍",
+    "🦦",
+    "🐌",
+    "🐹",
+    "🦀",
+    "🐞",
+    "🐝",
+    "🦆",
+    "🦢",
+    "🦩",
+    "🦜",
+    "🐷",
+    "🐴",
+    "🐺",
+    "🐮",
+]
 ROUND_TRANSITION_SECONDS = 5
+
+
+def _pick_avatar_emoji(session: WhatIfSession) -> str:
+    """Pick an emoji not yet used by another player in this session (unique while pool allows)."""
+    used = set(session.players.values_list("avatar_emoji", flat=True))
+    available = [e for e in AVATAR_EMOJIS if e not in used]
+    if available:
+        return random.choice(available)
+    return random.choice(AVATAR_EMOJIS)
 
 
 def _generate_short_code() -> str:
@@ -336,15 +374,18 @@ def resume_host_session(request, code: str):
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def join_session(request, code: str):
-    session = _load_session(code)
     serializer = JoinSessionSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 
     display_name = serializer.validated_data["display_name"]
-    avatar = random.choice(AVATAR_EMOJIS)
     user = request.user if getattr(request.user, "is_authenticated", False) else None
 
     with transaction.atomic():
+        session = get_object_or_404(
+            WhatIfSession.objects.select_for_update(),
+            short_code=code.upper(),
+        )
+        avatar = _pick_avatar_emoji(session)
         player = WhatIfPlayer.objects.create(
             session=session,
             user=user,

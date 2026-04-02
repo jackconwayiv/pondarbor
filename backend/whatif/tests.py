@@ -1,4 +1,5 @@
 import random
+from collections import Counter
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -7,7 +8,7 @@ from rest_framework.test import APIClient
 
 from whatif.models import WhatIfGameResult, WhatIfPlayer, WhatIfQuestion, WhatIfSession
 from whatif.rules import evaluate_vote_scores, two_subject_candidate_ids
-from whatif.views import _draw_question
+from whatif.views import AVATAR_EMOJIS, _draw_question
 
 
 def _mark_all_players_ready(code: str) -> None:
@@ -128,6 +129,26 @@ class WhatIfApiTests(TestCase):
         self.assertEqual(len(body["players"]), 1)
         self.assertEqual(body["players"][0]["display_name"], "Alex")
         self.assertIn("ready_to_start", body["players"][0])
+
+    def test_join_assigns_unique_avatar_emojis_per_session(self):
+        code, _host_secret, _user = self._create_session()
+        emojis: list[str] = []
+        for i in range(20):
+            secret = self._join(code, f"Player{i}")
+            p = WhatIfPlayer.objects.get(player_secret=secret)
+            emojis.append(p.avatar_emoji)
+        self.assertEqual(len(emojis), len(set(emojis)))
+        for e in emojis:
+            self.assertIn(e, AVATAR_EMOJIS)
+
+    @patch("whatif.views.AVATAR_EMOJIS", ["🦊", "🐻"])
+    def test_join_allows_duplicate_emoji_when_pool_exhausted(self):
+        code, _host_secret, _user = self._create_session()
+        for i in range(3):
+            self._join(code, f"P{i}")
+        emojis = list(WhatIfPlayer.objects.filter(session__short_code=code).values_list("avatar_emoji", flat=True))
+        self.assertEqual(len(emojis), 3)
+        self.assertGreaterEqual(max(Counter(emojis).values()), 2)
 
     def test_create_session_requires_authentication(self):
         response = self.client.post("/api/v1/whatif/sessions/", {}, format="json")

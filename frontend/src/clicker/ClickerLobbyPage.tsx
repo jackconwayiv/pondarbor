@@ -4,6 +4,7 @@ import { useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
+import { fullBleedStackProps } from "../responsive";
 import { APP_TEXT_SIZES } from "../theme/typography";
 import { createDefaultClickerState, saveClickerState } from "./api";
 import { ClickerPageShell } from "./ClickerShell";
@@ -80,62 +81,72 @@ export default function ClickerLobbyPage() {
 
   return (
     <ClickerPageShell>
-      <Stack gap="4" maxW="lg" mx="auto" w="full">
-        <Heading as="h1" size="lg">
-          Pond Clicker
-        </Heading>
-        <Text fontSize={{ base: "sm", md: "md" }} color="fg">
-          Welcome! Tap the pond to earn energy, then spend it in the shop on upgrades that grow your pond.
-          Oxygen, vegetation, and abundance build up over time and unlock new purchases.
-        </Text>
-        <Text fontSize={APP_TEXT_SIZES.meta} color="gray.700">
-          Progress is saved automatically while you play. Use Reset below only if you want to start a new pond from
-          scratch on this account.
-        </Text>
-        {resetError ? (
-          <Text role="alert" fontSize={APP_TEXT_SIZES.helper} color="red.600" fontWeight="medium">
-            {resetError}
-          </Text>
-        ) : null}
-        <Flex w="full" justify="space-between" align="center" flexWrap="wrap" gap="2">
-          <PondButton
-            type="button"
-            size="md"
-            colorPalette="nautical"
-            bg="white"
-            color="fg"
+      <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
+        <Box
+          flex="1"
+          bg="sky.solid"
+          px={{ base: "4", md: "6" }}
+          py={{ base: "5", md: "6" }}
+        >
+          <Box
+            maxW="3xl"
+            w="100%"
+            mx="auto"
+            bg="bg"
             borderWidth="1px"
-            borderColor="blackAlpha.100"
-            _hover={{
-              bg: "gray.50",
-              borderColor: "nautical.solid",
-              color: "fg",
-            }}
-            onClick={() => navigate("/clicker/play")}
+            borderColor="border"
+            borderRadius="xl"
+            p={{ base: "4", md: "6" }}
           >
-            Play game
-          </PondButton>
-          <PondButton
-            ref={confirmResetButtonRef}
-            type="button"
-            size="md"
-            colorPalette="nautical"
-            variant="outline"
-            loading={resetBusy}
-            disabled={resetBusy}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!confirmReset) {
-                setConfirmReset(true);
-                setResetError(null);
-                return;
-              }
-              void performReset();
-            }}
-          >
-            {confirmReset ? "Confirm reset" : "Reset game"}
-          </PondButton>
-        </Flex>
+            <Stack gap="4">
+              <Heading as="h1" size="lg">
+                Pond Clicker
+              </Heading>
+              <Text fontSize={{ base: "sm", md: "md" }} color="fg">
+                Welcome! Tap the pond to earn energy, then spend it in the shop on upgrades that grow your pond.
+                Oxygen, vegetation, and abundance build up over time and unlock new purchases.
+              </Text>
+              <Text fontSize={APP_TEXT_SIZES.meta} color="gray.700">
+                Progress is saved automatically while you play. Use Reset below only if you want to start a new pond
+                from scratch on this account.
+              </Text>
+              {resetError ? (
+                <Text role="alert" fontSize={APP_TEXT_SIZES.helper} color="red.600" fontWeight="medium">
+                  {resetError}
+                </Text>
+              ) : null}
+              <Flex w="full" justify="space-between" align="center" flexWrap="wrap" gap="2">
+                <PondButton
+                  type="button"
+                  size="md"
+                  colorPalette="lilypad"
+                  onClick={() => navigate("/clicker/play")}
+                >
+                  Play game
+                </PondButton>
+                <PondButton
+                  ref={confirmResetButtonRef}
+                  type="button"
+                  size="md"
+                  colorPalette="orange"
+                  loading={resetBusy}
+                  disabled={resetBusy}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!confirmReset) {
+                      setConfirmReset(true);
+                      setResetError(null);
+                      return;
+                    }
+                    void performReset();
+                  }}
+                >
+                  {confirmReset ? "Confirm reset" : "Reset game"}
+                </PondButton>
+              </Flex>
+            </Stack>
+          </Box>
+        </Box>
       </Stack>
     </ClickerPageShell>
   );

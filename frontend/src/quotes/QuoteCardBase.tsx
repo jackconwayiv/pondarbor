@@ -73,8 +73,9 @@ export default function QuoteCardBase({
                 <Tag.Root
                   key={`base-attribution-${quote.id}-${label.id}`}
                   size="sm"
-                  colorPalette="lilypad"
-                  variant="subtle"
+                  bg="gray.100"
+                  color="gray.600"
+                  borderWidth="0"
                 >
                   <Tag.Label>{label.name}</Tag.Label>
                 </Tag.Root>
@@ -86,8 +87,9 @@ export default function QuoteCardBase({
                 <Tag.Root
                   key={`base-tag-${quote.id}-${label.id}`}
                   size="sm"
-                  colorPalette="orange"
-                  variant="subtle"
+                  bg="gray.100"
+                  color="gray.600"
+                  borderWidth="0"
                 >
                   <Tag.Label>{label.name}</Tag.Label>
                 </Tag.Root>

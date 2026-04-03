@@ -14,7 +14,12 @@ import { Link as RouterLink } from "react-router";
 import { useAppSession } from "./auth/AppSessionContext";
 import PondButton from "./PondButton";
 import { fullBleedStackProps } from "./responsive";
-import { fetchUpcomingBirthdays, type UpcomingBirthday } from "./users/api";
+import {
+  fetchStaffPendingSummary,
+  fetchUpcomingBirthdays,
+  type UpcomingBirthday,
+  type StaffPendingSummary,
+} from "./users/api";
 
 const LILYPAD_WEDGE_CLIP_PATH =
   "polygon(0% 0%, 43% 0%, 46% 12%, 48% 24%, 50% 36%, 52% 24%, 54% 12%, 57% 0%, 100% 0%, 100% 100%, 0% 100%)";
@@ -63,6 +68,7 @@ function App() {
   } =
     useAppSession();
   const [upcomingBirthdays, setUpcomingBirthdays] = useState<UpcomingBirthday[]>([]);
+  const [staffPendingSummary, setStaffPendingSummary] = useState<StaffPendingSummary | null>(null);
   const nickname =
     sessionUser?.profile?.display_name ??
     auth0User?.nickname ??
@@ -99,6 +105,36 @@ function App() {
     };
   }, [isAuthenticated, sessionUser?.user?.is_approved, getApiAccessToken]);
 
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadStaffPendingSummary() {
+      if (!isAuthenticated || !sessionUser?.user?.is_staff) {
+        if (!isCancelled) {
+          setStaffPendingSummary(null);
+        }
+        return;
+      }
+
+      try {
+        const token = await getApiAccessToken();
+        const summary = await fetchStaffPendingSummary(token);
+        if (!isCancelled) {
+          setStaffPendingSummary(summary);
+        }
+      } catch {
+        if (!isCancelled) {
+          setStaffPendingSummary(null);
+        }
+      }
+    }
+
+    void loadStaffPendingSummary();
+    return () => {
+      isCancelled = true;
+    };
+  }, [isAuthenticated, sessionUser?.user?.is_staff, getApiAccessToken]);
+
   if (isLoading) {
     return (
       <Box
@@ -122,6 +158,49 @@ function App() {
 
           {isAuthenticated ? (
             <Stack gap="2" width="100%">
+              {sessionUser?.user?.is_staff &&
+              staffPendingSummary &&
+              (staffPendingSummary.pending_members > 0 ||
+                staffPendingSummary.pending_whatif_questions > 0) ? (
+                <Box
+                  asChild
+                  display="block"
+                  textDecoration="none"
+                  color="inherit"
+                  _focusVisible={{
+                    outline: "2px solid",
+                    outlineColor: "rgba(0, 0, 0, 0.35)",
+                    outlineOffset: "2px",
+                  }}
+                >
+                  <RouterLink to="/staff">
+                    <Stack gap="1">
+                      {staffPendingSummary.pending_members > 0 ? (
+                        <Text
+                          fontWeight="bold"
+                          color="orange.solid"
+                          textStyle={{ base: "sm", md: "md" }}
+                        >
+                          {staffPendingSummary.pending_members === 1
+                            ? "1 member is awaiting approval."
+                            : `${staffPendingSummary.pending_members} members are awaiting approval.`}
+                        </Text>
+                      ) : null}
+                      {staffPendingSummary.pending_whatif_questions > 0 ? (
+                        <Text
+                          fontWeight="bold"
+                          color="orange.solid"
+                          textStyle={{ base: "sm", md: "md" }}
+                        >
+                          {staffPendingSummary.pending_whatif_questions === 1
+                            ? "1 WhatIf question is awaiting review."
+                            : `${staffPendingSummary.pending_whatif_questions} WhatIf questions are awaiting review.`}
+                        </Text>
+                      ) : null}
+                    </Stack>
+                  </RouterLink>
+                </Box>
+              ) : null}
               {sessionUser?.user?.is_approved && upcomingBirthdays.length > 0 ? (
                 <Stack gap="1">
                   {upcomingBirthdays.map((birthday) => (

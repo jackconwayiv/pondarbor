@@ -14,7 +14,7 @@ from rest_framework.response import Response
 
 from .auth0_backend import Auth0TokenAuthentication
 from .models import PROFILE_TIMEZONE_DEFAULT, Profile
-from .permissions import IsApprovedUser
+from .permissions import IsApprovedUser, IsStaffUser
 from achievements.services import achievements_payload_for_user
 
 from .serializers import (
@@ -23,6 +23,7 @@ from .serializers import (
     UpcomingBirthdaySerializer,
     ProfileUpdateSerializer,
     SignupSerializer,
+    StaffAccountStatusPatchSerializer,
 )
 
 UserModel = get_user_model()
@@ -267,3 +268,63 @@ def patch_me_profile(request):
         setattr(profile, field, value)
     profile.save()
     return Response(MeSerializer(serialize_me(request.user)).data)
+
+
+def _serialize_staff_user_row(user):
+    profile = get_or_create_profile(user)
+    return {
+        "id": user.id,
+        "email": user.email,
+        "username": user.username or "",
+        "account_status": user.account_status,
+        "is_staff": user.is_staff,
+        "display_name": profile.display_name,
+        "date_joined": user.date_joined,
+    }
+
+
+@api_view(["GET"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsAuthenticated, IsStaffUser])
+def staff_pending_summary(request):
+    from whatif.models import WhatIfQuestion
+
+    pending_members = UserModel.objects.filter(
+        account_status=UserModel.AccountStatus.PENDING
+    ).count()
+    pending_whatif = WhatIfQuestion.objects.filter(
+        review_status=WhatIfQuestion.ReviewStatus.PENDING,
+        deleted_at__isnull=True,
+    ).count()
+    return Response(
+        {
+            "pending_members": pending_members,
+            "pending_whatif_questions": pending_whatif,
+        }
+    )
+
+
+@api_view(["GET"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsAuthenticated, IsStaffUser])
+def staff_users_list(request):
+    users = UserModel.objects.select_related("profile").order_by("-date_joined", "-id")
+    return Response([_serialize_staff_user_row(u) for u in users])
+
+
+@api_view(["PATCH"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsAuthenticated, IsStaffUser])
+def staff_user_patch(request, user_id: int):
+    # Do not allow changing your own approval status (avoids accidental self-lockout).
+    if user_id == request.user.id:
+        return Response(
+            {"detail": "You cannot change your own account status here."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    target = get_object_or_404(UserModel.objects.all(), pk=user_id)
+    serializer = StaffAccountStatusPatchSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    target.account_status = serializer.validated_data["account_status"]
+    target.save(update_fields=["account_status"])
+    return Response(_serialize_staff_user_row(target))

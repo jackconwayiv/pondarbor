@@ -73,3 +73,7 @@ class SignupSerializer(serializers.Serializer):
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
+
+
+class StaffAccountStatusPatchSerializer(serializers.Serializer):
+    account_status = serializers.ChoiceField(choices=UserModel.AccountStatus.choices)

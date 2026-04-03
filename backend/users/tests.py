@@ -8,6 +8,7 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 from users.frontend_views import spa_index
+from whatif.models import WhatIfQuestion
 
 User = get_user_model()
 
@@ -231,6 +232,89 @@ class UsersApiTests(TestCase):
         response = self.client.get("/api/v1/whatif/health/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["app"], "whatif")
+
+
+class StaffApiTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+    def test_staff_endpoints_forbidden_for_non_staff(self):
+        user = User.objects.create_user(email="plain@example.com", password="secret12345")
+        user.account_status = User.AccountStatus.APPROVED
+        user.save()
+        self.client.force_login(user)
+        for method, path, data in (
+            ("get", "/api/v1/users/staff/pending-summary/", None),
+            ("get", "/api/v1/users/staff/users/", None),
+            ("patch", "/api/v1/users/staff/users/999/", {"account_status": "approved"}),
+        ):
+            if method == "get":
+                response = self.client.get(path)
+            else:
+                response = self.client.patch(path, data, format="json")
+            self.assertEqual(response.status_code, 403, msg=f"{method.upper()} {path}")
+
+    def test_staff_pending_summary_counts(self):
+        staff = User.objects.create_user(
+            email="staff@example.com", password="secret12345", is_staff=True
+        )
+        staff.account_status = User.AccountStatus.APPROVED
+        staff.save()
+        User.objects.create_user(email="pend1@example.com", password="secret12345")
+        User.objects.create_user(email="pend2@example.com", password="secret12345")
+        WhatIfQuestion.objects.create(
+            prompt="Q?",
+            answer_1="a1",
+            answer_2="a2",
+            answer_3="a3",
+            answer_4="a4",
+            answer_5="a5",
+            answer_6="a6",
+            review_status=WhatIfQuestion.ReviewStatus.PENDING,
+            is_active=False,
+        )
+        self.client.force_login(staff)
+        response = self.client.get("/api/v1/users/staff/pending-summary/")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["pending_members"], 2)
+        self.assertEqual(body["pending_whatif_questions"], 1)
+
+    def test_staff_users_list_and_patch(self):
+        staff = User.objects.create_user(
+            email="staff@example.com", password="secret12345", is_staff=True
+        )
+        staff.account_status = User.AccountStatus.APPROVED
+        staff.save()
+        target = User.objects.create_user(email="target@example.com", password="secret12345")
+        self.client.force_login(staff)
+        list_res = self.client.get("/api/v1/users/staff/users/")
+        self.assertEqual(list_res.status_code, 200)
+        rows = list_res.json()
+        self.assertTrue(any(r["email"] == "target@example.com" for r in rows))
+        patch_res = self.client.patch(
+            f"/api/v1/users/staff/users/{target.id}/",
+            {"account_status": "approved"},
+            format="json",
+        )
+        self.assertEqual(patch_res.status_code, 200)
+        self.assertEqual(patch_res.json()["account_status"], "approved")
+        target.refresh_from_db()
+        self.assertEqual(target.account_status, User.AccountStatus.APPROVED)
+
+    def test_staff_cannot_patch_own_account_status(self):
+        staff = User.objects.create_user(
+            email="staff@example.com", password="secret12345", is_staff=True
+        )
+        staff.account_status = User.AccountStatus.APPROVED
+        staff.save()
+        self.client.force_login(staff)
+        response = self.client.patch(
+            f"/api/v1/users/staff/users/{staff.id}/",
+            {"account_status": "suspended"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
 
 
 class UserVisibilityTests(TestCase):

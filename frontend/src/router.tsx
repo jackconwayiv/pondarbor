@@ -15,6 +15,7 @@ import WhatIfAdminPage from "./whatif/WhatIfAdminPage";
 import WhatIfLobbyPage from "./whatif/WhatIfLobbyPage";
 import WhatIfPlayPage from "./whatif/WhatIfPlayPage";
 import WhatIfHandPage from "./whatif/WhatIfHandPage";
+import StaffPage from "./staff/StaffPage";
 
 export const router = createBrowserRouter([
   {
@@ -28,6 +29,10 @@ export const router = createBrowserRouter([
       {
         path: "profile",
         element: <ProfilePage />,
+      },
+      {
+        path: "staff",
+        element: <StaffPage />,
       },
       {
         path: "quotes",

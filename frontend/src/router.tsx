@@ -5,6 +5,7 @@ import NotFoundPage from "./NotFoundPage";
 import ProfilePage from "./ProfilePage";
 import FriendProfilePage from "./friend/FriendProfilePage";
 import QuotesFeedPage from "./quotes/QuotesFeedPage";
+import ClickerCatalogAdminPage from "./clicker/ClickerCatalogAdminPage";
 import ClickerGamePage from "./clicker/ClickerGamePage";
 import ClickerLayout from "./clicker/ClickerLayout";
 import ClickerLobbyPage from "./clicker/ClickerLobbyPage";
@@ -38,6 +39,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <ClickerLobbyPage /> },
           { path: "play", element: <ClickerGamePage /> },
+          { path: "dev/catalog", element: <ClickerCatalogAdminPage /> },
         ],
       },
       {

@@ -9,23 +9,65 @@
   }
 }
 
-@keyframes pondFloatPad {
-  0%,
+@keyframes pondSunTwinkle {
+  0% {
+    opacity: 0.175;
+    transform: translate(-50%, -50%) scale(0.65);
+  }
+  25% {
+    opacity: 0.5;
+    transform: translate(-50%, -50%) scale(1.05);
+  }
+  55% {
+    opacity: 0.425;
+    transform: translate(-50%, -50%) scale(1);
+  }
   100% {
-    transform: translate(-50%, -50%) translateY(0);
+    opacity: 0.125;
+    transform: translate(-50%, -50%) scale(0.75);
   }
-  50% {
-    transform: translate(-50%, -50%) translateY(-5px);
-  }
+}
+
+.pondSunTwinkle {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  pointer-events: none;
+  background: radial-gradient(
+    circle,
+    rgba(255, 252, 232, 0.5) 0%,
+    rgba(255, 243, 168, 0.5) 35%,
+    rgba(255, 220, 120, 0.25) 60%,
+    transparent 78%
+  );
+  box-shadow:
+    0 0 10px rgba(255, 248, 200, 0.5),
+    0 0 22px rgba(255, 230, 140, 0.375);
+  animation: pondSunTwinkle var(--pond-twinkle-dur, 2.8s) ease-in-out infinite;
+  animation-delay: var(--pond-twinkle-delay, 0s);
+}
+
+/** Always-on glint when the user prefers reduced motion (animated twinkles are off). */
+.pondSunTwinkleStatic {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  pointer-events: none;
+  opacity: 0.46;
+  background: radial-gradient(
+    circle,
+    rgba(255, 252, 232, 0.5) 0%,
+    rgba(255, 233, 138, 0.5) 45%,
+    rgba(255, 200, 80, 0.2) 70%,
+    transparent 85%
+  );
+  box-shadow: 0 0 12px rgba(255, 240, 180, 0.475);
 }
 
 .pondRipple {
   animation: pondRippleExpand 0.65s ease-out forwards;
-}
-
-.pondPad {
-  animation: pondFloatPad var(--pond-pad-dur, 4s) ease-in-out infinite;
-  animation-delay: var(--pond-pad-delay, 0s);
 }
 
 @keyframes pondFloatDenizen {

@@ -6,6 +6,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
+from achievements.services import evaluate_pondclicker_achievements_for_user
+
 from .models import ClickerGameSave
 
 MAX_STATE_BYTES = 256 * 1024
@@ -96,6 +98,7 @@ def game_state(request):
         },
     )
     row.refresh_from_db()
+    evaluate_pondclicker_achievements_for_user(request.user.pk, state)
     return Response({**_serialize_save(row), **_server_time_payload()})
 
 

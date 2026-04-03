@@ -24,6 +24,7 @@ SLUG_ARCHIVIST = "archivist"
 SLUG_TOWN_CRIER = "town_crier"
 SLUG_WHATIF_WIZ = "whatif_wiz"
 SLUG_WHATIF_WARRIOR = "whatif_warrior"
+SLUG_PONDCLICKER_TIER_1 = "pondclicker_tier_1_pond"
 
 ARCHIVIST_MIN_QUOTES = 10
 TOWN_CRIER_MIN_PUBLIC = 10
@@ -44,6 +45,23 @@ def _try_unlock(user_id: int, slug: str, *, context: dict | None = None) -> bool
             defaults={"context": context or {}},
         )
     return created
+
+
+def evaluate_pondclicker_achievements_for_user(user_id: int, state: dict) -> None:
+    """
+    Unlock Tier 1 pond when save includes all three Tier 1 marquee denizens.
+    """
+    if not isinstance(state, dict):
+        return
+    owned = state.get("owned_upgrades")
+    if not isinstance(owned, dict):
+        return
+    required = ("pond_snails", "tadpoles", "water_fleas")
+    for key in required:
+        raw = owned.get(key)
+        if not isinstance(raw, (int, float)) or raw < 1:
+            return
+    _try_unlock(user_id, SLUG_PONDCLICKER_TIER_1)
 
 
 def evaluate_quote_achievements_for_user(user_id: int) -> None:
@@ -129,10 +147,14 @@ def achievement_rows_for_user(user, *, public_only: bool):
 
 def backfill_all_achievements() -> None:
     """Management command: grant unlocks for users who already meet rules (post-deploy)."""
+    from clicker.models import ClickerGameSave
     from whatif.models import WhatIfGameResult, WhatIfPlayer, WhatIfSession
 
     for uid in User.objects.values_list("pk", flat=True):
         evaluate_quote_achievements_for_user(uid)
+
+    for row in ClickerGameSave.objects.iterator():
+        evaluate_pondclicker_achievements_for_user(row.user_id, row.state or {})
 
     for uid in (
         User.objects.filter(whatif_players__session__status=WhatIfSession.Status.ENDED)

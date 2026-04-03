@@ -1,14 +1,11 @@
-import { KNOWN_UPGRADE_IDS, PRIMARY_RESOURCE_IDS, clampOwnedStacksForUpgrade, getUpgradeDef } from "./catalog";
+import { KNOWN_UPGRADE_IDS, clampOwnedStacksForUpgrade, getUpgradeDef } from "./catalog";
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
-export const CATALOG_CONTENT_VERSION = 4;
+export const CATALOG_CONTENT_VERSION = 5;
 
 export type ClickerGameStateV1 = {
   energy: number;
-  oxygen: number;
-  vegetation: number;
-  abundance: number;
   /** Upgrade id (string) -> number owned (stacks). */
   owned_upgrades: Record<string, number>;
   /** Most-recent purchase first. */
@@ -19,9 +16,6 @@ export type ClickerGameStateV1 = {
   unlocked_mechanics: string[];
   /** Bumped when catalog content changes meaningfully (migration hook). */
   catalog_version: number;
-  /** Prestige currency (stub for future ascension). */
-  prestige_points: number;
-  prestige_upgrades: Record<string, number>;
   /** Timed buffs (stub). */
   active_buffs: Array<{ id: string; expires_at_ms: number }>;
   /** Lifetime stats (stub). */
@@ -50,26 +44,18 @@ function numField(raw: Record<string, unknown>, key: string, fallback: number): 
 export function createDefaultClickerState(): ClickerGameStateV1 {
   return {
     energy: 0,
-    oxygen: 0,
-    vegetation: 0,
-    abundance: 0,
     owned_upgrades: {},
     owned_upgrade_order: [],
     revealed_upgrades: {},
     unlocked_mechanics: [],
     catalog_version: CATALOG_CONTENT_VERSION,
-    prestige_points: 0,
-    prestige_upgrades: {},
     active_buffs: [],
     statistics: { total_clicks: 0, total_energy_earned: 0 },
   };
 }
 
-/** Reconcile saved order with current owned set; append missing owned ids by numeric id. */
-export function normalizeOwnedUpgradeOrder(
-  raw: unknown,
-  owned: Record<string, number>,
-): string[] {
+/** Reconcile saved order with current owned set; append missing owned ids sorted lexicographically. */
+export function normalizeOwnedUpgradeOrder(raw: unknown, owned: Record<string, number>): string[] {
   const ownedKeys = new Set(
     Object.entries(owned)
       .filter(([, lv]) => typeof lv === "number" && lv > 0)
@@ -86,7 +72,7 @@ export function normalizeOwnedUpgradeOrder(
       seen.add(item);
     }
   }
-  const missing = [...ownedKeys].filter((k) => !seen.has(k)).sort((a, b) => Number(a) - Number(b));
+  const missing = [...ownedKeys].filter((k) => !seen.has(k)).sort((a, b) => a.localeCompare(b));
   out.push(...missing);
   return out;
 }
@@ -121,9 +107,6 @@ export function normalizeClickerState(raw: unknown): ClickerGameStateV1 {
       }
     }
   }
-  const oxygen = numField(o, "oxygen", 0);
-  const vegetation = numField(o, "vegetation", 0);
-  const abundance = numField(o, "abundance", 0);
 
   const owned_upgrade_order = normalizeOwnedUpgradeOrder(o.owned_upgrade_order, owned_upgrades);
   const unlocked_mechanics = Array.isArray(o.unlocked_mechanics)
@@ -134,18 +117,6 @@ export function normalizeClickerState(raw: unknown): ClickerGameStateV1 {
     typeof o.catalog_version === "number" && Number.isFinite(o.catalog_version)
       ? Math.max(0, Math.floor(o.catalog_version))
       : CATALOG_CONTENT_VERSION;
-
-  const prestige_points = numField(o, "prestige_points", 0);
-
-  const prestige_upgrades: Record<string, number> = {};
-  if (o.prestige_upgrades && typeof o.prestige_upgrades === "object" && o.prestige_upgrades !== null) {
-    const pu = o.prestige_upgrades as Record<string, unknown>;
-    for (const [k, v] of Object.entries(pu)) {
-      if (typeof v === "number" && Number.isFinite(v) && v > 0) {
-        prestige_upgrades[k] = Math.floor(v);
-      }
-    }
-  }
 
   const active_buffs: Array<{ id: string; expires_at_ms: number }> = [];
   if (Array.isArray(o.active_buffs)) {
@@ -171,16 +142,11 @@ export function normalizeClickerState(raw: unknown): ClickerGameStateV1 {
 
   return {
     energy,
-    oxygen,
-    vegetation,
-    abundance,
     owned_upgrades,
     owned_upgrade_order,
     revealed_upgrades,
     unlocked_mechanics,
     catalog_version,
-    prestige_points,
-    prestige_upgrades,
     active_buffs,
     statistics,
   };
@@ -194,10 +160,8 @@ export function normalizeClickerStateForSchema(
     return createDefaultClickerState();
   }
   const normalized = normalizeClickerState(raw);
-  for (const resourceId of PRIMARY_RESOURCE_IDS) {
-    if (!Number.isFinite(normalized[resourceId])) {
-      normalized[resourceId] = 0;
-    }
+  if (!Number.isFinite(normalized.energy)) {
+    normalized.energy = 0;
   }
   return normalized;
 }

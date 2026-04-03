@@ -79,6 +79,8 @@ export default function ClickerLobbyPage() {
     );
   }
 
+  const isStaff = !!sessionUser.user.is_staff;
+
   return (
     <ClickerPageShell>
       <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
@@ -103,8 +105,8 @@ export default function ClickerLobbyPage() {
                 PondClicker
               </Heading>
               <Text fontSize={{ base: "sm", md: "md" }} color="fg">
-                Welcome! Tap the pond to earn energy, then spend it in the shop on upgrades that grow your pond.
-                Oxygen, vegetation, and abundance build up over time and unlock new purchases.
+                Welcome! Tap the pond to earn energy, then spend it in the shop on upgrades that grow your pond. Pond
+                stats and biodiversity from your upgrades can unlock later purchases.
               </Text>
               <Text fontSize={APP_TEXT_SIZES.meta} color="gray.700">
                 Progress is saved automatically while you play. Use Reset below only if you want to start a new pond
@@ -116,14 +118,27 @@ export default function ClickerLobbyPage() {
                 </Text>
               ) : null}
               <Flex w="full" justify="space-between" align="center" flexWrap="wrap" gap="2">
-                <PondButton
-                  type="button"
-                  size="md"
-                  colorPalette="lilypad"
-                  onClick={() => navigate("/clicker/play")}
-                >
-                  Play game
-                </PondButton>
+                <Flex gap="2" flexWrap="wrap" align="center">
+                  <PondButton
+                    type="button"
+                    size="md"
+                    colorPalette="lilypad"
+                    onClick={() => navigate("/clicker/play")}
+                  >
+                    Play game
+                  </PondButton>
+                  {isStaff ? (
+                    <PondButton
+                      type="button"
+                      size="md"
+                      variant="outline"
+                      colorPalette="gray"
+                      onClick={() => navigate("/clicker/dev/catalog")}
+                    >
+                      View Upgrades
+                    </PondButton>
+                  ) : null}
+                </Flex>
                 <PondButton
                   ref={confirmResetButtonRef}
                   type="button"

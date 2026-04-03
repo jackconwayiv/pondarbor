@@ -8,10 +8,12 @@ from rest_framework.test import APIClient
 from achievements.models import AchievementDefinition, UserAchievement
 from achievements.services import (
     SLUG_ARCHIVIST,
+    SLUG_PONDCLICKER_TIER_1,
     SLUG_TOWN_CRIER,
     SLUG_WHATIF_WARRIOR,
     SLUG_WHATIF_WIZ,
     evaluate_after_whatif_session_ended,
+    evaluate_pondclicker_achievements_for_user,
     evaluate_quote_achievements_for_user,
     evaluate_whatif_warrior_for_user,
 )
@@ -126,6 +128,38 @@ class AchievementWhatIfTests(TestCase):
         evaluate_after_whatif_session_ended(s.id)
         self.assertTrue(
             UserAchievement.objects.filter(user=u1, achievement__slug=SLUG_WHATIF_WIZ).exists()
+        )
+
+
+class PondClickerAchievementTests(TestCase):
+    def setUp(self):
+        AchievementDefinition.objects.get_or_create(
+            slug=SLUG_PONDCLICKER_TIER_1,
+            defaults={
+                "title": "Tier 1 Pond",
+                "description": "",
+                "category": "pondclicker",
+                "order": 50,
+            },
+        )
+
+    def test_tier1_unlocks_when_three_marquee_denizens_owned(self):
+        user = User.objects.create_user(email="pond@example.com", password="secret12345")
+        evaluate_pondclicker_achievements_for_user(user.id, {"owned_upgrades": {"pond_snails": 1}})
+        self.assertFalse(
+            UserAchievement.objects.filter(user=user, achievement__slug=SLUG_PONDCLICKER_TIER_1).exists()
+        )
+
+        state_ok = {
+            "owned_upgrades": {
+                "pond_snails": 1,
+                "tadpoles": 1,
+                "water_fleas": 1,
+            },
+        }
+        evaluate_pondclicker_achievements_for_user(user.id, state_ok)
+        self.assertTrue(
+            UserAchievement.objects.filter(user=user, achievement__slug=SLUG_PONDCLICKER_TIER_1).exists()
         )
 
 

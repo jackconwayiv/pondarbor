@@ -19,6 +19,14 @@ body,
   min-height: 100%;
 }
 
+/* Friend profile links in quote cards: colors in components; strip default anchor underline. */
+a.friend-profile-link,
+a.friend-profile-link:hover,
+a.friend-profile-link:visited,
+a.friend-profile-link:active {
+  text-decoration: none;
+}
+
 /* Prevent iOS Safari focus auto-zoom on form controls. */
 input,
 textarea,

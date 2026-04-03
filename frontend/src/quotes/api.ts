@@ -108,13 +108,39 @@ export async function fetchAllPublicQuotes(): Promise<Quote[]> {
   return (await response.json()) as Quote[];
 }
 
-export async function fetchPublicQuotesByUser(email: string): Promise<Quote[]> {
+function optionalBearerHeaders(accessToken: string | null | undefined): HeadersInit {
+  if (!accessToken) {
+    return {};
+  }
+  return { Authorization: `Bearer ${accessToken}` };
+}
+
+/** When `accessToken` is set (logged-in viewer), includes that friend's quotes that tag you, including private. */
+export async function fetchPublicQuotesByUser(
+  email: string,
+  accessToken?: string | null,
+): Promise<Quote[]> {
   const response = await fetch(
     `${apiBase()}/api/v1/users/${encodeURIComponent(email)}/public-quotes/`,
-    { method: "GET" },
+    { method: "GET", headers: optionalBearerHeaders(accessToken), credentials: "omit" },
   );
   if (!response.ok) {
     throw new Error(`Failed to load ${email} public quotes (${response.status})`);
+  }
+  return (await response.json()) as Quote[];
+}
+
+export async function fetchPublicQuotesByUserId(
+  userId: number,
+  accessToken?: string | null,
+): Promise<Quote[]> {
+  const response = await fetch(`${apiBase()}/api/v1/users/${userId}/public-quotes/`, {
+    method: "GET",
+    headers: optionalBearerHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to load public quotes for user ${userId} (${response.status})`);
   }
   return (await response.json()) as Quote[];
 }

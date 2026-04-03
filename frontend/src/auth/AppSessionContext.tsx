@@ -1,6 +1,8 @@
 import type { User } from "@auth0/auth0-react";
 import { createContext, useContext } from "react";
 
+import type { AchievementSummary } from "../achievements/types";
+
 export type Profile = {
   display_name: string;
   avatar_url: string;
@@ -26,6 +28,7 @@ export type AppUser = {
 export type SessionUser = {
   user: AppUser;
   profile: Profile;
+  achievements?: AchievementSummary[];
 };
 
 export type ProfilePatch = Partial<

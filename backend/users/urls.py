@@ -11,8 +11,11 @@ from users.views import (
     signup,
     sync_profile,
     upcoming_birthdays,
+    user_public_summary_by_email,
+    user_public_summary_by_id,
 )
-from quotes.views import user_public_quotes
+from achievements.views import user_public_achievements, user_public_achievements_by_id
+from quotes.views import user_public_quotes, user_public_quotes_by_id
 
 urlpatterns = [
     path("health/", health),
@@ -25,5 +28,10 @@ urlpatterns = [
     path("login/", login_view),
     path("logout/", logout_view),
     path("sync-profile/", sync_profile),
+    path("<int:user_id>/public/", user_public_summary_by_id),
+    path("<int:user_id>/public-quotes/", user_public_quotes_by_id),
+    path("<int:user_id>/achievements/", user_public_achievements_by_id),
+    path("<str:email>/public/", user_public_summary_by_email),
     path("<str:email>/public-quotes/", user_public_quotes),
+    path("<str:email>/achievements/", user_public_achievements),
 ]

@@ -58,7 +58,11 @@ const navBarLinkProps = {
 function isDesktopNavRouteActive(pathname: string, to: string): boolean {
   switch (to) {
     case "/quotes":
-      return pathname.startsWith("/quotes") || pathname.includes("/public-quotes");
+      return (
+        pathname.startsWith("/quotes") ||
+        pathname.startsWith("/friend/") ||
+        pathname.includes("/public-quotes")
+      );
     case "/clicker":
       return pathname === "/clicker" || pathname.startsWith("/clicker/");
     case "/whatif":

@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from django.db.models import F
 from django.utils import timezone
 
+from achievements.services import evaluate_after_whatif_session_ended
 from whatif import constants
 from whatif.models import WhatIfGameResult, WhatIfPlayer, WhatIfQuestion, WhatIfSession
 from whatif.rules import (
@@ -193,3 +194,6 @@ def apply_reveal_from_voting_state(
     session.state = state
     session.state_version = F("state_version") + 1
     session.save(update_fields=["status", "state", "state_version", "updated_at"])
+
+    if session.status == WhatIfSession.Status.ENDED:
+        evaluate_after_whatif_session_ended(session.id)

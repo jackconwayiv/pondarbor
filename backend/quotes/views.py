@@ -1,17 +1,24 @@
+from django.contrib.auth import get_user_model
 from django.db.models import Prefetch, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.authentication import SessionAuthentication
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.status import HTTP_200_OK, HTTP_201_CREATED, HTTP_204_NO_CONTENT
 
+from users.auth0_backend import Auth0TokenAuthentication
+
+from achievements.services import evaluate_quote_achievements_for_user
 from quotes.models import Quote, QuoteLabel
 from quotes.serializers import (
     QuoteCreateSerializer,
     QuotePatchSerializer,
     QuoteSerializer,
 )
+
+User = get_user_model()
 
 def _quote_list_queryset(base_queryset, *, request):
     # Keep the response N+1-safe:
@@ -41,6 +48,7 @@ def quote_create(request):
     serializer = QuoteCreateSerializer(data=request.data, context={"request": request})
     serializer.is_valid(raise_exception=True)
     quote = serializer.save()
+    evaluate_quote_achievements_for_user(quote.owner_id)
     return Response(
         QuoteSerializer(quote, context={"request": request}).data,
         status=HTTP_201_CREATED,
@@ -97,6 +105,7 @@ def quote_detail(request, quote_id: int):
         )
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        evaluate_quote_achievements_for_user(quote.owner_id)
         # Reload related labels for response without N+1.
         quote = (
             Quote.objects.select_related("owner")
@@ -111,8 +120,10 @@ def quote_detail(request, quote_id: int):
         return Response(QuoteSerializer(quote, context={"request": request}).data, status=HTTP_200_OK)
 
     # DELETE
+    owner_id = quote.owner_id
     quote.deleted_at = timezone.now()
     quote.save(update_fields=["deleted_at", "updated_at"])
+    evaluate_quote_achievements_for_user(owner_id)
     return Response(status=HTTP_204_NO_CONTENT)
 
 
@@ -135,10 +146,39 @@ def quote_labels_autocomplete(request):
     return Response(QuoteLabelSerializer(qs, many=True).data)
 
 
-@api_view(["GET"])
-@permission_classes([AllowAny])
-def user_public_quotes(request, email: str):
-    # Returns "public quotes by a specific user".
-    qs = Quote.objects.filter(owner__email__iexact=email, visibility=Quote.Visibility.PUBLIC)
+def _friend_profile_quotes_queryset(*, owner, request):
+    """
+    Owner's public quotes; if the viewer is authenticated, also include any visibility
+    quote by that owner that tags the viewer (labels__linked_user), matching feed semantics.
+    """
+    base = Quote.objects.filter(owner=owner)
+    viewer = getattr(request, "user", None)
+    if viewer is not None and getattr(viewer, "is_authenticated", False):
+        qs = base.filter(
+            Q(visibility=Quote.Visibility.PUBLIC) | Q(labels__linked_user=viewer)
+        ).distinct()
+    else:
+        qs = base.filter(visibility=Quote.Visibility.PUBLIC)
+    return qs
+
+
+def _user_public_quotes_response(request, *, user):
+    qs = _friend_profile_quotes_queryset(owner=user, request=request)
     qs = _quote_list_queryset(qs, request=request).order_by("-created_at")
     return Response(QuoteSerializer(qs, many=True, context={"request": request}).data)
+
+
+@api_view(["GET"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([AllowAny])
+def user_public_quotes(request, email: str):
+    user = get_object_or_404(User.objects.all(), email__iexact=email)
+    return _user_public_quotes_response(request, user=user)
+
+
+@api_view(["GET"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([AllowAny])
+def user_public_quotes_by_id(request, user_id: int):
+    user = get_object_or_404(User.objects.all(), pk=user_id)
+    return _user_public_quotes_response(request, user=user)

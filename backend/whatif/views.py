@@ -7,6 +7,7 @@ from django.db import transaction
 from django.db.models import F
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from achievements.services import evaluate_after_whatif_session_ended
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -227,6 +228,7 @@ def _setup_turn(session: WhatIfSession, *, next_player_id: int) -> bool:
         session.save(update_fields=["status", "state", "state_version", "updated_at"])
         session.refresh_from_db()
         mark_whatif_completion_for_session_users(session.id)
+        evaluate_after_whatif_session_ended(session.id)
         return False
 
     session.status = WhatIfSession.Status.TURN
@@ -620,6 +622,7 @@ def _apply_question_skip_locked(session: WhatIfSession, state: dict, *, requeste
         session.save(update_fields=["status", "state", "state_version", "updated_at"])
         session.refresh_from_db()
         mark_whatif_completion_for_session_users(session.id)
+        evaluate_after_whatif_session_ended(session.id)
         return
 
     rendered_prompt = _render_question_prompt(question, subject_name=target.display_name)

@@ -185,7 +185,7 @@ export default function ProfilePage() {
     );
   }
 
-  const { user, profile } = sessionUser;
+  const { user, profile, achievements } = sessionUser;
   const fieldBusy = (field: EditableField) => !!savingFields[field];
   const isSavingAny = Object.values(savingFields).some(Boolean);
   const profileFieldLabelProps = isEditing
@@ -347,6 +347,24 @@ export default function ProfilePage() {
                         </Text>
                       )}
                     </Stack>
+
+                    {achievements && achievements.length > 0 ? (
+                      <Stack gap="2" pt="2">
+                        <Text {...profileFieldLabelProps}>Achievements</Text>
+                        <Stack gap="2">
+                          {achievements.map((a) => (
+                            <Stack key={a.slug} gap="0">
+                              <Text fontSize={APP_TEXT_SIZES.body}>{a.title}</Text>
+                              {a.description ? (
+                                <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                                  {a.description}
+                                </Text>
+                              ) : null}
+                            </Stack>
+                          ))}
+                        </Stack>
+                      </Stack>
+                    ) : null}
 
                     <HStack gap="2" pt="2">
                       {isEditing ? (

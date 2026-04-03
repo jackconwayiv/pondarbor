@@ -3,6 +3,7 @@ from datetime import timedelta
 
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.db import IntegrityError
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import status
@@ -14,6 +15,8 @@ from rest_framework.response import Response
 from .auth0_backend import Auth0TokenAuthentication
 from .models import PROFILE_TIMEZONE_DEFAULT, Profile
 from .permissions import IsApprovedUser
+from achievements.services import achievements_payload_for_user
+
 from .serializers import (
     LoginSerializer,
     MeSerializer,
@@ -74,6 +77,7 @@ def serialize_me(user):
             "birth_date": profile.birth_date,
             "whatif_completed_session": profile.whatif_completed_session,
         },
+        "achievements": achievements_payload_for_user(user, public_only=False),
     }
 
 
@@ -208,6 +212,32 @@ def logout_view(request):
 @ensure_csrf_cookie
 def csrf(request):
     return Response({"ok": True})
+
+
+def _public_user_summary_response(user):
+    profile = get_or_create_profile(user)
+    display_name = (profile.display_name or "").strip()
+    return Response(
+        {
+            "display_name": display_name,
+            "email": user.email,
+        }
+    )
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def user_public_summary_by_id(request, user_id: int):
+    """Public display name + email for friend profile header (AllowAny)."""
+    user = get_object_or_404(UserModel.objects.all(), pk=user_id)
+    return _public_user_summary_response(user)
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def user_public_summary_by_email(request, email: str):
+    user = get_object_or_404(UserModel.objects.all(), email__iexact=email)
+    return _public_user_summary_response(user)
 
 
 @api_view(["POST"])

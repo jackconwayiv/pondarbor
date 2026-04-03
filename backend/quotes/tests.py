@@ -128,6 +128,41 @@ class QuotesApiTests(TestCase):
         self.assertIn(public_quote.id, ids)
         self.assertNotIn(private_quote.id, ids)
 
+        by_id = self.anon_client.get(f"/api/v1/users/{self.alice.id}/public-quotes/")
+        self.assertEqual(by_id.status_code, 200)
+        self.assertEqual({q["id"] for q in by_id.json()}, ids)
+
+    def test_public_quotes_by_user_includes_tagged_private_when_viewer_authenticated(self):
+        tagged_private = Quote.objects.create(
+            owner=self.alice,
+            body="Private but Bob is tagged",
+            visibility=Quote.Visibility.PRIVATE,
+        )
+        label, _ = QuoteLabel.objects.get_or_create(
+            owner=self.alice,
+            kind="attribution",
+            name=self.bob.email,
+            linked_user=self.bob,
+        )
+        tagged_private.labels.add(label)
+
+        anon_ids = {
+            q["id"]
+            for q in self.anon_client.get(
+                f"/api/v1/users/{self.alice.id}/public-quotes/",
+            ).json()
+        }
+        self.assertNotIn(tagged_private.id, anon_ids)
+
+        self.bob_client.force_login(self.bob)
+        bob_ids = {
+            q["id"]
+            for q in self.bob_client.get(
+                f"/api/v1/users/{self.alice.id}/public-quotes/",
+            ).json()
+        }
+        self.assertIn(tagged_private.id, bob_ids)
+
     def test_feed_query_count_is_bounded(self):
         # Ensure we don't accidentally do per-quote label lookups.
         for i in range(5):

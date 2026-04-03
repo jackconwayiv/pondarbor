@@ -3,13 +3,20 @@ import { useEffect, useState } from "react";
 import PondButton from "../PondButton";
 import { APP_TEXT_SIZES } from "../theme/typography";
 import { fetchAllPublicQuotes } from "./api";
+import { quoteOwnerDisplayLabel } from "./ownerDisplay";
 import QuoteCardBase from "./QuoteCardBase";
 import type { Quote } from "./types";
 
 const PAGE_SIZE = 10;
 
 function PublicQuoteCard({ quote }: { quote: Quote }) {
-  return <QuoteCardBase quote={quote} ownerText={quote.owner.email} />;
+  return (
+    <QuoteCardBase
+      quote={quote}
+      ownerText={quoteOwnerDisplayLabel(quote.owner)}
+      ownerProfileUserId={quote.owner.id}
+    />
+  );
 }
 
 export default function PublicQuotesPage() {

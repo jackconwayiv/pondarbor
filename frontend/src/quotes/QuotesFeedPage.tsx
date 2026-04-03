@@ -26,6 +26,7 @@ import {
   fetchQuoteLabels,
   patchQuote,
 } from "./api";
+import { quoteOwnerDisplayLabel } from "./ownerDisplay";
 import type { Quote, QuoteCreatePayload, QuoteLabel, QuotePatchPayload } from "./types";
 
 const PAGE_SIZE = 10;
@@ -307,7 +308,9 @@ function QuoteCard({
   return (
     <QuoteCardBase
       quote={quote}
-      ownerText={quote.owner.email}
+      ownerText={quoteOwnerDisplayLabel(quote.owner)}
+      ownerProfileUserId={quote.owner.id}
+      hideOwnerMeta={canEdit}
       suppressReadOnlyQuote={isEditing}
       isClickable={canEdit}
       onClick={() => {

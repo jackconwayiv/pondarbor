@@ -1,29 +1,63 @@
 import { Box, Heading, Stack, Text } from "@chakra-ui/react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router";
+import { useAppSession } from "../auth/AppSessionContext";
+import { fetchPublicAchievementsByUser, fetchPublicAchievementsByUserId } from "../achievements/api";
+import type { AchievementSummary } from "../achievements/types";
+import {
+  fetchPublicUserSummaryByEmail,
+  fetchPublicUserSummaryById,
+  friendProfileHeading,
+  type PublicUserSummary,
+} from "./publicUser";
 import PondButton from "../PondButton";
 import { fullBleedStackProps } from "../responsive";
 import { APP_TEXT_SIZES } from "../theme/typography";
-import { fetchPublicQuotesByUser } from "./api";
-import QuoteCardBase from "./QuoteCardBase";
-import type { Quote } from "./types";
+import { fetchPublicQuotesByUser, fetchPublicQuotesByUserId } from "../quotes/api";
+import { quoteOwnerDisplayLabel } from "../quotes/ownerDisplay";
+import QuoteCardBase from "../quotes/QuoteCardBase";
+import type { Quote } from "../quotes/types";
 
 const PAGE_SIZE = 10;
 
-function PublicUserQuoteCard({ quote }: { quote: Quote }) {
-  return <QuoteCardBase quote={quote} ownerText={quote.owner.email} />;
+function FriendProfileQuoteCard({ quote }: { quote: Quote }) {
+  return (
+    <QuoteCardBase
+      quote={quote}
+      ownerText={quoteOwnerDisplayLabel(quote.owner)}
+      ownerProfileUserId={quote.owner.id}
+    />
+  );
 }
 
-export default function PublicUserQuotesPage() {
-  const { email } = useParams<{ email: string }>();
+export default function FriendProfilePage() {
+  const { userId, email } = useParams<{ userId?: string; email?: string }>();
+  const { isAuthenticated, getApiAccessToken } = useAppSession();
+
+  const lookup = useMemo(() => {
+    if (userId !== undefined && userId !== "") {
+      const id = Number.parseInt(userId, 10);
+      if (!Number.isFinite(id) || id < 1) {
+        return { kind: "invalid" as const };
+      }
+      return { kind: "id" as const, id };
+    }
+    if (email) {
+      return { kind: "email" as const, email: decodeURIComponent(email) };
+    }
+    return { kind: "invalid" as const };
+  }, [userId, email]);
+
   const [quotes, setQuotes] = useState<Quote[]>([]);
+  const [achievements, setAchievements] = useState<AchievementSummary[]>([]);
+  const [summary, setSummary] = useState<PublicUserSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
 
   useEffect(() => {
-    if (!email) {
-      setError("Missing user email in route.");
+    if (lookup.kind === "invalid") {
+      setError("Missing or invalid friend profile in the URL.");
       setIsLoading(false);
       return;
     }
@@ -32,19 +66,40 @@ export default function PublicUserQuotesPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const data = await fetchPublicQuotesByUser(email);
-        const sorted = [...data].sort(
+        let accessToken: string | null = null;
+        if (isAuthenticated) {
+          try {
+            accessToken = await getApiAccessToken();
+          } catch {
+            accessToken = null;
+          }
+        }
+        const [quoteData, achData, summaryData] = await Promise.all([
+          lookup.kind === "id"
+            ? fetchPublicQuotesByUserId(lookup.id, accessToken)
+            : fetchPublicQuotesByUser(lookup.email, accessToken),
+          (lookup.kind === "id"
+            ? fetchPublicAchievementsByUserId(lookup.id)
+            : fetchPublicAchievementsByUser(lookup.email)
+          ).catch(() => [] as AchievementSummary[]),
+          lookup.kind === "id"
+            ? fetchPublicUserSummaryById(lookup.id)
+            : fetchPublicUserSummaryByEmail(lookup.email),
+        ]);
+        const sorted = [...quoteData].sort(
           (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
         );
         setQuotes(sorted);
+        setAchievements(achData);
+        setSummary(summaryData);
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : "Failed to load user public quotes");
+        setError(err instanceof Error ? err.message : "Failed to load friend profile");
       } finally {
         setIsLoading(false);
       }
     };
     void run();
-  }, [email]);
+  }, [lookup, isAuthenticated, getApiAccessToken]);
 
   const total = quotes.length;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -57,14 +112,44 @@ export default function PublicUserQuotesPage() {
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
       <Box bg="bg" px={{ base: "4", md: "6" }} py={{ base: "6", md: "6" }}>
         <Heading size="lg" maxW="3xl">
-          Public quotes by {email ?? "Unknown user"}
+          {summary ? friendProfileHeading(summary) : "Friend profile"}
         </Heading>
+        {summary ? (
+          <Text fontSize={APP_TEXT_SIZES.helper} mt="1" color="fg.muted">
+            {summary.email}
+          </Text>
+        ) : null}
       </Box>
 
       <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
         <Stack gap="3" maxW="3xl">
           {isLoading ? <Text>Loading…</Text> : null}
           {error ? <Text role="alert">{error}</Text> : null}
+          {!isLoading && !error && achievements.length > 0 ? (
+            <Box
+              bg="bg"
+              borderWidth="1px"
+              borderColor="border"
+              borderRadius="xl"
+              p={{ base: "4", md: "4" }}
+            >
+              <Heading size="sm" mb="2">
+                Achievements
+              </Heading>
+              <Stack gap="3">
+                {achievements.map((a) => (
+                  <Stack key={a.slug} gap="0">
+                    <Text fontSize={APP_TEXT_SIZES.body} fontWeight="medium">
+                      {a.title}
+                    </Text>
+                    {a.description ? (
+                      <Text fontSize={APP_TEXT_SIZES.helper}>{a.description}</Text>
+                    ) : null}
+                  </Stack>
+                ))}
+              </Stack>
+            </Box>
+          ) : null}
           {!isLoading && !error && quotes.length === 0 ? (
             <Text>No public quotes found.</Text>
           ) : null}
@@ -109,7 +194,7 @@ export default function PublicUserQuotesPage() {
             </Box>
           ) : null}
           {visibleQuotes.map((quote) => (
-            <PublicUserQuoteCard key={quote.id} quote={quote} />
+            <FriendProfileQuoteCard key={quote.id} quote={quote} />
           ))}
           {total > PAGE_SIZE ? (
             <Box

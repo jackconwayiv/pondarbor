@@ -3,7 +3,7 @@ import App from "./App";
 import AppLayout from "./layout";
 import NotFoundPage from "./NotFoundPage";
 import ProfilePage from "./ProfilePage";
-import PublicUserQuotesPage from "./quotes/PublicUserQuotesPage";
+import FriendProfilePage from "./friend/FriendProfilePage";
 import QuotesFeedPage from "./quotes/QuotesFeedPage";
 import ClickerGamePage from "./clicker/ClickerGamePage";
 import ClickerLayout from "./clicker/ClickerLayout";
@@ -56,8 +56,12 @@ export const router = createBrowserRouter([
         element: <Navigate to="/quotes?tab=public" replace />,
       },
       {
+        path: "friend/:userId",
+        element: <FriendProfilePage />,
+      },
+      {
         path: "users/:email/public-quotes",
-        element: <PublicUserQuotesPage />,
+        element: <FriendProfilePage />,
       },
       {
         path: "*",

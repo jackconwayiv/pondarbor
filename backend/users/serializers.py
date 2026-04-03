@@ -26,9 +26,20 @@ class ProfileSerializer(serializers.Serializer):
     whatif_completed_session = serializers.BooleanField()
 
 
+class AchievementSummarySerializer(serializers.Serializer):
+    slug = serializers.SlugField()
+    title = serializers.CharField()
+    description = serializers.CharField()
+    category = serializers.CharField(allow_blank=True)
+    unlocked_at = serializers.DateTimeField()
+    display_group = serializers.CharField(allow_blank=True)
+    display_group_order = serializers.IntegerField()
+
+
 class MeSerializer(serializers.Serializer):
     user = SessionUserSerializer()
     profile = ProfileSerializer()
+    achievements = AchievementSummarySerializer(many=True)
 
 
 class ProfileUpdateSerializer(serializers.Serializer):

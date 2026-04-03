@@ -64,22 +64,35 @@ export default function WhatIfLobbyPage() {
   }
 
   return (
-    <WhatIfShell>
-      <Stack gap="4">
+    <WhatIfShell maxW="min(100%, 90rem)">
+      <Stack gap={{ base: "4", md: "5" }}>
         <HStack justify="space-between" align="center" w="100%" flexWrap="wrap" gap="3">
-          <Heading as="h1" size="lg">
+          <Heading as="h1" fontSize="clamp(1.35rem, 3.5vh, 2.5rem)" fontWeight="bold" lineHeight="1.15">
             Whatif Lobby
           </Heading>
-          <Code fontSize="2em">{roomCode}</Code>
+          <Code fontSize="clamp(1.75rem, 5vh, 3.25rem)">{roomCode}</Code>
         </HStack>
-        <Text color="gray.700">{state?.players?.length ?? 0} players in game</Text>
+        <Text color="gray.700" fontSize="clamp(1rem, 2.4vh, 1.35rem)">
+          {state?.players?.length ?? 0} players in game
+        </Text>
         <Stack gap="2">
           {(state?.players ?? []).map((p) => (
-            <HStack key={p.id} justify="space-between" borderWidth="1px" borderColor="border" borderRadius="md" px="3" py="2">
-              <Text>
+            <HStack
+              key={p.id}
+              justify="space-between"
+              borderWidth="1px"
+              borderColor="border"
+              borderRadius="md"
+              px={{ base: "4", md: "5" }}
+              py={{ base: "3", md: "4" }}
+            >
+              <Text fontSize="clamp(1rem, 2.5vh, 1.4rem)">
                 {p.avatar_emoji} {p.display_name}
               </Text>
-              <Text fontSize="sm" color={p.ready_to_start ? "lilypad.fg" : "gray.600"}>
+              <Text
+                fontSize="clamp(0.9rem, 2vh, 1.1rem)"
+                color={p.ready_to_start ? "lilypad.fg" : "gray.600"}
+              >
                 {p.ready_to_start ? "Ready" : "Not ready"}
               </Text>
             </HStack>
@@ -90,7 +103,7 @@ export default function WhatIfLobbyPage() {
         state &&
         (state.players?.length ?? 0) >= 2 &&
         !(state.players ?? []).every((p) => p.ready_to_start) ? (
-          <Text fontSize="sm" color="gray.600">
+          <Text fontSize="clamp(0.95rem, 2vh, 1.15rem)" color="gray.600">
             Waiting for every player to mark &quot;Ready to start&quot; on their phone.
           </Text>
         ) : null}
@@ -119,7 +132,9 @@ export default function WhatIfLobbyPage() {
             Host token missing (open the lobby right after creating a game while signed in).
           </Text>
         ) : null}
-        <Text fontSize="sm" color="gray.700">Players join on their phones using the join code.</Text>
+        <Text fontSize="clamp(0.95rem, 2vh, 1.15rem)" color="gray.700">
+          Players join on their phones using the join code.
+        </Text>
 
         {error ? (
           <Text role="alert" color="red.600">

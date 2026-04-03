@@ -132,6 +132,17 @@ class WhatIfApiTests(TestCase):
         self.assertEqual(body["players"][0]["display_name"], "Alex")
         self.assertIn("ready_to_start", body["players"][0])
 
+    def test_join_rejects_duplicate_display_name_case_insensitive(self):
+        code, _host_secret, _user = self._create_session()
+        self._join(code, "Alex")
+        response = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/join/",
+            {"display_name": "alex"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("already in the room", response.json().get("detail", ""))
+
     def test_join_assigns_unique_avatar_emojis_per_session(self):
         code, _host_secret, _user = self._create_session()
         emojis: list[str] = []
@@ -1038,6 +1049,68 @@ class WhatIfAdminApiTests(TestCase):
 
         deleted = self.client.delete(f"/api/v1/whatif/questions/{qid}/")
         self.assertEqual(deleted.status_code, 204)
+
+    def test_list_questions_list_filter(self):
+        self.client.force_login(self.staff)
+        rejected = WhatIfQuestion.objects.create(
+            prompt="What if {subject} rejected?",
+            answer_1="1",
+            answer_2="2",
+            answer_3="3",
+            answer_4="4",
+            answer_5="5",
+            answer_6="6",
+            review_status=WhatIfQuestion.ReviewStatus.REJECTED,
+            is_active=False,
+        )
+        inactive = WhatIfQuestion.objects.create(
+            prompt="What if {subject} inactive?",
+            answer_1="1",
+            answer_2="2",
+            answer_3="3",
+            answer_4="4",
+            answer_5="5",
+            answer_6="6",
+            review_status=WhatIfQuestion.ReviewStatus.APPROVED,
+            is_active=False,
+        )
+        pending = WhatIfQuestion.objects.create(
+            prompt="What if {subject} pending?",
+            answer_1="1",
+            answer_2="2",
+            answer_3="3",
+            answer_4="4",
+            answer_5="5",
+            answer_6="6",
+            review_status=WhatIfQuestion.ReviewStatus.PENDING,
+            is_active=True,
+        )
+
+        def ids_for(url: str) -> set[int]:
+            r = self.client.get(url)
+            self.assertEqual(r.status_code, 200)
+            return {row["id"] for row in r.json()}
+
+        all_ids = ids_for("/api/v1/whatif/questions/")
+        self.assertIn(self.question.id, all_ids)
+        self.assertIn(rejected.id, all_ids)
+        self.assertIn(inactive.id, all_ids)
+        self.assertIn(pending.id, all_ids)
+
+        active_ids = ids_for("/api/v1/whatif/questions/?list_filter=active")
+        self.assertIn(self.question.id, active_ids)
+        self.assertIn(pending.id, active_ids)
+        self.assertNotIn(rejected.id, active_ids)
+        self.assertNotIn(inactive.id, active_ids)
+
+        inactive_ids = ids_for("/api/v1/whatif/questions/?list_filter=inactive")
+        self.assertIn(rejected.id, inactive_ids)
+        self.assertIn(inactive.id, inactive_ids)
+        self.assertNotIn(self.question.id, inactive_ids)
+        self.assertNotIn(pending.id, inactive_ids)
+
+        rejected_ids = ids_for("/api/v1/whatif/questions/?list_filter=rejected")
+        self.assertEqual(rejected_ids, {rejected.id})
 
     def test_bulk_import_parses_and_creates(self):
         self.client.force_login(self.staff)

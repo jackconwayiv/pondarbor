@@ -151,6 +151,7 @@ function QuoteCard({
   onQuoteUpdated,
   onQuoteDeleted,
   onSuggestionsChanged,
+  onSessionMayNeedRefresh,
   tagSuggestions,
   attributionSuggestions,
   isEditing,
@@ -163,6 +164,7 @@ function QuoteCard({
   onQuoteUpdated: (next: Quote) => void;
   onQuoteDeleted: (quoteId: number) => void;
   onSuggestionsChanged: () => Promise<void>;
+  onSessionMayNeedRefresh?: () => Promise<void>;
   tagSuggestions: QuoteLabel[];
   attributionSuggestions: QuoteLabel[];
   isEditing: boolean;
@@ -249,6 +251,7 @@ function QuoteCard({
       const updated = await patchQuote(quote.id, payload, token);
       onQuoteUpdated(updated);
       await onSuggestionsChanged();
+      await onSessionMayNeedRefresh?.();
       setCardSuccess("Saved.");
       onEndEditing();
     } catch (err: unknown) {
@@ -737,6 +740,7 @@ export default function QuotesFeedPage() {
           (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
         ),
       );
+      void refreshSession();
       setCurrentPage(0);
       // Avoid immediate protected follow-up fetches after save; use returned quote labels
       // to update suggestion chips optimistically.
@@ -1114,6 +1118,7 @@ export default function QuotesFeedPage() {
                   quote={quote}
                   getApiAccessToken={getApiAccessToken}
                   viewerUserId={sessionUser?.user.id ?? null}
+                  onSessionMayNeedRefresh={refreshSession}
                   onSuggestionsChanged={loadSuggestions}
                   tagSuggestions={tagSuggestions}
                   attributionSuggestions={attributionSuggestions}

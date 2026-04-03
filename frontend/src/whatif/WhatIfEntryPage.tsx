@@ -1,11 +1,12 @@
 import {
   Box,
-  Checkbox,
   Code,
   Collapsible,
   Heading,
   HStack,
   Input,
+  NativeSelectField,
+  NativeSelectRoot,
   Stack,
   Tabs,
   Text,
@@ -22,6 +23,7 @@ import {
   createWhatIfQuestion,
   deleteWhatIfQuestion,
   fetchWhatIfPendingCount,
+  fetchWhatIfTvState,
   joinWhatIfSession,
   listWhatIfQuestions,
   patchWhatIfQuestion,
@@ -29,10 +31,15 @@ import {
   resumeHostingSession,
   saveHostToken,
   savePlayerToken,
+  WHATIF_QUESTION_LIST_FILTER_LABELS,
+  WHATIF_QUESTION_LIST_FILTERS,
   type WhatIfQuestionAdmin,
+  type WhatIfQuestionListFilter,
 } from "./api";
 import { useIsMobile } from "../responsive";
 import WhatIfShell from "./WhatIfShell";
+import { WhatIfQuestionAdminListItem } from "./WhatIfQuestionAdminListItem";
+import { WhatIfQuestionFields } from "./WhatIfQuestionFields";
 import { whatifInputProps } from "./whatifFieldProps";
 
 type EntryTab = "new" | "continue" | "join" | "admin-edit" | "admin-list" | "admin-bulk";
@@ -73,6 +80,18 @@ const EMPTY_PROPOSE: ProposeDraft = {
   answer_6: "",
 };
 
+function normalizeWhatIfDisplayNameForCompare(raw: string): string {
+  return raw.trim().toLowerCase();
+}
+
+function sanitizeDisplayNameInput(raw: string): string {
+  return raw
+    .split("")
+    .filter((ch) => /^[A-Za-z0-9 ]$/.test(ch))
+    .join("")
+    .slice(0, 12);
+}
+
 export default function WhatIfEntryPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -96,19 +115,16 @@ export default function WhatIfEntryPage() {
   const [bulkText, setBulkText] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const confirmDeleteButtonRef = useRef<HTMLButtonElement | null>(null);
-  const [showRejected, setShowRejected] = useState(false);
+  const [questionListFilter, setQuestionListFilter] = useState<WhatIfQuestionListFilter>("all");
   const [pendingCount, setPendingCount] = useState(0);
   const [proposeDraft, setProposeDraft] = useState<ProposeDraft>(EMPTY_PROPOSE);
   const [proposeBusy, setProposeBusy] = useState(false);
   const [proposeError, setProposeError] = useState<string | null>(null);
   const [proposeSuccess, setProposeSuccess] = useState<string | null>(null);
   const [proposeOpen, setProposeOpen] = useState(false);
+  const [enrolledPlayerNames, setEnrolledPlayerNames] = useState<string[]>([]);
   const lastPlayerTabRef = useRef<PlayerTab>(isMobile ? "join" : "new");
   const lastAdminTabRef = useRef<AdminTab>("admin-list");
-
-  const defaultName = useMemo(() => {
-    return sessionUser?.profile?.display_name || "Guest";
-  }, [sessionUser?.profile?.display_name]);
   const exampleBulk = useMemo(
     () =>
       `What if {subject} were a kind of fruit?\n1 - Apple\n2 - Orange\n3 - Banana\n4 - Pineapple\n5 - Cherry\n6 - Apricot\n\nWhat if {subject} picked a weekend plan?\n1 - Hike\n2 - Read\n3 - Nap\n4 - Cafe\n5 - Movie\n6 - Road trip`,
@@ -138,12 +154,60 @@ export default function WhatIfEntryPage() {
   }, [confirmDeleteId, isStaff, isAuthenticated]);
 
   useEffect(() => {
+    if (isMobile) return;
     const raw = searchParams.get("tab");
     if (!raw || !ENTRY_TAB_VALUES.includes(raw as EntryTab)) return;
     const tab = raw as EntryTab;
     if (tab.startsWith("admin") && !isStaff) return;
     setActiveTab(tab);
-  }, [searchParams, isStaff]);
+  }, [searchParams, isStaff, isMobile]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setName("");
+      return;
+    }
+    const raw = sessionUser?.profile?.display_name ?? "";
+    if (raw) setName(sanitizeDisplayNameInput(raw));
+    else setName("");
+  }, [isAuthenticated, sessionUser?.profile?.display_name]);
+
+  useEffect(() => {
+    const code = joinCode.trim().toUpperCase();
+    if (code.length !== 4) {
+      setEnrolledPlayerNames([]);
+      return;
+    }
+    let cancelled = false;
+    const t = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const state = await fetchWhatIfTvState(code);
+          if (cancelled || !state) return;
+          setEnrolledPlayerNames((state.players ?? []).map((p) => p.display_name));
+        } catch {
+          if (!cancelled) setEnrolledPlayerNames([]);
+        }
+      })();
+    }, 300);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [joinCode]);
+
+  const nameTakenInRoom = useMemo(() => {
+    const candidate = sanitizeDisplayNameInput(name.trim());
+    if (!candidate) return false;
+    const c = normalizeWhatIfDisplayNameForCompare(candidate);
+    return enrolledPlayerNames.some((n) => normalizeWhatIfDisplayNameForCompare(n) === c);
+  }, [name, enrolledPlayerNames]);
+
+  const joinFormDisabled =
+    busy ||
+    joinCode.trim().length !== 4 ||
+    !sanitizeDisplayNameInput(name.trim()) ||
+    nameTakenInRoom;
 
   useEffect(() => {
     if (activeTab === "new" || activeTab === "continue" || activeTab === "join") {
@@ -160,7 +224,7 @@ export default function WhatIfEntryPage() {
     try {
       const token = await getApiAccessToken();
       const [items, pending] = await Promise.all([
-        listWhatIfQuestions(token, query, { showRejected }),
+        listWhatIfQuestions(token, query, { listFilter: questionListFilter }),
         fetchWhatIfPendingCount(token),
       ]);
       setQuestions(items);
@@ -176,7 +240,7 @@ export default function WhatIfEntryPage() {
     if (!isAuthenticated || !isStaff) return;
     void loadQuestions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, isStaff, showRejected]);
+  }, [isAuthenticated, isStaff, questionListFilter]);
 
   async function setReviewStatus(id: number, review_status: "approved" | "rejected") {
     if (!isAuthenticated || !isStaff) return;
@@ -188,6 +252,21 @@ export default function WhatIfEntryPage() {
         review_status,
         is_active: review_status === "approved",
       });
+      await loadQuestions();
+    } catch (e) {
+      setAdminError(e instanceof Error ? e.message : "Update failed");
+    } finally {
+      setAdminBusy(false);
+    }
+  }
+
+  async function toggleQuestionActive(id: number, is_active: boolean) {
+    if (!isAuthenticated || !isStaff) return;
+    setAdminBusy(true);
+    setAdminError(null);
+    try {
+      const token = await getApiAccessToken();
+      await patchWhatIfQuestion(token, id, { is_active });
       await loadQuestions();
     } catch (e) {
       setAdminError(e instanceof Error ? e.message : "Update failed");
@@ -306,19 +385,19 @@ export default function WhatIfEntryPage() {
     }
   }
 
-  function sanitizeDisplayNameInput(raw: string): string {
-    return raw
-      .split("")
-      .filter((ch) => /^[A-Za-z0-9 ]$/.test(ch))
-      .join("")
-      .slice(0, 12);
-  }
-
   async function handleJoin() {
     const code = joinCode.trim().toUpperCase();
-    const displayName = sanitizeDisplayNameInput(name.trim() || defaultName) || "Guest";
+    const displayName = sanitizeDisplayNameInput(name.trim());
+    if (!displayName) {
+      setError("Enter a player name.");
+      return;
+    }
     if (code.length !== 4) {
       setError("Room code must be exactly 4 letters.");
+      return;
+    }
+    if (nameTakenInRoom) {
+      setError("That name is already taken in this room.");
       return;
     }
     setBusy(true);
@@ -359,6 +438,56 @@ export default function WhatIfEntryPage() {
     activeTab === "admin-edit" || activeTab === "admin-list" || activeTab === "admin-bulk"
       ? activeTab
       : lastAdminTabRef.current;
+
+  const joinNamePlaceholder = isAuthenticated
+    ? "Letters, numbers, spaces (max 12)"
+    : "Enter a player name";
+
+  const joinFormContent = (
+    <Stack gap="4">
+      <Text fontSize="sm" color="gray.700">
+        Join this device as a player with the room code from the host.
+      </Text>
+      <Stack gap="1">
+        <Text fontSize="sm" fontWeight="medium" color="gray.700">
+          Room Code:
+        </Text>
+        <Input
+          placeholder="4-letter code"
+          value={joinCode}
+          onChange={(e) => setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4))}
+          {...whatifInputProps}
+        />
+      </Stack>
+      <Stack gap="1">
+        <Text fontSize="sm" fontWeight="medium" color="gray.700">
+          Player Name:
+        </Text>
+        <Input
+          placeholder={joinNamePlaceholder}
+          value={name}
+          onChange={(e) => setName(sanitizeDisplayNameInput(e.target.value))}
+          maxLength={12}
+          {...whatifInputProps}
+        />
+      </Stack>
+      {nameTakenInRoom ? (
+        <Text fontSize="sm" color="orange.solid">
+          That name is already taken in this room.
+        </Text>
+      ) : null}
+      <PondButton
+        type="button"
+        colorPalette="lilypad"
+        alignSelf="flex-start"
+        onClick={() => void handleJoin()}
+        loading={busy}
+        disabled={joinFormDisabled}
+      >
+        Join on this phone
+      </PondButton>
+    </Stack>
+  );
 
   const playerTabTriggers = (
     <>
@@ -457,33 +586,7 @@ export default function WhatIfEntryPage() {
   const playerTabPanels = (
     <>
       <Tabs.Content value="join" pt="4">
-        <Stack gap="4">
-          <Text fontSize="sm" color="gray.700">
-            Join this device as a player with the room code from the host.
-          </Text>
-          <Input
-            placeholder="4-letter code"
-            value={joinCode}
-            onChange={(e) => setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4))}
-            {...whatifInputProps}
-          />
-          <Input
-            placeholder={`Display name (default: ${defaultName})`}
-            value={name}
-            onChange={(e) => setName(sanitizeDisplayNameInput(e.target.value))}
-            maxLength={12}
-            {...whatifInputProps}
-          />
-          <PondButton
-            type="button"
-            colorPalette="lilypad"
-            alignSelf="flex-start"
-            onClick={() => void handleJoin()}
-            loading={busy}
-          >
-            Join on this phone
-          </PondButton>
-        </Stack>
+        {joinFormContent}
       </Tabs.Content>
 
       <Tabs.Content value="new" pt="4">
@@ -512,12 +615,17 @@ export default function WhatIfEntryPage() {
             Reconnect TV / lobby controls after a crash or new browser window. Sign in as the host and enter your
             four-letter room code. This does not add you as a player.
           </Text>
-          <Input
-            placeholder="4-letter room code"
-            value={resumeCode}
-            onChange={(e) => setResumeCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4))}
-            {...whatifInputProps}
-          />
+          <Stack gap="1">
+            <Text fontSize="sm" fontWeight="medium" color="gray.700">
+              Room Code:
+            </Text>
+            <Input
+              placeholder="4-letter room code"
+              value={resumeCode}
+              onChange={(e) => setResumeCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4))}
+              {...whatifInputProps}
+            />
+          </Stack>
           <PondButton
             type="button"
             colorPalette="lilypad"
@@ -538,7 +646,7 @@ export default function WhatIfEntryPage() {
       <Tabs.Content value="admin-list" pt="4">
         <Stack gap="3">
           <HStack justify="space-between" flexWrap="wrap" gap="3">
-            <Text fontWeight="medium">All questions ({questions.length})</Text>
+            <Text fontWeight="medium">Questions ({questions.length})</Text>
             {pendingCount > 0 ? (
               <Text fontWeight="bold" color="orange.solid">
                 Unreviewed: {pendingCount}
@@ -552,82 +660,50 @@ export default function WhatIfEntryPage() {
               </Text>
               <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by prompt..." {...whatifInputProps} />
             </Stack>
-            <Checkbox.Root
-              checked={showRejected}
-              onCheckedChange={() => setShowRejected((v) => !v)}
-              colorPalette="lilypad"
-            >
-              <Checkbox.HiddenInput />
-              <Checkbox.Control>
-                <Checkbox.Indicator />
-              </Checkbox.Control>
-              <Checkbox.Label>Show rejected</Checkbox.Label>
-            </Checkbox.Root>
+            <Stack gap="1" minW="160px">
+              <Text fontSize="sm" color="gray.700">
+                List
+              </Text>
+              <NativeSelectRoot>
+                <NativeSelectField
+                  value={questionListFilter}
+                  onChange={(e) => setQuestionListFilter(e.target.value as WhatIfQuestionListFilter)}
+                  {...whatifInputProps}
+                >
+                  {WHATIF_QUESTION_LIST_FILTERS.map((v) => (
+                    <option key={v} value={v}>
+                      {WHATIF_QUESTION_LIST_FILTER_LABELS[v]}
+                    </option>
+                  ))}
+                </NativeSelectField>
+              </NativeSelectRoot>
+            </Stack>
             <PondButton type="button" colorPalette="lilypad" onClick={() => void loadQuestions()} loading={adminBusy}>
               Refresh
             </PondButton>
           </HStack>
           {questions.map((q) => (
-            <Stack key={q.id} p="3" borderWidth="1px" borderColor="border" borderRadius="md" bg="bg">
-              <Text fontWeight="medium">
-                #{q.id} {q.review_status === "pending" ? "(pending)" : q.is_active ? "(active)" : "(inactive)"} - used{" "}
-                {q.sessions_used_count} sessions
-              </Text>
-              <Text>{q.prompt}</Text>
-              <Text fontSize="sm" color="gray.700">
-                1) {q.answer_1} | 2) {q.answer_2} | 3) {q.answer_3} | 4) {q.answer_4} | 5) {q.answer_5} | 6) {q.answer_6}
-              </Text>
-              <HStack gap="2" flexWrap="wrap" justify="flex-end" w="100%">
-                {q.review_status === "pending" ? (
-                  <>
-                    <PondButton
-                      type="button"
-                      colorPalette="lilypad"
-                      size="sm"
-                      loading={adminBusy}
-                      onClick={() => void setReviewStatus(q.id, "approved")}
-                    >
-                      Approve
-                    </PondButton>
-                    <PondButton
-                      type="button"
-                      variant="outline"
-                      colorPalette="orange"
-                      size="sm"
-                      loading={adminBusy}
-                      onClick={() => void setReviewStatus(q.id, "rejected")}
-                    >
-                      Reject
-                    </PondButton>
-                  </>
-                ) : null}
-                <PondButton
-                  type="button"
-                  colorPalette="lilypad"
-                  onClick={() => {
-                    beginEditQuestion(q);
-                    setActiveTab("admin-edit");
-                  }}
-                >
-                  Edit
-                </PondButton>
-                <PondButton
-                  type="button"
-                  colorPalette="orange"
-                  ref={confirmDeleteId === q.id ? confirmDeleteButtonRef : undefined}
-                  onClick={() => {
-                    if (confirmDeleteId !== q.id) {
-                      setConfirmDeleteId(q.id);
-                      return;
-                    }
-                    void removeQuestion(q.id);
-                  }}
-                  loading={adminBusy && confirmDeleteId === q.id}
-                >
-                  {confirmDeleteId === q.id ? "Confirm Delete" : "Delete"}
-                </PondButton>
-              </HStack>
-            </Stack>
+            <WhatIfQuestionAdminListItem
+              key={q.id}
+              q={q}
+              busy={adminBusy}
+              confirmDeleteId={confirmDeleteId}
+              confirmDeleteButtonRef={confirmDeleteButtonRef}
+              onToggleActive={(id, is_active) => void toggleQuestionActive(id, is_active)}
+              onEdit={(row) => {
+                beginEditQuestion(row);
+                setActiveTab("admin-edit");
+              }}
+              onDeleteClick={(row) => {
+                if (confirmDeleteId !== row.id) {
+                  setConfirmDeleteId(row.id);
+                  return;
+                }
+                void removeQuestion(row.id);
+              }}
+              onApprove={(id) => void setReviewStatus(id, "approved")}
+              onReject={(id) => void setReviewStatus(id, "rejected")}
+            />
           ))}
         </Stack>
       </Tabs.Content>
@@ -635,25 +711,42 @@ export default function WhatIfEntryPage() {
       <Tabs.Content value="admin-edit" pt="4">
         <Stack gap="2">
           <Text fontWeight="medium">{editingId == null ? "Create question" : `Edit question #${editingId}`}</Text>
-          <Input value={draft.prompt} onChange={(e) => setDraft((d) => ({ ...d, prompt: e.target.value }))} placeholder='Prompt with "{subject}"' {...whatifInputProps} />
-          <Input value={draft.answer_1} onChange={(e) => setDraft((d) => ({ ...d, answer_1: e.target.value }))} placeholder="Answer 1" {...whatifInputProps} />
-          <Input value={draft.answer_2} onChange={(e) => setDraft((d) => ({ ...d, answer_2: e.target.value }))} placeholder="Answer 2" {...whatifInputProps} />
-          <Input value={draft.answer_3} onChange={(e) => setDraft((d) => ({ ...d, answer_3: e.target.value }))} placeholder="Answer 3" {...whatifInputProps} />
-          <Input value={draft.answer_4} onChange={(e) => setDraft((d) => ({ ...d, answer_4: e.target.value }))} placeholder="Answer 4" {...whatifInputProps} />
-          <Input value={draft.answer_5} onChange={(e) => setDraft((d) => ({ ...d, answer_5: e.target.value }))} placeholder="Answer 5" {...whatifInputProps} />
-          <Input value={draft.answer_6} onChange={(e) => setDraft((d) => ({ ...d, answer_6: e.target.value }))} placeholder="Answer 6" {...whatifInputProps} />
+          <Text fontSize="sm" color="gray.600">
+            Type only the part after &quot;What if {"{subject}"}&quot; for the question. Answer rows show the number for
+            you; only the answer text is saved.
+          </Text>
+          <WhatIfQuestionFields
+            draft={draft}
+            onDraftChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
+          />
           <Text fontSize="sm" color="gray.600">
             Note: is_active currently defaults true in this editor.
           </Text>
-          <PondButton
-            type="button"
-            colorPalette="lilypad"
-            alignSelf="flex-end"
-            onClick={() => void saveQuestion()}
-            loading={adminBusy}
-          >
-            {editingId == null ? "Create question" : "Update question"}
-          </PondButton>
+          <HStack gap="2" justify="flex-end" flexWrap="wrap">
+            {editingId != null ? (
+              <PondButton
+                type="button"
+                variant="outline"
+                colorPalette="gray"
+                onClick={() => {
+                  beginCreateQuestion();
+                  setAdminError(null);
+                  setActiveTab("admin-list");
+                }}
+                disabled={adminBusy}
+              >
+                Cancel
+              </PondButton>
+            ) : null}
+            <PondButton
+              type="button"
+              colorPalette="lilypad"
+              onClick={() => void saveQuestion()}
+              loading={adminBusy}
+            >
+              {editingId == null ? "Create question" : "Update question"}
+            </PondButton>
+          </HStack>
         </Stack>
       </Tabs.Content>
 
@@ -675,12 +768,16 @@ export default function WhatIfEntryPage() {
         <Heading as="h1" size="lg">
           Whatif
         </Heading>
-        <Text color="fg">
-          A Jackbox-style room game. The TV stays on <Code>/whatif/play/ROOM</Code>, and each player joins on their
-          phone at <Code>/whatif/hand/ROOM</Code>.
-        </Text>
+        {!isMobile ? (
+          <Text color="fg">
+            A Jackbox-style room game. The TV stays on <Code>/whatif/play/ROOM</Code>, and each player joins on their
+            phone at <Code>/whatif/hand/ROOM</Code>.
+          </Text>
+        ) : null}
 
-        {isStaff ? (
+        {isMobile ? (
+          joinFormContent
+        ) : isStaff ? (
           <Tabs.Root
             id="whatif-entry-outer"
             value={outerSection}
@@ -825,7 +922,8 @@ export default function WhatIfEntryPage() {
               <Collapsible.Content>
                 <Stack gap="3" pt="3">
                   <Text fontSize="sm" color="gray.700">
-                    Suggest a prompt for staff to review. Approved questions may appear in future sessions.
+                    Suggest a prompt for staff to review. Approved questions may appear in future sessions. Type only
+                    the part after &quot;What if {"{subject}"}&quot;; only answer text is stored for each option.
                   </Text>
                   {proposeSuccess ? (
                     <Text color="fg" fontWeight="medium">
@@ -837,47 +935,9 @@ export default function WhatIfEntryPage() {
                       {proposeError}
                     </Text>
                   ) : null}
-                  <Input
-                    value={proposeDraft.prompt}
-                    onChange={(e) => setProposeDraft((d) => ({ ...d, prompt: e.target.value }))}
-                    placeholder='Prompt with "{subject}"'
-                    {...whatifInputProps}
-                  />
-                  <Input
-                    value={proposeDraft.answer_1}
-                    onChange={(e) => setProposeDraft((d) => ({ ...d, answer_1: e.target.value }))}
-                    placeholder="Answer 1"
-                    {...whatifInputProps}
-                  />
-                  <Input
-                    value={proposeDraft.answer_2}
-                    onChange={(e) => setProposeDraft((d) => ({ ...d, answer_2: e.target.value }))}
-                    placeholder="Answer 2"
-                    {...whatifInputProps}
-                  />
-                  <Input
-                    value={proposeDraft.answer_3}
-                    onChange={(e) => setProposeDraft((d) => ({ ...d, answer_3: e.target.value }))}
-                    placeholder="Answer 3"
-                    {...whatifInputProps}
-                  />
-                  <Input
-                    value={proposeDraft.answer_4}
-                    onChange={(e) => setProposeDraft((d) => ({ ...d, answer_4: e.target.value }))}
-                    placeholder="Answer 4"
-                    {...whatifInputProps}
-                  />
-                  <Input
-                    value={proposeDraft.answer_5}
-                    onChange={(e) => setProposeDraft((d) => ({ ...d, answer_5: e.target.value }))}
-                    placeholder="Answer 5"
-                    {...whatifInputProps}
-                  />
-                  <Input
-                    value={proposeDraft.answer_6}
-                    onChange={(e) => setProposeDraft((d) => ({ ...d, answer_6: e.target.value }))}
-                    placeholder="Answer 6"
-                    {...whatifInputProps}
+                  <WhatIfQuestionFields
+                    draft={proposeDraft}
+                    onDraftChange={(patch) => setProposeDraft((d) => ({ ...d, ...patch }))}
                   />
                   <PondButton
                     type="button"

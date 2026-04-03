@@ -4,6 +4,8 @@ import {
   Box,
   Checkbox,
   Code,
+  Grid,
+  GridItem,
   Heading,
   HStack,
   Input,
@@ -19,6 +21,7 @@ import { auth0DefaultLoginParams, auth0LoginWithReturnTo } from "../auth/auth0Lo
 import { useAppSession } from "../auth/AppSessionContext";
 import {
   fetchWhatIfHandState,
+  fetchWhatIfTvState,
   joinWhatIfSession,
   loadPlayerToken,
   postWhatIfAction,
@@ -35,6 +38,10 @@ function sanitizeDisplayNameInput(raw: string): string {
   return raw.split("").filter((ch) => DISPLAY_NAME_RE.test(ch)).join("").slice(0, 12);
 }
 
+function normalizeWhatIfDisplayNameForCompare(raw: string): string {
+  return raw.trim().toLowerCase();
+}
+
 export default function WhatIfHandPage() {
   const { code = "" } = useParams();
   const location = useLocation();
@@ -47,12 +54,9 @@ export default function WhatIfHandPage() {
   const [busy, setBusy] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [name, setName] = useState("");
+  const [enrolledPlayerNames, setEnrolledPlayerNames] = useState<string[]>([]);
   const [confirmSkip, setConfirmSkip] = useState(false);
   const confirmSkipRef = useRef<HTMLButtonElement | null>(null);
-  const defaultDisplayName = useMemo(
-    () => sessionUser?.profile?.display_name ?? "",
-    [sessionUser?.profile?.display_name],
-  );
   const playerToken = useMemo(() => loadPlayerToken(roomCode), [roomCode]);
   const endedProfileRefreshRef = useRef(false);
 
@@ -68,8 +72,37 @@ export default function WhatIfHandPage() {
   }, [isAuthenticated, refreshSession, state?.status]);
 
   useEffect(() => {
-    if (defaultDisplayName) setName(sanitizeDisplayNameInput(defaultDisplayName));
-  }, [defaultDisplayName]);
+    if (!isAuthenticated) {
+      setName("");
+      return;
+    }
+    const raw = sessionUser?.profile?.display_name ?? "";
+    if (raw) setName(sanitizeDisplayNameInput(raw));
+    else setName("");
+  }, [isAuthenticated, sessionUser?.profile?.display_name]);
+
+  useEffect(() => {
+    if (playerToken || roomCode.length !== 4) {
+      setEnrolledPlayerNames([]);
+      return;
+    }
+    let cancelled = false;
+    const t = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const sess = await fetchWhatIfTvState(roomCode);
+          if (cancelled || !sess) return;
+          setEnrolledPlayerNames((sess.players ?? []).map((p) => p.display_name));
+        } catch {
+          if (!cancelled) setEnrolledPlayerNames([]);
+        }
+      })();
+    }, 300);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [roomCode, playerToken]);
 
   useEffect(() => {
     if (!playerToken) return;
@@ -122,13 +155,35 @@ export default function WhatIfHandPage() {
     };
   }, [confirmSkip]);
 
+  const nameTakenInRoom = useMemo(() => {
+    if (playerToken) return false;
+    const candidate = sanitizeDisplayNameInput(name.trim());
+    if (!candidate) return false;
+    const c = normalizeWhatIfDisplayNameForCompare(candidate);
+    return enrolledPlayerNames.some((n) => normalizeWhatIfDisplayNameForCompare(n) === c);
+  }, [name, enrolledPlayerNames, playerToken]);
+
+  const joinHandDisabled =
+    busy || !sanitizeDisplayNameInput(name.trim()) || nameTakenInRoom;
+
+  const joinNamePlaceholder = isAuthenticated
+    ? "Letters, numbers, spaces (max 12)"
+    : "Enter a player name";
+
   async function handleJoin() {
+    const displayName = sanitizeDisplayNameInput(name.trim());
+    if (!displayName) {
+      setError("Enter a player name.");
+      return;
+    }
+    if (nameTakenInRoom) {
+      setError("That name is already taken in this room.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       const token = isAuthenticated ? await getApiAccessToken() : null;
-      const raw = name.trim() || sanitizeDisplayNameInput(defaultDisplayName) || "Guest";
-      const displayName = raw.slice(0, 12);
       const joined = await joinWhatIfSession(roomCode, displayName, token);
       savePlayerToken(roomCode, joined.player_secret);
       window.location.reload();
@@ -158,8 +213,16 @@ export default function WhatIfHandPage() {
       <WhatIfShell withPanel>
         <Stack gap="5">
           <Heading as="h1" size="lg">
-            Join Whatif <Code fontSize="2em">{roomCode}</Code>
+            Join Whatif
           </Heading>
+          <Stack gap="1">
+            <Text fontSize="sm" fontWeight="medium" color="gray.700">
+              Room Code:
+            </Text>
+            <Code fontSize="2em" w="fit-content">
+              {roomCode}
+            </Code>
+          </Stack>
           <Text color="gray.700">
             Enter the name others will see on this phone. The TV shows the main board; this screen is your private
             hand.
@@ -188,31 +251,41 @@ export default function WhatIfHandPage() {
             </HStack>
           ) : null}
 
-          <HStack align="center" gap="3" w="100%">
-            <Avatar.Root size="md" flexShrink={0}>
-              {isAuthenticated && sessionUser?.profile?.avatar_url ? (
-                <Avatar.Image src={sessionUser.profile.avatar_url} />
-              ) : null}
-              <Avatar.Fallback
-                name={
-                  isAuthenticated
-                    ? sessionUser?.profile?.display_name || sessionUser?.user?.email || "User"
-                    : "Guest"
-                }
-                bg={!isAuthenticated ? "gray.200" : undefined}
-                color={!isAuthenticated ? "gray.600" : undefined}
+          <Stack gap="1" w="100%">
+            <Text fontSize="sm" fontWeight="medium" color="gray.700">
+              Player Name:
+            </Text>
+            <HStack align="center" gap="3" w="100%">
+              <Avatar.Root size="md" flexShrink={0}>
+                {isAuthenticated && sessionUser?.profile?.avatar_url ? (
+                  <Avatar.Image src={sessionUser.profile.avatar_url} />
+                ) : null}
+                <Avatar.Fallback
+                  name={
+                    isAuthenticated
+                      ? sessionUser?.profile?.display_name || sessionUser?.user?.email || "User"
+                      : "Guest"
+                  }
+                  bg={!isAuthenticated ? "gray.200" : undefined}
+                  color={!isAuthenticated ? "gray.600" : undefined}
+                />
+              </Avatar.Root>
+              <Input
+                flex="1"
+                minW={0}
+                value={name}
+                onChange={(e) => setName(sanitizeDisplayNameInput(e.target.value))}
+                placeholder={joinNamePlaceholder}
+                maxLength={12}
+                {...whatifInputProps}
               />
-            </Avatar.Root>
-            <Input
-              flex="1"
-              minW={0}
-              value={name}
-              onChange={(e) => setName(sanitizeDisplayNameInput(e.target.value))}
-              placeholder={defaultDisplayName ? `Display name (${defaultDisplayName})` : "Display name"}
-              maxLength={12}
-              {...whatifInputProps}
-            />
-          </HStack>
+            </HStack>
+          </Stack>
+          {nameTakenInRoom ? (
+            <Text fontSize="sm" color="orange.solid">
+              That name is already taken in this room.
+            </Text>
+          ) : null}
           <Text fontSize="xs" color="gray.600">
             Letters, numbers, and spaces only (max 12 characters).
           </Text>
@@ -224,6 +297,7 @@ export default function WhatIfHandPage() {
             alignSelf="flex-start"
             onClick={() => void handleJoin()}
             loading={busy}
+            disabled={joinHandDisabled}
           >
             Join this phone
           </PondButton>
@@ -332,9 +406,18 @@ export default function WhatIfHandPage() {
   const isDuelist =
     duelVoting && me && activeId != null && (me.id === activeId || me.id === duel?.challenged_player_id);
 
+  const showVoteGrid =
+    state?.status === "voting" && (!duelVoting || isDuelist) && Object.keys(answers).length > 0;
+
   return (
     <WhatIfShell withPanel={false}>
-      <Stack gap="5">
+      <Stack
+        gap="5"
+        w="100%"
+        align="stretch"
+        minH={showVoteGrid ? "100dvh" : undefined}
+        pb={showVoteGrid ? "max(0.75rem, env(safe-area-inset-bottom, 0px))" : undefined}
+      >
         {pendingSkipId && isActive && me && pendingSkipId !== me.id ? (
           <Box
             role="dialog"
@@ -347,7 +430,7 @@ export default function WhatIfHandPage() {
           >
             <Stack gap="3">
               <Text fontWeight="bold">
-                {playerList.find((p) => p.id === pendingSkipId)?.display_name ?? "A player"} wants to spend their Skip
+                {playerList.find((p) => p.id === pendingSkipId)?.display_name ?? "A player"} wants to spend their Veto
                 on this question. Do you agree?
               </Text>
               <HStack gap="3" flexWrap="wrap">
@@ -367,14 +450,22 @@ export default function WhatIfHandPage() {
                   loading={busy}
                   onClick={() => void action({ type: "resolve_question_skip", approve: true })}
                 >
-                  Confirm Skip
+                  Confirm Veto
                 </PondButton>
               </HStack>
             </Stack>
           </Box>
         ) : null}
 
-        <Stack gap="3" p="4" borderWidth="1px" borderColor="border" borderRadius="xl" bg="bg">
+        <Stack
+          gap="3"
+          p="4"
+          borderWidth="1px"
+          borderColor="border"
+          borderRadius="xl"
+          bg="bg"
+          flexShrink={0}
+        >
           <HStack justify="space-between" align="center" w="100%" gap="3" flexWrap="wrap">
             <Heading as="h1" size="xl" flex="1" minW="0">
               {me ? `${me.avatar_emoji} ${me.display_name}'s hand` : "Your hand"}
@@ -395,7 +486,7 @@ export default function WhatIfHandPage() {
                   setConfirmSkip(false);
                 }}
               >
-                {confirmSkip ? "Confirm Skip" : "Vote to Skip"}
+                {confirmSkip ? "Confirm Veto" : "Veto Question"}
               </PondButton>
             ) : state?.status !== "ended" ? (
               <Code flexShrink={0} fontSize="2em">
@@ -659,51 +750,74 @@ export default function WhatIfHandPage() {
           </Stack>
         ) : null}
 
-        {state?.status === "voting" && (!duelVoting || isDuelist) ? (
-          <Stack gap="3">
-            <SimpleGrid columns={2} gap="3">
+        {showVoteGrid ? (
+          <Box flex="1" minH={0} w="100%" display="flex" flexDirection="column">
+            <Grid
+              flex="1"
+              minH={0}
+              w="100%"
+              templateColumns={{ base: "repeat(3, minmax(0, 1fr))", md: "repeat(2, minmax(0, 1fr))" }}
+              templateRows={{ base: "repeat(2, minmax(44px, 1fr))", md: "repeat(3, minmax(44px, 1fr))" }}
+              gap="2"
+            >
               {Object.entries(answers)
                 .sort((a, b) => Number(a[0]) - Number(b[0]))
                 .map(([k, answer]) => {
                   const idx = Number(k);
                   const isHiddenAfterVote = !!myVote && myVote !== idx;
                   return (
-                    <PondButton
-                      key={k}
-                      type="button"
-                      bg="white"
-                      color="black"
-                      borderWidth="16px"
-                      borderColor="transparent"
-                      borderRadius="xl"
-                      minH="150px"
-                      w="100%"
-                      whiteSpace="normal"
-                      textAlign="center"
-                      disabled={!!myVote || imPaused}
-                      visibility={isHiddenAfterVote ? "hidden" : "visible"}
-                      pointerEvents={isHiddenAfterVote ? "none" : "auto"}
-                      _hover={{
-                        bg: "white",
-                        color: "black",
-                        borderColor: "lilypad.solid",
-                        borderWidth: "16px",
-                      }}
-                      onClick={() => void action({ type: "vote", option_index: idx })}
-                    >
-                      <Stack gap="2" align="center" justify="center">
-                        <Text fontSize="2xl" opacity={0.25} lineHeight="1">
-                          {idx}
-                        </Text>
-                        <Text fontSize="lg" fontWeight="semibold">
-                          {answer}
-                        </Text>
-                      </Stack>
-                    </PondButton>
+                    <GridItem key={k} minW={0} minH={0}>
+                      <PondButton
+                        type="button"
+                        bg="white"
+                        color="black"
+                        borderWidth="8px"
+                        borderColor="transparent"
+                        borderRadius="lg"
+                        minH="44px"
+                        h="100%"
+                        w="100%"
+                        py="2"
+                        px="2"
+                        whiteSpace="normal"
+                        textAlign="center"
+                        disabled={!!myVote || imPaused}
+                        visibility={isHiddenAfterVote ? "hidden" : "visible"}
+                        pointerEvents={isHiddenAfterVote ? "none" : "auto"}
+                        _hover={{
+                          bg: "white",
+                          color: "black",
+                          borderColor: "lilypad.solid",
+                          borderWidth: "8px",
+                        }}
+                        onClick={() => void action({ type: "vote", option_index: idx })}
+                      >
+                        <Stack gap="1" align="center" justify="center" maxW="100%">
+                          <Text fontSize="md" opacity={0.25} lineHeight="1">
+                            {idx}
+                          </Text>
+                          <Text
+                            fontWeight="semibold"
+                            textAlign="center"
+                            lineHeight="1.15"
+                            fontSize="clamp(0.68rem, 2.4vw, 0.85rem)"
+                            css={{
+                              display: "-webkit-box",
+                              WebkitLineClamp: 4,
+                              WebkitBoxOrient: "vertical",
+                              overflow: "hidden",
+                              wordBreak: "break-word",
+                            }}
+                          >
+                            {answer}
+                          </Text>
+                        </Stack>
+                      </PondButton>
+                    </GridItem>
                   );
                 })}
-            </SimpleGrid>
-          </Stack>
+            </Grid>
+          </Box>
         ) : null}
 
         {state?.status === "ended" ? (

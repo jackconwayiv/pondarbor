@@ -1,5 +1,16 @@
 import type { WhatIfSessionState } from "./types";
 
+/** Query param for GET /whatif/questions/ — server filters non-deleted rows. */
+export const WHATIF_QUESTION_LIST_FILTERS = ["all", "active", "inactive", "rejected"] as const;
+export type WhatIfQuestionListFilter = (typeof WHATIF_QUESTION_LIST_FILTERS)[number];
+
+export const WHATIF_QUESTION_LIST_FILTER_LABELS: Record<WhatIfQuestionListFilter, string> = {
+  all: "All",
+  active: "Active only",
+  inactive: "Inactive only",
+  rejected: "Rejected only",
+};
+
 export type WhatIfQuestionAdmin = {
   id: number;
   prompt: string;
@@ -220,11 +231,12 @@ export async function fetchWhatIfPendingCount(accessToken: string): Promise<numb
 export async function listWhatIfQuestions(
   accessToken: string,
   q?: string,
-  options?: { showRejected?: boolean },
+  options?: { listFilter?: WhatIfQuestionListFilter },
 ): Promise<WhatIfQuestionAdmin[]> {
   const params = new URLSearchParams();
   if (q?.trim()) params.set("q", q.trim());
-  if (options?.showRejected) params.set("show_rejected", "1");
+  const listFilter = options?.listFilter ?? "all";
+  if (listFilter !== "all") params.set("list_filter", listFilter);
   const response = await fetch(
     `${apiBase()}/api/v1/whatif/questions/${params.toString() ? `?${params}` : ""}`,
     {

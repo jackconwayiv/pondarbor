@@ -1,4 +1,15 @@
-import { Box, Checkbox, Heading, HStack, Input, Stack, Tabs, Text, Textarea } from "@chakra-ui/react";
+import {
+  Box,
+  Heading,
+  HStack,
+  Input,
+  NativeSelectField,
+  NativeSelectRoot,
+  Stack,
+  Tabs,
+  Text,
+  Textarea,
+} from "@chakra-ui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import PondButton from "../PondButton";
@@ -10,9 +21,14 @@ import {
   fetchWhatIfPendingCount,
   listWhatIfQuestions,
   patchWhatIfQuestion,
+  WHATIF_QUESTION_LIST_FILTERS,
+  WHATIF_QUESTION_LIST_FILTER_LABELS,
   type WhatIfQuestionAdmin,
+  type WhatIfQuestionListFilter,
 } from "./api";
 import WhatIfShell from "./WhatIfShell";
+import { WhatIfQuestionAdminListItem } from "./WhatIfQuestionAdminListItem";
+import { WhatIfQuestionFields } from "./WhatIfQuestionFields";
 import { whatifInputProps } from "./whatifFieldProps";
 
 type QuestionDraft = {
@@ -49,7 +65,7 @@ export default function WhatIfAdminPage() {
   const [activeTab, setActiveTab] = useState<"list" | "edit" | "bulk">("list");
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const confirmDeleteButtonRef = useRef<HTMLButtonElement | null>(null);
-  const [showRejected, setShowRejected] = useState(false);
+  const [questionListFilter, setQuestionListFilter] = useState<WhatIfQuestionListFilter>("all");
   const [pendingCount, setPendingCount] = useState(0);
   const isStaff = !!sessionUser?.user?.is_staff;
 
@@ -66,7 +82,7 @@ export default function WhatIfAdminPage() {
     try {
       const token = await getApiAccessToken();
       const [items, pending] = await Promise.all([
-        listWhatIfQuestions(token, query, { showRejected }),
+        listWhatIfQuestions(token, query, { listFilter: questionListFilter }),
         fetchWhatIfPendingCount(token),
       ]);
       setQuestions(items);
@@ -81,7 +97,7 @@ export default function WhatIfAdminPage() {
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, isStaff, showRejected]);
+  }, [isAuthenticated, isStaff, questionListFilter]);
 
   useEffect(() => {
     if (confirmDeleteId == null) return;
@@ -170,6 +186,21 @@ export default function WhatIfAdminPage() {
         review_status,
         is_active: review_status === "approved",
       });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Update failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleQuestionActive(id: number, is_active: boolean) {
+    if (!isAuthenticated || !isStaff) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const token = await getApiAccessToken();
+      await patchWhatIfQuestion(token, id, { is_active });
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Update failed");
@@ -283,7 +314,7 @@ export default function WhatIfAdminPage() {
           <WhatIfShell maxW="5xl">
             <Tabs.Content value="list">
               <Stack gap="3">
-                <Text fontWeight="medium">All questions ({questions.length})</Text>
+                <Text fontWeight="medium">Questions ({questions.length})</Text>
                 <HStack gap="2" align="end" flexWrap="wrap">
                   <Stack gap="1" flex="1" minW="200px">
                     <Text fontSize="sm" color="gray.700">
@@ -291,84 +322,51 @@ export default function WhatIfAdminPage() {
                     </Text>
                     <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by prompt..." {...whatifInputProps} />
                   </Stack>
-                  <Checkbox.Root
-                    checked={showRejected}
-                    onCheckedChange={() => setShowRejected((v) => !v)}
-                    colorPalette="lilypad"
-                  >
-                    <Checkbox.HiddenInput />
-                    <Checkbox.Control>
-                      <Checkbox.Indicator />
-                    </Checkbox.Control>
-                    <Checkbox.Label>Show rejected</Checkbox.Label>
-                  </Checkbox.Root>
+                  <Stack gap="1" minW="160px">
+                    <Text fontSize="sm" color="gray.700">
+                      List
+                    </Text>
+                    <NativeSelectRoot>
+                      <NativeSelectField
+                        value={questionListFilter}
+                        onChange={(e) => setQuestionListFilter(e.target.value as WhatIfQuestionListFilter)}
+                        {...whatifInputProps}
+                      >
+                        {WHATIF_QUESTION_LIST_FILTERS.map((v) => (
+                          <option key={v} value={v}>
+                            {WHATIF_QUESTION_LIST_FILTER_LABELS[v]}
+                          </option>
+                        ))}
+                      </NativeSelectField>
+                    </NativeSelectRoot>
+                  </Stack>
                   <PondButton type="button" colorPalette="lilypad" onClick={() => void load()} loading={busy}>
                     Refresh
                   </PondButton>
                 </HStack>
 
                 {questions.map((q) => (
-                  <Stack key={q.id} p="3" borderWidth="1px" borderColor="border" borderRadius="md" bg="bg">
-                    <Text fontWeight="medium">
-                      #{q.id} {q.review_status === "pending" ? "(pending)" : q.is_active ? "(active)" : "(inactive)"}{" "}
-                      - used {q.sessions_used_count} sessions
-                    </Text>
-                    <Text>{q.prompt}</Text>
-                    <Text fontSize="sm" color="gray.700">
-                      1) {q.answer_1} | 2) {q.answer_2} | 3) {q.answer_3} | 4) {q.answer_4} | 5) {q.answer_5} | 6){" "}
-                      {q.answer_6}
-                    </Text>
-                    <HStack gap="2" flexWrap="wrap" justify="flex-end" w="100%">
-                      {q.review_status === "pending" ? (
-                        <>
-                          <PondButton
-                            type="button"
-                            colorPalette="lilypad"
-                            size="sm"
-                            loading={busy}
-                            onClick={() => void setReviewStatus(q.id, "approved")}
-                          >
-                            Approve
-                          </PondButton>
-                          <PondButton
-                            type="button"
-                            variant="outline"
-                            colorPalette="orange"
-                            size="sm"
-                            loading={busy}
-                            onClick={() => void setReviewStatus(q.id, "rejected")}
-                          >
-                            Reject
-                          </PondButton>
-                        </>
-                      ) : null}
-                      <PondButton
-                        type="button"
-                        colorPalette="lilypad"
-                        onClick={() => {
-                          beginEdit(q);
-                          setActiveTab("edit");
-                        }}
-                      >
-                        Edit
-                      </PondButton>
-                      <PondButton
-                        type="button"
-                        colorPalette="orange"
-                        ref={confirmDeleteId === q.id ? confirmDeleteButtonRef : undefined}
-                        onClick={() => {
-                          if (confirmDeleteId !== q.id) {
-                            setConfirmDeleteId(q.id);
-                            return;
-                          }
-                          void removeQuestion(q.id);
-                        }}
-                        loading={busy && confirmDeleteId === q.id}
-                      >
-                        {confirmDeleteId === q.id ? "Confirm Delete" : "Delete"}
-                      </PondButton>
-                    </HStack>
-                  </Stack>
+                  <WhatIfQuestionAdminListItem
+                    key={q.id}
+                    q={q}
+                    busy={busy}
+                    confirmDeleteId={confirmDeleteId}
+                    confirmDeleteButtonRef={confirmDeleteButtonRef}
+                    onToggleActive={(id, is_active) => void toggleQuestionActive(id, is_active)}
+                    onEdit={(row) => {
+                      beginEdit(row);
+                      setActiveTab("edit");
+                    }}
+                    onDeleteClick={(row) => {
+                      if (confirmDeleteId !== row.id) {
+                        setConfirmDeleteId(row.id);
+                        return;
+                      }
+                      void removeQuestion(row.id);
+                    }}
+                    onApprove={(id) => void setReviewStatus(id, "approved")}
+                    onReject={(id) => void setReviewStatus(id, "rejected")}
+                  />
                 ))}
               </Stack>
             </Tabs.Content>
@@ -376,25 +374,42 @@ export default function WhatIfAdminPage() {
             <Tabs.Content value="edit">
               <Stack gap="2">
                 <Text fontWeight="medium">{editingId == null ? "Create question" : `Edit question #${editingId}`}</Text>
-                <Input value={draft.prompt} onChange={(e) => setDraft((d) => ({ ...d, prompt: e.target.value }))} placeholder='Prompt with "{subject}"' {...whatifInputProps} />
-                <Input value={draft.answer_1} onChange={(e) => setDraft((d) => ({ ...d, answer_1: e.target.value }))} placeholder="Answer 1" {...whatifInputProps} />
-                <Input value={draft.answer_2} onChange={(e) => setDraft((d) => ({ ...d, answer_2: e.target.value }))} placeholder="Answer 2" {...whatifInputProps} />
-                <Input value={draft.answer_3} onChange={(e) => setDraft((d) => ({ ...d, answer_3: e.target.value }))} placeholder="Answer 3" {...whatifInputProps} />
-                <Input value={draft.answer_4} onChange={(e) => setDraft((d) => ({ ...d, answer_4: e.target.value }))} placeholder="Answer 4" {...whatifInputProps} />
-                <Input value={draft.answer_5} onChange={(e) => setDraft((d) => ({ ...d, answer_5: e.target.value }))} placeholder="Answer 5" {...whatifInputProps} />
-                <Input value={draft.answer_6} onChange={(e) => setDraft((d) => ({ ...d, answer_6: e.target.value }))} placeholder="Answer 6" {...whatifInputProps} />
+                <Text fontSize="sm" color="gray.600">
+                  Type only the part after &quot;What if {"{subject}"}&quot; for the question. Answer rows show the
+                  number for you; only the answer text is saved.
+                </Text>
+                <WhatIfQuestionFields
+                  draft={draft}
+                  onDraftChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
+                />
                 <Text fontSize="sm" color="gray.600">
                   Note: is_active currently defaults true in this editor.
                 </Text>
-                <PondButton
-                  type="button"
-                  colorPalette="lilypad"
-                  alignSelf="flex-end"
-                  onClick={() => void saveQuestion()}
-                  loading={busy}
-                >
-                  {editingId == null ? "Create question" : "Update question"}
-                </PondButton>
+                <HStack gap="2" justify="flex-end" flexWrap="wrap">
+                  {editingId != null ? (
+                    <PondButton
+                      type="button"
+                      variant="outline"
+                      colorPalette="gray"
+                      onClick={() => {
+                        beginCreate();
+                        setError(null);
+                        setActiveTab("list");
+                      }}
+                      disabled={busy}
+                    >
+                      Cancel
+                    </PondButton>
+                  ) : null}
+                  <PondButton
+                    type="button"
+                    colorPalette="lilypad"
+                    onClick={() => void saveQuestion()}
+                    loading={busy}
+                  >
+                    {editingId == null ? "Create question" : "Update question"}
+                  </PondButton>
+                </HStack>
               </Stack>
             </Tabs.Content>
 

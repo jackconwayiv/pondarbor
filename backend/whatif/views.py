@@ -451,6 +451,15 @@ def join_session(request, code: str):
             WhatIfSession.objects.select_for_update(),
             short_code=code.upper(),
         )
+        if (
+            WhatIfPlayer.objects.filter(session=session)
+            .filter(display_name__iexact=display_name)
+            .exists()
+        ):
+            return Response(
+                {"detail": "A player with this name is already in the room."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         avatar = _pick_avatar_emoji(session)
         player = WhatIfPlayer.objects.create(
             session=session,
@@ -1027,10 +1036,17 @@ def admin_questions(request):
         from django.db.models import Case, IntegerField, When
 
         query = str(request.GET.get("q", "")).strip()
-        show_rejected = str(request.GET.get("show_rejected", "")).lower() in ("1", "true", "yes")
+        list_filter = str(request.GET.get("list_filter", "all")).strip().lower()
+        valid_filters = {"all", "active", "inactive", "rejected"}
+        if list_filter not in valid_filters:
+            list_filter = "all"
         qs = WhatIfQuestion.objects.filter(deleted_at__isnull=True)
-        if not show_rejected:
-            qs = qs.exclude(review_status=WhatIfQuestion.ReviewStatus.REJECTED)
+        if list_filter == "rejected":
+            qs = qs.filter(review_status=WhatIfQuestion.ReviewStatus.REJECTED)
+        elif list_filter == "active":
+            qs = qs.filter(is_active=True)
+        elif list_filter == "inactive":
+            qs = qs.filter(is_active=False)
         if query:
             qs = qs.filter(prompt__icontains=query)
         qs = qs.annotate(

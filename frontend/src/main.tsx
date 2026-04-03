@@ -4,6 +4,8 @@ import { system } from "./theme/system";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider } from "react-router";
+import { AchievementUnlockListener } from "./achievements/AchievementUnlockListener";
+import { AchievementToaster } from "./achievements/achievementToaster";
 import { AppSessionProvider } from "./auth/AppSessionProvider";
 import { safeAuthReturnTo } from "./auth/safeAuthReturnTo";
 import "./index.css";
@@ -30,6 +32,8 @@ createRoot(document.getElementById("root")!).render(
     >
       <ChakraProvider value={system}>
         <AppSessionProvider>
+          <AchievementUnlockListener />
+          <AchievementToaster />
           <RouterProvider router={router} />
         </AppSessionProvider>
       </ChakraProvider>

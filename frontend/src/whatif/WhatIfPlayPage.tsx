@@ -1,7 +1,8 @@
 import { Avatar, Code, Grid, GridItem, Heading, HStack, IconButton, Stack, Text } from "@chakra-ui/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 
+import { useAppSession } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
 import { fetchWhatIfTvState, loadHostToken, postWhatIfAction } from "./api";
 import WhatIfShell from "./WhatIfShell";
@@ -30,11 +31,24 @@ export default function WhatIfPlayPage() {
   const navigate = useNavigate();
   const { code = "" } = useParams();
   const roomCode = code.toUpperCase();
+  const { isAuthenticated, refreshSession } = useAppSession();
   const [state, setState] = useState<WhatIfSessionState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hostBusy, setHostBusy] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const hostToken = useMemo(() => loadHostToken(roomCode), [roomCode]);
+  const endedProfileRefreshRef = useRef(false);
+
+  useEffect(() => {
+    endedProfileRefreshRef.current = false;
+  }, [roomCode]);
+
+  useEffect(() => {
+    if (!isAuthenticated || state?.status !== "ended") return;
+    if (endedProfileRefreshRef.current) return;
+    endedProfileRefreshRef.current = true;
+    void refreshSession();
+  }, [isAuthenticated, refreshSession, state?.status]);
 
   useEffect(() => {
     if (state?.status !== "voting") return;
@@ -197,27 +211,35 @@ export default function WhatIfPlayPage() {
   }
 
   return (
-    <WhatIfShell maxW="5xl" withPanel={false}>
-      <Stack gap="5">
+    <WhatIfShell maxW="min(100%, 90rem)" withPanel={false}>
+      <Stack gap={{ base: "4", md: "6" }}>
         <Grid
           templateColumns={{ base: "1fr", md: "minmax(0, 2fr) minmax(0, 1fr)" }}
-          gap="5"
+          gap={{ base: "4", md: "6" }}
           w="100%"
           alignItems="start"
         >
           <GridItem minW={0}>
-            <Stack gap="5">
+            <Stack gap={{ base: "4", md: "6" }}>
               <Stack
                 gap="3"
-                p="6"
+                p={{ base: "4", md: "8" }}
                 borderWidth="1px"
                 borderColor="border"
                 borderRadius="xl"
                 bg={state?.status === "ended" ? "orange.100" : "bg"}
               >
                 <HStack justify="space-between" align="center" w="100%" flexWrap="wrap" gap="3">
-                  <Heading as="h1" size="lg">
-                    Whatif TV <Code fontSize="2em">{roomCode}</Code>
+                  <Heading
+                    as="h1"
+                    fontSize="clamp(1.35rem, 3.5vh, 2.75rem)"
+                    lineHeight="1.15"
+                    fontWeight="bold"
+                  >
+                    Whatif TV{" "}
+                    <Code fontSize="clamp(1.75rem, 5vh, 3.25rem)" verticalAlign="middle">
+                      {roomCode}
+                    </Code>
                   </Heading>
                   <PondButton
                     type="button"
@@ -227,7 +249,7 @@ export default function WhatIfPlayPage() {
                     Return to lobby
                   </PondButton>
                 </HStack>
-                <Text fontSize="2xl" fontWeight="bold">
+                <Text fontSize="clamp(1.2rem, 3vh, 2.25rem)" fontWeight="bold" lineHeight="1.2">
                   {state?.status === "ended"
                     ? winnerPlayer
                       ? `${flairPrefix ? `${flairPrefix} ` : ""}Game over! ${winnerPlayer.display_name} wins!`
@@ -261,17 +283,21 @@ export default function WhatIfPlayPage() {
                 {state?.status === "post_results" ? (
                   <Stack gap="1">
                     {roundScoreRows.length > 0 ? (
-                      roundScoreRows.map((row) => <Text key={row}>{row}</Text>)
+                      roundScoreRows.map((row) => (
+                        <Text key={row} fontSize="clamp(1rem, 2.2vh, 1.35rem)">
+                          {row}
+                        </Text>
+                      ))
                     ) : (
-                      <Text>No points awarded this round.</Text>
+                      <Text fontSize="clamp(1rem, 2.2vh, 1.35rem)">No points awarded this round.</Text>
                     )}
                   </Stack>
                 ) : null}
               </Stack>
 
               {state?.state?.question ? (
-                <Stack gap="3" p="4" borderWidth="1px" borderColor="border" borderRadius="xl" bg="bg">
-                  <Text fontSize="xl" fontWeight="semibold">
+                <Stack gap="3" p={{ base: "4", md: "6" }} borderWidth="1px" borderColor="border" borderRadius="xl" bg="bg">
+                  <Text fontSize="clamp(1.1rem, 2.6vh, 1.75rem)" fontWeight="semibold" lineHeight="1.25">
                     {state.state.question.prompt}
                   </Text>
                   {state.state.question.proposed_by?.display_name ? (
@@ -293,13 +319,17 @@ export default function WhatIfPlayPage() {
                       const voterEmojis = voterEmojisByOption[idx] ?? [];
                       return (
                         <HStack key={k} align="baseline" gap="2" flexWrap="wrap" justify="flex-start">
-                          <Text>
+                          <Text fontSize="clamp(1rem, 2.3vh, 1.4rem)" lineHeight="1.3">
                             {k}. {answer}
                           </Text>
                           {voterEmojis.length > 0 ? (
                             <HStack gap="1" flexShrink={0}>
                               {voterEmojis.map((emoji, i) => (
-                                <Text key={`${k}-${i}`} fontSize="2xl" lineHeight="1">
+                                <Text
+                                  key={`${k}-${i}`}
+                                  fontSize="clamp(1.35rem, 4vh, 2.5rem)"
+                                  lineHeight="1"
+                                >
                                   {emoji}
                                 </Text>
                               ))}
@@ -313,7 +343,7 @@ export default function WhatIfPlayPage() {
               ) : null}
 
               {state?.status === "voting" && state.state.voting_deadline_at ? (
-                <Text fontSize="sm" color="gray.700">
+                <Text fontSize="clamp(0.9rem, 1.8vh, 1.1rem)" color="gray.700">
                   {(() => {
                     const left = Math.max(
                       0,
@@ -328,11 +358,17 @@ export default function WhatIfPlayPage() {
                 </Text>
               ) : null}
               {state?.status === "voting" ? (
-                <Stack gap="2" p="4" borderWidth="1px" borderColor="border" borderRadius="xl" bg="bg">
-                  <Text fontWeight="medium">Votes cast:</Text>
+                <Stack gap="2" p={{ base: "4", md: "6" }} borderWidth="1px" borderColor="border" borderRadius="xl" bg="bg">
+                  <Text fontWeight="medium" fontSize="clamp(1rem, 2vh, 1.25rem)">
+                    Votes cast:
+                  </Text>
                   <HStack gap="2" flexWrap="wrap" justify="center">
                     {votedPlayers.map((p) => (
-                      <Text key={p.id} fontSize="60px" lineHeight="1">
+                      <Text
+                        key={p.id}
+                        fontSize="clamp(2.25rem, 9vh, 4.5rem)"
+                        lineHeight="1"
+                      >
                         {p.avatar_emoji}
                       </Text>
                     ))}
@@ -347,7 +383,7 @@ export default function WhatIfPlayPage() {
             <Stack gap="2" w="100%">
               <Stack
                 gap="2"
-                p="4"
+                p={{ base: "4", md: "6" }}
                 borderWidth="1px"
                 borderColor="border"
                 borderRadius="xl"
@@ -355,7 +391,7 @@ export default function WhatIfPlayPage() {
                 w="100%"
               >
                 <Text
-                  fontSize="28px"
+                  fontSize="clamp(1.25rem, 3.2vh, 2rem)"
                   fontWeight="bold"
                   letterSpacing="0.2em"
                   textAlign="center"
@@ -364,7 +400,7 @@ export default function WhatIfPlayPage() {
                 >
                   SCOREBOARD
                 </Text>
-                <Text textAlign="center" color="gray.700" fontSize="sm">
+                <Text textAlign="center" color="gray.700" fontSize="clamp(0.9rem, 2vh, 1.1rem)">
                   The first player to {state?.win_score ?? 25} points wins!
                 </Text>
               </Stack>
@@ -375,8 +411,8 @@ export default function WhatIfPlayPage() {
                     borderWidth="1px"
                     borderColor="black"
                     borderRadius="md"
-                    px="4"
-                    py="4"
+                    px={{ base: "3", md: "5" }}
+                    py={{ base: "3", md: "5" }}
                     bg="bg"
                     justify="space-between"
                     align="center"
@@ -384,7 +420,7 @@ export default function WhatIfPlayPage() {
                     w="100%"
                   >
                     <HStack flex="1" minW={0} gap="2" align="baseline">
-                      <Text>
+                      <Text fontSize="clamp(1rem, 2.4vh, 1.35rem)" lineHeight="1.25">
                         {p.avatar_emoji} {p.display_name} - {p.score} pts
                       </Text>
                       {p.paused ? (
@@ -404,12 +440,12 @@ export default function WhatIfPlayPage() {
                               ? "Cannot pause the active player during their turn, voting reveal, or score transition."
                               : `Pause ${p.display_name} (their vote is not required until you resume them)`
                         }
-                        size="sm"
+                        size="md"
                         variant="outline"
                         colorPalette={p.paused ? "lilypad" : "orange"}
                         flexShrink={0}
-                        minW="10"
-                        minH="10"
+                        minW="12"
+                        minH="12"
                         loading={hostBusy}
                         disabled={hostBusy || (!p.paused && hostCannotPausePlayer(p))}
                         onClick={() => void handleSetPlayerPaused(p, !p.paused)}

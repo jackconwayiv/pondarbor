@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+
+from qff.constants import SAY_MAX_LEN
 from qff.models import RoomExit
 
 
@@ -15,6 +17,37 @@ class ParsedMove:
 @dataclass
 class ParsedSearch:
     pass
+
+
+@dataclass
+class ParsedSay:
+    text: str
+
+
+@dataclass
+class ParsedDrop:
+    target: str
+
+
+@dataclass
+class ParsedGet:
+    target: str
+
+
+@dataclass
+class ParsedEquip:
+    target: str
+
+
+@dataclass
+class ParsedUnequip:
+    target: str
+
+
+@dataclass
+class ParsedLookInspect:
+    verb: str  # "look" | "inspect"
+    target: str
 
 
 @dataclass
@@ -35,6 +68,13 @@ def _normalize(line: str) -> str:
         line = line[1:].strip()
     line = _strip_go_prefix(line)
     return line.strip()
+
+
+def _strip_say_quotes(text: str) -> str:
+    t = text.strip()
+    if len(t) >= 2 and t[0] == t[-1] and t[0] in '"\'':
+        return t[1:-1].strip()
+    return t
 
 
 # Longest-first synonym matching (multi-word before single-token).
@@ -72,13 +112,52 @@ _TWO_LETTER = {
 
 
 def parse_command(line: str):
-    """Return ParsedMove, ParsedSearch, or ParsedUnknown."""
+    """Return structured parse result for movement, search, social, items, or unknown."""
     raw = line
     n = _normalize(line)
     if not n:
         return ParsedUnknown(raw=raw)
 
     low = n.lower()
+
+    # say / say …
+    if low == "say":
+        return ParsedSay(text="")
+    if low.startswith("say "):
+        text = _strip_say_quotes(n[4:].strip())
+        return ParsedSay(text=text[:SAY_MAX_LEN])
+
+    # look / inspect
+    if low.startswith("look at "):
+        return ParsedLookInspect(verb="look", target=n[8:].strip())
+    if low.startswith("look "):
+        return ParsedLookInspect(verb="look", target=n[5:].strip())
+    if low == "look":
+        return ParsedLookInspect(verb="look", target="")
+    if low.startswith("inspect "):
+        return ParsedLookInspect(verb="inspect", target=n[8:].strip())
+    if low == "inspect":
+        return ParsedLookInspect(verb="inspect", target="")
+
+    # unequip
+    if low.startswith("unequip "):
+        return ParsedUnequip(target=n[8:].strip())
+    if low == "unequip":
+        return ParsedUnequip(target="")
+
+    # drop / get / equip
+    if low.startswith("drop "):
+        return ParsedDrop(target=n[5:].strip())
+    if low == "drop":
+        return ParsedDrop(target="")
+    if low.startswith("get "):
+        return ParsedGet(target=n[4:].strip())
+    if low == "get":
+        return ParsedGet(target="")
+    if low.startswith("equip "):
+        return ParsedEquip(target=n[6:].strip())
+    if low == "equip":
+        return ParsedEquip(target="")
 
     # Search
     if low in ("search", "search room", "scr"):

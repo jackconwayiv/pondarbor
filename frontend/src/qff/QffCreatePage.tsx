@@ -19,16 +19,12 @@ import { createQffCharacter, fetchQffSession, type QffSessionNoCharacter } from 
 
 const NAME_RE = /^[a-zA-Z0-9 ]{1,20}$/;
 
-/** One-line flavor text for create UI; keys match CharacterClass.slug from the API. */
-const CLASS_DESCRIPTION: Record<string, string> = {
-  nurse:
-    "Trained to patch wounds, read vitals, and win fights with patience and a very heavy clipboard.",
-  gym_rat:
-    "Lives for the grind, protein math, and turning every encounter into leg day.",
-};
-
-function classBlurb(slug: string): string {
-  return CLASS_DESCRIPTION[slug.trim().toLowerCase()] ?? "";
+function classBlurb(
+  slug: string,
+  classes: QffSessionNoCharacter["character_classes"],
+): string {
+  const row = classes.find((c) => c.slug === slug);
+  return (row?.description ?? "").trim();
 }
 
 export default function QffCreatePage() {
@@ -122,11 +118,11 @@ export default function QffCreatePage() {
   }
 
   return (
-    <Box maxW="lg" mx="auto" px={4} py={8}>
+    <Box w="100%" maxW="lg" minW={0} mx="auto" px={4} py={8}>
       <Heading size="md" mb={6} color="#e8f5c8">
         Create your Hero of Fat
       </Heading>
-      <VStack gap={6} align="stretch">
+      <VStack gap={6} align="stretch" w="100%" minW={0}>
         <Field.Root>
           <Field.Label>Character name</Field.Label>
           <Input
@@ -143,7 +139,7 @@ export default function QffCreatePage() {
         </Field.Root>
 
         <Field.Root>
-          <Stack gap={2} align="stretch" w="100%">
+          <Stack gap={2} align="stretch" w="100%" minW={0}>
             <Field.Label>Class</Field.Label>
             <NativeSelectRoot size="md" width="100%">
               <NativeSelectField
@@ -152,6 +148,7 @@ export default function QffCreatePage() {
                 bg="#141414"
                 borderColor="#3a4a3a"
                 color="#c8e6a8"
+                w="100%"
               >
                 {classes.map((c) => (
                   <option key={c.slug} value={c.slug}>
@@ -160,13 +157,16 @@ export default function QffCreatePage() {
                 ))}
               </NativeSelectField>
             </NativeSelectRoot>
-            {classBlurb(cls) ? (
+            {classBlurb(cls, classes) ? (
               <Text
                 fontSize="sm"
                 lineHeight="short"
+                w="100%"
+                maxW="100%"
+                wordBreak="break-word"
                 css={{ color: "#a3a3a3 !important" }}
               >
-                {classBlurb(cls)}
+                {classBlurb(cls, classes)}
               </Text>
             ) : null}
           </Stack>

@@ -17,4 +17,8 @@ urlpatterns = [
     path("dm/rooms/<int:pk>/", views.dm_room_detail),
     path("dm/rooms/<int:room_id>/exits/", views.dm_exit_list_create),
     path("dm/exits/<int:pk>/", views.dm_exit_detail),
+    path("dm/items/", views.dm_item_list_create),
+    path("dm/items/<int:pk>/", views.dm_item_detail),
+    path("dm/classes/", views.dm_class_list_create),
+    path("dm/classes/<int:pk>/", views.dm_class_detail),
 ]

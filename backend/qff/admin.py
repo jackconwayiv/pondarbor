@@ -35,7 +35,8 @@ class RoomExitAdmin(admin.ModelAdmin):
 
 @admin.register(CharacterClass)
 class CharacterClassAdmin(admin.ModelAdmin):
-    list_display = ("id", "slug", "name", "sort_order")
+    list_display = ("id", "slug", "name", "sort_order", "priority_stat_1", "priority_stat_2")
+    search_fields = ("slug", "name")
 
 
 @admin.register(Character)

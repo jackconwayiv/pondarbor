@@ -27,6 +27,60 @@ const HUD_PANEL_BG = "#141414";
 const HUD_PANEL_BORDER = "#404040";
 const HUD_PANEL_TEXT = "#c8c8c8";
 const HUD_PANEL_TEXT_MUTED = "#909090";
+/** Most recent command + response in the log */
+const HUD_LOG_RECENT = "#f5f5f5";
+/** Stat total (modified) */
+const HUD_STAT_TOTAL = "#f0f0f0";
+/** (base + modifiers) — darker than label + total */
+const HUD_STAT_PAREN = "#555555";
+
+function QffStatLine({
+  label,
+  total,
+  base,
+  bonus,
+}: {
+  label: string;
+  total: number;
+  base: number;
+  bonus: number;
+}) {
+  return (
+    <Text lineHeight="short" fontSize="xs">
+      <Text as="span" color={HUD_PANEL_TEXT_MUTED}>
+        {label}:{" "}
+      </Text>
+      <Text as="span" color={HUD_STAT_TOTAL}>
+        {total}
+      </Text>
+      <Text as="span" color={HUD_STAT_PAREN}>
+        {" "}
+        ({base} + {bonus})
+      </Text>
+    </Text>
+  );
+}
+
+function QffHudLabeledValue({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | null | undefined;
+}) {
+  const display = value == null || value === "" ? "—" : value;
+  const highlight = display !== "—";
+  return (
+    <Text lineHeight="short" fontSize="xs">
+      <Text as="span" color={HUD_PANEL_TEXT_MUTED}>
+        {label}{" "}
+      </Text>
+      <Text as="span" color={highlight ? HUD_STAT_TOTAL : HUD_PANEL_TEXT_MUTED}>
+        {display}
+      </Text>
+    </Text>
+  );
+}
 
 export default function QffPlayPage() {
   const navigate = useNavigate();
@@ -37,7 +91,7 @@ export default function QffPlayPage() {
   const [initialSessionLoadDone, setInitialSessionLoadDone] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [line, setLine] = useState("");
-  const [logLines, setLogLines] = useState<Array<{ id: number; text: string }>>([]);
+  const [logLines, setLogLines] = useState<Array<{ id: number; text: string; recent: boolean }>>([]);
   const [mapVisible, setMapVisible] = useState(true);
   const logLineIdRef = useRef(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -119,6 +173,17 @@ export default function QffPlayPage() {
     logScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }, [logLines]);
 
+  /** Room broadcasts from other players (session poll consumes server queue). */
+  useEffect(() => {
+    const lines = session?.action_log;
+    if (!lines?.length) return;
+    setLogLines((prev) => {
+      const nextId = () => logLineIdRef.current++;
+      const block = lines.map((text) => ({ id: nextId(), text, recent: true }));
+      return [...block, ...prev.map((p) => ({ ...p, recent: false }))];
+    });
+  }, [session]);
+
   const submit = useCallback(async () => {
     const raw = line.trim();
     if (!raw) return;
@@ -132,17 +197,22 @@ export default function QffPlayPage() {
         const block = [`> ${raw}`, ...res.messages].map((text) => ({
           id: nextId(),
           text,
+          recent: true,
         }));
-        return [...block, ...prev];
+        return [...block, ...prev.map((p) => ({ ...p, recent: false }))];
       });
     } catch (e) {
       setLogLines((prev) => {
         const nextId = () => logLineIdRef.current++;
         const block = [
-          { id: nextId(), text: `> ${raw}` },
-          { id: nextId(), text: e instanceof Error ? e.message : "Error." },
+          { id: nextId(), text: `> ${raw}`, recent: true },
+          {
+            id: nextId(),
+            text: e instanceof Error ? e.message : "Error.",
+            recent: true,
+          },
         ];
-        return [...block, ...prev];
+        return [...block, ...prev.map((p) => ({ ...p, recent: false }))];
       });
     }
   }, [line]);
@@ -193,6 +263,13 @@ export default function QffPlayPage() {
 
   const { room, area, exits, others_here, area_map } = session;
   const t = area.theme;
+  const cp = session.character_profile;
+  const eq = cp.equipment_slots;
+  const st = cp.stats.modified;
+  const stBase = cp.stats.base;
+  const stBonus = cp.stats.bonusSum;
+  const invLabel =
+    cp.inventoryItems.length > 0 ? cp.inventoryItems.join(", ") : "—";
 
   const exitsBlock = (
     <>
@@ -211,6 +288,16 @@ export default function QffPlayPage() {
           </Text>
           <Text as="span" color={t.accent}>
             {others_here.join(", ")}
+          </Text>
+        </Text>
+      )}
+      {room.youSee.length > 0 && (
+        <Text fontSize="sm">
+          <Text as="span" color={t.secondary}>
+            You see:{" "}
+          </Text>
+          <Text as="span" color={t.accent}>
+            {room.youSee.join(", ")}
           </Text>
         </Text>
       )}
@@ -296,39 +383,76 @@ export default function QffPlayPage() {
       fontSize="xs"
     >
       <Text flexShrink={0} textAlign="center" fontWeight="medium" lineHeight="short">
-        <Text as="span" color={HUD_PANEL_TEXT} textTransform="uppercase">
+        <Text as="span" color={HUD_STAT_TOTAL} textTransform="uppercase">
           {session.character.name}
         </Text>
         <Text as="span" color={HUD_PANEL_TEXT_MUTED}>
           {"  |  "}
         </Text>
         <Text as="span" color={HUD_PANEL_TEXT}>
-          {session.character.class_name}
+          Lv {cp.level} {session.character.class_name}
         </Text>
+      </Text>
+      <Text fontSize="xs" color={HUD_PANEL_TEXT_MUTED} textAlign="center" mt={1}>
+        HP {cp.curHealth}/{cp.maxHealth} · MP {cp.curMana}/{cp.maxMana} · XP {cp.xp}
       </Text>
       <Grid templateColumns="1fr 1fr" gap={3} mt={2} w="100%" alignItems="start">
         <GridItem minW={0}>
-          <Stack gap={0} color={HUD_PANEL_TEXT_MUTED} flexShrink={0}>
-            <Text>Head: —</Text>
-            <Text>Main Hand: —</Text>
-            <Text>Off-Hand: —</Text>
-            <Text>Chest: —</Text>
-            <Text>Feet: —</Text>
-            <Text>Ring: —</Text>
-            <Text>Amulet: —</Text>
-            <Text>Inventory: —</Text>
+          <Stack gap={0} flexShrink={0}>
+            <QffHudLabeledValue label="Head:" value={eq.head} />
+            <QffHudLabeledValue label="Main Hand:" value={eq.mainHand} />
+            <QffHudLabeledValue label="Off-Hand:" value={eq.offHand} />
+            <QffHudLabeledValue label="Chest:" value={eq.chest} />
+            <QffHudLabeledValue label="Feet:" value={eq.feet} />
+            <QffHudLabeledValue label="Ring:" value={eq.ring} />
+            <QffHudLabeledValue label="Amulet:" value={eq.amulet} />
           </Stack>
         </GridItem>
         <GridItem minW={0}>
-          <Stack gap={0} color={HUD_PANEL_TEXT_MUTED} flexShrink={0}>
-            {(["Gains", "Moves", "Guts", "Smarts", "Sense", "Rizz"] as const).map((label) => (
-              <Text key={label} lineHeight="short">
-                {label} —
-              </Text>
-            ))}
+          <Stack gap={0} flexShrink={0}>
+            <QffStatLine
+              label="Gains"
+              total={st.gains}
+              base={stBase.gains}
+              bonus={stBonus.gains}
+            />
+            <QffStatLine
+              label="Moves"
+              total={st.moves}
+              base={stBase.moves}
+              bonus={stBonus.moves}
+            />
+            <QffStatLine
+              label="Guts"
+              total={st.guts}
+              base={stBase.guts}
+              bonus={stBonus.guts}
+            />
+            <QffStatLine
+              label="Smarts"
+              total={st.smarts}
+              base={stBase.smarts}
+              bonus={stBonus.smarts}
+            />
+            <QffStatLine
+              label="Sense"
+              total={st.sense}
+              base={stBase.sense}
+              bonus={stBonus.sense}
+            />
+            <QffStatLine
+              label="Rizz"
+              total={st.rizz}
+              base={stBase.rizz}
+              bonus={stBonus.rizz}
+            />
+            <QffHudLabeledValue label="Armor:" value={String(cp.armorTotal ?? 0)} />
           </Stack>
         </GridItem>
       </Grid>
+      <Box mt={3} w="100%">
+        <QffHudLabeledValue label="Inventory:" value={invLabel} />
+      </Box>
     </Box>
   );
 
@@ -350,8 +474,8 @@ export default function QffPlayPage() {
         "&::-webkit-scrollbar": { display: "none" },
       }}
     >
-      {logLines.map(({ id, text }) => (
-        <Text key={id} fontSize="sm" color={HUD_PANEL_TEXT}>
+      {logLines.map(({ id, text, recent }) => (
+        <Text key={id} fontSize="sm" color={recent ? HUD_LOG_RECENT : HUD_PANEL_TEXT}>
           {text}
         </Text>
       ))}

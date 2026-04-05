@@ -48,6 +48,22 @@ export default function QffDmLobbyPage() {
           Create areas and rooms, place rooms on the map, edit exits and room text.
         </Text>
       </Box>
+      <Box mb={8}>
+        <PondButton onClick={() => navigate("/qff/dm/items")}>
+          Item templates
+        </PondButton>
+        <Text mt={2} fontSize="sm" color="#889977">
+          Full CRUD on item definitions used to spawn instances in the world.
+        </Text>
+      </Box>
+      <Box mb={8}>
+        <PondButton onClick={() => navigate("/qff/dm/classes")}>
+          Character classes
+        </PondButton>
+        <Text mt={2} fontSize="sm" color="#889977">
+          Name, description, priority stats, chest + main starting items, and extra JSON for future spells.
+        </Text>
+      </Box>
       <Box
         as="button"
         color="#889977"

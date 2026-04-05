@@ -16,6 +16,10 @@ export type QffCharacterClass = {
   id: number;
   slug: string;
   name: string;
+  /** Flavor text for character creation; may be empty. */
+  description: string;
+  priority_stat_1: string;
+  priority_stat_2: string;
 };
 
 export type QffSessionNoCharacter = {
@@ -64,7 +68,7 @@ export type QffSessionWithCharacter = {
     class_name: string;
     spawn_room: { id: number; name: string };
   };
-  room: { id: number; name: string; description: string };
+  room: { id: number; name: string; description: string; youSee: string[] };
   area: { id: number; name: string; theme: QffAreaTheme };
   exits: QffExit[];
   others_here: string[];
@@ -73,8 +77,48 @@ export type QffSessionWithCharacter = {
     current_area_id: number;
     grids: QffAreaMapGrid[];
   };
-  character_profile: Record<string, unknown>;
-  action_log: unknown[];
+  character_profile: QffCharacterProfile;
+  action_log: string[];
+};
+
+export type QffStatBlock = {
+  gains: number;
+  moves: number;
+  guts: number;
+  smarts: number;
+  sense: number;
+  rizz: number;
+};
+
+export type QffCharacterProfile = {
+  name: string;
+  level: number;
+  xp: number;
+  curHealth: number;
+  maxHealth: number;
+  curMana: number;
+  maxMana: number;
+  /** Sum of armor from equipped items. */
+  armorTotal: number;
+  class: { slug: string; name: string };
+  equipment_slots: {
+    head: string | null;
+    mainHand: string | null;
+    offHand: string | null;
+    chest: string | null;
+    feet: string | null;
+    ring: string | null;
+    amulet: string | null;
+  };
+  inventory: number[];
+  /** Display names in order (most recently stowed first). */
+  inventoryItems: string[];
+  stats: {
+    base: QffStatBlock;
+    modified: QffStatBlock;
+    /** Equipment bonus totals only (same as modified − base when bonuses are additive). */
+    bonusSum: QffStatBlock;
+  };
 };
 
 export type QffSession = QffSessionNoCharacter | QffSessionWithCharacter;
@@ -283,6 +327,7 @@ export type DmAreaRoomsJson = {
     name: string;
     description: string;
     search_text: string;
+    search_chance?: number;
     cell: { x: number; y: number } | null;
     exits: Array<{
       direction: string;
@@ -365,6 +410,7 @@ export type DmRoom = {
   slug: string;
   description: string;
   search_text: string;
+  search_chance: number;
   cell: { id: number; x: number; y: number } | null;
 };
 
@@ -380,7 +426,7 @@ export async function dmFetchRooms(accessToken: string | null, areaId: number): 
 export async function dmPatchRoom(
   accessToken: string | null,
   roomId: number,
-  body: Partial<Pick<DmRoom, "name" | "description" | "search_text">>,
+  body: Partial<Pick<DmRoom, "name" | "description" | "search_text" | "search_chance">>,
 ): Promise<void> {
   const response = await fetch(`${apiBase()}/api/v1/qff/dm/rooms/${roomId}/`, {
     method: "PATCH",
@@ -463,5 +509,147 @@ export async function dmDeleteExit(accessToken: string | null, exitId: number): 
     headers: authHeaders(accessToken),
     credentials: "omit",
   });
+  if (!response.ok) throw new Error(await response.text());
+}
+
+export type DmItem = {
+  id: number;
+  slug: string;
+  name: string;
+  item_type: string;
+  slot: string;
+  cost: number;
+  description: string;
+  lore: string;
+  lore_chance: number | null;
+  rarity: string;
+  damage: number;
+  dmg_type: string;
+  armor: number;
+  element: string;
+  hidden_special_effect: string;
+  hidden_bonus_stat: string;
+  hidden_bonus_value: number;
+  two_handed: boolean;
+  req_gains: number | null;
+  req_moves: number | null;
+  req_guts: number | null;
+  req_smarts: number | null;
+  req_sense: number | null;
+  req_rizz: number | null;
+  bonus_gains: number;
+  bonus_moves: number;
+  bonus_guts: number;
+  bonus_smarts: number;
+  bonus_sense: number;
+  bonus_rizz: number;
+};
+
+export async function dmFetchItems(accessToken: string | null): Promise<DmItem[]> {
+  const response = await fetch(`${apiBase()}/api/v1/qff/dm/items/`, {
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmItem[];
+}
+
+export async function dmCreateItem(
+  accessToken: string | null,
+  body: Partial<DmItem> & { slug: string; name: string; slot: string },
+): Promise<DmItem> {
+  const response = await fetch(`${apiBase()}/api/v1/qff/dm/items/`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmItem;
+}
+
+export async function dmPatchItem(
+  accessToken: string | null,
+  itemId: number,
+  body: Partial<DmItem>,
+): Promise<DmItem> {
+  const response = await fetch(`${apiBase()}/api/v1/qff/dm/items/${itemId}/`, {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmItem;
+}
+
+export async function dmDeleteItem(accessToken: string | null, itemId: number): Promise<void> {
+  const response = await fetch(`${apiBase()}/api/v1/qff/dm/items/${itemId}/`, {
+    method: "DELETE",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (response.status === 204) return;
+  if (!response.ok) throw new Error(await response.text());
+}
+
+export type DmCharacterClass = {
+  id: number;
+  slug: string;
+  name: string;
+  sort_order: number;
+  description: string;
+  priority_stat_1: string;
+  priority_stat_2: string;
+  starter_chest_item_id: number | null;
+  starter_main_hand_item_id: number | null;
+  extra_data: Record<string, unknown>;
+};
+
+export async function dmFetchClasses(accessToken: string | null): Promise<DmCharacterClass[]> {
+  const response = await fetch(`${apiBase()}/api/v1/qff/dm/classes/`, {
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmCharacterClass[];
+}
+
+export async function dmCreateClass(
+  accessToken: string | null,
+  body: Partial<DmCharacterClass> & { slug: string; name: string },
+): Promise<DmCharacterClass> {
+  const response = await fetch(`${apiBase()}/api/v1/qff/dm/classes/`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmCharacterClass;
+}
+
+export async function dmPatchClass(
+  accessToken: string | null,
+  classId: number,
+  body: Partial<DmCharacterClass> & { extra_data?: Record<string, unknown> },
+): Promise<DmCharacterClass> {
+  const response = await fetch(`${apiBase()}/api/v1/qff/dm/classes/${classId}/`, {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmCharacterClass;
+}
+
+export async function dmDeleteClass(accessToken: string | null, classId: number): Promise<void> {
+  const response = await fetch(`${apiBase()}/api/v1/qff/dm/classes/${classId}/`, {
+    method: "DELETE",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (response.status === 204) return;
   if (!response.ok) throw new Error(await response.text());
 }

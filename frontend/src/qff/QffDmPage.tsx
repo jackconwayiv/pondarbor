@@ -212,6 +212,7 @@ export default function QffDmPage() {
   const [panelName, setPanelName] = useState("");
   const [panelDesc, setPanelDesc] = useState("");
   const [panelSearch, setPanelSearch] = useState("");
+  const [panelSearchChance, setPanelSearchChance] = useState("50");
   const [newExitDir, setNewExitDir] = useState<string>("n");
   const [newExitTo, setNewExitTo] = useState<number | null>(null);
   /** Area chosen in exit destination picker (room list is filtered to this area). */
@@ -389,12 +390,14 @@ export default function QffDmPage() {
       setPanelName("");
       setPanelDesc("");
       setPanelSearch("");
+      setPanelSearchChance("50");
       setExits([]);
       return;
     }
     setPanelName(selectedRoom.name);
     setPanelDesc(selectedRoom.description);
     setPanelSearch(selectedRoom.search_text);
+    setPanelSearchChance(String(selectedRoom.search_chance ?? 50));
     let cancelled = false;
     (async () => {
       const token = await getTokenRef.current();
@@ -458,10 +461,14 @@ export default function QffDmPage() {
     setErr(null);
     try {
       const token = await getTokenRef.current();
+      let sc = parseInt(panelSearchChance, 10);
+      if (Number.isNaN(sc)) sc = 50;
+      sc = Math.max(1, Math.min(100, sc));
       await dmPatchRoom(token, selectedRoomId, {
         name: panelName,
         description: panelDesc,
         search_text: panelSearch,
+        search_chance: sc,
       });
       if (areaId) {
         const r = await dmFetchRooms(await getTokenRef.current(), areaId);
@@ -471,7 +478,7 @@ export default function QffDmPage() {
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Save failed");
     }
-  }, [selectedRoomId, panelName, panelDesc, panelSearch, areaId, refreshExitDestRooms]);
+  }, [selectedRoomId, panelName, panelDesc, panelSearch, panelSearchChance, areaId, refreshExitDestRooms]);
 
   const addExit = useCallback(async () => {
     if (!selectedRoomId || newExitTo == null) return;
@@ -979,6 +986,18 @@ export default function QffDmPage() {
                         value={panelSearch}
                         onChange={(e) => setPanelSearch(e.target.value)}
                         rows={2}
+                        bg="#222"
+                      />
+                    </Field.Root>
+                    <Field.Root>
+                      <Field.Label>Search DC (1–100, roll 1d100 + Sense)</Field.Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={100}
+                        w="100px"
+                        value={panelSearchChance}
+                        onChange={(e) => setPanelSearchChance(e.target.value)}
                         bg="#222"
                       />
                     </Field.Root>

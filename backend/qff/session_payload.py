@@ -5,11 +5,20 @@ from datetime import timedelta
 
 from django.utils import timezone
 
+from qff.constants import PRESENCE_MINUTES
+from qff.game_helpers import (
+    display_name_for_instance,
+    modified_stats,
+    stat_bonus_totals,
+    total_armor_from_equipment,
+)
 from qff.models import (
     AreaCell,
     Character,
     CharacterExitSeen,
     CharacterRoomVisit,
+    ItemInstance,
+    RoomBroadcast,
     RoomExit,
 )
 
@@ -38,8 +47,8 @@ def resolved_area_theme(area) -> dict:
     }
 
 
-def others_here(character: Character) -> list[str]:
-    threshold = timezone.now() - timedelta(minutes=10)
+def others_here(character) -> list[str]:
+    threshold = timezone.now() - timedelta(minutes=PRESENCE_MINUTES)
     qs = (
         Character.objects.filter(
             current_room_id=character.current_room_id,
@@ -52,7 +61,25 @@ def others_here(character: Character) -> list[str]:
     return list(qs)
 
 
-def build_area_map(character: Character) -> dict:
+def consume_room_broadcasts(character) -> list[str]:
+    """Return new broadcast lines for this character and advance cursor."""
+    qs = (
+        RoomBroadcast.objects.filter(
+            room_id=character.current_room_id,
+            id__gt=character.last_room_broadcast_id,
+        )
+        .exclude(speaker_id=character.pk)
+        .order_by("id")
+    )
+    rows = list(qs)
+    lines = [b.text for b in rows]
+    if rows:
+        character.last_room_broadcast_id = rows[-1].id
+        character.save(update_fields=["last_room_broadcast_id", "updated_at"])
+    return lines
+
+
+def build_area_map(character) -> dict:
     """Visited rooms per area — each grid uses that area's dimensions (multi-area travel)."""
     visited_ids = set(
         CharacterRoomVisit.objects.filter(character=character).values_list(
@@ -137,33 +164,89 @@ def build_area_map(character: Character) -> dict:
     }
 
 
-def character_profile_placeholder(character: Character) -> dict:
+def _slot_label(inst) -> str | None:
+    if inst is None:
+        return None
+    return display_name_for_instance(inst, include_lock_hint=True)
+
+
+def _inventory_item_labels(character) -> list[str]:
+    """Names in inventory order (index 0 = most recently stowed)."""
+    inv_ids = list(character.inventory or [])
+    if not inv_ids:
+        return []
+    by_id = {
+        i.id: i
+        for i in ItemInstance.objects.filter(
+            pk__in=inv_ids,
+            owner_character_id=character.pk,
+        ).select_related("item")
+    }
+    out = []
+    for iid in inv_ids:
+        inst = by_id.get(iid)
+        if inst:
+            out.append(display_name_for_instance(inst, include_lock_hint=True))
+    return out
+
+
+def _room_floor_labels(room_id: int) -> list[str]:
+    return [
+        display_name_for_instance(inst)
+        for inst in ItemInstance.objects.filter(
+            room_id=room_id,
+            owner_character__isnull=True,
+        )
+        .select_related("item")
+        .order_by("id")
+    ]
+
+
+def build_character_profile(character) -> dict:
+    base = {
+        "gains": character.gains,
+        "moves": character.moves,
+        "guts": character.guts,
+        "smarts": character.smarts,
+        "sense": character.sense,
+        "rizz": character.rizz,
+    }
+    mod = modified_stats(character)
+    bonus = stat_bonus_totals(character)
+    inv_ids = list(character.inventory or [])
     return {
         "name": character.name,
+        "level": character.level,
+        "xp": character.xp,
+        "curHealth": character.cur_health,
+        "maxHealth": character.max_health,
+        "curMana": character.cur_mana,
+        "maxMana": character.max_mana,
+        "armorTotal": total_armor_from_equipment(character),
         "class": {
             "slug": character.character_class.slug,
             "name": character.character_class.name,
         },
         "equipment_slots": {
-            "head": None,
-            "body": None,
-            "hands": None,
-            "feet": None,
-            "accessory": None,
+            "head": _slot_label(character.head_item),
+            "mainHand": _slot_label(character.main_hand_item),
+            "offHand": _slot_label(character.off_hand_item),
+            "chest": _slot_label(character.chest_item),
+            "feet": _slot_label(character.feet_item),
+            "ring": _slot_label(character.ring_item),
+            "amulet": _slot_label(character.amulet_item),
         },
-        "inventory": [],
+        "inventory": inv_ids,
+        "inventoryItems": _inventory_item_labels(character),
         "stats": {
-            "gains": None,
-            "moves": None,
-            "guts": None,
-            "smarts": None,
-            "sense": None,
-            "rizz": None,
+            "base": base,
+            "modified": mod,
+            "bonusSum": bonus,
         },
     }
 
 
-def build_session_for_character(character: Character) -> dict:
+def build_session_for_character(character) -> dict:
     room = character.current_room
     area = room.area
     exits = []
@@ -182,6 +265,8 @@ def build_session_for_character(character: Character) -> dict:
             }
         )
 
+    action_log = consume_room_broadcasts(character)
+
     return {
         "has_character": True,
         "character": {
@@ -198,6 +283,7 @@ def build_session_for_character(character: Character) -> dict:
             "id": room.id,
             "name": room.name,
             "description": room.description,
+            "youSee": _room_floor_labels(room.id),
         },
         "area": {
             "id": area.id,
@@ -207,6 +293,6 @@ def build_session_for_character(character: Character) -> dict:
         "exits": exits,
         "others_here": others_here(character),
         "area_map": build_area_map(character),
-        "character_profile": character_profile_placeholder(character),
-        "action_log": [],
+        "character_profile": build_character_profile(character),
+        "action_log": action_log,
     }

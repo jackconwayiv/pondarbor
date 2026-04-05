@@ -79,6 +79,52 @@ def _others_present_count(char: CharacterType) -> int:
     )
 
 
+def _others_in_room(witness_room_id: int, exclude_character_pk: int) -> int:
+    """Count other characters in `witness_room_id` (presence threshold), excluding one pk."""
+    return (
+        Character.objects.filter(
+            current_room_id=witness_room_id,
+            last_activity_at__gte=presence_threshold(),
+        )
+        .exclude(pk=exclude_character_pk)
+        .count()
+    )
+
+
+def _interactable_observer_line(actor_name: str, verb: str, obj_name: str) -> str:
+    v = (verb or "").lower()
+    if v == "pull":
+        return f"{actor_name} pulls the {obj_name}."
+    if v == "push":
+        return f"{actor_name} pushes the {obj_name}."
+    if v == "open":
+        return f"{actor_name} opens the {obj_name}."
+    return f"{actor_name} uses the {obj_name}."
+
+
+def _look_focus_peers(char: CharacterType, parsed: ParsedLookInspect, focus_phrase: str) -> None:
+    vw = "examines" if parsed.verb == "inspect" else "looks at"
+    _notify_peers_third_person(char, char.current_room_id, f"{char.name} {vw} {focus_phrase}.")
+
+
+def _notify_peers_third_person(actor: CharacterType, witness_room_id: int, text: str) -> None:
+    """Append a line to others' session action_log via RoomBroadcast; actor does not see it."""
+    if _others_in_room(witness_room_id, actor.pk) == 0:
+        return
+    t = (text or "").strip()
+    if not t:
+        return
+    rb = RoomBroadcast.objects.create(
+        room_id=witness_room_id,
+        speaker_id=actor.pk,
+        text=t[:500],
+    )
+    Character.objects.filter(pk=actor.pk).update(
+        last_room_broadcast_id=rb.id,
+        updated_at=timezone.now(),
+    )
+
+
 def _visible_in_room(actor: CharacterType, other: CharacterType) -> bool:
     if other.current_room_id != actor.current_room_id:
         return False
@@ -255,6 +301,7 @@ def execute_command(char: CharacterType, parsed) -> list[str]:
     if isinstance(parsed, ParsedSearch):
         _touch_activity(char)
         char.save(update_fields=["last_activity_at", "updated_at"])
+        _notify_peers_third_person(char, char.current_room_id, f"{char.name} is searching the area.")
         room = char.current_room
         hidden = (room.search_text or "").strip()
         if not hidden:
@@ -332,11 +379,13 @@ def _handle_move(char: CharacterType, parsed: ParsedMove) -> list[str]:
     mark_exit_used(char, ex)
     left_room_id = char.current_room_id
     dest = ex.to_room
+    dir_label = ex.get_direction_display().lower()
+    _notify_peers_third_person(char, left_room_id, f"{char.name} heads {dir_label}.")
     char.current_room = dest
     char.save(update_fields=["current_room", "last_activity_at", "updated_at"])
     on_leave_room(left_room_id)
     on_enter_room(char, dest.id)
-    return [f"You head {ex.get_direction_display().lower()}."]
+    return [f"You head {dir_label}."]
 
 
 def _handle_drop(char: CharacterType, target: str) -> list[str]:
@@ -359,17 +408,23 @@ def _handle_drop(char: CharacterType, target: str) -> list[str]:
     inst.owner_character_id = None
     inst.neglect_count = 0
     inst.floor_dropped_at = timezone.now()
+    # Player-dropped items should be visible to everyone in the room; clear any
+    # quest gate copied from a DM floor spawn or still set on the instance.
+    inst.visible_quest_state_id = None
     inst.save(
         update_fields=[
             "room_id",
             "owner_character_id",
             "neglect_count",
             "floor_dropped_at",
+            "visible_quest_state_id",
             "updated_at",
         ]
     )
     char.save()
-    return [f"You drop the {display_name_for_instance(inst)}."]
+    label = display_name_for_instance(inst)
+    _notify_peers_third_person(char, rid, f"{char.name} drops the {label}.")
+    return [f"You drop the {label}."]
 
 
 def _handle_get(char: CharacterType, target: str) -> list[str]:
@@ -391,7 +446,9 @@ def _handle_get(char: CharacterType, target: str) -> list[str]:
             ]
         )
         char.save(update_fields=["inventory", "last_activity_at", "updated_at"])
-        return [f"You pick up the {display_name_for_instance(inst)}."]
+        label = display_name_for_instance(inst)
+        _notify_peers_third_person(char, char.current_room_id, f"{char.name} takes the {label}.")
+        return [f"You pick up the {label}."]
 
     floor_ids = unowned_floor_item_template_ids_in_room(char.current_room_id)
     ri = _find_room_item(char, target, floor_ids)
@@ -412,7 +469,9 @@ def _handle_get(char: CharacterType, target: str) -> list[str]:
         )
         char.inventory = _prepend_inv(char.inventory, new_inst.pk)
         char.save(update_fields=["inventory", "last_activity_at", "updated_at"])
-    return [f"You pick up the {display_name_for_instance(new_inst)}."]
+    label = display_name_for_instance(new_inst)
+    _notify_peers_third_person(char, char.current_room_id, f"{char.name} takes the {label}.")
+    return [f"You pick up the {label}."]
 
 
 def _handle_equip(char: CharacterType, target: str) -> list[str]:
@@ -464,7 +523,9 @@ def _handle_equip(char: CharacterType, target: str) -> list[str]:
         if it.two_handed and slot_field == "main_hand_item":
             char.off_hand_item = None
         char.save()
-    return [f"You equip the {display_name_for_instance(inst)}."]
+    label = display_name_for_instance(inst)
+    _notify_peers_third_person(char, char.current_room_id, f"{char.name} equips the {label}.")
+    return [f"You equip the {label}."]
 
 
 def _handle_unequip(char: CharacterType, target: str) -> list[str]:
@@ -480,7 +541,9 @@ def _handle_unequip(char: CharacterType, target: str) -> list[str]:
     setattr(char, slot_attr, None)
     char.inventory = _prepend_inv(char.inventory, inst.pk)
     char.save()
-    return [f"You remove the {display_name_for_instance(inst)}."]
+    label = display_name_for_instance(inst)
+    _notify_peers_third_person(char, char.current_room_id, f"{char.name} removes the {label}.")
+    return [f"You remove the {label}."]
 
 
 def _handle_talk(char: CharacterType, parsed: ParsedTalk) -> list[str]:
@@ -493,6 +556,7 @@ def _handle_talk(char: CharacterType, parsed: ParsedTalk) -> list[str]:
     if not npc:
         char.save(update_fields=["last_activity_at", "updated_at"])
         return ["You don't see them here."]
+    _notify_peers_third_person(char, char.current_room_id, f"{char.name} is talking to {npc.name}.")
     ensure_quests_started_from_npc(char, npc)
     char = Character.objects.get(pk=char.pk)
     extra = try_item_transitions_on_talk(char, npc)
@@ -516,6 +580,11 @@ def _handle_use(char: CharacterType, parsed: ParsedUse) -> list[str]:
         lines = handle_interactable_use(char, obj)
         char = Character.objects.get(pk=char.pk)
         char.save(update_fields=["last_activity_at", "updated_at"])
+        _notify_peers_third_person(
+            char,
+            char.current_room_id,
+            _interactable_observer_line(char.name, parsed.verb, obj.name),
+        )
         return lines
 
     obj = find_interactable_in_room(char, target)
@@ -523,6 +592,11 @@ def _handle_use(char: CharacterType, parsed: ParsedUse) -> list[str]:
         lines = handle_interactable_use(char, obj)
         char = Character.objects.get(pk=char.pk)
         char.save(update_fields=["last_activity_at", "updated_at"])
+        _notify_peers_third_person(
+            char,
+            char.current_room_id,
+            _interactable_observer_line(char.name, parsed.verb, obj.name),
+        )
         return lines
 
     inst = _find_item_instance_inventory_first(char, target)
@@ -561,6 +635,9 @@ def _consume_inventory_instance(
     from qff.models import ItemInstance as II
 
     label = display_name_for_instance(inst)
+    room_id = char.current_room_id
+    actor_name = char.name
+    actor_pk = char.pk
     with transaction.atomic():
         char = Character.objects.select_for_update().get(pk=char.pk)
         inst = II.objects.select_for_update().select_related("item").get(pk=inst.pk)
@@ -574,11 +651,15 @@ def _consume_inventory_instance(
         char.save(update_fields=["inventory", "last_activity_at", "updated_at"])
         inst.delete()
 
+    ch = Character.objects.get(pk=actor_pk)
     v = verb.lower()
     if v == "eat":
+        _notify_peers_third_person(ch, room_id, f"{actor_name} eats the {label}.")
         return [f"You eat the {label}."]
     if v == "drink":
+        _notify_peers_third_person(ch, room_id, f"{actor_name} drinks the {label}.")
         return [f"You drink the {label}."]
+    _notify_peers_third_person(ch, room_id, f"{actor_name} uses the {label}.")
     return [f"You use the {label}."]
 
 
@@ -591,25 +672,30 @@ def _handle_look_inspect(char: CharacterType, parsed: ParsedLookInspect) -> list
 
     npc = find_npc_in_room(char, target)
     if npc:
+        _look_focus_peers(char, parsed, npc.name)
         base = (npc.description or "").strip() or f"You see {npc.name}."
         return [base]
 
     interactable = find_interactable_in_room(char, target)
     if interactable:
+        _look_focus_peers(char, parsed, interactable.name)
         t = (interactable.inspect_text or "").strip() or f"You see {interactable.name}."
         return [t]
 
     subj = _find_character_target(char, target)
     if subj:
+        _look_focus_peers(char, parsed, subj.name)
         return _lines_for_character_inspect(char, subj, parsed.verb == "inspect")
 
     inst = _find_item_instance_floor_first(char, target)
     if inst:
+        _look_focus_peers(char, parsed, f"the {display_name_for_instance(inst)}")
         return _lines_for_item_inspect(char, inst)
 
     floor_ids = unowned_floor_item_template_ids_in_room(char.current_room_id)
     ri = _find_room_item(char, target, floor_ids)
     if ri:
+        _look_focus_peers(char, parsed, f"the {_room_item_display_label(ri)}")
         it = ri.item
         base = (it.description or "").strip() or f"It is {it.name}."
         extra = format_item_inspect_parenthetical(it, False)

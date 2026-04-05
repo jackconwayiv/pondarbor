@@ -13,11 +13,30 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router";
 
-import { useAppSession } from "../auth/AppSessionContext";
+import { useAppSession, type SessionUser } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
 import { createQffCharacter, fetchQffSession, type QffSessionNoCharacter } from "./api";
 
 const NAME_RE = /^[a-zA-Z0-9 ]{1,20}$/;
+
+/** Match server `validate_character_name`: letters, digits, spaces, max 20. */
+function defaultCharacterNameFromSession(sessionUser: SessionUser): string {
+  const raw = (sessionUser.profile.display_name || "").trim();
+  const fromDisplay = raw
+    .replace(/[^a-zA-Z0-9 ]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 20);
+  if (fromDisplay) return fromDisplay;
+  const emailLocal = (sessionUser.user.email || "").split("@")[0] || "";
+  const fromEmail = emailLocal
+    .replace(/[^a-zA-Z0-9 ]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 20);
+  if (fromEmail) return fromEmail;
+  return "Hero";
+}
 
 function classBlurb(
   slug: string,
@@ -66,6 +85,13 @@ export default function QffCreatePage() {
       cancelled = true;
     };
   }, [isAuthenticated, sessionUser?.user?.is_approved]);
+
+  useEffect(() => {
+    if (!sessionUser) return;
+    setName((prev) =>
+      prev.trim() === "" ? defaultCharacterNameFromSession(sessionUser) : prev,
+    );
+  }, [sessionUser]);
 
   const submit = useCallback(async () => {
     setError(null);

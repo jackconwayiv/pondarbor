@@ -22,6 +22,9 @@ import {
   type QffSessionWithCharacter,
 } from "./api";
 
+/** Room state, presence, action_log (others’ say lines), and youSee refresh cadence. */
+const POLL_MS = 2000;
+
 /** Charcoal + light gray (same family as action log). */
 const HUD_PANEL_BG = "#141414";
 const HUD_PANEL_BORDER = "#404040";
@@ -130,7 +133,7 @@ export default function QffPlayPage() {
     if (!isAuthenticated || !sessionUser?.user?.is_approved || !session) return;
     const id = window.setInterval(() => {
       load().catch(() => {});
-    }, 2000);
+    }, POLL_MS);
     return () => window.clearInterval(id);
   }, [isAuthenticated, sessionUser?.user?.is_approved, session, load]);
 

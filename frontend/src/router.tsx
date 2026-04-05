@@ -16,6 +16,12 @@ import WhatIfLobbyPage from "./whatif/WhatIfLobbyPage";
 import WhatIfPlayPage from "./whatif/WhatIfPlayPage";
 import WhatIfHandPage from "./whatif/WhatIfHandPage";
 import StaffPage from "./staff/StaffPage";
+import QffLayout from "./qff/QffLayout";
+import QffLobbyPage from "./qff/QffLobbyPage";
+import QffCreatePage from "./qff/QffCreatePage";
+import QffPlayPage from "./qff/QffPlayPage";
+import QffDmLobbyPage from "./qff/QffDmLobbyPage";
+import QffDmPage from "./qff/QffDmPage";
 
 export const router = createBrowserRouter([
   {
@@ -56,6 +62,21 @@ export const router = createBrowserRouter([
           { path: "lobby/:code", element: <WhatIfLobbyPage /> },
           { path: "play/:code", element: <WhatIfPlayPage /> },
           { path: "hand/:code", element: <WhatIfHandPage /> },
+        ],
+      },
+      {
+        path: "create",
+        element: <Navigate to="/qff/create" replace />,
+      },
+      {
+        path: "qff",
+        element: <QffLayout />,
+        children: [
+          { index: true, element: <QffLobbyPage /> },
+          { path: "create", element: <QffCreatePage /> },
+          { path: "play", element: <QffPlayPage /> },
+          { path: "dm", element: <QffDmLobbyPage /> },
+          { path: "dm/world", element: <QffDmPage /> },
         ],
       },
       {

@@ -6,4 +6,5 @@ urlpatterns = [
     path("whatif/", include("whatif.urls")),
     path("clicker/", include("clicker.urls")),
     path("achievements/", include("achievements.urls")),
+    path("qff/", include("qff.urls")),
 ]

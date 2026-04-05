@@ -9,7 +9,11 @@ import {
   type ProfilePatch,
 } from "./AppSessionContext";
 
-import { auth0AccountPickerLoginParams } from "./auth0LoginParams";
+import {
+  auth0AccountPickerLoginParams,
+  auth0DefaultLoginParams,
+  auth0LoginWithReturnTo,
+} from "./auth0LoginParams";
 
 type AppSessionProviderProps = {
   children: ReactNode;
@@ -27,8 +31,47 @@ function getErrorMessage(err: unknown): string {
   return "Unknown error";
 }
 
-function isConsentRequiredError(err: unknown): boolean {
-  return getErrorMessage(err).includes("Consent required");
+function getOAuthErrorCode(err: unknown): string | null {
+  if (
+    err &&
+    typeof err === "object" &&
+    "error" in err &&
+    typeof (err as { error: unknown }).error === "string"
+  ) {
+    return (err as { error: string }).error;
+  }
+  return null;
+}
+
+/**
+ * Silent token fetch failed in a way that should be resolved with a full-page
+ * Auth0 redirect — never popups (blocked `window.open`, consent, login required, etc.).
+ */
+function shouldRecoverTokenWithRedirect(err: unknown): boolean {
+  const msg = getErrorMessage(err);
+  if (msg.includes("Consent required")) return true;
+  if (/loginWithPopup|window\.open returned\s*`null`|popup_open/i.test(msg)) {
+    return true;
+  }
+  const code = getOAuthErrorCode(err);
+  if (
+    code === "login_required" ||
+    code === "consent_required" ||
+    code === "popup_open"
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function authorizationParamsForTokenRecovery(err: unknown) {
+  const msg = getErrorMessage(err);
+  const code = getOAuthErrorCode(err);
+  const needsConsent =
+    msg.includes("Consent required") || code === "consent_required";
+  return auth0DefaultLoginParams(
+    needsConsent ? { prompt: "consent" } : undefined,
+  );
 }
 
 function loadCachedSession(): {
@@ -72,7 +115,6 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     isAuthenticated,
     user: auth0User,
     getAccessTokenSilently,
-    getAccessTokenWithPopup,
     loginWithRedirect,
     logout: auth0Logout,
   } = useAuth0();
@@ -85,7 +127,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
   const hasInitialized = useRef(false);
   const lastAuth0Sub = useRef<string | null>(null);
   const pickAccountHandledRef = useRef(false);
-  /** True while local logout runs — Auth0 can still report authenticated until the client clears, which would otherwise retrigger bootstrap and open consent popups. */
+  /** True while local logout runs — Auth0 can still report authenticated until the client clears, which would otherwise retrigger bootstrap and consent redirects. */
   const isLoggingOutRef = useRef(false);
 
   const bootstrapSession = useCallback(async () => {
@@ -95,33 +137,27 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     setBootstrapError(null);
 
     try {
-      const token = await (async (): Promise<string> => {
-        try {
-          return await getAccessTokenSilently({
-            authorizationParams: {
-              audience: import.meta.env.VITE_AUTH0_API_AUDIENCE,
-              scope: "openid profile email",
-            },
-          });
-        } catch (err: unknown) {
-          if (isConsentRequiredError(err)) {
-            const popupToken = await getAccessTokenWithPopup({
-              authorizationParams: {
-                audience: import.meta.env.VITE_AUTH0_API_AUDIENCE,
-                scope: "openid profile email",
-              },
-            });
-
-            if (!popupToken) {
-              throw new Error("No access token returned from popup auth.");
-            }
-
-            return popupToken;
-          }
-
-          throw err;
+      let token: string;
+      try {
+        token = await getAccessTokenSilently({
+          authorizationParams: {
+            audience: import.meta.env.VITE_AUTH0_API_AUDIENCE,
+            scope: "openid profile email",
+          },
+        });
+      } catch (err: unknown) {
+        if (shouldRecoverTokenWithRedirect(err)) {
+          setIsBootstrapping(false);
+          const returnPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+          void loginWithRedirect(
+            auth0LoginWithReturnTo(returnPath, {
+              authorizationParams: authorizationParamsForTokenRecovery(err),
+            }),
+          );
+          return;
         }
-      })();
+        throw err;
+      }
 
       const response = await fetch(
         `${apiBase()}/api/v1/users/sync-profile/`,
@@ -158,8 +194,8 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
   }, [
     auth0User,
     getAccessTokenSilently,
-    getAccessTokenWithPopup,
     isAuthenticated,
+    loginWithRedirect,
   ]);
 
   const getApiAccessToken = useCallback(async () => {
@@ -173,21 +209,18 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
         },
       });
     } catch (err: unknown) {
-      if (isConsentRequiredError(err)) {
-        const popupToken = await getAccessTokenWithPopup({
-          authorizationParams: {
-            audience: import.meta.env.VITE_AUTH0_API_AUDIENCE,
-            scope: "openid profile email",
-          },
-        });
-        if (!popupToken) {
-          throw new Error("No access token returned from popup auth.");
-        }
-        return popupToken;
+      if (shouldRecoverTokenWithRedirect(err)) {
+        const returnPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        await loginWithRedirect(
+          auth0LoginWithReturnTo(returnPath, {
+            authorizationParams: authorizationParamsForTokenRecovery(err),
+          }),
+        );
+        return await new Promise<string>(() => {});
       }
       throw err;
     }
-  }, [getAccessTokenSilently, getAccessTokenWithPopup]);
+  }, [getAccessTokenSilently, loginWithRedirect]);
 
   useEffect(() => {
     if (auth0Loading) return;

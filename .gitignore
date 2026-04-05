@@ -17,6 +17,7 @@ __pycache__/
 *.sqlite3-journal
 
 backend/.venv/
+backend/.vent/
 venv/
 
 # Environment files

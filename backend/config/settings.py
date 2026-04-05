@@ -82,6 +82,7 @@ INSTALLED_APPS = [
     "whatif.apps.WhatifConfig",
     "clicker.apps.ClickerConfig",
     "achievements.apps.AchievementsConfig",
+    "qff.apps.QffConfig",
     # allauth
     "allauth",
     "allauth.account",

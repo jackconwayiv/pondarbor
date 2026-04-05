@@ -36,7 +36,7 @@ from qff.game_helpers import (
     roll_d100_plus_stat_encumbered,
     slot_field_for_item_slot,
 )
-from qff.models import Character, ItemInstance, RoomBroadcast, RoomExit
+from qff.models import Character, ItemInstance, RoomBroadcast, RoomExit, RoomItem
 from qff.quest_engine import (
     ensure_quests_started_from_npc,
     find_interactable_in_room,
@@ -44,7 +44,9 @@ from qff.quest_engine import (
     floor_item_visible_to_character,
     handle_interactable_use,
     resolve_npc_dialogue,
+    room_item_visible_to_character,
     try_item_transitions_on_talk,
+    unowned_floor_item_template_ids_in_room,
 )
 
 if TYPE_CHECKING:
@@ -112,6 +114,37 @@ def _instance_matches_query(inst: ItemInstance, q: str) -> bool:
     if dn == q:
         return True
     return dn.startswith(q) or q in dn
+
+
+def _room_item_display_label(ri: RoomItem) -> str:
+    return ri.nickname if ri.nickname else ri.item.name
+
+
+def _room_item_matches_query(ri: RoomItem, q: str) -> bool:
+    if not q:
+        return False
+    dn = _room_item_display_label(ri).lower()
+    if dn == q:
+        return True
+    return dn.startswith(q) or q in dn
+
+
+def _find_room_item(
+    actor: CharacterType, query: str, floor_template_ids: set[int]
+) -> RoomItem | None:
+    q = (query or "").strip().lower()
+    if not q:
+        return None
+    for ri in (
+        RoomItem.objects.filter(room_id=actor.current_room_id)
+        .select_related("item", "visible_quest_state")
+        .order_by("id")
+    ):
+        if not room_item_visible_to_character(actor, ri, floor_template_ids):
+            continue
+        if _room_item_matches_query(ri, q):
+            return ri
+    return None
 
 
 def _find_item_instance_floor_first(actor: CharacterType, query: str) -> ItemInstance | None:
@@ -342,25 +375,44 @@ def _handle_drop(char: CharacterType, target: str) -> list[str]:
 def _handle_get(char: CharacterType, target: str) -> list[str]:
     _touch_activity(char)
     inst = _find_item_instance_floor_first(char, target)
-    if not inst or inst.room_id != char.current_room_id or inst.owner_character_id is not None:
+    if inst and inst.room_id == char.current_room_id and inst.owner_character_id is None:
+        char.inventory = _prepend_inv(char.inventory, inst.pk)
+        inst.room_id = None
+        inst.owner_character_id = char.pk
+        inst.neglect_count = 0
+        inst.floor_dropped_at = None
+        inst.save(
+            update_fields=[
+                "room_id",
+                "owner_character_id",
+                "neglect_count",
+                "floor_dropped_at",
+                "updated_at",
+            ]
+        )
+        char.save(update_fields=["inventory", "last_activity_at", "updated_at"])
+        return [f"You pick up the {display_name_for_instance(inst)}."]
+
+    floor_ids = unowned_floor_item_template_ids_in_room(char.current_room_id)
+    ri = _find_room_item(char, target, floor_ids)
+    if not ri:
         char.save(update_fields=["last_activity_at", "updated_at"])
         return ["You don't see that here."]
-    char.inventory = _prepend_inv(char.inventory, inst.pk)
-    inst.room_id = None
-    inst.owner_character_id = char.pk
-    inst.neglect_count = 0
-    inst.floor_dropped_at = None
-    inst.save(
-        update_fields=[
-            "room_id",
-            "owner_character_id",
-            "neglect_count",
-            "floor_dropped_at",
-            "updated_at",
-        ]
-    )
-    char.save(update_fields=["inventory", "last_activity_at", "updated_at"])
-    return [f"You pick up the {display_name_for_instance(inst)}."]
+    with transaction.atomic():
+        char = Character.objects.select_for_update().get(pk=char.pk)
+        ri = RoomItem.objects.select_related("item", "visible_quest_state").get(pk=ri.pk)
+        floor_ids_locked = unowned_floor_item_template_ids_in_room(char.current_room_id)
+        if not room_item_visible_to_character(char, ri, floor_ids_locked):
+            char.save(update_fields=["last_activity_at", "updated_at"])
+            return ["You don't see that here."]
+        new_inst = ItemInstance.objects.create(
+            item_id=ri.item_id,
+            owner_character=char,
+            room=None,
+        )
+        char.inventory = _prepend_inv(char.inventory, new_inst.pk)
+        char.save(update_fields=["inventory", "last_activity_at", "updated_at"])
+    return [f"You pick up the {display_name_for_instance(new_inst)}."]
 
 
 def _handle_equip(char: CharacterType, target: str) -> list[str]:
@@ -554,6 +606,15 @@ def _handle_look_inspect(char: CharacterType, parsed: ParsedLookInspect) -> list
     inst = _find_item_instance_floor_first(char, target)
     if inst:
         return _lines_for_item_inspect(char, inst)
+
+    floor_ids = unowned_floor_item_template_ids_in_room(char.current_room_id)
+    ri = _find_room_item(char, target, floor_ids)
+    if ri:
+        it = ri.item
+        base = (it.description or "").strip() or f"It is {it.name}."
+        extra = format_item_inspect_parenthetical(it, False)
+        text = (base + extra).strip()
+        return [text]
 
     return ["You don't see that here."]
 

@@ -391,6 +391,40 @@ class ItemInstance(models.Model):
         return f"{self.item.name}#{self.pk}"
 
 
+class RoomItem(models.Model):
+    """DM-placed item template in a room; get mints a new ItemInstance per player (not a shared floor row)."""
+
+    room = models.ForeignKey(
+        Room,
+        on_delete=models.CASCADE,
+        related_name="room_items",
+    )
+    item = models.ForeignKey(
+        Item,
+        on_delete=models.CASCADE,
+        related_name="room_item_slots",
+    )
+    nickname = models.CharField(max_length=200, blank=True, null=True)
+    visible_quest_state = models.ForeignKey(
+        "QuestState",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="room_items_visible",
+        help_text="If set, only characters in this quest state see this slot; "
+        "hidden if they carry this item template; hidden if an unowned floor instance "
+        "of this template exists in the room.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["room_id", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.room_id} {self.item.name}"
+
+
 class RoomBroadcast(models.Model):
     room = models.ForeignKey(
         Room, on_delete=models.CASCADE, related_name="broadcasts"

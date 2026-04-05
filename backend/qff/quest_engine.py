@@ -21,6 +21,7 @@ from qff.models import (
     QuestState,
     QuestTransition,
     RoomExit,
+    RoomItem,
 )
 
 SLOT_ATTRS = (
@@ -48,6 +49,37 @@ def floor_item_visible_to_character(character: Character, inst: ItemInstance) ->
     ).exists():
         return False
     if character_carries_item_template(character, inst.item_id):
+        return False
+    return True
+
+
+def unowned_floor_item_template_ids_in_room(room_id: int) -> set[int]:
+    """Item template ids with at least one unowned floor instance in the room (for room-slot suppression)."""
+    return set(
+        ItemInstance.objects.filter(
+            room_id=room_id,
+            owner_character__isnull=True,
+        ).values_list("item_id", flat=True)
+    )
+
+
+def room_item_visible_to_character(
+    character: Character,
+    room_item: RoomItem,
+    floor_template_ids_in_room: set[int],
+) -> bool:
+    """Room slot: quest gate (if set), not carrying template, no unowned floor instance of template."""
+    if room_item.visible_quest_state_id:
+        st = room_item.visible_quest_state
+        if not CharacterQuestProgress.objects.filter(
+            character=character,
+            quest_id=st.quest_id,
+            current_state_id=st.id,
+        ).exists():
+            return False
+    if character_carries_item_template(character, room_item.item_id):
+        return False
+    if room_item.item_id in floor_template_ids_in_room:
         return False
     return True
 

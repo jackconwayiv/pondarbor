@@ -27,6 +27,7 @@ from qff.models import (
     QuestState,
     Room,
     RoomExit,
+    RoomItem,
     validate_character_name,
 )
 from qff.game_helpers import encumbrance_excess
@@ -804,6 +805,103 @@ def _dm_floor_item_dict(inst: ItemInstance) -> dict:
             inst.visible_quest_state.slug if inst.visible_quest_state_id else None
         ),
     }
+
+
+def _dm_room_item_dict(ri: RoomItem) -> dict:
+    return {
+        "id": ri.id,
+        "room_id": ri.room_id,
+        "item_id": ri.item_id,
+        "item_slug": ri.item.slug,
+        "item_name": ri.item.name,
+        "nickname": ri.nickname or "",
+        "visible_quest_state_id": ri.visible_quest_state_id,
+        "visible_quest_id": (
+            ri.visible_quest_state.quest_id if ri.visible_quest_state_id else None
+        ),
+        "visible_quest_slug": (
+            ri.visible_quest_state.quest.slug if ri.visible_quest_state_id else None
+        ),
+        "visible_quest_state_slug": (
+            ri.visible_quest_state.slug if ri.visible_quest_state_id else None
+        ),
+    }
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated, IsStaffUser])
+def dm_room_room_items(request, room_id):
+    """List or create room item slots (mint-on-get; not shared floor instances)."""
+    room = get_object_or_404(Room, pk=room_id)
+    if request.method == "GET":
+        qs = (
+            RoomItem.objects.filter(room_id=room.id)
+            .select_related("item", "visible_quest_state__quest")
+            .order_by("id")
+        )
+        return Response([_dm_room_item_dict(i) for i in qs])
+    item_id = request.data.get("item_id")
+    try:
+        item_id = int(item_id)
+    except (TypeError, ValueError):
+        return Response(
+            {"detail": "item_id is required (item template id)."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    get_object_or_404(Item, pk=item_id)
+    nick = (request.data.get("nickname") or "").strip()
+    vqs_id = request.data.get("visible_quest_state_id")
+    visible_quest_state_id = None
+    if vqs_id not in (None, ""):
+        try:
+            visible_quest_state_id = int(vqs_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "visible_quest_state_id must be an integer."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        get_object_or_404(QuestState, pk=visible_quest_state_id)
+    ri = RoomItem.objects.create(
+        room=room,
+        item_id=item_id,
+        nickname=nick or None,
+        visible_quest_state_id=visible_quest_state_id,
+    )
+    ri = RoomItem.objects.select_related("item", "visible_quest_state__quest").get(pk=ri.pk)
+    return Response(_dm_room_item_dict(ri), status=status.HTTP_201_CREATED)
+
+
+@api_view(["PATCH", "DELETE"])
+@permission_classes([IsAuthenticated, IsStaffUser])
+def dm_room_item_detail(request, pk):
+    """Update nickname / visibility or remove a room item slot."""
+    ri = get_object_or_404(
+        RoomItem.objects.select_related("visible_quest_state__quest", "item"),
+        pk=pk,
+    )
+    if request.method == "DELETE":
+        ri.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    if "nickname" in request.data:
+        n = (request.data.get("nickname") or "").strip()
+        ri.nickname = n or None
+    if "visible_quest_state_id" in request.data:
+        v = request.data.get("visible_quest_state_id")
+        if v in (None, ""):
+            ri.visible_quest_state_id = None
+        else:
+            try:
+                vsid = int(v)
+            except (TypeError, ValueError):
+                vsid = None
+            if vsid is not None:
+                get_object_or_404(QuestState, pk=vsid)
+                ri.visible_quest_state_id = vsid
+            else:
+                ri.visible_quest_state_id = None
+    ri.save()
+    ri = RoomItem.objects.select_related("item", "visible_quest_state__quest").get(pk=ri.pk)
+    return Response(_dm_room_item_dict(ri))
 
 
 @api_view(["GET", "POST"])

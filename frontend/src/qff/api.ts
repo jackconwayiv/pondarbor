@@ -727,6 +727,76 @@ export async function dmDeleteFloorItem(accessToken: string | null, instanceId: 
   if (!response.ok) throw new Error(await response.text());
 }
 
+/** Room-tagged item template; each player gets a new instance on get (not a shared floor row). */
+export type DmRoomItem = {
+  id: number;
+  room_id: number;
+  item_id: number;
+  item_slug: string;
+  item_name: string;
+  nickname: string;
+  visible_quest_state_id: number | null;
+  visible_quest_id: number | null;
+  visible_quest_slug: string | null;
+  visible_quest_state_slug: string | null;
+};
+
+export async function dmFetchRoomRoomItems(
+  accessToken: string | null,
+  roomId: number,
+): Promise<DmRoomItem[]> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/rooms/${roomId}/room-items/`), {
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmRoomItem[];
+}
+
+export async function dmCreateRoomRoomItem(
+  accessToken: string | null,
+  roomId: number,
+  body: {
+    item_id: number;
+    nickname?: string;
+    visible_quest_state_id?: number | null;
+  },
+): Promise<DmRoomItem> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/rooms/${roomId}/room-items/`), {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmRoomItem;
+}
+
+export async function dmPatchRoomItem(
+  accessToken: string | null,
+  roomItemId: number,
+  body: { nickname?: string; visible_quest_state_id?: number | null },
+): Promise<DmRoomItem> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/room-items/${roomItemId}/`), {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmRoomItem;
+}
+
+export async function dmDeleteRoomItem(accessToken: string | null, roomItemId: number): Promise<void> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/room-items/${roomItemId}/`), {
+    method: "DELETE",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (response.status === 204) return;
+  if (!response.ok) throw new Error(await response.text());
+}
+
 export type DmCharacterClass = {
   id: number;
   slug: string;

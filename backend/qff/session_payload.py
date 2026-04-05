@@ -8,7 +8,11 @@ from django.utils import timezone
 from qff.constants import PRESENCE_MINUTES
 from qff.exploration import sync_seen_exits_for_character
 from qff.exits import exit_is_passable, exit_is_visible_to_character
-from qff.quest_engine import floor_item_visible_to_character
+from qff.quest_engine import (
+    floor_item_visible_to_character,
+    room_item_visible_to_character,
+    unowned_floor_item_template_ids_in_room,
+)
 from qff.game_helpers import (
     display_name_for_instance,
     modified_stats,
@@ -25,6 +29,7 @@ from qff.models import (
     Npc,
     RoomBroadcast,
     RoomExit,
+    RoomItem,
 )
 
 DEFAULT_THEME_PRIMARY = "#c8e6a8"
@@ -212,13 +217,34 @@ def _room_floor_labels(room_id: int, character) -> list[str]:
     return out
 
 
+def _room_item_labels(
+    room_id: int, character, floor_template_ids: set[int]
+) -> list[str]:
+    """Room slots (mint-on-get); labels after floor items, same display pattern as floor."""
+    out: list[str] = []
+    for ri in (
+        RoomItem.objects.filter(room_id=room_id)
+        .select_related("item", "visible_quest_state")
+        .order_by("id")
+    ):
+        if not room_item_visible_to_character(character, ri, floor_template_ids):
+            continue
+        out.append(ri.nickname if ri.nickname else ri.item.name)
+    return out
+
+
 def _room_you_see_labels(room_id: int, character) -> list[str]:
-    """Interactable names first, then floor item labels (matches play HUD order)."""
+    """Interactable names first, then floor instances, then room item slots (matches play HUD order)."""
+    floor_template_ids = unowned_floor_item_template_ids_in_room(room_id)
     interact = [
         o.name
         for o in Interactable.objects.filter(room_id=room_id).order_by("name")
     ]
-    return interact + _room_floor_labels(room_id, character)
+    return (
+        interact
+        + _room_floor_labels(room_id, character)
+        + _room_item_labels(room_id, character, floor_template_ids)
+    )
 
 
 def build_character_profile(character) -> dict:

@@ -373,8 +373,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
 
   const switchUser = useCallback(() => {
     clearLocalSession();
-    const returnTo = new URL(window.location.origin);
-    returnTo.pathname = "/";
+    const returnTo = new URL("/", window.location.href);
     returnTo.searchParams.set("reauth", "pick_account");
     auth0Logout({
       logoutParams: {

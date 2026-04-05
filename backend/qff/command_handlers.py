@@ -8,6 +8,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from qff.command_parser import (
+    ParsedConsumeItem,
     ParsedDrop,
     ParsedEquip,
     ParsedGet,
@@ -15,20 +16,36 @@ from qff.command_parser import (
     ParsedMove,
     ParsedSay,
     ParsedSearch,
+    ParsedTalk,
     ParsedUnequip,
     ParsedUnknown,
+    ParsedUse,
 )
 from qff.constants import SAY_MAX_LEN
 from qff.exploration import mark_exit_used, on_enter_room, on_leave_room
+from qff.exits import (
+    consume_key_if_entering_locked,
+    exit_is_passable,
+    exit_is_visible_to_character,
+)
 from qff.game_helpers import (
     display_name_for_instance,
     format_item_inspect_parenthetical,
     item_meets_requirements,
     presence_threshold,
-    roll_d100,
+    roll_d100_plus_stat_encumbered,
     slot_field_for_item_slot,
 )
 from qff.models import Character, ItemInstance, RoomBroadcast, RoomExit
+from qff.quest_engine import (
+    ensure_quests_started_from_npc,
+    find_interactable_in_room,
+    find_npc_in_room,
+    floor_item_visible_to_character,
+    handle_interactable_use,
+    resolve_npc_dialogue,
+    try_item_transitions_on_talk,
+)
 
 if TYPE_CHECKING:
     from qff.models import Character as CharacterType
@@ -88,33 +105,66 @@ def _find_character_target(actor: CharacterType, name_query: str) -> CharacterTy
     return None
 
 
-def _collect_instances_for_lookup(actor: CharacterType) -> list[ItemInstance]:
+def _instance_matches_query(inst: ItemInstance, q: str) -> bool:
+    if not q:
+        return False
+    dn = display_name_for_instance(inst).lower()
+    if dn == q:
+        return True
+    return dn.startswith(q) or q in dn
+
+
+def _find_item_instance_floor_first(actor: CharacterType, query: str) -> ItemInstance | None:
+    """Prefer floor, then inventory order, then equipped (get / look at item)."""
     from qff.models import ItemInstance as II
 
-    seen: set[int] = set()
-    out: list[ItemInstance] = []
-    for iid in actor.inventory or []:
-        if iid in seen:
+    q = (query or "").strip().lower()
+    if not q:
+        return None
+    for inst in (
+        II.objects.filter(room_id=actor.current_room_id, owner_character__isnull=True)
+        .select_related("item", "visible_quest_state")
+        .order_by("id")
+    ):
+        if not floor_item_visible_to_character(actor, inst):
             continue
+        if _instance_matches_query(inst, q):
+            return inst
+    for iid in actor.inventory or []:
         inst = (
             II.objects.filter(pk=iid, owner_character_id=actor.pk)
             .select_related("item")
             .first()
         )
-        if inst:
-            seen.add(inst.pk)
-            out.append(inst)
+        if inst and _instance_matches_query(inst, q):
+            return inst
     for attr in SLOT_ATTRS:
         inst = getattr(actor, attr, None)
-        if inst and inst.pk not in seen:
-            seen.add(inst.pk)
-            out.append(inst)
-    out.extend(
-        II.objects.filter(room_id=actor.current_room_id, owner_character__isnull=True)
-        .select_related("item")
-        .order_by("id")
-    )
-    return out
+        if inst and _instance_matches_query(inst, q):
+            return inst
+    return None
+
+
+def _find_item_instance_inventory_first(actor: CharacterType, query: str) -> ItemInstance | None:
+    """Prefer backpack order, then equipped (drop / equip / consume from inv)."""
+    from qff.models import ItemInstance as II
+
+    q = (query or "").strip().lower()
+    if not q:
+        return None
+    for iid in actor.inventory or []:
+        inst = (
+            II.objects.filter(pk=iid, owner_character_id=actor.pk)
+            .select_related("item")
+            .first()
+        )
+        if inst and _instance_matches_query(inst, q):
+            return inst
+    for attr in SLOT_ATTRS:
+        inst = getattr(actor, attr, None)
+        if inst and _instance_matches_query(inst, q):
+            return inst
+    return None
 
 
 def _prepend_inv(inv, pk: int) -> list:
@@ -146,24 +196,8 @@ def _find_equipped_instance(
     return None, None
 
 
-def _find_item_instance(actor: CharacterType, query: str) -> ItemInstance | None:
-    q = (query or "").strip().lower()
-    if not q:
-        return None
-    candidates = _collect_instances_for_lookup(actor)
-    candidates.sort(key=lambda x: x.id)
-    for inst in candidates:
-        if display_name_for_instance(inst).lower() == q:
-            return inst
-    for inst in candidates:
-        dn = display_name_for_instance(inst).lower()
-        if dn.startswith(q) or q in dn:
-            return inst
-    return None
-
-
 def _format_say_line(name: str, text: str) -> str:
-    return f'({name}) says: "{text}"'
+    return f"{name} says: {text}"
 
 
 def execute_command(char: CharacterType, parsed) -> list[str]:
@@ -194,7 +228,7 @@ def execute_command(char: CharacterType, parsed) -> list[str]:
             return [
                 f"You spend some time searching the {room.name} but find nothing of note."
             ]
-        roll = roll_d100() + int(char.sense)
+        roll = roll_d100_plus_stat_encumbered(char, int(char.sense))
         if roll >= int(room.search_chance):
             return [hidden]
         return [
@@ -213,6 +247,9 @@ def execute_command(char: CharacterType, parsed) -> list[str]:
     if isinstance(parsed, ParsedGet):
         return _handle_get(char, parsed.target)
 
+    if isinstance(parsed, ParsedConsumeItem):
+        return _handle_consume_item(char, parsed)
+
     if isinstance(parsed, ParsedEquip):
         return _handle_equip(char, parsed.target)
 
@@ -222,12 +259,24 @@ def execute_command(char: CharacterType, parsed) -> list[str]:
     if isinstance(parsed, ParsedLookInspect):
         return _handle_look_inspect(char, parsed)
 
+    if isinstance(parsed, ParsedTalk):
+        return _handle_talk(char, parsed)
+
+    if isinstance(parsed, ParsedUse):
+        return _handle_use(char, parsed)
+
     return ["You try that, but nothing happens."]
 
 
 def _handle_move(char: CharacterType, parsed: ParsedMove) -> list[str]:
     ex = (
-        RoomExit.objects.select_related("to_room")
+        RoomExit.objects.select_related(
+            "to_room",
+            "quest_required_state",
+            "key_item",
+            "reveal_item",
+            "reveal_quest_state",
+        )
         .filter(
             from_room=char.current_room,
             direction=parsed.direction,
@@ -238,12 +287,15 @@ def _handle_move(char: CharacterType, parsed: ParsedMove) -> list[str]:
     if not ex:
         char.save(update_fields=["last_activity_at", "updated_at"])
         return ["You can't go that way."]
-    if ex.is_hidden:
+    if not exit_is_visible_to_character(char, ex):
         char.save(update_fields=["last_activity_at", "updated_at"])
         return ["You can't go that way."]
-    if ex.lock_kind != RoomExit.LockKind.NONE:
+    if not exit_is_passable(char, ex):
         char.save(update_fields=["last_activity_at", "updated_at"])
         return ["You can't go that way — not yet."]
+    if ex.lock_kind == RoomExit.LockKind.KEY:
+        consume_key_if_entering_locked(char, ex)
+        char = Character.objects.get(pk=char.pk)
     mark_exit_used(char, ex)
     left_room_id = char.current_room_id
     dest = ex.to_room
@@ -256,7 +308,7 @@ def _handle_move(char: CharacterType, parsed: ParsedMove) -> list[str]:
 
 def _handle_drop(char: CharacterType, target: str) -> list[str]:
     _touch_activity(char)
-    inst = _find_item_instance(char, target)
+    inst = _find_item_instance_inventory_first(char, target)
     if not inst or inst.owner_character_id != char.pk:
         char.save(update_fields=["last_activity_at", "updated_at"])
         return ["You don't have that."]
@@ -289,7 +341,7 @@ def _handle_drop(char: CharacterType, target: str) -> list[str]:
 
 def _handle_get(char: CharacterType, target: str) -> list[str]:
     _touch_activity(char)
-    inst = _find_item_instance(char, target)
+    inst = _find_item_instance_floor_first(char, target)
     if not inst or inst.room_id != char.current_room_id or inst.owner_character_id is not None:
         char.save(update_fields=["last_activity_at", "updated_at"])
         return ["You don't see that here."]
@@ -313,7 +365,7 @@ def _handle_get(char: CharacterType, target: str) -> list[str]:
 
 def _handle_equip(char: CharacterType, target: str) -> list[str]:
     _touch_activity(char)
-    inst = _find_item_instance(char, target)
+    inst = _find_item_instance_inventory_first(char, target)
     if not inst or inst.owner_character_id != char.pk:
         char.save(update_fields=["last_activity_at", "updated_at"])
         return ["You don't have that."]
@@ -379,6 +431,105 @@ def _handle_unequip(char: CharacterType, target: str) -> list[str]:
     return [f"You remove the {display_name_for_instance(inst)}."]
 
 
+def _handle_talk(char: CharacterType, parsed: ParsedTalk) -> list[str]:
+    _touch_activity(char)
+    target = (parsed.target or "").strip()
+    if not target:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return ["Talk to whom?"]
+    npc = find_npc_in_room(char, target)
+    if not npc:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return ["You don't see them here."]
+    ensure_quests_started_from_npc(char, npc)
+    char = Character.objects.get(pk=char.pk)
+    extra = try_item_transitions_on_talk(char, npc)
+    char = Character.objects.get(pk=char.pk)
+    main = resolve_npc_dialogue(char, npc)
+    char.save(update_fields=["last_activity_at", "updated_at"])
+    return extra + [main]
+
+
+def _handle_use(char: CharacterType, parsed: ParsedUse) -> list[str]:
+    _touch_activity(char)
+    target = (parsed.target or "").strip()
+    if not target:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return [f"{parsed.verb.title()} what?"]
+    if parsed.verb != "use":
+        obj = find_interactable_in_room(char, target)
+        if not obj:
+            char.save(update_fields=["last_activity_at", "updated_at"])
+            return ["You don't see that here."]
+        lines = handle_interactable_use(char, obj)
+        char = Character.objects.get(pk=char.pk)
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return lines
+
+    obj = find_interactable_in_room(char, target)
+    if obj:
+        lines = handle_interactable_use(char, obj)
+        char = Character.objects.get(pk=char.pk)
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return lines
+
+    inst = _find_item_instance_inventory_first(char, target)
+    inv = list(char.inventory or [])
+    if inst and inst.pk in inv and inst.item.consumable:
+        return _consume_inventory_instance(char, inst, "use")
+
+    char.save(update_fields=["last_activity_at", "updated_at"])
+    if inst and inst.pk in inv:
+        return ["You can't use that."]
+    return ["You don't see that here."]
+
+
+def _handle_consume_item(char: CharacterType, parsed: ParsedConsumeItem) -> list[str]:
+    _touch_activity(char)
+    target = (parsed.target or "").strip()
+    if not target:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        what = "Eat" if parsed.verb == "eat" else "Drink" if parsed.verb == "drink" else "Use"
+        return [f"{what} what?"]
+    inst = _find_item_instance_inventory_first(char, target)
+    inv = list(char.inventory or [])
+    if not inst or inst.pk not in inv:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return ["You don't have that."]
+    if not inst.item.consumable:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return ["You can't consume that."]
+    return _consume_inventory_instance(char, inst, parsed.verb)
+
+
+def _consume_inventory_instance(
+    char: CharacterType, inst: ItemInstance, verb: str
+) -> list[str]:
+    """Remove a consumable from inventory and destroy the instance."""
+    from qff.models import ItemInstance as II
+
+    label = display_name_for_instance(inst)
+    with transaction.atomic():
+        char = Character.objects.select_for_update().get(pk=char.pk)
+        inst = II.objects.select_for_update().select_related("item").get(pk=inst.pk)
+        inv = list(char.inventory or [])
+        if inst.pk not in inv or not inst.item.consumable:
+            char.save(update_fields=["last_activity_at", "updated_at"])
+            return ["You don't have that."]
+        inv = [x for x in inv if x != inst.pk]
+        char.inventory = inv
+        char.last_activity_at = timezone.now()
+        char.save(update_fields=["inventory", "last_activity_at", "updated_at"])
+        inst.delete()
+
+    v = verb.lower()
+    if v == "eat":
+        return [f"You eat the {label}."]
+    if v == "drink":
+        return [f"You drink the {label}."]
+    return [f"You use the {label}."]
+
+
 def _handle_look_inspect(char: CharacterType, parsed: ParsedLookInspect) -> list[str]:
     _touch_activity(char)
     char.save(update_fields=["last_activity_at", "updated_at"])
@@ -386,15 +537,33 @@ def _handle_look_inspect(char: CharacterType, parsed: ParsedLookInspect) -> list
     if not target:
         return ["Look at what?"]
 
+    npc = find_npc_in_room(char, target)
+    if npc:
+        base = (npc.description or "").strip() or f"You see {npc.name}."
+        return [base]
+
+    interactable = find_interactable_in_room(char, target)
+    if interactable:
+        t = (interactable.inspect_text or "").strip() or f"You see {interactable.name}."
+        return [t]
+
     subj = _find_character_target(char, target)
     if subj:
         return _lines_for_character_inspect(char, subj, parsed.verb == "inspect")
 
-    inst = _find_item_instance(char, target)
+    inst = _find_item_instance_floor_first(char, target)
     if inst:
         return _lines_for_item_inspect(char, inst)
 
     return ["You don't see that here."]
+
+
+def _natural_join_phrases(items: list[str]) -> str:
+    if len(items) == 1:
+        return items[0]
+    if len(items) == 2:
+        return f"{items[0]} and {items[1]}"
+    return ", ".join(items[:-1]) + ", and " + items[-1]
 
 
 def _lines_for_character_inspect(
@@ -403,29 +572,38 @@ def _lines_for_character_inspect(
     _ = is_inspect
     if not _visible_in_room(actor, subj):
         return ["You don't see that here."]
-    chest = _slot_label(subj.chest_item)
-    head = _slot_label(subj.head_item)
-    feet = _slot_label(subj.feet_item)
-    mh = _slot_label(subj.main_hand_item)
-    oh = _slot_label(subj.off_hand_item)
-    mh_it = subj.main_hand_item.item if subj.main_hand_item else None
-    two = mh_it.two_handed if mh_it else False
-    if two:
-        wear = f"They wear {chest}, {head}, and {feet} and wield {mh} (two-handed)."
-    else:
-        off_phrase = f" and {oh}" if oh else ""
-        wear = f"They wear {chest}, {head}, and {feet} and wield {mh}{off_phrase}."
-    line = (
-        f"{subj.name} is a level {subj.level} {subj.character_class.name}. "
-        + wear
+    wear_order = (
+        subj.head_item,
+        subj.chest_item,
+        subj.feet_item,
+        subj.ring_item,
+        subj.amulet_item,
     )
-    return [line]
+    worn = [display_name_for_instance(x) for x in wear_order if x]
+    mh_inst = subj.main_hand_item
+    oh_inst = subj.off_hand_item
+    mh_it = mh_inst.item if mh_inst else None
+    two = mh_it.two_handed if mh_it else False
 
+    parts: list[str] = []
+    if worn:
+        parts.append(f"They wear {_natural_join_phrases(worn)}.")
+    if two and mh_inst:
+        parts.append(f"They wield {display_name_for_instance(mh_inst)} (two-handed).")
+    elif mh_inst and oh_inst:
+        parts.append(
+            f"They wield {display_name_for_instance(mh_inst)} and "
+            f"{display_name_for_instance(oh_inst)}."
+        )
+    elif mh_inst:
+        parts.append(f"They wield {display_name_for_instance(mh_inst)}.")
+    elif oh_inst:
+        parts.append(f"They wield {display_name_for_instance(oh_inst)}.")
 
-def _slot_label(inst: ItemInstance | None) -> str:
-    if inst is None:
-        return "nothing"
-    return display_name_for_instance(inst)
+    opener = f"{subj.name} is a level {subj.level} {subj.character_class.name}."
+    if not parts:
+        return [opener]
+    return [opener + " " + " ".join(parts)]
 
 
 def _lines_for_item_inspect(actor: CharacterType, inst: ItemInstance) -> list[str]:
@@ -442,7 +620,7 @@ def _lines_for_item_inspect(actor: CharacterType, inst: ItemInstance) -> list[st
             if (it.lore or "").strip():
                 lore_extra = " " + it.lore.strip()
         else:
-            roll = roll_d100() + int(actor.smarts)
+            roll = roll_d100_plus_stat_encumbered(actor, int(actor.smarts))
             if roll >= int(it.lore_chance):
                 inst.unlocked = True
                 inst.save(update_fields=["unlocked", "updated_at"])

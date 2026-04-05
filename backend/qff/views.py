@@ -22,10 +22,14 @@ from qff.models import (
     Character,
     CharacterClass,
     Item,
+    ItemInstance,
+    Quest,
+    QuestState,
     Room,
     RoomExit,
     validate_character_name,
 )
+from qff.game_helpers import encumbrance_excess
 from qff.session_payload import (
     build_session_for_character,
     normalize_hex_color,
@@ -72,6 +76,13 @@ def session_view(request):
                 "character_classes": classes,
             }
         )
+    # Ping presence on every session poll so idle players stay visible to others.
+    now = timezone.now()
+    Character.objects.filter(pk=char.pk).update(
+        last_activity_at=now,
+        updated_at=now,
+    )
+    char.refresh_from_db(fields=["last_activity_at", "updated_at"])
     return Response(build_session_for_character(char))
 
 
@@ -178,8 +189,10 @@ def command_view(request):
         )
 
     parsed = parse_command(line)
-    messages = execute_command(char, parsed)
+    messages = list(execute_command(char, parsed))
     char = _get_character(request.user)
+    if char and encumbrance_excess(char) > 0:
+        messages.append("You are encumbered!")
     return Response({"messages": messages, "session": build_session_for_character(char)})
 
 
@@ -395,9 +408,22 @@ def dm_area_rooms_export_json(request, area_id):
         cell = AreaCell.objects.filter(room=room).first()
         exits_out = []
         for ex in RoomExit.objects.filter(from_room=room).select_related(
-            "to_room__area"
+            "to_room__area",
+            "reveal_item",
+            "reveal_quest_state__quest",
         ).order_by("direction"):
             to = ex.to_room
+            reveal_item_slug = (
+                ex.reveal_item.slug if ex.reveal_item_id else None
+            )
+            reveal_quest_slug = (
+                ex.reveal_quest_state.quest.slug
+                if ex.reveal_quest_state_id
+                else None
+            )
+            reveal_quest_state_slug = (
+                ex.reveal_quest_state.slug if ex.reveal_quest_state_id else None
+            )
             if to.area_id == area.id:
                 exits_out.append(
                     {
@@ -406,6 +432,9 @@ def dm_area_rooms_export_json(request, area_id):
                         "to_room_slug": _dm_export_room_slug(to),
                         "is_hidden": ex.is_hidden,
                         "lock_kind": ex.lock_kind,
+                        "reveal_item_slug": reveal_item_slug,
+                        "reveal_quest_slug": reveal_quest_slug,
+                        "reveal_quest_state_slug": reveal_quest_state_slug,
                     }
                 )
             else:
@@ -416,6 +445,9 @@ def dm_area_rooms_export_json(request, area_id):
                         "to_room_slug": _dm_export_room_slug(to),
                         "is_hidden": ex.is_hidden,
                         "lock_kind": ex.lock_kind,
+                        "reveal_item_slug": reveal_item_slug,
+                        "reveal_quest_slug": reveal_quest_slug,
+                        "reveal_quest_state_slug": reveal_quest_state_slug,
                     }
                 )
         rooms_out.append(
@@ -594,12 +626,31 @@ def dm_area_rooms_import_json(request, area_id):
                 err = _validate_exit_spatial(from_room, to_room, direction)
                 if err:
                     raise ValueError(f"Room {slug!r}: {err}")
+                reveal_item_id = None
+                ris = (es.get("reveal_item_slug") or "").strip()
+                if ris:
+                    rit = Item.objects.filter(slug=ris[:80]).first()
+                    if rit:
+                        reveal_item_id = rit.id
+                reveal_qs_id = None
+                rqs_slug = (es.get("reveal_quest_state_slug") or "").strip()
+                rq_slug = (es.get("reveal_quest_slug") or "").strip()
+                if rqs_slug and rq_slug:
+                    rq = Quest.objects.filter(slug=rq_slug[:80]).first()
+                    if rq:
+                        st = QuestState.objects.filter(
+                            quest=rq, slug=rqs_slug[:80]
+                        ).first()
+                        if st:
+                            reveal_qs_id = st.id
                 RoomExit.objects.create(
                     from_room=from_room,
                     to_room=to_room,
                     direction=direction,
                     is_hidden=bool(es.get("is_hidden")),
                     lock_kind=lk,
+                    reveal_item_id=reveal_item_id,
+                    reveal_quest_state_id=reveal_qs_id,
                 )
 
     try:
@@ -735,6 +786,111 @@ def dm_room_detail(request, pk):
     )
 
 
+def _dm_floor_item_dict(inst: ItemInstance) -> dict:
+    return {
+        "id": inst.id,
+        "item_id": inst.item_id,
+        "item_slug": inst.item.slug,
+        "item_name": inst.item.name,
+        "nickname": inst.nickname or "",
+        "visible_quest_state_id": inst.visible_quest_state_id,
+        "visible_quest_id": (
+            inst.visible_quest_state.quest_id if inst.visible_quest_state_id else None
+        ),
+        "visible_quest_slug": (
+            inst.visible_quest_state.quest.slug if inst.visible_quest_state_id else None
+        ),
+        "visible_quest_state_slug": (
+            inst.visible_quest_state.slug if inst.visible_quest_state_id else None
+        ),
+    }
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated, IsStaffUser])
+def dm_room_floor_items(request, room_id):
+    """List or spawn unowned ItemInstance rows on the floor of a room (DM content)."""
+    room = get_object_or_404(Room, pk=room_id)
+    if request.method == "GET":
+        qs = (
+            ItemInstance.objects.filter(room_id=room.id, owner_character__isnull=True)
+            .select_related("item", "visible_quest_state__quest")
+            .order_by("id")
+        )
+        return Response([_dm_floor_item_dict(i) for i in qs])
+    item_id = request.data.get("item_id")
+    try:
+        item_id = int(item_id)
+    except (TypeError, ValueError):
+        return Response(
+            {"detail": "item_id is required (item template id)."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    get_object_or_404(Item, pk=item_id)
+    nick = (request.data.get("nickname") or "").strip()
+    vqs_id = request.data.get("visible_quest_state_id")
+    visible_quest_state_id = None
+    if vqs_id not in (None, ""):
+        try:
+            visible_quest_state_id = int(vqs_id)
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "visible_quest_state_id must be an integer."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        get_object_or_404(QuestState, pk=visible_quest_state_id)
+    inst = ItemInstance.objects.create(
+        item_id=item_id,
+        room=room,
+        owner_character=None,
+        neglect_count=0,
+        floor_dropped_at=timezone.now(),
+        nickname=nick or None,
+        visible_quest_state_id=visible_quest_state_id,
+    )
+    inst = ItemInstance.objects.select_related(
+        "item", "visible_quest_state__quest"
+    ).get(pk=inst.pk)
+    return Response(_dm_floor_item_dict(inst), status=status.HTTP_201_CREATED)
+
+
+@api_view(["PATCH", "DELETE"])
+@permission_classes([IsAuthenticated, IsStaffUser])
+def dm_floor_item_detail(request, pk):
+    """Update visibility rules or remove an unowned floor item instance."""
+    inst = get_object_or_404(
+        ItemInstance.objects.select_related("visible_quest_state__quest", "item"),
+        pk=pk,
+    )
+    if inst.owner_character_id is not None:
+        return Response(
+            {"detail": "Only unowned floor items can be changed here."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if request.method == "DELETE":
+        inst.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    if "visible_quest_state_id" in request.data:
+        v = request.data.get("visible_quest_state_id")
+        if v in (None, ""):
+            inst.visible_quest_state_id = None
+        else:
+            try:
+                vsid = int(v)
+            except (TypeError, ValueError):
+                vsid = None
+            if vsid is not None:
+                get_object_or_404(QuestState, pk=vsid)
+                inst.visible_quest_state_id = vsid
+            else:
+                inst.visible_quest_state_id = None
+    inst.save()
+    inst = ItemInstance.objects.select_related(
+        "item", "visible_quest_state__quest"
+    ).get(pk=inst.pk)
+    return Response(_dm_floor_item_dict(inst))
+
+
 def _validate_exit_spatial(from_room: Room, to_room: Room, direction: str) -> str | None:
     """Return error message or None if ok."""
     if from_room.id == to_room.id:
@@ -771,25 +927,66 @@ def _validate_exit_spatial(from_room: Room, to_room: Room, direction: str) -> st
     return None
 
 
+def _dm_exit_dict(ex: RoomExit) -> dict:
+    return {
+        "id": ex.id,
+        "from_room_id": ex.from_room_id,
+        "direction": ex.direction,
+        "to_room_id": ex.to_room_id,
+        "is_hidden": ex.is_hidden,
+        "lock_kind": ex.lock_kind,
+        "key_item_id": ex.key_item_id,
+        "key_item_slug": (
+            ex.key_item.slug
+            if ex.key_item_id and getattr(ex, "key_item", None)
+            else None
+        ),
+        "key_unlock_scope": ex.key_unlock_scope,
+        "device_interactable_id": ex.device_interactable_id,
+        "quest_required_state_id": ex.quest_required_state_id,
+        "quest_required_quest_slug": (
+            ex.quest_required_state.quest.slug
+            if ex.quest_required_state_id
+            else None
+        ),
+        "quest_required_state_slug": (
+            ex.quest_required_state.slug if ex.quest_required_state_id else None
+        ),
+        "unlock_duration_seconds": ex.unlock_duration_seconds,
+        "reveal_item_id": ex.reveal_item_id,
+        "reveal_item_slug": (
+            ex.reveal_item.slug
+            if ex.reveal_item_id and getattr(ex, "reveal_item", None)
+            else None
+        ),
+        "reveal_quest_state_id": ex.reveal_quest_state_id,
+        "reveal_quest_id": (
+            ex.reveal_quest_state.quest_id if ex.reveal_quest_state_id else None
+        ),
+        "reveal_quest_slug": (
+            ex.reveal_quest_state.quest.slug
+            if ex.reveal_quest_state_id
+            else None
+        ),
+        "reveal_quest_state_slug": (
+            ex.reveal_quest_state.slug if ex.reveal_quest_state_id else None
+        ),
+    }
+
+
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated, IsStaffUser])
 def dm_exit_list_create(request, room_id):
     room = get_object_or_404(Room, pk=room_id)
     if request.method == "GET":
-        exits = RoomExit.objects.filter(from_room=room).select_related("to_room")
-        return Response(
-            [
-                {
-                    "id": e.id,
-                    "direction": e.direction,
-                    "to_room_id": e.to_room_id,
-                    "to_room_name": e.to_room.name,
-                    "is_hidden": e.is_hidden,
-                    "lock_kind": e.lock_kind,
-                }
-                for e in exits
-            ]
+        exits = RoomExit.objects.filter(from_room=room).select_related(
+            "to_room",
+            "key_item",
+            "quest_required_state__quest",
+            "reveal_item",
+            "reveal_quest_state__quest",
         )
+        return Response([_dm_exit_dict(e) | {"to_room_name": e.to_room.name} for e in exits])
     direction = (request.data.get("direction") or "").strip()
     to_id = request.data.get("to_room_id")
     if not direction or not to_id:
@@ -809,13 +1006,7 @@ def dm_exit_list_create(request, room_id):
         lock_kind=request.data.get("lock_kind") or RoomExit.LockKind.NONE,
     )
     return Response(
-        {
-            "id": ex.id,
-            "direction": ex.direction,
-            "to_room_id": ex.to_room_id,
-            "is_hidden": ex.is_hidden,
-            "lock_kind": ex.lock_kind,
-        },
+        _dm_exit_dict(ex) | {"to_room_name": ex.to_room.name},
         status=status.HTTP_201_CREATED,
     )
 
@@ -824,19 +1015,18 @@ def dm_exit_list_create(request, room_id):
 @permission_classes([IsAuthenticated, IsStaffUser])
 def dm_exit_detail(request, pk):
     ex = get_object_or_404(
-        RoomExit.objects.select_related("from_room", "to_room"), pk=pk
+        RoomExit.objects.select_related(
+            "from_room",
+            "to_room",
+            "key_item",
+            "quest_required_state__quest",
+            "reveal_item",
+            "reveal_quest_state__quest",
+        ),
+        pk=pk,
     )
     if request.method == "GET":
-        return Response(
-            {
-                "id": ex.id,
-                "from_room_id": ex.from_room_id,
-                "direction": ex.direction,
-                "to_room_id": ex.to_room_id,
-                "is_hidden": ex.is_hidden,
-                "lock_kind": ex.lock_kind,
-            }
-        )
+        return Response(_dm_exit_dict(ex))
     if request.method == "DELETE":
         ex.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -849,19 +1039,50 @@ def dm_exit_detail(request, pk):
         ex.lock_kind = request.data["lock_kind"]
     if "direction" in request.data:
         ex.direction = request.data["direction"]
+    if "key_item_id" in request.data:
+        ex.key_item_id = _parse_optional_item_pk(request.data.get("key_item_id"))
+    if "key_unlock_scope" in request.data:
+        ex.key_unlock_scope = request.data["key_unlock_scope"] or ex.key_unlock_scope
+    if "device_interactable_id" in request.data:
+        v = request.data.get("device_interactable_id")
+        ex.device_interactable_id = int(v) if v not in (None, "") else None
+    if "quest_required_state_id" in request.data:
+        v = request.data.get("quest_required_state_id")
+        ex.quest_required_state_id = int(v) if v not in (None, "") else None
+    if "reveal_item_id" in request.data:
+        ex.reveal_item_id = _parse_optional_item_pk(request.data.get("reveal_item_id"))
+    if "reveal_quest_state_id" in request.data:
+        v = request.data.get("reveal_quest_state_id")
+        ex.reveal_quest_state_id = int(v) if v not in (None, "") else None
+    if "unlock_duration_seconds" in request.data:
+        try:
+            ex.unlock_duration_seconds = max(1, int(request.data.get("unlock_duration_seconds") or 600))
+        except (TypeError, ValueError):
+            pass
     err = _validate_exit_spatial(ex.from_room, ex.to_room, ex.direction)
     if err:
         return Response({"detail": err}, status=status.HTTP_400_BAD_REQUEST)
     ex.save()
-    return Response(
-        {
-            "id": ex.id,
-            "direction": ex.direction,
-            "to_room_id": ex.to_room_id,
-            "is_hidden": ex.is_hidden,
-            "lock_kind": ex.lock_kind,
-        }
-    )
+    ex = RoomExit.objects.select_related(
+        "key_item",
+        "quest_required_state__quest",
+        "reveal_item",
+        "reveal_quest_state__quest",
+    ).get(pk=ex.pk)
+    return Response(_dm_exit_dict(ex))
+
+
+def _parse_item_slot_optional(raw) -> str | None:
+    """Empty / missing → None (not equippable). Otherwise must be a valid Item.Slot value."""
+    if raw is None:
+        return None
+    if isinstance(raw, str) and not raw.strip():
+        return None
+    s = str(raw).strip()[:16]
+    valid = {c[0] for c in Item.Slot.choices}
+    if s not in valid:
+        return "__invalid__"
+    return s
 
 
 def _dm_item_dict(item: Item) -> dict:
@@ -871,6 +1092,7 @@ def _dm_item_dict(item: Item) -> dict:
         "name": item.name,
         "item_type": item.item_type,
         "slot": item.slot,
+        "consumable": item.consumable,
         "cost": item.cost,
         "description": item.description,
         "lore": item.lore,
@@ -928,10 +1150,15 @@ def dm_item_list_create(request):
         return Response([_dm_item_dict(i) for i in rows])
     slug = (request.data.get("slug") or "").strip()
     name = (request.data.get("name") or "").strip()
-    slot = (request.data.get("slot") or "").strip()
-    if not slug or not name or not slot:
+    if not slug or not name:
         return Response(
-            {"detail": "slug, name, and slot are required."},
+            {"detail": "slug and name are required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    slot = _parse_item_slot_optional(request.data.get("slot"))
+    if slot == "__invalid__":
+        return Response(
+            {"detail": "invalid slot."},
             status=status.HTTP_400_BAD_REQUEST,
         )
     if Item.objects.filter(slug=slug).exists():
@@ -949,7 +1176,8 @@ def dm_item_list_create(request):
         slug=slug[:80],
         name=name[:200],
         item_type=(request.data.get("item_type") or "")[:64],
-        slot=slot[:16],
+        slot=slot,
+        consumable=bool(request.data.get("consumable")),
         cost=int(request.data.get("cost") or 0),
         description=(request.data.get("description") or "")[:],
         lore=(request.data.get("lore") or "")[:],
@@ -997,7 +1225,15 @@ def dm_item_detail(request, pk):
     if "item_type" in request.data:
         item.item_type = (request.data.get("item_type") or "")[:64]
     if "slot" in request.data:
-        item.slot = (request.data.get("slot") or "")[:16]
+        slot = _parse_item_slot_optional(request.data.get("slot"))
+        if slot == "__invalid__":
+            return Response(
+                {"detail": "invalid slot."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        item.slot = slot
+    if "consumable" in request.data:
+        item.consumable = bool(request.data.get("consumable"))
     if "description" in request.data:
         item.description = request.data.get("description") or ""
     if "lore" in request.data:
@@ -1105,8 +1341,9 @@ def _validate_class_starter_slots(body) -> str | None:
         it = Item.objects.filter(pk=pk).first()
         if not it:
             return f"Unknown item id for {key}."
-        if it.slot != slot.value:
-            return f"{key} must be a {slot.label} item (got {it.get_slot_display()})."
+        if not it.slot or it.slot != slot.value:
+            got = it.get_slot_display() if it.slot else "not equippable"
+            return f"{key} must be a {slot.label} item (got {got})."
     return None
 
 

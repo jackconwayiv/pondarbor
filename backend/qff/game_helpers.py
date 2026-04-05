@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from qff.constants import PRESENCE_MINUTES
 
 if TYPE_CHECKING:
-    from qff.models import Character, Item, ItemInstance
+    from qff.models import Character, Item, ItemInstance  # noqa: F401 used in annotations
 
 
 def presence_threshold():
@@ -146,6 +146,45 @@ def roll_d100() -> int:
     return random.randint(1, 100)
 
 
+_EQUIP_SLOTS_ENC = (
+    "head_item",
+    "main_hand_item",
+    "off_hand_item",
+    "chest_item",
+    "feet_item",
+    "ring_item",
+    "amulet_item",
+)
+
+
+def carried_item_instance_count(character: "Character") -> int:
+    """Distinct item instances carried (inventory order + equipped)."""
+    seen: set[int] = set()
+    for iid in character.inventory or []:
+        try:
+            seen.add(int(iid))
+        except (TypeError, ValueError):
+            continue
+    for attr in _EQUIP_SLOTS_ENC:
+        inst = getattr(character, attr, None)
+        if inst is not None:
+            seen.add(inst.pk)
+    return len(seen)
+
+
+def encumbrance_cap(character: "Character") -> int:
+    return 3 + int(character.gains) // 2
+
+
+def encumbrance_excess(character: "Character") -> int:
+    return max(0, carried_item_instance_count(character) - encumbrance_cap(character))
+
+
+def roll_d100_plus_stat_encumbered(character: "Character", stat: int) -> int:
+    """1d100 + stat − encumbrance excess (for search, inspect lore, etc.)."""
+    return roll_d100() + int(stat) - encumbrance_excess(character)
+
+
 def format_item_inspect_parenthetical(item: "Item", instance_unlocked: bool) -> str:
     """Short parenthetical of visible item stats; hidden lines only when lore is unlocked."""
     from qff.models import Item
@@ -182,9 +221,11 @@ def format_item_inspect_parenthetical(item: "Item", instance_unlocked: bool) -> 
     return " (" + ", ".join(parts) + ")"
 
 
-def slot_field_for_item_slot(slot: str) -> str | None:
+def slot_field_for_item_slot(slot: str | None) -> str | None:
     from qff.models import Item
 
+    if not slot:
+        return None
     m = {
         Item.Slot.HEAD.value: "head_item",
         Item.Slot.MAIN_HAND.value: "main_hand_item",

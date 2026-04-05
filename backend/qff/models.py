@@ -120,6 +120,56 @@ class RoomExit(models.Model):
         default=LockKind.NONE,
     )
 
+    class KeyUnlockScope(models.TextChoices):
+        REALM_TIMED = "realm_timed", "Realm (timed)"
+        CHARACTER = "character", "Character only"
+
+    key_item = models.ForeignKey(
+        "Item",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="exit_keys_for",
+    )
+    key_unlock_scope = models.CharField(
+        max_length=16,
+        choices=KeyUnlockScope.choices,
+        default=KeyUnlockScope.REALM_TIMED,
+    )
+    device_interactable = models.ForeignKey(
+        "Interactable",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="device_for_exits",
+    )
+    quest_required_state = models.ForeignKey(
+        "QuestState",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="exits_requiring_state",
+    )
+    # When is_hidden: exit is shown only if all set conditions are met (AND).
+    reveal_item = models.ForeignKey(
+        "Item",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="exits_revealed_by_item",
+    )
+    reveal_quest_state = models.ForeignKey(
+        "QuestState",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="exits_revealed_by_quest_state",
+    )
+    unlock_duration_seconds = models.PositiveIntegerField(
+        default=600,
+        help_text="Realm-timed unlock duration (KEY realm_timed, DEVICE).",
+    )
+
     class Meta:
         constraints = [
             models.UniqueConstraint(
@@ -223,7 +273,17 @@ class Item(models.Model):
     slug = models.SlugField(max_length=80, unique=True)
     name = models.CharField(max_length=200)
     item_type = models.CharField(max_length=64, blank=True)
-    slot = models.CharField(max_length=16, choices=Slot.choices)
+    # Null = not equippable (quest items, consumables without a wear slot, etc.).
+    slot = models.CharField(
+        max_length=16,
+        choices=Slot.choices,
+        null=True,
+        blank=True,
+    )
+    consumable = models.BooleanField(
+        default=False,
+        help_text="If true, eat/drink/use can consume from inventory (non-consumables cannot).",
+    )
     cost = models.PositiveIntegerField(default=0)
     description = models.TextField(blank=True)
     lore = models.TextField(blank=True)
@@ -310,6 +370,15 @@ class ItemInstance(models.Model):
         blank=True,
         help_text="When this instance was last placed on the floor (drop); null if owned/in inventory.",
     )
+    visible_quest_state = models.ForeignKey(
+        "QuestState",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="floor_item_instances_visible",
+        help_text="If set, only characters in this quest state see this floor item; "
+        "hidden if they already carry this item template.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -368,6 +437,7 @@ class Character(models.Model):
     last_activity_at = models.DateTimeField()
     level = models.PositiveSmallIntegerField(default=1)
     xp = models.PositiveIntegerField(default=0)
+    gold = models.PositiveIntegerField(default=0)
     cur_health = models.PositiveSmallIntegerField(default=20)
     max_health = models.PositiveSmallIntegerField(default=20)
     cur_mana = models.PositiveSmallIntegerField(default=0)
@@ -477,5 +547,258 @@ class CharacterExitSeen(models.Model):
             models.UniqueConstraint(
                 fields=["character", "room_exit"],
                 name="qff_charexitseen_uniq",
+            ),
+        ]
+
+
+# --- Quests, NPCs, interactables ---
+
+
+class Quest(models.Model):
+    slug = models.SlugField(max_length=80, unique=True)
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class QuestState(models.Model):
+    quest = models.ForeignKey(Quest, on_delete=models.CASCADE, related_name="states")
+    slug = models.SlugField(max_length=80)
+    name = models.CharField(max_length=200, blank=True)
+    is_initial = models.BooleanField(default=False)
+    is_terminal = models.BooleanField(default=False)
+    sort_order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["quest_id", "sort_order", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["quest", "slug"],
+                name="qff_queststate_quest_slug_uniq",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.quest.slug}:{self.slug}"
+
+
+class QuestTransition(models.Model):
+    """Single edge in a quest graph; effects run when the transition fires."""
+
+    quest = models.ForeignKey(Quest, on_delete=models.CASCADE, related_name="transitions")
+    from_state = models.ForeignKey(
+        QuestState,
+        on_delete=models.CASCADE,
+        related_name="transitions_from",
+    )
+    to_state = models.ForeignKey(
+        QuestState,
+        on_delete=models.CASCADE,
+        related_name="transitions_to",
+    )
+    requires_item = models.ForeignKey(
+        Item,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="If set, character must carry this item template (inventory or equipped).",
+    )
+    sort_order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["quest_id", "sort_order", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.quest_id} {self.from_state_id}→{self.to_state_id}"
+
+
+class QuestEffect(models.Model):
+    class Kind(models.TextChoices):
+        GRANT_XP = "grant_xp", "Grant XP"
+        GRANT_GOLD = "grant_gold", "Grant gold"
+        GRANT_ITEM = "grant_item", "Grant item (new instance)"
+        REMOVE_ITEM_TEMPLATE = "remove_item_template", "Remove item by template"
+        REALM_UNLOCK_EXIT_TIMED = "realm_unlock_exit_timed", "Realm unlock exit (timed)"
+        CHARACTER_UNLOCK_EXIT = "character_unlock_exit", "Character unlock exit"
+
+    transition = models.ForeignKey(
+        QuestTransition,
+        on_delete=models.CASCADE,
+        related_name="effects",
+    )
+    kind = models.CharField(max_length=32, choices=Kind.choices)
+    amount = models.IntegerField(
+        default=0,
+        help_text="XP, gold, or unlock duration in minutes for timed realm unlock.",
+    )
+    item = models.ForeignKey(
+        Item,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    room_exit = models.ForeignKey(
+        RoomExit,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="quest_effects",
+    )
+    sort_order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["transition_id", "sort_order", "id"]
+
+
+class CharacterQuestProgress(models.Model):
+    character = models.ForeignKey(
+        Character,
+        on_delete=models.CASCADE,
+        related_name="quest_progress",
+    )
+    quest = models.ForeignKey(Quest, on_delete=models.CASCADE, related_name="character_progress")
+    current_state = models.ForeignKey(
+        QuestState,
+        on_delete=models.PROTECT,
+        related_name="characters_here",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["character", "quest"],
+                name="qff_charquestprogress_uniq",
+            ),
+        ]
+
+
+class Npc(models.Model):
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="npcs")
+    slug = models.SlugField(max_length=80)
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["room", "slug"],
+                name="qff_npc_room_slug_uniq",
+            ),
+        ]
+        ordering = ["room_id", "name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class NpcDialogue(models.Model):
+    npc = models.ForeignKey(Npc, on_delete=models.CASCADE, related_name="dialogues")
+    quest = models.ForeignKey(
+        Quest,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="npc_dialogues",
+    )
+    quest_state = models.ForeignKey(
+        QuestState,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="npc_dialogues",
+    )
+    priority = models.PositiveSmallIntegerField(default=0)
+    text = models.TextField()
+
+    class Meta:
+        ordering = ["npc_id", "-priority", "id"]
+
+
+class Interactable(models.Model):
+    class Kind(models.TextChoices):
+        SIGN = "sign", "Sign"
+        CHEST = "chest", "Chest"
+        BUTTON = "button", "Button"
+        LEVER = "lever", "Lever"
+        OTHER = "other", "Other"
+
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="interactables")
+    slug = models.SlugField(max_length=80)
+    name = models.CharField(max_length=200)
+    kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.OTHER)
+    inspect_text = models.TextField(blank=True)
+    quest_transition = models.ForeignKey(
+        QuestTransition,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="interactables",
+    )
+    unlocks_exit = models.ForeignKey(
+        RoomExit,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="interactable_unlocks",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["room", "slug"],
+                name="qff_interactable_room_slug_uniq",
+            ),
+        ]
+        ordering = ["room_id", "name"]
+
+
+class RealmExitUnlock(models.Model):
+    """Realm-wide timed access; one active row per exit (replaced on extend)."""
+
+    room_exit = models.OneToOneField(
+        RoomExit,
+        on_delete=models.CASCADE,
+        related_name="realm_unlock",
+    )
+    expires_at = models.DateTimeField(db_index=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["expires_at"]),
+        ]
+
+
+class CharacterExitUnlock(models.Model):
+    character = models.ForeignKey(
+        Character,
+        on_delete=models.CASCADE,
+        related_name="exit_unlocks",
+    )
+    room_exit = models.ForeignKey(
+        RoomExit,
+        on_delete=models.CASCADE,
+        related_name="character_unlocks",
+    )
+    expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Null = permanent for this character.",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["character", "room_exit"],
+                name="qff_charexitunlock_uniq",
             ),
         ]

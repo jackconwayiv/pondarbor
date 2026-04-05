@@ -1,7 +1,20 @@
 /** QFF API client — same auth pattern as clicker/whatif. */
 
-function apiBase(): string {
-  return import.meta.env.VITE_API_BASE_URL ?? "";
+/**
+ * Resolve QFF API paths for `fetch`. Supports:
+ * - unset env → same-origin `/api/v1/qff/...`
+ * - `https://host` → `https://host/api/v1/qff/...`
+ * - path prefix `/proxy` → `/proxy/api/v1/qff/...`
+ */
+function qffJoinBase(path: string): string {
+  const raw = (import.meta.env.VITE_API_BASE_URL ?? "").trim();
+  const p = path.startsWith("/") ? path : `/${path}`;
+  if (!raw) return p;
+  if (/^https?:\/\//i.test(raw)) {
+    return `${raw.replace(/\/$/, "")}${p}`;
+  }
+  const prefix = raw.startsWith("/") ? raw : `/${raw}`;
+  return `${prefix.replace(/\/$/, "")}${p}`;
 }
 
 function authHeaders(accessToken: string | null): Record<string, string> {
@@ -31,6 +44,7 @@ export type QffExit = {
   direction: string;
   label: string;
   to_room_id: number;
+  is_blocked?: boolean;
 };
 
 export type QffAreaMapCell = {
@@ -68,7 +82,14 @@ export type QffSessionWithCharacter = {
     class_name: string;
     spawn_room: { id: number; name: string };
   };
-  room: { id: number; name: string; description: string; youSee: string[] };
+  room: {
+    id: number;
+    name: string;
+    description: string;
+    youSee: string[];
+    npcs?: Array<{ slug: string; name: string }>;
+    interactables?: Array<{ slug: string; name: string; kind: string }>;
+  };
   area: { id: number; name: string; theme: QffAreaTheme };
   exits: QffExit[];
   others_here: string[];
@@ -94,6 +115,7 @@ export type QffCharacterProfile = {
   name: string;
   level: number;
   xp: number;
+  gold: number;
   curHealth: number;
   maxHealth: number;
   curMana: number;
@@ -129,7 +151,7 @@ export type QffCommandResponse = {
 };
 
 export async function fetchQffSession(accessToken: string | null): Promise<QffSession> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/session/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/session/`), {
     method: "GET",
     headers: authHeaders(accessToken),
     credentials: "omit",
@@ -145,7 +167,7 @@ export async function createQffCharacter(
   accessToken: string | null,
   body: { name: string; character_class: string },
 ): Promise<QffSessionWithCharacter> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/character/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/character/`), {
     method: "POST",
     headers: authHeaders(accessToken),
     credentials: "omit",
@@ -159,7 +181,7 @@ export async function createQffCharacter(
 }
 
 export async function deleteQffCharacter(accessToken: string | null): Promise<void> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/character/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/character/`), {
     method: "DELETE",
     headers: authHeaders(accessToken),
     credentials: "omit",
@@ -175,7 +197,7 @@ export async function sendQffCommand(
   accessToken: string | null,
   line: string,
 ): Promise<QffCommandResponse> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/command/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/command/`), {
     method: "POST",
     headers: authHeaders(accessToken),
     credentials: "omit",
@@ -204,7 +226,7 @@ export type DmArea = {
 };
 
 export async function dmFetchAreas(accessToken: string | null): Promise<DmArea[]> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/dm/areas/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/areas/`), {
     headers: authHeaders(accessToken),
     credentials: "omit",
   });
@@ -225,7 +247,7 @@ export async function dmCreateArea(
     theme_accent?: string;
   },
 ): Promise<DmArea> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/dm/areas/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/areas/`), {
     method: "POST",
     headers: authHeaders(accessToken),
     credentials: "omit",
@@ -250,7 +272,7 @@ export async function dmCreateRoom(
     cell_y?: number;
   },
 ): Promise<{ id: number; name: string; slug: string; description: string; search_text: string }> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/dm/areas/${areaId}/rooms/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/areas/${areaId}/rooms/`), {
     method: "POST",
     headers: authHeaders(accessToken),
     credentials: "omit",
@@ -277,7 +299,7 @@ export async function dmPlaceRoomInCell(
   x: number,
   y: number,
 ): Promise<void> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/dm/areas/${areaId}/cells/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/areas/${areaId}/cells/`), {
     method: "POST",
     headers: authHeaders(accessToken),
     credentials: "omit",
@@ -306,7 +328,7 @@ export async function dmPatchArea(
     >
   >,
 ): Promise<DmArea> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/dm/areas/${areaId}/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/areas/${areaId}/`), {
     method: "PATCH",
     headers: authHeaders(accessToken),
     credentials: "omit",
@@ -343,7 +365,7 @@ export async function dmFetchAreaRoomsExportJson(
   accessToken: string | null,
   areaId: number,
 ): Promise<DmAreaRoomsJson> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/dm/areas/${areaId}/rooms-export/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/areas/${areaId}/rooms-export/`), {
     headers: authHeaders(accessToken),
     credentials: "omit",
   });
@@ -376,7 +398,7 @@ export async function dmPostAreaRoomsImportJson(
   areaId: number,
   payload: DmAreaRoomsJson,
 ): Promise<{ ok: boolean; area_id: number; rooms_imported: number }> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/dm/areas/${areaId}/rooms-import/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/areas/${areaId}/rooms-import/`), {
     method: "POST",
     headers: authHeaders(accessToken),
     credentials: "omit",
@@ -390,7 +412,7 @@ export async function dmFetchCells(
   accessToken: string | null,
   areaId: number,
 ): Promise<Array<{ id: number; x: number; y: number; room_id: number; room_name: string }>> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/dm/areas/${areaId}/cells/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/areas/${areaId}/cells/`), {
     headers: authHeaders(accessToken),
     credentials: "omit",
   });
@@ -415,7 +437,7 @@ export type DmRoom = {
 };
 
 export async function dmFetchRooms(accessToken: string | null, areaId: number): Promise<DmRoom[]> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/dm/areas/${areaId}/rooms/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/areas/${areaId}/rooms/`), {
     headers: authHeaders(accessToken),
     credentials: "omit",
   });
@@ -428,7 +450,7 @@ export async function dmPatchRoom(
   roomId: number,
   body: Partial<Pick<DmRoom, "name" | "description" | "search_text" | "search_chance">>,
 ): Promise<void> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/dm/rooms/${roomId}/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/rooms/${roomId}/`), {
     method: "PATCH",
     headers: authHeaders(accessToken),
     credentials: "omit",
@@ -438,7 +460,7 @@ export async function dmPatchRoom(
 }
 
 export async function dmDeleteRoom(accessToken: string | null, roomId: number): Promise<void> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/dm/rooms/${roomId}/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/rooms/${roomId}/`), {
     method: "DELETE",
     headers: authHeaders(accessToken),
     credentials: "omit",
@@ -453,6 +475,20 @@ export type DmExit = {
   to_room_name: string;
   is_hidden: boolean;
   lock_kind: string;
+  key_item_id: number | null;
+  key_item_slug: string | null;
+  key_unlock_scope: string;
+  device_interactable_id: number | null;
+  quest_required_state_id: number | null;
+  quest_required_quest_slug: string | null;
+  quest_required_state_slug: string | null;
+  unlock_duration_seconds: number;
+  reveal_item_id: number | null;
+  reveal_item_slug: string | null;
+  reveal_quest_state_id: number | null;
+  reveal_quest_id: number | null;
+  reveal_quest_slug: string | null;
+  reveal_quest_state_slug: string | null;
 };
 
 /** All exits from rooms in an area (map overlay). */
@@ -464,7 +500,7 @@ export async function dmFetchAreaExits(
   accessToken: string | null,
   areaId: number,
 ): Promise<DmAreaExit[]> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/dm/areas/${areaId}/exits/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/areas/${areaId}/exits/`), {
     headers: authHeaders(accessToken),
     credentials: "omit",
   });
@@ -476,7 +512,7 @@ export async function dmFetchExits(
   accessToken: string | null,
   roomId: number,
 ): Promise<DmExit[]> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/dm/rooms/${roomId}/exits/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/rooms/${roomId}/exits/`), {
     headers: authHeaders(accessToken),
     credentials: "omit",
   });
@@ -494,7 +530,7 @@ export async function dmCreateExit(
     lock_kind?: string;
   },
 ): Promise<void> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/dm/rooms/${roomId}/exits/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/rooms/${roomId}/exits/`), {
     method: "POST",
     headers: authHeaders(accessToken),
     credentials: "omit",
@@ -504,7 +540,7 @@ export async function dmCreateExit(
 }
 
 export async function dmDeleteExit(accessToken: string | null, exitId: number): Promise<void> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/dm/exits/${exitId}/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/exits/${exitId}/`), {
     method: "DELETE",
     headers: authHeaders(accessToken),
     credentials: "omit",
@@ -512,12 +548,41 @@ export async function dmDeleteExit(accessToken: string | null, exitId: number): 
   if (!response.ok) throw new Error(await response.text());
 }
 
+export async function dmPatchExit(
+  accessToken: string | null,
+  exitId: number,
+  body: Partial<{
+    is_hidden: boolean;
+    lock_kind: string;
+    direction: string;
+    to_room_id: number;
+    key_item_id: number | null;
+    key_unlock_scope: string;
+    device_interactable_id: number | null;
+    quest_required_state_id: number | null;
+    unlock_duration_seconds: number;
+    reveal_item_id: number | null;
+    reveal_quest_state_id: number | null;
+  }>,
+): Promise<DmExit> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/exits/${exitId}/`), {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmExit;
+}
+
 export type DmItem = {
   id: number;
   slug: string;
   name: string;
   item_type: string;
-  slot: string;
+  /** Null = cannot be equipped (quest item, consumable without wear slot, etc.). */
+  slot: string | null;
+  consumable: boolean;
   cost: number;
   description: string;
   lore: string;
@@ -546,7 +611,7 @@ export type DmItem = {
 };
 
 export async function dmFetchItems(accessToken: string | null): Promise<DmItem[]> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/dm/items/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/items/`), {
     headers: authHeaders(accessToken),
     credentials: "omit",
   });
@@ -556,9 +621,9 @@ export async function dmFetchItems(accessToken: string | null): Promise<DmItem[]
 
 export async function dmCreateItem(
   accessToken: string | null,
-  body: Partial<DmItem> & { slug: string; name: string; slot: string },
+  body: Partial<DmItem> & { slug: string; name: string },
 ): Promise<DmItem> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/dm/items/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/items/`), {
     method: "POST",
     headers: authHeaders(accessToken),
     credentials: "omit",
@@ -573,7 +638,7 @@ export async function dmPatchItem(
   itemId: number,
   body: Partial<DmItem>,
 ): Promise<DmItem> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/dm/items/${itemId}/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/items/${itemId}/`), {
     method: "PATCH",
     headers: authHeaders(accessToken),
     credentials: "omit",
@@ -584,7 +649,76 @@ export async function dmPatchItem(
 }
 
 export async function dmDeleteItem(accessToken: string | null, itemId: number): Promise<void> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/dm/items/${itemId}/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/items/${itemId}/`), {
+    method: "DELETE",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (response.status === 204) return;
+  if (!response.ok) throw new Error(await response.text());
+}
+
+/** Unowned item instances lying on the floor of a room (players use `get` to pick up). */
+export type DmFloorItem = {
+  id: number;
+  item_id: number;
+  item_slug: string;
+  item_name: string;
+  nickname: string;
+  visible_quest_state_id: number | null;
+  visible_quest_id: number | null;
+  visible_quest_slug: string | null;
+  visible_quest_state_slug: string | null;
+};
+
+export async function dmFetchRoomFloorItems(
+  accessToken: string | null,
+  roomId: number,
+): Promise<DmFloorItem[]> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/rooms/${roomId}/floor-items/`), {
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmFloorItem[];
+}
+
+export async function dmCreateRoomFloorItem(
+  accessToken: string | null,
+  roomId: number,
+  body: {
+    item_id: number;
+    nickname?: string;
+    visible_quest_state_id?: number | null;
+  },
+): Promise<DmFloorItem> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/rooms/${roomId}/floor-items/`), {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmFloorItem;
+}
+
+export async function dmPatchFloorItem(
+  accessToken: string | null,
+  instanceId: number,
+  body: { visible_quest_state_id?: number | null },
+): Promise<DmFloorItem> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/floor-items/${instanceId}/`), {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmFloorItem;
+}
+
+export async function dmDeleteFloorItem(accessToken: string | null, instanceId: number): Promise<void> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/floor-items/${instanceId}/`), {
     method: "DELETE",
     headers: authHeaders(accessToken),
     credentials: "omit",
@@ -607,7 +741,7 @@ export type DmCharacterClass = {
 };
 
 export async function dmFetchClasses(accessToken: string | null): Promise<DmCharacterClass[]> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/dm/classes/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/classes/`), {
     headers: authHeaders(accessToken),
     credentials: "omit",
   });
@@ -619,7 +753,7 @@ export async function dmCreateClass(
   accessToken: string | null,
   body: Partial<DmCharacterClass> & { slug: string; name: string },
 ): Promise<DmCharacterClass> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/dm/classes/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/classes/`), {
     method: "POST",
     headers: authHeaders(accessToken),
     credentials: "omit",
@@ -634,7 +768,7 @@ export async function dmPatchClass(
   classId: number,
   body: Partial<DmCharacterClass> & { extra_data?: Record<string, unknown> },
 ): Promise<DmCharacterClass> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/dm/classes/${classId}/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/classes/${classId}/`), {
     method: "PATCH",
     headers: authHeaders(accessToken),
     credentials: "omit",
@@ -645,11 +779,491 @@ export async function dmPatchClass(
 }
 
 export async function dmDeleteClass(accessToken: string | null, classId: number): Promise<void> {
-  const response = await fetch(`${apiBase()}/api/v1/qff/dm/classes/${classId}/`, {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/classes/${classId}/`), {
     method: "DELETE",
     headers: authHeaders(accessToken),
     credentials: "omit",
   });
   if (response.status === 204) return;
   if (!response.ok) throw new Error(await response.text());
+}
+
+function _downloadJsonBlob(data: unknown, filename: string): void {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export async function dmDownloadItemsJsonExport(accessToken: string | null): Promise<void> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/items-export/`), {
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) throw new Error(await response.text());
+  const data = await response.json();
+  _downloadJsonBlob(data, "qff-items.json");
+}
+
+export async function dmDownloadClassesJsonExport(accessToken: string | null): Promise<void> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/classes-export/`), {
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) throw new Error(await response.text());
+  const data = await response.json();
+  _downloadJsonBlob(data, "qff-classes.json");
+}
+
+export async function dmDownloadQuestWorldJsonExport(accessToken: string | null): Promise<void> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/quest-world-export/`), {
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) throw new Error(await response.text());
+  const data = await response.json();
+  _downloadJsonBlob(data, "qff-quest-world.json");
+}
+
+export type DmQuestSummary = { id: number; slug: string; name: string; state_count: number };
+
+export async function dmFetchQuests(accessToken: string | null): Promise<DmQuestSummary[]> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/quests/`), {
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmQuestSummary[];
+}
+
+export type DmQuestState = {
+  id: number;
+  slug: string;
+  name: string;
+  is_initial: boolean;
+  is_terminal: boolean;
+  sort_order: number;
+};
+
+export type DmQuestEffectRow = {
+  id: number;
+  kind: string;
+  amount: number;
+  item_id: number | null;
+  room_exit_id: number | null;
+  sort_order: number;
+};
+
+export type DmQuestTransitionRow = {
+  id: number;
+  from_state_id: number;
+  to_state_id: number;
+  requires_item_id: number | null;
+  sort_order: number;
+  effects: DmQuestEffectRow[];
+};
+
+export type DmQuestDetail = {
+  id: number;
+  slug: string;
+  name: string;
+  description: string;
+  states: DmQuestState[];
+  transitions: DmQuestTransitionRow[];
+};
+
+export async function dmFetchQuestDetail(
+  accessToken: string | null,
+  questId: number,
+): Promise<DmQuestDetail> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/quests/${questId}/`), {
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmQuestDetail;
+}
+
+export async function dmCreateQuest(
+  accessToken: string | null,
+  body: { slug: string; name: string; description?: string },
+): Promise<DmQuestDetail> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/quests/`), {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmQuestDetail;
+}
+
+export async function dmPatchQuest(
+  accessToken: string | null,
+  questId: number,
+  body: Partial<Pick<DmQuestDetail, "slug" | "name" | "description">>,
+): Promise<DmQuestDetail> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/quests/${questId}/`), {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmQuestDetail;
+}
+
+export async function dmDeleteQuest(accessToken: string | null, questId: number): Promise<void> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/quests/${questId}/`), {
+    method: "DELETE",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (response.status === 204) return;
+  if (!response.ok) throw new Error(await response.text());
+}
+
+export async function dmCreateQuestState(
+  accessToken: string | null,
+  questId: number,
+  body: {
+    slug: string;
+    name?: string;
+    is_initial?: boolean;
+    is_terminal?: boolean;
+    sort_order?: number;
+  },
+): Promise<DmQuestState> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/quests/${questId}/states/`), {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmQuestState;
+}
+
+export async function dmPatchQuestState(
+  accessToken: string | null,
+  stateId: number,
+  body: Partial<
+    Pick<DmQuestState, "slug" | "name" | "is_initial" | "is_terminal" | "sort_order">
+  >,
+): Promise<DmQuestState> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/quest-states/${stateId}/`), {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmQuestState;
+}
+
+export async function dmDeleteQuestState(accessToken: string | null, stateId: number): Promise<void> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/quest-states/${stateId}/`), {
+    method: "DELETE",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (response.status === 204) return;
+  if (!response.ok) throw new Error(await response.text());
+}
+
+export async function dmCreateQuestTransition(
+  accessToken: string | null,
+  questId: number,
+  body: {
+    from_state_id: number;
+    to_state_id: number;
+    requires_item_id?: number | null;
+    sort_order?: number;
+  },
+): Promise<DmQuestTransitionRow> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/quests/${questId}/transitions/`), {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmQuestTransitionRow;
+}
+
+export async function dmPatchQuestTransition(
+  accessToken: string | null,
+  transitionId: number,
+  body: Partial<
+    Pick<DmQuestTransitionRow, "from_state_id" | "to_state_id" | "requires_item_id" | "sort_order">
+  >,
+): Promise<DmQuestTransitionRow> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/quest-transitions/${transitionId}/`), {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmQuestTransitionRow;
+}
+
+export async function dmDeleteQuestTransition(
+  accessToken: string | null,
+  transitionId: number,
+): Promise<void> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/quest-transitions/${transitionId}/`), {
+    method: "DELETE",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (response.status === 204) return;
+  if (!response.ok) throw new Error(await response.text());
+}
+
+export async function dmCreateQuestEffect(
+  accessToken: string | null,
+  transitionId: number,
+  body: {
+    kind: string;
+    amount?: number;
+    item_id?: number | null;
+    room_exit_id?: number | null;
+    sort_order?: number;
+  },
+): Promise<DmQuestEffectRow> {
+  const response = await fetch(
+    qffJoinBase(`/api/v1/qff/dm/quest-transitions/${transitionId}/effects/`),
+    {
+      method: "POST",
+      headers: authHeaders(accessToken),
+      credentials: "omit",
+      body: JSON.stringify(body),
+    },
+  );
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmQuestEffectRow;
+}
+
+export async function dmPatchQuestEffect(
+  accessToken: string | null,
+  effectId: number,
+  body: Partial<
+    Pick<DmQuestEffectRow, "kind" | "amount" | "item_id" | "room_exit_id" | "sort_order">
+  >,
+): Promise<DmQuestEffectRow> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/quest-effects/${effectId}/`), {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmQuestEffectRow;
+}
+
+export async function dmDeleteQuestEffect(accessToken: string | null, effectId: number): Promise<void> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/quest-effects/${effectId}/`), {
+    method: "DELETE",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (response.status === 204) return;
+  if (!response.ok) throw new Error(await response.text());
+}
+
+export type DmNpcRow = {
+  id: number;
+  room_id: number;
+  slug: string;
+  name: string;
+  description: string;
+};
+
+export type DmNpcDialogue = {
+  id: number;
+  quest_id: number | null;
+  quest_state_id: number | null;
+  priority: number;
+  text: string;
+};
+
+export type DmNpcDetail = DmNpcRow & {
+  dialogues: DmNpcDialogue[];
+};
+
+/** Rooms from all areas, sorted by area name then room name (for NPC room picker). */
+export async function dmFetchAllDmRooms(
+  accessToken: string | null,
+): Promise<Array<{ id: number; name: string; area_id: number; area_name: string }>> {
+  const areas = await dmFetchAreas(accessToken);
+  const chunks = await Promise.all(
+    areas.map(async (a) => {
+      const rooms = await dmFetchRooms(accessToken, a.id);
+      return rooms.map((r) => ({
+        id: r.id,
+        name: r.name,
+        area_id: a.id,
+        area_name: a.name,
+      }));
+    }),
+  );
+  return chunks.flat().sort((x, y) => {
+    const c = x.area_name.localeCompare(y.area_name);
+    if (c !== 0) return c;
+    return x.name.localeCompare(y.name);
+  });
+}
+
+export async function dmFetchNpcs(
+  accessToken: string | null,
+  roomId?: number,
+): Promise<DmNpcRow[]> {
+  let path = qffJoinBase(`/api/v1/qff/dm/npcs/`);
+  if (roomId != null) {
+    path += `?${new URLSearchParams({ room_id: String(roomId) })}`;
+  }
+  const response = await fetch(path, {
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmNpcRow[];
+}
+
+export async function dmFetchNpcDetail(
+  accessToken: string | null,
+  npcId: number,
+): Promise<DmNpcDetail> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/npcs/${npcId}/`), {
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmNpcDetail;
+}
+
+export async function dmCreateNpc(
+  accessToken: string | null,
+  body: {
+    room_id: number;
+    slug: string;
+    name: string;
+    description?: string;
+  },
+): Promise<DmNpcRow> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/npcs/`), {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmNpcRow;
+}
+
+export async function dmPatchNpc(
+  accessToken: string | null,
+  npcId: number,
+  body: Partial<Pick<DmNpcRow, "room_id" | "slug" | "name" | "description">>,
+): Promise<DmNpcDetail> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/npcs/${npcId}/`), {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmNpcDetail;
+}
+
+export async function dmDeleteNpc(accessToken: string | null, npcId: number): Promise<void> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/npcs/${npcId}/`), {
+    method: "DELETE",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (response.status === 204) return;
+  if (!response.ok) throw new Error(await response.text());
+}
+
+export async function dmCreateNpcDialogue(
+  accessToken: string | null,
+  npcId: number,
+  body: {
+    text: string;
+    priority?: number;
+    quest_id?: number | null;
+    quest_state_id?: number | null;
+  },
+): Promise<DmNpcDialogue> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/npcs/${npcId}/dialogues/`), {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmNpcDialogue;
+}
+
+export async function dmPatchNpcDialogue(
+  accessToken: string | null,
+  dialogueId: number,
+  body: Partial<Pick<DmNpcDialogue, "text" | "priority" | "quest_id" | "quest_state_id">>,
+): Promise<DmNpcDialogue> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/npc-dialogues/${dialogueId}/`), {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmNpcDialogue;
+}
+
+export async function dmDeleteNpcDialogue(
+  accessToken: string | null,
+  dialogueId: number,
+): Promise<void> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/npc-dialogues/${dialogueId}/`), {
+    method: "DELETE",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (response.status === 204) return;
+  if (!response.ok) throw new Error(await response.text());
+}
+
+export type DmInteractableRow = {
+  id: number;
+  room_id: number;
+  slug: string;
+  name: string;
+  kind: string;
+  inspect_text: string;
+  quest_transition_id: number | null;
+  unlocks_exit_id: number | null;
+};
+
+export async function dmFetchInteractables(
+  accessToken: string | null,
+  roomId?: number,
+): Promise<DmInteractableRow[]> {
+  let path = qffJoinBase(`/api/v1/qff/dm/interactables/`);
+  if (roomId != null) {
+    path += `?${new URLSearchParams({ room_id: String(roomId) })}`;
+  }
+  const response = await fetch(path, {
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmInteractableRow[];
 }

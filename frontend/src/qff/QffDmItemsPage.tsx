@@ -8,6 +8,7 @@ import {
   NativeSelectField,
   NativeSelectRoot,
   Stack,
+  Switch,
   Text,
   Textarea,
 } from "@chakra-ui/react";
@@ -25,6 +26,7 @@ import {
 } from "./api";
 
 const SLOTS = [
+  "",
   "head",
   "main_hand",
   "off_hand",
@@ -44,7 +46,8 @@ function emptyForm(): Partial<DmItem> {
     slug: "",
     name: "",
     item_type: "",
-    slot: "head",
+    slot: "",
+    consumable: false,
     cost: 0,
     description: "",
     lore: "",
@@ -95,7 +98,7 @@ export default function QffDmItemsPage() {
 
   const selectItem = (it: DmItem) => {
     setEditingId(it.id);
-    setForm({ ...it });
+    setForm({ ...it, slot: it.slot ?? "", consumable: it.consumable ?? false });
   };
 
   const newItem = () => {
@@ -108,13 +111,23 @@ export default function QffDmItemsPage() {
     const token = await getApiAccessToken();
     try {
       if (editingId == null) {
-        if (!form.slug?.trim() || !form.name?.trim() || !form.slot) {
-          setErr("slug, name, and slot are required.");
+        if (!form.slug?.trim() || !form.name?.trim()) {
+          setErr("slug and name are required.");
           return;
         }
-        await dmCreateItem(token, form as DmItem & { slug: string; name: string; slot: string });
+        await dmCreateItem(token, {
+          ...form,
+          slug: form.slug!.trim(),
+          name: form.name!.trim(),
+          slot: form.slot?.trim() ? form.slot : null,
+          consumable: !!form.consumable,
+        });
       } else {
-        await dmPatchItem(token, editingId, form);
+        await dmPatchItem(token, editingId, {
+          ...form,
+          slot: form.slot?.trim() ? form.slot : null,
+          consumable: !!form.consumable,
+        });
       }
       await load();
     } catch (e) {
@@ -205,7 +218,7 @@ export default function QffDmItemsPage() {
             >
               <Text fontWeight="medium">{it.name}</Text>
               <Text fontSize="xs" color="#888">
-                {it.slug} · {it.slot}
+                {it.slug} · {it.slot ?? "—"}
               </Text>
             </Button>
           ))}
@@ -232,21 +245,54 @@ export default function QffDmItemsPage() {
                 bg="#222"
               />
             </Field.Root>
-            <Field.Root>
-              <Field.Label>Slot</Field.Label>
+          </Flex>
+          <Flex
+            gap={6}
+            flexWrap="wrap"
+            align="flex-end"
+            borderWidth="1px"
+            borderRadius="md"
+            borderColor="#404040"
+            p={3}
+            bg="#1a1a1a"
+          >
+            <Field.Root flex="0 1 220px" minW="180px">
+              <Field.Label>Equip slot</Field.Label>
+              <Text fontSize="xs" color="#888" mb={1}>
+                None = not equippable (quest items, inventory-only gear, etc.).
+              </Text>
               <NativeSelectRoot>
                 <NativeSelectField
-                  value={form.slot ?? "head"}
+                  value={form.slot ?? ""}
                   onChange={(e) => setForm((f) => ({ ...f, slot: e.target.value }))}
                   bg="#222"
                 >
                   {SLOTS.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
+                    <option key={s || "none"} value={s}>
+                      {s === "" ? "None — not equippable" : s}
                     </option>
                   ))}
                 </NativeSelectField>
               </NativeSelectRoot>
+            </Field.Root>
+            <Field.Root flex="1" minW="200px">
+              <Field.Label>Consumable</Field.Label>
+              <Text fontSize="xs" color="#888" mb={1}>
+                When on, eat / drink / use work from inventory for this template.
+              </Text>
+              <Switch.Root
+                checked={!!form.consumable}
+                onCheckedChange={(d) => setForm((f) => ({ ...f, consumable: d.checked }))}
+                colorPalette="green"
+              >
+                <Switch.HiddenInput />
+                <Switch.Control>
+                  <Switch.Thumb />
+                </Switch.Control>
+                <Switch.Label fontSize="sm">
+                  {form.consumable ? "Yes — can be consumed" : "No — not consumable"}
+                </Switch.Label>
+              </Switch.Root>
             </Field.Root>
           </Flex>
           <Field.Root>

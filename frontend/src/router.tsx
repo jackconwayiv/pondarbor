@@ -24,6 +24,9 @@ import QffDmLobbyPage from "./qff/QffDmLobbyPage";
 import QffDmPage from "./qff/QffDmPage";
 import QffDmItemsPage from "./qff/QffDmItemsPage";
 import QffDmClassesPage from "./qff/QffDmClassesPage";
+import QffDmInteractablesPage from "./qff/QffDmInteractablesPage";
+import QffDmNpcsPage from "./qff/QffDmNpcsPage";
+import QffDmQuestsPage from "./qff/QffDmQuestsPage";
 
 export const router = createBrowserRouter([
   {
@@ -81,6 +84,9 @@ export const router = createBrowserRouter([
           { path: "dm/world", element: <QffDmPage /> },
           { path: "dm/items", element: <QffDmItemsPage /> },
           { path: "dm/classes", element: <QffDmClassesPage /> },
+          { path: "dm/quests", element: <QffDmQuestsPage /> },
+          { path: "dm/npcs", element: <QffDmNpcsPage /> },
+          { path: "dm/interactables", element: <QffDmInteractablesPage /> },
         ],
       },
       {

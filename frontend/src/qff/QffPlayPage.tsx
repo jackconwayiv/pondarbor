@@ -278,17 +278,30 @@ export default function QffPlayPage() {
           Exits:{" "}
         </Text>
         <Text as="span" color={t.accent}>
-          {exits.length === 0 ? "none obvious" : exits.map((e) => e.label).join(", ")}
+          {exits.length === 0
+            ? "none obvious"
+            : exits
+                .map((e) => (e.is_blocked ? `${e.label} (blocked)` : e.label))
+                .join(", ")}
         </Text>
       </Text>
-      {others_here.length > 0 && (
+      {(others_here.length > 0 || (room.npcs?.length ?? 0) > 0) && (
         <Text fontSize="sm">
           <Text as="span" color={t.secondary}>
             Also here:{" "}
           </Text>
-          <Text as="span" color={t.accent}>
-            {others_here.join(", ")}
-          </Text>
+          {others_here.map((name, i) => (
+            <Text as="span" key={`oh-p-${i}`} fontWeight="bold" color={t.accent}>
+              {name}
+              {i < others_here.length - 1 || (room.npcs?.length ?? 0) > 0 ? ", " : ""}
+            </Text>
+          ))}
+          {room.npcs?.map((n, i) => (
+            <Text as="span" key={n.slug} color={t.accent}>
+              {n.name}
+              {i < (room.npcs!.length - 1) ? ", " : ""}
+            </Text>
+          ))}
         </Text>
       )}
       {room.youSee.length > 0 && (
@@ -394,7 +407,8 @@ export default function QffPlayPage() {
         </Text>
       </Text>
       <Text fontSize="xs" color={HUD_PANEL_TEXT_MUTED} textAlign="center" mt={1}>
-        HP {cp.curHealth}/{cp.maxHealth} · MP {cp.curMana}/{cp.maxMana} · XP {cp.xp}
+        HP {cp.curHealth}/{cp.maxHealth} · MP {cp.curMana}/{cp.maxMana} · XP {cp.xp} · Gold{" "}
+        {cp.gold ?? 0}
       </Text>
       <Grid templateColumns="1fr 1fr" gap={3} mt={2} w="100%" alignItems="start">
         <GridItem minW={0}>

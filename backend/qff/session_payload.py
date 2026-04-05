@@ -6,6 +6,9 @@ from datetime import timedelta
 from django.utils import timezone
 
 from qff.constants import PRESENCE_MINUTES
+from qff.exploration import sync_seen_exits_for_character
+from qff.exits import exit_is_passable, exit_is_visible_to_character
+from qff.quest_engine import floor_item_visible_to_character
 from qff.game_helpers import (
     display_name_for_instance,
     modified_stats,
@@ -17,7 +20,9 @@ from qff.models import (
     Character,
     CharacterExitSeen,
     CharacterRoomVisit,
+    Interactable,
     ItemInstance,
+    Npc,
     RoomBroadcast,
     RoomExit,
 )
@@ -81,6 +86,7 @@ def consume_room_broadcasts(character) -> list[str]:
 
 def build_area_map(character) -> dict:
     """Visited rooms per area — each grid uses that area's dimensions (multi-area travel)."""
+    sync_seen_exits_for_character(character)
     visited_ids = set(
         CharacterRoomVisit.objects.filter(character=character).values_list(
             "room_id", flat=True
@@ -190,16 +196,29 @@ def _inventory_item_labels(character) -> list[str]:
     return out
 
 
-def _room_floor_labels(room_id: int) -> list[str]:
-    return [
-        display_name_for_instance(inst)
-        for inst in ItemInstance.objects.filter(
+def _room_floor_labels(room_id: int, character) -> list[str]:
+    out: list[str] = []
+    for inst in (
+        ItemInstance.objects.filter(
             room_id=room_id,
             owner_character__isnull=True,
         )
-        .select_related("item")
+        .select_related("item", "visible_quest_state")
         .order_by("id")
+    ):
+        if not floor_item_visible_to_character(character, inst):
+            continue
+        out.append(display_name_for_instance(inst))
+    return out
+
+
+def _room_you_see_labels(room_id: int, character) -> list[str]:
+    """Interactable names first, then floor item labels (matches play HUD order)."""
+    interact = [
+        o.name
+        for o in Interactable.objects.filter(room_id=room_id).order_by("name")
     ]
+    return interact + _room_floor_labels(room_id, character)
 
 
 def build_character_profile(character) -> dict:
@@ -218,6 +237,7 @@ def build_character_profile(character) -> dict:
         "name": character.name,
         "level": character.level,
         "xp": character.xp,
+        "gold": character.gold,
         "curHealth": character.cur_health,
         "maxHealth": character.max_health,
         "curMana": character.cur_mana,
@@ -252,16 +272,23 @@ def build_session_for_character(character) -> dict:
     exits = []
     for ex in (
         RoomExit.objects.filter(from_room=room)
-        .select_related("to_room")
+        .select_related(
+            "to_room",
+            "quest_required_state",
+            "key_item",
+            "reveal_item",
+            "reveal_quest_state",
+        )
         .order_by("direction")
     ):
-        if ex.is_hidden:
+        if not exit_is_visible_to_character(character, ex):
             continue
         exits.append(
             {
                 "direction": ex.direction,
                 "label": ex.get_direction_display(),
                 "to_room_id": ex.to_room_id,
+                "is_blocked": not exit_is_passable(character, ex),
             }
         )
 
@@ -283,7 +310,15 @@ def build_session_for_character(character) -> dict:
             "id": room.id,
             "name": room.name,
             "description": room.description,
-            "youSee": _room_floor_labels(room.id),
+            "youSee": _room_you_see_labels(room.id, character),
+            "npcs": [
+                {"slug": n.slug, "name": n.name}
+                for n in Npc.objects.filter(room_id=room.id).order_by("name")
+            ],
+            "interactables": [
+                {"slug": o.slug, "name": o.name, "kind": o.kind}
+                for o in Interactable.objects.filter(room_id=room.id).order_by("name")
+            ],
         },
         "area": {
             "id": area.id,

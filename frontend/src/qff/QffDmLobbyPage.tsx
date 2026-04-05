@@ -2,10 +2,15 @@ import { Box, Heading, Text } from "@chakra-ui/react";
 import { useNavigate } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
+import {
+  dmDownloadClassesJsonExport,
+  dmDownloadItemsJsonExport,
+  dmDownloadQuestWorldJsonExport,
+} from "./api";
 
 export default function QffDmLobbyPage() {
   const navigate = useNavigate();
-  const { isAuthenticated, sessionUser, isLoading } = useAppSession();
+  const { isAuthenticated, sessionUser, isLoading, getApiAccessToken } = useAppSession();
   const isStaff = !!sessionUser?.user?.is_staff;
 
   if (isLoading) {
@@ -63,6 +68,50 @@ export default function QffDmLobbyPage() {
         <Text mt={2} fontSize="sm" color="#889977">
           Name, description, priority stats, chest + main starting items, and extra JSON for future spells.
         </Text>
+      </Box>
+      <Box mb={8}>
+        <PondButton onClick={() => navigate("/qff/dm/quests")}>Quests</PondButton>
+        <Text mt={2} fontSize="sm" color="#889977">
+          Quest states, transitions, and effects (list view; full authoring via API for now).
+        </Text>
+      </Box>
+      <Box mb={8}>
+        <PondButton onClick={() => navigate("/qff/dm/npcs")}>NPCs</PondButton>
+        <Text mt={2} fontSize="sm" color="#889977">
+          Per-room NPCs and dialogue bindings.
+        </Text>
+      </Box>
+      <Box mb={8}>
+        <PondButton onClick={() => navigate("/qff/dm/interactables")}>Interactables</PondButton>
+        <Text mt={2} fontSize="sm" color="#889977">
+          Signs, levers, chests, and exit unlock links.
+        </Text>
+      </Box>
+      <Box mb={8}>
+        <Text mb={2} fontSize="sm" color="#889977">
+          Export JSON (backup / migration)
+        </Text>
+        <PondButton
+          onClick={() =>
+            getApiAccessToken().then((t) => dmDownloadItemsJsonExport(t))
+          }
+        >
+          Download all items JSON
+        </PondButton>{" "}
+        <PondButton
+          onClick={() =>
+            getApiAccessToken().then((t) => dmDownloadClassesJsonExport(t))
+          }
+        >
+          Download all classes JSON
+        </PondButton>{" "}
+        <PondButton
+          onClick={() =>
+            getApiAccessToken().then((t) => dmDownloadQuestWorldJsonExport(t))
+          }
+        >
+          Download quest world JSON
+        </PondButton>
       </Box>
       <Box
         as="button"

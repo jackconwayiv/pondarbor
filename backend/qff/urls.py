@@ -1,6 +1,6 @@
 from django.urls import path
 
-from qff import views
+from qff import staff_content, views
 
 urlpatterns = [
     path("session/", views.session_view),
@@ -15,10 +15,35 @@ urlpatterns = [
     path("dm/cells/<int:pk>/", views.dm_cell_detail),
     path("dm/areas/<int:area_id>/rooms/", views.dm_room_list_create),
     path("dm/rooms/<int:pk>/", views.dm_room_detail),
+    path("dm/rooms/<int:room_id>/floor-items/", views.dm_room_floor_items),
+    path("dm/floor-items/<int:pk>/", views.dm_floor_item_detail),
     path("dm/rooms/<int:room_id>/exits/", views.dm_exit_list_create),
     path("dm/exits/<int:pk>/", views.dm_exit_detail),
     path("dm/items/", views.dm_item_list_create),
     path("dm/items/<int:pk>/", views.dm_item_detail),
     path("dm/classes/", views.dm_class_list_create),
     path("dm/classes/<int:pk>/", views.dm_class_detail),
+    path("dm/items-export/", staff_content.dm_items_export_json),
+    path("dm/classes-export/", staff_content.dm_classes_export_json),
+    path("dm/quest-world-export/", staff_content.dm_quest_world_export_json),
+    path("dm/quests/", staff_content.dm_quest_list_create),
+    path("dm/quests/<int:pk>/", staff_content.dm_quest_detail),
+    path("dm/quests/<int:quest_id>/states/", staff_content.dm_quest_state_create),
+    path("dm/quest-states/<int:pk>/", staff_content.dm_quest_state_detail),
+    path(
+        "dm/quests/<int:quest_id>/transitions/",
+        staff_content.dm_quest_transition_create,
+    ),
+    path("dm/quest-transitions/<int:pk>/", staff_content.dm_quest_transition_detail),
+    path(
+        "dm/quest-transitions/<int:transition_id>/effects/",
+        staff_content.dm_quest_effect_create,
+    ),
+    path("dm/quest-effects/<int:pk>/", staff_content.dm_quest_effect_detail),
+    path("dm/npcs/", staff_content.dm_npc_list_create),
+    path("dm/npcs/<int:pk>/", staff_content.dm_npc_detail),
+    path("dm/npcs/<int:npc_id>/dialogues/", staff_content.dm_npc_dialogue_create),
+    path("dm/npc-dialogues/<int:pk>/", staff_content.dm_npc_dialogue_detail),
+    path("dm/interactables/", staff_content.dm_interactable_list_create),
+    path("dm/interactables/<int:pk>/", staff_content.dm_interactable_detail),
 ]

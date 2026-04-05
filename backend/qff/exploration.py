@@ -7,6 +7,7 @@ from django.db.models import F, Max
 from django.utils import timezone
 
 from qff.constants import FLOOR_ITEM_MIN_AGE_BEFORE_DELETE_MINUTES
+from qff.exits import exit_is_visible_to_character
 from qff.models import (
     Character,
     CharacterExitSeen,
@@ -27,16 +28,20 @@ def mark_room_visited(character: Character, room_id: int) -> None:
     )
 
 
-def mark_visible_exits_seen(character: Character, room_id: int) -> None:
-    exits = RoomExit.objects.filter(
-        from_room_id=room_id,
-        is_hidden=False,
-    ).values_list("id", flat=True)
-    for eid in exits:
-        CharacterExitSeen.objects.get_or_create(
-            character=character,
-            room_exit_id=eid,
-        )
+def sync_seen_exits_for_character(character: Character) -> None:
+    """Mark exits the character can currently see (including conditionally revealed)."""
+    visited = CharacterRoomVisit.objects.filter(character=character).values_list(
+        "room_id", flat=True
+    )
+    for ex in RoomExit.objects.filter(from_room_id__in=visited).select_related(
+        "reveal_item",
+        "reveal_quest_state",
+    ):
+        if exit_is_visible_to_character(character, ex):
+            CharacterExitSeen.objects.get_or_create(
+                character=character,
+                room_exit=ex,
+            )
 
 
 @transaction.atomic
@@ -60,7 +65,7 @@ def on_leave_room(room_id: int) -> None:
 @transaction.atomic
 def on_enter_room(character: Character, room_id: int) -> None:
     mark_room_visited(character, room_id)
-    mark_visible_exits_seen(character, room_id)
+    sync_seen_exits_for_character(character)
     max_bid = RoomBroadcast.objects.filter(room_id=room_id).aggregate(m=Max("id"))["m"]
     character.last_room_broadcast_id = int(max_bid or 0)
     character.save(update_fields=["last_room_broadcast_id", "updated_at"])

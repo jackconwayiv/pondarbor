@@ -35,6 +35,14 @@ class ParsedGet:
 
 
 @dataclass
+class ParsedConsumeItem:
+    """Eat / drink / use-on-item (inventory consumable)."""
+
+    verb: str  # eat | drink | use
+    target: str
+
+
+@dataclass
 class ParsedEquip:
     target: str
 
@@ -47,6 +55,17 @@ class ParsedUnequip:
 @dataclass
 class ParsedLookInspect:
     verb: str  # "look" | "inspect"
+    target: str
+
+
+@dataclass
+class ParsedTalk:
+    target: str
+
+
+@dataclass
+class ParsedUse:
+    verb: str  # use | pull | push | open
     target: str
 
 
@@ -127,6 +146,40 @@ def parse_command(line: str):
         text = _strip_say_quotes(n[4:].strip())
         return ParsedSay(text=text[:SAY_MAX_LEN])
 
+    # talk / speak / greet
+    if low.startswith("talk to "):
+        return ParsedTalk(target=n[8:].strip())
+    if low.startswith("talk "):
+        return ParsedTalk(target=n[5:].strip())
+    if low == "talk":
+        return ParsedTalk(target="")
+    if low.startswith("speak to "):
+        return ParsedTalk(target=n[9:].strip())
+    if low.startswith("speak "):
+        return ParsedTalk(target=n[6:].strip())
+    if low.startswith("greet "):
+        return ParsedTalk(target=n[6:].strip())
+
+    # eat / drink (before generic "use")
+    if low.startswith("eat "):
+        return ParsedConsumeItem(verb="eat", target=n[4:].strip())
+    if low == "eat":
+        return ParsedConsumeItem(verb="eat", target="")
+    if low.startswith("drink "):
+        return ParsedConsumeItem(verb="drink", target=n[6:].strip())
+    if low == "drink":
+        return ParsedConsumeItem(verb="drink", target="")
+
+    # use / pull / push / open
+    if low.startswith("use "):
+        return ParsedUse(verb="use", target=n[4:].strip())
+    if low.startswith("pull "):
+        return ParsedUse(verb="pull", target=n[5:].strip())
+    if low.startswith("push "):
+        return ParsedUse(verb="push", target=n[5:].strip())
+    if low.startswith("open "):
+        return ParsedUse(verb="open", target=n[5:].strip())
+
     # look / inspect
     if low.startswith("look at "):
         return ParsedLookInspect(verb="look", target=n[8:].strip())
@@ -153,6 +206,10 @@ def parse_command(line: str):
     if low.startswith("get "):
         return ParsedGet(target=n[4:].strip())
     if low == "get":
+        return ParsedGet(target="")
+    if low.startswith("take "):
+        return ParsedGet(target=n[5:].strip())
+    if low == "take":
         return ParsedGet(target="")
     if low.startswith("equip "):
         return ParsedEquip(target=n[6:].strip())

@@ -22,15 +22,23 @@ import {
   dmCreateArea,
   dmCreateExit,
   dmCreateRoom,
+  dmCreateRoomFloorItem,
   dmDeleteExit,
+  dmDeleteFloorItem,
   dmDeleteRoom,
+  dmPatchFloorItem,
   dmDownloadAreaRoomsJson,
   dmFetchAreaExits,
   dmFetchAreas,
   dmFetchCells,
   dmFetchExits,
+  dmFetchItems,
+  dmFetchQuestDetail,
+  dmFetchQuests,
+  dmFetchRoomFloorItems,
   dmFetchRooms,
   dmPatchArea,
+  dmPatchExit,
   dmPatchRoom,
   dmPlaceRoomInCell,
   dmPostAreaRoomsImportJson,
@@ -38,6 +46,10 @@ import {
   type DmAreaExit,
   type DmAreaRoomsJson,
   type DmExit,
+  type DmFloorItem,
+  type DmItem,
+  type DmQuestDetail,
+  type DmQuestSummary,
   type DmRoom,
 } from "./api";
 
@@ -207,6 +219,17 @@ export default function QffDmPage() {
   >([]);
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
   const [exits, setExits] = useState<DmExit[]>([]);
+  const [floorItems, setFloorItems] = useState<DmFloorItem[]>([]);
+  const [itemTemplates, setItemTemplates] = useState<DmItem[]>([]);
+  const [dmQuests, setDmQuests] = useState<DmQuestSummary[]>([]);
+  const [questDetailById, setQuestDetailById] = useState<Map<number, DmQuestDetail>>(
+    () => new Map(),
+  );
+  const revealQuestFetchedRef = useRef<Set<number>>(new Set());
+  const [newFloorItemId, setNewFloorItemId] = useState<string>("");
+  const [newFloorNickname, setNewFloorNickname] = useState<string>("");
+  const [newFloorVisibleQuestId, setNewFloorVisibleQuestId] = useState<string>("");
+  const [newFloorVisibleStateId, setNewFloorVisibleStateId] = useState<string>("");
   /** Exits from every room in the selected area — drives map edge markers. */
   const [areaExits, setAreaExits] = useState<DmAreaExit[]>([]);
   const [panelName, setPanelName] = useState("");
@@ -254,6 +277,12 @@ export default function QffDmPage() {
       ),
     [exitDestRooms, exitDestAreaId, selectedRoomId],
   );
+
+  const newFloorQuestDetailForAdd = useMemo(() => {
+    const qid = parseInt(newFloorVisibleQuestId, 10);
+    if (!Number.isFinite(qid)) return undefined;
+    return questDetailById.get(qid);
+  }, [newFloorVisibleQuestId, questDetailById]);
 
   useEffect(() => {
     if (area) {
@@ -383,6 +412,62 @@ export default function QffDmPage() {
     };
   }, [areaId, isStaff, loadCellsAndRooms]);
 
+  useEffect(() => {
+    if (!isStaff || !isAuthenticated) return;
+    let cancelled = false;
+    (async () => {
+      const token = await getTokenRef.current();
+      const rows = await dmFetchItems(token);
+      if (!cancelled) setItemTemplates(rows);
+    })().catch((e) => setErr(String(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, [isStaff, isAuthenticated]);
+
+  useEffect(() => {
+    if (!isStaff || !isAuthenticated) return;
+    let cancelled = false;
+    (async () => {
+      const token = await getTokenRef.current();
+      const list = await dmFetchQuests(token);
+      if (!cancelled) setDmQuests(list);
+    })().catch((e) => setErr(String(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, [isStaff, isAuthenticated]);
+
+  useEffect(() => {
+    if (exits.length === 0 && floorItems.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const token = await getTokenRef.current();
+      const questIds = new Set<number>();
+      for (const ex of exits) {
+        if (ex.reveal_quest_id != null) questIds.add(ex.reveal_quest_id);
+      }
+      for (const fi of floorItems) {
+        if (fi.visible_quest_id != null) questIds.add(fi.visible_quest_id);
+      }
+      for (const qid of questIds) {
+        if (revealQuestFetchedRef.current.has(qid)) continue;
+        revealQuestFetchedRef.current.add(qid);
+        try {
+          const d = await dmFetchQuestDetail(token, qid);
+          if (!cancelled) {
+            setQuestDetailById((prev) => new Map(prev).set(qid, d));
+          }
+        } catch {
+          revealQuestFetchedRef.current.delete(qid);
+        }
+      }
+    })().catch((e) => setErr(String(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, [exits, floorItems]);
+
   const selectedRoom = rooms.find((r) => r.id === selectedRoomId) ?? null;
 
   useEffect(() => {
@@ -392,6 +477,7 @@ export default function QffDmPage() {
       setPanelSearch("");
       setPanelSearchChance("50");
       setExits([]);
+      setFloorItems([]);
       return;
     }
     setPanelName(selectedRoom.name);
@@ -401,8 +487,14 @@ export default function QffDmPage() {
     let cancelled = false;
     (async () => {
       const token = await getTokenRef.current();
-      const ex = await dmFetchExits(token, selectedRoom.id);
-      if (!cancelled) setExits(ex);
+      const [ex, floor] = await Promise.all([
+        dmFetchExits(token, selectedRoom.id),
+        dmFetchRoomFloorItems(token, selectedRoom.id),
+      ]);
+      if (!cancelled) {
+        setExits(ex);
+        setFloorItems(floor);
+      }
     })().catch((e) => setErr(String(e)));
     return () => {
       cancelled = true;
@@ -910,7 +1002,7 @@ export default function QffDmPage() {
 
       {area && (
         <Grid
-          templateColumns={{ base: "1fr", lg: "1fr 360px" }}
+          templateColumns={{ base: "1fr", lg: "1fr minmax(400px, 36vw)" }}
           gap={4}
           alignItems="start"
         >
@@ -980,6 +1072,376 @@ export default function QffDmPage() {
                         bg="#222"
                       />
                     </Field.Root>
+
+                    <Text fontWeight="bold" mt={1}>
+                      Floor items
+                    </Text>
+                    <Text fontSize="xs" color="#888">
+                      Unowned pickups in this room. Players use <strong>get</strong> to take them.
+                    </Text>
+                    <Box
+                      borderLeftWidth="3px"
+                      borderColor="#5a8a5a"
+                      pl={2}
+                      py={1}
+                      mb={1}
+                      bg="rgba(90, 138, 90, 0.08)"
+                      borderRadius="sm"
+                    >
+                      <Text fontSize="xs" fontWeight="bold" color="#c8e6c8">
+                        Spawn conditions (optional)
+                      </Text>
+                      <Text fontSize="xs" color="#aaa" mb={2}>
+                        Restrict when the item appears in play: choose a quest and state. Only
+                        players in that state see it, and not if they already carry this item
+                        template. Leave quest empty so everyone can see it.
+                      </Text>
+                      {dmQuests.length === 0 && (
+                        <Text fontSize="xs" color="#c9a227" mb={2}>
+                          No quests in the database yet — create some under{" "}
+                          <strong>DM → Quests</strong> to enable quest-based spawning.
+                        </Text>
+                      )}
+                    </Box>
+                    {floorItems.length === 0 ? (
+                      <Text fontSize="sm" color="#666">
+                        No items on the floor yet — add one below.
+                      </Text>
+                    ) : (
+                      floorItems.map((fi) => {
+                        const floorQuestDetail =
+                          fi.visible_quest_id != null
+                            ? questDetailById.get(fi.visible_quest_id)
+                            : undefined;
+                        return (
+                          <Stack
+                            key={fi.id}
+                            gap={1}
+                            py={1.5}
+                            borderBottomWidth="1px"
+                            borderColor="#333"
+                          >
+                            <Flex
+                              justify="space-between"
+                              align="center"
+                              fontSize="sm"
+                              gap={2}
+                            >
+                              <Text>
+                                {fi.nickname
+                                  ? `${fi.nickname} (${fi.item_name})`
+                                  : fi.item_name}
+                                <Text as="span" fontSize="xs" color="#666" ml={1}>
+                                  #{fi.id}
+                                </Text>
+                              </Text>
+                              <PondButton
+                                type="button"
+                                size="sm"
+                                {...DM_PRIMARY_BTN}
+                                onClick={async () => {
+                                  const token = await getTokenRef.current();
+                                  await dmDeleteFloorItem(token, fi.id);
+                                  const next = await dmFetchRoomFloorItems(
+                                    token,
+                                    selectedRoom!.id,
+                                  );
+                                  setFloorItems(next);
+                                }}
+                              >
+                                Remove
+                              </PondButton>
+                            </Flex>
+                            <Text fontSize="xs" color="#888">
+                              Show this pickup only when:
+                            </Text>
+                            <Flex gap={2} flexWrap="wrap" align="flex-end">
+                              <Field.Root flex="1" minW="140px">
+                                <Field.Label fontSize="xs">Quest</Field.Label>
+                                <NativeSelectRoot>
+                                  <NativeSelectField
+                                    value={
+                                      fi.visible_quest_id != null
+                                        ? String(fi.visible_quest_id)
+                                        : ""
+                                    }
+                                    onChange={async (e) => {
+                                      const raw = e.target.value;
+                                      const qid =
+                                        raw === ""
+                                          ? null
+                                          : parseInt(raw, 10);
+                                      const token = await getTokenRef.current();
+                                      if (qid != null) {
+                                        revealQuestFetchedRef.current.add(qid);
+                                        const d = await dmFetchQuestDetail(
+                                          token,
+                                          qid,
+                                        );
+                                        setQuestDetailById((prev) =>
+                                          new Map(prev).set(qid, d),
+                                        );
+                                      }
+                                      const nx = await dmPatchFloorItem(token, fi.id, {
+                                        visible_quest_state_id: null,
+                                      });
+                                      setFloorItems((prev) =>
+                                        prev.map((x) =>
+                                          x.id === fi.id
+                                            ? {
+                                                ...nx,
+                                                visible_quest_id: qid,
+                                                visible_quest_slug:
+                                                  qid != null
+                                                    ? dmQuests.find(
+                                                        (q) => q.id === qid,
+                                                      )?.slug ?? null
+                                                    : null,
+                                                visible_quest_state_slug: null,
+                                              }
+                                            : x,
+                                        ),
+                                      );
+                                    }}
+                                    bg="#222"
+                                  >
+                                    <option value="">— any player —</option>
+                                    {[...dmQuests]
+                                      .sort((a, b) =>
+                                        a.name.localeCompare(b.name),
+                                      )
+                                      .map((q) => (
+                                        <option key={q.id} value={String(q.id)}>
+                                          {q.name}
+                                        </option>
+                                      ))}
+                                  </NativeSelectField>
+                                </NativeSelectRoot>
+                              </Field.Root>
+                              <Field.Root flex="1" minW="140px">
+                                <Field.Label fontSize="xs">Quest state</Field.Label>
+                                <NativeSelectRoot>
+                                  <NativeSelectField
+                                    value={
+                                      fi.visible_quest_state_id != null
+                                        ? String(fi.visible_quest_state_id)
+                                        : ""
+                                    }
+                                    pointerEvents={
+                                      !floorQuestDetail ? "none" : undefined
+                                    }
+                                    onChange={async (e) => {
+                                      const raw = e.target.value;
+                                      const sid =
+                                        raw === ""
+                                          ? null
+                                          : parseInt(raw, 10);
+                                      const token = await getTokenRef.current();
+                                      const nx = await dmPatchFloorItem(
+                                        token,
+                                        fi.id,
+                                        {
+                                          visible_quest_state_id:
+                                            sid != null &&
+                                            Number.isFinite(sid)
+                                              ? sid
+                                              : null,
+                                        },
+                                      );
+                                      setFloorItems((prev) =>
+                                        prev.map((x) =>
+                                          x.id === fi.id ? nx : x,
+                                        ),
+                                      );
+                                    }}
+                                    bg="#222"
+                                    opacity={!floorQuestDetail ? 0.55 : undefined}
+                                  >
+                                    <option value="">
+                                      {floorQuestDetail
+                                        ? "— choose state —"
+                                        : "— pick quest first —"}
+                                    </option>
+                                    {(floorQuestDetail?.states ?? [])
+                                      .slice()
+                                      .sort(
+                                        (a, b) =>
+                                          a.sort_order - b.sort_order ||
+                                          a.name.localeCompare(b.name),
+                                      )
+                                      .map((s) => (
+                                        <option key={s.id} value={String(s.id)}>
+                                          {s.name} ({s.slug})
+                                        </option>
+                                      ))}
+                                  </NativeSelectField>
+                                </NativeSelectRoot>
+                              </Field.Root>
+                            </Flex>
+                          </Stack>
+                        );
+                      })
+                    )}
+                    <Text fontSize="xs" fontWeight="bold" color="#aaa" mt={1}>
+                      Add to floor
+                    </Text>
+                    <Stack gap={2}>
+                      <Flex gap={2} flexWrap="wrap" align="flex-end">
+                        <Field.Root flex="1" minW="160px">
+                          <Field.Label fontSize="xs">Item template</Field.Label>
+                          <NativeSelectRoot>
+                            <NativeSelectField
+                              value={newFloorItemId}
+                              onChange={(e) => setNewFloorItemId(e.target.value)}
+                              bg="#222"
+                            >
+                              <option value="">— choose —</option>
+                              {itemTemplates.map((it) => (
+                                <option key={it.id} value={String(it.id)}>
+                                  {it.name} ({it.slug})
+                                </option>
+                              ))}
+                            </NativeSelectField>
+                          </NativeSelectRoot>
+                        </Field.Root>
+                        <Field.Root maxW="140px">
+                          <Field.Label fontSize="xs">Nickname (optional)</Field.Label>
+                          <Input
+                            value={newFloorNickname}
+                            onChange={(e) => setNewFloorNickname(e.target.value)}
+                            placeholder="e.g. rusty"
+                            bg="#222"
+                          />
+                        </Field.Root>
+                      </Flex>
+                      <Text fontSize="xs" color="#888">
+                        Spawn only when player is in:
+                      </Text>
+                      <Flex gap={2} flexWrap="wrap" align="flex-end">
+                        <Field.Root flex="1" minW="140px">
+                          <Field.Label fontSize="xs">Quest</Field.Label>
+                          <NativeSelectRoot>
+                            <NativeSelectField
+                              value={newFloorVisibleQuestId}
+                              onChange={async (e) => {
+                                const v = e.target.value;
+                                setNewFloorVisibleQuestId(v);
+                                setNewFloorVisibleStateId("");
+                                const qid = v === "" ? null : parseInt(v, 10);
+                                if (qid != null && Number.isFinite(qid)) {
+                                  revealQuestFetchedRef.current.add(qid);
+                                  try {
+                                    const token = await getTokenRef.current();
+                                    const d = await dmFetchQuestDetail(
+                                      token,
+                                      qid,
+                                    );
+                                    setQuestDetailById((prev) =>
+                                      new Map(prev).set(qid, d),
+                                    );
+                                  } catch {
+                                    revealQuestFetchedRef.current.delete(qid);
+                                  }
+                                }
+                              }}
+                              bg="#222"
+                            >
+                              <option value="">— any player —</option>
+                              {[...dmQuests]
+                                .sort((a, b) => a.name.localeCompare(b.name))
+                                .map((q) => (
+                                  <option key={q.id} value={String(q.id)}>
+                                    {q.name}
+                                  </option>
+                                ))}
+                            </NativeSelectField>
+                          </NativeSelectRoot>
+                        </Field.Root>
+                        <Field.Root flex="1" minW="140px">
+                          <Field.Label fontSize="xs">Quest state</Field.Label>
+                          <NativeSelectRoot>
+                            <NativeSelectField
+                              value={newFloorVisibleStateId}
+                              onChange={(e) =>
+                                setNewFloorVisibleStateId(e.target.value)
+                              }
+                              pointerEvents={
+                                !newFloorQuestDetailForAdd ? "none" : undefined
+                              }
+                              bg="#222"
+                              opacity={!newFloorQuestDetailForAdd ? 0.55 : undefined}
+                            >
+                              <option value="">
+                                {newFloorQuestDetailForAdd
+                                  ? "— choose state —"
+                                  : "— pick quest first —"}
+                              </option>
+                              {(newFloorQuestDetailForAdd?.states ?? [])
+                                .slice()
+                                .sort(
+                                  (a, b) =>
+                                    a.sort_order - b.sort_order ||
+                                    a.name.localeCompare(b.name),
+                                )
+                                .map((s) => (
+                                  <option key={s.id} value={String(s.id)}>
+                                    {s.name} ({s.slug})
+                                  </option>
+                                ))}
+                            </NativeSelectField>
+                          </NativeSelectRoot>
+                        </Field.Root>
+                      </Flex>
+                      <Box>
+                        <PondButton
+                          type="button"
+                          size="sm"
+                          {...DM_PRIMARY_BTN}
+                          onClick={async () => {
+                            const id = parseInt(newFloorItemId, 10);
+                            if (!Number.isFinite(id)) {
+                              setErr("Choose an item template.");
+                              return;
+                            }
+                            const vsRaw = newFloorVisibleStateId.trim();
+                            const vsid =
+                              vsRaw === ""
+                                ? null
+                                : parseInt(vsRaw, 10);
+                            if (
+                              newFloorVisibleQuestId !== "" &&
+                              (!Number.isFinite(vsid as number) || vsRaw === "")
+                            ) {
+                              setErr(
+                                "Pick a quest state, or clear the quest filters.",
+                              );
+                              return;
+                            }
+                            setErr(null);
+                            const token = await getTokenRef.current();
+                            await dmCreateRoomFloorItem(token, selectedRoom!.id, {
+                              item_id: id,
+                              nickname: newFloorNickname.trim() || undefined,
+                              visible_quest_state_id:
+                                vsid != null && Number.isFinite(vsid)
+                                  ? vsid
+                                  : undefined,
+                            });
+                            setNewFloorNickname("");
+                            setNewFloorVisibleQuestId("");
+                            setNewFloorVisibleStateId("");
+                            const next = await dmFetchRoomFloorItems(
+                              token,
+                              selectedRoom!.id,
+                            );
+                            setFloorItems(next);
+                          }}
+                        >
+                          Add to floor
+                        </PondButton>
+                      </Box>
+                    </Stack>
+
                     <Field.Root>
                       <Field.Label>Search text</Field.Label>
                       <Textarea
@@ -1039,39 +1501,264 @@ export default function QffDmPage() {
                     <Text fontWeight="bold" mt={2}>
                       Exits
                     </Text>
+                    <Text fontSize="xs" color="#888" mb={1}>
+                      Hidden exits are invisible in play until reveal conditions (if any) are met.
+                      Lock kind still controls passing through.
+                    </Text>
                     {exits.map((ex) => {
                       const dest = exitDestRooms.find((r) => r.id === ex.to_room_id);
                       const destLabel = dest
                         ? `${dest.areaName} — ${dest.name}`
                         : ex.to_room_name;
+                      const revealQuestDetail =
+                        ex.reveal_quest_id != null
+                          ? questDetailById.get(ex.reveal_quest_id)
+                          : undefined;
+                      const mergeExit = (patch: DmExit) =>
+                        patch.to_room_name != null
+                          ? patch
+                          : ({ ...patch, to_room_name: ex.to_room_name } as DmExit);
                       return (
-                      <Flex
-                        key={ex.id}
-                        justify="space-between"
-                        align="center"
-                        fontSize="sm"
-                        gap={2}
-                      >
-                        <Text>
-                          {ex.direction} → {destLabel}
-                        </Text>
-                        <PondButton
-                          type="button"
-                          size="sm"
-                          {...DM_PRIMARY_BTN}
-                          onClick={async () => {
-                            const token = await getTokenRef.current();
-                            await dmDeleteExit(token, ex.id);
-                            const nx = await dmFetchExits(token, selectedRoom!.id);
-                            setExits(nx);
-                            if (areaId) {
-                              setAreaExits(await dmFetchAreaExits(token, areaId));
-                            }
-                          }}
+                        <Stack
+                          key={ex.id}
+                          gap={1}
+                          py={1.5}
+                          borderBottomWidth="1px"
+                          borderColor="#333"
                         >
-                          Del
-                        </PondButton>
-                      </Flex>
+                          <Flex
+                            justify="space-between"
+                            align="center"
+                            fontSize="sm"
+                            gap={2}
+                          >
+                            <Text>
+                              {ex.direction} → {destLabel}
+                            </Text>
+                            <PondButton
+                              type="button"
+                              size="sm"
+                              {...DM_PRIMARY_BTN}
+                              onClick={async () => {
+                                const token = await getTokenRef.current();
+                                await dmDeleteExit(token, ex.id);
+                                const nx = await dmFetchExits(token, selectedRoom!.id);
+                                setExits(nx);
+                                if (areaId) {
+                                  setAreaExits(await dmFetchAreaExits(token, areaId));
+                                }
+                              }}
+                            >
+                              Del
+                            </PondButton>
+                          </Flex>
+                          <Flex align="center" gap={2} fontSize="xs" flexWrap="wrap">
+                            <label
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 6,
+                                cursor: "pointer",
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={ex.is_hidden}
+                                onChange={async (e) => {
+                                  const checked = e.target.checked;
+                                  const token = await getTokenRef.current();
+                                  const nx = mergeExit(
+                                    await dmPatchExit(token, ex.id, {
+                                      is_hidden: checked,
+                                      ...(!checked
+                                        ? {
+                                            reveal_item_id: null,
+                                            reveal_quest_state_id: null,
+                                          }
+                                        : {}),
+                                    }),
+                                  );
+                                  setExits((prev) =>
+                                    prev.map((x) => (x.id === ex.id ? nx : x)),
+                                  );
+                                  if (areaId) {
+                                    setAreaExits(
+                                      await dmFetchAreaExits(token, areaId),
+                                    );
+                                  }
+                                }}
+                              />
+                              Hidden until revealed
+                            </label>
+                          </Flex>
+                          {ex.is_hidden && (
+                            <Flex gap={2} flexWrap="wrap" align="flex-end">
+                              <Field.Root maxW="220px" flex="1" minW="140px">
+                                <Field.Label fontSize="xs">
+                                  Reveal if carrying item
+                                </Field.Label>
+                                <NativeSelectRoot>
+                                  <NativeSelectField
+                                    value={
+                                      ex.reveal_item_id != null
+                                        ? String(ex.reveal_item_id)
+                                        : ""
+                                    }
+                                    onChange={async (e) => {
+                                      const raw = e.target.value;
+                                      const parsed =
+                                        raw === ""
+                                          ? null
+                                          : parseInt(raw, 10);
+                                      const revealItem =
+                                        parsed != null && Number.isFinite(parsed)
+                                          ? parsed
+                                          : null;
+                                      const token = await getTokenRef.current();
+                                      const nx = mergeExit(
+                                        await dmPatchExit(token, ex.id, {
+                                          reveal_item_id: revealItem,
+                                        }),
+                                      );
+                                      setExits((prev) =>
+                                        prev.map((x) => (x.id === ex.id ? nx : x)),
+                                      );
+                                    }}
+                                    bg="#222"
+                                  >
+                                    <option value="">— none —</option>
+                                    {itemTemplates.map((it) => (
+                                      <option key={it.id} value={String(it.id)}>
+                                        {it.name} ({it.slug})
+                                      </option>
+                                    ))}
+                                  </NativeSelectField>
+                                </NativeSelectRoot>
+                              </Field.Root>
+                              <Field.Root maxW="200px" flex="1" minW="120px">
+                                <Field.Label fontSize="xs">Quest</Field.Label>
+                                <NativeSelectRoot>
+                                  <NativeSelectField
+                                    value={
+                                      ex.reveal_quest_id != null
+                                        ? String(ex.reveal_quest_id)
+                                        : ""
+                                    }
+                                    onChange={async (e) => {
+                                      const raw = e.target.value;
+                                      const qid =
+                                        raw === ""
+                                          ? null
+                                          : parseInt(raw, 10);
+                                      const token = await getTokenRef.current();
+                                      if (qid != null) {
+                                        revealQuestFetchedRef.current.add(qid);
+                                        const d = await dmFetchQuestDetail(
+                                          token,
+                                          qid,
+                                        );
+                                        setQuestDetailById((prev) =>
+                                          new Map(prev).set(qid, d),
+                                        );
+                                      }
+                                      const rawNx = mergeExit(
+                                        await dmPatchExit(token, ex.id, {
+                                          reveal_quest_state_id: null,
+                                        }),
+                                      );
+                                      setExits((prev) =>
+                                        prev.map((x) =>
+                                          x.id === ex.id
+                                            ? {
+                                                ...rawNx,
+                                                reveal_quest_id: qid,
+                                                reveal_quest_slug:
+                                                  qid != null
+                                                    ? dmQuests.find(
+                                                        (q) => q.id === qid,
+                                                      )?.slug ?? null
+                                                    : null,
+                                                reveal_quest_state_slug: null,
+                                              }
+                                            : x,
+                                        ),
+                                      );
+                                    }}
+                                    bg="#222"
+                                  >
+                                    <option value="">— none —</option>
+                                    {[...dmQuests]
+                                      .sort((a, b) =>
+                                        a.name.localeCompare(b.name),
+                                      )
+                                      .map((q) => (
+                                        <option key={q.id} value={String(q.id)}>
+                                          {q.name}
+                                        </option>
+                                      ))}
+                                  </NativeSelectField>
+                                </NativeSelectRoot>
+                              </Field.Root>
+                              <Field.Root maxW="200px" flex="1" minW="120px">
+                                <Field.Label fontSize="xs">Quest state</Field.Label>
+                                <NativeSelectRoot>
+                                  <NativeSelectField
+                                    value={
+                                      ex.reveal_quest_state_id != null
+                                        ? String(ex.reveal_quest_state_id)
+                                        : ""
+                                    }
+                                    pointerEvents={
+                                      !revealQuestDetail ? "none" : undefined
+                                    }
+                                    onChange={async (e) => {
+                                      const raw = e.target.value;
+                                      const sid =
+                                        raw === ""
+                                          ? null
+                                          : parseInt(raw, 10);
+                                      const token = await getTokenRef.current();
+                                      const nx = mergeExit(
+                                        await dmPatchExit(token, ex.id, {
+                                          reveal_quest_state_id:
+                                            sid != null &&
+                                            Number.isFinite(sid)
+                                              ? sid
+                                              : null,
+                                        }),
+                                      );
+                                      setExits((prev) =>
+                                        prev.map((x) =>
+                                          x.id === ex.id ? nx : x,
+                                        ),
+                                      );
+                                    }}
+                                    bg="#222"
+                                    opacity={!revealQuestDetail ? 0.55 : undefined}
+                                  >
+                                    <option value="">
+                                      {revealQuestDetail
+                                        ? "— state —"
+                                        : "— pick quest —"}
+                                    </option>
+                                    {(revealQuestDetail?.states ?? [])
+                                      .slice()
+                                      .sort(
+                                        (a, b) =>
+                                          a.sort_order - b.sort_order ||
+                                          a.name.localeCompare(b.name),
+                                      )
+                                      .map((s) => (
+                                        <option key={s.id} value={String(s.id)}>
+                                          {s.name} ({s.slug})
+                                        </option>
+                                      ))}
+                                  </NativeSelectField>
+                                </NativeSelectRoot>
+                              </Field.Root>
+                            </Flex>
+                          )}
+                        </Stack>
                       );
                     })}
 

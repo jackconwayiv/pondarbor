@@ -1,0 +1,304 @@
+"""Quest state, dialogue selection, transitions, and effects."""
+
+from __future__ import annotations
+
+from datetime import timedelta
+
+from django.db import transaction
+from django.db.models import Q
+from django.utils import timezone
+
+from qff.exits import _set_character_unlock, _set_realm_unlock
+from qff.game_helpers import display_name_for_instance
+from qff.models import (
+    Character,
+    CharacterQuestProgress,
+    Interactable,
+    ItemInstance,
+    Npc,
+    NpcDialogue,
+    QuestEffect,
+    QuestState,
+    QuestTransition,
+    RoomExit,
+)
+
+SLOT_ATTRS = (
+    "head_item",
+    "main_hand_item",
+    "off_hand_item",
+    "chest_item",
+    "feet_item",
+    "ring_item",
+    "amulet_item",
+)
+
+
+def floor_item_visible_to_character(character: Character, inst: ItemInstance) -> bool:
+    """Unowned floor item: if gated by quest state, require that state and no duplicate template."""
+    if inst.owner_character_id is not None:
+        return True
+    if not inst.visible_quest_state_id:
+        return True
+    st = inst.visible_quest_state
+    if not CharacterQuestProgress.objects.filter(
+        character=character,
+        quest_id=st.quest_id,
+        current_state_id=st.id,
+    ).exists():
+        return False
+    if character_carries_item_template(character, inst.item_id):
+        return False
+    return True
+
+
+def character_carries_item_template(character: Character, item_id: int) -> bool:
+    for iid in character.inventory or []:
+        inst = ItemInstance.objects.filter(pk=iid, owner_character_id=character.pk).first()
+        if inst and inst.item_id == item_id:
+            return True
+    for attr in SLOT_ATTRS:
+        inst = getattr(character, attr, None)
+        if inst and inst.item_id == item_id:
+            return True
+    return False
+
+
+def ensure_quests_started_from_npc(character: Character, npc: Npc) -> None:
+    """Create CharacterQuestProgress at initial state for quests referenced by this NPC's dialogues."""
+    quest_ids = (
+        NpcDialogue.objects.filter(npc=npc, quest_id__isnull=False)
+        .values_list("quest_id", flat=True)
+        .distinct()
+    )
+    for qid in quest_ids:
+        if CharacterQuestProgress.objects.filter(character=character, quest_id=qid).exists():
+            continue
+        initial = QuestState.objects.filter(quest_id=qid, is_initial=True).first()
+        if not initial:
+            initial = QuestState.objects.filter(quest_id=qid).order_by("sort_order", "id").first()
+        if initial:
+            CharacterQuestProgress.objects.get_or_create(
+                character=character,
+                quest_id=qid,
+                defaults={"current_state": initial},
+            )
+
+
+def _npc_says_line(npc: Npc, utterance: str) -> str:
+    """Format as: Name says: utterance. (single trailing period)"""
+    u = (utterance or "").strip()
+    if not u:
+        u = "…"
+    u = u.rstrip(".")
+    return f"{npc.name} says: {u}."
+
+
+def resolve_npc_dialogue(character: Character, npc: Npc) -> str:
+    cqps = {
+        p.quest_id: p
+        for p in CharacterQuestProgress.objects.filter(character=character).select_related(
+            "current_state"
+        )
+    }
+    dialogues = NpcDialogue.objects.filter(npc=npc).select_related("quest", "quest_state").order_by(
+        "-priority", "id"
+    )
+    for d in dialogues:
+        if d.quest_id is None:
+            raw = (d.text or "").strip()
+            return _npc_says_line(npc, raw or "I'm here.")
+        cqp = cqps.get(d.quest_id)
+        if not cqp:
+            continue
+        if d.quest_state_id and cqp.current_state_id != d.quest_state_id:
+            continue
+        return _npc_says_line(npc, (d.text or "").strip() or "…")
+    return _npc_says_line(npc, "I don't have much to say.")
+
+
+def try_item_transitions_on_talk(character: Character, npc: Npc) -> list[str]:
+    """Fire quest transitions that require an item in inventory, tied to this NPC via dialogue."""
+    lines: list[str] = []
+    for cqp in CharacterQuestProgress.objects.filter(character=character).select_related(
+        "quest", "current_state"
+    ):
+        transitions = QuestTransition.objects.filter(
+            quest=cqp.quest,
+            from_state=cqp.current_state,
+            requires_item__isnull=False,
+        ).order_by("sort_order", "id")
+        for tr in transitions:
+            if not character_carries_item_template(character, tr.requires_item_id):
+                continue
+            if not NpcDialogue.objects.filter(
+                npc=npc,
+                quest_id=cqp.quest_id,
+                quest_state_id=cqp.current_state_id,
+            ).exists():
+                continue
+            lines.extend(apply_transition(character, tr))
+            return lines
+    return lines
+
+
+@transaction.atomic
+def apply_transition(character: Character, transition: QuestTransition) -> list[str]:
+    """Move quest state and run effects. Caller should reload character after."""
+    cqp = CharacterQuestProgress.objects.select_for_update().get(
+        character=character,
+        quest=transition.quest,
+    )
+    if cqp.current_state_id != transition.from_state_id:
+        return ["Nothing happens."]
+    out: list[str] = []
+    cqp.current_state = transition.to_state
+    cqp.save(update_fields=["current_state", "updated_at"])
+    character = Character.objects.select_for_update().get(pk=character.pk)
+    req_id = transition.requires_item_id
+    if req_id:
+        has_remove_effect = transition.effects.filter(
+            kind=QuestEffect.Kind.REMOVE_ITEM_TEMPLATE,
+            item_id=req_id,
+        ).exists()
+        if not has_remove_effect:
+            removed = _remove_one_instance_of_template(character, req_id)
+            if removed:
+                out.append(f"You give up the {removed}.")
+            character = Character.objects.select_for_update().get(pk=character.pk)
+    for eff in transition.effects.order_by("sort_order", "id"):
+        out.extend(_apply_effect(character, eff))
+    return out
+
+
+def _apply_effect(character: Character, eff: QuestEffect) -> list[str]:
+    out: list[str] = []
+    kind = eff.kind
+    if kind == QuestEffect.Kind.GRANT_XP:
+        n = max(0, int(eff.amount))
+        if n:
+            character.xp = int(character.xp) + n
+            character.save(update_fields=["xp", "updated_at"])
+            out.append(f"You gain {n} XP.")
+    elif kind == QuestEffect.Kind.GRANT_GOLD:
+        n = max(0, int(eff.amount))
+        if n:
+            character.gold = int(character.gold) + n
+            character.save(update_fields=["gold", "updated_at"])
+            out.append(f"You gain {n} gold.")
+    elif kind == QuestEffect.Kind.GRANT_ITEM:
+        if eff.item_id:
+            inst = ItemInstance.objects.create(
+                item_id=eff.item_id,
+                owner_character=character,
+                room=None,
+            )
+            inv = list(character.inventory or [])
+            character.inventory = [inst.pk] + [x for x in inv if x != inst.pk]
+            character.save(update_fields=["inventory", "updated_at"])
+            out.append(f"You receive {display_name_for_instance(inst)}.")
+    elif kind == QuestEffect.Kind.REMOVE_ITEM_TEMPLATE:
+        if eff.item_id:
+            removed = _remove_one_instance_of_template(character, eff.item_id)
+            if removed:
+                out.append(f"You give up the {removed}.")
+    elif kind == QuestEffect.Kind.REALM_UNLOCK_EXIT_TIMED:
+        if eff.room_exit_id:
+            ex = RoomExit.objects.get(pk=eff.room_exit_id)
+            seconds = max(1, int(eff.amount) * 60) if eff.amount else int(ex.unlock_duration_seconds)
+            _set_realm_unlock(ex, seconds=seconds)
+            out.append("Something gives way.")
+    elif kind == QuestEffect.Kind.CHARACTER_UNLOCK_EXIT:
+        if eff.room_exit_id:
+            ex = RoomExit.objects.get(pk=eff.room_exit_id)
+            _set_character_unlock(character, ex)
+            out.append("Something gives way.")
+    return out
+
+
+def _remove_one_instance_of_template(character: Character, item_template_id: int) -> str | None:
+    for iid in character.inventory or []:
+        inst = ItemInstance.objects.filter(pk=iid, owner_character_id=character.pk).first()
+        if inst and inst.item_id == item_template_id:
+            return _delete_instance_from_character(character, inst)
+    for attr in SLOT_ATTRS:
+        inst = getattr(character, attr, None)
+        if inst and inst.item_id == item_template_id:
+            return _delete_instance_from_character(character, inst)
+    return None
+
+
+def _delete_instance_from_character(character: Character, inst: ItemInstance) -> str:
+    label = display_name_for_instance(inst)
+    char = Character.objects.select_for_update().get(pk=character.pk)
+    inst = ItemInstance.objects.select_for_update().get(pk=inst.pk)
+    for attr in SLOT_ATTRS:
+        cur = getattr(char, attr, None)
+        if cur and cur.pk == inst.pk:
+            setattr(char, attr, None)
+            break
+    inv = list(char.inventory or [])
+    if inst.pk in inv:
+        inv = [x for x in inv if x != inst.pk]
+        char.inventory = inv
+    inst.delete()
+    char.save()
+    return label
+
+
+def find_npc_in_room(character: Character, query: str) -> Npc | None:
+    q = (query or "").strip().lower()
+    if not q:
+        return None
+    npcs = Npc.objects.filter(room_id=character.current_room_id)
+    for n in npcs.order_by("id"):
+        if n.name.lower() == q or n.slug.lower() == q:
+            return n
+    for n in npcs.order_by("id"):
+        if n.name.lower().startswith(q) or n.slug.lower().startswith(q):
+            return n
+    return None
+
+
+def find_interactable_in_room(character: Character, query: str) -> Interactable | None:
+    q = (query or "").strip().lower()
+    if not q:
+        return None
+    objs = Interactable.objects.filter(room_id=character.current_room_id)
+    for o in objs.order_by("id"):
+        if o.name.lower() == q or o.slug.lower() == q:
+            return o
+    for o in objs.order_by("id"):
+        if o.name.lower().startswith(q) or o.slug.lower().startswith(q):
+            return o
+    return None
+
+
+def handle_interactable_use(character: Character, obj: Interactable) -> list[str]:
+    assert isinstance(obj, Interactable)
+    out: list[str] = []
+    if obj.unlocks_exit_id:
+        ex = RoomExit.objects.get(pk=obj.unlocks_exit_id)
+        _set_realm_unlock(ex, seconds=int(ex.unlock_duration_seconds))
+        out.append("You work the mechanism. Something shifts.")
+    if obj.quest_transition_id:
+        tr = QuestTransition.objects.select_related("from_state", "to_state", "quest").get(
+            pk=obj.quest_transition_id
+        )
+        cqp = CharacterQuestProgress.objects.filter(
+            character=character, quest=tr.quest_id
+        ).first()
+        if not cqp or cqp.current_state_id != tr.from_state_id:
+            if not out:
+                out.append("Nothing happens.")
+            return out
+        if tr.requires_item_id and not character_carries_item_template(
+            character, tr.requires_item_id
+        ):
+            if not out:
+                out.append("Nothing happens.")
+            return out
+        out.extend(apply_transition(character, tr))
+    if not out:
+        out.append("Nothing happens.")
+    return out

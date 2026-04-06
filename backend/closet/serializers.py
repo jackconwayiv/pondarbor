@@ -1,5 +1,6 @@
 import re
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
@@ -29,6 +30,35 @@ def _validate_closet_category(value) -> str:
 User = get_user_model()
 
 
+def closet_item_image_url(image_key: str) -> str:
+    base = getattr(settings, "CLOSET_R2_PUBLIC_BASE_URL", "") or ""
+    key = (image_key or "").strip()
+    if not base or not key:
+        return ""
+    return f"{base.rstrip('/')}/{key.lstrip('/')}"
+
+
+def expected_closet_image_key_prefix(user_id: int) -> str:
+    prefix = getattr(settings, "CLOSET_R2_KEY_PREFIX", "closet") or "closet"
+    prefix = str(prefix).strip().strip("/") or "closet"
+    return f"{prefix}/{user_id}/"
+
+
+def _validate_closet_image_key_for_user(value, request) -> str:
+    raw = "" if value is None else str(value).strip()
+    if not raw:
+        return ""
+    user = getattr(request, "user", None)
+    if not user or not user.is_authenticated:
+        raise serializers.ValidationError("Authentication required.")
+    expected = expected_closet_image_key_prefix(user.id)
+    if not raw.startswith(expected):
+        raise serializers.ValidationError(
+            "Image key must come from a closet upload for your account.",
+        )
+    return raw
+
+
 def _user_summary(user):
     profile = getattr(user, "profile", None)
     return {
@@ -49,6 +79,7 @@ class ItemSerializer(serializers.ModelSerializer):
     active_loan_marked_returned_by_borrower = serializers.SerializerMethodField()
     custody_marked_returned_by_holder = serializers.SerializerMethodField()
     pending_custody_user = serializers.SerializerMethodField()
+    image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Item
@@ -62,6 +93,7 @@ class ItemSerializer(serializers.ModelSerializer):
             "category",
             "tags",
             "image_key",
+            "image_url",
             "custody_disputed",
             "pending_request_count",
             "my_pending_request",
@@ -82,6 +114,9 @@ class ItemSerializer(serializers.ModelSerializer):
     def get_pending_custody_user(self, obj: Item):
         u = obj.custody_pending_acceptance_user
         return _user_summary(u) if u else None
+
+    def get_image_url(self, obj: Item) -> str:
+        return closet_item_image_url(obj.image_key)
 
     def get_pending_request_count(self, obj: Item) -> int:
         return obj.borrow_requests.filter(
@@ -171,6 +206,9 @@ class ItemCreateSerializer(serializers.Serializer):
     def validate_category(self, value):
         return _validate_closet_category(value)
 
+    def validate_image_key(self, value):
+        return _validate_closet_image_key_for_user(value, self.context["request"])
+
     def create(self, validated_data):
         user = self.context["request"].user
         return Item.objects.create(
@@ -203,6 +241,9 @@ class ItemPatchSerializer(serializers.Serializer):
 
     def validate_category(self, value):
         return _validate_closet_category(value)
+
+    def validate_image_key(self, value):
+        return _validate_closet_image_key_for_user(value, self.context["request"])
 
     def update(self, instance: Item, validated_data):
         for key, value in validated_data.items():

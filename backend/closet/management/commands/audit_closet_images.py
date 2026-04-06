@@ -1,5 +1,6 @@
 import os
 
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
 from closet.models import Item
@@ -13,12 +14,17 @@ class Command(BaseCommand):
         parser.add_argument("--prefix", default=os.getenv("CLOSET_R2_KEY_PREFIX", "closet"))
 
     def handle(self, *args, **options):
-        account_id = os.getenv("CLOUDFLARE_ACCOUNT_ID", "")
+        account_id = os.getenv("CLOUDFLARE_ACCOUNT_ID", "").strip()
+        endpoint_override = getattr(settings, "CLOSET_R2_S3_ENDPOINT_URL", "") or ""
         bucket = os.getenv("CLOSET_R2_BUCKET", "")
         access_key = os.getenv("CLOSET_R2_ACCESS_KEY_ID", "")
         secret_key = os.getenv("CLOSET_R2_SECRET_ACCESS_KEY", "")
-        if not all([account_id, bucket, access_key, secret_key]):
+        if not bucket or not access_key or not secret_key:
             raise CommandError("R2 env vars are not fully configured.")
+        if not endpoint_override and not account_id:
+            raise CommandError(
+                "Set CLOUDFLARE_ACCOUNT_ID or CLOSET_R2_S3_ENDPOINT_URL for the S3 API endpoint.",
+            )
         try:
             import boto3
         except Exception as exc:
@@ -30,7 +36,12 @@ class Command(BaseCommand):
             .exclude(deleted_at__isnull=False)
             .values_list("image_key", flat=True)
         )
-        endpoint_url = f"https://{account_id}.r2.cloudflarestorage.com"
+        if endpoint_override:
+            endpoint_url = (
+                endpoint_override if "://" in endpoint_override else f"https://{endpoint_override}"
+            )
+        else:
+            endpoint_url = f"https://{account_id}.r2.cloudflarestorage.com"
         client = boto3.client(
             "s3",
             endpoint_url=endpoint_url,

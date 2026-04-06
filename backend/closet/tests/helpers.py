@@ -48,7 +48,7 @@ class ClosetTestMixin:
             Q(requester=user_a, requested=user_b) | Q(requester=user_b, requested=user_a)
         ).delete()
 
-    def make_item(self, *, owner=None, holder=None, name="Item", category="", tags=None):
+    def make_item(self, *, owner=None, holder=None, name="Item", category="", tags=None, image_key=""):
         owner_user = owner or self.owner
         holder_user = holder or owner_user
         return Item.objects.create(
@@ -57,6 +57,7 @@ class ClosetTestMixin:
             name=name,
             category=category or "",
             tags=list(tags) if tags is not None else [],
+            image_key=image_key or "",
         )
 
     def make_request(self, *, item, requester=None, date_needed_by=None, message=""):

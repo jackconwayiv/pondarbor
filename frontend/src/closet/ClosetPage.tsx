@@ -1,9 +1,12 @@
 import {
   Box,
+  Card,
   HStack,
+  Image,
   Input,
   NativeSelectField,
   NativeSelectRoot,
+  Spinner,
   Stack,
   Tabs,
   Text,
@@ -39,6 +42,11 @@ import {
   rejectPendingCustody,
   setCustody,
 } from "./api";
+import {
+  resizeImageFileToJpegBlob,
+  uploadClosetImageBlobViaPresign,
+  uploadClosetImageViaPresign,
+} from "./imageUpload";
 import {
   CLOSET_CATEGORY_PRESETS,
   CLOSET_FRIENDS_CATEGORY_OTHER,
@@ -157,9 +165,15 @@ function ItemCard({
   const [requestsOpen, setRequestsOpen] = useState(false);
   const [custodyTargetUserId, setCustodyTargetUserId] = useState<string>("");
   const [markReturnedBusy, setMarkReturnedBusy] = useState(false);
+  const [imageUploadBusy, setImageUploadBusy] = useState(false);
+  /** When API omits image_url (no CLOSET_R2_PUBLIC_BASE_URL), show the last uploaded bytes until reload. */
+  const [localImagePreviewUrl, setLocalImagePreviewUrl] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const confirmDeleteButtonRef = useRef<HTMLButtonElement | null>(null);
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const localImagePreviewUrlRef = useRef<string | null>(null);
   const cardContainerRef = useRef<HTMLDivElement | null>(null);
+  localImagePreviewUrlRef.current = localImagePreviewUrl;
   const isOwner = sameClosetUserId(item.owner_user.id, meId);
   const isHolder = sameClosetUserId(item.current_holder_user.id, meId);
   const borrowedByMe = isHolder && !isOwner;
@@ -236,6 +250,38 @@ function ItemCard({
     item.pending_custody_user,
     pendingRows,
   ]);
+
+  useEffect(() => {
+    return () => {
+      const u = localImagePreviewUrlRef.current;
+      if (u) URL.revokeObjectURL(u);
+    };
+  }, []);
+
+  useEffect(() => {
+    setLocalImagePreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+  }, [item.id]);
+
+  useEffect(() => {
+    if ((item.image_url ?? "").trim()) {
+      setLocalImagePreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+    }
+  }, [item.image_url]);
+
+  useEffect(() => {
+    if (!(item.image_key ?? "").trim()) {
+      setLocalImagePreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+    }
+  }, [item.image_key]);
 
   const saveEdit = async () => {
     setError(null);
@@ -496,18 +542,11 @@ function ItemCard({
   const readOnlyDetailsCategoryTagsLine =
     isOwner && listKind !== "borrowed" ? null : formatCategoryTagsSummaryLine(item);
 
-  return (
-    <Box
-      ref={cardContainerRef}
-      bg="white"
-      borderWidth="1px"
-      borderStyle={dashedBorder ? "dashed" : "solid"}
-      borderColor="border"
-      borderRadius="xl"
-      p="4"
-      cursor={onCardClick ? "pointer" : "default"}
-      onClick={() => onCardClick?.()}
-    >
+  const apiImageUrl = (item.image_url ?? "").trim();
+  const displayImageSrc = apiImageUrl || (localImagePreviewUrl ?? "").trim();
+  const showImageCard = Boolean(displayImageSrc);
+
+  const itemCardInner = (
       <Stack gap="3">
         <HStack justify="space-between" align="start">
           <Stack gap="1">
@@ -640,11 +679,115 @@ function ItemCard({
                       {...CLOSET_PLACEHOLDER_PROPS}
                     />
                   </Stack>
+                  <Stack gap="1" align="stretch">
+                    <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
+                      Photo:
+                    </Text>
+                    <input
+                      ref={photoInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        e.target.value = "";
+                        if (!f) return;
+                        void (async () => {
+                          setError(null);
+                          setImageUploadBusy(true);
+                          let previewUrl: string | null = null;
+                          try {
+                            const blob = await resizeImageFileToJpegBlob(f);
+                            previewUrl = URL.createObjectURL(blob);
+                            setLocalImagePreviewUrl((prev) => {
+                              if (prev) URL.revokeObjectURL(prev);
+                              return previewUrl;
+                            });
+                            const key = await uploadClosetImageBlobViaPresign(getToken, blob);
+                            const token = await getToken();
+                            await patchItem(token, item.id, { image_key: key });
+                            await onRefresh();
+                            onOwnedNotice?.({ kind: "success", message: "Photo updated." });
+                          } catch (err: unknown) {
+                            if (previewUrl) {
+                              URL.revokeObjectURL(previewUrl);
+                              setLocalImagePreviewUrl((prev) => (prev === previewUrl ? null : prev));
+                            }
+                            const message =
+                              err instanceof Error ? err.message : "Failed to upload photo";
+                            setError(message);
+                            onOwnedNotice?.({ kind: "error", message });
+                          } finally {
+                            setImageUploadBusy(false);
+                          }
+                        })();
+                      }}
+                    />
+                    <HStack flexWrap="wrap" gap="2">
+                      <PondButton
+                        type="button"
+                        size="sm"
+                        colorPalette="sky"
+                        loading={imageUploadBusy}
+                        onClick={() => photoInputRef.current?.click()}
+                      >
+                        Upload or change photo
+                      </PondButton>
+                      {item.image_url?.trim() || item.image_key?.trim() ? (
+                        <PondButton
+                          type="button"
+                          size="sm"
+                          colorPalette="nautical"
+                          loading={imageUploadBusy}
+                          onClick={() =>
+                            void (async () => {
+                              setError(null);
+                              setImageUploadBusy(true);
+                              try {
+                                const token = await getToken();
+                                await patchItem(token, item.id, { image_key: "" });
+                                await onRefresh();
+                                onOwnedNotice?.({ kind: "success", message: "Photo removed." });
+                              } catch (err: unknown) {
+                                const message =
+                                  err instanceof Error ? err.message : "Failed to remove photo";
+                                setError(message);
+                                onOwnedNotice?.({ kind: "error", message });
+                              } finally {
+                                setImageUploadBusy(false);
+                              }
+                            })()
+                          }
+                        >
+                          Remove photo
+                        </PondButton>
+                      ) : null}
+                    </HStack>
+                    {imageUploadBusy ? (
+                      <HStack gap="2" align="center" color="gray.700">
+                        <Spinner size="sm" colorPalette="lilypad" />
+                        <Text fontSize={APP_TEXT_SIZES.helper}>Uploading photo…</Text>
+                      </HStack>
+                    ) : null}
+                    <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600">
+                      JPEG, PNG, or WebP. Images are resized in the browser before upload.
+                    </Text>
+                  </Stack>
                   <HStack>
-                    <PondButton size="sm" colorPalette="lilypad" onClick={() => void saveEdit()}>
+                    <PondButton
+                      size="sm"
+                      colorPalette="lilypad"
+                      disabled={imageUploadBusy}
+                      onClick={() => void saveEdit()}
+                    >
                       Save
                     </PondButton>
-                    <PondButton size="sm" colorPalette="sky" onClick={() => onModeChange("closed")}>
+                    <PondButton
+                      size="sm"
+                      colorPalette="sky"
+                      disabled={imageUploadBusy}
+                      onClick={() => onModeChange("closed")}
+                    >
                       Cancel
                     </PondButton>
                     <Box flex="1" />
@@ -903,6 +1046,55 @@ function ItemCard({
           </Text>
         ) : null}
       </Stack>
+  );
+
+  if (showImageCard) {
+    return (
+      <Card.Root
+        ref={cardContainerRef}
+        flexDirection="row"
+        overflow="hidden"
+        alignItems="stretch"
+        bg="white"
+        borderWidth="1px"
+        borderStyle={dashedBorder ? "dashed" : "solid"}
+        borderColor="border"
+        borderRadius="xl"
+        cursor={onCardClick ? "pointer" : "default"}
+        onClick={() => onCardClick?.()}
+      >
+        <Image
+          src={displayImageSrc}
+          alt=""
+          aria-hidden
+          flex="0 0 40%"
+          maxW="40%"
+          w="40%"
+          objectFit="cover"
+          alignSelf="stretch"
+          minH="140px"
+          draggable={false}
+        />
+        <Box flex="1" minW={0} p="4">
+          {itemCardInner}
+        </Box>
+      </Card.Root>
+    );
+  }
+
+  return (
+    <Box
+      ref={cardContainerRef}
+      bg="white"
+      borderWidth="1px"
+      borderStyle={dashedBorder ? "dashed" : "solid"}
+      borderColor="border"
+      borderRadius="xl"
+      p="4"
+      cursor={onCardClick ? "pointer" : "default"}
+      onClick={() => onCardClick?.()}
+    >
+      {itemCardInner}
     </Box>
   );
 }
@@ -951,6 +1143,8 @@ export default function ClosetPage() {
   const [newDescription, setNewDescription] = useState("");
   const [newCategory, setNewCategory] = useState("");
   const [isAddItemOpen, setIsAddItemOpen] = useState(false);
+  const [newItemImageBusy, setNewItemImageBusy] = useState(false);
+  const newItemPhotoInputRef = useRef<HTMLInputElement | null>(null);
   const [newNeedBy, setNewNeedBy] = useState("");
   const [newRequestMessage, setNewRequestMessage] = useState("");
   const [requestingItemId, setRequestingItemId] = useState<number | null>(null);
@@ -1876,9 +2070,42 @@ export default function ClosetPage() {
                               {...CLOSET_PLACEHOLDER_PROPS}
                             />
                             <ClosetCategoryFields category={newCategory} onCategoryChange={setNewCategory} />
+                            <Stack gap="1" align="stretch">
+                              <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
+                                Photo (optional):
+                              </Text>
+                              <input
+                                ref={newItemPhotoInputRef}
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp"
+                                style={{ display: "none" }}
+                              />
+                              <PondButton
+                                type="button"
+                                size="sm"
+                                colorPalette="sky"
+                                alignSelf="flex-start"
+                                disabled={newItemImageBusy}
+                                onClick={() => newItemPhotoInputRef.current?.click()}
+                              >
+                                Choose photo
+                              </PondButton>
+                              <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600">
+                                JPEG, PNG, or WebP. Resized in the browser before upload.
+                              </Text>
+                              {newItemImageBusy ? (
+                                <HStack gap="2" align="center" color="gray.700">
+                                  <Spinner size="sm" colorPalette="lilypad" />
+                                  <Text fontSize={APP_TEXT_SIZES.helper}>
+                                    Uploading photo and saving item…
+                                  </Text>
+                                </HStack>
+                              ) : null}
+                            </Stack>
                             <HStack>
                               <PondButton
                                 colorPalette="lilypad"
+                                loading={newItemImageBusy}
                                 onClick={async () => {
                                   setError(null);
                                   if (!isAllowedClosetCategory(newCategory)) {
@@ -1890,16 +2117,29 @@ export default function ClosetPage() {
                                     return;
                                   }
                                   try {
+                                    setNewItemImageBusy(true);
                                     const token = await getApiAccessToken();
                                     const cat = newCategory.trim();
+                                    const file = newItemPhotoInputRef.current?.files?.[0];
+                                    let imageKey: string | undefined;
+                                    if (file) {
+                                      imageKey = await uploadClosetImageViaPresign(
+                                        getApiAccessToken,
+                                        file,
+                                      );
+                                    }
                                     await createItem(token, {
                                       name: newName,
                                       description: newDescription,
                                       ...(cat ? { category: cat } : {}),
+                                      ...(imageKey ? { image_key: imageKey } : {}),
                                     });
                                     setNewName("");
                                     setNewDescription("");
                                     setNewCategory("");
+                                    if (newItemPhotoInputRef.current) {
+                                      newItemPhotoInputRef.current.value = "";
+                                    }
                                     setIsAddItemOpen(false);
                                     setOwnedPage(1);
                                     setActiveItemId(null);
@@ -1910,6 +2150,8 @@ export default function ClosetPage() {
                                     const message =
                                       err instanceof Error ? err.message : "Failed to create item";
                                     setOwnedNotice({ kind: "error", message });
+                                  } finally {
+                                    setNewItemImageBusy(false);
                                   }
                                 }}
                                 disabled={!newName.trim()}
@@ -1918,10 +2160,14 @@ export default function ClosetPage() {
                               </PondButton>
                               <PondButton
                                 colorPalette="sky"
+                                disabled={newItemImageBusy}
                                 onClick={() => {
                                   setNewName("");
                                   setNewDescription("");
                                   setNewCategory("");
+                                  if (newItemPhotoInputRef.current) {
+                                    newItemPhotoInputRef.current.value = "";
+                                  }
                                   setIsAddItemOpen(false);
                                 }}
                               >
@@ -2107,22 +2353,12 @@ export default function ClosetPage() {
                   const friendCategoryTagsLine = formatCategoryTagsSummaryLine(item);
                   const friendCategoryTrimmed = (item.category ?? "").trim();
                   const friendTagParts = item.tags.map((t) => t.trim()).filter(Boolean);
-                  return (
-                  <Box
-                    key={`friend-${item.id}`}
-                    bg="white"
-                    ref={(node: HTMLDivElement | null) => {
-                      friendsCardRefs.current[item.id] = node;
-                    }}
-                    borderWidth="1px"
-                    borderColor="border"
-                    borderRadius="xl"
-                    p="4"
-                    cursor="pointer"
-                    onClick={() =>
-                      setExpandedFriendItemId((current) => (current === item.id ? null : item.id))
-                    }
-                  >
+                  const friendImageUrl = (item.image_url ?? "").trim();
+                  const showFriendImage = Boolean(friendImageUrl);
+                  const friendOpenToggle = () =>
+                    setExpandedFriendItemId((current) => (current === item.id ? null : item.id));
+
+                  const friendStack = (
                     <Stack gap="2">
                       <HStack justify="space-between" align="start">
                         <HStack gap="1">
@@ -2339,7 +2575,55 @@ export default function ClosetPage() {
                         </Tabs.Root>
                       ) : null}
                     </Stack>
-                  </Box>
+                  );
+                  return showFriendImage ? (
+                    <Card.Root
+                      key={`friend-${item.id}`}
+                      bg="white"
+                      ref={(node: HTMLDivElement | null) => {
+                        friendsCardRefs.current[item.id] = node;
+                      }}
+                      flexDirection="row"
+                      overflow="hidden"
+                      alignItems="stretch"
+                      borderWidth="1px"
+                      borderColor="border"
+                      borderRadius="xl"
+                      cursor="pointer"
+                      onClick={friendOpenToggle}
+                    >
+                      <Image
+                        src={friendImageUrl}
+                        alt=""
+                        aria-hidden
+                        flex="0 0 40%"
+                        maxW="40%"
+                        w="40%"
+                        objectFit="cover"
+                        alignSelf="stretch"
+                        minH="140px"
+                        draggable={false}
+                      />
+                      <Box flex="1" minW={0} p="4">
+                        {friendStack}
+                      </Box>
+                    </Card.Root>
+                  ) : (
+                    <Box
+                      key={`friend-${item.id}`}
+                      bg="white"
+                      ref={(node: HTMLDivElement | null) => {
+                        friendsCardRefs.current[item.id] = node;
+                      }}
+                      borderWidth="1px"
+                      borderColor="border"
+                      borderRadius="xl"
+                      p="4"
+                      cursor="pointer"
+                      onClick={friendOpenToggle}
+                    >
+                      {friendStack}
+                    </Box>
                   );
                 })}
                 <HStack justify="space-between">

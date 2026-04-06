@@ -26,7 +26,7 @@ async function parseApiError(response: Response): Promise<string> {
     if (typeof parsed.detail === "string" && parsed.detail.trim().length > 0) {
       return parsed.detail;
     }
-    const preferredFields = ["date_needed_by", "message", "name"];
+    const preferredFields = ["date_needed_by", "message", "name", "image_key"];
     for (const field of preferredFields) {
       const value = parsed[field];
       if (typeof value === "string" && value.trim().length > 0) {
@@ -126,6 +126,7 @@ export async function createItem(
     description?: string;
     category?: string;
     tags?: string[];
+    image_key?: string;
   },
 ): Promise<void> {
   const response = await fetch(`${apiBase()}/api/v1/closet/items/`, {
@@ -147,6 +148,7 @@ export async function patchItem(
     description?: string;
     category?: string;
     tags?: string[];
+    image_key?: string;
   },
 ): Promise<void> {
   const response = await fetch(`${apiBase()}/api/v1/closet/items/${itemId}/`, {
@@ -158,6 +160,30 @@ export async function patchItem(
   if (!response.ok) {
     throw new Error(await parseApiError(response));
   }
+}
+
+export type ClosetImagePresignResponse = {
+  key: string;
+  upload_url: string;
+  expires_in_seconds: number;
+  max_bytes: number;
+  allowed_mime_types: string[];
+};
+
+export async function requestClosetImagePresign(
+  accessToken: string | null,
+  contentType: "image/jpeg" | "image/png" | "image/webp",
+): Promise<ClosetImagePresignResponse> {
+  const response = await fetch(`${apiBase()}/api/v1/closet/uploads/presign/`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify({ content_type: contentType }),
+  });
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
+  }
+  return (await response.json()) as ClosetImagePresignResponse;
 }
 
 export async function deleteItem(accessToken: string | null, itemId: number): Promise<void> {

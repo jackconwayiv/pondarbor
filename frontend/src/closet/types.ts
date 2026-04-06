@@ -27,6 +27,8 @@ export type ClosetItem = {
   category: string;
   tags: string[];
   image_key: string;
+  /** Public URL when CLOSET_R2_PUBLIC_BASE_URL is set and image_key is non-empty. */
+  image_url?: string;
   custody_disputed: boolean;
   pending_request_count: number;
   my_pending_request: BorrowRequest | null;

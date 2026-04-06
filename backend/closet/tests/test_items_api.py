@@ -1,4 +1,4 @@
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from closet.models import Item
@@ -120,4 +120,57 @@ class ClosetItemsApiTests(ClosetTestMixin, TestCase):
         resp = self.borrower_client.get(f"/api/v1/closet/items/{item.id}/")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["pending_custody_user"]["id"], self.borrower.id)
+
+    @override_settings(CLOSET_R2_PUBLIC_BASE_URL="")
+    def test_item_serializer_image_url_empty_without_public_base(self):
+        key = f"closet/{self.owner.id}/20240101/abc.jpg"
+        self.make_item(owner=self.owner, holder=self.owner, name="Pic", image_key=key)
+        resp = self.owner_client.get("/api/v1/closet/items/")
+        self.assertEqual(resp.status_code, 200)
+        row = next(i for i in resp.json()["owned_by_me"] if i["name"] == "Pic")
+        self.assertEqual(row["image_key"], key)
+        self.assertEqual(row.get("image_url") or "", "")
+
+    @override_settings(CLOSET_R2_PUBLIC_BASE_URL="https://cdn.example.test", CLOSET_R2_KEY_PREFIX="closet")
+    def test_item_serializer_image_url_joins_public_base(self):
+        key = f"closet/{self.owner.id}/20240101/abc.jpg"
+        self.make_item(owner=self.owner, holder=self.owner, name="Pic2", image_key=key)
+        resp = self.owner_client.get("/api/v1/closet/items/")
+        self.assertEqual(resp.status_code, 200)
+        row = next(i for i in resp.json()["owned_by_me"] if i["name"] == "Pic2")
+        self.assertEqual(row["image_url"], f"https://cdn.example.test/{key}")
+
+    @override_settings(CLOSET_R2_KEY_PREFIX="closet")
+    def test_patch_rejects_image_key_wrong_prefix(self):
+        item = self.make_item(owner=self.owner, holder=self.owner, name="X")
+        resp = self.owner_client.patch(
+            f"/api/v1/closet/items/{item.id}/",
+            {"image_key": f"closet/{self.borrower.id}/20240101/nope.jpg"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    @override_settings(CLOSET_R2_KEY_PREFIX="closet")
+    def test_create_rejects_image_key_wrong_prefix(self):
+        resp = self.owner_client.post(
+            "/api/v1/closet/items/",
+            {
+                "name": "Bad key",
+                "image_key": f"closet/{self.borrower.id}/20240101/nope.jpg",
+            },
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    @override_settings(CLOSET_R2_KEY_PREFIX="closet")
+    def test_patch_accepts_image_key_for_owner_prefix(self):
+        item = self.make_item(owner=self.owner, holder=self.owner, name="Y")
+        key = f"closet/{self.owner.id}/20240101/ok.jpg"
+        resp = self.owner_client.patch(
+            f"/api/v1/closet/items/{item.id}/",
+            {"image_key": key},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["image_key"], key)
 

@@ -1,8 +1,10 @@
 import json
+import logging
 import os
 import uuid
 from datetime import timedelta
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Exists, OuterRef, Prefetch, Q
@@ -31,6 +33,19 @@ from friends.services import are_friends, friend_ids_for_user
 from users.permissions import IsApprovedUser
 
 User = get_user_model()
+
+logger = logging.getLogger(__name__)
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning("Invalid integer for %s=%r; using default %s", name, raw, default)
+        return default
 
 
 def _active_loan_for_item(item: Item):
@@ -322,7 +337,12 @@ def item_detail(request, item_id: int):
         return Response({"detail": "Only the owner can modify this item."}, status=403)
 
     if request.method == "PATCH":
-        serializer = ItemPatchSerializer(item, data=request.data, partial=True)
+        serializer = ItemPatchSerializer(
+            item,
+            data=request.data,
+            partial=True,
+            context={"request": request},
+        )
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(ItemSerializer(item, context={"request": request}).data)
@@ -687,44 +707,94 @@ def item_complete_custody_return(request, item_id: int):
 @api_view(["POST"])
 @permission_classes([IsApprovedUser])
 def uploads_presign(request):
-    key_prefix = os.getenv("CLOSET_R2_KEY_PREFIX", "closet")
-    max_bytes = int(os.getenv("CLOSET_IMAGE_MAX_BYTES", "1048576"))
-    expires_seconds = int(os.getenv("CLOSET_UPLOAD_EXPIRES_SECONDS", "900"))
+    """Presign R2 PUT. Never raises: unexpected errors return JSON 502 with logged traceback."""
+    try:
+        return _uploads_presign_response(request)
+    except Exception as exc:
+        logger.exception("closet uploads_presign: unexpected error")
+        detail = (
+            str(exc)
+            if settings.DEBUG
+            else "Upload URL could not be created. Check server logs and CLOSET_R2_* / CLOUDFLARE_ACCOUNT_ID."
+        )
+        return Response({"detail": detail}, status=502)
+
+
+def _uploads_presign_response(request):
+    key_prefix = getattr(settings, "CLOSET_R2_KEY_PREFIX", "closet")
+    max_bytes = _env_int("CLOSET_IMAGE_MAX_BYTES", 1048576)
+    expires_seconds = min(_env_int("CLOSET_UPLOAD_EXPIRES_SECONDS", 900), 604800)
     mime = request.data.get("content_type", "image/jpeg")
     if mime not in {"image/jpeg", "image/png", "image/webp"}:
         return Response({"detail": "Unsupported image mime type."}, status=400)
 
-    account_id = os.getenv("CLOUDFLARE_ACCOUNT_ID", "")
-    bucket = os.getenv("CLOSET_R2_BUCKET", "")
-    access_key = os.getenv("CLOSET_R2_ACCESS_KEY_ID", "")
-    secret_key = os.getenv("CLOSET_R2_SECRET_ACCESS_KEY", "")
-    if not all([account_id, bucket, access_key, secret_key]):
+    account_id = os.getenv("CLOUDFLARE_ACCOUNT_ID", "").strip()
+    endpoint_override = getattr(settings, "CLOSET_R2_S3_ENDPOINT_URL", "") or ""
+    bucket = os.getenv("CLOSET_R2_BUCKET", "").strip()
+    access_key = os.getenv("CLOSET_R2_ACCESS_KEY_ID", "").strip()
+    secret_key = os.getenv("CLOSET_R2_SECRET_ACCESS_KEY", "").strip()
+    has_endpoint = bool(endpoint_override) or bool(account_id)
+    if not all([has_endpoint, bucket, access_key, secret_key]):
         return Response(
             {
                 "detail": "R2 is not configured.",
                 "required_env": [
-                    "CLOUDFLARE_ACCOUNT_ID",
                     "CLOSET_R2_BUCKET",
                     "CLOSET_R2_ACCESS_KEY_ID",
                     "CLOSET_R2_SECRET_ACCESS_KEY",
+                    "CLOUDFLARE_ACCOUNT_ID (or set CLOSET_R2_S3_ENDPOINT_URL to the full S3 API URL from R2)",
                 ],
             },
             status=501,
         )
     try:
         import boto3
-    except Exception:
-        return Response({"detail": "boto3 is required for presign endpoint."}, status=500)
+    except ImportError:
+        return Response(
+            {
+                "detail": (
+                    "boto3 is not installed in the Python environment running Django. "
+                    "Fix: activate the same venv you use for runserver, then run "
+                    "`pip install -r backend/requirements.txt` (or `pip install boto3`)."
+                ),
+            },
+            status=503,
+        )
+    except Exception as exc:
+        logger.exception("boto3 import failed")
+        return Response(
+            {
+                "detail": (
+                    f"boto3 import error: {exc!s}. "
+                    "Try reinstalling: pip install -U boto3 botocore"
+                    if settings.DEBUG
+                    else "boto3 failed to load. Check server logs and reinstall dependencies."
+                ),
+            },
+            status=503,
+        )
 
     ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[mime]
     key = f"{key_prefix}/{request.user.id}/{timezone.now().strftime('%Y%m%d')}/{uuid.uuid4().hex}.{ext}"
-    endpoint_url = f"https://{account_id}.r2.cloudflarestorage.com"
+    if endpoint_override:
+        endpoint_url = endpoint_override if "://" in endpoint_override else f"https://{endpoint_override}"
+    else:
+        endpoint_url = f"https://{account_id}.r2.cloudflarestorage.com"
+
+    # Match Cloudflare R2 docs (minimal client). Optional path-style SigV4 for SDKs that need it.
+    extra_kwargs = {}
+    if os.getenv("CLOSET_R2_S3_PATH_STYLE", "0").lower() in ("1", "true", "yes"):
+        from botocore.client import Config
+
+        extra_kwargs["config"] = Config(signature_version="s3v4", s3={"addressing_style": "path"})
+
     client = boto3.client(
         "s3",
         endpoint_url=endpoint_url,
         aws_access_key_id=access_key,
         aws_secret_access_key=secret_key,
         region_name="auto",
+        **extra_kwargs,
     )
     presigned_url = client.generate_presigned_url(
         ClientMethod="put_object",
@@ -735,6 +805,7 @@ def uploads_presign(request):
         },
         ExpiresIn=expires_seconds,
     )
+
     return Response(
         {
             "key": key,

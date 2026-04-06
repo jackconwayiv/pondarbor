@@ -6,6 +6,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from achievements.models import AchievementDefinition, UserAchievement
+from friends.models import FriendRequest
 from achievements.services import (
     SLUG_ARCHIVIST,
     SLUG_PONDCLICKER_TIER_1,
@@ -178,17 +179,48 @@ class AchievementPublicApiTests(TestCase):
         defn = AchievementDefinition.objects.get(slug=SLUG_ARCHIVIST)
         UserAchievement.objects.create(user=self.user, achievement=defn)
         self.client = APIClient()
+        self.viewer = User.objects.create_user(email="viewer@example.com", password="secret12345")
+        self.viewer.account_status = User.AccountStatus.APPROVED
+        self.viewer.save(update_fields=["account_status"])
+        self.user.account_status = User.AccountStatus.APPROVED
+        self.user.save(update_fields=["account_status"])
+
+    def _accept_pair(self, user_a, user_b):
+        FriendRequest.objects.update_or_create(
+            requester=user_a,
+            requested=user_b,
+            defaults={"is_accepted": True},
+        )
+        FriendRequest.objects.update_or_create(
+            requester=user_b,
+            requested=user_a,
+            defaults={"is_accepted": True},
+        )
 
     def test_public_achievements_by_email(self):
         resp = self.client.get(f"/api/v1/users/{quote(self.user.email, safe='')}/achievements/")
         self.assertEqual(resp.status_code, 200)
-        data = resp.json()
+        self.assertEqual(resp.json(), [])
+
+        self.client.force_login(self.viewer)
+        self._accept_pair(self.viewer, self.user)
+        friend_resp = self.client.get(
+            f"/api/v1/users/{quote(self.user.email, safe='')}/achievements/"
+        )
+        self.assertEqual(friend_resp.status_code, 200)
+        data = friend_resp.json()
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["slug"], SLUG_ARCHIVIST)
 
     def test_public_achievements_by_user_id(self):
         resp = self.client.get(f"/api/v1/users/{self.user.id}/achievements/")
         self.assertEqual(resp.status_code, 200)
-        data = resp.json()
+        self.assertEqual(resp.json(), [])
+
+        self.client.force_login(self.viewer)
+        self._accept_pair(self.viewer, self.user)
+        friend_resp = self.client.get(f"/api/v1/users/{self.user.id}/achievements/")
+        self.assertEqual(friend_resp.status_code, 200)
+        data = friend_resp.json()
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["slug"], SLUG_ARCHIVIST)

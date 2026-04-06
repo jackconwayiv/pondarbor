@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework import serializers
 
+from friends.services import are_friends
 from quotes.models import Quote, QuoteLabel, QuoteLabelAssignment
 
 User = get_user_model()
@@ -10,6 +11,7 @@ User = get_user_model()
 UNKNOWN_ATTRIBUTION_EMAIL_USER_MESSAGE = (
     "That user is not currently registered on the site."
 )
+NON_FRIEND_ATTRIBUTION_MESSAGE = "You can only tag friends in attributions."
 
 
 def sync_labels_for_quote(*, quote: Quote, owner: User, labels_in: list[dict]) -> None:
@@ -20,9 +22,12 @@ def sync_labels_for_quote(*, quote: Quote, owner: User, labels_in: list[dict]) -
         kind = item["kind"]
         email = (item.get("email") or "").strip().lower() if item.get("email") else ""
         name = (item.get("name") or "").strip()
+        friend_user_id = item.get("friend_user_id")
 
         linked_user = None
-        if email:
+        if friend_user_id:
+            linked_user = User.objects.filter(pk=friend_user_id).first()
+        elif email:
             linked_user = User.objects.filter(email__iexact=email).first()
 
         if kind == QuoteLabel.Kind.ATTRIBUTION.value:
@@ -31,6 +36,17 @@ def sync_labels_for_quote(*, quote: Quote, owner: User, labels_in: list[dict]) -
                     raise serializers.ValidationError(
                         {"labels": [UNKNOWN_ATTRIBUTION_EMAIL_USER_MESSAGE]}
                     )
+                if not are_friends(user_a=owner, user_b=linked_user):
+                    raise serializers.ValidationError({"labels": [NON_FRIEND_ATTRIBUTION_MESSAGE]})
+                name = linked_user.email
+                linked_user_fk = linked_user
+            elif friend_user_id:
+                if linked_user is None:
+                    raise serializers.ValidationError(
+                        {"labels": [UNKNOWN_ATTRIBUTION_EMAIL_USER_MESSAGE]}
+                    )
+                if not are_friends(user_a=owner, user_b=linked_user):
+                    raise serializers.ValidationError({"labels": [NON_FRIEND_ATTRIBUTION_MESSAGE]})
                 name = linked_user.email
                 linked_user_fk = linked_user
             else:
@@ -65,6 +81,7 @@ class QuoteLabelInputSerializer(serializers.Serializer):
     name = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     # For kind=attribution: optional. If provided and matches a site user, we link to it.
     email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
+    friend_user_id = serializers.IntegerField(required=False)
 
     def validate(self, data):
         kind = data["kind"]
@@ -112,10 +129,12 @@ class QuoteSerializer(serializers.ModelSerializer):
         ]
 
     def get_owner(self, obj: Quote):
+        profile = getattr(obj.owner, "profile", None)
         return {
             "id": obj.owner_id,
             "email": obj.owner.email,
             "username": getattr(obj.owner, "username", "") or "",
+            "avatar_url": getattr(profile, "avatar_url", "") or "",
         }
 
     def get_relationship_to_viewer(self, obj: Quote) -> str:

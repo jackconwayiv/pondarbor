@@ -4,6 +4,7 @@ import AppLayout from "./layout";
 import NotFoundPage from "./NotFoundPage";
 import ProfilePage from "./ProfilePage";
 import FriendProfilePage from "./friend/FriendProfilePage";
+import FriendsPage from "./friends/FriendsPage";
 import QuotesFeedPage from "./quotes/QuotesFeedPage";
 import ClickerCatalogAdminPage from "./clicker/ClickerCatalogAdminPage";
 import ClickerGamePage from "./clicker/ClickerGamePage";
@@ -96,6 +97,10 @@ export const router = createBrowserRouter([
       {
         path: "friend/:userId",
         element: <FriendProfilePage />,
+      },
+      {
+        path: "friends",
+        element: <FriendsPage />,
       },
       {
         path: "users/:email/public-quotes",

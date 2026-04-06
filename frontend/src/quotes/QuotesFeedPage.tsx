@@ -28,19 +28,21 @@ import {
 } from "./api";
 import { quoteOwnerDisplayLabel } from "./ownerDisplay";
 import type { Quote, QuoteCreatePayload, QuoteLabel, QuotePatchPayload } from "./types";
+import { fetchFriendsList, searchFriends, type FriendUser } from "../friends/api";
 
 const PAGE_SIZE = 10;
 type QuoteTab = "add" | "my" | "public";
 
-function parseQuoteTab(value: string | null): QuoteTab {
-  if (value === "my" || value === "public") return value;
+function parseQuoteTab(value: string | null, isApproved: boolean): QuoteTab {
+  if (value === "my") return value;
+  if (value === "public") return isApproved ? "public" : "add";
   return "add";
 }
 
 const PLACEHOLDER_QUICK_BODY = "Paste or type a quote...";
 const PLACEHOLDER_TAGS = "poetry, lyrics, musings";
 const PLACEHOLDER_ATTRIBUTION_NAMES = "David Bowie, Cormac McCarthy";
-const PLACEHOLDER_ATTRIBUTION_EMAILS = "friend@example.com, editor@example.com";
+const PLACEHOLDER_ATTRIBUTION_EMAILS = "tag a friend by nickname or email";
 
 function parseCsv(raw: string): string[] {
   return raw
@@ -67,12 +69,20 @@ function isLikelyEmail(value: string): boolean {
   return v.length > 0 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 }
 
-function attributionInputFromValue(value: string): {
+function attributionInputFromValue(
+  value: string,
+  friendLookup?: Map<string, number>,
+): {
   kind: "attribution";
   name?: string;
   email?: string;
+  friend_user_id?: number;
 } {
   const trimmed = value.trim();
+  const friendUserId = friendLookup?.get(trimmed.toLowerCase());
+  if (friendUserId) {
+    return { kind: "attribution", friend_user_id: friendUserId, name: trimmed };
+  }
   if (isLikelyEmail(trimmed)) {
     return { kind: "attribution", email: trimmed.toLowerCase() };
   }
@@ -154,6 +164,7 @@ function QuoteCard({
   onSessionMayNeedRefresh,
   tagSuggestions,
   attributionSuggestions,
+  friendLookup,
   isEditing,
   onBeginEditing,
   onEndEditing,
@@ -167,6 +178,7 @@ function QuoteCard({
   onSessionMayNeedRefresh?: () => Promise<void>;
   tagSuggestions: QuoteLabel[];
   attributionSuggestions: QuoteLabel[];
+  friendLookup: Map<string, number>;
   isEditing: boolean;
   onBeginEditing: () => void;
   onEndEditing: () => void;
@@ -238,7 +250,7 @@ function QuoteCard({
       const labelsPayload: NonNullable<QuotePatchPayload["labels"]> = [
         ...tags.map((name) => ({ kind: "tag" as const, name })),
         ...attributionNames.map((name) => ({ kind: "attribution" as const, name })),
-        ...attributionEmailsOrLinkedNames.map((v) => attributionInputFromValue(v)),
+        ...attributionEmailsOrLinkedNames.map((v) => attributionInputFromValue(v, friendLookup)),
       ];
 
       const payload: QuotePatchPayload = {
@@ -313,7 +325,7 @@ function QuoteCard({
       quote={quote}
       ownerText={quoteOwnerDisplayLabel(quote.owner)}
       ownerProfileUserId={quote.owner.id}
-      hideOwnerMeta={canEdit}
+      showOwnerAvatar={!canEdit}
       suppressReadOnlyQuote={isEditing}
       isClickable={canEdit}
       onClick={() => {
@@ -322,20 +334,9 @@ function QuoteCard({
       }}
       rightMetaSlot={
         canEdit && !isEditing ? (
-          <button
-            type="button"
-            aria-label="Open editor"
-            style={{
-              background: "transparent",
-              border: "none",
-              padding: 0,
-              margin: 0,
-              lineHeight: 1,
-              fontSize: "2rem",
-              cursor: deleteBusy ? "not-allowed" : "pointer",
-              opacity: savingEdit || deleteBusy ? 0.5 : 1,
-              color: "#5c5c5c",
-            }}
+          <PondButton
+            size="sm"
+            colorPalette="lilypad"
             disabled={deleteBusy}
             onClick={(e) => {
               e.stopPropagation();
@@ -343,8 +344,8 @@ function QuoteCard({
               onBeginEditing();
             }}
           >
-            ⚙
-          </button>
+            Edit
+          </PondButton>
         ) : null
       }
       footerSlot={
@@ -422,7 +423,7 @@ function QuoteCard({
                           }
                         >
                           <option value="private">Private</option>
-                          <option value="public">Public</option>
+                          <option value="public">Visible to friends</option>
                         </NativeSelectField>
                       </NativeSelectRoot>
                     </Stack>
@@ -497,7 +498,7 @@ function QuoteCard({
                     />
                   </Stack>
                   <Stack>
-                    <Text fontSize={APP_TEXT_SIZES.label}>Attributions by email (comma-separated)</Text>
+                    <Text fontSize={APP_TEXT_SIZES.label}>Tag a friend (comma-separated)</Text>
                     <HStack flexWrap="wrap">
                       {attributionSuggestions
                         .filter((l) => !!l.linked_user_id)
@@ -594,7 +595,6 @@ function QuoteCard({
 
 export default function QuotesFeedPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = parseQuoteTab(searchParams.get("tab"));
   const {
     isAuthenticated,
     isLoading,
@@ -612,6 +612,8 @@ export default function QuotesFeedPage() {
   const [attributionEmailsCsv, setAttributionEmailsCsv] = useState("");
   const [tagSuggestions, setTagSuggestions] = useState<QuoteLabel[]>([]);
   const [attributionSuggestions, setAttributionSuggestions] = useState<QuoteLabel[]>([]);
+  const [approvedFriends, setApprovedFriends] = useState<FriendUser[]>([]);
+  const [friendTagSuggestions, setFriendTagSuggestions] = useState<FriendUser[]>([]);
   const [loadingFeed, setLoadingFeed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -621,6 +623,17 @@ export default function QuotesFeedPage() {
   const [feedReady, setFeedReady] = useState(false);
   const [isMoreDetailsOpen, setIsMoreDetailsOpen] = useState(false);
   const [editingQuoteId, setEditingQuoteId] = useState<number | null>(null);
+  const isApprovedUser = !!sessionUser?.user?.is_approved;
+  const activeTab = parseQuoteTab(searchParams.get("tab"), isApprovedUser);
+
+  const friendLookup = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const friend of approvedFriends) {
+      map.set(friend.email.toLowerCase(), friend.id);
+      map.set(friend.nickname.toLowerCase(), friend.id);
+    }
+    return map;
+  }, [approvedFriends]);
 
   const setActiveTab = (tab: QuoteTab) => {
     const next = new URLSearchParams(searchParams);
@@ -629,6 +642,10 @@ export default function QuotesFeedPage() {
   };
 
   const loadSuggestions = useCallback(async () => {
+    if (!sessionUser?.user?.is_approved) {
+      setApprovedFriends([]);
+      return;
+    }
     if (authBlocked) return;
     try {
       const token = await getApiAccessToken();
@@ -638,6 +655,8 @@ export default function QuotesFeedPage() {
       ]);
       setTagSuggestions(tags);
       setAttributionSuggestions(attributions);
+      const friendsPayload = await fetchFriendsList(token);
+      setApprovedFriends(friendsPayload.approved_friends);
     } catch (err: unknown) {
       if (isAuthFailure(err)) {
         setAuthBlocked(true);
@@ -646,7 +665,7 @@ export default function QuotesFeedPage() {
       }
       throw err;
     }
-  }, [authBlocked, getApiAccessToken]);
+  }, [authBlocked, getApiAccessToken, sessionUser?.user?.is_approved]);
 
   const loadFeed = useCallback(async () => {
     if (authBlocked) return;
@@ -697,6 +716,38 @@ export default function QuotesFeedPage() {
     void run();
   }, [isAuthenticated, sessionUser, authBlocked, feedReady, loadSuggestions]);
 
+  useEffect(() => {
+    if (!isAuthenticated || !sessionUser || authBlocked || !feedReady) {
+      setFriendTagSuggestions([]);
+      return;
+    }
+    const terms = parseCsv(attributionEmailsCsv);
+    const query = terms.length > 0 ? (terms[terms.length - 1] ?? "").trim() : attributionEmailsCsv.trim();
+    if (query.length < 2) {
+      setFriendTagSuggestions([]);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const token = await getApiAccessToken();
+          const rows = await searchFriends(token, query);
+          setFriendTagSuggestions(rows);
+        } catch {
+          setFriendTagSuggestions([]);
+        }
+      })();
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [
+    attributionEmailsCsv,
+    isAuthenticated,
+    sessionUser,
+    authBlocked,
+    feedReady,
+    getApiAccessToken,
+  ]);
+
   const onSaveQuote = async () => {
     const trimmed = body.trim();
     if (!trimmed) {
@@ -727,7 +778,7 @@ export default function QuotesFeedPage() {
           kind: "attribution" as const,
           name,
         })),
-        ...attributionEmailsOrLinkedNames.map((v) => attributionInputFromValue(v)),
+        ...attributionEmailsOrLinkedNames.map((v) => attributionInputFromValue(v, friendLookup)),
       ];
       if (labels.length > 0) {
         payload.labels = labels;
@@ -803,7 +854,7 @@ export default function QuotesFeedPage() {
         flexDirection="column"
         flex="1"
         minH="full"
-        onValueChange={(details) => setActiveTab(parseQuoteTab(details.value))}
+        onValueChange={(details) => setActiveTab(parseQuoteTab(details.value, isApprovedUser))}
         variant="plain"
       >
         <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
@@ -856,6 +907,7 @@ export default function QuotesFeedPage() {
               </Tabs.Trigger>
               <Tabs.Trigger
                 value="public"
+                display={isApprovedUser ? undefined : "none"}
                 bg={activeTab === "public" ? "lilypad.solid" : undefined}
                 color={activeTab === "public" ? "black" : undefined}
                 borderTopRadius="md"
@@ -945,7 +997,7 @@ export default function QuotesFeedPage() {
                           }
                         >
                           <option value="private">Private</option>
-                          <option value="public">Public</option>
+                          <option value="public">Visible to friends</option>
                         </NativeSelectField>
                       </NativeSelectRoot>
                     </Stack>
@@ -1019,7 +1071,7 @@ export default function QuotesFeedPage() {
                   </Stack>
                   <Stack>
                     <Text fontSize={APP_TEXT_SIZES.label}>
-                      Attributions by user email (comma-separated) (shares with user)
+                      Tag a friend (comma-separated)
                     </Text>
                     <HStack flexWrap="wrap">
                       {attributionSuggestions
@@ -1053,6 +1105,25 @@ export default function QuotesFeedPage() {
                       placeholder={PLACEHOLDER_ATTRIBUTION_EMAILS}
                       {...FIELD_PLACEHOLDER_PROPS}
                     />
+                    {friendTagSuggestions.length > 0 ? (
+                      <HStack flexWrap="wrap">
+                        {friendTagSuggestions.map((friend) => (
+                          <Tag.Root
+                            key={`friend-tag-suggest-${friend.id}`}
+                            size="sm"
+                            colorPalette="lilypad"
+                            variant="outline"
+                            bg="bg"
+                            cursor="pointer"
+                            onClick={() =>
+                              setAttributionEmailsCsv((prev) => appendCsvValue(prev, friend.email))
+                            }
+                          >
+                            <Tag.Label>{friend.nickname} ({friend.email})</Tag.Label>
+                          </Tag.Root>
+                        ))}
+                      </HStack>
+                    ) : null}
                   </Stack>
                   </Stack>
                 </Collapsible.Content>
@@ -1122,6 +1193,7 @@ export default function QuotesFeedPage() {
                   onSuggestionsChanged={loadSuggestions}
                   tagSuggestions={tagSuggestions}
                   attributionSuggestions={attributionSuggestions}
+                  friendLookup={friendLookup}
                   onQuoteUpdated={(next) =>
                     setQuotes((prev) => prev.map((q) => (q.id === next.id ? next : q)))
                   }
@@ -1180,9 +1252,15 @@ export default function QuotesFeedPage() {
             </Tabs.Content>
 
             <Tabs.Content value="public" p={{ base: "4", md: "6" }}>
-            <Stack pt="0">
-              <PublicQuotesPage />
-            </Stack>
+              <Stack pt="0">
+                {sessionUser?.user?.is_approved ? (
+                  <PublicQuotesPage />
+                ) : (
+                  <Text color="orange.solid" fontWeight="medium">
+                    Public quote browsing is available after your account is approved.
+                  </Text>
+                )}
+              </Stack>
             </Tabs.Content>
           </Box>
         </Box>

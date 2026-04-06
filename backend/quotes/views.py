@@ -9,6 +9,9 @@ from rest_framework.response import Response
 from rest_framework.status import HTTP_200_OK, HTTP_201_CREATED, HTTP_204_NO_CONTENT
 
 from users.auth0_backend import Auth0TokenAuthentication
+from users.permissions import IsApprovedUser
+from users.models import User as SiteUser
+from friends.services import are_friends, friend_ids_for_user
 
 from achievements.services import evaluate_quote_achievements_for_user
 from quotes.models import Quote, QuoteLabel
@@ -59,15 +62,23 @@ def quote_create(request):
 @permission_classes([IsAuthenticated])
 def quote_feed(request):
     user = request.user
-    qs = Quote.objects.filter(Q(owner=user) | Q(labels__linked_user=user)).distinct()
+    friend_ids = friend_ids_for_user(user=user)
+    qs = Quote.objects.filter(
+        Q(owner=user)
+        | (
+            Q(owner_id__in=friend_ids)
+            & (Q(visibility=Quote.Visibility.PUBLIC) | Q(labels__linked_user=user))
+        )
+    ).distinct()
     qs = _quote_list_queryset(qs, request=request).order_by("-created_at")
     return Response(QuoteSerializer(qs, many=True, context={"request": request}).data)
 
 
 @api_view(["GET"])
-@permission_classes([AllowAny])
+@permission_classes([IsApprovedUser])
 def quote_public(request):
-    qs = Quote.objects.filter(visibility=Quote.Visibility.PUBLIC)
+    friend_ids = friend_ids_for_user(user=request.user)
+    qs = Quote.objects.filter(owner_id__in=friend_ids, visibility=Quote.Visibility.PUBLIC)
     qs = _quote_list_queryset(qs, request=request).order_by("-created_at")
     return Response(QuoteSerializer(qs, many=True, context={"request": request}).data)
 
@@ -78,15 +89,16 @@ def quote_detail(request, quote_id: int):
     if request.method == "GET":
         user = request.user
         if user and getattr(user, "is_authenticated", False):
+            friend_ids = friend_ids_for_user(user=user)
             qs = Quote.objects.filter(
                 Q(owner=user)
-                | Q(visibility=Quote.Visibility.PUBLIC)
-                | Q(labels__linked_user=user)
+                | (
+                    Q(owner_id__in=friend_ids)
+                    & (Q(visibility=Quote.Visibility.PUBLIC) | Q(labels__linked_user=user))
+                )
             ).filter(deleted_at__isnull=True)
         else:
-            qs = Quote.objects.filter(
-                visibility=Quote.Visibility.PUBLIC, deleted_at__isnull=True
-            )
+            qs = Quote.objects.none()
 
         quote = get_object_or_404(qs, id=quote_id)
         qs = _quote_list_queryset(Quote.objects.filter(id=quote.id), request=request)
@@ -154,11 +166,16 @@ def _friend_profile_quotes_queryset(*, owner, request):
     base = Quote.objects.filter(owner=owner)
     viewer = getattr(request, "user", None)
     if viewer is not None and getattr(viewer, "is_authenticated", False):
+        if viewer.id != owner.id and (
+            viewer.account_status != SiteUser.AccountStatus.APPROVED
+            or not are_friends(user_a=viewer, user_b=owner)
+        ):
+            return Quote.objects.none()
         qs = base.filter(
             Q(visibility=Quote.Visibility.PUBLIC) | Q(labels__linked_user=viewer)
         ).distinct()
     else:
-        qs = base.filter(visibility=Quote.Visibility.PUBLIC)
+        qs = Quote.objects.none()
     return qs
 
 

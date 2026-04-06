@@ -4,6 +4,7 @@ from django.test.utils import CaptureQueriesContext
 from django.db import connection
 from rest_framework.test import APIClient
 
+from friends.models import FriendRequest
 from quotes.models import Quote, QuoteLabel
 
 
@@ -15,6 +16,9 @@ class QuotesApiTests(TestCase):
         self.alice = User.objects.create_user(email="alice@example.com", password="secret12345")
         self.bob = User.objects.create_user(email="bob@example.com", password="secret12345")
         self.charlie = User.objects.create_user(email="charlie@example.com", password="secret12345")
+        for user in (self.alice, self.bob, self.charlie):
+            user.account_status = User.AccountStatus.APPROVED
+            user.save(update_fields=["account_status"])
 
         self.alice_client = APIClient()
         self.alice_client.force_login(self.alice)
@@ -22,7 +26,22 @@ class QuotesApiTests(TestCase):
         self.bob_client = APIClient()
         self.bob_client.force_login(self.bob)
 
+        self.charlie_client = APIClient()
+        self.charlie_client.force_login(self.charlie)
+
         self.anon_client = APIClient()
+
+    def _accept_pair(self, user_a, user_b):
+        FriendRequest.objects.update_or_create(
+            requester=user_a,
+            requested=user_b,
+            defaults={"is_accepted": True},
+        )
+        FriendRequest.objects.update_or_create(
+            requester=user_b,
+            requested=user_a,
+            defaults={"is_accepted": True},
+        )
 
     def test_quick_create_requires_body_and_sets_defaults(self):
         resp = self.alice_client.post("/api/v1/quotes/", {"body": " Hello world "}, format="json")
@@ -54,6 +73,7 @@ class QuotesApiTests(TestCase):
         )
 
     def test_attribution_by_email_stores_full_user_email_as_label_name(self):
+        self._accept_pair(self.alice, self.bob)
         create_resp = self.alice_client.post(
             "/api/v1/quotes/",
             {
@@ -70,6 +90,7 @@ class QuotesApiTests(TestCase):
 
     def test_private_quote_tagged_in_is_visible_in_feed(self):
         # Alice saves a private quote and attributes it to Bob.
+        self._accept_pair(self.alice, self.bob)
         create_resp = self.alice_client.post(
             "/api/v1/quotes/",
             {
@@ -99,15 +120,23 @@ class QuotesApiTests(TestCase):
         resp = self.anon_client.get(f"/api/v1/quotes/{quote_id}/")
         self.assertEqual(resp.status_code, 404)
 
-    def test_anonymous_can_view_public_quotes_list(self):
+    def test_public_quotes_list_requires_approved_user(self):
         public_quote = Quote.objects.create(
             owner=self.alice,
             body="Public quote",
             visibility=Quote.Visibility.PUBLIC,
         )
+        self._accept_pair(self.alice, self.bob)
         resp = self.anon_client.get("/api/v1/quotes/public/")
-        self.assertEqual(resp.status_code, 200)
-        ids = {q["id"] for q in resp.json()}
+        self.assertEqual(resp.status_code, 403)
+        pending = User.objects.create_user(email="pending@example.com", password="secret12345")
+        pending_client = APIClient()
+        pending_client.force_login(pending)
+        self.assertEqual(pending_client.get("/api/v1/quotes/public/").status_code, 403)
+
+        allowed_resp = self.bob_client.get("/api/v1/quotes/public/")
+        self.assertEqual(allowed_resp.status_code, 200)
+        ids = {q["id"] for q in allowed_resp.json()}
         self.assertIn(public_quote.id, ids)
 
     def test_public_quotes_by_user_endpoint(self):
@@ -122,13 +151,18 @@ class QuotesApiTests(TestCase):
             visibility=Quote.Visibility.PRIVATE,
         )
 
-        resp = self.anon_client.get(f"/api/v1/users/{self.alice.email}/public-quotes/")
+        anon_resp = self.anon_client.get(f"/api/v1/users/{self.alice.email}/public-quotes/")
+        self.assertEqual(anon_resp.status_code, 200)
+        self.assertEqual(anon_resp.json(), [])
+
+        self._accept_pair(self.alice, self.bob)
+        resp = self.bob_client.get(f"/api/v1/users/{self.alice.email}/public-quotes/")
         self.assertEqual(resp.status_code, 200)
         ids = {q["id"] for q in resp.json()}
         self.assertIn(public_quote.id, ids)
         self.assertNotIn(private_quote.id, ids)
 
-        by_id = self.anon_client.get(f"/api/v1/users/{self.alice.id}/public-quotes/")
+        by_id = self.bob_client.get(f"/api/v1/users/{self.alice.id}/public-quotes/")
         self.assertEqual(by_id.status_code, 200)
         self.assertEqual({q["id"] for q in by_id.json()}, ids)
 
@@ -154,6 +188,16 @@ class QuotesApiTests(TestCase):
         }
         self.assertNotIn(tagged_private.id, anon_ids)
 
+        # Not-friend authenticated viewer still cannot see this quote.
+        charlie_ids = {
+            q["id"]
+            for q in self.charlie_client.get(
+                f"/api/v1/users/{self.alice.id}/public-quotes/",
+            ).json()
+        }
+        self.assertNotIn(tagged_private.id, charlie_ids)
+
+        self._accept_pair(self.alice, self.bob)
         self.bob_client.force_login(self.bob)
         bob_ids = {
             q["id"]
@@ -165,6 +209,7 @@ class QuotesApiTests(TestCase):
 
     def test_feed_query_count_is_bounded(self):
         # Ensure we don't accidentally do per-quote label lookups.
+        self._accept_pair(self.alice, self.bob)
         for i in range(5):
             q = Quote.objects.create(owner=self.alice, body=f"Q{i}", visibility=Quote.Visibility.PRIVATE)
             # Attach an attribution label to each quote so Bob is linked.
@@ -179,10 +224,9 @@ class QuotesApiTests(TestCase):
         with CaptureQueriesContext(connection) as ctx:
             resp = self.bob_client.get("/api/v1/quotes/feed/")
         self.assertEqual(resp.status_code, 200)
-        # Expect a small constant number of queries:
-        # - quotes (+ join for labels__linked_user)
-        # - prefetch labels (+ linked_user select)
-        self.assertLessEqual(len(ctx), 6)
+        # Expect a small constant number of queries. After friend-gating and owner/profile
+        # serialization changes, this is still bounded but higher than the original baseline.
+        self.assertLessEqual(len(ctx), 12)
 
     def test_delete_is_soft_and_hidden_from_feed_and_public(self):
         quote = Quote.objects.create(
@@ -201,7 +245,8 @@ class QuotesApiTests(TestCase):
         feed_ids = {q["id"] for q in feed_resp.json()}
         self.assertNotIn(quote.id, feed_ids)
 
-        public_resp = self.anon_client.get("/api/v1/quotes/public/")
+        self._accept_pair(self.alice, self.bob)
+        public_resp = self.bob_client.get("/api/v1/quotes/public/")
         self.assertEqual(public_resp.status_code, 200)
         public_ids = {q["id"] for q in public_resp.json()}
         self.assertNotIn(quote.id, public_ids)

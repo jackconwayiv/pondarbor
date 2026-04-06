@@ -8,6 +8,7 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 from users.frontend_views import spa_index
+from friends.models import FriendRequest
 from whatif.models import WhatIfQuestion
 
 User = get_user_model()
@@ -62,11 +63,40 @@ class UsersApiTests(TestCase):
         self.assertEqual(by_id.status_code, 200)
         self.assertEqual(
             by_id.json(),
-            {"display_name": "Pat", "email": "friend@example.com"},
+            {
+                "nickname": "Pat",
+                "avatar_url": "",
+                "is_friend": False,
+                "can_view_full_profile": False,
+                "friendship_status": "none",
+            },
         )
         by_email = self.client.get(f"/api/v1/users/{quote(user.email, safe='')}/public/")
         self.assertEqual(by_email.status_code, 200)
         self.assertEqual(by_email.json(), by_id.json())
+
+    def test_public_summary_friend_viewer_includes_extended_fields(self):
+        viewer = User.objects.create_user(email="viewer@example.com", password="secret12345")
+        viewer.account_status = User.AccountStatus.APPROVED
+        viewer.save(update_fields=["account_status"])
+        target = User.objects.create_user(email="target@example.com", password="secret12345")
+        target.account_status = User.AccountStatus.APPROVED
+        target.save(update_fields=["account_status"])
+        target.profile.display_name = "TargetNick"
+        target.profile.save(update_fields=["display_name"])
+
+        FriendRequest.objects.create(requester=viewer, requested=target, is_accepted=True)
+        FriendRequest.objects.create(requester=target, requested=viewer, is_accepted=True)
+
+        self.client.force_login(viewer)
+        resp = self.client.get(f"/api/v1/users/{target.id}/public/")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertTrue(body["is_friend"])
+        self.assertTrue(body["can_view_full_profile"])
+        self.assertEqual(body["friendship_status"], "friends")
+        self.assertEqual(body["display_name"], "TargetNick")
+        self.assertEqual(body["email"], "target@example.com")
 
     def test_patch_profile_updates_preferences_and_returns_full_me(self):
         user = User.objects.create_user(email="edit@example.com", password="secret12345")

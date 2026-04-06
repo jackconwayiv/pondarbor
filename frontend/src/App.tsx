@@ -20,6 +20,7 @@ import {
   type UpcomingBirthday,
   type StaffPendingSummary,
 } from "./users/api";
+import { fetchFriendsList } from "./friends/api";
 
 const LILYPAD_WEDGE_CLIP_PATH =
   "polygon(0% 0%, 43% 0%, 46% 12%, 48% 24%, 50% 36%, 52% 24%, 54% 12%, 57% 0%, 100% 0%, 100% 100%, 0% 100%)";
@@ -55,6 +56,14 @@ function birthdayMessage(birthday: UpcomingBirthday): string {
   return `${birthday.display_name}'s birthday is ${monthName} ${birthday.birth_day}!`;
 }
 
+function accountStatusMessage(accountStatus: string | undefined): string | null {
+  if (!accountStatus || accountStatus === "approved") return null;
+  if (accountStatus === "pending") return "Your account is awaiting approval.";
+  if (accountStatus === "rejected") return "Your account was rejected. Please contact support.";
+  if (accountStatus === "suspended") return "Your account is suspended. Please contact support.";
+  return "Your account is not currently approved.";
+}
+
 function App() {
   const { loginWithRedirect } = useAuth0();
 
@@ -69,11 +78,13 @@ function App() {
     useAppSession();
   const [upcomingBirthdays, setUpcomingBirthdays] = useState<UpcomingBirthday[]>([]);
   const [staffPendingSummary, setStaffPendingSummary] = useState<StaffPendingSummary | null>(null);
+  const [pendingFriendCount, setPendingFriendCount] = useState(0);
   const nickname =
     sessionUser?.profile?.display_name ??
     auth0User?.nickname ??
     auth0User?.name ??
     "friend";
+  const nonApprovedStatusMessage = accountStatusMessage(sessionUser?.user?.account_status);
 
   useEffect(() => {
     let isCancelled = false;
@@ -135,6 +146,27 @@ function App() {
     };
   }, [isAuthenticated, sessionUser?.user?.is_staff, getApiAccessToken]);
 
+  useEffect(() => {
+    let isCancelled = false;
+    async function loadPendingFriends() {
+      if (!isAuthenticated || !sessionUser?.user?.is_approved) {
+        if (!isCancelled) setPendingFriendCount(0);
+        return;
+      }
+      try {
+        const token = await getApiAccessToken();
+        const payload = await fetchFriendsList(token);
+        if (!isCancelled) setPendingFriendCount(payload.pending_count);
+      } catch {
+        if (!isCancelled) setPendingFriendCount(0);
+      }
+    }
+    void loadPendingFriends();
+    return () => {
+      isCancelled = true;
+    };
+  }, [isAuthenticated, sessionUser?.user?.is_approved, getApiAccessToken]);
+
   if (isLoading) {
     return (
       <Box
@@ -158,6 +190,11 @@ function App() {
 
           {isAuthenticated ? (
             <Stack gap="2" width="100%">
+              {nonApprovedStatusMessage ? (
+                <Text fontWeight="bold" color="orange.solid" textStyle={{ base: "sm", md: "md" }}>
+                  {nonApprovedStatusMessage}
+                </Text>
+              ) : null}
               {sessionUser?.user?.is_staff &&
               staffPendingSummary &&
               (staffPendingSummary.pending_members > 0 ||
@@ -198,6 +235,27 @@ function App() {
                         </Text>
                       ) : null}
                     </Stack>
+                  </RouterLink>
+                </Box>
+              ) : null}
+              {sessionUser?.user?.is_approved && pendingFriendCount > 0 ? (
+                <Box
+                  asChild
+                  display="block"
+                  textDecoration="none"
+                  color="inherit"
+                  _focusVisible={{
+                    outline: "2px solid",
+                    outlineColor: "rgba(0, 0, 0, 0.35)",
+                    outlineOffset: "2px",
+                  }}
+                >
+                  <RouterLink to="/friends">
+                    <Text fontWeight="bold" color="orange.solid" textStyle={{ base: "sm", md: "md" }}>
+                      {pendingFriendCount === 1
+                        ? "You have 1 pending friend request."
+                        : `You have ${pendingFriendCount} pending friend requests.`}
+                    </Text>
                   </RouterLink>
                 </Box>
               ) : null}

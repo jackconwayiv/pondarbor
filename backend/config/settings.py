@@ -79,6 +79,7 @@ INSTALLED_APPS = [
     # Site apps
     "users.apps.UsersConfig",
     "quotes.apps.QuotesConfig",
+    "friends.apps.FriendsConfig",
     "whatif.apps.WhatifConfig",
     "clicker.apps.ClickerConfig",
     "achievements.apps.AchievementsConfig",

@@ -2,6 +2,7 @@ export type QuoteOwner = {
   id: number;
   email: string;
   username: string;
+  avatar_url: string;
 };
 
 export type QuoteLabel = {
@@ -31,6 +32,7 @@ export type QuoteCreatePayload = {
     kind: "tag" | "attribution";
     name?: string;
     email?: string;
+    friend_user_id?: number;
   }>;
 };
 
@@ -42,6 +44,7 @@ export type QuotePatchPayload = {
     kind: "tag" | "attribution";
     name?: string;
     email?: string;
+    friend_user_id?: number;
   }>;
 };
 

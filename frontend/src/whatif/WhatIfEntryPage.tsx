@@ -104,8 +104,13 @@ export default function WhatIfEntryPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isStaff = !!sessionUser?.user?.is_staff;
+  const isApprovedUser = !!sessionUser?.user?.is_approved;
+  const showJoinOnly = isMobile || !isAuthenticated || !isApprovedUser;
   const canProposeQuestions =
-    isAuthenticated && !isStaff && (sessionUser?.profile?.whatif_completed_session ?? false);
+    isAuthenticated &&
+    isApprovedUser &&
+    !isStaff &&
+    (sessionUser?.profile?.whatif_completed_session ?? false);
   const [adminBusy, setAdminBusy] = useState(false);
   const [adminError, setAdminError] = useState<string | null>(null);
   const [questions, setQuestions] = useState<WhatIfQuestionAdmin[]>([]);
@@ -154,13 +159,13 @@ export default function WhatIfEntryPage() {
   }, [confirmDeleteId, isStaff, isAuthenticated]);
 
   useEffect(() => {
-    if (isMobile) return;
+    if (showJoinOnly) return;
     const raw = searchParams.get("tab");
     if (!raw || !ENTRY_TAB_VALUES.includes(raw as EntryTab)) return;
     const tab = raw as EntryTab;
     if (tab.startsWith("admin") && !isStaff) return;
     setActiveTab(tab);
-  }, [searchParams, isStaff, isMobile]);
+  }, [searchParams, isStaff, showJoinOnly]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -775,8 +780,14 @@ export default function WhatIfEntryPage() {
           </Text>
         ) : null}
 
-        {isMobile ? (
-          joinFormContent
+        {showJoinOnly ? (
+          !isMobile && (!isAuthenticated || !isApprovedUser) ? (
+            <Text color="fg">
+              Approved users can host a game. Guests and other users can join games with a mobile device.
+            </Text>
+          ) : (
+            joinFormContent
+          )
         ) : isStaff ? (
           <Tabs.Root
             id="whatif-entry-outer"

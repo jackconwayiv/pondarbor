@@ -2,6 +2,7 @@ import { Box, Stack, Text } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
 import PondButton from "../PondButton";
 import { APP_TEXT_SIZES } from "../theme/typography";
+import { useAppSession } from "../auth/AppSessionContext";
 import { fetchAllPublicQuotes } from "./api";
 import { quoteOwnerDisplayLabel } from "./ownerDisplay";
 import QuoteCardBase from "./QuoteCardBase";
@@ -20,6 +21,7 @@ function PublicQuoteCard({ quote }: { quote: Quote }) {
 }
 
 export default function PublicQuotesPage() {
+  const { getApiAccessToken, sessionUser } = useAppSession();
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -27,10 +29,17 @@ export default function PublicQuotesPage() {
 
   useEffect(() => {
     const run = async () => {
+      if (!sessionUser?.user?.is_approved) {
+        setQuotes([]);
+        setError(null);
+        setIsLoading(false);
+        return;
+      }
       setIsLoading(true);
       setError(null);
       try {
-        const data = await fetchAllPublicQuotes();
+        const token = await getApiAccessToken();
+        const data = await fetchAllPublicQuotes(token);
         const sorted = [...data].sort(
           (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
         );
@@ -42,7 +51,7 @@ export default function PublicQuotesPage() {
       }
     };
     void run();
-  }, []);
+  }, [getApiAccessToken, sessionUser?.user?.is_approved]);
 
   const total = quotes.length;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));

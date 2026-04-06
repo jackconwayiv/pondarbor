@@ -98,9 +98,11 @@ export async function deleteQuote(
   }
 }
 
-export async function fetchAllPublicQuotes(): Promise<Quote[]> {
+export async function fetchAllPublicQuotes(accessToken: string | null): Promise<Quote[]> {
   const response = await fetch(`${apiBase()}/api/v1/quotes/public/`, {
     method: "GET",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
   });
   if (!response.ok) {
     throw new Error(`Failed to load public quotes (${response.status})`);

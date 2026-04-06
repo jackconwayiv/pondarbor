@@ -208,195 +208,195 @@ export default function ProfilePage() {
         }
         variant="plain"
       >
-        <Box bg="bg" px={{ base: "4", md: "6" }} py={{ base: "6", md: "6" }}>
-          <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" maxW="3xl">
-            <Tabs.Trigger
-              value="profile"
-              bg={activeTab === "profile" ? "lilypad.solid" : undefined}
-              color={activeTab === "profile" ? "black" : undefined}
-              borderTopRadius="md"
-              borderBottomRadius="0"
-              px="4"
-              py="2"
-              fontWeight="medium"
-              _hover={{ bg: activeTab === "profile" ? "lilypad.solid" : "transparent" }}
-              _selected={{ bg: "lilypad.solid", color: "black" }}
-            >
-              Profile
-            </Tabs.Trigger>
-            <Tabs.Trigger
-              value="account"
-              bg={activeTab === "account" ? "lilypad.solid" : undefined}
-              color={activeTab === "account" ? "black" : undefined}
-              borderTopRadius="md"
-              borderBottomRadius="0"
-              px="4"
-              py="2"
-              fontWeight="medium"
-              _hover={{ bg: activeTab === "account" ? "lilypad.solid" : "transparent" }}
-              _selected={{ bg: "lilypad.solid", color: "black" }}
-            >
-              Account
-            </Tabs.Trigger>
-          </Tabs.List>
-        </Box>
-
         <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
           <Box maxW="3xl" bg="bg" borderWidth="1px" borderColor="border" borderRadius="xl" p={{ base: "4", md: "6" }}>
+            <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" w="100%">
+              <Tabs.Trigger
+                value="profile"
+                bg={activeTab === "profile" ? "lilypad.solid" : undefined}
+                color={activeTab === "profile" ? "black" : undefined}
+                borderTopRadius="md"
+                borderBottomRadius="0"
+                px="4"
+                py="2"
+                fontWeight="medium"
+                _hover={{ bg: activeTab === "profile" ? "lilypad.solid" : "transparent" }}
+                _selected={{ bg: "lilypad.solid", color: "black" }}
+              >
+                Profile
+              </Tabs.Trigger>
+              <Tabs.Trigger
+                value="account"
+                bg={activeTab === "account" ? "lilypad.solid" : undefined}
+                color={activeTab === "account" ? "black" : undefined}
+                borderTopRadius="md"
+                borderBottomRadius="0"
+                px="4"
+                py="2"
+                fontWeight="medium"
+                _hover={{ bg: activeTab === "account" ? "lilypad.solid" : "transparent" }}
+                _selected={{ bg: "lilypad.solid", color: "black" }}
+              >
+                Account
+              </Tabs.Trigger>
+            </Tabs.List>
             <Tabs.Content value="profile">
               <Stack gap="4" pt="4">
-                <HStack gap="4" align="flex-start">
-                  <Avatar.Root size="lg">
-                    <Avatar.Fallback name={profile.display_name || user.email || "User"} />
-                    <Avatar.Image src={profile.avatar_url || undefined} />
-                    <Float placement="bottom-end" offsetX="1" offsetY="1">
-                      <Circle
-                        bg={user.is_approved ? "lilypad.solid" : "nautical.solid"}
-                        size="8px"
-                        outline="0.2em solid"
-                        outlineColor="bg"
-                      />
-                    </Float>
-                  </Avatar.Root>
-
-                  <Stack gap="3" flex="1" ref={profileEditorRef}>
-                    {isEditing && (
-                      <Stack gap="1">
-                        <Text {...profileFieldLabelProps}>Avatar URL</Text>
-                        <Input
-                          colorPalette="sky"
-                          value={avatarUrl}
-                          onChange={(e) => setAvatarUrl(e.target.value)}
-                          onBlur={() => void commitField("avatar_url")}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              void commitField("avatar_url");
-                            }
-                          }}
-                          placeholder="https://…"
-                          disabled={fieldBusy("avatar_url")}
+                <HStack gap="4" align="flex-start" justify="space-between">
+                  <HStack gap="4" align="flex-start" flex="1">
+                    <Avatar.Root size="lg">
+                      <Avatar.Fallback name={profile.display_name || user.email || "User"} />
+                      <Avatar.Image src={profile.avatar_url || undefined} />
+                      <Float placement="bottom-end" offsetX="1" offsetY="1">
+                        <Circle
+                          bg={user.is_approved ? "lilypad.solid" : "nautical.solid"}
+                          size="8px"
+                          outline="0.2em solid"
+                          outlineColor="bg"
                         />
-                      </Stack>
-                    )}
+                      </Float>
+                    </Avatar.Root>
 
-                    <Stack gap="1">
-                      <Text {...profileFieldLabelProps}>Name</Text>
-                      {isEditing ? (
-                        <Input
-                          colorPalette="sky"
-                          value={displayName}
-                          onChange={(e) => setDisplayName(e.target.value)}
-                          onBlur={() => void commitField("display_name")}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              void commitField("display_name");
-                            }
-                          }}
-                          placeholder="Your name"
-                          disabled={fieldBusy("display_name")}
-                        />
-                      ) : (
-                        <Text fontSize={APP_TEXT_SIZES.body}>{profile.display_name || "—"}</Text>
-                      )}
-                    </Stack>
-
-                    <Stack gap="1">
-                      <Text {...profileFieldLabelProps}>Timezone</Text>
-                      {isEditing ? (
-                        <NativeSelectRoot size="md" disabled={fieldBusy("timezone")}>
-                          <NativeSelectField
+                    <Stack gap="3" flex="1" ref={profileEditorRef}>
+                      {isEditing && (
+                        <Stack gap="1">
+                          <Text {...profileFieldLabelProps}>Avatar URL</Text>
+                          <Input
                             colorPalette="sky"
-                            value={timezone || "UTC"}
-                            onChange={(e) => setTimezone(e.target.value)}
-                            onBlur={() => void commitField("timezone")}
-                          >
-                            {editTimezoneOptions.map((tz) => (
-                              <option key={tz} value={tz}>
-                                {tz}
-                              </option>
-                            ))}
-                          </NativeSelectField>
-                        </NativeSelectRoot>
-                      ) : (
-                        <Text fontSize={APP_TEXT_SIZES.body}>{profile.timezone || "—"}</Text>
+                            value={avatarUrl}
+                            onChange={(e) => setAvatarUrl(e.target.value)}
+                            onBlur={() => void commitField("avatar_url")}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                void commitField("avatar_url");
+                              }
+                            }}
+                            placeholder="https://…"
+                            disabled={fieldBusy("avatar_url")}
+                          />
+                        </Stack>
                       )}
-                    </Stack>
 
-                    <Stack gap="1">
-                      <Text {...profileFieldLabelProps}>Birthday</Text>
+                      <Stack gap="1">
+                        <Text {...profileFieldLabelProps}>Name</Text>
+                        {isEditing ? (
+                          <Input
+                            colorPalette="sky"
+                            value={displayName}
+                            onChange={(e) => setDisplayName(e.target.value)}
+                            onBlur={() => void commitField("display_name")}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                void commitField("display_name");
+                              }
+                            }}
+                            placeholder="Your name"
+                            disabled={fieldBusy("display_name")}
+                          />
+                        ) : (
+                          <Text fontSize={APP_TEXT_SIZES.body}>{profile.display_name || "—"}</Text>
+                        )}
+                      </Stack>
+
+                      <Stack gap="1">
+                        <Text {...profileFieldLabelProps}>Timezone</Text>
+                        {isEditing ? (
+                          <NativeSelectRoot size="md" disabled={fieldBusy("timezone")}>
+                            <NativeSelectField
+                              colorPalette="sky"
+                              value={timezone || "UTC"}
+                              onChange={(e) => setTimezone(e.target.value)}
+                              onBlur={() => void commitField("timezone")}
+                            >
+                              {editTimezoneOptions.map((tz) => (
+                                <option key={tz} value={tz}>
+                                  {tz}
+                                </option>
+                              ))}
+                            </NativeSelectField>
+                          </NativeSelectRoot>
+                        ) : (
+                          <Text fontSize={APP_TEXT_SIZES.body}>{profile.timezone || "—"}</Text>
+                        )}
+                      </Stack>
+
+                      <Stack gap="1">
+                        <Text {...profileFieldLabelProps}>Birthday</Text>
+                        {isEditing ? (
+                          <Input
+                            colorPalette="sky"
+                            type="date"
+                            value={birthDate}
+                            onChange={(e) => setBirthDate(e.target.value)}
+                            onBlur={() => void commitField("birth_date")}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                void commitField("birth_date");
+                              }
+                            }}
+                            disabled={fieldBusy("birth_date")}
+                          />
+                        ) : (
+                          <Text fontSize={APP_TEXT_SIZES.body}>
+                            {formatBirthDateForDisplay(profile.birth_date)}
+                          </Text>
+                        )}
+                      </Stack>
+
                       {isEditing ? (
-                        <Input
-                          colorPalette="sky"
-                          type="date"
-                          value={birthDate}
-                          onChange={(e) => setBirthDate(e.target.value)}
-                          onBlur={() => void commitField("birth_date")}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              void commitField("birth_date");
-                            }
-                          }}
-                          disabled={fieldBusy("birth_date")}
-                        />
-                      ) : (
-                        <Text fontSize={APP_TEXT_SIZES.body}>
-                          {formatBirthDateForDisplay(profile.birth_date)}
+                        <HStack gap="2" pt="2">
+                          <PondButton
+                            size="sm"
+                            colorPalette="lilypad"
+                            onClick={() => void commitAllFields()}
+                            loading={isSavingAny}
+                            disabled={isSavingAny}
+                          >
+                            Save
+                          </PondButton>
+                        </HStack>
+                      ) : null}
+
+                      {!isEditing && achievements && achievements.length > 0 ? (
+                        <Stack gap="2" pt="2">
+                          <Text {...profileFieldLabelProps}>Achievements</Text>
+                          <Stack gap="2">
+                            {achievements.map((a) => (
+                              <Stack key={a.slug} gap="0">
+                                <Text fontSize={APP_TEXT_SIZES.body}>{a.title}</Text>
+                                {a.description ? (
+                                  <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                                    {a.description}
+                                  </Text>
+                                ) : null}
+                              </Stack>
+                            ))}
+                          </Stack>
+                        </Stack>
+                      ) : null}
+
+                      {saveError && (
+                        <Text color="fg" role="alert" fontSize={APP_TEXT_SIZES.helper}>
+                          {saveError}
                         </Text>
                       )}
                     </Stack>
-
-                    {achievements && achievements.length > 0 ? (
-                      <Stack gap="2" pt="2">
-                        <Text {...profileFieldLabelProps}>Achievements</Text>
-                        <Stack gap="2">
-                          {achievements.map((a) => (
-                            <Stack key={a.slug} gap="0">
-                              <Text fontSize={APP_TEXT_SIZES.body}>{a.title}</Text>
-                              {a.description ? (
-                                <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-                                  {a.description}
-                                </Text>
-                              ) : null}
-                            </Stack>
-                          ))}
-                        </Stack>
-                      </Stack>
-                    ) : null}
-
-                    <HStack gap="2" pt="2">
-                      {isEditing ? (
-                        <PondButton
-                          size="sm"
-                          colorPalette="lilypad"
-                          onClick={() => void commitAllFields()}
-                          loading={isSavingAny}
-                          disabled={isSavingAny}
-                        >
-                          Save
-                        </PondButton>
-                      ) : (
-                        <PondButton
-                          size="sm"
-                          colorPalette="lilypad"
-                          onClick={() => {
-                            setSaveError(null);
-                            setIsEditing(true);
-                          }}
-                        >
-                          Edit profile
-                        </PondButton>
-                      )}
-                    </HStack>
-
-                    {saveError && (
-                      <Text color="fg" role="alert" fontSize={APP_TEXT_SIZES.helper}>
-                        {saveError}
-                      </Text>
-                    )}
-                  </Stack>
+                  </HStack>
+                  {!isEditing ? (
+                    <PondButton
+                      size="sm"
+                      colorPalette="lilypad"
+                      onClick={() => {
+                        setSaveError(null);
+                        setIsEditing(true);
+                      }}
+                    >
+                      Edit profile
+                    </PondButton>
+                  ) : null}
                 </HStack>
               </Stack>
             </Tabs.Content>
@@ -416,9 +416,17 @@ export default function ProfilePage() {
                 </HStack>
                 <Stack gap="1">
                   <Text>{user.email}</Text>
-                  <Text color={user.is_approved ? "#B7D394" : "#E9A14A"}>
-                    {user.is_approved ? "Approved" : "Awaiting Approval"}
-                  </Text>
+                  {!user.is_approved ? (
+                    <Text color="#E9A14A">
+                      {user.account_status === "pending"
+                        ? "Awaiting Approval"
+                        : user.account_status === "rejected"
+                          ? "Rejected"
+                          : user.account_status === "suspended"
+                            ? "Suspended"
+                            : "Pending"}
+                    </Text>
+                  ) : null}
                 </Stack>
               </Stack>
             </Tabs.Content>

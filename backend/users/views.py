@@ -15,6 +15,8 @@ from rest_framework.response import Response
 from .auth0_backend import Auth0TokenAuthentication
 from .models import PROFILE_TIMEZONE_DEFAULT, Profile
 from .permissions import IsApprovedUser, IsStaffUser
+from friends.models import FriendRequest
+from friends.services import are_friends
 from achievements.services import achievements_payload_for_user
 
 from .serializers import (
@@ -215,30 +217,69 @@ def csrf(request):
     return Response({"ok": True})
 
 
-def _public_user_summary_response(user):
+def _public_user_summary_response(*, request, user):
     profile = get_or_create_profile(user)
-    display_name = (profile.display_name or "").strip()
-    return Response(
-        {
-            "display_name": display_name,
-            "email": user.email,
-        }
+    viewer = getattr(request, "user", None)
+    is_viewer_authenticated = bool(
+        viewer and getattr(viewer, "is_authenticated", False)
     )
+    is_owner = is_viewer_authenticated and viewer.id == user.id
+    viewer_approved = is_viewer_authenticated and (
+        viewer.account_status == UserModel.AccountStatus.APPROVED
+    )
+    is_friend = is_owner or (viewer_approved and are_friends(user_a=viewer, user_b=user))
+    friendship_status = "none"
+    if is_owner:
+        friendship_status = "self"
+    elif is_friend:
+        friendship_status = "friends"
+    elif viewer_approved:
+        direct = FriendRequest.objects.filter(requester=viewer, requested=user).first()
+        reverse = FriendRequest.objects.filter(requester=user, requested=viewer).first()
+        direct_active = bool(
+            direct
+            and not direct.is_accepted
+            and not direct.ignored_by_requester
+            and not direct.ignored_by_requested
+        )
+        reverse_active = bool(
+            reverse
+            and not reverse.is_accepted
+            and not reverse.ignored_by_requester
+            and not reverse.ignored_by_requested
+        )
+        if reverse_active:
+            friendship_status = "incoming_pending"
+        elif direct_active:
+            friendship_status = "outgoing_pending"
+
+    nickname = (profile.display_name or "").strip() or user.email.split("@")[0]
+    payload = {
+        "nickname": nickname,
+        "avatar_url": profile.avatar_url or "",
+        "is_friend": bool(is_friend),
+        "can_view_full_profile": bool(is_friend),
+        "friendship_status": friendship_status,
+    }
+    if is_friend:
+        payload["email"] = user.email
+        payload["display_name"] = (profile.display_name or "").strip()
+    return Response(payload)
 
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def user_public_summary_by_id(request, user_id: int):
-    """Public display name + email for friend profile header (AllowAny)."""
+    """Friend profile summary; non-friends receive only nickname + avatar."""
     user = get_object_or_404(UserModel.objects.all(), pk=user_id)
-    return _public_user_summary_response(user)
+    return _public_user_summary_response(request=request, user=user)
 
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def user_public_summary_by_email(request, email: str):
     user = get_object_or_404(UserModel.objects.all(), email__iexact=email)
-    return _public_user_summary_response(user)
+    return _public_user_summary_response(request=request, user=user)
 
 
 @api_view(["POST"])

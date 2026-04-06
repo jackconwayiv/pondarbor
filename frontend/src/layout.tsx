@@ -20,6 +20,7 @@ import {
 import { useAppSession } from "./auth/AppSessionContext";
 import { pondarborLogoSrc } from "./publicAsset";
 import { useIsMobile } from "./responsive";
+import PondButton from "./PondButton";
 
 /** Wordmark font; fixed look (no route-based styling). */
 const NAV_WORDMARK_FONT = '"Brush Script MT", "Segoe Script", cursive';
@@ -96,71 +97,92 @@ export default function AppLayout() {
   const isClickerRoute =
     location.pathname === "/clicker" || location.pathname.startsWith("/clicker/");
 
-  const accountMenu =
-    showProfileNav ? (
-      <Menu.Root positioning={{ placement: "bottom-end", gutter: 8 }}>
-        <Menu.Trigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-label="Open account menu"
-            bg="transparent"
-            _hover={{ bg: "transparent" }}
-            _active={{ bg: "transparent" }}
-            _focus={{ boxShadow: "none" }}
-            _focusVisible={{ boxShadow: "none", outline: "none" }}
-            px="1"
-            minW="auto"
-            h="auto"
+  const accountMenu = showProfileNav ? (
+    <Menu.Root positioning={{ placement: "bottom-end", gutter: 8 }}>
+      <Menu.Trigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-label="Open account menu"
+          bg="transparent"
+          _hover={{ bg: "transparent" }}
+          _active={{ bg: "transparent" }}
+          _focus={{ boxShadow: "none" }}
+          _focusVisible={{ boxShadow: "none", outline: "none" }}
+          px="1"
+          minW="auto"
+          h="auto"
+        >
+          <Avatar.Root size="sm">
+            <Avatar.Fallback
+              name={
+                sessionUser?.profile.display_name ||
+                auth0User?.name ||
+                auth0User?.email ||
+                "User"
+              }
+            />
+            <Avatar.Image
+              src={
+                sessionUser?.profile.avatar_url || auth0User?.picture || undefined
+              }
+            />
+          </Avatar.Root>
+        </Button>
+      </Menu.Trigger>
+      <Menu.Positioner>
+        <Menu.Content minW="48">
+          <Menu.Item
+            value="profile"
+            onSelect={() => {
+              navigate("/profile");
+            }}
           >
-            <Avatar.Root size="sm">
-              <Avatar.Fallback
-                name={
-                  sessionUser?.profile.display_name ||
-                  auth0User?.name ||
-                  auth0User?.email ||
-                  "User"
-                }
-              />
-              <Avatar.Image
-                src={
-                  sessionUser?.profile.avatar_url || auth0User?.picture || undefined
-                }
-              />
-            </Avatar.Root>
-          </Button>
-        </Menu.Trigger>
-        <Menu.Positioner>
-          <Menu.Content minW="48">
+            Profile
+          </Menu.Item>
+          {sessionUser?.user?.is_approved ? (
             <Menu.Item
-              value="profile"
+              value="friends"
               onSelect={() => {
-                navigate("/profile");
+                navigate("/friends");
               }}
             >
-              Profile
+              Friends List
             </Menu.Item>
-            <Menu.Item
-              value="logout"
-              onSelect={() => {
-                void logout();
-              }}
-            >
-              Log Out
-            </Menu.Item>
-            <Menu.Item
-              value="switch-user"
-              onSelect={() => {
-                switchUser();
-              }}
-            >
-              Switch User
-            </Menu.Item>
-          </Menu.Content>
-        </Menu.Positioner>
-      </Menu.Root>
-    ) : null;
+          ) : null}
+          <Menu.Item
+            value="logout"
+            onSelect={() => {
+              void logout();
+            }}
+          >
+            Log Out
+          </Menu.Item>
+          <Menu.Item
+            value="switch-user"
+            onSelect={() => {
+              switchUser();
+            }}
+          >
+            Switch User
+          </Menu.Item>
+        </Menu.Content>
+      </Menu.Positioner>
+    </Menu.Root>
+  ) : !isAuthenticated ? (
+    <PondButton
+      colorPalette="sky"
+      size="sm"
+      onClick={() =>
+        loginWithRedirect({
+          authorizationParams: auth0DefaultLoginParams(),
+        })
+      }
+    >
+      Log in
+    </PondButton>
+  ) : null;
 
   return (
     <Box

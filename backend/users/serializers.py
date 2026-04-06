@@ -16,6 +16,7 @@ class SessionUserSerializer(serializers.Serializer):
     is_staff = serializers.BooleanField()
     auth0_sub = serializers.CharField(allow_blank=True, allow_null=True, required=False)
     account_status = serializers.CharField()
+    deleted_at = serializers.DateTimeField(allow_null=True, required=False)
 
 
 class ProfileSerializer(serializers.Serializer):

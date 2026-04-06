@@ -56,6 +56,7 @@ class BorrowRequest(models.Model):
     date_needed_by = models.DateField()
     message = models.TextField(blank=True)
     decline_message = models.TextField(blank=True)
+    deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     responded_at = models.DateTimeField(null=True, blank=True)
@@ -94,6 +95,7 @@ class Loan(models.Model):
     marked_returned_by_borrower_at = models.DateTimeField(null=True, blank=True)
     marked_returned_by_owner_at = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True)
+    deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     class Meta:
         ordering = ["-checkout_at"]

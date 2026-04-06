@@ -56,3 +56,7 @@ export type FriendsItemsResponse = {
   has_prev: boolean;
 };
 
+export type ClosetActionSummary = {
+  outstanding_actions_count: number;
+};
+

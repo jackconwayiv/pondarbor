@@ -72,6 +72,7 @@ def serialize_me(user):
             "is_staff": user.is_staff,
             "auth0_sub": user.auth0_sub or None,
             "account_status": user.account_status,
+            "deleted_at": user.deleted_at,
         },
         "profile": {
             "display_name": profile.display_name,
@@ -114,6 +115,7 @@ def upcoming_birthdays(request):
 
     profiles = Profile.objects.select_related("user").filter(
         user__account_status=UserModel.AccountStatus.APPROVED,
+        user__deleted_at__isnull=True,
         birth_date__isnull=False,
     )
 

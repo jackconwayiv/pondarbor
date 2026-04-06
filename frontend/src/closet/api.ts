@@ -1,4 +1,9 @@
-import type { BorrowRequest, FriendsItemsResponse, MyItemsResponse } from "./types";
+import type {
+  BorrowRequest,
+  ClosetActionSummary,
+  FriendsItemsResponse,
+  MyItemsResponse,
+} from "./types";
 
 function apiBase(): string {
   return import.meta.env.VITE_API_BASE_URL ?? "";
@@ -64,23 +69,54 @@ export async function fetchMyItems(accessToken: string | null): Promise<MyItemsR
   };
 }
 
+export type FriendsItemsSort =
+  | "updated_desc"
+  | "updated_asc"
+  | "created_desc"
+  | "created_asc"
+  | "name_asc"
+  | "name_desc";
+
 export async function fetchFriendsItems(
   accessToken: string | null,
   page: number,
   pageSize: number,
+  options?: { category?: string; tag?: string; sort?: FriendsItemsSort },
 ): Promise<FriendsItemsResponse> {
-  const response = await fetch(
-    `${apiBase()}/api/v1/closet/items/friends/?page=${page}&page_size=${pageSize}`,
-    {
-      method: "GET",
-      headers: authHeaders(accessToken),
-      credentials: "omit",
-    },
-  );
+  const params = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+  });
+  const category = (options?.category ?? "").trim();
+  if (category) params.set("category", category);
+  const tag = (options?.tag ?? "").trim();
+  if (tag) params.set("tag", tag);
+  if (options?.sort) params.set("sort", options.sort);
+
+  const response = await fetch(`${apiBase()}/api/v1/closet/items/friends/?${params.toString()}`, {
+    method: "GET",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
   if (!response.ok) {
     throw new Error(`Failed to load friends' items (${response.status})`);
   }
   return (await response.json()) as FriendsItemsResponse;
+}
+
+export async function fetchClosetActionSummary(accessToken: string | null): Promise<ClosetActionSummary> {
+  const response = await fetch(`${apiBase()}/api/v1/closet/action-summary/`, {
+    method: "GET",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to load closet action summary (${response.status})`);
+  }
+  const raw = (await response.json()) as Partial<ClosetActionSummary>;
+  return {
+    outstanding_actions_count: Number(raw.outstanding_actions_count ?? 0),
+  };
 }
 
 export async function createItem(

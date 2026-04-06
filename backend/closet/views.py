@@ -1,10 +1,11 @@
+import json
 import os
 import uuid
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Prefetch, Q
+from django.db.models import Exists, OuterRef, Prefetch, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
@@ -12,6 +13,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.status import HTTP_201_CREATED, HTTP_204_NO_CONTENT
 
+from closet.constants import CANONICAL_CLOSET_CATEGORIES, FRIENDS_ITEMS_CATEGORY_OTHER
 from closet.models import BorrowRequest, Item, Loan
 from closet.serializers import (
     BorrowRequestCreateSerializer,
@@ -21,6 +23,10 @@ from closet.serializers import (
     ItemSerializer,
     LoanSerializer,
 )
+from closet.services import (
+    item_fk_owner_publication_eligible_q,
+    owner_eligible_for_closet_publication_q,
+)
 from friends.services import are_friends, friend_ids_for_user
 from users.permissions import IsApprovedUser
 
@@ -28,21 +34,145 @@ User = get_user_model()
 
 
 def _active_loan_for_item(item: Item):
-    return item.loans.filter(status=Loan.Status.ACTIVE).select_related("owner_user", "borrower_user").first()
+    return (
+        item.loans.filter(status=Loan.Status.ACTIVE, deleted_at__isnull=True)
+        .select_related("owner_user", "borrower_user")
+        .first()
+    )
 
 
 def _item_queryset():
-    return Item.objects.filter(deleted_at__isnull=True).select_related(
-        "owner_user__profile",
-        "current_holder_user__profile",
-        "custody_pending_acceptance_user__profile",
+    return (
+        Item.objects.filter(deleted_at__isnull=True)
+        .filter(owner_eligible_for_closet_publication_q())
+        .select_related(
+            "owner_user__profile",
+            "current_holder_user__profile",
+            "custody_pending_acceptance_user__profile",
+        )
     )
+
+
+def _visible_borrow_requests():
+    return BorrowRequest.objects.filter(deleted_at__isnull=True)
+
+
+def _visible_loans():
+    return Loan.objects.filter(deleted_at__isnull=True)
+
+
+FRIENDS_ITEMS_SORT_FIELDS = {
+    "updated_desc": ("-updated_at", "-id"),
+    "updated_asc": ("updated_at", "id"),
+    "created_desc": ("-created_at", "-id"),
+    "created_asc": ("created_at", "id"),
+    "name_asc": ("name", "id"),
+    "name_desc": ("-name", "-id"),
+}
+
+
+def _coerce_tags_list(raw) -> list:
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return []
+        return parsed if isinstance(parsed, list) else []
+    return []
+
+
+def _friends_items_filter_by_tag(qs, tag_needle: str):
+    """Filter queryset to items with any tag containing tag_needle (case-insensitive substring)."""
+    tag_cf = tag_needle.casefold()
+    matching_ids = []
+    for pk, tgs in qs.values_list("id", "tags"):
+        tags_list = _coerce_tags_list(tgs)
+        if any(isinstance(t, str) and tag_cf in t.casefold() for t in tags_list):
+            matching_ids.append(pk)
+    return qs.filter(id__in=matching_ids)
+
+
+def _friends_items_filter_by_preset_category(qs, category: str):
+    """
+    Preset/custom category string: match trimmed category field (case-insensitive) OR any tag
+    that equals the same string (case-insensitive). Covers items where the preset was stored as a tag.
+    """
+    needle = category.strip().casefold()
+    if not needle:
+        return qs
+    matching_ids: set[int] = set()
+    for pk, cat_val, tgs in qs.values_list("id", "category", "tags"):
+        if isinstance(cat_val, str) and cat_val.strip().casefold() == needle:
+            matching_ids.add(pk)
+            continue
+        for t in _coerce_tags_list(tgs):
+            if isinstance(t, str) and t.strip().casefold() == needle:
+                matching_ids.add(pk)
+                break
+    return qs.filter(id__in=matching_ids)
 
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def health(request):
     return Response({"app": "closet", "ok": True})
+
+
+@api_view(["GET"])
+@permission_classes([IsApprovedUser])
+def closet_action_summary(request):
+    user = request.user
+    incoming_borrows = _visible_borrow_requests().filter(
+        status=BorrowRequest.Status.PENDING,
+        item__owner_user_id=user.id,
+        item__deleted_at__isnull=True,
+    ).count()
+    custody_disputes = Item.objects.filter(
+        owner_user_id=user.id,
+        deleted_at__isnull=True,
+        custody_disputed=True,
+    ).count()
+    loan_returns_waiting = _visible_loans().filter(
+        status=Loan.Status.ACTIVE,
+        owner_user_id=user.id,
+        marked_returned_by_borrower_at__isnull=False,
+        item__deleted_at__isnull=True,
+    ).count()
+    active_loan_exists = Loan.objects.filter(
+        item_id=OuterRef("pk"),
+        status=Loan.Status.ACTIVE,
+        deleted_at__isnull=True,
+    )
+    custody_handoff_waiting = (
+        Item.objects.filter(
+            owner_user_id=user.id,
+            deleted_at__isnull=True,
+            custody_marked_returned_by_holder_at__isnull=False,
+        )
+        .annotate(_has_active_loan=Exists(active_loan_exists))
+        .filter(_has_active_loan=False)
+        .count()
+    )
+    custody_invites = (
+        Item.objects.filter(
+            custody_pending_acceptance_user_id=user.id,
+            deleted_at__isnull=True,
+        )
+        .filter(owner_eligible_for_closet_publication_q())
+        .count()
+    )
+    total = (
+        incoming_borrows
+        + custody_disputes
+        + loan_returns_waiting
+        + custody_handoff_waiting
+        + custody_invites
+    )
+    return Response({"outstanding_actions_count": total})
 
 
 @api_view(["GET", "POST"])
@@ -64,11 +194,11 @@ def items_mine(request):
     )
     custody_offered_ids = set(custody_offered_qs.values_list("id", flat=True))
 
-    requested_rows = BorrowRequest.objects.filter(
+    requested_rows = _visible_borrow_requests().filter(
         requester_user=user,
         status=BorrowRequest.Status.PENDING,
         item__deleted_at__isnull=True,
-    ).select_related(
+    ).filter(item_fk_owner_publication_eligible_q()).select_related(
         "item",
         "item__owner_user__profile",
         "item__current_holder_user__profile",
@@ -84,11 +214,13 @@ def items_mine(request):
         requested_items.append(item)
 
     declined_rows = (
-        BorrowRequest.objects.filter(
+        _visible_borrow_requests()
+        .filter(
             requester_user=user,
             status=BorrowRequest.Status.DECLINED,
             item__deleted_at__isnull=True,
         )
+        .filter(item_fk_owner_publication_eligible_q())
         .select_related(
             "item",
             "item__owner_user__profile",
@@ -134,7 +266,25 @@ def items_mine(request):
 def items_friends(request):
     user = request.user
     friend_ids = friend_ids_for_user(user=user)
-    qs = _item_queryset().filter(owner_user_id__in=friend_ids).exclude(owner_user=user).order_by("-updated_at")
+    qs = _item_queryset().filter(owner_user_id__in=friend_ids).exclude(owner_user=user)
+
+    category = (request.query_params.get("category") or "").strip()
+    if category:
+        if category.casefold() == FRIENDS_ITEMS_CATEGORY_OTHER.casefold():
+            for preset in CANONICAL_CLOSET_CATEGORIES:
+                qs = qs.exclude(category__iexact=preset)
+            qs = qs.exclude(category__exact="")
+        else:
+            qs = _friends_items_filter_by_preset_category(qs, category)
+
+    tag = (request.query_params.get("tag") or "").strip()
+    if tag:
+        qs = _friends_items_filter_by_tag(qs, tag)
+
+    sort_key = (request.query_params.get("sort") or "updated_desc").strip()
+    order = FRIENDS_ITEMS_SORT_FIELDS.get(sort_key, FRIENDS_ITEMS_SORT_FIELDS["updated_desc"])
+    qs = qs.order_by(*order)
+
     page = max(1, int(request.query_params.get("page", "1")))
     page_size = min(50, max(1, int(request.query_params.get("page_size", "10"))))
     start = (page - 1) * page_size
@@ -202,7 +352,11 @@ def item_borrow_requests(request, item_id: int):
     user = request.user
     if user.id not in (item.owner_user_id, item.current_holder_user_id):
         return Response({"detail": "Only the owner or current holder can view requests."}, status=403)
-    qs = item.borrow_requests.select_related("requester_user__profile").order_by("status", "date_needed_by", "-created_at")
+    qs = (
+        item.borrow_requests.filter(deleted_at__isnull=True)
+        .select_related("requester_user__profile")
+        .order_by("status", "date_needed_by", "-created_at")
+    )
     return Response(BorrowRequestSerializer(qs, many=True).data)
 
 
@@ -212,7 +366,7 @@ def item_borrow_requests(request, item_id: int):
 def borrow_request_approve(request, borrow_request_id: int):
     user = request.user
     row = get_object_or_404(
-        BorrowRequest.objects.select_related("item", "requester_user", "item__owner_user"),
+        _visible_borrow_requests().select_related("item", "requester_user", "item__owner_user"),
         id=borrow_request_id,
     )
     if row.item.owner_user_id != user.id:
@@ -254,7 +408,7 @@ def borrow_request_approve(request, borrow_request_id: int):
 @transaction.atomic
 def borrow_request_decline(request, borrow_request_id: int):
     user = request.user
-    row = get_object_or_404(BorrowRequest.objects.select_related("item"), id=borrow_request_id)
+    row = get_object_or_404(_visible_borrow_requests().select_related("item"), id=borrow_request_id)
     if row.item.owner_user_id != user.id:
         return Response({"detail": "Only owner can decline requests."}, status=403)
     if row.status != BorrowRequest.Status.PENDING:
@@ -275,7 +429,7 @@ def borrow_request_decline(request, borrow_request_id: int):
 @transaction.atomic
 def borrow_request_delete(request, borrow_request_id: int):
     user = request.user
-    row = get_object_or_404(BorrowRequest, id=borrow_request_id)
+    row = get_object_or_404(_visible_borrow_requests(), id=borrow_request_id)
     if row.requester_user_id != user.id:
         return Response({"detail": "Only requester can delete this request."}, status=403)
     if row.status != BorrowRequest.Status.DECLINED:
@@ -289,7 +443,7 @@ def borrow_request_delete(request, borrow_request_id: int):
 @transaction.atomic
 def borrow_request_cancel(request, borrow_request_id: int):
     user = request.user
-    row = get_object_or_404(BorrowRequest, id=borrow_request_id)
+    row = get_object_or_404(_visible_borrow_requests(), id=borrow_request_id)
     if row.requester_user_id != user.id:
         return Response({"detail": "Only requester can cancel this request."}, status=403)
     if row.status != BorrowRequest.Status.PENDING:
@@ -305,7 +459,7 @@ def borrow_request_cancel(request, borrow_request_id: int):
 @transaction.atomic
 def loan_mark_returned_by_borrower(request, loan_id: int):
     loan = get_object_or_404(
-        Loan.objects.select_related("item", "borrower_user", "owner_user"),
+        _visible_loans().select_related("item", "borrower_user", "owner_user"),
         id=loan_id,
     )
     if loan.borrower_user_id != request.user.id:
@@ -323,7 +477,7 @@ def loan_mark_returned_by_borrower(request, loan_id: int):
 @transaction.atomic
 def loan_mark_returned(request, loan_id: int):
     loan = get_object_or_404(
-        Loan.objects.select_related("item", "owner_user", "borrower_user"),
+        _visible_loans().select_related("item", "owner_user", "borrower_user"),
         id=loan_id,
     )
     if loan.owner_user_id != request.user.id:

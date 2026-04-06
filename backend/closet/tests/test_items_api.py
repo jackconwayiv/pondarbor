@@ -36,6 +36,41 @@ class ClosetItemsApiTests(ClosetTestMixin, TestCase):
         self.assertEqual(item.category, "Tools")
         self.assertEqual(item.tags, ["drill"])
 
+    def test_create_item_accepts_custom_category_letters_and_slash(self):
+        resp = self.owner_client.post(
+            "/api/v1/closet/items/",
+            {"name": "Box", "category": "Games/Board"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.json()["category"], "Games/Board")
+
+    def test_create_item_accepts_board_games_preset(self):
+        resp = self.owner_client.post(
+            "/api/v1/closet/items/",
+            {"name": "Catan", "category": "Board Games"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.json()["category"], "Board Games")
+
+    def test_create_item_rejects_invalid_category(self):
+        resp = self.owner_client.post(
+            "/api/v1/closet/items/",
+            {"name": "Bad", "category": "not valid"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_patch_item_rejects_invalid_category(self):
+        item = self.make_item(owner=self.owner, holder=self.owner, name="X")
+        resp = self.owner_client.patch(
+            f"/api/v1/closet/items/{item.id}/",
+            {"category": "no spaces"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
     def test_delete_soft_deletes_item(self):
         item = self.make_item(owner=self.owner, holder=self.owner, name="Delete me")
         resp = self.owner_client.delete(f"/api/v1/closet/items/{item.id}/")

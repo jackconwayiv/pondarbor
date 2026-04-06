@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 
 import dj_database_url
@@ -9,6 +10,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Load environment variables from backend/.env
 load_dotenv(BASE_DIR / ".env")
+
+# When False, User.pre_delete blocks hard deletes (use deleted_at / account_status instead).
+# Enabled automatically during `manage.py test`, or set ALLOW_USER_HARD_DELETE=true to override.
+ALLOW_USER_HARD_DELETE = os.getenv("ALLOW_USER_HARD_DELETE", "").lower() in ("true", "1", "yes") or (
+    len(sys.argv) >= 2 and sys.argv[1] == "test"
+)
 
 # Security
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-insecure-secret-key")

@@ -44,6 +44,7 @@ class User(AbstractUser):
         choices=AccountStatus.choices,
         default=AccountStatus.PENDING,
     )
+    deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []

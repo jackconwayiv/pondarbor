@@ -205,7 +205,10 @@ def approved_users_search(request):
 
     qs = (
         UserModel.objects.select_related("profile")
-        .filter(account_status=UserModel.AccountStatus.APPROVED)
+        .filter(
+            account_status=UserModel.AccountStatus.APPROVED,
+            deleted_at__isnull=True,
+        )
         .exclude(pk=user.pk)
         .filter(Q(email__icontains=search) | Q(profile__display_name__icontains=search))
         .order_by("profile__display_name", "email")[:20]

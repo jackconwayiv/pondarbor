@@ -12,6 +12,7 @@ class UserAdmin(DjangoUserAdmin):
         "first_name",
         "last_name",
         "account_status",
+        "deleted_at",
         "is_staff",
         "is_active",
     )
@@ -33,7 +34,7 @@ class UserAdmin(DjangoUserAdmin):
                 ),
             },
         ),
-        ("Identity", {"fields": ("auth0_sub", "account_status")}),
+        ("Identity", {"fields": ("auth0_sub", "account_status", "deleted_at")}),
         ("Names", {"fields": ("first_name", "last_name", "username")}),
         ("Important dates", {"fields": ("last_login", "date_joined")}),
     )
@@ -47,6 +48,9 @@ class UserAdmin(DjangoUserAdmin):
             },
         ),
     )
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Profile)

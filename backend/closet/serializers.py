@@ -1,10 +1,30 @@
+import re
+
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
-from friends.services import are_friends
+from closet.constants import CANONICAL_CLOSET_CATEGORY_SET
 from closet.models import BorrowRequest, Item, Loan
+from friends.services import are_friends
+
+_CLOSET_CATEGORY_CUSTOM_RE = re.compile(r"^[A-Za-z/]+$")
+
+
+def _validate_closet_category(value) -> str:
+    if value is None:
+        return ""
+    trimmed = str(value).strip()
+    if not trimmed:
+        return ""
+    if trimmed in CANONICAL_CLOSET_CATEGORY_SET:
+        return trimmed
+    if _CLOSET_CATEGORY_CUSTOM_RE.fullmatch(trimmed):
+        return trimmed
+    raise serializers.ValidationError(
+        "Category must be a suggested option or only letters and / with no spaces."
+    )
 
 User = get_user_model()
 
@@ -64,7 +84,10 @@ class ItemSerializer(serializers.ModelSerializer):
         return _user_summary(u) if u else None
 
     def get_pending_request_count(self, obj: Item) -> int:
-        return obj.borrow_requests.filter(status=BorrowRequest.Status.PENDING).count()
+        return obj.borrow_requests.filter(
+            status=BorrowRequest.Status.PENDING,
+            deleted_at__isnull=True,
+        ).count()
 
     def get_my_pending_request(self, obj: Item):
         request = self.context.get("request")
@@ -75,6 +98,7 @@ class ItemSerializer(serializers.ModelSerializer):
             obj.borrow_requests.filter(
                 requester_user=user,
                 status=BorrowRequest.Status.PENDING,
+                deleted_at__isnull=True,
             )
             .order_by("date_needed_by", "-created_at")
             .first()
@@ -92,6 +116,7 @@ class ItemSerializer(serializers.ModelSerializer):
             obj.borrow_requests.filter(
                 requester_user=user,
                 status=BorrowRequest.Status.DECLINED,
+                deleted_at__isnull=True,
             )
             .order_by("-responded_at", "-updated_at", "-created_at")
             .first()
@@ -101,19 +126,21 @@ class ItemSerializer(serializers.ModelSerializer):
         return BorrowRequestSerializer(row).data
 
     def get_active_loan_id(self, obj: Item):
-        row = obj.loans.filter(status=Loan.Status.ACTIVE).only("id").first()
+        row = (
+            obj.loans.filter(status=Loan.Status.ACTIVE, deleted_at__isnull=True).only("id").first()
+        )
         return row.id if row else None
 
     def get_active_loan_marked_returned_by_borrower(self, obj: Item):
         row = (
-            obj.loans.filter(status=Loan.Status.ACTIVE)
+            obj.loans.filter(status=Loan.Status.ACTIVE, deleted_at__isnull=True)
             .only("marked_returned_by_borrower_at")
             .first()
         )
         return bool(row and row.marked_returned_by_borrower_at)
 
     def get_custody_marked_returned_by_holder(self, obj: Item) -> bool:
-        if obj.loans.filter(status=Loan.Status.ACTIVE).exists():
+        if obj.loans.filter(status=Loan.Status.ACTIVE, deleted_at__isnull=True).exists():
             return False
         return bool(
             obj.custody_marked_returned_by_holder_at
@@ -140,6 +167,9 @@ class ItemCreateSerializer(serializers.Serializer):
 
     def validate_tags(self, value):
         return [str(tag).strip() for tag in value if str(tag).strip()]
+
+    def validate_category(self, value):
+        return _validate_closet_category(value)
 
     def create(self, validated_data):
         user = self.context["request"].user
@@ -170,6 +200,9 @@ class ItemPatchSerializer(serializers.Serializer):
 
     def validate_tags(self, value):
         return [str(tag).strip() for tag in value if str(tag).strip()]
+
+    def validate_category(self, value):
+        return _validate_closet_category(value)
 
     def update(self, instance: Item, validated_data):
         for key, value in validated_data.items():
@@ -220,16 +253,28 @@ class BorrowRequestCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError("You are already borrowing this item.")
         if not are_friends(user_a=user, user_b=item.owner_user):
             raise serializers.ValidationError("You can only request items from friends.")
-        borrow_request, _ = BorrowRequest.objects.update_or_create(
+        existing = (
+            BorrowRequest.objects.filter(
+                item=item,
+                requester_user=user,
+                status=BorrowRequest.Status.PENDING,
+                deleted_at__isnull=True,
+            )
+            .order_by("date_needed_by", "-created_at")
+            .first()
+        )
+        if existing:
+            existing.date_needed_by = validated_data["date_needed_by"]
+            existing.message = validated_data.get("message", "")
+            existing.save(update_fields=["date_needed_by", "message", "updated_at"])
+            return existing
+        return BorrowRequest.objects.create(
             item=item,
             requester_user=user,
             status=BorrowRequest.Status.PENDING,
-            defaults={
-                "date_needed_by": validated_data["date_needed_by"],
-                "message": validated_data.get("message", ""),
-            },
+            date_needed_by=validated_data["date_needed_by"],
+            message=validated_data.get("message", ""),
         )
-        return borrow_request
 
 
 class LoanSerializer(serializers.ModelSerializer):

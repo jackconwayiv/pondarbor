@@ -20,6 +20,7 @@ import {
   type UpcomingBirthday,
   type StaffPendingSummary,
 } from "./users/api";
+import { fetchClosetActionSummary } from "./closet/api";
 import { fetchFriendsList } from "./friends/api";
 
 const LILYPAD_WEDGE_CLIP_PATH =
@@ -32,7 +33,7 @@ const LILYPAD_HOVER_HINT_VISIBLE = {
 
 const HOME_LILYPAD_TILES = [
   { to: "/quotes", label: "Quotes", hoverText: "archive of user-recorded quotes" },
-  { to: "/closet", label: "Closet", hoverText: "lend and borrow items with friends" },
+  { to: "/closet", label: "Community Closet", hoverText: "lend and borrow items with friends" },
   { to: "/clicker", label: "PondClicker", hoverText: "idle pond-growing game" },
   { to: "/whatif", label: "WhatIf", hoverText: "multiplayer party game" },
 ] as const;
@@ -80,6 +81,7 @@ function App() {
   const [upcomingBirthdays, setUpcomingBirthdays] = useState<UpcomingBirthday[]>([]);
   const [staffPendingSummary, setStaffPendingSummary] = useState<StaffPendingSummary | null>(null);
   const [pendingFriendCount, setPendingFriendCount] = useState(0);
+  const [closetOutstandingActions, setClosetOutstandingActions] = useState(0);
   const nickname =
     sessionUser?.profile?.display_name ??
     auth0User?.nickname ??
@@ -163,6 +165,27 @@ function App() {
       }
     }
     void loadPendingFriends();
+    return () => {
+      isCancelled = true;
+    };
+  }, [isAuthenticated, sessionUser?.user?.is_approved, getApiAccessToken]);
+
+  useEffect(() => {
+    let isCancelled = false;
+    async function loadClosetActionSummary() {
+      if (!isAuthenticated || !sessionUser?.user?.is_approved) {
+        if (!isCancelled) setClosetOutstandingActions(0);
+        return;
+      }
+      try {
+        const token = await getApiAccessToken();
+        const summary = await fetchClosetActionSummary(token);
+        if (!isCancelled) setClosetOutstandingActions(summary.outstanding_actions_count);
+      } catch {
+        if (!isCancelled) setClosetOutstandingActions(0);
+      }
+    }
+    void loadClosetActionSummary();
     return () => {
       isCancelled = true;
     };
@@ -256,6 +279,27 @@ function App() {
                       {pendingFriendCount === 1
                         ? "You have 1 pending friend request."
                         : `You have ${pendingFriendCount} pending friend requests.`}
+                    </Text>
+                  </RouterLink>
+                </Box>
+              ) : null}
+              {sessionUser?.user?.is_approved && closetOutstandingActions > 0 ? (
+                <Box
+                  asChild
+                  display="block"
+                  textDecoration="none"
+                  color="inherit"
+                  _focusVisible={{
+                    outline: "2px solid",
+                    outlineColor: "rgba(0, 0, 0, 0.35)",
+                    outlineOffset: "2px",
+                  }}
+                >
+                  <RouterLink to="/closet?tab=my">
+                    <Text fontWeight="bold" color="orange.solid" textStyle={{ base: "sm", md: "md" }}>
+                      {closetOutstandingActions === 1
+                        ? "You have 1 outstanding action for items in your community closet."
+                        : `You have ${closetOutstandingActions} outstanding actions for items in your community closet.`}
                     </Text>
                   </RouterLink>
                 </Box>

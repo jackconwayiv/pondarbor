@@ -1,6 +1,8 @@
 from django.test import TestCase
 
+from closet.constants import FRIENDS_ITEMS_CATEGORY_OTHER
 from closet.tests.helpers import ClosetTestMixin
+from users.models import User
 
 
 class ClosetFriendsBrowseApiTests(ClosetTestMixin, TestCase):
@@ -20,6 +22,17 @@ class ClosetFriendsBrowseApiTests(ClosetTestMixin, TestCase):
         self.assertIn(owner_item.id, ids)
         self.assertIn(friend_two_item.id, ids)
         self.assertNotIn(_other_item.id, ids)
+
+    def test_friends_browse_hides_items_when_friend_owner_suspended(self):
+        hidden = self.make_item(owner=self.owner, holder=self.owner, name="Suspended owner item")
+        self.owner.account_status = User.AccountStatus.SUSPENDED
+        self.owner.save(update_fields=["account_status"])
+        hidden.refresh_from_db()
+        self.assertIsNotNone(hidden.deleted_at)
+        resp = self.borrower_client.get("/api/v1/closet/items/friends/")
+        self.assertEqual(resp.status_code, 200)
+        ids = {row["id"] for row in resp.json()["results"]}
+        self.assertNotIn(hidden.id, ids)
 
     def test_friends_browse_excludes_my_own_items(self):
         mine = self.make_item(owner=self.borrower, holder=self.borrower, name="Mine")
@@ -56,4 +69,100 @@ class ClosetFriendsBrowseApiTests(ClosetTestMixin, TestCase):
         payload = resp.json()
         self.assertEqual(payload["page_size"], 50)
         self.assertEqual(len(payload["results"]), 50)
+
+    def test_friends_browse_filter_by_category(self):
+        self.make_item(
+            owner=self.owner,
+            holder=self.owner,
+            name="Tools item",
+            category="Tools",
+        )
+        self.make_item(
+            owner=self.owner,
+            holder=self.owner,
+            name="Clothing item",
+            category="Clothing",
+        )
+        resp = self.borrower_client.get("/api/v1/closet/items/friends/?category=Tools")
+        self.assertEqual(resp.status_code, 200)
+        names = {row["name"] for row in resp.json()["results"]}
+        self.assertEqual(names, {"Tools item"})
+
+    def test_friends_browse_filter_by_category_is_case_insensitive(self):
+        self.make_item(owner=self.owner, holder=self.owner, name="A", category="Board Games")
+        resp = self.borrower_client.get("/api/v1/closet/items/friends/?category=board games")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.json()["results"]), 1)
+
+    def test_friends_browse_filter_by_category_matches_preset_stored_as_tag(self):
+        """Preset chosen in UI can match the category field or an exact tag (e.g. legacy / mistagged)."""
+        self.make_item(
+            owner=self.owner,
+            holder=self.owner,
+            name="Tagged only",
+            category="",
+            tags=["Sports/Outdoors"],
+        )
+        self.make_item(owner=self.owner, holder=self.owner, name="Other", tags=["indoor"])
+        resp = self.borrower_client.get("/api/v1/closet/items/friends/?category=Sports%2FOutdoors")
+        self.assertEqual(resp.status_code, 200)
+        names = {row["name"] for row in resp.json()["results"]}
+        self.assertEqual(names, {"Tagged only"})
+
+    def test_friends_browse_filter_by_tag(self):
+        self.make_item(
+            owner=self.owner,
+            holder=self.owner,
+            name="Tagged",
+            tags=["outdoor", "summer"],
+        )
+        self.make_item(owner=self.owner, holder=self.owner, name="Other", tags=["indoor"])
+        resp = self.borrower_client.get("/api/v1/closet/items/friends/?tag=outdoor")
+        self.assertEqual(resp.status_code, 200)
+        names = {row["name"] for row in resp.json()["results"]}
+        self.assertEqual(names, {"Tagged"})
+
+    def test_friends_browse_filter_by_tag_case_insensitive(self):
+        self.make_item(owner=self.owner, holder=self.owner, name="X", tags=["Tool"])
+        resp = self.borrower_client.get("/api/v1/closet/items/friends/?tag=tool")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.json()["results"]), 1)
+
+    def test_friends_browse_filter_by_tag_substring(self):
+        self.make_item(
+            owner=self.owner,
+            holder=self.owner,
+            name="Potentials",
+            tags=["potential", "ski"],
+        )
+        self.make_item(owner=self.owner, holder=self.owner, name="Other", tags=["foo"])
+        resp = self.borrower_client.get("/api/v1/closet/items/friends/?tag=pot")
+        self.assertEqual(resp.status_code, 200)
+        names = {row["name"] for row in resp.json()["results"]}
+        self.assertEqual(names, {"Potentials"})
+
+    def test_friends_browse_filter_category_other_excludes_presets_and_empty(self):
+        self.make_item(owner=self.owner, holder=self.owner, name="Custom", category="Games/Board")
+        self.make_item(owner=self.owner, holder=self.owner, name="Preset", category="Tools")
+        self.make_item(owner=self.owner, holder=self.owner, name="Blank", category="")
+        resp = self.borrower_client.get(
+            f"/api/v1/closet/items/friends/?category={FRIENDS_ITEMS_CATEGORY_OTHER}",
+        )
+        self.assertEqual(resp.status_code, 200)
+        names = {row["name"] for row in resp.json()["results"]}
+        self.assertEqual(names, {"Custom"})
+
+    def test_friends_browse_sort_by_name_asc(self):
+        self.make_item(owner=self.owner, holder=self.owner, name="Zebra")
+        self.make_item(owner=self.owner, holder=self.owner, name="Apple")
+        resp = self.borrower_client.get("/api/v1/closet/items/friends/?sort=name_asc&page_size=20")
+        self.assertEqual(resp.status_code, 200)
+        names = [row["name"] for row in resp.json()["results"]]
+        self.assertEqual(names, ["Apple", "Zebra"])
+
+    def test_friends_browse_unknown_sort_defaults_to_updated_desc(self):
+        self.make_item(owner=self.owner, holder=self.owner, name="Only")
+        resp = self.borrower_client.get("/api/v1/closet/items/friends/?sort=not_a_real_sort")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.json()["results"]), 1)
 

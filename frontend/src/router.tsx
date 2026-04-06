@@ -28,6 +28,7 @@ import QffDmClassesPage from "./qff/QffDmClassesPage";
 import QffDmInteractablesPage from "./qff/QffDmInteractablesPage";
 import QffDmNpcsPage from "./qff/QffDmNpcsPage";
 import QffDmQuestsPage from "./qff/QffDmQuestsPage";
+import ClosetPage from "./closet/ClosetPage";
 
 export const router = createBrowserRouter([
   {
@@ -49,6 +50,10 @@ export const router = createBrowserRouter([
       {
         path: "quotes",
         element: <QuotesFeedPage />,
+      },
+      {
+        path: "closet",
+        element: <ClosetPage />,
       },
       {
         path: "clicker",

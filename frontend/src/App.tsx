@@ -32,6 +32,7 @@ const LILYPAD_HOVER_HINT_VISIBLE = {
 
 const HOME_LILYPAD_TILES = [
   { to: "/quotes", label: "Quotes", hoverText: "archive of user-recorded quotes" },
+  { to: "/closet", label: "Closet", hoverText: "lend and borrow items with friends" },
   { to: "/clicker", label: "PondClicker", hoverText: "idle pond-growing game" },
   { to: "/whatif", label: "WhatIf", hoverText: "multiplayer party game" },
 ] as const;

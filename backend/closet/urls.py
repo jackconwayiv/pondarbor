@@ -1,0 +1,48 @@
+from django.urls import path
+
+from closet.views import (
+    borrow_request_approve,
+    borrow_request_cancel,
+    borrow_request_create,
+    borrow_request_delete,
+    borrow_request_decline,
+    health,
+    item_accept_custody,
+    item_borrow_requests,
+    item_cancel_pending_custody,
+    item_deny_custody,
+    item_complete_custody_return,
+    item_detail,
+    item_mark_custody_returned_by_holder,
+    item_reject_pending_custody,
+    item_set_custody,
+    items_friends,
+    items_mine,
+    loan_mark_returned,
+    loan_mark_returned_by_borrower,
+    uploads_presign,
+)
+
+urlpatterns = [
+    path("health/", health),
+    path("items/", items_mine),
+    path("items/friends/", items_friends),
+    path("items/<int:item_id>/", item_detail),
+    path("items/<int:item_id>/borrow-requests/", borrow_request_create),
+    path("items/<int:item_id>/borrow-requests/list/", item_borrow_requests),
+    path("items/<int:item_id>/set-custody/", item_set_custody),
+    path("items/<int:item_id>/accept-custody/", item_accept_custody),
+    path("items/<int:item_id>/reject-pending-custody/", item_reject_pending_custody),
+    path("items/<int:item_id>/cancel-pending-custody/", item_cancel_pending_custody),
+    path("items/<int:item_id>/deny-custody/", item_deny_custody),
+    path("items/<int:item_id>/mark-custody-returned-by-holder/", item_mark_custody_returned_by_holder),
+    path("items/<int:item_id>/complete-custody-return/", item_complete_custody_return),
+    path("borrow-requests/<int:borrow_request_id>/approve/", borrow_request_approve),
+    path("borrow-requests/<int:borrow_request_id>/decline/", borrow_request_decline),
+    path("borrow-requests/<int:borrow_request_id>/cancel/", borrow_request_cancel),
+    path("borrow-requests/<int:borrow_request_id>/", borrow_request_delete),
+    path("loans/<int:loan_id>/mark-returned/", loan_mark_returned),
+    path("loans/<int:loan_id>/mark-returned-by-borrower/", loan_mark_returned_by_borrower),
+    path("uploads/presign/", uploads_presign),
+]
+

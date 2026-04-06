@@ -84,6 +84,7 @@ INSTALLED_APPS = [
     "clicker.apps.ClickerConfig",
     "achievements.apps.AchievementsConfig",
     "qff.apps.QffConfig",
+    "closet.apps.ClosetConfig",
     # allauth
     "allauth",
     "allauth.account",

@@ -64,6 +64,8 @@ function isDesktopNavRouteActive(pathname: string, to: string): boolean {
         pathname.startsWith("/friend/") ||
         pathname.includes("/public-quotes")
       );
+    case "/closet":
+      return pathname === "/closet" || pathname.startsWith("/closet/");
     case "/clicker":
       return pathname === "/clicker" || pathname.startsWith("/clicker/");
     case "/whatif":
@@ -87,6 +89,7 @@ export default function AppLayout() {
       showProfileNav
         ? [
             { to: "/quotes", label: "Quotes" },
+            { to: "/closet", label: "Closet" },
             { to: "/clicker", label: "PondClicker" },
             { to: "/whatif", label: "WhatIf" },
           ]
@@ -246,6 +249,14 @@ export default function AppLayout() {
                           }}
                         >
                           Quotes
+                        </Menu.Item>
+                        <Menu.Item
+                          value="closet"
+                          onSelect={() => {
+                            navigate("/closet");
+                          }}
+                        >
+                          Closet
                         </Menu.Item>
                         <Menu.Item
                           value="clicker"

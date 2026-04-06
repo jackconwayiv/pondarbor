@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -41,6 +42,11 @@ class ClosetTestMixin:
             requested=user_a,
             defaults={"is_accepted": True},
         )
+
+    def clear_friendship(self, user_a, user_b):
+        FriendRequest.objects.filter(
+            Q(requester=user_a, requested=user_b) | Q(requester=user_b, requested=user_a)
+        ).delete()
 
     def make_item(self, *, owner=None, holder=None, name="Item"):
         owner_user = owner or self.owner

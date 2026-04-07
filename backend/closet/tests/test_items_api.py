@@ -1,5 +1,6 @@
 from django.test import TestCase, override_settings
 from django.utils import timezone
+from unittest.mock import patch
 
 from closet.models import Item
 from closet.tests.helpers import ClosetTestMixin
@@ -22,6 +23,40 @@ class ClosetItemsApiTests(ClosetTestMixin, TestCase):
         self.assertEqual(payload["owner_user"]["id"], self.owner.id)
         self.assertEqual(payload["current_holder_user"]["id"], self.owner.id)
         self.assertEqual(payload["name"], "Hammer")
+
+    def test_create_item_requires_approved_authenticated_user(self):
+        anon_resp = self.anon_client.post(
+            "/api/v1/closet/items/",
+            {"name": "Anon item"},
+            format="json",
+        )
+        self.assertIn(anon_resp.status_code, (401, 403))
+
+        self.owner.account_status = self.owner.AccountStatus.PENDING
+        self.owner.save(update_fields=["account_status"])
+        non_approved_resp = self.owner_client.post(
+            "/api/v1/closet/items/",
+            {"name": "Pending item"},
+            format="json",
+        )
+        self.assertEqual(non_approved_resp.status_code, 403)
+
+    def test_uploads_presign_requires_approved_authenticated_user(self):
+        anon_resp = self.anon_client.post(
+            "/api/v1/closet/uploads/presign/",
+            {"content_type": "image/jpeg"},
+            format="json",
+        )
+        self.assertIn(anon_resp.status_code, (401, 403))
+
+        self.owner.account_status = self.owner.AccountStatus.PENDING
+        self.owner.save(update_fields=["account_status"])
+        non_approved_resp = self.owner_client.post(
+            "/api/v1/closet/uploads/presign/",
+            {"content_type": "image/jpeg"},
+            format="json",
+        )
+        self.assertEqual(non_approved_resp.status_code, 403)
 
     def test_patch_item_updates_fields(self):
         item = self.make_item(owner=self.owner, holder=self.owner, name="Old")
@@ -173,4 +208,74 @@ class ClosetItemsApiTests(ClosetTestMixin, TestCase):
         )
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["image_key"], key)
+
+    @override_settings(CLOSET_R2_KEY_PREFIX="closet", CLOSET_R2_PUBLIC_BASE_URL="https://cdn.example.test")
+    @patch("closet.views._build_r2_client")
+    def test_images_inventory_shows_attached_and_stranded(self, build_client_mock):
+        attached_key = f"closet/{self.owner.id}/20240101/attached.jpg"
+        stranded_key = f"closet/{self.owner.id}/20240101/stranded.jpg"
+        self.make_item(owner=self.owner, holder=self.owner, name="Pic", image_key=attached_key)
+        other_user_key = f"closet/{self.borrower.id}/20240101/other.jpg"
+
+        client = build_client_mock.return_value
+        client.list_objects_v2.side_effect = [
+            {
+                "Contents": [{"Key": attached_key}, {"Key": stranded_key}, {"Key": other_user_key}],
+                "IsTruncated": False,
+            }
+        ]
+        with patch.dict(
+            "os.environ",
+            {
+                "CLOUDFLARE_ACCOUNT_ID": "acct",
+                "CLOSET_R2_BUCKET": "bucket",
+                "CLOSET_R2_ACCESS_KEY_ID": "ak",
+                "CLOSET_R2_SECRET_ACCESS_KEY": "sk",
+            },
+            clear=False,
+        ):
+            resp = self.owner_client.get("/api/v1/closet/images/")
+        self.assertEqual(resp.status_code, 200)
+        rows = resp.json()["results"]
+        by_key = {row["image_key"]: row for row in rows}
+        self.assertEqual(by_key[attached_key]["status"], "attached")
+        self.assertEqual(by_key[attached_key]["attached_live_item_count"], 1)
+        self.assertEqual(by_key[stranded_key]["status"], "stranded")
+        self.assertEqual(by_key[stranded_key]["attached_live_item_count"], 0)
+        self.assertNotIn(other_user_key, by_key)
+
+    @override_settings(CLOSET_R2_KEY_PREFIX="closet")
+    @patch("closet.views._build_r2_client")
+    def test_image_delete_detaches_live_items_and_deletes_bucket_object(self, build_client_mock):
+        key = f"closet/{self.owner.id}/20240101/removable.jpg"
+        keep_key = f"closet/{self.owner.id}/20240101/keep.jpg"
+        attached = self.make_item(owner=self.owner, holder=self.owner, name="A", image_key=key)
+        self.make_item(owner=self.owner, holder=self.owner, name="B", image_key=keep_key)
+        self.make_item(owner=self.borrower, holder=self.borrower, name="C", image_key=key)
+        client = build_client_mock.return_value
+        with patch.dict(
+            "os.environ",
+            {
+                "CLOUDFLARE_ACCOUNT_ID": "acct",
+                "CLOSET_R2_BUCKET": "bucket",
+                "CLOSET_R2_ACCESS_KEY_ID": "ak",
+                "CLOSET_R2_SECRET_ACCESS_KEY": "sk",
+            },
+            clear=False,
+        ):
+            resp = self.owner_client.post("/api/v1/closet/images/delete/", {"image_key": key}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        attached.refresh_from_db()
+        self.assertEqual(attached.image_key, "")
+        client.delete_object.assert_called_once_with(Bucket="bucket", Key=key)
+
+    @override_settings(CLOSET_R2_KEY_PREFIX="closet")
+    def test_image_delete_rejects_key_outside_owner_prefix(self):
+        bad_key = f"closet/{self.borrower.id}/20240101/nope.jpg"
+        resp = self.owner_client.post(
+            "/api/v1/closet/images/delete/",
+            {"image_key": bad_key},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 403)
 

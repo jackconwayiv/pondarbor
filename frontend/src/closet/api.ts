@@ -1,6 +1,7 @@
 import type {
   BorrowRequest,
   ClosetActionSummary,
+  ClosetImageInventoryResponse,
   FriendsItemsResponse,
   MyItemsResponse,
 } from "./types";
@@ -191,6 +192,32 @@ export async function deleteItem(accessToken: string | null, itemId: number): Pr
     method: "DELETE",
     headers: authHeaders(accessToken),
     credentials: "omit",
+  });
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
+  }
+}
+
+export async function fetchMyImageInventory(
+  accessToken: string | null,
+): Promise<ClosetImageInventoryResponse> {
+  const response = await fetch(`${apiBase()}/api/v1/closet/images/`, {
+    method: "GET",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
+  }
+  return (await response.json()) as ClosetImageInventoryResponse;
+}
+
+export async function deleteMyImage(accessToken: string | null, imageKey: string): Promise<void> {
+  const response = await fetch(`${apiBase()}/api/v1/closet/images/delete/`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify({ image_key: imageKey }),
   });
   if (!response.ok) {
     throw new Error(await parseApiError(response));

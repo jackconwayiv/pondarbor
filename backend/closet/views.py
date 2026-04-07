@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import uuid
+from collections import defaultdict
 from datetime import timedelta
 
 from django.conf import settings
@@ -24,6 +25,8 @@ from closet.serializers import (
     ItemPatchSerializer,
     ItemSerializer,
     LoanSerializer,
+    closet_item_image_url,
+    expected_closet_image_key_prefix,
 )
 from closet.services import (
     item_fk_owner_publication_eligible_q,
@@ -46,6 +49,88 @@ def _env_int(name: str, default: int) -> int:
     except ValueError:
         logger.warning("Invalid integer for %s=%r; using default %s", name, raw, default)
         return default
+
+
+def _r2_client_config_or_response():
+    account_id = os.getenv("CLOUDFLARE_ACCOUNT_ID", "").strip()
+    endpoint_override = getattr(settings, "CLOSET_R2_S3_ENDPOINT_URL", "") or ""
+    bucket = os.getenv("CLOSET_R2_BUCKET", "").strip()
+    access_key = os.getenv("CLOSET_R2_ACCESS_KEY_ID", "").strip()
+    secret_key = os.getenv("CLOSET_R2_SECRET_ACCESS_KEY", "").strip()
+    has_endpoint = bool(endpoint_override) or bool(account_id)
+    if not all([has_endpoint, bucket, access_key, secret_key]):
+        return (
+            None,
+            Response(
+                {
+                    "detail": "R2 is not configured.",
+                    "required_env": [
+                        "CLOSET_R2_BUCKET",
+                        "CLOSET_R2_ACCESS_KEY_ID",
+                        "CLOSET_R2_SECRET_ACCESS_KEY",
+                        "CLOUDFLARE_ACCOUNT_ID (or set CLOSET_R2_S3_ENDPOINT_URL to the full S3 API URL from R2)",
+                    ],
+                },
+                status=501,
+            ),
+        )
+    if endpoint_override:
+        endpoint_url = endpoint_override if "://" in endpoint_override else f"https://{endpoint_override}"
+    else:
+        endpoint_url = f"https://{account_id}.r2.cloudflarestorage.com"
+    return (
+        {
+            "bucket": bucket,
+            "endpoint_url": endpoint_url,
+            "access_key": access_key,
+            "secret_key": secret_key,
+        },
+        None,
+    )
+
+
+def _build_r2_client(config: dict):
+    try:
+        import boto3
+    except ImportError:
+        raise RuntimeError(
+            "boto3 is not installed in the Python environment running Django. "
+            "Fix: activate the same venv you use for runserver, then run "
+            "`pip install -r backend/requirements.txt` (or `pip install boto3`)."
+        )
+
+    extra_kwargs = {}
+    if os.getenv("CLOSET_R2_S3_PATH_STYLE", "0").lower() in ("1", "true", "yes"):
+        from botocore.client import Config
+
+        extra_kwargs["config"] = Config(signature_version="s3v4", s3={"addressing_style": "path"})
+
+    return boto3.client(
+        "s3",
+        endpoint_url=config["endpoint_url"],
+        aws_access_key_id=config["access_key"],
+        aws_secret_access_key=config["secret_key"],
+        region_name="auto",
+        **extra_kwargs,
+    )
+
+
+def _list_user_bucket_keys(*, client, bucket: str, key_prefix: str) -> set[str]:
+    rows: set[str] = set()
+    token = None
+    while True:
+        kwargs = {"Bucket": bucket, "Prefix": key_prefix}
+        if token:
+            kwargs["ContinuationToken"] = token
+        payload = client.list_objects_v2(**kwargs)
+        for obj in payload.get("Contents", []) or []:
+            key = (obj.get("Key") or "").strip()
+            if key and key.startswith(key_prefix):
+                rows.add(key)
+        if not payload.get("IsTruncated"):
+            break
+        token = payload.get("NextContinuationToken")
+    return rows
 
 
 def _active_loan_for_item(item: Item):
@@ -720,6 +805,90 @@ def uploads_presign(request):
         return Response({"detail": detail}, status=502)
 
 
+@api_view(["GET"])
+@permission_classes([IsApprovedUser])
+def images_mine(request):
+    key_prefix = expected_closet_image_key_prefix(request.user.id)
+    db_qs = Item.objects.filter(
+        owner_user=request.user,
+        deleted_at__isnull=True,
+    ).exclude(image_key="")
+    item_names_by_key: dict[str, list[str]] = defaultdict(list)
+    item_ids_by_key: dict[str, list[int]] = defaultdict(list)
+    for row in db_qs.values("id", "name", "image_key"):
+        key = (row.get("image_key") or "").strip()
+        if not key or not key.startswith(key_prefix):
+            continue
+        item_ids_by_key[key].append(int(row["id"]))
+        item_names_by_key[key].append(str(row.get("name") or "").strip() or f"Item {row['id']}")
+    db_keys = set(item_ids_by_key.keys())
+
+    config, config_error = _r2_client_config_or_response()
+    if config_error:
+        return config_error
+    try:
+        client = _build_r2_client(config)
+        bucket_keys = _list_user_bucket_keys(
+            client=client,
+            bucket=config["bucket"],
+            key_prefix=key_prefix,
+        )
+    except Exception as exc:
+        logger.exception("closet images_mine: failed to list R2 objects")
+        detail = str(exc) if settings.DEBUG else "Failed to list images from storage."
+        return Response({"detail": detail}, status=502)
+
+    all_keys = sorted(db_keys | bucket_keys)
+    rows = []
+    for key in all_keys:
+        attached_item_ids = sorted(item_ids_by_key.get(key, []))
+        attached_item_names = item_names_by_key.get(key, [])
+        attached_count = len(attached_item_ids)
+        rows.append(
+            {
+                "image_key": key,
+                "image_url": closet_item_image_url(key),
+                "attached_live_item_count": attached_count,
+                "attached_live_item_ids": attached_item_ids,
+                "attached_live_item_names": attached_item_names,
+                "status": "attached" if attached_count > 0 else "stranded",
+                "present_in_bucket": key in bucket_keys,
+            }
+        )
+    return Response({"results": rows})
+
+
+@api_view(["POST"])
+@permission_classes([IsApprovedUser])
+@transaction.atomic
+def image_delete(request):
+    raw_key = str(request.data.get("image_key") or "").strip()
+    if not raw_key:
+        return Response({"detail": "image_key is required."}, status=400)
+    expected_prefix = expected_closet_image_key_prefix(request.user.id)
+    if not raw_key.startswith(expected_prefix):
+        return Response({"detail": "Image key must belong to your account prefix."}, status=403)
+
+    config, config_error = _r2_client_config_or_response()
+    if config_error:
+        return config_error
+    detached_count = Item.objects.filter(
+        owner_user=request.user,
+        deleted_at__isnull=True,
+        image_key=raw_key,
+    ).update(image_key="")
+
+    try:
+        client = _build_r2_client(config)
+        client.delete_object(Bucket=config["bucket"], Key=raw_key)
+    except Exception as exc:
+        logger.exception("closet image_delete: failed deleting key=%s", raw_key)
+        detail = str(exc) if settings.DEBUG else "Failed to delete image from storage."
+        return Response({"detail": detail}, status=502)
+
+    return Response({"deleted": True, "image_key": raw_key, "detached_live_item_count": detached_count})
+
+
 def _uploads_presign_response(request):
     key_prefix = getattr(settings, "CLOSET_R2_KEY_PREFIX", "closet")
     max_bytes = _env_int("CLOSET_IMAGE_MAX_BYTES", 1048576)
@@ -728,78 +897,30 @@ def _uploads_presign_response(request):
     if mime not in {"image/jpeg", "image/png", "image/webp"}:
         return Response({"detail": "Unsupported image mime type."}, status=400)
 
-    account_id = os.getenv("CLOUDFLARE_ACCOUNT_ID", "").strip()
-    endpoint_override = getattr(settings, "CLOSET_R2_S3_ENDPOINT_URL", "") or ""
-    bucket = os.getenv("CLOSET_R2_BUCKET", "").strip()
-    access_key = os.getenv("CLOSET_R2_ACCESS_KEY_ID", "").strip()
-    secret_key = os.getenv("CLOSET_R2_SECRET_ACCESS_KEY", "").strip()
-    has_endpoint = bool(endpoint_override) or bool(account_id)
-    if not all([has_endpoint, bucket, access_key, secret_key]):
-        return Response(
-            {
-                "detail": "R2 is not configured.",
-                "required_env": [
-                    "CLOSET_R2_BUCKET",
-                    "CLOSET_R2_ACCESS_KEY_ID",
-                    "CLOSET_R2_SECRET_ACCESS_KEY",
-                    "CLOUDFLARE_ACCOUNT_ID (or set CLOSET_R2_S3_ENDPOINT_URL to the full S3 API URL from R2)",
-                ],
-            },
-            status=501,
-        )
+    config, config_error = _r2_client_config_or_response()
+    if config_error:
+        return config_error
+
+    ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[mime]
+    key = f"{key_prefix}/{request.user.id}/{timezone.now().strftime('%Y%m%d')}/{uuid.uuid4().hex}.{ext}"
     try:
-        import boto3
-    except ImportError:
-        return Response(
-            {
-                "detail": (
-                    "boto3 is not installed in the Python environment running Django. "
-                    "Fix: activate the same venv you use for runserver, then run "
-                    "`pip install -r backend/requirements.txt` (or `pip install boto3`)."
-                ),
-            },
-            status=503,
-        )
+        client = _build_r2_client(config)
     except Exception as exc:
         logger.exception("boto3 import failed")
         return Response(
             {
                 "detail": (
-                    f"boto3 import error: {exc!s}. "
-                    "Try reinstalling: pip install -U boto3 botocore"
+                    f"boto3 import error: {exc!s}. Try reinstalling: pip install -U boto3 botocore"
                     if settings.DEBUG
                     else "boto3 failed to load. Check server logs and reinstall dependencies."
                 ),
             },
             status=503,
         )
-
-    ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[mime]
-    key = f"{key_prefix}/{request.user.id}/{timezone.now().strftime('%Y%m%d')}/{uuid.uuid4().hex}.{ext}"
-    if endpoint_override:
-        endpoint_url = endpoint_override if "://" in endpoint_override else f"https://{endpoint_override}"
-    else:
-        endpoint_url = f"https://{account_id}.r2.cloudflarestorage.com"
-
-    # Match Cloudflare R2 docs (minimal client). Optional path-style SigV4 for SDKs that need it.
-    extra_kwargs = {}
-    if os.getenv("CLOSET_R2_S3_PATH_STYLE", "0").lower() in ("1", "true", "yes"):
-        from botocore.client import Config
-
-        extra_kwargs["config"] = Config(signature_version="s3v4", s3={"addressing_style": "path"})
-
-    client = boto3.client(
-        "s3",
-        endpoint_url=endpoint_url,
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key,
-        region_name="auto",
-        **extra_kwargs,
-    )
     presigned_url = client.generate_presigned_url(
         ClientMethod="put_object",
         Params={
-            "Bucket": bucket,
+            "Bucket": config["bucket"],
             "Key": key,
             "ContentType": mime,
         },

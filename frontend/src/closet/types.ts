@@ -62,3 +62,17 @@ export type ClosetActionSummary = {
   outstanding_actions_count: number;
 };
 
+export type ClosetImageInventoryRow = {
+  image_key: string;
+  image_url: string;
+  attached_live_item_count: number;
+  attached_live_item_ids: number[];
+  attached_live_item_names: string[];
+  status: "attached" | "stranded";
+  present_in_bucket: boolean;
+};
+
+export type ClosetImageInventoryResponse = {
+  results: ClosetImageInventoryRow[];
+};
+

@@ -27,12 +27,14 @@ import {
   completeCustodyReturn,
   createBorrowRequest,
   createItem,
+  deleteMyImage,
   declineBorrowRequest,
   deleteBorrowRequest,
   deleteItem,
   denyCustody,
   fetchBorrowRequests,
   fetchFriendsItems,
+  fetchMyImageInventory,
   type FriendsItemsSort,
   fetchMyItems,
   markCustodyReturnedByHolder,
@@ -53,9 +55,9 @@ import {
   isAllowedClosetCategory,
 } from "./categories";
 import { ClosetCategoryFields } from "./ClosetCategoryFields";
-import type { BorrowRequest, ClosetItem } from "./types";
+import type { BorrowRequest, ClosetImageInventoryRow, ClosetItem } from "./types";
 
-type ClosetTab = "my" | "friends";
+type ClosetTab = "my" | "friends" | "images";
 const FRIENDS_PAGE_SIZE = 10;
 const MY_ITEMS_PAGE_SIZE = 10;
 const CLOSET_PLACEHOLDER_PROPS = {
@@ -67,7 +69,9 @@ const CLOSET_PLACEHOLDER_PROPS = {
 } as const;
 
 function parseTab(value: string | null): ClosetTab {
-  return value === "friends" ? "friends" : "my";
+  if (value === "friends") return "friends";
+  if (value === "images") return "images";
+  return "my";
 }
 
 function displayName(itemUser: { display_name: string; email: string }): string {
@@ -544,7 +548,7 @@ function ItemCard({
 
   const apiImageUrl = (item.image_url ?? "").trim();
   const displayImageSrc = apiImageUrl || (localImagePreviewUrl ?? "").trim();
-  const showImageCard = Boolean(displayImageSrc);
+  const showImageCard = Boolean(displayImageSrc) && !expanded;
 
   const itemCardInner = (
       <Stack gap="3">
@@ -645,6 +649,21 @@ function ItemCard({
                     setConfirmDelete(false);
                   }}
                 >
+                  {displayImageSrc ? (
+                    <Stack gap="1" align="stretch">
+                      <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
+                        Current Photo:
+                      </Text>
+                      <Image
+                        src={displayImageSrc}
+                        alt=""
+                        aria-hidden
+                        maxH="220px"
+                        objectFit="cover"
+                        borderRadius="md"
+                      />
+                    </Stack>
+                  ) : null}
                   <Stack gap="1" align="stretch">
                     <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
                       Item Name:
@@ -1168,6 +1187,12 @@ export default function ClosetPage() {
   const [friendsNotice, setFriendsNotice] = useState<{ kind: "success" | "error"; message: string } | null>(
     null,
   );
+  const [imageRows, setImageRows] = useState<ClosetImageInventoryRow[]>([]);
+  const [imagesNotice, setImagesNotice] = useState<{ kind: "success" | "error"; message: string } | null>(null);
+  const [deletingImageKey, setDeletingImageKey] = useState<string | null>(null);
+  const [confirmDeleteImageKey, setConfirmDeleteImageKey] = useState<string | null>(null);
+  const confirmDeleteImageButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const [imagesFilter, setImagesFilter] = useState<"unused" | "all">("unused");
 
   const meId = coerceClosetUserId(sessionUser?.user.id);
   const totalFriendsPages = Math.max(1, Math.ceil(friendsTotal / FRIENDS_PAGE_SIZE));
@@ -1266,12 +1291,18 @@ export default function ClosetPage() {
     );
   }, [getApiAccessToken]);
 
+  const loadImages = useCallback(async () => {
+    const token = await getApiAccessToken();
+    const payload = await fetchMyImageInventory(token);
+    setImageRows(payload.results);
+  }, [getApiAccessToken]);
+
   const refreshAll = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const parts = await Promise.allSettled([loadMine(), loadFriends(), loadFriendsForCustody()]);
+    const parts = await Promise.allSettled([loadMine(), loadFriends(), loadFriendsForCustody(), loadImages()]);
     const failures: string[] = [];
-    const labels = ["your items", "friends' items", "friends list for custody"] as const;
+    const labels = ["your items", "friends' items", "friends list for custody", "image library"] as const;
     parts.forEach((result, i) => {
       if (result.status === "rejected") {
         const msg = result.reason instanceof Error ? result.reason.message : String(result.reason);
@@ -1282,7 +1313,7 @@ export default function ClosetPage() {
       setError(failures.join(" · "));
     }
     setLoading(false);
-  }, [loadFriends, loadFriendsForCustody, loadMine]);
+  }, [loadFriends, loadFriendsForCustody, loadImages, loadMine]);
 
   const resetRequestEditors = useCallback(() => {
     setEditingRequestItemId(null);
@@ -1305,6 +1336,18 @@ export default function ClosetPage() {
     refreshAll,
     sessionUser,
   ]);
+
+  useEffect(() => {
+    if (!confirmDeleteImageKey) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const button = confirmDeleteImageButtonRefs.current[confirmDeleteImageKey];
+      const target = event.target as Node | null;
+      if (button && target && button.contains(target)) return;
+      setConfirmDeleteImageKey(null);
+    };
+    window.addEventListener("mousedown", onPointerDown);
+    return () => window.removeEventListener("mousedown", onPointerDown);
+  }, [confirmDeleteImageKey]);
 
   useEffect(() => {
     if (declinedPage > totalDeclinedPages) setDeclinedPage(totalDeclinedPages);
@@ -1466,6 +1509,8 @@ export default function ClosetPage() {
   const visibleLoanedFiltered = restrictToFocusedItem
     ? loanedItems.filter((item) => sameClosetUserId(item.id, activeItemId))
     : visibleLoaned;
+  const visibleImageRows =
+    imagesFilter === "unused" ? imageRows.filter((row) => row.status === "stranded") : imageRows;
 
   return (
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
@@ -1525,6 +1570,20 @@ export default function ClosetPage() {
                 _selected={{ bg: "lilypad.solid", color: "black" }}
               >
                 Friends&apos; Items
+              </Tabs.Trigger>
+              <Tabs.Trigger
+                value="images"
+                bg={activeTab === "images" ? "lilypad.solid" : undefined}
+                color={activeTab === "images" ? "black" : undefined}
+                borderTopRadius="md"
+                borderBottomRadius="0"
+                px="4"
+                py="2"
+                fontWeight="medium"
+                _hover={{ bg: activeTab === "images" ? "lilypad.solid" : "transparent" }}
+                _selected={{ bg: "lilypad.solid", color: "black" }}
+              >
+                My Images
               </Tabs.Trigger>
             </Tabs.List>
 
@@ -2649,6 +2708,113 @@ export default function ClosetPage() {
                     </PondButton>
                   </HStack>
                 </HStack>
+              </Stack>
+            </Tabs.Content>
+            <Tabs.Content value="images" p={{ base: "4", md: "6" }}>
+              <Stack gap="4">
+                <HStack justify="space-between" align="center" gap="3" flexWrap="wrap">
+                  <Text>Browse uploaded images and delete stranded files.</Text>
+                  {imagesNotice ? (
+                    <Text
+                      color={imagesNotice.kind === "success" ? "green.600" : "red.600"}
+                      fontSize={APP_TEXT_SIZES.helper}
+                      fontWeight="medium"
+                      textAlign="right"
+                    >
+                      {imagesNotice.message}
+                    </Text>
+                  ) : null}
+                </HStack>
+                <HStack align="end" gap="3" flexWrap="wrap">
+                  <Stack gap="1" minW="200px">
+                    <Text fontSize={APP_TEXT_SIZES.helper}>Show</Text>
+                    <NativeSelectRoot maxW="280px">
+                      <NativeSelectField
+                        value={imagesFilter}
+                        onChange={(e) => setImagesFilter(e.target.value === "all" ? "all" : "unused")}
+                      >
+                        <option value="unused">Unused Images</option>
+                        <option value="all">All Images</option>
+                      </NativeSelectField>
+                    </NativeSelectRoot>
+                  </Stack>
+                </HStack>
+                {visibleImageRows.length === 0 ? (
+                  <Text>
+                    {imagesFilter === "unused"
+                      ? "No unused images found."
+                      : "No uploaded images found."}
+                  </Text>
+                ) : null}
+                {visibleImageRows.map((row) => (
+                  <Card.Root key={row.image_key} bg="white" borderWidth="1px" borderColor="border" borderRadius="xl">
+                    <Card.Body>
+                      <Stack gap="3">
+                        <HStack justify="space-between" align="start" gap="3" flexWrap="wrap">
+                          <Stack gap="1">
+                            <Text fontWeight="bold">{row.status === "attached" ? "Attached" : "Stranded"}</Text>
+                            <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                              {row.attached_live_item_count} live item
+                              {row.attached_live_item_count === 1 ? "" : "s"} using this image
+                            </Text>
+                            {!row.present_in_bucket ? (
+                              <Text fontSize={APP_TEXT_SIZES.helper} color="orange.solid">
+                                Missing from bucket
+                              </Text>
+                            ) : null}
+                          </Stack>
+                          <PondButton
+                            ref={(node: HTMLButtonElement | null) => {
+                              confirmDeleteImageButtonRefs.current[row.image_key] = node;
+                            }}
+                            size="sm"
+                            colorPalette="nautical"
+                            loading={deletingImageKey === row.image_key}
+                            disabled={deletingImageKey !== null}
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (confirmDeleteImageKey !== row.image_key) {
+                                setConfirmDeleteImageKey(row.image_key);
+                                return;
+                              }
+                              try {
+                                setDeletingImageKey(row.image_key);
+                                setConfirmDeleteImageKey(null);
+                                const token = await getApiAccessToken();
+                                await deleteMyImage(token, row.image_key);
+                                setImagesNotice({
+                                  kind: "success",
+                                  message: "Image deleted from storage and detached from live items.",
+                                });
+                                await refreshAll();
+                              } catch (err: unknown) {
+                                setImagesNotice({
+                                  kind: "error",
+                                  message: err instanceof Error ? err.message : "Failed to delete image",
+                                });
+                              } finally {
+                                setDeletingImageKey(null);
+                              }
+                            }}
+                          >
+                            {confirmDeleteImageKey === row.image_key ? "Confirm delete" : "Delete image"}
+                          </PondButton>
+                        </HStack>
+                        {row.image_url ? (
+                          <Image src={row.image_url} alt="" aria-hidden maxH="180px" objectFit="cover" borderRadius="md" />
+                        ) : null}
+                        <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" wordBreak="break-all">
+                          {row.image_key}
+                        </Text>
+                        {row.attached_live_item_names.length > 0 ? (
+                          <Text fontSize={APP_TEXT_SIZES.helper}>
+                            Used by: {row.attached_live_item_names.join(", ")}
+                          </Text>
+                        ) : null}
+                      </Stack>
+                    </Card.Body>
+                  </Card.Root>
+                ))}
               </Stack>
             </Tabs.Content>
           </Box>

@@ -31,11 +31,11 @@ import type { Quote, QuoteCreatePayload, QuoteLabel, QuotePatchPayload } from ".
 import { fetchFriendsList, searchFriends, type FriendUser } from "../friends/api";
 
 const PAGE_SIZE = 10;
-type QuoteTab = "add" | "my" | "public";
+type QuoteTab = "add" | "my" | "published";
 
 function parseQuoteTab(value: string | null, isApproved: boolean): QuoteTab {
   if (value === "my") return value;
-  if (value === "public") return isApproved ? "public" : "add";
+  if (value === "published" || value === "public") return isApproved ? "published" : "add";
   return "add";
 }
 
@@ -151,7 +151,10 @@ function mergeSuggestionLabels(
 }
 
 function isAuthFailure(err: unknown): boolean {
-  return err instanceof Error && (err.message.includes("(401)") || err.message.includes("(403)"));
+  if (!(err instanceof Error)) return false;
+  const msg = err.message.toLowerCase();
+  if (msg.includes("pending approval")) return false;
+  return msg.includes("(401)") || msg.includes("(403)");
 }
 
 function QuoteCard({
@@ -186,7 +189,7 @@ function QuoteCard({
   const canEdit = viewerUserId != null && quote.owner.id === viewerUserId;
   const defaults = useMemo(() => labelsToCsv(quote), [quote]);
   const [editBody, setEditBody] = useState(quote.body);
-  const [editVisibility, setEditVisibility] = useState<"private" | "public">(quote.visibility);
+  const [editVisibility, setEditVisibility] = useState<"private" | "published">(quote.visibility);
   const [editDateOfQuote, setEditDateOfQuote] = useState(quote.date_of_quote ?? "");
   const [editTagsCsv, setEditTagsCsv] = useState(defaults.tags);
   const [editAttributionNamesCsv, setEditAttributionNamesCsv] = useState(
@@ -418,12 +421,12 @@ function QuoteCard({
                           value={editVisibility}
                           onChange={(e) =>
                             setEditVisibility(
-                              (e.target.value as "private" | "public") || "private",
+                              (e.target.value as "private" | "published") || "private",
                             )
                           }
                         >
                           <option value="private">Private</option>
-                          <option value="public">Visible to friends</option>
+                          <option value="published">Published</option>
                         </NativeSelectField>
                       </NativeSelectRoot>
                     </Stack>
@@ -605,7 +608,7 @@ export default function QuotesFeedPage() {
   } = useAppSession();
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [body, setBody] = useState("");
-  const [visibility, setVisibility] = useState<"private" | "public">("private");
+  const [visibility, setVisibility] = useState<"private" | "published">("private");
   const [dateOfQuote, setDateOfQuote] = useState("");
   const [tagsCsv, setTagsCsv] = useState("");
   const [attributionNamesCsv, setAttributionNamesCsv] = useState("");
@@ -640,6 +643,14 @@ export default function QuotesFeedPage() {
     next.set("tab", tab);
     setSearchParams(next, { replace: true });
   };
+
+  useEffect(() => {
+    if (searchParams.get("tab") === "public") {
+      const next = new URLSearchParams(searchParams);
+      next.set("tab", "published");
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const loadSuggestions = useCallback(async () => {
     if (!sessionUser?.user?.is_approved) {
@@ -906,19 +917,19 @@ export default function QuotesFeedPage() {
                 My Quotes
               </Tabs.Trigger>
               <Tabs.Trigger
-                value="public"
+                value="published"
                 display={isApprovedUser ? undefined : "none"}
-                bg={activeTab === "public" ? "lilypad.solid" : undefined}
-                color={activeTab === "public" ? "black" : undefined}
+                bg={activeTab === "published" ? "lilypad.solid" : undefined}
+                color={activeTab === "published" ? "black" : undefined}
                 borderTopRadius="md"
                 borderBottomRadius="0"
                 px="4"
                 py="2"
                 fontWeight="medium"
-                _hover={{ bg: activeTab === "public" ? "lilypad.solid" : "transparent" }}
+                _hover={{ bg: activeTab === "published" ? "lilypad.solid" : "transparent" }}
                 _selected={{ bg: "lilypad.solid", color: "black" }}
               >
-                Explore Archive
+                Published Quotes
               </Tabs.Trigger>
             </Tabs.List>
 
@@ -993,11 +1004,11 @@ export default function QuotesFeedPage() {
                         <NativeSelectField
                           value={visibility}
                           onChange={(e) =>
-                            setVisibility((e.target.value as "private" | "public") || "private")
+                            setVisibility((e.target.value as "private" | "published") || "private")
                           }
                         >
                           <option value="private">Private</option>
-                          <option value="public">Visible to friends</option>
+                          <option value="published">Published</option>
                         </NativeSelectField>
                       </NativeSelectRoot>
                     </Stack>
@@ -1251,13 +1262,13 @@ export default function QuotesFeedPage() {
             </Stack>
             </Tabs.Content>
 
-            <Tabs.Content value="public" p={{ base: "4", md: "6" }}>
+            <Tabs.Content value="published" p={{ base: "4", md: "6" }}>
               <Stack pt="0">
                 {sessionUser?.user?.is_approved ? (
                   <PublicQuotesPage />
                 ) : (
                   <Text color="orange.solid" fontWeight="medium">
-                    Public quote browsing is available after your account is approved.
+                    Published quotes are available after your account is approved.
                   </Text>
                 )}
               </Stack>

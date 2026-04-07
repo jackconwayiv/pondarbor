@@ -64,13 +64,7 @@ function compareStaffUsers(a: StaffUserRow, b: StaffUserRow): number {
 }
 
 export default function StaffPage() {
-  const {
-    sessionUser,
-    isAuthenticated,
-    isLoading,
-    error: sessionError,
-    getApiAccessToken,
-  } = useAppSession();
+  const { sessionUser, isAuthenticated, getApiAccessToken } = useAppSession();
 
   const [users, setUsers] = useState<StaffUserRow[]>([]);
   const [listBusy, setListBusy] = useState(false);
@@ -117,38 +111,8 @@ export default function StaffPage() {
     }
   }
 
-  if (!isAuthenticated) {
-    return (
-      <Stack flex="1" minH="full" gap="4" px={{ base: "4", md: "6" }} py={{ base: "6", md: "8" }} {...fullBleedStackProps}>
-        <Text textStyle={{ base: "sm", md: "md" }}>Sign in to open this page.</Text>
-      </Stack>
-    );
-  }
-
-  if (isAuthenticated && !sessionUser && !isLoading) {
-    return (
-      <Stack flex="1" minH="full" gap="4" px={{ base: "4", md: "6" }} py={{ base: "6", md: "8" }} {...fullBleedStackProps}>
-        <Text fontSize={{ base: "sm", md: "md" }} color="fg">
-          {sessionError ?? "Could not load your account session. Try signing in again."}
-        </Text>
-      </Stack>
-    );
-  }
-
-  if (isLoading || !sessionUser) {
-    return (
-      <Stack flex="1" minH="full" gap="4" px={{ base: "4", md: "6" }} py={{ base: "6", md: "8" }} {...fullBleedStackProps}>
-        <Text fontSize={{ base: "sm", md: "md" }}>Loading…</Text>
-      </Stack>
-    );
-  }
-
-  if (!isStaff) {
-    return (
-      <Stack flex="1" minH="full" gap="4" px={{ base: "4", md: "6" }} py={{ base: "6", md: "8" }} {...fullBleedStackProps}>
-        <Text fontSize={{ base: "sm", md: "md" }}>Staff access required.</Text>
-      </Stack>
-    );
+  if (!sessionUser) {
+    return null;
   }
 
   return (

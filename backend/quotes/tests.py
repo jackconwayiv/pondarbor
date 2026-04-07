@@ -1,7 +1,10 @@
+from datetime import timedelta
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from django.db import connection
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from friends.models import FriendRequest
@@ -118,32 +121,58 @@ class QuotesApiTests(TestCase):
         quote_id = create_resp.json()["id"]
 
         resp = self.anon_client.get(f"/api/v1/quotes/{quote_id}/")
-        self.assertEqual(resp.status_code, 404)
+        self.assertIn(resp.status_code, (401, 403))
 
-    def test_public_quotes_list_requires_approved_user(self):
-        public_quote = Quote.objects.create(
+    def test_published_quotes_list_requires_approved_user(self):
+        published_quote = Quote.objects.create(
             owner=self.alice,
-            body="Public quote",
-            visibility=Quote.Visibility.PUBLIC,
+            body="Published quote",
+            visibility=Quote.Visibility.PUBLISHED,
         )
         self._accept_pair(self.alice, self.bob)
-        resp = self.anon_client.get("/api/v1/quotes/public/")
-        self.assertEqual(resp.status_code, 403)
+        resp = self.anon_client.get("/api/v1/quotes/published/")
+        self.assertIn(resp.status_code, (401, 403))
         pending = User.objects.create_user(email="pending@example.com", password="secret12345")
         pending_client = APIClient()
         pending_client.force_login(pending)
-        self.assertEqual(pending_client.get("/api/v1/quotes/public/").status_code, 403)
+        self.assertEqual(pending_client.get("/api/v1/quotes/published/").status_code, 403)
 
-        allowed_resp = self.bob_client.get("/api/v1/quotes/public/")
+        allowed_resp = self.bob_client.get("/api/v1/quotes/published/")
         self.assertEqual(allowed_resp.status_code, 200)
         ids = {q["id"] for q in allowed_resp.json()}
-        self.assertIn(public_quote.id, ids)
+        self.assertIn(published_quote.id, ids)
+
+    def test_published_quotes_include_own_and_friends_sorted_by_updated(self):
+        self._accept_pair(self.alice, self.bob)
+        older = Quote.objects.create(
+            owner=self.bob,
+            body="Bob published older",
+            visibility=Quote.Visibility.PUBLISHED,
+        )
+        Quote.objects.filter(pk=older.pk).update(updated_at=timezone.now() - timedelta(days=2))
+        newer = Quote.objects.create(
+            owner=self.bob,
+            body="Bob published newer",
+            visibility=Quote.Visibility.PUBLISHED,
+        )
+        alice_q = Quote.objects.create(
+            owner=self.alice,
+            body="Alice for bob",
+            visibility=Quote.Visibility.PUBLISHED,
+        )
+        Quote.objects.filter(pk=alice_q.pk).update(updated_at=timezone.now() - timedelta(days=1))
+
+        resp = self.bob_client.get("/api/v1/quotes/published/")
+        self.assertEqual(resp.status_code, 200)
+        ordered_ids = [q["id"] for q in resp.json()]
+        self.assertEqual(ordered_ids[0], newer.id)
+        self.assertSetEqual(set(ordered_ids), {older.id, newer.id, alice_q.id})
 
     def test_public_quotes_by_user_endpoint(self):
         public_quote = Quote.objects.create(
             owner=self.alice,
-            body="Alice public quote",
-            visibility=Quote.Visibility.PUBLIC,
+            body="Alice published quote",
+            visibility=Quote.Visibility.PUBLISHED,
         )
         private_quote = Quote.objects.create(
             owner=self.alice,
@@ -152,8 +181,7 @@ class QuotesApiTests(TestCase):
         )
 
         anon_resp = self.anon_client.get(f"/api/v1/users/{self.alice.email}/public-quotes/")
-        self.assertEqual(anon_resp.status_code, 200)
-        self.assertEqual(anon_resp.json(), [])
+        self.assertIn(anon_resp.status_code, (401, 403))
 
         self._accept_pair(self.alice, self.bob)
         resp = self.bob_client.get(f"/api/v1/users/{self.alice.email}/public-quotes/")
@@ -180,13 +208,8 @@ class QuotesApiTests(TestCase):
         )
         tagged_private.labels.add(label)
 
-        anon_ids = {
-            q["id"]
-            for q in self.anon_client.get(
-                f"/api/v1/users/{self.alice.id}/public-quotes/",
-            ).json()
-        }
-        self.assertNotIn(tagged_private.id, anon_ids)
+        anon_resp = self.anon_client.get(f"/api/v1/users/{self.alice.id}/public-quotes/")
+        self.assertIn(anon_resp.status_code, (401, 403))
 
         # Not-friend authenticated viewer still cannot see this quote.
         charlie_ids = {
@@ -232,7 +255,7 @@ class QuotesApiTests(TestCase):
         quote = Quote.objects.create(
             owner=self.alice,
             body="Delete me softly",
-            visibility=Quote.Visibility.PUBLIC,
+            visibility=Quote.Visibility.PUBLISHED,
         )
 
         delete_resp = self.alice_client.delete(f"/api/v1/quotes/{quote.id}/")
@@ -246,7 +269,7 @@ class QuotesApiTests(TestCase):
         self.assertNotIn(quote.id, feed_ids)
 
         self._accept_pair(self.alice, self.bob)
-        public_resp = self.bob_client.get("/api/v1/quotes/public/")
+        public_resp = self.bob_client.get("/api/v1/quotes/published/")
         self.assertEqual(public_resp.status_code, 200)
         public_ids = {q["id"] for q in public_resp.json()}
         self.assertNotIn(quote.id, public_ids)
@@ -262,4 +285,25 @@ class QuotesApiTests(TestCase):
 
         owner_resp = self.alice_client.get(f"/api/v1/quotes/{quote.id}/")
         self.assertEqual(owner_resp.status_code, 404)
+
+    def test_unapproved_feed_shows_only_own_quotes(self):
+        pending = User.objects.create_user(email="unapp-feed@example.com", password="secret12345")
+        q_own = Quote.objects.create(
+            owner=pending,
+            body="Mine only",
+            visibility=Quote.Visibility.PRIVATE,
+        )
+        q_bob = Quote.objects.create(
+            owner=self.bob,
+            body="Bob visible",
+            visibility=Quote.Visibility.PUBLISHED,
+        )
+        pending_client = APIClient()
+        pending_client.force_login(pending)
+        resp = pending_client.get("/api/v1/quotes/feed/")
+        self.assertEqual(resp.status_code, 200)
+        ids = {x["id"] for x in resp.json()}
+        self.assertEqual(ids, {q_own.id})
+        detail = pending_client.get(f"/api/v1/quotes/{q_bob.id}/")
+        self.assertEqual(detail.status_code, 404)
 

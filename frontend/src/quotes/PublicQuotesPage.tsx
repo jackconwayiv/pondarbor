@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import PondButton from "../PondButton";
 import { APP_TEXT_SIZES } from "../theme/typography";
 import { useAppSession } from "../auth/AppSessionContext";
-import { fetchAllPublicQuotes } from "./api";
+import { fetchPublishedQuotes } from "./api";
 import { quoteOwnerDisplayLabel } from "./ownerDisplay";
 import QuoteCardBase from "./QuoteCardBase";
 import type { Quote } from "./types";
@@ -39,13 +39,13 @@ export default function PublicQuotesPage() {
       setError(null);
       try {
         const token = await getApiAccessToken();
-        const data = await fetchAllPublicQuotes(token);
+        const data = await fetchPublishedQuotes(token);
         const sorted = [...data].sort(
           (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
         );
         setQuotes(sorted);
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : "Failed to load public quotes");
+        setError(err instanceof Error ? err.message : "Failed to load published quotes");
       } finally {
         setIsLoading(false);
       }
@@ -64,7 +64,7 @@ export default function PublicQuotesPage() {
     <Stack gap="3" w="100%">
       {isLoading ? <Text>Loading…</Text> : null}
       {error ? <Text role="alert">{error}</Text> : null}
-      {!isLoading && !error && quotes.length === 0 ? <Text>No public quotes yet.</Text> : null}
+      {!isLoading && !error && quotes.length === 0 ? <Text>No published quotes yet.</Text> : null}
       {total > PAGE_SIZE && visibleQuotes.length === PAGE_SIZE ? (
         <Box
           bg="bg"

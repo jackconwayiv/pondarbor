@@ -55,25 +55,14 @@ class UsersApiTests(TestCase):
         self.assertEqual(body["user"]["id"], user.id)
         self.assertFalse(body["profile"]["whatif_completed_session"])
 
-    def test_public_summary_anonymous_by_id_and_email(self):
+    def test_public_summary_anonymous_by_id_and_email_returns_401(self):
         user = User.objects.create_user(email="friend@example.com", password="secret12345")
         user.profile.display_name = "Pat"
         user.profile.save()
         by_id = self.client.get(f"/api/v1/users/{user.id}/public/")
-        self.assertEqual(by_id.status_code, 200)
-        self.assertEqual(
-            by_id.json(),
-            {
-                "nickname": "Pat",
-                "avatar_url": "",
-                "is_friend": False,
-                "can_view_full_profile": False,
-                "friendship_status": "none",
-            },
-        )
+        self.assertIn(by_id.status_code, (401, 403))
         by_email = self.client.get(f"/api/v1/users/{quote(user.email, safe='')}/public/")
-        self.assertEqual(by_email.status_code, 200)
-        self.assertEqual(by_email.json(), by_id.json())
+        self.assertIn(by_email.status_code, (401, 403))
 
     def test_public_summary_friend_viewer_includes_extended_fields(self):
         viewer = User.objects.create_user(email="viewer@example.com", password="secret12345")

@@ -16,7 +16,7 @@ import WhatIfAdminPage from "./whatif/WhatIfAdminPage";
 import WhatIfLobbyPage from "./whatif/WhatIfLobbyPage";
 import WhatIfPlayPage from "./whatif/WhatIfPlayPage";
 import WhatIfHandPage from "./whatif/WhatIfHandPage";
-import StaffPage from "./staff/StaffPage";
+import StaffRoute from "./staff/StaffRoute";
 import QffLayout from "./qff/QffLayout";
 import QffLobbyPage from "./qff/QffLobbyPage";
 import QffCreatePage from "./qff/QffCreatePage";
@@ -45,7 +45,7 @@ export const router = createBrowserRouter([
       },
       {
         path: "staff",
-        element: <StaffPage />,
+        element: <StaffRoute />,
       },
       {
         path: "quotes",
@@ -97,7 +97,7 @@ export const router = createBrowserRouter([
       },
       {
         path: "quotes/public",
-        element: <Navigate to="/quotes?tab=public" replace />,
+        element: <Navigate to="/quotes?tab=published" replace />,
       },
       {
         path: "friend/:userId",

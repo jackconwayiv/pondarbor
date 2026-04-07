@@ -1488,6 +1488,14 @@ export default function ClosetPage() {
     );
   }
 
+  if (!sessionUser.user.is_approved) {
+    return (
+      <Stack flex="1" minH="full" gap="4" px={{ base: "4", md: "6" }} py={{ base: "6", md: "8" }} {...fullBleedStackProps}>
+        <Text fontSize={{ base: "sm", md: "md" }}>Approval required.</Text>
+      </Stack>
+    );
+  }
+
   const restrictToFocusedItem = activeItemId != null && activeItemMode !== "closed";
   // When one card is expanded, filter full lists — not the current page slice — so the
   // focused item still appears if it would fall on another page.

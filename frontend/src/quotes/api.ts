@@ -98,14 +98,14 @@ export async function deleteQuote(
   }
 }
 
-export async function fetchAllPublicQuotes(accessToken: string | null): Promise<Quote[]> {
-  const response = await fetch(`${apiBase()}/api/v1/quotes/public/`, {
+export async function fetchPublishedQuotes(accessToken: string | null): Promise<Quote[]> {
+  const response = await fetch(`${apiBase()}/api/v1/quotes/published/`, {
     method: "GET",
     headers: authHeaders(accessToken),
     credentials: "omit",
   });
   if (!response.ok) {
-    throw new Error(`Failed to load public quotes (${response.status})`);
+    throw new Error(`Failed to load published quotes (${response.status})`);
   }
   return (await response.json()) as Quote[];
 }

@@ -74,7 +74,7 @@ def evaluate_quote_achievements_for_user(user_id: int) -> None:
     if active.count() >= ARCHIVIST_MIN_QUOTES:
         _try_unlock(user_id, SLUG_ARCHIVIST)
 
-    public_active = active.filter(visibility=Quote.Visibility.PUBLIC)
+    public_active = active.filter(visibility=Quote.Visibility.PUBLISHED)
     if public_active.count() >= TOWN_CRIER_MIN_PUBLIC:
         _try_unlock(user_id, SLUG_TOWN_CRIER)
 

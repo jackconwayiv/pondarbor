@@ -5,7 +5,7 @@ from django.db import models
 class Quote(models.Model):
     class Visibility(models.TextChoices):
         PRIVATE = "private", "Private"
-        PUBLIC = "public", "Public"
+        PUBLISHED = "published", "Published"
 
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,

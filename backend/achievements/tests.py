@@ -54,12 +54,12 @@ class AchievementQuoteTests(TestCase):
             UserAchievement.objects.filter(user=self.user, achievement__slug=SLUG_ARCHIVIST).exists()
         )
 
-    def test_town_crier_requires_public(self):
+    def test_town_crier_requires_published(self):
         for i in range(10):
             Quote.objects.create(
                 owner=self.user,
                 body=f"q{i}",
-                visibility=Quote.Visibility.PUBLIC,
+                visibility=Quote.Visibility.PUBLISHED,
             )
         evaluate_quote_achievements_for_user(self.user.id)
         self.assertTrue(
@@ -199,8 +199,7 @@ class AchievementPublicApiTests(TestCase):
 
     def test_public_achievements_by_email(self):
         resp = self.client.get(f"/api/v1/users/{quote(self.user.email, safe='')}/achievements/")
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json(), [])
+        self.assertIn(resp.status_code, (401, 403))
 
         self.client.force_login(self.viewer)
         self._accept_pair(self.viewer, self.user)
@@ -214,8 +213,7 @@ class AchievementPublicApiTests(TestCase):
 
     def test_public_achievements_by_user_id(self):
         resp = self.client.get(f"/api/v1/users/{self.user.id}/achievements/")
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json(), [])
+        self.assertIn(resp.status_code, (401, 403))
 
         self.client.force_login(self.viewer)
         self._accept_pair(self.viewer, self.user)

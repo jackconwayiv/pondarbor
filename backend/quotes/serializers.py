@@ -141,21 +141,21 @@ class QuoteSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         user = getattr(request, "user", None)
         if not user or not getattr(user, "is_authenticated", False):
-            return "public"
+            return "published"
 
         if obj.owner_id == user.id:
             return "owner"
 
         # labels are prefetched for list endpoints; do not hit the DB here.
         labels = obj.labels.all()
-        return "tagged" if any(l.linked_user_id == user.id for l in labels) else "public"
+        return "tagged" if any(l.linked_user_id == user.id for l in labels) else "published"
 
 
 class QuoteCreateSerializer(serializers.Serializer):
     body = serializers.CharField()
     date_of_quote = serializers.DateField(required=False, allow_null=True)
     visibility = serializers.ChoiceField(
-        choices=[Quote.Visibility.PRIVATE.value, Quote.Visibility.PUBLIC.value],
+        choices=[Quote.Visibility.PRIVATE.value, Quote.Visibility.PUBLISHED.value],
         required=False,
     )
     labels = QuoteLabelInputSerializer(many=True, required=False)
@@ -190,7 +190,7 @@ class QuotePatchSerializer(serializers.Serializer):
     body = serializers.CharField(required=False)
     date_of_quote = serializers.DateField(required=False, allow_null=True)
     visibility = serializers.ChoiceField(
-        choices=[Quote.Visibility.PRIVATE.value, Quote.Visibility.PUBLIC.value],
+        choices=[Quote.Visibility.PRIVATE.value, Quote.Visibility.PUBLISHED.value],
         required=False,
     )
     labels = QuoteLabelInputSerializer(many=True, required=False)

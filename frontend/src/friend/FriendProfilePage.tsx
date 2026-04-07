@@ -34,7 +34,7 @@ function FriendProfileQuoteCard({ quote }: { quote: Quote }) {
 
 export default function FriendProfilePage() {
   const { userId, email } = useParams<{ userId?: string; email?: string }>();
-  const { isAuthenticated, sessionUser, getApiAccessToken } = useAppSession();
+  const { isAuthenticated, isLoading: sessionLoading, sessionUser, getApiAccessToken } = useAppSession();
 
   const lookup = useMemo(() => {
     if (userId !== undefined && userId !== "") {
@@ -74,17 +74,19 @@ export default function FriendProfilePage() {
     }
 
     const run = async () => {
+      if (!isAuthenticated) {
+        setIsLoading(false);
+        return;
+      }
       setIsLoading(true);
       setError(null);
       setNotFound(false);
       try {
         let accessToken: string | null = null;
-        if (isAuthenticated) {
-          try {
-            accessToken = await getApiAccessToken();
-          } catch {
-            accessToken = null;
-          }
+        try {
+          accessToken = await getApiAccessToken();
+        } catch {
+          accessToken = null;
         }
         const [quoteData, achData, summaryData] = await Promise.all([
           lookup.kind === "id"
@@ -158,6 +160,20 @@ export default function FriendProfilePage() {
       setProfileTab("achievements");
     }
   }, [profileTab, hasAchievements, hasQuotes]);
+
+  if (sessionLoading) {
+    return (
+      <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
+        <Box bg="bg" px={{ base: "4", md: "6" }} py={{ base: "6", md: "6" }}>
+          <Text fontSize={APP_TEXT_SIZES.meta}>Loading…</Text>
+        </Box>
+      </Stack>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/" replace />;
+  }
 
   if (
     (lookup.kind === "id" && ownUserId !== null && lookup.id === ownUserId) ||

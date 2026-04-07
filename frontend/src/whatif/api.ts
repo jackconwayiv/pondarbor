@@ -85,7 +85,15 @@ export async function createWhatIfSession(accessToken: string): Promise<{
     credentials: "omit",
   });
   if (response.status === 401 || response.status === 403) {
-    throw new Error("Sign in to create a game.");
+    const text = await response.text();
+    let detail = "Sign in to create a game.";
+    try {
+      const j = JSON.parse(text) as { detail?: string };
+      if (typeof j.detail === "string" && j.detail.trim()) detail = j.detail;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail);
   }
   if (!response.ok) throw new Error(`Failed to create session (${response.status})`);
   return (await response.json()) as { short_code: string; host_secret: string };

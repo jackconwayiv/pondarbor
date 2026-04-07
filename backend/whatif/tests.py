@@ -99,6 +99,8 @@ class WhatIfApiTests(TestCase):
 
     def _create_session(self) -> tuple[str, str, User]:
         user = User.objects.create_user(email="host@example.com", password="secret12345")
+        user.account_status = User.AccountStatus.APPROVED
+        user.save(update_fields=["account_status"])
         self.client.force_login(user)
         response = self.client.post("/api/v1/whatif/sessions/", {}, format="json")
         self.assertEqual(response.status_code, 201)
@@ -166,6 +168,13 @@ class WhatIfApiTests(TestCase):
     def test_create_session_requires_authentication(self):
         response = self.client.post("/api/v1/whatif/sessions/", {}, format="json")
         self.assertIn(response.status_code, (401, 403))
+
+    def test_create_session_requires_approved_account(self):
+        pending = User.objects.create_user(email="pending-host@example.com", password="secret12345")
+        self.client.force_login(pending)
+        response = self.client.post("/api/v1/whatif/sessions/", {}, format="json")
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("pending approval", response.json().get("detail", "").lower())
 
     def test_host_token_can_start_without_player(self):
         code, host_secret, _user = self._create_session()

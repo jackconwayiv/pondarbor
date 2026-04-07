@@ -13,6 +13,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
+from users.permissions import IsApprovedUser
+
 from whatif import constants
 from whatif.gameplay import (
     apply_reveal_from_voting_state,
@@ -400,7 +402,7 @@ def _parse_bulk_question_blocks(text: str) -> tuple[list[dict], list[dict]]:
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, IsApprovedUser])
 def create_session(request):
     session = WhatIfSession.objects.create(
         short_code=_generate_short_code(),
@@ -413,7 +415,7 @@ def create_session(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, IsApprovedUser])
 def resume_host_session(request, code: str):
     """Re-issue host_secret for the session owner (e.g. after browser crash lost sessionStorage)."""
     session = get_object_or_404(WhatIfSession, short_code=code.upper())
@@ -1082,7 +1084,7 @@ def admin_questions_pending_count(request):
 
 
 @api_view(["POST"])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, IsApprovedUser])
 def propose_question(request):
     from users.models import Profile
 

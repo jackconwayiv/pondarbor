@@ -23,6 +23,7 @@ from quotes.serializers import (
 
 User = get_user_model()
 
+
 def _quote_list_queryset(base_queryset, *, request):
     # Keep the response N+1-safe:
     # - Quote.owner is FK: select_related
@@ -62,43 +63,55 @@ def quote_create(request):
 @permission_classes([IsAuthenticated])
 def quote_feed(request):
     user = request.user
-    friend_ids = friend_ids_for_user(user=user)
-    qs = Quote.objects.filter(
-        Q(owner=user)
-        | (
-            Q(owner_id__in=friend_ids)
-            & (Q(visibility=Quote.Visibility.PUBLIC) | Q(labels__linked_user=user))
-        )
-    ).distinct()
+    if user.account_status != SiteUser.AccountStatus.APPROVED:
+        qs = Quote.objects.filter(owner=user)
+    else:
+        friend_ids = friend_ids_for_user(user=user)
+        qs = Quote.objects.filter(
+            Q(owner=user)
+            | (
+                Q(owner_id__in=friend_ids)
+                & (Q(visibility=Quote.Visibility.PUBLISHED) | Q(labels__linked_user=user))
+            )
+        ).distinct()
     qs = _quote_list_queryset(qs, request=request).order_by("-created_at")
     return Response(QuoteSerializer(qs, many=True, context={"request": request}).data)
 
 
 @api_view(["GET"])
 @permission_classes([IsApprovedUser])
-def quote_public(request):
-    friend_ids = friend_ids_for_user(user=request.user)
-    qs = Quote.objects.filter(owner_id__in=friend_ids, visibility=Quote.Visibility.PUBLIC)
-    qs = _quote_list_queryset(qs, request=request).order_by("-created_at")
+def quote_published(request):
+    """Friends' published quotes plus the viewer's own published quotes."""
+    user = request.user
+    friend_ids = friend_ids_for_user(user=user)
+    qs = Quote.objects.filter(
+        Q(owner=user, visibility=Quote.Visibility.PUBLISHED)
+        | (Q(owner_id__in=friend_ids) & Q(visibility=Quote.Visibility.PUBLISHED))
+    ).distinct()
+    qs = _quote_list_queryset(qs, request=request).order_by("-updated_at", "-created_at")
     return Response(QuoteSerializer(qs, many=True, context={"request": request}).data)
 
 
 @api_view(["GET", "PATCH", "DELETE"])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def quote_detail(request, quote_id: int):
+    user = request.user
+
     if request.method == "GET":
-        user = request.user
-        if user and getattr(user, "is_authenticated", False):
+        if user.account_status != SiteUser.AccountStatus.APPROVED:
+            qs = Quote.objects.filter(owner=user).filter(deleted_at__isnull=True)
+        else:
             friend_ids = friend_ids_for_user(user=user)
             qs = Quote.objects.filter(
                 Q(owner=user)
                 | (
                     Q(owner_id__in=friend_ids)
-                    & (Q(visibility=Quote.Visibility.PUBLIC) | Q(labels__linked_user=user))
+                    & (
+                        Q(visibility=Quote.Visibility.PUBLISHED)
+                        | Q(labels__linked_user=user)
+                    )
                 )
             ).filter(deleted_at__isnull=True)
-        else:
-            qs = Quote.objects.none()
 
         quote = get_object_or_404(qs, id=quote_id)
         qs = _quote_list_queryset(Quote.objects.filter(id=quote.id), request=request)
@@ -106,9 +119,6 @@ def quote_detail(request, quote_id: int):
         return Response(QuoteSerializer(quote, context={"request": request}).data, status=HTTP_200_OK)
 
     # PATCH/DELETE: owner only.
-    if not request.user or not request.user.is_authenticated:
-        return Response({"detail": "Authentication required."}, status=401)
-
     quote = get_object_or_404(Quote, id=quote_id, owner=request.user, deleted_at__isnull=True)
 
     if request.method == "PATCH":
@@ -118,7 +128,6 @@ def quote_detail(request, quote_id: int):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         evaluate_quote_achievements_for_user(quote.owner_id)
-        # Reload related labels for response without N+1.
         quote = (
             Quote.objects.select_related("owner")
             .prefetch_related(
@@ -131,7 +140,6 @@ def quote_detail(request, quote_id: int):
         )
         return Response(QuoteSerializer(quote, context={"request": request}).data, status=HTTP_200_OK)
 
-    # DELETE
     owner_id = quote.owner_id
     quote.deleted_at = timezone.now()
     quote.save(update_fields=["deleted_at", "updated_at"])
@@ -160,7 +168,7 @@ def quote_labels_autocomplete(request):
 
 def _friend_profile_quotes_queryset(*, owner, request):
     """
-    Owner's public quotes; if the viewer is authenticated, also include any visibility
+    Owner's published quotes; if the viewer is authenticated, also include any visibility
     quote by that owner that tags the viewer (labels__linked_user), matching feed semantics.
     """
     base = Quote.objects.filter(owner=owner)
@@ -172,7 +180,7 @@ def _friend_profile_quotes_queryset(*, owner, request):
         ):
             return Quote.objects.none()
         qs = base.filter(
-            Q(visibility=Quote.Visibility.PUBLIC) | Q(labels__linked_user=viewer)
+            Q(visibility=Quote.Visibility.PUBLISHED) | Q(labels__linked_user=viewer)
         ).distinct()
     else:
         qs = Quote.objects.none()
@@ -187,7 +195,7 @@ def _user_public_quotes_response(request, *, user):
 
 @api_view(["GET"])
 @authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def user_public_quotes(request, email: str):
     user = get_object_or_404(User.objects.all(), email__iexact=email)
     return _user_public_quotes_response(request, user=user)
@@ -195,7 +203,7 @@ def user_public_quotes(request, email: str):
 
 @api_view(["GET"])
 @authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def user_public_quotes_by_id(request, user_id: int):
     user = get_object_or_404(User.objects.all(), pk=user_id)
     return _user_public_quotes_response(request, user=user)

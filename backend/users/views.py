@@ -270,7 +270,7 @@ def _public_user_summary_response(*, request, user):
 
 
 @api_view(["GET"])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def user_public_summary_by_id(request, user_id: int):
     """Friend profile summary; non-friends receive only nickname + avatar."""
     user = get_object_or_404(UserModel.objects.all(), pk=user_id)
@@ -278,7 +278,7 @@ def user_public_summary_by_id(request, user_id: int):
 
 
 @api_view(["GET"])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def user_public_summary_by_email(request, email: str):
     user = get_object_or_404(UserModel.objects.all(), email__iexact=email)
     return _public_user_summary_response(request=request, user=user)

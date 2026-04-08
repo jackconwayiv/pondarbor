@@ -509,7 +509,6 @@ export default function ProfilePage() {
                                         <Box
                                           key={row.image_key}
                                           as="button"
-                                          type="button"
                                           borderWidth="2px"
                                           borderColor={isSelected ? "black" : "lilypad.solid"}
                                           borderRadius="md"

@@ -31,6 +31,8 @@ import QffDmNpcsPage from "./qff/QffDmNpcsPage";
 import QffDmQuestsPage from "./qff/QffDmQuestsPage";
 import ClosetPage from "./closet/ClosetPage";
 import AboutPage from "./AboutPage";
+import AboutPrivacyPage from "./about/AboutPrivacyPage";
+import AboutTermsPage from "./about/AboutTermsPage";
 
 const sentryCreateBrowserRouter = Sentry.wrapCreateBrowserRouterV7(
   createBrowserRouter,
@@ -48,6 +50,14 @@ export const router = sentryCreateBrowserRouter([
       {
         path: "about",
         element: <AboutPage />,
+      },
+      {
+        path: "about/privacy",
+        element: <AboutPrivacyPage />,
+      },
+      {
+        path: "about/terms",
+        element: <AboutTermsPage />,
       },
       {
         path: "profile",

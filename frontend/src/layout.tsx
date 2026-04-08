@@ -554,7 +554,16 @@ export default function AppLayout() {
       >
         <Box py="2" px={{ base: "4", md: "6" }}>
           <Text textAlign="center" fontSize="xs" color="fg">
-            Last updated April 2026 - Pond Arbor Workshop.
+            © 2026{" "}
+            <ChakraLink
+              asChild
+              color="black"
+              textDecoration="none"
+              _hover={{ color: "sky.solid", textDecoration: "none" }}
+            >
+              <Link to="/about">Pond Arbor Workshop</Link>
+            </ChakraLink>
+            . All rights reserved.
           </Text>
         </Box>
       </Box>

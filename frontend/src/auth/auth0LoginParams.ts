@@ -31,7 +31,7 @@ export function auth0SignupAuthorizationParams(
 }
 
 /**
- * Switch-user flow only — ask Google (via Auth0) for the account chooser.
+ * Switch-user flow only — ask the IdP account chooser.
  */
 export function auth0AccountPickerLoginParams(
   extra?: Partial<AuthorizationParams>,

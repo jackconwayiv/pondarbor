@@ -1,6 +1,7 @@
-import { Box, Heading, Stack, Text, Textarea } from "@chakra-ui/react";
+import { Box, Heading, HStack, Link, Stack, Text, Textarea } from "@chakra-ui/react";
 import { useAuth0 } from "@auth0/auth0-react";
 import { useCallback, useState } from "react";
+import { Link as RouterLink } from "react-router";
 
 import { submitContactMessage } from "./about/contactApi";
 import { auth0LoginAuthorizationParams } from "./auth/auth0LoginParams";
@@ -71,7 +72,8 @@ export default function AboutPage() {
                 About
               </Heading>
               <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
-                This app was developed by Pond Arbor Workshop.
+                pondarbor.com is a hobby project developed by Pond Arbor Workshop to collect various app ideas together in one place. It 
+                is shared with friends and family as an opportunity to interact with each other through the apps.
               </Text>
             </Box>
 
@@ -109,9 +111,6 @@ export default function AboutPage() {
                 </Text>
               ) : (
                 <Stack gap="3" align="stretch" maxW="lg">
-                  <Text fontSize={APP_TEXT_SIZES.body} color="fg">
-                    Send a note to the workshop.
-                  </Text>
                   <Box display="none" aria-hidden="true">
                     <input
                       name="website"
@@ -124,7 +123,7 @@ export default function AboutPage() {
                   </Box>
                   <Stack gap="1.5">
                     <Text fontSize={APP_TEXT_SIZES.label} fontWeight="medium">
-                      Message
+                      Message:
                     </Text>
                     <Textarea
                       value={message}
@@ -170,6 +169,32 @@ export default function AboutPage() {
                 </Stack>
               )}
             </Box>
+
+            <HStack justify="flex-end" gap="3" flexWrap="wrap" pt="1">
+              <Link
+                asChild
+                color="black"
+                fontWeight="normal"
+                fontSize={APP_TEXT_SIZES.helper}
+                textDecoration="none"
+                _hover={{ textDecoration: "none", color: "sky.solid" }}
+              >
+                <RouterLink to="/about/privacy">Privacy Policy</RouterLink>
+              </Link>
+              <Text color="black" fontSize={APP_TEXT_SIZES.helper}>
+                |
+              </Text>
+              <Link
+                asChild
+                color="black"
+                fontWeight="normal"
+                fontSize={APP_TEXT_SIZES.helper}
+                textDecoration="none"
+                _hover={{ textDecoration: "none", color: "sky.solid" }}
+              >
+                <RouterLink to="/about/terms">Terms of Service</RouterLink>
+              </Link>
+            </HStack>
           </Stack>
         </Box>
       </Box>

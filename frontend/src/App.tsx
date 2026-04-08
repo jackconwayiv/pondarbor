@@ -1,4 +1,5 @@
 import { useAuth0 } from "@auth0/auth0-react";
+import { keyframes } from "@emotion/react";
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -10,6 +11,7 @@ import {
   Flex,
   Heading,
   HStack,
+  Link as ChakraLink,
   Stack,
   Text,
 } from "@chakra-ui/react";
@@ -25,6 +27,7 @@ import {
 } from "./users/api";
 import { fetchClosetActionSummary } from "./closet/api";
 import { fetchFriendsList } from "./friends/api";
+import { APP_TEXT_SIZES } from "./theme/typography";
 
 const LILYPAD_WEDGE_CLIP_PATH =
   "polygon(0% 0%, 43% 0%, 46% 12%, 48% 24%, 50% 36%, 52% 24%, 54% 12%, 57% 0%, 100% 0%, 100% 100%, 0% 100%)";
@@ -33,6 +36,11 @@ const LILYPAD_HOVER_HINT_VISIBLE = {
   opacity: 1,
   maxHeight: "4.5rem",
 } as const;
+
+const LILYPAD_FLOAT_KEYFRAMES = keyframes`
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+`;
 
 const HOME_LILYPAD_TILES = [
   { to: "/quotes", label: "Quotes", hoverText: "archive of user-recorded quotes" },
@@ -310,15 +318,37 @@ function App() {
   }
 
   return (
-    <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
-      <Box bg="bg" px={{ base: "4", md: "6" }} py={{ base: "6", md: "6" }}>
-        <Stack gap="3" maxW="3xl">
-          <Heading as="h1" size={{ base: "lg", md: "xl" }}>
-            {isAuthenticated
-              ? `Welcome to pondarbor.com, ${nickname}!`
-              : "Welcome to pondarbor.com!"}
+    <Stack flex="1" minH="full" gap="0" w="full" align="stretch" {...fullBleedStackProps}>
+      <Box bg="bg" w="full" px={{ base: "4", md: "6" }} py={{ base: "6", md: "6" }}>
+        <Flex
+          align="center"
+          gap="3"
+          w="full"
+          mb="3"
+          flexWrap="wrap"
+          rowGap="2"
+        >
+          <Heading
+            as="h1"
+            size={{ base: "lg", md: "xl" }}
+            flex="1"
+            minW={{ base: "100%", sm: 0 }}
+          >
+            {isAuthenticated ? `Welcome ${nickname}!` : "Welcome!"}
           </Heading>
-
+          <ChakraLink
+            asChild
+            flexShrink={0}
+            ml={{ base: "auto", sm: "0" }}
+            fontSize={APP_TEXT_SIZES.helper}
+            color="black"
+            textDecoration="none"
+            _hover={{ color: "sky.solid", textDecoration: "none" }}
+          >
+            <RouterLink to="/about/privacy">Privacy Policy</RouterLink>
+          </ChakraLink>
+        </Flex>
+        <Stack gap="3" w="full" maxW="3xl">
           {isAuthenticated ? (
             homePrompts.length > 0 || homeNoticeItems.length > 0 ? (
               <Stack gap="3" w="100%">
@@ -394,14 +424,30 @@ function App() {
         </Stack>
       </Box>
 
-      <Box flex="1" bg="transparent" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
+      <Box
+        flex="1"
+        w="full"
+        bg="transparent"
+        px={{ base: "4", md: "6" }}
+        py={{ base: "5", md: "6" }}
+      >
         <Flex flexWrap="wrap" gap={{ base: "4", md: "6" }} alignItems="flex-start" w="100%">
-          {HOME_LILYPAD_TILES.map((tile) => {
+          {HOME_LILYPAD_TILES.map((tile, index) => {
             const tileInteractive = isAuthenticated || tile.to === "/whatif";
             const tileWrapProps = {
               flex: "0 0 auto",
               w: { base: "10.25rem", sm: "11rem", md: "12rem" },
               maxW: "100%",
+              position: "relative",
+              animation: `${LILYPAD_FLOAT_KEYFRAMES} 5.6s ease-in-out infinite`,
+              animationDelay: `${index * 0.35}s`,
+              willChange: "transform",
+              filter: "drop-shadow(0 8px 10px rgba(0, 0, 0, 0.16))",
+              sx: {
+                "@media (prefers-reduced-motion: reduce)": {
+                  animation: "none",
+                },
+              },
             } as const;
             const card = (
                 <Box

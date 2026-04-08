@@ -582,7 +582,7 @@ export default function AppLayout() {
                 textDecoration="none"
                 _hover={{ color: "sky.solid", textDecoration: "none" }}
               >
-                <Link to="/about/terms">ToS</Link>
+                <Link to="/about/terms">Terms of Service</Link>
               </ChakraLink>{" "}
               |{" "}
               <ChakraLink
@@ -591,7 +591,7 @@ export default function AppLayout() {
                 textDecoration="none"
                 _hover={{ color: "sky.solid", textDecoration: "none" }}
               >
-                <Link to="/about/privacy">Privacy</Link>
+                <Link to="/about/privacy">Privacy Policy</Link>
               </ChakraLink>
             </Text>
           </Box>

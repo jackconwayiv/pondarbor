@@ -1,4 +1,6 @@
 import * as Sentry from "@sentry/react";
+import { Suspense, lazy } from "react";
+import type { ReactNode } from "react";
 import { createBrowserRouter, Navigate } from "react-router";
 import App from "./App";
 import AppLayout from "./layout";
@@ -6,33 +8,41 @@ import NotFoundPage from "./NotFoundPage";
 import ProfilePage from "./ProfilePage";
 import FriendProfilePage from "./friend/FriendProfilePage";
 import FriendsPage from "./friends/FriendsPage";
-import QuotesFeedPage from "./quotes/QuotesFeedPage";
-import ClickerCatalogAdminPage from "./clicker/ClickerCatalogAdminPage";
-import ClickerGamePage from "./clicker/ClickerGamePage";
-import ClickerLayout from "./clicker/ClickerLayout";
-import ClickerLobbyPage from "./clicker/ClickerLobbyPage";
-import WhatIfLayout from "./whatif/WhatIfLayout";
-import WhatIfEntryPage from "./whatif/WhatIfEntryPage";
-import WhatIfAdminPage from "./whatif/WhatIfAdminPage";
-import WhatIfLobbyPage from "./whatif/WhatIfLobbyPage";
-import WhatIfPlayPage from "./whatif/WhatIfPlayPage";
-import WhatIfHandPage from "./whatif/WhatIfHandPage";
 import StaffRoute from "./staff/StaffRoute";
-import QffLayout from "./qff/QffLayout";
-import QffLobbyPage from "./qff/QffLobbyPage";
-import QffCreatePage from "./qff/QffCreatePage";
-import QffPlayPage from "./qff/QffPlayPage";
-import QffDmLobbyPage from "./qff/QffDmLobbyPage";
-import QffDmPage from "./qff/QffDmPage";
-import QffDmItemsPage from "./qff/QffDmItemsPage";
-import QffDmClassesPage from "./qff/QffDmClassesPage";
-import QffDmInteractablesPage from "./qff/QffDmInteractablesPage";
-import QffDmNpcsPage from "./qff/QffDmNpcsPage";
-import QffDmQuestsPage from "./qff/QffDmQuestsPage";
-import ClosetPage from "./closet/ClosetPage";
 import AboutPage from "./AboutPage";
 import AboutPrivacyPage from "./about/AboutPrivacyPage";
 import AboutTermsPage from "./about/AboutTermsPage";
+import RouteLoadingFallback from "./RouteLoadingFallback";
+
+const QuotesFeedPage = lazy(() => import("./quotes/QuotesFeedPage"));
+const ClosetPage = lazy(() => import("./closet/ClosetPage"));
+const ClickerLayout = lazy(() => import("./clicker/ClickerLayout"));
+const ClickerLobbyPage = lazy(() => import("./clicker/ClickerLobbyPage"));
+const ClickerGamePage = lazy(() => import("./clicker/ClickerGamePage"));
+const ClickerCatalogAdminPage = lazy(
+  () => import("./clicker/ClickerCatalogAdminPage"),
+);
+const WhatIfLayout = lazy(() => import("./whatif/WhatIfLayout"));
+const WhatIfEntryPage = lazy(() => import("./whatif/WhatIfEntryPage"));
+const WhatIfAdminPage = lazy(() => import("./whatif/WhatIfAdminPage"));
+const WhatIfLobbyPage = lazy(() => import("./whatif/WhatIfLobbyPage"));
+const WhatIfPlayPage = lazy(() => import("./whatif/WhatIfPlayPage"));
+const WhatIfHandPage = lazy(() => import("./whatif/WhatIfHandPage"));
+const QffLayout = lazy(() => import("./qff/QffLayout"));
+const QffLobbyPage = lazy(() => import("./qff/QffLobbyPage"));
+const QffCreatePage = lazy(() => import("./qff/QffCreatePage"));
+const QffPlayPage = lazy(() => import("./qff/QffPlayPage"));
+const QffDmLobbyPage = lazy(() => import("./qff/QffDmLobbyPage"));
+const QffDmPage = lazy(() => import("./qff/QffDmPage"));
+const QffDmItemsPage = lazy(() => import("./qff/QffDmItemsPage"));
+const QffDmClassesPage = lazy(() => import("./qff/QffDmClassesPage"));
+const QffDmInteractablesPage = lazy(() => import("./qff/QffDmInteractablesPage"));
+const QffDmNpcsPage = lazy(() => import("./qff/QffDmNpcsPage"));
+const QffDmQuestsPage = lazy(() => import("./qff/QffDmQuestsPage"));
+
+function lazyRouteElement(element: ReactNode): ReactNode {
+  return <Suspense fallback={<RouteLoadingFallback />}>{element}</Suspense>;
+}
 
 const sentryCreateBrowserRouter = Sentry.wrapCreateBrowserRouterV7(
   createBrowserRouter,
@@ -69,30 +79,36 @@ export const router = sentryCreateBrowserRouter([
       },
       {
         path: "quotes",
-        element: <QuotesFeedPage />,
+        element: lazyRouteElement(<QuotesFeedPage />),
       },
       {
         path: "closet",
-        element: <ClosetPage />,
+        element: lazyRouteElement(<ClosetPage />),
       },
       {
         path: "clicker",
-        element: <ClickerLayout />,
+        element: lazyRouteElement(<ClickerLayout />),
         children: [
-          { index: true, element: <ClickerLobbyPage /> },
-          { path: "play", element: <ClickerGamePage /> },
-          { path: "dev/catalog", element: <ClickerCatalogAdminPage /> },
+          { index: true, element: lazyRouteElement(<ClickerLobbyPage />) },
+          { path: "play", element: lazyRouteElement(<ClickerGamePage />) },
+          {
+            path: "dev/catalog",
+            element: lazyRouteElement(<ClickerCatalogAdminPage />),
+          },
         ],
       },
       {
         path: "whatif",
-        element: <WhatIfLayout />,
+        element: lazyRouteElement(<WhatIfLayout />),
         children: [
-          { index: true, element: <WhatIfEntryPage /> },
-          { path: "admin", element: <WhatIfAdminPage /> },
-          { path: "lobby/:code", element: <WhatIfLobbyPage /> },
-          { path: "play/:code", element: <WhatIfPlayPage /> },
-          { path: "hand/:code", element: <WhatIfHandPage /> },
+          { index: true, element: lazyRouteElement(<WhatIfEntryPage />) },
+          { path: "admin", element: lazyRouteElement(<WhatIfAdminPage />) },
+          {
+            path: "lobby/:code",
+            element: lazyRouteElement(<WhatIfLobbyPage />),
+          },
+          { path: "play/:code", element: lazyRouteElement(<WhatIfPlayPage />) },
+          { path: "hand/:code", element: lazyRouteElement(<WhatIfHandPage />) },
         ],
       },
       {
@@ -101,18 +117,24 @@ export const router = sentryCreateBrowserRouter([
       },
       {
         path: "qff",
-        element: <QffLayout />,
+        element: lazyRouteElement(<QffLayout />),
         children: [
-          { index: true, element: <QffLobbyPage /> },
-          { path: "create", element: <QffCreatePage /> },
-          { path: "play", element: <QffPlayPage /> },
-          { path: "dm", element: <QffDmLobbyPage /> },
-          { path: "dm/world", element: <QffDmPage /> },
-          { path: "dm/items", element: <QffDmItemsPage /> },
-          { path: "dm/classes", element: <QffDmClassesPage /> },
-          { path: "dm/quests", element: <QffDmQuestsPage /> },
-          { path: "dm/npcs", element: <QffDmNpcsPage /> },
-          { path: "dm/interactables", element: <QffDmInteractablesPage /> },
+          { index: true, element: lazyRouteElement(<QffLobbyPage />) },
+          { path: "create", element: lazyRouteElement(<QffCreatePage />) },
+          { path: "play", element: lazyRouteElement(<QffPlayPage />) },
+          { path: "dm", element: lazyRouteElement(<QffDmLobbyPage />) },
+          { path: "dm/world", element: lazyRouteElement(<QffDmPage />) },
+          { path: "dm/items", element: lazyRouteElement(<QffDmItemsPage />) },
+          {
+            path: "dm/classes",
+            element: lazyRouteElement(<QffDmClassesPage />),
+          },
+          { path: "dm/quests", element: lazyRouteElement(<QffDmQuestsPage />) },
+          { path: "dm/npcs", element: lazyRouteElement(<QffDmNpcsPage />) },
+          {
+            path: "dm/interactables",
+            element: lazyRouteElement(<QffDmInteractablesPage />),
+          },
         ],
       },
       {

@@ -1,4 +1,3 @@
-import "./instrument";
 import { Auth0Provider } from "@auth0/auth0-react";
 import { ChakraProvider } from "@chakra-ui/react";
 import { system } from "./theme/system";
@@ -11,6 +10,8 @@ import { AppSessionProvider } from "./auth/AppSessionProvider";
 import { safeAuthReturnTo } from "./auth/safeAuthReturnTo";
 import "./index.css";
 import { router } from "./router";
+
+void import("./instrument");
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

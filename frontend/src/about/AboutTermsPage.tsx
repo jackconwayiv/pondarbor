@@ -30,7 +30,7 @@ export default function AboutTermsPage() {
 
             <Box bg="white" borderWidth="1px" borderColor="border" borderRadius="xl" p={{ base: "4", md: "4" }}>
               <Stack gap="3">
-                <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall">
+                <Text fontSize={APP_TEXT_SIZES.helper} color="fg" lineHeight="tall">
                   These Terms of Service govern your access to and use of PondArbor, operated by Pond Arbor Workshop
                   (&quot;we&quot;, &quot;us&quot;, or &quot;our&quot;).
                 </Text>
@@ -38,7 +38,7 @@ export default function AboutTermsPage() {
                 <Heading as="h2" size="md" fontWeight="semibold">
                   Eligibility and accounts
                 </Heading>
-                <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall">
+                <Text fontSize={APP_TEXT_SIZES.helper} color="fg" lineHeight="tall">
                   You are responsible for maintaining the security of your account and for all activity under your
                   account. You must provide accurate information and comply with all applicable laws.
                 </Text>
@@ -46,7 +46,7 @@ export default function AboutTermsPage() {
                 <Heading as="h2" size="md" fontWeight="semibold">
                   Acceptable use
                 </Heading>
-                <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall">
+                <Text fontSize={APP_TEXT_SIZES.helper} color="fg" lineHeight="tall">
                   You agree not to misuse the service, interfere with its operation, attempt unauthorized access, or
                   submit unlawful, abusive, or harmful content.
                 </Text>
@@ -54,7 +54,7 @@ export default function AboutTermsPage() {
                 <Heading as="h2" size="md" fontWeight="semibold">
                   User content
                 </Heading>
-                <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall">
+                <Text fontSize={APP_TEXT_SIZES.helper} color="fg" lineHeight="tall">
                   You retain ownership of content you submit. You grant us a license to host, process, and display
                   that content solely to operate and improve the service. You represent that you have the necessary
                   rights to submit any content you provide.
@@ -63,7 +63,7 @@ export default function AboutTermsPage() {
                 <Heading as="h2" size="md" fontWeight="semibold">
                   Suspension and termination
                 </Heading>
-                <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall">
+                <Text fontSize={APP_TEXT_SIZES.helper} color="fg" lineHeight="tall">
                   We may suspend or terminate accounts that violate these terms, create security risk, or harm users
                   or the service.
                 </Text>
@@ -71,7 +71,7 @@ export default function AboutTermsPage() {
                 <Heading as="h2" size="md" fontWeight="semibold">
                   Age requirement
                 </Heading>
-                <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall">
+                <Text fontSize={APP_TEXT_SIZES.helper} color="fg" lineHeight="tall">
                   PondArbor is intended only for users who are 18 years of age or older. By using the service, you
                   represent that you are at least 18.
                 </Text>
@@ -79,7 +79,7 @@ export default function AboutTermsPage() {
                 <Heading as="h2" size="md" fontWeight="semibold">
                   Disclaimers and limitation of liability
                 </Heading>
-                <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall">
+                <Text fontSize={APP_TEXT_SIZES.helper} color="fg" lineHeight="tall">
                   The service is provided on an &quot;as is&quot; and &quot;as available&quot; basis. To the maximum extent
                   permitted by law, we disclaim warranties and limit liability for indirect or consequential damages,
                   to the extent permitted by applicable law.
@@ -88,7 +88,7 @@ export default function AboutTermsPage() {
                 <Heading as="h2" size="md" fontWeight="semibold">
                   Governing law
                 </Heading>
-                <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall">
+                <Text fontSize={APP_TEXT_SIZES.helper} color="fg" lineHeight="tall">
                 These Terms are governed by the laws of the State of Arizona, United States, without regard to conflict of laws principles.
                 Any disputes arising from these Terms will be resolved in the state or federal courts located in Maricopa County, AZ, and you
                 consent to their jurisdiction.
@@ -97,7 +97,7 @@ export default function AboutTermsPage() {
                 <Heading as="h2" size="md" fontWeight="semibold">
                   Changes to these terms
                 </Heading>
-                <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall">
+                <Text fontSize={APP_TEXT_SIZES.helper} color="fg" lineHeight="tall">
                   We may update these Terms from time to time. When we do, we will revise the effective date and post
                   the updated terms on this page. Continued use of the service after updates become effective
                   constitutes acceptance of the revised Terms.
@@ -106,7 +106,7 @@ export default function AboutTermsPage() {
                 <Heading as="h2" size="md" fontWeight="semibold">
                   Contact
                 </Heading>
-                <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall">
+                <Text fontSize={APP_TEXT_SIZES.helper} color="fg" lineHeight="tall">
                   Questions about these terms: pondarbor@gmail.com
                 </Text>
               </Stack>

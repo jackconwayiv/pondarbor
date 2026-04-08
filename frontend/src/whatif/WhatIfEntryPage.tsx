@@ -835,8 +835,8 @@ export default function WhatIfEntryPage() {
               </Heading>
               {!isMobile ? (
                 <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
-                  A Jackbox-style room game. The TV stays on <Code>/whatif/play/ROOM</Code>, and each player joins on
-                  their phone at <Code>/whatif/hand/ROOM</Code>.
+                  A multiplayer party game. Project <Code>/whatif/play/ROOM</Code> on a TV or projector to host a game, and each player joins on
+                  their mobile device at <Code>/whatif/hand/ROOM</Code>.
                 </Text>
               ) : null}
               {showDesktopUnapprovedOnly ? (

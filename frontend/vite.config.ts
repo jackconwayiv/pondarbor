@@ -5,6 +5,39 @@ export default defineConfig({
   plugins: [react()],
   build: {
     manifest: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+
+          if (
+            id.includes("/@chakra-ui/") ||
+            id.includes("/@emotion/") ||
+            id.includes("/framer-motion/")
+          ) {
+            return "vendor-ui";
+          }
+
+          if (id.includes("/react/") || id.includes("/react-dom/")) {
+            return "vendor-react";
+          }
+
+          if (id.includes("/react-router/")) {
+            return "vendor-router";
+          }
+
+          if (id.includes("/@auth0/")) {
+            return "vendor-auth";
+          }
+
+          if (id.includes("/@sentry/")) {
+            return "vendor-sentry";
+          }
+
+          return "vendor";
+        },
+      },
+    },
   },
   server: {
     proxy: {

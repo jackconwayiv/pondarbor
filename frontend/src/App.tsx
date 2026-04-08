@@ -318,7 +318,7 @@ function App() {
   }
 
   return (
-    <Stack flex="1" minH="full" gap="0" w="full" align="stretch" {...fullBleedStackProps}>
+    <Stack flex="1" minH="full" gap="0" align="stretch" {...fullBleedStackProps}>
       <Box bg="bg" w="full" px={{ base: "4", md: "6" }} py={{ base: "6", md: "6" }}>
         <Flex
           align="center"

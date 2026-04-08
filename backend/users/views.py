@@ -19,7 +19,10 @@ from friends.models import FriendRequest
 from friends.services import are_friends
 from achievements.services import achievements_payload_for_user
 
+from achievements.models import UserAchievement
+
 from .serializers import (
+    AchievementVisibilityPatchSerializer,
     LoginSerializer,
     MeSerializer,
     UpcomingBirthdaySerializer,
@@ -320,6 +323,27 @@ def patch_me_profile(request):
     for field, value in serializer.validated_data.items():
         setattr(profile, field, value)
     profile.save()
+    return Response(MeSerializer(serialize_me(request.user)).data)
+
+
+@api_view(["PATCH"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsAuthenticated])
+def patch_me_achievement_visibility(request, slug: str):
+    """Set whether an unlocked achievement appears on friends’ profiles (false = hidden)."""
+    ua = get_object_or_404(
+        UserAchievement.objects.select_related("achievement"),
+        user=request.user,
+        achievement__slug=slug,
+    )
+    serializer = AchievementVisibilityPatchSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    raw = serializer.validated_data["visible_to_friends"]
+    if raw is False:
+        ua.visible_to_friends = False
+    else:
+        ua.visible_to_friends = None
+    ua.save(update_fields=["visible_to_friends"])
     return Response(MeSerializer(serialize_me(request.user)).data)
 
 

@@ -288,3 +288,47 @@ class AchievementPublicApiTests(TestCase):
         data = friend_resp.json()
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["slug"], SLUG_ARCHIVIST)
+
+    def test_friend_does_not_see_hidden_achievement(self):
+        ua = UserAchievement.objects.get(user=self.user, achievement__slug=SLUG_ARCHIVIST)
+        ua.visible_to_friends = False
+        ua.save(update_fields=["visible_to_friends"])
+
+        self.client.force_login(self.viewer)
+        self._accept_pair(self.viewer, self.user)
+        friend_resp = self.client.get(f"/api/v1/users/{self.user.id}/achievements/")
+        self.assertEqual(friend_resp.status_code, 200)
+        self.assertEqual(friend_resp.json(), [])
+
+    def test_owner_still_sees_hidden_achievement(self):
+        ua = UserAchievement.objects.get(user=self.user, achievement__slug=SLUG_ARCHIVIST)
+        ua.visible_to_friends = False
+        ua.save(update_fields=["visible_to_friends"])
+
+        self.client.force_login(self.user)
+        owner_resp = self.client.get(f"/api/v1/users/{self.user.id}/achievements/")
+        self.assertEqual(owner_resp.status_code, 200)
+        data = owner_resp.json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["slug"], SLUG_ARCHIVIST)
+        self.assertIs(data[0]["visible_to_friends"], False)
+
+    def test_patch_achievement_visibility(self):
+        self.client.force_login(self.user)
+        resp = self.client.patch(
+            f"/api/v1/users/me/achievements/{SLUG_ARCHIVIST}/",
+            data={"visible_to_friends": False},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        ua = UserAchievement.objects.get(user=self.user, achievement__slug=SLUG_ARCHIVIST)
+        self.assertIs(ua.visible_to_friends, False)
+
+        resp_show = self.client.patch(
+            f"/api/v1/users/me/achievements/{SLUG_ARCHIVIST}/",
+            data={"visible_to_friends": True},
+            content_type="application/json",
+        )
+        self.assertEqual(resp_show.status_code, 200)
+        ua.refresh_from_db()
+        self.assertIsNone(ua.visible_to_friends)

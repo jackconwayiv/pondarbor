@@ -36,6 +36,13 @@ class AchievementSummarySerializer(serializers.Serializer):
     unlocked_at = serializers.DateTimeField()
     display_group = serializers.CharField(allow_blank=True)
     display_group_order = serializers.IntegerField()
+    visible_to_friends = serializers.BooleanField(allow_null=True, required=False)
+
+
+class AchievementVisibilityPatchSerializer(serializers.Serializer):
+    """True or null -> show to friends (stored as null); false -> hidden from friends."""
+
+    visible_to_friends = serializers.BooleanField(allow_null=True, required=True)
 
 
 class MeSerializer(serializers.Serializer):

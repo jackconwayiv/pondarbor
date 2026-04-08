@@ -3,11 +3,16 @@
  * Intentionally not linked from the public UI — open directly:
  * `/clicker/dev/catalog`
  */
-import { Box, Grid, Heading, HStack, Stack, Text } from "@chakra-ui/react";
-import { useMemo } from "react";
-import { Link as RouterLink } from "react-router";
+import { Box, Grid, Heading, HStack, Stack, Tabs, Tag, Text } from "@chakra-ui/react";
+import { useAuth0 } from "@auth0/auth0-react";
+import { useMemo, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router";
 
+import { auth0LoginAuthorizationParams } from "../auth/auth0LoginParams";
 import { useAppSession } from "../auth/AppSessionContext";
+import PondButton from "../PondButton";
+import { fullBleedStackProps } from "../responsive";
+import { APP_TEXT_SIZES } from "../theme/typography";
 import {
   CATALOG_UPGRADES,
   FAMILY_PRESENTATION,
@@ -16,8 +21,69 @@ import {
   type UpgradeDef,
   type UpgradeEffect,
 } from "./catalog";
-import { ClickerPageShell } from "./ClickerShell";
 import { requirementSummary } from "./ruleEngine";
+
+/** Same tab chrome as [`ProfilePage`](ProfilePage.tsx) / [`QuotesFeedPage`](quotes/QuotesFeedPage.tsx). */
+const TIER_TABS_LIST_PROPS = {
+  pt: "0",
+  pb: "0",
+  borderBottomWidth: "1px",
+  borderColor: "border",
+  gap: "1",
+  w: "100%",
+  flexWrap: "wrap" as const,
+  rowGap: "1",
+} as const;
+
+/** Matches [`ClickerLobbyPage`](ClickerLobbyPage.tsx) entry chrome. */
+const ENTRY_CARD_PROPS = {
+  bg: "white",
+  borderWidth: "1px",
+  borderColor: "border",
+  borderRadius: "xl",
+  p: { base: "4", md: "4" },
+} as const;
+
+/** Dense catalog cards: tighter padding for 2–3 column layouts. */
+const UPGRADE_CARD_SHELL_PROPS = {
+  ...ENTRY_CARD_PROPS,
+  p: { base: "2.5", md: "3" },
+} as const;
+
+/** Body / list copy inside upgrade cards (narrow columns). */
+const UPGRADE_CARD_BODY = { base: "2xs", md: "xs" } as const;
+
+const UPGRADE_CARD_SECTION_LABEL_PROPS = {
+  fontSize: { base: "2xs", md: "xs" },
+  fontWeight: "bold",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.05em",
+  color: "fg.muted",
+  mb: "0.5",
+} as const;
+
+function ClickerCatalogFramedChrome({ children }: { children: ReactNode }) {
+  return (
+    <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
+      <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
+        <Box
+          maxW="4xl"
+          w="100%"
+          mx="auto"
+          bg="gray.100"
+          borderWidth="1px"
+          borderColor="border"
+          borderRadius="xl"
+          overflow="hidden"
+        >
+          <Stack gap={{ base: "4", md: "4" }} p={{ base: "4", md: "6" }}>
+            {children}
+          </Stack>
+        </Box>
+      </Box>
+    </Stack>
+  );
+}
 
 function formatPassiveRate(n: number): string {
   const r = Math.round(n * 100) / 100;
@@ -57,55 +123,77 @@ function effectSummaryLine(e: UpgradeEffect): string {
   }
 }
 
-function pillProps(accent?: string) {
-  return {
-    as: "span" as const,
-    display: "inline-block",
-    fontSize: "xs",
-    fontWeight: "medium",
-    px: "2",
-    py: "0.5",
-    borderRadius: "md",
-    borderWidth: "1px",
-    borderColor: accent ?? "border",
-    bg: "bg.subtle",
-  };
+function CatalogTag({
+  children,
+  borderAccent,
+  greenAccent,
+}: {
+  children: ReactNode;
+  /** Theme token or CSS color for border (family strip). */
+  borderAccent?: string;
+  /** Use lilypad-tinted chip (biodiversity). */
+  greenAccent?: boolean;
+}) {
+  if (greenAccent) {
+    return (
+      <Tag.Root size="sm" variant="surface" colorPalette="lilypad">
+        <Tag.Label fontSize={UPGRADE_CARD_BODY} fontWeight="medium">
+          {children}
+        </Tag.Label>
+      </Tag.Root>
+    );
+  }
+  return (
+    <Tag.Root
+      size="sm"
+      bg="white"
+      borderWidth="1px"
+      borderColor={borderAccent ?? "border"}
+      color="fg"
+    >
+      <Tag.Label fontSize={UPGRADE_CARD_BODY} fontWeight="medium">
+        {children}
+      </Tag.Label>
+    </Tag.Root>
+  );
 }
 
 function UpgradeCatalogCard({ upgrade: u }: { upgrade: UpgradeDef }) {
   const fam = FAMILY_PRESENTATION[u.family];
   return (
     <Box
-      borderWidth="1px"
-      borderColor="border"
-      borderLeftWidth="4px"
+      {...UPGRADE_CARD_SHELL_PROPS}
+      borderLeftWidth="3px"
       borderLeftColor={fam.accent}
-      borderRadius="md"
-      bg="bg"
-      p={{ base: "3", md: "4" }}
       boxShadow="sm"
     >
-      <Stack gap="2" align="stretch">
-        <HStack justify="space-between" align="flex-start" flexWrap="wrap" gap="2">
-          <Stack gap="0.5" align="flex-start">
-            <Heading as="h3" size="sm">
+      <Stack gap="1.5" align="stretch">
+        <HStack justify="space-between" align="flex-start" flexWrap="wrap" gap="1.5">
+          <Stack gap="0" align="flex-start" minW={0}>
+            <Heading
+              as="h3"
+              fontSize={{ base: "xs", md: "sm" }}
+              fontWeight="semibold"
+              lineHeight="short"
+              color="fg"
+            >
               {u.name}
             </Heading>
-            <Text fontSize="xs" fontFamily="mono" color="fg.muted">
+            <Text fontSize={{ base: "2xs", md: "2xs" }} fontFamily="mono" color="fg.muted" lineHeight="short">
               {u.id}
             </Text>
           </Stack>
-          <HStack flexWrap="wrap" gap="1.5">
-            <Box {...pillProps()}>Tier {u.tier}</Box>
-            <Box {...pillProps(fam.accent)}>
+          <HStack flexWrap="wrap" gap="1">
+            <CatalogTag>Tier {u.tier}</CatalogTag>
+            <CatalogTag borderAccent={fam.accent}>
               {fam.symbol} {fam.label}
-            </Box>
+            </CatalogTag>
           </HStack>
         </HStack>
-        <Text fontSize="sm" color="fg">
+        <Text fontSize={UPGRADE_CARD_BODY} color="fg" lineHeight="1.45">
           {u.description}
         </Text>
-        <HStack flexWrap="wrap" gap="3" fontSize="sm">
+        <HStack flexWrap="wrap" gap="2" fontSize={UPGRADE_CARD_BODY}>
           <Text>
             <Text as="span" fontWeight="semibold">
               Cost
@@ -122,71 +210,49 @@ function UpgradeCatalogCard({ upgrade: u }: { upgrade: UpgradeDef }) {
           ) : null}
         </HStack>
         <Box>
-          <Text
-            fontSize="xs"
-            fontWeight="bold"
-            textTransform="uppercase"
-            letterSpacing="0.06em"
-            color="fg.muted"
-            mb="1"
-          >
-            Requirements
-          </Text>
+          <Text {...UPGRADE_CARD_SECTION_LABEL_PROPS}>Requirements</Text>
           {u.requirements.length === 0 ? (
-            <Text fontSize="sm" color="fg.muted">
+            <Text fontSize={UPGRADE_CARD_BODY} color="fg.muted">
               None
             </Text>
           ) : (
-            <Box as="ul" pl="5" style={{ listStyleType: "disc" }}>
+            <Box as="ul" pl="3.5" style={{ listStyleType: "disc" }}>
               {u.requirements.map((r, i) => (
                 <Box as="li" key={i} mb="0.5">
-                  <Text fontSize="sm">{requirementSummary(r)}</Text>
+                  <Text fontSize={UPGRADE_CARD_BODY}>{requirementSummary(r)}</Text>
                 </Box>
               ))}
             </Box>
           )}
         </Box>
         <Box>
-          <Text
-            fontSize="xs"
-            fontWeight="bold"
-            textTransform="uppercase"
-            letterSpacing="0.06em"
-            color="fg.muted"
-            mb="1"
-          >
-            Effects
-          </Text>
+          <Text {...UPGRADE_CARD_SECTION_LABEL_PROPS}>Effects</Text>
           {u.effects.length === 0 ? (
-            <Text fontSize="sm" color="fg.muted">
+            <Text fontSize={UPGRADE_CARD_BODY} color="fg.muted">
               (none)
             </Text>
           ) : (
-            <Box as="ul" pl="5" style={{ listStyleType: "disc" }}>
+            <Box as="ul" pl="3.5" style={{ listStyleType: "disc" }}>
               {u.effects.map((e, i) => (
                 <Box as="li" key={i} mb="0.5">
-                  <Text fontSize="sm">{effectSummaryLine(e)}</Text>
+                  <Text fontSize={UPGRADE_CARD_BODY}>{effectSummaryLine(e)}</Text>
                 </Box>
               ))}
             </Box>
           )}
         </Box>
         {u.denizenKind || u.countsTowardBiodiversity || u.pondVisual ? (
-          <HStack flexWrap="wrap" gap="1.5" pt="1">
+          <HStack flexWrap="wrap" gap="1" pt="0.5">
             {u.denizenKind ? (
-              <Box {...pillProps()} fontSize="2xs">
+              <CatalogTag>
                 Denizen: {u.denizenKind}
-              </Box>
+              </CatalogTag>
             ) : null}
             {u.countsTowardBiodiversity ? (
-              <Box {...pillProps("#2f5a2f")} fontSize="2xs">
-                Counts toward biodiversity
-              </Box>
+              <CatalogTag greenAccent>Counts toward biodiversity</CatalogTag>
             ) : null}
             {u.pondVisual ? (
-              <Box {...pillProps()} fontSize="2xs">
-                Pond visual: {u.pondVisual.type}
-              </Box>
+              <CatalogTag>Pond visual: {u.pondVisual.type}</CatalogTag>
             ) : null}
           </HStack>
         ) : null}
@@ -196,8 +262,11 @@ function UpgradeCatalogCard({ upgrade: u }: { upgrade: UpgradeDef }) {
 }
 
 export default function ClickerCatalogAdminPage() {
+  const { loginWithRedirect } = useAuth0();
+  const navigate = useNavigate();
   const { sessionUser, isAuthenticated, isLoading, error: sessionError } = useAppSession();
   const isStaff = !!sessionUser?.user?.is_staff;
+  const [activeTierTab, setActiveTierTab] = useState("0");
 
   const tiers = useMemo(() => {
     const map = new Map<number, UpgradeDef[]>();
@@ -209,87 +278,164 @@ export default function ClickerCatalogAdminPage() {
     return [...map.entries()].sort((a, b) => a[0] - b[0]);
   }, []);
 
+  const backButton = (
+    <PondButton type="button" size="sm" variant="outline" colorPalette="gray" onClick={() => navigate("/clicker")}>
+      ← PondClicker
+    </PondButton>
+  );
+
   if (!isAuthenticated) {
     return (
-      <ClickerPageShell>
-        <Box maxW="lg" mx="auto">
-          <Text fontSize={{ base: "sm", md: "md" }}>Sign in to open this page.</Text>
+      <ClickerCatalogFramedChrome>
+        <Box {...ENTRY_CARD_PROPS}>
+          <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold" mb="2">
+            Upgrade catalog
+          </Heading>
+          <Stack gap="3" align="flex-start">
+            <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
+              Sign in to open this staff reference page.
+            </Text>
+            <HStack flexWrap="wrap" gap="2">
+              <PondButton
+                type="button"
+                colorPalette="lilypad"
+                size="sm"
+                onClick={() =>
+                  void loginWithRedirect({
+                    authorizationParams: auth0LoginAuthorizationParams(),
+                  })
+                }
+              >
+                Log in
+              </PondButton>
+              {backButton}
+            </HStack>
+          </Stack>
         </Box>
-      </ClickerPageShell>
+      </ClickerCatalogFramedChrome>
     );
   }
 
   if (isAuthenticated && !sessionUser && !isLoading) {
     return (
-      <ClickerPageShell>
-        <Box maxW="lg" mx="auto">
-          <Text fontSize={{ base: "sm", md: "md" }} color="fg">
+      <ClickerCatalogFramedChrome>
+        <Box {...ENTRY_CARD_PROPS}>
+          <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold" mb="2">
+            Upgrade catalog
+          </Heading>
+          <Text
+            role="alert"
+            fontSize={APP_TEXT_SIZES.body}
+            lineHeight="tall"
+            color="nautical.solid"
+            fontWeight="medium"
+            mb="3"
+          >
             {sessionError ?? "Could not load your account session. Try signing in again."}
           </Text>
+          {backButton}
         </Box>
-      </ClickerPageShell>
+      </ClickerCatalogFramedChrome>
     );
   }
 
   if (isLoading || !sessionUser) {
     return (
-      <ClickerPageShell>
-        <Text fontSize={{ base: "sm", md: "md" }}>Loading…</Text>
-      </ClickerPageShell>
+      <ClickerCatalogFramedChrome>
+        <Box {...ENTRY_CARD_PROPS}>
+          <Text fontSize={APP_TEXT_SIZES.body} color="fg">
+            Loading…
+          </Text>
+        </Box>
+      </ClickerCatalogFramedChrome>
     );
   }
 
   if (!isStaff) {
     return (
-      <ClickerPageShell>
-        <Box maxW="lg" mx="auto">
-          <Text fontSize={{ base: "sm", md: "md" }}>Staff access required.</Text>
+      <ClickerCatalogFramedChrome>
+        <Box {...ENTRY_CARD_PROPS}>
+          <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold" mb="2">
+            Upgrade catalog
+          </Heading>
+          <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg" mb="3">
+            Staff access required. This page lists every upgrade from{" "}
+            <Text as="span" fontFamily="mono" fontSize={APP_TEXT_SIZES.helper}>
+              catalog.ts
+            </Text>{" "}
+            for debugging and balance review.
+          </Text>
+          {backButton}
         </Box>
-      </ClickerPageShell>
+      </ClickerCatalogFramedChrome>
     );
   }
 
   return (
-    <ClickerPageShell
-      titleLeft={
-        <Stack gap="1" align="flex-start">
-          <Box
-            asChild
-            display="inline-block"
-            fontSize="sm"
-            color="fg.muted"
-            textDecoration="underline"
-            textUnderlineOffset="2px"
-            _hover={{ color: "fg" }}
-          >
-            <RouterLink to="/clicker">← PondClicker</RouterLink>
-          </Box>
-          <Heading as="h1" size={{ base: "md", md: "lg" }}>
+    <ClickerCatalogFramedChrome>
+      <Box {...ENTRY_CARD_PROPS}>
+        <Stack gap="2" align="flex-start">
+          {backButton}
+          <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold">
             Upgrade catalog (staff)
           </Heading>
-          <Text fontSize="sm" color="fg.muted">
-            {CATALOG_UPGRADES.length} upgrades · same data as <Text as="span" fontFamily="mono">catalog.ts</Text>
+          <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600" lineHeight="tall">
+            {CATALOG_UPGRADES.length} upgrades — reference data mirrors{" "}
+            <Text as="span" fontFamily="mono">
+              catalog.ts
+            </Text>
+            .
           </Text>
         </Stack>
-      }
-    >
-      <Stack gap="8" pb="10">
+      </Box>
+
+      <Tabs.Root
+        value={activeTierTab}
+        variant="plain"
+        w="100%"
+        onValueChange={(details) => setActiveTierTab(details.value)}
+      >
+        <Tabs.List {...TIER_TABS_LIST_PROPS}>
+          {tiers.map(([tier]) => {
+            const value = String(tier);
+            const selected = activeTierTab === value;
+            return (
+              <Tabs.Trigger
+                key={tier}
+                value={value}
+                bg={selected ? "lilypad.solid" : undefined}
+                color={selected ? "black" : undefined}
+                borderTopRadius="md"
+                borderBottomRadius="0"
+                px="4"
+                py="2"
+                fontWeight="medium"
+                fontSize={APP_TEXT_SIZES.label}
+                _hover={{ bg: selected ? "lilypad.solid" : "transparent" }}
+                _selected={{ bg: "lilypad.solid", color: "black" }}
+              >
+                Tier {tier}
+              </Tabs.Trigger>
+            );
+          })}
+        </Tabs.List>
         {tiers.map(([tier, upgrades]) => (
-          <Stack key={tier} gap="4" align="stretch">
-            <Heading as="h2" size="sm" color="fg.muted">
-              Tier {tier}
-            </Heading>
+          <Tabs.Content key={tier} value={String(tier)} px={0} pt="3" pb="0">
             <Grid
-              templateColumns={{ base: "1fr", lg: "repeat(2, 1fr)" }}
-              gap={{ base: "3", md: "4" }}
+              templateColumns={{
+                base: "minmax(0, 1fr)",
+                md: "repeat(2, minmax(0, 1fr))",
+                xl: "repeat(3, minmax(0, 1fr))",
+              }}
+              gap={{ base: "2", md: "3" }}
             >
               {upgrades.map((u) => (
                 <UpgradeCatalogCard key={u.id} upgrade={u} />
               ))}
             </Grid>
-          </Stack>
+          </Tabs.Content>
         ))}
-      </Stack>
-    </ClickerPageShell>
+      </Tabs.Root>
+    </ClickerCatalogFramedChrome>
   );
 }

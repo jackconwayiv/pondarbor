@@ -39,6 +39,8 @@ class UserAchievement(models.Model):
     )
     unlocked_at = models.DateTimeField(auto_now_add=True)
     context = models.JSONField(default=dict, blank=True)
+    # null / True: shown on friends’ profiles; False: owner-only (friends’ API omits).
+    visible_to_friends = models.BooleanField(null=True, blank=True)
 
     class Meta:
         constraints = [

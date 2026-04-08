@@ -48,6 +48,8 @@ export type AppSessionContextValue = {
   refreshSession: () => Promise<void>;
   updateProfileLocally: (patch: Partial<Profile>) => void;
   patchMyProfile: (patch: ProfilePatch) => Promise<void>;
+  /** `true` = show to friends (server stores null); `false` = hidden from friends. */
+  patchAchievementVisibility: (slug: string, visibleToFriends: boolean) => Promise<void>;
   logout: () => Promise<void>;
   switchUser: () => void;
 };

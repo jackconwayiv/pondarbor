@@ -150,7 +150,14 @@ def evaluate_after_whatif_session_ended(session_id: int) -> None:
     )
 
 
-def achievement_rows_for_user(user, *, public_only: bool):
+def achievement_rows_for_user(
+    user,
+    *,
+    public_only: bool,
+    hide_user_hidden_from_friends: bool = False,
+):
+    from django.db.models import Q
+
     from achievements.models import UserAchievement
 
     qs = (
@@ -160,6 +167,8 @@ def achievement_rows_for_user(user, *, public_only: bool):
     )
     if public_only:
         qs = qs.filter(achievement__show_on_public_profile=True)
+    if hide_user_hidden_from_friends:
+        qs = qs.filter(Q(visible_to_friends__isnull=True) | Q(visible_to_friends=True))
 
     return list(qs)
 
@@ -195,8 +204,17 @@ def backfill_all_achievements() -> None:
             )
 
 
-def achievements_payload_for_user(user, *, public_only: bool) -> list[dict]:
-    rows = achievement_rows_for_user(user, public_only=public_only)
+def achievements_payload_for_user(
+    user,
+    *,
+    public_only: bool,
+    hide_user_hidden_from_friends: bool = False,
+) -> list[dict]:
+    rows = achievement_rows_for_user(
+        user,
+        public_only=public_only,
+        hide_user_hidden_from_friends=hide_user_hidden_from_friends,
+    )
     out = []
     for ua in rows:
         d = ua.achievement
@@ -209,6 +227,7 @@ def achievements_payload_for_user(user, *, public_only: bool) -> list[dict]:
                 "unlocked_at": ua.unlocked_at,
                 "display_group": d.display_group,
                 "display_group_order": d.display_group_order,
+                "visible_to_friends": ua.visible_to_friends,
             }
         )
     return out

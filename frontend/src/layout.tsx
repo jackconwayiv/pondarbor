@@ -8,10 +8,9 @@ import {
   Link as ChakraLink,
   Menu,
   Spacer,
-  Text,
 } from "@chakra-ui/react";
 import { useAuth0 } from "@auth0/auth0-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 
 import {
@@ -78,58 +77,15 @@ function isDesktopNavRouteActive(pathname: string, to: string): boolean {
   }
 }
 
-/** How close to the document bottom (px) before the footer is shown. */
-const FOOTER_REVEAL_NEAR_BOTTOM_PX = 72;
-
 /** Routes where the document scrollbar is hidden (keeps centered panels from shifting). */
 const HIDE_DOCUMENT_SCROLLBAR_PREFIXES = ["/quotes", "/closet"] as const;
 /** Exact paths only (e.g. WhatIf entry at `/whatif`, not lobby/play/hand). */
 const HIDE_DOCUMENT_SCROLLBAR_EXACT = ["/whatif"] as const;
 
-function useFooterVisibleNearPageBottom(pathname: string) {
-  const [visible, setVisible] = useState(false);
-
-  const update = useCallback(() => {
-    const el = document.documentElement;
-    const body = document.body;
-    const scrollHeight = Math.max(el.scrollHeight, body.scrollHeight);
-    const innerH = window.innerHeight;
-    const y = window.scrollY;
-
-    if (scrollHeight <= innerH + 2) {
-      setVisible(true);
-      return;
-    }
-    setVisible(y + innerH >= scrollHeight - FOOTER_REVEAL_NEAR_BOTTOM_PX);
-  }, []);
-
-  useEffect(() => {
-    setVisible(false);
-    requestAnimationFrame(() => update());
-  }, [pathname, update]);
-
-  useEffect(() => {
-    update();
-    window.addEventListener("scroll", update, { passive: true });
-    window.addEventListener("resize", update);
-    const ro = new ResizeObserver(() => update());
-    ro.observe(document.documentElement);
-    return () => {
-      window.removeEventListener("scroll", update);
-      window.removeEventListener("resize", update);
-      ro.disconnect();
-    };
-  }, [update]);
-
-  return visible;
-}
-
 export default function AppLayout() {
   const { loginWithRedirect } = useAuth0();
   const { isAuthenticated, auth0User, sessionUser, logout, switchUser } = useAppSession();
   const location = useLocation();
-  const footerVisibleNearBottom = useFooterVisibleNearPageBottom(location.pathname);
-  const footerVisible = location.pathname === "/" || footerVisibleNearBottom;
   const navigate = useNavigate();
   const isMobile = useIsMobile();
 
@@ -154,6 +110,7 @@ export default function AppLayout() {
 
   const isClickerRoute =
     location.pathname === "/clicker" || location.pathname.startsWith("/clicker/");
+  const isHomeIndex = location.pathname === "/";
 
   useEffect(() => {
     const { pathname } = location;
@@ -528,7 +485,8 @@ export default function AppLayout() {
           ? { p: 0 }
           : {
               px: { base: "4", md: "6" },
-              pb: { base: "4", md: "6" },
+              // Home embeds a full-width footer; main bottom padding would show sky below it.
+              pb: isHomeIndex ? 0 : { base: "4", md: "6" },
               pt: 0,
             })}
         bg="transparent"
@@ -538,63 +496,6 @@ export default function AppLayout() {
       >
         <Box flex="1" minH="0" minW={0} w="100%" display="flex" flexDirection="column">
           <Outlet />
-        </Box>
-      </Box>
-      <Box
-        as="footer"
-        w="100%"
-        flexShrink={0}
-        bg="lilypad.solid"
-        overflow="hidden"
-        maxH={footerVisible ? "4rem" : "0"}
-        opacity={footerVisible ? 1 : 0}
-        transitionProperty="max-height, opacity"
-        transitionDuration="0.22s"
-        transitionTimingFunction="ease"
-        aria-hidden={!footerVisible}
-      >
-        <Box py="2" px={{ base: "4", md: "6" }}>
-          <Box
-            display="flex"
-            flexDirection={{ base: "column", md: "row" }}
-            alignItems={{ base: "flex-end", md: "center" }}
-            justifyContent="flex-end"
-            flexWrap="wrap"
-            columnGap={{ md: "3" }}
-            rowGap="1"
-          >
-            <Text textAlign="right" fontSize="xs" color="fg">
-              © 2026{" "}
-              <ChakraLink
-                asChild
-                color="black"
-                textDecoration="none"
-                _hover={{ color: "sky.solid", textDecoration: "none" }}
-              >
-                <Link to="/about">Pond Arbor Workshop</Link>
-              </ChakraLink>
-              . All rights reserved.
-            </Text>
-            <Text textAlign="right" fontSize="xs" color="fg">
-              <ChakraLink
-                asChild
-                color="black"
-                textDecoration="none"
-                _hover={{ color: "sky.solid", textDecoration: "none" }}
-              >
-                <Link to="/about/terms">Terms of Service</Link>
-              </ChakraLink>{" "}
-              |{" "}
-              <ChakraLink
-                asChild
-                color="black"
-                textDecoration="none"
-                _hover={{ color: "sky.solid", textDecoration: "none" }}
-              >
-                <Link to="/about/privacy">Privacy Policy</Link>
-              </ChakraLink>
-            </Text>
-          </Box>
         </Box>
       </Box>
     </Box>

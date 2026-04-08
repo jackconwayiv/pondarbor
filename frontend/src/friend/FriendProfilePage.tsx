@@ -602,7 +602,7 @@ export default function FriendProfilePage() {
                           }}
                           loading={actionBusy}
                         >
-                          {confirmUnfriend ? "Confirm Unfriend" : "Unfriend"}
+                          {confirmUnfriend ? "Confirm" : "Unfriend"}
                         </PondButton>
                       </Box>
                     ) : null}

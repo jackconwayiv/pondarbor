@@ -321,39 +321,18 @@ function App() {
   }
 
   return (
-    <Stack flex="1" minH="full" gap="0" align="stretch" {...fullBleedStackProps}>
+    <Stack flex="1" minH="0" gap="0" align="stretch" {...fullBleedStackProps}>
       <Box bg="bg" w="full" px={{ base: "4", md: "6" }} py={{ base: "6", md: "6" }}>
-        <Flex
-          align="flex-start"
-          gap="3"
-          w="full"
-          mb="3"
-          flexWrap="wrap"
-          rowGap="2"
-        >
-          <Stack gap="1" flex="1" minW={{ base: "100%", sm: 0 }}>
-            <Heading as="h1" size={{ base: "lg", md: "xl" }}>
-              PondArbor
-            </Heading>
-            {isAuthenticated ? (
-              <Text fontSize={{ base: "md", md: "lg" }} fontWeight="medium" color="fg">
-                Welcome, {nickname}!
-              </Text>
-            ) : null}
-          </Stack>
-          <ChakraLink
-            asChild
-            flexShrink={0}
-            ml={{ base: "auto", sm: "0" }}
-            alignSelf={{ base: "flex-start", sm: "center" }}
-            fontSize={APP_TEXT_SIZES.helper}
-            color="black"
-            textDecoration="none"
-            _hover={{ color: "sky.solid", textDecoration: "none" }}
-          >
-            <RouterLink to="/about/privacy">Privacy Policy</RouterLink>
-          </ChakraLink>
-        </Flex>
+        <Stack gap="1" w="full" mb="3">
+          <Heading as="h1" size={{ base: "lg", md: "xl" }}>
+            PondArbor
+          </Heading>
+          {isAuthenticated ? (
+            <Text fontSize={{ base: "md", md: "lg" }} fontWeight="medium" color="fg">
+              Welcome, {nickname}!
+            </Text>
+          ) : null}
+        </Stack>
         <Stack gap="3" w="full" maxW="3xl">
           {isAuthenticated ? (
             homePrompts.length > 0 || homeNoticeItems.length > 0 ? (
@@ -562,6 +541,52 @@ function App() {
             );
           })}
         </Flex>
+      </Box>
+
+      <Box as="footer" w="full" flexShrink={0} bg="lilypad.solid" mt="auto">
+        <Box py="2" px={{ base: "4", md: "6" }}>
+          <Box
+            display="flex"
+            flexDirection={{ base: "column", md: "row" }}
+            alignItems={{ base: "flex-end", md: "center" }}
+            justifyContent="flex-end"
+            flexWrap="wrap"
+            columnGap={{ md: "3" }}
+            rowGap="1"
+          >
+            <Text textAlign="right" fontSize="xs" color="fg">
+              © 2026{" "}
+              <ChakraLink
+                asChild
+                color="black"
+                textDecoration="none"
+                _hover={{ color: "sky.solid", textDecoration: "none" }}
+              >
+                <RouterLink to="/about">Pond Arbor Workshop</RouterLink>
+              </ChakraLink>
+              . All rights reserved.
+            </Text>
+            <Text textAlign="right" fontSize="xs" color="fg">
+              <ChakraLink
+                asChild
+                color="black"
+                textDecoration="none"
+                _hover={{ color: "sky.solid", textDecoration: "none" }}
+              >
+                <RouterLink to="/about/terms">Terms of Service</RouterLink>
+              </ChakraLink>{" "}
+              |{" "}
+              <ChakraLink
+                asChild
+                color="black"
+                textDecoration="none"
+                _hover={{ color: "sky.solid", textDecoration: "none" }}
+              >
+                <RouterLink to="/about/privacy">Privacy Policy</RouterLink>
+              </ChakraLink>
+            </Text>
+          </Box>
+        </Box>
       </Box>
     </Stack>
   );

@@ -349,6 +349,37 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     [getApiAccessToken],
   );
 
+  const patchAchievementVisibility = useCallback(
+    async (slug: string, visibleToFriends: boolean) => {
+      const base = apiBase();
+      const token = await getApiAccessToken();
+      setAccessToken(token);
+
+      const response = await fetch(
+        `${base}/api/v1/users/me/achievements/${encodeURIComponent(slug)}/`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          credentials: "omit",
+          body: JSON.stringify({ visible_to_friends: visibleToFriends }),
+        },
+      );
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Achievement visibility update failed (${response.status}): ${text}`);
+      }
+
+      const data = (await response.json()) as SessionUser;
+      setSessionUser(data);
+      saveCachedSession(data, token);
+    },
+    [getApiAccessToken],
+  );
+
   const clearLocalSession = useCallback(() => {
     setSessionUser(null);
     setAccessToken(null);
@@ -400,6 +431,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       refreshSession,
       updateProfileLocally,
       patchMyProfile,
+      patchAchievementVisibility,
       logout,
       switchUser,
     }),
@@ -416,6 +448,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       refreshSession,
       updateProfileLocally,
       patchMyProfile,
+      patchAchievementVisibility,
       logout,
       switchUser,
     ],

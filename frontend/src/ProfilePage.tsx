@@ -46,6 +46,8 @@ const ENTRY_CARD_PROPS = {
   borderColor: "border",
   borderRadius: "xl",
   p: { base: "4", md: "4" },
+  maxW: "100%",
+  overflowX: "hidden" as const,
 } as const;
 
 function avatarUrlFromClosetImageKey(imageKey: string): string {
@@ -66,6 +68,7 @@ export default function ProfilePage() {
     isLoading,
     error: sessionError,
     patchMyProfile,
+    patchAchievementVisibility,
     getApiAccessToken,
     refreshSession,
     logout,
@@ -88,7 +91,6 @@ export default function ProfilePage() {
   const [isImagePickerLoading, setIsImagePickerLoading] = useState(false);
   const [uploadedImageRows, setUploadedImageRows] = useState<ClosetImageInventoryRow[]>([]);
   const [selectedUploadedImageKey, setSelectedUploadedImageKey] = useState("");
-
   const allZones = useMemo(() => getSortedIanaTimeZones(), []);
   const editTimezoneOptions = useMemo(
     () => timeZoneOptionsForValue(timezone || "UTC", allZones),
@@ -101,7 +103,6 @@ export default function ProfilePage() {
     setAvatarUrl(sessionUser.profile.avatar_url ?? "");
     setTimezone(sessionUser.profile.timezone ?? "UTC");
     setBirthDate(sessionUser.profile.birth_date ?? "");
-    setProfileAchievements(sessionUser.achievements ?? []);
   }, [sessionUser]);
 
   useEffect(() => {
@@ -117,6 +118,34 @@ export default function ProfilePage() {
     };
     void run();
   }, [getApiAccessToken, isAuthenticated, sessionUser?.user?.id]);
+
+  const onAchievementVisibilityChange = useCallback(
+    async (slug: string, visibleToFriends: boolean) => {
+      if (!sessionUser) return;
+      setSaveError(null);
+      let snapshot: AchievementSummary[] = [];
+      setProfileAchievements((prev) => {
+        snapshot = prev;
+        return prev.map((x) =>
+          x.slug === slug
+            ? { ...x, visible_to_friends: visibleToFriends ? null : false }
+            : x,
+        );
+      });
+      try {
+        await patchAchievementVisibility(slug, visibleToFriends);
+        const token = await getApiAccessToken();
+        const rows = await fetchPublicAchievementsByUserId(sessionUser.user.id, token);
+        setProfileAchievements(rows);
+      } catch (err: unknown) {
+        setProfileAchievements(snapshot);
+        setSaveError(
+          err instanceof Error ? err.message : "Could not update achievement visibility.",
+        );
+      }
+    },
+    [sessionUser, patchAchievementVisibility, getApiAccessToken],
+  );
 
   const commitField = useCallback(async (field: EditableField) => {
     if (!sessionUser || savingFields[field]) return;
@@ -422,9 +451,16 @@ export default function ProfilePage() {
             </Tabs.List>
             <Tabs.Content value="profile" p={{ base: "4", md: "6" }}>
               <Box {...ENTRY_CARD_PROPS}>
-                <Stack gap="4">
-                  <HStack gap="4" align="flex-start" justify="space-between">
-                  <HStack gap="4" align="flex-start" flex="1">
+                <Stack gap="4" w="100%" minW={0}>
+                  <HStack
+                    gap="4"
+                    align="flex-start"
+                    justify="space-between"
+                    flexWrap="wrap"
+                    w="100%"
+                    minW={0}
+                  >
+                  <HStack gap="4" align="flex-start" flex="1" minW={0}>
                     <Avatar.Root size="lg">
                       <Avatar.Fallback name={profile.display_name || user.email || "User"} />
                       <Avatar.Image src={profile.avatar_url || undefined} />
@@ -468,7 +504,7 @@ export default function ProfilePage() {
                                 e.currentTarget.value = "";
                               }}
                             />
-                            <HStack>
+                            <HStack flexWrap="wrap" gap="2">
                               <PondButton
                                 size="sm"
                                 colorPalette="sky"
@@ -629,12 +665,34 @@ export default function ProfilePage() {
                         </HStack>
                       ) : null}
 
+                      {!isEditing ? (
+                        <Box display={{ base: "block", md: "none" }} w="fit-content" mt="2">
+                          <PondButton
+                            size="sm"
+                            colorPalette="lilypad"
+                            onClick={() => {
+                              setSaveError(null);
+                              setIsEditing(true);
+                            }}
+                          >
+                            Edit profile
+                          </PondButton>
+                        </Box>
+                      ) : null}
+
                       {!isEditing && profileAchievements.length > 0 ? (
-                        <Stack gap="2" pt="2">
+                        <Stack gap="2" mt={{ base: "2", md: 0 }} pt={{ base: 0, md: "2" }}>
                           <Text {...profileFieldLabelProps}>Achievements</Text>
                           <Stack gap={MAPPED_LIST_STACK_GAP}>
                             {profileAchievements.map((a) => (
-                              <AchievementSummaryCard key={a.slug} achievement={a} />
+                              <AchievementSummaryCard
+                                key={a.slug}
+                                achievement={a}
+                                visibilityToggle={{
+                                  checked: a.visible_to_friends !== false,
+                                  onCheckedChange: (v) => void onAchievementVisibilityChange(a.slug, v),
+                                }}
+                              />
                             ))}
                           </Stack>
                         </Stack>
@@ -651,6 +709,8 @@ export default function ProfilePage() {
                     <PondButton
                       size="sm"
                       colorPalette="lilypad"
+                      alignSelf="flex-start"
+                      display={{ base: "none", md: "inline-flex" }}
                       onClick={() => {
                         setSaveError(null);
                         setIsEditing(true);

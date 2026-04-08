@@ -1,10 +1,10 @@
-import { Box, HStack, Stack, Text } from "@chakra-ui/react";
+import { Box, Checkbox, HStack, Stack, Text } from "@chakra-ui/react";
+import { useIsMobile } from "../responsive";
 import { APP_TEXT_SIZES, MAPPED_LIST_CARD_OUTER_PROPS } from "../theme/typography";
 import { emojiForAchievementSlug } from "./achievementIcon";
 import type { AchievementSummary } from "./types";
 
-const CARD_PROPS = {
-  bg: "white",
+const BASE_CARD_PROPS = {
   borderWidth: "1px",
   borderColor: "border",
   borderRadius: "xl",
@@ -25,14 +25,42 @@ function formatUnlockedDate(unlockedAt: string): string {
   return `${mm}/${dd}/${yy}`;
 }
 
+export type AchievementVisibilityToggle = {
+  checked: boolean;
+  onCheckedChange: (visibleToFriends: boolean) => void;
+};
+
 /** Bordered card with gold coin + slug-driven emoji, bold title, description. */
-export function AchievementSummaryCard({ achievement: a }: { achievement: AchievementSummary }) {
+export function AchievementSummaryCard({
+  achievement: a,
+  visibilityToggle,
+}: {
+  achievement: AchievementSummary;
+  visibilityToggle?: AchievementVisibilityToggle;
+}) {
+  const isMobile = useIsMobile();
   const emoji = emojiForAchievementSlug(a.slug);
   const earnedOn = formatUnlockedDate(a.unlocked_at);
+  const earnedLine = (
+    <Text
+      fontSize={APP_TEXT_SIZES.meta}
+      color="gray.600"
+      fontStyle="italic"
+      lineHeight="short"
+      flexShrink={0}
+      pt={isMobile ? undefined : "0.5"}
+    >
+      Earned {earnedOn}
+    </Text>
+  );
+  const shownToFriends = visibilityToggle
+    ? a.visible_to_friends !== false
+    : true;
+  const bg = shownToFriends ? "white" : "gray.200";
 
   return (
-    <Box {...CARD_PROPS}>
-      <HStack align="center" gap="3" w="100%">
+    <Box {...BASE_CARD_PROPS} bg={bg}>
+      <HStack align="flex-start" gap="3" w="100%" minW={0}>
         <Box
           w={COIN_SIZE}
           h={COIN_SIZE}
@@ -50,31 +78,65 @@ export function AchievementSummaryCard({ achievement: a }: { achievement: Achiev
           </Text>
         </Box>
         <Stack gap="1" flex="1" minW={0}>
-          <HStack align="flex-start" gap="2" w="100%" minW={0}>
-            <Text
-              fontSize={APP_TEXT_SIZES.body}
-              fontWeight="bold"
-              whiteSpace="pre-wrap"
-              flex="1"
-              minW={0}
-            >
-              {a.title}
-            </Text>
-            <Text
-              fontSize={APP_TEXT_SIZES.meta}
-              color="gray.600"
-              fontStyle="italic"
-              flexShrink={0}
-              lineHeight="short"
-              pt="0.5"
-            >
-              Earned {earnedOn}
-            </Text>
-          </HStack>
+          {isMobile ? (
+            <>
+              <Text
+                fontSize={APP_TEXT_SIZES.body}
+                fontWeight="bold"
+                whiteSpace="pre-wrap"
+                w="100%"
+                minW={0}
+              >
+                {a.title}
+              </Text>
+              {earnedLine}
+            </>
+          ) : (
+            <HStack align="flex-start" gap="2" w="100%" minW={0}>
+              <Text
+                fontSize={APP_TEXT_SIZES.body}
+                fontWeight="bold"
+                whiteSpace="pre-wrap"
+                flex="1"
+                minW={0}
+              >
+                {a.title}
+              </Text>
+              {earnedLine}
+            </HStack>
+          )}
           {a.description ? (
             <Text fontSize={APP_TEXT_SIZES.helper} color="black" whiteSpace="pre-wrap">
               {a.description}
             </Text>
+          ) : null}
+          {visibilityToggle ? (
+            <Box w="100%" display="flex" justifyContent="flex-end" mt="1">
+              <Checkbox.Root
+                checked={visibilityToggle.checked}
+                colorPalette="lilypad"
+                size="sm"
+                display="flex"
+                flexDirection="row-reverse"
+                alignItems="center"
+                gap="2"
+                onCheckedChange={(d) => {
+                  visibilityToggle.onCheckedChange(d.checked === true);
+                }}
+              >
+                <Checkbox.HiddenInput />
+                <Checkbox.Control flexShrink={0}>
+                  <Checkbox.Indicator />
+                </Checkbox.Control>
+                <Checkbox.Label
+                  fontSize={{ base: "2xs", md: "xs" }}
+                  fontWeight="medium"
+                  lineHeight="short"
+                >
+                  Show to friends
+                </Checkbox.Label>
+              </Checkbox.Root>
+            </Box>
           ) : null}
         </Stack>
       </HStack>

@@ -409,7 +409,7 @@ export default function AppLayout() {
                 fontSize={NAV_WORDMARK_FONT_SIZE}
                 lineHeight={NAV_WORDMARK_LINE_HEIGHT}
               >
-                <Link to="/">Pond Arbor</Link>
+                <Link to="/">pondarbor.com</Link>
               </ChakraLink>
             </Box>
             <Box flex="1" display="flex" justifyContent="flex-end" minW={0}>
@@ -458,7 +458,7 @@ export default function AppLayout() {
                 lineHeight={NAV_WORDMARK_LINE_HEIGHT}
                 mx={{ base: "4", md: "6" }}
               >
-                <Link to="/">Pond Arbor</Link>
+                <Link to="/">pondarbor.com</Link>
               </ChakraLink>
 
               {desktopNavLinks.map((link) => {
@@ -553,18 +553,47 @@ export default function AppLayout() {
         aria-hidden={!footerVisible}
       >
         <Box py="2" px={{ base: "4", md: "6" }}>
-          <Text textAlign="center" fontSize="xs" color="fg">
-            © 2026{" "}
-            <ChakraLink
-              asChild
-              color="black"
-              textDecoration="none"
-              _hover={{ color: "sky.solid", textDecoration: "none" }}
-            >
-              <Link to="/about">Pond Arbor Workshop</Link>
-            </ChakraLink>
-            . All rights reserved.
-          </Text>
+          <Box
+            display="flex"
+            flexDirection={{ base: "column", md: "row" }}
+            alignItems={{ base: "flex-end", md: "center" }}
+            justifyContent="flex-end"
+            flexWrap="wrap"
+            columnGap={{ md: "3" }}
+            rowGap="1"
+          >
+            <Text textAlign="right" fontSize="xs" color="fg">
+              © 2026{" "}
+              <ChakraLink
+                asChild
+                color="black"
+                textDecoration="none"
+                _hover={{ color: "sky.solid", textDecoration: "none" }}
+              >
+                <Link to="/about">Pond Arbor Workshop</Link>
+              </ChakraLink>
+              . All rights reserved.
+            </Text>
+            <Text textAlign="right" fontSize="xs" color="fg">
+              <ChakraLink
+                asChild
+                color="black"
+                textDecoration="none"
+                _hover={{ color: "sky.solid", textDecoration: "none" }}
+              >
+                <Link to="/about/terms">ToS</Link>
+              </ChakraLink>{" "}
+              |{" "}
+              <ChakraLink
+                asChild
+                color="black"
+                textDecoration="none"
+                _hover={{ color: "sky.solid", textDecoration: "none" }}
+              >
+                <Link to="/about/privacy">Privacy</Link>
+              </ChakraLink>
+            </Text>
+          </Box>
         </Box>
       </Box>
     </Box>

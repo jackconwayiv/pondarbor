@@ -314,7 +314,9 @@ function App() {
       <Box bg="bg" px={{ base: "4", md: "6" }} py={{ base: "6", md: "6" }}>
         <Stack gap="3" maxW="3xl">
           <Heading as="h1" size={{ base: "lg", md: "xl" }}>
-            {isAuthenticated ? `Welcome to Pond Arbor, ${nickname}!` : "Welcome to Pond Arbor!"}
+            {isAuthenticated
+              ? `Welcome to pondarbor.com, ${nickname}!`
+              : "Welcome to pondarbor.com!"}
           </Heading>
 
           {isAuthenticated ? (

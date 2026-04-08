@@ -15,8 +15,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 
 import {
-  auth0AccountPickerLoginParams,
-  auth0DefaultLoginParams,
+  auth0LoginAuthorizationParams,
+  auth0SignupAuthorizationParams,
 } from "./auth/auth0LoginParams";
 import { useAppSession } from "./auth/AppSessionContext";
 import { pondarborLogoSrc } from "./publicAsset";
@@ -250,7 +250,7 @@ export default function AppLayout() {
       size="sm"
       onClick={() =>
         loginWithRedirect({
-          authorizationParams: auth0DefaultLoginParams(),
+          authorizationParams: auth0LoginAuthorizationParams(),
         })
       }
     >
@@ -352,7 +352,7 @@ export default function AppLayout() {
                           value="login"
                           onSelect={() => {
                             void loginWithRedirect({
-                              authorizationParams: auth0DefaultLoginParams(),
+                              authorizationParams: auth0LoginAuthorizationParams(),
                             });
                           }}
                         >
@@ -362,7 +362,7 @@ export default function AppLayout() {
                           value="sign-up"
                           onSelect={() => {
                             void loginWithRedirect({
-                              authorizationParams: auth0AccountPickerLoginParams(),
+                              authorizationParams: auth0SignupAuthorizationParams(),
                             });
                           }}
                         >

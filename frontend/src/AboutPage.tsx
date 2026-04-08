@@ -3,7 +3,7 @@ import { useAuth0 } from "@auth0/auth0-react";
 import { useCallback, useState } from "react";
 
 import { submitContactMessage } from "./about/contactApi";
-import { auth0DefaultLoginParams } from "./auth/auth0LoginParams";
+import { auth0LoginAuthorizationParams } from "./auth/auth0LoginParams";
 import { useAppSession } from "./auth/AppSessionContext";
 import PondButton from "./PondButton";
 import { fullBleedStackProps } from "./responsive";
@@ -92,11 +92,11 @@ export default function AboutPage() {
                   </Text>
                   <PondButton
                     type="button"
-                    colorPalette="sky"
+                    colorPalette="lilypad"
                     size="sm"
                     onClick={() =>
                       void loginWithRedirect({
-                        authorizationParams: auth0DefaultLoginParams(),
+                        authorizationParams: auth0LoginAuthorizationParams(),
                       })
                     }
                   >

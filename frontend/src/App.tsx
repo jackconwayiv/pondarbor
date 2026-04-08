@@ -1,7 +1,10 @@
 import { useAuth0 } from "@auth0/auth0-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { auth0DefaultLoginParams } from "./auth/auth0LoginParams";
+import {
+  auth0LoginAuthorizationParams,
+  auth0SignupAuthorizationParams,
+} from "./auth/auth0LoginParams";
 import {
   Box,
   Flex,
@@ -367,7 +370,7 @@ function App() {
                 colorPalette="sky"
                 onClick={() =>
                   loginWithRedirect({
-                    authorizationParams: auth0DefaultLoginParams(),
+                    authorizationParams: auth0LoginAuthorizationParams(),
                   })
                 }
               >
@@ -377,9 +380,7 @@ function App() {
                 colorPalette="lilypad"
                 onClick={() =>
                   loginWithRedirect({
-                    authorizationParams: auth0DefaultLoginParams({
-                      screen_hint: "signup",
-                    }),
+                    authorizationParams: auth0SignupAuthorizationParams(),
                   })
                 }
               >

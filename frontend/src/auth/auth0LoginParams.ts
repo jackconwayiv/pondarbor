@@ -8,16 +8,26 @@ const base = (): Pick<AuthorizationParams, "audience" | "scope"> => ({
 });
 
 /**
- * Normal Log in / Sign up — no `prompt` so SSO can reuse the last session quickly.
+ * Normal Log in — no `prompt` so SSO can reuse the last session quickly.
  * Do not add `prompt` to Auth0Provider defaults or getAccessTokenSilently.
  */
-export function auth0DefaultLoginParams(
+export function auth0LoginAuthorizationParams(
   extra?: Partial<AuthorizationParams>,
 ): AuthorizationParams {
   return {
     ...base(),
     ...extra,
   };
+}
+
+/** Sign up flow on Universal Login. */
+export function auth0SignupAuthorizationParams(
+  extra?: Partial<AuthorizationParams>,
+): AuthorizationParams {
+  return auth0LoginAuthorizationParams({
+    ...extra,
+    screen_hint: "signup",
+  });
 }
 
 /**

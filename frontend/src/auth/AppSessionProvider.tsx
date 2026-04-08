@@ -11,7 +11,7 @@ import {
 
 import {
   auth0AccountPickerLoginParams,
-  auth0DefaultLoginParams,
+  auth0LoginAuthorizationParams,
   auth0LoginWithReturnTo,
 } from "./auth0LoginParams";
 
@@ -69,7 +69,7 @@ function authorizationParamsForTokenRecovery(err: unknown) {
   const code = getOAuthErrorCode(err);
   const needsConsent =
     msg.includes("Consent required") || code === "consent_required";
-  return auth0DefaultLoginParams(
+  return auth0LoginAuthorizationParams(
     needsConsent ? { prompt: "consent" } : undefined,
   );
 }

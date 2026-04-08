@@ -18,7 +18,10 @@ import { useLocation, useNavigate, useParams } from "react-router";
 
 import { validateWhatIfDisplayName } from "../forms/validation";
 import PondButton from "../PondButton";
-import { auth0DefaultLoginParams, auth0LoginWithReturnTo } from "../auth/auth0LoginParams";
+import {
+  auth0LoginAuthorizationParams,
+  auth0LoginWithReturnTo,
+} from "../auth/auth0LoginParams";
 import { useAppSession } from "../auth/AppSessionContext";
 import {
   fetchWhatIfHandState,
@@ -243,12 +246,12 @@ export default function WhatIfHandPage() {
                 onClick={() =>
                   void loginWithRedirect(
                     auth0LoginWithReturnTo(`${location.pathname}${location.search}`, {
-                      authorizationParams: auth0DefaultLoginParams(),
+                      authorizationParams: auth0LoginAuthorizationParams(),
                     }),
                   )
                 }
               >
-                Sign in
+                Log in
               </PondButton>
             </HStack>
           ) : null}

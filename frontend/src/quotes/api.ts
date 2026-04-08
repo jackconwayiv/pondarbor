@@ -1,4 +1,6 @@
 import type {
+  QuoteBulkImportPayload,
+  QuoteBulkImportResponse,
   Quote,
   QuoteCreatePayload,
   QuoteLabel,
@@ -171,5 +173,23 @@ export async function fetchQuoteLabels(
     throw new Error(`Failed to load label suggestions (${response.status})`);
   }
   return (await response.json()) as QuoteLabel[];
+}
+
+export async function bulkImportQuotes(
+  payload: QuoteBulkImportPayload,
+  accessToken: string | null,
+): Promise<QuoteBulkImportResponse> {
+  const response = await fetch(`${apiBase()}/api/v1/quotes/bulk-import/`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    const msg = drfErrorToMessage(text);
+    throw new Error(msg ?? `Failed to import quotes (${response.status}): ${text}`);
+  }
+  return (await response.json()) as QuoteBulkImportResponse;
 }
 

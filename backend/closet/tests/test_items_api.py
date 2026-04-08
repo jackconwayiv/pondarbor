@@ -249,14 +249,22 @@ class ClosetItemsApiTests(ClosetTestMixin, TestCase):
     @patch("closet.views._build_r2_client")
     def test_images_inventory_shows_attached_and_stranded(self, build_client_mock):
         attached_key = f"closet/{self.owner.id}/20240101/attached.jpg"
+        avatar_key = f"closet/{self.owner.id}/20240101/avatar.jpg"
         stranded_key = f"closet/{self.owner.id}/20240101/stranded.jpg"
         self.make_item(owner=self.owner, holder=self.owner, name="Pic", image_key=attached_key)
+        self.owner.profile.avatar_url = f"https://cdn.example.test/{avatar_key}"
+        self.owner.profile.save(update_fields=["avatar_url"])
         other_user_key = f"closet/{self.borrower.id}/20240101/other.jpg"
 
         client = build_client_mock.return_value
         client.list_objects_v2.side_effect = [
             {
-                "Contents": [{"Key": attached_key}, {"Key": stranded_key}, {"Key": other_user_key}],
+                "Contents": [
+                    {"Key": attached_key},
+                    {"Key": avatar_key},
+                    {"Key": stranded_key},
+                    {"Key": other_user_key},
+                ],
                 "IsTruncated": False,
             }
         ]
@@ -276,8 +284,12 @@ class ClosetItemsApiTests(ClosetTestMixin, TestCase):
         by_key = {row["image_key"]: row for row in rows}
         self.assertEqual(by_key[attached_key]["status"], "attached")
         self.assertEqual(by_key[attached_key]["attached_live_item_count"], 1)
+        self.assertEqual(by_key[avatar_key]["status"], "attached")
+        self.assertEqual(by_key[avatar_key]["attached_live_item_count"], 0)
+        self.assertTrue(by_key[avatar_key]["attached_as_avatar"])
         self.assertEqual(by_key[stranded_key]["status"], "stranded")
         self.assertEqual(by_key[stranded_key]["attached_live_item_count"], 0)
+        self.assertFalse(by_key[stranded_key]["attached_as_avatar"])
         self.assertNotIn(other_user_key, by_key)
 
     @override_settings(CLOSET_R2_KEY_PREFIX="closet")
@@ -303,6 +315,33 @@ class ClosetItemsApiTests(ClosetTestMixin, TestCase):
         self.assertEqual(resp.status_code, 200)
         attached.refresh_from_db()
         self.assertEqual(attached.image_key, "")
+        client.delete_object.assert_called_once_with(Bucket="bucket", Key=key)
+
+    @override_settings(
+        CLOSET_R2_KEY_PREFIX="closet",
+        CLOSET_R2_PUBLIC_BASE_URL="https://cdn.example.test",
+    )
+    @patch("closet.views._build_r2_client")
+    def test_image_delete_detaches_matching_avatar_url(self, build_client_mock):
+        key = f"closet/{self.owner.id}/20240101/avatar.jpg"
+        self.owner.profile.avatar_url = f"https://cdn.example.test/{key}"
+        self.owner.profile.save(update_fields=["avatar_url"])
+        client = build_client_mock.return_value
+        with patch.dict(
+            "os.environ",
+            {
+                "CLOUDFLARE_ACCOUNT_ID": "acct",
+                "CLOSET_R2_BUCKET": "bucket",
+                "CLOSET_R2_ACCESS_KEY_ID": "ak",
+                "CLOSET_R2_SECRET_ACCESS_KEY": "sk",
+            },
+            clear=False,
+        ):
+            resp = self.owner_client.post("/api/v1/closet/images/delete/", {"image_key": key}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.owner.profile.refresh_from_db()
+        self.assertEqual(self.owner.profile.avatar_url, "")
+        self.assertEqual(resp.json().get("detached_avatar_count"), 1)
         client.delete_object.assert_called_once_with(Bucket="bucket", Key=key)
 
     @override_settings(CLOSET_R2_KEY_PREFIX="closet")

@@ -39,6 +39,7 @@ from achievements.services import (
     evaluate_closet_sharing_is_caring_for_user,
 )
 from users.permissions import IsApprovedUser
+from users.models import Profile
 
 User = get_user_model()
 
@@ -856,6 +857,12 @@ def images_mine(request):
         item_ids_by_key[key].append(int(row["id"]))
         item_names_by_key[key].append(str(row.get("name") or "").strip() or f"Item {row['id']}")
     db_keys = set(item_ids_by_key.keys())
+    profile_avatar_url = (
+        Profile.objects.filter(user=request.user)
+        .values_list("avatar_url", flat=True)
+        .first()
+        or ""
+    ).strip()
 
     config, config_error = _r2_client_config_or_response()
     if config_error:
@@ -878,6 +885,9 @@ def images_mine(request):
         attached_item_ids = sorted(item_ids_by_key.get(key, []))
         attached_item_names = item_names_by_key.get(key, [])
         attached_count = len(attached_item_ids)
+        attached_as_avatar = bool(
+            profile_avatar_url and closet_item_image_url(key) == profile_avatar_url
+        )
         rows.append(
             {
                 "image_key": key,
@@ -885,7 +895,10 @@ def images_mine(request):
                 "attached_live_item_count": attached_count,
                 "attached_live_item_ids": attached_item_ids,
                 "attached_live_item_names": attached_item_names,
-                "status": "attached" if attached_count > 0 else "stranded",
+                "attached_as_avatar": attached_as_avatar,
+                "status": "attached"
+                if attached_count > 0 or attached_as_avatar
+                else "stranded",
                 "present_in_bucket": key in bucket_keys,
             }
         )
@@ -911,6 +924,10 @@ def image_delete(request):
         deleted_at__isnull=True,
         image_key=raw_key,
     ).update(image_key="")
+    detached_avatar_count = Profile.objects.filter(
+        user=request.user,
+        avatar_url=closet_item_image_url(raw_key),
+    ).update(avatar_url="")
 
     try:
         client = _build_r2_client(config)
@@ -920,7 +937,14 @@ def image_delete(request):
         detail = str(exc) if settings.DEBUG else "Failed to delete image from storage."
         return Response({"detail": detail}, status=502)
 
-    return Response({"deleted": True, "image_key": raw_key, "detached_live_item_count": detached_count})
+    return Response(
+        {
+            "deleted": True,
+            "image_key": raw_key,
+            "detached_live_item_count": detached_count,
+            "detached_avatar_count": detached_avatar_count,
+        }
+    )
 
 
 def _uploads_presign_response(request):

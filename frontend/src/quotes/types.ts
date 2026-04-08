@@ -48,3 +48,14 @@ export type QuotePatchPayload = {
   }>;
 };
 
+export type QuoteBulkImportPayload = {
+  text: string;
+  visibility?: "private" | "published";
+  date_of_quote?: string | null;
+};
+
+export type QuoteBulkImportResponse = {
+  created_count: number;
+  quotes: Quote[];
+};
+

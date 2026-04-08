@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
+from closet.serializers import closet_item_image_url, expected_closet_image_key_prefix
 
 
 UserModel = get_user_model()
@@ -50,6 +51,28 @@ class ProfileUpdateSerializer(serializers.Serializer):
     )
     timezone = serializers.CharField(required=False, allow_blank=True, max_length=64)
     birth_date = serializers.DateField(required=False, allow_null=True)
+    avatar_image_key = serializers.CharField(
+        required=False, allow_blank=True, max_length=1024, write_only=True
+    )
+
+    def validate_avatar_image_key(self, value: str) -> str:
+        key = value.strip()
+        if not key:
+            return ""
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user:
+            raise serializers.ValidationError("Could not validate avatar image key.")
+        expected_prefix = expected_closet_image_key_prefix(user.id)
+        if not key.startswith(expected_prefix):
+            raise serializers.ValidationError("Avatar image key must belong to your account prefix.")
+        return key
+
+    def validate(self, attrs):
+        key = attrs.pop("avatar_image_key", None)
+        if key is not None:
+            attrs["avatar_url"] = closet_item_image_url(key) if key else ""
+        return attrs
 
 
 class UpcomingBirthdaySerializer(serializers.Serializer):

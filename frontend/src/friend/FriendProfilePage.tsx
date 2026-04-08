@@ -1,6 +1,6 @@
-import { Avatar, Box, Card, Heading, HStack, Image, Stack, Tabs, Text } from "@chakra-ui/react";
+import { Avatar, Box, Card, Heading, HStack, Image, Input, Stack, Tabs, Tag, Text } from "@chakra-ui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link as RouterLink, Navigate, useParams } from "react-router";
+import { Navigate, useParams } from "react-router";
 import NotFoundPage from "../NotFoundPage";
 import { useAppSession } from "../auth/AppSessionContext";
 import { fetchPublicAchievementsByUser, fetchPublicAchievementsByUserId } from "../achievements/api";
@@ -19,8 +19,15 @@ import { quoteOwnerDisplayLabel } from "../quotes/ownerDisplay";
 import QuoteCardBase from "../quotes/QuoteCardBase";
 import type { Quote } from "../quotes/types";
 import { acceptFriend, ignoreFriend, requestFriendByUserId, unfriend } from "../friends/api";
-import { fetchFriendItemsByOwner } from "../closet/api";
+import {
+  cancelBorrowRequest,
+  createBorrowRequest,
+  fetchFriendItemsByOwner,
+  markCustodyReturnedByHolder,
+  markReturnedByBorrower,
+} from "../closet/api";
 import type { ClosetItem } from "../closet/types";
+import { validateClosetFreeText, validateIsoDateRequired } from "../forms/validation";
 
 const PAGE_SIZE = 10;
 
@@ -62,11 +69,185 @@ function FriendProfileAchievementCard({ achievement: a }: { achievement: Achieve
   );
 }
 
-function FriendProfileClosetItemCard({ item }: { item: ClosetItem }) {
+function FriendProfileClosetItemCard({
+  item,
+  isExpanded,
+  onToggleExpanded,
+  requestingItemId,
+  editingRequestItemId,
+  confirmCancelRequestItemId,
+  newNeedBy,
+  newRequestMessage,
+  onStartEditRequest,
+  onNeedByChange,
+  onRequestMessageChange,
+  onSubmitRequest,
+  onCancelRequest,
+  onMarkReturned,
+  returnBusyForItemId,
+}: {
+  item: ClosetItem;
+  isExpanded: boolean;
+  onToggleExpanded: () => void;
+  requestingItemId: number | null;
+  editingRequestItemId: number | null;
+  confirmCancelRequestItemId: number | null;
+  newNeedBy: string;
+  newRequestMessage: string;
+  onStartEditRequest: (item: ClosetItem) => void;
+  onNeedByChange: (itemId: number, value: string) => void;
+  onRequestMessageChange: (itemId: number, value: string) => void;
+  onSubmitRequest: (item: ClosetItem) => void;
+  onCancelRequest: (item: ClosetItem) => void;
+  onMarkReturned: (item: ClosetItem) => void;
+  returnBusyForItemId: number | null;
+}) {
   const imageUrl = (item.image_url ?? "").trim();
+  const isCurrentlyBorrowedByMe = item.current_holder_user.id !== item.owner_user.id;
+  const displayName = (user: ClosetItem["owner_user"] | ClosetItem["current_holder_user"]) =>
+    (user.display_name || "").trim() || user.email;
+  const categoryTrimmed = (item.category ?? "").trim();
+  const tagParts = (item.tags ?? []).map((tag) => tag.trim()).filter((tag) => tag.length > 0);
+  const tagsInline = (
+    <>
+      {tagParts.map((tag) => (
+        <Tag.Root key={`friend-profile-meta-${item.id}-${tag}`} size="sm" bg="gray.100" color="gray.600" borderWidth="0">
+          <Tag.Label>{tag}</Tag.Label>
+        </Tag.Root>
+      ))}
+    </>
+  );
+  const openToggle = () => onToggleExpanded();
+  const requestInputNeedBy = requestingItemId === item.id ? newNeedBy : "";
+  const requestInputMessage = requestingItemId === item.id ? newRequestMessage : "";
+  const canSubmitRequest = validateIsoDateRequired(requestInputNeedBy, "Need-by date") === null;
+  const requestEditorVisible = !isCurrentlyBorrowedByMe && (!item.my_pending_request || editingRequestItemId === item.id);
+  const requestActions = (
+    <Tabs.Root defaultValue="details" variant="plain" onClick={(e) => e.stopPropagation()}>
+      <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" w="100%" pt="0" pb="0">
+        <Tabs.Trigger
+          value="details"
+          borderTopRadius="md"
+          borderBottomRadius="0"
+          px="4"
+          py="2"
+          fontWeight="medium"
+          _selected={{ bg: "lilypad.solid", color: "black" }}
+        >
+          Details
+        </Tabs.Trigger>
+        <Tabs.Trigger
+          value="request"
+          borderTopRadius="md"
+          borderBottomRadius="0"
+          px="4"
+          py="2"
+          fontWeight="medium"
+          _selected={{ bg: "lilypad.solid", color: "black" }}
+        >
+          Request
+        </Tabs.Trigger>
+      </Tabs.List>
+      <Tabs.Content value="details" pt="3">
+        <Stack gap="3">
+          {categoryTrimmed ? (
+            <Text fontWeight="bold" color="sky.solid" fontSize={APP_TEXT_SIZES.body}>
+              {categoryTrimmed}
+            </Text>
+          ) : null}
+          {tagParts.length > 0 && (
+            <HStack flexWrap="wrap" gap="2" justify="flex-start" alignItems="flex-start" w="100%">
+              {tagsInline}
+            </HStack>
+          )}
+          {item.current_holder_user.id !== item.owner_user.id ? (
+            <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+              Holding: {displayName(item.current_holder_user)}
+            </Text>
+          ) : null}
+        </Stack>
+      </Tabs.Content>
+      <Tabs.Content value="request" pt="3">
+        <Stack gap="2" onClick={(e) => e.stopPropagation()}>
+          {isCurrentlyBorrowedByMe ? (
+            <Stack gap="2" align="flex-start">
+              <Text fontSize={APP_TEXT_SIZES.helper} color="orange.solid">
+                You are already borrowing this item.
+              </Text>
+              {(item.active_loan_marked_returned_by_borrower || item.custody_marked_returned_by_holder) ? (
+                <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                  You marked this item as returned. Waiting for owner confirmation.
+                </Text>
+              ) : (
+                <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                  Use I returned this after you hand the item back.
+                </Text>
+              )}
+              <PondButton
+                size="sm"
+                colorPalette="lilypad"
+                loading={returnBusyForItemId === item.id}
+                disabled={
+                  returnBusyForItemId !== null ||
+                  item.active_loan_marked_returned_by_borrower ||
+                  item.custody_marked_returned_by_holder
+                }
+                onClick={() => onMarkReturned(item)}
+              >
+                I returned this
+              </PondButton>
+            </Stack>
+          ) : null}
+          {item.my_pending_request && editingRequestItemId !== item.id ? (
+            <HStack>
+              <PondButton size="sm" colorPalette="lilypad" onClick={() => onStartEditRequest(item)}>
+                Edit request
+              </PondButton>
+            </HStack>
+          ) : null}
+          {requestEditorVisible ? (
+            <HStack flexWrap="wrap" align="flex-start">
+              <Input
+                type="date"
+                value={requestInputNeedBy}
+                onChange={(e) => onNeedByChange(item.id, e.target.value)}
+                maxW="200px"
+              />
+              <Input
+                value={requestInputMessage}
+                onChange={(e) => onRequestMessageChange(item.id, e.target.value)}
+                placeholder="Optional message"
+              />
+              <PondButton
+                size="sm"
+                colorPalette="lilypad"
+                disabled={!canSubmitRequest}
+                onClick={() => onSubmitRequest(item)}
+              >
+                {item.my_pending_request ? "Update request" : "Request borrow"}
+              </PondButton>
+              {item.my_pending_request ? (
+                <PondButton size="sm" colorPalette="nautical" onClick={() => onCancelRequest(item)}>
+                  {confirmCancelRequestItemId === item.id ? "Confirm cancel" : "Cancel request"}
+                </PondButton>
+              ) : null}
+            </HStack>
+          ) : null}
+        </Stack>
+      </Tabs.Content>
+    </Tabs.Root>
+  );
+
   if (imageUrl) {
     return (
-      <Card.Root flexDirection="row" overflow="hidden" alignItems="stretch" {...ENTRY_CARD_PROPS}>
+      <Card.Root
+        flexDirection="row"
+        overflow="hidden"
+        alignItems="stretch"
+        {...ENTRY_CARD_PROPS}
+        cursor="pointer"
+        onClick={openToggle}
+      >
         <Image
           src={imageUrl}
           alt=""
@@ -80,27 +261,55 @@ function FriendProfileClosetItemCard({ item }: { item: ClosetItem }) {
           draggable={false}
         />
         <Box flex="1" minW={0} p="4">
-          <Stack gap="1">
-            <Text fontWeight="bold">{item.name}</Text>
-            {item.description ? (
-              <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-                {item.description}
+          <Stack gap="2">
+            <HStack gap="1" flexWrap="wrap" align="flex-start">
+              {item.my_pending_request ? (
+                <Text fontWeight="bold" color="lilypad.solid">
+                  REQUESTED:
+                </Text>
+              ) : null}
+              <Text fontWeight="bold">{item.name}</Text>
+            </HStack>
+            {item.my_pending_request ? null : item.pending_request_count > 0 ? (
+              <Text fontSize={APP_TEXT_SIZES.helper}>
+                {item.pending_request_count} outstanding {item.pending_request_count === 1 ? "request" : "requests"}
               </Text>
             ) : null}
+            {item.current_holder_user.id !== item.owner_user.id ? (
+              <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                Holding: {displayName(item.current_holder_user)}
+              </Text>
+            ) : null}
+            {item.description ? <Text>{item.description}</Text> : null}
+            {isExpanded ? requestActions : null}
           </Stack>
         </Box>
       </Card.Root>
     );
   }
   return (
-    <Box {...ENTRY_CARD_PROPS}>
-      <Stack gap="1">
-        <Text fontWeight="bold">{item.name}</Text>
-        {item.description ? (
-          <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-            {item.description}
+    <Box {...ENTRY_CARD_PROPS} cursor="pointer" onClick={openToggle}>
+      <Stack gap="2">
+        <HStack gap="1" flexWrap="wrap" align="flex-start">
+          {item.my_pending_request ? (
+            <Text fontWeight="bold" color="lilypad.solid">
+              REQUESTED:
+            </Text>
+          ) : null}
+          <Text fontWeight="bold">{item.name}</Text>
+        </HStack>
+        {item.my_pending_request ? null : item.pending_request_count > 0 ? (
+          <Text fontSize={APP_TEXT_SIZES.helper}>
+            {item.pending_request_count} outstanding {item.pending_request_count === 1 ? "request" : "requests"}
           </Text>
         ) : null}
+        {item.current_holder_user.id !== item.owner_user.id ? (
+          <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+            Holding: {displayName(item.current_holder_user)}
+          </Text>
+        ) : null}
+        {item.description ? <Text>{item.description}</Text> : null}
+        {isExpanded ? requestActions : null}
       </Stack>
     </Box>
   );
@@ -138,6 +347,13 @@ export default function FriendProfilePage() {
   const [currentPage, setCurrentPage] = useState(0);
   const [profileTab, setProfileTab] = useState<"achievements" | "quotes" | "closet">("achievements");
   const [reloadKey, setReloadKey] = useState(0);
+  const [expandedFriendItemId, setExpandedFriendItemId] = useState<number | null>(null);
+  const [requestingItemId, setRequestingItemId] = useState<number | null>(null);
+  const [editingRequestItemId, setEditingRequestItemId] = useState<number | null>(null);
+  const [confirmCancelRequestItemId, setConfirmCancelRequestItemId] = useState<number | null>(null);
+  const [newNeedBy, setNewNeedBy] = useState("");
+  const [newRequestMessage, setNewRequestMessage] = useState("");
+  const [returnBusyForItemId, setReturnBusyForItemId] = useState<number | null>(null);
   const unfriendBoxRef = useRef<HTMLDivElement | null>(null);
   const ownUserId = sessionUser?.user?.id ?? null;
 
@@ -232,7 +448,7 @@ export default function FriendProfilePage() {
   const visibleQuotes = quotes.slice(startIndex, endIndex);
   const hasAchievements = achievements.length > 0;
   const hasQuotes = quotes.length > 0;
-  const hasClosetTab = Boolean(summary?.can_view_full_profile);
+  const hasClosetTab = Boolean(summary?.can_view_full_profile) && closetItems.length > 0;
   const leftmostVisibleTab = useMemo<"achievements" | "quotes" | "closet" | null>(() => {
     if (hasAchievements) return "achievements";
     if (hasQuotes) return "quotes";
@@ -655,13 +871,124 @@ export default function FriendProfilePage() {
                           <Text fontSize={APP_TEXT_SIZES.helper}>No closet items listed yet.</Text>
                         ) : null}
                         {closetItems.map((item) => (
-                          <RouterLink
+                          <FriendProfileClosetItemCard
                             key={`friend-closet-${item.id}`}
-                            to="/closet?tab=friends"
-                            style={{ textDecoration: "none", color: "inherit" }}
-                          >
-                            <FriendProfileClosetItemCard item={item} />
-                          </RouterLink>
+                            item={item}
+                            isExpanded={expandedFriendItemId === item.id}
+                            onToggleExpanded={() =>
+                              setExpandedFriendItemId((prev) => (prev === item.id ? null : item.id))
+                            }
+                            requestingItemId={requestingItemId}
+                            editingRequestItemId={editingRequestItemId}
+                            confirmCancelRequestItemId={confirmCancelRequestItemId}
+                            newNeedBy={newNeedBy}
+                            newRequestMessage={newRequestMessage}
+                            onStartEditRequest={(row) => {
+                              setEditingRequestItemId(row.id);
+                              setRequestingItemId(row.id);
+                              setNewNeedBy(row.my_pending_request?.date_needed_by ?? "");
+                              setNewRequestMessage(row.my_pending_request?.message ?? "");
+                            }}
+                            onNeedByChange={(itemId, value) => {
+                              setRequestingItemId(itemId);
+                              setNewNeedBy(value);
+                            }}
+                            onRequestMessageChange={(itemId, value) => {
+                              setRequestingItemId(itemId);
+                              setNewRequestMessage(value);
+                            }}
+                            onSubmitRequest={(row) => {
+                              void (async () => {
+                                const dateErr = validateIsoDateRequired(newNeedBy, "Need-by date");
+                                if (dateErr) {
+                                  setActionError(dateErr);
+                                  return;
+                                }
+                                const msgErr = validateClosetFreeText(newRequestMessage, "Message");
+                                if (msgErr) {
+                                  setActionError(msgErr);
+                                  return;
+                                }
+                                setActionError(null);
+                                setActionBusy(true);
+                                try {
+                                  const token = await getApiAccessToken();
+                                  await createBorrowRequest(token, row.id, {
+                                    date_needed_by: newNeedBy.trim(),
+                                    message: newRequestMessage.trim(),
+                                  });
+                                  setActionSuccess(
+                                    row.my_pending_request ? "Borrow request updated." : "Borrow request sent.",
+                                  );
+                                  setRequestingItemId(null);
+                                  setEditingRequestItemId(null);
+                                  setConfirmCancelRequestItemId(null);
+                                  setNewNeedBy("");
+                                  setNewRequestMessage("");
+                                  setExpandedFriendItemId(null);
+                                  setReloadKey((value) => value + 1);
+                                } catch (err: unknown) {
+                                  setActionError(
+                                    err instanceof Error ? err.message : "Failed to request borrow",
+                                  );
+                                } finally {
+                                  setActionBusy(false);
+                                }
+                              })();
+                            }}
+                            onCancelRequest={(row) => {
+                              void (async () => {
+                                if (confirmCancelRequestItemId !== row.id) {
+                                  setConfirmCancelRequestItemId(row.id);
+                                  return;
+                                }
+                                if (!row.my_pending_request) return;
+                                setActionError(null);
+                                setActionBusy(true);
+                                try {
+                                  const token = await getApiAccessToken();
+                                  await cancelBorrowRequest(token, row.my_pending_request.id);
+                                  setActionSuccess("Borrow request canceled.");
+                                  setRequestingItemId(null);
+                                  setEditingRequestItemId(null);
+                                  setConfirmCancelRequestItemId(null);
+                                  setNewNeedBy("");
+                                  setNewRequestMessage("");
+                                  setExpandedFriendItemId(null);
+                                  setReloadKey((value) => value + 1);
+                                } catch (err: unknown) {
+                                  setActionError(
+                                    err instanceof Error ? err.message : "Failed to cancel request",
+                                  );
+                                } finally {
+                                  setActionBusy(false);
+                                }
+                              })();
+                            }}
+                            onMarkReturned={(row) => {
+                              void (async () => {
+                                setActionError(null);
+                                setReturnBusyForItemId(row.id);
+                                try {
+                                  const token = await getApiAccessToken();
+                                  if (row.active_loan_id) {
+                                    await markReturnedByBorrower(token, row.active_loan_id);
+                                  } else {
+                                    await markCustodyReturnedByHolder(token, row.id);
+                                  }
+                                  setActionSuccess("Return noted. Waiting for owner confirmation.");
+                                  setReloadKey((value) => value + 1);
+                                } catch (err: unknown) {
+                                  setActionError(
+                                    err instanceof Error ? err.message : "Failed to mark returned",
+                                  );
+                                } finally {
+                                  setReturnBusyForItemId(null);
+                                }
+                              })();
+                            }}
+                            returnBusyForItemId={returnBusyForItemId}
+                          />
                         ))}
                       </Stack>
                     </Tabs.Content>

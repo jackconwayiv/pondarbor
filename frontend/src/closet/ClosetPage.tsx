@@ -182,6 +182,10 @@ function ItemCard({
   const [custodyTargetUserId, setCustodyTargetUserId] = useState<string>("");
   const [markReturnedBusy, setMarkReturnedBusy] = useState(false);
   const [imageUploadBusy, setImageUploadBusy] = useState(false);
+  const [imagePickerOpen, setImagePickerOpen] = useState(false);
+  const [imagePickerLoading, setImagePickerLoading] = useState(false);
+  const [imagePickerRows, setImagePickerRows] = useState<ClosetImageInventoryRow[]>([]);
+  const [selectedExistingImageKey, setSelectedExistingImageKey] = useState("");
   /** When API omits image_url (no CLOSET_R2_PUBLIC_BASE_URL), show the last uploaded bytes until reload. */
   const [localImagePreviewUrl, setLocalImagePreviewUrl] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -213,6 +217,25 @@ function ItemCard({
       item.owner_user.id,
     ],
   );
+
+  const loadExistingImageRows = useCallback(async () => {
+    setImagePickerLoading(true);
+    setError(null);
+    try {
+      const token = await getToken();
+      const payload = await fetchMyImageInventory(token);
+      const rows = payload.results.filter((row) => (row.image_url ?? "").trim().length > 0);
+      setImagePickerRows(rows);
+      setSelectedExistingImageKey((prev) => {
+        if (prev && rows.some((row) => row.image_key === prev)) return prev;
+        return rows[0]?.image_key ?? "";
+      });
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to load uploaded images");
+    } finally {
+      setImagePickerLoading(false);
+    }
+  }, [getToken]);
 
   const loadRequests = useCallback(async () => {
     if (!isOwner && !isHolder) return;
@@ -818,7 +841,22 @@ function ItemCard({
                         loading={imageUploadBusy}
                         onClick={() => photoInputRef.current?.click()}
                       >
-                        Upload or change photo
+                        Upload new photo
+                      </PondButton>
+                      <PondButton
+                        type="button"
+                        size="sm"
+                        colorPalette="lilypad"
+                        loading={imagePickerLoading}
+                        disabled={imageUploadBusy}
+                        onClick={() => {
+                          setImagePickerOpen((prev) => !prev);
+                          if (!imagePickerOpen) {
+                            void loadExistingImageRows();
+                          }
+                        }}
+                      >
+                        Select uploaded image
                       </PondButton>
                       {item.image_url?.trim() || item.image_key?.trim() ? (
                         <PondButton
@@ -850,6 +888,77 @@ function ItemCard({
                         </PondButton>
                       ) : null}
                     </HStack>
+                    {imagePickerOpen ? (
+                      <Stack gap="2" borderWidth="1px" borderColor="border" borderRadius="md" p="3">
+                        <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600">
+                          Choose from your uploaded images.
+                        </Text>
+                        {imagePickerRows.length === 0 ? (
+                          <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600">
+                            No uploaded images available
+                          </Text>
+                        ) : (
+                          <HStack flexWrap="wrap" gap="2" align="stretch">
+                            {imagePickerRows.map((row) => {
+                              const isSelected = selectedExistingImageKey === row.image_key;
+                              return (
+                                <Box
+                                  key={row.image_key}
+                                  as="button"
+                                  type="button"
+                                  borderWidth="2px"
+                                  borderColor={isSelected ? "black" : "lilypad.solid"}
+                                  borderRadius="md"
+                                  overflow="hidden"
+                                  onClick={() => setSelectedExistingImageKey(row.image_key)}
+                                >
+                                  <Image
+                                    src={row.image_url}
+                                    alt=""
+                                    aria-hidden
+                                    w="84px"
+                                    h="84px"
+                                    objectFit="cover"
+                                    draggable={false}
+                                  />
+                                </Box>
+                              );
+                            })}
+                          </HStack>
+                        )}
+                        <HStack>
+                          <PondButton
+                            type="button"
+                            size="sm"
+                            colorPalette="lilypad"
+                            loading={imageUploadBusy}
+                            disabled={imageUploadBusy || !selectedExistingImageKey}
+                            onClick={() =>
+                              void (async () => {
+                                setError(null);
+                                setImageUploadBusy(true);
+                                try {
+                                  const token = await getToken();
+                                  await patchItem(token, item.id, { image_key: selectedExistingImageKey });
+                                  await onRefresh();
+                                  onOwnedNotice?.({ kind: "success", message: "Photo updated." });
+                                  setImagePickerOpen(false);
+                                } catch (err: unknown) {
+                                  const message =
+                                    err instanceof Error ? err.message : "Failed to update photo";
+                                  setError(message);
+                                  onOwnedNotice?.({ kind: "error", message });
+                                } finally {
+                                  setImageUploadBusy(false);
+                                }
+                              })()
+                            }
+                          >
+                            Use selected image
+                          </PondButton>
+                        </HStack>
+                      </Stack>
+                    ) : null}
                     {imageUploadBusy ? (
                       <HStack gap="2" align="center" color="gray.700">
                         <Spinner size="sm" colorPalette="lilypad" />
@@ -2046,9 +2155,15 @@ export default function ClosetPage() {
                       {item.my_pending_request && editingRequestItemId === item.id ? (
                         <Stack gap="2" onClick={(event) => event.stopPropagation()}>
                           <HStack>
+                            {(() => {
+                              const requestDateValue = requestingItemId === item.id ? newNeedBy : "";
+                              const canSubmitRequest =
+                                validateIsoDateRequired(requestDateValue, "Need-by date") === null;
+                              return (
+                                <>
                             <Input
                               type="date"
-                              value={requestingItemId === item.id ? newNeedBy : ""}
+                              value={requestDateValue}
                               onChange={(e) => {
                                 setRequestingItemId(item.id);
                                 setNewNeedBy(e.target.value);
@@ -2067,6 +2182,7 @@ export default function ClosetPage() {
                             <PondButton
                               size="sm"
                               colorPalette="lilypad"
+                              disabled={!canSubmitRequest}
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 const dateErr = validateIsoDateRequired(newNeedBy, "Need-by date");
@@ -2097,6 +2213,9 @@ export default function ClosetPage() {
                             >
                               Update request
                             </PondButton>
+                                </>
+                              );
+                            })()}
                             <PondButton
                               ref={
                                 confirmCancelMyRequestedItemId === item.id
@@ -2752,9 +2871,15 @@ export default function ClosetPage() {
                               {!isCurrentlyBorrowedByMe &&
                               (!item.my_pending_request || editingRequestItemId === item.id) ? (
                                 <HStack flexWrap="wrap" align="flex-start">
+                                  {(() => {
+                                    const requestDateValue = requestingItemId === item.id ? newNeedBy : "";
+                                    const canSubmitRequest =
+                                      validateIsoDateRequired(requestDateValue, "Need-by date") === null;
+                                    return (
+                                      <>
                                   <Input
                                     type="date"
-                                    value={requestingItemId === item.id ? newNeedBy : ""}
+                                    value={requestDateValue}
                                     onChange={(e) => {
                                       setRequestingItemId(item.id);
                                       setNewNeedBy(e.target.value);
@@ -2773,6 +2898,7 @@ export default function ClosetPage() {
                                   <PondButton
                                     size="sm"
                                     colorPalette="lilypad"
+                                    disabled={!canSubmitRequest}
                                     onClick={async (e) => {
                                       e.stopPropagation();
                                       const dateErr2 = validateIsoDateRequired(newNeedBy, "Need-by date");
@@ -2815,6 +2941,9 @@ export default function ClosetPage() {
                                   >
                                     {item.my_pending_request ? "Update request" : "Request borrow"}
                                   </PondButton>
+                                      </>
+                                    );
+                                  })()}
                                   {item.my_pending_request ? (
                                     <PondButton
                                       ref={
@@ -3009,8 +3138,11 @@ export default function ClosetPage() {
                           <Stack gap="1">
                             <Text fontWeight="bold">{row.status === "attached" ? "Attached" : "Stranded"}</Text>
                             <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-                              {row.attached_live_item_count} live item
-                              {row.attached_live_item_count === 1 ? "" : "s"} using this image
+                              {row.attached_live_item_count > 0
+                                ? `${row.attached_live_item_count} live item${row.attached_live_item_count === 1 ? "" : "s"} using this image${row.attached_as_avatar ? " + used as your avatar" : ""}`
+                                : row.attached_as_avatar
+                                  ? "Used as your avatar"
+                                  : "0 live items using this image"}
                             </Text>
                             {!row.present_in_bucket ? (
                               <Text fontSize={APP_TEXT_SIZES.helper} color="orange.solid">

@@ -5,6 +5,7 @@ import {
   Float,
   Heading,
   HStack,
+  Image,
   Input,
   NativeSelectField,
   NativeSelectRoot,
@@ -15,6 +16,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate } from "react-router";
 import { useAppSession } from "./auth/AppSessionContext";
+import { fetchPublicAchievementsByUserId } from "./achievements/api";
+import type { AchievementSummary } from "./achievements/types";
 import { fullBleedStackProps } from "./responsive";
 import { APP_TEXT_SIZES, PANEL_FIELD_PROPS } from "./theme/typography";
 import {
@@ -22,6 +25,9 @@ import {
   timeZoneOptionsForValue,
 } from "./timezones";
 import PondButton from "./PondButton";
+import { uploadClosetImageViaPresign } from "./closet/imageUpload";
+import { fetchMyImageInventory } from "./closet/api";
+import type { ClosetImageInventoryRow } from "./closet/types";
 
 function formatBirthDateForDisplay(value: string | null | undefined): string {
   if (!value) return "—";
@@ -41,6 +47,17 @@ const ENTRY_CARD_PROPS = {
   p: { base: "4", md: "4" },
 } as const;
 
+function avatarUrlFromClosetImageKey(imageKey: string): string {
+  const trimmedKey = imageKey.trim();
+  if (!trimmedKey) return "";
+  const base = (import.meta.env.VITE_CLOSET_R2_PUBLIC_BASE_URL ??
+    import.meta.env.VITE_CLOSET_IMAGE_PUBLIC_BASE_URL ??
+    import.meta.env.VITE_API_CLOSET_IMAGE_PUBLIC_BASE_URL ??
+    "").trim();
+  if (!base) return "";
+  return `${base.replace(/\/+$/, "")}/${trimmedKey}`;
+}
+
 export default function ProfilePage() {
   const {
     sessionUser,
@@ -48,6 +65,7 @@ export default function ProfilePage() {
     isLoading,
     error: sessionError,
     patchMyProfile,
+    getApiAccessToken,
     refreshSession,
     logout,
     switchUser,
@@ -60,8 +78,15 @@ export default function ProfilePage() {
   const [birthDate, setBirthDate] = useState("");
   const [savingFields, setSavingFields] = useState<SavingState>({});
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [profileAchievements, setProfileAchievements] = useState<AchievementSummary[]>([]);
   const [activeTab, setActiveTab] = useState<"profile" | "account">("profile");
   const profileEditorRef = useRef<HTMLDivElement | null>(null);
+  const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isAvatarUploading, setIsAvatarUploading] = useState(false);
+  const [isImagePickerOpen, setIsImagePickerOpen] = useState(false);
+  const [isImagePickerLoading, setIsImagePickerLoading] = useState(false);
+  const [uploadedImageRows, setUploadedImageRows] = useState<ClosetImageInventoryRow[]>([]);
+  const [selectedUploadedImageKey, setSelectedUploadedImageKey] = useState("");
 
   const allZones = useMemo(() => getSortedIanaTimeZones(), []);
   const editTimezoneOptions = useMemo(
@@ -75,7 +100,22 @@ export default function ProfilePage() {
     setAvatarUrl(sessionUser.profile.avatar_url ?? "");
     setTimezone(sessionUser.profile.timezone ?? "UTC");
     setBirthDate(sessionUser.profile.birth_date ?? "");
+    setProfileAchievements(sessionUser.achievements ?? []);
   }, [sessionUser]);
+
+  useEffect(() => {
+    const run = async () => {
+      if (!sessionUser?.user?.id || !isAuthenticated) return;
+      try {
+        const token = await getApiAccessToken();
+        const rows = await fetchPublicAchievementsByUserId(sessionUser.user.id, token);
+        setProfileAchievements(rows);
+      } catch {
+        // Keep existing session payload if explicit fetch fails.
+      }
+    };
+    void run();
+  }, [getApiAccessToken, isAuthenticated, sessionUser?.user?.id]);
 
   const commitField = useCallback(async (field: EditableField) => {
     if (!sessionUser || savingFields[field]) return;
@@ -132,6 +172,63 @@ export default function ProfilePage() {
     await commitField("birth_date");
     setIsEditing(false);
   }, [commitField]);
+
+  const onChooseAvatarFile = useCallback(async (file: File | null) => {
+    if (!file || !sessionUser) return;
+    setSaveError(null);
+    setIsAvatarUploading(true);
+    try {
+      const key = await uploadClosetImageViaPresign(getApiAccessToken, file);
+      const uploadedUrl = avatarUrlFromClosetImageKey(key);
+      if (uploadedUrl) {
+        setAvatarUrl(uploadedUrl);
+      }
+      await patchMyProfile({ avatar_image_key: key });
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : "Avatar upload failed");
+      setAvatarUrl(sessionUser.profile.avatar_url ?? "");
+    } finally {
+      setIsAvatarUploading(false);
+    }
+  }, [getApiAccessToken, patchMyProfile, sessionUser]);
+
+  const loadUploadedImages = useCallback(async () => {
+    setIsImagePickerLoading(true);
+    setSaveError(null);
+    try {
+      const token = await getApiAccessToken();
+      const payload = await fetchMyImageInventory(token);
+      const usableRows = payload.results.filter((row) => (row.image_url ?? "").trim().length > 0);
+      setUploadedImageRows(usableRows);
+      setSelectedUploadedImageKey((prev) => {
+        if (prev && usableRows.some((row) => row.image_key === prev)) return prev;
+        return usableRows[0]?.image_key ?? "";
+      });
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : "Failed to load uploaded images");
+    } finally {
+      setIsImagePickerLoading(false);
+    }
+  }, [getApiAccessToken]);
+
+  const onApplyUploadedImage = useCallback(async () => {
+    if (!selectedUploadedImageKey || !sessionUser) return;
+    setSaveError(null);
+    setIsAvatarUploading(true);
+    try {
+      const selectedRow = uploadedImageRows.find((row) => row.image_key === selectedUploadedImageKey);
+      if (selectedRow?.image_url) {
+        setAvatarUrl(selectedRow.image_url);
+      }
+      await patchMyProfile({ avatar_image_key: selectedUploadedImageKey });
+      setIsImagePickerOpen(false);
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : "Failed to select uploaded image");
+      setAvatarUrl(sessionUser.profile.avatar_url ?? "");
+    } finally {
+      setIsAvatarUploading(false);
+    }
+  }, [patchMyProfile, selectedUploadedImageKey, sessionUser, uploadedImageRows]);
 
   useEffect(() => {
     if (!isEditing) return;
@@ -238,7 +335,7 @@ export default function ProfilePage() {
     );
   }
 
-  const { user, profile, achievements } = sessionUser;
+  const { user, profile } = sessionUser;
   const fieldBusy = (field: EditableField) => !!savingFields[field];
   const isSavingAny = Object.values(savingFields).some(Boolean);
   const profileFieldLabelProps = isEditing
@@ -344,20 +441,109 @@ export default function ProfilePage() {
                       {isEditing && (
                         <Stack gap="1">
                           <Text {...profileFieldLabelProps}>Avatar URL</Text>
-                          <Input
-                            value={avatarUrl}
-                            onChange={(e) => setAvatarUrl(e.target.value)}
-                            onBlur={() => void commitField("avatar_url")}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                void commitField("avatar_url");
-                              }
-                            }}
-                            placeholder="https://…"
-                            disabled={fieldBusy("avatar_url")}
-                            {...PANEL_FIELD_PROPS}
-                          />
+                          <Stack gap="2">
+                            <Input
+                              value={avatarUrl}
+                              onChange={(e) => setAvatarUrl(e.target.value)}
+                              onBlur={() => void commitField("avatar_url")}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  void commitField("avatar_url");
+                                }
+                              }}
+                              placeholder="https://…"
+                              disabled={fieldBusy("avatar_url") || isAvatarUploading}
+                              {...PANEL_FIELD_PROPS}
+                            />
+                            <input
+                              ref={avatarFileInputRef}
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp"
+                              style={{ display: "none" }}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0] ?? null;
+                                void onChooseAvatarFile(file);
+                                e.currentTarget.value = "";
+                              }}
+                            />
+                            <HStack>
+                              <PondButton
+                                size="sm"
+                                colorPalette="sky"
+                                loading={isAvatarUploading}
+                                disabled={fieldBusy("avatar_url") || isAvatarUploading}
+                                onClick={() => avatarFileInputRef.current?.click()}
+                              >
+                                Upload new avatar image
+                              </PondButton>
+                              <PondButton
+                                size="sm"
+                                colorPalette="lilypad"
+                                loading={isImagePickerLoading}
+                                disabled={fieldBusy("avatar_url") || isAvatarUploading}
+                                onClick={() => {
+                                  setIsImagePickerOpen((prev) => !prev);
+                                  if (!isImagePickerOpen) {
+                                    void loadUploadedImages();
+                                  }
+                                }}
+                              >
+                                Select uploaded image
+                              </PondButton>
+                            </HStack>
+                            {isImagePickerOpen ? (
+                              <Stack gap="2" borderWidth="1px" borderColor="border" borderRadius="md" p="3">
+                                <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                                  Choose from your uploaded images.
+                                </Text>
+                                {uploadedImageRows.length === 0 ? (
+                                  <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600">
+                                    No uploaded images available
+                                  </Text>
+                                ) : (
+                                  <HStack flexWrap="wrap" gap="2" align="stretch">
+                                    {uploadedImageRows.map((row) => {
+                                      const isSelected = selectedUploadedImageKey === row.image_key;
+                                      return (
+                                        <Box
+                                          key={row.image_key}
+                                          as="button"
+                                          type="button"
+                                          borderWidth="2px"
+                                          borderColor={isSelected ? "black" : "lilypad.solid"}
+                                          borderRadius="md"
+                                          overflow="hidden"
+                                          onClick={() => setSelectedUploadedImageKey(row.image_key)}
+                                        >
+                                          <Image
+                                            src={row.image_url}
+                                            alt=""
+                                            aria-hidden
+                                            w="84px"
+                                            h="84px"
+                                            objectFit="cover"
+                                            draggable={false}
+                                          />
+                                        </Box>
+                                      );
+                                    })}
+                                  </HStack>
+                                )}
+                                <HStack>
+                                  <PondButton
+                                    size="sm"
+                                    colorPalette="lilypad"
+                                    loading={isAvatarUploading}
+                                    disabled={isAvatarUploading || !selectedUploadedImageKey}
+                                    onClick={() => void onApplyUploadedImage()}
+                                  >
+                                    Use selected image
+                                  </PondButton>
+                                </HStack>
+                              </Stack>
+                            ) : null}
+                          </Stack>
                         </Stack>
                       )}
 
@@ -443,11 +629,11 @@ export default function ProfilePage() {
                         </HStack>
                       ) : null}
 
-                      {!isEditing && achievements && achievements.length > 0 ? (
+                      {!isEditing && profileAchievements.length > 0 ? (
                         <Stack gap="2" pt="2">
                           <Text {...profileFieldLabelProps}>Achievements</Text>
                           <Stack gap="2">
-                            {achievements.map((a) => (
+                            {profileAchievements.map((a) => (
                               <Stack key={a.slug} gap="0">
                                 <Text fontSize={APP_TEXT_SIZES.body}>{a.title}</Text>
                                 {a.description ? (

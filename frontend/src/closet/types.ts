@@ -66,6 +66,7 @@ export type ClosetImageInventoryRow = {
   image_key: string;
   image_url: string;
   attached_live_item_count: number;
+  attached_as_avatar?: boolean;
   attached_live_item_ids: number[];
   attached_live_item_names: string[];
   status: "attached" | "stranded";

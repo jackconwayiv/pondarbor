@@ -30,15 +30,20 @@ export function AchievementUnlockListener() {
       return;
     }
 
-    for (const a of list) {
-      if (!prev.has(a.slug)) {
-        achievementToaster.create({
-          type: "success",
-          closable: true,
-          title: `Achievement Unlocked: ${a.title}`,
-          description: a.description,
-        });
-      }
+    const unlockedNow = list.filter((a) => !prev.has(a.slug));
+    if (unlockedNow.length > 0) {
+      // Chakra toaster can call flushSync internally; defer to next task to avoid
+      // running during React's lifecycle/effect commit.
+      window.setTimeout(() => {
+        for (const a of unlockedNow) {
+          achievementToaster.create({
+            type: "success",
+            closable: true,
+            title: `Achievement Unlocked: ${a.title}`,
+            description: a.description,
+          });
+        }
+      }, 0);
     }
 
     prevSlugsRef.current = nextSlugs;

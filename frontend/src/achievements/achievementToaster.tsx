@@ -12,6 +12,7 @@ export const achievementToaster = createToaster({
   placement: "top-end",
   pauseOnPageIdle: true,
   offsets: "1rem",
+  duration: 7000,
 });
 
 export function AchievementToaster() {

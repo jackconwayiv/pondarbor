@@ -33,7 +33,9 @@ export type SessionUser = {
 
 export type ProfilePatch = Partial<
   Pick<Profile, "display_name" | "avatar_url" | "timezone" | "birth_date">
->;
+> & {
+  avatar_image_key?: string;
+};
 
 export type AppSessionContextValue = {
   sessionUser: SessionUser | null;

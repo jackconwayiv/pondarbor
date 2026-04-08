@@ -22,6 +22,7 @@ import { APP_TEXT_SIZES, PANEL_FIELD_PROPS } from "../theme/typography";
 import PublicQuotesPage from "./PublicQuotesPage";
 import QuoteCardBase from "./QuoteCardBase";
 import {
+  bulkImportQuotes,
   createQuote,
   deleteQuote,
   fetchMyQuoteFeed,
@@ -29,7 +30,13 @@ import {
   patchQuote,
 } from "./api";
 import { quoteOwnerDisplayLabel } from "./ownerDisplay";
-import type { Quote, QuoteCreatePayload, QuoteLabel, QuotePatchPayload } from "./types";
+import type {
+  Quote,
+  QuoteBulkImportPayload,
+  QuoteCreatePayload,
+  QuoteLabel,
+  QuotePatchPayload,
+} from "./types";
 import { fetchFriendsList, searchFriends, type FriendUser } from "../friends/api";
 
 const PAGE_SIZE = 10;
@@ -54,6 +61,7 @@ const PLACEHOLDER_QUICK_BODY = "Paste or type a quote...";
 const PLACEHOLDER_TAGS = "poetry, lyrics, musings";
 const PLACEHOLDER_ATTRIBUTION_NAMES = "David Bowie, Cormac McCarthy";
 const PLACEHOLDER_ATTRIBUTION_EMAILS = "tag a friend by nickname or email";
+const PLACEHOLDER_BULK_IMPORT = "Paste quote text here...\n\nOne or more blank lines separate quotes.";
 
 function parseCsv(raw: string): string[] {
   return raw
@@ -659,6 +667,8 @@ export default function QuotesFeedPage() {
   const [authBlocked, setAuthBlocked] = useState(false);
   const [feedReady, setFeedReady] = useState(false);
   const [isMoreDetailsOpen, setIsMoreDetailsOpen] = useState(false);
+  const [addQuoteMode, setAddQuoteMode] = useState<"single" | "bulk">("single");
+  const [bulkImportText, setBulkImportText] = useState("");
   const [editingQuoteId, setEditingQuoteId] = useState<number | null>(null);
   const isApprovedUser = !!sessionUser?.user?.is_approved;
   const activeTab = parseQuoteTab(searchParams.get("tab"), isApprovedUser);
@@ -868,6 +878,42 @@ export default function QuotesFeedPage() {
     }
   };
 
+  const onBulkImport = async () => {
+    if (!isApprovedUser) {
+      setError("Bulk import is available for approved users.");
+      return;
+    }
+    if (!bulkImportText.trim()) {
+      setError("Paste at least one quote to import.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const token = await getApiAccessToken();
+      const payload: QuoteBulkImportPayload = {
+        text: bulkImportText,
+      };
+      const result = await bulkImportQuotes(payload, token);
+      if (result.quotes.length > 0) {
+        setQuotes((prev) =>
+          [...result.quotes, ...prev].sort(
+            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+          ),
+        );
+      }
+      setBulkImportText("");
+      setCurrentPage(0);
+      void refreshSession();
+      setSuccess(`Imported ${result.created_count} quote${result.created_count === 1 ? "" : "s"}.`);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to import quotes");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
@@ -997,87 +1043,117 @@ export default function QuotesFeedPage() {
             </Tabs.List>
 
             <Tabs.Content value="add" p={{ base: "4", md: "6" }}>
-              <Stack gap="3" pt="0">
-              <Textarea
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                placeholder={PLACEHOLDER_QUICK_BODY}
-                minH="120px"
-                {...PANEL_FIELD_PROPS}
-              />
-              <Collapsible.Root
-                open={isMoreDetailsOpen}
-                onOpenChange={(details) => setIsMoreDetailsOpen(details.open)}
-              >
-                <HStack justify="space-between" align="center">
-                  <Collapsible.Trigger asChild>
-                    <button
-                      type="button"
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.5rem",
-                        fontSize: "0.875rem",
-                        fontWeight: 500,
-                        color: "inherit",
-                        cursor: "pointer",
-                        background: "transparent",
-                        border: "none",
-                        padding: 0,
-                        margin: 0,
-                      }}
-                    >
-                      <Text
-                        as="span"
-                        transform={isMoreDetailsOpen ? "rotate(90deg)" : "rotate(0deg)"}
-                        transition="transform 0.15s ease"
-                        lineHeight="1"
-                      >
-                        ›
-                      </Text>
-                      <Text as="span">
-                        Optional Details
-                      </Text>
-                    </button>
-                  </Collapsible.Trigger>
-                  <PondButton
-                    type="button"
-                    colorPalette="lilypad"
-                    loading={saving}
-                    disabled={saving || body.trim().length === 0}
-                    onClick={() => void onSaveQuote()}
+              <Tabs.Root value={addQuoteMode} onValueChange={(d) => setAddQuoteMode(d.value === "bulk" ? "bulk" : "single")} variant="plain">
+                <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" w="100%">
+                  <Tabs.Trigger
+                    value="single"
+                    bg={addQuoteMode === "single" ? "lilypad.solid" : undefined}
+                    color={addQuoteMode === "single" ? "black" : undefined}
+                    borderTopRadius="md"
+                    borderBottomRadius="0"
+                    px="4"
+                    py="2"
+                    fontWeight="medium"
+                    _hover={{ bg: addQuoteMode === "single" ? "lilypad.solid" : "transparent" }}
+                    _selected={{ bg: "lilypad.solid", color: "black" }}
                   >
-                    Create quote
-                  </PondButton>
-                </HStack>
-                <Collapsible.Content>
-                  <Stack mt="3" gap="3">
-                  <HStack align="start">
-                    <Stack flex="1">
-                      <Text fontSize={APP_TEXT_SIZES.label}>Date of quotation</Text>
-                      <Input
-                        type="date"
-                        value={dateOfQuote}
-                        onChange={(e) => setDateOfQuote(e.target.value)}
-                        {...PANEL_FIELD_PROPS}
-                      />
-                    </Stack>
-                    <Stack flex="1">
-                      <Text fontSize={APP_TEXT_SIZES.label}>Visibility</Text>
-                      <NativeSelectRoot>
-                        <NativeSelectField
-                          value={visibility}
-                          onChange={(e) =>
-                            setVisibility((e.target.value as "private" | "published") || "private")
-                          }
+                    Single Quote
+                  </Tabs.Trigger>
+                  <Tabs.Trigger
+                    value="bulk"
+                    bg={addQuoteMode === "bulk" ? "lilypad.solid" : undefined}
+                    color={addQuoteMode === "bulk" ? "black" : undefined}
+                    borderTopRadius="md"
+                    borderBottomRadius="0"
+                    px="4"
+                    py="2"
+                    fontWeight="medium"
+                    _hover={{ bg: addQuoteMode === "bulk" ? "lilypad.solid" : "transparent" }}
+                    _selected={{ bg: "lilypad.solid", color: "black" }}
+                  >
+                    Bulk Import
+                  </Tabs.Trigger>
+                </Tabs.List>
+                <Tabs.Content value="single" pt="3">
+                  <Stack gap="3" pt="0">
+                    <Textarea
+                      value={body}
+                      onChange={(e) => setBody(e.target.value)}
+                      placeholder={PLACEHOLDER_QUICK_BODY}
+                      minH="120px"
+                      {...PANEL_FIELD_PROPS}
+                    />
+                    <Collapsible.Root
+                      open={isMoreDetailsOpen}
+                      onOpenChange={(details) => setIsMoreDetailsOpen(details.open)}
+                    >
+                      <HStack justify="space-between" align="center">
+                        <Collapsible.Trigger asChild>
+                          <button
+                            type="button"
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "0.5rem",
+                              fontSize: "0.875rem",
+                              fontWeight: 500,
+                              color: "inherit",
+                              cursor: "pointer",
+                              background: "transparent",
+                              border: "none",
+                              padding: 0,
+                              margin: 0,
+                            }}
+                          >
+                            <Text
+                              as="span"
+                              transform={isMoreDetailsOpen ? "rotate(90deg)" : "rotate(0deg)"}
+                              transition="transform 0.15s ease"
+                              lineHeight="1"
+                            >
+                              ›
+                            </Text>
+                            <Text as="span">Optional Details</Text>
+                          </button>
+                        </Collapsible.Trigger>
+                        <PondButton
+                          type="button"
+                          colorPalette="lilypad"
+                          loading={saving}
+                          disabled={saving || body.trim().length === 0}
+                          onClick={() => void onSaveQuote()}
                         >
-                          <option value="private">Private</option>
-                          <option value="published">Published</option>
-                        </NativeSelectField>
-                      </NativeSelectRoot>
-                    </Stack>
-                  </HStack>
-                  <Stack>
+                          Create quote
+                        </PondButton>
+                      </HStack>
+                      <Collapsible.Content>
+                        <Stack mt="3" gap="3">
+                          <HStack align="start">
+                            <Stack flex="1">
+                              <Text fontSize={APP_TEXT_SIZES.label}>Date of quotation</Text>
+                              <Input
+                                type="date"
+                                value={dateOfQuote}
+                                onChange={(e) => setDateOfQuote(e.target.value)}
+                                {...PANEL_FIELD_PROPS}
+                              />
+                            </Stack>
+                            <Stack flex="1">
+                              <Text fontSize={APP_TEXT_SIZES.label}>Visibility</Text>
+                              <NativeSelectRoot>
+                                <NativeSelectField
+                                  value={visibility}
+                                  onChange={(e) =>
+                                    setVisibility((e.target.value as "private" | "published") || "private")
+                                  }
+                                >
+                                  <option value="private">Private</option>
+                                  <option value="published">Published</option>
+                                </NativeSelectField>
+                              </NativeSelectRoot>
+                            </Stack>
+                          </HStack>
+                          <Stack>
                     <Text fontSize={APP_TEXT_SIZES.label}>Tags (comma-separated)</Text>
                     <HStack flexWrap="wrap">
                       {tagSuggestions.map((label) => (
@@ -1199,10 +1275,38 @@ export default function QuotesFeedPage() {
                         ))}
                       </HStack>
                     ) : null}
+                          </Stack>
+                        </Stack>
+                      </Collapsible.Content>
+                    </Collapsible.Root>
                   </Stack>
+                </Tabs.Content>
+                <Tabs.Content value="bulk" pt="3">
+                  <Stack gap="3">
+                    <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                      Continuous non-empty lines are treated as one quote. One or more blank lines split quotes.
+                    </Text>
+                    <Textarea
+                      value={bulkImportText}
+                      onChange={(e) => setBulkImportText(e.target.value)}
+                      placeholder={PLACEHOLDER_BULK_IMPORT}
+                      minH="220px"
+                      {...PANEL_FIELD_PROPS}
+                    />
+                    <HStack justify="flex-end">
+                      <PondButton
+                        type="button"
+                        colorPalette="lilypad"
+                        loading={saving}
+                        disabled={saving || !isApprovedUser || bulkImportText.trim().length === 0}
+                        onClick={() => void onBulkImport()}
+                      >
+                        Import quotes
+                      </PondButton>
+                    </HStack>
                   </Stack>
-                </Collapsible.Content>
-              </Collapsible.Root>
+                </Tabs.Content>
+              </Tabs.Root>
               {error ? (
                 <Text role="alert" color="nautical.solid" fontWeight="medium">
                   {error}
@@ -1213,7 +1317,6 @@ export default function QuotesFeedPage() {
                   {success}
                 </Text>
               ) : null}
-              </Stack>
             </Tabs.Content>
 
             <Tabs.Content value="my" p={{ base: "4", md: "6" }}>

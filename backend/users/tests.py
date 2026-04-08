@@ -171,6 +171,33 @@ class UsersApiTests(TestCase):
         )
         self.assertIn(response.status_code, (401, 403))
 
+    @override_settings(CLOSET_R2_KEY_PREFIX="closet", CLOSET_R2_PUBLIC_BASE_URL="https://cdn.example.test")
+    def test_patch_profile_accepts_avatar_image_key_for_owner_prefix(self):
+        user = User.objects.create_user(email="avatar@example.com", password="secret12345")
+        self.client.force_login(user)
+        key = f"closet/{user.id}/20240202/a.jpg"
+        response = self.client.patch(
+            "/api/v1/users/me/profile/",
+            {"avatar_image_key": key},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["profile"]["avatar_url"], f"https://cdn.example.test/{key}")
+
+    @override_settings(CLOSET_R2_KEY_PREFIX="closet", CLOSET_R2_PUBLIC_BASE_URL="https://cdn.example.test")
+    def test_patch_profile_rejects_avatar_image_key_from_other_user_prefix(self):
+        user = User.objects.create_user(email="avatar2@example.com", password="secret12345")
+        other = User.objects.create_user(email="other@example.com", password="secret12345")
+        self.client.force_login(user)
+        key = f"closet/{other.id}/20240202/b.jpg"
+        response = self.client.patch(
+            "/api/v1/users/me/profile/",
+            {"avatar_image_key": key},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("avatar_image_key", response.json())
+
     def test_approved_check_forbidden_when_pending(self):
         user = User.objects.create_user(email="pend@example.com", password="secret12345")
         self.client.force_login(user)
@@ -269,6 +296,34 @@ class UsersApiTests(TestCase):
         response = self.client.get("/api/v1/quotes/health/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["app"], "quotes")
+
+    def test_quote_bulk_import_requires_approved_user(self):
+        user = User.objects.create_user(email="bulkpending@example.com", password="secret12345")
+        self.client.force_login(user)
+        response = self.client.post(
+            "/api/v1/quotes/bulk-import/",
+            {"text": "One quote"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_quote_bulk_import_splits_on_blank_lines(self):
+        user = User.objects.create_user(email="bulkok@example.com", password="secret12345")
+        user.account_status = User.AccountStatus.APPROVED
+        user.save(update_fields=["account_status"])
+        self.client.force_login(user)
+        response = self.client.post(
+            "/api/v1/quotes/bulk-import/",
+            {"text": "Line 1\nLine 2\n\nSecond quote\n\n\nThird quote"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        self.assertEqual(payload["created_count"], 3)
+        self.assertEqual(len(payload["quotes"]), 3)
+        self.assertEqual(payload["quotes"][0]["body"], "Line 1\nLine 2")
+        self.assertEqual(payload["quotes"][1]["body"], "Second quote")
+        self.assertEqual(payload["quotes"][2]["body"], "Third quote")
 
     def test_whatif_health_reachable_under_api_v1(self):
         response = self.client.get("/api/v1/whatif/health/")

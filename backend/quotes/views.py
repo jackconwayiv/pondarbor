@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.db.models import Prefetch, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -22,6 +23,25 @@ from quotes.serializers import (
 )
 
 User = get_user_model()
+MAX_BULK_IMPORT_CHARS = 200000
+MAX_BULK_IMPORT_QUOTES = 200
+
+
+def _parse_bulk_quote_blocks(raw_text: str) -> list[str]:
+    normalized = raw_text.replace("\r\n", "\n").replace("\r", "\n")
+    rows = normalized.split("\n")
+    blocks: list[str] = []
+    current: list[str] = []
+    for row in rows:
+        if row.strip() == "":
+            if current:
+                blocks.append("\n".join(current).strip())
+                current = []
+            continue
+        current.append(row)
+    if current:
+        blocks.append("\n".join(current).strip())
+    return [block for block in blocks if block]
 
 
 def _quote_list_queryset(base_queryset, *, request):
@@ -57,6 +77,49 @@ def quote_create(request):
         QuoteSerializer(quote, context={"request": request}).data,
         status=HTTP_201_CREATED,
     )
+
+
+@api_view(["POST"])
+@permission_classes([IsApprovedUser])
+@transaction.atomic
+def quote_bulk_import(request):
+    raw_text = request.data.get("text")
+    if raw_text is None:
+        return Response({"detail": "`text` is required."}, status=400)
+    text = str(raw_text)
+    if len(text) > MAX_BULK_IMPORT_CHARS:
+        return Response(
+            {"detail": f"Bulk import text is too large (max {MAX_BULK_IMPORT_CHARS} characters)."},
+            status=400,
+        )
+    blocks = _parse_bulk_quote_blocks(text)
+    if not blocks:
+        return Response({"detail": "No quote content found in the provided text."}, status=400)
+    if len(blocks) > MAX_BULK_IMPORT_QUOTES:
+        return Response(
+            {"detail": f"Too many quotes in one import (max {MAX_BULK_IMPORT_QUOTES})."},
+            status=400,
+        )
+
+    created_quotes = []
+    for idx, block in enumerate(blocks, start=1):
+        payload = {
+            "body": block,
+            "visibility": Quote.Visibility.PRIVATE,
+            "date_of_quote": None,
+        }
+        serializer = QuoteCreateSerializer(data=payload, context={"request": request})
+        if not serializer.is_valid():
+            return Response(
+                {"detail": f"Invalid quote block {idx}.", "block_index": idx, "errors": serializer.errors},
+                status=400,
+            )
+        created_quotes.append(serializer.save())
+
+    for quote in created_quotes:
+        evaluate_quote_achievements_for_user(quote.owner_id)
+    serialized = QuoteSerializer(created_quotes, many=True, context={"request": request}).data
+    return Response({"created_count": len(serialized), "quotes": serialized}, status=HTTP_201_CREATED)
 
 
 @api_view(["GET"])

@@ -2,6 +2,7 @@ from django.urls import path
 
 from quotes.views import (
     health,
+    quote_bulk_import,
     quote_create,
     quote_detail,
     quote_feed,
@@ -15,6 +16,7 @@ urlpatterns = [
     path("", quote_create),
     # My feed (owned + implicitly shared via attribution links)
     path("feed/", quote_feed),
+    path("bulk-import/", quote_bulk_import),
     # Published quotes (friends + own); legacy alias
     path("published/", quote_published),
     path("public/", quote_published),

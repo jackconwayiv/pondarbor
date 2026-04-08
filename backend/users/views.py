@@ -315,7 +315,7 @@ def sync_profile(request):
 def patch_me_profile(request):
     """Update only the authenticated user's profile preferences."""
     profile = get_or_create_profile(request.user)
-    serializer = ProfileUpdateSerializer(data=request.data, partial=True)
+    serializer = ProfileUpdateSerializer(data=request.data, partial=True, context={"request": request})
     serializer.is_valid(raise_exception=True)
     for field, value in serializer.validated_data.items():
         setattr(profile, field, value)

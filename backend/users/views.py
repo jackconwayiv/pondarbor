@@ -257,6 +257,7 @@ def _public_user_summary_response(*, request, user):
 
     nickname = (profile.display_name or "").strip() or user.email.split("@")[0]
     payload = {
+        "id": user.id,
         "nickname": nickname,
         "avatar_url": profile.avatar_url or "",
         "is_friend": bool(is_friend),

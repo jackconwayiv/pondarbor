@@ -262,3 +262,25 @@ LOGGING = {
         },
     },
 }
+
+_sentry_dsn = os.getenv("SENTRY_DSN", "").strip()
+if _sentry_dsn:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+
+    _traces_raw = os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0").strip()
+    try:
+        _sentry_traces_sample_rate = float(_traces_raw) if _traces_raw else 0.0
+    except ValueError:
+        _sentry_traces_sample_rate = 0.0
+
+    sentry_sdk.init(
+        dsn=_sentry_dsn,
+        integrations=[DjangoIntegration()],
+        send_default_pii=False,
+        environment=os.getenv(
+            "SENTRY_ENVIRONMENT",
+            "development" if DEBUG else "production",
+        ),
+        traces_sample_rate=_sentry_traces_sample_rate,
+    )

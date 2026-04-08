@@ -16,6 +16,7 @@ from __future__ import annotations
 from django.contrib.auth import get_user_model
 from django.db import transaction
 
+from closet.models import Item
 from quotes.models import Quote
 
 User = get_user_model()
@@ -25,11 +26,15 @@ SLUG_TOWN_CRIER = "town_crier"
 SLUG_WHATIF_WIZ = "whatif_wiz"
 SLUG_WHATIF_WARRIOR = "whatif_warrior"
 SLUG_PONDCLICKER_TIER_1 = "pondclicker_tier_1_pond"
+SLUG_SHARING_IS_CARING = "sharing_is_caring"
+SLUG_SOMETHING_BORROWED = "something_borrowed"
+SLUG_GOOD_AS_NEW = "good_as_new"
 
 ARCHIVIST_MIN_QUOTES = 10
 TOWN_CRIER_MIN_PUBLIC = 10
 WHATIF_WIZ_MIN_PLAYERS = 3
 WHATIF_WARRIOR_MIN_SESSIONS = 5
+SHARING_IS_CARING_MIN_ITEMS = 5
 
 
 def _try_unlock(user_id: int, slug: str, *, context: dict | None = None) -> bool:
@@ -77,6 +82,20 @@ def evaluate_quote_achievements_for_user(user_id: int) -> None:
     public_active = active.filter(visibility=Quote.Visibility.PUBLISHED)
     if public_active.count() >= TOWN_CRIER_MIN_PUBLIC:
         _try_unlock(user_id, SLUG_TOWN_CRIER)
+
+
+def evaluate_closet_sharing_is_caring_for_user(user_id: int) -> None:
+    active_owned_count = Item.objects.filter(
+        owner_user_id=user_id,
+        deleted_at__isnull=True,
+    ).count()
+    if active_owned_count >= SHARING_IS_CARING_MIN_ITEMS:
+        _try_unlock(user_id, SLUG_SHARING_IS_CARING)
+
+
+def evaluate_closet_return_achievements_for_users(*, owner_user_id: int, borrower_user_id: int) -> None:
+    _try_unlock(owner_user_id, SLUG_GOOD_AS_NEW)
+    _try_unlock(borrower_user_id, SLUG_SOMETHING_BORROWED)
 
 
 def _count_ended_sessions_for_user(user_id: int) -> int:
@@ -152,6 +171,7 @@ def backfill_all_achievements() -> None:
 
     for uid in User.objects.values_list("pk", flat=True):
         evaluate_quote_achievements_for_user(uid)
+        evaluate_closet_sharing_is_caring_for_user(uid)
 
     for row in ClickerGameSave.objects.iterator():
         evaluate_pondclicker_achievements_for_user(row.user_id, row.state or {})

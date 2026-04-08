@@ -1,4 +1,4 @@
-import { Avatar, Box, Heading, HStack, Stack, Tabs, Text } from "@chakra-ui/react";
+import { Avatar, Box, Card, Heading, HStack, Image, Stack, Tabs, Text } from "@chakra-ui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink, Navigate, useParams } from "react-router";
 import NotFoundPage from "../NotFoundPage";
@@ -19,6 +19,8 @@ import { quoteOwnerDisplayLabel } from "../quotes/ownerDisplay";
 import QuoteCardBase from "../quotes/QuoteCardBase";
 import type { Quote } from "../quotes/types";
 import { acceptFriend, ignoreFriend, requestFriendByUserId, unfriend } from "../friends/api";
+import { fetchFriendItemsByOwner } from "../closet/api";
+import type { ClosetItem } from "../closet/types";
 
 const PAGE_SIZE = 10;
 
@@ -60,6 +62,50 @@ function FriendProfileAchievementCard({ achievement: a }: { achievement: Achieve
   );
 }
 
+function FriendProfileClosetItemCard({ item }: { item: ClosetItem }) {
+  const imageUrl = (item.image_url ?? "").trim();
+  if (imageUrl) {
+    return (
+      <Card.Root flexDirection="row" overflow="hidden" alignItems="stretch" {...ENTRY_CARD_PROPS}>
+        <Image
+          src={imageUrl}
+          alt=""
+          aria-hidden
+          flex="0 0 40%"
+          maxW="40%"
+          w="40%"
+          objectFit="cover"
+          alignSelf="stretch"
+          minH="140px"
+          draggable={false}
+        />
+        <Box flex="1" minW={0} p="4">
+          <Stack gap="1">
+            <Text fontWeight="bold">{item.name}</Text>
+            {item.description ? (
+              <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                {item.description}
+              </Text>
+            ) : null}
+          </Stack>
+        </Box>
+      </Card.Root>
+    );
+  }
+  return (
+    <Box {...ENTRY_CARD_PROPS}>
+      <Stack gap="1">
+        <Text fontWeight="bold">{item.name}</Text>
+        {item.description ? (
+          <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+            {item.description}
+          </Text>
+        ) : null}
+      </Stack>
+    </Box>
+  );
+}
+
 export default function FriendProfilePage() {
   const { userId, email } = useParams<{ userId?: string; email?: string }>();
   const { isAuthenticated, isLoading: sessionLoading, sessionUser, getApiAccessToken } = useAppSession();
@@ -80,6 +126,7 @@ export default function FriendProfilePage() {
 
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [achievements, setAchievements] = useState<AchievementSummary[]>([]);
+  const [closetItems, setClosetItems] = useState<ClosetItem[]>([]);
   const [summary, setSummary] = useState<PublicUserSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -89,7 +136,7 @@ export default function FriendProfilePage() {
   const [actionBusy, setActionBusy] = useState(false);
   const [confirmUnfriend, setConfirmUnfriend] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
-  const [profileTab, setProfileTab] = useState<"achievements" | "quotes">("achievements");
+  const [profileTab, setProfileTab] = useState<"achievements" | "quotes" | "closet">("achievements");
   const [reloadKey, setReloadKey] = useState(0);
   const unfriendBoxRef = useRef<HTMLDivElement | null>(null);
   const ownUserId = sessionUser?.user?.id ?? null;
@@ -128,11 +175,17 @@ export default function FriendProfilePage() {
             ? fetchPublicUserSummaryById(lookup.id, accessToken)
             : fetchPublicUserSummaryByEmail(lookup.email, accessToken),
         ]);
+        const closetOwnerId = lookup.kind === "id" ? lookup.id : (summaryData.id ?? null);
+        const closetRows =
+          summaryData.can_view_full_profile && closetOwnerId !== null
+            ? await fetchFriendItemsByOwner(accessToken, closetOwnerId).catch(() => [] as ClosetItem[])
+            : [];
         const sorted = [...quoteData].sort(
           (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
         );
         setQuotes(sorted);
         setAchievements(achData);
+        setClosetItems(closetRows);
         setSummary(summaryData);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Failed to load friend profile";
@@ -179,15 +232,24 @@ export default function FriendProfilePage() {
   const visibleQuotes = quotes.slice(startIndex, endIndex);
   const hasAchievements = achievements.length > 0;
   const hasQuotes = quotes.length > 0;
+  const hasClosetTab = Boolean(summary?.can_view_full_profile);
+  const leftmostVisibleTab = useMemo<"achievements" | "quotes" | "closet" | null>(() => {
+    if (hasAchievements) return "achievements";
+    if (hasQuotes) return "quotes";
+    if (hasClosetTab) return "closet";
+    return null;
+  }, [hasAchievements, hasQuotes, hasClosetTab]);
 
   useEffect(() => {
-    if (profileTab === "achievements" && !hasAchievements) {
-      setProfileTab("quotes");
+    if (!leftmostVisibleTab) return;
+    const tabVisible =
+      (profileTab === "achievements" && hasAchievements) ||
+      (profileTab === "quotes" && hasQuotes) ||
+      (profileTab === "closet" && hasClosetTab);
+    if (!tabVisible) {
+      setProfileTab(leftmostVisibleTab);
     }
-    if (profileTab === "quotes" && !hasQuotes && hasAchievements) {
-      setProfileTab("achievements");
-    }
-  }, [profileTab, hasAchievements, hasQuotes]);
+  }, [profileTab, hasAchievements, hasQuotes, hasClosetTab, leftmostVisibleTab]);
 
   if (sessionLoading) {
     return (
@@ -295,31 +357,17 @@ export default function FriendProfilePage() {
                 </>
               ) : summary ? (
                 <>
-                  <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold" mb="2">
-                    Friend Profile
-                  </Heading>
-                  <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg" mb="4">
-                    Public achievements and published quotes from this friend.
-                  </Text>
-                  <HStack justify="space-between" align="flex-start" w="100%" flexWrap="wrap" gap="3">
-                    <HStack gap="4" align="flex-start">
-                      <Avatar.Root size="md">
-                        <Avatar.Fallback name={summary.nickname} />
-                        <Avatar.Image src={summary.avatar_url || undefined} />
-                      </Avatar.Root>
-                      <Stack gap="0">
-                        <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.body}>
-                          {summary.nickname}
-                        </Text>
-                        {summary.email ? (
-                          <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600">
-                            {summary.email}
-                          </Text>
-                        ) : null}
-                      </Stack>
-                    </HStack>
+                  <HStack justify="space-between" align="flex-start" w="100%" flexWrap="wrap" gap="3" mb="4">
+                    <Stack gap="2" flex="1" minW="0">
+                      <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold">
+                        Friend Profile
+                      </Heading>
+                      <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
+                        Public achievements and published quotes from this friend.
+                      </Text>
+                    </Stack>
                     {lookup.kind === "id" ? (
-                      <Box ref={unfriendBoxRef}>
+                      <Box ref={unfriendBoxRef} flexShrink={0}>
                         <PondButton
                           colorPalette="nautical"
                           onClick={() => {
@@ -350,14 +398,22 @@ export default function FriendProfilePage() {
                       </Box>
                     ) : null}
                   </HStack>
-                  {summary.closet_items_count != null && summary.closet_items_count > 0 ? (
-                    <PondButton asChild mt="3" colorPalette="lilypad">
-                      <RouterLink to="/closet?tab=friends">
-                        {summary.closet_items_count}{" "}
-                        {summary.closet_items_count === 1 ? "Closet Item" : "Closet Items"}
-                      </RouterLink>
-                    </PondButton>
-                  ) : null}
+                  <HStack gap="4" align="flex-start">
+                    <Avatar.Root size="md">
+                      <Avatar.Fallback name={summary.nickname} />
+                      <Avatar.Image src={summary.avatar_url || undefined} />
+                    </Avatar.Root>
+                    <Stack gap="0">
+                      <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.body}>
+                        {summary.nickname}
+                      </Text>
+                      {summary.email ? (
+                        <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600">
+                          {summary.email}
+                        </Text>
+                      ) : null}
+                    </Stack>
+                  </HStack>
                 </>
               ) : null}
             </Box>
@@ -499,7 +555,10 @@ export default function FriendProfilePage() {
               </Box>
             ) : null}
 
-            {!isLoading && !error && summary?.can_view_full_profile && (hasAchievements || hasQuotes) ? (
+            {!isLoading &&
+            !error &&
+            summary?.can_view_full_profile &&
+            (hasAchievements || hasQuotes || hasClosetTab) ? (
               <Box {...ENTRY_CARD_PROPS}>
                 {actionError ? (
                   <Text role="alert" color="nautical.solid" fontWeight="medium" fontSize={APP_TEXT_SIZES.helper} mb="2">
@@ -508,7 +567,9 @@ export default function FriendProfilePage() {
                 ) : null}
                 <Tabs.Root
                   value={profileTab}
-                  onValueChange={(details) => setProfileTab(details.value as "achievements" | "quotes")}
+                  onValueChange={(details) =>
+                    setProfileTab(details.value as "achievements" | "quotes" | "closet")
+                  }
                   variant="plain"
                 >
                   <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" w="100%">
@@ -548,6 +609,24 @@ export default function FriendProfilePage() {
                         Quotes
                       </Tabs.Trigger>
                     ) : null}
+                    {hasClosetTab ? (
+                      <Tabs.Trigger
+                        value="closet"
+                        bg={profileTab === "closet" ? "lilypad.solid" : undefined}
+                        color={profileTab === "closet" ? "black" : undefined}
+                        borderTopRadius="md"
+                        borderBottomRadius="0"
+                        px="4"
+                        py="2"
+                        fontWeight="medium"
+                        _hover={{
+                          bg: profileTab === "closet" ? "lilypad.solid" : "transparent",
+                        }}
+                        _selected={{ bg: "lilypad.solid", color: "black" }}
+                      >
+                        Closet Items
+                      </Tabs.Trigger>
+                    ) : null}
                   </Tabs.List>
                   {hasAchievements ? (
                     <Tabs.Content value="achievements" pt="3">
@@ -569,15 +648,25 @@ export default function FriendProfilePage() {
                       </Stack>
                     </Tabs.Content>
                   ) : null}
+                  {hasClosetTab ? (
+                    <Tabs.Content value="closet" pt="3">
+                      <Stack gap="3">
+                        {closetItems.length === 0 ? (
+                          <Text fontSize={APP_TEXT_SIZES.helper}>No closet items listed yet.</Text>
+                        ) : null}
+                        {closetItems.map((item) => (
+                          <RouterLink
+                            key={`friend-closet-${item.id}`}
+                            to="/closet?tab=friends"
+                            style={{ textDecoration: "none", color: "inherit" }}
+                          >
+                            <FriendProfileClosetItemCard item={item} />
+                          </RouterLink>
+                        ))}
+                      </Stack>
+                    </Tabs.Content>
+                  ) : null}
                 </Tabs.Root>
-              </Box>
-            ) : null}
-
-            {!isLoading && !error && summary?.can_view_full_profile && !hasAchievements && !hasQuotes ? (
-              <Box {...ENTRY_CARD_PROPS}>
-                <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
-                  No visible profile content.
-                </Text>
               </Box>
             ) : null}
           </Stack>

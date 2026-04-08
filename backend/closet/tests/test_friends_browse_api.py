@@ -1,4 +1,5 @@
 from django.test import TestCase
+from django.utils import timezone
 
 from closet.constants import FRIENDS_ITEMS_CATEGORY_OTHER
 from closet.tests.helpers import ClosetTestMixin
@@ -165,4 +166,33 @@ class ClosetFriendsBrowseApiTests(ClosetTestMixin, TestCase):
         resp = self.borrower_client.get("/api/v1/closet/items/friends/?sort=not_a_real_sort")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(resp.json()["results"]), 1)
+
+    def test_friend_owner_items_endpoint_allows_friend(self):
+        owned = self.make_item(owner=self.owner, holder=self.owner, name="Owner-only list item")
+        other_owned = self.make_item(owner=self.friend_two, holder=self.friend_two, name="Different friend")
+        resp = self.borrower_client.get(f"/api/v1/closet/items/friends/{self.owner.id}/")
+        self.assertEqual(resp.status_code, 200)
+        ids = {row["id"] for row in resp.json()}
+        self.assertIn(owned.id, ids)
+        self.assertNotIn(other_owned.id, ids)
+
+    def test_friend_owner_items_endpoint_denies_non_friend(self):
+        self.clear_friendship(self.owner, self.borrower)
+        self.make_item(owner=self.owner, holder=self.owner, name="Private friend item")
+        resp = self.borrower_client.get(f"/api/v1/closet/items/friends/{self.owner.id}/")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_friend_owner_items_endpoint_rejects_self_lookup(self):
+        self.make_item(owner=self.borrower, holder=self.borrower, name="Mine")
+        resp = self.borrower_client.get(f"/api/v1/closet/items/friends/{self.borrower.id}/")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_friend_owner_items_endpoint_excludes_soft_deleted(self):
+        hidden = self.make_item(owner=self.owner, holder=self.owner, name="Hidden in profile")
+        hidden.deleted_at = timezone.now()
+        hidden.save(update_fields=["deleted_at", "updated_at"])
+        resp = self.borrower_client.get(f"/api/v1/closet/items/friends/{self.owner.id}/")
+        self.assertEqual(resp.status_code, 200)
+        ids = {row["id"] for row in resp.json()}
+        self.assertNotIn(hidden.id, ids)
 

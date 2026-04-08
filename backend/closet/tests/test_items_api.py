@@ -2,8 +2,10 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 from unittest.mock import patch
 
+from achievements.models import AchievementDefinition, UserAchievement
 from closet.models import Item
 from closet.tests.helpers import ClosetTestMixin
+from achievements.services import SLUG_SHARING_IS_CARING
 
 
 class ClosetItemsApiTests(ClosetTestMixin, TestCase):
@@ -11,6 +13,15 @@ class ClosetItemsApiTests(ClosetTestMixin, TestCase):
         self.create_users()
         self.make_friends(self.owner, self.borrower)
         self.make_friends(self.owner, self.friend_two)
+        AchievementDefinition.objects.get_or_create(
+            slug=SLUG_SHARING_IS_CARING,
+            defaults={
+                "title": "Sharing is Caring",
+                "description": "",
+                "category": "closet",
+                "order": 60,
+            },
+        )
 
     def test_create_item_sets_owner_as_current_holder(self):
         resp = self.owner_client.post(
@@ -112,6 +123,31 @@ class ClosetItemsApiTests(ClosetTestMixin, TestCase):
         self.assertEqual(resp.status_code, 204)
         item.refresh_from_db()
         self.assertIsNotNone(item.deleted_at)
+
+    def test_sharing_is_caring_unlocks_at_five_active_owned_items(self):
+        for idx in range(4):
+            self.owner_client.post(
+                "/api/v1/closet/items/",
+                {"name": f"Item {idx}"},
+                format="json",
+            )
+        self.assertFalse(
+            UserAchievement.objects.filter(
+                user=self.owner,
+                achievement__slug=SLUG_SHARING_IS_CARING,
+            ).exists()
+        )
+        self.owner_client.post(
+            "/api/v1/closet/items/",
+            {"name": "Item 5"},
+            format="json",
+        )
+        self.assertTrue(
+            UserAchievement.objects.filter(
+                user=self.owner,
+                achievement__slug=SLUG_SHARING_IS_CARING,
+            ).exists()
+        )
 
     def test_soft_deleted_item_hidden_from_mine_and_friends(self):
         item = self.make_item(owner=self.owner, holder=self.owner, name="Hidden")

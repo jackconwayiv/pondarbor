@@ -17,6 +17,14 @@ import {
 
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+const ENTRY_CARD_PROPS = {
+  bg: "white",
+  borderWidth: "1px",
+  borderColor: "border",
+  borderRadius: "xl",
+  p: { base: "4", md: "4" },
+} as const;
+
 export default function FriendsPage() {
   const { isAuthenticated, isLoading, sessionUser, getApiAccessToken } = useAppSession();
   const [incoming, setIncoming] = useState<FriendUser[]>([]);
@@ -79,90 +87,205 @@ export default function FriendsPage() {
 
   const canSubmitRequest = useMemo(() => EMAIL_SHAPE.test(requestEmail.trim()), [requestEmail]);
 
-  if (isLoading) return <Text>Loading…</Text>;
+  if (isLoading) {
+    return (
+      <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
+        <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
+          <Box
+            maxW="4xl"
+            w="100%"
+            mx="auto"
+            bg="gray.100"
+            borderWidth="1px"
+            borderColor="border"
+            borderRadius="xl"
+            overflow="hidden"
+          >
+            <Stack gap={{ base: "4", md: "4" }} p={{ base: "4", md: "6" }}>
+              <Box {...ENTRY_CARD_PROPS}>
+                <Text fontSize={APP_TEXT_SIZES.body} color="fg">
+                  Loading…
+                </Text>
+              </Box>
+            </Stack>
+          </Box>
+        </Box>
+      </Stack>
+    );
+  }
   if (!isAuthenticated) return <Navigate to="/" replace />;
   if (!sessionUser?.user?.is_approved) return <Navigate to="/" replace />;
 
   return (
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
       <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
-        <Stack gap="4" maxW="3xl">
-          <Box bg="bg" borderRadius="xl" borderWidth="1px" borderColor="border" p="4">
-            <Stack gap="2">
-              <Text fontWeight="semibold">Request Friend</Text>
-              <HStack align="start">
-                <Stack flex="1">
-                  <Input
-                    value={requestEmail}
-                    onChange={(e) => setRequestEmail(e.target.value)}
-                    placeholder="friend@example.com"
-                    list="friend-request-email-suggestions"
-                    {...FIELD_PLACEHOLDER_PROPS}
-                  />
-                  <datalist id="friend-request-email-suggestions">
-                    {searchResults.map((row) => (
-                      <option key={`request-suggest-${row.id}`} value={row.email}>
-                        {row.nickname}
-                      </option>
-                    ))}
-                  </datalist>
-                </Stack>
-                <PondButton
-                  colorPalette="lilypad"
-                  disabled={!canSubmitRequest || loading}
-                  onClick={() => {
-                    void (async () => {
-                      setRequestError(null);
-                      setRequestSuccess(null);
-                      try {
-                        const token = await getApiAccessToken();
-                        await requestFriendByEmail(token, requestEmail.trim().toLowerCase());
-                        setRequestEmail("");
-                        setRequestSuccess("Friend request sent.");
-                        await loadList();
-                      } catch (err: unknown) {
-                        setRequestError(
-                          err instanceof Error ? err.message : "Friend request failed.",
-                        );
-                      }
-                    })();
-                  }}
-                >
-                  Request Friend
-                </PondButton>
-              </HStack>
-              {requestError ? (
-                <Text role="alert" color="nautical.solid" fontWeight="medium">
-                  {requestError}
-                </Text>
-              ) : null}
-              {requestSuccess ? <Text>{requestSuccess}</Text> : null}
-            </Stack>
-          </Box>
+        <Box
+          maxW="4xl"
+          w="100%"
+          mx="auto"
+          bg="gray.100"
+          borderWidth="1px"
+          borderColor="border"
+          borderRadius="xl"
+          overflow="hidden"
+        >
+          <Stack gap={{ base: "4", md: "4" }} p={{ base: "4", md: "6" }}>
+            <Box {...ENTRY_CARD_PROPS}>
+              <Stack gap="2">
+                <Text fontWeight="semibold">Request Friend</Text>
+                <HStack align="start">
+                  <Stack flex="1">
+                    <Input
+                      value={requestEmail}
+                      onChange={(e) => setRequestEmail(e.target.value)}
+                      placeholder="friend@example.com"
+                      list="friend-request-email-suggestions"
+                      {...FIELD_PLACEHOLDER_PROPS}
+                    />
+                    <datalist id="friend-request-email-suggestions">
+                      {searchResults.map((row) => (
+                        <option key={`request-suggest-${row.id}`} value={row.email}>
+                          {row.nickname}
+                        </option>
+                      ))}
+                    </datalist>
+                  </Stack>
+                  <PondButton
+                    colorPalette="lilypad"
+                    disabled={!canSubmitRequest || loading}
+                    onClick={() => {
+                      void (async () => {
+                        setRequestError(null);
+                        setRequestSuccess(null);
+                        try {
+                          const token = await getApiAccessToken();
+                          await requestFriendByEmail(token, requestEmail.trim().toLowerCase());
+                          setRequestEmail("");
+                          setRequestSuccess("Friend request sent.");
+                          await loadList();
+                        } catch (err: unknown) {
+                          setRequestError(
+                            err instanceof Error ? err.message : "Friend request failed.",
+                          );
+                        }
+                      })();
+                    }}
+                  >
+                    Request Friend
+                  </PondButton>
+                </HStack>
+                {requestError ? (
+                  <Text role="alert" color="nautical.solid" fontWeight="medium">
+                    {requestError}
+                  </Text>
+                ) : null}
+                {requestSuccess ? (
+                  <Text
+                    role="status"
+                    color="lilypad.solid"
+                    fontSize={APP_TEXT_SIZES.helper}
+                    fontWeight="medium"
+                  >
+                    {requestSuccess}
+                  </Text>
+                ) : null}
+              </Stack>
+            </Box>
 
-          {pageError ? (
-            <Text role="alert" color="nautical.solid" fontWeight="medium">
-              {pageError}
-            </Text>
-          ) : null}
-          {loading ? <Text>Loading…</Text> : null}
+            {pageError ? (
+              <Text role="alert" color="nautical.solid" fontWeight="medium">
+                {pageError}
+              </Text>
+            ) : null}
+            {loading ? (
+              <Text fontSize={APP_TEXT_SIZES.body} fontWeight="medium">
+                Loading…
+              </Text>
+            ) : null}
 
-          {incoming.length > 0 || outgoing.length > 0 ? (
-            <Box
-              bg="gray.100"
-              borderRadius="xl"
-              borderWidth="1px"
-              borderStyle="dashed"
-              borderColor="border"
-              p="4"
-            >
-              <Stack gap="3">
-                <Text fontWeight="bold" color="orange.solid">
-                  Pending Requests
-                </Text>
-                {incoming.map((row) => (
-                  <HStack key={`incoming-${row.id}`} justify="space-between">
+            {incoming.length > 0 || outgoing.length > 0 ? (
+              <Box
+                bg="white"
+                borderRadius="xl"
+                borderWidth="1px"
+                borderStyle="dashed"
+                borderColor="border"
+                p="4"
+              >
+                <Stack gap="3">
+                  <Text fontWeight="bold" color="orange.solid">
+                    Pending Requests
+                  </Text>
+                  {incoming.map((row) => (
+                    <HStack key={`incoming-${row.id}`} justify="space-between">
+                      <Link
+                        to={`/friend/${row.id}`}
+                        style={{ textDecoration: "none", color: "inherit" }}
+                      >
+                        <HStack>
+                          <Avatar.Root size="sm">
+                            <Avatar.Fallback name={row.nickname} />
+                            <Avatar.Image src={row.avatar_url || undefined} />
+                          </Avatar.Root>
+                          <Stack gap="0">
+                            <Text>{row.nickname}</Text>
+                            <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                              {row.email}
+                            </Text>
+                          </Stack>
+                        </HStack>
+                      </Link>
+                      <HStack>
+                        <PondButton
+                          size="sm"
+                          colorPalette="lilypad"
+                          loading={actionUserId === row.id}
+                          onClick={() => {
+                            void (async () => {
+                              setActionUserId(row.id);
+                              setPageError(null);
+                              try {
+                                const token = await getApiAccessToken();
+                                await acceptFriend(token, row.id);
+                                await loadList();
+                              } catch (err: unknown) {
+                                setPageError(err instanceof Error ? err.message : "Could not accept.");
+                              } finally {
+                                setActionUserId(null);
+                              }
+                            })();
+                          }}
+                        >
+                          Accept
+                        </PondButton>
+                        <PondButton
+                          size="sm"
+                          colorPalette="nautical"
+                          loading={actionUserId === row.id}
+                          onClick={() => {
+                            void (async () => {
+                              setActionUserId(row.id);
+                              setPageError(null);
+                              try {
+                                const token = await getApiAccessToken();
+                                await ignoreFriend(token, row.id);
+                                await loadList();
+                              } catch (err: unknown) {
+                                setPageError(err instanceof Error ? err.message : "Could not ignore.");
+                              } finally {
+                                setActionUserId(null);
+                              }
+                            })();
+                          }}
+                        >
+                          Ignore
+                        </PondButton>
+                      </HStack>
+                    </HStack>
+                  ))}
+                  {outgoing.map((row) => (
                     <Link
+                      key={`outgoing-${row.id}`}
                       to={`/friend/${row.id}`}
                       style={{ textDecoration: "none", color: "inherit" }}
                     >
@@ -172,64 +295,31 @@ export default function FriendsPage() {
                           <Avatar.Image src={row.avatar_url || undefined} />
                         </Avatar.Root>
                         <Stack gap="0">
-                          <Text>{row.nickname}</Text>
-                          <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                          <Text color="gray.400" fontStyle="italic">
+                            {row.nickname}
+                          </Text>
+                          <Text
+                            fontSize={APP_TEXT_SIZES.helper}
+                            color="gray.400"
+                            fontStyle="italic"
+                          >
                             {row.email}
                           </Text>
                         </Stack>
                       </HStack>
                     </Link>
-                    <HStack>
-                      <PondButton
-                        size="sm"
-                        colorPalette="lilypad"
-                        loading={actionUserId === row.id}
-                        onClick={() => {
-                          void (async () => {
-                            setActionUserId(row.id);
-                            setPageError(null);
-                            try {
-                              const token = await getApiAccessToken();
-                              await acceptFriend(token, row.id);
-                              await loadList();
-                            } catch (err: unknown) {
-                              setPageError(err instanceof Error ? err.message : "Could not accept.");
-                            } finally {
-                              setActionUserId(null);
-                            }
-                          })();
-                        }}
-                      >
-                        Accept
-                      </PondButton>
-                      <PondButton
-                        size="sm"
-                        colorPalette="nautical"
-                        loading={actionUserId === row.id}
-                        onClick={() => {
-                          void (async () => {
-                            setActionUserId(row.id);
-                            setPageError(null);
-                            try {
-                              const token = await getApiAccessToken();
-                              await ignoreFriend(token, row.id);
-                              await loadList();
-                            } catch (err: unknown) {
-                              setPageError(err instanceof Error ? err.message : "Could not ignore.");
-                            } finally {
-                              setActionUserId(null);
-                            }
-                          })();
-                        }}
-                      >
-                        Ignore
-                      </PondButton>
-                    </HStack>
-                  </HStack>
-                ))}
-                {outgoing.map((row) => (
+                  ))}
+                </Stack>
+              </Box>
+            ) : null}
+
+            <Box {...ENTRY_CARD_PROPS}>
+              <Stack gap="3">
+                <Text fontWeight="bold">Friends</Text>
+                {approved.length === 0 ? <Text>No approved friends yet.</Text> : null}
+                {approved.map((row) => (
                   <Link
-                    key={`outgoing-${row.id}`}
+                    key={`friend-${row.id}`}
                     to={`/friend/${row.id}`}
                     style={{ textDecoration: "none", color: "inherit" }}
                   >
@@ -239,14 +329,8 @@ export default function FriendsPage() {
                         <Avatar.Image src={row.avatar_url || undefined} />
                       </Avatar.Root>
                       <Stack gap="0">
-                        <Text color="gray.400" fontStyle="italic">
-                          {row.nickname}
-                        </Text>
-                        <Text
-                          fontSize={APP_TEXT_SIZES.helper}
-                          color="gray.400"
-                          fontStyle="italic"
-                        >
+                        <Text>{row.nickname}</Text>
+                        <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
                           {row.email}
                         </Text>
                       </Stack>
@@ -255,35 +339,8 @@ export default function FriendsPage() {
                 ))}
               </Stack>
             </Box>
-          ) : null}
-
-          <Box bg="bg" borderRadius="xl" borderWidth="1px" borderColor="border" p="4">
-            <Stack gap="3">
-              <Text fontWeight="bold">Friends</Text>
-              {approved.length === 0 ? <Text>No approved friends yet.</Text> : null}
-              {approved.map((row) => (
-                <Link
-                  key={`friend-${row.id}`}
-                  to={`/friend/${row.id}`}
-                  style={{ textDecoration: "none", color: "inherit" }}
-                >
-                  <HStack>
-                    <Avatar.Root size="sm">
-                      <Avatar.Fallback name={row.nickname} />
-                      <Avatar.Image src={row.avatar_url || undefined} />
-                    </Avatar.Root>
-                    <Stack gap="0">
-                      <Text>{row.nickname}</Text>
-                      <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-                        {row.email}
-                      </Text>
-                    </Stack>
-                  </HStack>
-                </Link>
-              ))}
-            </Stack>
-          </Box>
-        </Stack>
+          </Stack>
+        </Box>
       </Box>
     </Stack>
   );

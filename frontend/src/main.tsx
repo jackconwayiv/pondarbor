@@ -1,3 +1,4 @@
+import "./instrument";
 import { Auth0Provider } from "@auth0/auth0-react";
 import { ChakraProvider } from "@chakra-ui/react";
 import { system } from "./theme/system";

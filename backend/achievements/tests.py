@@ -9,10 +9,15 @@ from achievements.models import AchievementDefinition, UserAchievement
 from friends.models import FriendRequest
 from achievements.services import (
     SLUG_ARCHIVIST,
+    SLUG_GOOD_AS_NEW,
     SLUG_PONDCLICKER_TIER_1,
+    SLUG_SHARING_IS_CARING,
+    SLUG_SOMETHING_BORROWED,
     SLUG_TOWN_CRIER,
     SLUG_WHATIF_WARRIOR,
     SLUG_WHATIF_WIZ,
+    evaluate_closet_return_achievements_for_users,
+    evaluate_closet_sharing_is_caring_for_user,
     evaluate_after_whatif_session_ended,
     evaluate_pondclicker_achievements_for_user,
     evaluate_quote_achievements_for_user,
@@ -20,6 +25,7 @@ from achievements.services import (
 )
 from quotes.models import Quote
 from whatif.models import WhatIfGameResult, WhatIfPlayer, WhatIfSession
+from closet.models import Item
 
 User = get_user_model()
 
@@ -161,6 +167,66 @@ class PondClickerAchievementTests(TestCase):
         evaluate_pondclicker_achievements_for_user(user.id, state_ok)
         self.assertTrue(
             UserAchievement.objects.filter(user=user, achievement__slug=SLUG_PONDCLICKER_TIER_1).exists()
+        )
+
+
+class ClosetAchievementServiceTests(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(email="closet-owner@example.com", password="secret12345")
+        self.borrower = User.objects.create_user(email="closet-borrower@example.com", password="secret12345")
+        AchievementDefinition.objects.get_or_create(
+            slug=SLUG_SHARING_IS_CARING,
+            defaults={
+                "title": "Sharing is Caring",
+                "description": "",
+                "category": "closet",
+                "order": 60,
+            },
+        )
+        AchievementDefinition.objects.get_or_create(
+            slug=SLUG_SOMETHING_BORROWED,
+            defaults={
+                "title": "Something Borrowed",
+                "description": "",
+                "category": "closet",
+                "order": 70,
+            },
+        )
+        AchievementDefinition.objects.get_or_create(
+            slug=SLUG_GOOD_AS_NEW,
+            defaults={
+                "title": "Good as New",
+                "description": "",
+                "category": "closet",
+                "order": 80,
+            },
+        )
+
+    def test_sharing_is_caring_requires_five_active_owned_items(self):
+        for idx in range(5):
+            Item.objects.create(
+                owner_user=self.owner,
+                current_holder_user=self.owner,
+                name=f"Closet {idx}",
+            )
+        evaluate_closet_sharing_is_caring_for_user(self.owner.id)
+        self.assertTrue(
+            UserAchievement.objects.filter(user=self.owner, achievement__slug=SLUG_SHARING_IS_CARING).exists()
+        )
+
+    def test_return_achievements_unlock_owner_and_borrower(self):
+        evaluate_closet_return_achievements_for_users(
+            owner_user_id=self.owner.id,
+            borrower_user_id=self.borrower.id,
+        )
+        self.assertTrue(
+            UserAchievement.objects.filter(user=self.owner, achievement__slug=SLUG_GOOD_AS_NEW).exists()
+        )
+        self.assertTrue(
+            UserAchievement.objects.filter(
+                user=self.borrower,
+                achievement__slug=SLUG_SOMETHING_BORROWED,
+            ).exists()
         )
 
 

@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/react";
 import { createBrowserRouter, Navigate } from "react-router";
 import App from "./App";
 import AppLayout from "./layout";
@@ -31,7 +32,11 @@ import QffDmQuestsPage from "./qff/QffDmQuestsPage";
 import ClosetPage from "./closet/ClosetPage";
 import AboutPage from "./AboutPage";
 
-export const router = createBrowserRouter([
+const sentryCreateBrowserRouter = Sentry.wrapCreateBrowserRouterV7(
+  createBrowserRouter,
+);
+
+export const router = sentryCreateBrowserRouter([
   {
     path: "/",
     element: <AppLayout />,

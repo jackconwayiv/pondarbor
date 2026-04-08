@@ -1,6 +1,8 @@
 from django.test import TestCase
 from django.utils import timezone
 
+from achievements.models import AchievementDefinition, UserAchievement
+from achievements.services import SLUG_GOOD_AS_NEW, SLUG_SOMETHING_BORROWED
 from closet.models import BorrowRequest, Loan
 from closet.tests.helpers import ClosetTestMixin
 
@@ -12,6 +14,14 @@ class ClosetLoansAndReturnsApiTests(ClosetTestMixin, TestCase):
         self.make_friends(self.owner, self.friend_two)
         self.item = self.make_item(owner=self.owner, holder=self.borrower, name="Sleeping Bag")
         self.loan = self.make_active_loan(item=self.item, owner=self.owner, borrower=self.borrower)
+        AchievementDefinition.objects.get_or_create(
+            slug=SLUG_GOOD_AS_NEW,
+            defaults={"title": "Good as New", "description": "", "category": "closet", "order": 80},
+        )
+        AchievementDefinition.objects.get_or_create(
+            slug=SLUG_SOMETHING_BORROWED,
+            defaults={"title": "Something Borrowed", "description": "", "category": "closet", "order": 70},
+        )
 
     def test_borrower_mark_returned_sets_timestamp_only(self):
         resp = self.borrower_client.post(
@@ -42,6 +52,19 @@ class ClosetLoansAndReturnsApiTests(ClosetTestMixin, TestCase):
         self.assertIsNotNone(self.loan.marked_returned_by_owner_at)
         self.assertIsNotNone(self.loan.returned_at)
         self.assertEqual(self.item.current_holder_user_id, self.owner.id)
+
+    def test_owner_mark_returned_unlocks_owner_and_borrower_closet_achievements(self):
+        resp = self.owner_client.post(f"/api/v1/closet/loans/{self.loan.id}/mark-returned/", format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(
+            UserAchievement.objects.filter(user=self.owner, achievement__slug=SLUG_GOOD_AS_NEW).exists()
+        )
+        self.assertTrue(
+            UserAchievement.objects.filter(
+                user=self.borrower,
+                achievement__slug=SLUG_SOMETHING_BORROWED,
+            ).exists()
+        )
 
     def test_owner_mark_returned_rejects_non_active_loans(self):
         self.loan.status = Loan.Status.RETURNED

@@ -13,3 +13,4 @@ PyJWT
 cryptography
 requests
 boto3
+sentry-sdk[django]

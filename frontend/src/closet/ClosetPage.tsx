@@ -1,4 +1,5 @@
 import {
+  Avatar,
   Box,
   Card,
   HStack,
@@ -10,11 +11,12 @@ import {
   Spinner,
   Stack,
   Tabs,
+  Tag,
   Text,
   Textarea,
 } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Navigate, useSearchParams } from "react-router";
+import { Link as RouterLink, Navigate, useSearchParams } from "react-router";
 import {
   validateClosetCategory,
   validateClosetFreeText,
@@ -25,7 +27,7 @@ import {
 import PondButton from "../PondButton";
 import { useAppSession } from "../auth/AppSessionContext";
 import { fetchFriendsList } from "../friends/api";
-import { fullBleedStackProps } from "../responsive";
+import { fullBleedStackProps, useIsMobile } from "../responsive";
 import { APP_TEXT_SIZES, PANEL_FORM_PLACEHOLDER_PROPS } from "../theme/typography";
 import {
   acceptCustody,
@@ -652,14 +654,47 @@ function ItemCard({
             onValueChange={(details) => {
               onModeChange(details.value === "custody" ? "custody" : "edit");
             }}
-            variant="line"
+            variant="plain"
             onClick={(event) => event.stopPropagation()}
           >
-            <Tabs.List gap="2" borderBottomWidth="1px" borderColor="border" pb="1">
-              <Tabs.Trigger value="details" px="3" py="1.5" fontWeight="medium">
+            <Tabs.List
+              borderBottomWidth="1px"
+              borderColor="border"
+              gap="1"
+              w="100%"
+              pt="0"
+              pb="0"
+            >
+              <Tabs.Trigger
+                value="details"
+                bg={itemCardTabValue === "details" ? "lilypad.solid" : undefined}
+                color={itemCardTabValue === "details" ? "black" : undefined}
+                borderTopRadius="md"
+                borderBottomRadius="0"
+                px="4"
+                py="2"
+                fontWeight="medium"
+                _hover={{
+                  bg: itemCardTabValue === "details" ? "lilypad.solid" : "transparent",
+                }}
+                _selected={{ bg: "lilypad.solid", color: "black" }}
+              >
                 Details
               </Tabs.Trigger>
-              <Tabs.Trigger value="custody" px="3" py="1.5" fontWeight="medium">
+              <Tabs.Trigger
+                value="custody"
+                bg={itemCardTabValue === "custody" ? "lilypad.solid" : undefined}
+                color={itemCardTabValue === "custody" ? "black" : undefined}
+                borderTopRadius="md"
+                borderBottomRadius="0"
+                px="4"
+                py="2"
+                fontWeight="medium"
+                _hover={{
+                  bg: itemCardTabValue === "custody" ? "lilypad.solid" : "transparent",
+                }}
+                _selected={{ bg: "lilypad.solid", color: "black" }}
+              >
                 Custody
               </Tabs.Trigger>
             </Tabs.List>
@@ -1171,6 +1206,7 @@ export default function ClosetPage() {
     refreshSession,
     error: sessionError,
   } = useAppSession();
+  const isMobile = useIsMobile();
   const [myItems, setMyItems] = useState<{
     declined_by_me: ClosetItem[];
     borrowed_by_me: ClosetItem[];
@@ -2504,7 +2540,6 @@ export default function ClosetPage() {
                   const isCurrentlyBorrowedByMe =
                     sameClosetUserId(item.current_holder_user.id, meId) &&
                     !sameClosetUserId(item.owner_user.id, meId);
-                  const friendCategoryTagsLine = formatCategoryTagsSummaryLine(item);
                   const friendCategoryTrimmed = (item.category ?? "").trim();
                   const friendTagParts = item.tags.map((t) => t.trim()).filter(Boolean);
                   const friendImageUrl = (item.image_url ?? "").trim();
@@ -2512,79 +2547,179 @@ export default function ClosetPage() {
                   const friendOpenToggle = () =>
                     setExpandedFriendItemId((current) => (current === item.id ? null : item.id));
 
+                  const hasFriendCategoryOrTags =
+                    Boolean(friendCategoryTrimmed) || friendTagParts.length > 0;
+                  const friendTagsOnlyInner = (
+                    <>
+                      {friendTagParts.map((tag) => (
+                        <Tag.Root
+                          key={`friend-meta-${item.id}-${tag}`}
+                          size="sm"
+                          bg="gray.100"
+                          color="gray.600"
+                          borderWidth="0"
+                        >
+                          <Tag.Label>{tag}</Tag.Label>
+                        </Tag.Root>
+                      ))}
+                    </>
+                  );
+                  const friendCategoryText = friendCategoryTrimmed ? (
+                    <Text fontWeight="bold" color="sky.solid" fontSize={APP_TEXT_SIZES.body}>
+                      {friendCategoryTrimmed}
+                    </Text>
+                  ) : null;
+                  /** Desktop: category only in the title row; tags live under Details. */
+                  const friendTitleMetaRight =
+                    !isMobile && friendCategoryTrimmed ? (
+                      <HStack
+                        flexWrap="wrap"
+                        gap="2"
+                        justify="flex-end"
+                        alignItems="flex-start"
+                        flexShrink={0}
+                        maxW={{ base: "100%", md: "55%" }}
+                      >
+                        {friendCategoryText}
+                      </HStack>
+                    ) : null;
+
                   const friendStack = (
                     <Stack gap="2">
-                      <HStack justify="space-between" align="start">
-                        <HStack gap="1">
-                          {sameClosetUserId(item.pending_custody_user?.id, meId) ? (
-                            <Text fontWeight="bold" color="sky.solid">
-                              CUSTODY OFFERED:
+                      <HStack
+                        justify="space-between"
+                        align="flex-start"
+                        gap="3"
+                        flexWrap="wrap"
+                        w="100%"
+                      >
+                        <Stack gap="1" flex="1" minW="0" align="flex-start">
+                          <HStack gap="1" flexWrap="wrap" align="flex-start">
+                            {sameClosetUserId(item.pending_custody_user?.id, meId) ? (
+                              <Text fontWeight="bold" color="sky.solid">
+                                CUSTODY OFFERED:
+                              </Text>
+                            ) : null}
+                            {item.my_pending_request ? (
+                              <Text fontWeight="bold" color="lilypad.solid">
+                                REQUESTED:
+                              </Text>
+                            ) : null}
+                            <Text fontWeight="bold">{item.name}</Text>
+                          </HStack>
+                          {item.my_pending_request ? null : item.pending_request_count > 0 ? (
+                            <Text fontSize={APP_TEXT_SIZES.helper}>
+                              {item.pending_request_count} outstanding{" "}
+                              {item.pending_request_count === 1 ? "request" : "requests"}
                             </Text>
                           ) : null}
-                          {item.my_pending_request ? (
-                            <Text fontWeight="bold" color="lilypad.solid">
-                              REQUESTED:
-                            </Text>
-                          ) : null}
-                          <Text fontWeight="bold">{item.name}</Text>
-                        </HStack>
-                        {item.my_pending_request ? null : item.pending_request_count > 0 ? (
-                          <Text fontSize={APP_TEXT_SIZES.helper}>
-                            {item.pending_request_count} outstanding{" "}
-                            {item.pending_request_count === 1 ? "request" : "requests"}
-                          </Text>
-                        ) : null}
+                        </Stack>
+                        {friendTitleMetaRight}
                       </HStack>
-                      <Text fontSize={APP_TEXT_SIZES.helper}>
-                        Owner: {displayName(item.owner_user)}
-                        {item.current_holder_user.id !== item.owner_user.id
-                          ? ` | Holding: ${displayName(item.current_holder_user)}`
-                          : ""}
-                      </Text>
-                      {item.description ? <Text>{item.description}</Text> : null}
-                      {expandedFriendItemId !== item.id && friendCategoryTagsLine ? (
-                        <Text fontSize={APP_TEXT_SIZES.helper}>{friendCategoryTagsLine}</Text>
+                      {item.current_holder_user.id !== item.owner_user.id ? (
+                        <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                          Holding: {displayName(item.current_holder_user)}
+                        </Text>
                       ) : null}
+                      {item.description ? <Text>{item.description}</Text> : null}
                       {expandedFriendItemId === item.id ? (
                         <Tabs.Root
                           value={friendItemSubTab}
                           onValueChange={(d) => {
                             setFriendItemSubTab(d.value === "request" ? "request" : "details");
                           }}
-                          variant="line"
+                          variant="plain"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <Tabs.List gap="2" borderBottomWidth="1px" borderColor="border" pb="1">
-                            <Tabs.Trigger value="details" px="3" py="1.5" fontWeight="medium">
+                          <Tabs.List
+                            borderBottomWidth="1px"
+                            borderColor="border"
+                            gap="1"
+                            w="100%"
+                            pt="0"
+                            pb="0"
+                          >
+                            <Tabs.Trigger
+                              value="details"
+                              bg={friendItemSubTab === "details" ? "lilypad.solid" : undefined}
+                              color={friendItemSubTab === "details" ? "black" : undefined}
+                              borderTopRadius="md"
+                              borderBottomRadius="0"
+                              px="4"
+                              py="2"
+                              fontWeight="medium"
+                              _hover={{
+                                bg: friendItemSubTab === "details" ? "lilypad.solid" : "transparent",
+                              }}
+                              _selected={{ bg: "lilypad.solid", color: "black" }}
+                            >
                               Details
                             </Tabs.Trigger>
-                            <Tabs.Trigger value="request" px="3" py="1.5" fontWeight="medium">
+                            <Tabs.Trigger
+                              value="request"
+                              bg={friendItemSubTab === "request" ? "lilypad.solid" : undefined}
+                              color={friendItemSubTab === "request" ? "black" : undefined}
+                              borderTopRadius="md"
+                              borderBottomRadius="0"
+                              px="4"
+                              py="2"
+                              fontWeight="medium"
+                              _hover={{
+                                bg: friendItemSubTab === "request" ? "lilypad.solid" : "transparent",
+                              }}
+                              _selected={{ bg: "lilypad.solid", color: "black" }}
+                            >
                               Request
                             </Tabs.Trigger>
                           </Tabs.List>
                           <Tabs.Content value="details" pt="3">
-                            <Stack gap="3">
-                              {friendCategoryTrimmed ? (
-                                <Stack gap="1" align="stretch">
-                                  <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
-                                    Category:
+                            <Stack gap="3" align="stretch">
+                              <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                                Owner: {displayName(item.owner_user)}
+                              </Text>
+                              {isMobile ? (
+                                hasFriendCategoryOrTags ? (
+                                  <Stack gap="2" align="stretch" w="100%">
+                                    {friendCategoryTrimmed ? (
+                                      <Box alignSelf="flex-start">{friendCategoryText}</Box>
+                                    ) : null}
+                                    {friendTagParts.length > 0 ? (
+                                      <HStack
+                                        flexWrap="wrap"
+                                        gap="2"
+                                        justify="flex-start"
+                                        alignItems="flex-start"
+                                        w="100%"
+                                      >
+                                        {friendTagsOnlyInner}
+                                      </HStack>
+                                    ) : null}
+                                  </Stack>
+                                ) : (
+                                  <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                                    No category or tags on this item.
                                   </Text>
-                                  <Text>{friendCategoryTrimmed}</Text>
-                                </Stack>
-                              ) : null}
-                              {friendTagParts.length > 0 ? (
-                                <Stack gap="1" align="stretch">
-                                  <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
-                                    Tags:
-                                  </Text>
-                                  <Text>{friendTagParts.join(", ")}</Text>
-                                </Stack>
-                              ) : null}
-                              {!friendCategoryTrimmed && friendTagParts.length === 0 ? (
-                                <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-                                  No category or tags on this item.
-                                </Text>
-                              ) : null}
+                                )
+                              ) : (
+                                <>
+                                  {friendTagParts.length > 0 ? (
+                                    <HStack
+                                      flexWrap="wrap"
+                                      gap="2"
+                                      justify="flex-start"
+                                      alignItems="flex-start"
+                                      w="100%"
+                                    >
+                                      {friendTagsOnlyInner}
+                                    </HStack>
+                                  ) : null}
+                                  {!friendCategoryTrimmed && friendTagParts.length === 0 ? (
+                                    <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                                      No category or tags on this item.
+                                    </Text>
+                                  ) : null}
+                                </>
+                              )}
                             </Stack>
                           </Tabs.Content>
                           <Tabs.Content value="request" pt="3">
@@ -2733,9 +2868,8 @@ export default function ClosetPage() {
                       ) : null}
                     </Stack>
                   );
-                  return showFriendImage ? (
+                  const friendCard = showFriendImage ? (
                     <Card.Root
-                      key={`friend-${item.id}`}
                       bg="white"
                       ref={(node: HTMLDivElement | null) => {
                         friendsCardRefs.current[item.id] = node;
@@ -2767,7 +2901,6 @@ export default function ClosetPage() {
                     </Card.Root>
                   ) : (
                     <Box
-                      key={`friend-${item.id}`}
                       bg="white"
                       ref={(node: HTMLDivElement | null) => {
                         friendsCardRefs.current[item.id] = node;
@@ -2781,6 +2914,30 @@ export default function ClosetPage() {
                     >
                       {friendStack}
                     </Box>
+                  );
+                  return (
+                    <HStack key={`friend-${item.id}`} align="center" gap="1" ps="0" pe="0">
+                      <RouterLink
+                        to={`/friend/${item.owner_user.id}`}
+                        style={{
+                          textDecoration: "none",
+                          color: "inherit",
+                          padding: 0,
+                          margin: 0,
+                        }}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <Box px="0" mx="0" flexShrink={0} lineHeight="0">
+                          <Avatar.Root size="sm">
+                            <Avatar.Fallback name={displayName(item.owner_user)} />
+                            <Avatar.Image src={item.owner_user.avatar_url || undefined} />
+                          </Avatar.Root>
+                        </Box>
+                      </RouterLink>
+                      <Box flex="1" minW={0} ps="0">
+                        {friendCard}
+                      </Box>
+                    </HStack>
                   );
                 })}
                 <HStack justify="space-between">

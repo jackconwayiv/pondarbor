@@ -14,6 +14,7 @@ from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework import status
 from rest_framework.status import HTTP_201_CREATED, HTTP_204_NO_CONTENT
 
 from closet.constants import CANONICAL_CLOSET_CATEGORIES, FRIENDS_ITEMS_CATEGORY_OTHER
@@ -33,6 +34,10 @@ from closet.services import (
     owner_eligible_for_closet_publication_q,
 )
 from friends.services import are_friends, friend_ids_for_user
+from achievements.services import (
+    evaluate_closet_return_achievements_for_users,
+    evaluate_closet_sharing_is_caring_for_user,
+)
 from users.permissions import IsApprovedUser
 
 User = get_user_model()
@@ -282,6 +287,7 @@ def items_mine(request):
         serializer = ItemCreateSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         item = serializer.save()
+        evaluate_closet_sharing_is_caring_for_user(item.owner_user_id)
         return Response(ItemSerializer(item, context={"request": request}).data, status=HTTP_201_CREATED)
 
     user = request.user
@@ -403,6 +409,29 @@ def items_friends(request):
     )
 
 
+@api_view(["GET"])
+@permission_classes([IsApprovedUser])
+def items_friend_owner(request, owner_user_id: int):
+    user = request.user
+    if user.id == owner_user_id:
+        return Response({"detail": "Use /api/v1/closet/items/ for your own closet."}, status=400)
+    owner = User.objects.filter(pk=owner_user_id).first()
+    if owner is None:
+        return Response({"detail": "Not found."}, status=404)
+    if not are_friends(user_a=user, user_b=owner):
+        return Response(
+            {"detail": "You can only browse closet items owned by approved friends."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    rows = (
+        _item_queryset()
+        .filter(owner_user_id=owner_user_id)
+        .exclude(owner_user_id=user.id)
+        .order_by("-updated_at", "-id")
+    )
+    return Response(ItemSerializer(rows, many=True, context={"request": request}).data)
+
+
 @api_view(["GET", "PATCH", "DELETE"])
 @permission_classes([IsApprovedUser])
 def item_detail(request, item_id: int):
@@ -434,6 +463,7 @@ def item_detail(request, item_id: int):
 
     item.deleted_at = timezone.now()
     item.save(update_fields=["deleted_at", "updated_at"])
+    evaluate_closet_sharing_is_caring_for_user(item.owner_user_id)
     return Response(status=HTTP_204_NO_CONTENT)
 
 
@@ -608,6 +638,10 @@ def loan_mark_returned(request, loan_id: int):
             "custody_pending_acceptance_user",
             "updated_at",
         ]
+    )
+    evaluate_closet_return_achievements_for_users(
+        owner_user_id=loan.owner_user_id,
+        borrower_user_id=loan.borrower_user_id,
     )
     return Response(LoanSerializer(loan).data)
 

@@ -105,6 +105,21 @@ export async function fetchFriendsItems(
   return (await response.json()) as FriendsItemsResponse;
 }
 
+export async function fetchFriendItemsByOwner(
+  accessToken: string | null,
+  ownerUserId: number,
+): Promise<FriendsItemsResponse["results"]> {
+  const response = await fetch(`${apiBase()}/api/v1/closet/items/friends/${ownerUserId}/`, {
+    method: "GET",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to load friend closet items (${response.status})`);
+  }
+  return (await response.json()) as FriendsItemsResponse["results"];
+}
+
 export async function fetchClosetActionSummary(accessToken: string | null): Promise<ClosetActionSummary> {
   const response = await fetch(`${apiBase()}/api/v1/closet/action-summary/`, {
     method: "GET",

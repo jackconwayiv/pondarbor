@@ -128,7 +128,8 @@ export default function AppLayout() {
   const { loginWithRedirect } = useAuth0();
   const { isAuthenticated, auth0User, sessionUser, logout, switchUser } = useAppSession();
   const location = useLocation();
-  const footerVisible = useFooterVisibleNearPageBottom(location.pathname);
+  const footerVisibleNearBottom = useFooterVisibleNearPageBottom(location.pathname);
+  const footerVisible = location.pathname === "/" || footerVisibleNearBottom;
   const navigate = useNavigate();
   const isMobile = useIsMobile();
 

@@ -92,6 +92,7 @@ INSTALLED_APPS = [
     "achievements.apps.AchievementsConfig",
     "qff.apps.QffConfig",
     "closet.apps.ClosetConfig",
+    "contact.apps.ContactConfig",
     # allauth
     "allauth",
     "allauth.account",
@@ -219,6 +220,19 @@ AUTH0_API_AUDIENCE = os.getenv("AUTH0_API_AUDIENCE")
 # Optional: token `iss` when it differs from https://{AUTH0_DOMAIN}/ (custom domain setups).
 AUTH0_ISSUER = os.getenv("AUTH0_ISSUER")
 AUTH0_ALGORITHMS = ["RS256"]
+
+# Email (contact form). Dev default prints to the console; set SMTP env vars in production.
+EMAIL_BACKEND = os.getenv(
+    "EMAIL_BACKEND",
+    "django.core.mail.backends.console.EmailBackend",
+)
+EMAIL_HOST = os.getenv("EMAIL_HOST", "")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "true").lower() in ("true", "1", "yes")
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@localhost")
+CONTACT_INBOX_EMAIL = os.getenv("CONTACT_INBOX_EMAIL", "pondarbor@gmail.com").strip()
 
 # Logs go to stderr so Gunicorn / Appliku "App Logs" shows tracebacks for 500s.
 LOGGING = {

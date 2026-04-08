@@ -324,12 +324,12 @@ export default function QffDmNpcsPage() {
         and quest state tie lines to the quest engine.
       </Text>
       {err && (
-        <Text color="#f6a060" mb={4}>
+        <Text color="nautical.solid" mb={4} role="alert">
           {err}
         </Text>
       )}
       {rooms.length === 0 && (
-        <Text color="#f6a060" mb={4}>
+        <Text color="nautical.solid" mb={4}>
           No rooms found — create an area and rooms in the world editor first.
         </Text>
       )}

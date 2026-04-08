@@ -303,7 +303,7 @@ export default function QffDmQuestsPage() {
         Create a quest, add states (nodes), transitions (edges), and effects (XP, items, exit unlocks, etc.).
       </Text>
       {err && (
-        <Text color="#f6a060" mb={4}>
+        <Text color="nautical.solid" mb={4} role="alert">
           {err}
         </Text>
       )}

@@ -137,7 +137,7 @@ export default function WhatIfLobbyPage() {
         </Text>
 
         {error ? (
-          <Text role="alert" color="red.600">
+          <Text role="alert" color="nautical.solid">
             {error}
           </Text>
         ) : null}

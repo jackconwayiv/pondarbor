@@ -199,7 +199,7 @@ export default function QffCreatePage() {
         </Field.Root>
 
         {error && (
-          <Text color="#f6a060" fontSize="sm">
+          <Text color="nautical.solid" fontSize="sm" role="alert">
             {error}
           </Text>
         )}

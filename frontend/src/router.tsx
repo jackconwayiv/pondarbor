@@ -29,6 +29,7 @@ import QffDmInteractablesPage from "./qff/QffDmInteractablesPage";
 import QffDmNpcsPage from "./qff/QffDmNpcsPage";
 import QffDmQuestsPage from "./qff/QffDmQuestsPage";
 import ClosetPage from "./closet/ClosetPage";
+import AboutPage from "./AboutPage";
 
 export const router = createBrowserRouter([
   {
@@ -38,6 +39,10 @@ export const router = createBrowserRouter([
       {
         index: true,
         element: <App />,
+      },
+      {
+        path: "about",
+        element: <AboutPage />,
       },
       {
         path: "profile",

@@ -1,16 +1,16 @@
 import { useAuth0 } from "@auth0/auth0-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { auth0DefaultLoginParams } from "./auth/auth0LoginParams";
 import {
   Box,
+  Flex,
   Heading,
   HStack,
-  SimpleGrid,
   Stack,
   Text,
 } from "@chakra-ui/react";
-import { Link as RouterLink } from "react-router";
+import { Link as RouterLink, useNavigate } from "react-router";
 import { useAppSession } from "./auth/AppSessionContext";
 import PondButton from "./PondButton";
 import { fullBleedStackProps } from "./responsive";
@@ -66,8 +66,30 @@ function accountStatusMessage(accountStatus: string | undefined): string | null 
   return "Your account is not currently approved.";
 }
 
+type HomePrompt = { id: string; text: string; to: string };
+type HomeNoticeItem = { id: string; text: string };
+
+function HomeNoticeLilypadCard({ text }: { text: string }) {
+  return (
+    <Box
+      bg="lilypad.solid"
+      color="lilypad.contrast"
+      borderRadius="xl"
+      px={{ base: 3, md: 4 }}
+      py={{ base: 2.5, md: 3 }}
+      fontWeight="bold"
+      textStyle={{ base: "sm", md: "md" }}
+      lineHeight="short"
+      maxW={{ base: "100%", md: "22rem" }}
+    >
+      {text}
+    </Box>
+  );
+}
+
 function App() {
   const { loginWithRedirect } = useAuth0();
+  const navigate = useNavigate();
 
   const {
     isLoading,
@@ -87,7 +109,87 @@ function App() {
     auth0User?.nickname ??
     auth0User?.name ??
     "friend";
-  const nonApprovedStatusMessage = accountStatusMessage(sessionUser?.user?.account_status);
+
+  const { homePrompts, homeNoticeItems } = useMemo(() => {
+    const prompts: HomePrompt[] = [];
+    const notices: HomeNoticeItem[] = [];
+
+    if (!isAuthenticated || !sessionUser) {
+      return { homePrompts: prompts, homeNoticeItems: notices };
+    }
+
+    const statusMsg = accountStatusMessage(sessionUser.user?.account_status);
+    if (statusMsg) {
+      notices.push({ id: "account-status", text: statusMsg });
+    }
+
+    if (
+      sessionUser.user?.is_staff &&
+      staffPendingSummary &&
+      (staffPendingSummary.pending_members > 0 || staffPendingSummary.pending_whatif_questions > 0)
+    ) {
+      if (staffPendingSummary.pending_members > 0) {
+        prompts.push({
+          id: "staff-pending-members",
+          to: "/staff",
+          text:
+            staffPendingSummary.pending_members === 1
+              ? "1 member is awaiting approval."
+              : `${staffPendingSummary.pending_members} members are awaiting approval.`,
+        });
+      }
+      if (staffPendingSummary.pending_whatif_questions > 0) {
+        prompts.push({
+          id: "staff-pending-whatif",
+          to: "/staff",
+          text:
+            staffPendingSummary.pending_whatif_questions === 1
+              ? "1 WhatIf question is awaiting review."
+              : `${staffPendingSummary.pending_whatif_questions} WhatIf questions are awaiting review.`,
+        });
+      }
+    }
+
+    if (sessionUser.user?.is_approved && pendingFriendCount > 0) {
+      prompts.push({
+        id: "pending-friends",
+        to: "/friends",
+        text:
+          pendingFriendCount === 1
+            ? "You have 1 pending friend request."
+            : `You have ${pendingFriendCount} pending friend requests.`,
+      });
+    }
+
+    if (sessionUser.user?.is_approved && closetOutstandingActions > 0) {
+      prompts.push({
+        id: "closet-actions",
+        to: "/closet?tab=my",
+        text:
+          closetOutstandingActions === 1
+            ? "You have 1 outstanding action for items in your community closet."
+            : `You have ${closetOutstandingActions} outstanding actions for items in your community closet.`,
+      });
+    }
+
+    if (sessionUser.user?.is_approved && upcomingBirthdays.length > 0) {
+      for (const birthday of upcomingBirthdays) {
+        notices.push({
+          id: `birthday-${birthday.display_name}-${birthday.birth_month}-${birthday.birth_day}`,
+          text: birthdayMessage(birthday),
+        });
+      }
+    }
+
+    return { homePrompts: prompts, homeNoticeItems: notices };
+  }, [
+    isAuthenticated,
+    sessionUser,
+    staffPendingSummary,
+    pendingFriendCount,
+    closetOutstandingActions,
+    upcomingBirthdays,
+  ]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -213,110 +315,52 @@ function App() {
           </Heading>
 
           {isAuthenticated ? (
-            <Stack gap="2" width="100%">
-              {nonApprovedStatusMessage ? (
-                <Text fontWeight="bold" color="orange.solid" textStyle={{ base: "sm", md: "md" }}>
-                  {nonApprovedStatusMessage}
-                </Text>
-              ) : null}
-              {sessionUser?.user?.is_staff &&
-              staffPendingSummary &&
-              (staffPendingSummary.pending_members > 0 ||
-                staffPendingSummary.pending_whatif_questions > 0) ? (
-                <Box
-                  asChild
-                  display="block"
-                  textDecoration="none"
-                  color="inherit"
-                  _focusVisible={{
-                    outline: "2px solid",
-                    outlineColor: "rgba(0, 0, 0, 0.35)",
-                    outlineOffset: "2px",
-                  }}
-                >
-                  <RouterLink to="/staff">
-                    <Stack gap="1">
-                      {staffPendingSummary.pending_members > 0 ? (
-                        <Text
-                          fontWeight="bold"
-                          color="orange.solid"
-                          textStyle={{ base: "sm", md: "md" }}
-                        >
-                          {staffPendingSummary.pending_members === 1
-                            ? "1 member is awaiting approval."
-                            : `${staffPendingSummary.pending_members} members are awaiting approval.`}
-                        </Text>
-                      ) : null}
-                      {staffPendingSummary.pending_whatif_questions > 0 ? (
-                        <Text
-                          fontWeight="bold"
-                          color="orange.solid"
-                          textStyle={{ base: "sm", md: "md" }}
-                        >
-                          {staffPendingSummary.pending_whatif_questions === 1
-                            ? "1 WhatIf question is awaiting review."
-                            : `${staffPendingSummary.pending_whatif_questions} WhatIf questions are awaiting review.`}
-                        </Text>
-                      ) : null}
-                    </Stack>
-                  </RouterLink>
-                </Box>
-              ) : null}
-              {sessionUser?.user?.is_approved && pendingFriendCount > 0 ? (
-                <Box
-                  asChild
-                  display="block"
-                  textDecoration="none"
-                  color="inherit"
-                  _focusVisible={{
-                    outline: "2px solid",
-                    outlineColor: "rgba(0, 0, 0, 0.35)",
-                    outlineOffset: "2px",
-                  }}
-                >
-                  <RouterLink to="/friends">
-                    <Text fontWeight="bold" color="orange.solid" textStyle={{ base: "sm", md: "md" }}>
-                      {pendingFriendCount === 1
-                        ? "You have 1 pending friend request."
-                        : `You have ${pendingFriendCount} pending friend requests.`}
-                    </Text>
-                  </RouterLink>
-                </Box>
-              ) : null}
-              {sessionUser?.user?.is_approved && closetOutstandingActions > 0 ? (
-                <Box
-                  asChild
-                  display="block"
-                  textDecoration="none"
-                  color="inherit"
-                  _focusVisible={{
-                    outline: "2px solid",
-                    outlineColor: "rgba(0, 0, 0, 0.35)",
-                    outlineOffset: "2px",
-                  }}
-                >
-                  <RouterLink to="/closet?tab=my">
-                    <Text fontWeight="bold" color="orange.solid" textStyle={{ base: "sm", md: "md" }}>
-                      {closetOutstandingActions === 1
-                        ? "You have 1 outstanding action for items in your community closet."
-                        : `You have ${closetOutstandingActions} outstanding actions for items in your community closet.`}
-                    </Text>
-                  </RouterLink>
-                </Box>
-              ) : null}
-              {sessionUser?.user?.is_approved && upcomingBirthdays.length > 0 ? (
-                <Stack gap="1">
-                  {upcomingBirthdays.map((birthday) => (
-                    <Text
-                      key={`${birthday.display_name}-${birthday.birth_month}-${birthday.birth_day}`}
-                      textStyle={{ base: "sm", md: "md" }}
-                    >
-                      {birthdayMessage(birthday)}
-                    </Text>
-                  ))}
-                </Stack>
-              ) : null}
-            </Stack>
+            homePrompts.length > 0 || homeNoticeItems.length > 0 ? (
+              <Stack gap="3" w="100%">
+                {homePrompts.length > 0 ? (
+                  <HStack
+                    gap="3"
+                    flexWrap="wrap"
+                    align="stretch"
+                    w="100%"
+                    role="region"
+                    aria-label="Prompts"
+                  >
+                    {homePrompts.map((prompt) => (
+                      <PondButton
+                        key={prompt.id}
+                        type="button"
+                        colorPalette="nautical"
+                        fontWeight="bold"
+                        whiteSpace="normal"
+                        textAlign="center"
+                        h="auto"
+                        py={{ base: 2.5, md: 3 }}
+                        px={{ base: 4, md: 5 }}
+                        maxW={{ base: "100%", md: "22rem" }}
+                        onClick={() => void navigate(prompt.to)}
+                      >
+                        {prompt.text}
+                      </PondButton>
+                    ))}
+                  </HStack>
+                ) : null}
+                {homeNoticeItems.length > 0 ? (
+                  <HStack
+                    gap="3"
+                    flexWrap="wrap"
+                    align="stretch"
+                    w="100%"
+                    role="region"
+                    aria-label="Notices"
+                  >
+                    {homeNoticeItems.map((item) => (
+                      <HomeNoticeLilypadCard key={item.id} text={item.text} />
+                    ))}
+                  </HStack>
+                ) : null}
+              </Stack>
+            ) : null
           ) : (
             <HStack gap="3" align="center" flexWrap="wrap">
               <PondButton
@@ -348,11 +392,15 @@ function App() {
       </Box>
 
       <Box flex="1" bg="transparent" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
-        <Box maxW="3xl">
-          <SimpleGrid columns={{ base: 2, md: 3 }} gap={{ base: "4", md: "6" }}>
-            {HOME_LILYPAD_TILES.map((tile) => {
-              const tileInteractive = isAuthenticated || tile.to === "/whatif";
-              const card = (
+        <Flex flexWrap="wrap" gap={{ base: "4", md: "6" }} alignItems="flex-start" w="100%">
+          {HOME_LILYPAD_TILES.map((tile) => {
+            const tileInteractive = isAuthenticated || tile.to === "/whatif";
+            const tileWrapProps = {
+              flex: "0 0 auto",
+              w: { base: "10.25rem", sm: "11rem", md: "12rem" },
+              maxW: "100%",
+            } as const;
+            const card = (
                 <Box
                   bg={tileInteractive ? "lilypad.solid" : "#A4B89A"}
                   borderRadius="9999px"
@@ -425,27 +473,32 @@ function App() {
                 </Box>
               );
 
-              if (!tileInteractive) {
-                return <Box key={tile.to}>{card}</Box>;
-              }
-
+            if (!tileInteractive) {
               return (
+                <Box key={tile.to} {...tileWrapProps}>
+                  {card}
+                </Box>
+              );
+            }
+
+            return (
+              <Box key={tile.to} {...tileWrapProps}>
                 <Box
-                  key={tile.to}
                   asChild
                   display="block"
                   textDecoration="none"
                   color="inherit"
+                  h="100%"
                   _focusVisible={{
                     "& .lilypad-hover-hint": LILYPAD_HOVER_HINT_VISIBLE,
                   }}
                 >
                   <RouterLink to={tile.to}>{card}</RouterLink>
                 </Box>
-              );
-            })}
-          </SimpleGrid>
-        </Box>
+              </Box>
+            );
+          })}
+        </Flex>
       </Box>
     </Stack>
   );

@@ -7,6 +7,7 @@ import {
   Toaster,
 } from "@chakra-ui/react";
 
+/** Success / error / warning backgrounds: `slotRecipes.toast` in `theme/system.ts` (lilypad / nautical). */
 export const achievementToaster = createToaster({
   placement: "top-end",
   pauseOnPageIdle: true,

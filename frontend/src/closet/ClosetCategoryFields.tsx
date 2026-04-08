@@ -7,15 +7,9 @@ import {
   CLOSET_CUSTOM_SELECT_VALUE,
   closetCategorySelectValue,
 } from "./categories";
-import { APP_TEXT_SIZES } from "../theme/typography";
+import { APP_TEXT_SIZES, PANEL_FORM_PLACEHOLDER_PROPS } from "../theme/typography";
 
-const INPUT_PLACEHOLDER_PROPS = {
-  _placeholder: {
-    color: "gray.400",
-    fontStyle: "italic",
-    fontSize: "inherit",
-  },
-} as const;
+const INPUT_PLACEHOLDER_PROPS = PANEL_FORM_PLACEHOLDER_PROPS;
 
 export function ClosetCategoryFields({
   category,

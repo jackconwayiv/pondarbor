@@ -11,6 +11,8 @@ export type PublicUserSummary = {
     | "none";
   display_name?: string;
   email?: string;
+  /** Listed closet items visible to friends (only present when viewer is a friend, not self). */
+  closet_items_count?: number;
 };
 
 function apiBase(): string {

@@ -12,6 +12,7 @@ import {
 } from "@chakra-ui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { validateWhatIfBulkText, validateWhatIfQuestionDraft } from "../forms/validation";
 import PondButton from "../PondButton";
 import { useAppSession } from "../auth/AppSessionContext";
 import {
@@ -141,6 +142,11 @@ export default function WhatIfAdminPage() {
 
   async function saveQuestion() {
     if (!isAuthenticated || !isStaff) return;
+    const draftErr = validateWhatIfQuestionDraft(draft);
+    if (draftErr) {
+      setError(draftErr);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -211,6 +217,11 @@ export default function WhatIfAdminPage() {
 
   async function runBulkImport() {
     if (!isAuthenticated || !isStaff) return;
+    const bulkErr = validateWhatIfBulkText(bulkText);
+    if (bulkErr) {
+      setError(bulkErr);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -424,7 +435,7 @@ export default function WhatIfAdminPage() {
             </Tabs.Content>
 
             {error ? (
-              <Text role="alert" color="red.600" mt="4">
+              <Text role="alert" color="nautical.solid" mt="4">
                 {error}
               </Text>
             ) : null}

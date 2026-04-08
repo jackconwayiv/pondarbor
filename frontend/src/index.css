@@ -33,3 +33,16 @@ textarea,
 select {
   font-size: max(16px, 1rem);
 }
+
+/* Quotes, Closet, WhatIf entry: hide document scrollbar so width stays aligned; scrolling still works. */
+html.pa-hide-scrollbar,
+body.pa-hide-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+html.pa-hide-scrollbar::-webkit-scrollbar,
+body.pa-hide-scrollbar::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}

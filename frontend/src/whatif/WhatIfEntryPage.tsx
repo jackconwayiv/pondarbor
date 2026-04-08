@@ -15,6 +15,11 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 
+import {
+  validateWhatIfBulkText,
+  validateWhatIfQuestionDraft,
+  validateWhatIfRoomCode4,
+} from "../forms/validation";
 import PondButton from "../PondButton";
 import { useAppSession } from "../auth/AppSessionContext";
 import {
@@ -36,11 +41,10 @@ import {
   type WhatIfQuestionAdmin,
   type WhatIfQuestionListFilter,
 } from "./api";
-import { useIsMobile } from "../responsive";
-import WhatIfShell from "./WhatIfShell";
+import { fullBleedStackProps, useIsMobile } from "../responsive";
+import { APP_TEXT_SIZES, PANEL_FIELD_PROPS } from "../theme/typography";
 import { WhatIfQuestionAdminListItem } from "./WhatIfQuestionAdminListItem";
 import { WhatIfQuestionFields } from "./WhatIfQuestionFields";
-import { whatifInputProps } from "./whatifFieldProps";
 
 type EntryTab = "new" | "continue" | "join" | "admin-edit" | "admin-list" | "admin-bulk";
 type PlayerTab = "new" | "continue" | "join";
@@ -301,6 +305,11 @@ export default function WhatIfEntryPage() {
 
   async function saveQuestion() {
     if (!isAuthenticated || !isStaff) return;
+    const draftErr = validateWhatIfQuestionDraft(draft);
+    if (draftErr) {
+      setAdminError(draftErr);
+      return;
+    }
     setAdminBusy(true);
     setAdminError(null);
     try {
@@ -339,6 +348,11 @@ export default function WhatIfEntryPage() {
 
   async function runBulkImport() {
     if (!isAuthenticated || !isStaff) return;
+    const bulkErr = validateWhatIfBulkText(bulkText);
+    if (bulkErr) {
+      setAdminError(bulkErr);
+      return;
+    }
     setAdminBusy(true);
     setAdminError(null);
     try {
@@ -370,11 +384,12 @@ export default function WhatIfEntryPage() {
   }
 
   async function handleResumeHosting() {
-    const code = resumeCode.trim().toUpperCase();
-    if (code.length !== 4) {
-      setError("Room code must be exactly 4 letters.");
+    const codeErr = validateWhatIfRoomCode4(resumeCode);
+    if (codeErr) {
+      setError(codeErr);
       return;
     }
+    const code = resumeCode.trim().toUpperCase();
     setBusy(true);
     setError(null);
     try {
@@ -391,14 +406,15 @@ export default function WhatIfEntryPage() {
   }
 
   async function handleJoin() {
+    const codeErr = validateWhatIfRoomCode4(joinCode);
+    if (codeErr) {
+      setError(codeErr);
+      return;
+    }
     const code = joinCode.trim().toUpperCase();
     const displayName = sanitizeDisplayNameInput(name.trim());
     if (!displayName) {
       setError("Enter a player name.");
-      return;
-    }
-    if (code.length !== 4) {
-      setError("Room code must be exactly 4 letters.");
       return;
     }
     if (nameTakenInRoom) {
@@ -421,6 +437,11 @@ export default function WhatIfEntryPage() {
 
   async function submitPropose() {
     if (!canProposeQuestions) return;
+    const pErr = validateWhatIfQuestionDraft(proposeDraft);
+    if (pErr) {
+      setProposeError(pErr);
+      return;
+    }
     setProposeBusy(true);
     setProposeError(null);
     setProposeSuccess(null);
@@ -450,34 +471,34 @@ export default function WhatIfEntryPage() {
 
   const joinFormContent = (
     <Stack gap="4">
-      <Text fontSize="sm" color="gray.700">
+      <Text fontSize={APP_TEXT_SIZES.body} color="fg">
         Join this device as a player with the room code from the host.
       </Text>
-      <Stack gap="1">
-        <Text fontSize="sm" fontWeight="medium" color="gray.700">
-          Room Code:
+      <Stack gap="1.5">
+        <Text fontSize={APP_TEXT_SIZES.label} fontWeight="medium" color="fg">
+          Room code
         </Text>
         <Input
           placeholder="4-letter code"
           value={joinCode}
           onChange={(e) => setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4))}
-          {...whatifInputProps}
+          {...PANEL_FIELD_PROPS}
         />
       </Stack>
-      <Stack gap="1">
-        <Text fontSize="sm" fontWeight="medium" color="gray.700">
-          Player Name:
+      <Stack gap="1.5">
+        <Text fontSize={APP_TEXT_SIZES.label} fontWeight="medium" color="fg">
+          Player name
         </Text>
         <Input
           placeholder={joinNamePlaceholder}
           value={name}
           onChange={(e) => setName(sanitizeDisplayNameInput(e.target.value))}
           maxLength={12}
-          {...whatifInputProps}
+          {...PANEL_FIELD_PROPS}
         />
       </Stack>
       {nameTakenInRoom ? (
-        <Text fontSize="sm" color="orange.solid">
+        <Text fontSize={APP_TEXT_SIZES.helper} color="nautical.solid" fontWeight="medium">
           That name is already taken in this room.
         </Text>
       ) : null}
@@ -596,7 +617,7 @@ export default function WhatIfEntryPage() {
 
       <Tabs.Content value="new" pt="4">
         <Stack gap="4">
-          <Text color="gray.700">
+          <Text fontSize={APP_TEXT_SIZES.body} color="fg">
             {isAuthenticated
               ? "Creates a room and records you as the host (not as a player). Open the lobby on the TV, then join on your phone to play."
               : "Sign in to create a game."}
@@ -616,19 +637,19 @@ export default function WhatIfEntryPage() {
 
       <Tabs.Content value="continue" pt="4">
         <Stack gap="4">
-          <Text fontSize="sm" color="gray.700">
+          <Text fontSize={APP_TEXT_SIZES.body} color="fg">
             Reconnect TV / lobby controls after a crash or new browser window. Sign in as the host and enter your
             four-letter room code. This does not add you as a player.
           </Text>
-          <Stack gap="1">
-            <Text fontSize="sm" fontWeight="medium" color="gray.700">
-              Room Code:
+          <Stack gap="1.5">
+            <Text fontSize={APP_TEXT_SIZES.label} fontWeight="medium" color="fg">
+              Room code
             </Text>
             <Input
               placeholder="4-letter room code"
               value={resumeCode}
               onChange={(e) => setResumeCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4))}
-              {...whatifInputProps}
+              {...PANEL_FIELD_PROPS}
             />
           </Stack>
           <PondButton
@@ -651,29 +672,36 @@ export default function WhatIfEntryPage() {
       <Tabs.Content value="admin-list" pt="4">
         <Stack gap="3">
           <HStack justify="space-between" flexWrap="wrap" gap="3">
-            <Text fontWeight="medium">Questions ({questions.length})</Text>
+            <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.body}>
+              Questions ({questions.length})
+            </Text>
             {pendingCount > 0 ? (
-              <Text fontWeight="bold" color="orange.solid">
+              <Text fontWeight="bold" fontSize={APP_TEXT_SIZES.helper} color="nautical.solid">
                 Unreviewed: {pendingCount}
               </Text>
             ) : null}
           </HStack>
           <HStack gap="2" align="end" flexWrap="wrap">
-            <Stack gap="1" flex="1" minW="200px">
-              <Text fontSize="sm" color="gray.700">
+            <Stack gap="1.5" flex="1" minW="200px">
+              <Text fontSize={APP_TEXT_SIZES.label} fontWeight="medium" color="fg">
                 Search prompt
               </Text>
-              <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by prompt..." {...whatifInputProps} />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Filter by prompt..."
+                {...PANEL_FIELD_PROPS}
+              />
             </Stack>
-            <Stack gap="1" minW="160px">
-              <Text fontSize="sm" color="gray.700">
+            <Stack gap="1.5" minW="160px">
+              <Text fontSize={APP_TEXT_SIZES.label} fontWeight="medium" color="fg">
                 List
               </Text>
               <NativeSelectRoot>
                 <NativeSelectField
                   value={questionListFilter}
                   onChange={(e) => setQuestionListFilter(e.target.value as WhatIfQuestionListFilter)}
-                  {...whatifInputProps}
+                  {...PANEL_FIELD_PROPS}
                 >
                   {WHATIF_QUESTION_LIST_FILTERS.map((v) => (
                     <option key={v} value={v}>
@@ -715,8 +743,10 @@ export default function WhatIfEntryPage() {
 
       <Tabs.Content value="admin-edit" pt="4">
         <Stack gap="2">
-          <Text fontWeight="medium">{editingId == null ? "Create question" : `Edit question #${editingId}`}</Text>
-          <Text fontSize="sm" color="gray.600">
+          <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.body}>
+            {editingId == null ? "Create question" : `Edit question #${editingId}`}
+          </Text>
+          <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600">
             Type only the part after &quot;What if {"{subject}"}&quot; for the question. Answer rows show the number for
             you; only the answer text is saved.
           </Text>
@@ -724,15 +754,14 @@ export default function WhatIfEntryPage() {
             draft={draft}
             onDraftChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
           />
-          <Text fontSize="sm" color="gray.600">
+          <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600">
             Note: is_active currently defaults true in this editor.
           </Text>
           <HStack gap="2" justify="flex-end" flexWrap="wrap">
             {editingId != null ? (
               <PondButton
                 type="button"
-                variant="outline"
-                colorPalette="gray"
+                colorPalette="sky"
                 onClick={() => {
                   beginCreateQuestion();
                   setAdminError(null);
@@ -757,8 +786,16 @@ export default function WhatIfEntryPage() {
 
       <Tabs.Content value="admin-bulk" pt="4">
         <Stack gap="2">
-          <Text fontWeight="medium">Bulk import (numbered blocks)</Text>
-          <Textarea value={bulkText} onChange={(e) => setBulkText(e.target.value)} minH="240px" placeholder={exampleBulk} {...whatifInputProps} />
+          <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.body}>
+            Bulk import (numbered blocks)
+          </Text>
+          <Textarea
+            value={bulkText}
+            onChange={(e) => setBulkText(e.target.value)}
+            minH="240px"
+            placeholder={exampleBulk}
+            {...PANEL_FIELD_PROPS}
+          />
           <PondButton type="button" colorPalette="lilypad" alignSelf="flex-end" onClick={() => void runBulkImport()} loading={adminBusy}>
             Import questions
           </PondButton>
@@ -767,215 +804,266 @@ export default function WhatIfEntryPage() {
     </>
   );
 
+  const showDesktopUnapprovedOnly =
+    showJoinOnly && !isMobile && (!isAuthenticated || !isApprovedUser);
+
+  const entryCardProps = {
+    bg: "white",
+    borderWidth: "1px",
+    borderColor: "border",
+    borderRadius: "xl",
+    p: { base: "4", md: "4" },
+  } as const;
+
   return (
-    <WhatIfShell>
-      <Stack gap="5">
-        <Heading as="h1" size="lg">
-          Whatif
-        </Heading>
-        {!isMobile ? (
-          <Text color="fg">
-            A Jackbox-style room game. The TV stays on <Code>/whatif/play/ROOM</Code>, and each player joins on their
-            phone at <Code>/whatif/hand/ROOM</Code>.
-          </Text>
-        ) : null}
+    <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
+      <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
+        <Box
+          maxW="4xl"
+          w="100%"
+          mx="auto"
+          bg="gray.100"
+          borderWidth="1px"
+          borderColor="border"
+          borderRadius="xl"
+          overflow="hidden"
+        >
+          <Stack gap={{ base: "4", md: "4" }} p={{ base: "4", md: "6" }}>
+            <Box {...entryCardProps}>
+              <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold" mb={!isMobile ? 2 : 0}>
+                Whatif
+              </Heading>
+              {!isMobile ? (
+                <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
+                  A Jackbox-style room game. The TV stays on <Code>/whatif/play/ROOM</Code>, and each player joins on
+                  their phone at <Code>/whatif/hand/ROOM</Code>.
+                </Text>
+              ) : null}
+              {showDesktopUnapprovedOnly ? (
+                <Text fontSize={APP_TEXT_SIZES.body} color="fg" mt={!isMobile ? 3 : 0}>
+                  Approved users can host a game. Guests and other users can join games with a mobile device.
+                </Text>
+              ) : null}
+            </Box>
 
-        {showJoinOnly ? (
-          !isMobile && (!isAuthenticated || !isApprovedUser) ? (
-            <Text color="fg">
-              Approved users can host a game. Guests and other users can join games with a mobile device.
-            </Text>
-          ) : (
-            joinFormContent
-          )
-        ) : isStaff ? (
-          <Tabs.Root
-            id="whatif-entry-outer"
-            value={outerSection}
-            variant="plain"
-            onValueChange={(details) => {
-              const v = details.value as OuterSection;
-              if (v === "player") setActiveTab(lastPlayerTabRef.current);
-              else setActiveTab(lastAdminTabRef.current);
-              setError(null);
-            }}
-          >
-            <Tabs.List
-              borderBottomWidth="2px"
-              borderColor="border"
-              gap="2"
-              w="100%"
-              maxW="full"
-              flexWrap="wrap"
-              justifyContent="flex-end"
-            >
-              <Tabs.Trigger
-                value="player"
-                bg={outerSection === "player" ? "lilypad.solid" : undefined}
-                color={outerSection === "player" ? "black" : undefined}
-                borderTopRadius="md"
-                borderBottomRadius="0"
-                px="5"
-                py="2.5"
-                fontWeight="semibold"
-                _hover={{ bg: outerSection === "player" ? "lilypad.solid" : "transparent" }}
-                _selected={{ bg: "lilypad.solid", color: "black" }}
-              >
-                Player
-              </Tabs.Trigger>
-              <Tabs.Trigger
-                value="admin"
-                bg={outerSection === "admin" ? "lilypad.solid" : undefined}
-                color={outerSection === "admin" ? "black" : undefined}
-                borderTopRadius="md"
-                borderBottomRadius="0"
-                px="5"
-                py="2.5"
-                fontWeight="semibold"
-                _hover={{ bg: outerSection === "admin" ? "lilypad.solid" : "transparent" }}
-                _selected={{ bg: "lilypad.solid", color: "black" }}
-              >
-                Admin
-              </Tabs.Trigger>
-            </Tabs.List>
+            {!showDesktopUnapprovedOnly ? (
+              <Box {...entryCardProps}>
+                <Stack gap="4">
+                  {showJoinOnly ? (
+                    joinFormContent
+                  ) : isStaff ? (
+                    <Tabs.Root
+                      id="whatif-entry-outer"
+                      value={outerSection}
+                      variant="plain"
+                      onValueChange={(details) => {
+                        const v = details.value as OuterSection;
+                        if (v === "player") setActiveTab(lastPlayerTabRef.current);
+                        else setActiveTab(lastAdminTabRef.current);
+                        setError(null);
+                      }}
+                    >
+                      <Tabs.List
+                        borderBottomWidth="1px"
+                        borderColor="border"
+                        gap="1"
+                        w="100%"
+                        maxW="full"
+                        flexWrap="wrap"
+                        justifyContent="flex-end"
+                      >
+                        <Tabs.Trigger
+                          value="player"
+                          bg={outerSection === "player" ? "lilypad.solid" : undefined}
+                          color={outerSection === "player" ? "black" : undefined}
+                          borderTopRadius="md"
+                          borderBottomRadius="0"
+                          px="5"
+                          py="2.5"
+                          fontWeight="semibold"
+                          _hover={{ bg: outerSection === "player" ? "lilypad.solid" : "transparent" }}
+                          _selected={{ bg: "lilypad.solid", color: "black" }}
+                        >
+                          Player
+                        </Tabs.Trigger>
+                        <Tabs.Trigger
+                          value="admin"
+                          bg={outerSection === "admin" ? "lilypad.solid" : undefined}
+                          color={outerSection === "admin" ? "black" : undefined}
+                          borderTopRadius="md"
+                          borderBottomRadius="0"
+                          px="5"
+                          py="2.5"
+                          fontWeight="semibold"
+                          _hover={{ bg: outerSection === "admin" ? "lilypad.solid" : "transparent" }}
+                          _selected={{ bg: "lilypad.solid", color: "black" }}
+                        >
+                          Admin
+                        </Tabs.Trigger>
+                      </Tabs.List>
 
-            <Tabs.Content value="player" pt="4">
-              <Tabs.Root
-                id="whatif-entry-player"
-                value={playerTabValue}
-                variant="plain"
-                onValueChange={(details) => {
-                  const v = details.value as PlayerTab;
-                  lastPlayerTabRef.current = v;
-                  setActiveTab(v);
-                  setError(null);
-                }}
-              >
-                <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" maxW="full" flexWrap="wrap">
-                  {playerTabTriggers}
-                </Tabs.List>
-                {playerTabPanels}
-              </Tabs.Root>
-            </Tabs.Content>
+                      <Tabs.Content value="player" pt="4">
+                        <Tabs.Root
+                          id="whatif-entry-player"
+                          value={playerTabValue}
+                          variant="plain"
+                          onValueChange={(details) => {
+                            const v = details.value as PlayerTab;
+                            lastPlayerTabRef.current = v;
+                            setActiveTab(v);
+                            setError(null);
+                          }}
+                        >
+                          <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" maxW="full" flexWrap="wrap">
+                            {playerTabTriggers}
+                          </Tabs.List>
+                          {playerTabPanels}
+                        </Tabs.Root>
+                      </Tabs.Content>
 
-            <Tabs.Content value="admin" pt="4">
-              <Tabs.Root
-                id="whatif-entry-admin"
-                value={adminTabValue}
-                variant="plain"
-                onValueChange={(details) => {
-                  const v = details.value as AdminTab;
-                  lastAdminTabRef.current = v;
-                  setActiveTab(v);
-                  setError(null);
-                }}
-              >
-                <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" maxW="full" flexWrap="wrap">
-                  {adminTabTriggers}
-                </Tabs.List>
-                {adminTabPanels}
-              </Tabs.Root>
-            </Tabs.Content>
-          </Tabs.Root>
-        ) : (
-          <Tabs.Root
-            id="whatif-entry-player-only"
-            value={playerTabValue}
-            variant="plain"
-            onValueChange={(details) => {
-              setActiveTab(details.value as EntryTab);
-              setError(null);
-            }}
-          >
-            <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" maxW="full" flexWrap="wrap">
-              {playerTabTriggers}
-            </Tabs.List>
-            {playerTabPanels}
-          </Tabs.Root>
-        )}
-
-        {canProposeQuestions ? (
-          <Box borderWidth="1px" borderColor="border" borderRadius="md" bg="bg" p="4">
-            <Collapsible.Root open={proposeOpen} onOpenChange={(details) => setProposeOpen(details.open)}>
-              <Collapsible.Trigger asChild>
-                <button
-                  type="button"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    width: "100%",
-                    textAlign: "left",
-                    fontSize: "1rem",
-                    fontWeight: 600,
-                    color: "inherit",
-                    cursor: "pointer",
-                    background: "transparent",
-                    border: "none",
-                    padding: 0,
-                    margin: 0,
-                  }}
-                >
-                  <Text
-                    as="span"
-                    transform={proposeOpen ? "rotate(90deg)" : "rotate(0deg)"}
-                    transition="transform 0.15s ease"
-                    lineHeight="1"
-                    flexShrink={0}
-                  >
-                    ›
-                  </Text>
-                  <Text as="span" flex="1">
-                    Propose a question
-                  </Text>
-                </button>
-              </Collapsible.Trigger>
-              <Collapsible.Content>
-                <Stack gap="3" pt="3">
-                  <Text fontSize="sm" color="gray.700">
-                    Suggest a prompt for staff to review. Approved questions may appear in future sessions. Type only
-                    the part after &quot;What if {"{subject}"}&quot;; only answer text is stored for each option.
-                  </Text>
-                  {proposeSuccess ? (
-                    <Text color="fg" fontWeight="medium">
-                      {proposeSuccess}
+                      <Tabs.Content value="admin" pt="4">
+                        <Tabs.Root
+                          id="whatif-entry-admin"
+                          value={adminTabValue}
+                          variant="plain"
+                          onValueChange={(details) => {
+                            const v = details.value as AdminTab;
+                            lastAdminTabRef.current = v;
+                            setActiveTab(v);
+                            setError(null);
+                          }}
+                        >
+                          <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" maxW="full" flexWrap="wrap">
+                            {adminTabTriggers}
+                          </Tabs.List>
+                          {adminTabPanels}
+                        </Tabs.Root>
+                      </Tabs.Content>
+                    </Tabs.Root>
+                  ) : (
+                    <Tabs.Root
+                      id="whatif-entry-player-only"
+                      value={playerTabValue}
+                      variant="plain"
+                      onValueChange={(details) => {
+                        setActiveTab(details.value as EntryTab);
+                        setError(null);
+                      }}
+                    >
+                      <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" maxW="full" flexWrap="wrap">
+                        {playerTabTriggers}
+                      </Tabs.List>
+                      {playerTabPanels}
+                    </Tabs.Root>
+                  )}
+                  {error ? (
+                    <Text
+                      role="alert"
+                      color="nautical.solid"
+                      fontSize={APP_TEXT_SIZES.helper}
+                      fontWeight="medium"
+                    >
+                      {error}
                     </Text>
                   ) : null}
-                  {proposeError ? (
-                    <Text color="red.fg" fontSize="sm">
-                      {proposeError}
+                  {adminError ? (
+                    <Text
+                      role="alert"
+                      color="nautical.solid"
+                      fontSize={APP_TEXT_SIZES.helper}
+                      fontWeight="medium"
+                    >
+                      {adminError}
                     </Text>
                   ) : null}
-                  <WhatIfQuestionFields
-                    draft={proposeDraft}
-                    onDraftChange={(patch) => setProposeDraft((d) => ({ ...d, ...patch }))}
-                  />
-                  <PondButton
-                    type="button"
-                    colorPalette="lilypad"
-                    alignSelf="flex-end"
-                    onClick={() => void submitPropose()}
-                    loading={proposeBusy}
-                  >
-                    Submit proposal
-                  </PondButton>
                 </Stack>
-              </Collapsible.Content>
-            </Collapsible.Root>
-          </Box>
-        ) : null}
+              </Box>
+            ) : null}
 
-        {error ? (
-          <Text role="alert" color="red.600">
-            {error}
-          </Text>
-        ) : null}
-        {adminError ? (
-          <Text role="alert" color="red.600">
-            {adminError}
-          </Text>
-        ) : null}
-      </Stack>
-    </WhatIfShell>
+            {canProposeQuestions ? (
+              <Box {...entryCardProps}>
+                <Collapsible.Root open={proposeOpen} onOpenChange={(details) => setProposeOpen(details.open)}>
+                  <Collapsible.Trigger asChild>
+                    <button
+                      type="button"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                        width: "100%",
+                        textAlign: "left",
+                        fontSize: "1rem",
+                        fontWeight: 600,
+                        color: "inherit",
+                        cursor: "pointer",
+                        background: "transparent",
+                        border: "none",
+                        padding: 0,
+                        margin: 0,
+                      }}
+                    >
+                      <Text
+                        as="span"
+                        transform={proposeOpen ? "rotate(90deg)" : "rotate(0deg)"}
+                        transition="transform 0.15s ease"
+                        lineHeight="1"
+                        flexShrink={0}
+                      >
+                        ›
+                      </Text>
+                      <Text as="span" flex="1">
+                        Propose a question
+                      </Text>
+                    </button>
+                  </Collapsible.Trigger>
+                  <Collapsible.Content>
+                    <Stack gap="3" pt="3">
+                      <Text fontSize={APP_TEXT_SIZES.body} color="fg">
+                        Suggest a prompt for staff to review. Approved questions may appear in future sessions. Type
+                        only the part after &quot;What if {"{subject}"}&quot;; only answer text is stored for each
+                        option.
+                      </Text>
+                      {proposeSuccess ? (
+                        <Text
+                          role="status"
+                          fontSize={APP_TEXT_SIZES.helper}
+                          color="lilypad.solid"
+                          fontWeight="medium"
+                        >
+                          {proposeSuccess}
+                        </Text>
+                      ) : null}
+                      {proposeError ? (
+                        <Text
+                          role="alert"
+                          color="nautical.solid"
+                          fontSize={APP_TEXT_SIZES.helper}
+                          fontWeight="medium"
+                        >
+                          {proposeError}
+                        </Text>
+                      ) : null}
+                      <WhatIfQuestionFields
+                        draft={proposeDraft}
+                        onDraftChange={(patch) => setProposeDraft((d) => ({ ...d, ...patch }))}
+                      />
+                      <PondButton
+                        type="button"
+                        colorPalette="lilypad"
+                        alignSelf="flex-end"
+                        onClick={() => void submitPropose()}
+                        loading={proposeBusy}
+                      >
+                        Submit proposal
+                      </PondButton>
+                    </Stack>
+                  </Collapsible.Content>
+                </Collapsible.Root>
+              </Box>
+            ) : null}
+          </Stack>
+        </Box>
+      </Box>
+    </Stack>
   );
 }

@@ -474,7 +474,7 @@ export default function WhatIfPlayPage() {
         </Grid>
 
         {error ? (
-          <Text role="alert" color="red.600">
+          <Text role="alert" color="nautical.solid">
             {error}
           </Text>
         ) : null}

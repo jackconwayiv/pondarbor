@@ -12,11 +12,19 @@ const PAGE_SIZE = 10;
 
 function PublicQuoteCard({ quote }: { quote: Quote }) {
   return (
-    <QuoteCardBase
-      quote={quote}
-      ownerText={quoteOwnerDisplayLabel(quote.owner)}
-      ownerProfileUserId={quote.owner.id}
-    />
+    <Box
+      bg="white"
+      borderWidth="1px"
+      borderColor="border"
+      borderRadius="xl"
+      p={{ base: "4", md: "4" }}
+    >
+      <QuoteCardBase
+        quote={quote}
+        ownerText={quoteOwnerDisplayLabel(quote.owner)}
+        ownerProfileUserId={quote.owner.id}
+      />
+    </Box>
   );
 }
 
@@ -62,8 +70,16 @@ export default function PublicQuotesPage() {
 
   return (
     <Stack gap="3" w="100%">
-      {isLoading ? <Text>Loading…</Text> : null}
-      {error ? <Text role="alert">{error}</Text> : null}
+      {isLoading ? (
+        <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
+          Loading…
+        </Text>
+      ) : null}
+      {error ? (
+        <Text role="alert" color="nautical.solid" fontWeight="medium" fontSize={APP_TEXT_SIZES.helper}>
+          {error}
+        </Text>
+      ) : null}
       {!isLoading && !error && quotes.length === 0 ? <Text>No published quotes yet.</Text> : null}
       {total > PAGE_SIZE && visibleQuotes.length === PAGE_SIZE ? (
         <Box

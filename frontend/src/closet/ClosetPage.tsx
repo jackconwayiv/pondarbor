@@ -2,6 +2,7 @@ import {
   Box,
   Card,
   HStack,
+  Heading,
   Image,
   Input,
   NativeSelectField,
@@ -14,11 +15,18 @@ import {
 } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useSearchParams } from "react-router";
+import {
+  validateClosetCategory,
+  validateClosetFreeText,
+  validateClosetItemName,
+  validateClosetTagList,
+  validateIsoDateRequired,
+} from "../forms/validation";
 import PondButton from "../PondButton";
 import { useAppSession } from "../auth/AppSessionContext";
 import { fetchFriendsList } from "../friends/api";
 import { fullBleedStackProps } from "../responsive";
-import { APP_TEXT_SIZES } from "../theme/typography";
+import { APP_TEXT_SIZES, PANEL_FORM_PLACEHOLDER_PROPS } from "../theme/typography";
 import {
   acceptCustody,
   approveBorrowRequest,
@@ -60,12 +68,14 @@ import type { BorrowRequest, ClosetImageInventoryRow, ClosetItem } from "./types
 type ClosetTab = "my" | "friends" | "images";
 const FRIENDS_PAGE_SIZE = 10;
 const MY_ITEMS_PAGE_SIZE = 10;
-const CLOSET_PLACEHOLDER_PROPS = {
-  _placeholder: {
-    color: "gray.400",
-    fontStyle: "italic",
-    fontSize: "inherit",
-  },
+const CLOSET_PLACEHOLDER_PROPS = PANEL_FORM_PLACEHOLDER_PROPS;
+
+const ENTRY_CARD_PROPS = {
+  bg: "white",
+  borderWidth: "1px",
+  borderColor: "border",
+  borderRadius: "xl",
+  p: { base: "4", md: "4" },
 } as const;
 
 function parseTab(value: string | null): ClosetTab {
@@ -293,16 +303,39 @@ function ItemCard({
       setError("Category must use only letters and /, or pick a suggested option.");
       return;
     }
+    const nameTrim = name.trim();
+    const nameErr = validateClosetItemName(nameTrim);
+    if (nameErr) {
+      setError(nameErr);
+      return;
+    }
+    const descErr = validateClosetFreeText(description, "Description");
+    if (descErr) {
+      setError(descErr);
+      return;
+    }
+    const catTrim = category.trim();
+    const catErr = validateClosetCategory(catTrim);
+    if (catErr) {
+      setError(catErr);
+      return;
+    }
+    const tagParts = tagsCsv
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+    const tagErr = validateClosetTagList(tagParts);
+    if (tagErr) {
+      setError(tagErr);
+      return;
+    }
     try {
       const token = await getToken();
       await patchItem(token, item.id, {
-        name: name.trim(),
+        name: nameTrim,
         description: description.trim(),
-        category: category.trim(),
-        tags: tagsCsv
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean),
+        category: catTrim,
+        tags: tagParts,
       });
       onModeChange("closed");
       await onRefresh();
@@ -887,10 +920,19 @@ function ItemCard({
                                 size="sm"
                                 colorPalette="nautical"
                                 onClick={async () => {
+                                  const dm = (declineMessageByRequestId[row.id] ?? "").trim();
+                                  const dmErr = validateClosetFreeText(
+                                    declineMessageByRequestId[row.id] ?? "",
+                                    "Decline message",
+                                  );
+                                  if (dmErr) {
+                                    setError(dmErr);
+                                    return;
+                                  }
                                   try {
                                     const token = await getToken();
                                     await declineBorrowRequest(token, row.id, {
-                                      decline_message: (declineMessageByRequestId[row.id] ?? "").trim(),
+                                      decline_message: dm,
                                     });
                                     setDeclineMessageByRequestId((prev) => ({ ...prev, [row.id]: "" }));
                                     onModeChange("closed");
@@ -1060,7 +1102,7 @@ function ItemCard({
         ) : null}
 
         {error ? (
-          <Text role="alert" color="red.600" fontSize={APP_TEXT_SIZES.helper}>
+          <Text role="alert" color="nautical.solid" fontSize={APP_TEXT_SIZES.helper}>
             {error}
           </Text>
         ) : null}
@@ -1532,6 +1574,13 @@ export default function ClosetPage() {
         variant="plain"
       >
         <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
+          {loading ? (
+            <Box maxW="4xl" w="100%" mx="auto" pb="3">
+              <Text fontSize={APP_TEXT_SIZES.body} fontWeight="medium">
+                Loading closet…
+              </Text>
+            </Box>
+          ) : null}
           <Box
             maxW="4xl"
             w="100%"
@@ -1542,9 +1591,25 @@ export default function ClosetPage() {
             borderRadius="xl"
             overflow="hidden"
           >
-            <Tabs.List
+            <Stack
+              gap={{ base: "4", md: "4" }}
               px={{ base: "4", md: "6" }}
               pt={{ base: "4", md: "4" }}
+              pb="3"
+            >
+              <Box {...ENTRY_CARD_PROPS}>
+                <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold" mb="2">
+                  Community Closet
+                </Heading>
+                <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
+                  Share items you're willing to lend, browse friends' listings, manage borrow requests and
+                  returns.
+                </Text>
+              </Box>
+            </Stack>
+            <Tabs.List
+              px={{ base: "4", md: "6" }}
+              pt="0"
               pb="0"
               borderBottomWidth="1px"
               borderColor="border"
@@ -1603,7 +1668,7 @@ export default function ClosetPage() {
                   <HStack justify="flex-end">
                     <Text
                       fontSize={APP_TEXT_SIZES.helper}
-                      color={ownedNotice.kind === "success" ? "green.600" : "red.600"}
+                      color={ownedNotice.kind === "success" ? "lilypad.solid" : "nautical.solid"}
                       fontWeight="medium"
                       textAlign="right"
                     >
@@ -1968,14 +2033,20 @@ export default function ClosetPage() {
                               colorPalette="lilypad"
                               onClick={async (e) => {
                                 e.stopPropagation();
-                                if (!newNeedBy) {
-                                  setError("Need-by date is required.");
+                                const dateErr = validateIsoDateRequired(newNeedBy, "Need-by date");
+                                if (dateErr) {
+                                  setError(dateErr);
+                                  return;
+                                }
+                                const msgErr = validateClosetFreeText(newRequestMessage, "Message");
+                                if (msgErr) {
+                                  setError(msgErr);
                                   return;
                                 }
                                 try {
                                   const token = await getApiAccessToken();
                                   await createBorrowRequest(token, item.id, {
-                                    date_needed_by: newNeedBy,
+                                    date_needed_by: newNeedBy.trim(),
                                     message: newRequestMessage.trim(),
                                   });
                                   setEditingRequestItemId(null);
@@ -2183,10 +2254,26 @@ export default function ClosetPage() {
                                     });
                                     return;
                                   }
+                                  const nn = newName.trim();
+                                  const nameErr = validateClosetItemName(nn);
+                                  if (nameErr) {
+                                    setOwnedNotice({ kind: "error", message: nameErr });
+                                    return;
+                                  }
+                                  const descErr = validateClosetFreeText(newDescription, "Description");
+                                  if (descErr) {
+                                    setOwnedNotice({ kind: "error", message: descErr });
+                                    return;
+                                  }
+                                  const cat = newCategory.trim();
+                                  const catErr = validateClosetCategory(cat);
+                                  if (catErr) {
+                                    setOwnedNotice({ kind: "error", message: catErr });
+                                    return;
+                                  }
                                   try {
                                     setNewItemImageBusy(true);
                                     const token = await getApiAccessToken();
-                                    const cat = newCategory.trim();
                                     const file = newItemPhotoInputRef.current?.files?.[0];
                                     let imageKey: string | undefined;
                                     if (file) {
@@ -2196,7 +2283,7 @@ export default function ClosetPage() {
                                       );
                                     }
                                     await createItem(token, {
-                                      name: newName,
+                                      name: nn,
                                       description: newDescription,
                                       ...(cat ? { category: cat } : {}),
                                       ...(imageKey ? { image_key: imageKey } : {}),
@@ -2320,7 +2407,7 @@ export default function ClosetPage() {
                   <Text>Click an item to see details and request to borrow.</Text>
                   {friendsNotice ? (
                     <Text
-                      color={friendsNotice.kind === "success" ? "green.600" : "red.600"}
+                      color={friendsNotice.kind === "success" ? "lilypad.solid" : "nautical.solid"}
                       fontSize={APP_TEXT_SIZES.helper}
                       fontWeight="medium"
                       textAlign="right"
@@ -2553,17 +2640,20 @@ export default function ClosetPage() {
                                     colorPalette="lilypad"
                                     onClick={async (e) => {
                                       e.stopPropagation();
-                                      if (!newNeedBy) {
-                                        setFriendsNotice({
-                                          kind: "error",
-                                          message: "Need-by date is required.",
-                                        });
+                                      const dateErr2 = validateIsoDateRequired(newNeedBy, "Need-by date");
+                                      if (dateErr2) {
+                                        setFriendsNotice({ kind: "error", message: dateErr2 });
+                                        return;
+                                      }
+                                      const msgErr2 = validateClosetFreeText(newRequestMessage, "Message");
+                                      if (msgErr2) {
+                                        setFriendsNotice({ kind: "error", message: msgErr2 });
                                         return;
                                       }
                                       try {
                                         const token = await getApiAccessToken();
                                         await createBorrowRequest(token, item.id, {
-                                          date_needed_by: newNeedBy,
+                                          date_needed_by: newNeedBy.trim(),
                                           message: newRequestMessage.trim(),
                                         });
                                         setRequestingItemId(null);
@@ -2724,7 +2814,7 @@ export default function ClosetPage() {
                   <Text>Browse uploaded images and delete stranded files.</Text>
                   {imagesNotice ? (
                     <Text
-                      color={imagesNotice.kind === "success" ? "green.600" : "red.600"}
+                      color={imagesNotice.kind === "success" ? "lilypad.solid" : "nautical.solid"}
                       fontSize={APP_TEXT_SIZES.helper}
                       fontWeight="medium"
                       textAlign="right"
@@ -2828,9 +2918,8 @@ export default function ClosetPage() {
           </Box>
         </Box>
       </Tabs.Root>
-      {loading ? <Text px="6">Loading closet…</Text> : null}
       {error ? (
-        <Text px="6" pb="4" color="red.600" role="alert">
+        <Text px="6" pb="4" color="nautical.solid" role="alert">
           {error}
         </Text>
       ) : null}

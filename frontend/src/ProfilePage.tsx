@@ -16,7 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate } from "react-router";
 import { useAppSession } from "./auth/AppSessionContext";
 import { fullBleedStackProps } from "./responsive";
-import { APP_TEXT_SIZES } from "./theme/typography";
+import { APP_TEXT_SIZES, PANEL_FIELD_PROPS } from "./theme/typography";
 import {
   getSortedIanaTimeZones,
   timeZoneOptionsForValue,
@@ -32,6 +32,14 @@ function formatBirthDateForDisplay(value: string | null | undefined): string {
 
 type EditableField = "display_name" | "avatar_url" | "timezone" | "birth_date";
 type SavingState = Partial<Record<EditableField, boolean>>;
+
+const ENTRY_CARD_PROPS = {
+  bg: "white",
+  borderWidth: "1px",
+  borderColor: "border",
+  borderRadius: "xl",
+  p: { base: "4", md: "4" },
+} as const;
 
 export default function ProfilePage() {
   const {
@@ -143,9 +151,28 @@ export default function ProfilePage() {
 
   if (isLoading) {
     return (
-      <Box py="8">
-        <Text fontSize={{ base: "md", md: "lg" }}>Loading…</Text>
-      </Box>
+      <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
+        <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
+          <Box
+            maxW="4xl"
+            w="100%"
+            mx="auto"
+            bg="gray.100"
+            borderWidth="1px"
+            borderColor="border"
+            borderRadius="xl"
+            overflow="hidden"
+          >
+            <Stack gap={{ base: "4", md: "4" }} p={{ base: "4", md: "6" }}>
+              <Box {...ENTRY_CARD_PROPS}>
+                <Text fontSize={APP_TEXT_SIZES.body} color="fg">
+                  Loading…
+                </Text>
+              </Box>
+            </Stack>
+          </Box>
+        </Box>
+      </Stack>
     );
   }
 
@@ -155,32 +182,58 @@ export default function ProfilePage() {
 
   if (!sessionUser) {
     return (
-      <Stack gap="4" align="start" maxW="3xl">
-        {sessionError ? (
-          <>
-            <Text fontWeight="semibold" color="fg">
-              Could not load your profile from the API.
-            </Text>
-            <Text fontSize={APP_TEXT_SIZES.helper}>{sessionError}</Text>
-            <Text fontSize={APP_TEXT_SIZES.helper}>
-              Check that the backend is running, <code>VITE_API_BASE_URL</code> points to
-              it (e.g. <code>http://127.0.0.1:8000</code>), and CORS allows this origin.
-            </Text>
-          </>
-        ) : (
-          <Text>No profile loaded yet.</Text>
-        )}
-        <HStack gap="3" align="center" flexWrap="wrap">
-          <PondButton size="sm" colorPalette="lilypad" onClick={switchUser}>
-            Switch user
-          </PondButton>
-          <PondButton size="sm" colorPalette="nautical" onClick={logout}>
-            Log out
-          </PondButton>
-        </HStack>
-        <PondButton colorPalette="sky" onClick={() => void refreshSession()}>
-          Retry
-        </PondButton>
+      <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
+        <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
+          <Box
+            maxW="4xl"
+            w="100%"
+            mx="auto"
+            bg="gray.100"
+            borderWidth="1px"
+            borderColor="border"
+            borderRadius="xl"
+            overflow="hidden"
+          >
+            <Stack gap={{ base: "4", md: "4" }} p={{ base: "4", md: "6" }}>
+              <Box {...ENTRY_CARD_PROPS}>
+                <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold" mb="2">
+                  Profile
+                </Heading>
+                {sessionError ? (
+                  <Stack gap="3" align="flex-start">
+                    <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg" fontWeight="semibold">
+                      Could not load your profile from the API.
+                    </Text>
+                    <Text fontSize={APP_TEXT_SIZES.helper} color="fg">
+                      {sessionError}
+                    </Text>
+                    <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600" lineHeight="tall">
+                      Check that the backend is running, <code>VITE_API_BASE_URL</code> points to it (e.g.{" "}
+                      <code>http://127.0.0.1:8000</code>), and CORS allows this origin.
+                    </Text>
+                  </Stack>
+                ) : (
+                  <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
+                    No profile loaded yet.
+                  </Text>
+                )}
+              </Box>
+              <Box {...ENTRY_CARD_PROPS}>
+                <HStack gap="3" align="center" flexWrap="wrap">
+                  <PondButton size="sm" colorPalette="lilypad" onClick={switchUser}>
+                    Switch user
+                  </PondButton>
+                  <PondButton size="sm" colorPalette="nautical" onClick={logout}>
+                    Log out
+                  </PondButton>
+                  <PondButton colorPalette="sky" size="sm" onClick={() => void refreshSession()}>
+                    Retry
+                  </PondButton>
+                </HStack>
+              </Box>
+            </Stack>
+          </Box>
+        </Box>
       </Stack>
     );
   }
@@ -189,11 +242,8 @@ export default function ProfilePage() {
   const fieldBusy = (field: EditableField) => !!savingFields[field];
   const isSavingAny = Object.values(savingFields).some(Boolean);
   const profileFieldLabelProps = isEditing
-    ? { fontSize: APP_TEXT_SIZES.label }
-    : {
-        fontSize: { base: "12px", md: "14px" },
-        color: "#5c5c5c",
-      };
+    ? { fontSize: APP_TEXT_SIZES.label, fontWeight: "medium" as const, color: "fg" as const }
+    : { fontSize: APP_TEXT_SIZES.label, color: "gray.600" as const };
 
   return (
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
@@ -209,8 +259,40 @@ export default function ProfilePage() {
         variant="plain"
       >
         <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
-          <Box maxW="3xl" bg="bg" borderWidth="1px" borderColor="border" borderRadius="xl" p={{ base: "4", md: "6" }}>
-            <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" w="100%">
+          <Box
+            maxW="4xl"
+            w="100%"
+            mx="auto"
+            bg="gray.100"
+            borderWidth="1px"
+            borderColor="border"
+            borderRadius="xl"
+            overflow="hidden"
+          >
+            <Stack
+              gap={{ base: "4", md: "4" }}
+              px={{ base: "4", md: "6" }}
+              pt={{ base: "4", md: "4" }}
+              pb="3"
+            >
+              <Box {...ENTRY_CARD_PROPS}>
+                <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold" mb="2">
+                  Profile
+                </Heading>
+                <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
+                  Update how you appear to friends, your timezone and birthday, and check Account details.
+                </Text>
+              </Box>
+            </Stack>
+            <Tabs.List
+              px={{ base: "4", md: "6" }}
+              pt="0"
+              pb="0"
+              borderBottomWidth="1px"
+              borderColor="border"
+              gap="1"
+              w="100%"
+            >
               <Tabs.Trigger
                 value="profile"
                 bg={activeTab === "profile" ? "lilypad.solid" : undefined}
@@ -240,9 +322,10 @@ export default function ProfilePage() {
                 Account
               </Tabs.Trigger>
             </Tabs.List>
-            <Tabs.Content value="profile">
-              <Stack gap="4" pt="4">
-                <HStack gap="4" align="flex-start" justify="space-between">
+            <Tabs.Content value="profile" p={{ base: "4", md: "6" }}>
+              <Box {...ENTRY_CARD_PROPS}>
+                <Stack gap="4">
+                  <HStack gap="4" align="flex-start" justify="space-between">
                   <HStack gap="4" align="flex-start" flex="1">
                     <Avatar.Root size="lg">
                       <Avatar.Fallback name={profile.display_name || user.email || "User"} />
@@ -262,7 +345,6 @@ export default function ProfilePage() {
                         <Stack gap="1">
                           <Text {...profileFieldLabelProps}>Avatar URL</Text>
                           <Input
-                            colorPalette="sky"
                             value={avatarUrl}
                             onChange={(e) => setAvatarUrl(e.target.value)}
                             onBlur={() => void commitField("avatar_url")}
@@ -274,6 +356,7 @@ export default function ProfilePage() {
                             }}
                             placeholder="https://…"
                             disabled={fieldBusy("avatar_url")}
+                            {...PANEL_FIELD_PROPS}
                           />
                         </Stack>
                       )}
@@ -282,7 +365,6 @@ export default function ProfilePage() {
                         <Text {...profileFieldLabelProps}>Name</Text>
                         {isEditing ? (
                           <Input
-                            colorPalette="sky"
                             value={displayName}
                             onChange={(e) => setDisplayName(e.target.value)}
                             onBlur={() => void commitField("display_name")}
@@ -294,6 +376,7 @@ export default function ProfilePage() {
                             }}
                             placeholder="Your name"
                             disabled={fieldBusy("display_name")}
+                            {...PANEL_FIELD_PROPS}
                           />
                         ) : (
                           <Text fontSize={APP_TEXT_SIZES.body}>{profile.display_name || "—"}</Text>
@@ -305,10 +388,10 @@ export default function ProfilePage() {
                         {isEditing ? (
                           <NativeSelectRoot size="md" disabled={fieldBusy("timezone")}>
                             <NativeSelectField
-                              colorPalette="sky"
                               value={timezone || "UTC"}
                               onChange={(e) => setTimezone(e.target.value)}
                               onBlur={() => void commitField("timezone")}
+                              {...PANEL_FIELD_PROPS}
                             >
                               {editTimezoneOptions.map((tz) => (
                                 <option key={tz} value={tz}>
@@ -326,7 +409,6 @@ export default function ProfilePage() {
                         <Text {...profileFieldLabelProps}>Birthday</Text>
                         {isEditing ? (
                           <Input
-                            colorPalette="sky"
                             type="date"
                             value={birthDate}
                             onChange={(e) => setBirthDate(e.target.value)}
@@ -338,6 +420,7 @@ export default function ProfilePage() {
                               }
                             }}
                             disabled={fieldBusy("birth_date")}
+                            {...PANEL_FIELD_PROPS}
                           />
                         ) : (
                           <Text fontSize={APP_TEXT_SIZES.body}>
@@ -379,7 +462,7 @@ export default function ProfilePage() {
                       ) : null}
 
                       {saveError && (
-                        <Text color="fg" role="alert" fontSize={APP_TEXT_SIZES.helper}>
+                        <Text color="nautical.solid" role="alert" fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
                           {saveError}
                         </Text>
                       )}
@@ -397,38 +480,45 @@ export default function ProfilePage() {
                       Edit profile
                     </PondButton>
                   ) : null}
-                </HStack>
-              </Stack>
+                  </HStack>
+                </Stack>
+              </Box>
             </Tabs.Content>
 
-            <Tabs.Content value="account">
-              <Stack gap="4" pt="4">
-                <HStack align="center" justify="space-between" gap="4" flexWrap="wrap">
-                  <Heading size="lg">Account Details</Heading>
-                  <HStack gap="3" align="center" flexShrink={0}>
-                    <PondButton size="sm" colorPalette="lilypad" onClick={switchUser}>
-                      Switch user
-                    </PondButton>
-                    <PondButton size="sm" colorPalette="nautical" onClick={logout}>
-                      Log out
-                    </PondButton>
+            <Tabs.Content value="account" p={{ base: "4", md: "6" }}>
+              <Box {...ENTRY_CARD_PROPS}>
+                <Stack gap="4">
+                  <HStack align="center" justify="space-between" gap="4" flexWrap="wrap">
+                    <Heading as="h2" size="md" fontWeight="semibold">
+                      Account details
+                    </Heading>
+                    <HStack gap="3" align="center" flexShrink={0}>
+                      <PondButton size="sm" colorPalette="lilypad" onClick={switchUser}>
+                        Switch user
+                      </PondButton>
+                      <PondButton size="sm" colorPalette="nautical" onClick={logout}>
+                        Log out
+                      </PondButton>
+                    </HStack>
                   </HStack>
-                </HStack>
-                <Stack gap="1">
-                  <Text>{user.email}</Text>
-                  {!user.is_approved ? (
-                    <Text color="#E9A14A">
-                      {user.account_status === "pending"
-                        ? "Awaiting Approval"
-                        : user.account_status === "rejected"
-                          ? "Rejected"
-                          : user.account_status === "suspended"
-                            ? "Suspended"
-                            : "Pending"}
+                  <Stack gap="1">
+                    <Text fontSize={APP_TEXT_SIZES.body} color="fg">
+                      {user.email}
                     </Text>
-                  ) : null}
+                    {!user.is_approved ? (
+                      <Text fontSize={APP_TEXT_SIZES.body} color="orange.solid" fontWeight="medium">
+                        {user.account_status === "pending"
+                          ? "Awaiting Approval"
+                          : user.account_status === "rejected"
+                            ? "Rejected"
+                            : user.account_status === "suspended"
+                              ? "Suspended"
+                              : "Pending"}
+                      </Text>
+                    ) : null}
+                  </Stack>
                 </Stack>
-              </Stack>
+              </Box>
             </Tabs.Content>
           </Box>
         </Box>

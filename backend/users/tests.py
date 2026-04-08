@@ -8,6 +8,7 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 from users.frontend_views import spa_index
+from closet.models import Item
 from friends.models import FriendRequest
 from whatif.models import WhatIfQuestion
 
@@ -86,6 +87,28 @@ class UsersApiTests(TestCase):
         self.assertEqual(body["friendship_status"], "friends")
         self.assertEqual(body["display_name"], "TargetNick")
         self.assertEqual(body["email"], "target@example.com")
+        self.assertEqual(body["closet_items_count"], 0)
+
+    def test_public_summary_friend_includes_closet_items_count(self):
+        viewer = User.objects.create_user(email="cv@example.com", password="secret12345")
+        viewer.account_status = User.AccountStatus.APPROVED
+        viewer.save(update_fields=["account_status"])
+        target = User.objects.create_user(email="ct@example.com", password="secret12345")
+        target.account_status = User.AccountStatus.APPROVED
+        target.save(update_fields=["account_status"])
+        FriendRequest.objects.create(requester=viewer, requested=target, is_accepted=True)
+        Item.objects.create(
+            owner_user=target,
+            current_holder_user=target,
+            name="Ladder",
+            category="",
+            tags=[],
+            image_key="",
+        )
+        self.client.force_login(viewer)
+        resp = self.client.get(f"/api/v1/users/{target.id}/public/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["closet_items_count"], 1)
 
     def test_patch_profile_updates_preferences_and_returns_full_me(self):
         user = User.objects.create_user(email="edit@example.com", password="secret12345")

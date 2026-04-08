@@ -53,6 +53,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Local UI style guide (not tracked; see .cursor/rules for workflow)
+/UI_STYLE_GUIDE.md
+
 # Accidental root-level node install artifacts
 /node_modules/
 /package-lock.json

@@ -533,12 +533,12 @@ function UpgradeCard({
             <Text
               key={row.title}
               fontSize="2xs"
-              color={row.met ? "green.700" : "gray.700"}
+              color={row.met ? "lilypad.solid" : "gray.700"}
               lineHeight="1.3"
               fontVariantNumeric="tabular-nums"
             >
               {row.title} ≥ {row.required}
-              <Box as="span" color={row.met ? "green.700" : "gray.600"} fontWeight="normal">
+              <Box as="span" color={row.met ? "lilypad.solid" : "gray.600"} fontWeight="normal">
                 {" "}
                 ({Math.round(row.current)}/{row.required})
               </Box>
@@ -1031,7 +1031,7 @@ export default function ClickerGamePage() {
               ) : null}
             </Box>
             {serverResetError ? (
-              <Text role="alert" fontSize={APP_TEXT_SIZES.helper} color="red.600" fontWeight="medium">
+              <Text role="alert" fontSize={APP_TEXT_SIZES.helper} color="nautical.solid" fontWeight="medium">
                 {serverResetError}
               </Text>
             ) : null}
@@ -1126,7 +1126,7 @@ export default function ClickerGamePage() {
         ) : null}
         {saveError ? (
           <Stack gap="1">
-            <Text fontSize={APP_TEXT_SIZES.helper} color="orange.600">
+            <Text fontSize={APP_TEXT_SIZES.helper} color="nautical.solid">
               {saveError}
             </Text>
             {saveAuthBlocked ? (

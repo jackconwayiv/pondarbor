@@ -1,6 +1,6 @@
 import { Avatar, Box, Heading, HStack, Stack, Tabs, Text } from "@chakra-ui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Navigate, useParams } from "react-router";
+import { Link as RouterLink, Navigate, useParams } from "react-router";
 import NotFoundPage from "../NotFoundPage";
 import { useAppSession } from "../auth/AppSessionContext";
 import { fetchPublicAchievementsByUser, fetchPublicAchievementsByUserId } from "../achievements/api";
@@ -22,13 +22,41 @@ import { acceptFriend, ignoreFriend, requestFriendByUserId, unfriend } from "../
 
 const PAGE_SIZE = 10;
 
+const ENTRY_CARD_PROPS = {
+  bg: "white",
+  borderWidth: "1px",
+  borderColor: "border",
+  borderRadius: "xl",
+  p: { base: "4", md: "4" },
+} as const;
+
+/** Same shell as [`PublicQuotesPage`](../quotes/PublicQuotesPage.tsx) / editable quote rows in Quotes. */
 function FriendProfileQuoteCard({ quote }: { quote: Quote }) {
   return (
-    <QuoteCardBase
-      quote={quote}
-      ownerText={quoteOwnerDisplayLabel(quote.owner)}
-      ownerProfileUserId={quote.owner.id}
-    />
+    <Box {...ENTRY_CARD_PROPS}>
+      <QuoteCardBase
+        quote={quote}
+        ownerText={quoteOwnerDisplayLabel(quote.owner)}
+        ownerProfileUserId={quote.owner.id}
+      />
+    </Box>
+  );
+}
+
+function FriendProfileAchievementCard({ achievement: a }: { achievement: AchievementSummary }) {
+  return (
+    <Box {...ENTRY_CARD_PROPS}>
+      <Stack gap="1">
+        <Text fontSize={APP_TEXT_SIZES.body} whiteSpace="pre-wrap">
+          {a.title}
+        </Text>
+        {a.description ? (
+          <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600" whiteSpace="pre-wrap">
+            {a.description}
+          </Text>
+        ) : null}
+      </Stack>
+    </Box>
   );
 }
 
@@ -61,7 +89,7 @@ export default function FriendProfilePage() {
   const [actionBusy, setActionBusy] = useState(false);
   const [confirmUnfriend, setConfirmUnfriend] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
-  const [profileTab, setProfileTab] = useState<"achievements" | "quotes">("quotes");
+  const [profileTab, setProfileTab] = useState<"achievements" | "quotes">("achievements");
   const [reloadKey, setReloadKey] = useState(0);
   const unfriendBoxRef = useRef<HTMLDivElement | null>(null);
   const ownUserId = sessionUser?.user?.id ?? null;
@@ -164,8 +192,25 @@ export default function FriendProfilePage() {
   if (sessionLoading) {
     return (
       <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
-        <Box bg="bg" px={{ base: "4", md: "6" }} py={{ base: "6", md: "6" }}>
-          <Text fontSize={APP_TEXT_SIZES.meta}>Loading…</Text>
+        <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
+          <Box
+            maxW="4xl"
+            w="100%"
+            mx="auto"
+            bg="gray.100"
+            borderWidth="1px"
+            borderColor="border"
+            borderRadius="xl"
+            overflow="hidden"
+          >
+            <Stack gap={{ base: "4", md: "4" }} p={{ base: "4", md: "6" }}>
+              <Box {...ENTRY_CARD_PROPS}>
+                <Text fontSize={APP_TEXT_SIZES.body} color="fg">
+                  Loading…
+                </Text>
+              </Box>
+            </Stack>
+          </Box>
         </Box>
       </Stack>
     );
@@ -185,87 +230,227 @@ export default function FriendProfilePage() {
     return <NotFoundPage />;
   }
 
+  const quotePaginationToolbar =
+    total > PAGE_SIZE ? (
+      <Box bg="bg" borderWidth="1px" borderColor="border" borderRadius="xl" p={{ base: "4", md: "4" }}>
+        <Stack gap="2">
+          <Text fontSize={APP_TEXT_SIZES.helper}>
+            Showing {startIndex + 1}-{endIndex} of {total}
+          </Text>
+          <Stack direction="row" align="center" flexWrap="wrap" gap="3">
+            <PondButton
+              type="button"
+              size="sm"
+              colorPalette="nautical"
+              onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+              disabled={safePage === 0}
+            >
+              ←
+            </PondButton>
+            <Text fontSize={APP_TEXT_SIZES.helper}>
+              Page {safePage + 1} / {totalPages}
+            </Text>
+            <PondButton
+              type="button"
+              size="sm"
+              colorPalette="nautical"
+              onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={safePage >= totalPages - 1}
+            >
+              →
+            </PondButton>
+          </Stack>
+        </Stack>
+      </Box>
+    ) : null;
+
   return (
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
-      <Box bg="bg" px={{ base: "4", md: "6" }} py={{ base: "6", md: "6" }}>
-        <Stack gap="2" w="100%">
-          {!summary?.can_view_full_profile ? (
-            <>
-              <Heading size="lg">{summary ? friendProfileHeading(summary) : "Friend profile"}</Heading>
-              {summary?.email ? (
-                <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-                  {summary.email}
-                </Text>
-              ) : null}
-            </>
-          ) : (
-            <HStack justify="space-between" align="start" w="100%">
-              <HStack>
-                <Avatar.Root size="md">
-                  <Avatar.Fallback name={summary.nickname} />
-                  <Avatar.Image src={summary.avatar_url || undefined} />
-                </Avatar.Root>
-                <Stack gap="0">
-                  <Text fontWeight="semibold">{summary.nickname}</Text>
-                  {summary.email ? (
-                    <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+      <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
+        <Box
+          maxW="4xl"
+          w="100%"
+          mx="auto"
+          bg="gray.100"
+          borderWidth="1px"
+          borderColor="border"
+          borderRadius="xl"
+          overflow="hidden"
+        >
+          <Stack gap={{ base: "4", md: "4" }} p={{ base: "4", md: "6" }}>
+            <Box {...ENTRY_CARD_PROPS}>
+              {!summary?.can_view_full_profile ? (
+                <>
+                  <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold" mb="2">
+                    {summary ? friendProfileHeading(summary) : "Friend profile"}
+                  </Heading>
+                  <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
+                    Connect as friends to see public quotes and achievements, or respond to a pending request below.
+                  </Text>
+                  {summary?.email ? (
+                    <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600" mt="2">
                       {summary.email}
                     </Text>
                   ) : null}
-                </Stack>
-              </HStack>
-              {lookup.kind === "id" ? (
-                <Box ref={unfriendBoxRef}>
-                  <PondButton
-                    colorPalette="nautical"
-                    onClick={() => {
-                      if (!confirmUnfriend) {
-                        setConfirmUnfriend(true);
-                        return;
-                      }
-                      void (async () => {
-                        setActionBusy(true);
-                        setActionError(null);
-                        try {
-                          const token = await getApiAccessToken();
-                          await unfriend(token, lookup.id);
-                          setActionSuccess(null);
-                          setConfirmUnfriend(false);
-                          setReloadKey((value) => value + 1);
-                        } catch (err: unknown) {
-                          setActionError(err instanceof Error ? err.message : "Failed to unfriend.");
-                        } finally {
-                          setActionBusy(false);
-                        }
-                      })();
-                    }}
-                    loading={actionBusy}
-                  >
-                    {confirmUnfriend ? `Confirm Unfriend ${summary.nickname}` : `Unfriend ${summary.nickname}`}
-                  </PondButton>
-                </Box>
+                </>
+              ) : summary ? (
+                <>
+                  <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold" mb="2">
+                    Friend Profile
+                  </Heading>
+                  <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg" mb="4">
+                    Public achievements and published quotes from this friend.
+                  </Text>
+                  <HStack justify="space-between" align="flex-start" w="100%" flexWrap="wrap" gap="3">
+                    <HStack gap="4" align="flex-start">
+                      <Avatar.Root size="md">
+                        <Avatar.Fallback name={summary.nickname} />
+                        <Avatar.Image src={summary.avatar_url || undefined} />
+                      </Avatar.Root>
+                      <Stack gap="0">
+                        <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.body}>
+                          {summary.nickname}
+                        </Text>
+                        {summary.email ? (
+                          <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600">
+                            {summary.email}
+                          </Text>
+                        ) : null}
+                      </Stack>
+                    </HStack>
+                    {lookup.kind === "id" ? (
+                      <Box ref={unfriendBoxRef}>
+                        <PondButton
+                          colorPalette="nautical"
+                          onClick={() => {
+                            if (!confirmUnfriend) {
+                              setConfirmUnfriend(true);
+                              return;
+                            }
+                            void (async () => {
+                              setActionBusy(true);
+                              setActionError(null);
+                              try {
+                                const token = await getApiAccessToken();
+                                await unfriend(token, lookup.id);
+                                setActionSuccess(null);
+                                setConfirmUnfriend(false);
+                                setReloadKey((value) => value + 1);
+                              } catch (err: unknown) {
+                                setActionError(err instanceof Error ? err.message : "Failed to unfriend.");
+                              } finally {
+                                setActionBusy(false);
+                              }
+                            })();
+                          }}
+                          loading={actionBusy}
+                        >
+                          {confirmUnfriend ? "Confirm Unfriend" : "Unfriend"}
+                        </PondButton>
+                      </Box>
+                    ) : null}
+                  </HStack>
+                  {summary.closet_items_count != null && summary.closet_items_count > 0 ? (
+                    <PondButton asChild mt="3" colorPalette="lilypad">
+                      <RouterLink to="/closet?tab=friends">
+                        {summary.closet_items_count}{" "}
+                        {summary.closet_items_count === 1 ? "Closet Item" : "Closet Items"}
+                      </RouterLink>
+                    </PondButton>
+                  ) : null}
+                </>
               ) : null}
-            </HStack>
-          )}
-        </Stack>
-      </Box>
+            </Box>
 
-      <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
-        <Stack gap="3" maxW="3xl">
-          {isLoading ? <Text>Loading…</Text> : null}
-          {error ? <Text role="alert">{error}</Text> : null}
-          {!isLoading && !error && summary && !summary.can_view_full_profile ? (
-            <Box bg="bg" borderWidth="1px" borderColor="border" borderRadius="xl" p="4">
-              <Stack gap="3" align="start">
-                <HStack>
-                  <Avatar.Root size="lg">
-                    <Avatar.Fallback name={summary.nickname} />
-                    <Avatar.Image src={summary.avatar_url || undefined} />
-                  </Avatar.Root>
-                  <Text fontWeight="semibold">{summary.nickname}</Text>
-                </HStack>
-                {summary.friendship_status === "incoming_pending" ? (
-                  <HStack>
+            {isLoading ? (
+              <Text fontSize={APP_TEXT_SIZES.body} color="fg">
+                Loading…
+              </Text>
+            ) : null}
+
+            {error ? (
+              <Text
+                role="alert"
+                color="nautical.solid"
+                fontWeight="medium"
+                fontSize={APP_TEXT_SIZES.helper}
+              >
+                {error}
+              </Text>
+            ) : null}
+
+            {!isLoading && !error && summary && !summary.can_view_full_profile ? (
+              <Box {...ENTRY_CARD_PROPS}>
+                <Stack gap="3" align="flex-start">
+                  <HStack gap="4" align="flex-start">
+                    <Avatar.Root size="lg">
+                      <Avatar.Fallback name={summary.nickname} />
+                      <Avatar.Image src={summary.avatar_url || undefined} />
+                    </Avatar.Root>
+                    <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.body}>
+                      {summary.nickname}
+                    </Text>
+                  </HStack>
+                  {summary.friendship_status === "incoming_pending" ? (
+                    <HStack flexWrap="wrap" gap="2">
+                      <PondButton
+                        colorPalette="lilypad"
+                        loading={actionBusy}
+                        disabled={actionBusy || lookup.kind !== "id"}
+                        onClick={() => {
+                          if (lookup.kind !== "id") return;
+                          void (async () => {
+                            setActionBusy(true);
+                            setActionError(null);
+                            try {
+                              const token = await getApiAccessToken();
+                              await acceptFriend(token, lookup.id);
+                              setActionSuccess(null);
+                              setReloadKey((value) => value + 1);
+                            } catch (err: unknown) {
+                              setActionError(
+                                err instanceof Error ? err.message : "Failed to accept friend request.",
+                              );
+                            } finally {
+                              setActionBusy(false);
+                            }
+                          })();
+                        }}
+                      >
+                        Accept Friend Request
+                      </PondButton>
+                      <PondButton
+                        colorPalette="nautical"
+                        loading={actionBusy}
+                        disabled={actionBusy || lookup.kind !== "id"}
+                        onClick={() => {
+                          if (lookup.kind !== "id") return;
+                          void (async () => {
+                            setActionBusy(true);
+                            setActionError(null);
+                            try {
+                              const token = await getApiAccessToken();
+                              await ignoreFriend(token, lookup.id);
+                              setActionSuccess(null);
+                              setReloadKey((value) => value + 1);
+                            } catch (err: unknown) {
+                              setActionError(
+                                err instanceof Error ? err.message : "Failed to reject friend request.",
+                              );
+                            } finally {
+                              setActionBusy(false);
+                            }
+                          })();
+                        }}
+                      >
+                        Reject Friend Request
+                      </PondButton>
+                    </HStack>
+                  ) : summary.friendship_status === "outgoing_pending" ? (
+                    <Text fontSize={APP_TEXT_SIZES.body} fontWeight="medium" color="fg">
+                      Friend request pending.
+                    </Text>
+                  ) : (
                     <PondButton
                       colorPalette="lilypad"
                       loading={actionBusy}
@@ -277,12 +462,19 @@ export default function FriendProfilePage() {
                           setActionError(null);
                           try {
                             const token = await getApiAccessToken();
-                            await acceptFriend(token, lookup.id);
-                            setActionSuccess(null);
-                            setReloadKey((value) => value + 1);
+                            await requestFriendByUserId(token, lookup.id);
+                            setActionSuccess("Friend request sent.");
+                            setSummary((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    friendship_status: "outgoing_pending",
+                                  }
+                                : prev,
+                            );
                           } catch (err: unknown) {
                             setActionError(
-                              err instanceof Error ? err.message : "Failed to accept friend request.",
+                              err instanceof Error ? err.message : "Failed to send friend request.",
                             );
                           } finally {
                             setActionBusy(false);
@@ -290,254 +482,106 @@ export default function FriendProfilePage() {
                         })();
                       }}
                     >
-                      Accept Friend Request
+                      Request Friend
                     </PondButton>
-                    <PondButton
-                      colorPalette="nautical"
-                      loading={actionBusy}
-                      disabled={actionBusy || lookup.kind !== "id"}
-                      onClick={() => {
-                        if (lookup.kind !== "id") return;
-                        void (async () => {
-                          setActionBusy(true);
-                          setActionError(null);
-                          try {
-                            const token = await getApiAccessToken();
-                            await ignoreFriend(token, lookup.id);
-                            setActionSuccess(null);
-                            setReloadKey((value) => value + 1);
-                          } catch (err: unknown) {
-                            setActionError(
-                              err instanceof Error ? err.message : "Failed to reject friend request.",
-                            );
-                          } finally {
-                            setActionBusy(false);
-                          }
-                        })();
-                      }}
-                    >
-                      Reject Friend Request
-                    </PondButton>
-                  </HStack>
-                ) : summary.friendship_status === "outgoing_pending" ? (
-                  <Text fontWeight="medium">Friend request pending.</Text>
-                ) : (
-                  <PondButton
-                    colorPalette="lilypad"
-                    loading={actionBusy}
-                    disabled={actionBusy || lookup.kind !== "id"}
-                    onClick={() => {
-                      if (lookup.kind !== "id") return;
-                      void (async () => {
-                        setActionBusy(true);
-                        setActionError(null);
-                        try {
-                          const token = await getApiAccessToken();
-                          await requestFriendByUserId(token, lookup.id);
-                          setActionSuccess("Friend request sent.");
-                          setSummary((prev) =>
-                            prev
-                              ? {
-                                  ...prev,
-                                  friendship_status: "outgoing_pending",
-                                }
-                              : prev,
-                          );
-                        } catch (err: unknown) {
-                          setActionError(
-                            err instanceof Error ? err.message : "Failed to send friend request.",
-                          );
-                        } finally {
-                          setActionBusy(false);
-                        }
-                      })();
-                    }}
-                  >
-                    Request Friend
-                  </PondButton>
-                )}
+                  )}
+                  {actionError ? (
+                    <Text role="alert" color="nautical.solid" fontWeight="medium" fontSize={APP_TEXT_SIZES.helper}>
+                      {actionError}
+                    </Text>
+                  ) : null}
+                  {actionSuccess ? (
+                    <Text role="status" fontSize={APP_TEXT_SIZES.helper} color="lilypad.solid" fontWeight="medium">
+                      {actionSuccess}
+                    </Text>
+                  ) : null}
+                </Stack>
+              </Box>
+            ) : null}
+
+            {!isLoading && !error && summary?.can_view_full_profile && (hasAchievements || hasQuotes) ? (
+              <Box {...ENTRY_CARD_PROPS}>
                 {actionError ? (
-                  <Text role="alert" color="red.600" fontWeight="medium">
+                  <Text role="alert" color="nautical.solid" fontWeight="medium" fontSize={APP_TEXT_SIZES.helper} mb="2">
                     {actionError}
                   </Text>
                 ) : null}
-                {actionSuccess ? <Text>{actionSuccess}</Text> : null}
-              </Stack>
-            </Box>
-          ) : null}
-          {!isLoading && !error && summary?.can_view_full_profile && (hasAchievements || hasQuotes) ? (
-            <Box bg="bg" borderWidth="1px" borderColor="border" borderRadius="xl" p={{ base: "4", md: "4" }}>
-              {actionError ? (
-                <Text role="alert" color="red.600" fontWeight="medium" mb="2">
-                  {actionError}
-                </Text>
-              ) : null}
-              <Tabs.Root
-                value={profileTab}
-                onValueChange={(details) =>
-                  setProfileTab(details.value as "achievements" | "quotes")
-                }
-                variant="plain"
-              >
-                <Tabs.List
-                  borderBottomWidth="1px"
-                  borderColor="border"
-                  gap="1"
-                  w="100%"
+                <Tabs.Root
+                  value={profileTab}
+                  onValueChange={(details) => setProfileTab(details.value as "achievements" | "quotes")}
+                  variant="plain"
                 >
+                  <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" w="100%">
+                    {hasAchievements ? (
+                      <Tabs.Trigger
+                        value="achievements"
+                        bg={profileTab === "achievements" ? "lilypad.solid" : undefined}
+                        color={profileTab === "achievements" ? "black" : undefined}
+                        borderTopRadius="md"
+                        borderBottomRadius="0"
+                        px="4"
+                        py="2"
+                        fontWeight="medium"
+                        _hover={{
+                          bg: profileTab === "achievements" ? "lilypad.solid" : "transparent",
+                        }}
+                        _selected={{ bg: "lilypad.solid", color: "black" }}
+                      >
+                        Achievements
+                      </Tabs.Trigger>
+                    ) : null}
+                    {hasQuotes ? (
+                      <Tabs.Trigger
+                        value="quotes"
+                        bg={profileTab === "quotes" ? "lilypad.solid" : undefined}
+                        color={profileTab === "quotes" ? "black" : undefined}
+                        borderTopRadius="md"
+                        borderBottomRadius="0"
+                        px="4"
+                        py="2"
+                        fontWeight="medium"
+                        _hover={{
+                          bg: profileTab === "quotes" ? "lilypad.solid" : "transparent",
+                        }}
+                        _selected={{ bg: "lilypad.solid", color: "black" }}
+                      >
+                        Quotes
+                      </Tabs.Trigger>
+                    ) : null}
+                  </Tabs.List>
                   {hasAchievements ? (
-                    <Tabs.Trigger
-                      value="achievements"
-                      bg={profileTab === "achievements" ? "lilypad.solid" : undefined}
-                      color={profileTab === "achievements" ? "black" : undefined}
-                      borderTopRadius="md"
-                      borderBottomRadius="0"
-                      px="4"
-                      py="2"
-                      fontWeight="medium"
-                      _hover={{
-                        bg: profileTab === "achievements" ? "lilypad.solid" : "transparent",
-                      }}
-                      _selected={{ bg: "lilypad.solid", color: "black" }}
-                    >
-                      Achievements
-                    </Tabs.Trigger>
-                  ) : null}
-                  {hasQuotes ? (
-                    <Tabs.Trigger
-                      value="quotes"
-                      bg={profileTab === "quotes" ? "lilypad.solid" : undefined}
-                      color={profileTab === "quotes" ? "black" : undefined}
-                      borderTopRadius="md"
-                      borderBottomRadius="0"
-                      px="4"
-                      py="2"
-                      fontWeight="medium"
-                      _hover={{
-                        bg: profileTab === "quotes" ? "lilypad.solid" : "transparent",
-                      }}
-                      _selected={{ bg: "lilypad.solid", color: "black" }}
-                    >
-                      Quotes
-                    </Tabs.Trigger>
-                  ) : null}
-                </Tabs.List>
-                {hasAchievements ? (
-                  <Tabs.Content value="achievements" pt="3">
-                    <Box
-                      bg="bg"
-                      borderWidth="1px"
-                      borderColor="border"
-                      borderRadius="xl"
-                      p={{ base: "4", md: "4" }}
-                    >
+                    <Tabs.Content value="achievements" pt="3">
                       <Stack gap="3">
                         {achievements.map((a) => (
-                          <Stack key={a.slug} gap="0">
-                            <Text fontSize={APP_TEXT_SIZES.body} fontWeight="medium">
-                              {a.title}
-                            </Text>
-                            {a.description ? (
-                              <Text fontSize={APP_TEXT_SIZES.helper}>{a.description}</Text>
-                            ) : null}
-                          </Stack>
+                          <FriendProfileAchievementCard key={a.slug} achievement={a} />
                         ))}
                       </Stack>
-                    </Box>
-                  </Tabs.Content>
-                ) : null}
-                {hasQuotes ? (
-                  <Tabs.Content value="quotes" pt="3">
-                    <Stack gap="3">
-                      {total > PAGE_SIZE && visibleQuotes.length === PAGE_SIZE ? (
-                        <Box
-                          bg="bg"
-                          borderWidth="1px"
-                          borderColor="border"
-                          borderRadius="xl"
-                          p={{ base: "4", md: "4" }}
-                        >
-                          <Stack gap="2">
-                            <Text fontSize={APP_TEXT_SIZES.helper}>
-                              Showing {startIndex + 1}-{endIndex} of {total}
-                            </Text>
-                            <Stack direction="row" align="center" flexWrap="wrap" gap="3">
-                              <PondButton
-                                type="button"
-                                size="sm"
-                                colorPalette="nautical"
-                                onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
-                                disabled={safePage === 0}
-                              >
-                                ←
-                              </PondButton>
-                              <Text fontSize={APP_TEXT_SIZES.helper}>
-                                Page {safePage + 1} / {totalPages}
-                              </Text>
-                              <PondButton
-                                type="button"
-                                size="sm"
-                                colorPalette="nautical"
-                                onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
-                                disabled={safePage >= totalPages - 1}
-                              >
-                                →
-                              </PondButton>
-                            </Stack>
-                          </Stack>
-                        </Box>
-                      ) : null}
-                      {visibleQuotes.map((quote) => (
-                        <FriendProfileQuoteCard key={quote.id} quote={quote} />
-                      ))}
-                      {total > PAGE_SIZE ? (
-                        <Box
-                          bg="bg"
-                          borderWidth="1px"
-                          borderColor="border"
-                          borderRadius="xl"
-                          p={{ base: "4", md: "4" }}
-                        >
-                          <Stack gap="2">
-                            <Text fontSize={APP_TEXT_SIZES.helper}>
-                              Showing {startIndex + 1}-{endIndex} of {total}
-                            </Text>
-                            <Stack direction="row" align="center" flexWrap="wrap" gap="3">
-                              <PondButton
-                                type="button"
-                                size="sm"
-                                colorPalette="nautical"
-                                onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
-                                disabled={safePage === 0}
-                              >
-                                ←
-                              </PondButton>
-                              <Text fontSize={APP_TEXT_SIZES.helper}>
-                                Page {safePage + 1} / {totalPages}
-                              </Text>
-                              <PondButton
-                                type="button"
-                                size="sm"
-                                colorPalette="nautical"
-                                onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
-                                disabled={safePage >= totalPages - 1}
-                              >
-                                →
-                              </PondButton>
-                            </Stack>
-                          </Stack>
-                        </Box>
-                      ) : null}
-                    </Stack>
-                  </Tabs.Content>
-                ) : null}
-              </Tabs.Root>
-            </Box>
-          ) : null}
-          {!isLoading && !error && summary?.can_view_full_profile && !hasAchievements && !hasQuotes ? (
-            <Text>No visible profile content.</Text>
-          ) : null}
-        </Stack>
+                    </Tabs.Content>
+                  ) : null}
+                  {hasQuotes ? (
+                    <Tabs.Content value="quotes" pt="3">
+                      <Stack gap="3">
+                        {total > PAGE_SIZE && visibleQuotes.length === PAGE_SIZE ? quotePaginationToolbar : null}
+                        {visibleQuotes.map((quote) => (
+                          <FriendProfileQuoteCard key={quote.id} quote={quote} />
+                        ))}
+                        {total > PAGE_SIZE ? quotePaginationToolbar : null}
+                      </Stack>
+                    </Tabs.Content>
+                  ) : null}
+                </Tabs.Root>
+              </Box>
+            ) : null}
+
+            {!isLoading && !error && summary?.can_view_full_profile && !hasAchievements && !hasQuotes ? (
+              <Box {...ENTRY_CARD_PROPS}>
+                <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
+                  No visible profile content.
+                </Text>
+              </Box>
+            ) : null}
+          </Stack>
+        </Box>
       </Box>
     </Stack>
   );

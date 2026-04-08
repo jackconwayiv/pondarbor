@@ -770,7 +770,7 @@ export default function QffDmPage() {
         </Box>
       </Flex>
       {err && (
-        <Text color="#f6a060" mb={2} fontSize="sm">
+        <Text color="nautical.solid" mb={2} fontSize="sm" role="alert">
           {err}
         </Text>
       )}

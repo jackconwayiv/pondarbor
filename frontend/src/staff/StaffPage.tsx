@@ -144,7 +144,7 @@ export default function StaffPage() {
           </PondButton>
         </HStack>
         {listError ? (
-          <Text role="alert" fontSize="sm" color="red.600" fontWeight="medium">
+          <Text role="alert" fontSize="sm" color="nautical.solid" fontWeight="medium">
             {listError}
           </Text>
         ) : null}

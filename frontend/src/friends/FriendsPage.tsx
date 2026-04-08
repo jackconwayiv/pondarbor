@@ -132,7 +132,7 @@ export default function FriendsPage() {
                 </PondButton>
               </HStack>
               {requestError ? (
-                <Text role="alert" color="red.600" fontWeight="medium">
+                <Text role="alert" color="nautical.solid" fontWeight="medium">
                   {requestError}
                 </Text>
               ) : null}
@@ -141,7 +141,7 @@ export default function FriendsPage() {
           </Box>
 
           {pageError ? (
-            <Text role="alert" color="red.600" fontWeight="medium">
+            <Text role="alert" color="nautical.solid" fontWeight="medium">
               {pageError}
             </Text>
           ) : null}

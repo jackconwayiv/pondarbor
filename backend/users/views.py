@@ -266,6 +266,15 @@ def _public_user_summary_response(*, request, user):
     if is_friend:
         payload["email"] = user.email
         payload["display_name"] = (profile.display_name or "").strip()
+    if is_friend and not is_owner:
+        from closet.models import Item
+        from closet.services import owner_eligible_for_closet_publication_q
+
+        payload["closet_items_count"] = (
+            Item.objects.filter(deleted_at__isnull=True, owner_user=user)
+            .filter(owner_eligible_for_closet_publication_q())
+            .count()
+        )
     return Response(payload)
 
 

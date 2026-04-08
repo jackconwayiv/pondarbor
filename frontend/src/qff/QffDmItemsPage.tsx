@@ -194,7 +194,7 @@ export default function QffDmItemsPage() {
         </Flex>
       </Flex>
       {err && (
-        <Text color="#f6a060" mb={2}>
+        <Text color="nautical.solid" mb={2} role="alert">
           {err}
         </Text>
       )}

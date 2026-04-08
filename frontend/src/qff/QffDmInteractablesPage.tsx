@@ -49,7 +49,7 @@ export default function QffDmInteractablesPage() {
         attach a quest transition for scripted use.
       </Text>
       {err && (
-        <Text color="red.300" mb={4}>
+        <Text color="nautical.solid" mb={4} role="alert">
           {err}
         </Text>
       )}

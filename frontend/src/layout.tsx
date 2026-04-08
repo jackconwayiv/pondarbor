@@ -8,9 +8,10 @@ import {
   Link as ChakraLink,
   Menu,
   Spacer,
+  Text,
 } from "@chakra-ui/react";
 import { useAuth0 } from "@auth0/auth0-react";
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 
 import {
@@ -70,15 +71,64 @@ function isDesktopNavRouteActive(pathname: string, to: string): boolean {
       return pathname === "/clicker" || pathname.startsWith("/clicker/");
     case "/whatif":
       return pathname === "/whatif" || pathname.startsWith("/whatif/");
+    case "/about":
+      return pathname === "/about";
     default:
       return false;
   }
+}
+
+/** How close to the document bottom (px) before the footer is shown. */
+const FOOTER_REVEAL_NEAR_BOTTOM_PX = 72;
+
+/** Routes where the document scrollbar is hidden (keeps centered panels from shifting). */
+const HIDE_DOCUMENT_SCROLLBAR_PREFIXES = ["/quotes", "/closet"] as const;
+/** Exact paths only (e.g. WhatIf entry at `/whatif`, not lobby/play/hand). */
+const HIDE_DOCUMENT_SCROLLBAR_EXACT = ["/whatif"] as const;
+
+function useFooterVisibleNearPageBottom(pathname: string) {
+  const [visible, setVisible] = useState(false);
+
+  const update = useCallback(() => {
+    const el = document.documentElement;
+    const body = document.body;
+    const scrollHeight = Math.max(el.scrollHeight, body.scrollHeight);
+    const innerH = window.innerHeight;
+    const y = window.scrollY;
+
+    if (scrollHeight <= innerH + 2) {
+      setVisible(true);
+      return;
+    }
+    setVisible(y + innerH >= scrollHeight - FOOTER_REVEAL_NEAR_BOTTOM_PX);
+  }, []);
+
+  useEffect(() => {
+    setVisible(false);
+    requestAnimationFrame(() => update());
+  }, [pathname, update]);
+
+  useEffect(() => {
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    const ro = new ResizeObserver(() => update());
+    ro.observe(document.documentElement);
+    return () => {
+      window.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+      ro.disconnect();
+    };
+  }, [update]);
+
+  return visible;
 }
 
 export default function AppLayout() {
   const { loginWithRedirect } = useAuth0();
   const { isAuthenticated, auth0User, sessionUser, logout, switchUser } = useAppSession();
   const location = useLocation();
+  const footerVisible = useFooterVisibleNearPageBottom(location.pathname);
   const navigate = useNavigate();
   const isMobile = useIsMobile();
 
@@ -92,13 +142,34 @@ export default function AppLayout() {
             { to: "/closet", label: "Closet" },
             { to: "/clicker", label: "PondClicker" },
             { to: "/whatif", label: "WhatIf" },
+            { to: "/about", label: "About" },
           ]
-        : [{ to: "/whatif", label: "WhatIf" }],
+        : [
+            { to: "/whatif", label: "WhatIf" },
+            { to: "/about", label: "About" },
+          ],
     [showProfileNav],
   );
 
   const isClickerRoute =
     location.pathname === "/clicker" || location.pathname.startsWith("/clicker/");
+
+  useEffect(() => {
+    const { pathname } = location;
+    const hide =
+      HIDE_DOCUMENT_SCROLLBAR_EXACT.some((p) => pathname === p) ||
+      HIDE_DOCUMENT_SCROLLBAR_PREFIXES.some(
+        (p) => pathname === p || pathname.startsWith(`${p}/`),
+      );
+    const cls = "pa-hide-scrollbar";
+    const { documentElement: root, body } = document;
+    root.classList.toggle(cls, hide);
+    body.classList.toggle(cls, hide);
+    return () => {
+      root.classList.remove(cls);
+      body.classList.remove(cls);
+    };
+  }, [location.pathname]);
 
   const accountMenu = showProfileNav ? (
     <Menu.Root positioning={{ placement: "bottom-end", gutter: 8 }}>
@@ -307,6 +378,14 @@ export default function AppLayout() {
                         </Menu.Item>
                       </>
                     )}
+                    <Menu.Item
+                      value="about"
+                      onSelect={() => {
+                        navigate("/about");
+                      }}
+                    >
+                      About
+                    </Menu.Item>
                   </Menu.Content>
                 </Menu.Positioner>
               </Menu.Root>
@@ -458,6 +537,25 @@ export default function AppLayout() {
       >
         <Box flex="1" minH="0" minW={0} w="100%" display="flex" flexDirection="column">
           <Outlet />
+        </Box>
+      </Box>
+      <Box
+        as="footer"
+        w="100%"
+        flexShrink={0}
+        bg="lilypad.solid"
+        overflow="hidden"
+        maxH={footerVisible ? "4rem" : "0"}
+        opacity={footerVisible ? 1 : 0}
+        transitionProperty="max-height, opacity"
+        transitionDuration="0.22s"
+        transitionTimingFunction="ease"
+        aria-hidden={!footerVisible}
+      >
+        <Box py="2" px={{ base: "4", md: "6" }}>
+          <Text textAlign="center" fontSize="xs" color="fg">
+            Last updated April 2026 - Pond Arbor Workshop.
+          </Text>
         </Box>
       </Box>
     </Box>

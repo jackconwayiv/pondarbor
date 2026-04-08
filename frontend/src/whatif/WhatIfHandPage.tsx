@@ -16,6 +16,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
 
+import { validateWhatIfDisplayName } from "../forms/validation";
 import PondButton from "../PondButton";
 import { auth0DefaultLoginParams, auth0LoginWithReturnTo } from "../auth/auth0LoginParams";
 import { useAppSession } from "../auth/AppSessionContext";
@@ -172,8 +173,9 @@ export default function WhatIfHandPage() {
 
   async function handleJoin() {
     const displayName = sanitizeDisplayNameInput(name.trim());
-    if (!displayName) {
-      setError("Enter a player name.");
+    const nameErr = validateWhatIfDisplayName(displayName);
+    if (nameErr) {
+      setError(nameErr);
       return;
     }
     if (nameTakenInRoom) {
@@ -303,7 +305,7 @@ export default function WhatIfHandPage() {
           </PondButton>
 
           {error ? (
-            <Text role="alert" color="red.600">
+            <Text role="alert" color="nautical.solid">
               {error}
             </Text>
           ) : null}
@@ -847,7 +849,7 @@ export default function WhatIfHandPage() {
         ) : null}
 
         {error ? (
-          <Text role="alert" color="red.600">
+          <Text role="alert" color="nautical.solid">
             {error}
           </Text>
         ) : null}

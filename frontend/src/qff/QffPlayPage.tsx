@@ -21,6 +21,7 @@ import {
   type QffAreaMapCell,
   type QffSessionWithCharacter,
 } from "./api";
+import { parseQffCommandLine } from "./commandParser";
 
 /** Room state, presence, action_log (others’ say lines), and youSee refresh cadence. */
 const POLL_MS = 2000;
@@ -191,6 +192,22 @@ export default function QffPlayPage() {
     const raw = line.trim();
     if (!raw) return;
     setLine("");
+    const parsed = parseQffCommandLine(raw);
+    if (parsed.kind === "unknown") {
+      setLogLines((prev) => {
+        const nextId = () => logLineIdRef.current++;
+        const block = [
+          { id: nextId(), text: `> ${raw}`, recent: true },
+          {
+            id: nextId(),
+            text: "You try that, but nothing happens.",
+            recent: true,
+          },
+        ];
+        return [...block, ...prev.map((p) => ({ ...p, recent: false }))];
+      });
+      return;
+    }
     try {
       const token = await getTokenRef.current();
       const res = await sendQffCommand(token, raw);
@@ -247,7 +264,9 @@ export default function QffPlayPage() {
   if (loadError) {
     return (
       <Box px={4} py={8}>
-        <Text color="#f6a060">{loadError}</Text>
+        <Text color="nautical.solid" role="alert">
+          {loadError}
+        </Text>
       </Box>
     );
   }

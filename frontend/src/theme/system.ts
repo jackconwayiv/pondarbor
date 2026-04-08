@@ -3,9 +3,37 @@ import {
   defaultConfig,
   defineConfig,
   defineSemanticTokens,
+  defineSlotRecipe,
   defineTokens,
 } from "@chakra-ui/react";
 import { BRAND_COLORS } from "./tokens";
+
+/** Overrides default Chakra toast colors: brand lilypad (positive) and nautical orange (warning/error). */
+const pondToastSlotRecipe = defineSlotRecipe({
+  slots: ["root", "title", "description", "indicator", "closeTrigger", "actionTrigger"],
+  base: {
+    root: {
+      "&[data-type=success]": {
+        bg: "lilypad.solid",
+        color: "lilypad.contrast",
+        "--toast-trigger-bg": "{white/10}",
+        "--toast-border-color": "{white/40}",
+      },
+      "&[data-type=warning]": {
+        bg: "nautical.solid",
+        color: "nautical.contrast",
+        "--toast-trigger-bg": "{white/10}",
+        "--toast-border-color": "{white/40}",
+      },
+      "&[data-type=error]": {
+        bg: "nautical.solid",
+        color: "nautical.contrast",
+        "--toast-trigger-bg": "{white/10}",
+        "--toast-border-color": "{white/40}",
+      },
+    },
+  },
+});
 
 /**
  * Single source of truth for PondArbor UI (Chakra v3 system).
@@ -239,6 +267,9 @@ export const system = createSystem(
             },
           },
         }),
+      },
+      slotRecipes: {
+        toast: pondToastSlotRecipe,
       },
     },
   }),

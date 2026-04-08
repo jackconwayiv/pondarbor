@@ -1,6 +1,6 @@
 import { HStack, Input, Stack, Text } from "@chakra-ui/react";
 
-import { whatifInputProps } from "./whatifFieldProps";
+import { APP_TEXT_SIZES, PANEL_FIELD_PROPS } from "../theme/typography";
 import {
   WHATIF_QUESTION_PROMPT_PREFIX,
   isStandardWhatIfPromptPrefix,
@@ -29,8 +29,8 @@ export function WhatIfQuestionFields({ draft, onDraftChange }: WhatIfQuestionFie
 
   return (
     <Stack gap="3">
-      <Stack gap="1">
-        <Text fontSize="sm" fontWeight="medium" color="gray.700">
+      <Stack gap="1.5">
+        <Text fontSize={APP_TEXT_SIZES.label} fontWeight="medium" color="fg">
           Question
         </Text>
         {standardPrompt ? (
@@ -38,7 +38,7 @@ export function WhatIfQuestionFields({ draft, onDraftChange }: WhatIfQuestionFie
             <Text
               as="span"
               flexShrink={0}
-              fontSize="sm"
+              fontSize={APP_TEXT_SIZES.label}
               color="gray.600"
               fontWeight="medium"
               whiteSpace="nowrap"
@@ -52,12 +52,12 @@ export function WhatIfQuestionFields({ draft, onDraftChange }: WhatIfQuestionFie
               onChange={(e) => onDraftChange({ prompt: storedPromptFromSuffix(e.target.value) })}
               placeholder="were a kind of fruit?"
               aria-label='Question text after "What if (subject token)"'
-              {...whatifInputProps}
+              {...PANEL_FIELD_PROPS}
             />
           </HStack>
         ) : (
           <>
-            <Text fontSize="xs" color="gray.600">
+            <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600">
               This question does not use the usual &quot;What if {"{subject}"} …&quot; start. Edit the full prompt
               below.
             </Text>
@@ -65,7 +65,7 @@ export function WhatIfQuestionFields({ draft, onDraftChange }: WhatIfQuestionFie
               value={draft.prompt}
               onChange={(e) => onDraftChange({ prompt: e.target.value })}
               placeholder='Full prompt (include "{subject}")'
-              {...whatifInputProps}
+              {...PANEL_FIELD_PROPS}
             />
           </>
         )}
@@ -77,7 +77,7 @@ export function WhatIfQuestionFields({ draft, onDraftChange }: WhatIfQuestionFie
           <HStack key={key} align="center" gap="2" w="100%" minW={0}>
             <Text
               flexShrink={0}
-              fontSize="sm"
+              fontSize={APP_TEXT_SIZES.label}
               color="gray.600"
               fontWeight="medium"
               whiteSpace="pre"
@@ -93,7 +93,7 @@ export function WhatIfQuestionFields({ draft, onDraftChange }: WhatIfQuestionFie
               }
               placeholder={`Answer option ${n}`}
               aria-label={`Answer option ${n}`}
-              {...whatifInputProps}
+              {...PANEL_FIELD_PROPS}
             />
           </HStack>
         );

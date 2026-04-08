@@ -76,7 +76,9 @@ export default function QffLobbyPage() {
   if (isAuthenticated && !sessionUser && !isLoading) {
     return (
       <Box maxW="3xl" mx="auto" px={4} py={8}>
-        <Text>{sessionError ?? "Could not load your session."}</Text>
+        <Text color="nautical.solid" role="alert">
+          {sessionError ?? "Could not load your session."}
+        </Text>
       </Box>
     );
   }
@@ -106,7 +108,7 @@ export default function QffLobbyPage() {
         </Text>
 
         {!approved && (
-          <Text color="#daa520">Your account must be approved before you can play.</Text>
+          <Text color="nautical.solid">Your account must be approved before you can play.</Text>
         )}
 
         {approved && hasCharacter === true && (

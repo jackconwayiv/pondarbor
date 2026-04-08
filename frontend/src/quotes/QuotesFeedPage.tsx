@@ -2,6 +2,7 @@ import {
   Box,
   Collapsible,
   HStack,
+  Heading,
   Input,
   NativeSelectField,
   NativeSelectRoot,
@@ -13,10 +14,11 @@ import {
 } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useSearchParams } from "react-router";
+import { validateQuoteBody, validateQuoteLabelNames } from "../forms/validation";
 import PondButton from "../PondButton";
 import { useAppSession } from "../auth/AppSessionContext";
 import { fullBleedStackProps, usePrefersCoarsePointer } from "../responsive";
-import { APP_TEXT_SIZES, FIELD_PLACEHOLDER_PROPS } from "../theme/typography";
+import { APP_TEXT_SIZES, PANEL_FIELD_PROPS } from "../theme/typography";
 import PublicQuotesPage from "./PublicQuotesPage";
 import QuoteCardBase from "./QuoteCardBase";
 import {
@@ -31,6 +33,15 @@ import type { Quote, QuoteCreatePayload, QuoteLabel, QuotePatchPayload } from ".
 import { fetchFriendsList, searchFriends, type FriendUser } from "../friends/api";
 
 const PAGE_SIZE = 10;
+
+const ENTRY_CARD_PROPS = {
+  bg: "white",
+  borderWidth: "1px",
+  borderColor: "border",
+  borderRadius: "xl",
+  p: { base: "4", md: "4" },
+} as const;
+
 type QuoteTab = "add" | "my" | "published";
 
 function parseQuoteTab(value: string | null, isApproved: boolean): QuoteTab {
@@ -239,17 +250,27 @@ function QuoteCard({
       return;
     }
     const trimmedBody = editBody.trim();
-    if (!trimmedBody) {
-      setEditError("Quote body cannot be empty.");
+    const bodyErr = validateQuoteBody(trimmedBody);
+    if (bodyErr) {
+      setEditError(bodyErr);
+      return;
+    }
+    const tags = parseCsv(editTagsCsv);
+    const attributionNames = parseCsv(editAttributionNamesCsv);
+    const attributionEmailsOrLinkedNames = parseCsv(editAttributionEmailsCsv);
+    const labelErr = validateQuoteLabelNames([
+      ...tags,
+      ...attributionNames,
+      ...attributionEmailsOrLinkedNames,
+    ]);
+    if (labelErr) {
+      setEditError(labelErr);
       return;
     }
     setSavingEdit(true);
     setEditError(null);
     setCardSuccess(null);
     try {
-      const tags = parseCsv(editTagsCsv);
-      const attributionNames = parseCsv(editAttributionNamesCsv);
-      const attributionEmailsOrLinkedNames = parseCsv(editAttributionEmailsCsv);
       const labelsPayload: NonNullable<QuotePatchPayload["labels"]> = [
         ...tags.map((name) => ({ kind: "tag" as const, name })),
         ...attributionNames.map((name) => ({ kind: "attribution" as const, name })),
@@ -296,7 +317,7 @@ function QuoteCard({
 
   useEffect(() => {
     if (!cardSuccess) return;
-    const timer = window.setTimeout(() => setCardSuccess(null), 3000);
+    const timer = window.setTimeout(() => setCardSuccess(null), 7000);
     return () => window.clearTimeout(timer);
   }, [cardSuccess]);
 
@@ -324,7 +345,14 @@ function QuoteCard({
   }, [cancelEditing, isEditing, prefersCoarsePointer]);
 
   return (
-    <QuoteCardBase
+    <Box
+      bg="white"
+      borderWidth="1px"
+      borderColor="border"
+      borderRadius="xl"
+      p={{ base: "4", md: "4" }}
+    >
+      <QuoteCardBase
       quote={quote}
       ownerText={quoteOwnerDisplayLabel(quote.owner)}
       ownerProfileUserId={quote.owner.id}
@@ -354,7 +382,11 @@ function QuoteCard({
       footerSlot={
         canEdit ? (
           <>
-            {cardSuccess ? <Text>{cardSuccess}</Text> : null}
+            {cardSuccess ? (
+              <Text fontSize={APP_TEXT_SIZES.helper} color="lilypad.solid" fontWeight="medium">
+                {cardSuccess}
+              </Text>
+            ) : null}
             {isEditing ? (
               <Box
                 ref={editorContainerRef}
@@ -385,13 +417,13 @@ function QuoteCard({
                     <Text
                       fontSize={APP_TEXT_SIZES.helper}
                       fontWeight="bold"
-                      color={isDirty ? "red.500" : "transparent"}
+                      color={isDirty ? "nautical.solid" : "transparent"}
                     >
                       Unsaved changes
                     </Text>
                   </HStack>
                   {deleteError ? (
-                    <Text role="alert" color="red.600" fontWeight="medium">
+                    <Text role="alert" color="nautical.solid" fontWeight="medium">
                       {deleteError}
                     </Text>
                   ) : null}
@@ -402,7 +434,7 @@ function QuoteCard({
                       onChange={(e) => setEditBody(e.target.value)}
                       minH="100px"
                       placeholder={PLACEHOLDER_QUICK_BODY}
-                      {...FIELD_PLACEHOLDER_PROPS}
+                      {...PANEL_FIELD_PROPS}
                     />
                   </Stack>
                   <HStack align="start">
@@ -412,6 +444,7 @@ function QuoteCard({
                         type="date"
                         value={editDateOfQuote}
                         onChange={(e) => setEditDateOfQuote(e.target.value)}
+                        {...PANEL_FIELD_PROPS}
                       />
                     </Stack>
                     <Stack flex="1">
@@ -459,7 +492,7 @@ function QuoteCard({
                       value={editTagsCsv}
                       onChange={(e) => setEditTagsCsv(e.target.value)}
                       placeholder={PLACEHOLDER_TAGS}
-                      {...FIELD_PLACEHOLDER_PROPS}
+                      {...PANEL_FIELD_PROPS}
                     />
                   </Stack>
                   <Stack>
@@ -497,7 +530,7 @@ function QuoteCard({
                       value={editAttributionNamesCsv}
                       onChange={(e) => setEditAttributionNamesCsv(e.target.value)}
                       placeholder={PLACEHOLDER_ATTRIBUTION_NAMES}
-                      {...FIELD_PLACEHOLDER_PROPS}
+                      {...PANEL_FIELD_PROPS}
                     />
                   </Stack>
                   <Stack>
@@ -535,7 +568,7 @@ function QuoteCard({
                       value={editAttributionEmailsCsv}
                       onChange={(e) => setEditAttributionEmailsCsv(e.target.value)}
                       placeholder={PLACEHOLDER_ATTRIBUTION_EMAILS}
-                      {...FIELD_PLACEHOLDER_PROPS}
+                      {...PANEL_FIELD_PROPS}
                     />
                   </Stack>
                   <HStack>
@@ -582,7 +615,7 @@ function QuoteCard({
                     </PondButton>
                   </HStack>
                   {editError ? (
-                    <Text role="alert" color="red.600" fontWeight="medium">
+                    <Text role="alert" color="nautical.solid" fontWeight="medium">
                       {editError}
                     </Text>
                   ) : null}
@@ -592,7 +625,8 @@ function QuoteCard({
           </>
         ) : null
       }
-    />
+      />
+    </Box>
   );
 }
 
@@ -711,7 +745,7 @@ export default function QuotesFeedPage() {
 
   useEffect(() => {
     if (!success) return;
-    const timer = window.setTimeout(() => setSuccess(null), 3000);
+    const timer = window.setTimeout(() => setSuccess(null), 7000);
     return () => window.clearTimeout(timer);
   }, [success]);
 
@@ -761,8 +795,22 @@ export default function QuotesFeedPage() {
 
   const onSaveQuote = async () => {
     const trimmed = body.trim();
-    if (!trimmed) {
-      setError("Quote body cannot be empty.");
+    const bodyErr = validateQuoteBody(trimmed);
+    if (bodyErr) {
+      setError(bodyErr);
+      return;
+    }
+
+    const tags = parseCsv(tagsCsv);
+    const attributionNames = parseCsv(attributionNamesCsv);
+    const attributionEmailsOrLinkedNames = parseCsv(attributionEmailsCsv);
+    const labelErr = validateQuoteLabelNames([
+      ...tags,
+      ...attributionNames,
+      ...attributionEmailsOrLinkedNames,
+    ]);
+    if (labelErr) {
+      setError(labelErr);
       return;
     }
 
@@ -770,10 +818,6 @@ export default function QuotesFeedPage() {
     setError(null);
     setSuccess(null);
     try {
-      const tags = parseCsv(tagsCsv);
-      const attributionNames = parseCsv(attributionNamesCsv);
-      const attributionEmailsOrLinkedNames = parseCsv(attributionEmailsCsv);
-
       const payload: QuoteCreatePayload = {
         body: trimmed,
         visibility,
@@ -825,14 +869,18 @@ export default function QuotesFeedPage() {
   };
 
   if (isLoading) {
-    return <Text>Loading…</Text>;
+    return (
+      <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
+        Loading…
+      </Text>
+    );
   }
   if (!isAuthenticated) {
     return <Navigate to="/" replace />;
   }
   if (!sessionUser) {
     return (
-      <Stack gap="4" maxW="3xl">
+      <Stack gap="4" maxW="4xl">
         <Text fontWeight="semibold">Reconnecting your API session…</Text>
         <Text fontSize={APP_TEXT_SIZES.helper}>
           {sessionError || "You are authenticated, but the API session is not ready yet."}
@@ -870,18 +918,33 @@ export default function QuotesFeedPage() {
       >
         <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
           <Box
-            maxW="3xl"
+            maxW="4xl"
             w="100%"
             mx="auto"
-            bg="bg"
+            bg="gray.100"
             borderWidth="1px"
             borderColor="border"
             borderRadius="xl"
             overflow="hidden"
           >
-            <Tabs.List
+            <Stack
+              gap={{ base: "4", md: "4" }}
               px={{ base: "4", md: "6" }}
               pt={{ base: "4", md: "4" }}
+              pb="3"
+            >
+              <Box {...ENTRY_CARD_PROPS}>
+                <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold" mb="2">
+                  Quotes
+                </Heading>
+                <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
+                  Capture lines you love with tags and attributions. Draft here and publish your faves for friends.
+                </Text>
+              </Box>
+            </Stack>
+            <Tabs.List
+              px={{ base: "4", md: "6" }}
+              pt="0"
               pb="0"
               borderBottomWidth="1px"
               borderColor="border"
@@ -940,7 +1003,7 @@ export default function QuotesFeedPage() {
                 onChange={(e) => setBody(e.target.value)}
                 placeholder={PLACEHOLDER_QUICK_BODY}
                 minH="120px"
-                {...FIELD_PLACEHOLDER_PROPS}
+                {...PANEL_FIELD_PROPS}
               />
               <Collapsible.Root
                 open={isMoreDetailsOpen}
@@ -996,6 +1059,7 @@ export default function QuotesFeedPage() {
                         type="date"
                         value={dateOfQuote}
                         onChange={(e) => setDateOfQuote(e.target.value)}
+                        {...PANEL_FIELD_PROPS}
                       />
                     </Stack>
                     <Stack flex="1">
@@ -1044,7 +1108,7 @@ export default function QuotesFeedPage() {
                         setTagsCsv((prev) => normalizeCsv(prev));
                       }}
                       placeholder={PLACEHOLDER_TAGS}
-                      {...FIELD_PLACEHOLDER_PROPS}
+                      {...PANEL_FIELD_PROPS}
                     />
                   </Stack>
                   <Stack>
@@ -1077,7 +1141,7 @@ export default function QuotesFeedPage() {
                       value={attributionNamesCsv}
                       onChange={(e) => setAttributionNamesCsv(e.target.value)}
                       placeholder={PLACEHOLDER_ATTRIBUTION_NAMES}
-                      {...FIELD_PLACEHOLDER_PROPS}
+                      {...PANEL_FIELD_PROPS}
                     />
                   </Stack>
                   <Stack>
@@ -1114,7 +1178,7 @@ export default function QuotesFeedPage() {
                       value={attributionEmailsCsv}
                       onChange={(e) => setAttributionEmailsCsv(e.target.value)}
                       placeholder={PLACEHOLDER_ATTRIBUTION_EMAILS}
-                      {...FIELD_PLACEHOLDER_PROPS}
+                      {...PANEL_FIELD_PROPS}
                     />
                     {friendTagSuggestions.length > 0 ? (
                       <HStack flexWrap="wrap">
@@ -1140,11 +1204,15 @@ export default function QuotesFeedPage() {
                 </Collapsible.Content>
               </Collapsible.Root>
               {error ? (
-                <Text role="alert" color="red.600" fontWeight="medium">
+                <Text role="alert" color="nautical.solid" fontWeight="medium">
                   {error}
                 </Text>
               ) : null}
-              {success ? <Text>{success}</Text> : null}
+              {success ? (
+                <Text fontSize={APP_TEXT_SIZES.helper} color="lilypad.solid" fontWeight="medium">
+                  {success}
+                </Text>
+              ) : null}
               </Stack>
             </Tabs.Content>
 

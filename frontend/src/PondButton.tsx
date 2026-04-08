@@ -9,7 +9,7 @@ import { forwardRef } from "react";
  *   using the currently selected `colorPalette`.
  */
 const PondButton = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ variant, _hover, colorPalette, borderRadius, size, ...props }, ref) => {
+  ({ variant, _hover, colorPalette, borderRadius, size, color, ...props }, ref) => {
     return (
       <ChakraButton
         ref={ref}
@@ -17,6 +17,7 @@ const PondButton = forwardRef<HTMLButtonElement, ButtonProps>(
         size={size ?? "md"}
         borderRadius={borderRadius ?? "xl"}
         colorPalette={colorPalette}
+        color={color ?? "black"}
         _hover={{
           // Outline-like hover: white background + colored border.
           // (Site chrome uses a white background token `bg`.)

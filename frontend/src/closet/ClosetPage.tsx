@@ -28,7 +28,13 @@ import PondButton from "../PondButton";
 import { useAppSession } from "../auth/AppSessionContext";
 import { fetchFriendsList } from "../friends/api";
 import { fullBleedStackProps, useIsMobile } from "../responsive";
-import { APP_TEXT_SIZES, PANEL_FORM_PLACEHOLDER_PROPS } from "../theme/typography";
+import {
+  APP_TEXT_SIZES,
+  MAPPED_CARD_PADDING_PROPS,
+  MAPPED_CLOSET_TAB_STACK_GAP,
+  MAPPED_LIST_CARD_OUTER_PROPS,
+  PANEL_FORM_PLACEHOLDER_PROPS,
+} from "../theme/typography";
 import {
   acceptCustody,
   approveBorrowRequest,
@@ -1279,7 +1285,7 @@ function ItemCard({
           minH="140px"
           draggable={false}
         />
-        <Box flex="1" minW={0} p="4">
+        <Box flex="1" minW={0} {...MAPPED_CARD_PADDING_PROPS}>
           {itemCardInner}
         </Box>
       </Card.Root>
@@ -1294,7 +1300,7 @@ function ItemCard({
       borderStyle={dashedBorder ? "dashed" : "solid"}
       borderColor="border"
       borderRadius="xl"
-      p="4"
+      {...MAPPED_LIST_CARD_OUTER_PROPS}
       cursor={onCardClick ? "pointer" : "default"}
       onClick={() => onCardClick?.()}
     >
@@ -1805,7 +1811,7 @@ export default function ClosetPage() {
             </Tabs.List>
 
             <Tabs.Content value="my" p={{ base: "4", md: "6" }}>
-              <Stack gap="4">
+              <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP}>
                 <Text>Create and manage items you wish to allow your friends to borrow.</Text>
 
                 {ownedNotice ? (
@@ -2556,7 +2562,7 @@ export default function ClosetPage() {
             </Tabs.Content>
 
             <Tabs.Content value="friends" p={{ base: "4", md: "6" }}>
-              <Stack gap="4">
+              <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP}>
                 <HStack justify="space-between" align="center" gap="3" flexWrap="wrap">
                   <Text>Click an item to see details and request to borrow.</Text>
                   {friendsNotice ? (
@@ -3023,7 +3029,7 @@ export default function ClosetPage() {
                         minH="140px"
                         draggable={false}
                       />
-                      <Box flex="1" minW={0} p="4">
+                      <Box flex="1" minW={0} {...MAPPED_CARD_PADDING_PROPS}>
                         {friendStack}
                       </Box>
                     </Card.Root>
@@ -3036,7 +3042,7 @@ export default function ClosetPage() {
                       borderWidth="1px"
                       borderColor="border"
                       borderRadius="xl"
-                      p="4"
+                      {...MAPPED_LIST_CARD_OUTER_PROPS}
                       cursor="pointer"
                       onClick={friendOpenToggle}
                     >

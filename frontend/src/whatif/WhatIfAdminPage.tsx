@@ -15,6 +15,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { validateWhatIfBulkText, validateWhatIfQuestionDraft } from "../forms/validation";
 import PondButton from "../PondButton";
 import { useAppSession } from "../auth/AppSessionContext";
+import { MAPPED_LIST_STACK_GAP } from "../theme/typography";
 import {
   bulkImportWhatIfQuestions,
   createWhatIfQuestion,
@@ -356,29 +357,31 @@ export default function WhatIfAdminPage() {
                   </PondButton>
                 </HStack>
 
-                {questions.map((q) => (
-                  <WhatIfQuestionAdminListItem
-                    key={q.id}
-                    q={q}
-                    busy={busy}
-                    confirmDeleteId={confirmDeleteId}
-                    confirmDeleteButtonRef={confirmDeleteButtonRef}
-                    onToggleActive={(id, is_active) => void toggleQuestionActive(id, is_active)}
-                    onEdit={(row) => {
-                      beginEdit(row);
-                      setActiveTab("edit");
-                    }}
-                    onDeleteClick={(row) => {
-                      if (confirmDeleteId !== row.id) {
-                        setConfirmDeleteId(row.id);
-                        return;
-                      }
-                      void removeQuestion(row.id);
-                    }}
-                    onApprove={(id) => void setReviewStatus(id, "approved")}
-                    onReject={(id) => void setReviewStatus(id, "rejected")}
-                  />
-                ))}
+                <Stack gap={MAPPED_LIST_STACK_GAP}>
+                  {questions.map((q) => (
+                    <WhatIfQuestionAdminListItem
+                      key={q.id}
+                      q={q}
+                      busy={busy}
+                      confirmDeleteId={confirmDeleteId}
+                      confirmDeleteButtonRef={confirmDeleteButtonRef}
+                      onToggleActive={(id, is_active) => void toggleQuestionActive(id, is_active)}
+                      onEdit={(row) => {
+                        beginEdit(row);
+                        setActiveTab("edit");
+                      }}
+                      onDeleteClick={(row) => {
+                        if (confirmDeleteId !== row.id) {
+                          setConfirmDeleteId(row.id);
+                          return;
+                        }
+                        void removeQuestion(row.id);
+                      }}
+                      onApprove={(id) => void setReviewStatus(id, "approved")}
+                      onReject={(id) => void setReviewStatus(id, "rejected")}
+                    />
+                  ))}
+                </Stack>
               </Stack>
             </Tabs.Content>
 

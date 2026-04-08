@@ -42,7 +42,7 @@ import {
   type WhatIfQuestionListFilter,
 } from "./api";
 import { fullBleedStackProps, useIsMobile } from "../responsive";
-import { APP_TEXT_SIZES, PANEL_FIELD_PROPS } from "../theme/typography";
+import { APP_TEXT_SIZES, MAPPED_LIST_STACK_GAP, PANEL_FIELD_PROPS } from "../theme/typography";
 import { WhatIfQuestionAdminListItem } from "./WhatIfQuestionAdminListItem";
 import { WhatIfQuestionFields } from "./WhatIfQuestionFields";
 
@@ -715,29 +715,31 @@ export default function WhatIfEntryPage() {
               Refresh
             </PondButton>
           </HStack>
-          {questions.map((q) => (
-            <WhatIfQuestionAdminListItem
-              key={q.id}
-              q={q}
-              busy={adminBusy}
-              confirmDeleteId={confirmDeleteId}
-              confirmDeleteButtonRef={confirmDeleteButtonRef}
-              onToggleActive={(id, is_active) => void toggleQuestionActive(id, is_active)}
-              onEdit={(row) => {
-                beginEditQuestion(row);
-                setActiveTab("admin-edit");
-              }}
-              onDeleteClick={(row) => {
-                if (confirmDeleteId !== row.id) {
-                  setConfirmDeleteId(row.id);
-                  return;
-                }
-                void removeQuestion(row.id);
-              }}
-              onApprove={(id) => void setReviewStatus(id, "approved")}
-              onReject={(id) => void setReviewStatus(id, "rejected")}
-            />
-          ))}
+          <Stack gap={MAPPED_LIST_STACK_GAP}>
+            {questions.map((q) => (
+              <WhatIfQuestionAdminListItem
+                key={q.id}
+                q={q}
+                busy={adminBusy}
+                confirmDeleteId={confirmDeleteId}
+                confirmDeleteButtonRef={confirmDeleteButtonRef}
+                onToggleActive={(id, is_active) => void toggleQuestionActive(id, is_active)}
+                onEdit={(row) => {
+                  beginEditQuestion(row);
+                  setActiveTab("admin-edit");
+                }}
+                onDeleteClick={(row) => {
+                  if (confirmDeleteId !== row.id) {
+                    setConfirmDeleteId(row.id);
+                    return;
+                  }
+                  void removeQuestion(row.id);
+                }}
+                onApprove={(id) => void setReviewStatus(id, "approved")}
+                onReject={(id) => void setReviewStatus(id, "rejected")}
+              />
+            ))}
+          </Stack>
         </Stack>
       </Tabs.Content>
 

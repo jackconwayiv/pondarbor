@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useParams } from "react-router";
 import NotFoundPage from "../NotFoundPage";
 import { useAppSession } from "../auth/AppSessionContext";
+import { AchievementSummaryCard } from "../achievements/AchievementSummaryCard";
 import { fetchPublicAchievementsByUser, fetchPublicAchievementsByUserId } from "../achievements/api";
 import type { AchievementSummary } from "../achievements/types";
 import {
@@ -13,7 +14,12 @@ import {
 } from "./publicUser";
 import PondButton from "../PondButton";
 import { fullBleedStackProps } from "../responsive";
-import { APP_TEXT_SIZES } from "../theme/typography";
+import {
+  APP_TEXT_SIZES,
+  MAPPED_CARD_PADDING_PROPS,
+  MAPPED_LIST_CARD_OUTER_PROPS,
+  MAPPED_LIST_STACK_GAP,
+} from "../theme/typography";
 import { fetchPublicQuotesByUser, fetchPublicQuotesByUserId } from "../quotes/api";
 import { quoteOwnerDisplayLabel } from "../quotes/ownerDisplay";
 import QuoteCardBase from "../quotes/QuoteCardBase";
@@ -31,40 +37,27 @@ import { validateClosetFreeText, validateIsoDateRequired } from "../forms/valida
 
 const PAGE_SIZE = 10;
 
-const ENTRY_CARD_PROPS = {
+const ENTRY_CARD_SHELL_PROPS = {
   bg: "white",
   borderWidth: "1px",
   borderColor: "border",
   borderRadius: "xl",
+} as const;
+
+const ENTRY_CARD_PROPS = {
+  ...ENTRY_CARD_SHELL_PROPS,
   p: { base: "4", md: "4" },
 } as const;
 
 /** Same shell as [`PublicQuotesPage`](../quotes/PublicQuotesPage.tsx) / editable quote rows in Quotes. */
 function FriendProfileQuoteCard({ quote }: { quote: Quote }) {
   return (
-    <Box {...ENTRY_CARD_PROPS}>
+    <Box {...ENTRY_CARD_SHELL_PROPS} {...MAPPED_LIST_CARD_OUTER_PROPS}>
       <QuoteCardBase
         quote={quote}
         ownerText={quoteOwnerDisplayLabel(quote.owner)}
         ownerProfileUserId={quote.owner.id}
       />
-    </Box>
-  );
-}
-
-function FriendProfileAchievementCard({ achievement: a }: { achievement: AchievementSummary }) {
-  return (
-    <Box {...ENTRY_CARD_PROPS}>
-      <Stack gap="1">
-        <Text fontSize={APP_TEXT_SIZES.body} whiteSpace="pre-wrap">
-          {a.title}
-        </Text>
-        {a.description ? (
-          <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600" whiteSpace="pre-wrap">
-            {a.description}
-          </Text>
-        ) : null}
-      </Stack>
     </Box>
   );
 }
@@ -244,7 +237,7 @@ function FriendProfileClosetItemCard({
         flexDirection="row"
         overflow="hidden"
         alignItems="stretch"
-        {...ENTRY_CARD_PROPS}
+        {...ENTRY_CARD_SHELL_PROPS}
         cursor="pointer"
         onClick={openToggle}
       >
@@ -260,7 +253,7 @@ function FriendProfileClosetItemCard({
           minH="140px"
           draggable={false}
         />
-        <Box flex="1" minW={0} p="4">
+        <Box flex="1" minW={0} {...MAPPED_CARD_PADDING_PROPS}>
           <Stack gap="2">
             <HStack gap="1" flexWrap="wrap" align="flex-start">
               {item.my_pending_request ? (
@@ -288,7 +281,7 @@ function FriendProfileClosetItemCard({
     );
   }
   return (
-    <Box {...ENTRY_CARD_PROPS} cursor="pointer" onClick={openToggle}>
+    <Box {...ENTRY_CARD_SHELL_PROPS} {...MAPPED_LIST_CARD_OUTER_PROPS} cursor="pointer" onClick={openToggle}>
       <Stack gap="2">
         <HStack gap="1" flexWrap="wrap" align="flex-start">
           {item.my_pending_request ? (
@@ -846,16 +839,16 @@ export default function FriendProfilePage() {
                   </Tabs.List>
                   {hasAchievements ? (
                     <Tabs.Content value="achievements" pt="3">
-                      <Stack gap="3">
+                      <Stack gap={MAPPED_LIST_STACK_GAP}>
                         {achievements.map((a) => (
-                          <FriendProfileAchievementCard key={a.slug} achievement={a} />
+                          <AchievementSummaryCard key={a.slug} achievement={a} />
                         ))}
                       </Stack>
                     </Tabs.Content>
                   ) : null}
                   {hasQuotes ? (
                     <Tabs.Content value="quotes" pt="3">
-                      <Stack gap="3">
+                      <Stack gap={MAPPED_LIST_STACK_GAP}>
                         {total > PAGE_SIZE && visibleQuotes.length === PAGE_SIZE ? quotePaginationToolbar : null}
                         {visibleQuotes.map((quote) => (
                           <FriendProfileQuoteCard key={quote.id} quote={quote} />
@@ -866,7 +859,7 @@ export default function FriendProfilePage() {
                   ) : null}
                   {hasClosetTab ? (
                     <Tabs.Content value="closet" pt="3">
-                      <Stack gap="3">
+                      <Stack gap={MAPPED_LIST_STACK_GAP}>
                         {closetItems.length === 0 ? (
                           <Text fontSize={APP_TEXT_SIZES.helper}>No closet items listed yet.</Text>
                         ) : null}

@@ -1,7 +1,7 @@
 import { Box, Stack, Text } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
 import PondButton from "../PondButton";
-import { APP_TEXT_SIZES } from "../theme/typography";
+import { APP_TEXT_SIZES, MAPPED_LIST_CARD_OUTER_PROPS, MAPPED_LIST_STACK_GAP } from "../theme/typography";
 import { useAppSession } from "../auth/AppSessionContext";
 import { fetchPublishedQuotes } from "./api";
 import { quoteOwnerDisplayLabel } from "./ownerDisplay";
@@ -17,7 +17,7 @@ function PublicQuoteCard({ quote }: { quote: Quote }) {
       borderWidth="1px"
       borderColor="border"
       borderRadius="xl"
-      p={{ base: "4", md: "4" }}
+      {...MAPPED_LIST_CARD_OUTER_PROPS}
     >
       <QuoteCardBase
         quote={quote}
@@ -69,7 +69,7 @@ export default function PublicQuotesPage() {
   const visibleQuotes = quotes.slice(startIndex, endIndex);
 
   return (
-    <Stack gap="3" w="100%">
+    <Stack gap={MAPPED_LIST_STACK_GAP} w="100%">
       {isLoading ? (
         <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
           Loading…

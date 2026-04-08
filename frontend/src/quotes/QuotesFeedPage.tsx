@@ -18,7 +18,12 @@ import { validateQuoteBody, validateQuoteLabelNames } from "../forms/validation"
 import PondButton from "../PondButton";
 import { useAppSession } from "../auth/AppSessionContext";
 import { fullBleedStackProps, usePrefersCoarsePointer } from "../responsive";
-import { APP_TEXT_SIZES, PANEL_FIELD_PROPS } from "../theme/typography";
+import {
+  APP_TEXT_SIZES,
+  MAPPED_LIST_CARD_OUTER_PROPS,
+  MAPPED_LIST_STACK_GAP,
+  PANEL_FIELD_PROPS,
+} from "../theme/typography";
 import PublicQuotesPage from "./PublicQuotesPage";
 import QuoteCardBase from "./QuoteCardBase";
 import {
@@ -358,7 +363,7 @@ function QuoteCard({
       borderWidth="1px"
       borderColor="border"
       borderRadius="xl"
-      p={{ base: "4", md: "4" }}
+      {...MAPPED_LIST_CARD_OUTER_PROPS}
     >
       <QuoteCardBase
       quote={quote}
@@ -1320,7 +1325,7 @@ export default function QuotesFeedPage() {
             </Tabs.Content>
 
             <Tabs.Content value="my" p={{ base: "4", md: "6" }}>
-            <Stack gap="3" pt="0">
+            <Stack gap={MAPPED_LIST_STACK_GAP} pt="0">
               {loadingFeed ? <Text fontSize={APP_TEXT_SIZES.helper}>Loading…</Text> : null}
               {quotes.length === 0 ? <Text>No quotes yet.</Text> : null}
               {editingQuoteId == null &&

@@ -114,7 +114,7 @@ export default function AboutPrivacyPage() {
                 <Heading as="h2" size="md" fontWeight="semibold">
                   Contact
                 </Heading>
-                <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall">
+                <Text fontSize={APP_TEXT_SIZES.helper} color="fg" lineHeight="tall">
                   If you have questions about this policy, contact: pondarbor@gmail.com
                 </Text>
               </Stack>

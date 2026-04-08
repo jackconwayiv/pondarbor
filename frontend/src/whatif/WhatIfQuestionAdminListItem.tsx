@@ -1,7 +1,8 @@
-import { HStack, Stack, Switch, Tabs, Text } from "@chakra-ui/react";
+import { Box, HStack, Stack, Switch, Tabs, Text } from "@chakra-ui/react";
 import type { RefObject } from "react";
 
 import PondButton from "../PondButton";
+import { MAPPED_LIST_CARD_OUTER_PROPS } from "../theme/typography";
 import type { WhatIfQuestionAdmin } from "./api";
 import { WhatIfQuestionAdminListMeta } from "./WhatIfQuestionAdminListMeta";
 
@@ -38,16 +39,8 @@ export function WhatIfQuestionAdminListItem({
           : "";
 
   return (
-    <Stack gap="2" p="3" borderWidth="1px" borderColor="border" borderRadius="md" bg="bg">
-      <Text fontWeight="medium">
-        #{q.id}
-        {statusLabel ? ` ${statusLabel}` : null}
-      </Text>
-      <Tabs.Root
-        id={`whatif-admin-q-${q.id}`}
-        defaultValue="question"
-        variant="plain"
-      >
+    <Box bg="white" borderWidth="1px" borderColor="border" borderRadius="xl" {...MAPPED_LIST_CARD_OUTER_PROPS}>
+      <Tabs.Root id={`whatif-admin-q-${q.id}`} defaultValue="question" variant="plain">
         <Tabs.List
           borderBottomWidth="1px"
           borderColor="border"
@@ -80,7 +73,9 @@ export function WhatIfQuestionAdminListItem({
         </Tabs.List>
         <Tabs.Content value="question" pt="3">
           <Stack gap="3">
-            <Text>{q.prompt}</Text>
+            <Text whiteSpace="pre-wrap">
+              {`#${q.id}${statusLabel ? ` ${statusLabel}` : ""}: ${q.prompt}`}
+            </Text>
             <Text fontSize="sm" color="gray.700">
               1) {q.answer_1} | 2) {q.answer_2} | 3) {q.answer_3} | 4) {q.answer_4} | 5) {q.answer_5} | 6){" "}
               {q.answer_6}
@@ -150,6 +145,6 @@ export function WhatIfQuestionAdminListItem({
           <WhatIfQuestionAdminListMeta q={q} />
         </Tabs.Content>
       </Tabs.Root>
-    </Stack>
+    </Box>
   );
 }

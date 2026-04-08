@@ -1,7 +1,9 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-export default defineConfig({
+/** Must match Django `STATIC_URL` (`/static/`). Otherwise lazy chunks load from `/assets/…` and hit the SPA catch‑all (HTML → MIME errors). */
+export default defineConfig(({ mode }) => ({
+  base: mode === "production" ? "/static/" : "/",
   plugins: [react()],
   build: {
     manifest: true,
@@ -47,4 +49,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

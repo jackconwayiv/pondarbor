@@ -16,10 +16,11 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate } from "react-router";
 import { useAppSession } from "./auth/AppSessionContext";
+import { AchievementSummaryCard } from "./achievements/AchievementSummaryCard";
 import { fetchPublicAchievementsByUserId } from "./achievements/api";
 import type { AchievementSummary } from "./achievements/types";
 import { fullBleedStackProps } from "./responsive";
-import { APP_TEXT_SIZES, PANEL_FIELD_PROPS } from "./theme/typography";
+import { APP_TEXT_SIZES, MAPPED_LIST_STACK_GAP, PANEL_FIELD_PROPS } from "./theme/typography";
 import {
   getSortedIanaTimeZones,
   timeZoneOptionsForValue,
@@ -631,16 +632,9 @@ export default function ProfilePage() {
                       {!isEditing && profileAchievements.length > 0 ? (
                         <Stack gap="2" pt="2">
                           <Text {...profileFieldLabelProps}>Achievements</Text>
-                          <Stack gap="2">
+                          <Stack gap={MAPPED_LIST_STACK_GAP}>
                             {profileAchievements.map((a) => (
-                              <Stack key={a.slug} gap="0">
-                                <Text fontSize={APP_TEXT_SIZES.body}>{a.title}</Text>
-                                {a.description ? (
-                                  <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-                                    {a.description}
-                                  </Text>
-                                ) : null}
-                              </Stack>
+                              <AchievementSummaryCard key={a.slug} achievement={a} />
                             ))}
                           </Stack>
                         </Stack>

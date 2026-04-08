@@ -49,6 +49,9 @@ const HOME_LILYPAD_TILES = [
   { to: "/whatif", label: "WhatIf", hoverText: "multiplayer party game" },
 ] as const;
 
+const HOME_PURPOSE_BLURB =
+  "PondArbor is a hobby project by Pond Arbor Workshop: a single place for friends and family to use quotes, a community closet, PondClicker, WhatIf, and more.";
+
 const MONTH_NAMES = [
   "January",
   "February",
@@ -321,25 +324,28 @@ function App() {
     <Stack flex="1" minH="full" gap="0" align="stretch" {...fullBleedStackProps}>
       <Box bg="bg" w="full" px={{ base: "4", md: "6" }} py={{ base: "6", md: "6" }}>
         <Flex
-          align="center"
+          align="flex-start"
           gap="3"
           w="full"
           mb="3"
           flexWrap="wrap"
           rowGap="2"
         >
-          <Heading
-            as="h1"
-            size={{ base: "lg", md: "xl" }}
-            flex="1"
-            minW={{ base: "100%", sm: 0 }}
-          >
-            {isAuthenticated ? `Welcome ${nickname}!` : "Welcome!"}
-          </Heading>
+          <Stack gap="1" flex="1" minW={{ base: "100%", sm: 0 }}>
+            <Heading as="h1" size={{ base: "lg", md: "xl" }}>
+              PondArbor
+            </Heading>
+            {isAuthenticated ? (
+              <Text fontSize={{ base: "md", md: "lg" }} fontWeight="medium" color="fg">
+                Welcome, {nickname}!
+              </Text>
+            ) : null}
+          </Stack>
           <ChakraLink
             asChild
             flexShrink={0}
             ml={{ base: "auto", sm: "0" }}
+            alignSelf={{ base: "flex-start", sm: "center" }}
             fontSize={APP_TEXT_SIZES.helper}
             color="black"
             textDecoration="none"
@@ -397,28 +403,36 @@ function App() {
               </Stack>
             ) : null
           ) : (
-            <HStack gap="3" align="center" flexWrap="wrap">
-              <PondButton
-                colorPalette="sky"
-                onClick={() =>
-                  loginWithRedirect({
-                    authorizationParams: auth0LoginAuthorizationParams(),
-                  })
-                }
-              >
-                Log in
-              </PondButton>
-              <PondButton
-                colorPalette="lilypad"
-                onClick={() =>
-                  loginWithRedirect({
-                    authorizationParams: auth0SignupAuthorizationParams(),
-                  })
-                }
-              >
-                Sign up
-              </PondButton>
-            </HStack>
+            <>
+              <HStack gap="3" align="center" flexWrap="wrap">
+                <PondButton
+                  colorPalette="sky"
+                  onClick={() =>
+                    loginWithRedirect({
+                      authorizationParams: auth0LoginAuthorizationParams(),
+                    })
+                  }
+                >
+                  Log in
+                </PondButton>
+                <PondButton
+                  colorPalette="lilypad"
+                  onClick={() =>
+                    loginWithRedirect({
+                      authorizationParams: auth0SignupAuthorizationParams(),
+                    })
+                  }
+                >
+                  Sign up
+                </PondButton>
+              </HStack>
+              <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg" maxW="3xl">
+                {HOME_PURPOSE_BLURB}{" "}
+                <ChakraLink asChild color="black" textDecoration="underline" _hover={{ color: "sky.solid" }}>
+                  <RouterLink to="/about">Learn more</RouterLink>
+                </ChakraLink>
+              </Text>
+            </>
           )}
           {!isAuthenticated && error && <Text color="fg">Error: {error}</Text>}
         </Stack>

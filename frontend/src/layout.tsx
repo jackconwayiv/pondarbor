@@ -410,7 +410,7 @@ export default function AppLayout() {
                 fontSize={NAV_WORDMARK_FONT_SIZE}
                 lineHeight={NAV_WORDMARK_LINE_HEIGHT}
               >
-                <Link to="/">pondarbor.com</Link>
+                <Link to="/">PondArbor</Link>
               </ChakraLink>
             </Box>
             <Box flex="1" display="flex" justifyContent="flex-end" minW={0}>
@@ -459,7 +459,7 @@ export default function AppLayout() {
                 lineHeight={NAV_WORDMARK_LINE_HEIGHT}
                 mx={{ base: "4", md: "6" }}
               >
-                <Link to="/">pondarbor.com</Link>
+                <Link to="/">PondArbor</Link>
               </ChakraLink>
 
               {desktopNavLinks.map((link) => {

@@ -965,7 +965,7 @@ export default function WhatIfEntryPage() {
                   color="fg"
                 >
                   Gather a group of friends for this multiplayer party game!
-                  Someone hosts a game and projects{" "}
+                  Someone creates a new game room and projects{" "}
                   <Code>/whatif/play/ROOM</Code> on a TV or projector to host a
                   game, and each player joins on their mobile device at{" "}
                   <Code>/whatif/hand/ROOM</Code> to play along!

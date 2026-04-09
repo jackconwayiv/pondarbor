@@ -3,31 +3,31 @@ import { keyframes } from "@emotion/react";
 import { useEffect, useMemo, useState } from "react";
 
 import {
-  auth0LoginAuthorizationParams,
-  auth0SignupAuthorizationParams,
-} from "./auth/auth0LoginParams";
-import {
   Box,
+  Link as ChakraLink,
   Flex,
   Heading,
   HStack,
-  Link as ChakraLink,
   Stack,
   Text,
 } from "@chakra-ui/react";
 import { Link as RouterLink, useNavigate } from "react-router";
 import { useAppSession } from "./auth/AppSessionContext";
+import {
+  auth0LoginAuthorizationParams,
+  auth0SignupAuthorizationParams,
+} from "./auth/auth0LoginParams";
+import { fetchClosetActionSummary } from "./closet/api";
+import { fetchFriendsList } from "./friends/api";
 import PondButton from "./PondButton";
 import { fullBleedStackProps } from "./responsive";
+import { APP_TEXT_SIZES } from "./theme/typography";
 import {
   fetchStaffPendingSummary,
   fetchUpcomingBirthdays,
-  type UpcomingBirthday,
   type StaffPendingSummary,
+  type UpcomingBirthday,
 } from "./users/api";
-import { fetchClosetActionSummary } from "./closet/api";
-import { fetchFriendsList } from "./friends/api";
-import { APP_TEXT_SIZES } from "./theme/typography";
 
 const LILYPAD_WEDGE_CLIP_PATH =
   "polygon(0% 0%, 43% 0%, 46% 12%, 48% 24%, 50% 36%, 52% 24%, 54% 12%, 57% 0%, 100% 0%, 100% 100%, 0% 100%)";
@@ -43,8 +43,16 @@ const LILYPAD_FLOAT_KEYFRAMES = keyframes`
 `;
 
 const HOME_LILYPAD_TILES = [
-  { to: "/quotes", label: "Quotes", hoverText: "archive of user-recorded quotes" },
-  { to: "/closet", label: "Community Closet", hoverText: "lend and borrow items with friends" },
+  {
+    to: "/quotes",
+    label: "Quotes",
+    hoverText: "archive of user-recorded quotes",
+  },
+  {
+    to: "/closet",
+    label: "Community Closet",
+    hoverText: "lend and borrow items with friends",
+  },
   { to: "/clicker", label: "PondClicker", hoverText: "idle pond-growing game" },
   { to: "/whatif", label: "WhatIf", hoverText: "multiplayer party game" },
 ] as const;
@@ -68,15 +76,20 @@ const MONTH_NAMES = [
 ];
 
 function birthdayMessage(birthday: UpcomingBirthday): string {
-  const monthName = MONTH_NAMES[birthday.birth_month - 1] ?? String(birthday.birth_month);
+  const monthName =
+    MONTH_NAMES[birthday.birth_month - 1] ?? String(birthday.birth_month);
   return `${birthday.display_name}'s birthday is ${monthName} ${birthday.birth_day}!`;
 }
 
-function accountStatusMessage(accountStatus: string | undefined): string | null {
+function accountStatusMessage(
+  accountStatus: string | undefined,
+): string | null {
   if (!accountStatus || accountStatus === "approved") return null;
   if (accountStatus === "pending") return "Your account is awaiting approval.";
-  if (accountStatus === "rejected") return "Your account was rejected. Please contact support.";
-  if (accountStatus === "suspended") return "Your account is suspended. Please contact support.";
+  if (accountStatus === "rejected")
+    return "Your account was rejected. Please contact support.";
+  if (accountStatus === "suspended")
+    return "Your account is suspended. Please contact support.";
   return "Your account is not currently approved.";
 }
 
@@ -89,8 +102,8 @@ function HomeNoticeLilypadCard({ text }: { text: string }) {
       bg="lilypad.solid"
       color="lilypad.contrast"
       borderRadius="xl"
-      px={{ base: 3, md: 4 }}
-      py={{ base: 2.5, md: 3 }}
+      px={{ base: 2, md: 2 }}
+      py={{ base: 2, md: 2 }}
       fontWeight="bold"
       textStyle={{ base: "sm", md: "md" }}
       lineHeight="short"
@@ -112,10 +125,12 @@ function App() {
     auth0User,
     sessionUser,
     getApiAccessToken,
-  } =
-    useAppSession();
-  const [upcomingBirthdays, setUpcomingBirthdays] = useState<UpcomingBirthday[]>([]);
-  const [staffPendingSummary, setStaffPendingSummary] = useState<StaffPendingSummary | null>(null);
+  } = useAppSession();
+  const [upcomingBirthdays, setUpcomingBirthdays] = useState<
+    UpcomingBirthday[]
+  >([]);
+  const [staffPendingSummary, setStaffPendingSummary] =
+    useState<StaffPendingSummary | null>(null);
   const [pendingFriendCount, setPendingFriendCount] = useState(0);
   const [closetOutstandingActions, setClosetOutstandingActions] = useState(0);
   const nickname =
@@ -140,7 +155,8 @@ function App() {
     if (
       sessionUser.user?.is_staff &&
       staffPendingSummary &&
-      (staffPendingSummary.pending_members > 0 || staffPendingSummary.pending_whatif_questions > 0)
+      (staffPendingSummary.pending_members > 0 ||
+        staffPendingSummary.pending_whatif_questions > 0)
     ) {
       if (staffPendingSummary.pending_members > 0) {
         prompts.push({
@@ -296,7 +312,8 @@ function App() {
       try {
         const token = await getApiAccessToken();
         const summary = await fetchClosetActionSummary(token);
-        if (!isCancelled) setClosetOutstandingActions(summary.outstanding_actions_count);
+        if (!isCancelled)
+          setClosetOutstandingActions(summary.outstanding_actions_count);
       } catch {
         if (!isCancelled) setClosetOutstandingActions(0);
       }
@@ -322,13 +339,22 @@ function App() {
 
   return (
     <Stack flex="1" minH="0" gap="0" align="stretch" {...fullBleedStackProps}>
-      <Box bg="bg" w="full" px={{ base: "4", md: "6" }} py={{ base: "6", md: "6" }}>
+      <Box
+        bg="bg"
+        w="full"
+        px={{ base: "2", md: "2" }}
+        py={{ base: "2", md: "2" }}
+      >
         <Stack gap="1" w="full" mb="3">
           <Heading as="h1" size={{ base: "lg", md: "xl" }}>
             PondArbor
           </Heading>
           {isAuthenticated ? (
-            <Text fontSize={{ base: "md", md: "lg" }} fontWeight="medium" color="fg">
+            <Text
+              fontSize={{ base: "md", md: "lg" }}
+              fontWeight="medium"
+              color="fg"
+            >
               Welcome, {nickname}!
             </Text>
           ) : null}
@@ -355,8 +381,8 @@ function App() {
                         whiteSpace="normal"
                         textAlign="center"
                         h="auto"
-                        py={{ base: 2.5, md: 3 }}
-                        px={{ base: 4, md: 5 }}
+                        py={{ base: 2, md: 2 }}
+                        px={{ base: 2, md: 2 }}
                         maxW={{ base: "100%", md: "22rem" }}
                         onClick={() => void navigate(prompt.to)}
                       >
@@ -405,9 +431,19 @@ function App() {
                   Sign up
                 </PondButton>
               </HStack>
-              <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg" maxW="3xl">
+              <Text
+                fontSize={APP_TEXT_SIZES.body}
+                lineHeight="tall"
+                color="fg"
+                maxW="3xl"
+              >
                 {HOME_PURPOSE_BLURB}{" "}
-                <ChakraLink asChild color="black" textDecoration="underline" _hover={{ color: "sky.solid" }}>
+                <ChakraLink
+                  asChild
+                  color="black"
+                  textDecoration="underline"
+                  _hover={{ color: "sky.solid" }}
+                >
                   <RouterLink to="/about">Learn more</RouterLink>
                 </ChakraLink>
               </Text>
@@ -421,10 +457,15 @@ function App() {
         flex="1"
         w="full"
         bg="transparent"
-        px={{ base: "4", md: "6" }}
-        py={{ base: "5", md: "6" }}
+        px={{ base: "4", md: "4" }}
+        py={{ base: "4", md: "4" }}
       >
-        <Flex flexWrap="wrap" gap={{ base: "4", md: "6" }} alignItems="flex-start" w="100%">
+        <Flex
+          flexWrap="wrap"
+          gap={{ base: "4", md: "6" }}
+          alignItems="flex-start"
+          w="100%"
+        >
           {HOME_LILYPAD_TILES.map((tile, index) => {
             const tileInteractive = isAuthenticated || tile.to === "/whatif";
             const tileWrapProps = {
@@ -443,77 +484,84 @@ function App() {
               },
             } as const;
             const card = (
-                <Box
-                  bg={tileInteractive ? "lilypad.solid" : "#A4B89A"}
-                  borderRadius="9999px"
-                  borderWidth="20px"
-                  borderColor={tileInteractive ? "lilypad.solid" : "#A4B89A"}
-                  aspectRatio={1}
-                  p={{ base: "4", md: "6" }}
-                  display="flex"
-                  alignItems="center"
-                  justifyContent="center"
-                  textAlign="center"
-                  position="relative"
-                  boxShadow="md"
-                  transform="translateZ(0)"
-                  overflow="hidden"
-                  clipPath={LILYPAD_WEDGE_CLIP_PATH}
-                  transition="background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease"
-                  cursor={tileInteractive ? "pointer" : "not-allowed"}
-                  _hover={
-                    tileInteractive
-                      ? {
-                          bg: "bg",
-                          transform: "scale(1.02)",
-                          boxShadow: "xl",
-                          "& .lilypad-hover-hint": LILYPAD_HOVER_HINT_VISIBLE,
-                        }
-                      : {
-                          "& .lilypad-hover-hint": LILYPAD_HOVER_HINT_VISIBLE,
-                        }
-                  }
-                  _active={
-                    tileInteractive
-                      ? {
-                          bg: "bg",
-                          transform: "scale(0.99)",
-                          boxShadow: "lg",
-                        }
-                      : undefined
-                  }
+              <Box
+                bg={tileInteractive ? "lilypad.solid" : "#A4B89A"}
+                borderRadius="9999px"
+                borderWidth="20px"
+                borderColor={tileInteractive ? "lilypad.solid" : "#A4B89A"}
+                aspectRatio={1}
+                p={{ base: "2", md: "2" }}
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+                textAlign="center"
+                position="relative"
+                boxShadow="md"
+                transform="translateZ(0)"
+                overflow="hidden"
+                clipPath={LILYPAD_WEDGE_CLIP_PATH}
+                transition="background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease"
+                cursor={tileInteractive ? "pointer" : "not-allowed"}
+                _hover={
+                  tileInteractive
+                    ? {
+                        bg: "bg",
+                        transform: "scale(1.02)",
+                        boxShadow: "xl",
+                        "& .lilypad-hover-hint": LILYPAD_HOVER_HINT_VISIBLE,
+                      }
+                    : {
+                        "& .lilypad-hover-hint": LILYPAD_HOVER_HINT_VISIBLE,
+                      }
+                }
+                _active={
+                  tileInteractive
+                    ? {
+                        bg: "bg",
+                        transform: "scale(0.99)",
+                        boxShadow: "lg",
+                      }
+                    : undefined
+                }
+              >
+                <Stack
+                  gap="1"
+                  align="center"
+                  justify="center"
+                  w="full"
+                  minH="0"
+                  px="0.5"
                 >
-                  <Stack gap="1" align="center" justify="center" w="full" minH="0" px="0.5">
-                    <Heading
-                      as="h2"
-                      size={{ base: "md", md: "lg" }}
-                      position="relative"
-                      zIndex={2}
-                      color={tileInteractive ? "fg" : "gray.600"}
-                      lineHeight="1.2"
-                    >
-                      {tile.label}
-                    </Heading>
-                    <Text
-                      className="lilypad-hover-hint"
-                      textAlign="center"
-                      fontSize={{ base: "2xs", md: "xs" }}
-                      lineHeight="1.35"
-                      fontWeight="medium"
-                      color={tileInteractive ? "fg" : "gray.600"}
-                      opacity={0}
-                      maxHeight="0"
-                      overflow="hidden"
-                      transitionProperty="opacity, max-height"
-                      transitionDuration="0.2s"
-                      transitionTimingFunction="ease"
-                      px="1"
-                    >
-                      {tile.hoverText}
-                    </Text>
-                  </Stack>
-                </Box>
-              );
+                  <Heading
+                    as="h2"
+                    size={{ base: "md", md: "lg" }}
+                    position="relative"
+                    zIndex={2}
+                    color={tileInteractive ? "fg" : "gray.600"}
+                    lineHeight="1.2"
+                  >
+                    {tile.label}
+                  </Heading>
+                  <Text
+                    className="lilypad-hover-hint"
+                    textAlign="center"
+                    fontSize={{ base: "2xs", md: "xs" }}
+                    lineHeight="1.35"
+                    fontWeight="medium"
+                    color={tileInteractive ? "fg" : "gray.600"}
+                    opacity={0}
+                    maxHeight="0"
+                    overflow="hidden"
+                    transitionProperty="opacity, max-height"
+                    transitionDuration="0.2s"
+                    transitionTimingFunction="ease"
+                    px="1"
+                  >
+                    {tile.hoverText}
+                  </Text>
+                </Stack>
+              </Box>
+            );
 
             if (!tileInteractive) {
               return (
@@ -544,7 +592,7 @@ function App() {
       </Box>
 
       <Box as="footer" w="full" flexShrink={0} bg="lilypad.solid" mt="auto">
-        <Box py="2" px={{ base: "4", md: "6" }}>
+        <Box py="2" px={{ base: "2", md: "2" }}>
           <Box
             display="flex"
             flexDirection={{ base: "column", md: "row" }}

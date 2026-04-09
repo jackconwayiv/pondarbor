@@ -1,13 +1,23 @@
-import { HStack, Input, NativeSelectField, NativeSelectRoot, Stack, Text } from "@chakra-ui/react";
+import {
+  HStack,
+  Input,
+  NativeSelectField,
+  NativeSelectRoot,
+  Stack,
+  Text,
+} from "@chakra-ui/react";
 import { useState } from "react";
 
+import {
+  APP_TEXT_SIZES,
+  PANEL_FORM_PLACEHOLDER_PROPS,
+} from "../theme/typography";
 import {
   CLOSET_CATEGORY_PRESETS,
   CLOSET_CATEGORY_PRESET_SET,
   CLOSET_CUSTOM_SELECT_VALUE,
   closetCategorySelectValue,
 } from "./categories";
-import { APP_TEXT_SIZES, PANEL_FORM_PLACEHOLDER_PROPS } from "../theme/typography";
 
 const INPUT_PLACEHOLDER_PROPS = PANEL_FORM_PLACEHOLDER_PROPS;
 
@@ -23,7 +33,9 @@ export function ClosetCategoryFields({
 
   const derivedSelect = closetCategorySelectValue(category);
   const selectValue =
-    customChosenWithEmpty && derivedSelect === "" ? CLOSET_CUSTOM_SELECT_VALUE : derivedSelect;
+    customChosenWithEmpty && derivedSelect === ""
+      ? CLOSET_CUSTOM_SELECT_VALUE
+      : derivedSelect;
   const showCustomInput = selectValue === CLOSET_CUSTOM_SELECT_VALUE;
 
   return (
@@ -34,7 +46,12 @@ export function ClosetCategoryFields({
       w="100%"
       flexWrap="wrap"
     >
-      <Stack gap="1" minW={{ base: "100%", sm: "11rem" }} maxW={{ md: "20rem" }} flexShrink={0}>
+      <Stack
+        gap="1"
+        minW={{ base: "100%", sm: "11rem" }}
+        maxW={{ md: "20rem" }}
+        flexShrink={0}
+      >
         <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
           Category:
         </Text>
@@ -78,7 +95,12 @@ export function ClosetCategoryFields({
           maxW={{ md: "26rem" }}
           align="stretch"
         >
-          <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600" fontWeight="medium" lineHeight="short">
+          <Text
+            fontSize={APP_TEXT_SIZES.helper}
+            color="gray.600"
+            fontWeight="medium"
+            lineHeight="short"
+          >
             Custom Category:
           </Text>
           <Input

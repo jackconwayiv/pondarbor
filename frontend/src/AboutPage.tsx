@@ -1,11 +1,19 @@
-import { Box, Heading, HStack, Link, Stack, Text, Textarea } from "@chakra-ui/react";
 import { useAuth0 } from "@auth0/auth0-react";
+import {
+  Box,
+  Heading,
+  HStack,
+  Link,
+  Stack,
+  Text,
+  Textarea,
+} from "@chakra-ui/react";
 import { useCallback, useState } from "react";
 import { Link as RouterLink } from "react-router";
 
 import { submitContactMessage } from "./about/contactApi";
-import { auth0LoginAuthorizationParams } from "./auth/auth0LoginParams";
 import { useAppSession } from "./auth/AppSessionContext";
+import { auth0LoginAuthorizationParams } from "./auth/auth0LoginParams";
 import PondButton from "./PondButton";
 import { fullBleedStackProps } from "./responsive";
 import { APP_TEXT_SIZES, PANEL_FIELD_PROPS } from "./theme/typography";
@@ -37,7 +45,10 @@ export default function AboutPage() {
     setFeedback(null);
     try {
       const token = await getApiAccessToken();
-      await submitContactMessage(token, { message: trimmed, website: honeypot });
+      await submitContactMessage(token, {
+        message: trimmed,
+        website: honeypot,
+      });
       setMessage("");
       setFeedback("Thanks — your message was sent.");
     } catch (e) {
@@ -49,7 +60,12 @@ export default function AboutPage() {
 
   return (
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
-      <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
+      <Box
+        flex="1"
+        bg="sky.solid"
+        px={{ base: "2", md: "2" }}
+        py={{ base: "2", md: "2" }}
+      >
         <Box
           maxW="4xl"
           w="100%"
@@ -60,20 +76,27 @@ export default function AboutPage() {
           borderRadius="xl"
           overflow="hidden"
         >
-          <Stack gap={{ base: "4", md: "4" }} p={{ base: "4", md: "6" }}>
+          <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
             <Box
               bg="white"
               borderWidth="1px"
               borderColor="border"
               borderRadius="xl"
-              p={{ base: "4", md: "4" }}
+              p={{ base: "2", md: "2" }}
             >
-              <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold" mb="2">
+              <Heading
+                as="h1"
+                size={{ base: "lg", md: "xl" }}
+                fontWeight="bold"
+                mb="2"
+              >
                 About
               </Heading>
               <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
-                PondArbor is a hobby project developed by Pond Arbor Workshop to collect various app ideas together in one place. It
-                is shared with friends and family as an opportunity to interact with each other through the apps.
+                PondArbor is a hobby project developed by Pond Arbor Workshop to
+                collect various app ideas together in one place. It is shared
+                with friends and family as an opportunity to interact with each
+                other through the apps.
               </Text>
             </Box>
 
@@ -82,7 +105,7 @@ export default function AboutPage() {
               borderWidth="1px"
               borderColor="border"
               borderRadius="xl"
-              p={{ base: "4", md: "4" }}
+              p={{ base: "2", md: "2" }}
             >
               <Heading as="h2" size="md" fontWeight="semibold" mb="3">
                 Contact us
@@ -106,8 +129,13 @@ export default function AboutPage() {
                   </PondButton>
                 </Stack>
               ) : !approved ? (
-                <Text fontSize={APP_TEXT_SIZES.body} color="nautical.solid" fontWeight="medium">
-                  Your account must be approved before you can contact us from here.
+                <Text
+                  fontSize={APP_TEXT_SIZES.body}
+                  color="nautical.solid"
+                  fontWeight="medium"
+                >
+                  Your account must be approved before you can contact us from
+                  here.
                 </Text>
               ) : (
                 <Stack gap="3" align="stretch" maxW="lg">

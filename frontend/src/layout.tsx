@@ -1,26 +1,26 @@
+import { useAuth0 } from "@auth0/auth0-react";
 import {
   Avatar,
   Box,
   Button,
+  Link as ChakraLink,
   Flex,
   HStack,
   Image,
-  Link as ChakraLink,
   Menu,
   Spacer,
 } from "@chakra-ui/react";
-import { useAuth0 } from "@auth0/auth0-react";
 import { useEffect, useMemo } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 
+import { useAppSession } from "./auth/AppSessionContext";
 import {
   auth0LoginAuthorizationParams,
   auth0SignupAuthorizationParams,
 } from "./auth/auth0LoginParams";
-import { useAppSession } from "./auth/AppSessionContext";
+import PondButton from "./PondButton";
 import { pondarborLogoSrc } from "./publicAsset";
 import { useIsMobile } from "./responsive";
-import PondButton from "./PondButton";
 
 /** Wordmark font; fixed look (no route-based styling). */
 const NAV_WORDMARK_FONT = '"Brush Script MT", "Segoe Script", cursive';
@@ -84,7 +84,8 @@ const HIDE_DOCUMENT_SCROLLBAR_EXACT = ["/whatif"] as const;
 
 export default function AppLayout() {
   const { loginWithRedirect } = useAuth0();
-  const { isAuthenticated, auth0User, sessionUser, logout, switchUser } = useAppSession();
+  const { isAuthenticated, auth0User, sessionUser, logout, switchUser } =
+    useAppSession();
   const location = useLocation();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
@@ -109,7 +110,8 @@ export default function AppLayout() {
   );
 
   const isClickerRoute =
-    location.pathname === "/clicker" || location.pathname.startsWith("/clicker/");
+    location.pathname === "/clicker" ||
+    location.pathname.startsWith("/clicker/");
   const isHomeIndex = location.pathname === "/";
 
   useEffect(() => {
@@ -157,7 +159,9 @@ export default function AppLayout() {
             />
             <Avatar.Image
               src={
-                sessionUser?.profile.avatar_url || auth0User?.picture || undefined
+                sessionUser?.profile.avatar_url ||
+                auth0User?.picture ||
+                undefined
               }
             />
           </Avatar.Root>
@@ -229,8 +233,8 @@ export default function AppLayout() {
     >
       <Flex
         as="header"
-        px={{ base: "4", md: "6" }}
-        py="4"
+        px={{ base: "2", md: "2" }}
+        py="2"
         align="center"
         bg="lilypad.solid"
         position="relative"
@@ -310,7 +314,8 @@ export default function AppLayout() {
                           value="login"
                           onSelect={() => {
                             void loginWithRedirect({
-                              authorizationParams: auth0LoginAuthorizationParams(),
+                              authorizationParams:
+                                auth0LoginAuthorizationParams(),
                             });
                           }}
                         >
@@ -320,7 +325,8 @@ export default function AppLayout() {
                           value="sign-up"
                           onSelect={() => {
                             void loginWithRedirect({
-                              authorizationParams: auth0SignupAuthorizationParams(),
+                              authorizationParams:
+                                auth0SignupAuthorizationParams(),
                             });
                           }}
                         >
@@ -414,13 +420,16 @@ export default function AppLayout() {
                 letterSpacing="normal"
                 fontSize={NAV_WORDMARK_FONT_SIZE}
                 lineHeight={NAV_WORDMARK_LINE_HEIGHT}
-                mx={{ base: "4", md: "6" }}
+                mx={{ base: "2", md: "2" }}
               >
                 <Link to="/">PondArbor</Link>
               </ChakraLink>
 
               {desktopNavLinks.map((link) => {
-                const active = isDesktopNavRouteActive(location.pathname, link.to);
+                const active = isDesktopNavRouteActive(
+                  location.pathname,
+                  link.to,
+                );
                 return (
                   <ChakraLink
                     key={link.to}
@@ -451,7 +460,11 @@ export default function AppLayout() {
                         lineHeight={NAV_WORDMARK_LINE_HEIGHT}
                       >
                         {/* Keep width stable: bold text is always in-flow, normal text is overlaid when inactive. */}
-                        <Box as="span" fontWeight="bold" opacity={active ? 1 : 0}>
+                        <Box
+                          as="span"
+                          fontWeight="bold"
+                          opacity={active ? 1 : 0}
+                        >
                           {link.label}
                         </Box>
                         <Box
@@ -484,9 +497,9 @@ export default function AppLayout() {
         {...(isClickerRoute
           ? { p: 0 }
           : {
-              px: { base: "4", md: "6" },
+              px: { base: "2", md: "2" },
               // Home embeds a full-width footer; main bottom padding would show sky below it.
-              pb: isHomeIndex ? 0 : { base: "4", md: "6" },
+              pb: isHomeIndex ? 0 : { base: "2", md: "2" },
               pt: 0,
             })}
         bg="transparent"
@@ -494,7 +507,14 @@ export default function AppLayout() {
         flexDirection="column"
         minH="0"
       >
-        <Box flex="1" minH="0" minW={0} w="100%" display="flex" flexDirection="column">
+        <Box
+          flex="1"
+          minH="0"
+          minW={0}
+          w="100%"
+          display="flex"
+          flexDirection="column"
+        >
           <Outlet />
         </Box>
       </Box>

@@ -15,8 +15,8 @@ export default function RouteLoadingFallback() {
         bg="lilypad.solid"
         color="lilypad.contrast"
         borderRadius="xl"
-        px="3"
-        py="1.5"
+        px="2"
+        py="2"
       >
         <Text fontSize="sm" fontWeight="medium">
           Loading page...

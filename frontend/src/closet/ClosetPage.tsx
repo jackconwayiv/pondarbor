@@ -16,7 +16,8 @@ import {
   Textarea,
 } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link as RouterLink, Navigate, useSearchParams } from "react-router";
+import { Navigate, Link as RouterLink, useSearchParams } from "react-router";
+import { useAppSession } from "../auth/AppSessionContext";
 import {
   validateClosetCategory,
   validateClosetFreeText,
@@ -24,9 +25,8 @@ import {
   validateClosetTagList,
   validateIsoDateRequired,
 } from "../forms/validation";
-import PondButton from "../PondButton";
-import { useAppSession } from "../auth/AppSessionContext";
 import { fetchFriendsList } from "../friends/api";
+import PondButton from "../PondButton";
 import { fullBleedStackProps, useIsMobile } from "../responsive";
 import {
   APP_TEXT_SIZES,
@@ -43,15 +43,14 @@ import {
   completeCustodyReturn,
   createBorrowRequest,
   createItem,
-  deleteMyImage,
   declineBorrowRequest,
   deleteBorrowRequest,
   deleteItem,
+  deleteMyImage,
   denyCustody,
   fetchBorrowRequests,
   fetchFriendsItems,
   fetchMyImageInventory,
-  type FriendsItemsSort,
   fetchMyItems,
   markCustodyReturnedByHolder,
   markReturnedByBorrower,
@@ -59,19 +58,24 @@ import {
   patchItem,
   rejectPendingCustody,
   setCustody,
+  type FriendsItemsSort,
 } from "./api";
-import {
-  resizeImageFileToJpegBlob,
-  uploadClosetImageBlobViaPresign,
-  uploadClosetImageViaPresign,
-} from "./imageUpload";
 import {
   CLOSET_CATEGORY_PRESETS,
   CLOSET_FRIENDS_CATEGORY_OTHER,
   isAllowedClosetCategory,
 } from "./categories";
 import { ClosetCategoryFields } from "./ClosetCategoryFields";
-import type { BorrowRequest, ClosetImageInventoryRow, ClosetItem } from "./types";
+import {
+  resizeImageFileToJpegBlob,
+  uploadClosetImageBlobViaPresign,
+  uploadClosetImageViaPresign,
+} from "./imageUpload";
+import type {
+  BorrowRequest,
+  ClosetImageInventoryRow,
+  ClosetItem,
+} from "./types";
 
 type ClosetTab = "my" | "friends" | "images";
 const FRIENDS_PAGE_SIZE = 10;
@@ -92,7 +96,10 @@ function parseTab(value: string | null): ClosetTab {
   return "my";
 }
 
-function displayName(itemUser: { display_name: string; email: string }): string {
+function displayName(itemUser: {
+  display_name: string;
+  email: string;
+}): string {
   return itemUser.display_name || itemUser.email;
 }
 
@@ -102,7 +109,12 @@ function formatNeedByDateLabel(dateOnly: string): string {
   const year = Number(parts[0]);
   const month = Number(parts[1]);
   const day = Number(parts[2]);
-  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return dateOnly;
+  if (
+    !Number.isFinite(year) ||
+    !Number.isFinite(month) ||
+    !Number.isFinite(day)
+  )
+    return dateOnly;
   const utcDate = new Date(Date.UTC(year, month - 1, day));
   if (Number.isNaN(utcDate.getTime())) return dateOnly;
   const nowYear = new Date().getFullYear();
@@ -117,7 +129,8 @@ function formatNeedByDateLabel(dateOnly: string): string {
 
 /** Normalize API / session user ids (JSON may use number or string; session cache can drift). */
 function coerceClosetUserId(value: unknown): number {
-  if (typeof value === "number" && Number.isFinite(value)) return Math.trunc(value);
+  if (typeof value === "number" && Number.isFinite(value))
+    return Math.trunc(value);
   if (typeof value === "string" && value.trim() !== "") {
     const n = Number(value);
     return Number.isFinite(n) ? Math.trunc(n) : Number.NaN;
@@ -136,7 +149,10 @@ function closetPendingCount(item: { pending_request_count?: number }): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function formatCategoryTagsSummaryLine(item: { category: string; tags: string[] }): string | null {
+function formatCategoryTagsSummaryLine(item: {
+  category: string;
+  tags: string[];
+}): string | null {
   const cat = (item.category ?? "").trim();
   const tagParts = item.tags.map((t) => t.trim()).filter(Boolean);
   const hasCategory = Boolean(cat);
@@ -170,7 +186,10 @@ function ItemCard({
   custodyFriends: Array<{ id: number; label: string }>;
   mode: "closed" | "edit" | "custody";
   onModeChange: (next: "closed" | "edit" | "custody") => void;
-  onOwnedNotice?: (notice: { kind: "success" | "error"; message: string }) => void;
+  onOwnedNotice?: (notice: {
+    kind: "success" | "error";
+    message: string;
+  }) => void;
   titlePrefix?: { text: string; color: string; hideBorrowerLabel?: boolean };
   showPendingCount?: boolean;
   onCardClick?: () => void;
@@ -183,17 +202,23 @@ function ItemCard({
   const [tagsCsv, setTagsCsv] = useState(item.tags.join(", "));
   const [error, setError] = useState<string | null>(null);
   const [borrowRows, setBorrowRows] = useState<BorrowRequest[] | null>(null);
-  const [declineMessageByRequestId, setDeclineMessageByRequestId] = useState<Record<number, string>>({});
+  const [declineMessageByRequestId, setDeclineMessageByRequestId] = useState<
+    Record<number, string>
+  >({});
   const [requestsOpen, setRequestsOpen] = useState(false);
   const [custodyTargetUserId, setCustodyTargetUserId] = useState<string>("");
   const [markReturnedBusy, setMarkReturnedBusy] = useState(false);
   const [imageUploadBusy, setImageUploadBusy] = useState(false);
   const [imagePickerOpen, setImagePickerOpen] = useState(false);
   const [imagePickerLoading, setImagePickerLoading] = useState(false);
-  const [imagePickerRows, setImagePickerRows] = useState<ClosetImageInventoryRow[]>([]);
+  const [imagePickerRows, setImagePickerRows] = useState<
+    ClosetImageInventoryRow[]
+  >([]);
   const [selectedExistingImageKey, setSelectedExistingImageKey] = useState("");
   /** When API omits image_url (no CLOSET_R2_PUBLIC_BASE_URL), show the last uploaded bytes until reload. */
-  const [localImagePreviewUrl, setLocalImagePreviewUrl] = useState<string | null>(null);
+  const [localImagePreviewUrl, setLocalImagePreviewUrl] = useState<
+    string | null
+  >(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const confirmDeleteButtonRef = useRef<HTMLButtonElement | null>(null);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
@@ -211,9 +236,9 @@ function ItemCard({
     () =>
       Boolean(
         item.active_loan_id ||
-          item.custody_marked_returned_by_holder ||
-          item.pending_custody_user ||
-          item.current_holder_user.id !== item.owner_user.id,
+        item.custody_marked_returned_by_holder ||
+        item.pending_custody_user ||
+        item.current_holder_user.id !== item.owner_user.id,
       ),
     [
       item.active_loan_id,
@@ -230,14 +255,18 @@ function ItemCard({
     try {
       const token = await getToken();
       const payload = await fetchMyImageInventory(token);
-      const rows = payload.results.filter((row) => (row.image_url ?? "").trim().length > 0);
+      const rows = payload.results.filter(
+        (row) => (row.image_url ?? "").trim().length > 0,
+      );
       setImagePickerRows(rows);
       setSelectedExistingImageKey((prev) => {
         if (prev && rows.some((row) => row.image_key === prev)) return prev;
         return rows[0]?.image_key ?? "";
       });
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to load uploaded images");
+      setError(
+        err instanceof Error ? err.message : "Failed to load uploaded images",
+      );
     } finally {
       setImagePickerLoading(false);
     }
@@ -276,8 +305,10 @@ function ItemCard({
     const labelForId = (id: number): string => {
       const f = byId.get(id);
       if (f) return f.label;
-      if (pendingAssignee && id === pendingAssignee.id) return displayName(pendingAssignee);
-      if (id === item.current_holder_user.id) return displayName(item.current_holder_user);
+      if (pendingAssignee && id === pendingAssignee.id)
+        return displayName(pendingAssignee);
+      if (id === item.current_holder_user.id)
+        return displayName(item.current_holder_user);
       return String(id);
     };
 
@@ -331,7 +362,9 @@ function ItemCard({
   const saveEdit = async () => {
     setError(null);
     if (!isAllowedClosetCategory(category)) {
-      setError("Category must use only letters and /, or pick a suggested option.");
+      setError(
+        "Category must use only letters and /, or pick a suggested option.",
+      );
       return;
     }
     const nameTrim = name.trim();
@@ -372,7 +405,8 @@ function ItemCard({
       await onRefresh();
       onOwnedNotice?.({ kind: "success", message: "Item saved." });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to update item";
+      const message =
+        err instanceof Error ? err.message : "Failed to update item";
       setError(message);
       onOwnedNotice?.({ kind: "error", message });
     }
@@ -387,7 +421,8 @@ function ItemCard({
       await onRefresh();
       onOwnedNotice?.({ kind: "success", message: "Item deleted." });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to delete item";
+      const message =
+        err instanceof Error ? err.message : "Failed to delete item";
       setError(message);
       onOwnedNotice?.({ kind: "error", message });
     }
@@ -440,7 +475,12 @@ function ItemCard({
     } else {
       setCustodyTargetUserId(String(item.current_holder_user.id));
     }
-  }, [isOwner, item.current_holder_user.id, item.pending_custody_user?.id, mode]);
+  }, [
+    isOwner,
+    item.current_holder_user.id,
+    item.pending_custody_user?.id,
+    mode,
+  ]);
 
   useEffect(() => {
     if (mode === "closed") return;
@@ -478,10 +518,12 @@ function ItemCard({
       await onRefresh();
       onOwnedNotice?.({
         kind: "success",
-        message: "Return noted. The owner still needs to mark the loan returned.",
+        message:
+          "Return noted. The owner still needs to mark the loan returned.",
       });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to signal return";
+      const message =
+        err instanceof Error ? err.message : "Failed to signal return";
       setError(message);
       onOwnedNotice?.({ kind: "error", message });
     }
@@ -499,7 +541,8 @@ function ItemCard({
         message: "Return noted. The owner still needs to confirm the handoff.",
       });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to signal return";
+      const message =
+        err instanceof Error ? err.message : "Failed to signal return";
       setError(message);
       onOwnedNotice?.({ kind: "error", message });
     }
@@ -513,9 +556,13 @@ function ItemCard({
       await completeCustodyReturn(token, item.id);
       onModeChange("closed");
       await onRefresh();
-      onOwnedNotice?.({ kind: "success", message: "Handoff confirmed. You have custody." });
+      onOwnedNotice?.({
+        kind: "success",
+        message: "Handoff confirmed. You have custody.",
+      });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to confirm handoff";
+      const message =
+        err instanceof Error ? err.message : "Failed to confirm handoff";
       setError(message);
       onOwnedNotice?.({ kind: "error", message });
     }
@@ -529,7 +576,9 @@ function ItemCard({
       await markReturnedByOwner(token, item.active_loan_id);
       await onRefresh();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to complete return");
+      setError(
+        err instanceof Error ? err.message : "Failed to complete return",
+      );
     }
   };
 
@@ -549,11 +598,13 @@ function ItemCard({
       } else {
         onOwnedNotice?.({
           kind: "success",
-          message: "Custody offer sent. They must accept before it takes effect.",
+          message:
+            "Custody offer sent. They must accept before it takes effect.",
         });
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to set custody";
+      const message =
+        err instanceof Error ? err.message : "Failed to set custody";
       setError(message);
       onOwnedNotice?.({ kind: "error", message });
     }
@@ -568,12 +619,18 @@ function ItemCard({
       if (item.active_loan_id) {
         await markReturnedByOwner(token, item.active_loan_id);
         await onRefresh();
-        onOwnedNotice?.({ kind: "success", message: "Loan completed. You have custody." });
+        onOwnedNotice?.({
+          kind: "success",
+          message: "Loan completed. You have custody.",
+        });
       } else if (item.custody_marked_returned_by_holder) {
         await completeCustodyReturn(token, item.id);
         onModeChange("closed");
         await onRefresh();
-        onOwnedNotice?.({ kind: "success", message: "Handoff confirmed. You have custody." });
+        onOwnedNotice?.({
+          kind: "success",
+          message: "Handoff confirmed. You have custody.",
+        });
       } else {
         await setCustody(token, item.id, item.owner_user.id);
         if (mode === "edit") {
@@ -583,7 +640,8 @@ function ItemCard({
         onOwnedNotice?.({ kind: "success", message: "Custody updated." });
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to mark returned";
+      const message =
+        err instanceof Error ? err.message : "Failed to mark returned";
       setError(message);
       onOwnedNotice?.({ kind: "error", message });
     } finally {
@@ -599,7 +657,8 @@ function ItemCard({
       await onRefresh();
       onOwnedNotice?.({ kind: "success", message: "Custody offer canceled." });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to cancel offer";
+      const message =
+        err instanceof Error ? err.message : "Failed to cancel offer";
       setError(message);
       onOwnedNotice?.({ kind: "error", message });
     }
@@ -608,280 +667,433 @@ function ItemCard({
   const categoryTagsSummaryLine =
     listKind !== "borrowed" ? formatCategoryTagsSummaryLine(item) : null;
   const readOnlyDetailsCategoryTagsLine =
-    isOwner && listKind !== "borrowed" ? null : formatCategoryTagsSummaryLine(item);
+    isOwner && listKind !== "borrowed"
+      ? null
+      : formatCategoryTagsSummaryLine(item);
 
   const apiImageUrl = (item.image_url ?? "").trim();
   const displayImageSrc = apiImageUrl || (localImagePreviewUrl ?? "").trim();
   const showImageCard = Boolean(displayImageSrc) && !expanded;
 
   const itemCardInner = (
-      <Stack gap="3">
-        <HStack justify="space-between" align="start">
-          <Stack gap="1">
-            <HStack gap="1">
-              {titlePrefix ? (
-                <Text fontWeight="bold" color={titlePrefix.color}>
-                  {titlePrefix.text}
-                </Text>
-              ) : null}
-              <Text fontWeight="bold">{item.name}</Text>
-            </HStack>
-            {listKind === "default" &&
-            !sameClosetUserId(item.current_holder_user.id, meId) &&
-            !titlePrefix?.hideBorrowerLabel ? (
-              <Text fontSize={APP_TEXT_SIZES.helper}>
-                Borrower: {displayName(item.current_holder_user)}
+    <Stack gap="3">
+      <HStack justify="space-between" align="start">
+        <Stack gap="1">
+          <HStack gap="1">
+            {titlePrefix ? (
+              <Text fontWeight="bold" color={titlePrefix.color}>
+                {titlePrefix.text}
               </Text>
             ) : null}
-            {item.custody_disputed ? (
-              <Text color="orange.solid" fontWeight="semibold" fontSize={APP_TEXT_SIZES.helper}>
-                Custody disputed: holder denied possession.
-              </Text>
-            ) : null}
-            {item.pending_custody_user && isOwner ? (
-              <Text color="sky.solid" fontWeight="semibold" fontSize={APP_TEXT_SIZES.helper}>
-                Waiting for {displayName(item.pending_custody_user)} to accept custody.
-              </Text>
-            ) : null}
-            {item.active_loan_marked_returned_by_borrower && isOwner ? (
-              <Text color="lilypad.solid" fontWeight="semibold" fontSize={APP_TEXT_SIZES.helper}>
-                Borrower marked this item as returned. Use Mark returned to complete the loan.
-              </Text>
-            ) : null}
-            {item.active_loan_marked_returned_by_borrower && borrowedByMe ? (
-              <Text color="lilypad.solid" fontWeight="semibold" fontSize={APP_TEXT_SIZES.helper}>
-                You marked this item as returned. Waiting for owner confirmation.
-              </Text>
-            ) : null}
-            {!item.active_loan_id && item.custody_marked_returned_by_holder && isOwner ? (
-              <Text color="lilypad.solid" fontWeight="semibold" fontSize={APP_TEXT_SIZES.helper}>
-                Current holder marked this item as returned. Use Mark returned to complete the handoff.
-              </Text>
-            ) : null}
-            {!item.active_loan_id && item.custody_marked_returned_by_holder && borrowedByMe ? (
-              <Text color="lilypad.solid" fontWeight="semibold" fontSize={APP_TEXT_SIZES.helper}>
-                You marked this item as returned. Waiting for the owner to confirm.
-              </Text>
-            ) : null}
-          </Stack>
-          {showPendingCount && item.pending_request_count > 0 ? (
-            <Text fontSize={APP_TEXT_SIZES.helper} color="orange.solid" fontWeight="bold">
-              {item.pending_request_count} pending{" "}
-              {item.pending_request_count === 1 ? "request" : "requests"}
+            <Text fontWeight="bold">{item.name}</Text>
+          </HStack>
+          {listKind === "default" &&
+          !sameClosetUserId(item.current_holder_user.id, meId) &&
+          !titlePrefix?.hideBorrowerLabel ? (
+            <Text fontSize={APP_TEXT_SIZES.helper}>
+              Borrower: {displayName(item.current_holder_user)}
             </Text>
           ) : null}
-        </HStack>
-
-        {!expanded && item.description ? <Text>{item.description}</Text> : null}
-        {!expanded && categoryTagsSummaryLine ? (
-          <Text fontSize={APP_TEXT_SIZES.helper}>{categoryTagsSummaryLine}</Text>
-        ) : null}
-
-        {expanded ? (
-          <Tabs.Root
-            value={itemCardTabValue}
-            onValueChange={(details) => {
-              onModeChange(details.value === "custody" ? "custody" : "edit");
-            }}
-            variant="plain"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <Tabs.List
-              borderBottomWidth="1px"
-              borderColor="border"
-              gap="1"
-              w="100%"
-              pt="0"
-              pb="0"
+          {item.custody_disputed ? (
+            <Text
+              color="orange.solid"
+              fontWeight="semibold"
+              fontSize={APP_TEXT_SIZES.helper}
             >
-              <Tabs.Trigger
-                value="details"
-                bg={itemCardTabValue === "details" ? "lilypad.solid" : undefined}
-                color={itemCardTabValue === "details" ? "black" : undefined}
-                borderTopRadius="md"
-                borderBottomRadius="0"
-                px="4"
-                py="2"
-                fontWeight="medium"
-                _hover={{
-                  bg: itemCardTabValue === "details" ? "lilypad.solid" : "transparent",
+              Custody disputed: holder denied possession.
+            </Text>
+          ) : null}
+          {item.pending_custody_user && isOwner ? (
+            <Text
+              color="sky.solid"
+              fontWeight="semibold"
+              fontSize={APP_TEXT_SIZES.helper}
+            >
+              Waiting for {displayName(item.pending_custody_user)} to accept
+              custody.
+            </Text>
+          ) : null}
+          {item.active_loan_marked_returned_by_borrower && isOwner ? (
+            <Text
+              color="lilypad.solid"
+              fontWeight="semibold"
+              fontSize={APP_TEXT_SIZES.helper}
+            >
+              Borrower marked this item as returned. Use Mark returned to
+              complete the loan.
+            </Text>
+          ) : null}
+          {item.active_loan_marked_returned_by_borrower && borrowedByMe ? (
+            <Text
+              color="lilypad.solid"
+              fontWeight="semibold"
+              fontSize={APP_TEXT_SIZES.helper}
+            >
+              You marked this item as returned. Waiting for owner confirmation.
+            </Text>
+          ) : null}
+          {!item.active_loan_id &&
+          item.custody_marked_returned_by_holder &&
+          isOwner ? (
+            <Text
+              color="lilypad.solid"
+              fontWeight="semibold"
+              fontSize={APP_TEXT_SIZES.helper}
+            >
+              Current holder marked this item as returned. Use Mark returned to
+              complete the handoff.
+            </Text>
+          ) : null}
+          {!item.active_loan_id &&
+          item.custody_marked_returned_by_holder &&
+          borrowedByMe ? (
+            <Text
+              color="lilypad.solid"
+              fontWeight="semibold"
+              fontSize={APP_TEXT_SIZES.helper}
+            >
+              You marked this item as returned. Waiting for the owner to
+              confirm.
+            </Text>
+          ) : null}
+        </Stack>
+        {showPendingCount && item.pending_request_count > 0 ? (
+          <Text
+            fontSize={APP_TEXT_SIZES.helper}
+            color="orange.solid"
+            fontWeight="bold"
+          >
+            {item.pending_request_count} pending{" "}
+            {item.pending_request_count === 1 ? "request" : "requests"}
+          </Text>
+        ) : null}
+      </HStack>
+
+      {!expanded && item.description ? <Text>{item.description}</Text> : null}
+      {!expanded && categoryTagsSummaryLine ? (
+        <Text fontSize={APP_TEXT_SIZES.helper}>{categoryTagsSummaryLine}</Text>
+      ) : null}
+
+      {expanded ? (
+        <Tabs.Root
+          value={itemCardTabValue}
+          onValueChange={(details) => {
+            onModeChange(details.value === "custody" ? "custody" : "edit");
+          }}
+          variant="plain"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <Tabs.List
+            borderBottomWidth="1px"
+            borderColor="border"
+            gap="1"
+            w="100%"
+            pt="0"
+            pb="0"
+          >
+            <Tabs.Trigger
+              value="details"
+              bg={itemCardTabValue === "details" ? "lilypad.solid" : undefined}
+              color={itemCardTabValue === "details" ? "black" : undefined}
+              borderTopRadius="md"
+              borderBottomRadius="0"
+              px="2"
+              py="2"
+              fontWeight="medium"
+              _hover={{
+                bg:
+                  itemCardTabValue === "details"
+                    ? "lilypad.solid"
+                    : "transparent",
+              }}
+              _selected={{ bg: "lilypad.solid", color: "black" }}
+            >
+              Details
+            </Tabs.Trigger>
+            <Tabs.Trigger
+              value="custody"
+              bg={itemCardTabValue === "custody" ? "lilypad.solid" : undefined}
+              color={itemCardTabValue === "custody" ? "black" : undefined}
+              borderTopRadius="md"
+              borderBottomRadius="0"
+              px="2"
+              py="2"
+              fontWeight="medium"
+              _hover={{
+                bg:
+                  itemCardTabValue === "custody"
+                    ? "lilypad.solid"
+                    : "transparent",
+              }}
+              _selected={{ bg: "lilypad.solid", color: "black" }}
+            >
+              Custody
+            </Tabs.Trigger>
+          </Tabs.List>
+          <Tabs.Content value="details" pt="3">
+            {isOwner && listKind !== "borrowed" ? (
+              <Stack
+                gap="3"
+                onMouseDownCapture={(event) => {
+                  if (!confirmDelete) return;
+                  const target = event.target as Node | null;
+                  if (!target) return;
+                  if (confirmDeleteButtonRef.current?.contains(target)) return;
+                  setConfirmDelete(false);
                 }}
-                _selected={{ bg: "lilypad.solid", color: "black" }}
-              >
-                Details
-              </Tabs.Trigger>
-              <Tabs.Trigger
-                value="custody"
-                bg={itemCardTabValue === "custody" ? "lilypad.solid" : undefined}
-                color={itemCardTabValue === "custody" ? "black" : undefined}
-                borderTopRadius="md"
-                borderBottomRadius="0"
-                px="4"
-                py="2"
-                fontWeight="medium"
-                _hover={{
-                  bg: itemCardTabValue === "custody" ? "lilypad.solid" : "transparent",
+                onTouchStartCapture={(event) => {
+                  if (!confirmDelete) return;
+                  const target = event.target as Node | null;
+                  if (!target) return;
+                  if (confirmDeleteButtonRef.current?.contains(target)) return;
+                  setConfirmDelete(false);
                 }}
-                _selected={{ bg: "lilypad.solid", color: "black" }}
               >
-                Custody
-              </Tabs.Trigger>
-            </Tabs.List>
-            <Tabs.Content value="details" pt="3">
-              {isOwner && listKind !== "borrowed" ? (
-                <Stack
-                  gap="3"
-                  onMouseDownCapture={(event) => {
-                    if (!confirmDelete) return;
-                    const target = event.target as Node | null;
-                    if (!target) return;
-                    if (confirmDeleteButtonRef.current?.contains(target)) return;
-                    setConfirmDelete(false);
-                  }}
-                  onTouchStartCapture={(event) => {
-                    if (!confirmDelete) return;
-                    const target = event.target as Node | null;
-                    if (!target) return;
-                    if (confirmDeleteButtonRef.current?.contains(target)) return;
-                    setConfirmDelete(false);
-                  }}
-                >
-                  {displayImageSrc ? (
-                    <Stack gap="1" align="stretch">
-                      <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
-                        Current Photo:
-                      </Text>
-                      <Image
-                        src={displayImageSrc}
-                        alt=""
-                        aria-hidden
-                        maxH="220px"
-                        objectFit="cover"
-                        borderRadius="md"
-                      />
-                    </Stack>
-                  ) : null}
+                {displayImageSrc ? (
                   <Stack gap="1" align="stretch">
                     <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
-                      Item Name:
+                      Current Photo:
                     </Text>
-                    <Input
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="Name"
-                      {...CLOSET_PLACEHOLDER_PROPS}
+                    <Image
+                      src={displayImageSrc}
+                      alt=""
+                      aria-hidden
+                      maxH="220px"
+                      objectFit="cover"
+                      borderRadius="md"
                     />
                   </Stack>
-                  <Stack gap="1" align="stretch">
-                    <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
-                      Description:
-                    </Text>
-                    <Textarea
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      placeholder="Description"
-                      {...CLOSET_PLACEHOLDER_PROPS}
-                    />
-                  </Stack>
-                  <ClosetCategoryFields category={category} onCategoryChange={setCategory} />
-                  <Stack gap="1" align="stretch">
-                    <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
-                      Tags (comma-separated):
-                    </Text>
-                    <Input
-                      value={tagsCsv}
-                      onChange={(e) => setTagsCsv(e.target.value)}
-                      placeholder="tag1, tag2"
-                      {...CLOSET_PLACEHOLDER_PROPS}
-                    />
-                  </Stack>
-                  <Stack gap="1" align="stretch">
-                    <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
-                      Photo:
-                    </Text>
-                    <input
-                      ref={photoInputRef}
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      style={{ display: "none" }}
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        e.target.value = "";
-                        if (!f) return;
-                        void (async () => {
-                          setError(null);
-                          setImageUploadBusy(true);
-                          let previewUrl: string | null = null;
-                          try {
-                            const blob = await resizeImageFileToJpegBlob(f);
-                            previewUrl = URL.createObjectURL(blob);
-                            setLocalImagePreviewUrl((prev) => {
-                              if (prev) URL.revokeObjectURL(prev);
-                              return previewUrl;
-                            });
-                            const key = await uploadClosetImageBlobViaPresign(getToken, blob);
-                            const token = await getToken();
-                            await patchItem(token, item.id, { image_key: key });
-                            await onRefresh();
-                            onOwnedNotice?.({ kind: "success", message: "Photo updated." });
-                          } catch (err: unknown) {
-                            if (previewUrl) {
-                              URL.revokeObjectURL(previewUrl);
-                              setLocalImagePreviewUrl((prev) => (prev === previewUrl ? null : prev));
-                            }
-                            const message =
-                              err instanceof Error ? err.message : "Failed to upload photo";
-                            setError(message);
-                            onOwnedNotice?.({ kind: "error", message });
-                          } finally {
-                            setImageUploadBusy(false);
+                ) : null}
+                <Stack gap="1" align="stretch">
+                  <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
+                    Item Name:
+                  </Text>
+                  <Input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Name"
+                    {...CLOSET_PLACEHOLDER_PROPS}
+                  />
+                </Stack>
+                <Stack gap="1" align="stretch">
+                  <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
+                    Description:
+                  </Text>
+                  <Textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Description"
+                    {...CLOSET_PLACEHOLDER_PROPS}
+                  />
+                </Stack>
+                <ClosetCategoryFields
+                  category={category}
+                  onCategoryChange={setCategory}
+                />
+                <Stack gap="1" align="stretch">
+                  <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
+                    Tags (comma-separated):
+                  </Text>
+                  <Input
+                    value={tagsCsv}
+                    onChange={(e) => setTagsCsv(e.target.value)}
+                    placeholder="tag1, tag2"
+                    {...CLOSET_PLACEHOLDER_PROPS}
+                  />
+                </Stack>
+                <Stack gap="1" align="stretch">
+                  <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
+                    Photo:
+                  </Text>
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = "";
+                      if (!f) return;
+                      void (async () => {
+                        setError(null);
+                        setImageUploadBusy(true);
+                        let previewUrl: string | null = null;
+                        try {
+                          const blob = await resizeImageFileToJpegBlob(f);
+                          previewUrl = URL.createObjectURL(blob);
+                          setLocalImagePreviewUrl((prev) => {
+                            if (prev) URL.revokeObjectURL(prev);
+                            return previewUrl;
+                          });
+                          const key = await uploadClosetImageBlobViaPresign(
+                            getToken,
+                            blob,
+                          );
+                          const token = await getToken();
+                          await patchItem(token, item.id, { image_key: key });
+                          await onRefresh();
+                          onOwnedNotice?.({
+                            kind: "success",
+                            message: "Photo updated.",
+                          });
+                        } catch (err: unknown) {
+                          if (previewUrl) {
+                            URL.revokeObjectURL(previewUrl);
+                            setLocalImagePreviewUrl((prev) =>
+                              prev === previewUrl ? null : prev,
+                            );
                           }
-                        })();
+                          const message =
+                            err instanceof Error
+                              ? err.message
+                              : "Failed to upload photo";
+                          setError(message);
+                          onOwnedNotice?.({ kind: "error", message });
+                        } finally {
+                          setImageUploadBusy(false);
+                        }
+                      })();
+                    }}
+                  />
+                  <HStack flexWrap="wrap" gap="2">
+                    <PondButton
+                      type="button"
+                      size="sm"
+                      colorPalette="sky"
+                      loading={imageUploadBusy}
+                      onClick={() => photoInputRef.current?.click()}
+                    >
+                      Upload new photo
+                    </PondButton>
+                    <PondButton
+                      type="button"
+                      size="sm"
+                      colorPalette="lilypad"
+                      loading={imagePickerLoading}
+                      disabled={imageUploadBusy}
+                      onClick={() => {
+                        setImagePickerOpen((prev) => !prev);
+                        if (!imagePickerOpen) {
+                          void loadExistingImageRows();
+                        }
                       }}
-                    />
-                    <HStack flexWrap="wrap" gap="2">
+                    >
+                      Select uploaded image
+                    </PondButton>
+                    {item.image_url?.trim() || item.image_key?.trim() ? (
                       <PondButton
                         type="button"
                         size="sm"
-                        colorPalette="sky"
+                        colorPalette="nautical"
                         loading={imageUploadBusy}
-                        onClick={() => photoInputRef.current?.click()}
+                        onClick={() =>
+                          void (async () => {
+                            setError(null);
+                            setImageUploadBusy(true);
+                            try {
+                              const token = await getToken();
+                              await patchItem(token, item.id, {
+                                image_key: "",
+                              });
+                              await onRefresh();
+                              onOwnedNotice?.({
+                                kind: "success",
+                                message: "Photo removed.",
+                              });
+                            } catch (err: unknown) {
+                              const message =
+                                err instanceof Error
+                                  ? err.message
+                                  : "Failed to remove photo";
+                              setError(message);
+                              onOwnedNotice?.({ kind: "error", message });
+                            } finally {
+                              setImageUploadBusy(false);
+                            }
+                          })()
+                        }
                       >
-                        Upload new photo
+                        Remove photo
                       </PondButton>
-                      <PondButton
-                        type="button"
-                        size="sm"
-                        colorPalette="lilypad"
-                        loading={imagePickerLoading}
-                        disabled={imageUploadBusy}
-                        onClick={() => {
-                          setImagePickerOpen((prev) => !prev);
-                          if (!imagePickerOpen) {
-                            void loadExistingImageRows();
-                          }
-                        }}
-                      >
-                        Select uploaded image
-                      </PondButton>
-                      {item.image_url?.trim() || item.image_key?.trim() ? (
+                    ) : null}
+                  </HStack>
+                  {imagePickerOpen ? (
+                    <Stack
+                      gap="2"
+                      borderWidth="1px"
+                      borderColor="border"
+                      borderRadius="md"
+                      p="2"
+                    >
+                      <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600">
+                        Choose from your uploaded images.
+                      </Text>
+                      {imagePickerRows.length === 0 ? (
+                        <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600">
+                          No uploaded images available
+                        </Text>
+                      ) : (
+                        <HStack flexWrap="wrap" gap="2" align="stretch">
+                          {imagePickerRows.map((row) => {
+                            const isSelected =
+                              selectedExistingImageKey === row.image_key;
+                            return (
+                              <Box
+                                key={row.image_key}
+                                as="button"
+                                borderWidth="2px"
+                                borderColor={
+                                  isSelected ? "black" : "lilypad.solid"
+                                }
+                                borderRadius="md"
+                                overflow="hidden"
+                                onClick={() =>
+                                  setSelectedExistingImageKey(row.image_key)
+                                }
+                              >
+                                <Image
+                                  src={row.image_url}
+                                  alt=""
+                                  aria-hidden
+                                  w="84px"
+                                  h="84px"
+                                  objectFit="cover"
+                                  draggable={false}
+                                />
+                              </Box>
+                            );
+                          })}
+                        </HStack>
+                      )}
+                      <HStack>
                         <PondButton
                           type="button"
                           size="sm"
-                          colorPalette="nautical"
+                          colorPalette="lilypad"
                           loading={imageUploadBusy}
+                          disabled={
+                            imageUploadBusy || !selectedExistingImageKey
+                          }
                           onClick={() =>
                             void (async () => {
                               setError(null);
                               setImageUploadBusy(true);
                               try {
                                 const token = await getToken();
-                                await patchItem(token, item.id, { image_key: "" });
+                                await patchItem(token, item.id, {
+                                  image_key: selectedExistingImageKey,
+                                });
                                 await onRefresh();
-                                onOwnedNotice?.({ kind: "success", message: "Photo removed." });
+                                onOwnedNotice?.({
+                                  kind: "success",
+                                  message: "Photo updated.",
+                                });
+                                setImagePickerOpen(false);
                               } catch (err: unknown) {
                                 const message =
-                                  err instanceof Error ? err.message : "Failed to remove photo";
+                                  err instanceof Error
+                                    ? err.message
+                                    : "Failed to update photo";
                                 setError(message);
                                 onOwnedNotice?.({ kind: "error", message });
                               } finally {
@@ -890,372 +1102,381 @@ function ItemCard({
                             })()
                           }
                         >
-                          Remove photo
+                          Use selected image
                         </PondButton>
-                      ) : null}
-                    </HStack>
-                    {imagePickerOpen ? (
-                      <Stack gap="2" borderWidth="1px" borderColor="border" borderRadius="md" p="3">
-                        <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600">
-                          Choose from your uploaded images.
-                        </Text>
-                        {imagePickerRows.length === 0 ? (
-                          <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600">
-                            No uploaded images available
-                          </Text>
-                        ) : (
-                          <HStack flexWrap="wrap" gap="2" align="stretch">
-                            {imagePickerRows.map((row) => {
-                              const isSelected = selectedExistingImageKey === row.image_key;
-                              return (
-                                <Box
-                                  key={row.image_key}
-                                  as="button"
-                                  borderWidth="2px"
-                                  borderColor={isSelected ? "black" : "lilypad.solid"}
-                                  borderRadius="md"
-                                  overflow="hidden"
-                                  onClick={() => setSelectedExistingImageKey(row.image_key)}
-                                >
-                                  <Image
-                                    src={row.image_url}
-                                    alt=""
-                                    aria-hidden
-                                    w="84px"
-                                    h="84px"
-                                    objectFit="cover"
-                                    draggable={false}
-                                  />
-                                </Box>
-                              );
-                            })}
-                          </HStack>
-                        )}
-                        <HStack>
-                          <PondButton
-                            type="button"
-                            size="sm"
-                            colorPalette="lilypad"
-                            loading={imageUploadBusy}
-                            disabled={imageUploadBusy || !selectedExistingImageKey}
-                            onClick={() =>
-                              void (async () => {
-                                setError(null);
-                                setImageUploadBusy(true);
-                                try {
-                                  const token = await getToken();
-                                  await patchItem(token, item.id, { image_key: selectedExistingImageKey });
-                                  await onRefresh();
-                                  onOwnedNotice?.({ kind: "success", message: "Photo updated." });
-                                  setImagePickerOpen(false);
-                                } catch (err: unknown) {
-                                  const message =
-                                    err instanceof Error ? err.message : "Failed to update photo";
-                                  setError(message);
-                                  onOwnedNotice?.({ kind: "error", message });
-                                } finally {
-                                  setImageUploadBusy(false);
-                                }
-                              })()
-                            }
-                          >
-                            Use selected image
-                          </PondButton>
-                        </HStack>
-                      </Stack>
-                    ) : null}
-                    {imageUploadBusy ? (
-                      <HStack gap="2" align="center" color="gray.700">
-                        <Spinner size="sm" colorPalette="lilypad" />
-                        <Text fontSize={APP_TEXT_SIZES.helper}>Uploading photo…</Text>
-                      </HStack>
-                    ) : null}
-                    <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600">
-                      JPEG, PNG, or WebP. Images are resized in the browser before upload.
-                    </Text>
-                  </Stack>
-                  <HStack>
-                    <PondButton
-                      size="sm"
-                      colorPalette="lilypad"
-                      disabled={imageUploadBusy}
-                      onClick={() => void saveEdit()}
-                    >
-                      Save
-                    </PondButton>
-                    <PondButton
-                      size="sm"
-                      colorPalette="sky"
-                      disabled={imageUploadBusy}
-                      onClick={() => onModeChange("closed")}
-                    >
-                      Cancel
-                    </PondButton>
-                    <Box flex="1" />
-                    <PondButton
-                      ref={confirmDeleteButtonRef}
-                      size="sm"
-                      colorPalette="nautical"
-                      onClick={() => {
-                        if (!confirmDelete) {
-                          setConfirmDelete(true);
-                          return;
-                        }
-                        void onDelete();
-                      }}
-                    >
-                      {confirmDelete ? "Confirm Delete" : "Delete"}
-                    </PondButton>
-                  </HStack>
-                </Stack>
-              ) : (
-                <Stack gap="2">
-                  <Text fontWeight="semibold">{item.name}</Text>
-                  {item.description ? <Text>{item.description}</Text> : null}
-                  {readOnlyDetailsCategoryTagsLine ? (
-                    <Text fontSize={APP_TEXT_SIZES.helper}>{readOnlyDetailsCategoryTagsLine}</Text>
-                  ) : null}
-                </Stack>
-              )}
-            </Tabs.Content>
-            <Tabs.Content value="custody" pt="3">
-          <Stack onClick={(event) => event.stopPropagation()}>
-            {requestsOpen && (isOwner || isHolder) && pendingRows.length > 0 ? (
-              <Stack>
-                {pendingRows.map((row) => (
-                  <Box key={row.id} borderWidth="1px" borderColor="border" borderRadius="md" p="3">
-                    <Stack gap="1">
-                      <Text fontSize={APP_TEXT_SIZES.helper}>
-                        {displayName(row.requester_user)} would like to borrow{" "}
-                        {displayName(item.owner_user)}
-                        {"'s"} item before{" "}
-                        {formatNeedByDateLabel(row.date_needed_by)}
-                        {row.message ? `: '${row.message}.'` : "."}
-                      </Text>
-                      <HStack justify="space-between" align="end" gap="3" flexWrap="wrap">
-                        {isOwner ? (
-                          <>
-                            <PondButton
-                              size="sm"
-                              colorPalette="lilypad"
-                              onClick={async () => {
-                                try {
-                                  const token = await getToken();
-                                  await approveBorrowRequest(token, row.id);
-                                  onModeChange("closed");
-                                  await onRefresh();
-                                } catch (err: unknown) {
-                                  setError(err instanceof Error ? err.message : "Failed to approve request");
-                                }
-                              }}
-                            >
-                              Approve
-                            </PondButton>
-                            <Box flex="1" />
-                            <HStack align="end" justify="flex-end" gap="2">
-                              <Input
-                                value={declineMessageByRequestId[row.id] ?? ""}
-                                onChange={(e) =>
-                                  setDeclineMessageByRequestId((prev) => ({
-                                    ...prev,
-                                    [row.id]: e.target.value,
-                                  }))
-                                }
-                                placeholder="optional message"
-                                maxW="280px"
-                                {...CLOSET_PLACEHOLDER_PROPS}
-                              />
-                              <PondButton
-                                size="sm"
-                                colorPalette="nautical"
-                                onClick={async () => {
-                                  const dm = (declineMessageByRequestId[row.id] ?? "").trim();
-                                  const dmErr = validateClosetFreeText(
-                                    declineMessageByRequestId[row.id] ?? "",
-                                    "Decline message",
-                                  );
-                                  if (dmErr) {
-                                    setError(dmErr);
-                                    return;
-                                  }
-                                  try {
-                                    const token = await getToken();
-                                    await declineBorrowRequest(token, row.id, {
-                                      decline_message: dm,
-                                    });
-                                    setDeclineMessageByRequestId((prev) => ({ ...prev, [row.id]: "" }));
-                                    onModeChange("closed");
-                                    await onRefresh();
-                                  } catch (err: unknown) {
-                                    setError(err instanceof Error ? err.message : "Failed to decline request");
-                                  }
-                                }}
-                              >
-                                Decline
-                              </PondButton>
-                            </HStack>
-                          </>
-                        ) : null}
                       </HStack>
                     </Stack>
-                  </Box>
-                ))}
-              </Stack>
-            ) : null}
-            {item.pending_custody_user && isOwner ? (
-              <HStack>
-                <PondButton size="sm" colorPalette="nautical" onClick={() => void onCancelPendingCustody()}>
-                  Cancel custody offer
-                </PondButton>
-              </HStack>
-            ) : null}
-            {item.active_loan_id && isOwner ? (
-              <Text fontSize={APP_TEXT_SIZES.helper}>
-                When the borrower gives the item back, use{" "}
-                <Text as="span" fontWeight="semibold">
-                  Mark returned
-                </Text>{" "}
-                to close the active loan and put custody back on you.{" "}
-                <Text as="span" fontWeight="semibold">
-                  Set holder
-                </Text>{" "}
-                below only changes who the app thinks physically has the item; it does not end the loan.
-              </Text>
-            ) : null}
-            {item.active_loan_id && borrowedByMe ? (
-              <Text fontSize={APP_TEXT_SIZES.helper}>
-                Tap{" "}
-                <Text as="span" fontWeight="semibold">
-                  I returned this
-                </Text>{" "}
-                after you give the item back. The owner still completes the loan with Mark returned. Use{" "}
-                <Text as="span" fontWeight="semibold">
-                  I do not have this item
-                </Text>{" "}
-                if records show you as holder but you do not have it (flags a dispute for the owner).
-              </Text>
-            ) : null}
-            {borrowedByMe && !item.active_loan_id ? (
-              <Text fontSize={APP_TEXT_SIZES.helper}>
-                No loan is on record—only custody was assigned. Tap{" "}
-                <Text as="span" fontWeight="semibold">
-                  I returned this
-                </Text>{" "}
-                after you give the item back to the owner; they confirm with Mark returned to move custody. Use{" "}
-                <Text as="span" fontWeight="semibold">
-                  I do not have this item
-                </Text>{" "}
-                if you are listed as holder but do not have it.
-              </Text>
-            ) : null}
-            {!item.active_loan_id && item.custody_marked_returned_by_holder && isOwner ? (
-              <Text fontSize={APP_TEXT_SIZES.helper}>
-                The holder said they returned this item. Use{" "}
-                <Text as="span" fontWeight="semibold">
-                  Mark returned
-                </Text>{" "}
-                to put custody back on you once you have it.
-              </Text>
-            ) : null}
-            <HStack flexWrap="wrap">
-              {item.active_loan_id && isOwner ? (
-                <PondButton size="sm" colorPalette="lilypad" onClick={() => void onMarkReturnedByOwner()}>
-                  Mark returned (complete loan)
-                </PondButton>
-              ) : null}
-              {!item.active_loan_id && item.custody_marked_returned_by_holder && isOwner ? (
-                <PondButton size="sm" colorPalette="lilypad" onClick={() => void onCompleteCustodyReturn()}>
-                  Mark returned (complete handoff)
-                </PondButton>
-              ) : null}
-              {borrowedByMe ? (
-                <PondButton
-                  size="sm"
-                  colorPalette="lilypad"
-                  onClick={() =>
-                    void (
-                      item.active_loan_id ? onMarkReturnedByBorrower() : onMarkCustodyReturnedByHolder()
-                    )
-                  }
-                >
-                  I returned this
-                </PondButton>
-              ) : null}
-              {borrowedByMe ? (
-                <PondButton size="sm" colorPalette="nautical" onClick={() => void onDenyCustody()}>
-                  I do not have this item
-                </PondButton>
-              ) : null}
-            </HStack>
-            {isOwner ? (
-              <Stack gap="2">
-                {item.active_loan_id ? (
-                  <Text fontSize={APP_TEXT_SIZES.helper} color="orange.solid">
-                    While a loan is active, prefer Mark returned when the item is back. Change holder here only if
-                    you need to correct who has the item without closing the loan yet.
+                  ) : null}
+                  {imageUploadBusy ? (
+                    <HStack gap="2" align="center" color="gray.700">
+                      <Spinner size="sm" colorPalette="lilypad" />
+                      <Text fontSize={APP_TEXT_SIZES.helper}>
+                        Uploading photo…
+                      </Text>
+                    </HStack>
+                  ) : null}
+                  <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600">
+                    JPEG, PNG, or WebP. Images are resized in the browser before
+                    upload.
                   </Text>
-                ) : item.custody_marked_returned_by_holder ? (
-                  <Text fontSize={APP_TEXT_SIZES.helper} color="orange.solid">
-                    The holder marked a return. Prefer Mark returned above before changing holder here.
-                  </Text>
-                ) : (
-                  <Text fontSize={APP_TEXT_SIZES.helper}>
-                    Choose who physically has this item right now (you or a friend).
-                  </Text>
-                )}
-                <HStack align="end" flexWrap="wrap" gap="2">
-                  <NativeSelectRoot maxW="320px">
-                    <NativeSelectField
-                      value={custodyTargetUserId}
-                      onChange={(e) => setCustodyTargetUserId(e.target.value)}
-                    >
-                      <option value={String(item.owner_user.id)}>Me</option>
-                      {orderedCustodyFriends.prioritized.length > 0 ? (
-                        <optgroup label="Active participants">
-                          {orderedCustodyFriends.prioritized.map((friend) => (
-                            <option key={`holder-priority-${friend.id}`} value={String(friend.id)}>
-                              {friend.label}
-                            </option>
-                          ))}
-                        </optgroup>
-                      ) : null}
-                      {orderedCustodyFriends.rest.length > 0 ? (
-                        <optgroup label="Other friends">
-                          {orderedCustodyFriends.rest.map((friend) => (
-                            <option key={`holder-rest-${friend.id}`} value={String(friend.id)}>
-                              {friend.label}
-                            </option>
-                          ))}
-                        </optgroup>
-                      ) : null}
-                    </NativeSelectField>
-                  </NativeSelectRoot>
-                  <PondButton size="sm" colorPalette="orange" onClick={() => void onSetCurrentHolder()}>
-                    Set current holder
-                  </PondButton>
+                </Stack>
+                <HStack>
                   <PondButton
                     size="sm"
                     colorPalette="lilypad"
-                    loading={markReturnedBusy}
-                    disabled={!canMarkReturnedAsOwner}
-                    onClick={() => void onMarkReturnedAsOwner()}
+                    disabled={imageUploadBusy}
+                    onClick={() => void saveEdit()}
                   >
-                    Mark Returned
+                    Save
+                  </PondButton>
+                  <PondButton
+                    size="sm"
+                    colorPalette="sky"
+                    disabled={imageUploadBusy}
+                    onClick={() => onModeChange("closed")}
+                  >
+                    Cancel
+                  </PondButton>
+                  <Box flex="1" />
+                  <PondButton
+                    ref={confirmDeleteButtonRef}
+                    size="sm"
+                    colorPalette="nautical"
+                    onClick={() => {
+                      if (!confirmDelete) {
+                        setConfirmDelete(true);
+                        return;
+                      }
+                      void onDelete();
+                    }}
+                  >
+                    {confirmDelete ? "Confirm Delete" : "Delete"}
                   </PondButton>
                 </HStack>
               </Stack>
-            ) : null}
-          </Stack>
-            </Tabs.Content>
-          </Tabs.Root>
-        ) : null}
+            ) : (
+              <Stack gap="2">
+                <Text fontWeight="semibold">{item.name}</Text>
+                {item.description ? <Text>{item.description}</Text> : null}
+                {readOnlyDetailsCategoryTagsLine ? (
+                  <Text fontSize={APP_TEXT_SIZES.helper}>
+                    {readOnlyDetailsCategoryTagsLine}
+                  </Text>
+                ) : null}
+              </Stack>
+            )}
+          </Tabs.Content>
+          <Tabs.Content value="custody" pt="3">
+            <Stack onClick={(event) => event.stopPropagation()}>
+              {requestsOpen &&
+              (isOwner || isHolder) &&
+              pendingRows.length > 0 ? (
+                <Stack>
+                  {pendingRows.map((row) => (
+                    <Box
+                      key={row.id}
+                      borderWidth="1px"
+                      borderColor="border"
+                      borderRadius="md"
+                      p="2"
+                    >
+                      <Stack gap="1">
+                        <Text fontSize={APP_TEXT_SIZES.helper}>
+                          {displayName(row.requester_user)} would like to borrow{" "}
+                          {displayName(item.owner_user)}
+                          {"'s"} item before{" "}
+                          {formatNeedByDateLabel(row.date_needed_by)}
+                          {row.message ? `: '${row.message}.'` : "."}
+                        </Text>
+                        <HStack
+                          justify="space-between"
+                          align="end"
+                          gap="3"
+                          flexWrap="wrap"
+                        >
+                          {isOwner ? (
+                            <>
+                              <PondButton
+                                size="sm"
+                                colorPalette="lilypad"
+                                onClick={async () => {
+                                  try {
+                                    const token = await getToken();
+                                    await approveBorrowRequest(token, row.id);
+                                    onModeChange("closed");
+                                    await onRefresh();
+                                  } catch (err: unknown) {
+                                    setError(
+                                      err instanceof Error
+                                        ? err.message
+                                        : "Failed to approve request",
+                                    );
+                                  }
+                                }}
+                              >
+                                Approve
+                              </PondButton>
+                              <Box flex="1" />
+                              <HStack align="end" justify="flex-end" gap="2">
+                                <Input
+                                  value={
+                                    declineMessageByRequestId[row.id] ?? ""
+                                  }
+                                  onChange={(e) =>
+                                    setDeclineMessageByRequestId((prev) => ({
+                                      ...prev,
+                                      [row.id]: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="optional message"
+                                  maxW="280px"
+                                  {...CLOSET_PLACEHOLDER_PROPS}
+                                />
+                                <PondButton
+                                  size="sm"
+                                  colorPalette="nautical"
+                                  onClick={async () => {
+                                    const dm = (
+                                      declineMessageByRequestId[row.id] ?? ""
+                                    ).trim();
+                                    const dmErr = validateClosetFreeText(
+                                      declineMessageByRequestId[row.id] ?? "",
+                                      "Decline message",
+                                    );
+                                    if (dmErr) {
+                                      setError(dmErr);
+                                      return;
+                                    }
+                                    try {
+                                      const token = await getToken();
+                                      await declineBorrowRequest(
+                                        token,
+                                        row.id,
+                                        {
+                                          decline_message: dm,
+                                        },
+                                      );
+                                      setDeclineMessageByRequestId((prev) => ({
+                                        ...prev,
+                                        [row.id]: "",
+                                      }));
+                                      onModeChange("closed");
+                                      await onRefresh();
+                                    } catch (err: unknown) {
+                                      setError(
+                                        err instanceof Error
+                                          ? err.message
+                                          : "Failed to decline request",
+                                      );
+                                    }
+                                  }}
+                                >
+                                  Decline
+                                </PondButton>
+                              </HStack>
+                            </>
+                          ) : null}
+                        </HStack>
+                      </Stack>
+                    </Box>
+                  ))}
+                </Stack>
+              ) : null}
+              {item.pending_custody_user && isOwner ? (
+                <HStack>
+                  <PondButton
+                    size="sm"
+                    colorPalette="nautical"
+                    onClick={() => void onCancelPendingCustody()}
+                  >
+                    Cancel custody offer
+                  </PondButton>
+                </HStack>
+              ) : null}
+              {item.active_loan_id && isOwner ? (
+                <Text fontSize={APP_TEXT_SIZES.helper}>
+                  When the borrower gives the item back, use{" "}
+                  <Text as="span" fontWeight="semibold">
+                    Mark returned
+                  </Text>{" "}
+                  to close the active loan and put custody back on you.{" "}
+                  <Text as="span" fontWeight="semibold">
+                    Set holder
+                  </Text>{" "}
+                  below only changes who the app thinks physically has the item;
+                  it does not end the loan.
+                </Text>
+              ) : null}
+              {item.active_loan_id && borrowedByMe ? (
+                <Text fontSize={APP_TEXT_SIZES.helper}>
+                  Tap{" "}
+                  <Text as="span" fontWeight="semibold">
+                    I returned this
+                  </Text>{" "}
+                  after you give the item back. The owner still completes the
+                  loan with Mark returned. Use{" "}
+                  <Text as="span" fontWeight="semibold">
+                    I do not have this item
+                  </Text>{" "}
+                  if records show you as holder but you do not have it (flags a
+                  dispute for the owner).
+                </Text>
+              ) : null}
+              {borrowedByMe && !item.active_loan_id ? (
+                <Text fontSize={APP_TEXT_SIZES.helper}>
+                  No loan is on record—only custody was assigned. Tap{" "}
+                  <Text as="span" fontWeight="semibold">
+                    I returned this
+                  </Text>{" "}
+                  after you give the item back to the owner; they confirm with
+                  Mark returned to move custody. Use{" "}
+                  <Text as="span" fontWeight="semibold">
+                    I do not have this item
+                  </Text>{" "}
+                  if you are listed as holder but do not have it.
+                </Text>
+              ) : null}
+              {!item.active_loan_id &&
+              item.custody_marked_returned_by_holder &&
+              isOwner ? (
+                <Text fontSize={APP_TEXT_SIZES.helper}>
+                  The holder said they returned this item. Use{" "}
+                  <Text as="span" fontWeight="semibold">
+                    Mark returned
+                  </Text>{" "}
+                  to put custody back on you once you have it.
+                </Text>
+              ) : null}
+              <HStack flexWrap="wrap">
+                {item.active_loan_id && isOwner ? (
+                  <PondButton
+                    size="sm"
+                    colorPalette="lilypad"
+                    onClick={() => void onMarkReturnedByOwner()}
+                  >
+                    Mark returned (complete loan)
+                  </PondButton>
+                ) : null}
+                {!item.active_loan_id &&
+                item.custody_marked_returned_by_holder &&
+                isOwner ? (
+                  <PondButton
+                    size="sm"
+                    colorPalette="lilypad"
+                    onClick={() => void onCompleteCustodyReturn()}
+                  >
+                    Mark returned (complete handoff)
+                  </PondButton>
+                ) : null}
+                {borrowedByMe ? (
+                  <PondButton
+                    size="sm"
+                    colorPalette="lilypad"
+                    onClick={() =>
+                      void (item.active_loan_id
+                        ? onMarkReturnedByBorrower()
+                        : onMarkCustodyReturnedByHolder())
+                    }
+                  >
+                    I returned this
+                  </PondButton>
+                ) : null}
+                {borrowedByMe ? (
+                  <PondButton
+                    size="sm"
+                    colorPalette="nautical"
+                    onClick={() => void onDenyCustody()}
+                  >
+                    I do not have this item
+                  </PondButton>
+                ) : null}
+              </HStack>
+              {isOwner ? (
+                <Stack gap="2">
+                  {item.active_loan_id ? (
+                    <Text fontSize={APP_TEXT_SIZES.helper} color="orange.solid">
+                      While a loan is active, prefer Mark returned when the item
+                      is back. Change holder here only if you need to correct
+                      who has the item without closing the loan yet.
+                    </Text>
+                  ) : item.custody_marked_returned_by_holder ? (
+                    <Text fontSize={APP_TEXT_SIZES.helper} color="orange.solid">
+                      The holder marked a return. Prefer Mark returned above
+                      before changing holder here.
+                    </Text>
+                  ) : (
+                    <Text fontSize={APP_TEXT_SIZES.helper}>
+                      Choose who physically has this item right now (you or a
+                      friend).
+                    </Text>
+                  )}
+                  <HStack align="end" flexWrap="wrap" gap="2">
+                    <NativeSelectRoot maxW="320px">
+                      <NativeSelectField
+                        value={custodyTargetUserId}
+                        onChange={(e) => setCustodyTargetUserId(e.target.value)}
+                      >
+                        <option value={String(item.owner_user.id)}>Me</option>
+                        {orderedCustodyFriends.prioritized.length > 0 ? (
+                          <optgroup label="Active participants">
+                            {orderedCustodyFriends.prioritized.map((friend) => (
+                              <option
+                                key={`holder-priority-${friend.id}`}
+                                value={String(friend.id)}
+                              >
+                                {friend.label}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ) : null}
+                        {orderedCustodyFriends.rest.length > 0 ? (
+                          <optgroup label="Other friends">
+                            {orderedCustodyFriends.rest.map((friend) => (
+                              <option
+                                key={`holder-rest-${friend.id}`}
+                                value={String(friend.id)}
+                              >
+                                {friend.label}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ) : null}
+                      </NativeSelectField>
+                    </NativeSelectRoot>
+                    <PondButton
+                      size="sm"
+                      colorPalette="orange"
+                      onClick={() => void onSetCurrentHolder()}
+                    >
+                      Set current holder
+                    </PondButton>
+                    <PondButton
+                      size="sm"
+                      colorPalette="lilypad"
+                      loading={markReturnedBusy}
+                      disabled={!canMarkReturnedAsOwner}
+                      onClick={() => void onMarkReturnedAsOwner()}
+                    >
+                      Mark Returned
+                    </PondButton>
+                  </HStack>
+                </Stack>
+              ) : null}
+            </Stack>
+          </Tabs.Content>
+        </Tabs.Root>
+      ) : null}
 
-        {error ? (
-          <Text role="alert" color="nautical.solid" fontSize={APP_TEXT_SIZES.helper}>
-            {error}
-          </Text>
-        ) : null}
-      </Stack>
+      {error ? (
+        <Text
+          role="alert"
+          color="nautical.solid"
+          fontSize={APP_TEXT_SIZES.helper}
+        >
+          {error}
+        </Text>
+      ) : null}
+    </Stack>
   );
 
   if (showImageCard) {
@@ -1339,7 +1560,8 @@ export default function ClosetPage() {
   const [friendsCategoryFilter, setFriendsCategoryFilter] = useState("");
   const [friendsTagInput, setFriendsTagInput] = useState("");
   const [friendsTagFilter, setFriendsTagFilter] = useState("");
-  const [friendsSort, setFriendsSort] = useState<FriendsItemsSort>("updated_desc");
+  const [friendsSort, setFriendsSort] =
+    useState<FriendsItemsSort>("updated_desc");
   const [friendsFilterToolsOpen, setFriendsFilterToolsOpen] = useState(false);
   const [declinedPage, setDeclinedPage] = useState(1);
   const [borrowedPage, setBorrowedPage] = useState(1);
@@ -1359,52 +1581,97 @@ export default function ClosetPage() {
   const [newNeedBy, setNewNeedBy] = useState("");
   const [newRequestMessage, setNewRequestMessage] = useState("");
   const [requestingItemId, setRequestingItemId] = useState<number | null>(null);
-  const [expandedFriendItemId, setExpandedFriendItemId] = useState<number | null>(null);
-  const [friendItemSubTab, setFriendItemSubTab] = useState<"details" | "request">("details");
-  const [editingRequestItemId, setEditingRequestItemId] = useState<number | null>(null);
-  const [confirmCancelRequestItemId, setConfirmCancelRequestItemId] = useState<number | null>(null);
+  const [expandedFriendItemId, setExpandedFriendItemId] = useState<
+    number | null
+  >(null);
+  const [friendItemSubTab, setFriendItemSubTab] = useState<
+    "details" | "request"
+  >("details");
+  const [editingRequestItemId, setEditingRequestItemId] = useState<
+    number | null
+  >(null);
+  const [confirmCancelRequestItemId, setConfirmCancelRequestItemId] = useState<
+    number | null
+  >(null);
   const confirmCancelRequestButtonRef = useRef<HTMLButtonElement | null>(null);
-  const [confirmCancelMyRequestedItemId, setConfirmCancelMyRequestedItemId] = useState<number | null>(null);
-  const confirmCancelMyRequestedButtonRef = useRef<HTMLButtonElement | null>(null);
-  const [confirmDeleteDeclinedRequestItemId, setConfirmDeleteDeclinedRequestItemId] = useState<number | null>(null);
-  const confirmDeleteDeclinedRequestButtonRef = useRef<HTMLButtonElement | null>(null);
-  const requestedByMeCardRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const [confirmCancelMyRequestedItemId, setConfirmCancelMyRequestedItemId] =
+    useState<number | null>(null);
+  const confirmCancelMyRequestedButtonRef = useRef<HTMLButtonElement | null>(
+    null,
+  );
+  const [
+    confirmDeleteDeclinedRequestItemId,
+    setConfirmDeleteDeclinedRequestItemId,
+  ] = useState<number | null>(null);
+  const confirmDeleteDeclinedRequestButtonRef =
+    useRef<HTMLButtonElement | null>(null);
+  const requestedByMeCardRefs = useRef<Record<number, HTMLDivElement | null>>(
+    {},
+  );
   const friendsCardRefs = useRef<Record<number, HTMLDivElement | null>>({});
-  const [friendsForCustody, setFriendsForCustody] = useState<Array<{ id: number; label: string }>>([]);
+  const [friendsForCustody, setFriendsForCustody] = useState<
+    Array<{ id: number; label: string }>
+  >([]);
   const [activeItemId, setActiveItemId] = useState<number | null>(null);
-  const [activeItemMode, setActiveItemMode] = useState<"closed" | "edit" | "custody">("closed");
-  const [ownedNotice, setOwnedNotice] = useState<{ kind: "success" | "error"; message: string } | null>(
-    null,
-  );
-  const [friendsNotice, setFriendsNotice] = useState<{ kind: "success" | "error"; message: string } | null>(
-    null,
-  );
+  const [activeItemMode, setActiveItemMode] = useState<
+    "closed" | "edit" | "custody"
+  >("closed");
+  const [ownedNotice, setOwnedNotice] = useState<{
+    kind: "success" | "error";
+    message: string;
+  } | null>(null);
+  const [friendsNotice, setFriendsNotice] = useState<{
+    kind: "success" | "error";
+    message: string;
+  } | null>(null);
   const [imageRows, setImageRows] = useState<ClosetImageInventoryRow[]>([]);
-  const [imagesNotice, setImagesNotice] = useState<{ kind: "success" | "error"; message: string } | null>(null);
+  const [imagesNotice, setImagesNotice] = useState<{
+    kind: "success" | "error";
+    message: string;
+  } | null>(null);
   const [deletingImageKey, setDeletingImageKey] = useState<string | null>(null);
-  const [confirmDeleteImageKey, setConfirmDeleteImageKey] = useState<string | null>(null);
-  const confirmDeleteImageButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const [confirmDeleteImageKey, setConfirmDeleteImageKey] = useState<
+    string | null
+  >(null);
+  const confirmDeleteImageButtonRefs = useRef<
+    Record<string, HTMLButtonElement | null>
+  >({});
   const [imagesFilter, setImagesFilter] = useState<"unused" | "all">("unused");
 
   const meId = coerceClosetUserId(sessionUser?.user.id);
-  const totalFriendsPages = Math.max(1, Math.ceil(friendsTotal / FRIENDS_PAGE_SIZE));
-  const totalDeclinedPages = Math.max(1, Math.ceil(myItems.declined_by_me.length / MY_ITEMS_PAGE_SIZE));
-  const totalBorrowedPages = Math.max(1, Math.ceil(myItems.borrowed_by_me.length / MY_ITEMS_PAGE_SIZE));
+  const totalFriendsPages = Math.max(
+    1,
+    Math.ceil(friendsTotal / FRIENDS_PAGE_SIZE),
+  );
+  const totalDeclinedPages = Math.max(
+    1,
+    Math.ceil(myItems.declined_by_me.length / MY_ITEMS_PAGE_SIZE),
+  );
+  const totalBorrowedPages = Math.max(
+    1,
+    Math.ceil(myItems.borrowed_by_me.length / MY_ITEMS_PAGE_SIZE),
+  );
   const totalCustodyOfferedPages = Math.max(
     1,
     Math.ceil(myItems.custody_offered_to_me.length / MY_ITEMS_PAGE_SIZE),
   );
-  const totalRequestedPages = Math.max(1, Math.ceil(myItems.requested_by_me.length / MY_ITEMS_PAGE_SIZE));
+  const totalRequestedPages = Math.max(
+    1,
+    Math.ceil(myItems.requested_by_me.length / MY_ITEMS_PAGE_SIZE),
+  );
   const loanedItems = useMemo(
     () =>
-      myItems.owned_by_me.filter((item) => !sameClosetUserId(item.current_holder_user.id, meId)),
+      myItems.owned_by_me.filter(
+        (item) => !sameClosetUserId(item.current_holder_user.id, meId),
+      ),
     [myItems.owned_by_me, meId],
   );
   const ownedWithPendingRequests = useMemo(
     () =>
       myItems.owned_by_me.filter(
         (item) =>
-          closetPendingCount(item) > 0 && sameClosetUserId(item.current_holder_user.id, meId),
+          closetPendingCount(item) > 0 &&
+          sameClosetUserId(item.current_holder_user.id, meId),
       ),
     [myItems.owned_by_me, meId],
   );
@@ -1412,15 +1679,25 @@ export default function ClosetPage() {
     () =>
       myItems.owned_by_me.filter(
         (item) =>
-          closetPendingCount(item) === 0 && sameClosetUserId(item.current_holder_user.id, meId),
+          closetPendingCount(item) === 0 &&
+          sameClosetUserId(item.current_holder_user.id, meId),
       ),
     [myItems.owned_by_me, meId],
   );
-  const totalLoanedPages = Math.max(1, Math.ceil(loanedItems.length / MY_ITEMS_PAGE_SIZE));
-  const totalOwnedPages = Math.max(1, Math.ceil(ownedWithoutPendingRequests.length / MY_ITEMS_PAGE_SIZE));
+  const totalLoanedPages = Math.max(
+    1,
+    Math.ceil(loanedItems.length / MY_ITEMS_PAGE_SIZE),
+  );
+  const totalOwnedPages = Math.max(
+    1,
+    Math.ceil(ownedWithoutPendingRequests.length / MY_ITEMS_PAGE_SIZE),
+  );
   const safeDeclinedPage = Math.min(declinedPage, totalDeclinedPages);
   const safeBorrowedPage = Math.min(borrowedPage, totalBorrowedPages);
-  const safeCustodyOfferedPage = Math.min(custodyOfferedPage, totalCustodyOfferedPages);
+  const safeCustodyOfferedPage = Math.min(
+    custodyOfferedPage,
+    totalCustodyOfferedPages,
+  );
   const safeRequestedPage = Math.min(requestedPage, totalRequestedPages);
   const safeOwnedPage = Math.min(ownedPage, totalOwnedPages);
   const safeLoanedPage = Math.min(loanedPage, totalLoanedPages);
@@ -1430,8 +1707,14 @@ export default function ClosetPage() {
   const requestedStart = (safeRequestedPage - 1) * MY_ITEMS_PAGE_SIZE;
   const ownedStart = (safeOwnedPage - 1) * MY_ITEMS_PAGE_SIZE;
   const loanedStart = (safeLoanedPage - 1) * MY_ITEMS_PAGE_SIZE;
-  const visibleDeclined = myItems.declined_by_me.slice(declinedStart, declinedStart + MY_ITEMS_PAGE_SIZE);
-  const visibleBorrowed = myItems.borrowed_by_me.slice(borrowedStart, borrowedStart + MY_ITEMS_PAGE_SIZE);
+  const visibleDeclined = myItems.declined_by_me.slice(
+    declinedStart,
+    declinedStart + MY_ITEMS_PAGE_SIZE,
+  );
+  const visibleBorrowed = myItems.borrowed_by_me.slice(
+    borrowedStart,
+    borrowedStart + MY_ITEMS_PAGE_SIZE,
+  );
   const visibleCustodyOffered = myItems.custody_offered_to_me.slice(
     custodyOfferedStart,
     custodyOfferedStart + MY_ITEMS_PAGE_SIZE,
@@ -1440,8 +1723,14 @@ export default function ClosetPage() {
     requestedStart,
     requestedStart + MY_ITEMS_PAGE_SIZE,
   );
-  const visibleOwned = ownedWithoutPendingRequests.slice(ownedStart, ownedStart + MY_ITEMS_PAGE_SIZE);
-  const visibleLoaned = loanedItems.slice(loanedStart, loanedStart + MY_ITEMS_PAGE_SIZE);
+  const visibleOwned = ownedWithoutPendingRequests.slice(
+    ownedStart,
+    ownedStart + MY_ITEMS_PAGE_SIZE,
+  );
+  const visibleLoaned = loanedItems.slice(
+    loanedStart,
+    loanedStart + MY_ITEMS_PAGE_SIZE,
+  );
 
   const setActiveTab = (tab: ClosetTab) => {
     const next = new URLSearchParams(searchParams);
@@ -1457,11 +1746,16 @@ export default function ClosetPage() {
 
   const loadFriends = useCallback(async () => {
     const token = await getApiAccessToken();
-    const payload = await fetchFriendsItems(token, friendsPage, FRIENDS_PAGE_SIZE, {
-      category: friendsCategoryFilter.trim(),
-      tag: friendsTagFilter,
-      sort: friendsSort,
-    });
+    const payload = await fetchFriendsItems(
+      token,
+      friendsPage,
+      FRIENDS_PAGE_SIZE,
+      {
+        category: friendsCategoryFilter.trim(),
+        tag: friendsTagFilter,
+        sort: friendsSort,
+      },
+    );
     setFriendsItems(payload.results);
     setFriendsTotal(payload.total);
   }, [
@@ -1492,12 +1786,25 @@ export default function ClosetPage() {
   const refreshAll = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const parts = await Promise.allSettled([loadMine(), loadFriends(), loadFriendsForCustody(), loadImages()]);
+    const parts = await Promise.allSettled([
+      loadMine(),
+      loadFriends(),
+      loadFriendsForCustody(),
+      loadImages(),
+    ]);
     const failures: string[] = [];
-    const labels = ["your items", "friends' items", "friends list for custody", "image library"] as const;
+    const labels = [
+      "your items",
+      "friends' items",
+      "friends list for custody",
+      "image library",
+    ] as const;
     parts.forEach((result, i) => {
       if (result.status === "rejected") {
-        const msg = result.reason instanceof Error ? result.reason.message : String(result.reason);
+        const msg =
+          result.reason instanceof Error
+            ? result.reason.message
+            : String(result.reason);
         failures.push(`${labels[i]}: ${msg}`);
       }
     });
@@ -1532,7 +1839,8 @@ export default function ClosetPage() {
   useEffect(() => {
     if (!confirmDeleteImageKey) return;
     const onPointerDown = (event: MouseEvent) => {
-      const button = confirmDeleteImageButtonRefs.current[confirmDeleteImageKey];
+      const button =
+        confirmDeleteImageButtonRefs.current[confirmDeleteImageKey];
       const target = event.target as Node | null;
       if (button && target && button.contains(target)) return;
       setConfirmDeleteImageKey(null);
@@ -1550,11 +1858,13 @@ export default function ClosetPage() {
   }, [borrowedPage, totalBorrowedPages]);
 
   useEffect(() => {
-    if (custodyOfferedPage > totalCustodyOfferedPages) setCustodyOfferedPage(totalCustodyOfferedPages);
+    if (custodyOfferedPage > totalCustodyOfferedPages)
+      setCustodyOfferedPage(totalCustodyOfferedPages);
   }, [custodyOfferedPage, totalCustodyOfferedPages]);
 
   useEffect(() => {
-    if (requestedPage > totalRequestedPages) setRequestedPage(totalRequestedPages);
+    if (requestedPage > totalRequestedPages)
+      setRequestedPage(totalRequestedPages);
   }, [requestedPage, totalRequestedPages]);
 
   useEffect(() => {
@@ -1592,7 +1902,8 @@ export default function ClosetPage() {
         if (!target) return;
         if (confirmCancelRequestButtonRef.current?.contains(target)) return;
         if (confirmCancelMyRequestedButtonRef.current?.contains(target)) return;
-        if (confirmDeleteDeclinedRequestButtonRef.current?.contains(target)) return;
+        if (confirmDeleteDeclinedRequestButtonRef.current?.contains(target))
+          return;
         setConfirmCancelRequestItemId(null);
         setConfirmCancelMyRequestedItemId(null);
         setConfirmDeleteDeclinedRequestItemId(null);
@@ -1601,7 +1912,8 @@ export default function ClosetPage() {
     }, 0);
     return () => {
       window.clearTimeout(attachId);
-      if (onPointerDown) document.removeEventListener("pointerdown", onPointerDown);
+      if (onPointerDown)
+        document.removeEventListener("pointerdown", onPointerDown);
     };
   }, [
     confirmCancelRequestItemId,
@@ -1615,9 +1927,11 @@ export default function ClosetPage() {
       const target = event.target as Node | null;
       if (!target) return;
       if (editingRequestItemId != null) {
-        const requestedCard = requestedByMeCardRefs.current[editingRequestItemId];
+        const requestedCard =
+          requestedByMeCardRefs.current[editingRequestItemId];
         const friendCard = friendsCardRefs.current[editingRequestItemId];
-        if (requestedCard?.contains(target) || friendCard?.contains(target)) return;
+        if (requestedCard?.contains(target) || friendCard?.contains(target))
+          return;
       }
       if (expandedFriendItemId != null) {
         const expandedCard = friendsCardRefs.current[expandedFriendItemId];
@@ -1639,10 +1953,18 @@ export default function ClosetPage() {
   useEffect(() => {
     if (activeItemId == null || activeItemMode === "closed") return;
     const inMine =
-      myItems.declined_by_me.some((i) => sameClosetUserId(i.id, activeItemId)) ||
-      myItems.borrowed_by_me.some((i) => sameClosetUserId(i.id, activeItemId)) ||
-      myItems.custody_offered_to_me.some((i) => sameClosetUserId(i.id, activeItemId)) ||
-      myItems.requested_by_me.some((i) => sameClosetUserId(i.id, activeItemId)) ||
+      myItems.declined_by_me.some((i) =>
+        sameClosetUserId(i.id, activeItemId),
+      ) ||
+      myItems.borrowed_by_me.some((i) =>
+        sameClosetUserId(i.id, activeItemId),
+      ) ||
+      myItems.custody_offered_to_me.some((i) =>
+        sameClosetUserId(i.id, activeItemId),
+      ) ||
+      myItems.requested_by_me.some((i) =>
+        sameClosetUserId(i.id, activeItemId),
+      ) ||
       myItems.owned_by_me.some((i) => sameClosetUserId(i.id, activeItemId));
     if (!inMine) {
       setActiveItemId(null);
@@ -1669,7 +1991,8 @@ export default function ClosetPage() {
       <Stack gap="4" maxW="3xl">
         <Text fontWeight="semibold">Reconnecting your API session…</Text>
         <Text fontSize={APP_TEXT_SIZES.helper}>
-          {sessionError || "You are authenticated, but the API session is not ready yet."}
+          {sessionError ||
+            "You are authenticated, but the API session is not ready yet."}
         </Text>
         <HStack>
           <PondButton colorPalette="sky" onClick={() => void refreshSession()}>
@@ -1682,35 +2005,55 @@ export default function ClosetPage() {
 
   if (!sessionUser.user.is_approved) {
     return (
-      <Stack flex="1" minH="full" gap="4" px={{ base: "4", md: "6" }} py={{ base: "6", md: "8" }} {...fullBleedStackProps}>
+      <Stack
+        flex="1"
+        minH="full"
+        gap="4"
+        px={{ base: "2", md: "2" }}
+        py={{ base: "2", md: "2" }}
+        {...fullBleedStackProps}
+      >
         <Text fontSize={{ base: "sm", md: "md" }}>Approval required.</Text>
       </Stack>
     );
   }
 
-  const restrictToFocusedItem = activeItemId != null && activeItemMode !== "closed";
+  const restrictToFocusedItem =
+    activeItemId != null && activeItemMode !== "closed";
   // When one card is expanded, filter full lists — not the current page slice — so the
   // focused item still appears if it would fall on another page.
   const visibleDeclinedFiltered = restrictToFocusedItem
-    ? myItems.declined_by_me.filter((item) => sameClosetUserId(item.id, activeItemId))
+    ? myItems.declined_by_me.filter((item) =>
+        sameClosetUserId(item.id, activeItemId),
+      )
     : visibleDeclined;
   const visibleBorrowedFiltered = restrictToFocusedItem
-    ? myItems.borrowed_by_me.filter((item) => sameClosetUserId(item.id, activeItemId))
+    ? myItems.borrowed_by_me.filter((item) =>
+        sameClosetUserId(item.id, activeItemId),
+      )
     : visibleBorrowed;
   const visibleCustodyOfferedFiltered = restrictToFocusedItem
-    ? myItems.custody_offered_to_me.filter((item) => sameClosetUserId(item.id, activeItemId))
+    ? myItems.custody_offered_to_me.filter((item) =>
+        sameClosetUserId(item.id, activeItemId),
+      )
     : visibleCustodyOffered;
   const visibleOwnedFiltered = restrictToFocusedItem
-    ? ownedWithoutPendingRequests.filter((item) => sameClosetUserId(item.id, activeItemId))
+    ? ownedWithoutPendingRequests.filter((item) =>
+        sameClosetUserId(item.id, activeItemId),
+      )
     : visibleOwned;
   const visibleRequestedOwnedFiltered = restrictToFocusedItem
-    ? ownedWithPendingRequests.filter((item) => sameClosetUserId(item.id, activeItemId))
+    ? ownedWithPendingRequests.filter((item) =>
+        sameClosetUserId(item.id, activeItemId),
+      )
     : ownedWithPendingRequests;
   const visibleLoanedFiltered = restrictToFocusedItem
     ? loanedItems.filter((item) => sameClosetUserId(item.id, activeItemId))
     : visibleLoaned;
   const visibleImageRows =
-    imagesFilter === "unused" ? imageRows.filter((row) => row.status === "stranded") : imageRows;
+    imagesFilter === "unused"
+      ? imageRows.filter((row) => row.status === "stranded")
+      : imageRows;
 
   return (
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
@@ -1723,7 +2066,12 @@ export default function ClosetPage() {
         onValueChange={(details) => setActiveTab(parseTab(details.value))}
         variant="plain"
       >
-        <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
+        <Box
+          flex="1"
+          bg="sky.solid"
+          px={{ base: "2", md: "2" }}
+          py={{ base: "2", md: "2" }}
+        >
           {loading ? (
             <Box maxW="4xl" w="100%" mx="auto" pb="3">
               <Text fontSize={APP_TEXT_SIZES.body} fontWeight="medium">
@@ -1743,22 +2091,31 @@ export default function ClosetPage() {
           >
             <Stack
               gap={{ base: "4", md: "4" }}
-              px={{ base: "4", md: "6" }}
-              pt={{ base: "4", md: "4" }}
+              px={{ base: "2", md: "2" }}
+              pt={{ base: "2", md: "2" }}
               pb="3"
             >
               <Box {...ENTRY_CARD_PROPS}>
-                <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold" mb="2">
+                <Heading
+                  as="h1"
+                  size={{ base: "lg", md: "xl" }}
+                  fontWeight="bold"
+                  mb="2"
+                >
                   Community Closet
                 </Heading>
-                <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
-                  Share items you're willing to lend, browse friends' listings, manage borrow requests and
-                  returns.
+                <Text
+                  fontSize={APP_TEXT_SIZES.body}
+                  lineHeight="tall"
+                  color="fg"
+                >
+                  Share items you're willing to lend, browse friends' listings,
+                  manage borrow requests and returns.
                 </Text>
               </Box>
             </Stack>
             <Tabs.List
-              px={{ base: "4", md: "6" }}
+              px={{ base: "2", md: "2" }}
               pt="0"
               pb="0"
               borderBottomWidth="1px"
@@ -1772,10 +2129,12 @@ export default function ClosetPage() {
                 color={activeTab === "my" ? "black" : undefined}
                 borderTopRadius="md"
                 borderBottomRadius="0"
-                px="4"
+                px="2"
                 py="2"
                 fontWeight="medium"
-                _hover={{ bg: activeTab === "my" ? "lilypad.solid" : "transparent" }}
+                _hover={{
+                  bg: activeTab === "my" ? "lilypad.solid" : "transparent",
+                }}
                 _selected={{ bg: "lilypad.solid", color: "black" }}
               >
                 My Items
@@ -1786,10 +2145,12 @@ export default function ClosetPage() {
                 color={activeTab === "friends" ? "black" : undefined}
                 borderTopRadius="md"
                 borderBottomRadius="0"
-                px="4"
+                px="2"
                 py="2"
                 fontWeight="medium"
-                _hover={{ bg: activeTab === "friends" ? "lilypad.solid" : "transparent" }}
+                _hover={{
+                  bg: activeTab === "friends" ? "lilypad.solid" : "transparent",
+                }}
                 _selected={{ bg: "lilypad.solid", color: "black" }}
               >
                 Friends&apos; Items
@@ -1800,25 +2161,34 @@ export default function ClosetPage() {
                 color={activeTab === "images" ? "black" : undefined}
                 borderTopRadius="md"
                 borderBottomRadius="0"
-                px="4"
+                px="2"
                 py="2"
                 fontWeight="medium"
-                _hover={{ bg: activeTab === "images" ? "lilypad.solid" : "transparent" }}
+                _hover={{
+                  bg: activeTab === "images" ? "lilypad.solid" : "transparent",
+                }}
                 _selected={{ bg: "lilypad.solid", color: "black" }}
               >
                 My Images
               </Tabs.Trigger>
             </Tabs.List>
 
-            <Tabs.Content value="my" p={{ base: "4", md: "6" }}>
+            <Tabs.Content value="my" p={{ base: "2", md: "2" }}>
               <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP}>
-                <Text>Create and manage items you wish to allow your friends to borrow.</Text>
+                <Text>
+                  Create and manage items you wish to allow your friends to
+                  borrow.
+                </Text>
 
                 {ownedNotice ? (
                   <HStack justify="flex-end">
                     <Text
                       fontSize={APP_TEXT_SIZES.helper}
-                      color={ownedNotice.kind === "success" ? "lilypad.solid" : "nautical.solid"}
+                      color={
+                        ownedNotice.kind === "success"
+                          ? "lilypad.solid"
+                          : "nautical.solid"
+                      }
                       fontWeight="medium"
                       textAlign="right"
                     >
@@ -1838,7 +2208,7 @@ export default function ClosetPage() {
                       borderStyle="dashed"
                       borderColor="border"
                       borderRadius="xl"
-                      p="4"
+                      p="2"
                     >
                       <Stack gap="2">
                         <HStack gap="1">
@@ -1858,7 +2228,8 @@ export default function ClosetPage() {
                         ) : null}
                         {item.my_declined_request?.decline_message ? (
                           <Text fontSize={APP_TEXT_SIZES.helper}>
-                            Decline message: {item.my_declined_request.decline_message}
+                            Decline message:{" "}
+                            {item.my_declined_request.decline_message}
                           </Text>
                         ) : null}
                         {item.my_declined_request ? (
@@ -1873,21 +2244,33 @@ export default function ClosetPage() {
                               colorPalette="nautical"
                               onClick={async (e) => {
                                 e.stopPropagation();
-                                const declinedRequest = item.my_declined_request;
+                                const declinedRequest =
+                                  item.my_declined_request;
                                 if (!declinedRequest) return;
-                                if (confirmDeleteDeclinedRequestItemId !== item.id) {
+                                if (
+                                  confirmDeleteDeclinedRequestItemId !== item.id
+                                ) {
                                   setConfirmCancelRequestItemId(null);
                                   setConfirmCancelMyRequestedItemId(null);
-                                  setConfirmDeleteDeclinedRequestItemId(item.id);
+                                  setConfirmDeleteDeclinedRequestItemId(
+                                    item.id,
+                                  );
                                   return;
                                 }
                                 try {
                                   const token = await getApiAccessToken();
-                                  await deleteBorrowRequest(token, declinedRequest.id);
+                                  await deleteBorrowRequest(
+                                    token,
+                                    declinedRequest.id,
+                                  );
                                   setConfirmDeleteDeclinedRequestItemId(null);
                                   await refreshAll();
                                 } catch (err: unknown) {
-                                  setError(err instanceof Error ? err.message : "Failed to delete request");
+                                  setError(
+                                    err instanceof Error
+                                      ? err.message
+                                      : "Failed to delete request",
+                                  );
                                 }
                               }}
                             >
@@ -1900,7 +2283,9 @@ export default function ClosetPage() {
                       </Stack>
                     </Box>
                   ))}
-                {!isAddItemOpen && !restrictToFocusedItem && myItems.declined_by_me.length > MY_ITEMS_PAGE_SIZE ? (
+                {!isAddItemOpen &&
+                !restrictToFocusedItem &&
+                myItems.declined_by_me.length > MY_ITEMS_PAGE_SIZE ? (
                   <HStack justify="space-between">
                     <Text fontSize={APP_TEXT_SIZES.helper}>
                       Page {safeDeclinedPage} / {totalDeclinedPages}
@@ -1910,7 +2295,9 @@ export default function ClosetPage() {
                         size="sm"
                         colorPalette="nautical"
                         disabled={safeDeclinedPage <= 1}
-                        onClick={() => setDeclinedPage((p) => Math.max(1, p - 1))}
+                        onClick={() =>
+                          setDeclinedPage((p) => Math.max(1, p - 1))
+                        }
                       >
                         ←
                       </PondButton>
@@ -1918,7 +2305,11 @@ export default function ClosetPage() {
                         size="sm"
                         colorPalette="nautical"
                         disabled={safeDeclinedPage >= totalDeclinedPages}
-                        onClick={() => setDeclinedPage((p) => Math.min(totalDeclinedPages, p + 1))}
+                        onClick={() =>
+                          setDeclinedPage((p) =>
+                            Math.min(totalDeclinedPages, p + 1),
+                          )
+                        }
                       >
                         →
                       </PondButton>
@@ -1937,7 +2328,7 @@ export default function ClosetPage() {
                       borderStyle="dashed"
                       borderColor="border"
                       borderRadius="xl"
-                      p="4"
+                      p="2"
                     >
                       <Stack gap="2">
                         <HStack gap="1">
@@ -1947,9 +2338,14 @@ export default function ClosetPage() {
                           <Text fontWeight="bold">{item.name}</Text>
                         </HStack>
                         <Text fontSize={APP_TEXT_SIZES.helper}>
-                          Owner: {displayName(item.owner_user)} wants you to hold this item.
+                          Owner: {displayName(item.owner_user)} wants you to
+                          hold this item.
                         </Text>
-                        {item.description ? <Text fontSize={APP_TEXT_SIZES.helper}>{item.description}</Text> : null}
+                        {item.description ? (
+                          <Text fontSize={APP_TEXT_SIZES.helper}>
+                            {item.description}
+                          </Text>
+                        ) : null}
                         <HStack flexWrap="wrap">
                           <PondButton
                             size="sm"
@@ -1958,10 +2354,17 @@ export default function ClosetPage() {
                               try {
                                 const token = await getApiAccessToken();
                                 await acceptCustody(token, item.id);
-                                setOwnedNotice({ kind: "success", message: "Custody accepted." });
+                                setOwnedNotice({
+                                  kind: "success",
+                                  message: "Custody accepted.",
+                                });
                                 await refreshAll();
                               } catch (err: unknown) {
-                                setError(err instanceof Error ? err.message : "Failed to accept custody");
+                                setError(
+                                  err instanceof Error
+                                    ? err.message
+                                    : "Failed to accept custody",
+                                );
                               }
                             }}
                           >
@@ -1974,10 +2377,17 @@ export default function ClosetPage() {
                               try {
                                 const token = await getApiAccessToken();
                                 await rejectPendingCustody(token, item.id);
-                                setOwnedNotice({ kind: "success", message: "Custody offer declined." });
+                                setOwnedNotice({
+                                  kind: "success",
+                                  message: "Custody offer declined.",
+                                });
                                 await refreshAll();
                               } catch (err: unknown) {
-                                setError(err instanceof Error ? err.message : "Failed to decline custody");
+                                setError(
+                                  err instanceof Error
+                                    ? err.message
+                                    : "Failed to decline custody",
+                                );
                               }
                             }}
                           >
@@ -1987,7 +2397,9 @@ export default function ClosetPage() {
                       </Stack>
                     </Box>
                   ))}
-                {!isAddItemOpen && !restrictToFocusedItem && myItems.custody_offered_to_me.length > MY_ITEMS_PAGE_SIZE ? (
+                {!isAddItemOpen &&
+                !restrictToFocusedItem &&
+                myItems.custody_offered_to_me.length > MY_ITEMS_PAGE_SIZE ? (
                   <HStack justify="space-between">
                     <Text fontSize={APP_TEXT_SIZES.helper}>
                       Page {safeCustodyOfferedPage} / {totalCustodyOfferedPages}
@@ -1997,16 +2409,22 @@ export default function ClosetPage() {
                         size="sm"
                         colorPalette="nautical"
                         disabled={safeCustodyOfferedPage <= 1}
-                        onClick={() => setCustodyOfferedPage((p) => Math.max(1, p - 1))}
+                        onClick={() =>
+                          setCustodyOfferedPage((p) => Math.max(1, p - 1))
+                        }
                       >
                         ←
                       </PondButton>
                       <PondButton
                         size="sm"
                         colorPalette="nautical"
-                        disabled={safeCustodyOfferedPage >= totalCustodyOfferedPages}
+                        disabled={
+                          safeCustodyOfferedPage >= totalCustodyOfferedPages
+                        }
                         onClick={() =>
-                          setCustodyOfferedPage((p) => Math.min(totalCustodyOfferedPages, p + 1))
+                          setCustodyOfferedPage((p) =>
+                            Math.min(totalCustodyOfferedPages, p + 1),
+                          )
                         }
                       >
                         →
@@ -2028,18 +2446,27 @@ export default function ClosetPage() {
                         dashedBorder
                         titlePrefix={{
                           text: `${item.pending_request_count} ${
-                            item.pending_request_count === 1 ? "REQUEST" : "REQUESTS"
+                            item.pending_request_count === 1
+                              ? "REQUEST"
+                              : "REQUESTS"
                           }:`,
                           color: "orange.solid",
                         }}
                         showPendingCount={false}
                         onCardClick={() => {
                           const nextMode =
-                            item.active_loan_id || item.pending_request_count > 0 ? "custody" : "edit";
+                            item.active_loan_id ||
+                            item.pending_request_count > 0
+                              ? "custody"
+                              : "edit";
                           setActiveItemId(item.id);
                           setActiveItemMode(nextMode);
                         }}
-                        mode={sameClosetUserId(activeItemId, item.id) ? activeItemMode : "closed"}
+                        mode={
+                          sameClosetUserId(activeItemId, item.id)
+                            ? activeItemMode
+                            : "closed"
+                        }
                         onModeChange={(next) => {
                           if (next === "closed") {
                             setActiveItemId(null);
@@ -2073,7 +2500,11 @@ export default function ClosetPage() {
                           setActiveItemId(item.id);
                           setActiveItemMode("edit");
                         }}
-                        mode={sameClosetUserId(activeItemId, item.id) ? activeItemMode : "closed"}
+                        mode={
+                          sameClosetUserId(activeItemId, item.id)
+                            ? activeItemMode
+                            : "closed"
+                        }
                         onModeChange={(next) => {
                           if (next === "closed") {
                             setActiveItemId(null);
@@ -2096,7 +2527,9 @@ export default function ClosetPage() {
                             size="sm"
                             colorPalette="nautical"
                             disabled={safeBorrowedPage <= 1}
-                            onClick={() => setBorrowedPage((p) => Math.max(1, p - 1))}
+                            onClick={() =>
+                              setBorrowedPage((p) => Math.max(1, p - 1))
+                            }
                           >
                             ←
                           </PondButton>
@@ -2104,7 +2537,11 @@ export default function ClosetPage() {
                             size="sm"
                             colorPalette="nautical"
                             disabled={safeBorrowedPage >= totalBorrowedPages}
-                            onClick={() => setBorrowedPage((p) => Math.min(totalBorrowedPages, p + 1))}
+                            onClick={() =>
+                              setBorrowedPage((p) =>
+                                Math.min(totalBorrowedPages, p + 1),
+                              )
+                            }
                           >
                             →
                           </PondButton>
@@ -2118,149 +2555,193 @@ export default function ClosetPage() {
                   !restrictToFocusedItem &&
                   myItems.requested_by_me.length > 0 &&
                   visibleRequested.map((item) => (
-                  <Box
-                    key={`requested-${item.id}`}
-                    bg="white"
-                    ref={(node: HTMLDivElement | null) => {
-                      requestedByMeCardRefs.current[item.id] = node;
-                    }}
-                    borderWidth="1px"
-                    borderStyle="dashed"
-                    borderColor="border"
-                    borderRadius="xl"
-                    p="4"
-                    cursor="pointer"
-                    onClick={() => {
-                      if (editingRequestItemId === item.id) {
-                        setEditingRequestItemId(null);
-                        setRequestingItemId(null);
-                        setConfirmCancelMyRequestedItemId(null);
-                        return;
-                      }
-                      setEditingRequestItemId(item.id);
-                      setRequestingItemId(item.id);
-                      setNewNeedBy(item.my_pending_request?.date_needed_by ?? "");
-                      setNewRequestMessage(item.my_pending_request?.message ?? "");
-                    }}
-                  >
-                    <Stack gap="2">
-                      <HStack gap="1">
-                        <Text fontWeight="bold" color="lilypad.solid">
-                          PENDING APPROVAL:
+                    <Box
+                      key={`requested-${item.id}`}
+                      bg="white"
+                      ref={(node: HTMLDivElement | null) => {
+                        requestedByMeCardRefs.current[item.id] = node;
+                      }}
+                      borderWidth="1px"
+                      borderStyle="dashed"
+                      borderColor="border"
+                      borderRadius="xl"
+                      p="2"
+                      cursor="pointer"
+                      onClick={() => {
+                        if (editingRequestItemId === item.id) {
+                          setEditingRequestItemId(null);
+                          setRequestingItemId(null);
+                          setConfirmCancelMyRequestedItemId(null);
+                          return;
+                        }
+                        setEditingRequestItemId(item.id);
+                        setRequestingItemId(item.id);
+                        setNewNeedBy(
+                          item.my_pending_request?.date_needed_by ?? "",
+                        );
+                        setNewRequestMessage(
+                          item.my_pending_request?.message ?? "",
+                        );
+                      }}
+                    >
+                      <Stack gap="2">
+                        <HStack gap="1">
+                          <Text fontWeight="bold" color="lilypad.solid">
+                            PENDING APPROVAL:
+                          </Text>
+                          <Text fontWeight="bold">{item.name}</Text>
+                        </HStack>
+                        <Text fontSize={APP_TEXT_SIZES.helper}>
+                          Owner: {displayName(item.owner_user)} | Need by:{" "}
+                          {item.my_pending_request?.date_needed_by ?? "—"}
                         </Text>
-                        <Text fontWeight="bold">{item.name}</Text>
-                      </HStack>
-                      <Text fontSize={APP_TEXT_SIZES.helper}>
-                        Owner: {displayName(item.owner_user)} | Need by:{" "}
-                        {item.my_pending_request?.date_needed_by ?? "—"}
-                      </Text>
-                      {item.my_pending_request?.message ? (
-                        <Text fontSize={APP_TEXT_SIZES.helper}>{item.my_pending_request.message}</Text>
-                      ) : null}
-                      {item.my_pending_request && editingRequestItemId === item.id ? (
-                        <Stack gap="2" onClick={(event) => event.stopPropagation()}>
-                          <HStack>
-                            {(() => {
-                              const requestDateValue = requestingItemId === item.id ? newNeedBy : "";
-                              const canSubmitRequest =
-                                validateIsoDateRequired(requestDateValue, "Need-by date") === null;
-                              return (
-                                <>
-                            <Input
-                              type="date"
-                              value={requestDateValue}
-                              onChange={(e) => {
-                                setRequestingItemId(item.id);
-                                setNewNeedBy(e.target.value);
-                              }}
-                              maxW="200px"
-                            />
-                            <Input
-                              value={requestingItemId === item.id ? newRequestMessage : ""}
-                              onChange={(e) => {
-                                setRequestingItemId(item.id);
-                                setNewRequestMessage(e.target.value);
-                              }}
-                              placeholder="Optional message"
-                              {...CLOSET_PLACEHOLDER_PROPS}
-                            />
-                            <PondButton
-                              size="sm"
-                              colorPalette="lilypad"
-                              disabled={!canSubmitRequest}
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                const dateErr = validateIsoDateRequired(newNeedBy, "Need-by date");
-                                if (dateErr) {
-                                  setError(dateErr);
-                                  return;
+                        {item.my_pending_request?.message ? (
+                          <Text fontSize={APP_TEXT_SIZES.helper}>
+                            {item.my_pending_request.message}
+                          </Text>
+                        ) : null}
+                        {item.my_pending_request &&
+                        editingRequestItemId === item.id ? (
+                          <Stack
+                            gap="2"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <HStack>
+                              {(() => {
+                                const requestDateValue =
+                                  requestingItemId === item.id ? newNeedBy : "";
+                                const canSubmitRequest =
+                                  validateIsoDateRequired(
+                                    requestDateValue,
+                                    "Need-by date",
+                                  ) === null;
+                                return (
+                                  <>
+                                    <Input
+                                      type="date"
+                                      value={requestDateValue}
+                                      onChange={(e) => {
+                                        setRequestingItemId(item.id);
+                                        setNewNeedBy(e.target.value);
+                                      }}
+                                      maxW="200px"
+                                    />
+                                    <Input
+                                      value={
+                                        requestingItemId === item.id
+                                          ? newRequestMessage
+                                          : ""
+                                      }
+                                      onChange={(e) => {
+                                        setRequestingItemId(item.id);
+                                        setNewRequestMessage(e.target.value);
+                                      }}
+                                      placeholder="Optional message"
+                                      {...CLOSET_PLACEHOLDER_PROPS}
+                                    />
+                                    <PondButton
+                                      size="sm"
+                                      colorPalette="lilypad"
+                                      disabled={!canSubmitRequest}
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        const dateErr = validateIsoDateRequired(
+                                          newNeedBy,
+                                          "Need-by date",
+                                        );
+                                        if (dateErr) {
+                                          setError(dateErr);
+                                          return;
+                                        }
+                                        const msgErr = validateClosetFreeText(
+                                          newRequestMessage,
+                                          "Message",
+                                        );
+                                        if (msgErr) {
+                                          setError(msgErr);
+                                          return;
+                                        }
+                                        try {
+                                          const token =
+                                            await getApiAccessToken();
+                                          await createBorrowRequest(
+                                            token,
+                                            item.id,
+                                            {
+                                              date_needed_by: newNeedBy.trim(),
+                                              message: newRequestMessage.trim(),
+                                            },
+                                          );
+                                          setEditingRequestItemId(null);
+                                          setRequestingItemId(null);
+                                          setNewNeedBy("");
+                                          setNewRequestMessage("");
+                                          await refreshAll();
+                                        } catch (err: unknown) {
+                                          setError(
+                                            err instanceof Error
+                                              ? err.message
+                                              : "Failed to update request",
+                                          );
+                                        }
+                                      }}
+                                    >
+                                      Update request
+                                    </PondButton>
+                                  </>
+                                );
+                              })()}
+                              <PondButton
+                                ref={
+                                  confirmCancelMyRequestedItemId === item.id
+                                    ? confirmCancelMyRequestedButtonRef
+                                    : undefined
                                 }
-                                const msgErr = validateClosetFreeText(newRequestMessage, "Message");
-                                if (msgErr) {
-                                  setError(msgErr);
-                                  return;
-                                }
-                                try {
-                                  const token = await getApiAccessToken();
-                                  await createBorrowRequest(token, item.id, {
-                                    date_needed_by: newNeedBy.trim(),
-                                    message: newRequestMessage.trim(),
-                                  });
-                                  setEditingRequestItemId(null);
-                                  setRequestingItemId(null);
-                                  setNewNeedBy("");
-                                  setNewRequestMessage("");
-                                  await refreshAll();
-                                } catch (err: unknown) {
-                                  setError(err instanceof Error ? err.message : "Failed to update request");
-                                }
-                              }}
-                            >
-                              Update request
-                            </PondButton>
-                                </>
-                              );
-                            })()}
-                            <PondButton
-                              ref={
-                                confirmCancelMyRequestedItemId === item.id
-                                  ? confirmCancelMyRequestedButtonRef
-                                  : undefined
-                              }
-                              size="sm"
-                              colorPalette="orange"
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                if (confirmCancelMyRequestedItemId !== item.id) {
-                                  setConfirmCancelRequestItemId(null);
-                                  setConfirmCancelMyRequestedItemId(item.id);
-                                  return;
-                                }
-                                try {
-                                  const token = await getApiAccessToken();
-                                  await cancelBorrowRequest(token, item.my_pending_request!.id);
-                                  setConfirmCancelMyRequestedItemId(null);
-                                  setEditingRequestItemId(null);
-                                  setRequestingItemId(null);
-                                  setNewNeedBy("");
-                                  setNewRequestMessage("");
-                                  await refreshAll();
-                                } catch (err: unknown) {
-                                  setError(err instanceof Error ? err.message : "Failed to cancel request");
-                                }
-                              }}
-                            >
-                              {confirmCancelMyRequestedItemId === item.id
-                                ? "Confirm cancel"
-                                : "Cancel request"}
-                            </PondButton>
-                          </HStack>
-                        </Stack>
-                      ) : null}
-                    </Stack>
-                  </Box>
+                                size="sm"
+                                colorPalette="orange"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  if (
+                                    confirmCancelMyRequestedItemId !== item.id
+                                  ) {
+                                    setConfirmCancelRequestItemId(null);
+                                    setConfirmCancelMyRequestedItemId(item.id);
+                                    return;
+                                  }
+                                  try {
+                                    const token = await getApiAccessToken();
+                                    await cancelBorrowRequest(
+                                      token,
+                                      item.my_pending_request!.id,
+                                    );
+                                    setConfirmCancelMyRequestedItemId(null);
+                                    setEditingRequestItemId(null);
+                                    setRequestingItemId(null);
+                                    setNewNeedBy("");
+                                    setNewRequestMessage("");
+                                    await refreshAll();
+                                  } catch (err: unknown) {
+                                    setError(
+                                      err instanceof Error
+                                        ? err.message
+                                        : "Failed to cancel request",
+                                    );
+                                  }
+                                }}
+                              >
+                                {confirmCancelMyRequestedItemId === item.id
+                                  ? "Confirm cancel"
+                                  : "Cancel request"}
+                              </PondButton>
+                            </HStack>
+                          </Stack>
+                        ) : null}
+                      </Stack>
+                    </Box>
                   ))}
-                {!isAddItemOpen && !restrictToFocusedItem && myItems.requested_by_me.length > MY_ITEMS_PAGE_SIZE ? (
+                {!isAddItemOpen &&
+                !restrictToFocusedItem &&
+                myItems.requested_by_me.length > MY_ITEMS_PAGE_SIZE ? (
                   <HStack justify="space-between">
                     <Text fontSize={APP_TEXT_SIZES.helper}>
                       Page {safeRequestedPage} / {totalRequestedPages}
@@ -2270,7 +2751,9 @@ export default function ClosetPage() {
                         size="sm"
                         colorPalette="nautical"
                         disabled={safeRequestedPage <= 1}
-                        onClick={() => setRequestedPage((p) => Math.max(1, p - 1))}
+                        onClick={() =>
+                          setRequestedPage((p) => Math.max(1, p - 1))
+                        }
                       >
                         ←
                       </PondButton>
@@ -2278,7 +2761,11 @@ export default function ClosetPage() {
                         size="sm"
                         colorPalette="nautical"
                         disabled={safeRequestedPage >= totalRequestedPages}
-                        onClick={() => setRequestedPage((p) => Math.min(totalRequestedPages, p + 1))}
+                        onClick={() =>
+                          setRequestedPage((p) =>
+                            Math.min(totalRequestedPages, p + 1),
+                          )
+                        }
                       >
                         →
                       </PondButton>
@@ -2304,11 +2791,18 @@ export default function ClosetPage() {
                         }}
                         onCardClick={() => {
                           const nextMode =
-                            item.active_loan_id || item.pending_request_count > 0 ? "custody" : "edit";
+                            item.active_loan_id ||
+                            item.pending_request_count > 0
+                              ? "custody"
+                              : "edit";
                           setActiveItemId(item.id);
                           setActiveItemMode(nextMode);
                         }}
-                        mode={sameClosetUserId(activeItemId, item.id) ? activeItemMode : "closed"}
+                        mode={
+                          sameClosetUserId(activeItemId, item.id)
+                            ? activeItemMode
+                            : "closed"
+                        }
                         onModeChange={(next) => {
                           if (next === "closed") {
                             setActiveItemId(null);
@@ -2331,7 +2825,9 @@ export default function ClosetPage() {
                             size="sm"
                             colorPalette="nautical"
                             disabled={safeLoanedPage <= 1}
-                            onClick={() => setLoanedPage((p) => Math.max(1, p - 1))}
+                            onClick={() =>
+                              setLoanedPage((p) => Math.max(1, p - 1))
+                            }
                           >
                             ←
                           </PondButton>
@@ -2339,7 +2835,11 @@ export default function ClosetPage() {
                             size="sm"
                             colorPalette="nautical"
                             disabled={safeLoanedPage >= totalLoanedPages}
-                            onClick={() => setLoanedPage((p) => Math.min(totalLoanedPages, p + 1))}
+                            onClick={() =>
+                              setLoanedPage((p) =>
+                                Math.min(totalLoanedPages, p + 1),
+                              )
+                            }
                           >
                             →
                           </PondButton>
@@ -2350,132 +2850,138 @@ export default function ClosetPage() {
                 ) : null}
 
                 <>
-                    {activeItemMode === "closed" && activeItemId == null ? (
-                      isAddItemOpen ? (
-                        <Box bg="white" borderWidth="1px" borderColor="border" borderRadius="xl" p="4">
-                          <Stack gap="3">
-                            <Text fontWeight="semibold">Add Item</Text>
-                            <Input
-                              value={newName}
-                              onChange={(e) => setNewName(e.target.value)}
-                              placeholder="Item name"
-                              {...CLOSET_PLACEHOLDER_PROPS}
+                  {activeItemMode === "closed" && activeItemId == null ? (
+                    isAddItemOpen ? (
+                      <Box
+                        bg="white"
+                        borderWidth="1px"
+                        borderColor="border"
+                        borderRadius="xl"
+                        p="2"
+                      >
+                        <Stack gap="3">
+                          <Text fontWeight="semibold">Add Item</Text>
+                          <Input
+                            value={newName}
+                            onChange={(e) => setNewName(e.target.value)}
+                            placeholder="Item name"
+                            {...CLOSET_PLACEHOLDER_PROPS}
+                          />
+                          <Textarea
+                            value={newDescription}
+                            onChange={(e) => setNewDescription(e.target.value)}
+                            placeholder="Description"
+                            {...CLOSET_PLACEHOLDER_PROPS}
+                          />
+                          <ClosetCategoryFields
+                            category={newCategory}
+                            onCategoryChange={setNewCategory}
+                          />
+                          <Stack gap="1" align="stretch">
+                            <Text
+                              fontSize={APP_TEXT_SIZES.helper}
+                              fontWeight="medium"
+                            >
+                              Photo (optional):
+                            </Text>
+                            <input
+                              ref={newItemPhotoInputRef}
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp"
+                              style={{ display: "none" }}
                             />
-                            <Textarea
-                              value={newDescription}
-                              onChange={(e) => setNewDescription(e.target.value)}
-                              placeholder="Description"
-                              {...CLOSET_PLACEHOLDER_PROPS}
-                            />
-                            <ClosetCategoryFields category={newCategory} onCategoryChange={setNewCategory} />
-                            <Stack gap="1" align="stretch">
-                              <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
-                                Photo (optional):
-                              </Text>
-                              <input
-                                ref={newItemPhotoInputRef}
-                                type="file"
-                                accept="image/jpeg,image/png,image/webp"
-                                style={{ display: "none" }}
-                              />
-                              <PondButton
-                                type="button"
-                                size="sm"
-                                colorPalette="sky"
-                                alignSelf="flex-start"
-                                disabled={newItemImageBusy}
-                                onClick={() => newItemPhotoInputRef.current?.click()}
-                              >
-                                Choose photo
-                              </PondButton>
-                              <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600">
-                                JPEG, PNG, or WebP. Resized in the browser before upload.
-                              </Text>
-                              {newItemImageBusy ? (
-                                <HStack gap="2" align="center" color="gray.700">
-                                  <Spinner size="sm" colorPalette="lilypad" />
-                                  <Text fontSize={APP_TEXT_SIZES.helper}>
-                                    Uploading photo and saving item…
-                                  </Text>
-                                </HStack>
-                              ) : null}
-                            </Stack>
-                            <HStack>
-                              <PondButton
-                                colorPalette="lilypad"
-                                loading={newItemImageBusy}
-                                onClick={async () => {
-                                  setError(null);
-                                  if (!isAllowedClosetCategory(newCategory)) {
-                                    setOwnedNotice({
-                                      kind: "error",
-                                      message:
-                                        "Category must use only letters and /, or pick a suggested option.",
-                                    });
-                                    return;
-                                  }
-                                  const nn = newName.trim();
-                                  const nameErr = validateClosetItemName(nn);
-                                  if (nameErr) {
-                                    setOwnedNotice({ kind: "error", message: nameErr });
-                                    return;
-                                  }
-                                  const descErr = validateClosetFreeText(newDescription, "Description");
-                                  if (descErr) {
-                                    setOwnedNotice({ kind: "error", message: descErr });
-                                    return;
-                                  }
-                                  const cat = newCategory.trim();
-                                  const catErr = validateClosetCategory(cat);
-                                  if (catErr) {
-                                    setOwnedNotice({ kind: "error", message: catErr });
-                                    return;
-                                  }
-                                  try {
-                                    setNewItemImageBusy(true);
-                                    const token = await getApiAccessToken();
-                                    const file = newItemPhotoInputRef.current?.files?.[0];
-                                    let imageKey: string | undefined;
-                                    if (file) {
-                                      imageKey = await uploadClosetImageViaPresign(
+                            <PondButton
+                              type="button"
+                              size="sm"
+                              colorPalette="sky"
+                              alignSelf="flex-start"
+                              disabled={newItemImageBusy}
+                              onClick={() =>
+                                newItemPhotoInputRef.current?.click()
+                              }
+                            >
+                              Choose photo
+                            </PondButton>
+                            <Text
+                              fontSize={APP_TEXT_SIZES.helper}
+                              color="gray.600"
+                            >
+                              JPEG, PNG, or WebP. Resized in the browser before
+                              upload.
+                            </Text>
+                            {newItemImageBusy ? (
+                              <HStack gap="2" align="center" color="gray.700">
+                                <Spinner size="sm" colorPalette="lilypad" />
+                                <Text fontSize={APP_TEXT_SIZES.helper}>
+                                  Uploading photo and saving item…
+                                </Text>
+                              </HStack>
+                            ) : null}
+                          </Stack>
+                          <HStack>
+                            <PondButton
+                              colorPalette="lilypad"
+                              loading={newItemImageBusy}
+                              onClick={async () => {
+                                setError(null);
+                                if (!isAllowedClosetCategory(newCategory)) {
+                                  setOwnedNotice({
+                                    kind: "error",
+                                    message:
+                                      "Category must use only letters and /, or pick a suggested option.",
+                                  });
+                                  return;
+                                }
+                                const nn = newName.trim();
+                                const nameErr = validateClosetItemName(nn);
+                                if (nameErr) {
+                                  setOwnedNotice({
+                                    kind: "error",
+                                    message: nameErr,
+                                  });
+                                  return;
+                                }
+                                const descErr = validateClosetFreeText(
+                                  newDescription,
+                                  "Description",
+                                );
+                                if (descErr) {
+                                  setOwnedNotice({
+                                    kind: "error",
+                                    message: descErr,
+                                  });
+                                  return;
+                                }
+                                const cat = newCategory.trim();
+                                const catErr = validateClosetCategory(cat);
+                                if (catErr) {
+                                  setOwnedNotice({
+                                    kind: "error",
+                                    message: catErr,
+                                  });
+                                  return;
+                                }
+                                try {
+                                  setNewItemImageBusy(true);
+                                  const token = await getApiAccessToken();
+                                  const file =
+                                    newItemPhotoInputRef.current?.files?.[0];
+                                  let imageKey: string | undefined;
+                                  if (file) {
+                                    imageKey =
+                                      await uploadClosetImageViaPresign(
                                         getApiAccessToken,
                                         file,
                                       );
-                                    }
-                                    await createItem(token, {
-                                      name: nn,
-                                      description: newDescription,
-                                      ...(cat ? { category: cat } : {}),
-                                      ...(imageKey ? { image_key: imageKey } : {}),
-                                    });
-                                    setNewName("");
-                                    setNewDescription("");
-                                    setNewCategory("");
-                                    if (newItemPhotoInputRef.current) {
-                                      newItemPhotoInputRef.current.value = "";
-                                    }
-                                    setIsAddItemOpen(false);
-                                    setOwnedPage(1);
-                                    setActiveItemId(null);
-                                    setActiveItemMode("closed");
-                                    await refreshAll();
-                                    setOwnedNotice({ kind: "success", message: "Item added." });
-                                  } catch (err: unknown) {
-                                    const message =
-                                      err instanceof Error ? err.message : "Failed to create item";
-                                    setOwnedNotice({ kind: "error", message });
-                                  } finally {
-                                    setNewItemImageBusy(false);
                                   }
-                                }}
-                                disabled={!newName.trim()}
-                              >
-                                Save Item
-                              </PondButton>
-                              <PondButton
-                                colorPalette="sky"
-                                disabled={newItemImageBusy}
-                                onClick={() => {
+                                  await createItem(token, {
+                                    name: nn,
+                                    description: newDescription,
+                                    ...(cat ? { category: cat } : {}),
+                                    ...(imageKey
+                                      ? { image_key: imageKey }
+                                      : {}),
+                                  });
                                   setNewName("");
                                   setNewDescription("");
                                   setNewCategory("");
@@ -2483,91 +2989,150 @@ export default function ClosetPage() {
                                     newItemPhotoInputRef.current.value = "";
                                   }
                                   setIsAddItemOpen(false);
-                                }}
-                              >
-                                Cancel
-                              </PondButton>
-                            </HStack>
-                          </Stack>
-                        </Box>
-                      ) : (
-                        <HStack justify="flex-start">
-                          <PondButton colorPalette="lilypad" onClick={() => setIsAddItemOpen(true)}>
-                            Add Item
-                          </PondButton>
-                        </HStack>
-                      )
-                    ) : null}
-                    <HStack align="center" gap="3" justify="space-between">
-                      <Text fontWeight="semibold">Owned by me</Text>
-                    </HStack>
-                    {ownedWithoutPendingRequests.length === 0 ? (
-                      <Text fontSize={APP_TEXT_SIZES.helper}>None.</Text>
-                    ) : null}
-                    {visibleOwnedFiltered.map((item) => (
-                      <ItemCard
-                        key={`owned-wrap-${item.id}`}
-                        item={item}
-                        meId={meId}
-                        onRefresh={refreshAll}
-                        getToken={getApiAccessToken}
-                        custodyFriends={friendsForCustody}
-                        onOwnedNotice={setOwnedNotice}
-                        onCardClick={() => {
-                          const nextMode =
-                            item.active_loan_id || item.pending_request_count > 0 ? "custody" : "edit";
-                          setActiveItemId(item.id);
-                          setActiveItemMode(nextMode);
-                        }}
-                        mode={sameClosetUserId(activeItemId, item.id) ? activeItemMode : "closed"}
-                        onModeChange={(next) => {
-                          if (next === "closed") {
-                            setActiveItemId(null);
-                            setActiveItemMode("closed");
-                            return;
-                          }
-                          setActiveItemId(item.id);
-                          setActiveItemMode(next);
-                        }}
-                      />
-                    ))}
-                    {(activeItemMode === "closed" || activeItemId == null) &&
-                    ownedWithoutPendingRequests.length > MY_ITEMS_PAGE_SIZE ? (
-                      <HStack justify="space-between">
-                        <Text fontSize={APP_TEXT_SIZES.helper}>
-                          Page {safeOwnedPage} / {totalOwnedPages}
-                        </Text>
-                        <HStack>
-                          <PondButton
-                            size="sm"
-                            colorPalette="nautical"
-                            disabled={safeOwnedPage <= 1}
-                            onClick={() => setOwnedPage((p) => Math.max(1, p - 1))}
-                          >
-                            ←
-                          </PondButton>
-                          <PondButton
-                            size="sm"
-                            colorPalette="nautical"
-                            disabled={safeOwnedPage >= totalOwnedPages}
-                            onClick={() => setOwnedPage((p) => Math.min(totalOwnedPages, p + 1))}
-                          >
-                            →
-                          </PondButton>
-                        </HStack>
+                                  setOwnedPage(1);
+                                  setActiveItemId(null);
+                                  setActiveItemMode("closed");
+                                  await refreshAll();
+                                  setOwnedNotice({
+                                    kind: "success",
+                                    message: "Item added.",
+                                  });
+                                } catch (err: unknown) {
+                                  const message =
+                                    err instanceof Error
+                                      ? err.message
+                                      : "Failed to create item";
+                                  setOwnedNotice({ kind: "error", message });
+                                } finally {
+                                  setNewItemImageBusy(false);
+                                }
+                              }}
+                              disabled={!newName.trim()}
+                            >
+                              Save Item
+                            </PondButton>
+                            <PondButton
+                              colorPalette="sky"
+                              disabled={newItemImageBusy}
+                              onClick={() => {
+                                setNewName("");
+                                setNewDescription("");
+                                setNewCategory("");
+                                if (newItemPhotoInputRef.current) {
+                                  newItemPhotoInputRef.current.value = "";
+                                }
+                                setIsAddItemOpen(false);
+                              }}
+                            >
+                              Cancel
+                            </PondButton>
+                          </HStack>
+                        </Stack>
+                      </Box>
+                    ) : (
+                      <HStack justify="flex-start">
+                        <PondButton
+                          colorPalette="lilypad"
+                          onClick={() => setIsAddItemOpen(true)}
+                        >
+                          Add Item
+                        </PondButton>
                       </HStack>
-                    ) : null}
-                  </>
+                    )
+                  ) : null}
+                  <HStack align="center" gap="3" justify="space-between">
+                    <Text fontWeight="semibold">Owned by me</Text>
+                  </HStack>
+                  {ownedWithoutPendingRequests.length === 0 ? (
+                    <Text fontSize={APP_TEXT_SIZES.helper}>None.</Text>
+                  ) : null}
+                  {visibleOwnedFiltered.map((item) => (
+                    <ItemCard
+                      key={`owned-wrap-${item.id}`}
+                      item={item}
+                      meId={meId}
+                      onRefresh={refreshAll}
+                      getToken={getApiAccessToken}
+                      custodyFriends={friendsForCustody}
+                      onOwnedNotice={setOwnedNotice}
+                      onCardClick={() => {
+                        const nextMode =
+                          item.active_loan_id || item.pending_request_count > 0
+                            ? "custody"
+                            : "edit";
+                        setActiveItemId(item.id);
+                        setActiveItemMode(nextMode);
+                      }}
+                      mode={
+                        sameClosetUserId(activeItemId, item.id)
+                          ? activeItemMode
+                          : "closed"
+                      }
+                      onModeChange={(next) => {
+                        if (next === "closed") {
+                          setActiveItemId(null);
+                          setActiveItemMode("closed");
+                          return;
+                        }
+                        setActiveItemId(item.id);
+                        setActiveItemMode(next);
+                      }}
+                    />
+                  ))}
+                  {(activeItemMode === "closed" || activeItemId == null) &&
+                  ownedWithoutPendingRequests.length > MY_ITEMS_PAGE_SIZE ? (
+                    <HStack justify="space-between">
+                      <Text fontSize={APP_TEXT_SIZES.helper}>
+                        Page {safeOwnedPage} / {totalOwnedPages}
+                      </Text>
+                      <HStack>
+                        <PondButton
+                          size="sm"
+                          colorPalette="nautical"
+                          disabled={safeOwnedPage <= 1}
+                          onClick={() =>
+                            setOwnedPage((p) => Math.max(1, p - 1))
+                          }
+                        >
+                          ←
+                        </PondButton>
+                        <PondButton
+                          size="sm"
+                          colorPalette="nautical"
+                          disabled={safeOwnedPage >= totalOwnedPages}
+                          onClick={() =>
+                            setOwnedPage((p) =>
+                              Math.min(totalOwnedPages, p + 1),
+                            )
+                          }
+                        >
+                          →
+                        </PondButton>
+                      </HStack>
+                    </HStack>
+                  ) : null}
+                </>
               </Stack>
             </Tabs.Content>
 
-            <Tabs.Content value="friends" p={{ base: "4", md: "6" }}>
+            <Tabs.Content value="friends" p={{ base: "2", md: "2" }}>
               <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP}>
-                <HStack justify="space-between" align="center" gap="3" flexWrap="wrap">
-                  <Text>Click an item to see details and request to borrow.</Text>
+                <HStack
+                  justify="space-between"
+                  align="center"
+                  gap="3"
+                  flexWrap="wrap"
+                >
+                  <Text>
+                    Click an item to see details and request to borrow.
+                  </Text>
                   {friendsNotice ? (
                     <Text
-                      color={friendsNotice.kind === "success" ? "lilypad.solid" : "nautical.solid"}
+                      color={
+                        friendsNotice.kind === "success"
+                          ? "lilypad.solid"
+                          : "nautical.solid"
+                      }
                       fontSize={APP_TEXT_SIZES.helper}
                       fontWeight="medium"
                       textAlign="right"
@@ -2617,7 +3182,9 @@ export default function ClosetPage() {
                                 {c}
                               </option>
                             ))}
-                            <option value={CLOSET_FRIENDS_CATEGORY_OTHER}>Other</option>
+                            <option value={CLOSET_FRIENDS_CATEGORY_OTHER}>
+                              Other
+                            </option>
                           </NativeSelectField>
                         </NativeSelectRoot>
                       </Stack>
@@ -2637,12 +3204,18 @@ export default function ClosetPage() {
                           <NativeSelectField
                             value={friendsSort}
                             onChange={(e) => {
-                              setFriendsSort(e.target.value as FriendsItemsSort);
+                              setFriendsSort(
+                                e.target.value as FriendsItemsSort,
+                              );
                               setFriendsPage(1);
                             }}
                           >
-                            <option value="updated_desc">Recently updated</option>
-                            <option value="updated_asc">Least recently updated</option>
+                            <option value="updated_desc">
+                              Recently updated
+                            </option>
+                            <option value="updated_asc">
+                              Least recently updated
+                            </option>
                             <option value="created_desc">Newest listed</option>
                             <option value="created_asc">Oldest listed</option>
                             <option value="name_asc">Name (A–Z)</option>
@@ -2665,11 +3238,15 @@ export default function ClosetPage() {
                     sameClosetUserId(item.current_holder_user.id, meId) &&
                     !sameClosetUserId(item.owner_user.id, meId);
                   const friendCategoryTrimmed = (item.category ?? "").trim();
-                  const friendTagParts = item.tags.map((t) => t.trim()).filter(Boolean);
+                  const friendTagParts = item.tags
+                    .map((t) => t.trim())
+                    .filter(Boolean);
                   const friendImageUrl = (item.image_url ?? "").trim();
                   const showFriendImage = Boolean(friendImageUrl);
                   const friendOpenToggle = () =>
-                    setExpandedFriendItemId((current) => (current === item.id ? null : item.id));
+                    setExpandedFriendItemId((current) =>
+                      current === item.id ? null : item.id,
+                    );
 
                   const hasFriendCategoryOrTags =
                     Boolean(friendCategoryTrimmed) || friendTagParts.length > 0;
@@ -2689,7 +3266,11 @@ export default function ClosetPage() {
                     </>
                   );
                   const friendCategoryText = friendCategoryTrimmed ? (
-                    <Text fontWeight="bold" color="sky.solid" fontSize={APP_TEXT_SIZES.body}>
+                    <Text
+                      fontWeight="bold"
+                      color="sky.solid"
+                      fontSize={APP_TEXT_SIZES.body}
+                    >
                       {friendCategoryTrimmed}
                     </Text>
                   ) : null;
@@ -2719,7 +3300,10 @@ export default function ClosetPage() {
                       >
                         <Stack gap="1" flex="1" minW="0" align="flex-start">
                           <HStack gap="1" flexWrap="wrap" align="flex-start">
-                            {sameClosetUserId(item.pending_custody_user?.id, meId) ? (
+                            {sameClosetUserId(
+                              item.pending_custody_user?.id,
+                              meId,
+                            ) ? (
                               <Text fontWeight="bold" color="sky.solid">
                                 CUSTODY OFFERED:
                               </Text>
@@ -2731,10 +3315,13 @@ export default function ClosetPage() {
                             ) : null}
                             <Text fontWeight="bold">{item.name}</Text>
                           </HStack>
-                          {item.my_pending_request ? null : item.pending_request_count > 0 ? (
+                          {item.my_pending_request ? null : item.pending_request_count >
+                            0 ? (
                             <Text fontSize={APP_TEXT_SIZES.helper}>
                               {item.pending_request_count} outstanding{" "}
-                              {item.pending_request_count === 1 ? "request" : "requests"}
+                              {item.pending_request_count === 1
+                                ? "request"
+                                : "requests"}
                             </Text>
                           ) : null}
                         </Stack>
@@ -2745,12 +3332,16 @@ export default function ClosetPage() {
                           Holding: {displayName(item.current_holder_user)}
                         </Text>
                       ) : null}
-                      {item.description ? <Text>{item.description}</Text> : null}
+                      {item.description ? (
+                        <Text>{item.description}</Text>
+                      ) : null}
                       {expandedFriendItemId === item.id ? (
                         <Tabs.Root
                           value={friendItemSubTab}
                           onValueChange={(d) => {
-                            setFriendItemSubTab(d.value === "request" ? "request" : "details");
+                            setFriendItemSubTab(
+                              d.value === "request" ? "request" : "details",
+                            );
                           }}
                           variant="plain"
                           onClick={(e) => e.stopPropagation()}
@@ -2765,47 +3356,80 @@ export default function ClosetPage() {
                           >
                             <Tabs.Trigger
                               value="details"
-                              bg={friendItemSubTab === "details" ? "lilypad.solid" : undefined}
-                              color={friendItemSubTab === "details" ? "black" : undefined}
+                              bg={
+                                friendItemSubTab === "details"
+                                  ? "lilypad.solid"
+                                  : undefined
+                              }
+                              color={
+                                friendItemSubTab === "details"
+                                  ? "black"
+                                  : undefined
+                              }
                               borderTopRadius="md"
                               borderBottomRadius="0"
-                              px="4"
+                              px="2"
                               py="2"
                               fontWeight="medium"
                               _hover={{
-                                bg: friendItemSubTab === "details" ? "lilypad.solid" : "transparent",
+                                bg:
+                                  friendItemSubTab === "details"
+                                    ? "lilypad.solid"
+                                    : "transparent",
                               }}
-                              _selected={{ bg: "lilypad.solid", color: "black" }}
+                              _selected={{
+                                bg: "lilypad.solid",
+                                color: "black",
+                              }}
                             >
                               Details
                             </Tabs.Trigger>
                             <Tabs.Trigger
                               value="request"
-                              bg={friendItemSubTab === "request" ? "lilypad.solid" : undefined}
-                              color={friendItemSubTab === "request" ? "black" : undefined}
+                              bg={
+                                friendItemSubTab === "request"
+                                  ? "lilypad.solid"
+                                  : undefined
+                              }
+                              color={
+                                friendItemSubTab === "request"
+                                  ? "black"
+                                  : undefined
+                              }
                               borderTopRadius="md"
                               borderBottomRadius="0"
-                              px="4"
+                              px="2"
                               py="2"
                               fontWeight="medium"
                               _hover={{
-                                bg: friendItemSubTab === "request" ? "lilypad.solid" : "transparent",
+                                bg:
+                                  friendItemSubTab === "request"
+                                    ? "lilypad.solid"
+                                    : "transparent",
                               }}
-                              _selected={{ bg: "lilypad.solid", color: "black" }}
+                              _selected={{
+                                bg: "lilypad.solid",
+                                color: "black",
+                              }}
                             >
                               Request
                             </Tabs.Trigger>
                           </Tabs.List>
                           <Tabs.Content value="details" pt="3">
                             <Stack gap="3" align="stretch">
-                              <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                              <Text
+                                fontSize={APP_TEXT_SIZES.helper}
+                                color="fg.muted"
+                              >
                                 Owner: {displayName(item.owner_user)}
                               </Text>
                               {isMobile ? (
                                 hasFriendCategoryOrTags ? (
                                   <Stack gap="2" align="stretch" w="100%">
                                     {friendCategoryTrimmed ? (
-                                      <Box alignSelf="flex-start">{friendCategoryText}</Box>
+                                      <Box alignSelf="flex-start">
+                                        {friendCategoryText}
+                                      </Box>
                                     ) : null}
                                     {friendTagParts.length > 0 ? (
                                       <HStack
@@ -2820,7 +3444,10 @@ export default function ClosetPage() {
                                     ) : null}
                                   </Stack>
                                 ) : (
-                                  <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                                  <Text
+                                    fontSize={APP_TEXT_SIZES.helper}
+                                    color="fg.muted"
+                                  >
                                     No category or tags on this item.
                                   </Text>
                                 )
@@ -2837,8 +3464,12 @@ export default function ClosetPage() {
                                       {friendTagsOnlyInner}
                                     </HStack>
                                   ) : null}
-                                  {!friendCategoryTrimmed && friendTagParts.length === 0 ? (
-                                    <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                                  {!friendCategoryTrimmed &&
+                                  friendTagParts.length === 0 ? (
+                                    <Text
+                                      fontSize={APP_TEXT_SIZES.helper}
+                                      color="fg.muted"
+                                    >
                                       No category or tags on this item.
                                     </Text>
                                   ) : null}
@@ -2849,11 +3480,15 @@ export default function ClosetPage() {
                           <Tabs.Content value="request" pt="3">
                             <Stack gap="2" onClick={(e) => e.stopPropagation()}>
                               {isCurrentlyBorrowedByMe ? (
-                                <Text fontSize={APP_TEXT_SIZES.helper} color="orange.solid">
+                                <Text
+                                  fontSize={APP_TEXT_SIZES.helper}
+                                  color="orange.solid"
+                                >
                                   You are already borrowing this item.
                                 </Text>
                               ) : null}
-                              {item.my_pending_request && editingRequestItemId !== item.id ? (
+                              {item.my_pending_request &&
+                              editingRequestItemId !== item.id ? (
                                 <Stack gap="2">
                                   <HStack>
                                     <PondButton
@@ -2863,8 +3498,14 @@ export default function ClosetPage() {
                                         e.stopPropagation();
                                         setEditingRequestItemId(item.id);
                                         setRequestingItemId(item.id);
-                                        setNewNeedBy(item.my_pending_request?.date_needed_by ?? "");
-                                        setNewRequestMessage(item.my_pending_request?.message ?? "");
+                                        setNewNeedBy(
+                                          item.my_pending_request
+                                            ?.date_needed_by ?? "",
+                                        );
+                                        setNewRequestMessage(
+                                          item.my_pending_request?.message ??
+                                            "",
+                                        );
                                       }}
                                     >
                                       Edit request
@@ -2874,78 +3515,116 @@ export default function ClosetPage() {
                               ) : null}
 
                               {!isCurrentlyBorrowedByMe &&
-                              (!item.my_pending_request || editingRequestItemId === item.id) ? (
+                              (!item.my_pending_request ||
+                                editingRequestItemId === item.id) ? (
                                 <HStack flexWrap="wrap" align="flex-start">
                                   {(() => {
-                                    const requestDateValue = requestingItemId === item.id ? newNeedBy : "";
+                                    const requestDateValue =
+                                      requestingItemId === item.id
+                                        ? newNeedBy
+                                        : "";
                                     const canSubmitRequest =
-                                      validateIsoDateRequired(requestDateValue, "Need-by date") === null;
+                                      validateIsoDateRequired(
+                                        requestDateValue,
+                                        "Need-by date",
+                                      ) === null;
                                     return (
                                       <>
-                                  <Input
-                                    type="date"
-                                    value={requestDateValue}
-                                    onChange={(e) => {
-                                      setRequestingItemId(item.id);
-                                      setNewNeedBy(e.target.value);
-                                    }}
-                                    maxW="200px"
-                                  />
-                                  <Input
-                                    value={requestingItemId === item.id ? newRequestMessage : ""}
-                                    onChange={(e) => {
-                                      setRequestingItemId(item.id);
-                                      setNewRequestMessage(e.target.value);
-                                    }}
-                                    placeholder="Optional message"
-                                    {...CLOSET_PLACEHOLDER_PROPS}
-                                  />
-                                  <PondButton
-                                    size="sm"
-                                    colorPalette="lilypad"
-                                    disabled={!canSubmitRequest}
-                                    onClick={async (e) => {
-                                      e.stopPropagation();
-                                      const dateErr2 = validateIsoDateRequired(newNeedBy, "Need-by date");
-                                      if (dateErr2) {
-                                        setFriendsNotice({ kind: "error", message: dateErr2 });
-                                        return;
-                                      }
-                                      const msgErr2 = validateClosetFreeText(newRequestMessage, "Message");
-                                      if (msgErr2) {
-                                        setFriendsNotice({ kind: "error", message: msgErr2 });
-                                        return;
-                                      }
-                                      try {
-                                        const token = await getApiAccessToken();
-                                        await createBorrowRequest(token, item.id, {
-                                          date_needed_by: newNeedBy.trim(),
-                                          message: newRequestMessage.trim(),
-                                        });
-                                        setRequestingItemId(null);
-                                        setEditingRequestItemId(null);
-                                        setNewNeedBy("");
-                                        setNewRequestMessage("");
-                                        setFriendsNotice({
-                                          kind: "success",
-                                          message: item.my_pending_request
-                                            ? "Borrow request updated."
-                                            : "Borrow request sent.",
-                                        });
-                                        setExpandedFriendItemId(null);
-                                        await refreshAll();
-                                        setExpandedFriendItemId(item.id);
-                                      } catch (err: unknown) {
-                                        setFriendsNotice({
-                                          kind: "error",
-                                          message:
-                                            err instanceof Error ? err.message : "Failed to request borrow",
-                                        });
-                                      }
-                                    }}
-                                  >
-                                    {item.my_pending_request ? "Update request" : "Request borrow"}
-                                  </PondButton>
+                                        <Input
+                                          type="date"
+                                          value={requestDateValue}
+                                          onChange={(e) => {
+                                            setRequestingItemId(item.id);
+                                            setNewNeedBy(e.target.value);
+                                          }}
+                                          maxW="200px"
+                                        />
+                                        <Input
+                                          value={
+                                            requestingItemId === item.id
+                                              ? newRequestMessage
+                                              : ""
+                                          }
+                                          onChange={(e) => {
+                                            setRequestingItemId(item.id);
+                                            setNewRequestMessage(
+                                              e.target.value,
+                                            );
+                                          }}
+                                          placeholder="Optional message"
+                                          {...CLOSET_PLACEHOLDER_PROPS}
+                                        />
+                                        <PondButton
+                                          size="sm"
+                                          colorPalette="lilypad"
+                                          disabled={!canSubmitRequest}
+                                          onClick={async (e) => {
+                                            e.stopPropagation();
+                                            const dateErr2 =
+                                              validateIsoDateRequired(
+                                                newNeedBy,
+                                                "Need-by date",
+                                              );
+                                            if (dateErr2) {
+                                              setFriendsNotice({
+                                                kind: "error",
+                                                message: dateErr2,
+                                              });
+                                              return;
+                                            }
+                                            const msgErr2 =
+                                              validateClosetFreeText(
+                                                newRequestMessage,
+                                                "Message",
+                                              );
+                                            if (msgErr2) {
+                                              setFriendsNotice({
+                                                kind: "error",
+                                                message: msgErr2,
+                                              });
+                                              return;
+                                            }
+                                            try {
+                                              const token =
+                                                await getApiAccessToken();
+                                              await createBorrowRequest(
+                                                token,
+                                                item.id,
+                                                {
+                                                  date_needed_by:
+                                                    newNeedBy.trim(),
+                                                  message:
+                                                    newRequestMessage.trim(),
+                                                },
+                                              );
+                                              setRequestingItemId(null);
+                                              setEditingRequestItemId(null);
+                                              setNewNeedBy("");
+                                              setNewRequestMessage("");
+                                              setFriendsNotice({
+                                                kind: "success",
+                                                message: item.my_pending_request
+                                                  ? "Borrow request updated."
+                                                  : "Borrow request sent.",
+                                              });
+                                              setExpandedFriendItemId(null);
+                                              await refreshAll();
+                                              setExpandedFriendItemId(item.id);
+                                            } catch (err: unknown) {
+                                              setFriendsNotice({
+                                                kind: "error",
+                                                message:
+                                                  err instanceof Error
+                                                    ? err.message
+                                                    : "Failed to request borrow",
+                                              });
+                                            }
+                                          }}
+                                        >
+                                          {item.my_pending_request
+                                            ? "Update request"
+                                            : "Request borrow"}
+                                        </PondButton>
                                       </>
                                     );
                                   })()}
@@ -2960,14 +3639,24 @@ export default function ClosetPage() {
                                       colorPalette="nautical"
                                       onClick={async (e) => {
                                         e.stopPropagation();
-                                        if (confirmCancelRequestItemId !== item.id) {
-                                          setConfirmCancelMyRequestedItemId(null);
-                                          setConfirmCancelRequestItemId(item.id);
+                                        if (
+                                          confirmCancelRequestItemId !== item.id
+                                        ) {
+                                          setConfirmCancelMyRequestedItemId(
+                                            null,
+                                          );
+                                          setConfirmCancelRequestItemId(
+                                            item.id,
+                                          );
                                           return;
                                         }
                                         try {
-                                          const token = await getApiAccessToken();
-                                          await cancelBorrowRequest(token, item.my_pending_request!.id);
+                                          const token =
+                                            await getApiAccessToken();
+                                          await cancelBorrowRequest(
+                                            token,
+                                            item.my_pending_request!.id,
+                                          );
                                           setConfirmCancelRequestItemId(null);
                                           setEditingRequestItemId(null);
                                           setRequestingItemId(null);
@@ -2984,7 +3673,9 @@ export default function ClosetPage() {
                                           setFriendsNotice({
                                             kind: "error",
                                             message:
-                                              err instanceof Error ? err.message : "Failed to cancel request",
+                                              err instanceof Error
+                                                ? err.message
+                                                : "Failed to cancel request",
                                           });
                                         }
                                       }}
@@ -3050,7 +3741,13 @@ export default function ClosetPage() {
                     </Box>
                   );
                   return (
-                    <HStack key={`friend-${item.id}`} align="center" gap="1" ps="0" pe="0">
+                    <HStack
+                      key={`friend-${item.id}`}
+                      align="center"
+                      gap="1"
+                      ps="0"
+                      pe="0"
+                    >
                       <RouterLink
                         to={`/friend/${item.owner_user.id}`}
                         style={{
@@ -3063,8 +3760,12 @@ export default function ClosetPage() {
                       >
                         <Box px="0" mx="0" flexShrink={0} lineHeight="0">
                           <Avatar.Root size="sm">
-                            <Avatar.Fallback name={displayName(item.owner_user)} />
-                            <Avatar.Image src={item.owner_user.avatar_url || undefined} />
+                            <Avatar.Fallback
+                              name={displayName(item.owner_user)}
+                            />
+                            <Avatar.Image
+                              src={item.owner_user.avatar_url || undefined}
+                            />
                           </Avatar.Root>
                         </Box>
                       </RouterLink>
@@ -3091,7 +3792,11 @@ export default function ClosetPage() {
                       size="sm"
                       colorPalette="nautical"
                       disabled={friendsPage >= totalFriendsPages}
-                      onClick={() => setFriendsPage((p) => Math.min(totalFriendsPages, p + 1))}
+                      onClick={() =>
+                        setFriendsPage((p) =>
+                          Math.min(totalFriendsPages, p + 1),
+                        )
+                      }
                     >
                       →
                     </PondButton>
@@ -3099,13 +3804,22 @@ export default function ClosetPage() {
                 </HStack>
               </Stack>
             </Tabs.Content>
-            <Tabs.Content value="images" p={{ base: "4", md: "6" }}>
+            <Tabs.Content value="images" p={{ base: "2", md: "2" }}>
               <Stack gap="4">
-                <HStack justify="space-between" align="center" gap="3" flexWrap="wrap">
+                <HStack
+                  justify="space-between"
+                  align="center"
+                  gap="3"
+                  flexWrap="wrap"
+                >
                   <Text>Browse uploaded images and delete stranded files.</Text>
                   {imagesNotice ? (
                     <Text
-                      color={imagesNotice.kind === "success" ? "lilypad.solid" : "nautical.solid"}
+                      color={
+                        imagesNotice.kind === "success"
+                          ? "lilypad.solid"
+                          : "nautical.solid"
+                      }
                       fontSize={APP_TEXT_SIZES.helper}
                       fontWeight="medium"
                       textAlign="right"
@@ -3120,7 +3834,11 @@ export default function ClosetPage() {
                     <NativeSelectRoot maxW="280px">
                       <NativeSelectField
                         value={imagesFilter}
-                        onChange={(e) => setImagesFilter(e.target.value === "all" ? "all" : "unused")}
+                        onChange={(e) =>
+                          setImagesFilter(
+                            e.target.value === "all" ? "all" : "unused",
+                          )
+                        }
                       >
                         <option value="unused">Unused Images</option>
                         <option value="all">All Images</option>
@@ -3136,13 +3854,31 @@ export default function ClosetPage() {
                   </Text>
                 ) : null}
                 {visibleImageRows.map((row) => (
-                  <Card.Root key={row.image_key} bg="white" borderWidth="1px" borderColor="border" borderRadius="xl">
+                  <Card.Root
+                    key={row.image_key}
+                    bg="white"
+                    borderWidth="1px"
+                    borderColor="border"
+                    borderRadius="xl"
+                  >
                     <Card.Body>
                       <Stack gap="3">
-                        <HStack justify="space-between" align="start" gap="3" flexWrap="wrap">
+                        <HStack
+                          justify="space-between"
+                          align="start"
+                          gap="3"
+                          flexWrap="wrap"
+                        >
                           <Stack gap="1">
-                            <Text fontWeight="bold">{row.status === "attached" ? "Attached" : "Stranded"}</Text>
-                            <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                            <Text fontWeight="bold">
+                              {row.status === "attached"
+                                ? "Attached"
+                                : "Stranded"}
+                            </Text>
+                            <Text
+                              fontSize={APP_TEXT_SIZES.helper}
+                              color="fg.muted"
+                            >
                               {row.attached_live_item_count > 0
                                 ? `${row.attached_live_item_count} live item${row.attached_live_item_count === 1 ? "" : "s"} using this image${row.attached_as_avatar ? " + used as your avatar" : ""}`
                                 : row.attached_as_avatar
@@ -3150,14 +3886,19 @@ export default function ClosetPage() {
                                   : "0 live items using this image"}
                             </Text>
                             {!row.present_in_bucket ? (
-                              <Text fontSize={APP_TEXT_SIZES.helper} color="orange.solid">
+                              <Text
+                                fontSize={APP_TEXT_SIZES.helper}
+                                color="orange.solid"
+                              >
                                 Missing from bucket
                               </Text>
                             ) : null}
                           </Stack>
                           <PondButton
                             ref={(node: HTMLButtonElement | null) => {
-                              confirmDeleteImageButtonRefs.current[row.image_key] = node;
+                              confirmDeleteImageButtonRefs.current[
+                                row.image_key
+                              ] = node;
                             }}
                             size="sm"
                             colorPalette="nautical"
@@ -3176,26 +3917,43 @@ export default function ClosetPage() {
                                 await deleteMyImage(token, row.image_key);
                                 setImagesNotice({
                                   kind: "success",
-                                  message: "Image deleted from storage and detached from live items.",
+                                  message:
+                                    "Image deleted from storage and detached from live items.",
                                 });
                                 await refreshAll();
                               } catch (err: unknown) {
                                 setImagesNotice({
                                   kind: "error",
-                                  message: err instanceof Error ? err.message : "Failed to delete image",
+                                  message:
+                                    err instanceof Error
+                                      ? err.message
+                                      : "Failed to delete image",
                                 });
                               } finally {
                                 setDeletingImageKey(null);
                               }
                             }}
                           >
-                            {confirmDeleteImageKey === row.image_key ? "Confirm delete" : "Delete image"}
+                            {confirmDeleteImageKey === row.image_key
+                              ? "Confirm delete"
+                              : "Delete image"}
                           </PondButton>
                         </HStack>
                         {row.image_url ? (
-                          <Image src={row.image_url} alt="" aria-hidden maxH="180px" objectFit="cover" borderRadius="md" />
+                          <Image
+                            src={row.image_url}
+                            alt=""
+                            aria-hidden
+                            maxH="180px"
+                            objectFit="cover"
+                            borderRadius="md"
+                          />
                         ) : null}
-                        <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" wordBreak="break-all">
+                        <Text
+                          fontSize={APP_TEXT_SIZES.helper}
+                          color="fg.muted"
+                          wordBreak="break-all"
+                        >
                           {row.image_key}
                         </Text>
                         {row.attached_live_item_names.length > 0 ? (
@@ -3213,11 +3971,10 @@ export default function ClosetPage() {
         </Box>
       </Tabs.Root>
       {error ? (
-        <Text px="6" pb="4" color="nautical.solid" role="alert">
+        <Text px="2" pb="2" color="nautical.solid" role="alert">
           {error}
         </Text>
       ) : null}
     </Stack>
   );
 }
-

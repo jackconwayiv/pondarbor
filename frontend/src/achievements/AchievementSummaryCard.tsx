@@ -1,6 +1,9 @@
 import { Box, Checkbox, HStack, Stack, Text } from "@chakra-ui/react";
 import { useIsMobile } from "../responsive";
-import { APP_TEXT_SIZES, MAPPED_LIST_CARD_OUTER_PROPS } from "../theme/typography";
+import {
+  APP_TEXT_SIZES,
+  MAPPED_LIST_CARD_OUTER_PROPS,
+} from "../theme/typography";
 import { emojiForAchievementSlug } from "./achievementIcon";
 import type { AchievementSummary } from "./types";
 
@@ -73,7 +76,12 @@ export function AchievementSummaryCard({
           boxShadow="inset 0 2px 4px rgba(255,255,255,0.45), 0 2px 6px rgba(0,0,0,0.14), 0 0 0 1px #8a6818"
           style={{ background: MEDAL_GRADIENT }}
         >
-          <Text fontSize="2.375rem" lineHeight="1" aria-hidden userSelect="none">
+          <Text
+            fontSize="2.375rem"
+            lineHeight="1"
+            aria-hidden
+            userSelect="none"
+          >
             {emoji}
           </Text>
         </Box>
@@ -106,7 +114,11 @@ export function AchievementSummaryCard({
             </HStack>
           )}
           {a.description ? (
-            <Text fontSize={APP_TEXT_SIZES.helper} color="black" whiteSpace="pre-wrap">
+            <Text
+              fontSize={APP_TEXT_SIZES.helper}
+              color="black"
+              whiteSpace="pre-wrap"
+            >
               {a.description}
             </Text>
           ) : null}

@@ -1,8 +1,8 @@
 import {
   Box,
+  Link as ChakraLink,
   Heading,
   HStack,
-  Link as ChakraLink,
   NativeSelectField,
   NativeSelectRoot,
   Stack,
@@ -34,7 +34,11 @@ function formatJoined(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 /** Pending first, then rejected/suspended/unknown, then approved (active). */
@@ -74,7 +78,10 @@ export default function StaffPage() {
   const isStaff = !!sessionUser?.user?.is_staff;
   const myId = sessionUser?.user?.id;
 
-  const sortedUsers = useMemo(() => [...users].sort(compareStaffUsers), [users]);
+  const sortedUsers = useMemo(
+    () => [...users].sort(compareStaffUsers),
+    [users],
+  );
 
   const loadUsers = useCallback(async () => {
     if (!isAuthenticated || !isStaff) return;
@@ -96,7 +103,10 @@ export default function StaffPage() {
     void loadUsers();
   }, [loadUsers]);
 
-  async function onStatusChange(row: StaffUserRow, next: StaffAccountStatusValue) {
+  async function onStatusChange(
+    row: StaffUserRow,
+    next: StaffAccountStatusValue,
+  ) {
     if (!isStaff || row.id === myId || next === row.account_status) return;
     setRowBusyId(row.id);
     setListError(null);
@@ -116,7 +126,14 @@ export default function StaffPage() {
   }
 
   return (
-    <Stack flex="1" minH="full" gap="6" px={{ base: "4", md: "6" }} py={{ base: "6", md: "8" }} {...fullBleedStackProps}>
+    <Stack
+      flex="1"
+      minH="full"
+      gap="6"
+      px={{ base: "2", md: "2" }}
+      py={{ base: "2", md: "2" }}
+      {...fullBleedStackProps}
+    >
       <Stack gap="2" maxW="4xl">
         <Heading as="h1" size={{ base: "lg", md: "xl" }}>
           Staff
@@ -125,10 +142,22 @@ export default function StaffPage() {
           Manage member approval and open admin tools.
         </Text>
         <HStack gap="4" flexWrap="wrap" align="center">
-          <ChakraLink asChild fontSize="sm" textDecoration="underline" color="fg">
-            <RouterLink to="/clicker/dev/catalog">PondClicker upgrade catalog</RouterLink>
+          <ChakraLink
+            asChild
+            fontSize="sm"
+            textDecoration="underline"
+            color="fg"
+          >
+            <RouterLink to="/clicker/dev/catalog">
+              PondClicker upgrade catalog
+            </RouterLink>
           </ChakraLink>
-          <ChakraLink asChild fontSize="sm" textDecoration="underline" color="fg">
+          <ChakraLink
+            asChild
+            fontSize="sm"
+            textDecoration="underline"
+            color="fg"
+          >
             <RouterLink to="/whatif/admin">WhatIf question admin</RouterLink>
           </ChakraLink>
         </HStack>
@@ -139,12 +168,23 @@ export default function StaffPage() {
           <Heading as="h2" size="md">
             Users
           </Heading>
-          <PondButton type="button" size="sm" colorPalette="lilypad" loading={listBusy} onClick={() => void loadUsers()}>
+          <PondButton
+            type="button"
+            size="sm"
+            colorPalette="lilypad"
+            loading={listBusy}
+            onClick={() => void loadUsers()}
+          >
             Refresh
           </PondButton>
         </HStack>
         {listError ? (
-          <Text role="alert" fontSize="sm" color="nautical.solid" fontWeight="medium">
+          <Text
+            role="alert"
+            fontSize="sm"
+            color="nautical.solid"
+            fontWeight="medium"
+          >
             {listError}
           </Text>
         ) : null}
@@ -153,12 +193,18 @@ export default function StaffPage() {
             Loading users…
           </Text>
         ) : (
-          <Stack gap="0" borderWidth="1px" borderColor="border" borderRadius="md" overflow="hidden">
+          <Stack
+            gap="0"
+            borderWidth="1px"
+            borderColor="border"
+            borderRadius="md"
+            overflow="hidden"
+          >
             <Box
               display={{ base: "none", md: "grid" }}
               gridTemplateColumns="minmax(0,1.4fr) minmax(0,1fr) minmax(0,0.5fr) minmax(0,1fr)"
               gap="3"
-              px="3"
+              px="2"
               py="2"
               bg="bg.subtle"
               borderBottomWidth="1px"
@@ -179,15 +225,16 @@ export default function StaffPage() {
             </Box>
             {sortedUsers.map((row) => {
               const disabled = row.id === myId || rowBusyId === row.id;
-              const statusValue =
-                STAFF_ACCOUNT_STATUS_VALUES.includes(row.account_status as StaffAccountStatusValue)
-                  ? (row.account_status as StaffAccountStatusValue)
-                  : "pending";
+              const statusValue = STAFF_ACCOUNT_STATUS_VALUES.includes(
+                row.account_status as StaffAccountStatusValue,
+              )
+                ? (row.account_status as StaffAccountStatusValue)
+                : "pending";
               return (
                 <Box
                   key={row.id}
-                  px="3"
-                  py="3"
+                  px="2"
+                  py="2"
                   bg="white"
                   borderBottomWidth="1px"
                   borderColor="border"
@@ -195,7 +242,11 @@ export default function StaffPage() {
                 >
                   <Stack gap="3" display={{ base: "flex", md: "none" }}>
                     <Stack gap="1">
-                      <Text fontSize="sm" fontWeight="medium" wordBreak="break-word">
+                      <Text
+                        fontSize="sm"
+                        fontWeight="medium"
+                        wordBreak="break-word"
+                      >
                         {row.email}
                       </Text>
                       <Text fontSize="xs" color="fg.muted">
@@ -214,7 +265,10 @@ export default function StaffPage() {
                       <NativeSelectField
                         value={statusValue}
                         onChange={(e) => {
-                          void onStatusChange(row, e.target.value as StaffAccountStatusValue);
+                          void onStatusChange(
+                            row,
+                            e.target.value as StaffAccountStatusValue,
+                          );
                         }}
                       >
                         {STAFF_ACCOUNT_STATUS_VALUES.map((v) => (
@@ -237,7 +291,11 @@ export default function StaffPage() {
                     alignItems="center"
                   >
                     <Stack gap="0" minW="0">
-                      <Text fontSize="sm" fontWeight="medium" wordBreak="break-word">
+                      <Text
+                        fontSize="sm"
+                        fontWeight="medium"
+                        wordBreak="break-word"
+                      >
                         {row.email}
                       </Text>
                       <Text fontSize="xs" color="fg.muted">
@@ -249,11 +307,18 @@ export default function StaffPage() {
                     </Text>
                     <Text fontSize="sm">{row.is_staff ? "Yes" : "No"}</Text>
                     <Box minW="0">
-                      <NativeSelectRoot size="sm" disabled={disabled} maxW="100%">
+                      <NativeSelectRoot
+                        size="sm"
+                        disabled={disabled}
+                        maxW="100%"
+                      >
                         <NativeSelectField
                           value={statusValue}
                           onChange={(e) => {
-                            void onStatusChange(row, e.target.value as StaffAccountStatusValue);
+                            void onStatusChange(
+                              row,
+                              e.target.value as StaffAccountStatusValue,
+                            );
                           }}
                         >
                           {STAFF_ACCOUNT_STATUS_VALUES.map((v) => (

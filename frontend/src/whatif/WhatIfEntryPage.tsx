@@ -15,17 +15,23 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 
+import { useAppSession } from "../auth/AppSessionContext";
 import {
   validateWhatIfBulkText,
   validateWhatIfQuestionDraft,
   validateWhatIfRoomCode4,
 } from "../forms/validation";
 import PondButton from "../PondButton";
-import { useAppSession } from "../auth/AppSessionContext";
+import { fullBleedStackProps, useIsMobile } from "../responsive";
+import {
+  APP_TEXT_SIZES,
+  MAPPED_LIST_STACK_GAP,
+  PANEL_FIELD_PROPS,
+} from "../theme/typography";
 import {
   bulkImportWhatIfQuestions,
-  createWhatIfSession,
   createWhatIfQuestion,
+  createWhatIfSession,
   deleteWhatIfQuestion,
   fetchWhatIfPendingCount,
   fetchWhatIfTvState,
@@ -41,17 +47,28 @@ import {
   type WhatIfQuestionAdmin,
   type WhatIfQuestionListFilter,
 } from "./api";
-import { fullBleedStackProps, useIsMobile } from "../responsive";
-import { APP_TEXT_SIZES, MAPPED_LIST_STACK_GAP, PANEL_FIELD_PROPS } from "../theme/typography";
 import { WhatIfQuestionAdminListItem } from "./WhatIfQuestionAdminListItem";
 import { WhatIfQuestionFields } from "./WhatIfQuestionFields";
 
-type EntryTab = "new" | "continue" | "join" | "admin-edit" | "admin-list" | "admin-bulk";
+type EntryTab =
+  | "new"
+  | "continue"
+  | "join"
+  | "admin-edit"
+  | "admin-list"
+  | "admin-bulk";
 type PlayerTab = "new" | "continue" | "join";
 type AdminTab = "admin-edit" | "admin-list" | "admin-bulk";
 type OuterSection = "player" | "admin";
 
-const ENTRY_TAB_VALUES: EntryTab[] = ["new", "continue", "join", "admin-edit", "admin-list", "admin-bulk"];
+const ENTRY_TAB_VALUES: EntryTab[] = [
+  "new",
+  "continue",
+  "join",
+  "admin-edit",
+  "admin-list",
+  "admin-bulk",
+];
 type QuestionDraft = {
   prompt: string;
   answer_1: string;
@@ -101,7 +118,9 @@ export default function WhatIfEntryPage() {
   const [searchParams] = useSearchParams();
   const { sessionUser, isAuthenticated, getApiAccessToken } = useAppSession();
   const isMobile = useIsMobile();
-  const [activeTab, setActiveTab] = useState<EntryTab>(isMobile ? "join" : "new");
+  const [activeTab, setActiveTab] = useState<EntryTab>(
+    isMobile ? "join" : "new",
+  );
   const [joinCode, setJoinCode] = useState("");
   const [resumeCode, setResumeCode] = useState("");
   const [name, setName] = useState("");
@@ -124,7 +143,8 @@ export default function WhatIfEntryPage() {
   const [bulkText, setBulkText] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const confirmDeleteButtonRef = useRef<HTMLButtonElement | null>(null);
-  const [questionListFilter, setQuestionListFilter] = useState<WhatIfQuestionListFilter>("all");
+  const [questionListFilter, setQuestionListFilter] =
+    useState<WhatIfQuestionListFilter>("all");
   const [pendingCount, setPendingCount] = useState(0);
   const [proposeDraft, setProposeDraft] = useState<ProposeDraft>(EMPTY_PROPOSE);
   const [proposeBusy, setProposeBusy] = useState(false);
@@ -193,7 +213,9 @@ export default function WhatIfEntryPage() {
         try {
           const state = await fetchWhatIfTvState(code);
           if (cancelled || !state) return;
-          setEnrolledPlayerNames((state.players ?? []).map((p) => p.display_name));
+          setEnrolledPlayerNames(
+            (state.players ?? []).map((p) => p.display_name),
+          );
         } catch {
           if (!cancelled) setEnrolledPlayerNames([]);
         }
@@ -209,7 +231,9 @@ export default function WhatIfEntryPage() {
     const candidate = sanitizeDisplayNameInput(name.trim());
     if (!candidate) return false;
     const c = normalizeWhatIfDisplayNameForCompare(candidate);
-    return enrolledPlayerNames.some((n) => normalizeWhatIfDisplayNameForCompare(n) === c);
+    return enrolledPlayerNames.some(
+      (n) => normalizeWhatIfDisplayNameForCompare(n) === c,
+    );
   }, [name, enrolledPlayerNames]);
 
   const joinFormDisabled =
@@ -219,9 +243,17 @@ export default function WhatIfEntryPage() {
     nameTakenInRoom;
 
   useEffect(() => {
-    if (activeTab === "new" || activeTab === "continue" || activeTab === "join") {
+    if (
+      activeTab === "new" ||
+      activeTab === "continue" ||
+      activeTab === "join"
+    ) {
       lastPlayerTabRef.current = activeTab;
-    } else if (activeTab === "admin-edit" || activeTab === "admin-list" || activeTab === "admin-bulk") {
+    } else if (
+      activeTab === "admin-edit" ||
+      activeTab === "admin-list" ||
+      activeTab === "admin-bulk"
+    ) {
       lastAdminTabRef.current = activeTab;
     }
   }, [activeTab]);
@@ -239,7 +271,9 @@ export default function WhatIfEntryPage() {
       setQuestions(items);
       setPendingCount(pending);
     } catch (e) {
-      setAdminError(e instanceof Error ? e.message : "Failed to load questions");
+      setAdminError(
+        e instanceof Error ? e.message : "Failed to load questions",
+      );
     } finally {
       setAdminBusy(false);
     }
@@ -251,7 +285,10 @@ export default function WhatIfEntryPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, isStaff, questionListFilter]);
 
-  async function setReviewStatus(id: number, review_status: "approved" | "rejected") {
+  async function setReviewStatus(
+    id: number,
+    review_status: "approved" | "rejected",
+  ) {
     if (!isAuthenticated || !isStaff) return;
     setAdminBusy(true);
     setAdminError(null);
@@ -397,7 +434,11 @@ export default function WhatIfEntryPage() {
       const data = await resumeHostingSession(apiToken, code);
       saveHostToken(data.short_code, data.host_secret);
       const inLobby = data.status === "open" || data.status === "pre_lobby";
-      navigate(inLobby ? `/whatif/lobby/${data.short_code}` : `/whatif/play/${data.short_code}`);
+      navigate(
+        inLobby
+          ? `/whatif/lobby/${data.short_code}`
+          : `/whatif/play/${data.short_code}`,
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to resume hosting");
     } finally {
@@ -457,11 +498,17 @@ export default function WhatIfEntryPage() {
     }
   }
 
-  const outerSection: OuterSection = activeTab.startsWith("admin") ? "admin" : "player";
+  const outerSection: OuterSection = activeTab.startsWith("admin")
+    ? "admin"
+    : "player";
   const playerTabValue: PlayerTab =
-    activeTab === "new" || activeTab === "continue" || activeTab === "join" ? activeTab : lastPlayerTabRef.current;
+    activeTab === "new" || activeTab === "continue" || activeTab === "join"
+      ? activeTab
+      : lastPlayerTabRef.current;
   const adminTabValue: AdminTab =
-    activeTab === "admin-edit" || activeTab === "admin-list" || activeTab === "admin-bulk"
+    activeTab === "admin-edit" ||
+    activeTab === "admin-list" ||
+    activeTab === "admin-bulk"
       ? activeTab
       : lastAdminTabRef.current;
 
@@ -472,7 +519,7 @@ export default function WhatIfEntryPage() {
   const joinFormContent = (
     <Stack gap="4">
       <Text fontSize={APP_TEXT_SIZES.body} color="fg">
-        Join this device as a player with the room code from the host.
+        Join as a player on this device with the room code from the host.
       </Text>
       <Stack gap="1.5">
         <Text fontSize={APP_TEXT_SIZES.label} fontWeight="medium" color="fg">
@@ -481,7 +528,14 @@ export default function WhatIfEntryPage() {
         <Input
           placeholder="4-letter code"
           value={joinCode}
-          onChange={(e) => setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4))}
+          onChange={(e) =>
+            setJoinCode(
+              e.target.value
+                .toUpperCase()
+                .replace(/[^A-Z]/g, "")
+                .slice(0, 4),
+            )
+          }
           {...PANEL_FIELD_PROPS}
         />
       </Stack>
@@ -498,7 +552,11 @@ export default function WhatIfEntryPage() {
         />
       </Stack>
       {nameTakenInRoom ? (
-        <Text fontSize={APP_TEXT_SIZES.helper} color="nautical.solid" fontWeight="medium">
+        <Text
+          fontSize={APP_TEXT_SIZES.helper}
+          color="nautical.solid"
+          fontWeight="medium"
+        >
           That name is already taken in this room.
         </Text>
       ) : null}
@@ -526,7 +584,9 @@ export default function WhatIfEntryPage() {
         px="4"
         py="2"
         fontWeight="medium"
-        _hover={{ bg: playerTabValue === "join" ? "lilypad.solid" : "transparent" }}
+        _hover={{
+          bg: playerTabValue === "join" ? "lilypad.solid" : "transparent",
+        }}
         _selected={{ bg: "lilypad.solid", color: "black" }}
       >
         Join Game
@@ -540,7 +600,9 @@ export default function WhatIfEntryPage() {
         px="4"
         py="2"
         fontWeight="medium"
-        _hover={{ bg: playerTabValue === "new" ? "lilypad.solid" : "transparent" }}
+        _hover={{
+          bg: playerTabValue === "new" ? "lilypad.solid" : "transparent",
+        }}
         _selected={{ bg: "lilypad.solid", color: "black" }}
       >
         Host Game
@@ -554,7 +616,9 @@ export default function WhatIfEntryPage() {
         px="4"
         py="2"
         fontWeight="medium"
-        _hover={{ bg: playerTabValue === "continue" ? "lilypad.solid" : "transparent" }}
+        _hover={{
+          bg: playerTabValue === "continue" ? "lilypad.solid" : "transparent",
+        }}
         _selected={{ bg: "lilypad.solid", color: "black" }}
       >
         Resume Game
@@ -573,7 +637,9 @@ export default function WhatIfEntryPage() {
         px="4"
         py="2"
         fontWeight="medium"
-        _hover={{ bg: adminTabValue === "admin-list" ? "lilypad.solid" : "transparent" }}
+        _hover={{
+          bg: adminTabValue === "admin-list" ? "lilypad.solid" : "transparent",
+        }}
         _selected={{ bg: "lilypad.solid", color: "black" }}
       >
         Question List
@@ -587,7 +653,9 @@ export default function WhatIfEntryPage() {
         px="4"
         py="2"
         fontWeight="medium"
-        _hover={{ bg: adminTabValue === "admin-edit" ? "lilypad.solid" : "transparent" }}
+        _hover={{
+          bg: adminTabValue === "admin-edit" ? "lilypad.solid" : "transparent",
+        }}
         _selected={{ bg: "lilypad.solid", color: "black" }}
       >
         Add Question
@@ -601,7 +669,9 @@ export default function WhatIfEntryPage() {
         px="4"
         py="2"
         fontWeight="medium"
-        _hover={{ bg: adminTabValue === "admin-bulk" ? "lilypad.solid" : "transparent" }}
+        _hover={{
+          bg: adminTabValue === "admin-bulk" ? "lilypad.solid" : "transparent",
+        }}
         _selected={{ bg: "lilypad.solid", color: "black" }}
       >
         Bulk Import
@@ -611,15 +681,15 @@ export default function WhatIfEntryPage() {
 
   const playerTabPanels = (
     <>
-      <Tabs.Content value="join" pt="4">
+      <Tabs.Content value="join" pt="2">
         {joinFormContent}
       </Tabs.Content>
 
-      <Tabs.Content value="new" pt="4">
+      <Tabs.Content value="new" pt="2">
         <Stack gap="4">
           <Text fontSize={APP_TEXT_SIZES.body} color="fg">
             {isAuthenticated
-              ? "Creates a room and records you as the host (not as a player). Open the lobby on the TV, then join on your phone to play."
+              ? "Creates a room code and records you as the host. Project the lobby on a large screen, then join on your phone to play."
               : "Sign in to create a game."}
           </Text>
           <PondButton
@@ -635,20 +705,31 @@ export default function WhatIfEntryPage() {
         </Stack>
       </Tabs.Content>
 
-      <Tabs.Content value="continue" pt="4">
+      <Tabs.Content value="continue" pt="2">
         <Stack gap="4">
           <Text fontSize={APP_TEXT_SIZES.body} color="fg">
-            Reconnect TV / lobby controls after a crash or new browser window. Sign in as the host and enter your
-            four-letter room code. This does not add you as a player.
+            Reconnect the host lobby controls after a crash or new browser
+            window. Sign in as the host and enter your four-letter room code.
           </Text>
           <Stack gap="1.5">
-            <Text fontSize={APP_TEXT_SIZES.label} fontWeight="medium" color="fg">
+            <Text
+              fontSize={APP_TEXT_SIZES.label}
+              fontWeight="medium"
+              color="fg"
+            >
               Room code
             </Text>
             <Input
               placeholder="4-letter room code"
               value={resumeCode}
-              onChange={(e) => setResumeCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 4))}
+              onChange={(e) =>
+                setResumeCode(
+                  e.target.value
+                    .toUpperCase()
+                    .replace(/[^A-Z]/g, "")
+                    .slice(0, 4),
+                )
+              }
               {...PANEL_FIELD_PROPS}
             />
           </Stack>
@@ -669,21 +750,29 @@ export default function WhatIfEntryPage() {
 
   const adminTabPanels = (
     <>
-      <Tabs.Content value="admin-list" pt="4">
+      <Tabs.Content value="admin-list" pt="2">
         <Stack gap="3">
           <HStack justify="space-between" flexWrap="wrap" gap="3">
             <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.body}>
               Questions ({questions.length})
             </Text>
             {pendingCount > 0 ? (
-              <Text fontWeight="bold" fontSize={APP_TEXT_SIZES.helper} color="nautical.solid">
+              <Text
+                fontWeight="bold"
+                fontSize={APP_TEXT_SIZES.helper}
+                color="nautical.solid"
+              >
                 Unreviewed: {pendingCount}
               </Text>
             ) : null}
           </HStack>
           <HStack gap="2" align="end" flexWrap="wrap">
             <Stack gap="1.5" flex="1" minW="200px">
-              <Text fontSize={APP_TEXT_SIZES.label} fontWeight="medium" color="fg">
+              <Text
+                fontSize={APP_TEXT_SIZES.label}
+                fontWeight="medium"
+                color="fg"
+              >
                 Search prompt
               </Text>
               <Input
@@ -694,13 +783,21 @@ export default function WhatIfEntryPage() {
               />
             </Stack>
             <Stack gap="1.5" minW="160px">
-              <Text fontSize={APP_TEXT_SIZES.label} fontWeight="medium" color="fg">
+              <Text
+                fontSize={APP_TEXT_SIZES.label}
+                fontWeight="medium"
+                color="fg"
+              >
                 List
               </Text>
               <NativeSelectRoot>
                 <NativeSelectField
                   value={questionListFilter}
-                  onChange={(e) => setQuestionListFilter(e.target.value as WhatIfQuestionListFilter)}
+                  onChange={(e) =>
+                    setQuestionListFilter(
+                      e.target.value as WhatIfQuestionListFilter,
+                    )
+                  }
                   {...PANEL_FIELD_PROPS}
                 >
                   {WHATIF_QUESTION_LIST_FILTERS.map((v) => (
@@ -711,7 +808,12 @@ export default function WhatIfEntryPage() {
                 </NativeSelectField>
               </NativeSelectRoot>
             </Stack>
-            <PondButton type="button" colorPalette="lilypad" onClick={() => void loadQuestions()} loading={adminBusy}>
+            <PondButton
+              type="button"
+              colorPalette="lilypad"
+              onClick={() => void loadQuestions()}
+              loading={adminBusy}
+            >
               Refresh
             </PondButton>
           </HStack>
@@ -723,7 +825,9 @@ export default function WhatIfEntryPage() {
                 busy={adminBusy}
                 confirmDeleteId={confirmDeleteId}
                 confirmDeleteButtonRef={confirmDeleteButtonRef}
-                onToggleActive={(id, is_active) => void toggleQuestionActive(id, is_active)}
+                onToggleActive={(id, is_active) =>
+                  void toggleQuestionActive(id, is_active)
+                }
                 onEdit={(row) => {
                   beginEditQuestion(row);
                   setActiveTab("admin-edit");
@@ -743,14 +847,17 @@ export default function WhatIfEntryPage() {
         </Stack>
       </Tabs.Content>
 
-      <Tabs.Content value="admin-edit" pt="4">
+      <Tabs.Content value="admin-edit" pt="2">
         <Stack gap="2">
           <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.body}>
-            {editingId == null ? "Create question" : `Edit question #${editingId}`}
+            {editingId == null
+              ? "Create question"
+              : `Edit question #${editingId}`}
           </Text>
           <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600">
-            Type only the part after &quot;What if {"{subject}"}&quot; for the question. Answer rows show the number for
-            you; only the answer text is saved.
+            Type only the part after &quot;What if {"{subject}"}&quot; for the
+            question. Answer rows show the number for you; only the answer text
+            is saved.
           </Text>
           <WhatIfQuestionFields
             draft={draft}
@@ -786,7 +893,7 @@ export default function WhatIfEntryPage() {
         </Stack>
       </Tabs.Content>
 
-      <Tabs.Content value="admin-bulk" pt="4">
+      <Tabs.Content value="admin-bulk" pt="2">
         <Stack gap="2">
           <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.body}>
             Bulk import (numbered blocks)
@@ -798,7 +905,13 @@ export default function WhatIfEntryPage() {
             placeholder={exampleBulk}
             {...PANEL_FIELD_PROPS}
           />
-          <PondButton type="button" colorPalette="lilypad" alignSelf="flex-end" onClick={() => void runBulkImport()} loading={adminBusy}>
+          <PondButton
+            type="button"
+            colorPalette="lilypad"
+            alignSelf="flex-end"
+            onClick={() => void runBulkImport()}
+            loading={adminBusy}
+          >
             Import questions
           </PondButton>
         </Stack>
@@ -814,12 +927,17 @@ export default function WhatIfEntryPage() {
     borderWidth: "1px",
     borderColor: "border",
     borderRadius: "xl",
-    p: { base: "4", md: "4" },
+    p: { base: "2", md: "2" },
   } as const;
 
   return (
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
-      <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
+      <Box
+        flex="1"
+        bg="sky.solid"
+        px={{ base: "4", md: "6" }}
+        py={{ base: "5", md: "6" }}
+      >
         <Box
           maxW="4xl"
           w="100%"
@@ -832,18 +950,35 @@ export default function WhatIfEntryPage() {
         >
           <Stack gap={{ base: "4", md: "4" }} p={{ base: "4", md: "6" }}>
             <Box {...entryCardProps}>
-              <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold" mb={!isMobile ? 2 : 0}>
+              <Heading
+                as="h1"
+                size={{ base: "lg", md: "xl" }}
+                fontWeight="bold"
+                mb={!isMobile ? 2 : 0}
+              >
                 Whatif
               </Heading>
               {!isMobile ? (
-                <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
-                  A multiplayer party game. Project <Code>/whatif/play/ROOM</Code> on a TV or projector to host a game, and each player joins on
-                  their mobile device at <Code>/whatif/hand/ROOM</Code>.
+                <Text
+                  fontSize={APP_TEXT_SIZES.body}
+                  lineHeight="tall"
+                  color="fg"
+                >
+                  Gather a group of friends for this multiplayer party game!
+                  Someone hosts a game and projects{" "}
+                  <Code>/whatif/play/ROOM</Code> on a TV or projector to host a
+                  game, and each player joins on their mobile device at{" "}
+                  <Code>/whatif/hand/ROOM</Code> to play along!
                 </Text>
               ) : null}
               {showDesktopUnapprovedOnly ? (
-                <Text fontSize={APP_TEXT_SIZES.body} color="fg" mt={!isMobile ? 3 : 0}>
-                  Approved users can host a game. Guests and other users can join games with a mobile device.
+                <Text
+                  fontSize={APP_TEXT_SIZES.body}
+                  color="fg"
+                  mt={!isMobile ? 3 : 0}
+                >
+                  Approved users can host a game. Guests and other users can
+                  join games with a mobile device.
                 </Text>
               ) : null}
             </Box>
@@ -860,7 +995,8 @@ export default function WhatIfEntryPage() {
                       variant="plain"
                       onValueChange={(details) => {
                         const v = details.value as OuterSection;
-                        if (v === "player") setActiveTab(lastPlayerTabRef.current);
+                        if (v === "player")
+                          setActiveTab(lastPlayerTabRef.current);
                         else setActiveTab(lastAdminTabRef.current);
                         setError(null);
                       }}
@@ -876,35 +1012,55 @@ export default function WhatIfEntryPage() {
                       >
                         <Tabs.Trigger
                           value="player"
-                          bg={outerSection === "player" ? "lilypad.solid" : undefined}
-                          color={outerSection === "player" ? "black" : undefined}
+                          bg={
+                            outerSection === "player"
+                              ? "lilypad.solid"
+                              : undefined
+                          }
+                          color={
+                            outerSection === "player" ? "black" : undefined
+                          }
                           borderTopRadius="md"
                           borderBottomRadius="0"
                           px="5"
                           py="2.5"
                           fontWeight="semibold"
-                          _hover={{ bg: outerSection === "player" ? "lilypad.solid" : "transparent" }}
+                          _hover={{
+                            bg:
+                              outerSection === "player"
+                                ? "lilypad.solid"
+                                : "transparent",
+                          }}
                           _selected={{ bg: "lilypad.solid", color: "black" }}
                         >
                           Player
                         </Tabs.Trigger>
                         <Tabs.Trigger
                           value="admin"
-                          bg={outerSection === "admin" ? "lilypad.solid" : undefined}
+                          bg={
+                            outerSection === "admin"
+                              ? "lilypad.solid"
+                              : undefined
+                          }
                           color={outerSection === "admin" ? "black" : undefined}
                           borderTopRadius="md"
                           borderBottomRadius="0"
                           px="5"
                           py="2.5"
                           fontWeight="semibold"
-                          _hover={{ bg: outerSection === "admin" ? "lilypad.solid" : "transparent" }}
+                          _hover={{
+                            bg:
+                              outerSection === "admin"
+                                ? "lilypad.solid"
+                                : "transparent",
+                          }}
                           _selected={{ bg: "lilypad.solid", color: "black" }}
                         >
                           Admin
                         </Tabs.Trigger>
                       </Tabs.List>
 
-                      <Tabs.Content value="player" pt="4">
+                      <Tabs.Content value="player" pt="2">
                         <Tabs.Root
                           id="whatif-entry-player"
                           value={playerTabValue}
@@ -916,14 +1072,20 @@ export default function WhatIfEntryPage() {
                             setError(null);
                           }}
                         >
-                          <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" maxW="full" flexWrap="wrap">
+                          <Tabs.List
+                            borderBottomWidth="1px"
+                            borderColor="border"
+                            gap="1"
+                            maxW="full"
+                            flexWrap="wrap"
+                          >
                             {playerTabTriggers}
                           </Tabs.List>
                           {playerTabPanels}
                         </Tabs.Root>
                       </Tabs.Content>
 
-                      <Tabs.Content value="admin" pt="4">
+                      <Tabs.Content value="admin" pt="2">
                         <Tabs.Root
                           id="whatif-entry-admin"
                           value={adminTabValue}
@@ -935,7 +1097,13 @@ export default function WhatIfEntryPage() {
                             setError(null);
                           }}
                         >
-                          <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" maxW="full" flexWrap="wrap">
+                          <Tabs.List
+                            borderBottomWidth="1px"
+                            borderColor="border"
+                            gap="1"
+                            maxW="full"
+                            flexWrap="wrap"
+                          >
                             {adminTabTriggers}
                           </Tabs.List>
                           {adminTabPanels}
@@ -952,7 +1120,13 @@ export default function WhatIfEntryPage() {
                         setError(null);
                       }}
                     >
-                      <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" maxW="full" flexWrap="wrap">
+                      <Tabs.List
+                        borderBottomWidth="1px"
+                        borderColor="border"
+                        gap="1"
+                        maxW="full"
+                        flexWrap="wrap"
+                      >
                         {playerTabTriggers}
                       </Tabs.List>
                       {playerTabPanels}
@@ -984,7 +1158,10 @@ export default function WhatIfEntryPage() {
 
             {canProposeQuestions ? (
               <Box {...entryCardProps}>
-                <Collapsible.Root open={proposeOpen} onOpenChange={(details) => setProposeOpen(details.open)}>
+                <Collapsible.Root
+                  open={proposeOpen}
+                  onOpenChange={(details) => setProposeOpen(details.open)}
+                >
                   <Collapsible.Trigger asChild>
                     <button
                       type="button"
@@ -1006,7 +1183,9 @@ export default function WhatIfEntryPage() {
                     >
                       <Text
                         as="span"
-                        transform={proposeOpen ? "rotate(90deg)" : "rotate(0deg)"}
+                        transform={
+                          proposeOpen ? "rotate(90deg)" : "rotate(0deg)"
+                        }
                         transition="transform 0.15s ease"
                         lineHeight="1"
                         flexShrink={0}
@@ -1019,11 +1198,12 @@ export default function WhatIfEntryPage() {
                     </button>
                   </Collapsible.Trigger>
                   <Collapsible.Content>
-                    <Stack gap="3" pt="3">
+                    <Stack gap="3" pt="2">
                       <Text fontSize={APP_TEXT_SIZES.body} color="fg">
-                        Suggest a prompt for staff to review. Approved questions may appear in future sessions. Type
-                        only the part after &quot;What if {"{subject}"}&quot;; only answer text is stored for each
-                        option.
+                        Suggest a prompt for staff to review. Approved questions
+                        may appear in future sessions. Type only the part after
+                        &quot;What if {"{subject}"}&quot;; only answer text is
+                        stored for each option.
                       </Text>
                       {proposeSuccess ? (
                         <Text
@@ -1047,7 +1227,9 @@ export default function WhatIfEntryPage() {
                       ) : null}
                       <WhatIfQuestionFields
                         draft={proposeDraft}
-                        onDraftChange={(patch) => setProposeDraft((d) => ({ ...d, ...patch }))}
+                        onDraftChange={(patch) =>
+                          setProposeDraft((d) => ({ ...d, ...patch }))
+                        }
                       />
                       <PondButton
                         type="button"

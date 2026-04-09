@@ -13,9 +13,14 @@ function fmtPct(n: number, d: number): string {
 }
 
 function countNonEmptyAnswers(q: WhatIfQuestionAdmin): number {
-  return [q.answer_1, q.answer_2, q.answer_3, q.answer_4, q.answer_5, q.answer_6].filter(
-    (s) => (s ?? "").trim().length > 0,
-  ).length;
+  return [
+    q.answer_1,
+    q.answer_2,
+    q.answer_3,
+    q.answer_4,
+    q.answer_5,
+    q.answer_6,
+  ].filter((s) => (s ?? "").trim().length > 0).length;
 }
 
 type WhatIfQuestionAdminListMetaProps = {
@@ -25,7 +30,9 @@ type WhatIfQuestionAdminListMetaProps = {
 /**
  * Explains fields from WhatIfQuestion: sessions_used_count, total_responses, total_scores, total_skips.
  */
-export function WhatIfQuestionAdminListMeta({ q }: WhatIfQuestionAdminListMetaProps) {
+export function WhatIfQuestionAdminListMeta({
+  q,
+}: WhatIfQuestionAdminListMetaProps) {
   const draws = q.sessions_used_count;
   const votes = q.total_responses;
   const skips = q.total_skips;
@@ -33,9 +40,21 @@ export function WhatIfQuestionAdminListMeta({ q }: WhatIfQuestionAdminListMetaPr
   const filledOptions = countNonEmptyAnswers(q);
 
   return (
-    <Box borderWidth="1px" borderColor="border" borderRadius="md" px="3" py="2" bg="bg.muted">
+    <Box
+      borderWidth="1px"
+      borderColor="border"
+      borderRadius="md"
+      px="2"
+      py="2"
+      bg="bg.muted"
+    >
       <Stack gap="2">
-        <SimpleGrid columns={{ base: 1, sm: 2 }} gap="2" fontSize="sm" color="gray.800">
+        <SimpleGrid
+          columns={{ base: 1, sm: 2 }}
+          gap="2"
+          fontSize="sm"
+          color="gray.800"
+        >
           <Text>
             <Text as="span" fontWeight="semibold">
               Times drawn:{" "}
@@ -83,20 +102,26 @@ export function WhatIfQuestionAdminListMeta({ q }: WhatIfQuestionAdminListMetaPr
               Scoring density:{" "}
             </Text>
             {fmtPct(scoreEntries, votes)}
-            {votes > 0 ? ` (${fmtRatio(scoreEntries, votes, 2)} entries per vote)` : ""}
+            {votes > 0
+              ? ` (${fmtRatio(scoreEntries, votes, 2)} entries per vote)`
+              : ""}
           </Text>
         </SimpleGrid>
         <Stack gap="0.5" fontSize="xs" color="gray.600">
           <Text>
-            &quot;Player votes&quot; increments for each vote cast on this question. &quot;Scoring entries at
-            reveal&quot; adds the number of players who received points each time votes are revealed (not total
+            &quot;Player votes&quot; increments for each vote cast on this
+            question. &quot;Scoring entries at reveal&quot; adds the number of
+            players who received points each time votes are revealed (not total
             points).
           </Text>
           <Text>
             Proposed by user id: {q.proposed_by ?? "—"} · Created:{" "}
-            {q.created_at ? new Date(q.created_at).toLocaleString() : "—"} · Updated:{" "}
+            {q.created_at ? new Date(q.created_at).toLocaleString() : "—"} ·
+            Updated:{" "}
             {q.updated_at ? new Date(q.updated_at).toLocaleString() : "—"}
-            {q.deleted_at ? ` · Deleted: ${new Date(q.deleted_at).toLocaleString()}` : ""}
+            {q.deleted_at
+              ? ` · Deleted: ${new Date(q.deleted_at).toLocaleString()}`
+              : ""}
           </Text>
         </Stack>
       </Stack>

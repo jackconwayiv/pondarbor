@@ -1,30 +1,25 @@
-import { Avatar, Box, Card, Heading, HStack, Image, Input, Stack, Tabs, Tag, Text } from "@chakra-ui/react";
+import {
+  Avatar,
+  Box,
+  Card,
+  Heading,
+  HStack,
+  Image,
+  Input,
+  Stack,
+  Tabs,
+  Tag,
+  Text,
+} from "@chakra-ui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useParams } from "react-router";
-import NotFoundPage from "../NotFoundPage";
-import { useAppSession } from "../auth/AppSessionContext";
 import { AchievementSummaryCard } from "../achievements/AchievementSummaryCard";
-import { fetchPublicAchievementsByUser, fetchPublicAchievementsByUserId } from "../achievements/api";
+import {
+  fetchPublicAchievementsByUser,
+  fetchPublicAchievementsByUserId,
+} from "../achievements/api";
 import type { AchievementSummary } from "../achievements/types";
-import {
-  fetchPublicUserSummaryByEmail,
-  fetchPublicUserSummaryById,
-  friendProfileHeading,
-  type PublicUserSummary,
-} from "./publicUser";
-import PondButton from "../PondButton";
-import { fullBleedStackProps } from "../responsive";
-import {
-  APP_TEXT_SIZES,
-  MAPPED_CARD_PADDING_PROPS,
-  MAPPED_LIST_CARD_OUTER_PROPS,
-  MAPPED_LIST_STACK_GAP,
-} from "../theme/typography";
-import { fetchPublicQuotesByUser, fetchPublicQuotesByUserId } from "../quotes/api";
-import { quoteOwnerDisplayLabel } from "../quotes/ownerDisplay";
-import QuoteCardBase from "../quotes/QuoteCardBase";
-import type { Quote } from "../quotes/types";
-import { acceptFriend, ignoreFriend, requestFriendByUserId, unfriend } from "../friends/api";
+import { useAppSession } from "../auth/AppSessionContext";
 import {
   cancelBorrowRequest,
   createBorrowRequest,
@@ -33,7 +28,38 @@ import {
   markReturnedByBorrower,
 } from "../closet/api";
 import type { ClosetItem } from "../closet/types";
-import { validateClosetFreeText, validateIsoDateRequired } from "../forms/validation";
+import {
+  validateClosetFreeText,
+  validateIsoDateRequired,
+} from "../forms/validation";
+import {
+  acceptFriend,
+  ignoreFriend,
+  requestFriendByUserId,
+  unfriend,
+} from "../friends/api";
+import NotFoundPage from "../NotFoundPage";
+import PondButton from "../PondButton";
+import {
+  fetchPublicQuotesByUser,
+  fetchPublicQuotesByUserId,
+} from "../quotes/api";
+import { quoteOwnerDisplayLabel } from "../quotes/ownerDisplay";
+import QuoteCardBase from "../quotes/QuoteCardBase";
+import type { Quote } from "../quotes/types";
+import { fullBleedStackProps } from "../responsive";
+import {
+  APP_TEXT_SIZES,
+  MAPPED_CARD_PADDING_PROPS,
+  MAPPED_LIST_CARD_OUTER_PROPS,
+  MAPPED_LIST_STACK_GAP,
+} from "../theme/typography";
+import {
+  fetchPublicUserSummaryByEmail,
+  fetchPublicUserSummaryById,
+  friendProfileHeading,
+  type PublicUserSummary,
+} from "./publicUser";
 
 const PAGE_SIZE = 10;
 
@@ -46,7 +72,7 @@ const ENTRY_CARD_SHELL_PROPS = {
 
 const ENTRY_CARD_PROPS = {
   ...ENTRY_CARD_SHELL_PROPS,
-  p: { base: "4", md: "4" },
+  p: { base: "2", md: "2" },
 } as const;
 
 /** Same shell as [`PublicQuotesPage`](../quotes/PublicQuotesPage.tsx) / editable quote rows in Quotes. */
@@ -96,15 +122,25 @@ function FriendProfileClosetItemCard({
   returnBusyForItemId: number | null;
 }) {
   const imageUrl = (item.image_url ?? "").trim();
-  const isCurrentlyBorrowedByMe = item.current_holder_user.id !== item.owner_user.id;
-  const displayName = (user: ClosetItem["owner_user"] | ClosetItem["current_holder_user"]) =>
-    (user.display_name || "").trim() || user.email;
+  const isCurrentlyBorrowedByMe =
+    item.current_holder_user.id !== item.owner_user.id;
+  const displayName = (
+    user: ClosetItem["owner_user"] | ClosetItem["current_holder_user"],
+  ) => (user.display_name || "").trim() || user.email;
   const categoryTrimmed = (item.category ?? "").trim();
-  const tagParts = (item.tags ?? []).map((tag) => tag.trim()).filter((tag) => tag.length > 0);
+  const tagParts = (item.tags ?? [])
+    .map((tag) => tag.trim())
+    .filter((tag) => tag.length > 0);
   const tagsInline = (
     <>
       {tagParts.map((tag) => (
-        <Tag.Root key={`friend-profile-meta-${item.id}-${tag}`} size="sm" bg="gray.100" color="gray.600" borderWidth="0">
+        <Tag.Root
+          key={`friend-profile-meta-${item.id}-${tag}`}
+          size="sm"
+          bg="gray.100"
+          color="gray.600"
+          borderWidth="0"
+        >
           <Tag.Label>{tag}</Tag.Label>
         </Tag.Root>
       ))}
@@ -112,17 +148,32 @@ function FriendProfileClosetItemCard({
   );
   const openToggle = () => onToggleExpanded();
   const requestInputNeedBy = requestingItemId === item.id ? newNeedBy : "";
-  const requestInputMessage = requestingItemId === item.id ? newRequestMessage : "";
-  const canSubmitRequest = validateIsoDateRequired(requestInputNeedBy, "Need-by date") === null;
-  const requestEditorVisible = !isCurrentlyBorrowedByMe && (!item.my_pending_request || editingRequestItemId === item.id);
+  const requestInputMessage =
+    requestingItemId === item.id ? newRequestMessage : "";
+  const canSubmitRequest =
+    validateIsoDateRequired(requestInputNeedBy, "Need-by date") === null;
+  const requestEditorVisible =
+    !isCurrentlyBorrowedByMe &&
+    (!item.my_pending_request || editingRequestItemId === item.id);
   const requestActions = (
-    <Tabs.Root defaultValue="details" variant="plain" onClick={(e) => e.stopPropagation()}>
-      <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" w="100%" pt="0" pb="0">
+    <Tabs.Root
+      defaultValue="details"
+      variant="plain"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <Tabs.List
+        borderBottomWidth="1px"
+        borderColor="border"
+        gap="1"
+        w="100%"
+        pt="0"
+        pb="0"
+      >
         <Tabs.Trigger
           value="details"
           borderTopRadius="md"
           borderBottomRadius="0"
-          px="4"
+          px="2"
           py="2"
           fontWeight="medium"
           _selected={{ bg: "lilypad.solid", color: "black" }}
@@ -133,7 +184,7 @@ function FriendProfileClosetItemCard({
           value="request"
           borderTopRadius="md"
           borderBottomRadius="0"
-          px="4"
+          px="2"
           py="2"
           fontWeight="medium"
           _selected={{ bg: "lilypad.solid", color: "black" }}
@@ -141,15 +192,25 @@ function FriendProfileClosetItemCard({
           Request
         </Tabs.Trigger>
       </Tabs.List>
-      <Tabs.Content value="details" pt="3">
+      <Tabs.Content value="details" pt="2">
         <Stack gap="3">
           {categoryTrimmed ? (
-            <Text fontWeight="bold" color="sky.solid" fontSize={APP_TEXT_SIZES.body}>
+            <Text
+              fontWeight="bold"
+              color="sky.solid"
+              fontSize={APP_TEXT_SIZES.body}
+            >
               {categoryTrimmed}
             </Text>
           ) : null}
           {tagParts.length > 0 && (
-            <HStack flexWrap="wrap" gap="2" justify="flex-start" alignItems="flex-start" w="100%">
+            <HStack
+              flexWrap="wrap"
+              gap="2"
+              justify="flex-start"
+              alignItems="flex-start"
+              w="100%"
+            >
               {tagsInline}
             </HStack>
           )}
@@ -160,16 +221,18 @@ function FriendProfileClosetItemCard({
           ) : null}
         </Stack>
       </Tabs.Content>
-      <Tabs.Content value="request" pt="3">
+      <Tabs.Content value="request" pt="2">
         <Stack gap="2" onClick={(e) => e.stopPropagation()}>
           {isCurrentlyBorrowedByMe ? (
             <Stack gap="2" align="flex-start">
               <Text fontSize={APP_TEXT_SIZES.helper} color="orange.solid">
                 You are already borrowing this item.
               </Text>
-              {(item.active_loan_marked_returned_by_borrower || item.custody_marked_returned_by_holder) ? (
+              {item.active_loan_marked_returned_by_borrower ||
+              item.custody_marked_returned_by_holder ? (
                 <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-                  You marked this item as returned. Waiting for owner confirmation.
+                  You marked this item as returned. Waiting for owner
+                  confirmation.
                 </Text>
               ) : (
                 <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
@@ -193,7 +256,11 @@ function FriendProfileClosetItemCard({
           ) : null}
           {item.my_pending_request && editingRequestItemId !== item.id ? (
             <HStack>
-              <PondButton size="sm" colorPalette="lilypad" onClick={() => onStartEditRequest(item)}>
+              <PondButton
+                size="sm"
+                colorPalette="lilypad"
+                onClick={() => onStartEditRequest(item)}
+              >
                 Edit request
               </PondButton>
             </HStack>
@@ -208,7 +275,9 @@ function FriendProfileClosetItemCard({
               />
               <Input
                 value={requestInputMessage}
-                onChange={(e) => onRequestMessageChange(item.id, e.target.value)}
+                onChange={(e) =>
+                  onRequestMessageChange(item.id, e.target.value)
+                }
                 placeholder="Optional message"
               />
               <PondButton
@@ -220,8 +289,14 @@ function FriendProfileClosetItemCard({
                 {item.my_pending_request ? "Update request" : "Request borrow"}
               </PondButton>
               {item.my_pending_request ? (
-                <PondButton size="sm" colorPalette="nautical" onClick={() => onCancelRequest(item)}>
-                  {confirmCancelRequestItemId === item.id ? "Confirm cancel" : "Cancel request"}
+                <PondButton
+                  size="sm"
+                  colorPalette="nautical"
+                  onClick={() => onCancelRequest(item)}
+                >
+                  {confirmCancelRequestItemId === item.id
+                    ? "Confirm cancel"
+                    : "Cancel request"}
                 </PondButton>
               ) : null}
             </HStack>
@@ -265,7 +340,8 @@ function FriendProfileClosetItemCard({
             </HStack>
             {item.my_pending_request ? null : item.pending_request_count > 0 ? (
               <Text fontSize={APP_TEXT_SIZES.helper}>
-                {item.pending_request_count} outstanding {item.pending_request_count === 1 ? "request" : "requests"}
+                {item.pending_request_count} outstanding{" "}
+                {item.pending_request_count === 1 ? "request" : "requests"}
               </Text>
             ) : null}
             {item.current_holder_user.id !== item.owner_user.id ? (
@@ -281,7 +357,12 @@ function FriendProfileClosetItemCard({
     );
   }
   return (
-    <Box {...ENTRY_CARD_SHELL_PROPS} {...MAPPED_LIST_CARD_OUTER_PROPS} cursor="pointer" onClick={openToggle}>
+    <Box
+      {...ENTRY_CARD_SHELL_PROPS}
+      {...MAPPED_LIST_CARD_OUTER_PROPS}
+      cursor="pointer"
+      onClick={openToggle}
+    >
       <Stack gap="2">
         <HStack gap="1" flexWrap="wrap" align="flex-start">
           {item.my_pending_request ? (
@@ -293,7 +374,8 @@ function FriendProfileClosetItemCard({
         </HStack>
         {item.my_pending_request ? null : item.pending_request_count > 0 ? (
           <Text fontSize={APP_TEXT_SIZES.helper}>
-            {item.pending_request_count} outstanding {item.pending_request_count === 1 ? "request" : "requests"}
+            {item.pending_request_count} outstanding{" "}
+            {item.pending_request_count === 1 ? "request" : "requests"}
           </Text>
         ) : null}
         {item.current_holder_user.id !== item.owner_user.id ? (
@@ -310,7 +392,12 @@ function FriendProfileClosetItemCard({
 
 export default function FriendProfilePage() {
   const { userId, email } = useParams<{ userId?: string; email?: string }>();
-  const { isAuthenticated, isLoading: sessionLoading, sessionUser, getApiAccessToken } = useAppSession();
+  const {
+    isAuthenticated,
+    isLoading: sessionLoading,
+    sessionUser,
+    getApiAccessToken,
+  } = useAppSession();
 
   const lookup = useMemo(() => {
     if (userId !== undefined && userId !== "") {
@@ -338,15 +425,25 @@ export default function FriendProfilePage() {
   const [actionBusy, setActionBusy] = useState(false);
   const [confirmUnfriend, setConfirmUnfriend] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
-  const [profileTab, setProfileTab] = useState<"achievements" | "quotes" | "closet">("achievements");
+  const [profileTab, setProfileTab] = useState<
+    "achievements" | "quotes" | "closet"
+  >("achievements");
   const [reloadKey, setReloadKey] = useState(0);
-  const [expandedFriendItemId, setExpandedFriendItemId] = useState<number | null>(null);
+  const [expandedFriendItemId, setExpandedFriendItemId] = useState<
+    number | null
+  >(null);
   const [requestingItemId, setRequestingItemId] = useState<number | null>(null);
-  const [editingRequestItemId, setEditingRequestItemId] = useState<number | null>(null);
-  const [confirmCancelRequestItemId, setConfirmCancelRequestItemId] = useState<number | null>(null);
+  const [editingRequestItemId, setEditingRequestItemId] = useState<
+    number | null
+  >(null);
+  const [confirmCancelRequestItemId, setConfirmCancelRequestItemId] = useState<
+    number | null
+  >(null);
   const [newNeedBy, setNewNeedBy] = useState("");
   const [newRequestMessage, setNewRequestMessage] = useState("");
-  const [returnBusyForItemId, setReturnBusyForItemId] = useState<number | null>(null);
+  const [returnBusyForItemId, setReturnBusyForItemId] = useState<number | null>(
+    null,
+  );
   const unfriendBoxRef = useRef<HTMLDivElement | null>(null);
   const ownUserId = sessionUser?.user?.id ?? null;
 
@@ -384,20 +481,25 @@ export default function FriendProfilePage() {
             ? fetchPublicUserSummaryById(lookup.id, accessToken)
             : fetchPublicUserSummaryByEmail(lookup.email, accessToken),
         ]);
-        const closetOwnerId = lookup.kind === "id" ? lookup.id : (summaryData.id ?? null);
+        const closetOwnerId =
+          lookup.kind === "id" ? lookup.id : (summaryData.id ?? null);
         const closetRows =
           summaryData.can_view_full_profile && closetOwnerId !== null
-            ? await fetchFriendItemsByOwner(accessToken, closetOwnerId).catch(() => [] as ClosetItem[])
+            ? await fetchFriendItemsByOwner(accessToken, closetOwnerId).catch(
+                () => [] as ClosetItem[],
+              )
             : [];
         const sorted = [...quoteData].sort(
-          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+          (a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
         );
         setQuotes(sorted);
         setAchievements(achData);
         setClosetItems(closetRows);
         setSummary(summaryData);
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "Failed to load friend profile";
+        const message =
+          err instanceof Error ? err.message : "Failed to load friend profile";
         if (message.includes("(404)")) {
           setNotFound(true);
           setError(null);
@@ -441,8 +543,11 @@ export default function FriendProfilePage() {
   const visibleQuotes = quotes.slice(startIndex, endIndex);
   const hasAchievements = achievements.length > 0;
   const hasQuotes = quotes.length > 0;
-  const hasClosetTab = Boolean(summary?.can_view_full_profile) && closetItems.length > 0;
-  const leftmostVisibleTab = useMemo<"achievements" | "quotes" | "closet" | null>(() => {
+  const hasClosetTab =
+    Boolean(summary?.can_view_full_profile) && closetItems.length > 0;
+  const leftmostVisibleTab = useMemo<
+    "achievements" | "quotes" | "closet" | null
+  >(() => {
     if (hasAchievements) return "achievements";
     if (hasQuotes) return "quotes";
     if (hasClosetTab) return "closet";
@@ -458,12 +563,23 @@ export default function FriendProfilePage() {
     if (!tabVisible) {
       setProfileTab(leftmostVisibleTab);
     }
-  }, [profileTab, hasAchievements, hasQuotes, hasClosetTab, leftmostVisibleTab]);
+  }, [
+    profileTab,
+    hasAchievements,
+    hasQuotes,
+    hasClosetTab,
+    leftmostVisibleTab,
+  ]);
 
   if (sessionLoading) {
     return (
       <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
-        <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
+        <Box
+          flex="1"
+          bg="sky.solid"
+          px={{ base: "2", md: "2" }}
+          py={{ base: "2", md: "2" }}
+        >
           <Box
             maxW="4xl"
             w="100%"
@@ -474,7 +590,7 @@ export default function FriendProfilePage() {
             borderRadius="xl"
             overflow="hidden"
           >
-            <Stack gap={{ base: "4", md: "4" }} p={{ base: "4", md: "6" }}>
+            <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
               <Box {...ENTRY_CARD_PROPS}>
                 <Text fontSize={APP_TEXT_SIZES.body} color="fg">
                   Loading…
@@ -503,7 +619,13 @@ export default function FriendProfilePage() {
 
   const quotePaginationToolbar =
     total > PAGE_SIZE ? (
-      <Box bg="bg" borderWidth="1px" borderColor="border" borderRadius="xl" p={{ base: "4", md: "4" }}>
+      <Box
+        bg="bg"
+        borderWidth="1px"
+        borderColor="border"
+        borderRadius="xl"
+        p={{ base: "4", md: "4" }}
+      >
         <Stack gap="2">
           <Text fontSize={APP_TEXT_SIZES.helper}>
             Showing {startIndex + 1}-{endIndex} of {total}
@@ -525,7 +647,9 @@ export default function FriendProfilePage() {
               type="button"
               size="sm"
               colorPalette="nautical"
-              onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
+              onClick={() =>
+                setCurrentPage((p) => Math.min(totalPages - 1, p + 1))
+              }
               disabled={safePage >= totalPages - 1}
             >
               →
@@ -537,7 +661,12 @@ export default function FriendProfilePage() {
 
   return (
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
-      <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
+      <Box
+        flex="1"
+        bg="sky.solid"
+        px={{ base: "2", md: "2" }}
+        py={{ base: "2", md: "2" }}
+      >
         <Box
           maxW="4xl"
           w="100%"
@@ -548,32 +677,54 @@ export default function FriendProfilePage() {
           borderRadius="xl"
           overflow="hidden"
         >
-          <Stack gap={{ base: "4", md: "4" }} p={{ base: "4", md: "6" }}>
+          <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
             <Box {...ENTRY_CARD_PROPS}>
               {!summary?.can_view_full_profile ? (
                 <>
-                  <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold" mb="2">
+                  <Heading
+                    as="h1"
+                    size={{ base: "lg", md: "xl" }}
+                    fontWeight="bold"
+                    mb="2"
+                  >
                     {summary ? friendProfileHeading(summary) : "Friend profile"}
                   </Heading>
-                  <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
-                    Connect as friends to see public quotes and achievements, or respond to a pending request below.
+                  <Text
+                    fontSize={APP_TEXT_SIZES.body}
+                    lineHeight="tall"
+                    color="fg"
+                  >
+                    Connect as friends to see this user's profile, or respond to
+                    their friend request below.
                   </Text>
                   {summary?.email ? (
-                    <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600" mt="2">
+                    <Text
+                      fontSize={APP_TEXT_SIZES.helper}
+                      color="gray.600"
+                      mt="2"
+                    >
                       {summary.email}
                     </Text>
                   ) : null}
                 </>
               ) : summary ? (
                 <>
-                  <HStack justify="space-between" align="flex-start" w="100%" flexWrap="wrap" gap="3" mb="4">
+                  <HStack
+                    justify="space-between"
+                    align="flex-start"
+                    w="100%"
+                    flexWrap="wrap"
+                    gap="3"
+                    mb="4"
+                  >
                     <Stack gap="2" flex="1" minW="0">
-                      <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold">
+                      <Heading
+                        as="h1"
+                        size={{ base: "lg", md: "xl" }}
+                        fontWeight="bold"
+                      >
                         Friend Profile
                       </Heading>
-                      <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
-                        Public achievements and published quotes from this friend.
-                      </Text>
                     </Stack>
                     {lookup.kind === "id" ? (
                       <Box ref={unfriendBoxRef} flexShrink={0}>
@@ -594,7 +745,11 @@ export default function FriendProfilePage() {
                                 setConfirmUnfriend(false);
                                 setReloadKey((value) => value + 1);
                               } catch (err: unknown) {
-                                setActionError(err instanceof Error ? err.message : "Failed to unfriend.");
+                                setActionError(
+                                  err instanceof Error
+                                    ? err.message
+                                    : "Failed to unfriend.",
+                                );
                               } finally {
                                 setActionBusy(false);
                               }
@@ -613,7 +768,10 @@ export default function FriendProfilePage() {
                       <Avatar.Image src={summary.avatar_url || undefined} />
                     </Avatar.Root>
                     <Stack gap="0">
-                      <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.body}>
+                      <Text
+                        fontWeight="semibold"
+                        fontSize={APP_TEXT_SIZES.body}
+                      >
                         {summary.nickname}
                       </Text>
                       {summary.email ? (
@@ -644,7 +802,10 @@ export default function FriendProfilePage() {
               </Text>
             ) : null}
 
-            {!isLoading && !error && summary && !summary.can_view_full_profile ? (
+            {!isLoading &&
+            !error &&
+            summary &&
+            !summary.can_view_full_profile ? (
               <Box {...ENTRY_CARD_PROPS}>
                 <Stack gap="3" align="flex-start">
                   <HStack gap="4" align="flex-start">
@@ -674,7 +835,9 @@ export default function FriendProfilePage() {
                               setReloadKey((value) => value + 1);
                             } catch (err: unknown) {
                               setActionError(
-                                err instanceof Error ? err.message : "Failed to accept friend request.",
+                                err instanceof Error
+                                  ? err.message
+                                  : "Failed to accept friend request.",
                               );
                             } finally {
                               setActionBusy(false);
@@ -700,7 +863,9 @@ export default function FriendProfilePage() {
                               setReloadKey((value) => value + 1);
                             } catch (err: unknown) {
                               setActionError(
-                                err instanceof Error ? err.message : "Failed to reject friend request.",
+                                err instanceof Error
+                                  ? err.message
+                                  : "Failed to reject friend request.",
                               );
                             } finally {
                               setActionBusy(false);
@@ -712,7 +877,11 @@ export default function FriendProfilePage() {
                       </PondButton>
                     </HStack>
                   ) : summary.friendship_status === "outgoing_pending" ? (
-                    <Text fontSize={APP_TEXT_SIZES.body} fontWeight="medium" color="fg">
+                    <Text
+                      fontSize={APP_TEXT_SIZES.body}
+                      fontWeight="medium"
+                      color="fg"
+                    >
                       Friend request pending.
                     </Text>
                   ) : (
@@ -739,7 +908,9 @@ export default function FriendProfilePage() {
                             );
                           } catch (err: unknown) {
                             setActionError(
-                              err instanceof Error ? err.message : "Failed to send friend request.",
+                              err instanceof Error
+                                ? err.message
+                                : "Failed to send friend request.",
                             );
                           } finally {
                             setActionBusy(false);
@@ -751,12 +922,22 @@ export default function FriendProfilePage() {
                     </PondButton>
                   )}
                   {actionError ? (
-                    <Text role="alert" color="nautical.solid" fontWeight="medium" fontSize={APP_TEXT_SIZES.helper}>
+                    <Text
+                      role="alert"
+                      color="nautical.solid"
+                      fontWeight="medium"
+                      fontSize={APP_TEXT_SIZES.helper}
+                    >
                       {actionError}
                     </Text>
                   ) : null}
                   {actionSuccess ? (
-                    <Text role="status" fontSize={APP_TEXT_SIZES.helper} color="lilypad.solid" fontWeight="medium">
+                    <Text
+                      role="status"
+                      fontSize={APP_TEXT_SIZES.helper}
+                      color="lilypad.solid"
+                      fontWeight="medium"
+                    >
                       {actionSuccess}
                     </Text>
                   ) : null}
@@ -770,30 +951,52 @@ export default function FriendProfilePage() {
             (hasAchievements || hasQuotes || hasClosetTab) ? (
               <Box {...ENTRY_CARD_PROPS}>
                 {actionError ? (
-                  <Text role="alert" color="nautical.solid" fontWeight="medium" fontSize={APP_TEXT_SIZES.helper} mb="2">
+                  <Text
+                    role="alert"
+                    color="nautical.solid"
+                    fontWeight="medium"
+                    fontSize={APP_TEXT_SIZES.helper}
+                    mb="2"
+                  >
                     {actionError}
                   </Text>
                 ) : null}
                 <Tabs.Root
                   value={profileTab}
                   onValueChange={(details) =>
-                    setProfileTab(details.value as "achievements" | "quotes" | "closet")
+                    setProfileTab(
+                      details.value as "achievements" | "quotes" | "closet",
+                    )
                   }
                   variant="plain"
                 >
-                  <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" w="100%">
+                  <Tabs.List
+                    borderBottomWidth="1px"
+                    borderColor="border"
+                    gap="1"
+                    w="100%"
+                  >
                     {hasAchievements ? (
                       <Tabs.Trigger
                         value="achievements"
-                        bg={profileTab === "achievements" ? "lilypad.solid" : undefined}
-                        color={profileTab === "achievements" ? "black" : undefined}
+                        bg={
+                          profileTab === "achievements"
+                            ? "lilypad.solid"
+                            : undefined
+                        }
+                        color={
+                          profileTab === "achievements" ? "black" : undefined
+                        }
                         borderTopRadius="md"
                         borderBottomRadius="0"
-                        px="4"
+                        px="2"
                         py="2"
                         fontWeight="medium"
                         _hover={{
-                          bg: profileTab === "achievements" ? "lilypad.solid" : "transparent",
+                          bg:
+                            profileTab === "achievements"
+                              ? "lilypad.solid"
+                              : "transparent",
                         }}
                         _selected={{ bg: "lilypad.solid", color: "black" }}
                       >
@@ -803,15 +1006,20 @@ export default function FriendProfilePage() {
                     {hasQuotes ? (
                       <Tabs.Trigger
                         value="quotes"
-                        bg={profileTab === "quotes" ? "lilypad.solid" : undefined}
+                        bg={
+                          profileTab === "quotes" ? "lilypad.solid" : undefined
+                        }
                         color={profileTab === "quotes" ? "black" : undefined}
                         borderTopRadius="md"
                         borderBottomRadius="0"
-                        px="4"
+                        px="2"
                         py="2"
                         fontWeight="medium"
                         _hover={{
-                          bg: profileTab === "quotes" ? "lilypad.solid" : "transparent",
+                          bg:
+                            profileTab === "quotes"
+                              ? "lilypad.solid"
+                              : "transparent",
                         }}
                         _selected={{ bg: "lilypad.solid", color: "black" }}
                       >
@@ -821,15 +1029,20 @@ export default function FriendProfilePage() {
                     {hasClosetTab ? (
                       <Tabs.Trigger
                         value="closet"
-                        bg={profileTab === "closet" ? "lilypad.solid" : undefined}
+                        bg={
+                          profileTab === "closet" ? "lilypad.solid" : undefined
+                        }
                         color={profileTab === "closet" ? "black" : undefined}
                         borderTopRadius="md"
                         borderBottomRadius="0"
-                        px="4"
+                        px="2"
                         py="2"
                         fontWeight="medium"
                         _hover={{
-                          bg: profileTab === "closet" ? "lilypad.solid" : "transparent",
+                          bg:
+                            profileTab === "closet"
+                              ? "lilypad.solid"
+                              : "transparent",
                         }}
                         _selected={{ bg: "lilypad.solid", color: "black" }}
                       >
@@ -838,30 +1051,40 @@ export default function FriendProfilePage() {
                     ) : null}
                   </Tabs.List>
                   {hasAchievements ? (
-                    <Tabs.Content value="achievements" pt="3">
+                    <Tabs.Content value="achievements" pt="2">
                       <Stack gap={MAPPED_LIST_STACK_GAP}>
                         {achievements.map((a) => (
-                          <AchievementSummaryCard key={a.slug} achievement={a} />
+                          <AchievementSummaryCard
+                            key={a.slug}
+                            achievement={a}
+                          />
                         ))}
                       </Stack>
                     </Tabs.Content>
                   ) : null}
                   {hasQuotes ? (
-                    <Tabs.Content value="quotes" pt="3">
+                    <Tabs.Content value="quotes" pt="2">
                       <Stack gap={MAPPED_LIST_STACK_GAP}>
-                        {total > PAGE_SIZE && visibleQuotes.length === PAGE_SIZE ? quotePaginationToolbar : null}
+                        {total > PAGE_SIZE && visibleQuotes.length === PAGE_SIZE
+                          ? quotePaginationToolbar
+                          : null}
                         {visibleQuotes.map((quote) => (
-                          <FriendProfileQuoteCard key={quote.id} quote={quote} />
+                          <FriendProfileQuoteCard
+                            key={quote.id}
+                            quote={quote}
+                          />
                         ))}
                         {total > PAGE_SIZE ? quotePaginationToolbar : null}
                       </Stack>
                     </Tabs.Content>
                   ) : null}
                   {hasClosetTab ? (
-                    <Tabs.Content value="closet" pt="3">
+                    <Tabs.Content value="closet" pt="2">
                       <Stack gap={MAPPED_LIST_STACK_GAP}>
                         {closetItems.length === 0 ? (
-                          <Text fontSize={APP_TEXT_SIZES.helper}>No closet items listed yet.</Text>
+                          <Text fontSize={APP_TEXT_SIZES.helper}>
+                            No closet items listed yet.
+                          </Text>
                         ) : null}
                         {closetItems.map((item) => (
                           <FriendProfileClosetItemCard
@@ -869,18 +1092,26 @@ export default function FriendProfilePage() {
                             item={item}
                             isExpanded={expandedFriendItemId === item.id}
                             onToggleExpanded={() =>
-                              setExpandedFriendItemId((prev) => (prev === item.id ? null : item.id))
+                              setExpandedFriendItemId((prev) =>
+                                prev === item.id ? null : item.id,
+                              )
                             }
                             requestingItemId={requestingItemId}
                             editingRequestItemId={editingRequestItemId}
-                            confirmCancelRequestItemId={confirmCancelRequestItemId}
+                            confirmCancelRequestItemId={
+                              confirmCancelRequestItemId
+                            }
                             newNeedBy={newNeedBy}
                             newRequestMessage={newRequestMessage}
                             onStartEditRequest={(row) => {
                               setEditingRequestItemId(row.id);
                               setRequestingItemId(row.id);
-                              setNewNeedBy(row.my_pending_request?.date_needed_by ?? "");
-                              setNewRequestMessage(row.my_pending_request?.message ?? "");
+                              setNewNeedBy(
+                                row.my_pending_request?.date_needed_by ?? "",
+                              );
+                              setNewRequestMessage(
+                                row.my_pending_request?.message ?? "",
+                              );
                             }}
                             onNeedByChange={(itemId, value) => {
                               setRequestingItemId(itemId);
@@ -892,12 +1123,18 @@ export default function FriendProfilePage() {
                             }}
                             onSubmitRequest={(row) => {
                               void (async () => {
-                                const dateErr = validateIsoDateRequired(newNeedBy, "Need-by date");
+                                const dateErr = validateIsoDateRequired(
+                                  newNeedBy,
+                                  "Need-by date",
+                                );
                                 if (dateErr) {
                                   setActionError(dateErr);
                                   return;
                                 }
-                                const msgErr = validateClosetFreeText(newRequestMessage, "Message");
+                                const msgErr = validateClosetFreeText(
+                                  newRequestMessage,
+                                  "Message",
+                                );
                                 if (msgErr) {
                                   setActionError(msgErr);
                                   return;
@@ -911,7 +1148,9 @@ export default function FriendProfilePage() {
                                     message: newRequestMessage.trim(),
                                   });
                                   setActionSuccess(
-                                    row.my_pending_request ? "Borrow request updated." : "Borrow request sent.",
+                                    row.my_pending_request
+                                      ? "Borrow request updated."
+                                      : "Borrow request sent.",
                                   );
                                   setRequestingItemId(null);
                                   setEditingRequestItemId(null);
@@ -922,7 +1161,9 @@ export default function FriendProfilePage() {
                                   setReloadKey((value) => value + 1);
                                 } catch (err: unknown) {
                                   setActionError(
-                                    err instanceof Error ? err.message : "Failed to request borrow",
+                                    err instanceof Error
+                                      ? err.message
+                                      : "Failed to request borrow",
                                   );
                                 } finally {
                                   setActionBusy(false);
@@ -940,7 +1181,10 @@ export default function FriendProfilePage() {
                                 setActionBusy(true);
                                 try {
                                   const token = await getApiAccessToken();
-                                  await cancelBorrowRequest(token, row.my_pending_request.id);
+                                  await cancelBorrowRequest(
+                                    token,
+                                    row.my_pending_request.id,
+                                  );
                                   setActionSuccess("Borrow request canceled.");
                                   setRequestingItemId(null);
                                   setEditingRequestItemId(null);
@@ -951,7 +1195,9 @@ export default function FriendProfilePage() {
                                   setReloadKey((value) => value + 1);
                                 } catch (err: unknown) {
                                   setActionError(
-                                    err instanceof Error ? err.message : "Failed to cancel request",
+                                    err instanceof Error
+                                      ? err.message
+                                      : "Failed to cancel request",
                                   );
                                 } finally {
                                   setActionBusy(false);
@@ -965,15 +1211,25 @@ export default function FriendProfilePage() {
                                 try {
                                   const token = await getApiAccessToken();
                                   if (row.active_loan_id) {
-                                    await markReturnedByBorrower(token, row.active_loan_id);
+                                    await markReturnedByBorrower(
+                                      token,
+                                      row.active_loan_id,
+                                    );
                                   } else {
-                                    await markCustodyReturnedByHolder(token, row.id);
+                                    await markCustodyReturnedByHolder(
+                                      token,
+                                      row.id,
+                                    );
                                   }
-                                  setActionSuccess("Return noted. Waiting for owner confirmation.");
+                                  setActionSuccess(
+                                    "Return noted. Waiting for owner confirmation.",
+                                  );
                                   setReloadKey((value) => value + 1);
                                 } catch (err: unknown) {
                                   setActionError(
-                                    err instanceof Error ? err.message : "Failed to mark returned",
+                                    err instanceof Error
+                                      ? err.message
+                                      : "Failed to mark returned",
                                   );
                                 } finally {
                                   setReturnBusyForItemId(null);

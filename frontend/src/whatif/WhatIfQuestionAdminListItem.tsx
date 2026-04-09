@@ -39,8 +39,18 @@ export function WhatIfQuestionAdminListItem({
           : "";
 
   return (
-    <Box bg="white" borderWidth="1px" borderColor="border" borderRadius="xl" {...MAPPED_LIST_CARD_OUTER_PROPS}>
-      <Tabs.Root id={`whatif-admin-q-${q.id}`} defaultValue="question" variant="plain">
+    <Box
+      bg="white"
+      borderWidth="1px"
+      borderColor="border"
+      borderRadius="xl"
+      {...MAPPED_LIST_CARD_OUTER_PROPS}
+    >
+      <Tabs.Root
+        id={`whatif-admin-q-${q.id}`}
+        defaultValue="question"
+        variant="plain"
+      >
         <Tabs.List
           borderBottomWidth="1px"
           borderColor="border"
@@ -50,7 +60,7 @@ export function WhatIfQuestionAdminListItem({
         >
           <Tabs.Trigger
             value="question"
-            px="4"
+            px="2"
             py="2"
             fontWeight="medium"
             borderTopRadius="md"
@@ -61,7 +71,7 @@ export function WhatIfQuestionAdminListItem({
           </Tabs.Trigger>
           <Tabs.Trigger
             value="metadata"
-            px="4"
+            px="2"
             py="2"
             fontWeight="medium"
             borderTopRadius="md"
@@ -71,18 +81,28 @@ export function WhatIfQuestionAdminListItem({
             Metadata
           </Tabs.Trigger>
         </Tabs.List>
-        <Tabs.Content value="question" pt="3">
+        <Tabs.Content value="question" pt="2">
           <Stack gap="3">
             <Text whiteSpace="pre-wrap">
               {`#${q.id}${statusLabel ? ` ${statusLabel}` : ""}: ${q.prompt}`}
             </Text>
             <Text fontSize="sm" color="gray.700">
-              1) {q.answer_1} | 2) {q.answer_2} | 3) {q.answer_3} | 4) {q.answer_4} | 5) {q.answer_5} | 6){" "}
-              {q.answer_6}
+              1) {q.answer_1} | 2) {q.answer_2} | 3) {q.answer_3} | 4){" "}
+              {q.answer_4} | 5) {q.answer_5} | 6) {q.answer_6}
             </Text>
-            <HStack gap="3" flexWrap="wrap" justify="space-between" w="100%" align="center">
+            <HStack
+              gap="3"
+              flexWrap="wrap"
+              justify="space-between"
+              w="100%"
+              align="center"
+            >
               <HStack gap="2" flexWrap="wrap" align="center" flexShrink={0}>
-                <PondButton type="button" colorPalette="lilypad" onClick={() => onEdit(q)}>
+                <PondButton
+                  type="button"
+                  colorPalette="lilypad"
+                  onClick={() => onEdit(q)}
+                >
                   Edit
                 </PondButton>
                 {q.review_status === "pending" ? (
@@ -109,7 +129,14 @@ export function WhatIfQuestionAdminListItem({
                   </>
                 ) : null}
               </HStack>
-              <HStack gap="3" flexWrap="wrap" align="center" justify="flex-end" flexShrink={0} ml="auto">
+              <HStack
+                gap="3"
+                flexWrap="wrap"
+                align="center"
+                justify="flex-end"
+                flexShrink={0}
+                ml="auto"
+              >
                 <Switch.Root
                   checked={q.is_active}
                   onCheckedChange={(details) => {
@@ -131,7 +158,11 @@ export function WhatIfQuestionAdminListItem({
                 <PondButton
                   type="button"
                   colorPalette="orange"
-                  ref={confirmDeleteId === q.id ? confirmDeleteButtonRef : undefined}
+                  ref={
+                    confirmDeleteId === q.id
+                      ? confirmDeleteButtonRef
+                      : undefined
+                  }
                   onClick={() => onDeleteClick(q)}
                   loading={busy && confirmDeleteId === q.id}
                 >
@@ -141,7 +172,7 @@ export function WhatIfQuestionAdminListItem({
             </HStack>
           </Stack>
         </Tabs.Content>
-        <Tabs.Content value="metadata" pt="3">
+        <Tabs.Content value="metadata" pt="2">
           <WhatIfQuestionAdminListMeta q={q} />
         </Tabs.Content>
       </Tabs.Root>

@@ -22,11 +22,12 @@ const ENTRY_CARD_PROPS = {
   borderWidth: "1px",
   borderColor: "border",
   borderRadius: "xl",
-  p: { base: "4", md: "4" },
+  p: { base: "2", md: "2" },
 } as const;
 
 export default function FriendsPage() {
-  const { isAuthenticated, isLoading, sessionUser, getApiAccessToken } = useAppSession();
+  const { isAuthenticated, isLoading, sessionUser, getApiAccessToken } =
+    useAppSession();
   const [incoming, setIncoming] = useState<FriendUser[]>([]);
   const [outgoing, setOutgoing] = useState<FriendUser[]>([]);
   const [approved, setApproved] = useState<FriendUser[]>([]);
@@ -48,7 +49,9 @@ export default function FriendsPage() {
       setOutgoing(payload.outgoing_pending);
       setApproved(payload.approved_friends);
     } catch (err: unknown) {
-      setPageError(err instanceof Error ? err.message : "Failed to load friends list.");
+      setPageError(
+        err instanceof Error ? err.message : "Failed to load friends list.",
+      );
     } finally {
       setLoading(false);
     }
@@ -67,7 +70,11 @@ export default function FriendsPage() {
 
   useEffect(() => {
     const query = requestEmail.trim();
-    if (query.length < 2 || !isAuthenticated || !sessionUser?.user?.is_approved) {
+    if (
+      query.length < 2 ||
+      !isAuthenticated ||
+      !sessionUser?.user?.is_approved
+    ) {
       setSearchResults([]);
       return;
     }
@@ -83,14 +90,27 @@ export default function FriendsPage() {
       })();
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [requestEmail, isAuthenticated, sessionUser?.user?.is_approved, getApiAccessToken]);
+  }, [
+    requestEmail,
+    isAuthenticated,
+    sessionUser?.user?.is_approved,
+    getApiAccessToken,
+  ]);
 
-  const canSubmitRequest = useMemo(() => EMAIL_SHAPE.test(requestEmail.trim()), [requestEmail]);
+  const canSubmitRequest = useMemo(
+    () => EMAIL_SHAPE.test(requestEmail.trim()),
+    [requestEmail],
+  );
 
   if (isLoading) {
     return (
       <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
-        <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
+        <Box
+          flex="1"
+          bg="sky.solid"
+          px={{ base: "2", md: "2" }}
+          py={{ base: "2", md: "2" }}
+        >
           <Box
             maxW="4xl"
             w="100%"
@@ -101,7 +121,7 @@ export default function FriendsPage() {
             borderRadius="xl"
             overflow="hidden"
           >
-            <Stack gap={{ base: "4", md: "4" }} p={{ base: "4", md: "6" }}>
+            <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
               <Box {...ENTRY_CARD_PROPS}>
                 <Text fontSize={APP_TEXT_SIZES.body} color="fg">
                   Loading…
@@ -118,7 +138,12 @@ export default function FriendsPage() {
 
   return (
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
-      <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
+      <Box
+        flex="1"
+        bg="sky.solid"
+        px={{ base: "2", md: "2" }}
+        py={{ base: "2", md: "2" }}
+      >
         <Box
           maxW="4xl"
           w="100%"
@@ -129,7 +154,7 @@ export default function FriendsPage() {
           borderRadius="xl"
           overflow="hidden"
         >
-          <Stack gap={{ base: "4", md: "4" }} p={{ base: "4", md: "6" }}>
+          <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
             <Box {...ENTRY_CARD_PROPS}>
               <Stack gap="2">
                 <Text fontWeight="semibold">Request Friend</Text>
@@ -144,7 +169,10 @@ export default function FriendsPage() {
                     />
                     <datalist id="friend-request-email-suggestions">
                       {searchResults.map((row) => (
-                        <option key={`request-suggest-${row.id}`} value={row.email}>
+                        <option
+                          key={`request-suggest-${row.id}`}
+                          value={row.email}
+                        >
                           {row.nickname}
                         </option>
                       ))}
@@ -159,13 +187,18 @@ export default function FriendsPage() {
                         setRequestSuccess(null);
                         try {
                           const token = await getApiAccessToken();
-                          await requestFriendByEmail(token, requestEmail.trim().toLowerCase());
+                          await requestFriendByEmail(
+                            token,
+                            requestEmail.trim().toLowerCase(),
+                          );
                           setRequestEmail("");
                           setRequestSuccess("Friend request sent.");
                           await loadList();
                         } catch (err: unknown) {
                           setRequestError(
-                            err instanceof Error ? err.message : "Friend request failed.",
+                            err instanceof Error
+                              ? err.message
+                              : "Friend request failed.",
                           );
                         }
                       })();
@@ -229,7 +262,10 @@ export default function FriendsPage() {
                           </Avatar.Root>
                           <Stack gap="0">
                             <Text>{row.nickname}</Text>
-                            <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                            <Text
+                              fontSize={APP_TEXT_SIZES.helper}
+                              color="fg.muted"
+                            >
                               {row.email}
                             </Text>
                           </Stack>
@@ -249,7 +285,11 @@ export default function FriendsPage() {
                                 await acceptFriend(token, row.id);
                                 await loadList();
                               } catch (err: unknown) {
-                                setPageError(err instanceof Error ? err.message : "Could not accept.");
+                                setPageError(
+                                  err instanceof Error
+                                    ? err.message
+                                    : "Could not accept.",
+                                );
                               } finally {
                                 setActionUserId(null);
                               }
@@ -271,7 +311,11 @@ export default function FriendsPage() {
                                 await ignoreFriend(token, row.id);
                                 await loadList();
                               } catch (err: unknown) {
-                                setPageError(err instanceof Error ? err.message : "Could not ignore.");
+                                setPageError(
+                                  err instanceof Error
+                                    ? err.message
+                                    : "Could not ignore.",
+                                );
                               } finally {
                                 setActionUserId(null);
                               }
@@ -316,7 +360,9 @@ export default function FriendsPage() {
             <Box {...ENTRY_CARD_PROPS}>
               <Stack gap="3">
                 <Text fontWeight="bold">Friends</Text>
-                {approved.length === 0 ? <Text>No approved friends yet.</Text> : null}
+                {approved.length === 0 ? (
+                  <Text>No approved friends yet.</Text>
+                ) : null}
                 {approved.map((row) => (
                   <Link
                     key={`friend-${row.id}`}
@@ -345,4 +391,3 @@ export default function FriendsPage() {
     </Stack>
   );
 }
-

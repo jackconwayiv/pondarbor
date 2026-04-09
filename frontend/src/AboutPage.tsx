@@ -94,9 +94,9 @@ export default function AboutPage() {
               </Heading>
               <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
                 PondArbor is a hobby project developed by Pond Arbor Workshop to
-                collect various app ideas together in one place. It is shared
+                collect various app ideas together in one place. I'm sharing it
                 with friends and family as an opportunity to interact with each
-                other through the apps.
+                other through these silly apps.
               </Text>
             </Box>
 

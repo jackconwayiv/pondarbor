@@ -1,10 +1,16 @@
-import { Box, Flex, Heading, Stack, Text } from "@chakra-ui/react";
 import { useAuth0 } from "@auth0/auth0-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Box, Flex, Heading, Stack, Text } from "@chakra-ui/react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useNavigate } from "react-router";
 
-import { auth0LoginAuthorizationParams } from "../auth/auth0LoginParams";
 import { useAppSession } from "../auth/AppSessionContext";
+import { auth0LoginAuthorizationParams } from "../auth/auth0LoginParams";
 import PondButton from "../PondButton";
 import { fullBleedStackProps } from "../responsive";
 import { APP_TEXT_SIZES } from "../theme/typography";
@@ -15,13 +21,18 @@ const ENTRY_CARD_PROPS = {
   borderWidth: "1px",
   borderColor: "border",
   borderRadius: "xl",
-  p: { base: "4", md: "4" },
+  p: { base: "2", md: "2" },
 } as const;
 
 function ClickerEntryChrome({ children }: { children: ReactNode }) {
   return (
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
-      <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
+      <Box
+        flex="1"
+        bg="sky.solid"
+        px={{ base: "2", md: "2" }}
+        py={{ base: "2", md: "2" }}
+      >
         <Box
           maxW="4xl"
           w="100%"
@@ -64,7 +75,8 @@ export default function ClickerLobbyPage() {
       setConfirmReset(false);
     };
     document.addEventListener("pointerdown", onPointerDown, true);
-    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+    return () =>
+      document.removeEventListener("pointerdown", onPointerDown, true);
   }, [confirmReset]);
 
   const performReset = useCallback(async () => {
@@ -86,7 +98,12 @@ export default function ClickerLobbyPage() {
     return (
       <ClickerEntryChrome>
         <Box {...ENTRY_CARD_PROPS}>
-          <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold" mb="2">
+          <Heading
+            as="h1"
+            size={{ base: "lg", md: "xl" }}
+            fontWeight="bold"
+            mb="2"
+          >
             PondClicker
           </Heading>
           <Stack gap="3" align="flex-start">
@@ -115,7 +132,12 @@ export default function ClickerLobbyPage() {
     return (
       <ClickerEntryChrome>
         <Box {...ENTRY_CARD_PROPS}>
-          <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold" mb="2">
+          <Heading
+            as="h1"
+            size={{ base: "lg", md: "xl" }}
+            fontWeight="bold"
+            mb="2"
+          >
             PondClicker
           </Heading>
           <Text
@@ -125,7 +147,8 @@ export default function ClickerLobbyPage() {
             color="nautical.solid"
             fontWeight="medium"
           >
-            {sessionError ?? "Could not load your account session. Try signing in again."}
+            {sessionError ??
+              "Could not load your account session. Try signing in again."}
           </Text>
         </Box>
       </ClickerEntryChrome>
@@ -149,27 +172,51 @@ export default function ClickerLobbyPage() {
   return (
     <ClickerEntryChrome>
       <Box {...ENTRY_CARD_PROPS}>
-        <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold" mb="2">
+        <Heading
+          as="h1"
+          size={{ base: "lg", md: "xl" }}
+          fontWeight="bold"
+          mb="2"
+        >
           PondClicker
         </Heading>
         <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
-          Welcome! Tap the pond to earn energy, then spend it in the shop on upgrades that grow your pond. Pond stats
-          and biodiversity from your upgrades can unlock later purchases.
+          An idle game where you click the pond to earn energy, then spend it in
+          the shop on upgrades that grow your pond. Increase your pond's depth,
+          oxygen, fertility, and shelter to attract a wide diversity of pond
+          life! This game is optimized for play on a desktop computer.
         </Text>
         <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600" mt="3">
-          Progress is saved automatically while you play. Use Reset below only if you want to start a new pond from
-          scratch on this account.
+          Progress is saved automatically as you play. Use Reset below only if
+          you want to start a new pond from scratch on this account.
         </Text>
       </Box>
       <Box {...ENTRY_CARD_PROPS}>
         {resetError ? (
-          <Text role="alert" fontSize={APP_TEXT_SIZES.helper} color="nautical.solid" fontWeight="medium" mb="3">
+          <Text
+            role="alert"
+            fontSize={APP_TEXT_SIZES.helper}
+            color="nautical.solid"
+            fontWeight="medium"
+            mb="3"
+          >
             {resetError}
           </Text>
         ) : null}
-        <Flex w="full" justify="space-between" align="center" flexWrap="wrap" gap="2">
+        <Flex
+          w="full"
+          justify="space-between"
+          align="center"
+          flexWrap="wrap"
+          gap="2"
+        >
           <Flex gap="2" flexWrap="wrap" align="center">
-            <PondButton type="button" size="md" colorPalette="lilypad" onClick={() => navigate("/clicker/play")}>
+            <PondButton
+              type="button"
+              size="md"
+              colorPalette="lilypad"
+              onClick={() => navigate("/clicker/play")}
+            >
               Play game
             </PondButton>
             {isStaff ? (

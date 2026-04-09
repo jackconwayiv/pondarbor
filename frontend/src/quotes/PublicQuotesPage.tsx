@@ -1,8 +1,12 @@
 import { Box, Stack, Text } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
-import PondButton from "../PondButton";
-import { APP_TEXT_SIZES, MAPPED_LIST_CARD_OUTER_PROPS, MAPPED_LIST_STACK_GAP } from "../theme/typography";
 import { useAppSession } from "../auth/AppSessionContext";
+import PondButton from "../PondButton";
+import {
+  APP_TEXT_SIZES,
+  MAPPED_LIST_CARD_OUTER_PROPS,
+  MAPPED_LIST_STACK_GAP,
+} from "../theme/typography";
 import { fetchPublishedQuotes } from "./api";
 import { quoteOwnerDisplayLabel } from "./ownerDisplay";
 import QuoteCardBase from "./QuoteCardBase";
@@ -49,11 +53,16 @@ export default function PublicQuotesPage() {
         const token = await getApiAccessToken();
         const data = await fetchPublishedQuotes(token);
         const sorted = [...data].sort(
-          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+          (a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
         );
         setQuotes(sorted);
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : "Failed to load published quotes");
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load published quotes",
+        );
       } finally {
         setIsLoading(false);
       }
@@ -76,18 +85,25 @@ export default function PublicQuotesPage() {
         </Text>
       ) : null}
       {error ? (
-        <Text role="alert" color="nautical.solid" fontWeight="medium" fontSize={APP_TEXT_SIZES.helper}>
+        <Text
+          role="alert"
+          color="nautical.solid"
+          fontWeight="medium"
+          fontSize={APP_TEXT_SIZES.helper}
+        >
           {error}
         </Text>
       ) : null}
-      {!isLoading && !error && quotes.length === 0 ? <Text>No published quotes yet.</Text> : null}
+      {!isLoading && !error && quotes.length === 0 ? (
+        <Text>No published quotes yet.</Text>
+      ) : null}
       {total > PAGE_SIZE && visibleQuotes.length === PAGE_SIZE ? (
         <Box
           bg="bg"
           borderWidth="1px"
           borderColor="border"
           borderRadius="xl"
-          p={{ base: "4", md: "4" }}
+          p={{ base: "2", md: "2" }}
         >
           <Stack gap="2">
             <Text fontSize={APP_TEXT_SIZES.helper}>
@@ -110,7 +126,9 @@ export default function PublicQuotesPage() {
                 type="button"
                 size="sm"
                 colorPalette="nautical"
-                onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
+                onClick={() =>
+                  setCurrentPage((p) => Math.min(totalPages - 1, p + 1))
+                }
                 disabled={safePage >= totalPages - 1}
               >
                 →
@@ -128,7 +146,7 @@ export default function PublicQuotesPage() {
           borderWidth="1px"
           borderColor="border"
           borderRadius="xl"
-          p={{ base: "4", md: "4" }}
+          p={{ base: "2", md: "2" }}
         >
           <Stack gap="2">
             <Text fontSize={APP_TEXT_SIZES.helper}>
@@ -151,7 +169,9 @@ export default function PublicQuotesPage() {
                 type="button"
                 size="sm"
                 colorPalette="nautical"
-                onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
+                onClick={() =>
+                  setCurrentPage((p) => Math.min(totalPages - 1, p + 1))
+                }
                 disabled={safePage >= totalPages - 1}
               >
                 →

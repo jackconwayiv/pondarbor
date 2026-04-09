@@ -323,8 +323,8 @@ export default function ProfilePage() {
         <Box
           flex="1"
           bg="sky.solid"
-          px={{ base: "4", md: "6" }}
-          py={{ base: "5", md: "6" }}
+          px={{ base: "2", md: "2" }}
+          py={{ base: "2", md: "2" }}
         >
           <Box
             maxW="4xl"
@@ -475,8 +475,8 @@ export default function ProfilePage() {
         <Box
           flex="1"
           bg="sky.solid"
-          px={{ base: "4", md: "6" }}
-          py={{ base: "5", md: "6" }}
+          px={{ base: "2", md: "2" }}
+          py={{ base: "2", md: "2" }}
         >
           <Box
             maxW="4xl"
@@ -508,13 +508,13 @@ export default function ProfilePage() {
                   lineHeight="tall"
                   color="fg"
                 >
-                  Update how you appear to friends, your timezone and birthday,
-                  and check Account details.
+                  Update how you appear to friends in this app and set your
+                  timezone and birthday.
                 </Text>
               </Box>
             </Stack>
             <Tabs.List
-              px={{ base: "4", md: "6" }}
+              px={{ base: "2", md: "2" }}
               pt="0"
               pb="0"
               borderBottomWidth="1px"
@@ -528,7 +528,7 @@ export default function ProfilePage() {
                 color={activeTab === "profile" ? "black" : undefined}
                 borderTopRadius="md"
                 borderBottomRadius="0"
-                px="4"
+                px="2"
                 py="2"
                 fontWeight="medium"
                 _hover={{
@@ -544,7 +544,7 @@ export default function ProfilePage() {
                 color={activeTab === "account" ? "black" : undefined}
                 borderTopRadius="md"
                 borderBottomRadius="0"
-                px="4"
+                px="2"
                 py="2"
                 fontWeight="medium"
                 _hover={{

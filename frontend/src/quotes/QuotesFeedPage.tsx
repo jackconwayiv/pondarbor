@@ -7,16 +7,24 @@ import {
   NativeSelectField,
   NativeSelectRoot,
   Stack,
+  Tabs,
   Tag,
   Text,
   Textarea,
-  Tabs,
 } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useSearchParams } from "react-router";
-import { validateQuoteBody, validateQuoteLabelNames } from "../forms/validation";
 import PondButton from "../PondButton";
 import { useAppSession } from "../auth/AppSessionContext";
+import {
+  validateQuoteBody,
+  validateQuoteLabelNames,
+} from "../forms/validation";
+import {
+  fetchFriendsList,
+  searchFriends,
+  type FriendUser,
+} from "../friends/api";
 import { fullBleedStackProps, usePrefersCoarsePointer } from "../responsive";
 import {
   APP_TEXT_SIZES,
@@ -42,7 +50,6 @@ import type {
   QuoteLabel,
   QuotePatchPayload,
 } from "./types";
-import { fetchFriendsList, searchFriends, type FriendUser } from "../friends/api";
 
 const PAGE_SIZE = 10;
 
@@ -51,14 +58,15 @@ const ENTRY_CARD_PROPS = {
   borderWidth: "1px",
   borderColor: "border",
   borderRadius: "xl",
-  p: { base: "4", md: "4" },
+  p: { base: "2", md: "2" },
 } as const;
 
 type QuoteTab = "add" | "my" | "published";
 
 function parseQuoteTab(value: string | null, isApproved: boolean): QuoteTab {
   if (value === "my") return value;
-  if (value === "published" || value === "public") return isApproved ? "published" : "add";
+  if (value === "published" || value === "public")
+    return isApproved ? "published" : "add";
   return "add";
 }
 
@@ -66,7 +74,8 @@ const PLACEHOLDER_QUICK_BODY = "Paste or type a quote...";
 const PLACEHOLDER_TAGS = "poetry, lyrics, musings";
 const PLACEHOLDER_ATTRIBUTION_NAMES = "David Bowie, Cormac McCarthy";
 const PLACEHOLDER_ATTRIBUTION_EMAILS = "tag a friend by nickname or email";
-const PLACEHOLDER_BULK_IMPORT = "Paste quote text here...\n\nOne or more blank lines separate quotes.";
+const PLACEHOLDER_BULK_IMPORT =
+  "Paste quote text here...\n\nOne or more blank lines separate quotes.";
 
 function parseCsv(raw: string): string[] {
   return raw
@@ -139,7 +148,9 @@ function csvHasValue(existing: string, value: string): boolean {
 }
 
 function labelsToCsv(quote: Quote) {
-  const tagNames = quote.labels.filter((l) => l.kind === "tag").map((l) => l.name);
+  const tagNames = quote.labels
+    .filter((l) => l.kind === "tag")
+    .map((l) => l.name);
   const attributionNames = quote.labels
     .filter((l) => l.kind === "attribution" && !l.linked_user_id)
     .map((l) => l.name);
@@ -161,7 +172,9 @@ function mergeSuggestionLabels(
   const seen = new Set(
     existing
       .filter((l) => l.kind === kind)
-      .map((l) => `${l.kind}|${l.name.toLowerCase()}|${l.linked_user_id ?? ""}`),
+      .map(
+        (l) => `${l.kind}|${l.name.toLowerCase()}|${l.linked_user_id ?? ""}`,
+      ),
   );
   const next = [...existing];
   for (const label of incoming) {
@@ -213,8 +226,12 @@ function QuoteCard({
   const canEdit = viewerUserId != null && quote.owner.id === viewerUserId;
   const defaults = useMemo(() => labelsToCsv(quote), [quote]);
   const [editBody, setEditBody] = useState(quote.body);
-  const [editVisibility, setEditVisibility] = useState<"private" | "published">(quote.visibility);
-  const [editDateOfQuote, setEditDateOfQuote] = useState(quote.date_of_quote ?? "");
+  const [editVisibility, setEditVisibility] = useState<"private" | "published">(
+    quote.visibility,
+  );
+  const [editDateOfQuote, setEditDateOfQuote] = useState(
+    quote.date_of_quote ?? "",
+  );
   const [editTagsCsv, setEditTagsCsv] = useState(defaults.tags);
   const [editAttributionNamesCsv, setEditAttributionNamesCsv] = useState(
     defaults.attributionNames,
@@ -286,8 +303,13 @@ function QuoteCard({
     try {
       const labelsPayload: NonNullable<QuotePatchPayload["labels"]> = [
         ...tags.map((name) => ({ kind: "tag" as const, name })),
-        ...attributionNames.map((name) => ({ kind: "attribution" as const, name })),
-        ...attributionEmailsOrLinkedNames.map((v) => attributionInputFromValue(v, friendLookup)),
+        ...attributionNames.map((name) => ({
+          kind: "attribution" as const,
+          name,
+        })),
+        ...attributionEmailsOrLinkedNames.map((v) =>
+          attributionInputFromValue(v, friendLookup),
+        ),
       ];
 
       const payload: QuotePatchPayload = {
@@ -304,7 +326,9 @@ function QuoteCard({
       setCardSuccess("Saved.");
       onEndEditing();
     } catch (err: unknown) {
-      setEditError(err instanceof Error ? err.message : "Failed to update quote");
+      setEditError(
+        err instanceof Error ? err.message : "Failed to update quote",
+      );
     } finally {
       setSavingEdit(false);
     }
@@ -322,7 +346,9 @@ function QuoteCard({
       await deleteQuote(quote.id, token);
       onQuoteDeleted(quote.id);
     } catch (err: unknown) {
-      setDeleteError(err instanceof Error ? err.message : "Failed to delete quote");
+      setDeleteError(
+        err instanceof Error ? err.message : "Failed to delete quote",
+      );
     } finally {
       setDeleteBusy(false);
     }
@@ -366,278 +392,313 @@ function QuoteCard({
       {...MAPPED_LIST_CARD_OUTER_PROPS}
     >
       <QuoteCardBase
-      quote={quote}
-      ownerText={quoteOwnerDisplayLabel(quote.owner)}
-      ownerProfileUserId={quote.owner.id}
-      showOwnerAvatar={!canEdit}
-      suppressReadOnlyQuote={isEditing}
-      isClickable={canEdit}
-      onClick={() => {
-        if (!canEdit || isEditing) return;
-        onBeginEditing();
-      }}
-      rightMetaSlot={
-        canEdit && !isEditing ? (
-          <PondButton
-            size="sm"
-            colorPalette="lilypad"
-            disabled={deleteBusy}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (deleteBusy) return;
-              onBeginEditing();
-            }}
-          >
-            Edit
-          </PondButton>
-        ) : null
-      }
-      footerSlot={
-        canEdit ? (
-          <>
-            {cardSuccess ? (
-              <Text fontSize={APP_TEXT_SIZES.helper} color="lilypad.solid" fontWeight="medium">
-                {cardSuccess}
-              </Text>
-            ) : null}
-            {isEditing ? (
-              <Box
-                ref={editorContainerRef}
-                borderWidth="1px"
-                borderColor="border"
-                borderRadius="md"
-                p="3"
-                onMouseDownCapture={(event) => {
-                  if (!confirmDelete) return;
-                  const target = event.target as Node | null;
-                  if (!target) return;
-                  if (confirmDeleteButtonRef.current?.contains(target)) return;
-                  setConfirmDelete(false);
-                }}
-                onTouchStartCapture={(event) => {
-                  if (!confirmDelete) return;
-                  const target = event.target as Node | null;
-                  if (!target) return;
-                  if (confirmDeleteButtonRef.current?.contains(target)) return;
-                  setConfirmDelete(false);
-                }}
-              >
-                <Stack gap="3">
-                  <HStack align="center">
-                    <Text fontSize={APP_TEXT_SIZES.label} fontWeight="semibold">
-                      Quote Editor
-                    </Text>
-                    <Text
-                      fontSize={APP_TEXT_SIZES.helper}
-                      fontWeight="bold"
-                      color={isDirty ? "nautical.solid" : "transparent"}
-                    >
-                      Unsaved changes
-                    </Text>
-                  </HStack>
-                  {deleteError ? (
-                    <Text role="alert" color="nautical.solid" fontWeight="medium">
-                      {deleteError}
-                    </Text>
-                  ) : null}
-                  <Stack>
-                    <Text fontSize={APP_TEXT_SIZES.label}>Body</Text>
-                    <Textarea
-                      value={editBody}
-                      onChange={(e) => setEditBody(e.target.value)}
-                      minH="100px"
-                      placeholder={PLACEHOLDER_QUICK_BODY}
-                      {...PANEL_FIELD_PROPS}
-                    />
-                  </Stack>
-                  <HStack align="start">
-                    <Stack flex="1">
-                      <Text fontSize={APP_TEXT_SIZES.label}>Date of quotation</Text>
-                      <Input
-                        type="date"
-                        value={editDateOfQuote}
-                        onChange={(e) => setEditDateOfQuote(e.target.value)}
+        quote={quote}
+        ownerText={quoteOwnerDisplayLabel(quote.owner)}
+        ownerProfileUserId={quote.owner.id}
+        showOwnerAvatar={!canEdit}
+        suppressReadOnlyQuote={isEditing}
+        isClickable={canEdit}
+        onClick={() => {
+          if (!canEdit || isEditing) return;
+          onBeginEditing();
+        }}
+        rightMetaSlot={
+          canEdit && !isEditing ? (
+            <PondButton
+              size="sm"
+              colorPalette="lilypad"
+              disabled={deleteBusy}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (deleteBusy) return;
+                onBeginEditing();
+              }}
+            >
+              Edit
+            </PondButton>
+          ) : null
+        }
+        footerSlot={
+          canEdit ? (
+            <>
+              {cardSuccess ? (
+                <Text
+                  fontSize={APP_TEXT_SIZES.helper}
+                  color="lilypad.solid"
+                  fontWeight="medium"
+                >
+                  {cardSuccess}
+                </Text>
+              ) : null}
+              {isEditing ? (
+                <Box
+                  ref={editorContainerRef}
+                  borderWidth="1px"
+                  borderColor="border"
+                  borderRadius="md"
+                  p="2"
+                  onMouseDownCapture={(event) => {
+                    if (!confirmDelete) return;
+                    const target = event.target as Node | null;
+                    if (!target) return;
+                    if (confirmDeleteButtonRef.current?.contains(target))
+                      return;
+                    setConfirmDelete(false);
+                  }}
+                  onTouchStartCapture={(event) => {
+                    if (!confirmDelete) return;
+                    const target = event.target as Node | null;
+                    if (!target) return;
+                    if (confirmDeleteButtonRef.current?.contains(target))
+                      return;
+                    setConfirmDelete(false);
+                  }}
+                >
+                  <Stack gap="3">
+                    <HStack align="center">
+                      <Text
+                        fontSize={APP_TEXT_SIZES.label}
+                        fontWeight="semibold"
+                      >
+                        Quote Editor
+                      </Text>
+                      <Text
+                        fontSize={APP_TEXT_SIZES.helper}
+                        fontWeight="bold"
+                        color={isDirty ? "nautical.solid" : "transparent"}
+                      >
+                        Unsaved changes
+                      </Text>
+                    </HStack>
+                    {deleteError ? (
+                      <Text
+                        role="alert"
+                        color="nautical.solid"
+                        fontWeight="medium"
+                      >
+                        {deleteError}
+                      </Text>
+                    ) : null}
+                    <Stack>
+                      <Text fontSize={APP_TEXT_SIZES.label}>Body</Text>
+                      <Textarea
+                        value={editBody}
+                        onChange={(e) => setEditBody(e.target.value)}
+                        minH="100px"
+                        placeholder={PLACEHOLDER_QUICK_BODY}
                         {...PANEL_FIELD_PROPS}
                       />
                     </Stack>
-                    <Stack flex="1">
-                      <Text fontSize={APP_TEXT_SIZES.label}>Visibility</Text>
-                      <NativeSelectRoot>
-                        <NativeSelectField
-                          value={editVisibility}
-                          onChange={(e) =>
-                            setEditVisibility(
-                              (e.target.value as "private" | "published") || "private",
-                            )
-                          }
-                        >
-                          <option value="private">Private</option>
-                          <option value="published">Published</option>
-                        </NativeSelectField>
-                      </NativeSelectRoot>
+                    <HStack align="start">
+                      <Stack flex="1">
+                        <Text fontSize={APP_TEXT_SIZES.label}>
+                          Date of quotation
+                        </Text>
+                        <Input
+                          type="date"
+                          value={editDateOfQuote}
+                          onChange={(e) => setEditDateOfQuote(e.target.value)}
+                          {...PANEL_FIELD_PROPS}
+                        />
+                      </Stack>
+                      <Stack flex="1">
+                        <Text fontSize={APP_TEXT_SIZES.label}>Visibility</Text>
+                        <NativeSelectRoot>
+                          <NativeSelectField
+                            value={editVisibility}
+                            onChange={(e) =>
+                              setEditVisibility(
+                                (e.target.value as "private" | "published") ||
+                                  "private",
+                              )
+                            }
+                          >
+                            <option value="private">Private</option>
+                            <option value="published">Published</option>
+                          </NativeSelectField>
+                        </NativeSelectRoot>
+                      </Stack>
+                    </HStack>
+                    <Stack>
+                      <Text fontSize={APP_TEXT_SIZES.label}>
+                        Tags (comma-separated)
+                      </Text>
+                      <HStack flexWrap="wrap">
+                        {tagSuggestions.map((label) =>
+                          (() => {
+                            const isActive = csvHasValue(
+                              editTagsCsv,
+                              label.name,
+                            );
+                            return (
+                              <Tag.Root
+                                key={`edit-tag-${quote.id}-${label.id}`}
+                                size="sm"
+                                colorPalette="lilypad"
+                                variant={isActive ? "solid" : "outline"}
+                                bg={isActive ? undefined : "bg"}
+                                cursor="pointer"
+                                onClick={() =>
+                                  setEditTagsCsv((prev) =>
+                                    toggleCsvValue(prev, label.name),
+                                  )
+                                }
+                              >
+                                <Tag.Label>{label.name}</Tag.Label>
+                              </Tag.Root>
+                            );
+                          })(),
+                        )}
+                      </HStack>
+                      <Input
+                        value={editTagsCsv}
+                        onChange={(e) => setEditTagsCsv(e.target.value)}
+                        placeholder={PLACEHOLDER_TAGS}
+                        {...PANEL_FIELD_PROPS}
+                      />
                     </Stack>
-                  </HStack>
-                  <Stack>
-                    <Text fontSize={APP_TEXT_SIZES.label}>Tags (comma-separated)</Text>
-                    <HStack flexWrap="wrap">
-                      {tagSuggestions.map((label) => (
-                        (() => {
-                          const isActive = csvHasValue(editTagsCsv, label.name);
-                          return (
-                        <Tag.Root
-                          key={`edit-tag-${quote.id}-${label.id}`}
-                          size="sm"
-                          colorPalette="lilypad"
-                          variant={isActive ? "solid" : "outline"}
-                          bg={isActive ? undefined : "bg"}
-                          cursor="pointer"
-                          onClick={() =>
-                            setEditTagsCsv((prev) => toggleCsvValue(prev, label.name))
-                          }
-                        >
-                          <Tag.Label>{label.name}</Tag.Label>
-                        </Tag.Root>
-                          );
-                        })()
-                      ))}
-                    </HStack>
-                    <Input
-                      value={editTagsCsv}
-                      onChange={(e) => setEditTagsCsv(e.target.value)}
-                      placeholder={PLACEHOLDER_TAGS}
-                      {...PANEL_FIELD_PROPS}
-                    />
-                  </Stack>
-                  <Stack>
-                    <Text fontSize={APP_TEXT_SIZES.label}>Attributions by name (comma-separated)</Text>
-                    <HStack flexWrap="wrap">
-                      {attributionSuggestions
-                        .filter((l) => !l.linked_user_id)
-                        .map((label) => (
-                          (() => {
-                            const isActive = csvHasValue(
-                              editAttributionNamesCsv,
-                              label.name,
-                            );
-                            return (
-                          <Tag.Root
-                            key={`edit-attrib-name-${quote.id}-${label.id}`}
-                            size="sm"
-                            colorPalette="lilypad"
-                            variant={isActive ? "solid" : "outline"}
-                            bg={isActive ? undefined : "bg"}
-                            cursor="pointer"
-                            onClick={() =>
-                              setEditAttributionNamesCsv((prev) =>
-                                toggleCsvValue(prev, label.name),
-                              )
-                            }
-                          >
-                            <Tag.Label>{label.name}</Tag.Label>
-                          </Tag.Root>
-                            );
-                          })()
-                        ))}
-                    </HStack>
-                    <Input
-                      value={editAttributionNamesCsv}
-                      onChange={(e) => setEditAttributionNamesCsv(e.target.value)}
-                      placeholder={PLACEHOLDER_ATTRIBUTION_NAMES}
-                      {...PANEL_FIELD_PROPS}
-                    />
-                  </Stack>
-                  <Stack>
-                    <Text fontSize={APP_TEXT_SIZES.label}>Tag a friend (comma-separated)</Text>
-                    <HStack flexWrap="wrap">
-                      {attributionSuggestions
-                        .filter((l) => !!l.linked_user_id)
-                        .map((label) => (
-                          (() => {
-                            const isActive = csvHasValue(
-                              editAttributionEmailsCsv,
-                              label.name,
-                            );
-                            return (
-                          <Tag.Root
-                            key={`edit-attrib-email-${quote.id}-${label.id}`}
-                            size="sm"
-                            colorPalette="lilypad"
-                            variant={isActive ? "solid" : "outline"}
-                            bg={isActive ? undefined : "bg"}
-                            cursor="pointer"
-                            onClick={() =>
-                              setEditAttributionEmailsCsv((prev) =>
-                                toggleCsvValue(prev, label.name),
-                              )
-                            }
-                          >
-                            <Tag.Label>{label.name}</Tag.Label>
-                          </Tag.Root>
-                            );
-                          })()
-                        ))}
-                    </HStack>
-                    <Input
-                      value={editAttributionEmailsCsv}
-                      onChange={(e) => setEditAttributionEmailsCsv(e.target.value)}
-                      placeholder={PLACEHOLDER_ATTRIBUTION_EMAILS}
-                      {...PANEL_FIELD_PROPS}
-                    />
-                  </Stack>
-                  <HStack>
-                    <PondButton
-                      size="sm"
-                      colorPalette="lilypad"
-                      loading={savingEdit}
-                      disabled={savingEdit || deleteBusy}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void onSaveEdit();
-                      }}
-                    >
-                      Save
-                    </PondButton>
-                    <PondButton
-                      size="sm"
-                      colorPalette="sky"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        cancelEditing();
-                      }}
-                    >
-                      Cancel
-                    </PondButton>
-                    <Box flex="1" />
-                    <PondButton
-                      ref={confirmDeleteButtonRef}
-                      size="sm"
-                      colorPalette="nautical"
-                      loading={deleteBusy}
-                      disabled={savingEdit || deleteBusy}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (!confirmDelete) {
-                          setConfirmDelete(true);
-                          setDeleteError(null);
-                          return;
+                    <Stack>
+                      <Text fontSize={APP_TEXT_SIZES.label}>
+                        Attributions by name (comma-separated)
+                      </Text>
+                      <HStack flexWrap="wrap">
+                        {attributionSuggestions
+                          .filter((l) => !l.linked_user_id)
+                          .map((label) =>
+                            (() => {
+                              const isActive = csvHasValue(
+                                editAttributionNamesCsv,
+                                label.name,
+                              );
+                              return (
+                                <Tag.Root
+                                  key={`edit-attrib-name-${quote.id}-${label.id}`}
+                                  size="sm"
+                                  colorPalette="lilypad"
+                                  variant={isActive ? "solid" : "outline"}
+                                  bg={isActive ? undefined : "bg"}
+                                  cursor="pointer"
+                                  onClick={() =>
+                                    setEditAttributionNamesCsv((prev) =>
+                                      toggleCsvValue(prev, label.name),
+                                    )
+                                  }
+                                >
+                                  <Tag.Label>{label.name}</Tag.Label>
+                                </Tag.Root>
+                              );
+                            })(),
+                          )}
+                      </HStack>
+                      <Input
+                        value={editAttributionNamesCsv}
+                        onChange={(e) =>
+                          setEditAttributionNamesCsv(e.target.value)
                         }
-                        void onDelete();
-                      }}
-                    >
-                      {confirmDelete ? "Confirm Delete" : "Delete"}
-                    </PondButton>
-                  </HStack>
-                  {editError ? (
-                    <Text role="alert" color="nautical.solid" fontWeight="medium">
-                      {editError}
-                    </Text>
-                  ) : null}
-                </Stack>
-              </Box>
-            ) : null}
-          </>
-        ) : null
-      }
+                        placeholder={PLACEHOLDER_ATTRIBUTION_NAMES}
+                        {...PANEL_FIELD_PROPS}
+                      />
+                    </Stack>
+                    <Stack>
+                      <Text fontSize={APP_TEXT_SIZES.label}>
+                        Tag a friend (comma-separated)
+                      </Text>
+                      <HStack flexWrap="wrap">
+                        {attributionSuggestions
+                          .filter((l) => !!l.linked_user_id)
+                          .map((label) =>
+                            (() => {
+                              const isActive = csvHasValue(
+                                editAttributionEmailsCsv,
+                                label.name,
+                              );
+                              return (
+                                <Tag.Root
+                                  key={`edit-attrib-email-${quote.id}-${label.id}`}
+                                  size="sm"
+                                  colorPalette="lilypad"
+                                  variant={isActive ? "solid" : "outline"}
+                                  bg={isActive ? undefined : "bg"}
+                                  cursor="pointer"
+                                  onClick={() =>
+                                    setEditAttributionEmailsCsv((prev) =>
+                                      toggleCsvValue(prev, label.name),
+                                    )
+                                  }
+                                >
+                                  <Tag.Label>{label.name}</Tag.Label>
+                                </Tag.Root>
+                              );
+                            })(),
+                          )}
+                      </HStack>
+                      <Input
+                        value={editAttributionEmailsCsv}
+                        onChange={(e) =>
+                          setEditAttributionEmailsCsv(e.target.value)
+                        }
+                        placeholder={PLACEHOLDER_ATTRIBUTION_EMAILS}
+                        {...PANEL_FIELD_PROPS}
+                      />
+                    </Stack>
+                    <HStack>
+                      <PondButton
+                        size="sm"
+                        colorPalette="lilypad"
+                        loading={savingEdit}
+                        disabled={savingEdit || deleteBusy}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void onSaveEdit();
+                        }}
+                      >
+                        Save
+                      </PondButton>
+                      <PondButton
+                        size="sm"
+                        colorPalette="sky"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          cancelEditing();
+                        }}
+                      >
+                        Cancel
+                      </PondButton>
+                      <Box flex="1" />
+                      <PondButton
+                        ref={confirmDeleteButtonRef}
+                        size="sm"
+                        colorPalette="nautical"
+                        loading={deleteBusy}
+                        disabled={savingEdit || deleteBusy}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!confirmDelete) {
+                            setConfirmDelete(true);
+                            setDeleteError(null);
+                            return;
+                          }
+                          void onDelete();
+                        }}
+                      >
+                        {confirmDelete ? "Confirm Delete" : "Delete"}
+                      </PondButton>
+                    </HStack>
+                    {editError ? (
+                      <Text
+                        role="alert"
+                        color="nautical.solid"
+                        fontWeight="medium"
+                      >
+                        {editError}
+                      </Text>
+                    ) : null}
+                  </Stack>
+                </Box>
+              ) : null}
+            </>
+          ) : null
+        }
       />
     </Box>
   );
@@ -655,15 +716,21 @@ export default function QuotesFeedPage() {
   } = useAppSession();
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [body, setBody] = useState("");
-  const [visibility, setVisibility] = useState<"private" | "published">("private");
+  const [visibility, setVisibility] = useState<"private" | "published">(
+    "private",
+  );
   const [dateOfQuote, setDateOfQuote] = useState("");
   const [tagsCsv, setTagsCsv] = useState("");
   const [attributionNamesCsv, setAttributionNamesCsv] = useState("");
   const [attributionEmailsCsv, setAttributionEmailsCsv] = useState("");
   const [tagSuggestions, setTagSuggestions] = useState<QuoteLabel[]>([]);
-  const [attributionSuggestions, setAttributionSuggestions] = useState<QuoteLabel[]>([]);
+  const [attributionSuggestions, setAttributionSuggestions] = useState<
+    QuoteLabel[]
+  >([]);
   const [approvedFriends, setApprovedFriends] = useState<FriendUser[]>([]);
-  const [friendTagSuggestions, setFriendTagSuggestions] = useState<FriendUser[]>([]);
+  const [friendTagSuggestions, setFriendTagSuggestions] = useState<
+    FriendUser[]
+  >([]);
   const [loadingFeed, setLoadingFeed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -735,7 +802,8 @@ export default function QuotesFeedPage() {
       const token = await getApiAccessToken();
       const data = await fetchMyQuoteFeed(token);
       const sorted = [...data].sort(
-        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
       );
       setQuotes(sorted);
       setFeedReady(true);
@@ -747,7 +815,9 @@ export default function QuotesFeedPage() {
         return;
       }
       setFeedReady(false);
-      setError(err instanceof Error ? err.message : "Failed to load quote feed");
+      setError(
+        err instanceof Error ? err.message : "Failed to load quote feed",
+      );
     } finally {
       setLoadingFeed(false);
     }
@@ -782,7 +852,10 @@ export default function QuotesFeedPage() {
       return;
     }
     const terms = parseCsv(attributionEmailsCsv);
-    const query = terms.length > 0 ? (terms[terms.length - 1] ?? "").trim() : attributionEmailsCsv.trim();
+    const query =
+      terms.length > 0
+        ? (terms[terms.length - 1] ?? "").trim()
+        : attributionEmailsCsv.trim();
     if (query.length < 2) {
       setFriendTagSuggestions([]);
       return;
@@ -848,7 +921,9 @@ export default function QuotesFeedPage() {
           kind: "attribution" as const,
           name,
         })),
-        ...attributionEmailsOrLinkedNames.map((v) => attributionInputFromValue(v, friendLookup)),
+        ...attributionEmailsOrLinkedNames.map((v) =>
+          attributionInputFromValue(v, friendLookup),
+        ),
       ];
       if (labels.length > 0) {
         payload.labels = labels;
@@ -858,14 +933,17 @@ export default function QuotesFeedPage() {
       const newQuote = await createQuote(payload, token);
       setQuotes((prev) =>
         [newQuote, ...prev].sort(
-          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+          (a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
         ),
       );
       void refreshSession();
       setCurrentPage(0);
       // Avoid immediate protected follow-up fetches after save; use returned quote labels
       // to update suggestion chips optimistically.
-      setTagSuggestions((prev) => mergeSuggestionLabels(prev, newQuote.labels, "tag"));
+      setTagSuggestions((prev) =>
+        mergeSuggestionLabels(prev, newQuote.labels, "tag"),
+      );
       setAttributionSuggestions((prev) =>
         mergeSuggestionLabels(prev, newQuote.labels, "attribution"),
       );
@@ -904,14 +982,18 @@ export default function QuotesFeedPage() {
       if (result.quotes.length > 0) {
         setQuotes((prev) =>
           [...result.quotes, ...prev].sort(
-            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+            (a, b) =>
+              new Date(b.created_at).getTime() -
+              new Date(a.created_at).getTime(),
           ),
         );
       }
       setBulkImportText("");
       setCurrentPage(0);
       void refreshSession();
-      setSuccess(`Imported ${result.created_count} quote${result.created_count === 1 ? "" : "s"}.`);
+      setSuccess(
+        `Imported ${result.created_count} quote${result.created_count === 1 ? "" : "s"}.`,
+      );
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to import quotes");
     } finally {
@@ -934,7 +1016,8 @@ export default function QuotesFeedPage() {
       <Stack gap="4" maxW="4xl">
         <Text fontWeight="semibold">Reconnecting your API session…</Text>
         <Text fontSize={APP_TEXT_SIZES.helper}>
-          {sessionError || "You are authenticated, but the API session is not ready yet."}
+          {sessionError ||
+            "You are authenticated, but the API session is not ready yet."}
         </Text>
         <HStack>
           <PondButton colorPalette="sky" onClick={() => void refreshSession()}>
@@ -964,10 +1047,17 @@ export default function QuotesFeedPage() {
         flexDirection="column"
         flex="1"
         minH="full"
-        onValueChange={(details) => setActiveTab(parseQuoteTab(details.value, isApprovedUser))}
+        onValueChange={(details) =>
+          setActiveTab(parseQuoteTab(details.value, isApprovedUser))
+        }
         variant="plain"
       >
-        <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
+        <Box
+          flex="1"
+          bg="sky.solid"
+          px={{ base: "2", md: "2" }}
+          py={{ base: "2", md: "2" }}
+        >
           <Box
             maxW="4xl"
             w="100%"
@@ -980,21 +1070,31 @@ export default function QuotesFeedPage() {
           >
             <Stack
               gap={{ base: "4", md: "4" }}
-              px={{ base: "4", md: "6" }}
-              pt={{ base: "4", md: "4" }}
-              pb="3"
+              px={{ base: "2", md: "2" }}
+              pt={{ base: "2", md: "2" }}
+              pb="2"
             >
               <Box {...ENTRY_CARD_PROPS}>
-                <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold" mb="2">
+                <Heading
+                  as="h1"
+                  size={{ base: "lg", md: "xl" }}
+                  fontWeight="bold"
+                  mb="2"
+                >
                   Quotes
                 </Heading>
-                <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
-                  Capture lines you love with tags and attributions. Draft here and publish your faves for friends.
+                <Text
+                  fontSize={APP_TEXT_SIZES.body}
+                  lineHeight="tall"
+                  color="fg"
+                >
+                  Capture lines you love with tags and attributions. Draft here
+                  and publish your faves for friends.
                 </Text>
               </Box>
             </Stack>
             <Tabs.List
-              px={{ base: "4", md: "6" }}
+              px={{ base: "2", md: "2" }}
               pt="0"
               pb="0"
               borderBottomWidth="1px"
@@ -1008,10 +1108,12 @@ export default function QuotesFeedPage() {
                 color={activeTab === "add" ? "black" : undefined}
                 borderTopRadius="md"
                 borderBottomRadius="0"
-                px="4"
+                px="2"
                 py="2"
                 fontWeight="medium"
-                _hover={{ bg: activeTab === "add" ? "lilypad.solid" : "transparent" }}
+                _hover={{
+                  bg: activeTab === "add" ? "lilypad.solid" : "transparent",
+                }}
                 _selected={{ bg: "lilypad.solid", color: "black" }}
               >
                 Add Quote
@@ -1022,10 +1124,12 @@ export default function QuotesFeedPage() {
                 color={activeTab === "my" ? "black" : undefined}
                 borderTopRadius="md"
                 borderBottomRadius="0"
-                px="4"
+                px="2"
                 py="2"
                 fontWeight="medium"
-                _hover={{ bg: activeTab === "my" ? "lilypad.solid" : "transparent" }}
+                _hover={{
+                  bg: activeTab === "my" ? "lilypad.solid" : "transparent",
+                }}
                 _selected={{ bg: "lilypad.solid", color: "black" }}
               >
                 My Quotes
@@ -1037,29 +1141,48 @@ export default function QuotesFeedPage() {
                 color={activeTab === "published" ? "black" : undefined}
                 borderTopRadius="md"
                 borderBottomRadius="0"
-                px="4"
+                px="2"
                 py="2"
                 fontWeight="medium"
-                _hover={{ bg: activeTab === "published" ? "lilypad.solid" : "transparent" }}
+                _hover={{
+                  bg:
+                    activeTab === "published" ? "lilypad.solid" : "transparent",
+                }}
                 _selected={{ bg: "lilypad.solid", color: "black" }}
               >
                 Published Quotes
               </Tabs.Trigger>
             </Tabs.List>
 
-            <Tabs.Content value="add" p={{ base: "4", md: "6" }}>
-              <Tabs.Root value={addQuoteMode} onValueChange={(d) => setAddQuoteMode(d.value === "bulk" ? "bulk" : "single")} variant="plain">
-                <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" w="100%">
+            <Tabs.Content value="add" p={{ base: "2", md: "2" }}>
+              <Tabs.Root
+                value={addQuoteMode}
+                onValueChange={(d) =>
+                  setAddQuoteMode(d.value === "bulk" ? "bulk" : "single")
+                }
+                variant="plain"
+              >
+                <Tabs.List
+                  borderBottomWidth="1px"
+                  borderColor="border"
+                  gap="1"
+                  w="100%"
+                >
                   <Tabs.Trigger
                     value="single"
                     bg={addQuoteMode === "single" ? "lilypad.solid" : undefined}
                     color={addQuoteMode === "single" ? "black" : undefined}
                     borderTopRadius="md"
                     borderBottomRadius="0"
-                    px="4"
+                    px="2"
                     py="2"
                     fontWeight="medium"
-                    _hover={{ bg: addQuoteMode === "single" ? "lilypad.solid" : "transparent" }}
+                    _hover={{
+                      bg:
+                        addQuoteMode === "single"
+                          ? "lilypad.solid"
+                          : "transparent",
+                    }}
                     _selected={{ bg: "lilypad.solid", color: "black" }}
                   >
                     Single Quote
@@ -1070,16 +1193,21 @@ export default function QuotesFeedPage() {
                     color={addQuoteMode === "bulk" ? "black" : undefined}
                     borderTopRadius="md"
                     borderBottomRadius="0"
-                    px="4"
+                    px="2"
                     py="2"
                     fontWeight="medium"
-                    _hover={{ bg: addQuoteMode === "bulk" ? "lilypad.solid" : "transparent" }}
+                    _hover={{
+                      bg:
+                        addQuoteMode === "bulk"
+                          ? "lilypad.solid"
+                          : "transparent",
+                    }}
                     _selected={{ bg: "lilypad.solid", color: "black" }}
                   >
                     Bulk Import
                   </Tabs.Trigger>
                 </Tabs.List>
-                <Tabs.Content value="single" pt="3">
+                <Tabs.Content value="single" pt="2">
                   <Stack gap="3" pt="0">
                     <Textarea
                       value={body}
@@ -1090,7 +1218,9 @@ export default function QuotesFeedPage() {
                     />
                     <Collapsible.Root
                       open={isMoreDetailsOpen}
-                      onOpenChange={(details) => setIsMoreDetailsOpen(details.open)}
+                      onOpenChange={(details) =>
+                        setIsMoreDetailsOpen(details.open)
+                      }
                     >
                       <HStack justify="space-between" align="center">
                         <Collapsible.Trigger asChild>
@@ -1112,7 +1242,11 @@ export default function QuotesFeedPage() {
                           >
                             <Text
                               as="span"
-                              transform={isMoreDetailsOpen ? "rotate(90deg)" : "rotate(0deg)"}
+                              transform={
+                                isMoreDetailsOpen
+                                  ? "rotate(90deg)"
+                                  : "rotate(0deg)"
+                              }
                               transition="transform 0.15s ease"
                               lineHeight="1"
                             >
@@ -1135,7 +1269,9 @@ export default function QuotesFeedPage() {
                         <Stack mt="3" gap="3">
                           <HStack align="start">
                             <Stack flex="1">
-                              <Text fontSize={APP_TEXT_SIZES.label}>Date of quotation</Text>
+                              <Text fontSize={APP_TEXT_SIZES.label}>
+                                Date of quotation
+                              </Text>
                               <Input
                                 type="date"
                                 value={dateOfQuote}
@@ -1144,12 +1280,18 @@ export default function QuotesFeedPage() {
                               />
                             </Stack>
                             <Stack flex="1">
-                              <Text fontSize={APP_TEXT_SIZES.label}>Visibility</Text>
+                              <Text fontSize={APP_TEXT_SIZES.label}>
+                                Visibility
+                              </Text>
                               <NativeSelectRoot>
                                 <NativeSelectField
                                   value={visibility}
                                   onChange={(e) =>
-                                    setVisibility((e.target.value as "private" | "published") || "private")
+                                    setVisibility(
+                                      (e.target.value as
+                                        | "private"
+                                        | "published") || "private",
+                                    )
                                   }
                                 >
                                   <option value="private">Private</option>
@@ -1159,137 +1301,165 @@ export default function QuotesFeedPage() {
                             </Stack>
                           </HStack>
                           <Stack>
-                    <Text fontSize={APP_TEXT_SIZES.label}>Tags (comma-separated)</Text>
-                    <HStack flexWrap="wrap">
-                      {tagSuggestions.map((label) => (
-                        (() => {
-                          const isActive = csvHasValue(tagsCsv, label.name);
-                          return (
-                        <Tag.Root
-                          key={`new-tag-${label.id}`}
-                          size="sm"
-                          colorPalette="lilypad"
-                          variant={isActive ? "solid" : "outline"}
-                          bg={isActive ? undefined : "bg"}
-                          cursor="pointer"
-                          onClick={() => setTagsCsv((prev) => toggleCsvValue(prev, label.name))}
-                        >
-                          <Tag.Label>{label.name}</Tag.Label>
-                        </Tag.Root>
-                          );
-                        })()
-                      ))}
-                    </HStack>
-                    <Input
-                      value={tagsCsv}
-                      onChange={(e) => setTagsCsv(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key !== "Enter") return;
-                        e.preventDefault();
-                        setTagsCsv((prev) => normalizeCsv(prev));
-                      }}
-                      placeholder={PLACEHOLDER_TAGS}
-                      {...PANEL_FIELD_PROPS}
-                    />
-                  </Stack>
-                  <Stack>
-                    <Text fontSize={APP_TEXT_SIZES.label}>Attributions by name (comma-separated)</Text>
-                    <HStack flexWrap="wrap">
-                      {attributionSuggestions
-                        .filter((l) => !l.linked_user_id)
-                        .map((label) => (
-                          (() => {
-                            const isActive = csvHasValue(attributionNamesCsv, label.name);
-                            return (
-                          <Tag.Root
-                            key={`new-attrib-name-${label.id}`}
-                            size="sm"
-                            colorPalette="lilypad"
-                            variant={isActive ? "solid" : "outline"}
-                            bg={isActive ? undefined : "bg"}
-                            cursor="pointer"
-                            onClick={() =>
-                              setAttributionNamesCsv((prev) => toggleCsvValue(prev, label.name))
-                            }
-                          >
-                            <Tag.Label>{label.name}</Tag.Label>
-                          </Tag.Root>
-                            );
-                          })()
-                        ))}
-                    </HStack>
-                    <Input
-                      value={attributionNamesCsv}
-                      onChange={(e) => setAttributionNamesCsv(e.target.value)}
-                      placeholder={PLACEHOLDER_ATTRIBUTION_NAMES}
-                      {...PANEL_FIELD_PROPS}
-                    />
-                  </Stack>
-                  <Stack>
-                    <Text fontSize={APP_TEXT_SIZES.label}>
-                      Tag a friend (comma-separated)
-                    </Text>
-                    <HStack flexWrap="wrap">
-                      {attributionSuggestions
-                        .filter((l) => !!l.linked_user_id)
-                        .map((label) => (
-                          (() => {
-                            const isActive = csvHasValue(attributionEmailsCsv, label.name);
-                            return (
-                          <Tag.Root
-                            key={`new-attrib-email-${label.id}`}
-                            size="sm"
-                            colorPalette="lilypad"
-                            variant={isActive ? "solid" : "outline"}
-                            bg={isActive ? undefined : "bg"}
-                            cursor="pointer"
-                            onClick={() =>
-                              setAttributionEmailsCsv((prev) =>
-                                toggleCsvValue(prev, label.name),
-                              )
-                            }
-                          >
-                            <Tag.Label>{label.name}</Tag.Label>
-                          </Tag.Root>
-                            );
-                          })()
-                        ))}
-                    </HStack>
-                    <Input
-                      value={attributionEmailsCsv}
-                      onChange={(e) => setAttributionEmailsCsv(e.target.value)}
-                      placeholder={PLACEHOLDER_ATTRIBUTION_EMAILS}
-                      {...PANEL_FIELD_PROPS}
-                    />
-                    {friendTagSuggestions.length > 0 ? (
-                      <HStack flexWrap="wrap">
-                        {friendTagSuggestions.map((friend) => (
-                          <Tag.Root
-                            key={`friend-tag-suggest-${friend.id}`}
-                            size="sm"
-                            colorPalette="lilypad"
-                            variant="outline"
-                            bg="bg"
-                            cursor="pointer"
-                            onClick={() =>
-                              setAttributionEmailsCsv((prev) => appendCsvValue(prev, friend.email))
-                            }
-                          >
-                            <Tag.Label>{friend.nickname} ({friend.email})</Tag.Label>
-                          </Tag.Root>
-                        ))}
-                      </HStack>
-                    ) : null}
+                            <Text fontSize={APP_TEXT_SIZES.label}>
+                              Tags (comma-separated)
+                            </Text>
+                            <HStack flexWrap="wrap">
+                              {tagSuggestions.map((label) =>
+                                (() => {
+                                  const isActive = csvHasValue(
+                                    tagsCsv,
+                                    label.name,
+                                  );
+                                  return (
+                                    <Tag.Root
+                                      key={`new-tag-${label.id}`}
+                                      size="sm"
+                                      colorPalette="lilypad"
+                                      variant={isActive ? "solid" : "outline"}
+                                      bg={isActive ? undefined : "bg"}
+                                      cursor="pointer"
+                                      onClick={() =>
+                                        setTagsCsv((prev) =>
+                                          toggleCsvValue(prev, label.name),
+                                        )
+                                      }
+                                    >
+                                      <Tag.Label>{label.name}</Tag.Label>
+                                    </Tag.Root>
+                                  );
+                                })(),
+                              )}
+                            </HStack>
+                            <Input
+                              value={tagsCsv}
+                              onChange={(e) => setTagsCsv(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key !== "Enter") return;
+                                e.preventDefault();
+                                setTagsCsv((prev) => normalizeCsv(prev));
+                              }}
+                              placeholder={PLACEHOLDER_TAGS}
+                              {...PANEL_FIELD_PROPS}
+                            />
+                          </Stack>
+                          <Stack>
+                            <Text fontSize={APP_TEXT_SIZES.label}>
+                              Attributions by name (comma-separated)
+                            </Text>
+                            <HStack flexWrap="wrap">
+                              {attributionSuggestions
+                                .filter((l) => !l.linked_user_id)
+                                .map((label) =>
+                                  (() => {
+                                    const isActive = csvHasValue(
+                                      attributionNamesCsv,
+                                      label.name,
+                                    );
+                                    return (
+                                      <Tag.Root
+                                        key={`new-attrib-name-${label.id}`}
+                                        size="sm"
+                                        colorPalette="lilypad"
+                                        variant={isActive ? "solid" : "outline"}
+                                        bg={isActive ? undefined : "bg"}
+                                        cursor="pointer"
+                                        onClick={() =>
+                                          setAttributionNamesCsv((prev) =>
+                                            toggleCsvValue(prev, label.name),
+                                          )
+                                        }
+                                      >
+                                        <Tag.Label>{label.name}</Tag.Label>
+                                      </Tag.Root>
+                                    );
+                                  })(),
+                                )}
+                            </HStack>
+                            <Input
+                              value={attributionNamesCsv}
+                              onChange={(e) =>
+                                setAttributionNamesCsv(e.target.value)
+                              }
+                              placeholder={PLACEHOLDER_ATTRIBUTION_NAMES}
+                              {...PANEL_FIELD_PROPS}
+                            />
+                          </Stack>
+                          <Stack>
+                            <Text fontSize={APP_TEXT_SIZES.label}>
+                              Tag a friend (comma-separated)
+                            </Text>
+                            <HStack flexWrap="wrap">
+                              {attributionSuggestions
+                                .filter((l) => !!l.linked_user_id)
+                                .map((label) =>
+                                  (() => {
+                                    const isActive = csvHasValue(
+                                      attributionEmailsCsv,
+                                      label.name,
+                                    );
+                                    return (
+                                      <Tag.Root
+                                        key={`new-attrib-email-${label.id}`}
+                                        size="sm"
+                                        colorPalette="lilypad"
+                                        variant={isActive ? "solid" : "outline"}
+                                        bg={isActive ? undefined : "bg"}
+                                        cursor="pointer"
+                                        onClick={() =>
+                                          setAttributionEmailsCsv((prev) =>
+                                            toggleCsvValue(prev, label.name),
+                                          )
+                                        }
+                                      >
+                                        <Tag.Label>{label.name}</Tag.Label>
+                                      </Tag.Root>
+                                    );
+                                  })(),
+                                )}
+                            </HStack>
+                            <Input
+                              value={attributionEmailsCsv}
+                              onChange={(e) =>
+                                setAttributionEmailsCsv(e.target.value)
+                              }
+                              placeholder={PLACEHOLDER_ATTRIBUTION_EMAILS}
+                              {...PANEL_FIELD_PROPS}
+                            />
+                            {friendTagSuggestions.length > 0 ? (
+                              <HStack flexWrap="wrap">
+                                {friendTagSuggestions.map((friend) => (
+                                  <Tag.Root
+                                    key={`friend-tag-suggest-${friend.id}`}
+                                    size="sm"
+                                    colorPalette="lilypad"
+                                    variant="outline"
+                                    bg="bg"
+                                    cursor="pointer"
+                                    onClick={() =>
+                                      setAttributionEmailsCsv((prev) =>
+                                        appendCsvValue(prev, friend.email),
+                                      )
+                                    }
+                                  >
+                                    <Tag.Label>
+                                      {friend.nickname} ({friend.email})
+                                    </Tag.Label>
+                                  </Tag.Root>
+                                ))}
+                              </HStack>
+                            ) : null}
                           </Stack>
                         </Stack>
                       </Collapsible.Content>
                     </Collapsible.Root>
                   </Stack>
                 </Tabs.Content>
-                <Tabs.Content value="bulk" pt="3">
+                <Tabs.Content value="bulk" pt="2">
                   <Stack gap="3">
                     <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-                      Continuous non-empty lines are treated as one quote. One or more blank lines split quotes.
+                      Continuous non-empty lines are treated as one quote. One
+                      or more blank lines split quotes.
                     </Text>
                     <Textarea
                       value={bulkImportText}
@@ -1303,7 +1473,11 @@ export default function QuotesFeedPage() {
                         type="button"
                         colorPalette="lilypad"
                         loading={saving}
-                        disabled={saving || !isApprovedUser || bulkImportText.trim().length === 0}
+                        disabled={
+                          saving ||
+                          !isApprovedUser ||
+                          bulkImportText.trim().length === 0
+                        }
                         onClick={() => void onBulkImport()}
                       >
                         Import quotes
@@ -1318,133 +1492,156 @@ export default function QuotesFeedPage() {
                 </Text>
               ) : null}
               {success ? (
-                <Text fontSize={APP_TEXT_SIZES.helper} color="lilypad.solid" fontWeight="medium">
+                <Text
+                  fontSize={APP_TEXT_SIZES.helper}
+                  color="lilypad.solid"
+                  fontWeight="medium"
+                >
                   {success}
                 </Text>
               ) : null}
             </Tabs.Content>
 
-            <Tabs.Content value="my" p={{ base: "4", md: "6" }}>
-            <Stack gap={MAPPED_LIST_STACK_GAP} pt="0">
-              {loadingFeed ? <Text fontSize={APP_TEXT_SIZES.helper}>Loading…</Text> : null}
-              {quotes.length === 0 ? <Text>No quotes yet.</Text> : null}
-              {editingQuoteId == null &&
-              total > PAGE_SIZE &&
-              visibleQuotes.length === PAGE_SIZE ? (
-                <Box
-                  bg="bg"
-                  borderWidth="1px"
-                  borderColor="border"
-                  borderRadius="xl"
-                  p={{ base: "4", md: "4" }}
-                >
-                  <HStack justify="space-between" flexWrap="wrap" gap="3">
-                    <Text fontSize={APP_TEXT_SIZES.helper}>
-                      Showing {startIndex + 1}-{endIndex} of {total}
-                    </Text>
-                    <HStack>
-                      <PondButton
-                        type="button"
-                        size="sm"
-                        colorPalette="nautical"
-                        onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
-                        disabled={safePage === 0}
-                      >
-                        ←
-                      </PondButton>
+            <Tabs.Content value="my" p={{ base: "2", md: "2" }}>
+              <Stack gap={MAPPED_LIST_STACK_GAP} pt="0">
+                {loadingFeed ? (
+                  <Text fontSize={APP_TEXT_SIZES.helper}>Loading…</Text>
+                ) : null}
+                {quotes.length === 0 ? <Text>No quotes yet.</Text> : null}
+                {editingQuoteId == null &&
+                total > PAGE_SIZE &&
+                visibleQuotes.length === PAGE_SIZE ? (
+                  <Box
+                    bg="bg"
+                    borderWidth="1px"
+                    borderColor="border"
+                    borderRadius="xl"
+                    p={{ base: "2", md: "2" }}
+                  >
+                    <HStack justify="space-between" flexWrap="wrap" gap="3">
                       <Text fontSize={APP_TEXT_SIZES.helper}>
-                        Page {safePage + 1} / {totalPages}
+                        Showing {startIndex + 1}-{endIndex} of {total}
                       </Text>
-                      <PondButton
-                        type="button"
-                        size="sm"
-                        colorPalette="nautical"
-                        onClick={() =>
-                          setCurrentPage((p) => Math.min(totalPages - 1, p + 1))
-                        }
-                        disabled={safePage >= totalPages - 1}
-                      >
-                        →
-                      </PondButton>
+                      <HStack>
+                        <PondButton
+                          type="button"
+                          size="sm"
+                          colorPalette="nautical"
+                          onClick={() =>
+                            setCurrentPage((p) => Math.max(0, p - 1))
+                          }
+                          disabled={safePage === 0}
+                        >
+                          ←
+                        </PondButton>
+                        <Text fontSize={APP_TEXT_SIZES.helper}>
+                          Page {safePage + 1} / {totalPages}
+                        </Text>
+                        <PondButton
+                          type="button"
+                          size="sm"
+                          colorPalette="nautical"
+                          onClick={() =>
+                            setCurrentPage((p) =>
+                              Math.min(totalPages - 1, p + 1),
+                            )
+                          }
+                          disabled={safePage >= totalPages - 1}
+                        >
+                          →
+                        </PondButton>
+                      </HStack>
                     </HStack>
-                  </HStack>
-                </Box>
-              ) : null}
-              {visibleQuotesForRender.map((quote) => (
-                <QuoteCard
-                  key={quote.id}
-                  quote={quote}
-                  getApiAccessToken={getApiAccessToken}
-                  viewerUserId={sessionUser?.user.id ?? null}
-                  onSessionMayNeedRefresh={refreshSession}
-                  onSuggestionsChanged={loadSuggestions}
-                  tagSuggestions={tagSuggestions}
-                  attributionSuggestions={attributionSuggestions}
-                  friendLookup={friendLookup}
-                  onQuoteUpdated={(next) =>
-                    setQuotes((prev) => prev.map((q) => (q.id === next.id ? next : q)))
-                  }
-                  onQuoteDeleted={(quoteId) =>
-                    setQuotes((prev) => {
-                      setEditingQuoteId((current) => (current === quoteId ? null : current));
-                      return prev.filter((q) => q.id !== quoteId);
-                    })
-                  }
-                  isEditing={editingQuoteId === quote.id}
-                  onBeginEditing={() => setEditingQuoteId(quote.id)}
-                  onEndEditing={() =>
-                    setEditingQuoteId((current) => (current === quote.id ? null : current))
-                  }
-                />
-              ))}
-              {editingQuoteId == null && total > PAGE_SIZE ? (
-                <Box
-                  bg="bg"
-                  borderWidth="1px"
-                  borderColor="border"
-                  borderRadius="xl"
-                  p={{ base: "4", md: "4" }}
-                >
-                  <HStack justify="space-between" flexWrap="wrap" gap="3">
-                    <Text fontSize={APP_TEXT_SIZES.helper}>
-                      Showing {startIndex + 1}-{endIndex} of {total}
-                    </Text>
-                    <HStack>
-                      <PondButton
-                        type="button"
-                        size="sm"
-                        colorPalette="nautical"
-                        onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
-                        disabled={safePage === 0}
-                      >
-                        ←
-                      </PondButton>
+                  </Box>
+                ) : null}
+                {visibleQuotesForRender.map((quote) => (
+                  <QuoteCard
+                    key={quote.id}
+                    quote={quote}
+                    getApiAccessToken={getApiAccessToken}
+                    viewerUserId={sessionUser?.user.id ?? null}
+                    onSessionMayNeedRefresh={refreshSession}
+                    onSuggestionsChanged={loadSuggestions}
+                    tagSuggestions={tagSuggestions}
+                    attributionSuggestions={attributionSuggestions}
+                    friendLookup={friendLookup}
+                    onQuoteUpdated={(next) =>
+                      setQuotes((prev) =>
+                        prev.map((q) => (q.id === next.id ? next : q)),
+                      )
+                    }
+                    onQuoteDeleted={(quoteId) =>
+                      setQuotes((prev) => {
+                        setEditingQuoteId((current) =>
+                          current === quoteId ? null : current,
+                        );
+                        return prev.filter((q) => q.id !== quoteId);
+                      })
+                    }
+                    isEditing={editingQuoteId === quote.id}
+                    onBeginEditing={() => setEditingQuoteId(quote.id)}
+                    onEndEditing={() =>
+                      setEditingQuoteId((current) =>
+                        current === quote.id ? null : current,
+                      )
+                    }
+                  />
+                ))}
+                {editingQuoteId == null && total > PAGE_SIZE ? (
+                  <Box
+                    bg="bg"
+                    borderWidth="1px"
+                    borderColor="border"
+                    borderRadius="xl"
+                    p={{ base: "2", md: "2" }}
+                  >
+                    <HStack justify="space-between" flexWrap="wrap" gap="3">
                       <Text fontSize={APP_TEXT_SIZES.helper}>
-                        Page {safePage + 1} / {totalPages}
+                        Showing {startIndex + 1}-{endIndex} of {total}
                       </Text>
-                      <PondButton
-                        type="button"
-                        size="sm"
-                        colorPalette="nautical"
-                        onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
-                        disabled={safePage >= totalPages - 1}
-                      >
-                        →
-                      </PondButton>
+                      <HStack>
+                        <PondButton
+                          type="button"
+                          size="sm"
+                          colorPalette="nautical"
+                          onClick={() =>
+                            setCurrentPage((p) => Math.max(0, p - 1))
+                          }
+                          disabled={safePage === 0}
+                        >
+                          ←
+                        </PondButton>
+                        <Text fontSize={APP_TEXT_SIZES.helper}>
+                          Page {safePage + 1} / {totalPages}
+                        </Text>
+                        <PondButton
+                          type="button"
+                          size="sm"
+                          colorPalette="nautical"
+                          onClick={() =>
+                            setCurrentPage((p) =>
+                              Math.min(totalPages - 1, p + 1),
+                            )
+                          }
+                          disabled={safePage >= totalPages - 1}
+                        >
+                          →
+                        </PondButton>
+                      </HStack>
                     </HStack>
-                  </HStack>
-                </Box>
-              ) : null}
-            </Stack>
+                  </Box>
+                ) : null}
+              </Stack>
             </Tabs.Content>
 
-            <Tabs.Content value="published" p={{ base: "4", md: "6" }}>
+            <Tabs.Content value="published" p={{ base: "2", md: "2" }}>
               <Stack pt="0">
                 {sessionUser?.user?.is_approved ? (
                   <PublicQuotesPage />
                 ) : (
                   <Text color="orange.solid" fontWeight="medium">
-                    Published quotes are available after your account is approved.
+                    Published quotes are available after your account is
+                    approved.
                   </Text>
                 )}
               </Stack>
@@ -1455,4 +1652,3 @@ export default function QuotesFeedPage() {
     </Stack>
   );
 }
-

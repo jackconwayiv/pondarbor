@@ -1,6 +1,6 @@
 import { Link as ChakraLink, Stack, Text } from "@chakra-ui/react";
 import { useEffect } from "react";
-import { Link as RouterLink, Navigate, useNavigate } from "react-router";
+import { Navigate, Link as RouterLink, useNavigate } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
 import { fullBleedStackProps } from "../responsive";
 import StaffPage from "./StaffPage";
@@ -12,12 +12,22 @@ function StaffAccessDeniedShell() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const t = window.setTimeout(() => navigate("/", { replace: true }), STAFF_DENIED_REDIRECT_MS);
+    const t = window.setTimeout(
+      () => navigate("/", { replace: true }),
+      STAFF_DENIED_REDIRECT_MS,
+    );
     return () => window.clearTimeout(t);
   }, [navigate]);
 
   return (
-    <Stack flex="1" minH="full" gap="4" px={{ base: "4", md: "6" }} py={{ base: "6", md: "8" }} {...fullBleedStackProps}>
+    <Stack
+      flex="1"
+      minH="full"
+      gap="4"
+      px={{ base: "2", md: "2" }}
+      py={{ base: "2", md: "2" }}
+      {...fullBleedStackProps}
+    >
       <Text fontSize={{ base: "sm", md: "md" }}>Staff access required.</Text>
       <Text fontSize="sm" color="fg.muted">
         Redirecting you home in one second.
@@ -33,11 +43,23 @@ function StaffAccessDeniedShell() {
 
 /** Staff see StaffPage; authenticated non-staff see the denied shell then redirect. */
 export default function StaffRoute() {
-  const { isAuthenticated, isLoading, sessionUser, error: sessionError } = useAppSession();
+  const {
+    isAuthenticated,
+    isLoading,
+    sessionUser,
+    error: sessionError,
+  } = useAppSession();
 
   if (isLoading) {
     return (
-      <Stack flex="1" minH="full" gap="4" px={{ base: "4", md: "6" }} py={{ base: "6", md: "8" }} {...fullBleedStackProps}>
+      <Stack
+        flex="1"
+        minH="full"
+        gap="4"
+        px={{ base: "2", md: "2" }}
+        py={{ base: "2", md: "2" }}
+        {...fullBleedStackProps}
+      >
         <Text fontSize={{ base: "sm", md: "md" }}>Loading…</Text>
       </Stack>
     );
@@ -49,9 +71,17 @@ export default function StaffRoute() {
 
   if (!sessionUser) {
     return (
-      <Stack flex="1" minH="full" gap="4" px={{ base: "4", md: "6" }} py={{ base: "6", md: "8" }} {...fullBleedStackProps}>
+      <Stack
+        flex="1"
+        minH="full"
+        gap="4"
+        px={{ base: "2", md: "2" }}
+        py={{ base: "2", md: "2" }}
+        {...fullBleedStackProps}
+      >
         <Text fontSize={{ base: "sm", md: "md" }} color="fg">
-          {sessionError ?? "Could not load your account session. Try signing in again."}
+          {sessionError ??
+            "Could not load your account session. Try signing in again."}
         </Text>
       </Stack>
     );

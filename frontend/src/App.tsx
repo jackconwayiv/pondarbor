@@ -457,6 +457,7 @@ function App() {
         flex="1"
         w="full"
         bg="transparent"
+        // leave these at 4:
         px={{ base: "4", md: "4" }}
         py={{ base: "4", md: "4" }}
       >

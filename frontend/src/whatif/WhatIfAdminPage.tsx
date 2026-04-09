@@ -12,9 +12,12 @@ import {
 } from "@chakra-ui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { validateWhatIfBulkText, validateWhatIfQuestionDraft } from "../forms/validation";
-import PondButton from "../PondButton";
 import { useAppSession } from "../auth/AppSessionContext";
+import {
+  validateWhatIfBulkText,
+  validateWhatIfQuestionDraft,
+} from "../forms/validation";
+import PondButton from "../PondButton";
 import { MAPPED_LIST_STACK_GAP } from "../theme/typography";
 import {
   bulkImportWhatIfQuestions,
@@ -23,15 +26,15 @@ import {
   fetchWhatIfPendingCount,
   listWhatIfQuestions,
   patchWhatIfQuestion,
-  WHATIF_QUESTION_LIST_FILTERS,
   WHATIF_QUESTION_LIST_FILTER_LABELS,
+  WHATIF_QUESTION_LIST_FILTERS,
   type WhatIfQuestionAdmin,
   type WhatIfQuestionListFilter,
 } from "./api";
-import WhatIfShell from "./WhatIfShell";
+import { whatifInputProps } from "./whatifFieldProps";
 import { WhatIfQuestionAdminListItem } from "./WhatIfQuestionAdminListItem";
 import { WhatIfQuestionFields } from "./WhatIfQuestionFields";
-import { whatifInputProps } from "./whatifFieldProps";
+import WhatIfShell from "./WhatIfShell";
 
 type QuestionDraft = {
   prompt: string;
@@ -67,7 +70,8 @@ export default function WhatIfAdminPage() {
   const [activeTab, setActiveTab] = useState<"list" | "edit" | "bulk">("list");
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const confirmDeleteButtonRef = useRef<HTMLButtonElement | null>(null);
-  const [questionListFilter, setQuestionListFilter] = useState<WhatIfQuestionListFilter>("all");
+  const [questionListFilter, setQuestionListFilter] =
+    useState<WhatIfQuestionListFilter>("all");
   const [pendingCount, setPendingCount] = useState(0);
   const isStaff = !!sessionUser?.user?.is_staff;
 
@@ -183,7 +187,10 @@ export default function WhatIfAdminPage() {
     }
   }
 
-  async function setReviewStatus(id: number, review_status: "approved" | "rejected") {
+  async function setReviewStatus(
+    id: number,
+    review_status: "approved" | "rejected",
+  ) {
     if (!isAuthenticated || !isStaff) return;
     setBusy(true);
     setError(null);
@@ -263,9 +270,14 @@ export default function WhatIfAdminPage() {
         flex="1"
         minH="full"
       >
-        <Box bg="bg" px={{ base: "4", md: "6" }} py={{ base: "6", md: "6" }}>
+        <Box bg="bg" px={{ base: "2", md: "2" }} py={{ base: "2", md: "2" }}>
           <Stack gap="3" maxW="5xl">
-            <HStack justify="space-between" align="center" flexWrap="wrap" gap="3">
+            <HStack
+              justify="space-between"
+              align="center"
+              flexWrap="wrap"
+              gap="3"
+            >
               <Heading as="h1" size="lg">
                 Whatif Admin - Questions
               </Heading>
@@ -275,17 +287,25 @@ export default function WhatIfAdminPage() {
                 </Text>
               ) : null}
             </HStack>
-            <Tabs.List borderBottomWidth="1px" borderColor="border" gap="1" maxW="full" flexWrap="wrap">
+            <Tabs.List
+              borderBottomWidth="1px"
+              borderColor="border"
+              gap="1"
+              maxW="full"
+              flexWrap="wrap"
+            >
               <Tabs.Trigger
                 value="list"
                 bg={activeTab === "list" ? "lilypad.solid" : undefined}
                 color={activeTab === "list" ? "black" : undefined}
                 borderTopRadius="md"
                 borderBottomRadius="0"
-                px="4"
+                px="2"
                 py="2"
                 fontWeight="medium"
-                _hover={{ bg: activeTab === "list" ? "lilypad.solid" : "transparent" }}
+                _hover={{
+                  bg: activeTab === "list" ? "lilypad.solid" : "transparent",
+                }}
                 _selected={{ bg: "lilypad.solid", color: "black" }}
               >
                 Question List
@@ -296,10 +316,12 @@ export default function WhatIfAdminPage() {
                 color={activeTab === "edit" ? "black" : undefined}
                 borderTopRadius="md"
                 borderBottomRadius="0"
-                px="4"
+                px="2"
                 py="2"
                 fontWeight="medium"
-                _hover={{ bg: activeTab === "edit" ? "lilypad.solid" : "transparent" }}
+                _hover={{
+                  bg: activeTab === "edit" ? "lilypad.solid" : "transparent",
+                }}
                 _selected={{ bg: "lilypad.solid", color: "black" }}
               >
                 Add Question
@@ -310,10 +332,12 @@ export default function WhatIfAdminPage() {
                 color={activeTab === "bulk" ? "black" : undefined}
                 borderTopRadius="md"
                 borderBottomRadius="0"
-                px="4"
+                px="2"
                 py="2"
                 fontWeight="medium"
-                _hover={{ bg: activeTab === "bulk" ? "lilypad.solid" : "transparent" }}
+                _hover={{
+                  bg: activeTab === "bulk" ? "lilypad.solid" : "transparent",
+                }}
                 _selected={{ bg: "lilypad.solid", color: "black" }}
               >
                 Bulk Import
@@ -322,7 +346,12 @@ export default function WhatIfAdminPage() {
           </Stack>
         </Box>
 
-        <Box flex="1" bg="sky.solid" px={{ base: "4", md: "6" }} py={{ base: "5", md: "6" }}>
+        <Box
+          flex="1"
+          bg="sky.solid"
+          px={{ base: "2", md: "2" }}
+          py={{ base: "2", md: "2" }}
+        >
           <WhatIfShell maxW="5xl">
             <Tabs.Content value="list">
               <Stack gap="3">
@@ -332,7 +361,12 @@ export default function WhatIfAdminPage() {
                     <Text fontSize="sm" color="gray.700">
                       Search prompt
                     </Text>
-                    <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter by prompt..." {...whatifInputProps} />
+                    <Input
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="Filter by prompt..."
+                      {...whatifInputProps}
+                    />
                   </Stack>
                   <Stack gap="1" minW="160px">
                     <Text fontSize="sm" color="gray.700">
@@ -341,7 +375,11 @@ export default function WhatIfAdminPage() {
                     <NativeSelectRoot>
                       <NativeSelectField
                         value={questionListFilter}
-                        onChange={(e) => setQuestionListFilter(e.target.value as WhatIfQuestionListFilter)}
+                        onChange={(e) =>
+                          setQuestionListFilter(
+                            e.target.value as WhatIfQuestionListFilter,
+                          )
+                        }
                         {...whatifInputProps}
                       >
                         {WHATIF_QUESTION_LIST_FILTERS.map((v) => (
@@ -352,7 +390,12 @@ export default function WhatIfAdminPage() {
                       </NativeSelectField>
                     </NativeSelectRoot>
                   </Stack>
-                  <PondButton type="button" colorPalette="lilypad" onClick={() => void load()} loading={busy}>
+                  <PondButton
+                    type="button"
+                    colorPalette="lilypad"
+                    onClick={() => void load()}
+                    loading={busy}
+                  >
                     Refresh
                   </PondButton>
                 </HStack>
@@ -365,7 +408,9 @@ export default function WhatIfAdminPage() {
                       busy={busy}
                       confirmDeleteId={confirmDeleteId}
                       confirmDeleteButtonRef={confirmDeleteButtonRef}
-                      onToggleActive={(id, is_active) => void toggleQuestionActive(id, is_active)}
+                      onToggleActive={(id, is_active) =>
+                        void toggleQuestionActive(id, is_active)
+                      }
                       onEdit={(row) => {
                         beginEdit(row);
                         setActiveTab("edit");
@@ -387,14 +432,21 @@ export default function WhatIfAdminPage() {
 
             <Tabs.Content value="edit">
               <Stack gap="2">
-                <Text fontWeight="medium">{editingId == null ? "Create question" : `Edit question #${editingId}`}</Text>
+                <Text fontWeight="medium">
+                  {editingId == null
+                    ? "Create question"
+                    : `Edit question #${editingId}`}
+                </Text>
                 <Text fontSize="sm" color="gray.600">
-                  Type only the part after &quot;What if {"{subject}"}&quot; for the question. Answer rows show the
-                  number for you; only the answer text is saved.
+                  Type only the part after &quot;What if {"{subject}"}&quot; for
+                  the question. Answer rows show the number for you; only the
+                  answer text is saved.
                 </Text>
                 <WhatIfQuestionFields
                   draft={draft}
-                  onDraftChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
+                  onDraftChange={(patch) =>
+                    setDraft((d) => ({ ...d, ...patch }))
+                  }
                 />
                 <Text fontSize="sm" color="gray.600">
                   Note: is_active currently defaults true in this editor.
@@ -430,8 +482,20 @@ export default function WhatIfAdminPage() {
             <Tabs.Content value="bulk">
               <Stack gap="2">
                 <Text fontWeight="medium">Bulk import (numbered blocks)</Text>
-                <Textarea value={bulkText} onChange={(e) => setBulkText(e.target.value)} minH="240px" placeholder={exampleBulk} {...whatifInputProps} />
-                <PondButton type="button" colorPalette="lilypad" alignSelf="flex-end" onClick={() => void runBulkImport()} loading={busy}>
+                <Textarea
+                  value={bulkText}
+                  onChange={(e) => setBulkText(e.target.value)}
+                  minH="240px"
+                  placeholder={exampleBulk}
+                  {...whatifInputProps}
+                />
+                <PondButton
+                  type="button"
+                  colorPalette="lilypad"
+                  alignSelf="flex-end"
+                  onClick={() => void runBulkImport()}
+                  loading={busy}
+                >
                   Import questions
                 </PondButton>
               </Stack>

@@ -87,7 +87,7 @@ const ENTRY_CARD_PROPS = {
   borderWidth: "1px",
   borderColor: "border",
   borderRadius: "xl",
-  p: { base: "4", md: "4" },
+  p: { base: "2", md: "2" },
 } as const;
 
 function parseTab(value: string | null): ClosetTab {
@@ -830,7 +830,7 @@ function ItemCard({
               Custody
             </Tabs.Trigger>
           </Tabs.List>
-          <Tabs.Content value="details" pt="3">
+          <Tabs.Content value="details" pt="2">
             {isOwner && listKind !== "borrowed" ? (
               <Stack
                 gap="3"
@@ -1166,7 +1166,7 @@ function ItemCard({
               </Stack>
             )}
           </Tabs.Content>
-          <Tabs.Content value="custody" pt="3">
+          <Tabs.Content value="custody" pt="2">
             <Stack onClick={(event) => event.stopPropagation()}>
               {requestsOpen &&
               (isOwner || isHolder) &&
@@ -2073,7 +2073,7 @@ export default function ClosetPage() {
           py={{ base: "2", md: "2" }}
         >
           {loading ? (
-            <Box maxW="4xl" w="100%" mx="auto" pb="3">
+            <Box maxW="4xl" w="100%" mx="auto" pb="2">
               <Text fontSize={APP_TEXT_SIZES.body} fontWeight="medium">
                 Loading closet…
               </Text>
@@ -2093,7 +2093,7 @@ export default function ClosetPage() {
               gap={{ base: "4", md: "4" }}
               px={{ base: "2", md: "2" }}
               pt={{ base: "2", md: "2" }}
-              pb="3"
+              pb="2"
             >
               <Box {...ENTRY_CARD_PROPS}>
                 <Heading
@@ -2109,8 +2109,8 @@ export default function ClosetPage() {
                   lineHeight="tall"
                   color="fg"
                 >
-                  Share items you're willing to lend, browse friends' listings,
-                  manage borrow requests and returns.
+                  Share items you're willing to lend, browse your friends'
+                  listings, and manage borrow requests and returns.
                 </Text>
               </Box>
             </Stack>
@@ -2175,10 +2175,7 @@ export default function ClosetPage() {
 
             <Tabs.Content value="my" p={{ base: "2", md: "2" }}>
               <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP}>
-                <Text>
-                  Create and manage items you wish to allow your friends to
-                  borrow.
-                </Text>
+                <Text>Manage your own inventory.</Text>
 
                 {ownedNotice ? (
                   <HStack justify="flex-end">
@@ -3124,7 +3121,7 @@ export default function ClosetPage() {
                   flexWrap="wrap"
                 >
                   <Text>
-                    Click an item to see details and request to borrow.
+                    Click an item to see details and request to borrow it.
                   </Text>
                   {friendsNotice ? (
                     <Text
@@ -3415,7 +3412,7 @@ export default function ClosetPage() {
                               Request
                             </Tabs.Trigger>
                           </Tabs.List>
-                          <Tabs.Content value="details" pt="3">
+                          <Tabs.Content value="details" pt="2">
                             <Stack gap="3" align="stretch">
                               <Text
                                 fontSize={APP_TEXT_SIZES.helper}
@@ -3477,7 +3474,7 @@ export default function ClosetPage() {
                               )}
                             </Stack>
                           </Tabs.Content>
-                          <Tabs.Content value="request" pt="3">
+                          <Tabs.Content value="request" pt="2">
                             <Stack gap="2" onClick={(e) => e.stopPropagation()}>
                               {isCurrentlyBorrowedByMe ? (
                                 <Text
@@ -3812,7 +3809,9 @@ export default function ClosetPage() {
                   gap="3"
                   flexWrap="wrap"
                 >
-                  <Text>Browse uploaded images and delete stranded files.</Text>
+                  <Text>
+                    Browse your uploaded images and delete your unneeded files.
+                  </Text>
                   {imagesNotice ? (
                     <Text
                       color={

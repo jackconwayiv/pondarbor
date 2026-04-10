@@ -19,6 +19,14 @@ export type Meal = {
   updated_at: string;
 };
 
+/** Body for creating a meal (aligned with `createMeal` API). */
+export type MealCreateInput = {
+  title: string;
+  blurb?: string;
+  directions?: string;
+  ingredients?: { raw_line: string; amount?: string; unit?: string; name?: string }[];
+};
+
 export type TemplateSlot = {
   day_index: number;
   slot_index: number;

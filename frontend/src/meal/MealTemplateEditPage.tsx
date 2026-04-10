@@ -9,7 +9,8 @@ import {
   PANEL_ENTRY_CARD_BODY_PROPS,
   PANEL_ENTRY_CARD_PROPS,
 } from "../theme/typography";
-import { deleteTemplate, fetchMeals, fetchTemplate, patchTemplateGrid } from "./api";
+import { createMeal, deleteTemplate, fetchMeals, fetchTemplate, patchTemplateGrid } from "./api";
+import { MealEditorBackdropDismiss } from "./MealEditorBackdropDismiss";
 import MealSlotGrid from "./MealSlotGrid";
 import {
   MealApprovalRequired,
@@ -27,7 +28,6 @@ export default function MealTemplateEditPage() {
   const [template, setTemplate] = useState<MealPlanTemplate | null>(null);
   const [meals, setMeals] = useState<Meal[]>([]);
   const [err, setErr] = useState<string | null>(null);
-  const [saveBusy, setSaveBusy] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const confirmDeleteButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -46,6 +46,18 @@ export default function MealTemplateEditPage() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [sessionUser?.user.is_approved, tid, load]);
+
+  useEffect(() => {
+    if (!confirmDelete) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (confirmDeleteButtonRef.current?.contains(target)) return;
+      setConfirmDelete(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [confirmDelete]);
 
   if (isLoading) return <MealLoading />;
   if (!isAuthenticated) return <Navigate to="/" replace />;
@@ -75,18 +87,10 @@ export default function MealTemplateEditPage() {
   const weekStartsOn = sessionUser.profile.meal_week_starts_on ?? 0;
 
   return (
-    <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP}>
+    <MealEditorBackdropDismiss dismissTo="/meal/plan/templates" disabled={deleteBusy}>
+      <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP}>
       <Card.Root {...PANEL_ENTRY_CARD_PROPS} p="0">
-        <Card.Body
-          {...PANEL_ENTRY_CARD_BODY_PROPS}
-          onPointerDownCapture={(event) => {
-            if (!confirmDelete) return;
-            const target = event.target as Node | null;
-            if (!target) return;
-            if (confirmDeleteButtonRef.current?.contains(target)) return;
-            setConfirmDelete(false);
-          }}
-        >
+        <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
           <HStack
             justify="space-between"
             align="flex-start"
@@ -100,39 +104,10 @@ export default function MealTemplateEditPage() {
             </Heading>
             <HStack gap="2" flexShrink={0}>
               <PondButton
-                colorPalette="lilypad"
-                loading={saveBusy}
-                disabled={saveBusy || deleteBusy}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setConfirmDelete(false);
-                  void (async () => {
-                    setSaveBusy(true);
-                    try {
-                      const tok = await getApiAccessToken();
-                      const payload = template.slots.map((s) => ({
-                        day_index: s.day_index,
-                        slot_index: s.slot_index,
-                        meal_ids: s.meal_ids,
-                      }));
-                      await patchTemplateGrid(tok, template.id, payload);
-                      setErr(null);
-                      navigate("/meal/plans/templates");
-                    } catch (e) {
-                      setErr(e instanceof Error ? e.message : "Save failed");
-                    } finally {
-                      setSaveBusy(false);
-                    }
-                  })();
-                }}
-              >
-                Save
-              </PondButton>
-              <PondButton
                 ref={confirmDeleteButtonRef}
                 colorPalette="nautical"
                 loading={deleteBusy}
-                disabled={deleteBusy || saveBusy}
+                disabled={deleteBusy}
                 onClick={(e) => {
                   e.stopPropagation();
                   if (!confirmDelete) {
@@ -144,7 +119,7 @@ export default function MealTemplateEditPage() {
                     try {
                       const tok = await getApiAccessToken();
                       await deleteTemplate(tok, template.id);
-                      navigate("/meal/plans/templates");
+                      navigate("/meal/plan/templates");
                     } catch (e) {
                       setErr(e instanceof Error ? e.message : "Delete failed");
                     } finally {
@@ -163,21 +138,27 @@ export default function MealTemplateEditPage() {
             slotsPerDay={template.slots_per_day}
             weekStartsOn={weekStartsOn}
             meals={meals}
-            disabled={saveBusy || deleteBusy}
-            onCellChange={(dayIndex, slotIndex, mealIds) => {
-              void (async () => {
-                try {
-                  const tok = await getApiAccessToken();
-                  const next = await patchTemplateGrid(tok, template.id, [
-                    { day_index: dayIndex, slot_index: slotIndex, meal_ids: mealIds },
-                  ]);
-                  setTemplate(next);
-                  setErr(null);
-                  setConfirmDelete(false);
-                } catch (e) {
-                  setErr(e instanceof Error ? e.message : "Update failed");
-                }
-              })();
+            disabled={deleteBusy}
+            createMeal={async (body) => {
+              const tok = await getApiAccessToken();
+              return createMeal(tok, body);
+            }}
+            onMealCreated={(m) =>
+              setMeals((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]))
+            }
+            onCellChange={async (dayIndex, slotIndex, mealIds) => {
+              try {
+                const tok = await getApiAccessToken();
+                const next = await patchTemplateGrid(tok, template.id, [
+                  { day_index: dayIndex, slot_index: slotIndex, meal_ids: mealIds },
+                ]);
+                setTemplate(next);
+                setErr(null);
+                setConfirmDelete(false);
+              } catch (e) {
+                setErr(e instanceof Error ? e.message : "Update failed");
+                throw e;
+              }
             }}
           />
         </Card.Body>
@@ -188,6 +169,7 @@ export default function MealTemplateEditPage() {
           {err}
         </Text>
       ) : null}
-    </Stack>
+      </Stack>
+    </MealEditorBackdropDismiss>
   );
 }

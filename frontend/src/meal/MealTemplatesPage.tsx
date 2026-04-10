@@ -109,6 +109,7 @@ export default function MealTemplatesPage() {
                       const t = await getApiAccessToken();
                       await createTemplate(t, { name: name.trim(), slots_per_day: slotsPerDay });
                       setName("");
+                      setShowAddTemplate(false);
                       await refresh();
                       setErr(null);
                     } catch (e) {
@@ -134,7 +135,7 @@ export default function MealTemplatesPage() {
         {rows.map((t) => (
           <RouterLink
             key={t.id}
-            to={`/meal/plans/templates/${t.id}`}
+            to={`/meal/plan/templates/${t.id}`}
             aria-label={`Edit template ${t.name}`}
             style={{ textDecoration: "none", color: "inherit", display: "block" }}
           >

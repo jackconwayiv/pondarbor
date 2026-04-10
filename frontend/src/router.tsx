@@ -51,6 +51,7 @@ const MealTemplatesPage = lazy(() => import("./meal/MealTemplatesPage"));
 const MealTemplateEditPage = lazy(() => import("./meal/MealTemplateEditPage"));
 const MealTodayPage = lazy(() => import("./meal/MealTodayPage"));
 const MealWeeksPage = lazy(() => import("./meal/MealWeeksPage"));
+const MealWeekEditPage = lazy(() => import("./meal/MealWeekEditPage"));
 const MealInstanceDetailPage = lazy(() => import("./meal/MealInstanceDetailPage"));
 const MealGroceryPage = lazy(() => import("./meal/MealGroceryPage"));
 
@@ -105,23 +106,23 @@ export const router = sentryCreateBrowserRouter([
         children: [
           {
             index: true,
-            element: <Navigate to="/meal/plans/today" replace />,
+            element: <Navigate to="/meal/today" replace />,
           },
           {
             path: "recipes",
-            element: <Navigate to="/meal/menu/meals" replace />,
+            element: <Navigate to="/meal/plan/meals" replace />,
           },
           {
             path: "meals",
-            element: <Navigate to="/meal/menu/meals" replace />,
+            element: <Navigate to="/meal/plan/meals" replace />,
           },
           {
             path: "templates",
-            element: <Navigate to="/meal/plans/templates" replace />,
+            element: <Navigate to="/meal/plan/templates" replace />,
           },
           {
             path: "weeks",
-            element: <Navigate to="/meal/plans/today" replace />,
+            element: <Navigate to="/meal/plan/plans" replace />,
           },
           {
             path: "weeks/:id",
@@ -132,36 +133,36 @@ export const router = sentryCreateBrowserRouter([
             element: <LegacyRedirectPlansTemplateDetail />,
           },
           {
-            path: "plans",
+            path: "today",
+            element: lazyRouteElement(<MealTodayPage />),
+          },
+          {
+            path: "plan",
             children: [
               {
                 index: true,
-                element: <Navigate to="/meal/plans/today" replace />,
+                element: <Navigate to="/meal/plan/plans" replace />,
               },
-              { path: "today", element: lazyRouteElement(<MealTodayPage />) },
-              { path: "weeks", element: lazyRouteElement(<MealWeeksPage />) },
+              { path: "plans", element: lazyRouteElement(<MealWeeksPage />) },
+              { path: "plans/new", element: lazyRouteElement(<MealWeekEditPage />) },
               {
-                path: "weeks/:id",
+                path: "plans/:id",
                 element: lazyRouteElement(<MealInstanceDetailPage />),
               },
               { path: "templates", element: lazyRouteElement(<MealTemplatesPage />) },
-              {
-                path: "templates/:id",
-                element: lazyRouteElement(<MealTemplateEditPage />),
-              },
-            ],
-          },
-          {
-            path: "menu",
-            children: [
-              {
-                index: true,
-                element: <Navigate to="/meal/menu/meals" replace />,
-              },
-              { path: "meals/:id", element: lazyRouteElement(<MealMealDetailPage />) },
+              { path: "templates/:id", element: lazyRouteElement(<MealTemplateEditPage />) },
               { path: "meals", element: lazyRouteElement(<MealMealsPage />) },
+              { path: "meals/:id", element: lazyRouteElement(<MealMealDetailPage />) },
             ],
           },
+          { path: "plans/:tab", element: <Navigate to="/meal/plan/plans" replace /> },
+          { path: "plans/today", element: <Navigate to="/meal/today" replace /> },
+          { path: "plans/weeks", element: <Navigate to="/meal/plan/plans" replace /> },
+          { path: "plans/templates", element: <Navigate to="/meal/plan/templates" replace /> },
+          { path: "plans/weeks/:id", element: <LegacyRedirectPlansWeekDetail /> },
+          { path: "plans/templates/:id", element: <LegacyRedirectPlansTemplateDetail /> },
+          { path: "menu/meals", element: <Navigate to="/meal/plan/meals" replace /> },
+          { path: "menu/meals/:id", element: lazyRouteElement(<MealMealDetailPage />) },
           {
             path: "grocery",
             children: [

@@ -1,4 +1,4 @@
-import { Box, Table, Text } from "@chakra-ui/react";
+import { Box, Stack, Table, Text } from "@chakra-ui/react";
 import { APP_TEXT_SIZES, PANEL_NESTED_BLOCK_PROPS } from "../theme/typography";
 import { WEEKDAY_SHORT, dayColumnOrder, mealLabel } from "./mealLabels";
 import type { Meal } from "./types";
@@ -36,6 +36,8 @@ type MealReadonlyGridProps = {
   slotsPerDay: number;
   weekStartsOn: number;
   mealsById: Map<number, Meal>;
+  /** Omit inner border when the grid is the sole content inside a parent `Card`. */
+  embeddedInParentCard?: boolean;
 } & (
   | { headerMode: "dates"; weekStartIso: string }
   | { headerMode: "weekdays" }
@@ -46,27 +48,19 @@ type MealReadonlyGridProps = {
  * Use `headerMode="dates"` with a real `weekStartIso` for plan instances; `weekdays` for templates.
  */
 export function MealReadonlyGrid(props: MealReadonlyGridProps) {
-  const { slots, slotsPerDay, weekStartsOn, mealsById, headerMode } = props;
+  const { slots, slotsPerDay, weekStartsOn, mealsById, headerMode, embeddedInParentCard } = props;
+  const frameProps = embeddedInParentCard
+    ? { p: "2" as const, bg: "bg" as const, borderWidth: "0" as const, borderRadius: "0" as const }
+    : PANEL_NESTED_BLOCK_PROPS;
   const dayOrder = dayColumnOrder(weekStartsOn);
   const n = Math.max(1, slotsPerDay);
 
-  function labelForMealIds(mids: number[]): string {
-    if (mids.length === 0) return "—";
-    return mids
-      .map((mid) => {
-        const m = mealsById.get(mid);
-        return m ? mealLabel(m) : `Meal #${mid}`;
-      })
-      .join(" · ");
-  }
-
   return (
-    <Box {...PANEL_NESTED_BLOCK_PROPS} bg="bg">
+    <Box {...frameProps}>
       <Box overflowX="auto">
         <Table.Root size="sm" variant="line">
           <Table.Header>
             <Table.Row>
-              <Table.ColumnHeader w="14" fontSize={APP_TEXT_SIZES.meta} color="fg.muted" />
               {dayOrder.map((dayIndex) => (
                 <Table.ColumnHeader key={dayIndex} textAlign="center" px="1" maxW="32">
                   <Text
@@ -85,22 +79,42 @@ export function MealReadonlyGrid(props: MealReadonlyGridProps) {
         </Table.Header>
         <Table.Body>
           {Array.from({ length: n }, (_, slotIndex) => (
-            <Table.Row key={slotIndex}>
-              <Table.Cell fontSize={APP_TEXT_SIZES.meta} color="fg.muted" verticalAlign="top">
-                {slotIndex + 1}
-              </Table.Cell>
-              {dayOrder.map((dayIndex) => (
-                <Table.Cell key={dayIndex} px="1" py="2" verticalAlign="top" maxW="32">
-                  <Text
-                    fontSize={APP_TEXT_SIZES.helper}
-                    color="fg.muted"
-                    lineHeight="short"
-                    wordBreak="break-word"
-                  >
-                    {labelForMealIds(slotMealIds(slots, dayIndex, slotIndex))}
-                  </Text>
-                </Table.Cell>
-              ))}
+            <Table.Row key={slotIndex} _last={{ "& td": { borderBottom: "none" } }}>
+              {dayOrder.map((dayIndex) => {
+                const mids = slotMealIds(slots, dayIndex, slotIndex);
+                return (
+                  <Table.Cell key={dayIndex} px="1" py="2" verticalAlign="top" maxW="32">
+                    {mids.length === 0 ? (
+                      <Text
+                        fontSize={APP_TEXT_SIZES.helper}
+                        color="fg.muted"
+                        lineHeight="short"
+                        wordBreak="break-word"
+                      >
+                        —
+                      </Text>
+                    ) : (
+                      <Stack gap="1" w="100%" align="stretch">
+                        {mids.map((mid) => {
+                          const m = mealsById.get(mid);
+                          const label = m ? mealLabel(m) : `Meal #${mid}`;
+                          return (
+                            <Text
+                              key={mid}
+                              fontSize={APP_TEXT_SIZES.helper}
+                              color="fg.muted"
+                              lineHeight="short"
+                              wordBreak="break-word"
+                            >
+                              {label}
+                            </Text>
+                          );
+                        })}
+                      </Stack>
+                    )}
+                  </Table.Cell>
+                );
+              })}
             </Table.Row>
           ))}
         </Table.Body>

@@ -7,31 +7,24 @@ import {
   PANEL_ENTRY_CARD_PROPS,
 } from "../theme/typography";
 
-/** Outer tab: Plans | Meals | Grocery | Settings (URL segment for “Meals” is `menu`). */
+/** Outer tab: Today | Plan | Grocery | Settings. */
 const MEAL_OUTER_PATH = {
-  plans: "/meal/plans/today",
-  menu: "/meal/menu/meals",
+  today: "/meal/today",
+  plan: "/meal/plan/plans",
   grocery: "/meal/grocery",
   settings: "/meal/settings",
 } as const;
 
 type MealOuterTab = keyof typeof MEAL_OUTER_PATH;
 
-/** Inner tabs under Plans. */
-const MEAL_PLANS_INNER_PATH = {
-  today: "/meal/plans/today",
-  weeks: "/meal/plans/weeks",
-  templates: "/meal/plans/templates",
+/** Inner tabs under Plan. */
+const MEAL_PLAN_INNER_PATH = {
+  plans: "/meal/plan/plans",
+  templates: "/meal/plan/templates",
+  meals: "/meal/plan/meals",
 } as const;
 
-type MealPlansInnerTab = keyof typeof MEAL_PLANS_INNER_PATH;
-
-/** Inner tabs under Meals (outer `menu`). */
-const MEAL_MENU_INNER_PATH = {
-  meals: "/meal/menu/meals",
-} as const;
-
-type MealMenuInnerTab = keyof typeof MEAL_MENU_INNER_PATH;
+type MealPlanInnerTab = keyof typeof MEAL_PLAN_INNER_PATH;
 
 const MEAL_TAB_LIST_PROPS = {
   px: { base: "2", md: "2" } as const,
@@ -45,22 +38,17 @@ const MEAL_TAB_LIST_PROPS = {
 
 function mealOuterFromPathname(pathname: string): MealOuterTab {
   const p = pathname.replace(/\/$/, "") || "/";
-  if (p.startsWith("/meal/plans")) return "plans";
-  if (p.startsWith("/meal/menu")) return "menu";
+  if (p.startsWith("/meal/today")) return "today";
+  if (p.startsWith("/meal/plan")) return "plan";
   if (p.startsWith("/meal/grocery")) return "grocery";
   if (p.startsWith("/meal/settings")) return "settings";
-  return "plans";
-}
-
-function mealPlansInnerFromPathname(pathname: string): MealPlansInnerTab {
-  if (pathname.startsWith("/meal/plans/templates")) return "templates";
-  if (pathname.startsWith("/meal/plans/weeks")) return "weeks";
-  if (pathname.startsWith("/meal/plans/today")) return "today";
   return "today";
 }
 
-function mealMenuInnerFromPathname(_pathname: string): MealMenuInnerTab {
-  return "meals";
+function mealPlanInnerFromPathname(pathname: string): MealPlanInnerTab {
+  if (pathname.startsWith("/meal/plan/templates")) return "templates";
+  if (pathname.startsWith("/meal/plan/meals")) return "meals";
+  return "plans";
 }
 
 /** Same trigger props as `ClosetPage` main `Tabs.List` / `Tabs.Trigger` (Community Closet). */
@@ -87,13 +75,13 @@ export default function MealLayout() {
   const pathname = location.pathname;
 
   const outer = mealOuterFromPathname(pathname);
-  const plansInner = mealPlansInnerFromPathname(pathname);
-  const menuInner = mealMenuInnerFromPathname(pathname);
+  const planInner = mealPlanInnerFromPathname(pathname);
 
   return (
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
       <Box flex="1" bg="sky.solid" px={{ base: "2", md: "2" }} py={{ base: "2", md: "2" }}>
         <Box
+          data-meal-panel-content=""
           maxW="4xl"
           w="100%"
           mx="auto"
@@ -138,12 +126,12 @@ export default function MealLayout() {
               if (path) navigate(path);
             }}
           >
-            <Tabs.List {...MEAL_TAB_LIST_PROPS}>
-              <Tabs.Trigger {...mealTabTriggerProps(outer, "plans")}>
-                Plans
+            <Tabs.List {...MEAL_TAB_LIST_PROPS} data-meal-shell-tabs="">
+              <Tabs.Trigger {...mealTabTriggerProps(outer, "today")}>
+                Today
               </Tabs.Trigger>
-              <Tabs.Trigger {...mealTabTriggerProps(outer, "menu")}>
-                Meals
+              <Tabs.Trigger {...mealTabTriggerProps(outer, "plan")}>
+                Plan
               </Tabs.Trigger>
               <Tabs.Trigger {...mealTabTriggerProps(outer, "grocery")}>
                 Grocery
@@ -154,45 +142,25 @@ export default function MealLayout() {
             </Tabs.List>
           </Tabs.Root>
 
-          {outer === "plans" ? (
+          {outer === "plan" ? (
             <Box pt="2">
               <Tabs.Root
                 variant="plain"
-                value={plansInner}
+                value={planInner}
                 onValueChange={(details) => {
-                  const v = details.value as MealPlansInnerTab;
-                  const path = MEAL_PLANS_INNER_PATH[v];
+                  const v = details.value as MealPlanInnerTab;
+                  const path = MEAL_PLAN_INNER_PATH[v];
                   if (path) navigate(path);
                 }}
               >
-                <Tabs.List {...MEAL_TAB_LIST_PROPS}>
-                  <Tabs.Trigger {...mealTabTriggerProps(plansInner, "today")}>
-                    Today
+                <Tabs.List {...MEAL_TAB_LIST_PROPS} data-meal-shell-tabs="">
+                  <Tabs.Trigger {...mealTabTriggerProps(planInner, "plans")}>
+                    Weekly
                   </Tabs.Trigger>
-                  <Tabs.Trigger {...mealTabTriggerProps(plansInner, "weeks")}>
-                    Weeks
-                  </Tabs.Trigger>
-                  <Tabs.Trigger {...mealTabTriggerProps(plansInner, "templates")}>
+                  <Tabs.Trigger {...mealTabTriggerProps(planInner, "templates")}>
                     Templates
                   </Tabs.Trigger>
-                </Tabs.List>
-              </Tabs.Root>
-            </Box>
-          ) : null}
-
-          {outer === "menu" ? (
-            <Box pt="2">
-              <Tabs.Root
-                variant="plain"
-                value={menuInner}
-                onValueChange={(details) => {
-                  const v = details.value as MealMenuInnerTab;
-                  const path = MEAL_MENU_INNER_PATH[v];
-                  if (path) navigate(path);
-                }}
-              >
-                <Tabs.List {...MEAL_TAB_LIST_PROPS}>
-                  <Tabs.Trigger {...mealTabTriggerProps(menuInner, "meals")}>
+                  <Tabs.Trigger {...mealTabTriggerProps(planInner, "meals")}>
                     Meals
                   </Tabs.Trigger>
                 </Tabs.List>

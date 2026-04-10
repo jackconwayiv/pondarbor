@@ -23,10 +23,21 @@ function authHeaders(accessToken: string | null): Record<string, string> {
 async function parseApiError(response: Response): Promise<string> {
   const text = await response.text();
   try {
-    const parsed = JSON.parse(text) as { detail?: string };
+    const parsed = JSON.parse(text) as Record<string, unknown>;
     if (typeof parsed.detail === "string" && parsed.detail.trim()) {
       return parsed.detail;
     }
+    const parts: string[] = [];
+    for (const v of Object.values(parsed)) {
+      if (typeof v === "string" && v.trim()) {
+        parts.push(v);
+      } else if (Array.isArray(v)) {
+        for (const item of v) {
+          if (typeof item === "string" && item.trim()) parts.push(item);
+        }
+      }
+    }
+    if (parts.length) return parts.join(" ");
   } catch {
     // ignore
   }

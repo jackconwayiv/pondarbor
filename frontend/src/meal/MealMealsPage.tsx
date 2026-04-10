@@ -1,15 +1,6 @@
-import {
-  Card,
-  Heading,
-  HStack,
-  Input,
-  SimpleGrid,
-  Stack,
-  Text,
-  Textarea,
-} from "@chakra-ui/react";
+import { Card, SimpleGrid, Stack, Text } from "@chakra-ui/react";
 import { useCallback, useEffect, useState } from "react";
-import { Link as RouterLink, Navigate, useNavigate } from "react-router";
+import { Link as RouterLink, Navigate } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
 import { useIsMobile } from "../responsive";
@@ -19,9 +10,10 @@ import {
   MEAL_NAV_LINK_CARD_PROPS,
   PANEL_ENTRY_CARD_BODY_PROPS,
   PANEL_ENTRY_CARD_PROPS,
-  PANEL_FIELD_PROPS,
 } from "../theme/typography";
 import { createMeal, fetchMeals } from "./api";
+import { MealEditorBackdropDismiss } from "./MealEditorBackdropDismiss";
+import { MealEditorForm } from "./MealEditorForm";
 import { mealLabel } from "./mealLabels";
 import { mealOwnerLabel } from "./mealOwnerLabel";
 import {
@@ -33,7 +25,6 @@ import { linesToIngredients } from "./recipeIngredients";
 import type { Meal } from "./types";
 
 export default function MealMealsPage() {
-  const navigate = useNavigate();
   const { isAuthenticated, isLoading, sessionUser, getApiAccessToken, refreshSession } =
     useAppSession();
   const [meals, setMeals] = useState<Meal[]>([]);
@@ -43,7 +34,16 @@ export default function MealMealsPage() {
   const [ingredientsText, setIngredientsText] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [showAddMeal, setShowAddMeal] = useState(false);
+  const [saveBusy, setSaveBusy] = useState(false);
   const isMobile = useIsMobile();
+
+  const dismissAddMeal = useCallback(() => {
+    setTitle("");
+    setBlurb("");
+    setDirections("");
+    setIngredientsText("");
+    setShowAddMeal(false);
+  }, []);
 
   const refresh = useCallback(async () => {
     const t = await getApiAccessToken();
@@ -73,82 +73,68 @@ export default function MealMealsPage() {
       <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
         Build meals with ingredients and directions, then assign them in templates and week plans.
       </Text>
-      <PondButton
-        colorPalette="sky"
-        variant="outline"
-        alignSelf="flex-start"
-        onClick={() => setShowAddMeal((v) => !v)}
-      >
-        {showAddMeal ? "Hide" : "Add New Meal"}
-      </PondButton>
+      {!showAddMeal ? (
+        <PondButton
+          colorPalette="sky"
+          variant="outline"
+          alignSelf="flex-start"
+          onClick={() => setShowAddMeal(true)}
+        >
+          Add New Meal
+        </PondButton>
+      ) : null}
 
       {showAddMeal ? (
-        <Card.Root {...PANEL_ENTRY_CARD_PROPS} p="0">
-          <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
-            <Heading size="sm" mb="2" fontWeight="semibold">
-              New meal:
-            </Heading>
-            <Stack gap="2">
-              <HStack gap="2" flexWrap="wrap" align="flex-end" w="100%">
-                <Input
-                  flex="1"
-                  minW="min(100%, 9rem)"
-                  placeholder="Title"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  {...PANEL_FIELD_PROPS}
+        <MealEditorBackdropDismiss disabled={saveBusy} onDismiss={dismissAddMeal}>
+          <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP} w="100%">
+            <PondButton
+              colorPalette="sky"
+              variant="outline"
+              alignSelf="flex-start"
+              onClick={() => dismissAddMeal()}
+            >
+              Hide
+            </PondButton>
+            <Card.Root {...PANEL_ENTRY_CARD_PROPS} p="0">
+              <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
+                <MealEditorForm
+                title={title}
+                blurb={blurb}
+                directions={directions}
+                ingredientsText={ingredientsText}
+                onTitleChange={setTitle}
+                onBlurbChange={setBlurb}
+                onDirectionsChange={setDirections}
+                onIngredientsTextChange={setIngredientsText}
+                saveDisabled={!title.trim()}
+                saveLoading={saveBusy}
+                onSave={() => {
+                  void (async () => {
+                    if (!title.trim()) return;
+                    setSaveBusy(true);
+                    try {
+                      const t = await getApiAccessToken();
+                      await createMeal(t, {
+                        title: title.trim(),
+                        blurb,
+                        directions,
+                        ingredients: linesToIngredients(ingredientsText),
+                      });
+                      dismissAddMeal();
+                      await refresh();
+                      setErr(null);
+                    } catch (e) {
+                      setErr(e instanceof Error ? e.message : "Save failed");
+                    } finally {
+                      setSaveBusy(false);
+                    }
+                  })();
+                }}
                 />
-                <PondButton
-                  flexShrink={0}
-                  colorPalette="lilypad"
-                  onClick={() => {
-                    void (async () => {
-                      try {
-                        const t = await getApiAccessToken();
-                        const created = await createMeal(t, {
-                          title: title.trim(),
-                          blurb,
-                          directions,
-                          ingredients: linesToIngredients(ingredientsText),
-                        });
-                        setTitle("");
-                        setBlurb("");
-                        setDirections("");
-                        setIngredientsText("");
-                        setShowAddMeal(false);
-                        await refresh();
-                        setErr(null);
-                        navigate(`/meal/menu/meals/${created.id}`);
-                      } catch (e) {
-                        setErr(e instanceof Error ? e.message : "Save failed");
-                      }
-                    })();
-                  }}
-                >
-                  Save meal
-                </PondButton>
-              </HStack>
-              <Textarea
-                placeholder="Ingredients (one line per item)"
-                value={ingredientsText}
-                onChange={(e) => setIngredientsText(e.target.value)}
-                {...PANEL_FIELD_PROPS}
-              />
-              <Textarea
-                placeholder="Directions (optional)"
-                value={directions}
-                onChange={(e) => setDirections(e.target.value)}
-                {...PANEL_FIELD_PROPS}
-              />
-              <Textarea
-                placeholder="Blurb (optional)"
-                value={blurb}
-                onChange={(e) => setBlurb(e.target.value)}
-                {...PANEL_FIELD_PROPS}
-              />
-            </Stack>
-          </Card.Body>
-        </Card.Root>
+              </Card.Body>
+            </Card.Root>
+          </Stack>
+        </MealEditorBackdropDismiss>
       ) : null}
 
       {err ? (
@@ -184,25 +170,20 @@ function MealListCard({ meal, ownerLabel }: { meal: Meal; ownerLabel: string }) 
   const ingredientSummary = mealIngredientSummary(meal);
   return (
     <RouterLink
-      to={`/meal/menu/meals/${meal.id}`}
-      aria-label={`Edit meal: ${mealLabel(meal)}`}
+      to={`/meal/plan/meals/${meal.id}`}
+      aria-label={`Open meal: ${mealLabel(meal)}`}
       style={{ textDecoration: "none", color: "inherit", display: "block" }}
     >
       <Card.Root {...PANEL_ENTRY_CARD_PROPS} p="0" {...MEAL_NAV_LINK_CARD_PROPS}>
         <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
-          <HStack align="flex-start" justify="space-between" gap="3">
-            <Stack gap="1" flex="1" minW="0">
-              <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.body} lineClamp={2}>
-                {mealLabel(meal)}
-              </Text>
-              <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted" lineClamp={1}>
-                {ownerLabel} · {ingredientSummary}
-              </Text>
-            </Stack>
-            <Text fontSize={APP_TEXT_SIZES.meta} color="lilypad.solid" fontWeight="bold" flexShrink={0}>
-              Edit
+          <Stack gap="1" minW="0">
+            <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.body} lineClamp={2}>
+              {mealLabel(meal)}
             </Text>
-          </HStack>
+            <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted" lineClamp={1}>
+              {ownerLabel} · {ingredientSummary}
+            </Text>
+          </Stack>
         </Card.Body>
       </Card.Root>
     </RouterLink>

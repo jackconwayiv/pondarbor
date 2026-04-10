@@ -1,6 +1,6 @@
 import { Card, Heading, HStack, Stack, Text } from "@chakra-ui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Navigate, useNavigate, useParams } from "react-router";
+import { Link as RouterLink, Navigate, useNavigate, useParams } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
 import {
@@ -9,8 +9,9 @@ import {
   PANEL_ENTRY_CARD_BODY_PROPS,
   PANEL_ENTRY_CARD_PROPS,
 } from "../theme/typography";
-import { deleteInstance, fetchInstance, fetchMeals, patchInstanceGrid } from "./api";
+import { createMeal, deleteInstance, fetchInstance, fetchMeals, patchInstanceGrid } from "./api";
 import { formatWeekStartShort } from "./mealPlanDates";
+import { MealEditorBackdropDismiss } from "./MealEditorBackdropDismiss";
 import MealSlotGrid from "./MealSlotGrid";
 import {
   MealApprovalRequired,
@@ -79,7 +80,15 @@ export default function MealInstanceDetailPage() {
   const weekTitle = `Week of ${formatWeekStartShort(inst.week_start)}`;
 
   return (
+    <MealEditorBackdropDismiss dismissTo="/meal/plan/plans" disabled={saveBusy || deleteBusy}>
     <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP} w="100%">
+      <Text fontSize={APP_TEXT_SIZES.helper}>
+        <RouterLink to="/meal/plan/plans">
+          <Text as="span" color="lilypad.solid" fontWeight="bold">
+            ← Weekly overview
+          </Text>
+        </RouterLink>
+      </Text>
       <Card.Root {...PANEL_ENTRY_CARD_PROPS} p="0">
         <Card.Body
           {...PANEL_ENTRY_CARD_BODY_PROPS}
@@ -148,7 +157,7 @@ export default function MealInstanceDetailPage() {
                     try {
                       const tok = await getApiAccessToken();
                       await deleteInstance(tok, inst.id);
-                      navigate("/meal/plans/weeks");
+                      navigate("/meal/plan/plans");
                     } catch (e) {
                       setErr(e instanceof Error ? e.message : "Delete failed");
                     } finally {
@@ -168,20 +177,26 @@ export default function MealInstanceDetailPage() {
             weekStartsOn={weekStartsOn}
             meals={meals}
             disabled={saveBusy || deleteBusy}
-            onCellChange={(dayIndex, slotIndex, mealIds) => {
-              void (async () => {
-                try {
-                  const tok = await getApiAccessToken();
-                  const next = await patchInstanceGrid(tok, inst.id, [
-                    { day_index: dayIndex, slot_index: slotIndex, meal_ids: mealIds },
-                  ]);
-                  setInst(next);
-                  setErr(null);
-                  setConfirmDelete(false);
-                } catch (e) {
-                  setErr(e instanceof Error ? e.message : "Update failed");
-                }
-              })();
+            createMeal={async (body) => {
+              const tok = await getApiAccessToken();
+              return createMeal(tok, body);
+            }}
+            onMealCreated={(m) =>
+              setMeals((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]))
+            }
+            onCellChange={async (dayIndex, slotIndex, mealIds) => {
+              try {
+                const tok = await getApiAccessToken();
+                const next = await patchInstanceGrid(tok, inst.id, [
+                  { day_index: dayIndex, slot_index: slotIndex, meal_ids: mealIds },
+                ]);
+                setInst(next);
+                setErr(null);
+                setConfirmDelete(false);
+              } catch (e) {
+                setErr(e instanceof Error ? e.message : "Update failed");
+                throw e;
+              }
             }}
           />
         </Card.Body>
@@ -193,5 +208,6 @@ export default function MealInstanceDetailPage() {
         </Text>
       ) : null}
     </Stack>
+    </MealEditorBackdropDismiss>
   );
 }

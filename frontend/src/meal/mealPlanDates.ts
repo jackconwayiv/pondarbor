@@ -64,3 +64,26 @@ export function formatLongCalendarDate(d: Date): string {
     year: "numeric",
   });
 }
+
+export function addDays(date: Date, days: number): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+}
+
+/**
+ * Map a calendar day to Python `date.weekday()` (Monday=0 … Sunday=6), matching
+ * profile `meal_week_starts_on` and the meal API.
+ */
+export function pythonWeekday(day: Date): number {
+  return (startOfLocalDay(day).getDay() + 6) % 7;
+}
+
+/** Start-of-week calendar date. `weekStartsOn` is Monday=0 … Sunday=6 (Python weekday). */
+export function startOfWeek(day: Date, weekStartsOn: number): Date {
+  const base = startOfLocalDay(day);
+  const offset = (pythonWeekday(base) - weekStartsOn + 7) % 7;
+  return addDays(base, -offset);
+}
+
+export function addDaysIso(iso: string, days: number): string {
+  return localDateIso(addDays(parseLocalDate(iso), days));
+}

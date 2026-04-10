@@ -1,15 +1,15 @@
 import { Navigate, useParams } from "react-router";
 
-/** Old `/meal/weeks/:id` → `/meal/plans/weeks/:id` */
+/** Old `/meal/weeks/:id` → `/meal/plan/plans/:id` */
 export function LegacyRedirectPlansWeekDetail() {
   const { id } = useParams();
-  if (id == null) return <Navigate to="/meal/plans/today" replace />;
-  return <Navigate to={`/meal/plans/weeks/${id}`} replace />;
+  if (id == null) return <Navigate to="/meal/plan/plans" replace />;
+  return <Navigate to={`/meal/plan/plans/${id}`} replace />;
 }
 
-/** Old `/meal/templates/:id` → `/meal/plans/templates/:id` */
+/** Old `/meal/templates/:id` → `/meal/plan/templates/:id` */
 export function LegacyRedirectPlansTemplateDetail() {
   const { id } = useParams();
-  if (id == null) return <Navigate to="/meal/plans/templates" replace />;
-  return <Navigate to={`/meal/plans/templates/${id}`} replace />;
+  if (id == null) return <Navigate to="/meal/plan/templates" replace />;
+  return <Navigate to={`/meal/plan/templates/${id}`} replace />;
 }

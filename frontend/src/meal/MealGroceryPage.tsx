@@ -120,7 +120,7 @@ export default function MealGroceryPage() {
       {!sortedInstances.length ? (
         <Text fontSize={APP_TEXT_SIZES.body} color="fg.muted">
           No week plans yet. Create one under{" "}
-          <RouterLink to="/meal/plans/today">
+          <RouterLink to="/meal/plan/plans">
             <Text as="span" color="lilypad.solid" fontWeight="bold">
               Plans
             </Text>
@@ -145,7 +145,7 @@ export default function MealGroceryPage() {
 
           {selectedInstance ? (
             <Text fontSize={APP_TEXT_SIZES.helper}>
-              <RouterLink to={`/meal/plans/weeks/${selectedInstance.id}`}>
+              <RouterLink to={`/meal/plan/plans/${selectedInstance.id}`}>
                 <Text as="span" color="lilypad.solid" fontWeight="bold">
                   Edit week plan
                 </Text>

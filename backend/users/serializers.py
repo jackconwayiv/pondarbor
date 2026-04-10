@@ -26,6 +26,10 @@ class ProfileSerializer(serializers.Serializer):
     timezone = serializers.CharField(allow_blank=True)
     birth_date = serializers.DateField(allow_null=True)
     whatif_completed_session = serializers.BooleanField()
+    meal_week_starts_on = serializers.IntegerField()
+    meal_crud_partner_id = serializers.IntegerField(allow_null=True, required=False)
+    meal_pair_mutual = serializers.BooleanField()
+    meal_partner_incoming_pending = serializers.BooleanField()
 
 
 class AchievementSummarySerializer(serializers.Serializer):
@@ -58,6 +62,10 @@ class ProfileUpdateSerializer(serializers.Serializer):
     )
     timezone = serializers.CharField(required=False, allow_blank=True, max_length=64)
     birth_date = serializers.DateField(required=False, allow_null=True)
+    meal_week_starts_on = serializers.IntegerField(
+        required=False, min_value=0, max_value=6
+    )
+    meal_crud_partner_id = serializers.IntegerField(allow_null=True, required=False)
     avatar_image_key = serializers.CharField(
         required=False, allow_blank=True, max_length=1024, write_only=True
     )

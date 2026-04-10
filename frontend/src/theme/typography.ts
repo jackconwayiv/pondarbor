@@ -50,3 +50,35 @@ export const PANEL_FIELD_PROPS = {
   ...PANEL_FORM_PLACEHOLDER_PROPS,
 } as const;
 
+/** Intro / summary card on `gray.100` tray surfaces (Quotes, Meal Maestro, Closet patterns). */
+export const PANEL_ENTRY_CARD_PROPS = {
+  bg: "white",
+  borderWidth: "1px",
+  borderColor: "border",
+  borderRadius: "xl",
+  p: { base: "2", md: "2" },
+} as const;
+
+/**
+ * Panel cards that use `Card.Body` for content: set `Card.Root` to `p="0"` and spread this on
+ * `Card.Body` so padding is exactly `2` on the body (avoids double padding with Chakra defaults).
+ */
+export const PANEL_ENTRY_CARD_BODY_PROPS = {
+  p: "2",
+} as const;
+
+/** Nested editor block inside a card (style guide § nested blocks). */
+export const PANEL_NESTED_BLOCK_PROPS = {
+  borderWidth: "1px",
+  borderColor: "border",
+  borderRadius: "md",
+  p: "2",
+} as const;
+
+/** Meal Maestro: full-card navigation targets (week/template list links). */
+export const MEAL_NAV_LINK_CARD_PROPS = {
+  cursor: "pointer",
+  transition: "box-shadow 0.15s ease",
+  _hover: { boxShadow: "md" },
+} as const;
+

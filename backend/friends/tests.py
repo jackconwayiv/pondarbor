@@ -225,6 +225,13 @@ class FriendsApiTests(TestCase):
         self.assertEqual(
             [r["email"] for r in body["approved_friends"]], [self.pending_user.email]
         )
+        for section in (
+            body["incoming_pending"],
+            body["outgoing_pending"],
+            body["approved_friends"],
+        ):
+            for row in section:
+                self.assertIn("meal_crud_partner_id", row)
 
     def test_friends_search_returns_only_approved_friends(self):
         self._accept_pair(self.alice, self.bob)

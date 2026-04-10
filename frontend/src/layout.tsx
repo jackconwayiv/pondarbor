@@ -66,6 +66,8 @@ function isDesktopNavRouteActive(pathname: string, to: string): boolean {
       );
     case "/closet":
       return pathname === "/closet" || pathname.startsWith("/closet/");
+    case "/meal":
+      return pathname === "/meal" || pathname.startsWith("/meal/");
     case "/clicker":
       return pathname === "/clicker" || pathname.startsWith("/clicker/");
     case "/whatif":
@@ -78,7 +80,7 @@ function isDesktopNavRouteActive(pathname: string, to: string): boolean {
 }
 
 /** Routes where the document scrollbar is hidden (keeps centered panels from shifting). */
-const HIDE_DOCUMENT_SCROLLBAR_PREFIXES = ["/quotes", "/closet"] as const;
+const HIDE_DOCUMENT_SCROLLBAR_PREFIXES = ["/quotes", "/closet", "/meal"] as const;
 /** Exact paths only (e.g. WhatIf entry at `/whatif`, not lobby/play/hand). */
 const HIDE_DOCUMENT_SCROLLBAR_EXACT = ["/whatif"] as const;
 
@@ -98,6 +100,7 @@ export default function AppLayout() {
         ? [
             { to: "/quotes", label: "Quotes" },
             { to: "/closet", label: "Closet" },
+            { to: "/meal", label: "Meal Maestro" },
             { to: "/clicker", label: "PondClicker" },
             { to: "/whatif", label: "WhatIf" },
             { to: "/about", label: "About" },
@@ -290,6 +293,14 @@ export default function AppLayout() {
                           }}
                         >
                           Closet
+                        </Menu.Item>
+                        <Menu.Item
+                          value="meal"
+                          onSelect={() => {
+                            navigate("/meal");
+                          }}
+                        >
+                          Meal Maestro
                         </Menu.Item>
                         <Menu.Item
                           value="clicker"

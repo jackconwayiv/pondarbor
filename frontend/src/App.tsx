@@ -53,6 +53,11 @@ const HOME_LILYPAD_TILES = [
     label: "Community Closet",
     hoverText: "lend and borrow items with friends",
   },
+  {
+    to: "/meal",
+    label: "Meal Maestro",
+    hoverText: "manage your meal plans and recipes",
+  },
   { to: "/clicker", label: "PondClicker", hoverText: "idle pond-growing game" },
   { to: "/whatif", label: "WhatIf", hoverText: "multiplayer party game" },
 ] as const;
@@ -199,6 +204,14 @@ function App() {
           closetOutstandingActions === 1
             ? "You have 1 outstanding action for items in your community closet."
             : `You have ${closetOutstandingActions} outstanding actions for items in your community closet.`,
+      });
+    }
+
+    if (sessionUser.user?.is_approved && sessionUser.profile.meal_partner_incoming_pending) {
+      prompts.push({
+        id: "meal-partner-incoming",
+        to: "/meal/settings",
+        text: "Someone chose you as their Meal Maestro partner — respond in Settings.",
       });
     }
 

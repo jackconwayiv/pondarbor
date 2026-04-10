@@ -1,5 +1,18 @@
+from django.conf import settings
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
+
+
+class MealWeekStartsOn(models.IntegerChoices):
+    """Monday=0 … Sunday=6 (Python weekday())."""
+
+    MONDAY = 0, "Monday"
+    TUESDAY = 1, "Tuesday"
+    WEDNESDAY = 2, "Wednesday"
+    THURSDAY = 3, "Thursday"
+    FRIDAY = 4, "Friday"
+    SATURDAY = 5, "Saturday"
+    SUNDAY = 6, "Sunday"
 
 
 class UserManager(BaseUserManager):
@@ -70,6 +83,17 @@ class Profile(models.Model):
     birth_date = models.DateField(null=True, blank=True)
     # Set when the user has finished at least one WhatIf session (any role).
     whatif_completed_session = models.BooleanField(default=False)
+    meal_week_starts_on = models.PositiveSmallIntegerField(
+        choices=MealWeekStartsOn.choices,
+        default=MealWeekStartsOn.MONDAY,
+    )
+    meal_crud_partner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="meal_crud_partner_reverse",
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -4,7 +4,7 @@ from urllib.parse import quote
 from django.contrib.auth import get_user_model
 from django.http import Http404
 from django.test import RequestFactory
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 from users.frontend_views import spa_index
@@ -131,6 +131,8 @@ class UsersApiTests(TestCase):
         self.assertEqual(body["profile"]["timezone"], "America/New_York")
         self.assertEqual(body["profile"]["avatar_url"], "https://example.com/p.png")
         self.assertEqual(body["profile"]["birth_date"], "1990-05-17")
+        self.assertIn("meal_partner_incoming_pending", body["profile"])
+        self.assertFalse(body["profile"]["meal_partner_incoming_pending"])
         user.profile.refresh_from_db()
         self.assertEqual(user.profile.display_name, "After")
         self.assertEqual(str(user.profile.birth_date), "1990-05-17")
@@ -170,6 +172,76 @@ class UsersApiTests(TestCase):
             format="json",
         )
         self.assertIn(response.status_code, (401, 403))
+
+    def _approved_user(self, email: str):
+        user = User.objects.create_user(email=email, password="secret12345")
+        user.account_status = User.AccountStatus.APPROVED
+        user.save(update_fields=["account_status"])
+        return user
+
+    def _make_friends(self, a, b):
+        FriendRequest.objects.create(requester=a, requested=b, is_accepted=True)
+        FriendRequest.objects.create(requester=b, requested=a, is_accepted=True)
+
+    def test_patch_meal_partner_rejects_when_target_chose_someone_else(self):
+        alice = self._approved_user("meal-a@example.com")
+        bob = self._approved_user("meal-b@example.com")
+        charlie = self._approved_user("meal-c@example.com")
+        self._make_friends(alice, bob)
+        self._make_friends(alice, charlie)
+        bob.profile.meal_crud_partner_id = charlie.id
+        bob.profile.save(update_fields=["meal_crud_partner_id"])
+
+        self.client.force_login(alice)
+        response = self.client.patch(
+            "/api/v1/users/me/profile/",
+            {"meal_crud_partner_id": bob.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("another meal partner", response.json()["detail"])
+
+    def test_patch_meal_partner_allows_when_target_chose_requester(self):
+        alice = self._approved_user("meal-a2@example.com")
+        bob = self._approved_user("meal-b2@example.com")
+        self._make_friends(alice, bob)
+        bob.profile.meal_crud_partner_id = alice.id
+        bob.profile.save(update_fields=["meal_crud_partner_id"])
+
+        self.client.force_login(alice)
+        response = self.client.patch(
+            "/api/v1/users/me/profile/",
+            {"meal_crud_partner_id": bob.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["profile"]["meal_crud_partner_id"], bob.id)
+
+    def test_me_meal_partner_incoming_pending_true_when_friend_chose_me_unreciprocated(self):
+        alice = self._approved_user("meal-in@example.com")
+        bob = self._approved_user("meal-out@example.com")
+        self._make_friends(alice, bob)
+        bob.profile.meal_crud_partner_id = alice.id
+        bob.profile.save(update_fields=["meal_crud_partner_id"])
+
+        self.client.force_login(alice)
+        response = self.client.get("/api/v1/users/me/")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["profile"]["meal_partner_incoming_pending"])
+
+    def test_me_meal_partner_incoming_pending_false_when_mutual(self):
+        alice = self._approved_user("meal-m1@example.com")
+        bob = self._approved_user("meal-m2@example.com")
+        self._make_friends(alice, bob)
+        alice.profile.meal_crud_partner_id = bob.id
+        alice.profile.save(update_fields=["meal_crud_partner_id"])
+        bob.profile.meal_crud_partner_id = alice.id
+        bob.profile.save(update_fields=["meal_crud_partner_id"])
+
+        self.client.force_login(alice)
+        response = self.client.get("/api/v1/users/me/")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["profile"]["meal_partner_incoming_pending"])
 
     @override_settings(CLOSET_R2_KEY_PREFIX="closet", CLOSET_R2_PUBLIC_BASE_URL="https://cdn.example.test")
     def test_patch_profile_accepts_avatar_image_key_for_owner_prefix(self):

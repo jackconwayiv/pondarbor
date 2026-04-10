@@ -10,6 +10,12 @@ export type Profile = {
   birth_date: string | null;
   /** True after the user has finished at least one WhatIf session (server-set). */
   whatif_completed_session?: boolean;
+  /** Python weekday: Monday=0 … Sunday=6 */
+  meal_week_starts_on: number;
+  meal_crud_partner_id: number | null;
+  meal_pair_mutual: boolean;
+  /** Someone chose you as meal partner; mutual pairing not complete yet. */
+  meal_partner_incoming_pending?: boolean;
 };
 
 export type AppUser = {
@@ -32,7 +38,15 @@ export type SessionUser = {
 };
 
 export type ProfilePatch = Partial<
-  Pick<Profile, "display_name" | "avatar_url" | "timezone" | "birth_date">
+  Pick<
+    Profile,
+    | "display_name"
+    | "avatar_url"
+    | "timezone"
+    | "birth_date"
+    | "meal_week_starts_on"
+    | "meal_crud_partner_id"
+  >
 > & {
   avatar_image_key?: string;
 };

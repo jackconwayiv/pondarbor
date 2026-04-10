@@ -92,6 +92,7 @@ INSTALLED_APPS = [
     "achievements.apps.AchievementsConfig",
     "qff.apps.QffConfig",
     "closet.apps.ClosetConfig",
+    "meal.apps.MealConfig",
     "contact.apps.ContactConfig",
     # allauth
     "allauth",

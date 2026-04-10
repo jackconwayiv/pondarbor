@@ -16,7 +16,8 @@ from .auth0_backend import Auth0TokenAuthentication
 from .models import PROFILE_TIMEZONE_DEFAULT, Profile
 from .permissions import IsApprovedUser, IsStaffUser
 from friends.models import FriendRequest
-from friends.services import are_friends
+from friends.services import are_friends, friend_ids_for_user
+from meal.partner import incoming_meal_partner_pending, mutual_meal_pair
 from achievements.services import achievements_payload_for_user
 
 from achievements.models import UserAchievement
@@ -83,6 +84,10 @@ def serialize_me(user):
             "timezone": profile.timezone,
             "birth_date": profile.birth_date,
             "whatif_completed_session": profile.whatif_completed_session,
+            "meal_week_starts_on": profile.meal_week_starts_on,
+            "meal_crud_partner_id": profile.meal_crud_partner_id,
+            "meal_pair_mutual": mutual_meal_pair(user=user),
+            "meal_partner_incoming_pending": incoming_meal_partner_pending(user=user),
         },
         "achievements": achievements_payload_for_user(user, public_only=False),
     }
@@ -320,8 +325,50 @@ def patch_me_profile(request):
     profile = get_or_create_profile(request.user)
     serializer = ProfileUpdateSerializer(data=request.data, partial=True, context={"request": request})
     serializer.is_valid(raise_exception=True)
-    for field, value in serializer.validated_data.items():
-        setattr(profile, field, value)
+    data = serializer.validated_data
+    if "meal_crud_partner_id" in data:
+        target = data["meal_crud_partner_id"]
+        if target is None:
+            if profile.meal_crud_partner_id and mutual_meal_pair(user=request.user):
+                return Response(
+                    {
+                        "detail": "Use Meal Maestro disconnect flow to end a mutual partnership.",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            if target == request.user.id:
+                return Response(
+                    {"detail": "Invalid meal partner."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if target not in friend_ids_for_user(user=request.user):
+                return Response(
+                    {"detail": "Meal partner must be an approved friend."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            target_user = get_object_or_404(UserModel.objects.all(), pk=target)
+            target_profile = get_or_create_profile(target_user)
+            tpid = target_profile.meal_crud_partner_id
+            if tpid is not None and tpid != request.user.id:
+                return Response(
+                    {
+                        "detail": "That friend already has another meal partner choice. They can change it in Meal Maestro settings.",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+    allowed = {
+        "display_name",
+        "avatar_url",
+        "timezone",
+        "birth_date",
+        "meal_week_starts_on",
+    }
+    for field in allowed:
+        if field in data:
+            setattr(profile, field, data[field])
+    if "meal_crud_partner_id" in data:
+        profile.meal_crud_partner_id = data["meal_crud_partner_id"]
     profile.save()
     return Response(MeSerializer(serialize_me(request.user)).data)
 

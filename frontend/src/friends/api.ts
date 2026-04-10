@@ -3,6 +3,7 @@ export type FriendUser = {
   email: string;
   nickname: string;
   avatar_url: string;
+  meal_crud_partner_id: number | null;
 };
 
 export type FriendsListResponse = {

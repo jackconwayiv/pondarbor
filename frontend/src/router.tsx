@@ -13,6 +13,10 @@ import AboutPage from "./AboutPage";
 import AboutPrivacyPage from "./about/AboutPrivacyPage";
 import AboutTermsPage from "./about/AboutTermsPage";
 import RouteLoadingFallback from "./RouteLoadingFallback";
+import {
+  LegacyRedirectPlansTemplateDetail,
+  LegacyRedirectPlansWeekDetail,
+} from "./meal/mealLegacyRedirects";
 
 const QuotesFeedPage = lazy(() => import("./quotes/QuotesFeedPage"));
 const ClosetPage = lazy(() => import("./closet/ClosetPage"));
@@ -39,6 +43,18 @@ const QffDmClassesPage = lazy(() => import("./qff/QffDmClassesPage"));
 const QffDmInteractablesPage = lazy(() => import("./qff/QffDmInteractablesPage"));
 const QffDmNpcsPage = lazy(() => import("./qff/QffDmNpcsPage"));
 const QffDmQuestsPage = lazy(() => import("./qff/QffDmQuestsPage"));
+const MealLayout = lazy(() => import("./meal/MealLayout"));
+const MealHomePage = lazy(() => import("./meal/MealHomePage"));
+const MealRecipesPage = lazy(() => import("./meal/MealRecipesPage"));
+const MealRecipeDetailPage = lazy(() => import("./meal/MealRecipeDetailPage"));
+const MealMealsPage = lazy(() => import("./meal/MealMealsPage"));
+const MealMealDetailPage = lazy(() => import("./meal/MealMealDetailPage"));
+const MealTemplatesPage = lazy(() => import("./meal/MealTemplatesPage"));
+const MealTemplateEditPage = lazy(() => import("./meal/MealTemplateEditPage"));
+const MealTodayPage = lazy(() => import("./meal/MealTodayPage"));
+const MealWeeksPage = lazy(() => import("./meal/MealWeeksPage"));
+const MealInstanceDetailPage = lazy(() => import("./meal/MealInstanceDetailPage"));
+const MealGroceryPage = lazy(() => import("./meal/MealGroceryPage"));
 
 function lazyRouteElement(element: ReactNode): ReactNode {
   return <Suspense fallback={<RouteLoadingFallback />}>{element}</Suspense>;
@@ -84,6 +100,85 @@ export const router = sentryCreateBrowserRouter([
       {
         path: "closet",
         element: lazyRouteElement(<ClosetPage />),
+      },
+      {
+        path: "meal",
+        element: lazyRouteElement(<MealLayout />),
+        children: [
+          {
+            index: true,
+            element: <Navigate to="/meal/plans/today" replace />,
+          },
+          {
+            path: "recipes",
+            element: <Navigate to="/meal/menu/recipes" replace />,
+          },
+          {
+            path: "meals",
+            element: <Navigate to="/meal/menu/meals" replace />,
+          },
+          {
+            path: "templates",
+            element: <Navigate to="/meal/plans/templates" replace />,
+          },
+          {
+            path: "weeks",
+            element: <Navigate to="/meal/plans/today" replace />,
+          },
+          {
+            path: "weeks/:id",
+            element: <LegacyRedirectPlansWeekDetail />,
+          },
+          {
+            path: "templates/:id",
+            element: <LegacyRedirectPlansTemplateDetail />,
+          },
+          {
+            path: "plans",
+            children: [
+              {
+                index: true,
+                element: <Navigate to="/meal/plans/today" replace />,
+              },
+              { path: "today", element: lazyRouteElement(<MealTodayPage />) },
+              { path: "weeks", element: lazyRouteElement(<MealWeeksPage />) },
+              {
+                path: "weeks/:id",
+                element: lazyRouteElement(<MealInstanceDetailPage />),
+              },
+              { path: "templates", element: lazyRouteElement(<MealTemplatesPage />) },
+              {
+                path: "templates/:id",
+                element: lazyRouteElement(<MealTemplateEditPage />),
+              },
+            ],
+          },
+          {
+            path: "menu",
+            children: [
+              {
+                index: true,
+                element: <Navigate to="/meal/menu/meals" replace />,
+              },
+              { path: "meals/:id", element: lazyRouteElement(<MealMealDetailPage />) },
+              { path: "meals", element: lazyRouteElement(<MealMealsPage />) },
+              { path: "recipes", element: lazyRouteElement(<MealRecipesPage />) },
+              { path: "recipes/:id", element: lazyRouteElement(<MealRecipeDetailPage />) },
+            ],
+          },
+          {
+            path: "grocery",
+            children: [
+              { index: true, element: lazyRouteElement(<MealGroceryPage />) },
+            ],
+          },
+          {
+            path: "settings",
+            children: [
+              { index: true, element: lazyRouteElement(<MealHomePage />) },
+            ],
+          },
+        ],
       },
       {
         path: "clicker",

@@ -2,6 +2,7 @@ from django.urls import include, path
 
 urlpatterns = [
     path("contact/", include("contact.urls")),
+    path("meal/", include("meal.urls")),
     path("users/", include("users.urls")),
     path("quotes/", include("quotes.urls")),
     path("friends/", include("friends.urls")),

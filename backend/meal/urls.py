@@ -17,4 +17,5 @@ urlpatterns = [
     path("partner/disconnect/cancel/", views_partner.disconnect_cancel),
     path("partner/disconnect/confirm/", views_partner.disconnect_confirm),
     path("partner/disconnect/pending/", views_partner.disconnect_pending),
+    path("partner/request/decline/", views_partner.decline_incoming_partner_request),
 ]

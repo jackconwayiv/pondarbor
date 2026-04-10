@@ -295,5 +295,20 @@ export async function fetchDisconnectPending(
     credentials: "omit",
   });
   if (!response.ok) throw new Error(await parseApiError(response));
-  return response.json() as Promise<DisconnectPending>;
+  const text = await response.text();
+  if (!text.trim()) return null;
+  return JSON.parse(text) as DisconnectPending;
+}
+
+export async function declineIncomingPartnerRequest(
+  accessToken: string | null,
+  requesterId: number,
+): Promise<void> {
+  const response = await fetch(`${apiBase()}/api/v1/meal/partner/request/decline/`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify({ requester_id: requesterId }),
+  });
+  if (!response.ok) throw new Error(await parseApiError(response));
 }

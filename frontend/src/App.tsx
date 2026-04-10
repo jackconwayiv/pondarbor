@@ -130,6 +130,7 @@ function App() {
     auth0User,
     sessionUser,
     getApiAccessToken,
+    refreshSession,
   } = useAppSession();
   const [upcomingBirthdays, setUpcomingBirthdays] = useState<
     UpcomingBirthday[]
@@ -211,7 +212,7 @@ function App() {
       prompts.push({
         id: "meal-partner-incoming",
         to: "/meal/settings",
-        text: "Someone chose you as their Meal Maestro partner — respond in Settings.",
+        text: "You have a Meal Maestro partner request. Open Meal Settings to accept or decline.",
       });
     }
 
@@ -233,6 +234,22 @@ function App() {
     closetOutstandingActions,
     upcomingBirthdays,
   ]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !sessionUser?.user?.is_approved) return;
+    void refreshSession().catch(() => {
+      /* ignore initial refresh failure */
+    });
+    const tid = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void refreshSession().catch(() => {
+        /* ignore periodic refresh failures */
+      });
+    }, 60000);
+    return () => {
+      window.clearInterval(tid);
+    };
+  }, [isAuthenticated, sessionUser?.user?.is_approved, refreshSession]);
 
   useEffect(() => {
     let isCancelled = false;

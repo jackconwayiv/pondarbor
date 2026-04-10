@@ -208,7 +208,7 @@ def achievement_rows_for_user(
     qs = (
         UserAchievement.objects.filter(user=user)
         .select_related("achievement")
-        .order_by("achievement__order", "achievement__slug")
+        .order_by("-unlocked_at", "achievement__slug")
     )
     if public_only:
         qs = qs.filter(achievement__show_on_public_profile=True)

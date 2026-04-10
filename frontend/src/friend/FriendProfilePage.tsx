@@ -18,6 +18,7 @@ import {
   fetchPublicAchievementsByUser,
   fetchPublicAchievementsByUserId,
 } from "../achievements/api";
+import { sortAchievementsNewestFirst } from "../achievements/sortAchievements";
 import type { AchievementSummary } from "../achievements/types";
 import { useAppSession } from "../auth/AppSessionContext";
 import {
@@ -32,11 +33,14 @@ import {
   validateClosetFreeText,
   validateIsoDateRequired,
 } from "../forms/validation";
+import { ApprovedFriendsListBlock } from "../friends/ApprovedFriendsListBlock";
 import {
   acceptFriend,
+  fetchUserFriendsList,
   ignoreFriend,
   requestFriendByUserId,
   unfriend,
+  type FriendUser,
 } from "../friends/api";
 import NotFoundPage from "../NotFoundPage";
 import PondButton from "../PondButton";
@@ -415,6 +419,7 @@ export default function FriendProfilePage() {
 
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [achievements, setAchievements] = useState<AchievementSummary[]>([]);
+  const [theirFriends, setTheirFriends] = useState<FriendUser[]>([]);
   const [closetItems, setClosetItems] = useState<ClosetItem[]>([]);
   const [summary, setSummary] = useState<PublicUserSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -426,8 +431,8 @@ export default function FriendProfilePage() {
   const [confirmUnfriend, setConfirmUnfriend] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
   const [profileTab, setProfileTab] = useState<
-    "achievements" | "quotes" | "closet"
-  >("achievements");
+    "friends" | "achievements" | "quotes" | "closet"
+  >("friends");
   const [reloadKey, setReloadKey] = useState(0);
   const [expandedFriendItemId, setExpandedFriendItemId] = useState<
     number | null
@@ -481,20 +486,37 @@ export default function FriendProfilePage() {
             ? fetchPublicUserSummaryById(lookup.id, accessToken)
             : fetchPublicUserSummaryByEmail(lookup.email, accessToken),
         ]);
-        const closetOwnerId =
+        const profileSubjectId =
           lookup.kind === "id" ? lookup.id : (summaryData.id ?? null);
         const closetRows =
-          summaryData.can_view_full_profile && closetOwnerId !== null
-            ? await fetchFriendItemsByOwner(accessToken, closetOwnerId).catch(
-                () => [] as ClosetItem[],
-              )
+          summaryData.can_view_full_profile && profileSubjectId !== null
+            ? await fetchFriendItemsByOwner(
+                accessToken,
+                profileSubjectId,
+              ).catch(() => [] as ClosetItem[])
             : [];
+        let friendsRows: FriendUser[] = [];
+        if (
+          summaryData.can_view_full_profile &&
+          profileSubjectId !== null &&
+          accessToken
+        ) {
+          try {
+            friendsRows = await fetchUserFriendsList(
+              profileSubjectId,
+              accessToken,
+            );
+          } catch {
+            friendsRows = [];
+          }
+        }
         const sorted = [...quoteData].sort(
           (a, b) =>
             new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
         );
         setQuotes(sorted);
-        setAchievements(achData);
+        setAchievements(sortAchievementsNewestFirst(achData));
+        setTheirFriends(friendsRows);
         setClosetItems(closetRows);
         setSummary(summaryData);
       } catch (err: unknown) {
@@ -541,22 +563,25 @@ export default function FriendProfilePage() {
   const startIndex = safePage * PAGE_SIZE;
   const endIndex = Math.min(total, startIndex + PAGE_SIZE);
   const visibleQuotes = quotes.slice(startIndex, endIndex);
+  const canViewFullProfile = Boolean(summary?.can_view_full_profile);
   const hasAchievements = achievements.length > 0;
   const hasQuotes = quotes.length > 0;
   const hasClosetTab =
     Boolean(summary?.can_view_full_profile) && closetItems.length > 0;
   const leftmostVisibleTab = useMemo<
-    "achievements" | "quotes" | "closet" | null
+    "friends" | "achievements" | "quotes" | "closet" | null
   >(() => {
+    if (canViewFullProfile) return "friends";
     if (hasAchievements) return "achievements";
     if (hasQuotes) return "quotes";
     if (hasClosetTab) return "closet";
     return null;
-  }, [hasAchievements, hasQuotes, hasClosetTab]);
+  }, [canViewFullProfile, hasAchievements, hasQuotes, hasClosetTab]);
 
   useEffect(() => {
     if (!leftmostVisibleTab) return;
     const tabVisible =
+      (profileTab === "friends" && canViewFullProfile) ||
       (profileTab === "achievements" && hasAchievements) ||
       (profileTab === "quotes" && hasQuotes) ||
       (profileTab === "closet" && hasClosetTab);
@@ -565,6 +590,7 @@ export default function FriendProfilePage() {
     }
   }, [
     profileTab,
+    canViewFullProfile,
     hasAchievements,
     hasQuotes,
     hasClosetTab,
@@ -945,10 +971,7 @@ export default function FriendProfilePage() {
               </Box>
             ) : null}
 
-            {!isLoading &&
-            !error &&
-            summary?.can_view_full_profile &&
-            (hasAchievements || hasQuotes || hasClosetTab) ? (
+            {!isLoading && !error && summary?.can_view_full_profile ? (
               <Box {...ENTRY_CARD_PROPS}>
                 {actionError ? (
                   <Text
@@ -965,7 +988,11 @@ export default function FriendProfilePage() {
                   value={profileTab}
                   onValueChange={(details) =>
                     setProfileTab(
-                      details.value as "achievements" | "quotes" | "closet",
+                      details.value as
+                        | "friends"
+                        | "achievements"
+                        | "quotes"
+                        | "closet",
                     )
                   }
                   variant="plain"
@@ -976,6 +1003,27 @@ export default function FriendProfilePage() {
                     gap="1"
                     w="100%"
                   >
+                    <Tabs.Trigger
+                      value="friends"
+                      bg={
+                        profileTab === "friends" ? "lilypad.solid" : undefined
+                      }
+                      color={profileTab === "friends" ? "black" : undefined}
+                      borderTopRadius="md"
+                      borderBottomRadius="0"
+                      px="2"
+                      py="2"
+                      fontWeight="medium"
+                      _hover={{
+                        bg:
+                          profileTab === "friends"
+                            ? "lilypad.solid"
+                            : "transparent",
+                      }}
+                      _selected={{ bg: "lilypad.solid", color: "black" }}
+                    >
+                      Friends
+                    </Tabs.Trigger>
                     {hasAchievements ? (
                       <Tabs.Trigger
                         value="achievements"
@@ -1050,6 +1098,13 @@ export default function FriendProfilePage() {
                       </Tabs.Trigger>
                     ) : null}
                   </Tabs.List>
+                  <Tabs.Content value="friends" pt="2">
+                    <ApprovedFriendsListBlock
+                      friends={theirFriends}
+                      showCountInTitle
+                      withCardShell={false}
+                    />
+                  </Tabs.Content>
                   {hasAchievements ? (
                     <Tabs.Content value="achievements" pt="2">
                       <Stack gap={MAPPED_LIST_STACK_GAP}>

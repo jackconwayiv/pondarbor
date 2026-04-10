@@ -33,6 +33,8 @@ export type AppUser = {
   is_staff?: boolean;
   account_status: string;
   auth0_sub?: string | null;
+  /** ISO datetime from Django `date_joined`; omitted in older cached sessions. */
+  date_joined?: string | null;
 };
 
 export type SessionUser = {

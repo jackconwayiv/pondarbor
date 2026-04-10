@@ -16,7 +16,8 @@ from .auth0_backend import Auth0TokenAuthentication
 from .models import PROFILE_TIMEZONE_DEFAULT, Profile
 from .permissions import IsApprovedUser, IsStaffUser
 from friends.models import FriendRequest
-from friends.services import are_friends, friend_ids_for_user
+from friends.services import are_friends, friend_ids_for_user, friends_queryset_for_user
+from friends.views import friend_user_row_dict
 from meal.partner import incoming_meal_partner_pending, mutual_meal_pair
 from achievements.services import achievements_payload_for_user, evaluate_meal_maestro_partner_for_user
 
@@ -94,6 +95,7 @@ def serialize_me(user):
             "auth0_sub": user.auth0_sub or None,
             "account_status": user.account_status,
             "deleted_at": user.deleted_at,
+            "date_joined": user.date_joined.isoformat() if user.date_joined else None,
         },
         "profile": {
             "display_name": profile.display_name,
@@ -304,6 +306,29 @@ def _public_user_summary_response(*, request, user):
             .count()
         )
     return Response(payload)
+
+
+@api_view(["GET"])
+@permission_classes([IsApprovedUser])
+def user_friends_list_for_viewer(request, user_id: int):
+    """Approved friends of `user_id`, only when the viewer is friends with that user.
+
+    The viewer is omitted from the list so you never see yourself under a friend's friends.
+    """
+    viewer = request.user
+    target = get_object_or_404(UserModel.objects.all(), pk=user_id)
+    if not are_friends(user_a=viewer, user_b=target):
+        return Response(
+            {"detail": "You can only view friends of users you are friends with."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    qs = (
+        friends_queryset_for_user(user=target)
+        .exclude(pk=viewer.pk)
+        .select_related("profile")
+        .order_by("profile__display_name", "email")
+    )
+    return Response([friend_user_row_dict(friend) for friend in qs])
 
 
 @api_view(["GET"])

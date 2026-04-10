@@ -52,6 +52,23 @@ export async function fetchFriendsList(accessToken: string | null): Promise<Frie
   return (await response.json()) as FriendsListResponse;
 }
 
+/** Approved friends of another user; viewer must be friends with that user. */
+export async function fetchUserFriendsList(
+  userId: number,
+  accessToken: string | null,
+): Promise<FriendUser[]> {
+  const response = await fetch(`${apiBase()}/api/v1/users/${userId}/friends/`, {
+    method: "GET",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`User friends fetch failed (${response.status}): ${text}`);
+  }
+  return (await response.json()) as FriendUser[];
+}
+
 export async function requestFriendByEmail(
   accessToken: string | null,
   email: string,

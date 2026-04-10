@@ -19,7 +19,8 @@ def _profile_for_user(user):
     return profile
 
 
-def _user_row(user):
+def friend_user_row_dict(user):
+    """JSON row for approved-friends lists (my friends, friends-of-friends, search)."""
     profile = getattr(user, "profile", None) or _profile_for_user(user)
     return {
         "id": user.id,
@@ -111,9 +112,9 @@ def friends_list(request):
     )
     return Response(
         {
-            "incoming_pending": [_user_row(row.requester) for row in incoming],
-            "outgoing_pending": [_user_row(row.requested) for row in outgoing],
-            "approved_friends": [_user_row(friend) for friend in approved_users],
+            "incoming_pending": [friend_user_row_dict(row.requester) for row in incoming],
+            "outgoing_pending": [friend_user_row_dict(row.requested) for row in outgoing],
+            "approved_friends": [friend_user_row_dict(friend) for friend in approved_users],
             "pending_count": incoming.count(),
         }
     )
@@ -193,7 +194,7 @@ def friends_search(request):
     friends_qs = friends_qs.filter(
         Q(email__icontains=search) | Q(profile__display_name__icontains=search)
     ).order_by("profile__display_name", "email")[:20]
-    return Response([_user_row(friend) for friend in friends_qs])
+    return Response([friend_user_row_dict(friend) for friend in friends_qs])
 
 
 @api_view(["GET"])
@@ -214,5 +215,5 @@ def approved_users_search(request):
         .filter(Q(email__icontains=search) | Q(profile__display_name__icontains=search))
         .order_by("profile__display_name", "email")[:20]
     )
-    return Response([_user_row(row) for row in qs])
+    return Response([friend_user_row_dict(row) for row in qs])
 

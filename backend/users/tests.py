@@ -55,6 +55,7 @@ class UsersApiTests(TestCase):
         self.assertEqual(body["user"]["email"], "self@example.com")
         self.assertEqual(body["user"]["id"], user.id)
         self.assertFalse(body["profile"]["whatif_completed_session"])
+        self.assertIsNotNone(body["user"].get("date_joined"))
 
     def test_public_summary_anonymous_by_id_and_email_returns_401(self):
         user = User.objects.create_user(email="friend@example.com", password="secret12345")
@@ -109,6 +110,41 @@ class UsersApiTests(TestCase):
         resp = self.client.get(f"/api/v1/users/{target.id}/public/")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["closet_items_count"], 1)
+
+    def test_user_friends_list_non_friend_forbidden(self):
+        viewer = User.objects.create_user(email="uf-nf-v@example.com", password="secret12345")
+        viewer.account_status = User.AccountStatus.APPROVED
+        viewer.save(update_fields=["account_status"])
+        target = User.objects.create_user(email="uf-nf-t@example.com", password="secret12345")
+        target.account_status = User.AccountStatus.APPROVED
+        target.save(update_fields=["account_status"])
+        self.client.force_login(viewer)
+        resp = self.client.get(f"/api/v1/users/{target.id}/friends/")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_user_friends_list_friend_returns_buddies(self):
+        viewer = User.objects.create_user(email="uf-v@example.com", password="secret12345")
+        viewer.account_status = User.AccountStatus.APPROVED
+        viewer.save(update_fields=["account_status"])
+        target = User.objects.create_user(email="uf-t@example.com", password="secret12345")
+        target.account_status = User.AccountStatus.APPROVED
+        target.save(update_fields=["account_status"])
+        buddy = User.objects.create_user(email="uf-b@example.com", password="secret12345")
+        buddy.account_status = User.AccountStatus.APPROVED
+        buddy.save(update_fields=["account_status"])
+        FriendRequest.objects.create(requester=viewer, requested=target, is_accepted=True)
+        FriendRequest.objects.create(requester=target, requested=viewer, is_accepted=True)
+        FriendRequest.objects.create(requester=target, requested=buddy, is_accepted=True)
+        FriendRequest.objects.create(requester=buddy, requested=target, is_accepted=True)
+        self.client.force_login(viewer)
+        resp = self.client.get(f"/api/v1/users/{target.id}/friends/")
+        self.assertEqual(resp.status_code, 200)
+        rows = resp.json()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["email"], buddy.email)
+        self.assertIn("nickname", rows[0])
+        self.assertIn("avatar_url", rows[0])
+        self.assertTrue(all(row["email"] != viewer.email for row in rows))
 
     def test_patch_profile_updates_preferences_and_returns_full_me(self):
         user = User.objects.create_user(email="edit@example.com", password="secret12345")

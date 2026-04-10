@@ -15,6 +15,7 @@ from users.views import (
     staff_users_list,
     sync_profile,
     upcoming_birthdays,
+    user_friends_list_for_viewer,
     user_public_summary_by_email,
     user_public_summary_by_id,
 )
@@ -37,6 +38,7 @@ urlpatterns = [
     path("staff/users/<int:user_id>/", staff_user_patch),
     path("staff/users/", staff_users_list),
     path("<int:user_id>/public/", user_public_summary_by_id),
+    path("<int:user_id>/friends/", user_friends_list_for_viewer),
     path("<int:user_id>/public-quotes/", user_public_quotes_by_id),
     path("<int:user_id>/achievements/", user_public_achievements_by_id),
     path("<str:email>/public/", user_public_summary_by_email),

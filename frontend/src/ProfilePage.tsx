@@ -18,6 +18,7 @@ import { Navigate } from "react-router";
 import PondButton from "./PondButton";
 import { AchievementSummaryCard } from "./achievements/AchievementSummaryCard";
 import { fetchPublicAchievementsByUserId } from "./achievements/api";
+import { sortAchievementsNewestFirst } from "./achievements/sortAchievements";
 import type { AchievementSummary } from "./achievements/types";
 import { useAppSession } from "./auth/AppSessionContext";
 import { fetchMyImageInventory } from "./closet/api";
@@ -36,6 +37,17 @@ function formatBirthDateForDisplay(value: string | null | undefined): string {
   const [year, month, day] = value.split("-");
   if (!year || !month || !day) return value;
   return `${month}/${day}/${year}`;
+}
+
+function formatMemberSince(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 type EditableField = "display_name" | "avatar_url" | "timezone" | "birth_date";
@@ -121,7 +133,7 @@ export default function ProfilePage() {
           sessionUser.user.id,
           token,
         );
-        setProfileAchievements(rows);
+        setProfileAchievements(sortAchievementsNewestFirst(rows));
       } catch {
         // Keep existing session payload if explicit fetch fails.
       }
@@ -149,7 +161,7 @@ export default function ProfilePage() {
           sessionUser.user.id,
           token,
         );
-        setProfileAchievements(rows);
+        setProfileAchievements(sortAchievementsNewestFirst(rows));
       } catch (err: unknown) {
         setProfileAchievements(snapshot);
         setSaveError(
@@ -449,6 +461,9 @@ export default function ProfilePage() {
   }
 
   const { user, profile } = sessionUser;
+  const headerDisplayName = (
+    isEditing ? displayName : profile.display_name || ""
+  ).trim();
   const fieldBusy = (field: EditableField) => !!savingFields[field];
   const isSavingAny = Object.values(savingFields).some(Boolean);
   const profileFieldLabelProps = isEditing
@@ -557,346 +572,321 @@ export default function ProfilePage() {
             </Tabs.List>
             <Tabs.Content value="profile" p={{ base: "2", md: "2" }}>
               <Box {...ENTRY_CARD_PROPS}>
-                <Stack gap="4" w="100%" minW={0}>
-                  <HStack
-                    gap="4"
-                    align="flex-start"
-                    justify="space-between"
-                    flexWrap="wrap"
-                    w="100%"
-                    minW={0}
-                  >
-                    <HStack gap="4" align="flex-start" flex="1" minW={0}>
-                      <Avatar.Root size="lg">
-                        <Avatar.Fallback
-                          name={profile.display_name || user.email || "User"}
+                <Stack gap="4" w="100%" minW={0} ref={profileEditorRef}>
+                  <HStack gap="4" align="flex-start" flexWrap="wrap" w="100%">
+                    <Avatar.Root size="lg">
+                      <Avatar.Fallback
+                        name={profile.display_name || user.email || "User"}
+                      />
+                      <Avatar.Image src={profile.avatar_url || undefined} />
+                      <Float placement="bottom-end" offsetX="1" offsetY="1">
+                        <Circle
+                          bg={
+                            user.is_approved
+                              ? "lilypad.solid"
+                              : "nautical.solid"
+                          }
+                          size="8px"
+                          outline="0.2em solid"
+                          outlineColor="bg"
                         />
-                        <Avatar.Image src={profile.avatar_url || undefined} />
-                        <Float placement="bottom-end" offsetX="1" offsetY="1">
-                          <Circle
-                            bg={
-                              user.is_approved
-                                ? "lilypad.solid"
-                                : "nautical.solid"
-                            }
-                            size="8px"
-                            outline="0.2em solid"
-                            outlineColor="bg"
-                          />
-                        </Float>
-                      </Avatar.Root>
+                      </Float>
+                    </Avatar.Root>
+                    <Stack gap="1" flex="1" minW={0}>
+                      <Text
+                        fontWeight="semibold"
+                        fontSize={APP_TEXT_SIZES.body}
+                      >
+                        {headerDisplayName || "—"}
+                      </Text>
+                      <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                        {user.email}
+                      </Text>
+                    </Stack>
+                  </HStack>
 
-                      <Stack gap="3" flex="1" ref={profileEditorRef}>
-                        {isEditing && (
-                          <Stack gap="1">
-                            <Text {...profileFieldLabelProps}>Avatar URL</Text>
-                            <Stack gap="2">
-                              <Input
-                                value={avatarUrl}
-                                onChange={(e) => setAvatarUrl(e.target.value)}
-                                onBlur={() => void commitField("avatar_url")}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    e.preventDefault();
-                                    void commitField("avatar_url");
-                                  }
-                                }}
-                                placeholder="https://…"
-                                disabled={
-                                  fieldBusy("avatar_url") || isAvatarUploading
+                  {!isEditing ? (
+                    <PondButton
+                      size="sm"
+                      colorPalette="lilypad"
+                      alignSelf="flex-start"
+                      onClick={() => {
+                        setSaveError(null);
+                        setIsEditing(true);
+                      }}
+                    >
+                      Edit profile
+                    </PondButton>
+                  ) : null}
+
+                  <Stack gap="3">
+                    {isEditing ? (
+                      <Stack gap="1">
+                        <Text {...profileFieldLabelProps}>Name</Text>
+                        <Input
+                          value={displayName}
+                          onChange={(e) => setDisplayName(e.target.value)}
+                          onBlur={() => void commitField("display_name")}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              void commitField("display_name");
+                            }
+                          }}
+                          placeholder="Your name"
+                          disabled={fieldBusy("display_name")}
+                          {...PANEL_FIELD_PROPS}
+                        />
+                      </Stack>
+                    ) : null}
+
+                    {isEditing ? (
+                      <Stack gap="1">
+                        <Text {...profileFieldLabelProps}>Avatar URL</Text>
+                        <Stack gap="2">
+                          <Input
+                            value={avatarUrl}
+                            onChange={(e) => setAvatarUrl(e.target.value)}
+                            onBlur={() => void commitField("avatar_url")}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                void commitField("avatar_url");
+                              }
+                            }}
+                            placeholder="https://…"
+                            disabled={
+                              fieldBusy("avatar_url") || isAvatarUploading
+                            }
+                            {...PANEL_FIELD_PROPS}
+                          />
+                          <input
+                            ref={avatarFileInputRef}
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            style={{ display: "none" }}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0] ?? null;
+                              void onChooseAvatarFile(file);
+                              e.currentTarget.value = "";
+                            }}
+                          />
+                          <HStack flexWrap="wrap" gap="2">
+                            <PondButton
+                              size="sm"
+                              colorPalette="sky"
+                              loading={isAvatarUploading}
+                              disabled={
+                                fieldBusy("avatar_url") || isAvatarUploading
+                              }
+                              onClick={() =>
+                                avatarFileInputRef.current?.click()
+                              }
+                            >
+                              Upload new avatar image
+                            </PondButton>
+                            <PondButton
+                              size="sm"
+                              colorPalette="lilypad"
+                              loading={isImagePickerLoading}
+                              disabled={
+                                fieldBusy("avatar_url") || isAvatarUploading
+                              }
+                              onClick={() => {
+                                setIsImagePickerOpen((prev) => !prev);
+                                if (!isImagePickerOpen) {
+                                  void loadUploadedImages();
                                 }
-                                {...PANEL_FIELD_PROPS}
-                              />
-                              <input
-                                ref={avatarFileInputRef}
-                                type="file"
-                                accept="image/jpeg,image/png,image/webp"
-                                style={{ display: "none" }}
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0] ?? null;
-                                  void onChooseAvatarFile(file);
-                                  e.currentTarget.value = "";
-                                }}
-                              />
-                              <HStack flexWrap="wrap" gap="2">
-                                <PondButton
-                                  size="sm"
-                                  colorPalette="sky"
-                                  loading={isAvatarUploading}
-                                  disabled={
-                                    fieldBusy("avatar_url") || isAvatarUploading
-                                  }
-                                  onClick={() =>
-                                    avatarFileInputRef.current?.click()
-                                  }
+                              }}
+                            >
+                              Select uploaded image
+                            </PondButton>
+                          </HStack>
+                          {isImagePickerOpen ? (
+                            <Stack
+                              gap="2"
+                              borderWidth="1px"
+                              borderColor="border"
+                              borderRadius="md"
+                              p="2"
+                            >
+                              <Text
+                                fontSize={APP_TEXT_SIZES.helper}
+                                color="fg.muted"
+                              >
+                                Choose from your uploaded images.
+                              </Text>
+                              {uploadedImageRows.length === 0 ? (
+                                <Text
+                                  fontSize={APP_TEXT_SIZES.helper}
+                                  color="gray.600"
                                 >
-                                  Upload new avatar image
-                                </PondButton>
+                                  No uploaded images available
+                                </Text>
+                              ) : (
+                                <HStack
+                                  flexWrap="wrap"
+                                  gap="2"
+                                  align="stretch"
+                                >
+                                  {uploadedImageRows.map((row) => {
+                                    const isSelected =
+                                      selectedUploadedImageKey === row.image_key;
+                                    return (
+                                      <Box
+                                        key={row.image_key}
+                                        as="button"
+                                        borderWidth="2px"
+                                        borderColor={
+                                          isSelected
+                                            ? "black"
+                                            : "lilypad.solid"
+                                        }
+                                        borderRadius="md"
+                                        overflow="hidden"
+                                        onClick={() =>
+                                          setSelectedUploadedImageKey(
+                                            row.image_key,
+                                          )
+                                        }
+                                      >
+                                        <Image
+                                          src={row.image_url}
+                                          alt=""
+                                          aria-hidden
+                                          w="84px"
+                                          h="84px"
+                                          objectFit="cover"
+                                          draggable={false}
+                                        />
+                                      </Box>
+                                    );
+                                  })}
+                                </HStack>
+                              )}
+                              <HStack>
                                 <PondButton
                                   size="sm"
                                   colorPalette="lilypad"
-                                  loading={isImagePickerLoading}
+                                  loading={isAvatarUploading}
                                   disabled={
-                                    fieldBusy("avatar_url") || isAvatarUploading
+                                    isAvatarUploading ||
+                                    !selectedUploadedImageKey
                                   }
-                                  onClick={() => {
-                                    setIsImagePickerOpen((prev) => !prev);
-                                    if (!isImagePickerOpen) {
-                                      void loadUploadedImages();
-                                    }
-                                  }}
+                                  onClick={() => void onApplyUploadedImage()}
                                 >
-                                  Select uploaded image
+                                  Use selected image
                                 </PondButton>
                               </HStack>
-                              {isImagePickerOpen ? (
-                                <Stack
-                                  gap="2"
-                                  borderWidth="1px"
-                                  borderColor="border"
-                                  borderRadius="md"
-                                  p="2"
-                                >
-                                  <Text
-                                    fontSize={APP_TEXT_SIZES.helper}
-                                    color="fg.muted"
-                                  >
-                                    Choose from your uploaded images.
-                                  </Text>
-                                  {uploadedImageRows.length === 0 ? (
-                                    <Text
-                                      fontSize={APP_TEXT_SIZES.helper}
-                                      color="gray.600"
-                                    >
-                                      No uploaded images available
-                                    </Text>
-                                  ) : (
-                                    <HStack
-                                      flexWrap="wrap"
-                                      gap="2"
-                                      align="stretch"
-                                    >
-                                      {uploadedImageRows.map((row) => {
-                                        const isSelected =
-                                          selectedUploadedImageKey ===
-                                          row.image_key;
-                                        return (
-                                          <Box
-                                            key={row.image_key}
-                                            as="button"
-                                            borderWidth="2px"
-                                            borderColor={
-                                              isSelected
-                                                ? "black"
-                                                : "lilypad.solid"
-                                            }
-                                            borderRadius="md"
-                                            overflow="hidden"
-                                            onClick={() =>
-                                              setSelectedUploadedImageKey(
-                                                row.image_key,
-                                              )
-                                            }
-                                          >
-                                            <Image
-                                              src={row.image_url}
-                                              alt=""
-                                              aria-hidden
-                                              w="84px"
-                                              h="84px"
-                                              objectFit="cover"
-                                              draggable={false}
-                                            />
-                                          </Box>
-                                        );
-                                      })}
-                                    </HStack>
-                                  )}
-                                  <HStack>
-                                    <PondButton
-                                      size="sm"
-                                      colorPalette="lilypad"
-                                      loading={isAvatarUploading}
-                                      disabled={
-                                        isAvatarUploading ||
-                                        !selectedUploadedImageKey
-                                      }
-                                      onClick={() =>
-                                        void onApplyUploadedImage()
-                                      }
-                                    >
-                                      Use selected image
-                                    </PondButton>
-                                  </HStack>
-                                </Stack>
-                              ) : null}
                             </Stack>
-                          </Stack>
-                        )}
-
-                        <Stack gap="1">
-                          <Text {...profileFieldLabelProps}>Name</Text>
-                          {isEditing ? (
-                            <Input
-                              value={displayName}
-                              onChange={(e) => setDisplayName(e.target.value)}
-                              onBlur={() => void commitField("display_name")}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  e.preventDefault();
-                                  void commitField("display_name");
-                                }
-                              }}
-                              placeholder="Your name"
-                              disabled={fieldBusy("display_name")}
-                              {...PANEL_FIELD_PROPS}
-                            />
-                          ) : (
-                            <Text fontSize={APP_TEXT_SIZES.body}>
-                              {profile.display_name || "—"}
-                            </Text>
-                          )}
+                          ) : null}
                         </Stack>
+                      </Stack>
+                    ) : null}
 
-                        <Stack gap="1">
-                          <Text {...profileFieldLabelProps}>Timezone</Text>
-                          {isEditing ? (
-                            <NativeSelectRoot
-                              size="md"
-                              disabled={fieldBusy("timezone")}
-                            >
-                              <NativeSelectField
-                                value={timezone || "UTC"}
-                                onChange={(e) => setTimezone(e.target.value)}
-                                onBlur={() => void commitField("timezone")}
-                                {...PANEL_FIELD_PROPS}
-                              >
-                                {editTimezoneOptions.map((tz) => (
-                                  <option key={tz} value={tz}>
-                                    {tz}
-                                  </option>
-                                ))}
-                              </NativeSelectField>
-                            </NativeSelectRoot>
-                          ) : (
-                            <Text fontSize={APP_TEXT_SIZES.body}>
-                              {profile.timezone || "—"}
-                            </Text>
-                          )}
-                        </Stack>
-
-                        <Stack gap="1">
-                          <Text {...profileFieldLabelProps}>Birthday</Text>
-                          {isEditing ? (
-                            <Input
-                              type="date"
-                              value={birthDate}
-                              onChange={(e) => setBirthDate(e.target.value)}
-                              onBlur={() => void commitField("birth_date")}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  e.preventDefault();
-                                  void commitField("birth_date");
-                                }
-                              }}
-                              disabled={fieldBusy("birth_date")}
-                              {...PANEL_FIELD_PROPS}
-                            />
-                          ) : (
-                            <Text fontSize={APP_TEXT_SIZES.body}>
-                              {formatBirthDateForDisplay(profile.birth_date)}
-                            </Text>
-                          )}
-                        </Stack>
-
+                    <HStack
+                      align="flex-start"
+                      gap={{ base: "3", md: "8" }}
+                      w="100%"
+                    >
+                      <Stack gap="1" flex="1" minW={0}>
+                        <Text {...profileFieldLabelProps}>Birthday</Text>
                         {isEditing ? (
-                          <HStack gap="2" pt="2">
-                            <PondButton
-                              size="sm"
-                              colorPalette="lilypad"
-                              onClick={() => void commitAllFields()}
-                              loading={isSavingAny}
-                              disabled={isSavingAny}
-                            >
-                              Save
-                            </PondButton>
-                          </HStack>
-                        ) : null}
-
-                        {!isEditing ? (
-                          <Box
-                            display={{ base: "block", md: "none" }}
-                            w="fit-content"
-                            mt="2"
+                          <Input
+                            type="date"
+                            value={birthDate}
+                            onChange={(e) => setBirthDate(e.target.value)}
+                            onBlur={() => void commitField("birth_date")}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                void commitField("birth_date");
+                              }
+                            }}
+                            disabled={fieldBusy("birth_date")}
+                            {...PANEL_FIELD_PROPS}
+                          />
+                        ) : (
+                          <Text fontSize={APP_TEXT_SIZES.body}>
+                            {formatBirthDateForDisplay(profile.birth_date)}
+                          </Text>
+                        )}
+                      </Stack>
+                      <Stack gap="1" flex="1" minW={0}>
+                        <Text {...profileFieldLabelProps}>Timezone</Text>
+                        {isEditing ? (
+                          <NativeSelectRoot
+                            size="md"
+                            disabled={fieldBusy("timezone")}
                           >
-                            <PondButton
-                              size="sm"
-                              colorPalette="lilypad"
-                              onClick={() => {
-                                setSaveError(null);
-                                setIsEditing(true);
-                              }}
+                            <NativeSelectField
+                              value={timezone || "UTC"}
+                              onChange={(e) => setTimezone(e.target.value)}
+                              onBlur={() => void commitField("timezone")}
+                              {...PANEL_FIELD_PROPS}
                             >
-                              Edit profile
-                            </PondButton>
-                          </Box>
-                        ) : null}
-
-                        {!isEditing && profileAchievements.length > 0 ? (
-                          <Stack
-                            gap="2"
-                            mt={{ base: "2", md: 0 }}
-                            pt={{ base: 0, md: "2" }}
-                          >
-                            <Text {...profileFieldLabelProps}>
-                              Achievements
-                            </Text>
-                            <Stack gap={MAPPED_LIST_STACK_GAP}>
-                              {profileAchievements.map((a) => (
-                                <AchievementSummaryCard
-                                  key={a.slug}
-                                  achievement={a}
-                                  visibilityToggle={{
-                                    checked: a.visible_to_friends !== false,
-                                    onCheckedChange: (v) =>
-                                      void onAchievementVisibilityChange(
-                                        a.slug,
-                                        v,
-                                      ),
-                                  }}
-                                />
+                              {editTimezoneOptions.map((tz) => (
+                                <option key={tz} value={tz}>
+                                  {tz}
+                                </option>
                               ))}
-                            </Stack>
-                          </Stack>
-                        ) : null}
-
-                        {saveError && (
-                          <Text
-                            color="nautical.solid"
-                            role="alert"
-                            fontSize={APP_TEXT_SIZES.helper}
-                            fontWeight="medium"
-                          >
-                            {saveError}
+                            </NativeSelectField>
+                          </NativeSelectRoot>
+                        ) : (
+                          <Text fontSize={APP_TEXT_SIZES.body}>
+                            {profile.timezone || "—"}
                           </Text>
                         )}
                       </Stack>
                     </HStack>
-                    {!isEditing ? (
-                      <PondButton
-                        size="sm"
-                        colorPalette="lilypad"
-                        alignSelf="flex-start"
-                        display={{ base: "none", md: "inline-flex" }}
-                        onClick={() => {
-                          setSaveError(null);
-                          setIsEditing(true);
-                        }}
-                      >
-                        Edit profile
-                      </PondButton>
+
+                    {isEditing ? (
+                      <HStack gap="2" pt="2">
+                        <PondButton
+                          size="sm"
+                          colorPalette="lilypad"
+                          onClick={() => void commitAllFields()}
+                          loading={isSavingAny}
+                          disabled={isSavingAny}
+                        >
+                          Save
+                        </PondButton>
+                      </HStack>
                     ) : null}
-                  </HStack>
+
+                    {!isEditing && profileAchievements.length > 0 ? (
+                      <Stack gap="2" pt="2">
+                        <Text {...profileFieldLabelProps}>Achievements</Text>
+                        <Stack gap={MAPPED_LIST_STACK_GAP}>
+                          {profileAchievements.map((a) => (
+                            <AchievementSummaryCard
+                              key={a.slug}
+                              achievement={a}
+                              visibilityToggle={{
+                                checked: a.visible_to_friends !== false,
+                                onCheckedChange: (v) =>
+                                  void onAchievementVisibilityChange(
+                                    a.slug,
+                                    v,
+                                  ),
+                              }}
+                            />
+                          ))}
+                        </Stack>
+                      </Stack>
+                    ) : null}
+
+                    {saveError ? (
+                      <Text
+                        color="nautical.solid"
+                        role="alert"
+                        fontSize={APP_TEXT_SIZES.helper}
+                        fontWeight="medium"
+                      >
+                        {saveError}
+                      </Text>
+                    ) : null}
+                  </Stack>
                 </Stack>
               </Box>
             </Tabs.Content>
@@ -933,6 +923,9 @@ export default function ProfilePage() {
                   <Stack gap="1">
                     <Text fontSize={APP_TEXT_SIZES.body} color="fg">
                       {user.email}
+                    </Text>
+                    <Text fontSize={APP_TEXT_SIZES.body} color="fg.muted">
+                      Member since: {formatMemberSince(user.date_joined)}
                     </Text>
                     {!user.is_approved ? (
                       <Text

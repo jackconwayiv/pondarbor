@@ -6,6 +6,7 @@ import PondButton from "../PondButton";
 import { useAppSession } from "../auth/AppSessionContext";
 import { fullBleedStackProps } from "../responsive";
 import { APP_TEXT_SIZES, FIELD_PLACEHOLDER_PROPS } from "../theme/typography";
+import { ApprovedFriendsListBlock } from "./ApprovedFriendsListBlock";
 import {
   acceptFriend,
   fetchFriendsList,
@@ -357,34 +358,10 @@ export default function FriendsPage() {
               </Box>
             ) : null}
 
-            <Box {...ENTRY_CARD_PROPS}>
-              <Stack gap="3">
-                <Text fontWeight="bold">Friends</Text>
-                {approved.length === 0 ? (
-                  <Text>No approved friends yet.</Text>
-                ) : null}
-                {approved.map((row) => (
-                  <Link
-                    key={`friend-${row.id}`}
-                    to={`/friend/${row.id}`}
-                    style={{ textDecoration: "none", color: "inherit" }}
-                  >
-                    <HStack>
-                      <Avatar.Root size="sm">
-                        <Avatar.Fallback name={row.nickname} />
-                        <Avatar.Image src={row.avatar_url || undefined} />
-                      </Avatar.Root>
-                      <Stack gap="0">
-                        <Text>{row.nickname}</Text>
-                        <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-                          {row.email}
-                        </Text>
-                      </Stack>
-                    </HStack>
-                  </Link>
-                ))}
-              </Stack>
-            </Box>
+            <ApprovedFriendsListBlock
+              friends={approved}
+              showCountInTitle
+            />
           </Stack>
         </Box>
       </Box>

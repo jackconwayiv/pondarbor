@@ -13,6 +13,7 @@ import { createMeal, deleteInstance, fetchInstance, fetchMeals, patchInstanceGri
 import { formatWeekStartShort } from "./mealPlanDates";
 import { MealEditorBackdropDismiss } from "./MealEditorBackdropDismiss";
 import MealSlotGrid from "./MealSlotGrid";
+import { resolveSlotLabels } from "./mealSlotLabels";
 import {
   MealApprovalRequired,
   MealLoading,
@@ -77,6 +78,7 @@ export default function MealInstanceDetailPage() {
   const slotsPerDay =
     inst.slots.length > 0 ? Math.max(...inst.slots.map((s) => s.slot_index)) + 1 : 3;
   const weekStartsOn = sessionUser.profile.meal_week_starts_on ?? 0;
+  const slotLabels = resolveSlotLabels(slotsPerDay, sessionUser.profile.meal_slot_labels);
   const weekTitle = `Week of ${formatWeekStartShort(inst.week_start)}`;
 
   return (
@@ -131,6 +133,7 @@ export default function MealInstanceDetailPage() {
                       const next = await patchInstanceGrid(tok, inst.id, payload);
                       setInst(next);
                       setErr(null);
+                      void refreshSession().catch(() => {});
                     } catch (e) {
                       setErr(e instanceof Error ? e.message : "Save failed");
                     } finally {
@@ -175,6 +178,8 @@ export default function MealInstanceDetailPage() {
             slots={inst.slots}
             slotsPerDay={slotsPerDay}
             weekStartsOn={weekStartsOn}
+            weekStartIso={inst.week_start}
+            slotLabels={slotLabels}
             meals={meals}
             disabled={saveBusy || deleteBusy}
             createMeal={async (body) => {
@@ -193,10 +198,24 @@ export default function MealInstanceDetailPage() {
                 setInst(next);
                 setErr(null);
                 setConfirmDelete(false);
+                void refreshSession().catch(() => {});
               } catch (e) {
                 setErr(e instanceof Error ? e.message : "Update failed");
                 throw e;
               }
+            }}
+            onApplySlotToAllDays={async (slotIndex, mealIds) => {
+              const tok = await getApiAccessToken();
+              const payload = Array.from({ length: 7 }, (_, day_index) => ({
+                day_index,
+                slot_index: slotIndex,
+                meal_ids: mealIds,
+              }));
+              const next = await patchInstanceGrid(tok, inst.id, payload);
+              setInst(next);
+              setErr(null);
+              setConfirmDelete(false);
+              void refreshSession().catch(() => {});
             }}
           />
         </Card.Body>

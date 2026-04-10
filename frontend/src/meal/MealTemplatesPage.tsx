@@ -94,7 +94,7 @@ export default function MealTemplatesPage() {
                 >
                   {[1, 2, 3, 4, 5].map((n) => (
                     <option key={n} value={n}>
-                      {n} slot{n === 1 ? "" : "s"} / day
+                      {n} meal{n === 1 ? "" : "s"} / day
                     </option>
                   ))}
                 </NativeSelectField>

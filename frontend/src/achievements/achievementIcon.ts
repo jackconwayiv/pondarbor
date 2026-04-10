@@ -8,6 +8,8 @@ const SLUG_TO_EMOJI: Record<string, string> = {
   sharing_is_caring: "🤝",
   something_borrowed: "👜",
   good_as_new: "✨",
+  thats_amore: "🍝",
+  tasty_plans: "👨‍🍳",
 };
 
 const DEFAULT_EMOJI = "🏆";

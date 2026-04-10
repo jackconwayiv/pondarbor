@@ -22,6 +22,7 @@ import {
 } from "./api";
 import { MealEditorBackdropDismiss } from "./MealEditorBackdropDismiss";
 import MealSlotGrid from "./MealSlotGrid";
+import { resolveSlotLabels } from "./mealSlotLabels";
 import { formatWeekStartShort } from "./mealPlanDates";
 import {
   MealApprovalRequired,
@@ -146,6 +147,8 @@ export default function MealWeekEditPage() {
     return <Navigate to={`/meal/plan/plans/${existing.id}`} replace />;
   }
 
+  const slotLabels = resolveSlotLabels(slotsPerDay, sessionUser.profile.meal_slot_labels);
+
   return (
     <MealEditorBackdropDismiss dismissTo="/meal/plan/plans" disabled={busy}>
     <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP} w="100%">
@@ -252,6 +255,8 @@ export default function MealWeekEditPage() {
               slots={slots}
               slotsPerDay={slotsPerDay}
               weekStartsOn={weekStartsOn}
+              weekStartIso={weekStart}
+              slotLabels={slotLabels}
               meals={meals}
               disabled={busy}
               createMeal={async (body) => {
@@ -282,6 +287,34 @@ export default function MealWeekEditPage() {
                   setInstances((prev) => [...prev.filter((x) => x.id !== updated.id), updated]);
                   navigate(`/meal/plan/plans/${updated.id}`, { replace: true });
                   setErr(null);
+                  void refreshSession().catch(() => {});
+                } catch (e) {
+                  setErr(e instanceof Error ? e.message : "Save week failed");
+                  throw e;
+                } finally {
+                  setBusy(false);
+                }
+              }}
+              onApplySlotToAllDays={async (slotIndex, mealIds) => {
+                const nextSlots = slots.map((slot) =>
+                  slot.slot_index === slotIndex ? { ...slot, meal_ids: mealIds.slice() } : slot,
+                );
+                setDraftSlots(nextSlots);
+                if (!hasAnyMeals(nextSlots)) return;
+                try {
+                  setBusy(true);
+                  const tok = await getApiAccessToken();
+                  const templateId = Number(applyTemplateId) || firstTemplateId;
+                  if (!templateId) {
+                    setErr("Create at least one template before saving week plans.");
+                    throw new Error("No template");
+                  }
+                  const created = await createInstance(tok, { template_id: templateId, week_start: weekStart });
+                  const updated = await patchInstanceGrid(tok, created.id, nextSlots);
+                  setInstances((prev) => [...prev.filter((x) => x.id !== updated.id), updated]);
+                  navigate(`/meal/plan/plans/${updated.id}`, { replace: true });
+                  setErr(null);
+                  void refreshSession().catch(() => {});
                 } catch (e) {
                   setErr(e instanceof Error ? e.message : "Save week failed");
                   throw e;

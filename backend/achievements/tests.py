@@ -13,19 +13,26 @@ from achievements.services import (
     SLUG_PONDCLICKER_TIER_1,
     SLUG_SHARING_IS_CARING,
     SLUG_SOMETHING_BORROWED,
+    SLUG_TASTY_PLANS,
+    SLUG_THATS_AMORE,
     SLUG_TOWN_CRIER,
     SLUG_WHATIF_WARRIOR,
     SLUG_WHATIF_WIZ,
     evaluate_closet_return_achievements_for_users,
     evaluate_closet_sharing_is_caring_for_user,
     evaluate_after_whatif_session_ended,
+    evaluate_meal_maestro_partner_for_user,
+    evaluate_meal_maestro_tasty_plans_for_instance,
     evaluate_pondclicker_achievements_for_user,
     evaluate_quote_achievements_for_user,
     evaluate_whatif_warrior_for_user,
 )
+from datetime import date
+
 from quotes.models import Quote
 from whatif.models import WhatIfGameResult, WhatIfPlayer, WhatIfSession
 from closet.models import Item
+from meal.models import Meal, MealPlanInstance, MealPlanInstanceSlot, MealPlanInstanceSlotMeal
 
 User = get_user_model()
 
@@ -227,6 +234,79 @@ class ClosetAchievementServiceTests(TestCase):
                 user=self.borrower,
                 achievement__slug=SLUG_SOMETHING_BORROWED,
             ).exists()
+        )
+
+
+class AchievementMealMaestroTests(TestCase):
+    def setUp(self):
+        AchievementDefinition.objects.get_or_create(
+            slug=SLUG_THATS_AMORE,
+            defaults={
+                "title": "That's Amore",
+                "description": "",
+                "category": "meal",
+                "order": 90,
+            },
+        )
+        AchievementDefinition.objects.get_or_create(
+            slug=SLUG_TASTY_PLANS,
+            defaults={
+                "title": "Tasty Plans",
+                "description": "",
+                "category": "meal",
+                "order": 91,
+            },
+        )
+
+    def test_thats_amore_unlocks_both_mutual_partners(self):
+        u1 = User.objects.create_user(email="meal-p1@example.com", password="secret12345")
+        u2 = User.objects.create_user(email="meal-p2@example.com", password="secret12345")
+        u1.profile.meal_crud_partner_id = u2.id
+        u1.profile.save(update_fields=["meal_crud_partner_id", "updated_at"])
+        u2.profile.meal_crud_partner_id = u1.id
+        u2.profile.save(update_fields=["meal_crud_partner_id", "updated_at"])
+        evaluate_meal_maestro_partner_for_user(u1.id)
+        self.assertTrue(
+            UserAchievement.objects.filter(user=u1, achievement__slug=SLUG_THATS_AMORE).exists()
+        )
+        self.assertTrue(
+            UserAchievement.objects.filter(user=u2, achievement__slug=SLUG_THATS_AMORE).exists()
+        )
+
+    def test_thats_amore_not_one_sided(self):
+        u1 = User.objects.create_user(email="meal-s1@example.com", password="secret12345")
+        u2 = User.objects.create_user(email="meal-s2@example.com", password="secret12345")
+        u1.profile.meal_crud_partner_id = u2.id
+        u1.profile.save(update_fields=["meal_crud_partner_id", "updated_at"])
+        evaluate_meal_maestro_partner_for_user(u1.id)
+        self.assertFalse(
+            UserAchievement.objects.filter(user=u1, achievement__slug=SLUG_THATS_AMORE).exists()
+        )
+
+    def test_tasty_plans_requires_fourteen_filled_slots(self):
+        owner = User.objects.create_user(email="meal-plan@example.com", password="secret12345")
+        meal = Meal.objects.create(owner_user=owner, title="Soup")
+        inst = MealPlanInstance.objects.create(
+            owner_user=owner,
+            source_template=None,
+            week_start=date(2026, 4, 6),
+        )
+        for d in range(7):
+            for s in range(2):
+                if d == 0 and s == 0:
+                    continue
+                slot = MealPlanInstanceSlot.objects.create(instance=inst, day_index=d, slot_index=s)
+                MealPlanInstanceSlotMeal.objects.create(slot=slot, meal=meal)
+        evaluate_meal_maestro_tasty_plans_for_instance(instance_id=inst.pk)
+        self.assertFalse(
+            UserAchievement.objects.filter(user=owner, achievement__slug=SLUG_TASTY_PLANS).exists()
+        )
+
+        slot = MealPlanInstanceSlot.objects.create(instance=inst, day_index=0, slot_index=0)
+        MealPlanInstanceSlotMeal.objects.create(slot=slot, meal=meal)
+        evaluate_meal_maestro_tasty_plans_for_instance(instance_id=inst.pk)
+        self.assertTrue(
+            UserAchievement.objects.filter(user=owner, achievement__slug=SLUG_TASTY_PLANS).exists()
         )
 
 

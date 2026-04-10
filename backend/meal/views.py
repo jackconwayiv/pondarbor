@@ -13,6 +13,8 @@ from users.auth0_backend import Auth0TokenAuthentication
 from users.permissions import IsApprovedUser
 from users.views import get_or_create_profile
 
+from achievements.services import evaluate_meal_maestro_tasty_plans_for_instance
+
 from meal.dates import normalize_week_start
 from meal.grid import copy_template_to_instance, create_template_with_grid, rebuild_template_slots
 from meal.grocery_build import generate_grocery_list_for_instance
@@ -259,6 +261,7 @@ def instance_list_create(request):
     )
     copy_template_to_instance(template=template, instance=inst)
     inst = _instance_qs(request).prefetch_related("slots").get(pk=inst.pk)
+    evaluate_meal_maestro_tasty_plans_for_instance(instance_id=inst.pk)
     return Response(_serialize_instance(inst), status=status.HTTP_201_CREATED)
 
 
@@ -305,6 +308,7 @@ def instance_grid(request, pk: int):
         for mid in mids:
             MealPlanInstanceSlotMeal.objects.get_or_create(slot=slot, meal_id=mid)
     inst = _instance_qs(request).prefetch_related("slots").get(pk=inst.pk)
+    evaluate_meal_maestro_tasty_plans_for_instance(instance_id=inst.pk)
     return Response(_serialize_instance(inst))
 
 

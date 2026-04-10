@@ -5,6 +5,47 @@ from closet.serializers import closet_item_image_url, expected_closet_image_key_
 
 UserModel = get_user_model()
 
+# Meal Maestro: must match frontend `MEAL_SLOT_NAME_OPTIONS` in `frontend/src/meal/mealSlotLabels.ts`.
+ALLOWED_MEAL_SLOT_NAMES = frozenset(
+    {
+        "Breakfast",
+        "Lunch",
+        "Dinner",
+        "Brunch",
+        "Snack",
+        "Supper",
+        "Second breakfast",
+        "Happy hour",
+    }
+)
+MEAL_SLOT_LABEL_COUNT_KEYS = frozenset({"1", "2", "3", "4", "5"})
+
+
+def validate_meal_slot_labels_payload(value):
+    """Returns normalized dict or None. Raises ValidationError."""
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise serializers.ValidationError("meal_slot_labels must be an object or null.")
+    for key, labels in value.items():
+        if key not in MEAL_SLOT_LABEL_COUNT_KEYS:
+            raise serializers.ValidationError(
+                f"Invalid meal_slot_labels key {key!r}; use 1–5 as strings."
+            )
+        n = int(key)
+        if not isinstance(labels, list):
+            raise serializers.ValidationError(f"meal_slot_labels[{key}] must be a list.")
+        if len(labels) != n:
+            raise serializers.ValidationError(
+                f"meal_slot_labels[{key}] must have length {n}, got {len(labels)}."
+            )
+        for item in labels:
+            if not isinstance(item, str) or item not in ALLOWED_MEAL_SLOT_NAMES:
+                raise serializers.ValidationError(
+                    "Each meal slot label must be one of the allowed preset names."
+                )
+    return value
+
 
 class SessionUserSerializer(serializers.Serializer):
     id = serializers.IntegerField()
@@ -28,8 +69,10 @@ class ProfileSerializer(serializers.Serializer):
     whatif_completed_session = serializers.BooleanField()
     meal_week_starts_on = serializers.IntegerField()
     meal_crud_partner_id = serializers.IntegerField(allow_null=True, required=False)
+    meal_crud_partner_label = serializers.CharField(allow_blank=True, required=False)
     meal_pair_mutual = serializers.BooleanField()
     meal_partner_incoming_pending = serializers.BooleanField()
+    meal_slot_labels = serializers.JSONField(allow_null=True, required=False)
 
 
 class AchievementSummarySerializer(serializers.Serializer):
@@ -66,9 +109,13 @@ class ProfileUpdateSerializer(serializers.Serializer):
         required=False, min_value=0, max_value=6
     )
     meal_crud_partner_id = serializers.IntegerField(allow_null=True, required=False)
+    meal_slot_labels = serializers.JSONField(required=False, allow_null=True)
     avatar_image_key = serializers.CharField(
         required=False, allow_blank=True, max_length=1024, write_only=True
     )
+
+    def validate_meal_slot_labels(self, value):
+        return validate_meal_slot_labels_payload(value)
 
     def validate_avatar_image_key(self, value: str) -> str:
         key = value.strip()

@@ -133,6 +133,9 @@ class UsersApiTests(TestCase):
         self.assertEqual(body["profile"]["birth_date"], "1990-05-17")
         self.assertIn("meal_partner_incoming_pending", body["profile"])
         self.assertFalse(body["profile"]["meal_partner_incoming_pending"])
+        self.assertIn("meal_crud_partner_label", body["profile"])
+        self.assertEqual(body["profile"]["meal_crud_partner_label"], "")
+        self.assertIn("meal_slot_labels", body["profile"])
         user.profile.refresh_from_db()
         self.assertEqual(user.profile.display_name, "After")
         self.assertEqual(str(user.profile.birth_date), "1990-05-17")
@@ -164,6 +167,34 @@ class UsersApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
         body = response.json()
         self.assertIn("birth_date", body)
+
+    def test_me_includes_meal_crud_partner_label_from_partner_display_name(self):
+        viewer = User.objects.create_user(email="meal-view@example.com", password="secret12345")
+        partner = User.objects.create_user(email="meal-partner@example.com", password="secret12345")
+        partner.profile.display_name = "PartnerNick"
+        partner.profile.save()
+        viewer.profile.meal_crud_partner_id = partner.id
+        viewer.profile.save(update_fields=["meal_crud_partner_id"])
+        self.client.force_login(viewer)
+        resp = self.client.get("/api/v1/users/me/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["profile"]["meal_crud_partner_label"], "PartnerNick")
+
+    def test_patch_meal_slot_labels_persists(self):
+        user = User.objects.create_user(email="slotlabels@example.com", password="secret12345")
+        self.client.force_login(user)
+        payload = {
+            "3": ["Breakfast", "Lunch", "Dinner"],
+        }
+        resp = self.client.patch(
+            "/api/v1/users/me/profile/",
+            {"meal_slot_labels": payload},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["profile"]["meal_slot_labels"], payload)
+        user.profile.refresh_from_db()
+        self.assertEqual(user.profile.meal_slot_labels, payload)
 
     def test_patch_profile_forbidden_when_anonymous(self):
         response = self.client.patch(

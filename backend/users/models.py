@@ -94,6 +94,8 @@ class Profile(models.Model):
         blank=True,
         related_name="meal_crud_partner_reverse",
     )
+    # Keys "1"…"5" -> list of that length; each value is a user-facing meal-slot name from the app allowlist.
+    meal_slot_labels = models.JSONField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

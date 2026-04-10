@@ -55,6 +55,17 @@ export function formatWeekStartShort(iso: string): string {
   return `${mm}/${dd}/${yy}`;
 }
 
+/** Short weekday + calendar date for a `day_index` (0–6) within `weekStartIso`. */
+export function formatCalendarDayInWeek(weekStartIso: string, dayIndex: number): string {
+  const [y, m, d] = weekStartIso.split("-").map(Number);
+  const date = new Date(y, m - 1, d + dayIndex);
+  return date.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "numeric",
+    day: "numeric",
+  });
+}
+
 /** e.g. "Thursday, April 9, 2026" in the user locale. */
 export function formatLongCalendarDate(d: Date): string {
   return d.toLocaleDateString(undefined, {

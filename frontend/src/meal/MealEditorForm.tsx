@@ -1,6 +1,7 @@
 import { HStack, Input, Stack, Textarea } from "@chakra-ui/react";
 import type { ReactNode } from "react";
 import PondButton from "../PondButton";
+import { useIsMobile } from "../responsive";
 import { APP_TEXT_SIZES, PANEL_FIELD_PROPS } from "../theme/typography";
 
 export type MealEditorFormProps = {
@@ -22,6 +23,8 @@ export type MealEditorFormProps = {
   trailingActions?: ReactNode;
   /** Tighter recipe columns for dialogs and small surfaces */
   compact?: boolean;
+  /** In compact mode on narrow viewports, use larger body text for readability. */
+  compactBoostMobile?: boolean;
 };
 
 const recipeMinH = {
@@ -49,15 +52,21 @@ export function MealEditorForm({
   disabled = false,
   trailingActions,
   compact = false,
+  compactBoostMobile = false,
 }: MealEditorFormProps) {
+  const isMobile = useIsMobile();
   const h = compact ? recipeMinH.compact : recipeMinH.default;
+  const stackFontSize =
+    compact && compactBoostMobile && isMobile
+      ? ({ base: "md" as const, md: "md" as const })
+      : APP_TEXT_SIZES.body;
 
   function emitBlurSave() {
     void Promise.resolve(onBlurSave?.());
   }
 
   return (
-    <Stack gap="2" w="100%" fontSize={APP_TEXT_SIZES.body}>
+    <Stack gap="2" w="100%" fontSize={stackFontSize}>
       <HStack gap="2" flexWrap="wrap" align="flex-end" w="100%">
         <Input
           flex="1"

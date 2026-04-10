@@ -29,12 +29,28 @@ SLUG_PONDCLICKER_TIER_1 = "pondclicker_tier_1_pond"
 SLUG_SHARING_IS_CARING = "sharing_is_caring"
 SLUG_SOMETHING_BORROWED = "something_borrowed"
 SLUG_GOOD_AS_NEW = "good_as_new"
+SLUG_THATS_AMORE = "thats_amore"
+SLUG_TASTY_PLANS = "tasty_plans"
 
 ARCHIVIST_MIN_QUOTES = 10
 TOWN_CRIER_MIN_PUBLIC = 10
 WHATIF_WIZ_MIN_PLAYERS = 3
 WHATIF_WARRIOR_MIN_SESSIONS = 5
 SHARING_IS_CARING_MIN_ITEMS = 5
+TASTY_PLANS_MIN_FILLED_SLOTS = 14
+
+
+def _filled_meal_instance_slot_count(instance_id: int) -> int:
+    from django.db.models import Count
+
+    from meal.models import MealPlanInstanceSlot
+
+    return (
+        MealPlanInstanceSlot.objects.filter(instance_id=instance_id)
+        .annotate(n=Count("slot_meals"))
+        .filter(n__gte=1)
+        .count()
+    )
 
 
 def _try_unlock(user_id: int, slug: str, *, context: dict | None = None) -> bool:
@@ -96,6 +112,35 @@ def evaluate_closet_sharing_is_caring_for_user(user_id: int) -> None:
 def evaluate_closet_return_achievements_for_users(*, owner_user_id: int, borrower_user_id: int) -> None:
     _try_unlock(owner_user_id, SLUG_GOOD_AS_NEW)
     _try_unlock(borrower_user_id, SLUG_SOMETHING_BORROWED)
+
+
+def evaluate_meal_maestro_partner_for_user(user_id: int) -> None:
+    """Call after profile save when meal partner may have changed; unlocks both users when mutual."""
+    from meal.partner import mutual_meal_pair
+
+    user = User.objects.filter(pk=user_id).select_related("profile").first()
+    if user is None or not mutual_meal_pair(user=user):
+        return
+    partner_id = user.profile.meal_crud_partner_id
+    _try_unlock(user_id, SLUG_THATS_AMORE)
+    if partner_id:
+        _try_unlock(partner_id, SLUG_THATS_AMORE)
+
+
+def evaluate_meal_maestro_tasty_plans_for_instance(*, instance_id: int) -> None:
+    """Call after instance grid update or create-from-template; owner earns when enough slots have meals."""
+    from meal.models import MealPlanInstance
+
+    inst = MealPlanInstance.objects.filter(pk=instance_id).only("owner_user_id").first()
+    if inst is None:
+        return
+    if _filled_meal_instance_slot_count(instance_id) < TASTY_PLANS_MIN_FILLED_SLOTS:
+        return
+    _try_unlock(
+        inst.owner_user_id,
+        SLUG_TASTY_PLANS,
+        context={"instance_id": instance_id},
+    )
 
 
 def _count_ended_sessions_for_user(user_id: int) -> int:
@@ -178,9 +223,12 @@ def backfill_all_achievements() -> None:
     from clicker.models import ClickerGameSave
     from whatif.models import WhatIfGameResult, WhatIfPlayer, WhatIfSession
 
+    from meal.models import MealPlanInstance
+
     for uid in User.objects.values_list("pk", flat=True):
         evaluate_quote_achievements_for_user(uid)
         evaluate_closet_sharing_is_caring_for_user(uid)
+        evaluate_meal_maestro_partner_for_user(uid)
 
     for row in ClickerGameSave.objects.iterator():
         evaluate_pondclicker_achievements_for_user(row.user_id, row.state or {})
@@ -201,6 +249,14 @@ def backfill_all_achievements() -> None:
                 result.winner_user_id,
                 SLUG_WHATIF_WIZ,
                 context={"session_id": result.session_id},
+            )
+
+    for inst in MealPlanInstance.objects.iterator():
+        if _filled_meal_instance_slot_count(inst.pk) >= TASTY_PLANS_MIN_FILLED_SLOTS:
+            _try_unlock(
+                inst.owner_user_id,
+                SLUG_TASTY_PLANS,
+                context={"instance_id": inst.pk},
             )
 
 

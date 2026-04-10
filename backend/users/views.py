@@ -18,7 +18,7 @@ from .permissions import IsApprovedUser, IsStaffUser
 from friends.models import FriendRequest
 from friends.services import are_friends, friend_ids_for_user
 from meal.partner import incoming_meal_partner_pending, mutual_meal_pair
-from achievements.services import achievements_payload_for_user
+from achievements.services import achievements_payload_for_user, evaluate_meal_maestro_partner_for_user
 
 from achievements.models import UserAchievement
 
@@ -62,6 +62,23 @@ def get_or_create_profile(user):
     return profile
 
 
+def meal_crud_partner_label_for_profile(profile) -> str:
+    pid = profile.meal_crud_partner_id
+    if not pid:
+        return ""
+    partner = UserModel.objects.filter(pk=pid).first()
+    if not partner:
+        return ""
+    partner_profile = get_or_create_profile(partner)
+    nick = (partner_profile.display_name or "").strip()
+    if nick:
+        return nick
+    email = (partner.email or "").strip()
+    if email and "@" in email:
+        return email.split("@")[0].strip()
+    return ""
+
+
 def serialize_me(user):
     profile = get_or_create_profile(user)
     return {
@@ -86,8 +103,10 @@ def serialize_me(user):
             "whatif_completed_session": profile.whatif_completed_session,
             "meal_week_starts_on": profile.meal_week_starts_on,
             "meal_crud_partner_id": profile.meal_crud_partner_id,
+            "meal_crud_partner_label": meal_crud_partner_label_for_profile(profile),
             "meal_pair_mutual": mutual_meal_pair(user=user),
             "meal_partner_incoming_pending": incoming_meal_partner_pending(user=user),
+            "meal_slot_labels": profile.meal_slot_labels,
         },
         "achievements": achievements_payload_for_user(user, public_only=False),
     }
@@ -369,7 +388,15 @@ def patch_me_profile(request):
             setattr(profile, field, data[field])
     if "meal_crud_partner_id" in data:
         profile.meal_crud_partner_id = data["meal_crud_partner_id"]
+    if "meal_slot_labels" in data:
+        incoming = data["meal_slot_labels"]
+        if incoming is None:
+            profile.meal_slot_labels = None
+        else:
+            profile.meal_slot_labels = {**(profile.meal_slot_labels or {}), **incoming}
     profile.save()
+    if "meal_crud_partner_id" in data:
+        evaluate_meal_maestro_partner_for_user(request.user.id)
     return Response(MeSerializer(serialize_me(request.user)).data)
 
 

@@ -1,5 +1,5 @@
 import { Box, Card, Heading, HStack, Stack, Text } from "@chakra-ui/react";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink, Navigate } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
 import {
@@ -17,6 +17,7 @@ import {
   patchInstanceGrid,
 } from "./api";
 import { mealLabel } from "./mealLabels";
+import { resolveSlotLabels } from "./mealSlotLabels";
 import {
   dayIndexInInstance,
   formatLongCalendarDate,
@@ -91,6 +92,7 @@ export default function MealTodayPage() {
   const slotsPerDay = covering
     ? Math.max(1, ...covering.slots.map((s) => s.slot_index + 1))
     : defaultSlotsPerDay;
+  const slotLabels = resolveSlotLabels(slotsPerDay, sessionUser?.profile.meal_slot_labels);
   const todaySlots = Array.from({ length: slotsPerDay }, (_, slotIndex) => {
     const source = covering?.slots ?? draftSlots;
     return { slotIndex, mealIds: slotMealIds(source, dayIdx, slotIndex) };
@@ -133,32 +135,34 @@ export default function MealTodayPage() {
           >
             <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
               <Stack gap="2">
-                <HStack justify="space-between" align="center">
-                  <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted">
-                    Slot {slotIndex + 1}
-                  </Text>
-                  <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted">
-                    {mealIds.length ? `${mealIds.length} meal${mealIds.length === 1 ? "" : "s"}` : "Empty"}
-                  </Text>
-                </HStack>
+                <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted">
+                  {slotLabels[slotIndex] ?? `Slot ${slotIndex + 1}`}
+                </Text>
                 {mealIds.length === 0 ? (
                   <Text fontSize={APP_TEXT_SIZES.body} color="fg.muted">
                     Click to add a meal
                   </Text>
                 ) : (
-                  <Box fontSize={APP_TEXT_SIZES.body} lineHeight="short" wordBreak="break-word">
-                    {mealIds.map((mealId, index) => {
+                  <HStack w="100%" align="flex-start" gap="2">
+                    {mealIds.map((mealId) => {
                       const meal = mealsById.get(mealId);
                       const label = meal ? mealLabel(meal) : `Meal #${mealId}`;
                       return (
-                        <Fragment key={mealId}>
-                          {index > 0 ? (
-                            <Text as="span" color="fg.muted" aria-hidden>
-                              {" | "}
-                            </Text>
-                          ) : null}
+                        <Box
+                          key={mealId}
+                          flex="1"
+                          minW="0"
+                          fontSize={APP_TEXT_SIZES.body}
+                          lineHeight="short"
+                          wordBreak="break-word"
+                          textAlign="center"
+                        >
                           {meal ? (
-                            <RouterLink to={`/meal/plan/meals/${meal.id}?tab=ingredients`}>
+                            <RouterLink
+                              to={`/meal/plan/meals/${meal.id}?tab=ingredients`}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{ textDecoration: "none", color: "inherit" }}
+                            >
                               <Text as="span" color="lilypad.solid" fontWeight="semibold">
                                 {label}
                               </Text>
@@ -168,10 +172,10 @@ export default function MealTodayPage() {
                               {label}
                             </Text>
                           )}
-                        </Fragment>
+                        </Box>
                       );
                     })}
-                  </Box>
+                  </HStack>
                 )}
                 {activeSlotIndex === slotIndex ? (
                   <MealSlotPickerDialog
@@ -180,7 +184,7 @@ export default function MealTodayPage() {
                       if (!open) setActiveSlotIndex(null);
                     }}
                     dayLabel={today.toLocaleDateString(undefined, { weekday: "long" })}
-                    slotNumber={slotIndex + 1}
+                    slotDisplayName={slotLabels[slotIndex] ?? `Slot ${slotIndex + 1}`}
                     mealIds={mealIds}
                     meals={meals}
                     createMeal={async (body) => {
@@ -217,6 +221,7 @@ export default function MealTodayPage() {
                           ]);
                           mergePatchedInstance(next);
                           setErr(null);
+                          void refreshSession().catch(() => {});
                           return;
                         }
 
@@ -232,6 +237,7 @@ export default function MealTodayPage() {
                             ]);
                             mergePatchedInstance(next);
                             setErr(null);
+                            void refreshSession().catch(() => {});
                             return;
                           }
                           setDraftSlots((prev) =>
@@ -254,6 +260,7 @@ export default function MealTodayPage() {
                           ]);
                           mergePatchedInstance(next);
                           setErr(null);
+                          void refreshSession().catch(() => {});
                           return;
                         }
 
@@ -278,8 +285,13 @@ export default function MealTodayPage() {
                         instancesRef.current = merged;
                         setInstances(merged);
                         setErr(null);
+                        void refreshSession().catch(() => {});
                       } catch (e) {
-                        setErr(e instanceof Error ? e.message : "Could not update slot");
+                        setErr(
+                          e instanceof Error
+                            ? e.message
+                            : `Could not update ${slotLabels[slotIndex] ?? `slot ${slotIndex + 1}`}`,
+                        );
                         throw e;
                       }
                     }}

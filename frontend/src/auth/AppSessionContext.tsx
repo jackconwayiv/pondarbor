@@ -13,9 +13,13 @@ export type Profile = {
   /** Python weekday: Monday=0 … Sunday=6 */
   meal_week_starts_on: number;
   meal_crud_partner_id: number | null;
+  /** Partner’s display name (or email local-part); empty when no partner. */
+  meal_crud_partner_label?: string;
   meal_pair_mutual: boolean;
   /** Someone chose you as meal partner; mutual pairing not complete yet. */
   meal_partner_incoming_pending?: boolean;
+  /** Keys "1"…"5" → label list for that many meals per day; null = use app defaults. */
+  meal_slot_labels?: Record<string, string[]> | null;
 };
 
 export type AppUser = {
@@ -46,6 +50,7 @@ export type ProfilePatch = Partial<
     | "birth_date"
     | "meal_week_starts_on"
     | "meal_crud_partner_id"
+    | "meal_slot_labels"
   >
 > & {
   avatar_image_key?: string;

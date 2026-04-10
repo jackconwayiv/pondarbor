@@ -1,8 +1,25 @@
-import { Box, Button, Input, SimpleGrid, Stack, Tabs, Text, Wrap, WrapItem } from "@chakra-ui/react";
+import {
+  Box,
+  Button,
+  Card,
+  Input,
+  SimpleGrid,
+  Stack,
+  Tabs,
+  Text,
+  Wrap,
+  WrapItem,
+} from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppModal } from "../components/AppModal";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
-import { APP_TEXT_SIZES, PANEL_FIELD_PROPS } from "../theme/typography";
+import { useIsMobile } from "../responsive";
+import {
+  APP_TEXT_SIZES,
+  PANEL_ENTRY_CARD_BODY_PROPS,
+  PANEL_ENTRY_CARD_PROPS,
+  PANEL_FIELD_PROPS,
+} from "../theme/typography";
 import { MealEditorForm } from "./MealEditorForm";
 import { mealLabel } from "./mealLabels";
 import { linesToIngredients } from "./recipeIngredients";
@@ -54,13 +71,15 @@ export type MealSlotPickerDialogProps = {
   onOpenChange: (open: boolean) => void;
   /** e.g. weekday name */
   dayLabel: string;
-  /** 1-based slot index for display */
-  slotNumber: number;
+  /** User-facing meal-time name (e.g. Lunch). */
+  slotDisplayName: string;
   mealIds: number[];
   meals: Meal[];
   disabled?: boolean;
   /** Persist slot assignment (called on every toggle / after create). Reject on failure so UI can revert. */
   onCommit: (mealIds: number[]) => void | Promise<void>;
+  /** Copy current selection to the same meal time on every day of the week (week/template editors). */
+  onApplyToAllDays?: (mealIds: number[]) => void | Promise<void>;
   /** Create a meal from the inline form (Save). Omit to hide the new meal section. */
   createMeal?: (body: MealCreateInput) => Promise<Meal>;
   /** After a meal is created from the form (parent can merge into list). */
@@ -74,11 +93,12 @@ export function MealSlotPickerDialog({
   open,
   onOpenChange,
   dayLabel,
-  slotNumber,
+  slotDisplayName,
   mealIds,
   meals,
   disabled,
   onCommit,
+  onApplyToAllDays,
   createMeal,
   onMealCreated,
 }: MealSlotPickerDialogProps) {
@@ -98,6 +118,7 @@ export function MealSlotPickerDialog({
   /** Prevents overlapping slot commits (pick/remove) so each change is persisted before the next. */
   const [commitBusy, setCommitBusy] = useState(false);
   const fieldDisabled = disabled || commitBusy;
+  const isMobile = useIsMobile();
   const debouncedSearch = useDebouncedValue(search, TITLE_SEARCH_DEBOUNCE_MS);
   const wasOpen = useRef(false);
   const selectedRef = useRef(mealIds);
@@ -144,13 +165,35 @@ export function MealSlotPickerDialog({
         await onCommit(next);
       } catch (e) {
         setSelectedIds(prev);
-        setCommitErr(e instanceof Error ? e.message : "Could not update slot");
+        setCommitErr(e instanceof Error ? e.message : `Could not update ${slotDisplayName}`);
       } finally {
         setCommitBusy(false);
       }
     },
-    [onCommit],
+    [onCommit, slotDisplayName],
   );
+
+  const handleApplyToAllDays = useCallback(() => {
+    if (!onApplyToAllDays || selectedIds.length === 0 || fieldDisabled) return;
+    if (
+      !window.confirm(
+        `Apply these meals to ${slotDisplayName} for every day this week? Meals already planned for that time on other days will be replaced.`,
+      )
+    ) {
+      return;
+    }
+    void (async () => {
+      setCommitErr(null);
+      setCommitBusy(true);
+      try {
+        await onApplyToAllDays(selectedIds);
+      } catch (e) {
+        setCommitErr(e instanceof Error ? e.message : `Could not update ${slotDisplayName}`);
+      } finally {
+        setCommitBusy(false);
+      }
+    })();
+  }, [onApplyToAllDays, selectedIds, fieldDisabled, slotDisplayName]);
 
   const toggleId = useCallback(
     (id: number) => {
@@ -163,7 +206,7 @@ export function MealSlotPickerDialog({
     [fieldDisabled, selectedIds, runCommit],
   );
 
-  const modalTitle = `Select Meals for ${dayLabel} Slot ${slotNumber}:`;
+  const modalTitle = `Select meals for ${dayLabel} (${slotDisplayName})`;
   const queryReady = debouncedSearch.trim().length >= MIN_TITLE_QUERY_LEN;
   const showResultsMenu = titleMatches.length > 0 && !searchMenuSuppressed;
 
@@ -178,7 +221,8 @@ export function MealSlotPickerDialog({
   const modalChromeProps = {
     headerProps: { p: MODAL_PAD } as const,
     descriptionProps: { p: MODAL_PAD } as const,
-    bodyProps: { p: MODAL_PAD, pt: MODAL_PAD, pb: MODAL_PAD } as const,
+    /** Tight top gap so the selected-meals card sits close under the description. */
+    bodyProps: { px: MODAL_PAD, pb: MODAL_PAD, pt: "0" } as const,
   };
 
   const mealChip = (id: number, gridCell: boolean) => {
@@ -204,7 +248,7 @@ export function MealSlotPickerDialog({
         fontWeight="medium"
         disabled={fieldDisabled}
         opacity={fieldDisabled ? 0.65 : 1}
-        aria-label={`Remove ${label} from this slot`}
+        aria-label={`Remove ${label} from ${slotDisplayName}`}
         onClick={() => toggleId(id)}
       >
         <Text
@@ -224,40 +268,28 @@ export function MealSlotPickerDialog({
     );
   };
 
-  const slotSelector = (
-    <Box mb="3">
-      <Box
-        mb="2"
-        minH="6"
-        display="flex"
-        alignItems="center"
-        flexWrap="wrap"
-        aria-live="polite"
-      >
-        {createSuccess ? (
-          <Text fontSize={APP_TEXT_SIZES.helper} color="lilypad.solid" fontWeight="medium" role="status">
-            {createSuccess}
-          </Text>
-        ) : null}
-      </Box>
-      {selectedIds.length > 0 ? (
-        selectedIds.length > 3 ? (
-          <SimpleGrid columns={2} gap="2" w="100%">
-            {selectedIds.map((id) => mealChip(id, true))}
-          </SimpleGrid>
+  const selectedMealsCard = (
+    <Card.Root {...PANEL_ENTRY_CARD_PROPS} p="0" mb="3">
+      <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
+        {selectedIds.length > 0 ? (
+          selectedIds.length > 3 ? (
+            <SimpleGrid columns={2} gap="2" w="100%">
+              {selectedIds.map((id) => mealChip(id, true))}
+            </SimpleGrid>
+          ) : (
+            <Wrap gap="2">
+              {selectedIds.map((id) => (
+                <WrapItem key={id}>{mealChip(id, false)}</WrapItem>
+              ))}
+            </Wrap>
+          )
         ) : (
-          <Wrap gap="2">
-            {selectedIds.map((id) => (
-              <WrapItem key={id}>{mealChip(id, false)}</WrapItem>
-            ))}
-          </Wrap>
-        )
-      ) : (
-        <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-          No meals in this slot yet.
-        </Text>
-      )}
-    </Box>
+          <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+            No meals in {slotDisplayName} yet.
+          </Text>
+        )}
+      </Card.Body>
+    </Card.Root>
   );
 
   const searchPanel = (
@@ -274,6 +306,7 @@ export function MealSlotPickerDialog({
             onFocus={() => setSearchMenuSuppressed(false)}
             disabled={fieldDisabled}
             autoComplete="off"
+            fontSize={isMobile ? "md" : undefined}
             {...PANEL_FIELD_PROPS}
           />
           {showResultsMenu ? (
@@ -377,7 +410,7 @@ export function MealSlotPickerDialog({
                   setCreateSuccess("Meal saved and added.");
                 } catch (e) {
                   setSelectedIds(prev);
-                  setCommitErr(e instanceof Error ? e.message : "Could not add meal to slot");
+                  setCommitErr(e instanceof Error ? e.message : `Could not add meal to ${slotDisplayName}`);
                 }
               } catch (e) {
                 setCreateErr(e instanceof Error ? e.message : "Could not create meal");
@@ -389,6 +422,7 @@ export function MealSlotPickerDialog({
           saveDisabled={!newMealTitle.trim()}
           saveLoading={newMealSaveBusy}
           disabled={fieldDisabled}
+          compactBoostMobile
         />
       </Box>
       {createErr ? (
@@ -405,28 +439,67 @@ export function MealSlotPickerDialog({
     </Stack>
   ) : null;
 
+  const modalDescription = onApplyToAllDays
+    ? "Selected meals appear below. Use Search to find meals by title (menu under the field when there are matches). Use Create to add a new meal. Changes save immediately. After you add meals, use Apply to all days to copy this meal time (e.g. lunch) to every day of the week."
+    : "Selected meals appear below. Use Search to find meals by title (menu under the field when there are matches). Use Create to add a new meal. Changes save immediately.";
+
   return (
     <AppModal
       open={open}
       onOpenChange={onOpenChange}
       title={modalTitle}
-      description="Selected meals appear below. Use Search to find meals by title (menu under the field when there are matches). Use Create to add a new meal. Slot changes save immediately."
+      description={modalDescription}
       size="lg"
       {...modalChromeProps}
     >
-      <Stack gap="0">
+      <Stack
+        gap="0"
+        fontSize={isMobile ? { base: "md", md: "md" } : APP_TEXT_SIZES.body}
+      >
         {commitErr ? (
           <Text
             fontSize={APP_TEXT_SIZES.helper}
             color="nautical.solid"
             fontWeight="medium"
             role="alert"
+            mb="2"
           >
             {commitErr}
           </Text>
         ) : null}
 
-        {slotSelector}
+        {createSuccess ? (
+          <Text
+            fontSize={APP_TEXT_SIZES.helper}
+            color="lilypad.solid"
+            fontWeight="medium"
+            role="status"
+            aria-live="polite"
+            mb="2"
+          >
+            {createSuccess}
+          </Text>
+        ) : null}
+
+        {selectedMealsCard}
+
+        {onApplyToAllDays ? (
+          <Box px="2" pb="2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={fieldDisabled || selectedIds.length === 0}
+              onClick={handleApplyToAllDays}
+            >
+              Apply to all days
+            </Button>
+            {selectedIds.length === 0 ? (
+              <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted" mt="2">
+                Add one or more meals above, then use this to copy them to this meal time on every day.
+              </Text>
+            ) : null}
+          </Box>
+        ) : null}
 
         {createMeal && createPanel ? (
           <Tabs.Root

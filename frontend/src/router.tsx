@@ -20,6 +20,7 @@ import {
 
 const QuotesFeedPage = lazy(() => import("./quotes/QuotesFeedPage"));
 const ClosetPage = lazy(() => import("./closet/ClosetPage"));
+const ClosetItemDetailPage = lazy(() => import("./closet/ClosetItemDetailPage"));
 const ClickerLayout = lazy(() => import("./clicker/ClickerLayout"));
 const ClickerLobbyPage = lazy(() => import("./clicker/ClickerLobbyPage"));
 const ClickerGamePage = lazy(() => import("./clicker/ClickerGamePage"));
@@ -99,6 +100,10 @@ export const router = sentryCreateBrowserRouter([
       {
         path: "closet",
         element: lazyRouteElement(<ClosetPage />),
+      },
+      {
+        path: "closet/items/:itemId",
+        element: lazyRouteElement(<ClosetItemDetailPage />),
       },
       {
         path: "meal",

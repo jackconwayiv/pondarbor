@@ -2,6 +2,7 @@ import type {
   BorrowRequest,
   ClosetActionSummary,
   ClosetImageInventoryResponse,
+  ClosetItem,
   FriendsItemsResponse,
   MyItemsResponse,
 } from "./types";
@@ -118,6 +119,21 @@ export async function fetchFriendItemsByOwner(
     throw new Error(`Failed to load friend closet items (${response.status})`);
   }
   return (await response.json()) as FriendsItemsResponse["results"];
+}
+
+export async function fetchItem(
+  accessToken: string | null,
+  itemId: number,
+): Promise<ClosetItem> {
+  const response = await fetch(`${apiBase()}/api/v1/closet/items/${itemId}/`, {
+    method: "GET",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to load item (${response.status})`);
+  }
+  return (await response.json()) as ClosetItem;
 }
 
 export async function fetchClosetActionSummary(accessToken: string | null): Promise<ClosetActionSummary> {

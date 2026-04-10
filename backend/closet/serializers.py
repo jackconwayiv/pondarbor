@@ -38,10 +38,33 @@ def closet_item_image_url(image_key: str) -> str:
     return f"{base.rstrip('/')}/{key.lstrip('/')}"
 
 
-def expected_closet_image_key_prefix(user_id: int) -> str:
+def closet_r2_root_parts() -> list[str]:
+    """Path segments under the bucket root (e.g. ['closet'] or ['app', 'closet'])."""
     prefix = getattr(settings, "CLOSET_R2_KEY_PREFIX", "closet") or "closet"
     prefix = str(prefix).strip().strip("/") or "closet"
-    return f"{prefix}/{user_id}/"
+    return [p for p in prefix.split("/") if p]
+
+
+def expected_closet_image_key_prefix(user_id: int) -> str:
+    root = "/".join(closet_r2_root_parts())
+    return f"{root}/{user_id}/"
+
+
+def closet_image_key_owned_by_user(image_key: str, user_id: int) -> bool:
+    """
+    True if the object key places the next segment after the configured root prefix
+    exactly at str(user_id) (not a longer digit string or suffix collision).
+    """
+    raw = (image_key or "").strip().strip("/")
+    if not raw:
+        return False
+    parts = [p for p in raw.split("/") if p]
+    root = closet_r2_root_parts()
+    if len(parts) < len(root) + 1:
+        return False
+    if parts[: len(root)] != root:
+        return False
+    return parts[len(root)] == str(user_id)
 
 
 def _validate_closet_image_key_for_user(value, request) -> str:
@@ -51,8 +74,7 @@ def _validate_closet_image_key_for_user(value, request) -> str:
     user = getattr(request, "user", None)
     if not user or not user.is_authenticated:
         raise serializers.ValidationError("Authentication required.")
-    expected = expected_closet_image_key_prefix(user.id)
-    if not raw.startswith(expected):
+    if not closet_image_key_owned_by_user(raw, user.id):
         raise serializers.ValidationError(
             "Image key must come from a closet upload for your account.",
         )

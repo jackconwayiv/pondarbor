@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from achievements.models import AchievementDefinition, UserAchievement
 from closet.models import Item
+from closet.serializers import closet_image_key_owned_by_user
 from closet.tests.helpers import ClosetTestMixin
 from achievements.services import SLUG_SHARING_IS_CARING
 
@@ -353,4 +354,65 @@ class ClosetItemsApiTests(ClosetTestMixin, TestCase):
             format="json",
         )
         self.assertEqual(resp.status_code, 403)
+
+    @override_settings(CLOSET_R2_KEY_PREFIX="closet", CLOSET_R2_PUBLIC_BASE_URL="https://cdn.example.test")
+    @patch("closet.views._build_r2_client")
+    def test_images_mine_sets_cache_control_private_no_store(self, build_client_mock):
+        build_client_mock.return_value.list_objects_v2.return_value = {
+            "Contents": [],
+            "IsTruncated": False,
+        }
+        with patch.dict(
+            "os.environ",
+            {
+                "CLOUDFLARE_ACCOUNT_ID": "acct",
+                "CLOSET_R2_BUCKET": "bucket",
+                "CLOSET_R2_ACCESS_KEY_ID": "ak",
+                "CLOSET_R2_SECRET_ACCESS_KEY": "sk",
+            },
+            clear=False,
+        ):
+            resp = self.owner_client.get("/api/v1/closet/images/")
+        self.assertEqual(resp.status_code, 200)
+        cc = (resp.headers.get("Cache-Control") or "").lower()
+        self.assertIn("no-store", cc)
+        self.assertIn("private", cc)
+
+    @override_settings(CLOSET_R2_KEY_PREFIX="closet")
+    def test_closet_image_key_owned_by_user_requires_exact_user_segment(self):
+        self.assertTrue(closet_image_key_owned_by_user("closet/7/20240101/x.jpg", 7))
+        self.assertFalse(closet_image_key_owned_by_user("closet/77/20240101/x.jpg", 7))
+        self.assertFalse(closet_image_key_owned_by_user("closet/7extra/20240101/x.jpg", 7))
+        self.assertFalse(closet_image_key_owned_by_user("closet/07/20240101/x.jpg", 7))
+
+    @override_settings(CLOSET_R2_KEY_PREFIX="app/closet")
+    def test_closet_image_key_owned_by_user_multisegment_root(self):
+        self.assertTrue(closet_image_key_owned_by_user("app/closet/3/20240101/x.jpg", 3))
+        self.assertFalse(closet_image_key_owned_by_user("app/closet/33/20240101/x.jpg", 3))
+
+    @override_settings(CLOSET_R2_KEY_PREFIX="closet", CLOSET_R2_PUBLIC_BASE_URL="https://cdn.example.test")
+    @patch("closet.views._list_user_bucket_keys")
+    @patch("closet.views._build_r2_client")
+    def test_images_inventory_drops_bucket_keys_failing_segment_check(
+        self, build_client_mock, list_bucket_keys_mock
+    ):
+        """Defense-in-depth: filter keys even if storage listing returns unexpected objects."""
+        good = f"closet/{self.owner.id}/20240101/ok.jpg"
+        bad_digit_suffix = f"closet/{self.owner.id}0/20240101/leak.jpg"
+        list_bucket_keys_mock.return_value = {good, bad_digit_suffix}
+        with patch.dict(
+            "os.environ",
+            {
+                "CLOUDFLARE_ACCOUNT_ID": "acct",
+                "CLOSET_R2_BUCKET": "bucket",
+                "CLOSET_R2_ACCESS_KEY_ID": "ak",
+                "CLOSET_R2_SECRET_ACCESS_KEY": "sk",
+            },
+            clear=False,
+        ):
+            resp = self.owner_client.get("/api/v1/closet/images/")
+        self.assertEqual(resp.status_code, 200)
+        keys = {row["image_key"] for row in resp.json()["results"]}
+        self.assertIn(good, keys)
+        self.assertNotIn(bad_digit_suffix, keys)
 

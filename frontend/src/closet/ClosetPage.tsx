@@ -458,6 +458,8 @@ export default function ClosetPage() {
         flexDirection="column"
         flex="1"
         minH="full"
+        lazyMount
+        unmountOnExit
         onValueChange={(details) => setActiveTab(parseTab(details.value))}
         variant="plain"
       >

@@ -1,6 +1,6 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
-from closet.serializers import closet_item_image_url, expected_closet_image_key_prefix
+from closet.serializers import closet_image_key_owned_by_user, closet_item_image_url
 
 
 UserModel = get_user_model()
@@ -126,8 +126,7 @@ class ProfileUpdateSerializer(serializers.Serializer):
         user = getattr(request, "user", None)
         if not user:
             raise serializers.ValidationError("Could not validate avatar image key.")
-        expected_prefix = expected_closet_image_key_prefix(user.id)
-        if not key.startswith(expected_prefix):
+        if not closet_image_key_owned_by_user(key, user.id):
             raise serializers.ValidationError("Avatar image key must belong to your account prefix.")
         return key
 

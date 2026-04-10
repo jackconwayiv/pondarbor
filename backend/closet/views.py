@@ -11,6 +11,7 @@ from django.db import transaction
 from django.db.models import Exists, OuterRef, Prefetch, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.views.decorators.cache import cache_control
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -26,6 +27,7 @@ from closet.serializers import (
     ItemPatchSerializer,
     ItemSerializer,
     LoanSerializer,
+    closet_image_key_owned_by_user,
     closet_item_image_url,
     expected_closet_image_key_prefix,
 )
@@ -842,8 +844,10 @@ def uploads_presign(request):
 
 @api_view(["GET"])
 @permission_classes([IsApprovedUser])
+@cache_control(private=True, no_store=True)
 def images_mine(request):
     key_prefix = expected_closet_image_key_prefix(request.user.id)
+    user_id = request.user.id
     db_qs = Item.objects.filter(
         owner_user=request.user,
         deleted_at__isnull=True,
@@ -852,7 +856,7 @@ def images_mine(request):
     item_ids_by_key: dict[str, list[int]] = defaultdict(list)
     for row in db_qs.values("id", "name", "image_key"):
         key = (row.get("image_key") or "").strip()
-        if not key or not key.startswith(key_prefix):
+        if not key or not closet_image_key_owned_by_user(key, user_id):
             continue
         item_ids_by_key[key].append(int(row["id"]))
         item_names_by_key[key].append(str(row.get("name") or "").strip() or f"Item {row['id']}")
@@ -874,12 +878,15 @@ def images_mine(request):
             bucket=config["bucket"],
             key_prefix=key_prefix,
         )
+        bucket_keys = {k for k in bucket_keys if closet_image_key_owned_by_user(k, user_id)}
     except Exception as exc:
         logger.exception("closet images_mine: failed to list R2 objects")
         detail = str(exc) if settings.DEBUG else "Failed to list images from storage."
         return Response({"detail": detail}, status=502)
 
-    all_keys = sorted(db_keys | bucket_keys)
+    all_keys = sorted(
+        k for k in (db_keys | bucket_keys) if closet_image_key_owned_by_user(k, user_id)
+    )
     rows = []
     for key in all_keys:
         attached_item_ids = sorted(item_ids_by_key.get(key, []))
@@ -907,13 +914,13 @@ def images_mine(request):
 
 @api_view(["POST"])
 @permission_classes([IsApprovedUser])
+@cache_control(private=True, no_store=True)
 @transaction.atomic
 def image_delete(request):
     raw_key = str(request.data.get("image_key") or "").strip()
     if not raw_key:
         return Response({"detail": "image_key is required."}, status=400)
-    expected_prefix = expected_closet_image_key_prefix(request.user.id)
-    if not raw_key.startswith(expected_prefix):
+    if not closet_image_key_owned_by_user(raw_key, request.user.id):
         return Response({"detail": "Image key must belong to your account prefix."}, status=403)
 
     config, config_error = _r2_client_config_or_response()

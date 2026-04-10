@@ -41,11 +41,10 @@ export default function MealRecipeIdsPicker({
         </Stack>
       ) : null}
       {available.length > 0 ? (
-        <NativeSelectRoot key={recipeIds.join("-")} size="sm" maxW="100%">
+        <NativeSelectRoot key={recipeIds.join("-")} size="sm" maxW="100%" disabled={disabled}>
           <NativeSelectField
             {...PANEL_FIELD_PROPS}
             value=""
-            disabled={disabled}
             onChange={(e) => {
               const v = e.target.value;
               if (v === "") return;

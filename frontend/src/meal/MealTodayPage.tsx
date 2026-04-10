@@ -22,7 +22,7 @@ import {
   MealLoading,
   MealSessionReconnect,
 } from "./mealPageStates";
-import type { InstanceSlot, Meal } from "./types";
+import type { InstanceSlot, Meal, MealPlanInstance } from "./types";
 
 function slotMealId(slots: InstanceSlot[], dayIndex: number, slotIndex: number): number | null {
   const row = slots.find((x) => x.day_index === dayIndex && x.slot_index === slotIndex);
@@ -163,14 +163,15 @@ export default function MealTodayPage() {
                               mb="1"
                             >
                               {meal.recipes.map((r) => (
-                                <PondButton
+                                <RouterLink
                                   key={r.id}
-                                  as={RouterLink}
                                   to={`/meal/menu/recipes/${r.id}`}
-                                  colorPalette="lilypad"
+                                  style={{ textDecoration: "none" }}
                                 >
-                                  {r.title}
-                                </PondButton>
+                                  <PondButton as="span" colorPalette="lilypad">
+                                    {r.title}
+                                  </PondButton>
+                                </RouterLink>
                               ))}
                             </HStack>
                           ) : null}

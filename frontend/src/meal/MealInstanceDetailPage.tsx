@@ -117,7 +117,7 @@ export default function MealInstanceDetailPage() {
                       const payload = inst.slots.map((s) => ({
                         day_index: s.day_index,
                         slot_index: s.slot_index,
-                        meal_id: s.meal_id,
+                        meal_ids: s.meal_ids,
                       }));
                       const next = await patchInstanceGrid(tok, inst.id, payload);
                       setInst(next);
@@ -168,12 +168,12 @@ export default function MealInstanceDetailPage() {
             weekStartsOn={weekStartsOn}
             meals={meals}
             disabled={saveBusy || deleteBusy}
-            onCellChange={(dayIndex, slotIndex, mealId) => {
+            onCellChange={(dayIndex, slotIndex, mealIds) => {
               void (async () => {
                 try {
                   const tok = await getApiAccessToken();
                   const next = await patchInstanceGrid(tok, inst.id, [
-                    { day_index: dayIndex, slot_index: slotIndex, meal_id: mealId },
+                    { day_index: dayIndex, slot_index: slotIndex, meal_ids: mealIds },
                   ]);
                   setInst(next);
                   setErr(null);

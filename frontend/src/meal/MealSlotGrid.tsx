@@ -11,18 +11,18 @@ export default function MealSlotGrid({
   disabled,
   onCellChange,
 }: {
-  slots: { day_index: number; slot_index: number; meal_id: number | null }[];
+  slots: { day_index: number; slot_index: number; meal_ids: number[] }[];
   slotsPerDay: number;
   weekStartsOn: number;
   meals: Meal[];
   disabled?: boolean;
-  onCellChange: (dayIndex: number, slotIndex: number, mealId: number | null) => void;
+  onCellChange: (dayIndex: number, slotIndex: number, mealIds: number[]) => void;
 }) {
   const cols = dayColumnOrder(weekStartsOn);
 
-  function mealAt(day: number, slot: number): number | null {
+  function mealsAt(day: number, slot: number): number[] {
     const row = slots.find((x) => x.day_index === day && x.slot_index === slot);
-    return row?.meal_id ?? null;
+    return row?.meal_ids ?? [];
   }
 
   return (
@@ -52,23 +52,21 @@ export default function MealSlotGrid({
                   {slotIndex + 1}
                 </Table.Cell>
                 {cols.map((dayIndex) => {
-                  const mid = mealAt(dayIndex, slotIndex);
+                  const mids = mealsAt(dayIndex, slotIndex);
                   return (
                     <Table.Cell key={`${dayIndex}-${slotIndex}`} px="1">
                       <NativeSelectRoot size="xs" disabled={disabled}>
                         <NativeSelectField
                           {...PANEL_FIELD_PROPS}
-                          value={mid != null ? String(mid) : ""}
+                          multiple
+                          value={mids.map(String)}
                           onChange={(e) => {
-                            const v = e.target.value;
-                            onCellChange(
-                              dayIndex,
-                              slotIndex,
-                              v === "" ? null : Number(v),
+                            const selected = Array.from(e.target.selectedOptions).map((opt) =>
+                              Number(opt.value),
                             );
+                            onCellChange(dayIndex, slotIndex, selected);
                           }}
                         >
-                          <option value="">—</option>
                           {meals.map((m) => (
                             <option key={m.id} value={m.id}>
                               {mealLabel(m)}

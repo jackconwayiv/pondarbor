@@ -10,15 +10,15 @@ import {
   PANEL_ENTRY_CARD_PROPS,
   PANEL_FIELD_PROPS,
 } from "../theme/typography";
-import { deleteMeal, fetchMeal, fetchRecipes, patchMeal } from "./api";
-import MealRecipeIdsPicker from "./MealRecipeIdsPicker";
+import { deleteMeal, fetchMeal, patchMeal } from "./api";
 import { mealOwnerLabel } from "./mealOwnerLabel";
 import {
   MealApprovalRequired,
   MealLoading,
   MealSessionReconnect,
 } from "./mealPageStates";
-import type { Meal, Recipe } from "./types";
+import { linesToIngredients } from "./recipeIngredients";
+import type { Meal } from "./types";
 
 export default function MealMealDetailPage() {
   const { id } = useParams();
@@ -27,26 +27,24 @@ export default function MealMealDetailPage() {
   const { isAuthenticated, isLoading, sessionUser, getApiAccessToken, refreshSession } =
     useAppSession();
   const [meal, setMeal] = useState<Meal | null>(null);
-  const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [mealTitle, setMealTitle] = useState("");
-  const [recipeIds, setRecipeIds] = useState<number[]>([]);
   const [blurb, setBlurb] = useState("");
+  const [directions, setDirections] = useState("");
+  const [ingredientsText, setIngredientsText] = useState("");
   const [err, setErr] = useState<string | null>(null);
-  const [recipeListBusy, setRecipeListBusy] = useState(false);
-  const [recipeListErr, setRecipeListErr] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const confirmDeleteButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const load = useCallback(async () => {
     const t = await getApiAccessToken();
-    const [m, r] = await Promise.all([fetchMeal(t, mid), fetchRecipes(t)]);
+    const m = await fetchMeal(t, mid);
     setErr(null);
     setMeal(m);
-    setRecipes(r);
     setMealTitle(m.title);
-    setRecipeIds(m.recipes.map((x) => x.id));
     setBlurb(m.blurb);
+    setDirections(m.directions ?? "");
+    setIngredientsText((m.ingredients ?? []).map((ing) => ing.raw_line).join("\n"));
   }, [getApiAccessToken, mid]);
 
   useEffect(() => {
@@ -56,32 +54,6 @@ export default function MealMealDetailPage() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [sessionUser?.user.is_approved, mid, load]);
-
-  const applyRecipeIds = useCallback(
-    async (nextIds: number[]) => {
-      const previousIds = recipeIds;
-      setRecipeIds(nextIds);
-      setRecipeListErr(null);
-      setRecipeListBusy(true);
-      try {
-        const t = await getApiAccessToken();
-        const next = await patchMeal(t, mid, {
-          recipe_ids: nextIds,
-          title: mealTitle.trim(),
-          blurb,
-        });
-        setMeal(next);
-        setRecipeIds(next.recipes.map((x) => x.id));
-        setErr(null);
-      } catch (e) {
-        setRecipeIds(previousIds);
-        setRecipeListErr(e instanceof Error ? e.message : "Could not update recipes");
-      } finally {
-        setRecipeListBusy(false);
-      }
-    },
-    [blurb, getApiAccessToken, mealTitle, mid, recipeIds],
-  );
 
   if (isLoading) return <MealLoading />;
   if (!isAuthenticated) return <Navigate to="/" replace />;
@@ -150,7 +122,7 @@ export default function MealMealDetailPage() {
               <PondButton
                 flexShrink={0}
                 colorPalette="lilypad"
-                disabled={deleteBusy || recipeListBusy}
+                disabled={deleteBusy}
                 onClick={(e) => {
                   e.stopPropagation();
                   setConfirmDelete(false);
@@ -158,9 +130,10 @@ export default function MealMealDetailPage() {
                     try {
                       const t = await getApiAccessToken();
                       const next = await patchMeal(t, meal.id, {
-                        recipe_ids: recipeIds,
                         title: mealTitle.trim(),
                         blurb,
+                        directions,
+                        ingredients: linesToIngredients(ingredientsText),
                       });
                       setMeal(next);
                       setErr(null);
@@ -201,21 +174,18 @@ export default function MealMealDetailPage() {
                 {confirmDelete ? "Confirm Delete" : "Delete"}
               </PondButton>
             </HStack>
-            <Stack gap="1" w="100%">
-              <MealRecipeIdsPicker
-                recipes={recipes}
-                recipeIds={recipeIds}
-                onChange={(next) => {
-                  void applyRecipeIds(next);
-                }}
-                disabled={recipeListBusy || deleteBusy}
-              />
-              {recipeListErr ? (
-                <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium" color="nautical.solid" role="alert">
-                  {recipeListErr}
-                </Text>
-              ) : null}
-            </Stack>
+            <Textarea
+              value={ingredientsText}
+              onChange={(e) => setIngredientsText(e.target.value)}
+              placeholder="Ingredients (one line per item)"
+              {...PANEL_FIELD_PROPS}
+            />
+            <Textarea
+              value={directions}
+              onChange={(e) => setDirections(e.target.value)}
+              placeholder="Directions (optional)"
+              {...PANEL_FIELD_PROPS}
+            />
             <Textarea
               value={blurb}
               onChange={(e) => setBlurb(e.target.value)}

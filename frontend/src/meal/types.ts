@@ -1,4 +1,4 @@
-export type RecipeIngredient = {
+export type MealIngredient = {
   id: number;
   position: number;
   raw_line: string;
@@ -7,25 +7,13 @@ export type RecipeIngredient = {
   name: string;
 };
 
-export type Recipe = {
-  id: number;
-  owner_user: number;
-  title: string;
-  directions: string;
-  notes: string;
-  cloned_from_recipe: number | null;
-  ingredients: RecipeIngredient[];
-  created_at: string;
-  updated_at: string;
-};
-
 export type Meal = {
   id: number;
   owner_user: number;
-  /** Recipes attached to this meal, in display / grocery order. */
-  recipes: Recipe[];
   title: string;
   blurb: string;
+  directions: string;
+  ingredients: MealIngredient[];
   cloned_from_meal: number | null;
   created_at: string;
   updated_at: string;
@@ -34,7 +22,7 @@ export type Meal = {
 export type TemplateSlot = {
   day_index: number;
   slot_index: number;
-  meal_id: number | null;
+  meal_ids: number[];
 };
 
 export type MealPlanTemplate = {
@@ -51,7 +39,7 @@ export type MealPlanTemplate = {
 export type InstanceSlot = {
   day_index: number;
   slot_index: number;
-  meal_id: number | null;
+  meal_ids: number[];
 };
 
 export type MealPlanInstance = {

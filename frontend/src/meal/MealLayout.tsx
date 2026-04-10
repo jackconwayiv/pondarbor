@@ -29,7 +29,6 @@ type MealPlansInnerTab = keyof typeof MEAL_PLANS_INNER_PATH;
 /** Inner tabs under Meals (outer `menu`). */
 const MEAL_MENU_INNER_PATH = {
   meals: "/meal/menu/meals",
-  recipes: "/meal/menu/recipes",
 } as const;
 
 type MealMenuInnerTab = keyof typeof MEAL_MENU_INNER_PATH;
@@ -60,8 +59,7 @@ function mealPlansInnerFromPathname(pathname: string): MealPlansInnerTab {
   return "today";
 }
 
-function mealMenuInnerFromPathname(pathname: string): MealMenuInnerTab {
-  if (pathname.startsWith("/meal/menu/recipes")) return "recipes";
+function mealMenuInnerFromPathname(_pathname: string): MealMenuInnerTab {
   return "meals";
 }
 
@@ -125,7 +123,7 @@ export default function MealLayout() {
                 lineHeight="tall"
                 color="fg"
               >
-                Weekly meal templates, recipes, grocery lists, and optional sharing with one
+                Weekly meal templates, meals, grocery lists, and optional sharing with one
                 friend when you both choose each other.
               </Text>
             </Box>
@@ -196,9 +194,6 @@ export default function MealLayout() {
                 <Tabs.List {...MEAL_TAB_LIST_PROPS}>
                   <Tabs.Trigger {...mealTabTriggerProps(menuInner, "meals")}>
                     Meals
-                  </Tabs.Trigger>
-                  <Tabs.Trigger {...mealTabTriggerProps(menuInner, "recipes")}>
-                    Recipes
                   </Tabs.Trigger>
                 </Tabs.List>
               </Tabs.Root>

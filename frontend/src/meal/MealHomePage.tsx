@@ -184,8 +184,8 @@ export default function MealHomePage() {
             Disconnect mutual pair
           </Heading>
           <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" mb="3">
-            Ending the pair requires both people to agree. Copied recipes/meals you used from your
-            partner in your own plans are forked to your account when disconnect completes.
+            Ending the pair requires both people to agree. Copied meals you used from your partner
+            in your own plans are forked to your account when disconnect completes.
           </Text>
           {pending ? (
             <Stack gap="2">

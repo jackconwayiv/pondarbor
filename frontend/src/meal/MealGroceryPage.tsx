@@ -107,7 +107,7 @@ export default function MealGroceryPage() {
         Grocery list
       </Heading>
       <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-        Pick a planned week. The list is built from meals that have a recipe. Regenerate after you
+        Pick a planned week. The list is built from meal ingredients. Regenerate after you
         change the week grid on the week editor.
       </Text>
 
@@ -162,7 +162,7 @@ export default function MealGroceryPage() {
                 Ingredients
               </Heading>
               <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted" mb="2">
-                Regenerate if you changed meal slots or recipes since this list was built.
+                Regenerate if you changed meal slots or meal ingredients since this list was built.
               </Text>
               <PondButton
                 colorPalette="lilypad"
@@ -194,7 +194,7 @@ export default function MealGroceryPage() {
                 </Stack>
               ) : grocery ? (
                 <Text fontSize={APP_TEXT_SIZES.helper} mt="2" color="fg.muted">
-                  No ingredient lines (add recipes to meals in this week).
+                  No ingredient lines (add ingredients to meals in this week).
                 </Text>
               ) : null}
             </Card.Body>

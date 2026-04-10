@@ -1,26 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { dayColumnOrder, mealLabel } from "./mealLabels";
-import type { Meal, Recipe } from "./types";
-
-function recipe(id: number, title: string): Recipe {
-  return {
-    id,
-    owner_user: 1,
-    title,
-    directions: "",
-    notes: "",
-    cloned_from_recipe: null,
-    ingredients: [],
-    created_at: "",
-    updated_at: "",
-  };
-}
+import type { Meal } from "./types";
 
 function meal(partial: Partial<Meal> & Pick<Meal, "id">): Meal {
   return {
     owner_user: 1,
-    recipes: [],
+    directions: "",
+    ingredients: [],
     title: "",
     blurb: "",
     cloned_from_meal: null,
@@ -48,16 +35,7 @@ describe("mealLabel", () => {
     expect(mealLabel(meal({ id: 1, title: long }))).toBe(`${"a".repeat(48)}…`);
   });
 
-  it("falls back to recipe titles when title empty", () => {
-    const m = meal({
-      id: 2,
-      title: "",
-      recipes: [recipe(1, "Soup"), recipe(2, "Salad")],
-    });
-    expect(mealLabel(m)).toBe("Soup, Salad");
-  });
-
-  it("falls back to blurb when no title or recipes", () => {
+  it("falls back to blurb when no title", () => {
     expect(mealLabel(meal({ id: 3, title: "", blurb: "Leftovers" }))).toBe("Leftovers");
   });
 

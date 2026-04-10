@@ -6,16 +6,16 @@ import type { Meal } from "./types";
 export type MealReadonlySlot = {
   day_index: number;
   slot_index: number;
-  meal_id: number | null;
+  meal_ids: number[];
 };
 
-function slotMealId(
+function slotMealIds(
   slots: MealReadonlySlot[],
   dayIndex: number,
   slotIndex: number,
-): number | null {
+): number[] {
   const row = slots.find((x) => x.day_index === dayIndex && x.slot_index === slotIndex);
-  return row?.meal_id ?? null;
+  return row?.meal_ids ?? [];
 }
 
 function calendarDateForDay(weekStartIso: string, dayIndex: number): Date {
@@ -50,10 +50,14 @@ export function MealReadonlyGrid(props: MealReadonlyGridProps) {
   const dayOrder = dayColumnOrder(weekStartsOn);
   const n = Math.max(1, slotsPerDay);
 
-  function labelForMealId(mid: number | null): string {
-    if (mid == null) return "—";
-    const m = mealsById.get(mid);
-    return m ? mealLabel(m) : `Meal #${mid}`;
+  function labelForMealIds(mids: number[]): string {
+    if (mids.length === 0) return "—";
+    return mids
+      .map((mid) => {
+        const m = mealsById.get(mid);
+        return m ? mealLabel(m) : `Meal #${mid}`;
+      })
+      .join(" · ");
   }
 
   return (
@@ -93,7 +97,7 @@ export function MealReadonlyGrid(props: MealReadonlyGridProps) {
                     lineHeight="short"
                     wordBreak="break-word"
                   >
-                    {labelForMealId(slotMealId(slots, dayIndex, slotIndex))}
+                    {labelForMealIds(slotMealIds(slots, dayIndex, slotIndex))}
                   </Text>
                 </Table.Cell>
               ))}

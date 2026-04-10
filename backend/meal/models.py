@@ -49,49 +49,6 @@ class MealPartnerDisconnectRequest(models.Model):
         return f"{self.initiator_id}->{self.recipient_id} ({self.status})"
 
 
-class Recipe(models.Model):
-    owner_user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="meal_recipes",
-    )
-    title = models.CharField(max_length=255)
-    directions = models.TextField(blank=True)
-    notes = models.TextField(blank=True)
-    cloned_from_recipe = models.ForeignKey(
-        "self",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="clones",
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["-updated_at", "-created_at"]
-
-    def __str__(self) -> str:
-        return self.title
-
-
-class RecipeIngredient(models.Model):
-    recipe = models.ForeignKey(
-        Recipe,
-        on_delete=models.CASCADE,
-        related_name="ingredients",
-    )
-    position = models.PositiveSmallIntegerField(default=0)
-    raw_line = models.CharField(max_length=512)
-    amount = models.CharField(max_length=64, blank=True)
-    unit = models.CharField(max_length=64, blank=True)
-    name = models.CharField(max_length=255, blank=True)
-
-    class Meta:
-        ordering = ["position", "id"]
-        unique_together = [("recipe", "position")]
-
-
 class Meal(models.Model):
     owner_user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -100,6 +57,7 @@ class Meal(models.Model):
     )
     title = models.CharField(max_length=255, blank=True)
     blurb = models.TextField(blank=True)
+    directions = models.TextField(blank=True)
     cloned_from_meal = models.ForeignKey(
         "self",
         on_delete=models.SET_NULL,
@@ -117,33 +75,24 @@ class Meal(models.Model):
         t = (self.title or "").strip()
         if t:
             return t[:80]
-        titles = [mr.recipe.title for mr in self.meal_recipes.order_by("position", "id").select_related("recipe")]
-        if titles:
-            return ", ".join(titles)[:80]
         return (self.blurb or "Meal")[:80]
 
 
-class MealRecipe(models.Model):
-    """Ordered link from a meal to one or more recipes."""
-
+class MealIngredient(models.Model):
     meal = models.ForeignKey(
         Meal,
         on_delete=models.CASCADE,
-        related_name="meal_recipes",
-    )
-    recipe = models.ForeignKey(
-        Recipe,
-        on_delete=models.CASCADE,
-        related_name="meal_links",
+        related_name="ingredients",
     )
     position = models.PositiveSmallIntegerField(default=0)
+    raw_line = models.CharField(max_length=512)
+    amount = models.CharField(max_length=64, blank=True)
+    unit = models.CharField(max_length=64, blank=True)
+    name = models.CharField(max_length=255, blank=True)
 
     class Meta:
         ordering = ["position", "id"]
-        unique_together = [("meal", "recipe")]
-
-    def __str__(self) -> str:
-        return f"{self.meal_id} → {self.recipe_id}"
+        unique_together = [("meal", "position")]
 
 
 class MealPlanTemplate(models.Model):
@@ -173,16 +122,24 @@ class MealPlanTemplateSlot(models.Model):
     )
     day_index = models.PositiveSmallIntegerField()
     slot_index = models.PositiveSmallIntegerField()
+    class Meta:
+        unique_together = [("template", "day_index", "slot_index")]
+
+
+class MealPlanTemplateSlotMeal(models.Model):
+    slot = models.ForeignKey(
+        MealPlanTemplateSlot,
+        on_delete=models.CASCADE,
+        related_name="slot_meals",
+    )
     meal = models.ForeignKey(
         Meal,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="template_slots",
+        on_delete=models.CASCADE,
+        related_name="template_slot_links",
     )
 
     class Meta:
-        unique_together = [("template", "day_index", "slot_index")]
+        unique_together = [("slot", "meal")]
 
 
 class MealPlanInstance(models.Model):
@@ -218,16 +175,24 @@ class MealPlanInstanceSlot(models.Model):
     )
     day_index = models.PositiveSmallIntegerField()
     slot_index = models.PositiveSmallIntegerField()
+    class Meta:
+        unique_together = [("instance", "day_index", "slot_index")]
+
+
+class MealPlanInstanceSlotMeal(models.Model):
+    slot = models.ForeignKey(
+        MealPlanInstanceSlot,
+        on_delete=models.CASCADE,
+        related_name="slot_meals",
+    )
     meal = models.ForeignKey(
         Meal,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="instance_slots",
+        on_delete=models.CASCADE,
+        related_name="instance_slot_links",
     )
 
     class Meta:
-        unique_together = [("instance", "day_index", "slot_index")]
+        unique_together = [("slot", "meal")]
 
 
 class GroceryList(models.Model):

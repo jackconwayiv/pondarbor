@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from django.db import transaction
 
-from django.db.models import Prefetch
-
-from meal.models import GroceryList, GroceryListItem, MealPlanInstance, MealRecipe
+from meal.models import GroceryList, GroceryListItem, MealPlanInstance
 
 
 @transaction.atomic
@@ -18,23 +16,14 @@ def generate_grocery_list_for_instance(instance: MealPlanInstance) -> GroceryLis
         gl.save(update_fields=["owner_user", "updated_at"])
     gl.items.all().delete()
     position = 0
-    meal_recipe_qs = (
-        MealRecipe.objects.order_by("position", "id")
-        .select_related("recipe")
-        .prefetch_related("recipe__ingredients")
-    )
     slots = (
-        instance.slots.select_related("meal")
-        .prefetch_related(Prefetch("meal__meal_recipes", queryset=meal_recipe_qs))
+        instance.slots.prefetch_related("slot_meals__meal__ingredients")
         .order_by("day_index", "slot_index", "id")
     )
     for slot in slots:
-        meal = slot.meal
-        if not meal:
-            continue
-        for link in meal.meal_recipes.all():
-            recipe = link.recipe
-            for ing in recipe.ingredients.all().order_by("position", "id"):
+        for slot_meal in slot.slot_meals.all():
+            meal = slot_meal.meal
+            for ing in meal.ingredients.all().order_by("position", "id"):
                 text = (ing.raw_line or "").strip()
                 if not text:
                     parts = [ing.amount, ing.unit, ing.name]

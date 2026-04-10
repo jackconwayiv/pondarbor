@@ -113,7 +113,7 @@ export default function MealTemplateEditPage() {
                       const payload = template.slots.map((s) => ({
                         day_index: s.day_index,
                         slot_index: s.slot_index,
-                        meal_id: s.meal_id,
+                        meal_ids: s.meal_ids,
                       }));
                       await patchTemplateGrid(tok, template.id, payload);
                       setErr(null);
@@ -164,12 +164,12 @@ export default function MealTemplateEditPage() {
             weekStartsOn={weekStartsOn}
             meals={meals}
             disabled={saveBusy || deleteBusy}
-            onCellChange={(dayIndex, slotIndex, mealId) => {
+            onCellChange={(dayIndex, slotIndex, mealIds) => {
               void (async () => {
                 try {
                   const tok = await getApiAccessToken();
                   const next = await patchTemplateGrid(tok, template.id, [
-                    { day_index: dayIndex, slot_index: slotIndex, meal_id: mealId },
+                    { day_index: dayIndex, slot_index: slotIndex, meal_ids: mealIds },
                   ]);
                   setTemplate(next);
                   setErr(null);

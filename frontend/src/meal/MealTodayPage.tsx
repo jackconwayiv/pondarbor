@@ -2,7 +2,6 @@ import { Card, Heading, HStack, Stack, Text } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link as RouterLink, Navigate } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
-import PondButton from "../PondButton";
 import {
   APP_TEXT_SIZES,
   MAPPED_CLOSET_TAB_STACK_GAP,
@@ -24,9 +23,9 @@ import {
 } from "./mealPageStates";
 import type { InstanceSlot, Meal, MealPlanInstance } from "./types";
 
-function slotMealId(slots: InstanceSlot[], dayIndex: number, slotIndex: number): number | null {
+function slotMealIds(slots: InstanceSlot[], dayIndex: number, slotIndex: number): number[] {
   const row = slots.find((x) => x.day_index === dayIndex && x.slot_index === slotIndex);
-  return row?.meal_id ?? null;
+  return row?.meal_ids ?? [];
 }
 
 export default function MealTodayPage() {
@@ -65,8 +64,9 @@ export default function MealTodayPage() {
         : 0;
     const out: { slotIndex: number; mealId: number }[] = [];
     for (let s = 0; s < spd; s++) {
-      const mid = slotMealId(covering.slots, dayIdx, s);
-      if (mid != null) out.push({ slotIndex: s, mealId: mid });
+      for (const mid of slotMealIds(covering.slots, dayIdx, s)) {
+        out.push({ slotIndex: s, mealId: mid });
+      }
     }
     return out;
   })();
@@ -127,7 +127,6 @@ export default function MealTodayPage() {
               {slotsToday.map(({ slotIndex, mealId }, i) => {
                 const meal = mealsById.get(mealId);
                 const hasBlurb = Boolean(meal?.blurb?.trim());
-                const hasRecipes = Boolean(meal?.recipes?.length);
                 return (
                   <Stack
                     key={`${slotIndex}-${mealId}`}
@@ -154,37 +153,16 @@ export default function MealTodayPage() {
                           >
                             {mealLabel(meal)}
                           </Text>
-                          {hasRecipes ? (
-                            <HStack
-                              flexWrap="wrap"
-                              gap="2"
-                              flexShrink={0}
-                              justify="flex-end"
-                              mb="1"
-                            >
-                              {meal.recipes.map((r) => (
-                                <RouterLink
-                                  key={r.id}
-                                  to={`/meal/menu/recipes/${r.id}`}
-                                  style={{ textDecoration: "none" }}
-                                >
-                                  <PondButton as="span" colorPalette="lilypad">
-                                    {r.title}
-                                  </PondButton>
-                                </RouterLink>
-                              ))}
-                            </HStack>
-                          ) : null}
                         </HStack>
                         {hasBlurb ? (
                           <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" whiteSpace="pre-wrap">
                             {meal.blurb.trim()}
                           </Text>
-                        ) : !hasBlurb && !hasRecipes ? (
+                        ) : (
                           <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
                             This meal has no notes.
                           </Text>
-                        ) : null}
+                        )}
                       </Stack>
                     ) : (
                       <Text fontSize={APP_TEXT_SIZES.body} color="fg.muted">

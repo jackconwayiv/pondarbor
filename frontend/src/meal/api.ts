@@ -3,7 +3,6 @@ import type {
   Meal,
   MealPlanInstance,
   MealPlanTemplate,
-  Recipe,
   DisconnectPending,
 } from "./types";
 
@@ -34,72 +33,6 @@ async function parseApiError(response: Response): Promise<string> {
   return text || `Request failed (${response.status})`;
 }
 
-export async function fetchRecipes(accessToken: string | null): Promise<Recipe[]> {
-  const response = await fetch(`${apiBase()}/api/v1/meal/recipes/`, {
-    headers: authHeaders(accessToken),
-    credentials: "omit",
-  });
-  if (!response.ok) throw new Error(await parseApiError(response));
-  return response.json() as Promise<Recipe[]>;
-}
-
-export async function fetchRecipe(accessToken: string | null, id: number): Promise<Recipe> {
-  const response = await fetch(`${apiBase()}/api/v1/meal/recipes/${id}/`, {
-    headers: authHeaders(accessToken),
-    credentials: "omit",
-  });
-  if (!response.ok) throw new Error(await parseApiError(response));
-  return response.json() as Promise<Recipe>;
-}
-
-export async function createRecipe(
-  accessToken: string | null,
-  body: {
-    title: string;
-    directions?: string;
-    notes?: string;
-    ingredients?: { raw_line: string; amount?: string; unit?: string; name?: string }[];
-  },
-): Promise<Recipe> {
-  const response = await fetch(`${apiBase()}/api/v1/meal/recipes/`, {
-    method: "POST",
-    headers: authHeaders(accessToken),
-    credentials: "omit",
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) throw new Error(await parseApiError(response));
-  return response.json() as Promise<Recipe>;
-}
-
-export async function patchRecipe(
-  accessToken: string | null,
-  id: number,
-  body: Partial<{
-    title: string;
-    directions: string;
-    notes: string;
-    ingredients: { raw_line: string; amount?: string; unit?: string; name?: string }[];
-  }>,
-): Promise<Recipe> {
-  const response = await fetch(`${apiBase()}/api/v1/meal/recipes/${id}/`, {
-    method: "PATCH",
-    headers: authHeaders(accessToken),
-    credentials: "omit",
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) throw new Error(await parseApiError(response));
-  return response.json() as Promise<Recipe>;
-}
-
-export async function deleteRecipe(accessToken: string | null, id: number): Promise<void> {
-  const response = await fetch(`${apiBase()}/api/v1/meal/recipes/${id}/`, {
-    method: "DELETE",
-    headers: authHeaders(accessToken),
-    credentials: "omit",
-  });
-  if (!response.ok) throw new Error(await parseApiError(response));
-}
-
 export async function fetchMeals(accessToken: string | null): Promise<Meal[]> {
   const response = await fetch(`${apiBase()}/api/v1/meal/meals/`, {
     headers: authHeaders(accessToken),
@@ -120,7 +53,12 @@ export async function fetchMeal(accessToken: string | null, id: number): Promise
 
 export async function createMeal(
   accessToken: string | null,
-  body: { recipe_ids?: number[]; title?: string; blurb?: string },
+  body: {
+    title?: string;
+    blurb?: string;
+    directions?: string;
+    ingredients?: { raw_line: string; amount?: string; unit?: string; name?: string }[];
+  },
 ): Promise<Meal> {
   const response = await fetch(`${apiBase()}/api/v1/meal/meals/`, {
     method: "POST",
@@ -135,7 +73,12 @@ export async function createMeal(
 export async function patchMeal(
   accessToken: string | null,
   id: number,
-  body: { recipe_ids?: number[]; title?: string; blurb?: string },
+  body: {
+    title?: string;
+    blurb?: string;
+    directions?: string;
+    ingredients?: { raw_line: string; amount?: string; unit?: string; name?: string }[];
+  },
 ): Promise<Meal> {
   const response = await fetch(`${apiBase()}/api/v1/meal/meals/${id}/`, {
     method: "PATCH",
@@ -218,7 +161,7 @@ export async function deleteTemplate(accessToken: string | null, id: number): Pr
 export async function patchTemplateGrid(
   accessToken: string | null,
   id: number,
-  slots: { day_index: number; slot_index: number; meal_id: number | null }[],
+  slots: { day_index: number; slot_index: number; meal_ids: number[] }[],
 ): Promise<MealPlanTemplate> {
   const response = await fetch(`${apiBase()}/api/v1/meal/templates/${id}/grid/`, {
     method: "PATCH",
@@ -268,7 +211,7 @@ export async function fetchInstance(
 export async function patchInstanceGrid(
   accessToken: string | null,
   id: number,
-  slots: { day_index: number; slot_index: number; meal_id: number | null }[],
+  slots: { day_index: number; slot_index: number; meal_ids: number[] }[],
 ): Promise<MealPlanInstance> {
   const response = await fetch(`${apiBase()}/api/v1/meal/instances/${id}/grid/`, {
     method: "PATCH",

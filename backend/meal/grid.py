@@ -17,7 +17,6 @@ def rebuild_template_slots(template: MealPlanTemplate) -> None:
                 template=template,
                 day_index=day,
                 slot_index=slot,
-                defaults={"meal": None},
             )
         MealPlanTemplateSlot.objects.filter(
             template=template,
@@ -52,7 +51,6 @@ def rebuild_instance_slots(instance) -> None:
                 instance=instance,
                 day_index=day,
                 slot_index=slot,
-                defaults={"meal": None},
             )
         MealPlanInstanceSlot.objects.filter(
             instance=instance,
@@ -62,15 +60,18 @@ def rebuild_instance_slots(instance) -> None:
 
 
 def copy_template_to_instance(*, template: MealPlanTemplate, instance) -> None:
-    from meal.models import MealPlanInstanceSlot
+    from meal.models import MealPlanInstanceSlot, MealPlanInstanceSlotMeal
 
     instance.source_template = template
     instance.save(update_fields=["source_template", "updated_at"])
     MealPlanInstanceSlot.objects.filter(instance=instance).delete()
-    for ts in template.slots.all():
-        MealPlanInstanceSlot.objects.create(
+    for ts in template.slots.prefetch_related("slot_meals").all():
+        inst_slot = MealPlanInstanceSlot.objects.create(
             instance=instance,
             day_index=ts.day_index,
             slot_index=ts.slot_index,
-            meal_id=ts.meal_id,
+        )
+        MealPlanInstanceSlotMeal.objects.bulk_create(
+            [MealPlanInstanceSlotMeal(slot=inst_slot, meal_id=sm.meal_id) for sm in ts.slot_meals.all()],
+            ignore_conflicts=True,
         )

@@ -21,35 +21,34 @@ import {
   PANEL_ENTRY_CARD_PROPS,
   PANEL_FIELD_PROPS,
 } from "../theme/typography";
-import { createMeal, fetchMeals, fetchRecipes } from "./api";
+import { createMeal, fetchMeals } from "./api";
 import { mealLabel } from "./mealLabels";
 import { mealOwnerLabel } from "./mealOwnerLabel";
-import MealRecipeIdsPicker from "./MealRecipeIdsPicker";
 import {
   MealApprovalRequired,
   MealLoading,
   MealSessionReconnect,
 } from "./mealPageStates";
-import type { Meal, Recipe } from "./types";
+import { linesToIngredients } from "./recipeIngredients";
+import type { Meal } from "./types";
 
 export default function MealMealsPage() {
   const navigate = useNavigate();
   const { isAuthenticated, isLoading, sessionUser, getApiAccessToken, refreshSession } =
     useAppSession();
   const [meals, setMeals] = useState<Meal[]>([]);
-  const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [title, setTitle] = useState("");
-  const [recipeIds, setRecipeIds] = useState<number[]>([]);
   const [blurb, setBlurb] = useState("");
+  const [directions, setDirections] = useState("");
+  const [ingredientsText, setIngredientsText] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [showAddMeal, setShowAddMeal] = useState(false);
   const isMobile = useIsMobile();
 
   const refresh = useCallback(async () => {
     const t = await getApiAccessToken();
-    const [m, r] = await Promise.all([fetchMeals(t), fetchRecipes(t)]);
+    const m = await fetchMeals(t);
     setMeals(m);
-    setRecipes(r);
   }, [getApiAccessToken]);
 
   useEffect(() => {
@@ -72,7 +71,7 @@ export default function MealMealsPage() {
   return (
     <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP} w="100%">
       <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-        Build meals from a title and optional recipes, then assign them in templates and week plans.
+        Build meals with ingredients and directions, then assign them in templates and week plans.
       </Text>
       <PondButton
         colorPalette="sky"
@@ -107,13 +106,15 @@ export default function MealMealsPage() {
                       try {
                         const t = await getApiAccessToken();
                         const created = await createMeal(t, {
-                          recipe_ids: recipeIds,
                           title: title.trim(),
                           blurb,
+                          directions,
+                          ingredients: linesToIngredients(ingredientsText),
                         });
                         setTitle("");
                         setBlurb("");
-                        setRecipeIds([]);
+                        setDirections("");
+                        setIngredientsText("");
                         setShowAddMeal(false);
                         await refresh();
                         setErr(null);
@@ -127,7 +128,18 @@ export default function MealMealsPage() {
                   Save meal
                 </PondButton>
               </HStack>
-              <MealRecipeIdsPicker recipes={recipes} recipeIds={recipeIds} onChange={setRecipeIds} />
+              <Textarea
+                placeholder="Ingredients (one line per item)"
+                value={ingredientsText}
+                onChange={(e) => setIngredientsText(e.target.value)}
+                {...PANEL_FIELD_PROPS}
+              />
+              <Textarea
+                placeholder="Directions (optional)"
+                value={directions}
+                onChange={(e) => setDirections(e.target.value)}
+                {...PANEL_FIELD_PROPS}
+              />
               <Textarea
                 placeholder="Blurb (optional)"
                 value={blurb}
@@ -163,13 +175,13 @@ export default function MealMealsPage() {
   );
 }
 
-function mealRecipesSummary(meal: Meal): string {
-  if (!meal.recipes?.length) return "No recipes";
-  return meal.recipes.map((r) => r.title).join(" · ");
+function mealIngredientSummary(meal: Meal): string {
+  if (!meal.ingredients?.length) return "No ingredients";
+  return `${meal.ingredients.length} ingredients`;
 }
 
 function MealListCard({ meal, ownerLabel }: { meal: Meal; ownerLabel: string }) {
-  const recipeSummary = mealRecipesSummary(meal);
+  const ingredientSummary = mealIngredientSummary(meal);
   return (
     <RouterLink
       to={`/meal/menu/meals/${meal.id}`}
@@ -184,7 +196,7 @@ function MealListCard({ meal, ownerLabel }: { meal: Meal; ownerLabel: string }) 
                 {mealLabel(meal)}
               </Text>
               <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted" lineClamp={1}>
-                {ownerLabel} · {recipeSummary}
+                {ownerLabel} · {ingredientSummary}
               </Text>
             </Stack>
             <Text fontSize={APP_TEXT_SIZES.meta} color="lilypad.solid" fontWeight="bold" flexShrink={0}>

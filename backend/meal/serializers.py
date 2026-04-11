@@ -5,20 +5,25 @@ from rest_framework import serializers
 from meal.models import (
     GroceryList,
     GroceryListItem,
+    Ingredient,
     Meal,
     MealCategoryOption,
     MealIngredient,
     MealPlanInstance,
     MealPlanTemplate,
+    SavedGroceryList,
+    UserIngredientInventory,
 )
 from meal.publish import meal_eligible_for_publish
 from meal.r2_storage import meal_image_public_url, validate_meal_image_key_for_user
 
 
 class MealIngredientSerializer(serializers.ModelSerializer):
+    ingredient_id = serializers.IntegerField(required=False, allow_null=True)
+
     class Meta:
         model = MealIngredient
-        fields = ("id", "position", "raw_line", "amount", "unit", "name")
+        fields = ("id", "position", "raw_line", "amount", "unit", "name", "ingredient_id")
 
 
 class MealCategoryOptionSerializer(serializers.ModelSerializer):
@@ -211,7 +216,32 @@ class GroceryListItemSerializer(serializers.ModelSerializer):
             "unit",
             "source_meal",
             "manually_added",
+            "ingredient_id",
+            "is_checked",
+            "contributions",
         )
+
+
+class IngredientBriefSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Ingredient
+        fields = ("id", "name")
+
+
+class SavedGroceryListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SavedGroceryList
+        fields = ("id", "label", "source_instance", "snapshot", "saved_at")
+        read_only_fields = ("id", "saved_at")
+
+
+class UserIngredientInventorySerializer(serializers.ModelSerializer):
+    ingredient = IngredientBriefSerializer(read_only=True)
+
+    class Meta:
+        model = UserIngredientInventory
+        fields = ("id", "ingredient", "quantity", "simple_have")
+        read_only_fields = ("id", "ingredient")
 
 
 class GroceryListSerializer(serializers.ModelSerializer):
@@ -219,5 +249,5 @@ class GroceryListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = GroceryList
-        fields = ("id", "owner_user", "instance", "items", "created_at", "updated_at")
+        fields = ("id", "owner_user", "instance", "items", "hide_checked", "created_at", "updated_at")
         read_only_fields = ("id", "owner_user", "items", "created_at", "updated_at")

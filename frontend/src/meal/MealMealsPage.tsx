@@ -59,6 +59,7 @@ export default function MealMealsPage() {
   const [paprikaBusy, setPaprikaBusy] = useState(false);
   const [draftImageKey, setDraftImageKey] = useState("");
   const [listQ, setListQ] = useState("");
+  const [listIngredientQ, setListIngredientQ] = useState("");
   const [listTags, setListTags] = useState("");
   const [mealTypeFilter, setMealTypeFilter] = useState("");
   const [cuisineFilter, setCuisineFilter] = useState("");
@@ -84,6 +85,7 @@ export default function MealMealsPage() {
     const t = await getApiAccessToken();
     const q: MealListQuery = { sort: sort ?? "updated_at" };
     if (listQ.trim()) q.q = listQ.trim();
+    if (listIngredientQ.trim()) q.ingredient_q = listIngredientQ.trim();
     if (listTags.trim()) q.tags = listTags.trim();
     if (mealTypeFilter) q.meal_type_id = Number(mealTypeFilter);
     if (cuisineFilter) q.cuisine_id = Number(cuisineFilter);
@@ -93,6 +95,7 @@ export default function MealMealsPage() {
   }, [
     getApiAccessToken,
     listQ,
+    listIngredientQ,
     listTags,
     mealTypeFilter,
     cuisineFilter,
@@ -188,6 +191,16 @@ export default function MealMealsPage() {
           borderColor="border"
         >
           <Text {...MEALS_TOOLBAR_SECTION_LABEL_PROPS}>Categories</Text>
+          <Stack gap="2" w="100%" maxW="md">
+            <Text {...MEALS_TOOLBAR_SECTION_LABEL_PROPS}>Ingredient contains</Text>
+            <Input
+              w="100%"
+              placeholder="Match ingredient lines"
+              value={listIngredientQ}
+              onChange={(e) => setListIngredientQ(e.target.value)}
+              {...PANEL_FIELD_PROPS}
+            />
+          </Stack>
           <HStack gap="2" flexWrap="wrap" align="flex-start" w="100%">
             <Stack gap="2" flex="1" minW={0}>
               <Text {...MEALS_TOOLBAR_SECTION_LABEL_PROPS}>Meal type</Text>

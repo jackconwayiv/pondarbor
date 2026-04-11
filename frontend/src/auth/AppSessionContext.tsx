@@ -20,6 +20,8 @@ export type Profile = {
   meal_partner_incoming_pending?: boolean;
   /** Keys "1"…"5" → label list for that many meals per day; null = use app defaults. */
   meal_slot_labels?: Record<string, string[]> | null;
+  /** Pantry inventory and grocery hints (Meal Maestro). */
+  meal_pantry_enabled?: boolean;
 };
 
 export type AppUser = {
@@ -53,6 +55,7 @@ export type ProfilePatch = Partial<
     | "meal_week_starts_on"
     | "meal_crud_partner_id"
     | "meal_slot_labels"
+    | "meal_pantry_enabled"
   >
 > & {
   avatar_image_key?: string;

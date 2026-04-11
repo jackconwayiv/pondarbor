@@ -96,6 +96,10 @@ class Profile(models.Model):
     )
     # Keys "1"…"5" -> list of that length; each value is a user-facing meal-slot name from the app allowlist.
     meal_slot_labels = models.JSONField(null=True, blank=True)
+    meal_pantry_enabled = models.BooleanField(
+        default=False,
+        help_text="When true, show pantry inventory and related grocery hints.",
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

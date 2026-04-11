@@ -171,6 +171,30 @@ class MealTagAssignment(models.Model):
         unique_together = [("meal", "tag")]
 
 
+class Ingredient(models.Model):
+    """Owner-scoped canonical ingredient for deduplication, grocery merge, search, and pantry."""
+
+    owner_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="meal_ingredients_vocab",
+    )
+    name = models.CharField(max_length=255)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                Lower("name"),
+                "owner_user",
+                name="meal_ingredient_vocab_owner_name_lower_uniq",
+            ),
+        ]
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class MealIngredient(models.Model):
     meal = models.ForeignKey(
         Meal,
@@ -182,6 +206,13 @@ class MealIngredient(models.Model):
     amount = models.CharField(max_length=64, blank=True)
     unit = models.CharField(max_length=64, blank=True)
     name = models.CharField(max_length=255, blank=True)
+    ingredient = models.ForeignKey(
+        Ingredient,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="meal_lines",
+    )
 
     class Meta:
         ordering = ["position", "id"]
@@ -299,6 +330,10 @@ class GroceryList(models.Model):
         on_delete=models.CASCADE,
         related_name="grocery_list",
     )
+    hide_checked = models.BooleanField(
+        default=False,
+        help_text="UI: hide strikethrough items in the grocery list view.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -324,6 +359,67 @@ class GroceryListItem(models.Model):
         related_name="grocery_list_items",
     )
     manually_added = models.BooleanField(default=False)
+    ingredient = models.ForeignKey(
+        Ingredient,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="grocery_list_items",
+    )
+    is_checked = models.BooleanField(default=False)
+    contributions = models.JSONField(default=list, blank=True)
 
     class Meta:
         ordering = ["position", "id"]
+
+
+class SavedGroceryList(models.Model):
+    """Immutable snapshot copied from a generated or edited list."""
+
+    owner_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="saved_grocery_lists",
+    )
+    label = models.CharField(max_length=255, blank=True)
+    source_instance = models.ForeignKey(
+        MealPlanInstance,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="saved_grocery_snapshots",
+    )
+    snapshot = models.JSONField()
+    saved_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-saved_at", "-id"]
+
+
+class UserIngredientInventory(models.Model):
+    """Opt-in per-ingredient pantry counts (see Profile.meal_pantry_enabled)."""
+
+    owner_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="meal_ingredient_inventory",
+    )
+    ingredient = models.ForeignKey(
+        Ingredient,
+        on_delete=models.CASCADE,
+        related_name="inventory_rows",
+    )
+    quantity = models.PositiveIntegerField(default=0)
+    simple_have = models.BooleanField(
+        null=True,
+        blank=True,
+        help_text="When set, use quick have/don’t-have instead of quantity.",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("owner_user", "ingredient"),
+                name="meal_useringredientinventory_owner_ingredient_uniq",
+            ),
+        ]

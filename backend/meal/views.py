@@ -6,7 +6,7 @@ import uuid
 from datetime import date
 
 from django.conf import settings
-from django.db.models import Prefetch, Q
+from django.db.models import Max, Prefetch, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -34,9 +34,12 @@ from meal.dates import normalize_week_start
 from meal.import_hints import apply_import_hints_to_meal, build_import_hints_from_paprika_category_string
 from meal.grid import copy_template_to_instance, create_template_with_grid, rebuild_template_slots
 from meal.grocery_build import generate_grocery_list_for_instance
+from meal.ingredients import ingredient_vocab_qs, repair_null_meal_ingredient_fks, resolve_meal_ingredient_fk
 from meal.meal_updates import apply_meal_validated, attach_upcoming_slot_counts, filter_meals_queryset
 from meal.models import (
     GroceryList,
+    GroceryListItem,
+    Ingredient,
     Meal,
     MealCategoryOption,
     MealIngredient,
@@ -45,6 +48,8 @@ from meal.models import (
     MealPlanTemplate,
     MealPlanTemplateSlotMeal,
     MealTag,
+    SavedGroceryList,
+    UserIngredientInventory,
 )
 from meal.partner import meal_partner_user_ids
 from meal.paprika_import import (
@@ -61,7 +66,9 @@ from meal.recipe_import import (
 from meal.r2_storage import expected_meal_image_key_prefix, upload_meal_image_bytes
 from meal.publish import meal_eligible_for_publish
 from meal.serializers import (
+    GroceryListItemSerializer,
     GroceryListSerializer,
+    IngredientBriefSerializer,
     MealCategoryOptionSerializer,
     MealImportFromUrlSerializer,
     MealPlanInstanceSerializer,
@@ -69,7 +76,9 @@ from meal.serializers import (
     MealPlanTemplateWriteSerializer,
     MealSerializer,
     MealWriteSerializer,
+    SavedGroceryListSerializer,
     SharedMealSerializer,
+    UserIngredientInventorySerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -122,14 +131,28 @@ def _validate_meal_refs(request, meal_ids: list[int]) -> None:
 
 def _set_meal_ingredients(*, meal: Meal, ingredients_data: list[dict]) -> None:
     meal.ingredients.all().delete()
+    owner = meal.owner_user
     for i, row in enumerate(ingredients_data):
+        raw_line = row.get("raw_line", "")
+        amount = row.get("amount", "")
+        unit = row.get("unit", "")
+        name = row.get("name", "")
+        row_d = {
+            "raw_line": raw_line,
+            "amount": amount,
+            "unit": unit,
+            "name": name,
+            "ingredient_id": row.get("ingredient_id"),
+        }
+        fk = resolve_meal_ingredient_fk(owner=owner, row=row_d, meal_owner=owner)
         MealIngredient.objects.create(
             meal=meal,
             position=row.get("position", i),
-            raw_line=row.get("raw_line", ""),
-            amount=row.get("amount", ""),
-            unit=row.get("unit", ""),
-            name=row.get("name", ""),
+            raw_line=raw_line,
+            amount=amount,
+            unit=unit,
+            name=name,
+            ingredient=fk,
         )
 
 
@@ -667,14 +690,261 @@ def instance_grid(request, pk: int):
 def grocery_generate(request, pk: int):
     inst = get_object_or_404(_instance_qs(request).prefetch_related("slots"), pk=pk)
     _assert_scope_write(request, inst.owner_user_id)
+    mids = (
+        MealPlanInstanceSlotMeal.objects.filter(slot__instance_id=inst.pk)
+        .values_list("meal_id", flat=True)
+        .distinct()
+    )
+    repair_null_meal_ingredient_fks(meal_ids=list(mids))
     gl = generate_grocery_list_for_instance(inst)
     gl = _grocery_qs(request).prefetch_related("items").get(pk=gl.pk)
+    return Response(GroceryListSerializer(gl).data)
+
+
+@api_view(["GET", "PATCH"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsApprovedUser])
+def grocery_detail(request, pk: int):
+    gl = get_object_or_404(_grocery_qs(request).prefetch_related("items"), pk=pk)
+    if request.method == "PATCH":
+        _assert_scope_write(request, gl.owner_user_id)
+        if "hide_checked" in request.data:
+            gl.hide_checked = bool(request.data["hide_checked"])
+            gl.save(update_fields=["hide_checked", "updated_at"])
+        gl = _grocery_qs(request).prefetch_related("items").get(pk=gl.pk)
     return Response(GroceryListSerializer(gl).data)
 
 
 @api_view(["GET"])
 @authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
 @permission_classes([IsApprovedUser])
-def grocery_detail(request, pk: int):
-    gl = get_object_or_404(_grocery_qs(request).prefetch_related("items"), pk=pk)
+def instance_grocery_retrieve(request, pk: int):
+    """Return the grocery list for a week instance without regenerating lines (preserves checks)."""
+    inst = get_object_or_404(_instance_qs(request).prefetch_related("slots"), pk=pk)
+    gl = (
+        _grocery_qs(request)
+        .filter(instance_id=inst.pk)
+        .prefetch_related("items")
+        .first()
+    )
+    if gl is None:
+        return Response(status=status.HTTP_404_NOT_FOUND)
     return Response(GroceryListSerializer(gl).data)
+
+
+@api_view(["PATCH"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsApprovedUser])
+def grocery_list_item_patch(request, item_id: int):
+    item = get_object_or_404(
+        GroceryListItem.objects.select_related("grocery_list"),
+        pk=item_id,
+    )
+    if item.grocery_list.owner_user_id not in _scope_ids(request):
+        raise PermissionDenied()
+    _assert_scope_write(request, item.grocery_list.owner_user_id)
+    if "is_checked" in request.data:
+        item.is_checked = bool(request.data["is_checked"])
+    if "display_text" in request.data and item.manually_added:
+        item.display_text = str(request.data["display_text"])[:512]
+    item.save()
+    return Response(GroceryListItemSerializer(item).data)
+
+
+@api_view(["POST"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsApprovedUser])
+def grocery_list_add_item(request, pk: int):
+    gl = get_object_or_404(_grocery_qs(request), pk=pk)
+    _assert_scope_write(request, gl.owner_user_id)
+    ingredient_id = request.data.get("ingredient_id")
+    display_text = (request.data.get("display_text") or "").strip()
+    qty = (request.data.get("quantity") or "")[:64]
+    unit = (request.data.get("unit") or "")[:64]
+    ing = None
+    if ingredient_id is not None:
+        ing = Ingredient.objects.filter(pk=int(ingredient_id), owner_user=gl.owner_user).first()
+        if not ing:
+            raise ValidationError({"ingredient_id": "Invalid ingredient for this account."})
+        if not display_text:
+            display_text = ing.name
+    elif display_text:
+        from meal.ingredients import ensure_ingredient_for_owner
+
+        ing = ensure_ingredient_for_owner(owner=gl.owner_user, label=display_text)
+    else:
+        raise ValidationError({"detail": "Provide ingredient_id or display_text."})
+
+    max_pos = gl.items.aggregate(m=Max("position"))["m"]
+    max_pos = max_pos if max_pos is not None else -1
+    item = GroceryListItem.objects.create(
+        grocery_list=gl,
+        position=max_pos + 1,
+        display_text=display_text[:512],
+        quantity=qty,
+        unit=unit,
+        manually_added=True,
+        ingredient=ing,
+        is_checked=False,
+        contributions=[
+            {
+                "meal_id": None,
+                "meal_title": "Added",
+                "display": display_text[:512],
+                "quantity": qty,
+                "unit": unit,
+            },
+        ],
+    )
+    return Response(GroceryListItemSerializer(item).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(["GET"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsApprovedUser])
+def ingredient_vocab(request):
+    q = (request.GET.get("q") or "").strip()
+    rows = ingredient_vocab_qs(owner=request.user, q=q)
+    return Response(IngredientBriefSerializer(rows, many=True).data)
+
+
+@api_view(["GET", "POST"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsApprovedUser])
+def saved_grocery_list(request):
+    if request.method == "GET":
+        qs = SavedGroceryList.objects.filter(owner_user=request.user).order_by("-saved_at", "-id")
+        return Response(SavedGroceryListSerializer(qs, many=True).data)
+    gl_id = request.data.get("grocery_list_id")
+    label = (request.data.get("label") or "").strip()[:255]
+    if gl_id is None:
+        raise ValidationError({"grocery_list_id": "Required."})
+    gl = get_object_or_404(_grocery_qs(request).prefetch_related("items"), pk=int(gl_id))
+    _assert_scope_write(request, gl.owner_user_id)
+    items = [
+        {
+            "display_text": it.display_text,
+            "quantity": it.quantity,
+            "unit": it.unit,
+            "contributions": it.contributions or [],
+            "ingredient_id": it.ingredient_id,
+            "is_checked": it.is_checked,
+            "manually_added": it.manually_added,
+        }
+        for it in gl.items.all().order_by("position", "id")
+    ]
+    snap = {"items": items, "source_grocery_list_id": gl.id}
+    saved = SavedGroceryList.objects.create(
+        owner_user=request.user,
+        label=label,
+        source_instance_id=gl.instance_id,
+        snapshot=snap,
+    )
+    return Response(SavedGroceryListSerializer(saved).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(["GET", "DELETE"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsApprovedUser])
+def saved_grocery_detail(request, pk: int):
+    obj = get_object_or_404(SavedGroceryList.objects.filter(owner_user=request.user), pk=pk)
+    if request.method == "DELETE":
+        obj.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    return Response(SavedGroceryListSerializer(obj).data)
+
+
+@api_view(["GET"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsApprovedUser])
+def pantry_inventory_list(request):
+    qs = UserIngredientInventory.objects.filter(owner_user=request.user).select_related("ingredient")
+    return Response(UserIngredientInventorySerializer(qs, many=True).data)
+
+
+@api_view(["PUT"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsApprovedUser])
+def pantry_inventory_put(request):
+    """Upsert one inventory row by ingredient_id."""
+    ingredient_id = request.data.get("ingredient_id")
+    if ingredient_id is None:
+        raise ValidationError({"ingredient_id": "Required."})
+    ing = get_object_or_404(Ingredient.objects.filter(owner_user=request.user), pk=int(ingredient_id))
+    qty = request.data.get("quantity")
+    simple = request.data.get("simple_have")
+    row, _ = UserIngredientInventory.objects.get_or_create(
+        owner_user=request.user,
+        ingredient=ing,
+        defaults={"quantity": 0},
+    )
+    if qty is not None:
+        try:
+            row.quantity = max(0, int(qty))
+        except (TypeError, ValueError):
+            raise ValidationError({"quantity": "Must be a non-negative integer."})
+        row.simple_have = None
+    if simple is not None:
+        if simple in (True, "true", "1", 1):
+            row.simple_have = True
+        elif simple in (False, "false", "0", 0):
+            row.simple_have = False
+        else:
+            row.simple_have = None
+    row.save()
+    return Response(UserIngredientInventorySerializer(row).data)
+
+
+@api_view(["GET"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsApprovedUser])
+def pantry_suggestions(request):
+    from users.models import Profile
+
+    profile, _ = Profile.objects.select_related("user").get_or_create(user=request.user)
+    if not profile.meal_pantry_enabled:
+        return Response({"enabled": False, "hints": []})
+
+    repair_null_meal_ingredient_fks(owner_user_ids=meal_partner_user_ids(user=request.user))
+
+    from meal.dates import normalize_week_start
+
+    anchor = normalize_week_start(timezone.localdate(), int(profile.meal_week_starts_on))
+    inst = MealPlanInstance.objects.filter(owner_user=request.user, week_start=anchor).first()
+    planned_meal_ids: set[int] = set()
+    planned_ingredient_ids: set[int] = set()
+    if inst:
+        for mid in MealPlanInstanceSlotMeal.objects.filter(slot__instance=inst).values_list(
+            "meal_id", flat=True,
+        ):
+            planned_meal_ids.add(mid)
+        for iid in (
+            MealIngredient.objects.filter(meal_id__in=planned_meal_ids)
+            .exclude(ingredient_id=None)
+            .values_list("ingredient_id", flat=True)
+            .distinct()
+        ):
+            planned_ingredient_ids.add(iid)
+
+    hints = []
+    inv_qs = UserIngredientInventory.objects.filter(owner_user=request.user).select_related("ingredient")
+    for row in inv_qs:
+        if row.quantity == 0 and row.simple_have is not True:
+            continue
+        iid = row.ingredient_id
+        if iid in planned_ingredient_ids:
+            continue
+        mq = _meal_qs(request).filter(ingredients__ingredient_id=iid).distinct().order_by("title")
+        if planned_meal_ids:
+            mq = mq.exclude(pk__in=planned_meal_ids)
+        meals = mq[:3]
+        meal_list = [{"id": m.id, "title": (m.title or "").strip() or "Untitled"} for m in meals]
+        hints.append(
+            {
+                "ingredient_id": iid,
+                "ingredient_name": row.ingredient.name,
+                "recommended_meals": meal_list,
+            },
+        )
+
+    return Response({"enabled": True, "week_start": anchor.isoformat(), "hints": hints})

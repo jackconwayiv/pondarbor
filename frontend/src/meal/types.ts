@@ -5,6 +5,7 @@ export type MealIngredient = {
   amount: string;
   unit: string;
   name: string;
+  ingredient_id?: number | null;
 };
 
 export type MealCategoryBrief = {
@@ -84,6 +85,17 @@ export type MealPlanInstance = {
   updated_at: string;
 };
 
+export type GroceryContribution = {
+  meal_id: number | null;
+  meal_title: string;
+  display: string;
+  quantity?: string;
+  unit?: string;
+  /** Echo of meal line fields for merged rows (optional). */
+  raw_line?: string;
+  name?: string;
+};
+
 export type GroceryListItem = {
   id: number;
   position: number;
@@ -92,6 +104,9 @@ export type GroceryListItem = {
   unit: string;
   source_meal: number | null;
   manually_added: boolean;
+  ingredient_id: number | null;
+  is_checked: boolean;
+  contributions: GroceryContribution[];
 };
 
 export type GroceryList = {
@@ -99,8 +114,36 @@ export type GroceryList = {
   owner_user: number;
   instance: number;
   items: GroceryListItem[];
+  hide_checked?: boolean;
   created_at: string;
   updated_at: string;
+};
+
+export type SavedGroceryList = {
+  id: number;
+  label: string;
+  source_instance: number | null;
+  snapshot: { items: unknown[]; source_grocery_list_id?: number };
+  saved_at: string;
+};
+
+export type PantryInventoryRow = {
+  id: number;
+  ingredient: { id: number; name: string };
+  quantity: number;
+  simple_have: boolean | null;
+};
+
+export type PantryHint = {
+  ingredient_id: number;
+  ingredient_name: string;
+  recommended_meals: { id: number; title: string }[];
+};
+
+export type PantrySuggestionsResponse = {
+  enabled: boolean;
+  week_start?: string;
+  hints: PantryHint[];
 };
 
 export type DisconnectPending = {

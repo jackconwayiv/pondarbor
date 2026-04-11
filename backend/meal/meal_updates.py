@@ -8,7 +8,9 @@ from django.db.models import Q
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
+from meal.ingredients import repair_null_meal_ingredient_fks
 from meal.models import Meal, MealCategoryAxis, MealPlanInstanceSlotMeal
+from meal.partner import meal_partner_user_ids
 from meal.publish import meal_eligible_for_publish
 from meal.tagging import replace_meal_tags, resolve_category_option
 
@@ -62,6 +64,17 @@ def filter_meals_queryset(request, qs):
     tm = _int_param("time_id")
     if tm is not None:
         qs = qs.filter(time_option_id=tm)
+
+    ing_id = _int_param("ingredient_id")
+    if ing_id is not None:
+        repair_null_meal_ingredient_fks(owner_user_ids=meal_partner_user_ids(user=request.user))
+        qs = qs.filter(ingredients__ingredient_id=ing_id).distinct()
+
+    ing_q = (request.GET.get("ingredient_q") or "").strip()
+    if ing_q:
+        qs = qs.filter(
+            Q(ingredients__raw_line__icontains=ing_q) | Q(ingredients__name__icontains=ing_q),
+        ).distinct()
 
     sort = (request.GET.get("sort") or "updated_at").strip()
     if sort not in ("title", "updated_at", "upcoming_slot_count"):

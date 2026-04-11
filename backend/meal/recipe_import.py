@@ -12,6 +12,7 @@ import ipaddress
 import json
 import re
 import socket
+from fractions import Fraction
 from typing import Any
 from urllib.parse import urljoin, urlparse
 
@@ -160,6 +161,96 @@ def parse_ingredient_line(raw_line: str) -> dict[str, str]:
         return {"raw_line": text, "amount": amount, "unit": unit, "name": name}
 
     return {"raw_line": text, "amount": "", "unit": "", "name": ""}
+
+
+def ingredient_product_name(raw_line: str) -> str:
+    """
+    Product name only: no leading quantity, no unit token (e.g. ``1 Hash Browns`` → ``Hash Browns``,
+    ``2 cups flour`` → ``flour``).
+    """
+    p = parse_ingredient_line(raw_line or "")
+    name = (p.get("name") or "").strip()
+    if name:
+        return name[:255]
+    text = _normalize_ws(_strip_tags(html.unescape(raw_line or "")))[:512]
+    if not text:
+        return ""
+    m = _RE_AMOUNT_START.match(text)
+    if not m:
+        return text[:255]
+    after_amt = text[m.end() :].lstrip()
+    if not after_amt:
+        return ""
+    first_word = after_amt.split(None, 1)[0].lower().rstrip(".,;:")
+    rest_after_unit = after_amt.split(None, 1)[1] if len(after_amt.split(None, 1)) > 1 else ""
+    if first_word in _COMMON_UNITS and rest_after_unit:
+        return rest_after_unit.strip()[:255]
+    return after_amt.strip()[:255]
+
+
+_VULGAR_FRAC_VALUE = {
+    "½": 0.5,
+    "⅓": 1 / 3,
+    "⅔": 2 / 3,
+    "¼": 0.25,
+    "¾": 0.75,
+    "⅛": 0.125,
+    "⅜": 0.375,
+    "⅝": 0.625,
+    "⅞": 0.875,
+}
+
+
+def parse_amount_to_float(s: str) -> float | None:
+    """
+    Parse a single amount token (``1``, ``1/2``, ``1 1/2``, ``½``, ``1½``, ``1-2`` range → midpoint).
+    """
+    raw = (s or "").strip()
+    if not raw:
+        return None
+    if raw in _VULGAR_FRAC_VALUE:
+        return _VULGAR_FRAC_VALUE[raw]
+    # Range like 1-2 → average
+    if raw.count("-") == 1 and not raw.startswith("-"):
+        left, right = raw.split("-", 1)
+        a, b = parse_amount_to_float(left.strip()), parse_amount_to_float(right.strip())
+        if a is not None and b is not None:
+            return (a + b) / 2.0
+    parts = raw.split()
+    if len(parts) == 2 and ("/" in parts[1] or parts[1] in _VULGAR_FRAC_VALUE):
+        a0 = parse_amount_to_float(parts[0])
+        a1 = parse_amount_to_float(parts[1])
+        if a0 is not None and a1 is not None:
+            return a0 + a1
+    t = raw.replace(" ", "")
+    m = re.match(r"^(\d+)([½⅓⅔¼¾⅛⅜⅝⅞])$", t)
+    if m:
+        return float(m.group(1)) + _VULGAR_FRAC_VALUE[m.group(2)]
+    try:
+        if "/" in t:
+            return float(Fraction(t))
+        return float(t)
+    except (ValueError, ZeroDivisionError):
+        return None
+
+
+def leading_count_quantity(raw_line: str) -> float | None:
+    """
+    If the line is ``<amount> <product>`` with no unit token, return the amount (e.g. ``2 Hash Browns`` → 2).
+    """
+    text = _normalize_ws(_strip_tags(html.unescape(raw_line or "")))[:512]
+    if not text:
+        return None
+    m = _RE_AMOUNT_START.match(text)
+    if not m:
+        return None
+    after_amt = text[m.end() :].lstrip()
+    if not after_amt:
+        return None
+    first_word = after_amt.split(None, 1)[0].lower().rstrip(".,;:")
+    if first_word in _COMMON_UNITS:
+        return None
+    return parse_amount_to_float(m.group(0).strip())
 
 
 def _host_must_be_public(hostname: str) -> None:

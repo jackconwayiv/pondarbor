@@ -8,8 +8,15 @@ from rest_framework.test import APIClient
 
 from friends.models import FriendRequest
 from meal.models import MealPartnerDisconnectRequest
+from meal.grocery_amounts import build_merged_grocery_display_text, combine_quantities_for_headline
 from meal.paprika_import import iter_paprika_recipes_from_bytes
-from meal.recipe_import import extract_recipe_from_html, parse_ingredient_line, validate_http_url
+from meal.recipe_import import (
+    extract_recipe_from_html,
+    ingredient_product_name,
+    parse_amount_to_float,
+    parse_ingredient_line,
+    validate_http_url,
+)
 from users.models import Profile
 
 User = get_user_model()
@@ -116,6 +123,47 @@ class MealAuthorizationTests(TestCase):
             404,
         )
         self.assertEqual(self.client.get(f"/api/v1/meal/grocery/{grocery['id']}/").status_code, 404)
+        self.assertEqual(
+            self.client.get(f"/api/v1/meal/instances/{instance['id']}/grocery/").status_code,
+            404,
+        )
+
+    def test_instance_grocery_retrieve_and_hide_checked_patch(self):
+        owner = self._approved_user("grocery-instance-get@example.com")
+        self._as(owner)
+        template = self.client.post(
+            "/api/v1/meal/templates/",
+            {"name": "T", "description": "", "slots_per_day": 3},
+            format="json",
+        ).json()
+        instance = self.client.post(
+            "/api/v1/meal/instances/",
+            {"template_id": template["id"], "week_start": "2026-04-06"},
+            format="json",
+        ).json()
+        self.assertEqual(
+            self.client.get(f"/api/v1/meal/instances/{instance['id']}/grocery/").status_code,
+            404,
+        )
+        grocery = self.client.post(
+            f"/api/v1/meal/instances/{instance['id']}/grocery/generate/",
+            {},
+            format="json",
+        ).json()
+        r = self.client.get(f"/api/v1/meal/instances/{instance['id']}/grocery/")
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["id"], grocery["id"])
+        self.assertFalse(body.get("hide_checked", False))
+        p = self.client.patch(
+            f"/api/v1/meal/grocery/{grocery['id']}/",
+            {"hide_checked": True},
+            format="json",
+        )
+        self.assertEqual(p.status_code, 200)
+        self.assertTrue(p.json()["hide_checked"])
+        r2 = self.client.get(f"/api/v1/meal/instances/{instance['id']}/grocery/")
+        self.assertTrue(r2.json()["hide_checked"])
 
     def test_grid_rejects_cross_scope_meal_ids(self):
         owner = self._approved_user("grid-owner@example.com")
@@ -291,6 +339,36 @@ class RecipeImportTests(TestCase):
         self.assertEqual(r["raw_line"], "Salt and pepper to taste")
         self.assertEqual(r["amount"], "")
         self.assertEqual(r["unit"], "")
+
+    def test_ingredient_product_name_strips_leading_count(self):
+        self.assertEqual(ingredient_product_name("1 Hash Browns"), "Hash Browns")
+        self.assertEqual(ingredient_product_name("2 cups flour"), "flour")
+
+    def test_parse_amount_mixed_fractions(self):
+        self.assertEqual(parse_amount_to_float("1 1/2"), 1.5)
+        self.assertEqual(parse_amount_to_float("1½"), 1.5)
+
+    def test_grocery_merge_count_and_volume(self):
+        hb = {
+            "display": "1 Hash Browns",
+            "raw_line": "1 Hash Browns",
+            "quantity": "",
+            "unit": "",
+            "name": "",
+        }
+        self.assertEqual(
+            build_merged_grocery_display_text(n=2, ing_obj=None, contribs=[hb, dict(hb)]),
+            "2 Hash Browns",
+        )
+        salt = [
+            {"display": "1 tsp salt", "raw_line": "1 tsp salt", "quantity": "1", "unit": "tsp", "name": ""},
+            {"display": "1 Tbsp salt", "raw_line": "1 Tbsp salt", "quantity": "1", "unit": "tbsp", "name": ""},
+        ]
+        self.assertEqual(combine_quantities_for_headline(salt), "1 Tbsp + 1 tsp")
+        self.assertEqual(
+            build_merged_grocery_display_text(n=2, ing_obj=None, contribs=salt),
+            "1 Tbsp + 1 tsp salt",
+        )
 
     def test_extract_from_json_ld_graph(self):
         html = """<!DOCTYPE html><html><head>

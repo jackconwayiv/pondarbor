@@ -5,6 +5,7 @@ from __future__ import annotations
 from django.contrib.auth import get_user_model
 from django.db import transaction
 
+from meal.ingredients import ensure_ingredient_for_owner, label_for_ingredient_row
 from meal.models import Meal, MealCategoryOption, MealIngredient, MealTag
 from meal.tagging import get_or_create_tag_for_owner
 
@@ -49,6 +50,13 @@ def clone_meal_for_user(*, meal: Meal, new_owner: User, set_cloned_from: bool = 
         time_option=_ensure_option_for_owner(owner=new_owner, source_opt=meal.time_option),
     )
     for ing in meal.ingredients.all().order_by("position", "id"):
+        label = label_for_ingredient_row(
+            raw_line=ing.raw_line,
+            amount=ing.amount,
+            unit=ing.unit,
+            name=ing.name,
+        )
+        vocab = ensure_ingredient_for_owner(owner=new_owner, label=label) if label else None
         MealIngredient.objects.create(
             meal=new_meal,
             position=ing.position,
@@ -56,6 +64,7 @@ def clone_meal_for_user(*, meal: Meal, new_owner: User, set_cloned_from: bool = 
             amount=ing.amount,
             unit=ing.unit,
             name=ing.name,
+            ingredient=vocab,
         )
     tag_objs = _copy_tags_to_owner(meal=meal, new_owner=new_owner)
     if tag_objs:

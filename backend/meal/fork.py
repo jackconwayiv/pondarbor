@@ -24,6 +24,8 @@ def _clone_meal_for_user(*, meal: Meal, new_owner) -> Meal:
         title=meal.title,
         blurb=meal.blurb,
         directions=meal.directions,
+        source_url=meal.source_url,
+        image_key=meal.image_key,
         cloned_from_meal=meal,
     )
     for ing in meal.ingredients.all().order_by("position", "id"):

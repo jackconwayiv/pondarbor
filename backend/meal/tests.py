@@ -1,10 +1,15 @@
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.test import TestCase
+from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIClient
 
 from friends.models import FriendRequest
 from meal.models import MealPartnerDisconnectRequest
+from meal.paprika_import import iter_paprika_recipes_from_bytes
+from meal.recipe_import import extract_recipe_from_html, parse_ingredient_line, validate_http_url
 from users.models import Profile
 
 User = get_user_model()
@@ -271,3 +276,106 @@ class MealAuthorizationTests(TestCase):
                 meal_crud_partner_id__in=[alice.id, bob.id],
             ).exists()
         )
+
+
+class RecipeImportTests(TestCase):
+    def test_parse_ingredient_line_structured(self):
+        r = parse_ingredient_line("2 cups all-purpose flour")
+        self.assertEqual(r["raw_line"], "2 cups all-purpose flour")
+        self.assertEqual(r["amount"], "2")
+        self.assertEqual(r["unit"], "cups")
+        self.assertEqual(r["name"], "all-purpose flour")
+
+    def test_parse_ingredient_line_plain(self):
+        r = parse_ingredient_line("Salt and pepper to taste")
+        self.assertEqual(r["raw_line"], "Salt and pepper to taste")
+        self.assertEqual(r["amount"], "")
+        self.assertEqual(r["unit"], "")
+
+    def test_extract_from_json_ld_graph(self):
+        html = """<!DOCTYPE html><html><head>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {"@type": "WebSite", "name": "X"},
+    {
+      "@type": "Recipe",
+      "name": "Graph Salad",
+      "description": "A nice salad.",
+      "recipeIngredient": ["2 cups greens", "1 tbsp oil"],
+      "recipeInstructions": [
+        {"@type": "HowToStep", "text": "Toss."},
+        {"@type": "HowToStep", "text": "Serve."}
+      ]
+    }
+  ]
+}
+</script></head><body></body></html>"""
+        data = extract_recipe_from_html(html, "https://example.com/recipe")
+        self.assertEqual(data["title"], "Graph Salad")
+        self.assertIn("nice", data["blurb"].lower())
+        self.assertIn("Toss", data["directions"])
+        self.assertEqual(len(data["ingredients"]), 2)
+        self.assertEqual(data["canonical_url"], "https://example.com/recipe")
+
+    def test_validate_http_url_rejects_loopback(self):
+        with self.assertRaises(ValidationError):
+            validate_http_url("http://127.0.0.1/recipe")
+
+    def test_iter_paprika_zip_one_recipe(self):
+        import gzip
+        import io
+        import json
+        import zipfile
+
+        inner = {
+            "name": "ZipTest",
+            "ingredients": "1 egg",
+            "directions": "Cook.",
+            "source_url": "https://example.com/r",
+        }
+        buf = io.BytesIO()
+        gz = gzip.compress(json.dumps(inner).encode("utf-8"))
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("T.paprikarecipe", gz)
+        data = buf.getvalue()
+        recs = iter_paprika_recipes_from_bytes(data=data, filename="bulk.paprikarecipes")
+        self.assertEqual(len(recs), 1)
+        self.assertEqual(recs[0]["name"], "ZipTest")
+
+    def test_directions_preserve_line_breaks_in_plain_text(self):
+        html = """<!DOCTYPE html><html><head>
+<script type="application/ld+json">
+{
+  "@type": "Recipe",
+  "name": "Line Test",
+  "recipeIngredient": ["1 x"],
+  "recipeInstructions": "Step one here.\\n\\n  Step two with indent.\\nStep three."
+}
+</script></head><body></body></html>"""
+        data = extract_recipe_from_html(html, "https://example.com/r")
+        self.assertIn("\n\n", data["directions"])
+        self.assertIn("  Step two", data["directions"])
+
+    @patch("meal.views.validate_http_url", return_value="https://example.org/soup")
+    @patch("meal.views.fetch_recipe_html")
+    def test_meal_import_from_url_endpoint(self, mock_fetch, _mock_validate):
+        user = User.objects.create_user(email="import@example.com", password="secret12345")
+        user.account_status = User.AccountStatus.APPROVED
+        user.save(update_fields=["account_status"])
+        html = """<html><head><script type="application/ld+json">
+        {"@type": "Recipe", "name": "API Soup", "recipeIngredient": ["1 cup water"]}
+        </script></head><body></body></html>"""
+        mock_fetch.return_value = (html, "https://example.org/soup")
+        self.client.force_login(user)
+        r = self.client.post(
+            "/api/v1/meal/meals/import/",
+            {"url": "https://example.org/soup"},
+            format="json",
+        )
+        self.assertEqual(r.status_code, 201, r.content)
+        body = r.json()
+        self.assertEqual(body["title"], "API Soup")
+        self.assertEqual(body["source_url"], "https://example.org/soup")
+        self.assertEqual(len(body["ingredients"]), 1)

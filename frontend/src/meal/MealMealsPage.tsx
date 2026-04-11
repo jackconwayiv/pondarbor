@@ -1,6 +1,6 @@
-import { Card, SimpleGrid, Stack, Text } from "@chakra-ui/react";
-import { useCallback, useEffect, useState } from "react";
-import { Link as RouterLink, Navigate } from "react-router";
+import { Card, HStack, Input, SimpleGrid, Stack, Text } from "@chakra-ui/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link as RouterLink, Navigate, useNavigate } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
 import { useIsMobile } from "../responsive";
@@ -10,8 +10,9 @@ import {
   MEAL_NAV_LINK_CARD_PROPS,
   PANEL_ENTRY_CARD_BODY_PROPS,
   PANEL_ENTRY_CARD_PROPS,
+  PANEL_FIELD_PROPS,
 } from "../theme/typography";
-import { createMeal, fetchMeals } from "./api";
+import { createMeal, fetchMeals, importMealFromUrl, importPaprikaRecipes } from "./api";
 import { MealEditorBackdropDismiss } from "./MealEditorBackdropDismiss";
 import { MealEditorForm } from "./MealEditorForm";
 import { mealLabel } from "./mealLabels";
@@ -25,6 +26,7 @@ import { linesToIngredients } from "./recipeIngredients";
 import type { Meal } from "./types";
 
 export default function MealMealsPage() {
+  const navigate = useNavigate();
   const { isAuthenticated, isLoading, sessionUser, getApiAccessToken, refreshSession } =
     useAppSession();
   const [meals, setMeals] = useState<Meal[]>([]);
@@ -35,6 +37,10 @@ export default function MealMealsPage() {
   const [err, setErr] = useState<string | null>(null);
   const [showAddMeal, setShowAddMeal] = useState(false);
   const [saveBusy, setSaveBusy] = useState(false);
+  const [importUrl, setImportUrl] = useState("");
+  const [importBusy, setImportBusy] = useState(false);
+  const [paprikaBusy, setPaprikaBusy] = useState(false);
+  const paprikaInputRef = useRef<HTMLInputElement | null>(null);
   const isMobile = useIsMobile();
 
   const dismissAddMeal = useCallback(() => {
@@ -42,6 +48,7 @@ export default function MealMealsPage() {
     setBlurb("");
     setDirections("");
     setIngredientsText("");
+    setImportUrl("");
     setShowAddMeal(false);
   }, []);
 
@@ -85,7 +92,7 @@ export default function MealMealsPage() {
       ) : null}
 
       {showAddMeal ? (
-        <MealEditorBackdropDismiss disabled={saveBusy} onDismiss={dismissAddMeal}>
+        <MealEditorBackdropDismiss disabled={saveBusy || importBusy || paprikaBusy} onDismiss={dismissAddMeal}>
           <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP} w="100%">
             <PondButton
               colorPalette="sky"
@@ -97,6 +104,102 @@ export default function MealMealsPage() {
             </PondButton>
             <Card.Root {...PANEL_ENTRY_CARD_PROPS} p="0">
               <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
+                <Stack gap="2" w="100%" pb="3">
+                  <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                    Import from a recipe URL (ingredients and directions are filled automatically).
+                  </Text>
+                  <HStack gap="2" flexWrap="wrap" align="flex-end" w="100%">
+                    <Input
+                      flex="1"
+                      minW="min(100%, 12rem)"
+                      type="url"
+                      placeholder="https://…"
+                      value={importUrl}
+                      onChange={(e) => setImportUrl(e.target.value)}
+                      disabled={importBusy || saveBusy || paprikaBusy}
+                      {...PANEL_FIELD_PROPS}
+                    />
+                    <PondButton
+                      colorPalette="sky"
+                      loading={importBusy}
+                      disabled={importBusy || saveBusy || paprikaBusy || !importUrl.trim()}
+                      onClick={() => {
+                        void (async () => {
+                          setImportBusy(true);
+                          try {
+                            const t = await getApiAccessToken();
+                            const created = await importMealFromUrl(t, importUrl.trim());
+                            dismissAddMeal();
+                            await refresh();
+                            setErr(null);
+                            navigate(`/meal/plan/meals/${created.id}`);
+                          } catch (e) {
+                            setErr(e instanceof Error ? e.message : "Import failed");
+                          } finally {
+                            setImportBusy(false);
+                          }
+                        })();
+                      }}
+                    >
+                      Import from URL
+                    </PondButton>
+                  </HStack>
+                  <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" pt="2">
+                    Import a Paprika backup: one or more recipes from a{" "}
+                    <Text as="span" fontWeight="medium">
+                      .paprikarecipes
+                    </Text>{" "}
+                    zip or a single{" "}
+                    <Text as="span" fontWeight="medium">
+                      .paprikarecipe
+                    </Text>{" "}
+                    file (photos included when present).
+                  </Text>
+                  <input
+                    ref={paprikaInputRef}
+                    type="file"
+                    accept=".paprikarecipes,.paprikarecipe,.zip,application/zip"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = "";
+                      if (!file) return;
+                      void (async () => {
+                        setPaprikaBusy(true);
+                        try {
+                          const t = await getApiAccessToken();
+                          const res = await importPaprikaRecipes(t, file);
+                          dismissAddMeal();
+                          await refresh();
+                          if (res.errors.length > 0) {
+                            setErr(
+                              `Imported ${res.imported_count} recipe(s); ${res.errors.length} skipped.`,
+                            );
+                          } else {
+                            setErr(null);
+                          }
+                          if (res.meals.length === 1) {
+                            navigate(`/meal/plan/meals/${res.meals[0].id}`);
+                          }
+                        } catch (err) {
+                          setErr(err instanceof Error ? err.message : "Paprika import failed");
+                        } finally {
+                          setPaprikaBusy(false);
+                        }
+                      })();
+                    }}
+                  />
+                  <PondButton
+                    colorPalette="sky"
+                    variant="outline"
+                    loading={paprikaBusy}
+                    disabled={paprikaBusy || saveBusy || importBusy}
+                    alignSelf="flex-start"
+                    onClick={() => paprikaInputRef.current?.click()}
+                  >
+                    Choose Paprika file…
+                  </PondButton>
+                </Stack>
                 <MealEditorForm
                 title={title}
                 blurb={blurb}

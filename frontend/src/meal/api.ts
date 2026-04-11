@@ -20,6 +20,15 @@ function authHeaders(accessToken: string | null): Record<string, string> {
   };
 }
 
+function authHeadersBearerOnly(accessToken: string | null): Record<string, string> {
+  if (!accessToken) {
+    throw new Error("Missing API access token. Refresh your session and try again.");
+  }
+  return {
+    Authorization: `Bearer ${accessToken}`,
+  };
+}
+
 async function parseApiError(response: Response): Promise<string> {
   const text = await response.text();
   try {
@@ -62,12 +71,72 @@ export async function fetchMeal(accessToken: string | null, id: number): Promise
   return response.json() as Promise<Meal>;
 }
 
+export async function importMealFromUrl(
+  accessToken: string | null,
+  url: string,
+): Promise<Meal> {
+  const response = await fetch(`${apiBase()}/api/v1/meal/meals/import/`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify({ url }),
+  });
+  if (!response.ok) throw new Error(await parseApiError(response));
+  return response.json() as Promise<Meal>;
+}
+
+export type PaprikaImportResponse = {
+  meals: Meal[];
+  imported_count: number;
+  errors: { index: number; error: string }[];
+};
+
+export async function importPaprikaRecipes(
+  accessToken: string | null,
+  file: File,
+): Promise<PaprikaImportResponse> {
+  const body = new FormData();
+  body.append("file", file);
+  const response = await fetch(`${apiBase()}/api/v1/meal/paprika/import/`, {
+    method: "POST",
+    headers: authHeadersBearerOnly(accessToken),
+    credentials: "omit",
+    body,
+  });
+  if (!response.ok) throw new Error(await parseApiError(response));
+  return response.json() as Promise<PaprikaImportResponse>;
+}
+
+export type MealImagePresignResponse = {
+  key: string;
+  upload_url: string;
+  expires_in_seconds: number;
+  max_bytes: number;
+  allowed_mime_types: string[];
+};
+
+export async function requestMealImagePresign(
+  accessToken: string | null,
+  contentType: "image/jpeg" | "image/png" | "image/webp",
+): Promise<MealImagePresignResponse> {
+  const response = await fetch(`${apiBase()}/api/v1/meal/uploads/presign/`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify({ content_type: contentType }),
+  });
+  if (!response.ok) throw new Error(await parseApiError(response));
+  return response.json() as Promise<MealImagePresignResponse>;
+}
+
 export async function createMeal(
   accessToken: string | null,
   body: {
     title?: string;
     blurb?: string;
     directions?: string;
+    source_url?: string;
+    image_key?: string;
     ingredients?: { raw_line: string; amount?: string; unit?: string; name?: string }[];
   },
 ): Promise<Meal> {
@@ -88,6 +157,8 @@ export async function patchMeal(
     title?: string;
     blurb?: string;
     directions?: string;
+    source_url?: string;
+    image_key?: string;
     ingredients?: { raw_line: string; amount?: string; unit?: string; name?: string }[];
   },
 ): Promise<Meal> {

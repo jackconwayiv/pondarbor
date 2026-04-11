@@ -12,5 +12,6 @@ python-jose
 PyJWT
 cryptography
 requests
+beautifulsoup4
 boto3
 sentry-sdk[django]

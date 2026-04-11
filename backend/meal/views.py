@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+import logging
+import os
+import uuid
 from datetime import date
 
+from django.conf import settings
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.authentication import SessionAuthentication
-from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.decorators import api_view, authentication_classes, parser_classes, permission_classes
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
+
+from common.r2_s3 import build_r2_s3_client, r2_bucket_config_from_env
 
 from users.auth0_backend import Auth0TokenAuthentication
 from users.permissions import IsApprovedUser
@@ -28,14 +36,39 @@ from meal.models import (
     MealPlanTemplateSlotMeal,
 )
 from meal.partner import meal_partner_user_ids
+from meal.paprika_import import (
+    decode_paprika_photo_base64,
+    iter_paprika_recipes_from_bytes,
+    paprika_object_to_meal_payload,
+)
+from meal.recipe_import import (
+    extract_recipe_from_html,
+    fetch_recipe_html,
+    fetch_recipe_image_bytes,
+    validate_http_url,
+)
+from meal.r2_storage import expected_meal_image_key_prefix, upload_meal_image_bytes
 from meal.serializers import (
     GroceryListSerializer,
+    MealImportFromUrlSerializer,
     MealPlanInstanceSerializer,
     MealPlanTemplateSerializer,
     MealPlanTemplateWriteSerializer,
     MealSerializer,
     MealWriteSerializer,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def _meal_env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
 
 
 def _scope_ids(request):
@@ -115,17 +148,188 @@ def meal_list_create(request):
     if request.method == "GET":
         qs = _meal_qs(request).prefetch_related("ingredients").order_by("-updated_at")
         return Response(MealSerializer(qs, many=True).data)
-    ser = MealWriteSerializer(data=request.data)
+    ser = MealWriteSerializer(data=request.data, context={"request": request})
     ser.is_valid(raise_exception=True)
     meal = Meal.objects.create(
         owner_user=request.user,
         title=(ser.validated_data.get("title") or "").strip(),
         blurb=ser.validated_data.get("blurb") or "",
         directions=ser.validated_data.get("directions") or "",
+        source_url=(ser.validated_data.get("source_url") or "")[:2048],
+        image_key=(ser.validated_data.get("image_key") or "")[:512],
     )
     _set_meal_ingredients(meal=meal, ingredients_data=list(ser.validated_data.get("ingredients") or []))
     meal = _meal_qs(request).prefetch_related("ingredients").get(pk=meal.pk)
     return Response(MealSerializer(meal).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(["POST"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsApprovedUser])
+def meal_import_from_url(request):
+    ser = MealImportFromUrlSerializer(data=request.data)
+    ser.is_valid(raise_exception=True)
+    raw_url = ser.validated_data["url"]
+    normalized = validate_http_url(raw_url)
+    html, final_url = fetch_recipe_html(normalized)
+    data = extract_recipe_from_html(html, final_url)
+    meal = Meal.objects.create(
+        owner_user=request.user,
+        title=data["title"],
+        blurb=data.get("blurb") or "",
+        directions=data.get("directions") or "",
+        source_url=(data.get("canonical_url") or "")[:2048],
+    )
+    ing_rows = []
+    for i, ing in enumerate(data.get("ingredients") or []):
+        ing_rows.append(
+            {
+                "position": i,
+                "raw_line": ing.get("raw_line", ""),
+                "amount": ing.get("amount", ""),
+                "unit": ing.get("unit", ""),
+                "name": ing.get("name", ""),
+            },
+        )
+    _set_meal_ingredients(meal=meal, ingredients_data=ing_rows)
+    if data.get("recipe_image_url"):
+        try:
+            img_bytes = fetch_recipe_image_bytes(data["recipe_image_url"])
+            meal.image_key = upload_meal_image_bytes(
+                user_id=request.user.id,
+                data=img_bytes,
+                label="url",
+            )
+            meal.save(update_fields=["image_key", "updated_at"])
+        except Exception as exc:
+            logger.warning("meal url import: skipped image: %s", exc)
+    meal = _meal_qs(request).prefetch_related("ingredients").get(pk=meal.pk)
+    return Response(MealSerializer(meal).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(["POST"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsApprovedUser])
+@parser_classes([MultiPartParser, FormParser])
+def meal_import_paprika(request):
+    upload = request.FILES.get("file")
+    if not upload:
+        raise ValidationError({"file": "No file uploaded."})
+    raw = upload.read()
+    max_zip = _meal_env_int("MEAL_PAPRIKA_IMPORT_MAX_BYTES", 50 * 1024 * 1024)
+    if len(raw) > max_zip:
+        raise ValidationError({"file": f"File too large (max {max_zip} bytes)."})
+    try:
+        recipe_dicts = iter_paprika_recipes_from_bytes(data=raw, filename=upload.name)
+    except ValueError as e:
+        raise ValidationError({"file": str(e)}) from e
+    max_recipes = _meal_env_int("MEAL_PAPRIKA_IMPORT_MAX_RECIPES", 500)
+    if len(recipe_dicts) > max_recipes:
+        raise ValidationError({"file": f"Too many recipes in one file (max {max_recipes})."})
+
+    created: list[Meal] = []
+    errors: list[dict] = []
+    for idx, obj in enumerate(recipe_dicts):
+        try:
+            payload = paprika_object_to_meal_payload(obj)
+            photo_b64 = payload.pop("photo_data_base64", None)
+            title = (payload.get("title") or "").strip()
+            if not title:
+                raise ValueError("Recipe has no name.")
+            meal = Meal.objects.create(
+                owner_user=request.user,
+                title=title[:255],
+                blurb=payload.get("blurb") or "",
+                directions=payload.get("directions") or "",
+                source_url=(payload.get("source_url") or "")[:2048],
+            )
+            ing_rows = []
+            for i, row in enumerate(payload.get("ingredients") or []):
+                ing_rows.append(
+                    {
+                        "position": i,
+                        "raw_line": row.get("raw_line", ""),
+                        "amount": row.get("amount", ""),
+                        "unit": row.get("unit", ""),
+                        "name": row.get("name", ""),
+                    },
+                )
+            _set_meal_ingredients(meal=meal, ingredients_data=ing_rows)
+            if photo_b64:
+                blob = decode_paprika_photo_base64(photo_b64)
+                if blob:
+                    try:
+                        meal.image_key = upload_meal_image_bytes(
+                            user_id=request.user.id,
+                            data=blob,
+                            label="paprika",
+                        )
+                        meal.save(update_fields=["image_key", "updated_at"])
+                    except Exception as exc:
+                        logger.warning("paprika import: skipped image for %s: %s", title, exc)
+            created.append(meal)
+        except Exception as exc:
+            errors.append({"index": idx, "error": str(exc)})
+    out = [MealSerializer(m, context={"request": request}).data for m in created]
+    return Response({"meals": out, "imported_count": len(out), "errors": errors}, status=status.HTTP_201_CREATED)
+
+
+@api_view(["POST"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsApprovedUser])
+def meal_uploads_presign(request):
+    """Presign R2 PUT for meal recipe photos (same bucket as Closet)."""
+    max_bytes = _meal_env_int("MEAL_IMAGE_MAX_BYTES", 2 * 1024 * 1024)
+    expires_seconds = min(_meal_env_int("MEAL_UPLOAD_EXPIRES_SECONDS", 900), 604800)
+    mime = request.data.get("content_type", "image/jpeg")
+    if mime not in {"image/jpeg", "image/png", "image/webp"}:
+        return Response({"detail": "Unsupported image mime type."}, status=400)
+
+    config = r2_bucket_config_from_env()
+    if not config:
+        return Response(
+            {
+                "detail": "R2 is not configured.",
+                "required_env": [
+                    "CLOSET_R2_BUCKET",
+                    "CLOSET_R2_ACCESS_KEY_ID",
+                    "CLOSET_R2_SECRET_ACCESS_KEY",
+                    "CLOUDFLARE_ACCOUNT_ID (or CLOSET_R2_S3_ENDPOINT_URL)",
+                ],
+            },
+            status=501,
+        )
+
+    ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[mime]
+    key_root = expected_meal_image_key_prefix(request.user.id).rstrip("/")
+    key = f"{key_root}/{timezone.now().strftime('%Y%m%d')}/{uuid.uuid4().hex}.{ext}"
+    try:
+        client = build_r2_s3_client(config)
+    except RuntimeError as exc:
+        return Response(
+            {
+                "detail": str(exc) if settings.DEBUG else "Storage client failed to initialize.",
+            },
+            status=503,
+        )
+    presigned_url = client.generate_presigned_url(
+        ClientMethod="put_object",
+        Params={
+            "Bucket": config["bucket"],
+            "Key": key,
+            "ContentType": mime,
+        },
+        ExpiresIn=expires_seconds,
+    )
+    return Response(
+        {
+            "key": key,
+            "upload_url": presigned_url,
+            "expires_in_seconds": expires_seconds,
+            "max_bytes": max_bytes,
+            "allowed_mime_types": ["image/jpeg", "image/png", "image/webp"],
+        }
+    )
 
 
 @api_view(["GET", "PATCH", "DELETE"])
@@ -142,7 +346,7 @@ def meal_detail(request, pk: int):
     if request.method == "DELETE":
         meal.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
-    ser = MealWriteSerializer(data=request.data, partial=True)
+    ser = MealWriteSerializer(data=request.data, partial=True, context={"request": request})
     ser.is_valid(raise_exception=True)
     if "title" in ser.validated_data:
         meal.title = (ser.validated_data["title"] or "").strip()
@@ -150,6 +354,10 @@ def meal_detail(request, pk: int):
         meal.blurb = ser.validated_data["blurb"]
     if "directions" in ser.validated_data:
         meal.directions = ser.validated_data["directions"]
+    if "source_url" in ser.validated_data:
+        meal.source_url = (ser.validated_data.get("source_url") or "")[:2048]
+    if "image_key" in ser.validated_data:
+        meal.image_key = (ser.validated_data.get("image_key") or "")[:512]
     if "ingredients" in ser.validated_data:
         _set_meal_ingredients(meal=meal, ingredients_data=list(ser.validated_data["ingredients"]))
     meal.save()

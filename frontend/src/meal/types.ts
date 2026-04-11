@@ -15,6 +15,12 @@ export type Meal = {
   directions: string;
   ingredients: MealIngredient[];
   cloned_from_meal: number | null;
+  /** Set when the meal was created from or linked to a recipe URL. */
+  source_url?: string;
+  /** R2 object key for recipe photo (same bucket as Closet). */
+  image_key?: string;
+  /** Public URL when `CLOSET_R2_PUBLIC_BASE_URL` is set and `image_key` is present. */
+  image_url?: string;
   created_at: string;
   updated_at: string;
 };

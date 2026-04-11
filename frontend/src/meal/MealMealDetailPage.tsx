@@ -1,4 +1,4 @@
-import { Card, Heading, HStack, Stack, Tabs, Text } from "@chakra-ui/react";
+import { Box, Card, Heading, HStack, Image, Stack, Tabs, Text } from "@chakra-ui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link as RouterLink, Navigate, useNavigate, useParams, useSearchParams } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
@@ -195,44 +195,58 @@ export default function MealMealDetailPage() {
           }}
         >
           {!isEditing ? (
-            <HStack justify="space-between" mb="2" flexWrap="wrap" gap="2">
-              <Heading size="sm" fontWeight="semibold">
-                {mealTitle.trim() || "Meal"}
-              </Heading>
-              <HStack gap="2">
-                <PondButton colorPalette="lilypad" onClick={() => setIsEditing(true)}>
-                  Edit
-                </PondButton>
-                <PondButton
-                  ref={confirmDeleteButtonRef}
-                  flexShrink={0}
-                  colorPalette="nautical"
-                  loading={deleteBusy}
-                  disabled={deleteBusy}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!confirmDelete) {
-                      setConfirmDelete(true);
-                      return;
-                    }
-                    void (async () => {
-                      setDeleteBusy(true);
-                      try {
-                        const t = await getApiAccessToken();
-                        await deleteMeal(t, meal.id);
-                        navigate("/meal/plan/meals");
-                      } catch (e) {
-                        setErr(e instanceof Error ? e.message : "Delete failed");
-                      } finally {
-                        setDeleteBusy(false);
+            <>
+              <HStack justify="space-between" mb="2" flexWrap="wrap" gap="2">
+                <Heading size="sm" fontWeight="semibold">
+                  {mealTitle.trim() || "Meal"}
+                </Heading>
+                <HStack gap="2">
+                  <PondButton colorPalette="lilypad" onClick={() => setIsEditing(true)}>
+                    Edit
+                  </PondButton>
+                  <PondButton
+                    ref={confirmDeleteButtonRef}
+                    flexShrink={0}
+                    colorPalette="nautical"
+                    loading={deleteBusy}
+                    disabled={deleteBusy}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!confirmDelete) {
+                        setConfirmDelete(true);
+                        return;
                       }
-                    })();
-                  }}
-                >
-                  {confirmDelete ? "Confirm Delete" : "Delete"}
-                </PondButton>
+                      void (async () => {
+                        setDeleteBusy(true);
+                        try {
+                          const t = await getApiAccessToken();
+                          await deleteMeal(t, meal.id);
+                          navigate("/meal/plan/meals");
+                        } catch (e) {
+                          setErr(e instanceof Error ? e.message : "Delete failed");
+                        } finally {
+                          setDeleteBusy(false);
+                        }
+                      })();
+                    }}
+                  >
+                    {confirmDelete ? "Confirm Delete" : "Delete"}
+                  </PondButton>
+                </HStack>
               </HStack>
-            </HStack>
+              {meal.image_url?.trim() ? (
+                <Box mb="3" maxW="sm" w="100%">
+                  <Image
+                    src={meal.image_url}
+                    alt=""
+                    maxH="14rem"
+                    w="100%"
+                    objectFit="cover"
+                    borderRadius="md"
+                  />
+                </Box>
+              ) : null}
+            </>
           ) : null}
           {isEditing ? (
             <MealEditorForm
@@ -347,6 +361,13 @@ export default function MealMealDetailPage() {
                   <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted">
                     Owner: {ownerLabel}
                   </Text>
+                  {meal.source_url?.trim() ? (
+                    <Text fontSize={APP_TEXT_SIZES.body}>
+                      <a href={meal.source_url} target="_blank" rel="noopener noreferrer">
+                        View original recipe
+                      </a>
+                    </Text>
+                  ) : null}
                   <Text>{meal.blurb?.trim() ? meal.blurb : "No details saved."}</Text>
                 </Stack>
               </Tabs.Content>

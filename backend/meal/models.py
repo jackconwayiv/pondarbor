@@ -65,6 +65,8 @@ class Meal(models.Model):
         blank=True,
         related_name="clones",
     )
+    source_url = models.URLField(max_length=2048, blank=True)
+    image_key = models.CharField(max_length=512, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

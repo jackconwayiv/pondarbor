@@ -4,6 +4,9 @@ from meal import views, views_partner
 
 urlpatterns = [
     path("meals/", views.meal_list_create),
+    path("meals/import/", views.meal_import_from_url),
+    path("paprika/import/", views.meal_import_paprika),
+    path("uploads/presign/", views.meal_uploads_presign),
     path("meals/<int:pk>/", views.meal_detail),
     path("templates/", views.template_list_create),
     path("templates/<int:pk>/", views.template_detail),

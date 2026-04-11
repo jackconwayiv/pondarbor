@@ -181,6 +181,10 @@ CLOSET_R2_PUBLIC_BASE_URL = os.getenv("CLOSET_R2_PUBLIC_BASE_URL", "").strip().r
 # Use the jurisdiction URL from R2 (e.g. EU) when Cloudflare shows a different host than the default.
 CLOSET_R2_S3_ENDPOINT_URL = os.getenv("CLOSET_R2_S3_ENDPOINT_URL", "").strip().rstrip("/")
 
+# Meal recipe photos (same R2 bucket as Closet; keys use this prefix, e.g. meal/{user_id}/...)
+_meal_r2_prefix = os.getenv("MEAL_R2_KEY_PREFIX", "meal").strip().strip("/")
+MEAL_R2_KEY_PREFIX = _meal_r2_prefix if _meal_r2_prefix else "meal"
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 AUTH_USER_MODEL = "users.User"

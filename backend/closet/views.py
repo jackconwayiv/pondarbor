@@ -40,6 +40,7 @@ from achievements.services import (
     evaluate_closet_return_achievements_for_users,
     evaluate_closet_sharing_is_caring_for_user,
 )
+from common.r2_s3 import build_r2_s3_client, r2_bucket_config_from_env
 from users.permissions import IsApprovedUser
 from users.models import Profile
 
@@ -60,13 +61,8 @@ def _env_int(name: str, default: int) -> int:
 
 
 def _r2_client_config_or_response():
-    account_id = os.getenv("CLOUDFLARE_ACCOUNT_ID", "").strip()
-    endpoint_override = getattr(settings, "CLOSET_R2_S3_ENDPOINT_URL", "") or ""
-    bucket = os.getenv("CLOSET_R2_BUCKET", "").strip()
-    access_key = os.getenv("CLOSET_R2_ACCESS_KEY_ID", "").strip()
-    secret_key = os.getenv("CLOSET_R2_SECRET_ACCESS_KEY", "").strip()
-    has_endpoint = bool(endpoint_override) or bool(account_id)
-    if not all([has_endpoint, bucket, access_key, secret_key]):
+    config = r2_bucket_config_from_env()
+    if config is None:
         return (
             None,
             Response(
@@ -82,45 +78,18 @@ def _r2_client_config_or_response():
                 status=501,
             ),
         )
-    if endpoint_override:
-        endpoint_url = endpoint_override if "://" in endpoint_override else f"https://{endpoint_override}"
-    else:
-        endpoint_url = f"https://{account_id}.r2.cloudflarestorage.com"
-    return (
-        {
-            "bucket": bucket,
-            "endpoint_url": endpoint_url,
-            "access_key": access_key,
-            "secret_key": secret_key,
-        },
-        None,
-    )
+    return (config, None)
 
 
 def _build_r2_client(config: dict):
     try:
-        import boto3
-    except ImportError:
+        return build_r2_s3_client(config)
+    except RuntimeError as exc:
         raise RuntimeError(
-            "boto3 is not installed in the Python environment running Django. "
-            "Fix: activate the same venv you use for runserver, then run "
-            "`pip install -r backend/requirements.txt` (or `pip install boto3`)."
-        )
-
-    extra_kwargs = {}
-    if os.getenv("CLOSET_R2_S3_PATH_STYLE", "0").lower() in ("1", "true", "yes"):
-        from botocore.client import Config
-
-        extra_kwargs["config"] = Config(signature_version="s3v4", s3={"addressing_style": "path"})
-
-    return boto3.client(
-        "s3",
-        endpoint_url=config["endpoint_url"],
-        aws_access_key_id=config["access_key"],
-        aws_secret_access_key=config["secret_key"],
-        region_name="auto",
-        **extra_kwargs,
-    )
+            str(exc)
+            + " Fix: activate the same venv you use for runserver, then "
+            "`pip install -r backend/requirements.txt` (or `pip install boto3`).",
+        ) from exc
 
 
 def _list_user_bucket_keys(*, client, bucket: str, key_prefix: str) -> set[str]:

@@ -31,6 +31,7 @@ SLUG_SOMETHING_BORROWED = "something_borrowed"
 SLUG_GOOD_AS_NEW = "good_as_new"
 SLUG_THATS_AMORE = "thats_amore"
 SLUG_TASTY_PLANS = "tasty_plans"
+SLUG_SMORGASBORD = "smorgasbord"
 
 ARCHIVIST_MIN_QUOTES = 10
 TOWN_CRIER_MIN_PUBLIC = 10
@@ -38,6 +39,7 @@ WHATIF_WIZ_MIN_PLAYERS = 3
 WHATIF_WARRIOR_MIN_SESSIONS = 5
 SHARING_IS_CARING_MIN_ITEMS = 5
 TASTY_PLANS_MIN_FILLED_SLOTS = 14
+SMORGASBORD_MIN_MEALS = 20
 
 
 def _filled_meal_instance_slot_count(instance_id: int) -> int:
@@ -143,6 +145,14 @@ def evaluate_meal_maestro_tasty_plans_for_instance(*, instance_id: int) -> None:
     )
 
 
+def evaluate_meal_maestro_smorgasbord_for_user(user_id: int) -> None:
+    """Call after creating a meal; unlocks when the user owns enough saved meals."""
+    from meal.models import Meal
+
+    if Meal.objects.filter(owner_user_id=user_id).count() >= SMORGASBORD_MIN_MEALS:
+        _try_unlock(user_id, SLUG_SMORGASBORD)
+
+
 def _count_ended_sessions_for_user(user_id: int) -> int:
     from whatif.models import WhatIfSession
 
@@ -229,6 +239,7 @@ def backfill_all_achievements() -> None:
         evaluate_quote_achievements_for_user(uid)
         evaluate_closet_sharing_is_caring_for_user(uid)
         evaluate_meal_maestro_partner_for_user(uid)
+        evaluate_meal_maestro_smorgasbord_for_user(uid)
 
     for row in ClickerGameSave.objects.iterator():
         evaluate_pondclicker_achievements_for_user(row.user_id, row.state or {})

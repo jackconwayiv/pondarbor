@@ -11,7 +11,7 @@ from django.conf import settings
 from django.utils import timezone
 
 from common.r2_s3 import build_r2_s3_client, r2_bucket_config_from_env
-from closet.serializers import closet_item_image_url
+from closet.serializers import closet_image_key_owned_by_user, closet_item_image_url
 
 if TYPE_CHECKING:
     from django.contrib.auth.models import AbstractUser
@@ -65,9 +65,12 @@ def validate_meal_image_key_for_user(value, user) -> str:
         return ""
     if not user or not user.is_authenticated:
         raise serializers.ValidationError("Authentication required.")
-    if not meal_image_key_owned_by_user(raw, user.id):
+    uid = user.id
+    if not (
+        meal_image_key_owned_by_user(raw, uid) or closet_image_key_owned_by_user(raw, uid)
+    ):
         raise serializers.ValidationError(
-            "Image key must come from a meal image upload for your account.",
+            "Image key must be a Closet or Meal Maestro upload for your account.",
         )
     return raw
 

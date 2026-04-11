@@ -1,4 +1,4 @@
-import { Card, HStack, Input, SimpleGrid, Stack, Text } from "@chakra-ui/react";
+import { Box, Card, HStack, Image, Input, SimpleGrid, Stack, Text } from "@chakra-ui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link as RouterLink, Navigate, useNavigate } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
@@ -15,6 +15,8 @@ import {
 import { createMeal, fetchMeals, importMealFromUrl, importPaprikaRecipes } from "./api";
 import { MealEditorBackdropDismiss } from "./MealEditorBackdropDismiss";
 import { MealEditorForm } from "./MealEditorForm";
+import { MealImageField } from "./MealImageField";
+import { publicUrlForR2ImageKey } from "./imagePublicUrl";
 import { mealLabel } from "./mealLabels";
 import { mealOwnerLabel } from "./mealOwnerLabel";
 import {
@@ -40,6 +42,7 @@ export default function MealMealsPage() {
   const [importUrl, setImportUrl] = useState("");
   const [importBusy, setImportBusy] = useState(false);
   const [paprikaBusy, setPaprikaBusy] = useState(false);
+  const [draftImageKey, setDraftImageKey] = useState("");
   const paprikaInputRef = useRef<HTMLInputElement | null>(null);
   const isMobile = useIsMobile();
 
@@ -49,6 +52,7 @@ export default function MealMealsPage() {
     setDirections("");
     setIngredientsText("");
     setImportUrl("");
+    setDraftImageKey("");
     setShowAddMeal(false);
   }, []);
 
@@ -209,6 +213,15 @@ export default function MealMealsPage() {
                 onBlurbChange={setBlurb}
                 onDirectionsChange={setDirections}
                 onIngredientsTextChange={setIngredientsText}
+                recipeImage={
+                  <MealImageField
+                    imageKey={draftImageKey}
+                    imageUrl={draftImageKey.trim() ? publicUrlForR2ImageKey(draftImageKey) : ""}
+                    onImageKeyChange={setDraftImageKey}
+                    getApiAccessToken={getApiAccessToken}
+                    disabled={saveBusy || importBusy || paprikaBusy}
+                  />
+                }
                 saveDisabled={!title.trim()}
                 saveLoading={saveBusy}
                 onSave={() => {
@@ -222,6 +235,7 @@ export default function MealMealsPage() {
                         blurb,
                         directions,
                         ingredients: linesToIngredients(ingredientsText),
+                        ...(draftImageKey.trim() ? { image_key: draftImageKey.trim() } : {}),
                       });
                       dismissAddMeal();
                       await refresh();
@@ -250,7 +264,7 @@ export default function MealMealsPage() {
         columns={isMobile ? 2 : 3}
         gap={MAPPED_CLOSET_TAB_STACK_GAP}
         w="100%"
-        alignItems="start"
+        alignItems="stretch"
       >
         {meals.map((m) => (
           <MealListCard
@@ -271,15 +285,47 @@ function mealIngredientSummary(meal: Meal): string {
 
 function MealListCard({ meal, ownerLabel }: { meal: Meal; ownerLabel: string }) {
   const ingredientSummary = mealIngredientSummary(meal);
+  const thumb = (meal.image_url ?? "").trim();
   return (
     <RouterLink
       to={`/meal/plan/meals/${meal.id}`}
       aria-label={`Open meal: ${mealLabel(meal)}`}
-      style={{ textDecoration: "none", color: "inherit", display: "block" }}
+      style={{ textDecoration: "none", color: "inherit", display: "block", height: "100%" }}
     >
-      <Card.Root {...PANEL_ENTRY_CARD_PROPS} p="0" {...MEAL_NAV_LINK_CARD_PROPS}>
-        <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
-          <Stack gap="1" minW="0">
+      <Card.Root
+        {...PANEL_ENTRY_CARD_PROPS}
+        p="0"
+        {...MEAL_NAV_LINK_CARD_PROPS}
+        overflow="hidden"
+        h="100%"
+        display="flex"
+        flexDirection="column"
+      >
+        <Box
+          position="relative"
+          w="100%"
+          aspectRatio="4 / 3"
+          minH="0"
+          flexShrink={0}
+          bg="bg.subtle"
+          borderBottomWidth="1px"
+          borderColor="border"
+          overflow="hidden"
+        >
+          {thumb ? (
+            <Image
+              position="absolute"
+              inset="0"
+              src={thumb}
+              alt=""
+              w="100%"
+              h="100%"
+              objectFit="cover"
+            />
+          ) : null}
+        </Box>
+        <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS} flex="1" display="flex" flexDirection="column">
+          <Stack gap="1" minW="0" flex="1">
             <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.body} lineClamp={2}>
               {mealLabel(meal)}
             </Text>

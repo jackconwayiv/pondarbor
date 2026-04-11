@@ -25,6 +25,8 @@ export type MealEditorFormProps = {
   compact?: boolean;
   /** In compact mode on narrow viewports, use larger body text for readability. */
   compactBoostMobile?: boolean;
+  /** Recipe photo controls (e.g. `MealImageField`). */
+  recipeImage?: ReactNode;
 };
 
 const recipeMinH = {
@@ -53,6 +55,7 @@ export function MealEditorForm({
   trailingActions,
   compact = false,
   compactBoostMobile = false,
+  recipeImage,
 }: MealEditorFormProps) {
   const isMobile = useIsMobile();
   const h = compact ? recipeMinH.compact : recipeMinH.default;
@@ -67,6 +70,7 @@ export function MealEditorForm({
 
   return (
     <Stack gap="2" w="100%" fontSize={stackFontSize}>
+      {recipeImage}
       <HStack gap="2" flexWrap="wrap" align="flex-end" w="100%">
         <Input
           flex="1"

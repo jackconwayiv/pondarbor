@@ -13,6 +13,7 @@ from achievements.services import (
     SLUG_PONDCLICKER_TIER_1,
     SLUG_SHARING_IS_CARING,
     SLUG_SOMETHING_BORROWED,
+    SLUG_SMORGASBORD,
     SLUG_TASTY_PLANS,
     SLUG_THATS_AMORE,
     SLUG_TOWN_CRIER,
@@ -22,6 +23,7 @@ from achievements.services import (
     evaluate_closet_sharing_is_caring_for_user,
     evaluate_after_whatif_session_ended,
     evaluate_meal_maestro_partner_for_user,
+    evaluate_meal_maestro_smorgasbord_for_user,
     evaluate_meal_maestro_tasty_plans_for_instance,
     evaluate_pondclicker_achievements_for_user,
     evaluate_quote_achievements_for_user,
@@ -257,6 +259,15 @@ class AchievementMealMaestroTests(TestCase):
                 "order": 91,
             },
         )
+        AchievementDefinition.objects.get_or_create(
+            slug=SLUG_SMORGASBORD,
+            defaults={
+                "title": "Smorgasbord",
+                "description": "",
+                "category": "meal",
+                "order": 92,
+            },
+        )
 
     def test_thats_amore_unlocks_both_mutual_partners(self):
         u1 = User.objects.create_user(email="meal-p1@example.com", password="secret12345")
@@ -307,6 +318,20 @@ class AchievementMealMaestroTests(TestCase):
         evaluate_meal_maestro_tasty_plans_for_instance(instance_id=inst.pk)
         self.assertTrue(
             UserAchievement.objects.filter(user=owner, achievement__slug=SLUG_TASTY_PLANS).exists()
+        )
+
+    def test_smorgasbord_requires_twenty_meals(self):
+        owner = User.objects.create_user(email="meal-smorg@example.com", password="secret12345")
+        for i in range(19):
+            Meal.objects.create(owner_user=owner, title=f"M{i}")
+        evaluate_meal_maestro_smorgasbord_for_user(owner.id)
+        self.assertFalse(
+            UserAchievement.objects.filter(user=owner, achievement__slug=SLUG_SMORGASBORD).exists()
+        )
+        Meal.objects.create(owner_user=owner, title="Last")
+        evaluate_meal_maestro_smorgasbord_for_user(owner.id)
+        self.assertTrue(
+            UserAchievement.objects.filter(user=owner, achievement__slug=SLUG_SMORGASBORD).exists()
         )
 
 

@@ -41,6 +41,7 @@ from achievements.services import (
     evaluate_closet_sharing_is_caring_for_user,
 )
 from common.r2_s3 import build_r2_s3_client, r2_bucket_config_from_env
+from meal.r2_storage import expected_meal_image_key_prefix, meal_image_key_owned_by_user
 from users.permissions import IsApprovedUser
 from users.models import Profile
 
@@ -90,6 +91,13 @@ def _build_r2_client(config: dict):
             + " Fix: activate the same venv you use for runserver, then "
             "`pip install -r backend/requirements.txt` (or `pip install boto3`).",
         ) from exc
+
+
+def _user_owns_storage_image_key(key: str, user_id: int) -> bool:
+    return closet_image_key_owned_by_user(key, user_id) or meal_image_key_owned_by_user(
+        key,
+        user_id,
+    )
 
 
 def _list_user_bucket_keys(*, client, bucket: str, key_prefix: str) -> set[str]:
@@ -815,7 +823,10 @@ def uploads_presign(request):
 @permission_classes([IsApprovedUser])
 @cache_control(private=True, no_store=True)
 def images_mine(request):
-    key_prefix = expected_closet_image_key_prefix(request.user.id)
+    from meal.models import Meal
+
+    closet_key_prefix = expected_closet_image_key_prefix(request.user.id)
+    meal_key_prefix = expected_meal_image_key_prefix(request.user.id)
     user_id = request.user.id
     db_qs = Item.objects.filter(
         owner_user=request.user,
@@ -829,7 +840,22 @@ def images_mine(request):
             continue
         item_ids_by_key[key].append(int(row["id"]))
         item_names_by_key[key].append(str(row.get("name") or "").strip() or f"Item {row['id']}")
-    db_keys = set(item_ids_by_key.keys())
+    item_db_keys = set(item_ids_by_key.keys())
+
+    meal_ids_by_key: dict[str, list[int]] = defaultdict(list)
+    meal_titles_by_key: dict[str, list[str]] = defaultdict(list)
+    for row in Meal.objects.filter(owner_user=request.user).exclude(image_key="").values(
+        "id",
+        "title",
+        "image_key",
+    ):
+        key = (row.get("image_key") or "").strip()
+        if not key or not meal_image_key_owned_by_user(key, user_id):
+            continue
+        meal_ids_by_key[key].append(int(row["id"]))
+        meal_titles_by_key[key].append(str(row.get("title") or "").strip() or f"Meal {row['id']}")
+    meal_db_keys = set(meal_ids_by_key.keys())
+
     profile_avatar_url = (
         Profile.objects.filter(user=request.user)
         .values_list("avatar_url", flat=True)
@@ -842,28 +868,43 @@ def images_mine(request):
         return config_error
     try:
         client = _build_r2_client(config)
-        bucket_keys = _list_user_bucket_keys(
+        bucket_keys_closet = _list_user_bucket_keys(
             client=client,
             bucket=config["bucket"],
-            key_prefix=key_prefix,
+            key_prefix=closet_key_prefix,
         )
-        bucket_keys = {k for k in bucket_keys if closet_image_key_owned_by_user(k, user_id)}
+        bucket_keys_closet = {
+            k for k in bucket_keys_closet if closet_image_key_owned_by_user(k, user_id)
+        }
+        bucket_keys_meal = _list_user_bucket_keys(
+            client=client,
+            bucket=config["bucket"],
+            key_prefix=meal_key_prefix,
+        )
+        bucket_keys_meal = {k for k in bucket_keys_meal if meal_image_key_owned_by_user(k, user_id)}
     except Exception as exc:
         logger.exception("closet images_mine: failed to list R2 objects")
         detail = str(exc) if settings.DEBUG else "Failed to list images from storage."
         return Response({"detail": detail}, status=502)
 
+    bucket_keys_union = bucket_keys_closet | bucket_keys_meal
     all_keys = sorted(
-        k for k in (db_keys | bucket_keys) if closet_image_key_owned_by_user(k, user_id)
+        k
+        for k in (item_db_keys | meal_db_keys | bucket_keys_union)
+        if _user_owns_storage_image_key(k, user_id)
     )
     rows = []
     for key in all_keys:
         attached_item_ids = sorted(item_ids_by_key.get(key, []))
         attached_item_names = item_names_by_key.get(key, [])
         attached_count = len(attached_item_ids)
+        attached_meal_ids = sorted(meal_ids_by_key.get(key, []))
+        attached_meal_titles = meal_titles_by_key.get(key, [])
+        attached_meal_count = len(attached_meal_ids)
         attached_as_avatar = bool(
             profile_avatar_url and closet_item_image_url(key) == profile_avatar_url
         )
+        is_attached = attached_count > 0 or attached_as_avatar or attached_meal_count > 0
         rows.append(
             {
                 "image_key": key,
@@ -871,11 +912,12 @@ def images_mine(request):
                 "attached_live_item_count": attached_count,
                 "attached_live_item_ids": attached_item_ids,
                 "attached_live_item_names": attached_item_names,
+                "attached_meal_count": attached_meal_count,
+                "attached_meal_ids": attached_meal_ids,
+                "attached_meal_titles": attached_meal_titles,
                 "attached_as_avatar": attached_as_avatar,
-                "status": "attached"
-                if attached_count > 0 or attached_as_avatar
-                else "stranded",
-                "present_in_bucket": key in bucket_keys,
+                "status": "attached" if is_attached else "stranded",
+                "present_in_bucket": key in bucket_keys_union,
             }
         )
     return Response({"results": rows})
@@ -886,10 +928,13 @@ def images_mine(request):
 @cache_control(private=True, no_store=True)
 @transaction.atomic
 def image_delete(request):
+    from meal.models import Meal
+
     raw_key = str(request.data.get("image_key") or "").strip()
     if not raw_key:
         return Response({"detail": "image_key is required."}, status=400)
-    if not closet_image_key_owned_by_user(raw_key, request.user.id):
+    uid = request.user.id
+    if not _user_owns_storage_image_key(raw_key, uid):
         return Response({"detail": "Image key must belong to your account prefix."}, status=403)
 
     config, config_error = _r2_client_config_or_response()
@@ -904,6 +949,9 @@ def image_delete(request):
         user=request.user,
         avatar_url=closet_item_image_url(raw_key),
     ).update(avatar_url="")
+    detached_meal_count = Meal.objects.filter(owner_user=request.user, image_key=raw_key).update(
+        image_key="",
+    )
 
     try:
         client = _build_r2_client(config)
@@ -919,6 +967,7 @@ def image_delete(request):
             "image_key": raw_key,
             "detached_live_item_count": detached_count,
             "detached_avatar_count": detached_avatar_count,
+            "detached_meal_count": detached_meal_count,
         }
     )
 

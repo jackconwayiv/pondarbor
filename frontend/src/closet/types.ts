@@ -69,6 +69,10 @@ export type ClosetImageInventoryRow = {
   attached_as_avatar?: boolean;
   attached_live_item_ids: number[];
   attached_live_item_names: string[];
+  /** Meal Maestro recipes using this image (when API provides it). */
+  attached_meal_count?: number;
+  attached_meal_ids?: number[];
+  attached_meal_titles?: string[];
   status: "attached" | "stranded";
   present_in_bucket: boolean;
 };

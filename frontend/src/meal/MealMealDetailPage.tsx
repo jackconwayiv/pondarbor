@@ -10,8 +10,11 @@ import {
   PANEL_ENTRY_CARD_PROPS,
 } from "../theme/typography";
 import { deleteMeal, fetchMeal, patchMeal } from "./api";
+import { MealAddToWeekDialog } from "./MealAddToWeekDialog";
 import { MealEditorBackdropDismiss } from "./MealEditorBackdropDismiss";
 import { MealEditorForm } from "./MealEditorForm";
+import { MealImageField } from "./MealImageField";
+import { publicUrlForR2ImageKey } from "./imagePublicUrl";
 import { mealOwnerLabel } from "./mealOwnerLabel";
 import {
   MealApprovalRequired,
@@ -54,6 +57,8 @@ export default function MealMealDetailPage() {
   const navigate = useNavigate();
   const { isAuthenticated, isLoading, sessionUser, getApiAccessToken, refreshSession } =
     useAppSession();
+  const [addToPlanOpen, setAddToPlanOpen] = useState(false);
+  const [addToPlanNotice, setAddToPlanNotice] = useState<string | null>(null);
   const [meal, setMeal] = useState<Meal | null>(null);
   const [mealTitle, setMealTitle] = useState("");
   const [blurb, setBlurb] = useState("");
@@ -64,6 +69,7 @@ export default function MealMealDetailPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [patchBusy, setPatchBusy] = useState(false);
+  const [draftImageKey, setDraftImageKey] = useState("");
   const confirmDeleteButtonRef = useRef<HTMLButtonElement | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -76,6 +82,7 @@ export default function MealMealDetailPage() {
     setBlurb(m.blurb);
     setDirections(m.directions ?? "");
     setIngredientsText((m.ingredients ?? []).map((ing) => ing.raw_line).join("\n"));
+    setDraftImageKey((m.image_key ?? "").trim());
   }, [getApiAccessToken, mid]);
 
   useEffect(() => {
@@ -94,12 +101,15 @@ export default function MealMealDetailPage() {
       return;
     }
     const ingredients = linesToIngredients(ingredientsText);
+    const prevKey = (meal.image_key ?? "").trim();
+    const nextKey = draftImageKey.trim();
     const unchanged =
       title === meal.title &&
       blurb === meal.blurb &&
       (directions ?? "") === (meal.directions ?? "") &&
       ingredients.length === meal.ingredients.length &&
-      ingredients.every((ing, i) => ing.raw_line === meal.ingredients[i]?.raw_line);
+      ingredients.every((ing, i) => ing.raw_line === meal.ingredients[i]?.raw_line) &&
+      nextKey === prevKey;
     if (unchanged) return;
 
     setPatchBusy(true);
@@ -110,6 +120,7 @@ export default function MealMealDetailPage() {
         blurb,
         directions,
         ingredients,
+        image_key: nextKey,
       });
       setMeal(next);
       setErr(null);
@@ -119,7 +130,7 @@ export default function MealMealDetailPage() {
     } finally {
       setPatchBusy(false);
     }
-  }, [meal, mealTitle, blurb, directions, ingredientsText, getApiAccessToken]);
+  }, [meal, mealTitle, blurb, directions, ingredientsText, draftImageKey, getApiAccessToken]);
 
   const dismissToMealsList = useCallback(async () => {
     setConfirmDelete(false);
@@ -200,8 +211,24 @@ export default function MealMealDetailPage() {
                 <Heading size="sm" fontWeight="semibold">
                   {mealTitle.trim() || "Meal"}
                 </Heading>
-                <HStack gap="2">
-                  <PondButton colorPalette="lilypad" onClick={() => setIsEditing(true)}>
+                <HStack gap="2" flexWrap="wrap">
+                  <PondButton
+                    colorPalette="sky"
+                    variant="outline"
+                    onClick={() => {
+                      setAddToPlanNotice(null);
+                      setAddToPlanOpen(true);
+                    }}
+                  >
+                    Add to meal plan…
+                  </PondButton>
+                  <PondButton
+                    colorPalette="lilypad"
+                    onClick={() => {
+                      setAddToPlanNotice(null);
+                      setIsEditing(true);
+                    }}
+                  >
                     Edit
                   </PondButton>
                   <PondButton
@@ -234,6 +261,21 @@ export default function MealMealDetailPage() {
                   </PondButton>
                 </HStack>
               </HStack>
+              {addToPlanNotice ? (
+                <Box
+                  mb="3"
+                  w="100%"
+                  bg="lilypad.solid"
+                  color="black"
+                  borderRadius="md"
+                  px="2"
+                  py="2"
+                >
+                  <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
+                    {addToPlanNotice}
+                  </Text>
+                </Box>
+              ) : null}
               {meal.image_url?.trim() ? (
                 <Box mb="3" maxW="sm" w="100%">
                   <Image
@@ -258,6 +300,18 @@ export default function MealMealDetailPage() {
               onBlurbChange={setBlurb}
               onDirectionsChange={setDirections}
               onIngredientsTextChange={setIngredientsText}
+              recipeImage={
+                <MealImageField
+                  imageKey={draftImageKey}
+                  imageUrl={
+                    (meal.image_url ?? "").trim() ||
+                    (draftImageKey.trim() ? publicUrlForR2ImageKey(draftImageKey) : "")
+                  }
+                  onImageKeyChange={setDraftImageKey}
+                  getApiAccessToken={getApiAccessToken}
+                  disabled={deleteBusy || patchBusy}
+                />
+              }
               onBlurSave={flushPatch}
               saveDisabled={!mealTitle.trim()}
               saveLoading={patchBusy}
@@ -283,6 +337,7 @@ export default function MealMealDetailPage() {
                       setBlurb(meal.blurb);
                       setDirections(meal.directions ?? "");
                       setIngredientsText((meal.ingredients ?? []).map((ing) => ing.raw_line).join("\n"));
+                      setDraftImageKey((meal.image_key ?? "").trim());
                       setIsEditing(false);
                       setConfirmDelete(false);
                     }}
@@ -382,6 +437,18 @@ export default function MealMealDetailPage() {
           {err}
         </Text>
       ) : null}
+
+      <MealAddToWeekDialog
+        open={addToPlanOpen}
+        onOpenChange={setAddToPlanOpen}
+        mealId={meal.id}
+        mealTitle={mealTitle}
+        weekStartsOn={sessionUser.profile.meal_week_starts_on ?? 0}
+        mealSlotLabels={sessionUser.profile.meal_slot_labels}
+        getApiAccessToken={getApiAccessToken}
+        onPlanUpdated={() => void refreshSession().catch(() => {})}
+        onAddSuccess={setAddToPlanNotice}
+      />
     </Stack>
   );
 }

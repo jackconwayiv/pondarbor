@@ -5,3 +5,6 @@ class MealConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "meal"
     verbose_name = "Meal Maestro"
+
+    def ready(self):
+        import meal.signals  # noqa: F401

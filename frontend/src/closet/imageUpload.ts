@@ -1,4 +1,7 @@
+import { putPresignedImage } from "../lib/presignedPut";
 import { requestClosetImagePresign } from "./api";
+
+export { putPresignedImage };
 
 const MAX_EDGE = 1600;
 const JPEG_QUALITY = 0.85;
@@ -32,21 +35,6 @@ export async function resizeImageFileToJpegBlob(
     });
   } finally {
     bitmap.close();
-  }
-}
-
-export async function putPresignedImage(
-  uploadUrl: string,
-  contentType: string,
-  body: Blob,
-): Promise<void> {
-  const response = await fetch(uploadUrl, {
-    method: "PUT",
-    headers: { "Content-Type": contentType },
-    body,
-  });
-  if (!response.ok) {
-    throw new Error(`Upload failed (${response.status})`);
   }
 }
 

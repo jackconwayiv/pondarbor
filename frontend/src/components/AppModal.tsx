@@ -61,9 +61,13 @@ export function AppModal({
           borderColor="border"
           borderRadius="xl"
           boxShadow="lg"
+          display="flex"
+          flexDirection="column"
+          gap="2"
+          p="2"
           {...contentProps}
         >
-          <Dialog.Header gap="2" {...headerProps}>
+          <Dialog.Header gap="2" p="0" {...headerProps}>
             <Dialog.Title fontWeight="semibold" fontSize="lg" lineHeight="short">
               {title}
             </Dialog.Title>
@@ -72,11 +76,17 @@ export function AppModal({
             </Dialog.CloseTrigger>
           </Dialog.Header>
           {description ? (
-            <Dialog.Description fontSize="sm" color="fg.muted" {...descriptionProps}>
+            <Dialog.Description
+              fontSize="sm"
+              color="fg.muted"
+              p="0"
+              m="0"
+              {...descriptionProps}
+            >
               {description}
             </Dialog.Description>
           ) : null}
-          <Dialog.Body pt="2" pb="4" {...bodyProps}>
+          <Dialog.Body p="0" {...bodyProps}>
             {children}
           </Dialog.Body>
         </Dialog.Content>

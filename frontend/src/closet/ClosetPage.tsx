@@ -1455,11 +1455,28 @@ export default function ClosetPage() {
                               fontSize={APP_TEXT_SIZES.helper}
                               color="fg.muted"
                             >
-                              {row.attached_live_item_count > 0
-                                ? `${row.attached_live_item_count} live item${row.attached_live_item_count === 1 ? "" : "s"} using this image${row.attached_as_avatar ? " + used as your avatar" : ""}`
-                                : row.attached_as_avatar
-                                  ? "Used as your avatar"
-                                  : "0 live items using this image"}
+                              {(() => {
+                                const nItems = row.attached_live_item_count;
+                                const nMeals = row.attached_meal_count ?? 0;
+                                const parts: string[] = [];
+                                if (nItems > 0) {
+                                  parts.push(
+                                    `${nItems} live item${nItems === 1 ? "" : "s"}`,
+                                  );
+                                }
+                                if (nMeals > 0) {
+                                  parts.push(
+                                    `${nMeals} recipe${nMeals === 1 ? "" : "s"}`,
+                                  );
+                                }
+                                if (row.attached_as_avatar) {
+                                  parts.push("your avatar");
+                                }
+                                if (parts.length === 0) {
+                                  return "Not used by items, recipes, or avatar";
+                                }
+                                return `Used by: ${parts.join(", ")}`;
+                              })()}
                             </Text>
                             {!row.present_in_bucket ? (
                               <Text
@@ -1494,7 +1511,7 @@ export default function ClosetPage() {
                                 setImagesNotice({
                                   kind: "success",
                                   message:
-                                    "Image deleted from storage and detached from live items.",
+                                    "Image deleted from storage and detached from items, recipes, or avatar.",
                                 });
                                 await refreshAll();
                               } catch (err: unknown) {
@@ -1534,7 +1551,12 @@ export default function ClosetPage() {
                         </Text>
                         {row.attached_live_item_names.length > 0 ? (
                           <Text fontSize={APP_TEXT_SIZES.helper}>
-                            Used by: {row.attached_live_item_names.join(", ")}
+                            Closet items: {row.attached_live_item_names.join(", ")}
+                          </Text>
+                        ) : null}
+                        {(row.attached_meal_titles?.length ?? 0) > 0 ? (
+                          <Text fontSize={APP_TEXT_SIZES.helper}>
+                            Recipes: {(row.attached_meal_titles ?? []).join(", ")}
                           </Text>
                         ) : null}
                       </Stack>

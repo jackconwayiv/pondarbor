@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.db.models.functions import Lower
 
 
 class Weekday(models.IntegerChoices):
@@ -49,6 +50,60 @@ class MealPartnerDisconnectRequest(models.Model):
         return f"{self.initiator_id}->{self.recipient_id} ({self.status})"
 
 
+class MealCategoryAxis(models.TextChoices):
+    MEAL_TYPE = "meal_type", "Meal type"
+    CUISINE = "cuisine", "Cuisine"
+    TIME = "time", "Time"
+
+
+class MealTag(models.Model):
+    """Reusable tag string per owner (case-insensitive uniqueness)."""
+
+    owner_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="meal_tags",
+    )
+    name = models.CharField(max_length=120)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                Lower("name"),
+                "owner_user",
+                name="meal_mealtag_owner_name_lower_uniq",
+            ),
+        ]
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class MealCategoryOption(models.Model):
+    owner_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="meal_category_options",
+    )
+    axis = models.CharField(max_length=16, choices=MealCategoryAxis.choices, db_index=True)
+    name = models.CharField(max_length=120)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                Lower("name"),
+                "owner_user",
+                "axis",
+                name="meal_mealcategory_owner_axis_name_lower_uniq",
+            ),
+        ]
+        ordering = ["axis", "name"]
+
+    def __str__(self) -> str:
+        return f"{self.axis}:{self.name}"
+
+
 class Meal(models.Model):
     owner_user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -67,6 +122,34 @@ class Meal(models.Model):
     )
     source_url = models.URLField(max_length=2048, blank=True)
     image_key = models.CharField(max_length=512, blank=True)
+    is_published_to_friends = models.BooleanField(default=False, db_index=True)
+    meal_type_option = models.ForeignKey(
+        MealCategoryOption,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="meals_as_meal_type",
+    )
+    cuisine_option = models.ForeignKey(
+        MealCategoryOption,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="meals_as_cuisine",
+    )
+    time_option = models.ForeignKey(
+        MealCategoryOption,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="meals_as_time",
+    )
+    tags = models.ManyToManyField(
+        MealTag,
+        through="MealTagAssignment",
+        related_name="meals",
+        blank=True,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -78,6 +161,14 @@ class Meal(models.Model):
         if t:
             return t[:80]
         return (self.blurb or "Meal")[:80]
+
+
+class MealTagAssignment(models.Model):
+    meal = models.ForeignKey(Meal, on_delete=models.CASCADE, related_name="tag_assignments")
+    tag = models.ForeignKey(MealTag, on_delete=models.CASCADE, related_name="tag_assignments")
+
+    class Meta:
+        unique_together = [("meal", "tag")]
 
 
 class MealIngredient(models.Model):

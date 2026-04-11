@@ -32,6 +32,7 @@ SLUG_GOOD_AS_NEW = "good_as_new"
 SLUG_THATS_AMORE = "thats_amore"
 SLUG_TASTY_PLANS = "tasty_plans"
 SLUG_SMORGASBORD = "smorgasbord"
+SLUG_I_CAN_SMELL_IT_FROM_HERE = "i_can_smell_it_from_here"
 
 ARCHIVIST_MIN_QUOTES = 10
 TOWN_CRIER_MIN_PUBLIC = 10
@@ -151,6 +152,11 @@ def evaluate_meal_maestro_smorgasbord_for_user(user_id: int) -> None:
 
     if Meal.objects.filter(owner_user_id=user_id).count() >= SMORGASBORD_MIN_MEALS:
         _try_unlock(user_id, SLUG_SMORGASBORD)
+
+
+def evaluate_meal_maestro_friend_recipe_copy_for_user(user_id: int) -> None:
+    """Unlock when the user saves a friend's published recipe (shared meal copy)."""
+    _try_unlock(user_id, SLUG_I_CAN_SMELL_IT_FROM_HERE)
 
 
 def _count_ended_sessions_for_user(user_id: int) -> int:

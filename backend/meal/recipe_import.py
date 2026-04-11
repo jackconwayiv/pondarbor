@@ -565,4 +565,10 @@ def extract_recipe_from_html(page_html: str, page_url: str) -> dict[str, Any]:
     }
     if recipe_image_url:
         out["recipe_image_url"] = recipe_image_url
+    if recipe:
+        from meal.import_hints import build_import_hints_from_json_ld
+
+        hints = build_import_hints_from_json_ld(recipe)
+        if hints:
+            out["import_hints"] = hints
     return out

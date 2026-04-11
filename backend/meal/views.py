@@ -6,6 +6,7 @@ import uuid
 from datetime import date
 
 from django.conf import settings
+from django.db.models import Prefetch, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -21,19 +22,29 @@ from users.auth0_backend import Auth0TokenAuthentication
 from users.permissions import IsApprovedUser
 from users.views import get_or_create_profile
 
-from achievements.services import evaluate_meal_maestro_tasty_plans_for_instance
+from achievements.services import (
+    evaluate_meal_maestro_friend_recipe_copy_for_user,
+    evaluate_meal_maestro_tasty_plans_for_instance,
+)
 
+from friends.services import are_friends, friend_ids_for_user
+
+from meal.clone import clone_meal_for_user
 from meal.dates import normalize_week_start
+from meal.import_hints import apply_import_hints_to_meal, build_import_hints_from_paprika_category_string
 from meal.grid import copy_template_to_instance, create_template_with_grid, rebuild_template_slots
 from meal.grocery_build import generate_grocery_list_for_instance
+from meal.meal_updates import apply_meal_validated, attach_upcoming_slot_counts, filter_meals_queryset
 from meal.models import (
     GroceryList,
     Meal,
+    MealCategoryOption,
     MealIngredient,
     MealPlanInstance,
     MealPlanInstanceSlotMeal,
     MealPlanTemplate,
     MealPlanTemplateSlotMeal,
+    MealTag,
 )
 from meal.partner import meal_partner_user_ids
 from meal.paprika_import import (
@@ -48,14 +59,17 @@ from meal.recipe_import import (
     validate_http_url,
 )
 from meal.r2_storage import expected_meal_image_key_prefix, upload_meal_image_bytes
+from meal.publish import meal_eligible_for_publish
 from meal.serializers import (
     GroceryListSerializer,
+    MealCategoryOptionSerializer,
     MealImportFromUrlSerializer,
     MealPlanInstanceSerializer,
     MealPlanTemplateSerializer,
     MealPlanTemplateWriteSerializer,
     MealSerializer,
     MealWriteSerializer,
+    SharedMealSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -141,25 +155,50 @@ def _serialize_instance(inst: MealPlanInstance):
     return payload
 
 
+def _meal_detail_prefetch():
+    return (
+        "ingredients",
+        Prefetch("tags", queryset=MealTag.objects.order_by("name")),
+        "meal_type_option",
+        "cuisine_option",
+        "time_option",
+    )
+
+
 @api_view(["GET", "POST"])
 @authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
 @permission_classes([IsApprovedUser])
 def meal_list_create(request):
     if request.method == "GET":
-        qs = _meal_qs(request).prefetch_related("ingredients").order_by("-updated_at")
-        return Response(MealSerializer(qs, many=True).data)
+        qs = _meal_qs(request).prefetch_related(*_meal_detail_prefetch())
+        qs, sort = filter_meals_queryset(request, qs)
+        meals = list(qs)
+        attach_upcoming_slot_counts(meals, _scope_ids(request))
+        if sort == "upcoming_slot_count":
+            meals.sort(
+                key=lambda m: (
+                    -getattr(m, "_upcoming_slot_count", 0),
+                    (m.title or "").lower(),
+                ),
+            )
+        return Response(MealSerializer(meals, many=True).data)
     ser = MealWriteSerializer(data=request.data, context={"request": request})
     ser.is_valid(raise_exception=True)
+    vd = ser.validated_data
     meal = Meal.objects.create(
         owner_user=request.user,
-        title=(ser.validated_data.get("title") or "").strip(),
-        blurb=ser.validated_data.get("blurb") or "",
-        directions=ser.validated_data.get("directions") or "",
-        source_url=(ser.validated_data.get("source_url") or "")[:2048],
-        image_key=(ser.validated_data.get("image_key") or "")[:512],
+        title=(vd.get("title") or "").strip(),
+        blurb=vd.get("blurb") or "",
+        directions=vd.get("directions") or "",
+        source_url=(vd.get("source_url") or "")[:2048],
+        image_key=(vd.get("image_key") or "")[:512],
+        is_published_to_friends=False,
     )
-    _set_meal_ingredients(meal=meal, ingredients_data=list(ser.validated_data.get("ingredients") or []))
-    meal = _meal_qs(request).prefetch_related("ingredients").get(pk=meal.pk)
+    _set_meal_ingredients(meal=meal, ingredients_data=list(vd.get("ingredients") or []))
+    meal.refresh_from_db()
+    apply_meal_validated(meal=meal, data=vd, partial=False)
+    meal.save()
+    meal = _meal_qs(request).prefetch_related(*_meal_detail_prefetch()).get(pk=meal.pk)
     return Response(MealSerializer(meal).data, status=status.HTTP_201_CREATED)
 
 
@@ -173,6 +212,7 @@ def meal_import_from_url(request):
     normalized = validate_http_url(raw_url)
     html, final_url = fetch_recipe_html(normalized)
     data = extract_recipe_from_html(html, final_url)
+    hints = data.pop("import_hints", None) or {}
     meal = Meal.objects.create(
         owner_user=request.user,
         title=data["title"],
@@ -192,6 +232,8 @@ def meal_import_from_url(request):
             },
         )
     _set_meal_ingredients(meal=meal, ingredients_data=ing_rows)
+    if hints:
+        apply_import_hints_to_meal(meal=meal, hints=hints)
     if data.get("recipe_image_url"):
         try:
             img_bytes = fetch_recipe_image_bytes(data["recipe_image_url"])
@@ -203,7 +245,7 @@ def meal_import_from_url(request):
             meal.save(update_fields=["image_key", "updated_at"])
         except Exception as exc:
             logger.warning("meal url import: skipped image: %s", exc)
-    meal = _meal_qs(request).prefetch_related("ingredients").get(pk=meal.pk)
+    meal = _meal_qs(request).prefetch_related(*_meal_detail_prefetch()).get(pk=meal.pk)
     return Response(MealSerializer(meal).data, status=status.HTTP_201_CREATED)
 
 
@@ -233,6 +275,7 @@ def meal_import_paprika(request):
         try:
             payload = paprika_object_to_meal_payload(obj)
             photo_b64 = payload.pop("photo_data_base64", None)
+            paprika_cats = (payload.pop("paprika_categories", None) or "").strip()
             title = (payload.get("title") or "").strip()
             if not title:
                 raise ValueError("Recipe has no name.")
@@ -255,6 +298,10 @@ def meal_import_paprika(request):
                     },
                 )
             _set_meal_ingredients(meal=meal, ingredients_data=ing_rows)
+            if paprika_cats:
+                ph = build_import_hints_from_paprika_category_string(paprika_cats)
+                if ph:
+                    apply_import_hints_to_meal(meal=meal, hints=ph)
             if photo_b64:
                 blob = decode_paprika_photo_base64(photo_b64)
                 if blob:
@@ -270,7 +317,10 @@ def meal_import_paprika(request):
             created.append(meal)
         except Exception as exc:
             errors.append({"index": idx, "error": str(exc)})
-    out = [MealSerializer(m, context={"request": request}).data for m in created]
+    out = [
+        MealSerializer(_meal_qs(request).prefetch_related(*_meal_detail_prefetch()).get(pk=m.pk)).data
+        for m in created
+    ]
     return Response({"meals": out, "imported_count": len(out), "errors": errors}, status=status.HTTP_201_CREATED)
 
 
@@ -337,10 +387,12 @@ def meal_uploads_presign(request):
 @permission_classes([IsApprovedUser])
 def meal_detail(request, pk: int):
     meal = get_object_or_404(
-        _meal_qs(request).prefetch_related("ingredients"),
+        _meal_qs(request).prefetch_related(*_meal_detail_prefetch()),
         pk=pk,
     )
     if request.method == "GET":
+        scope = _scope_ids(request)
+        attach_upcoming_slot_counts([meal], scope)
         return Response(MealSerializer(meal).data)
     _assert_scope_write(request, meal.owner_user_id)
     if request.method == "DELETE":
@@ -348,22 +400,111 @@ def meal_detail(request, pk: int):
         return Response(status=status.HTTP_204_NO_CONTENT)
     ser = MealWriteSerializer(data=request.data, partial=True, context={"request": request})
     ser.is_valid(raise_exception=True)
-    if "title" in ser.validated_data:
-        meal.title = (ser.validated_data["title"] or "").strip()
-    if "blurb" in ser.validated_data:
-        meal.blurb = ser.validated_data["blurb"]
-    if "directions" in ser.validated_data:
-        meal.directions = ser.validated_data["directions"]
-    if "source_url" in ser.validated_data:
-        meal.source_url = (ser.validated_data.get("source_url") or "")[:2048]
-    if "image_key" in ser.validated_data:
-        meal.image_key = (ser.validated_data.get("image_key") or "")[:512]
-    if "ingredients" in ser.validated_data:
-        _set_meal_ingredients(meal=meal, ingredients_data=list(ser.validated_data["ingredients"]))
+    vd = ser.validated_data
+    if "title" in vd:
+        meal.title = (vd["title"] or "").strip()
+    if "blurb" in vd:
+        meal.blurb = vd["blurb"]
+    if "directions" in vd:
+        meal.directions = vd["directions"]
+    if "source_url" in vd:
+        meal.source_url = (vd.get("source_url") or "")[:2048]
+    if "image_key" in vd:
+        meal.image_key = (vd.get("image_key") or "")[:512]
+    if "ingredients" in vd:
+        _set_meal_ingredients(meal=meal, ingredients_data=list(vd["ingredients"]))
     meal.save()
     meal.refresh_from_db()
-    meal = _meal_qs(request).prefetch_related("ingredients").get(pk=meal.pk)
+    apply_meal_validated(meal=meal, data=vd, partial=True)
+    meal.save()
+    meal = _meal_qs(request).prefetch_related(*_meal_detail_prefetch()).get(pk=meal.pk)
     return Response(MealSerializer(meal).data)
+
+
+@api_view(["GET"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsApprovedUser])
+def meal_tag_vocab(request):
+    names = list(
+        MealTag.objects.filter(owner_user=request.user).order_by("name").values_list("name", flat=True),
+    )
+    return Response({"tags": names})
+
+
+@api_view(["GET", "POST"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsApprovedUser])
+def meal_category_options_list(request):
+    if request.method == "POST":
+        axis = (request.data.get("axis") or "").strip()
+        name = (request.data.get("name") or "").strip()
+        if axis not in ("meal_type", "cuisine", "time"):
+            raise ValidationError({"axis": "Use meal_type, cuisine, or time."})
+        if not name:
+            raise ValidationError({"name": "Name is required."})
+        from meal.tagging import ensure_category_option
+
+        opt = ensure_category_option(owner=request.user, axis=axis, name=name)
+        return Response(MealCategoryOptionSerializer(opt).data, status=status.HTTP_201_CREATED)
+
+    axis = (request.GET.get("axis") or "").strip()
+    if axis not in ("meal_type", "cuisine", "time"):
+        raise ValidationError({"axis": "Use axis=meal_type, cuisine, or time."})
+    qs = MealCategoryOption.objects.filter(owner_user=request.user, axis=axis).order_by("name")
+    return Response(MealCategoryOptionSerializer(qs, many=True).data)
+
+
+@api_view(["GET"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsApprovedUser])
+def meal_shared_list(request):
+    friend_ids = friend_ids_for_user(user=request.user)
+    cloned_sources = Meal.objects.filter(owner_user=request.user).exclude(cloned_from_meal_id=None).values_list(
+        "cloned_from_meal_id",
+        flat=True,
+    )
+    qs = (
+        Meal.objects.filter(owner_user_id__in=friend_ids, is_published_to_friends=True)
+        .exclude(pk__in=cloned_sources)
+        .select_related("owner_user", "owner_user__profile")
+        .prefetch_related(*_meal_detail_prefetch())
+        .order_by("-updated_at")
+    )
+    q = (request.GET.get("q") or "").strip()
+    if q:
+        qs = qs.filter(Q(title__icontains=q) | Q(blurb__icontains=q) | Q(directions__icontains=q))
+    return Response(SharedMealSerializer(list(qs), many=True).data)
+
+
+@api_view(["POST"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsApprovedUser])
+def meal_copy_from_friend(request, pk: int):
+    source = get_object_or_404(
+        Meal.objects.select_related("owner_user", "owner_user__profile").prefetch_related(
+            "ingredients",
+            "tags",
+            "meal_type_option",
+            "cuisine_option",
+            "time_option",
+        ),
+        pk=pk,
+    )
+    if not source.is_published_to_friends or not meal_eligible_for_publish(source):
+        raise ValidationError({"detail": "This recipe is not available to copy."})
+    if not are_friends(user_a=request.user, user_b=source.owner_user):
+        raise PermissionDenied("You can only copy recipes from friends.")
+    if Meal.objects.filter(owner_user=request.user, cloned_from_meal=source).exists():
+        raise ValidationError({"detail": "You already saved this recipe."})
+    new_meal = clone_meal_for_user(meal=source, new_owner=request.user, set_cloned_from=True)
+    evaluate_meal_maestro_friend_recipe_copy_for_user(request.user.id)
+    new_meal = (
+        Meal.objects.filter(owner_user=request.user, pk=new_meal.pk)
+        .prefetch_related(*_meal_detail_prefetch())
+        .first()
+    )
+    attach_upcoming_slot_counts([new_meal], _scope_ids(request))
+    return Response(MealSerializer(new_meal).data, status=status.HTTP_201_CREATED)
 
 
 @api_view(["GET", "POST"])

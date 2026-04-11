@@ -11,6 +11,7 @@ const SLUG_TO_EMOJI: Record<string, string> = {
   thats_amore: "🍝",
   tasty_plans: "👨‍🍳",
   smorgasbord: "\u{1F37D}",
+  i_can_smell_it_from_here: "\u{1F963}",
 };
 
 const DEFAULT_EMOJI = "🏆";

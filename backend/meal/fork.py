@@ -7,10 +7,10 @@ from collections.abc import Iterable
 from django.contrib.auth import get_user_model
 from django.db import transaction
 
+from meal.clone import clone_meal_for_user
 from meal.models import (
     GroceryListItem,
     Meal,
-    MealIngredient,
     MealPlanInstanceSlotMeal,
     MealPlanTemplateSlotMeal,
 )
@@ -19,25 +19,7 @@ User = get_user_model()
 
 
 def _clone_meal_for_user(*, meal: Meal, new_owner) -> Meal:
-    new_meal = Meal.objects.create(
-        owner_user=new_owner,
-        title=meal.title,
-        blurb=meal.blurb,
-        directions=meal.directions,
-        source_url=meal.source_url,
-        image_key=meal.image_key,
-        cloned_from_meal=meal,
-    )
-    for ing in meal.ingredients.all().order_by("position", "id"):
-        MealIngredient.objects.create(
-            meal=new_meal,
-            position=ing.position,
-            raw_line=ing.raw_line,
-            amount=ing.amount,
-            unit=ing.unit,
-            name=ing.name,
-        )
-    return new_meal
+    return clone_meal_for_user(meal=meal, new_owner=new_owner, set_cloned_from=True)
 
 
 def fork_partner_meals_for_user(*, owner: User, partner: User) -> None:

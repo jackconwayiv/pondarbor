@@ -4,6 +4,8 @@ import type {
   MealPlanInstance,
   MealPlanTemplate,
   DisconnectPending,
+  MealCategoryBrief,
+  SharedMeal,
 } from "./types";
 
 function apiBase(): string {
@@ -53,13 +55,108 @@ async function parseApiError(response: Response): Promise<string> {
   return text || `Request failed (${response.status})`;
 }
 
-export async function fetchMeals(accessToken: string | null): Promise<Meal[]> {
-  const response = await fetch(`${apiBase()}/api/v1/meal/meals/`, {
+export type MealListQuery = {
+  q?: string;
+  /** Comma-separated; AND semantics on the server. */
+  tags?: string;
+  meal_type_id?: number;
+  cuisine_id?: number;
+  time_id?: number;
+  sort?: "updated_at" | "title" | "upcoming_slot_count";
+};
+
+function appendMealListQuery(url: string, q?: MealListQuery): string {
+  if (!q) return url;
+  const sp = new URLSearchParams();
+  if (q.q?.trim()) sp.set("q", q.q.trim());
+  if (q.tags?.trim()) sp.set("tags", q.tags.trim());
+  if (q.meal_type_id != null) sp.set("meal_type_id", String(q.meal_type_id));
+  if (q.cuisine_id != null) sp.set("cuisine_id", String(q.cuisine_id));
+  if (q.time_id != null) sp.set("time_id", String(q.time_id));
+  if (q.sort) sp.set("sort", q.sort);
+  const qs = sp.toString();
+  return qs ? `${url}?${qs}` : url;
+}
+
+export async function fetchMeals(
+  accessToken: string | null,
+  query?: MealListQuery,
+): Promise<Meal[]> {
+  const response = await fetch(appendMealListQuery(`${apiBase()}/api/v1/meal/meals/`, query), {
     headers: authHeaders(accessToken),
     credentials: "omit",
   });
   if (!response.ok) throw new Error(await parseApiError(response));
   return response.json() as Promise<Meal[]>;
+}
+
+export async function fetchSharedMeals(
+  accessToken: string | null,
+  q?: string,
+): Promise<SharedMeal[]> {
+  let url = `${apiBase()}/api/v1/meal/meals/shared/`;
+  if (q?.trim()) {
+    url += `?q=${encodeURIComponent(q.trim())}`;
+  }
+  const response = await fetch(url, {
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) throw new Error(await parseApiError(response));
+  return response.json() as Promise<SharedMeal[]>;
+}
+
+export async function copyFriendMeal(
+  accessToken: string | null,
+  mealId: number,
+): Promise<Meal> {
+  const response = await fetch(`${apiBase()}/api/v1/meal/meals/${mealId}/copy/`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify({}),
+  });
+  if (!response.ok) throw new Error(await parseApiError(response));
+  return response.json() as Promise<Meal>;
+}
+
+export async function fetchMealTagVocab(accessToken: string | null): Promise<string[]> {
+  const response = await fetch(`${apiBase()}/api/v1/meal/meals/tags/`, {
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) throw new Error(await parseApiError(response));
+  const data = (await response.json()) as { tags: string[] };
+  return data.tags;
+}
+
+export async function fetchMealCategoryOptions(
+  accessToken: string | null,
+  axis: "meal_type" | "cuisine" | "time",
+): Promise<MealCategoryBrief[]> {
+  const response = await fetch(
+    `${apiBase()}/api/v1/meal/meals/category-options/?axis=${encodeURIComponent(axis)}`,
+    {
+      headers: authHeaders(accessToken),
+      credentials: "omit",
+    },
+  );
+  if (!response.ok) throw new Error(await parseApiError(response));
+  return response.json() as Promise<MealCategoryBrief[]>;
+}
+
+export async function createMealCategoryOption(
+  accessToken: string | null,
+  body: { axis: "meal_type" | "cuisine" | "time"; name: string },
+): Promise<MealCategoryBrief> {
+  const response = await fetch(`${apiBase()}/api/v1/meal/meals/category-options/`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await parseApiError(response));
+  return response.json() as Promise<MealCategoryBrief>;
 }
 
 export async function fetchMeal(accessToken: string | null, id: number): Promise<Meal> {
@@ -138,6 +235,11 @@ export async function createMeal(
     source_url?: string;
     image_key?: string;
     ingredients?: { raw_line: string; amount?: string; unit?: string; name?: string }[];
+    tag_names?: string[];
+    meal_type_id?: number | null;
+    cuisine_id?: number | null;
+    time_id?: number | null;
+    is_published_to_friends?: boolean;
   },
 ): Promise<Meal> {
   const response = await fetch(`${apiBase()}/api/v1/meal/meals/`, {
@@ -160,6 +262,11 @@ export async function patchMeal(
     source_url?: string;
     image_key?: string;
     ingredients?: { raw_line: string; amount?: string; unit?: string; name?: string }[];
+    tag_names?: string[];
+    meal_type_id?: number | null;
+    cuisine_id?: number | null;
+    time_id?: number | null;
+    is_published_to_friends?: boolean;
   },
 ): Promise<Meal> {
   const response = await fetch(`${apiBase()}/api/v1/meal/meals/${id}/`, {

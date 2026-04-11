@@ -1,4 +1,15 @@
-import { Box, Card, Heading, HStack, Image, Stack, Tabs, Text } from "@chakra-ui/react";
+import {
+  Box,
+  Card,
+  Heading,
+  HStack,
+  Image,
+  Input,
+  SimpleGrid,
+  Stack,
+  Tabs,
+  Text,
+} from "@chakra-ui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link as RouterLink, Navigate, useNavigate, useParams, useSearchParams } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
@@ -8,8 +19,11 @@ import {
   MAPPED_CLOSET_TAB_STACK_GAP,
   PANEL_ENTRY_CARD_BODY_PROPS,
   PANEL_ENTRY_CARD_PROPS,
+  PANEL_FIELD_PROPS,
 } from "../theme/typography";
-import { deleteMeal, fetchMeal, patchMeal } from "./api";
+import { deleteMeal, fetchMeal, fetchMealCategoryOptions, patchMeal } from "./api";
+import { MealCategoryAddEditor } from "./MealCategoryAddEditor";
+import { MealCategorySelect } from "./MealCategorySelect";
 import { MealAddToWeekDialog } from "./MealAddToWeekDialog";
 import { MealEditorBackdropDismiss } from "./MealEditorBackdropDismiss";
 import { MealEditorForm } from "./MealEditorForm";
@@ -33,6 +47,19 @@ const MEAL_DETAIL_TAB_LIST_PROPS = {
   gap: "1",
   w: "100%",
 };
+
+function parseTagList(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function tagsMatch(a: string[] | undefined, b: string[]): boolean {
+  const x = [...(a ?? [])].map((t) => t.toLowerCase()).sort();
+  const y = [...b].map((t) => t.toLowerCase()).sort();
+  return x.length === y.length && x.every((v, i) => v === y[i]);
+}
 
 function mealDetailTabTriggerProps(activeTab: string, value: string) {
   return {
@@ -70,6 +97,14 @@ export default function MealMealDetailPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [patchBusy, setPatchBusy] = useState(false);
   const [draftImageKey, setDraftImageKey] = useState("");
+  const [tagsText, setTagsText] = useState("");
+  const [mealTypeId, setMealTypeId] = useState("");
+  const [cuisineId, setCuisineId] = useState("");
+  const [timeId, setTimeId] = useState("");
+  const [published, setPublished] = useState(false);
+  const [mealTypeOpts, setMealTypeOpts] = useState<{ id: number; name: string }[]>([]);
+  const [cuisineOpts, setCuisineOpts] = useState<{ id: number; name: string }[]>([]);
+  const [timeOpts, setTimeOpts] = useState<{ id: number; name: string }[]>([]);
   const confirmDeleteButtonRef = useRef<HTMLButtonElement | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -83,7 +118,31 @@ export default function MealMealDetailPage() {
     setDirections(m.directions ?? "");
     setIngredientsText((m.ingredients ?? []).map((ing) => ing.raw_line).join("\n"));
     setDraftImageKey((m.image_key ?? "").trim());
+    setTagsText((m.tag_names ?? []).join(", "));
+    setMealTypeId(m.meal_type ? String(m.meal_type.id) : "");
+    setCuisineId(m.cuisine ? String(m.cuisine.id) : "");
+    setTimeId(m.time ? String(m.time.id) : "");
+    setPublished(Boolean(m.is_published_to_friends));
   }, [getApiAccessToken, mid]);
+
+  useEffect(() => {
+    if (!sessionUser?.user.is_approved) return;
+    void (async () => {
+      try {
+        const t = await getApiAccessToken();
+        const [mt, cu, tm] = await Promise.all([
+          fetchMealCategoryOptions(t, "meal_type"),
+          fetchMealCategoryOptions(t, "cuisine"),
+          fetchMealCategoryOptions(t, "time"),
+        ]);
+        setMealTypeOpts(mt.map((o) => ({ id: o.id, name: o.name })));
+        setCuisineOpts(cu.map((o) => ({ id: o.id, name: o.name })));
+        setTimeOpts(tm.map((o) => ({ id: o.id, name: o.name })));
+      } catch {
+        // ignore
+      }
+    })();
+  }, [sessionUser?.user.is_approved, getApiAccessToken]);
 
   useEffect(() => {
     if (!sessionUser?.user.is_approved || !Number.isFinite(mid)) return;
@@ -103,13 +162,22 @@ export default function MealMealDetailPage() {
     const ingredients = linesToIngredients(ingredientsText);
     const prevKey = (meal.image_key ?? "").trim();
     const nextKey = draftImageKey.trim();
+    const tagNames = parseTagList(tagsText);
+    const mtId = mealTypeId ? Number(mealTypeId) : null;
+    const cuId = cuisineId ? Number(cuisineId) : null;
+    const tmId = timeId ? Number(timeId) : null;
     const unchanged =
       title === meal.title &&
       blurb === meal.blurb &&
       (directions ?? "") === (meal.directions ?? "") &&
       ingredients.length === meal.ingredients.length &&
       ingredients.every((ing, i) => ing.raw_line === meal.ingredients[i]?.raw_line) &&
-      nextKey === prevKey;
+      nextKey === prevKey &&
+      tagsMatch(meal.tag_names, tagNames) &&
+      (meal.meal_type?.id ?? null) === mtId &&
+      (meal.cuisine?.id ?? null) === cuId &&
+      (meal.time?.id ?? null) === tmId &&
+      Boolean(meal.is_published_to_friends) === published;
     if (unchanged) return;
 
     setPatchBusy(true);
@@ -121,6 +189,11 @@ export default function MealMealDetailPage() {
         directions,
         ingredients,
         image_key: nextKey,
+        tag_names: tagNames,
+        meal_type_id: mtId,
+        cuisine_id: cuId,
+        time_id: tmId,
+        is_published_to_friends: published,
       });
       setMeal(next);
       setErr(null);
@@ -130,7 +203,20 @@ export default function MealMealDetailPage() {
     } finally {
       setPatchBusy(false);
     }
-  }, [meal, mealTitle, blurb, directions, ingredientsText, draftImageKey, getApiAccessToken]);
+  }, [
+    meal,
+    mealTitle,
+    blurb,
+    directions,
+    ingredientsText,
+    draftImageKey,
+    tagsText,
+    mealTypeId,
+    cuisineId,
+    timeId,
+    published,
+    getApiAccessToken,
+  ]);
 
   const dismissToMealsList = useCallback(async () => {
     setConfirmDelete(false);
@@ -291,7 +377,87 @@ export default function MealMealDetailPage() {
             </>
           ) : null}
           {isEditing ? (
-            <MealEditorForm
+            <Stack gap="3" w="100%">
+              <Stack gap="2" w="100%">
+                <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="semibold">
+                  Tags & categories
+                </Text>
+                <Input
+                  placeholder="Tags (comma-separated)"
+                  value={tagsText}
+                  onChange={(e) => setTagsText(e.target.value)}
+                  onBlur={() => void flushPatch().catch(() => {})}
+                  disabled={deleteBusy || patchBusy}
+                  {...PANEL_FIELD_PROPS}
+                />
+                <MealCategoryAddEditor
+                  getApiAccessToken={getApiAccessToken}
+                  disabled={deleteBusy || patchBusy}
+                  mealTypeOpts={mealTypeOpts}
+                  cuisineOpts={cuisineOpts}
+                  timeOpts={timeOpts}
+                  setMealTypeOpts={setMealTypeOpts}
+                  setCuisineOpts={setCuisineOpts}
+                  setTimeOpts={setTimeOpts}
+                  pickMealType={setMealTypeId}
+                  pickCuisine={setCuisineId}
+                  pickTime={setTimeId}
+                />
+                <SimpleGrid columns={{ base: 1, md: 3 }} gap="3" w="100%">
+                  <MealCategorySelect
+                    placeholderOption="Meal type"
+                    ariaLabel="Meal type"
+                    value={mealTypeId}
+                    onValueChange={setMealTypeId}
+                    options={mealTypeOpts}
+                    disabled={deleteBusy || patchBusy}
+                  />
+                  <MealCategorySelect
+                    placeholderOption="Cuisine"
+                    ariaLabel="Cuisine"
+                    value={cuisineId}
+                    onValueChange={setCuisineId}
+                    options={cuisineOpts}
+                    disabled={deleteBusy || patchBusy}
+                  />
+                  <MealCategorySelect
+                    placeholderOption="Time"
+                    ariaLabel="Time"
+                    value={timeId}
+                    onValueChange={setTimeId}
+                    options={timeOpts}
+                    disabled={deleteBusy || patchBusy}
+                  />
+                </SimpleGrid>
+                <HStack gap="2" alignItems="center" flexWrap="wrap">
+                  <label
+                    style={{
+                      display: "flex",
+                      gap: "0.5rem",
+                      alignItems: "center",
+                      cursor:
+                        linesToIngredients(ingredientsText).length > 0 && directions.trim()
+                          ? "pointer"
+                          : "not-allowed",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={published}
+                      disabled={
+                        deleteBusy ||
+                        patchBusy ||
+                        !(linesToIngredients(ingredientsText).length > 0 && directions.trim())
+                      }
+                      onChange={(e) => setPublished(e.target.checked)}
+                    />
+                    <Text fontSize={APP_TEXT_SIZES.helper}>
+                      Publish to friends (requires ingredients & directions)
+                    </Text>
+                  </label>
+                </HStack>
+              </Stack>
+              <MealEditorForm
               title={mealTitle}
               blurb={blurb}
               directions={directions}
@@ -338,6 +504,11 @@ export default function MealMealDetailPage() {
                       setDirections(meal.directions ?? "");
                       setIngredientsText((meal.ingredients ?? []).map((ing) => ing.raw_line).join("\n"));
                       setDraftImageKey((meal.image_key ?? "").trim());
+                      setTagsText((meal.tag_names ?? []).join(", "));
+                      setMealTypeId(meal.meal_type ? String(meal.meal_type.id) : "");
+                      setCuisineId(meal.cuisine ? String(meal.cuisine.id) : "");
+                      setTimeId(meal.time ? String(meal.time.id) : "");
+                      setPublished(Boolean(meal.is_published_to_friends));
                       setIsEditing(false);
                       setConfirmDelete(false);
                     }}
@@ -375,6 +546,7 @@ export default function MealMealDetailPage() {
                 </>
               }
             />
+            </Stack>
           ) : null}
           {!isEditing ? (
             <Tabs.Root
@@ -416,6 +588,28 @@ export default function MealMealDetailPage() {
                   <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted">
                     Owner: {ownerLabel}
                   </Text>
+                  {(meal.tag_names?.length ?? 0) > 0 ? (
+                    <Text fontSize={APP_TEXT_SIZES.body}>
+                      Tags: {meal.tag_names!.join(", ")}
+                    </Text>
+                  ) : null}
+                  {[meal.meal_type, meal.cuisine, meal.time].filter(Boolean).length > 0 ? (
+                    <Text fontSize={APP_TEXT_SIZES.body} color="fg.muted">
+                      {[meal.meal_type?.name, meal.cuisine?.name, meal.time?.name]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </Text>
+                  ) : null}
+                  {meal.is_published_to_friends ? (
+                    <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted">
+                      Published to friends
+                    </Text>
+                  ) : null}
+                  {(meal.upcoming_slot_count ?? 0) > 0 ? (
+                    <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted">
+                      Planned {meal.upcoming_slot_count}× in upcoming weeks
+                    </Text>
+                  ) : null}
                   {meal.source_url?.trim() ? (
                     <Text fontSize={APP_TEXT_SIZES.body}>
                       <a href={meal.source_url} target="_blank" rel="noopener noreferrer">

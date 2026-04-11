@@ -43,12 +43,15 @@ def paprika_object_to_meal_payload(obj: dict[str, Any]) -> dict[str, Any]:
     blurb = _paprika_blurb(obj)
     photo_b64 = obj.get("photo_data")
     photo_str = photo_b64 if isinstance(photo_b64, str) else ""
+    categories_raw = obj.get("categories")
+    categories = (categories_raw or "").strip() if isinstance(categories_raw, str) else ""
     return {
         "title": title,
         "blurb": blurb,
         "directions": directions,
         "source_url": source_url,
         "ingredients": ingredient_lines,
+        "paprika_categories": categories,
         # Popped by import view before persisting the meal row.
         "photo_data_base64": photo_str.strip() or None,
     }

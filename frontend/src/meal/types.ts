@@ -7,6 +7,12 @@ export type MealIngredient = {
   name: string;
 };
 
+export type MealCategoryBrief = {
+  id: number;
+  name: string;
+  axis: "meal_type" | "cuisine" | "time";
+};
+
 export type Meal = {
   id: number;
   owner_user: number;
@@ -21,8 +27,20 @@ export type Meal = {
   image_key?: string;
   /** Public URL when `CLOSET_R2_PUBLIC_BASE_URL` is set and `image_key` is present. */
   image_url?: string;
+  is_published_to_friends?: boolean;
+  tag_names?: string[];
+  meal_type?: MealCategoryBrief | null;
+  cuisine?: MealCategoryBrief | null;
+  time?: MealCategoryBrief | null;
+  upcoming_slot_count?: number;
+  can_publish?: boolean;
   created_at: string;
   updated_at: string;
+};
+
+/** Friend-published meal in Shared Meals browse (API adds `author_display`). */
+export type SharedMeal = Meal & {
+  author_display?: string;
 };
 
 /** Body for creating a meal (aligned with `createMeal` API). */

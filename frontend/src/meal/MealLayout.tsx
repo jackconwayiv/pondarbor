@@ -22,6 +22,7 @@ const MEAL_PLAN_INNER_PATH = {
   plans: "/meal/plan/plans",
   templates: "/meal/plan/templates",
   meals: "/meal/plan/meals",
+  shared: "/meal/plan/shared",
 } as const;
 
 type MealPlanInnerTab = keyof typeof MEAL_PLAN_INNER_PATH;
@@ -47,6 +48,7 @@ function mealOuterFromPathname(pathname: string): MealOuterTab {
 
 function mealPlanInnerFromPathname(pathname: string): MealPlanInnerTab {
   if (pathname.startsWith("/meal/plan/templates")) return "templates";
+  if (pathname.startsWith("/meal/plan/shared")) return "shared";
   if (pathname.startsWith("/meal/plan/meals")) return "meals";
   return "plans";
 }
@@ -162,6 +164,9 @@ export default function MealLayout() {
                   </Tabs.Trigger>
                   <Tabs.Trigger {...mealTabTriggerProps(planInner, "meals")}>
                     Meals
+                  </Tabs.Trigger>
+                  <Tabs.Trigger {...mealTabTriggerProps(planInner, "shared")}>
+                    Shared
                   </Tabs.Trigger>
                 </Tabs.List>
               </Tabs.Root>

@@ -1,4 +1,4 @@
-import { Box, Card, HStack, Image, Input, SimpleGrid, Stack, Text } from "@chakra-ui/react";
+import { Box, Card, HStack, Image, Input, NativeSelectField, NativeSelectRoot, SimpleGrid, Stack, Text } from "@chakra-ui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link as RouterLink, Navigate, useNavigate } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
@@ -12,7 +12,14 @@ import {
   PANEL_ENTRY_CARD_PROPS,
   PANEL_FIELD_PROPS,
 } from "../theme/typography";
-import { createMeal, fetchMeals, importMealFromUrl, importPaprikaRecipes } from "./api";
+import {
+  createMeal,
+  fetchMealCategoryOptions,
+  fetchMeals,
+  importMealFromUrl,
+  importPaprikaRecipes,
+} from "./api";
+import type { MealListQuery } from "./api";
 import { MealEditorBackdropDismiss } from "./MealEditorBackdropDismiss";
 import { MealEditorForm } from "./MealEditorForm";
 import { MealImageField } from "./MealImageField";
@@ -24,8 +31,16 @@ import {
   MealLoading,
   MealSessionReconnect,
 } from "./mealPageStates";
+import { MealCategoryAddEditor } from "./MealCategoryAddEditor";
+import { MealCategorySelect } from "./MealCategorySelect";
 import { linesToIngredients } from "./recipeIngredients";
 import type { Meal } from "./types";
+
+const MEALS_TOOLBAR_SECTION_LABEL_PROPS = {
+  fontSize: APP_TEXT_SIZES.helper,
+  fontWeight: "semibold" as const,
+  color: "fg.muted",
+};
 
 export default function MealMealsPage() {
   const navigate = useNavigate();
@@ -43,6 +58,15 @@ export default function MealMealsPage() {
   const [importBusy, setImportBusy] = useState(false);
   const [paprikaBusy, setPaprikaBusy] = useState(false);
   const [draftImageKey, setDraftImageKey] = useState("");
+  const [listQ, setListQ] = useState("");
+  const [listTags, setListTags] = useState("");
+  const [mealTypeFilter, setMealTypeFilter] = useState("");
+  const [cuisineFilter, setCuisineFilter] = useState("");
+  const [timeFilter, setTimeFilter] = useState("");
+  const [sort, setSort] = useState<MealListQuery["sort"]>("updated_at");
+  const [mealTypeOpts, setMealTypeOpts] = useState<{ id: number; name: string }[]>([]);
+  const [cuisineOpts, setCuisineOpts] = useState<{ id: number; name: string }[]>([]);
+  const [timeOpts, setTimeOpts] = useState<{ id: number; name: string }[]>([]);
   const paprikaInputRef = useRef<HTMLInputElement | null>(null);
   const isMobile = useIsMobile();
 
@@ -58,9 +82,42 @@ export default function MealMealsPage() {
 
   const refresh = useCallback(async () => {
     const t = await getApiAccessToken();
-    const m = await fetchMeals(t);
+    const q: MealListQuery = { sort: sort ?? "updated_at" };
+    if (listQ.trim()) q.q = listQ.trim();
+    if (listTags.trim()) q.tags = listTags.trim();
+    if (mealTypeFilter) q.meal_type_id = Number(mealTypeFilter);
+    if (cuisineFilter) q.cuisine_id = Number(cuisineFilter);
+    if (timeFilter) q.time_id = Number(timeFilter);
+    const m = await fetchMeals(t, q);
     setMeals(m);
-  }, [getApiAccessToken]);
+  }, [
+    getApiAccessToken,
+    listQ,
+    listTags,
+    mealTypeFilter,
+    cuisineFilter,
+    timeFilter,
+    sort,
+  ]);
+
+  useEffect(() => {
+    if (!sessionUser?.user.is_approved) return;
+    void (async () => {
+      try {
+        const t = await getApiAccessToken();
+        const [mt, cu, tm] = await Promise.all([
+          fetchMealCategoryOptions(t, "meal_type"),
+          fetchMealCategoryOptions(t, "cuisine"),
+          fetchMealCategoryOptions(t, "time"),
+        ]);
+        setMealTypeOpts(mt.map((o) => ({ id: o.id, name: o.name })));
+        setCuisineOpts(cu.map((o) => ({ id: o.id, name: o.name })));
+        setTimeOpts(tm.map((o) => ({ id: o.id, name: o.name })));
+      } catch {
+        // ignore vocab load errors; filters still work by id
+      }
+    })();
+  }, [sessionUser?.user.is_approved, getApiAccessToken]);
 
   useEffect(() => {
     if (!sessionUser?.user.is_approved) return;
@@ -84,6 +141,121 @@ export default function MealMealsPage() {
       <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
         Build meals with ingredients and directions, then assign them in templates and week plans.
       </Text>
+
+      <Stack gap="3" w="100%">
+        <SimpleGrid columns={3} gap={{ base: "2", md: "3" }} w="100%" alignItems="flex-start">
+          <Stack gap="2" w="100%" minW={0}>
+            <Text {...MEALS_TOOLBAR_SECTION_LABEL_PROPS}>Search</Text>
+            <Input
+              w="100%"
+              placeholder="Search title & recipe text"
+              value={listQ}
+              onChange={(e) => setListQ(e.target.value)}
+              {...PANEL_FIELD_PROPS}
+            />
+          </Stack>
+          <Stack gap="2" w="100%" minW={0}>
+            <Text {...MEALS_TOOLBAR_SECTION_LABEL_PROPS}>Tags</Text>
+            <Input
+              w="100%"
+              placeholder="Comma-separated, AND"
+              value={listTags}
+              onChange={(e) => setListTags(e.target.value)}
+              {...PANEL_FIELD_PROPS}
+            />
+          </Stack>
+          <Stack gap="2" w="100%" minW={0}>
+            <Text {...MEALS_TOOLBAR_SECTION_LABEL_PROPS}>Sort</Text>
+            <NativeSelectRoot size="sm" maxW="xs" w="100%">
+              <NativeSelectField
+                value={sort ?? "updated_at"}
+                onChange={(e) => setSort(e.target.value as MealListQuery["sort"])}
+                aria-label="Sort"
+              >
+                <option value="updated_at">Recently updated</option>
+                <option value="title">Title A–Z</option>
+                <option value="upcoming_slot_count">Most upcoming plans</option>
+              </NativeSelectField>
+            </NativeSelectRoot>
+          </Stack>
+        </SimpleGrid>
+
+        <Stack
+          gap="2"
+          w="100%"
+          pb="3"
+          borderBottomWidth="1px"
+          borderColor="border"
+        >
+          <Text {...MEALS_TOOLBAR_SECTION_LABEL_PROPS}>Categories</Text>
+          <HStack gap="2" flexWrap="wrap" align="flex-start" w="100%">
+            <Stack gap="2" flex="1" minW={0}>
+              <Text {...MEALS_TOOLBAR_SECTION_LABEL_PROPS}>Meal type</Text>
+              <MealCategorySelect
+                placeholderOption="All meal types"
+                ariaLabel="Meal type filter"
+                value={mealTypeFilter}
+                onValueChange={setMealTypeFilter}
+                options={mealTypeOpts}
+                size="sm"
+              />
+            </Stack>
+            <Stack gap="2" flex="1" minW={0}>
+              <Text {...MEALS_TOOLBAR_SECTION_LABEL_PROPS}>Cuisine</Text>
+              <MealCategorySelect
+                placeholderOption="All cuisines"
+                ariaLabel="Cuisine filter"
+                value={cuisineFilter}
+                onValueChange={setCuisineFilter}
+                options={cuisineOpts}
+                size="sm"
+              />
+            </Stack>
+            <Stack gap="2" flex="1" minW={0}>
+              <Text {...MEALS_TOOLBAR_SECTION_LABEL_PROPS}>Time</Text>
+              <MealCategorySelect
+                placeholderOption="All times"
+                ariaLabel="Time filter"
+                value={timeFilter}
+                onValueChange={setTimeFilter}
+                options={timeOpts}
+                size="sm"
+              />
+            </Stack>
+            <Stack
+              gap="2"
+              w={{ base: "100%", md: "auto" }}
+              minW={{ md: "11rem" }}
+              maxW={{ md: "sm" }}
+              flexShrink={0}
+            >
+              <Text
+                {...MEALS_TOOLBAR_SECTION_LABEL_PROPS}
+                display={{ base: "none", md: "block" }}
+                visibility="hidden"
+                aria-hidden
+              >
+                Meal type
+              </Text>
+              <MealCategoryAddEditor
+                getApiAccessToken={getApiAccessToken}
+                size="sm"
+                triggerLabels={{ closed: "Add Category", open: "Close" }}
+                mealTypeOpts={mealTypeOpts}
+                cuisineOpts={cuisineOpts}
+                timeOpts={timeOpts}
+                setMealTypeOpts={setMealTypeOpts}
+                setCuisineOpts={setCuisineOpts}
+                setTimeOpts={setTimeOpts}
+                pickMealType={setMealTypeFilter}
+                pickCuisine={setCuisineFilter}
+                pickTime={setTimeFilter}
+              />
+            </Stack>
+          </HStack>
+        </Stack>
+      </Stack>
+
       {!showAddMeal ? (
         <PondButton
           colorPalette="sky"
@@ -331,7 +503,16 @@ function MealListCard({ meal, ownerLabel }: { meal: Meal; ownerLabel: string }) 
             </Text>
             <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted" lineClamp={1}>
               {ownerLabel} · {ingredientSummary}
+              {(meal.upcoming_slot_count ?? 0) > 0
+                ? ` · Planned ${meal.upcoming_slot_count}×`
+                : ""}
             </Text>
+            {(meal.tag_names?.length ?? 0) > 0 ? (
+              <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted" lineClamp={2}>
+                {meal.tag_names!.slice(0, 4).join(" · ")}
+                {(meal.tag_names!.length ?? 0) > 4 ? "…" : ""}
+              </Text>
+            ) : null}
           </Stack>
         </Card.Body>
       </Card.Root>

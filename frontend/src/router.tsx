@@ -47,6 +47,7 @@ const QffDmQuestsPage = lazy(() => import("./qff/QffDmQuestsPage"));
 const MealLayout = lazy(() => import("./meal/MealLayout"));
 const MealHomePage = lazy(() => import("./meal/MealHomePage"));
 const MealMealsPage = lazy(() => import("./meal/MealMealsPage"));
+const MealSharedPage = lazy(() => import("./meal/MealSharedPage"));
 const MealMealDetailPage = lazy(() => import("./meal/MealMealDetailPage"));
 const MealTemplatesPage = lazy(() => import("./meal/MealTemplatesPage"));
 const MealTemplateEditPage = lazy(() => import("./meal/MealTemplateEditPage"));
@@ -156,6 +157,7 @@ export const router = sentryCreateBrowserRouter([
               },
               { path: "templates", element: lazyRouteElement(<MealTemplatesPage />) },
               { path: "templates/:id", element: lazyRouteElement(<MealTemplateEditPage />) },
+              { path: "shared", element: lazyRouteElement(<MealSharedPage />) },
               { path: "meals", element: lazyRouteElement(<MealMealsPage />) },
               { path: "meals/:id", element: lazyRouteElement(<MealMealDetailPage />) },
             ],

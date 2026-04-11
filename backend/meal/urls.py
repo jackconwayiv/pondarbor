@@ -4,10 +4,14 @@ from meal import views, views_partner
 
 urlpatterns = [
     path("meals/", views.meal_list_create),
+    path("meals/shared/", views.meal_shared_list),
     path("meals/import/", views.meal_import_from_url),
     path("paprika/import/", views.meal_import_paprika),
     path("uploads/presign/", views.meal_uploads_presign),
+    path("meals/tags/", views.meal_tag_vocab),
+    path("meals/category-options/", views.meal_category_options_list),
     path("meals/<int:pk>/", views.meal_detail),
+    path("meals/<int:pk>/copy/", views.meal_copy_from_friend),
     path("templates/", views.template_list_create),
     path("templates/<int:pk>/", views.template_detail),
     path("templates/<int:pk>/grid/", views.template_grid),

@@ -275,6 +275,20 @@ export default function SongadayPage() {
     [responses, myUserId],
   );
 
+  /** Newest activity first; your submission(s) pinned to the bottom. */
+  const responsesOrderedForList = useMemo(() => {
+    if (responses.length === 0) return responses;
+    const isMine = (r: SongadayResponse) => myUserId !== 0 && r.user.id === myUserId;
+    const recentMs = (r: SongadayResponse) =>
+      Math.max(Date.parse(r.updated_at), Date.parse(r.created_at));
+    return [...responses].sort((a, b) => {
+      const ma = isMine(a);
+      const mb = isMine(b);
+      if (ma !== mb) return ma ? 1 : -1;
+      return recentMs(b) - recentMs(a);
+    });
+  }, [responses, myUserId]);
+
   const hasPrompt = !!(promptPayload?.prompt && String(promptPayload.prompt).trim());
 
   const applicableFieldGroups = useMemo(() => {
@@ -943,13 +957,14 @@ export default function SongadayPage() {
                     No responses for this day yet.
                   </Text>
                 ) : (
-                  <SimpleGrid columns={{ base: 1, md: 2 }} gap="4">
-                    {responses.map((entry) => (
+                  <SimpleGrid columns={{ base: 1, md: 2 }} gap="3">
+                    {responsesOrderedForList.map((entry) => (
                       <SongadayListCard
                         key={entry.id}
                         entry={entry}
                         returnTo={returnTo}
                         myUserId={myUserId}
+                        collapseOwnMedia
                         heartBusy={heartBusyId === entry.id}
                         onHeartToggle={
                           entry.user.id === myUserId

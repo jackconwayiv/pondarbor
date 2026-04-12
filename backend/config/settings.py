@@ -70,6 +70,8 @@ else:
     CORS_ALLOW_CREDENTIALS = True
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+# Lets embedded players (e.g. YouTube) receive a non-empty referrer; overly strict policies break embeds.
+SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 
 # Application definition
 INSTALLED_APPS = [

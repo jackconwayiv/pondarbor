@@ -5,22 +5,50 @@ import { songadayEntryTitleLine } from "./cleanSongLabel";
 import { spotifyEmbedSrc } from "./embedUtils";
 import type { SongadayResponse } from "./types";
 
-export default function SongadayMediaBlock({ entry }: { entry: SongadayResponse }) {
+type Props = {
+  entry: SongadayResponse;
+  /** Tighter embeds and typography for response list cards. */
+  compact?: boolean;
+  /** Request autoplay when the embed mounts (YouTube: muted; Spotify: best-effort). */
+  autoplayOnMount?: boolean;
+};
+
+export default function SongadayMediaBlock({ entry, compact, autoplayOnMount }: Props) {
   const yt = entry.youtube_video_id.trim();
   const sp = entry.spotify_url.trim();
   const am = entry.apple_music_url.trim();
-  const spEmbed = sp ? spotifyEmbedSrc(sp) : null;
+  const spBase = sp ? spotifyEmbedSrc(sp) : null;
+  const spEmbed = (() => {
+    if (!spBase) return null;
+    if (!autoplayOnMount) return spBase;
+    try {
+      const u = new URL(spBase);
+      u.searchParams.set("autoplay", "true");
+      return u.toString();
+    } catch {
+      return spBase;
+    }
+  })();
+
+  const titleFont = compact ? APP_TEXT_SIZES.helper : APP_TEXT_SIZES.label;
+  const stackGap = compact ? "2" : "3";
+  const ytMinH = compact
+    ? { base: "112px", md: "120px" }
+    : { base: "200px", md: "220px" };
+  const ytMaxH = compact ? "200px" : "320px";
+  const ytIframeH = compact ? 168 : 240;
+  const spIframeH = compact ? 104 : 152;
 
   return (
-    <Stack gap="3" w="full">
-      <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.label}>
+    <Stack gap={stackGap} w="full">
+      <Text fontWeight="semibold" fontSize={titleFont} lineClamp={compact ? 2 : undefined}>
         {songadayEntryTitleLine(entry)}
       </Text>
       {yt ? (
         <Box
           w="full"
-          minH={{ base: "200px", md: "220px" }}
-          maxH="320px"
+          minH={ytMinH}
+          maxH={ytMaxH}
           bg="gray.100"
           overflow="hidden"
           display="flex"
@@ -31,8 +59,13 @@ export default function SongadayMediaBlock({ entry }: { entry: SongadayResponse 
           <iframe
             title="YouTube"
             width="100%"
-            height={240}
-            src={`https://www.youtube.com/embed/${yt}`}
+            height={ytIframeH}
+            src={
+              autoplayOnMount
+                ? `https://www.youtube-nocookie.com/embed/${yt}?autoplay=1&mute=1`
+                : `https://www.youtube-nocookie.com/embed/${yt}`
+            }
+            referrerPolicy="strict-origin-when-cross-origin"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowFullScreen
             style={{ border: "none", display: "block", maxHeight: "100%" }}
@@ -52,10 +85,10 @@ export default function SongadayMediaBlock({ entry }: { entry: SongadayResponse 
           <iframe
             title="Spotify"
             width="100%"
-            height={152}
+            height={spIframeH}
             src={spEmbed}
             allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-            loading="lazy"
+            loading={autoplayOnMount ? "eager" : "lazy"}
             style={{ border: "none", display: "block" }}
           />
         </Box>

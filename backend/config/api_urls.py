@@ -11,4 +11,5 @@ urlpatterns = [
     path("achievements/", include("achievements.urls")),
     path("qff/", include("qff.urls")),
     path("closet/", include("closet.urls")),
+    path("songaday/", include("songaday.urls")),
 ]

@@ -21,6 +21,10 @@ import {
 const QuotesFeedPage = lazy(() => import("./quotes/QuotesFeedPage"));
 const ClosetPage = lazy(() => import("./closet/ClosetPage"));
 const ClosetItemDetailPage = lazy(() => import("./closet/ClosetItemDetailPage"));
+const SongadayLayout = lazy(() => import("./songaday/SongadayLayout"));
+const SongadayPage = lazy(() => import("./songaday/SongadayPage"));
+const SongadayArchivePage = lazy(() => import("./songaday/SongadayArchivePage"));
+const SongadayEntryDetailPage = lazy(() => import("./songaday/SongadayEntryDetailPage"));
 const ClickerLayout = lazy(() => import("./clicker/ClickerLayout"));
 const ClickerLobbyPage = lazy(() => import("./clicker/ClickerLobbyPage"));
 const ClickerGamePage = lazy(() => import("./clicker/ClickerGamePage"));
@@ -105,6 +109,24 @@ export const router = sentryCreateBrowserRouter([
       {
         path: "closet/items/:itemId",
         element: lazyRouteElement(<ClosetItemDetailPage />),
+      },
+      {
+        path: "songaday",
+        element: lazyRouteElement(<SongadayLayout />),
+        children: [
+          {
+            index: true,
+            element: lazyRouteElement(<SongadayPage />),
+          },
+          {
+            path: "archive",
+            element: lazyRouteElement(<SongadayArchivePage />),
+          },
+          {
+            path: "entries/:entryId",
+            element: lazyRouteElement(<SongadayEntryDetailPage />),
+          },
+        ],
       },
       {
         path: "meal",

@@ -49,6 +49,11 @@ const HOME_LILYPAD_TILES = [
     hoverText: "archive of user-recorded quotes",
   },
   {
+    to: "/songaday",
+    label: "Song a Day",
+    hoverText: "daily music prompts and friends’ picks",
+  },
+  {
     to: "/closet",
     label: "Community Closet",
     hoverText: "lend and borrow items with friends",

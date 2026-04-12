@@ -64,6 +64,13 @@ function isDesktopNavRouteActive(pathname: string, to: string): boolean {
         pathname.startsWith("/friend/") ||
         pathname.includes("/public-quotes")
       );
+    case "/songaday":
+      return (
+        pathname === "/songaday" ||
+        (pathname.startsWith("/songaday/") && !pathname.startsWith("/songaday/archive"))
+      );
+    case "/songaday/archive":
+      return pathname === "/songaday/archive";
     case "/closet":
       return pathname === "/closet" || pathname.startsWith("/closet/");
     case "/meal":
@@ -80,7 +87,7 @@ function isDesktopNavRouteActive(pathname: string, to: string): boolean {
 }
 
 /** Routes where the document scrollbar is hidden (keeps centered panels from shifting). */
-const HIDE_DOCUMENT_SCROLLBAR_PREFIXES = ["/quotes", "/closet", "/meal"] as const;
+const HIDE_DOCUMENT_SCROLLBAR_PREFIXES = ["/quotes", "/songaday", "/closet", "/meal"] as const;
 /** Exact paths only (e.g. WhatIf entry at `/whatif`, not lobby/play/hand). */
 const HIDE_DOCUMENT_SCROLLBAR_EXACT = ["/whatif"] as const;
 
@@ -99,6 +106,8 @@ export default function AppLayout() {
       showProfileNav
         ? [
             { to: "/quotes", label: "Quotes" },
+            { to: "/songaday", label: "Song a Day" },
+            { to: "/songaday/archive", label: "Song archive" },
             { to: "/closet", label: "Closet" },
             { to: "/meal", label: "Meal Maestro" },
             { to: "/clicker", label: "PondClicker" },
@@ -285,6 +294,22 @@ export default function AppLayout() {
                           }}
                         >
                           Quotes
+                        </Menu.Item>
+                        <Menu.Item
+                          value="songaday"
+                          onSelect={() => {
+                            navigate("/songaday");
+                          }}
+                        >
+                          Song a Day
+                        </Menu.Item>
+                        <Menu.Item
+                          value="songaday-archive"
+                          onSelect={() => {
+                            navigate("/songaday/archive");
+                          }}
+                        >
+                          Song archive
                         </Menu.Item>
                         <Menu.Item
                           value="closet"

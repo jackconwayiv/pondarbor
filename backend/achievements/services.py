@@ -33,6 +33,8 @@ SLUG_THATS_AMORE = "thats_amore"
 SLUG_TASTY_PLANS = "tasty_plans"
 SLUG_SMORGASBORD = "smorgasbord"
 SLUG_I_CAN_SMELL_IT_FROM_HERE = "i_can_smell_it_from_here"
+SLUG_MONTH_OF_MUSIC = "month_of_music"
+SLUG_MUSIC_LOVER = "music_lover"
 
 ARCHIVIST_MIN_QUOTES = 10
 TOWN_CRIER_MIN_PUBLIC = 10
@@ -41,6 +43,8 @@ WHATIF_WARRIOR_MIN_SESSIONS = 5
 SHARING_IS_CARING_MIN_ITEMS = 5
 TASTY_PLANS_MIN_FILLED_SLOTS = 14
 SMORGASBORD_MIN_MEALS = 20
+MONTH_OF_MUSIC_MIN_RESPONSES = 30
+MUSIC_LOVER_MIN_HEARTS = 10
 
 
 def _filled_meal_instance_slot_count(instance_id: int) -> int:
@@ -159,6 +163,32 @@ def evaluate_meal_maestro_friend_recipe_copy_for_user(user_id: int) -> None:
     _try_unlock(user_id, SLUG_I_CAN_SMELL_IT_FROM_HERE)
 
 
+def evaluate_songaday_month_of_music_for_user(user_id: int) -> None:
+    from songaday.models import SongResponse
+
+    if SongResponse.objects.filter(user_id=user_id).count() >= MONTH_OF_MUSIC_MIN_RESPONSES:
+        _try_unlock(user_id, SLUG_MONTH_OF_MUSIC)
+
+
+def evaluate_songaday_music_lover_for_user(user_id: int) -> None:
+    from friends.services import friend_ids_for_user
+    from songaday.models import SongResponseHeart
+
+    user = User.objects.filter(pk=user_id).first()
+    if user is None:
+        return
+    friends = friend_ids_for_user(user=user)
+    if not friends:
+        return
+    n = (
+        SongResponseHeart.objects.filter(user_id=user_id, response__user_id__in=friends)
+        .exclude(response__user_id=user_id)
+        .count()
+    )
+    if n >= MUSIC_LOVER_MIN_HEARTS:
+        _try_unlock(user_id, SLUG_MUSIC_LOVER)
+
+
 def _count_ended_sessions_for_user(user_id: int) -> int:
     from whatif.models import WhatIfSession
 
@@ -246,6 +276,8 @@ def backfill_all_achievements() -> None:
         evaluate_closet_sharing_is_caring_for_user(uid)
         evaluate_meal_maestro_partner_for_user(uid)
         evaluate_meal_maestro_smorgasbord_for_user(uid)
+        evaluate_songaday_month_of_music_for_user(uid)
+        evaluate_songaday_music_lover_for_user(uid)
 
     for row in ClickerGameSave.objects.iterator():
         evaluate_pondclicker_achievements_for_user(row.user_id, row.state or {})

@@ -1,12 +1,12 @@
 import { Box, HStack, Image, Stack, Text } from "@chakra-ui/react";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { useEffect, useState } from "react";
-import { Link as RouterLink } from "react-router";
+import { useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
 import { APP_TEXT_SIZES, MAPPED_LIST_CARD_OUTER_PROPS } from "../theme/typography";
-import { songadayEntryTitleLine } from "./cleanSongLabel";
+import { cleanStreamingTitleLine, songadayEntryTitleLine } from "./cleanSongLabel";
 import SongadayHeartButton from "./SongadayHeartButton";
 import SongadayHeartReadOnly, { SongadayHeartReadOnlyBlockLink } from "./SongadayHeartReadOnly";
 import SongadayMediaBlock from "./SongadayMediaBlock";
@@ -61,16 +61,11 @@ type Props = {
   entry: SongadayResponse;
   returnTo: string;
   myUserId: number;
-  /**
-   * Responses list: your card starts collapsed (no embeds); tap to expand and load the player.
-   * Ignored when `readOnly` or the entry is not yours.
-   */
-  collapseOwnMedia?: boolean;
   heartBusy?: boolean;
   onHeartToggle?: (entryId: number) => void;
   /** Non-interactive card (no link); use for inline read-only preview */
   readOnly?: boolean;
-  /** Shown below the card body when `readOnly` (e.g. edit / view responses actions) */
+  /** Shown below the card body when `readOnly` (legacy; unused on prompt page) */
   footer?: ReactNode;
 };
 
@@ -78,16 +73,20 @@ export default function SongadayListCard({
   entry,
   returnTo,
   myUserId,
-  collapseOwnMedia,
   heartBusy,
   onHeartToggle,
   readOnly,
   footer,
 }: Props) {
+  const navigate = useNavigate();
   const { sessionUser, auth0User } = useAppSession();
   const isMine = entry.user.id === myUserId;
-  const useCollapsibleMine = !!collapseOwnMedia && isMine && !readOnly;
   const [mediaExpanded, setMediaExpanded] = useState(false);
+
+  useEffect(() => {
+    setMediaExpanded(false);
+  }, [entry.id]);
+
   /** Match navbar: profile URL, then Auth0 picture; API payload only has DB profile (often stale vs Auth0). */
   const apiAvatar = (entry.user.avatar_url || "").trim();
   const sessionId = sessionUser?.user.id;
@@ -102,6 +101,70 @@ export default function SongadayListCard({
   const detailPath = `/songaday/entries/${entry.id}`;
   const detailState = { songadayReturnTo: returnTo };
 
+  const notesText = entry.notes.trim();
+  const notesBlock =
+    notesText.length > 0 ? (
+      <Text whiteSpace="pre-wrap" fontSize={APP_TEXT_SIZES.helper} lineHeight="tall" color="fg">
+        {notesText}
+      </Text>
+    ) : null;
+
+  const titleClean = cleanStreamingTitleLine(entry.title);
+  const artistClean = cleanStreamingTitleLine(entry.artist);
+  const showTitleArtistLines = !!(titleClean || artistClean);
+
+  const mineCollapsedMeta = (
+    <Stack gap="1" w="full">
+      {showTitleArtistLines ? (
+        <>
+          {titleClean ? (
+            <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.body} lineClamp={3}>
+              {titleClean}
+            </Text>
+          ) : null}
+          {artistClean ? (
+            <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" lineClamp={2}>
+              {artistClean}
+            </Text>
+          ) : null}
+        </>
+      ) : (
+        <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.helper} lineClamp={3}>
+          {songadayEntryTitleLine(entry)}
+        </Text>
+      )}
+      {notesBlock}
+    </Stack>
+  );
+
+  const stopCardNav = (e: MouseEvent) => {
+    e.stopPropagation();
+  };
+
+  const heartBox = (
+    <Box
+      flexShrink={0}
+      alignSelf="flex-start"
+      lineHeight="1"
+      onClick={readOnly && isMine ? stopCardNav : undefined}
+    >
+      {isMine ? (
+        readOnly ? (
+          <SongadayHeartReadOnly heartCount={entry.heart_count} />
+        ) : (
+          <SongadayHeartReadOnlyBlockLink heartCount={entry.heart_count} />
+        )
+      ) : onHeartToggle ? (
+        <SongadayHeartButton
+          heartCount={entry.heart_count}
+          viewerHasHearted={entry.viewer_has_hearted}
+          busy={heartBusy}
+          onToggle={() => onHeartToggle(entry.id)}
+        />
+      ) : null}
+    </Box>
+  );
+
   const headerRow = (
     <HStack gap="2" align="flex-start" w="full">
       <UserAvatarBlock avatar={avatar} label={label} boxSize="40px" />
@@ -113,69 +176,53 @@ export default function SongadayListCard({
           {entry.prompt_snapshot}
         </Text>
       </Stack>
-      <Box flexShrink={0} alignSelf="flex-start" lineHeight="1">
-        {isMine ? (
-          readOnly ? (
-            <SongadayHeartReadOnly heartCount={entry.heart_count} />
-          ) : (
-            <SongadayHeartReadOnlyBlockLink heartCount={entry.heart_count} />
-          )
-        ) : onHeartToggle ? (
-          <SongadayHeartButton
-            heartCount={entry.heart_count}
-            viewerHasHearted={entry.viewer_has_hearted}
-            busy={heartBusy}
-            onToggle={() => onHeartToggle(entry.id)}
-          />
-        ) : null}
-      </Box>
+      {heartBox}
     </HStack>
   );
 
-  const cardBody = (
-    <Stack flex="1" display="flex" flexDirection="column" gap="2">
-      {useCollapsibleMine ? (
-        <>
-          <RouterLink
-            to={detailPath}
-            state={detailState}
-            style={{
-              textDecoration: "none",
-              color: "inherit",
-              display: "block",
-              minHeight: 0,
-            }}
-          >
-            {headerRow}
-          </RouterLink>
-          {mediaExpanded ? (
+  const openEditor = () => {
+    navigate(detailPath, { state: detailState });
+  };
+
+  let cardBody: ReactNode;
+
+  if (readOnly && isMine) {
+    cardBody = (
+      <Stack flex="1" display="flex" flexDirection="column" gap="2">
+        {headerRow}
+        {!mediaExpanded ? (
+          <>
+            {mineCollapsedMeta}
+            <PondButton
+              type="button"
+              variant="outline"
+              colorPalette="lilypad"
+              w="full"
+              onClick={(e) => {
+                e.stopPropagation();
+                setMediaExpanded(true);
+              }}
+            >
+              Show player
+            </PondButton>
+          </>
+        ) : (
+          <Box onClick={stopCardNav}>
             <SongadayMediaBlock entry={entry} compact autoplayOnMount />
-          ) : (
-            <>
-              <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.helper} lineClamp={3}>
-                {songadayEntryTitleLine(entry)}
-              </Text>
-              <PondButton
-                type="button"
-                variant="outline"
-                colorPalette="lilypad"
-                w="full"
-                onClick={() => setMediaExpanded(true)}
-              >
-                Show player
-              </PondButton>
-            </>
-          )}
-        </>
-      ) : (
-        <>
-          {headerRow}
-          <SongadayMediaBlock entry={entry} compact />
-        </>
-      )}
-      {readOnly && footer ? <Box pt="2">{footer}</Box> : null}
-    </Stack>
-  );
+          </Box>
+        )}
+        {footer ? <Box pt="2">{footer}</Box> : null}
+      </Stack>
+    );
+  } else {
+    cardBody = (
+      <Stack flex="1" display="flex" flexDirection="column" gap="2">
+        {headerRow}
+        {notesBlock}
+        <SongadayMediaBlock entry={entry} compact />
+      </Stack>
+    );
+  }
 
   const card = (
     <Box
@@ -185,34 +232,27 @@ export default function SongadayListCard({
       borderRadius="xl"
       overflow="hidden"
       h="auto"
-      cursor={readOnly ? "default" : undefined}
+      cursor={readOnly && isMine ? "pointer" : undefined}
       {...MAPPED_LIST_CARD_OUTER_PROPS}
-      _hover={readOnly ? undefined : { borderColor: "lilypad.solid" }}
+      _hover={
+        readOnly && isMine
+          ? { borderColor: "lilypad.solid" }
+          : readOnly
+            ? undefined
+            : { borderColor: "lilypad.solid" }
+      }
     >
       {cardBody}
     </Box>
   );
 
-  if (readOnly) {
-    return card;
+  if (readOnly && isMine) {
+    return (
+      <Box onClick={openEditor} cursor="pointer" aria-label="Open submission editor">
+        {card}
+      </Box>
+    );
   }
 
-  if (useCollapsibleMine) {
-    return card;
-  }
-
-  return (
-    <RouterLink
-      to={detailPath}
-      state={detailState}
-      style={{
-        textDecoration: "none",
-        color: "inherit",
-        display: "block",
-        minHeight: 0,
-      }}
-    >
-      {card}
-    </RouterLink>
-  );
+  return card;
 }

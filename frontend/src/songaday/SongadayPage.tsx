@@ -46,7 +46,7 @@ const PROMPT_CARD_TEXT_ALIGN = { textAlign: "center" as const };
 
 const PROMPT_BODY_STYLE = {
   whiteSpace: "pre-wrap" as const,
-  fontSize: "40px",
+  fontSize: "xl",
   fontWeight: "normal" as const,
   lineHeight: "short" as const,
   fontFamily: '"Arial Black", "Arial Black", Arial, sans-serif',
@@ -133,7 +133,7 @@ function hasMinimumSongFields(f: ParsedSongFields & { notes: string }): boolean 
   );
 }
 
-type SongadayMainTab = "prompt" | "responses" | "archive" | "bulk";
+type SongadayMainTab = "prompt" | "archive" | "bulk";
 
 export default function SongadayPage() {
   const {
@@ -275,18 +275,13 @@ export default function SongadayPage() {
     [responses, myUserId],
   );
 
-  /** Newest activity first; your submission(s) pinned to the bottom. */
-  const responsesOrderedForList = useMemo(() => {
-    if (responses.length === 0) return responses;
-    const isMine = (r: SongadayResponse) => myUserId !== 0 && r.user.id === myUserId;
+  /** Other users only, newest activity first. */
+  const friendsResponsesOrdered = useMemo(() => {
     const recentMs = (r: SongadayResponse) =>
       Math.max(Date.parse(r.updated_at), Date.parse(r.created_at));
-    return [...responses].sort((a, b) => {
-      const ma = isMine(a);
-      const mb = isMine(b);
-      if (ma !== mb) return ma ? 1 : -1;
-      return recentMs(b) - recentMs(a);
-    });
+    return responses
+      .filter((r) => myUserId === 0 || r.user.id !== myUserId)
+      .sort((a, b) => recentMs(b) - recentMs(a));
   }, [responses, myUserId]);
 
   const hasPrompt = !!(promptPayload?.prompt && String(promptPayload.prompt).trim());
@@ -362,7 +357,6 @@ export default function SongadayPage() {
       setExpandAllSongFields(false);
       await loadResponses();
       await refreshSession();
-      setTab("responses");
     } catch (e) {
       setShowResponseDetails(true);
       setSubmitError(e instanceof Error ? e.message : "Could not save.");
@@ -494,7 +488,7 @@ export default function SongadayPage() {
         data-pa-tabs="songaday"
         onValueChange={(details) => {
           const v = details.value;
-          if (v === "prompt" || v === "responses" || v === "archive" || v === "bulk") setTab(v);
+          if (v === "prompt" || v === "archive" || v === "bulk") setTab(v);
         }}
       >
             <Tabs.List
@@ -521,22 +515,6 @@ export default function SongadayPage() {
                 _selected={{ bg: "lilypad.solid", color: "black" }}
               >
                 Prompt
-              </Tabs.Trigger>
-              <Tabs.Trigger
-                value="responses"
-                bg={tab === "responses" ? "lilypad.solid" : undefined}
-                color={tab === "responses" ? "black" : undefined}
-                borderTopRadius="md"
-                borderBottomRadius="0"
-                px="2"
-                py="2"
-                fontWeight="medium"
-                _hover={{
-                  bg: tab === "responses" ? "lilypad.solid" : "transparent",
-                }}
-                _selected={{ bg: "lilypad.solid", color: "black" }}
-              >
-                Responses
               </Tabs.Trigger>
               <Tabs.Trigger
                 value="archive"
@@ -663,7 +641,7 @@ export default function SongadayPage() {
                       ← Prev
                     </PondButton>
                     <Box flex="1" minW="0" {...NO_PROMPT_CARD_PROPS} {...PROMPT_CARD_TEXT_ALIGN}>
-                      <Text fontSize={APP_TEXT_SIZES.label} fontWeight="semibold" mb="2">
+                      <Text fontSize={APP_TEXT_SIZES.label} fontWeight="normal" mb="2">
                         {formatDateLabel(selectedDate)}
                       </Text>
                       <Text fontSize={APP_TEXT_SIZES.body} fontWeight="medium">
@@ -708,7 +686,7 @@ export default function SongadayPage() {
                       ← Prev
                     </PondButton>
                     <Box flex="1" minW="0" {...PANEL_ENTRY_CARD_PROPS} {...PROMPT_CARD_TEXT_ALIGN}>
-                      <Text fontSize={APP_TEXT_SIZES.label} fontWeight="semibold" mb="2">
+                      <Text fontSize={APP_TEXT_SIZES.label} fontWeight="normal" mb="2">
                         {formatDateLabel(selectedDate)}
                       </Text>
                       <Text {...PROMPT_BODY_STYLE}>{promptPayload?.prompt}</Text>
@@ -734,26 +712,6 @@ export default function SongadayPage() {
                     entry={myEntry}
                     returnTo={returnTo}
                     myUserId={myUserId}
-                    footer={
-                      <HStack flexWrap="wrap" gap="2">
-                        <PondButton asChild variant="outline" colorPalette="lilypad">
-                          <RouterLink
-                            to={`/songaday/entries/${myEntry.id}`}
-                            state={{ songadayReturnTo: returnTo }}
-                          >
-                            Edit submission
-                          </RouterLink>
-                        </PondButton>
-                        <PondButton
-                          type="button"
-                          variant="ghost"
-                          colorPalette="sky"
-                          onClick={() => setTab("responses")}
-                        >
-                          View all responses
-                        </PondButton>
-                      </HStack>
-                    }
                   />
                 ) : null}
 
@@ -812,6 +770,18 @@ export default function SongadayPage() {
                         </PondButton>
                       </Flex>
 
+                      <Stack gap="1">
+                        <Text fontSize={APP_TEXT_SIZES.meta} fontWeight="medium">
+                          Notes (optional)
+                        </Text>
+                        <Textarea
+                          rows={2}
+                          value={fields.notes}
+                          onChange={(e) => setFields((f) => ({ ...f, notes: e.target.value }))}
+                          {...FIELD}
+                        />
+                      </Stack>
+
                       {showResponseDetails ? (
                         <>
                           {(showFullSongFieldForm || applicableFieldGroups.artistTitle) && (
@@ -838,17 +808,6 @@ export default function SongadayPage() {
                               </Stack>
                             </HStack>
                           )}
-                          <Stack gap="1">
-                            <Text fontSize={APP_TEXT_SIZES.meta} fontWeight="medium">
-                              Notes (optional)
-                            </Text>
-                            <Textarea
-                              rows={2}
-                              value={fields.notes}
-                              onChange={(e) => setFields((f) => ({ ...f, notes: e.target.value }))}
-                              {...FIELD}
-                            />
-                          </Stack>
                           {(showFullSongFieldForm || applicableFieldGroups.raw_label) && (
                             <Stack gap="1">
                               <Text fontSize={APP_TEXT_SIZES.meta} fontWeight="medium">
@@ -931,11 +890,7 @@ export default function SongadayPage() {
                   </MealEditorBackdropDismiss>
                 </Box>
                 ) : null}
-              </Stack>
-            </Tabs.Content>
 
-            <Tabs.Content value="responses" p={{ base: "2", md: "2" }}>
-              <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP}>
                 {responsesLoading ? (
                   <HStack>
                     <Spinner size="sm" colorPalette="lilypad" />
@@ -952,25 +907,20 @@ export default function SongadayPage() {
                   >
                     {responsesLoadError}
                   </Text>
-                ) : responses.length === 0 ? (
+                ) : friendsResponsesOrdered.length === 0 ? (
                   <Text fontSize={APP_TEXT_SIZES.body} color="fg.muted">
-                    No responses for this day yet.
+                    No other responses for this day yet.
                   </Text>
                 ) : (
                   <SimpleGrid columns={{ base: 1, md: 2 }} gap="3">
-                    {responsesOrderedForList.map((entry) => (
+                    {friendsResponsesOrdered.map((entry) => (
                       <SongadayListCard
                         key={entry.id}
                         entry={entry}
                         returnTo={returnTo}
                         myUserId={myUserId}
-                        collapseOwnMedia
                         heartBusy={heartBusyId === entry.id}
-                        onHeartToggle={
-                          entry.user.id === myUserId
-                            ? undefined
-                            : () => void onHeartToggle(entry.id)
-                        }
+                        onHeartToggle={() => void onHeartToggle(entry.id)}
                       />
                     ))}
                   </SimpleGrid>

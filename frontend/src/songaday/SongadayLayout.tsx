@@ -1,11 +1,11 @@
-import { Box, Heading, Stack, Text } from "@chakra-ui/react";
+import { Box, Heading, HStack, Stack, Text } from "@chakra-ui/react";
 import { Outlet } from "react-router";
 
 import { fullBleedStackProps } from "../responsive";
 import { APP_TEXT_SIZES, PANEL_ENTRY_CARD_PROPS } from "../theme/typography";
 
 /**
- * Shared sky + gray tray shell with the Song a Day intro card; tabbed home and entry editor render below.
+ * Shared sky + gray tray shell with the Song-a-Day Challenge intro card; tabbed home and entry editor render below.
  */
 export default function SongadayLayout() {
   return (
@@ -32,10 +32,15 @@ export default function SongadayLayout() {
                   fontWeight="bold"
                   mb="2"
                 >
-                  Song a Day
+                  <HStack as="span" display="inline-flex" gap="2" alignItems="center">
+                    <Text as="span" aria-hidden="true">
+                      🎶
+                    </Text>
+                    <Text as="span">Song-a-Day Challenge</Text>
+                  </HStack>
                 </Heading>
                 <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
-                  Share a song for each day&apos;s prompt, hear what friends picked, and heart
+                  Share a song for each day&apos;s prompt, see what friends picked below your response, and heart
                   their submissions. Use the Archive tab for a full history.
                 </Text>
               </Box>

@@ -175,22 +175,38 @@ export default function SongadayArchivePanel({
     [getApiAccessToken, refreshSession],
   );
 
-  const subjectLabel =
-    subjectUserId == null
-      ? "Me"
-      : friends.find((f) => f.id === subjectUserId)?.label ?? `User ${subjectUserId}`;
-
   const body = (
     <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP} w="full">
       {variant === "page" ? (
-        <HStack flexWrap="wrap" gap="3" justify="space-between" align="flex-end">
-          <Stack gap="1">
+        <HStack flexWrap="wrap" gap="3" justify="space-between" align="flex-start">
+          <Stack gap="3" w={{ base: "full", md: "auto" }} flex="1" minW={0}>
             <Text fontSize={APP_TEXT_SIZES.label} fontWeight="bold">
               Song archive
             </Text>
-            <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-              Submissions for {subjectLabel}, newest first.
-            </Text>
+            <HStack flexWrap="wrap" gap="2" align="center" w="full">
+              <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" flexShrink={0}>
+                Submissions for
+              </Text>
+              <NativeSelectRoot size="sm" maxW={{ base: "full", sm: "220px" }} flexShrink={0}>
+                <NativeSelectField
+                  value={subjectUserId == null ? "" : String(subjectUserId)}
+                  onChange={(e) => {
+                    const v = e.currentTarget.value;
+                    setSubjectUserId(v === "" ? null : Number(v));
+                  }}
+                >
+                  <option value="">Me</option>
+                  {friends.map((f) => (
+                    <option key={f.id} value={String(f.id)}>
+                      {f.label}
+                    </option>
+                  ))}
+                </NativeSelectField>
+              </NativeSelectRoot>
+              <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" flexShrink={0}>
+                , newest first.
+              </Text>
+            </HStack>
           </Stack>
           <RouterLink to="/songaday">
             <Text fontSize={APP_TEXT_SIZES.helper} color="lilypad.solid" fontWeight="semibold">
@@ -199,32 +215,31 @@ export default function SongadayArchivePanel({
           </RouterLink>
         </HStack>
       ) : (
-        <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-          Submissions for {subjectLabel}, newest first.
-        </Text>
+        <HStack flexWrap="wrap" gap="2" align="center" w="full">
+          <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" flexShrink={0}>
+            Submissions for
+          </Text>
+          <NativeSelectRoot size="sm" maxW={{ base: "full", sm: "220px" }} flexShrink={0}>
+            <NativeSelectField
+              value={subjectUserId == null ? "" : String(subjectUserId)}
+              onChange={(e) => {
+                const v = e.currentTarget.value;
+                setSubjectUserId(v === "" ? null : Number(v));
+              }}
+            >
+              <option value="">Me</option>
+              {friends.map((f) => (
+                <option key={f.id} value={String(f.id)}>
+                  {f.label}
+                </option>
+              ))}
+            </NativeSelectField>
+          </NativeSelectRoot>
+          <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" flexShrink={0}>
+            , newest first.
+          </Text>
+        </HStack>
       )}
-
-      <HStack gap="3" align="center" flexWrap="wrap">
-        <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium" flexShrink={0}>
-          Viewing
-        </Text>
-        <NativeSelectRoot size="sm" maxW={{ base: "full", sm: "280px" }}>
-          <NativeSelectField
-            value={subjectUserId == null ? "" : String(subjectUserId)}
-            onChange={(e) => {
-              const v = e.currentTarget.value;
-              setSubjectUserId(v === "" ? null : Number(v));
-            }}
-          >
-            <option value="">Me</option>
-            {friends.map((f) => (
-              <option key={f.id} value={String(f.id)}>
-                {f.label}
-              </option>
-            ))}
-          </NativeSelectField>
-        </NativeSelectRoot>
-      </HStack>
 
       {loadError ? (
         <Text fontSize={APP_TEXT_SIZES.helper} color="nautical.solid" role="alert">
@@ -261,13 +276,13 @@ export default function SongadayArchivePanel({
                       type="button"
                       variant="ghost"
                       display="flex"
-                      flexDirection="row"
-                      alignItems="center"
-                      gap="2"
+                      flexDirection="column"
+                      alignItems="stretch"
+                      gap="1"
                       w="full"
                       px="2"
-                      py="1.5"
-                      minH="36px"
+                      py="2"
+                      minH="auto"
                       h="auto"
                       rounded="none"
                       fontWeight="normal"
@@ -277,34 +292,48 @@ export default function SongadayArchivePanel({
                       _hover={{ bg: "gray.50" }}
                       onClick={() => setExpandedId((cur) => (cur === entry.id ? null : entry.id))}
                     >
-                      <Text
-                        fontSize={APP_TEXT_SIZES.meta}
-                        color="fg.muted"
-                        flexShrink={0}
-                        w="2.5rem"
-                      >
-                        {formatEntryMd(entry.entry_date)}
-                      </Text>
+                      <HStack gap="2" align="flex-start" w="full">
+                        <Text
+                          fontSize={APP_TEXT_SIZES.meta}
+                          color="fg.muted"
+                          flexShrink={0}
+                          w="2.5rem"
+                        >
+                          {formatEntryMd(entry.entry_date)}
+                        </Text>
+                        <Text
+                          fontSize={APP_TEXT_SIZES.helper}
+                          fontWeight="medium"
+                          flex="1"
+                          minW={0}
+                          lineClamp={2}
+                          title={entry.prompt_snapshot}
+                        >
+                          {entry.prompt_snapshot}
+                        </Text>
+                      </HStack>
                       <Text
                         fontSize={APP_TEXT_SIZES.helper}
-                        fontWeight="medium"
-                        flex="1"
+                        fontWeight="semibold"
+                        w="full"
                         minW={0}
-                        lineClamp={1}
+                        lineClamp={2}
                         title={songadayEntryTitleLine(entry)}
                       >
                         {songadayEntryTitleLine(entry)}
                       </Text>
-                      <Text
-                        fontSize={APP_TEXT_SIZES.helper}
-                        flex="1"
-                        minW={0}
-                        lineClamp={1}
-                        textAlign="right"
-                        title={entry.prompt_snapshot}
-                      >
-                        {entry.prompt_snapshot}
-                      </Text>
+                      {entry.notes.trim() ? (
+                        <Text
+                          fontSize={APP_TEXT_SIZES.helper}
+                          color="fg.muted"
+                          w="full"
+                          whiteSpace="pre-wrap"
+                          lineClamp={4}
+                          title={entry.notes}
+                        >
+                          {entry.notes.trim()}
+                        </Text>
+                      ) : null}
                     </Button>
                     {isOpen ? (
                       <Box px="2" pb="3" pt="1" bg="gray.50" borderTopWidth="1px" borderColor="border">

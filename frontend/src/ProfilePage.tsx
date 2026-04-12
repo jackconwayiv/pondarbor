@@ -516,7 +516,17 @@ export default function ProfilePage() {
                   fontWeight="bold"
                   mb="2"
                 >
-                  Profile
+                  <HStack
+                    as="span"
+                    display="inline-flex"
+                    gap="2"
+                    alignItems="center"
+                  >
+                    <Text as="span" aria-hidden="true">
+                      👤
+                    </Text>
+                    <Text as="span">Profile</Text>
+                  </HStack>
                 </Heading>
                 <Text
                   fontSize={APP_TEXT_SIZES.body}
@@ -724,23 +734,18 @@ export default function ProfilePage() {
                                   No uploaded images available
                                 </Text>
                               ) : (
-                                <HStack
-                                  flexWrap="wrap"
-                                  gap="2"
-                                  align="stretch"
-                                >
+                                <HStack flexWrap="wrap" gap="2" align="stretch">
                                   {uploadedImageRows.map((row) => {
                                     const isSelected =
-                                      selectedUploadedImageKey === row.image_key;
+                                      selectedUploadedImageKey ===
+                                      row.image_key;
                                     return (
                                       <Box
                                         key={row.image_key}
                                         as="button"
                                         borderWidth="2px"
                                         borderColor={
-                                          isSelected
-                                            ? "black"
-                                            : "lilypad.solid"
+                                          isSelected ? "black" : "lilypad.solid"
                                         }
                                         borderRadius="md"
                                         overflow="hidden"
@@ -865,10 +870,7 @@ export default function ProfilePage() {
                               visibilityToggle={{
                                 checked: a.visible_to_friends !== false,
                                 onCheckedChange: (v) =>
-                                  void onAchievementVisibilityChange(
-                                    a.slug,
-                                    v,
-                                  ),
+                                  void onAchievementVisibilityChange(a.slug, v),
                               }}
                             />
                           ))}

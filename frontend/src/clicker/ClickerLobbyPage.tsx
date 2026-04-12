@@ -1,5 +1,5 @@
 import { useAuth0 } from "@auth0/auth0-react";
-import { Box, Flex, Heading, Stack, Text } from "@chakra-ui/react";
+import { Box, Flex, Heading, HStack, Stack, Text } from "@chakra-ui/react";
 import {
   useCallback,
   useEffect,
@@ -43,7 +43,7 @@ function ClickerEntryChrome({ children }: { children: ReactNode }) {
           borderRadius="xl"
           overflow="hidden"
         >
-          <Stack gap={{ base: "4", md: "4" }} p={{ base: "4", md: "6" }}>
+          <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
             {children}
           </Stack>
         </Box>
@@ -178,7 +178,12 @@ export default function ClickerLobbyPage() {
           fontWeight="bold"
           mb="2"
         >
-          PondClicker
+          <HStack as="span" display="inline-flex" gap="2" alignItems="center">
+            <Text as="span" aria-hidden="true">
+              🐸
+            </Text>
+            <Text as="span">PondClicker</Text>
+          </HStack>
         </Heading>
         <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
           An idle game where you click the pond to earn energy, then spend it in

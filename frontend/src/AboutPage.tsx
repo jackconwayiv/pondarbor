@@ -90,13 +90,24 @@ export default function AboutPage() {
                 fontWeight="bold"
                 mb="2"
               >
-                About
+                <HStack
+                  as="span"
+                  display="inline-flex"
+                  gap="2"
+                  alignItems="center"
+                >
+                  <Text as="span" aria-hidden="true">
+                    🐢
+                  </Text>
+                  <Text as="span">About</Text>
+                </HStack>
               </Heading>
               <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
-                PondArbor is a hobby project developed by Pond Arbor Workshop to
-                collect various app ideas together in one place. I'm sharing it
-                with friends and family as an opportunity to interact with each
-                other through these silly apps.
+                PondArbor (pondarbor.com) is a hobby project developed by Pond
+                Arbor Workshop (Jack Conway) to collect my various app ideas
+                together in one place. I'm sharing it with friends and family as
+                an opportunity to interact with each other through these
+                earth-shatteringly incredible apps.
               </Text>
             </Box>
 

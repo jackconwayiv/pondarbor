@@ -1,4 +1,4 @@
-import { Box, Heading, Stack, Tabs, Text } from "@chakra-ui/react";
+import { Box, Heading, HStack, Stack, Tabs, Text } from "@chakra-ui/react";
 import { Outlet, useLocation, useNavigate } from "react-router";
 import { fullBleedStackProps } from "../responsive";
 import {
@@ -81,7 +81,12 @@ export default function MealLayout() {
 
   return (
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
-      <Box flex="1" bg="sky.solid" px={{ base: "2", md: "2" }} py={{ base: "2", md: "2" }}>
+      <Box
+        flex="1"
+        bg="sky.solid"
+        px={{ base: "2", md: "2" }}
+        py={{ base: "2", md: "2" }}
+      >
         <Box
           data-meal-panel-content=""
           maxW="4xl"
@@ -106,15 +111,21 @@ export default function MealLayout() {
                 fontWeight="bold"
                 mb="2"
               >
-                Meal Maestro
+                <HStack
+                  as="span"
+                  display="inline-flex"
+                  gap="2"
+                  alignItems="center"
+                >
+                  <Text as="span" aria-hidden="true">
+                    🧑‍🍳
+                  </Text>
+                  <Text as="span">Meal Maestro</Text>
+                </HStack>
               </Heading>
-              <Text
-                fontSize={APP_TEXT_SIZES.body}
-                lineHeight="tall"
-                color="fg"
-              >
-                Weekly meal templates, meals, grocery lists, and optional sharing with one
-                friend when you both choose each other.
+              <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
+                Weekly meal planning and grocery list generator for you and up
+                to one meal partner. <u>Work in progress.</u>
               </Text>
             </Box>
           </Stack>
@@ -159,7 +170,9 @@ export default function MealLayout() {
                   <Tabs.Trigger {...mealTabTriggerProps(planInner, "plans")}>
                     Weekly
                   </Tabs.Trigger>
-                  <Tabs.Trigger {...mealTabTriggerProps(planInner, "templates")}>
+                  <Tabs.Trigger
+                    {...mealTabTriggerProps(planInner, "templates")}
+                  >
                     Templates
                   </Tabs.Trigger>
                   <Tabs.Trigger {...mealTabTriggerProps(planInner, "meals")}>

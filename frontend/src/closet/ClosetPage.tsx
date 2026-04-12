@@ -7,10 +7,10 @@ import {
   Input,
   NativeSelectField,
   NativeSelectRoot,
+  SimpleGrid,
   Spinner,
   Stack,
   Tabs,
-  SimpleGrid,
   Text,
   Textarea,
 } from "@chakra-ui/react";
@@ -46,19 +46,16 @@ import {
   isAllowedClosetCategory,
 } from "./categories";
 import { ClosetCategoryFields } from "./ClosetCategoryFields";
-import { uploadClosetImageViaPresign } from "./imageUpload";
-import type {
-  ClosetImageInventoryRow,
-  ClosetItem,
-} from "./types";
 import { ClosetItemLinkCard } from "./ClosetItemLinkCard";
-import { FriendClosetListCard } from "./FriendClosetListCard";
 import {
   closetPendingCount,
   coerceClosetUserId,
   displayName,
   sameClosetUserId,
 } from "./closetUtils";
+import { FriendClosetListCard } from "./FriendClosetListCard";
+import { uploadClosetImageViaPresign } from "./imageUpload";
+import type { ClosetImageInventoryRow, ClosetItem } from "./types";
 
 type ClosetTab = "my" | "friends" | "images";
 const FRIENDS_PAGE_SIZE = 10;
@@ -291,7 +288,11 @@ export default function ClosetPage() {
   const refreshAll = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const parts = await Promise.allSettled([loadMine(), loadFriends(), loadImages()]);
+    const parts = await Promise.allSettled([
+      loadMine(),
+      loadFriends(),
+      loadImages(),
+    ]);
     const failures: string[] = [];
     const labels = ["your items", "friends' items", "image library"] as const;
     parts.forEach((result, i) => {
@@ -499,8 +500,19 @@ export default function ClosetPage() {
                   fontWeight="bold"
                   mb="2"
                 >
-                  Community Closet
+                  <HStack
+                    as="span"
+                    display="inline-flex"
+                    gap="2"
+                    alignItems="center"
+                  >
+                    <Text as="span" aria-hidden="true">
+                      👒
+                    </Text>
+                    <Text as="span">Community Closet</Text>
+                  </HStack>
                 </Heading>
+
                 <Text
                   fontSize={APP_TEXT_SIZES.body}
                   lineHeight="tall"
@@ -592,7 +604,7 @@ export default function ClosetPage() {
                 ) : null}
 
                 {!isAddItemOpen &&
-                    myItems.declined_by_me.length > 0 &&
+                  myItems.declined_by_me.length > 0 &&
                   visibleDeclinedFiltered.map((item) => (
                     <Box
                       key={`declined-${item.id}`}
@@ -708,7 +720,7 @@ export default function ClosetPage() {
                 ) : null}
 
                 {!isAddItemOpen &&
-                    myItems.custody_offered_to_me.length > 0 &&
+                  myItems.custody_offered_to_me.length > 0 &&
                   visibleCustodyOfferedFiltered.map((item) => (
                     <Box
                       key={`custody-offer-${item.id}`}
@@ -989,167 +1001,133 @@ export default function ClosetPage() {
 
                 <>
                   {isAddItemOpen ? (
-                      <Box
-                        bg="white"
-                        borderWidth="1px"
-                        borderColor="border"
-                        borderRadius="xl"
-                        p="2"
-                      >
-                        <Stack gap="3">
-                          <Text fontWeight="semibold">Add Item</Text>
-                          <Input
-                            value={newName}
-                            onChange={(e) => setNewName(e.target.value)}
-                            placeholder="Item name"
-                            {...CLOSET_PLACEHOLDER_PROPS}
+                    <Box
+                      bg="white"
+                      borderWidth="1px"
+                      borderColor="border"
+                      borderRadius="xl"
+                      p="2"
+                    >
+                      <Stack gap="3">
+                        <Text fontWeight="semibold">Add Item</Text>
+                        <Input
+                          value={newName}
+                          onChange={(e) => setNewName(e.target.value)}
+                          placeholder="Item name"
+                          {...CLOSET_PLACEHOLDER_PROPS}
+                        />
+                        <Textarea
+                          value={newDescription}
+                          onChange={(e) => setNewDescription(e.target.value)}
+                          placeholder="Description"
+                          {...CLOSET_PLACEHOLDER_PROPS}
+                        />
+                        <ClosetCategoryFields
+                          category={newCategory}
+                          onCategoryChange={setNewCategory}
+                        />
+                        <Stack gap="1" align="stretch">
+                          <Text
+                            fontSize={APP_TEXT_SIZES.helper}
+                            fontWeight="medium"
+                          >
+                            Photo (optional):
+                          </Text>
+                          <input
+                            ref={newItemPhotoInputRef}
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            style={{ display: "none" }}
                           />
-                          <Textarea
-                            value={newDescription}
-                            onChange={(e) => setNewDescription(e.target.value)}
-                            placeholder="Description"
-                            {...CLOSET_PLACEHOLDER_PROPS}
-                          />
-                          <ClosetCategoryFields
-                            category={newCategory}
-                            onCategoryChange={setNewCategory}
-                          />
-                          <Stack gap="1" align="stretch">
-                            <Text
-                              fontSize={APP_TEXT_SIZES.helper}
-                              fontWeight="medium"
-                            >
-                              Photo (optional):
-                            </Text>
-                            <input
-                              ref={newItemPhotoInputRef}
-                              type="file"
-                              accept="image/jpeg,image/png,image/webp"
-                              style={{ display: "none" }}
-                            />
-                            <PondButton
-                              type="button"
-                              size="sm"
-                              colorPalette="sky"
-                              alignSelf="flex-start"
-                              disabled={newItemImageBusy}
-                              onClick={() =>
-                                newItemPhotoInputRef.current?.click()
+                          <PondButton
+                            type="button"
+                            size="sm"
+                            colorPalette="sky"
+                            alignSelf="flex-start"
+                            disabled={newItemImageBusy}
+                            onClick={() =>
+                              newItemPhotoInputRef.current?.click()
+                            }
+                          >
+                            Choose photo
+                          </PondButton>
+                          <Text
+                            fontSize={APP_TEXT_SIZES.helper}
+                            color="gray.600"
+                          >
+                            JPEG, PNG, or WebP. Resized in the browser before
+                            upload.
+                          </Text>
+                          {newItemImageBusy ? (
+                            <HStack gap="2" align="center" color="gray.700">
+                              <Spinner size="sm" colorPalette="lilypad" />
+                              <Text fontSize={APP_TEXT_SIZES.helper}>
+                                Uploading photo and saving item…
+                              </Text>
+                            </HStack>
+                          ) : null}
+                        </Stack>
+                        <HStack>
+                          <PondButton
+                            colorPalette="lilypad"
+                            loading={newItemImageBusy}
+                            onClick={async () => {
+                              setError(null);
+                              if (!isAllowedClosetCategory(newCategory)) {
+                                setOwnedNotice({
+                                  kind: "error",
+                                  message:
+                                    "Category must use only letters and /, or pick a suggested option.",
+                                });
+                                return;
                               }
-                            >
-                              Choose photo
-                            </PondButton>
-                            <Text
-                              fontSize={APP_TEXT_SIZES.helper}
-                              color="gray.600"
-                            >
-                              JPEG, PNG, or WebP. Resized in the browser before
-                              upload.
-                            </Text>
-                            {newItemImageBusy ? (
-                              <HStack gap="2" align="center" color="gray.700">
-                                <Spinner size="sm" colorPalette="lilypad" />
-                                <Text fontSize={APP_TEXT_SIZES.helper}>
-                                  Uploading photo and saving item…
-                                </Text>
-                              </HStack>
-                            ) : null}
-                          </Stack>
-                          <HStack>
-                            <PondButton
-                              colorPalette="lilypad"
-                              loading={newItemImageBusy}
-                              onClick={async () => {
-                                setError(null);
-                                if (!isAllowedClosetCategory(newCategory)) {
-                                  setOwnedNotice({
-                                    kind: "error",
-                                    message:
-                                      "Category must use only letters and /, or pick a suggested option.",
-                                  });
-                                  return;
+                              const nn = newName.trim();
+                              const nameErr = validateClosetItemName(nn);
+                              if (nameErr) {
+                                setOwnedNotice({
+                                  kind: "error",
+                                  message: nameErr,
+                                });
+                                return;
+                              }
+                              const descErr = validateClosetFreeText(
+                                newDescription,
+                                "Description",
+                              );
+                              if (descErr) {
+                                setOwnedNotice({
+                                  kind: "error",
+                                  message: descErr,
+                                });
+                                return;
+                              }
+                              const cat = newCategory.trim();
+                              const catErr = validateClosetCategory(cat);
+                              if (catErr) {
+                                setOwnedNotice({
+                                  kind: "error",
+                                  message: catErr,
+                                });
+                                return;
+                              }
+                              try {
+                                setNewItemImageBusy(true);
+                                const token = await getApiAccessToken();
+                                const file =
+                                  newItemPhotoInputRef.current?.files?.[0];
+                                let imageKey: string | undefined;
+                                if (file) {
+                                  imageKey = await uploadClosetImageViaPresign(
+                                    getApiAccessToken,
+                                    file,
+                                  );
                                 }
-                                const nn = newName.trim();
-                                const nameErr = validateClosetItemName(nn);
-                                if (nameErr) {
-                                  setOwnedNotice({
-                                    kind: "error",
-                                    message: nameErr,
-                                  });
-                                  return;
-                                }
-                                const descErr = validateClosetFreeText(
-                                  newDescription,
-                                  "Description",
-                                );
-                                if (descErr) {
-                                  setOwnedNotice({
-                                    kind: "error",
-                                    message: descErr,
-                                  });
-                                  return;
-                                }
-                                const cat = newCategory.trim();
-                                const catErr = validateClosetCategory(cat);
-                                if (catErr) {
-                                  setOwnedNotice({
-                                    kind: "error",
-                                    message: catErr,
-                                  });
-                                  return;
-                                }
-                                try {
-                                  setNewItemImageBusy(true);
-                                  const token = await getApiAccessToken();
-                                  const file =
-                                    newItemPhotoInputRef.current?.files?.[0];
-                                  let imageKey: string | undefined;
-                                  if (file) {
-                                    imageKey =
-                                      await uploadClosetImageViaPresign(
-                                        getApiAccessToken,
-                                        file,
-                                      );
-                                  }
-                                  await createItem(token, {
-                                    name: nn,
-                                    description: newDescription,
-                                    ...(cat ? { category: cat } : {}),
-                                    ...(imageKey
-                                      ? { image_key: imageKey }
-                                      : {}),
-                                  });
-                                  setNewName("");
-                                  setNewDescription("");
-                                  setNewCategory("");
-                                  if (newItemPhotoInputRef.current) {
-                                    newItemPhotoInputRef.current.value = "";
-                                  }
-                                  setIsAddItemOpen(false);
-                                  setOwnedPage(1);
-                                  await refreshAll();
-                                  setOwnedNotice({
-                                    kind: "success",
-                                    message: "Item added.",
-                                  });
-                                } catch (err: unknown) {
-                                  const message =
-                                    err instanceof Error
-                                      ? err.message
-                                      : "Failed to create item";
-                                  setOwnedNotice({ kind: "error", message });
-                                } finally {
-                                  setNewItemImageBusy(false);
-                                }
-                              }}
-                              disabled={!newName.trim()}
-                            >
-                              Save Item
-                            </PondButton>
-                            <PondButton
-                              colorPalette="sky"
-                              disabled={newItemImageBusy}
-                              onClick={() => {
+                                await createItem(token, {
+                                  name: nn,
+                                  description: newDescription,
+                                  ...(cat ? { category: cat } : {}),
+                                  ...(imageKey ? { image_key: imageKey } : {}),
+                                });
                                 setNewName("");
                                 setNewDescription("");
                                 setNewCategory("");
@@ -1157,23 +1135,54 @@ export default function ClosetPage() {
                                   newItemPhotoInputRef.current.value = "";
                                 }
                                 setIsAddItemOpen(false);
-                              }}
-                            >
-                              Cancel
-                            </PondButton>
-                          </HStack>
-                        </Stack>
-                      </Box>
-                    ) : (
-                      <HStack justify="flex-start">
-                        <PondButton
-                          colorPalette="lilypad"
-                          onClick={() => setIsAddItemOpen(true)}
-                        >
-                          Add Item
-                        </PondButton>
-                      </HStack>
-                    )}
+                                setOwnedPage(1);
+                                await refreshAll();
+                                setOwnedNotice({
+                                  kind: "success",
+                                  message: "Item added.",
+                                });
+                              } catch (err: unknown) {
+                                const message =
+                                  err instanceof Error
+                                    ? err.message
+                                    : "Failed to create item";
+                                setOwnedNotice({ kind: "error", message });
+                              } finally {
+                                setNewItemImageBusy(false);
+                              }
+                            }}
+                            disabled={!newName.trim()}
+                          >
+                            Save Item
+                          </PondButton>
+                          <PondButton
+                            colorPalette="sky"
+                            disabled={newItemImageBusy}
+                            onClick={() => {
+                              setNewName("");
+                              setNewDescription("");
+                              setNewCategory("");
+                              if (newItemPhotoInputRef.current) {
+                                newItemPhotoInputRef.current.value = "";
+                              }
+                              setIsAddItemOpen(false);
+                            }}
+                          >
+                            Cancel
+                          </PondButton>
+                        </HStack>
+                      </Stack>
+                    </Box>
+                  ) : (
+                    <HStack justify="flex-start">
+                      <PondButton
+                        colorPalette="lilypad"
+                        onClick={() => setIsAddItemOpen(true)}
+                      >
+                        Add Item
+                      </PondButton>
+                    </HStack>
+                  )}
                   <HStack align="center" gap="3" justify="space-between">
                     <Text fontWeight="semibold">Owned by me</Text>
                   </HStack>
@@ -1230,9 +1239,7 @@ export default function ClosetPage() {
                   gap="3"
                   flexWrap="wrap"
                 >
-                  <Text>
-                    Open an item for details, borrowing, and returns.
-                  </Text>
+                  <Text>Open an item for details, borrowing, and returns.</Text>
                   {friendsNotice ? (
                     <Text
                       color={
@@ -1340,7 +1347,11 @@ export default function ClosetPage() {
                       : "No items from friends yet."}
                   </Text>
                 ) : null}
-                <SimpleGrid columns={{ base: 1, md: 3 }} gap={MAPPED_CLOSET_TAB_STACK_GAP} w="100%">
+                <SimpleGrid
+                  columns={{ base: 1, md: 3 }}
+                  gap={MAPPED_CLOSET_TAB_STACK_GAP}
+                  w="100%"
+                >
                   {friendsItems.map((item) => (
                     <FriendClosetListCard
                       key={`friend-${item.id}`}
@@ -1551,12 +1562,14 @@ export default function ClosetPage() {
                         </Text>
                         {row.attached_live_item_names.length > 0 ? (
                           <Text fontSize={APP_TEXT_SIZES.helper}>
-                            Closet items: {row.attached_live_item_names.join(", ")}
+                            Closet items:{" "}
+                            {row.attached_live_item_names.join(", ")}
                           </Text>
                         ) : null}
                         {(row.attached_meal_titles?.length ?? 0) > 0 ? (
                           <Text fontSize={APP_TEXT_SIZES.helper}>
-                            Recipes: {(row.attached_meal_titles ?? []).join(", ")}
+                            Recipes:{" "}
+                            {(row.attached_meal_titles ?? []).join(", ")}
                           </Text>
                         ) : null}
                       </Stack>

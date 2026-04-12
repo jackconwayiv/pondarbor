@@ -10,7 +10,12 @@ import { APP_TEXT_SIZES, PANEL_ENTRY_CARD_PROPS } from "../theme/typography";
 export default function SongadayLayout() {
   return (
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
-      <Box flex="1" bg="sky.solid" px={{ base: "2", md: "2" }} py={{ base: "2", md: "2" }}>
+      <Box
+        flex="1"
+        bg="sky.solid"
+        px={{ base: "2", md: "2" }}
+        py={{ base: "2", md: "2" }}
+      >
         <Box maxW="4xl" w="100%" mx="auto">
           <Box
             bg="gray.100"
@@ -32,16 +37,25 @@ export default function SongadayLayout() {
                   fontWeight="bold"
                   mb="2"
                 >
-                  <HStack as="span" display="inline-flex" gap="2" alignItems="center">
+                  <HStack
+                    as="span"
+                    display="inline-flex"
+                    gap="2"
+                    alignItems="center"
+                  >
                     <Text as="span" aria-hidden="true">
                       🎶
                     </Text>
                     <Text as="span">Song-a-Day Challenge</Text>
                   </HStack>
                 </Heading>
-                <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
-                  Share a song for each day&apos;s prompt, see what friends picked below your response, and heart
-                  their submissions. Use the Archive tab for a full history.
+                <Text
+                  fontSize={APP_TEXT_SIZES.body}
+                  lineHeight="tall"
+                  color="fg"
+                >
+                  Share a song for each day's prompt and see what your friends
+                  submitted!
                 </Text>
               </Box>
             </Stack>

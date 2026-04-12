@@ -581,7 +581,7 @@ export default function WhatIfEntryPage() {
         color={playerTabValue === "join" ? "black" : undefined}
         borderTopRadius="md"
         borderBottomRadius="0"
-        px="4"
+        px="2"
         py="2"
         fontWeight="medium"
         _hover={{
@@ -597,7 +597,7 @@ export default function WhatIfEntryPage() {
         color={playerTabValue === "new" ? "black" : undefined}
         borderTopRadius="md"
         borderBottomRadius="0"
-        px="4"
+        px="2"
         py="2"
         fontWeight="medium"
         _hover={{
@@ -613,7 +613,7 @@ export default function WhatIfEntryPage() {
         color={playerTabValue === "continue" ? "black" : undefined}
         borderTopRadius="md"
         borderBottomRadius="0"
-        px="4"
+        px="2"
         py="2"
         fontWeight="medium"
         _hover={{
@@ -634,7 +634,7 @@ export default function WhatIfEntryPage() {
         color={adminTabValue === "admin-list" ? "black" : undefined}
         borderTopRadius="md"
         borderBottomRadius="0"
-        px="4"
+        px="2"
         py="2"
         fontWeight="medium"
         _hover={{
@@ -666,7 +666,7 @@ export default function WhatIfEntryPage() {
         color={adminTabValue === "admin-bulk" ? "black" : undefined}
         borderTopRadius="md"
         borderBottomRadius="0"
-        px="4"
+        px="2"
         py="2"
         fontWeight="medium"
         _hover={{
@@ -935,8 +935,8 @@ export default function WhatIfEntryPage() {
       <Box
         flex="1"
         bg="sky.solid"
-        px={{ base: "4", md: "6" }}
-        py={{ base: "5", md: "6" }}
+        px={{ base: "2", md: "2" }}
+        py={{ base: "2", md: "2" }}
       >
         <Box
           maxW="4xl"
@@ -948,15 +948,25 @@ export default function WhatIfEntryPage() {
           borderRadius="xl"
           overflow="hidden"
         >
-          <Stack gap={{ base: "4", md: "4" }} p={{ base: "4", md: "6" }}>
+          <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
             <Box {...entryCardProps}>
               <Heading
                 as="h1"
                 size={{ base: "lg", md: "xl" }}
                 fontWeight="bold"
-                mb={!isMobile ? 2 : 0}
+                mb="2"
               >
-                Whatif
+                <HStack
+                  as="span"
+                  display="inline-flex"
+                  gap="2"
+                  alignItems="center"
+                >
+                  <Text as="span" aria-hidden="true">
+                    🎲
+                  </Text>
+                  <Text as="span">WhatIf</Text>
+                </HStack>
               </Heading>
               {!isMobile ? (
                 <Text
@@ -1022,8 +1032,8 @@ export default function WhatIfEntryPage() {
                           }
                           borderTopRadius="md"
                           borderBottomRadius="0"
-                          px="5"
-                          py="2.5"
+                          px="2"
+                          py="2"
                           fontWeight="semibold"
                           _hover={{
                             bg:
@@ -1045,8 +1055,8 @@ export default function WhatIfEntryPage() {
                           color={outerSection === "admin" ? "black" : undefined}
                           borderTopRadius="md"
                           borderBottomRadius="0"
-                          px="5"
-                          py="2.5"
+                          px="2"
+                          py="2"
                           fontWeight="semibold"
                           _hover={{
                             bg:

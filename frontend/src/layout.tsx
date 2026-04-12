@@ -82,7 +82,12 @@ function isDesktopNavRouteActive(pathname: string, to: string): boolean {
 }
 
 /** Routes where the document scrollbar is hidden (keeps centered panels from shifting). */
-const HIDE_DOCUMENT_SCROLLBAR_PREFIXES = ["/quotes", "/songaday", "/closet", "/meal"] as const;
+const HIDE_DOCUMENT_SCROLLBAR_PREFIXES = [
+  "/quotes",
+  "/songaday",
+  "/closet",
+  "/meal",
+] as const;
 /** Exact paths only (e.g. WhatIf entry at `/whatif`, not lobby/play/hand). */
 const HIDE_DOCUMENT_SCROLLBAR_EXACT = ["/whatif"] as const;
 
@@ -100,11 +105,12 @@ export default function AppLayout() {
     () =>
       showProfileNav
         ? [
-            { to: "/quotes", label: "Quotes" },
-            { to: "/songaday", label: "Song a Day" },
+            { to: "/friends", label: "Friends" },
+            { to: "/songaday", label: "Song-a-Day" },
             { to: "/closet", label: "Closet" },
+            { to: "/quotes", label: "Quotes" },
             { to: "/meal", label: "Meal Maestro" },
-            { to: "/clicker", label: "PondClicker" },
+            // { to: "/clicker", label: "PondClicker" },
             { to: "/whatif", label: "WhatIf" },
             { to: "/about", label: "About" },
           ]
@@ -282,12 +288,12 @@ export default function AppLayout() {
                     {showProfileNav ? (
                       <>
                         <Menu.Item
-                          value="quotes"
+                          value="friends"
                           onSelect={() => {
-                            navigate("/quotes");
+                            navigate("/friends");
                           }}
                         >
-                          Quotes
+                          Friends
                         </Menu.Item>
                         <Menu.Item
                           value="songaday"
@@ -295,7 +301,7 @@ export default function AppLayout() {
                             navigate("/songaday");
                           }}
                         >
-                          Song a Day
+                          Song-a-Day
                         </Menu.Item>
                         <Menu.Item
                           value="closet"
@@ -306,6 +312,14 @@ export default function AppLayout() {
                           Closet
                         </Menu.Item>
                         <Menu.Item
+                          value="quotes"
+                          onSelect={() => {
+                            navigate("/quotes");
+                          }}
+                        >
+                          Quotes
+                        </Menu.Item>
+                        <Menu.Item
                           value="meal"
                           onSelect={() => {
                             navigate("/meal");
@@ -313,14 +327,14 @@ export default function AppLayout() {
                         >
                           Meal Maestro
                         </Menu.Item>
-                        <Menu.Item
+                        {/* <Menu.Item
                           value="clicker"
                           onSelect={() => {
                             navigate("/clicker");
                           }}
                         >
                           Clicker
-                        </Menu.Item>
+                        </Menu.Item> */}
                         <Menu.Item
                           value="whatif"
                           onSelect={() => {

@@ -44,14 +44,14 @@ const LILYPAD_FLOAT_KEYFRAMES = keyframes`
 
 const HOME_LILYPAD_TILES = [
   {
-    to: "/quotes",
-    label: "Quotes",
-    hoverText: "archive of user-recorded quotes",
+    to: "/friends",
+    label: "Friends",
+    hoverText: "find and browse your friends",
   },
   {
     to: "/songaday",
-    label: "Song a Day",
-    hoverText: "daily music prompts and friends’ picks",
+    label: "Song-a-Day",
+    hoverText: "daily music prompts and friends' picks",
   },
   {
     to: "/closet",
@@ -59,16 +59,21 @@ const HOME_LILYPAD_TILES = [
     hoverText: "lend and borrow items with friends",
   },
   {
+    to: "/quotes",
+    label: "Quotes",
+    hoverText: "archive of user-recorded quotes",
+  },
+  {
     to: "/meal",
     label: "Meal Maestro",
     hoverText: "manage your meal plans and recipes",
   },
-  { to: "/clicker", label: "PondClicker", hoverText: "idle pond-growing game" },
+  // { to: "/clicker", label: "PondClicker", hoverText: "idle pond-growing game" },
   { to: "/whatif", label: "WhatIf", hoverText: "multiplayer party game" },
 ] as const;
 
 const HOME_PURPOSE_BLURB =
-  "PondArbor is a hobby project by Pond Arbor Workshop: a single place for friends and family to use quotes, a community closet, PondClicker, WhatIf, and more.";
+  "PondArbor is a hobby project by Pond Arbor Workshop: a place for friends and family to use a variety of apps such as games, quotes, a community closet, and more.";
 
 const MONTH_NAMES = [
   "January",
@@ -213,7 +218,10 @@ function App() {
       });
     }
 
-    if (sessionUser.user?.is_approved && sessionUser.profile.meal_partner_incoming_pending) {
+    if (
+      sessionUser.user?.is_approved &&
+      sessionUser.profile.meal_partner_incoming_pending
+    ) {
       prompts.push({
         id: "meal-partner-incoming",
         to: "/meal/settings",

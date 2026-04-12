@@ -1081,15 +1081,25 @@ export default function QuotesFeedPage() {
                   fontWeight="bold"
                   mb="2"
                 >
-                  Quotes
+                  <HStack
+                    as="span"
+                    display="inline-flex"
+                    gap="2"
+                    alignItems="center"
+                  >
+                    <Text as="span" aria-hidden="true">
+                      📜
+                    </Text>
+                    <Text as="span">Quotes Archive</Text>
+                  </HStack>
                 </Heading>
                 <Text
                   fontSize={APP_TEXT_SIZES.body}
                   lineHeight="tall"
                   color="fg"
                 >
-                  Capture lines you love with tags and attributions. Draft here
-                  and publish your faves for friends.
+                  Capture lines you love, then add tags and attributions. Draft
+                  here and publish your faves for friends.
                 </Text>
               </Box>
             </Stack>

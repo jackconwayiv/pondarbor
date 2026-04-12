@@ -104,14 +104,7 @@ export default function SongadayListCard({
           </Stack>
         </HStack>
         <SongadayMediaBlock entry={entry} />
-        <HStack justify="space-between" align="center" flexWrap="wrap" gap="2" mt="auto" pt="2">
-          {entry.edited ? (
-            <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted">
-              Edited
-            </Text>
-          ) : (
-            <span />
-          )}
+        <HStack justify="flex-end" align="center" flexWrap="wrap" gap="2" mt="auto" pt="2" w="full">
           {isMine ? (
             readOnly ? (
               <SongadayHeartReadOnly heartCount={entry.heart_count} />

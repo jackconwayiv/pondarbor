@@ -243,7 +243,7 @@ export default function SongadayArchivePanel({
               No submissions yet.
             </Text>
           ) : (
-            <Stack gap="0" borderWidth="1px" borderColor="border" borderRadius="md" overflow="hidden">
+            <Stack gap="2" w="100%">
               {entries.map((entry) => {
                 const isOpen = expandedId === entry.id;
                 const isMine = entry.user.id === myUserId;
@@ -251,9 +251,11 @@ export default function SongadayArchivePanel({
                   <Box
                     key={entry.id}
                     ref={isOpen ? expandedRef : undefined}
-                    borderBottomWidth="1px"
+                    borderRadius="md"
+                    borderWidth="1px"
                     borderColor="border"
-                    _last={{ borderBottomWidth: "0" }}
+                    bg="white"
+                    overflow="hidden"
                   >
                     <Button
                       type="button"
@@ -271,8 +273,8 @@ export default function SongadayArchivePanel({
                       fontWeight="normal"
                       textAlign="left"
                       justifyContent="flex-start"
-                      bg={isOpen ? "lilypad.muted" : "transparent"}
-                      _hover={{ bg: isOpen ? "lilypad.muted" : "gray.50" }}
+                      bg="white"
+                      _hover={{ bg: "gray.50" }}
                       onClick={() => setExpandedId((cur) => (cur === entry.id ? null : entry.id))}
                     >
                       <Text
@@ -285,44 +287,37 @@ export default function SongadayArchivePanel({
                       </Text>
                       <Text
                         fontSize={APP_TEXT_SIZES.helper}
-                        flex="1"
-                        minW={0}
-                        lineClamp={1}
-                        title={entry.prompt_snapshot}
-                      >
-                        {entry.prompt_snapshot}
-                      </Text>
-                      <Text
-                        fontSize={APP_TEXT_SIZES.helper}
                         fontWeight="medium"
                         flex="1"
                         minW={0}
                         lineClamp={1}
-                        textAlign="right"
                         title={songadayEntryTitleLine(entry)}
                       >
                         {songadayEntryTitleLine(entry)}
                       </Text>
+                      <Text
+                        fontSize={APP_TEXT_SIZES.helper}
+                        flex="1"
+                        minW={0}
+                        lineClamp={1}
+                        textAlign="right"
+                        title={entry.prompt_snapshot}
+                      >
+                        {entry.prompt_snapshot}
+                      </Text>
                     </Button>
                     {isOpen ? (
-                      <Box px="2" pb="3" pt="1" bg="gray.50">
+                      <Box px="2" pb="3" pt="1" bg="gray.50" borderTopWidth="1px" borderColor="border">
                         <Card.Root {...PANEL_ENTRY_CARD_PROPS} flexDirection="column">
                           <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
                             <SongadayMediaBlock entry={entry} />
                             <HStack
-                              justify="space-between"
+                              justify="flex-end"
                               align="center"
                               flexWrap="wrap"
                               gap="2"
                               mt="3"
                             >
-                              {entry.edited ? (
-                                <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted">
-                                  Edited
-                                </Text>
-                              ) : (
-                                <span />
-                              )}
                               {isMine ? (
                                 <SongadayHeartReadOnly heartCount={entry.heart_count} />
                               ) : (

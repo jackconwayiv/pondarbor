@@ -66,6 +66,7 @@ export default function SongadayEntryDetailPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const confirmDeleteButtonRef = useRef<HTMLButtonElement | null>(null);
   const [notice, setNotice] = useState<{ kind: "success" | "error"; message: string } | null>(null);
+  const [saveBusy, setSaveBusy] = useState(false);
 
   const myUserId = sessionUser?.user.id ?? 0;
   const isMine = entry ? entry.user.id === myUserId : false;
@@ -104,8 +105,9 @@ export default function SongadayEntryDetailPage() {
     return () => window.clearTimeout(t);
   }, [notice]);
 
-  const flush = useCallback(async () => {
-    if (!entry || !isMine || !serverRef.current) return;
+  /** Persists edits. Blur handlers call this without acting on the result. */
+  const flush = useCallback(async (): Promise<"noop" | "saved" | "fail"> => {
+    if (!entry || !isMine || !serverRef.current) return "noop";
     const s = serverRef.current;
     const patch: Parameters<typeof patchResponse>[2] = {};
     if (notes.trim() !== (s.notes ?? "")) patch.notes = notes;
@@ -115,18 +117,20 @@ export default function SongadayEntryDetailPage() {
     if (youtubeVideoId.trim() !== (s.youtube_video_id ?? "")) patch.youtube_video_id = youtubeVideoId;
     if (spotifyUrl.trim() !== (s.spotify_url ?? "")) patch.spotify_url = spotifyUrl;
     if (appleMusicUrl.trim() !== (s.apple_music_url ?? "")) patch.apple_music_url = appleMusicUrl;
-    if (Object.keys(patch).length === 0) return;
+    if (Object.keys(patch).length === 0) return "noop";
     try {
       const token = await getApiAccessToken();
       const updated = await patchResponse(token, entry.id, patch);
       setEntry(updated);
       serverRef.current = updated;
       await refreshSession();
+      return "saved";
     } catch (e) {
       setNotice({
         kind: "error",
         message: e instanceof Error ? e.message : "Could not save changes.",
       });
+      return "fail";
     }
   }, [
     appleMusicUrl,
@@ -142,12 +146,25 @@ export default function SongadayEntryDetailPage() {
     youtubeVideoId,
   ]);
 
+  const onSaveClick = useCallback(async () => {
+    setSaveBusy(true);
+    try {
+      const r = await flush();
+      if (r === "saved") {
+        setNotice({ kind: "success", message: "Saved." });
+      }
+    } finally {
+      setSaveBusy(false);
+    }
+  }, [flush]);
+
   const onDismissEditor = useCallback(async () => {
     if (confirmDelete) {
       setConfirmDelete(false);
       return;
     }
-    await flush();
+    const r = await flush();
+    if (r === "fail") return;
     navigate(returnTo);
   }, [confirmDelete, flush, navigate, returnTo]);
 
@@ -348,18 +365,23 @@ export default function SongadayEntryDetailPage() {
                     {...FIELD}
                   />
                 </Stack>
-                {entry.edited ? (
-                  <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted">
-                    Edited
-                  </Text>
-                ) : null}
 
-                <HStack gap="2" flexWrap="wrap">
+                <HStack gap="2" flexWrap="wrap" align="center">
+                  <PondButton
+                    type="button"
+                    colorPalette="lilypad"
+                    loading={saveBusy}
+                    disabled={saveBusy}
+                    onClick={() => void onSaveClick()}
+                  >
+                    Save
+                  </PondButton>
                   {confirmDelete ? (
                     <PondButton
                       ref={confirmDeleteButtonRef}
                       type="button"
                       colorPalette="nautical"
+                      disabled={saveBusy}
                       onClick={() => {
                         void onDelete();
                         setConfirmDelete(false);
@@ -372,6 +394,7 @@ export default function SongadayEntryDetailPage() {
                       type="button"
                       variant="outline"
                       colorPalette="nautical"
+                      disabled={saveBusy}
                       onClick={() => setConfirmDelete(true)}
                     >
                       Delete
@@ -381,11 +404,6 @@ export default function SongadayEntryDetailPage() {
               </Stack>
             ) : (
               <Stack gap="3">
-                {entry.edited ? (
-                  <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-                    Edited
-                  </Text>
-                ) : null}
                 {entry.artist || entry.title ? (
                   <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.body}>
                     {[entry.artist, entry.title]

@@ -2,8 +2,10 @@ import { Box, HStack, Text } from "@chakra-ui/react";
 
 /**
  * Non-interactive heart + count for the entry owner (matches SongadayHeartButton styling without a button).
+ * Renders nothing when count is 0.
  */
 export default function SongadayHeartReadOnly({ heartCount }: { heartCount: number }) {
+  if (heartCount <= 0) return null;
   const label = heartCount === 1 ? "1 heart" : `${heartCount} hearts`;
   return (
     <HStack
@@ -19,13 +21,14 @@ export default function SongadayHeartReadOnly({ heartCount }: { heartCount: numb
       aria-label={label}
     >
       <Text as="span">❤️</Text>
-      {heartCount > 0 ? <Text as="span">{heartCount}</Text> : null}
+      <Text as="span">{heartCount}</Text>
     </HStack>
   );
 }
 
 /** Stops navigation when this sits inside a card wrapped by RouterLink. */
 export function SongadayHeartReadOnlyBlockLink({ heartCount }: { heartCount: number }) {
+  if (heartCount <= 0) return null;
   return (
     <Box
       display="inline-block"

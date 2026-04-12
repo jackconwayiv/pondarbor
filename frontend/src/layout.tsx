@@ -65,12 +65,7 @@ function isDesktopNavRouteActive(pathname: string, to: string): boolean {
         pathname.includes("/public-quotes")
       );
     case "/songaday":
-      return (
-        pathname === "/songaday" ||
-        (pathname.startsWith("/songaday/") && !pathname.startsWith("/songaday/archive"))
-      );
-    case "/songaday/archive":
-      return pathname === "/songaday/archive";
+      return pathname === "/songaday" || pathname.startsWith("/songaday/");
     case "/closet":
       return pathname === "/closet" || pathname.startsWith("/closet/");
     case "/meal":
@@ -107,7 +102,6 @@ export default function AppLayout() {
         ? [
             { to: "/quotes", label: "Quotes" },
             { to: "/songaday", label: "Song a Day" },
-            { to: "/songaday/archive", label: "Song archive" },
             { to: "/closet", label: "Closet" },
             { to: "/meal", label: "Meal Maestro" },
             { to: "/clicker", label: "PondClicker" },
@@ -302,14 +296,6 @@ export default function AppLayout() {
                           }}
                         >
                           Song a Day
-                        </Menu.Item>
-                        <Menu.Item
-                          value="songaday-archive"
-                          onSelect={() => {
-                            navigate("/songaday/archive");
-                          }}
-                        >
-                          Song archive
                         </Menu.Item>
                         <Menu.Item
                           value="closet"

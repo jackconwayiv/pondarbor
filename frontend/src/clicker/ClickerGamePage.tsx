@@ -26,6 +26,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MouseEvent,
 } from "react";
 import { useNavigate } from "react-router";
 
@@ -141,12 +142,12 @@ function formatShopCostAmount(v: number): string {
 
 const initialGameState = (): ClickerGameStateV1 => createDefaultClickerState();
 
-/** Roman labels for owned-upgrade tier filter tabs (1–6); tier 0 uses digit `0` (no Roman zero). */
-const TIER_ROMAN: readonly string[] = ["", "I", "II", "III", "IV", "V", "VI"];
+/** Roman labels for owned-upgrade tier filter tabs (1–7); tier 0 uses digit `0` (no Roman zero). */
+const TIER_ROMAN: readonly string[] = ["", "I", "II", "III", "IV", "V", "VI", "VII"];
 
 function tierFilterTabLabel(tier: number): string {
   if (tier === 0) return "0";
-  if (tier >= 1 && tier <= 6) return TIER_ROMAN[tier] ?? String(tier);
+  if (tier >= 1 && tier <= 7) return TIER_ROMAN[tier] ?? String(tier);
   return String(tier);
 }
 
@@ -180,6 +181,7 @@ const OWNED_TIER_ECOLOGY_SENTENCE: Record<number, string> = {
   4: "Tier IV adds snags and slower water so ambush fish can hunt; storms and banks feed open-water microbes and visiting birds.",
   5: "Tier V is thick weeds and busy waterfowl paths; nutrients get stored in plants and surface films that shuffle who feeds where.",
   6: "Tier VI is a mature pond—big wood, calm evenings, and large mammals sharing deep, oxygen-rich water with slow bottom life and fast predators.",
+  7: "Tier VII is prestige endgame: rare denizens and capstone edges that celebrate an apex pond builder without adding new mechanical bonuses.",
 };
 
 const FAMILY_ECOSYSTEM_ROLE: Record<UpgradeFamily, string> = {
@@ -223,7 +225,7 @@ function resourceLabelForInline(meta: { label: string }): string {
 }
 
 function tierRomanHeading(tier: number): string {
-  if (tier >= 1 && tier <= 6) return `Tier ${TIER_ROMAN[tier]}`;
+  if (tier >= 1 && tier <= 7) return `Tier ${TIER_ROMAN[tier]}`;
   return `Tier ${tier}`;
 }
 
@@ -437,16 +439,25 @@ function ClickerResourceHud({
   hasBasin,
   pondStats,
   biodiversityStackTotal,
+  showResetPond,
+  confirmResetPond,
+  resetPondBusy,
+  onResetPondClick,
 }: {
   resources: ResourceBalances;
   rates: ResourceBalances;
-  /** Energy gained per pond click (0 when paused). */
+  /** Energy gained per pond click. */
   clickPower: number;
   /** After Pond Basin, show per-click line in the HUD (hidden before that). */
   hasBasin: boolean;
   pondStats: ReturnType<typeof computePondStats>;
   /** Sum of effective stacks across all catalog upgrades (computeBiodiversity / 100). */
   biodiversityStackTotal: number;
+  /** When all Tier VII prestige denizens are owned, show Reset pond on the right. */
+  showResetPond: boolean;
+  confirmResetPond: boolean;
+  resetPondBusy: boolean;
+  onResetPondClick: (e: MouseEvent<HTMLButtonElement>) => void;
 }) {
   const [canHoverFinePointer] = useMediaQuery(
     ["(hover: hover) and (pointer: fine)"],
@@ -457,26 +468,31 @@ function ClickerResourceHud({
   );
 
   return (
-    <Box
+    <Flex
+      align="flex-start"
+      justify="space-between"
+      gap={{ base: 2, md: 3 }}
+      flexWrap="wrap"
       borderWidth="1px"
       borderColor="border"
       borderRadius="md"
       bg="bg"
       py="2"
       px={{ base: 2, md: 3 }}
-      w={{ base: "full", md: "fit-content" }}
+      w="full"
       maxW="100%"
       minW="0"
       alignSelf={{ base: "stretch", md: "flex-start" }}
       overflow="hidden"
     >
       <Grid
+        flex="1"
+        minW="0"
         templateColumns="auto auto"
         alignItems="stretch"
         columnGap={{ base: 3, md: 4 }}
         w={{ base: "full", md: "auto" }}
         maxW="100%"
-        minW="0"
       >
         <GridItem
           minW="0"
@@ -715,7 +731,21 @@ function ClickerResourceHud({
           </SimpleGrid>
         </GridItem>
       </Grid>
-    </Box>
+      {showResetPond ? (
+        <PondButton
+          type="button"
+          size="sm"
+          colorPalette="orange"
+          flexShrink={0}
+          alignSelf={{ base: "center", md: "flex-start" }}
+          loading={resetPondBusy}
+          disabled={resetPondBusy}
+          onClick={onResetPondClick}
+        >
+          {confirmResetPond ? "Confirm reset pond" : "Reset pond"}
+        </PondButton>
+      ) : null}
+    </Flex>
   );
 }
 
@@ -1309,9 +1339,8 @@ export default function ClickerGamePage() {
     [biodiversity],
   );
 
-  /** Tier 6 finished: no passive energy, no clicks, no purchases until reset. */
+  /** All Tier VII prestige denizens owned (shows Reset pond in HUD). */
   const finalTierComplete = finalTierPondComplete(ownedUpgrades);
-  const gamePaused = finalTierComplete;
 
   const stateRef = useRef<ClickerGameStateV1>(initialGameState());
   stateRef.current = {
@@ -1509,7 +1538,7 @@ export default function ClickerGamePage() {
   ]);
 
   useEffect(() => {
-    if (!isAuthenticated || loadStatus !== "ready" || gamePaused) return;
+    if (!isAuthenticated || loadStatus !== "ready") return;
     const id = window.setInterval(() => {
       const sim = simulateOwnedUpgrades(ownedRef.current);
       const dt = PASSIVE_TICK_MS / 1000;
@@ -1525,7 +1554,7 @@ export default function ClickerGamePage() {
       }
     }, PASSIVE_TICK_MS);
     return () => window.clearInterval(id);
-  }, [isAuthenticated, loadStatus, gamePaused]);
+  }, [isAuthenticated, loadStatus]);
 
   useEffect(() => {
     if (loadStatus !== "ready") return;
@@ -1577,7 +1606,6 @@ export default function ClickerGamePage() {
 
   const buyUpgrade = useCallback((def: UpgradeDef) => {
     const owned = ownedRef.current;
-    if (finalTierPondComplete(owned)) return;
     const resBefore = gameRef.current;
     const statsBefore = computePondStats(owned);
     const bioBefore = computeBiodiversity(owned);
@@ -1630,7 +1658,7 @@ export default function ClickerGamePage() {
     () => simulateOwnedUpgrades(ownedUpgrades),
     [ownedUpgrades],
   );
-  const rates = gamePaused ? { energy: 0 } : simulation.resourceRates;
+  const rates = simulation.resourceRates;
 
   const ownedListOrdered = useMemo(() => {
     const byKey = new Map(CATALOG_UPGRADES.map((u) => [u.id, u] as const));
@@ -1671,17 +1699,18 @@ export default function ClickerGamePage() {
       4: 0,
       5: 0,
       6: 0,
+      7: 0,
     };
     for (const def of CATALOG_UPGRADES) {
       const t = def.tier;
-      if (t >= 0 && t <= 6) counts[t] += effectiveOwnedStacks(def, ownedUpgrades);
+      if (t >= 0 && t <= 7) counts[t] += effectiveOwnedStacks(def, ownedUpgrades);
     }
     return counts;
   }, [ownedUpgrades]);
 
   const hasTierOnePlusOwned = useMemo(() => {
     let s = 0;
-    for (let t = 1; t <= 6; t++) s += ownedCountsByTier[t] ?? 0;
+    for (let t = 1; t <= 7; t++) s += ownedCountsByTier[t] ?? 0;
     return s > 0;
   }, [ownedCountsByTier]);
 
@@ -1881,56 +1910,22 @@ export default function ClickerGamePage() {
         <ClickerResourceHud
           resources={resources}
           rates={rates}
-          clickPower={gamePaused ? 0 : simulation.clickValue}
+          clickPower={simulation.clickValue}
           hasBasin={getOwnedCount(ownedUpgrades, "pond_basin") >= 1}
           pondStats={pondStats}
           biodiversityStackTotal={biodiversityStackTotal}
+          showResetPond={finalTierComplete}
+          confirmResetPond={confirmFinalReset}
+          resetPondBusy={finalResetBusy}
+          onResetPondClick={(e) => {
+            e.stopPropagation();
+            if (!confirmFinalReset) {
+              setConfirmFinalReset(true);
+              return;
+            }
+            void performTier1Reset();
+          }}
         />
-        {finalTierComplete ? (
-          <Box
-            borderWidth="1px"
-            borderColor="border"
-            borderRadius="md"
-            bg="lilypad.subtle"
-            py="3"
-            px={{ base: 3, md: 4 }}
-            role="status"
-            aria-live="polite"
-          >
-            <Stack gap="3">
-              <Box>
-                <Heading as="h2" size="sm">
-                  Tier 6 complete
-                </Heading>
-                <Text fontSize="sm" color="fg" mt="1">
-                  You have welcomed the final Tier 6 marquee denizens and
-                  completed this pond. The game is paused for now: you cannot
-                  earn more energy or buy upgrades. Reset your pond to play
-                  again.
-                </Text>
-              </Box>
-              <PondButton
-                type="button"
-                size="md"
-                colorPalette="orange"
-                w={{ base: "full", sm: "auto" }}
-                alignSelf={{ base: "stretch", sm: "flex-start" }}
-                loading={finalResetBusy}
-                disabled={finalResetBusy}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (!confirmFinalReset) {
-                    setConfirmFinalReset(true);
-                    return;
-                  }
-                  void performTier1Reset();
-                }}
-              >
-                {confirmFinalReset ? "Confirm reset pond" : "Reset pond"}
-              </PondButton>
-            </Stack>
-          </Box>
-        ) : null}
         {saveError ? (
           <Stack gap="1">
             <Text fontSize={APP_TEXT_SIZES.helper} color="nautical.solid">
@@ -1958,7 +1953,7 @@ export default function ClickerGamePage() {
             order={{ base: 1, md: 1 }}
             w="full"
             minW="0"
-            opacity={gamePaused ? 0.55 : 1}
+            opacity={1}
             transition="opacity 0.2s ease"
           >
             <PondStage
@@ -1969,15 +1964,9 @@ export default function ClickerGamePage() {
                   ? POND_STAGE_ECOLOGY_NOTE
                   : undefined
               }
-              clickDisabled={
-                gamePaused || getOwnedCount(ownedUpgrades, "pond_basin") < 1
-              }
+              clickDisabled={getOwnedCount(ownedUpgrades, "pond_basin") < 1}
               onClickPond={() => {
-                if (
-                  gamePaused ||
-                  getOwnedCount(ownedUpgrades, "pond_basin") < 1
-                )
-                  return;
+                if (getOwnedCount(ownedUpgrades, "pond_basin") < 1) return;
                 const gain = simulation.clickValue;
                 lastInteractionAtMsRef.current = Date.now();
                 saveDirtyRef.current = true;
@@ -2000,7 +1989,7 @@ export default function ClickerGamePage() {
                       Tier:
                     </Heading>
                     <Flex gap="1" flexWrap="wrap" align="center">
-                      {([0, 1, 2, 3, 4, 5, 6] as const).map((tier) => {
+                      {([0, 1, 2, 3, 4, 5, 6, 7] as const).map((tier) => {
                         const n = ownedCountsByTier[tier] ?? 0;
                         if (n <= 0) return null;
                         const label = tierFilterTabLabel(tier);
@@ -2223,8 +2212,8 @@ export default function ClickerGamePage() {
             w="full"
             minW="0"
             minH="0"
-            opacity={gamePaused ? 0.45 : 1}
-            pointerEvents={gamePaused ? "none" : "auto"}
+            opacity={1}
+            pointerEvents="auto"
           >
             {shopOrdered.length > 0 ? (
               <>

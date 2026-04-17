@@ -55,3 +55,10 @@ export function pondWaterFleaLayerVisible(
 ): boolean {
   return getOwnedCount(ownedUpgrades, "water_fleas") >= 1;
 }
+
+/** Tier VII fireflies: soft glowing dots (separate positions from midge hatch). */
+export function pondFireflyLayerVisible(
+  ownedUpgrades: Record<string, number>,
+): boolean {
+  return getOwnedCount(ownedUpgrades, "fireflies") >= 1;
+}

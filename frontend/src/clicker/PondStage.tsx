@@ -34,6 +34,7 @@ import {
 } from "./upgradeEmojis";
 import { scatterNonOverlapping, type Anchor } from "./pondStageLayout";
 import {
+  pondFireflyLayerVisible,
   pondMidgeLayerVisible,
   pondRimLayersOwned,
   pondWaterFleaLayerVisible,
@@ -294,6 +295,27 @@ const MIDGE_FLURRY_POSITIONS: ReadonlyArray<readonly [number, number]> = [
   [58, 31],
 ];
 
+/** Mid-bowl glow dots when `fireflies` is owned; avoids midge upper cluster and flea lower cluster. */
+const FIREFLY_DOT_POSITIONS: ReadonlyArray<readonly [number, number]> = [
+  [14, 42],
+  [22, 50],
+  [31, 44],
+  [40, 58],
+  [48, 46],
+  [57, 54],
+  [66, 48],
+  [74, 56],
+  [82, 44],
+  [18, 62],
+  [35, 68],
+  [52, 72],
+  [69, 66],
+  [78, 70],
+  [26, 76],
+  [44, 80],
+  [61, 78],
+];
+
 /** Bottom-half bowl — midge-like micro-dots when `water_fleas` is owned (upper midge hatch unchanged). */
 const WATER_FLEA_DOT_POSITIONS: ReadonlyArray<readonly [number, number]> = [
   [20, 54],
@@ -471,6 +493,8 @@ export default function PondStage({
   const showMidgeLayer = hasWater && pondMidgeLayerVisible(ownedUpgrades);
   const showWaterFleaDots =
     hasWater && pondWaterFleaLayerVisible(ownedUpgrades);
+  const showFireflyLayer =
+    hasWater && pondFireflyLayerVisible(ownedUpgrades);
   const showSunkenLogWood =
     hasWater && getOwnedCount(ownedUpgrades, "sunken_log") >= 1;
   const showFallenBranchWood =
@@ -810,6 +834,28 @@ export default function PondStage({
                 key={`water-flea-${i}`}
                 as="span"
                 className="pondMidgeDot"
+                position="absolute"
+                left={`${left}%`}
+                top={`${top}%`}
+              />
+            ))}
+          </Box>
+        ) : null}
+
+        {showFireflyLayer ? (
+          <Box
+            className="pondFireflyLayer"
+            position="absolute"
+            inset="0"
+            zIndex={5}
+            pointerEvents="none"
+            aria-hidden
+          >
+            {FIREFLY_DOT_POSITIONS.map(([left, top], i) => (
+              <Box
+                key={`firefly-${i}`}
+                as="span"
+                className="pondFireflyDot"
                 position="absolute"
                 left={`${left}%`}
                 top={`${top}%`}

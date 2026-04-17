@@ -33,6 +33,15 @@ export const MARQUEE_DENIZEN_STAGE_EMOJI: Record<string, string> = {
   bald_eagles: "🦅",
   bowfin: "🐟",
   mute_swans: "🦢",
+  white_tailed_deer: "🦌",
+  brown_bats: "🦇",
+  bumblebees: "🐝",
+  water_snake: "🐍",
+  fishing_spider: "🕷️",
+  american_mink: "🦡",
+  belted_kingfisher: "🦩",
+  monarch_butterfly: "🦋",
+  raccoon: "🦝",
 };
 
 /**
@@ -108,6 +117,7 @@ export function stageEmojiForUpgrade(def: UpgradeDef): string | null {
   if (def.nodeType !== "Denizen") return null;
   // Bottom-half dot swarm only in PondStage; no floating glyph.
   if (def.id === "water_fleas") return null;
+  if (def.id === "fireflies") return null;
   const fallback = defaultDenizenEmojiByFamily(def.family);
   return MARQUEE_DENIZEN_STAGE_EMOJI[def.id] ?? fallback;
 }

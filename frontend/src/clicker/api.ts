@@ -6,7 +6,7 @@ import {
 
 export const SCHEMA_VERSION = 7;
 
-export const CATALOG_CONTENT_VERSION = 19;
+export const CATALOG_CONTENT_VERSION = 20;
 
 export type ClickerGameStateV1 = {
   energy: number;

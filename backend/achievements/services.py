@@ -31,6 +31,7 @@ SLUG_PONDCLICKER_TIER_3 = "pondclicker_tier_3_pond"
 SLUG_PONDCLICKER_TIER_4 = "pondclicker_tier_4_pond"
 SLUG_PONDCLICKER_TIER_5 = "pondclicker_tier_5_pond"
 SLUG_PONDCLICKER_TIER_6 = "pondclicker_tier_6_pond"
+SLUG_PONDCLICKER_TIER_7 = "pondclicker_tier_7_pond"
 
 # Marquee denizen ids per tier (mirrors frontend `MARQUEE_IDS_BY_TIER` in clicker/catalog.ts).
 PONDCLICKER_MARQUEE_BY_TIER: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -81,6 +82,21 @@ PONDCLICKER_MARQUEE_BY_TIER: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         SLUG_PONDCLICKER_TIER_6,
         ("otters", "beavers", "bald_eagles", "bowfin", "mute_swans"),
+    ),
+    (
+        SLUG_PONDCLICKER_TIER_7,
+        (
+            "white_tailed_deer",
+            "fireflies",
+            "brown_bats",
+            "bumblebees",
+            "water_snake",
+            "fishing_spider",
+            "american_mink",
+            "belted_kingfisher",
+            "monarch_butterfly",
+            "raccoon",
+        ),
     ),
 )
 SLUG_SHARING_IS_CARING = "sharing_is_caring"
@@ -144,9 +160,9 @@ def _pondclicker_marquee_tier_complete(owned: dict, upgrade_ids: tuple[str, ...]
 
 def evaluate_pondclicker_achievements_for_user(user_id: int, state: dict) -> bool:
     """
-    Unlock pondclicker tier badges when the save includes all five marquee denizens
-    for that tier. Idempotent via `_try_unlock`. Returns True if any new unlock was
-    granted on this call.
+    Unlock pondclicker tier badges when the save includes all marquee denizens
+    for that tier (five for tiers 1–6, ten for tier 7). Idempotent via `_try_unlock`.
+    Returns True if any new unlock was granted on this call.
     """
     if not isinstance(state, dict):
         return False

@@ -1,4 +1,4 @@
-/** Auto-generated from Tier 1 - 6 Upgrades - Canon Nodes.csv. */
+/** Auto-generated from Tier 1 - 7 Upgrades - Canon Nodes.csv. */
 export const TIER1_MARQUEE_PASSIVE_BONUS = 0.1;
 
 /**
@@ -13,13 +13,18 @@ export const TIER1_MARQUEE_IDS = [
   "leeches",
 ] as const;
 
-/** Final-game completion target inferred from the canon node sheet. */
+/** Final-game completion: all Tier VII prestige denizens. */
 export const FINAL_TIER_MARQUEE_IDS = [
-  "otters",
-  "beavers",
-  "bald_eagles",
-  "bowfin",
-  "mute_swans",
+  "white_tailed_deer",
+  "fireflies",
+  "brown_bats",
+  "bumblebees",
+  "water_snake",
+  "fishing_spider",
+  "american_mink",
+  "belted_kingfisher",
+  "monarch_butterfly",
+  "raccoon",
 ] as const;
 
 /**
@@ -57,6 +62,18 @@ export const MARQUEE_IDS_BY_TIER = {
     "canada_geese",
   ],
   "6": ["otters", "beavers", "bald_eagles", "bowfin", "mute_swans"],
+  "7": [
+    "white_tailed_deer",
+    "fireflies",
+    "brown_bats",
+    "bumblebees",
+    "water_snake",
+    "fishing_spider",
+    "american_mink",
+    "belted_kingfisher",
+    "monarch_butterfly",
+    "raccoon",
+  ],
 } as const;
 
 /** Long-hover ecology copy for the pond stage (not tied to a single upgrade). */
@@ -3340,6 +3357,686 @@ export const CATALOG_UPGRADES: UpgradeDef[] = [
         oxygen: 40,
       },
     },
+  },
+  {
+    id: "browsing_margin",
+    name: "Browsing Margin",
+    family: "Structure",
+    tier: 7,
+    description:
+      "A structure prerequisite upgrade. Unlocks the white-tailed deer prestige denizen.",
+    ecologyNote:
+      "Where lawn-like turf meets shrubby edge above a stable, armored bank, deer can crop herbs and woody browse without collapsing cover, trailing nutrients that wash into littoral shallows.",
+    costs: {
+      energy: 100_000_000_000_000,
+    },
+    maxOwned: 1,
+    requirements: [
+      {
+        type: "stat_threshold",
+        stat: "shelter",
+        min: 1000,
+      },
+    ],
+    effects: [],
+    nodeType: "Prerequisite",
+    isMarquee: false,
+    effectText: "Required for White-Tailed Deer.",
+  },
+  {
+    id: "white_tailed_deer",
+    name: "White-Tailed Deer",
+    family: "Mammals",
+    tier: 7,
+    description: "Prestige Pond denizen. No mechanical bonus.",
+    ecologyNote:
+      "At dawn and dusk, deer stage along browse-rich margins above deep, fertile, oxygenated water, cropping herbs and leaving coarse droppings that subsidize shoreline grazers and detritivores.",
+    costs: {
+      energy: 500_000_000_000_000,
+    },
+    maxOwned: 1,
+    requirements: [
+      {
+        type: "prerequisite_upgrade",
+        upgradeIds: ["browsing_margin"],
+      },
+      {
+        type: "stat_threshold",
+        stat: "depth",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "fertility",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "oxygen",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "shelter",
+        min: 1000,
+      },
+    ],
+    effects: [],
+    nodeType: "Denizen",
+    isMarquee: true,
+    denizenKind: "animal",
+  },
+  {
+    id: "damp_meadow_edge",
+    name: "Damp Meadow Edge",
+    family: "Plants",
+    tier: 7,
+    description:
+      "A plants prerequisite upgrade. Unlocks the fireflies prestige denizen.",
+    ecologyNote:
+      "Sedge and rush tussocks at a wet meadow edge hold soil moisture where night-flying insects emerge and mate, linking upland grassland litter to pond-edge food webs.",
+    costs: {
+      energy: 100_000_000_000_000,
+    },
+    maxOwned: 1,
+    requirements: [
+      {
+        type: "stat_threshold",
+        stat: "fertility",
+        min: 1000,
+      },
+    ],
+    effects: [],
+    nodeType: "Prerequisite",
+    isMarquee: false,
+    effectText: "Required for Fireflies.",
+  },
+  {
+    id: "fireflies",
+    name: "Fireflies",
+    family: "Invertebrates",
+    tier: 7,
+    description: "Prestige Pond denizen. No mechanical bonus.",
+    ecologyNote:
+      "On warm nights, soft-winged beetles signal over humid sedge edges where larvae hunt snails in damp soil, pulsing light above water that mirrors their courtship.",
+    costs: {
+      energy: 500_000_000_000_000,
+    },
+    maxOwned: 1,
+    requirements: [
+      {
+        type: "prerequisite_upgrade",
+        upgradeIds: ["damp_meadow_edge"],
+      },
+      {
+        type: "stat_threshold",
+        stat: "depth",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "fertility",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "oxygen",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "shelter",
+        min: 1000,
+      },
+    ],
+    effects: [],
+    nodeType: "Denizen",
+    isMarquee: true,
+    denizenKind: "animal",
+  },
+  {
+    id: "cloud_of_insects",
+    name: "Cloud of Insects",
+    family: "Invertebrates",
+    tier: 7,
+    description:
+      "An invertebrates prerequisite upgrade. Unlocks the brown bats prestige denizen.",
+    ecologyNote:
+      "Where fertility drives high insect productivity, emergences and mating swarms stack into aerial clouds that bats and swallows slice through after dusk.",
+    costs: {
+      energy: 100_000_000_000_000,
+    },
+    maxOwned: 1,
+    requirements: [
+      {
+        type: "stat_threshold",
+        stat: "fertility",
+        min: 1000,
+      },
+    ],
+    effects: [],
+    nodeType: "Prerequisite",
+    isMarquee: false,
+    effectText: "Required for Brown Bats.",
+  },
+  {
+    id: "brown_bats",
+    name: "Brown Bats",
+    family: "Mammals",
+    tier: 7,
+    description: "Prestige Pond denizen. No mechanical bonus.",
+    ecologyNote:
+      "At insect peaks, bats commute along tree lines and over open water, skimming emergences and exporting nutrients in guano to roost trees and soil.",
+    costs: {
+      energy: 500_000_000_000_000,
+    },
+    maxOwned: 1,
+    requirements: [
+      {
+        type: "prerequisite_upgrade",
+        upgradeIds: ["cloud_of_insects"],
+      },
+      {
+        type: "stat_threshold",
+        stat: "depth",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "fertility",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "oxygen",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "shelter",
+        min: 1000,
+      },
+    ],
+    effects: [],
+    nodeType: "Denizen",
+    isMarquee: true,
+    denizenKind: "animal",
+  },
+  {
+    id: "flowering_shoreline",
+    name: "Flowering Shoreline",
+    family: "Plants",
+    tier: 7,
+    description:
+      "A plants prerequisite upgrade. Unlocks the bumblebees prestige denizen.",
+    ecologyNote:
+      "Forbs and shrubs bloom along the water’s edge where shelter is high, feeding long-tongued bees that link pollen and nectar to bank stability and seed rain.",
+    costs: {
+      energy: 100_000_000_000_000,
+    },
+    maxOwned: 1,
+    requirements: [
+      {
+        type: "stat_threshold",
+        stat: "shelter",
+        min: 1000,
+      },
+    ],
+    effects: [],
+    nodeType: "Prerequisite",
+    isMarquee: false,
+    effectText: "Required for Bumblebees.",
+  },
+  {
+    id: "bumblebees",
+    name: "Bumblebees",
+    family: "Invertebrates",
+    tier: 7,
+    description: "Prestige Pond denizen. No mechanical bonus.",
+    ecologyNote:
+      "Bumblebees nest in undisturbed soil and tussocks near rich flowering edges, vibrating flowers for pollen and moving nutrients between upland and littoral plants.",
+    costs: {
+      energy: 500_000_000_000_000,
+    },
+    maxOwned: 1,
+    requirements: [
+      {
+        type: "prerequisite_upgrade",
+        upgradeIds: ["flowering_shoreline"],
+      },
+      {
+        type: "stat_threshold",
+        stat: "depth",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "fertility",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "oxygen",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "shelter",
+        min: 1000,
+      },
+    ],
+    effects: [],
+    nodeType: "Denizen",
+    isMarquee: true,
+    denizenKind: "animal",
+  },
+  {
+    id: "basking_bank",
+    name: "Basking Bank",
+    family: "Structure",
+    tier: 7,
+    description:
+      "A structure prerequisite upgrade. Unlocks the water snake prestige denizen.",
+    ecologyNote:
+      "Low, sun-warmed banks with dense cover let snakes thermoregulate at the waterline, slipping between hunt and refuge without crossing bare mud.",
+    costs: {
+      energy: 100_000_000_000_000,
+    },
+    maxOwned: 1,
+    requirements: [
+      {
+        type: "stat_threshold",
+        stat: "shelter",
+        min: 1000,
+      },
+    ],
+    effects: [],
+    nodeType: "Prerequisite",
+    isMarquee: false,
+    effectText: "Required for Water Snake.",
+  },
+  {
+    id: "water_snake",
+    name: "Water Snake",
+    family: "Herptiles",
+    tier: 7,
+    description: "Prestige Pond denizen. No mechanical bonus.",
+    ecologyNote:
+      "Slender snakes patrol weedy margins and shallow cover, taking fish and amphibians in water that is deep, fertile, oxygenated, and structurally complex.",
+    costs: {
+      energy: 500_000_000_000_000,
+    },
+    maxOwned: 1,
+    requirements: [
+      {
+        type: "prerequisite_upgrade",
+        upgradeIds: ["basking_bank"],
+      },
+      {
+        type: "stat_threshold",
+        stat: "depth",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "fertility",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "oxygen",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "shelter",
+        min: 1000,
+      },
+    ],
+    effects: [],
+    nodeType: "Denizen",
+    isMarquee: true,
+    denizenKind: "animal",
+  },
+  {
+    id: "wooden_dock",
+    name: "Wooden Dock",
+    family: "Structure",
+    tier: 7,
+    description:
+      "A structure prerequisite upgrade. Unlocks the fishing spider prestige denizen.",
+    ecologyNote:
+      "A quiet pier shades pilings and posts where spiders span open water, anchoring silk to hunt surface insects without competing with shoreline clutter.",
+    costs: {
+      energy: 100_000_000_000_000,
+    },
+    maxOwned: 1,
+    requirements: [
+      {
+        type: "stat_threshold",
+        stat: "depth",
+        min: 1000,
+      },
+    ],
+    effects: [],
+    nodeType: "Prerequisite",
+    isMarquee: false,
+    effectText: "Required for Fishing Spider.",
+  },
+  {
+    id: "fishing_spider",
+    name: "Fishing Spider",
+    family: "Invertebrates",
+    tier: 7,
+    description: "Prestige Pond denizen. No mechanical bonus.",
+    ecologyNote:
+      "Large spiders wait motionless on pilings and posts, diving or skimming surface tension to capture prey when the pond is deep, fertile, oxygenated, and sheltered.",
+    costs: {
+      energy: 500_000_000_000_000,
+    },
+    maxOwned: 1,
+    requirements: [
+      {
+        type: "prerequisite_upgrade",
+        upgradeIds: ["wooden_dock"],
+      },
+      {
+        type: "stat_threshold",
+        stat: "depth",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "fertility",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "oxygen",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "shelter",
+        min: 1000,
+      },
+    ],
+    effects: [],
+    nodeType: "Denizen",
+    isMarquee: true,
+    denizenKind: "animal",
+  },
+  {
+    id: "hidden_bank_run",
+    name: "Hidden Bank Run",
+    family: "Hydrology",
+    tier: 7,
+    description:
+      "A hydrology prerequisite upgrade. Unlocks the American mink prestige denizen.",
+    ecologyNote:
+      "A concealed rivulet undercutting the bank feeds cool, oxygen-rich water to a narrow run where mink can hunt and travel without crossing open mud.",
+    costs: {
+      energy: 100_000_000_000_000,
+    },
+    maxOwned: 1,
+    requirements: [
+      {
+        type: "stat_threshold",
+        stat: "shelter",
+        min: 1000,
+      },
+    ],
+    effects: [],
+    nodeType: "Prerequisite",
+    isMarquee: false,
+    effectText: "Required for American Mink.",
+  },
+  {
+    id: "american_mink",
+    name: "American Mink",
+    family: "Mammals",
+    tier: 7,
+    description: "Prestige Pond denizen. No mechanical bonus.",
+    ecologyNote:
+      "Semi-aquatic mustelids hunt along hidden runs and dense cover, taking fish and crayfish when depth, fertility, oxygen, and shelter are all extreme.",
+    costs: {
+      energy: 500_000_000_000_000,
+    },
+    maxOwned: 1,
+    requirements: [
+      {
+        type: "prerequisite_upgrade",
+        upgradeIds: ["hidden_bank_run"],
+      },
+      {
+        type: "stat_threshold",
+        stat: "depth",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "fertility",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "oxygen",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "shelter",
+        min: 1000,
+      },
+    ],
+    effects: [],
+    nodeType: "Denizen",
+    isMarquee: true,
+    denizenKind: "animal",
+  },
+  {
+    id: "crystal_clear_water",
+    name: "Crystal-Clear Water",
+    family: "Hydrology",
+    tier: 7,
+    description:
+      "A hydrology prerequisite upgrade. Unlocks the belted kingfisher prestige denizen.",
+    ecologyNote:
+      "Where mixing and low turbidity align, light penetrates the water column so predators and anglers see prey from above, and plants can photosynthesize deeper.",
+    costs: {
+      energy: 100_000_000_000_000,
+    },
+    maxOwned: 1,
+    requirements: [
+      {
+        type: "stat_threshold",
+        stat: "oxygen",
+        min: 1000,
+      },
+    ],
+    effects: [],
+    nodeType: "Prerequisite",
+    isMarquee: false,
+    effectText: "Required for Belted Kingfisher.",
+  },
+  {
+    id: "belted_kingfisher",
+    name: "Belted Kingfisher",
+    family: "Birds",
+    tier: 7,
+    description: "Prestige Pond denizen. No mechanical bonus.",
+    ecologyNote:
+      "Kingfishers perch on snags and posts over clear water, diving on fish when depth, fertility, oxygen, and shelter support a dense prey field.",
+    costs: {
+      energy: 500_000_000_000_000,
+    },
+    maxOwned: 1,
+    requirements: [
+      {
+        type: "prerequisite_upgrade",
+        upgradeIds: ["crystal_clear_water"],
+      },
+      {
+        type: "stat_threshold",
+        stat: "depth",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "fertility",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "oxygen",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "shelter",
+        min: 1000,
+      },
+    ],
+    effects: [],
+    nodeType: "Denizen",
+    isMarquee: true,
+    denizenKind: "animal",
+  },
+  {
+    id: "milkweed_stand",
+    name: "Milkweed Stand",
+    family: "Plants",
+    tier: 7,
+    description:
+      "A plants prerequisite upgrade. Unlocks the monarch butterfly prestige denizen.",
+    ecologyNote:
+      "Milkweed stands anchor monarch breeding with latex-rich leaves and nectar, tying upland forb patches to pond edge humidity and insect prey.",
+    costs: {
+      energy: 100_000_000_000_000,
+    },
+    maxOwned: 1,
+    requirements: [
+      {
+        type: "stat_threshold",
+        stat: "fertility",
+        min: 1000,
+      },
+    ],
+    effects: [],
+    nodeType: "Prerequisite",
+    isMarquee: false,
+    effectText: "Required for Monarch Butterfly.",
+  },
+  {
+    id: "monarch_butterfly",
+    name: "Monarch Butterfly",
+    family: "Invertebrates",
+    tier: 7,
+    description: "Prestige Pond denizen. No mechanical bonus.",
+    ecologyNote:
+      "Monarchs stage on milkweed near rich flowering margins, migrating and laying eggs where depth, fertility, oxygen, and shelter support a full summer food web.",
+    costs: {
+      energy: 500_000_000_000_000,
+    },
+    maxOwned: 1,
+    requirements: [
+      {
+        type: "prerequisite_upgrade",
+        upgradeIds: ["milkweed_stand"],
+      },
+      {
+        type: "stat_threshold",
+        stat: "depth",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "fertility",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "oxygen",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "shelter",
+        min: 1000,
+      },
+    ],
+    effects: [],
+    nodeType: "Denizen",
+    isMarquee: true,
+    denizenKind: "animal",
+  },
+  {
+    id: "stranded_treats",
+    name: "Stranded Treats",
+    family: "Nutrients",
+    tier: 7,
+    description:
+      "A nutrients prerequisite upgrade. Unlocks the raccoon prestige denizen.",
+    ecologyNote:
+      "Picnic scraps and shoreline litter concentrate calories on high-shelter banks where generalists can wash food and retreat to cover between forays.",
+    costs: {
+      energy: 100_000_000_000_000,
+    },
+    maxOwned: 1,
+    requirements: [
+      {
+        type: "stat_threshold",
+        stat: "shelter",
+        min: 1000,
+      },
+    ],
+    effects: [],
+    nodeType: "Prerequisite",
+    isMarquee: false,
+    effectText: "Required for Raccoon.",
+  },
+  {
+    id: "raccoon",
+    name: "Raccoon",
+    family: "Mammals",
+    tier: 7,
+    description: "Prestige Pond denizen. No mechanical bonus.",
+    ecologyNote:
+      "Raccoons probe shallows and stranded litter at night, dexterous in water that is deep, fertile, oxygenated, and full of cover for escape from larger predators.",
+    costs: {
+      energy: 500_000_000_000_000,
+    },
+    maxOwned: 1,
+    requirements: [
+      {
+        type: "prerequisite_upgrade",
+        upgradeIds: ["stranded_treats"],
+      },
+      {
+        type: "stat_threshold",
+        stat: "depth",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "fertility",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "oxygen",
+        min: 1000,
+      },
+      {
+        type: "stat_threshold",
+        stat: "shelter",
+        min: 1000,
+      },
+    ],
+    effects: [],
+    nodeType: "Denizen",
+    isMarquee: true,
+    denizenKind: "animal",
   },
 ];
 

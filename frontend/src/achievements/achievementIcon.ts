@@ -10,6 +10,7 @@ const SLUG_TO_EMOJI: Record<string, string> = {
   pondclicker_tier_4_pond: "🐸",
   pondclicker_tier_5_pond: "🦆",
   pondclicker_tier_6_pond: "🦦",
+  pondclicker_tier_7_pond: "🪷",
   sharing_is_caring: "🤝",
   something_borrowed: "👜",
   good_as_new: "✨",

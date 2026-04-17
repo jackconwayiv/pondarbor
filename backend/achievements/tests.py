@@ -13,6 +13,7 @@ from achievements.services import (
     SLUG_PONDCLICKER_TIER_1,
     SLUG_PONDCLICKER_TIER_2,
     SLUG_PONDCLICKER_TIER_6,
+    SLUG_PONDCLICKER_TIER_7,
     SLUG_SHARING_IS_CARING,
     SLUG_SOMETHING_BORROWED,
     SLUG_SMORGASBORD,
@@ -251,6 +252,38 @@ class PondClickerAchievementTests(TestCase):
         )
         self.assertTrue(
             UserAchievement.objects.filter(user=user, achievement__slug=SLUG_PONDCLICKER_TIER_6).exists()
+        )
+
+    def test_tier7_unlocks_when_all_ten_marquee_denizens_owned(self):
+        AchievementDefinition.objects.get_or_create(
+            slug=SLUG_PONDCLICKER_TIER_7,
+            defaults={
+                "title": "Prestige Pond",
+                "description": "",
+                "category": "pondclicker",
+                "order": 56,
+            },
+        )
+        user = User.objects.create_user(email="pond7@example.com", password="secret12345")
+        nine = {
+            "white_tailed_deer": 1,
+            "fireflies": 1,
+            "brown_bats": 1,
+            "bumblebees": 1,
+            "water_snake": 1,
+            "fishing_spider": 1,
+            "american_mink": 1,
+            "belted_kingfisher": 1,
+            "monarch_butterfly": 1,
+        }
+        evaluate_pondclicker_achievements_for_user(user.id, {"owned_upgrades": nine})
+        self.assertFalse(
+            UserAchievement.objects.filter(user=user, achievement__slug=SLUG_PONDCLICKER_TIER_7).exists()
+        )
+        state_ok = {**nine, "raccoon": 1}
+        evaluate_pondclicker_achievements_for_user(user.id, {"owned_upgrades": state_ok})
+        self.assertTrue(
+            UserAchievement.objects.filter(user=user, achievement__slug=SLUG_PONDCLICKER_TIER_7).exists()
         )
 
 

@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.contrib.contenttypes.fields import GenericRelation
 from django.db import models
 
 
@@ -43,6 +44,11 @@ class SongResponse(models.Model):
     apple_music_url = models.URLField(max_length=1024, blank=True)
 
     edited = models.BooleanField(default=False)
+
+    comments = GenericRelation(
+        "friend_comments.FriendComment",
+        related_query_name="song_response",
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

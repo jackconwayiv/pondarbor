@@ -24,6 +24,7 @@ import type { ClosetItem } from "../closet/types";
 import { ApprovedFriendsListBlock } from "../friends/ApprovedFriendsListBlock";
 import {
   acceptFriend,
+  fetchFriendsList,
   fetchUserFriendsList,
   ignoreFriend,
   requestFriendByUserId,
@@ -88,6 +89,10 @@ export default function FriendProfilePage() {
     getApiAccessToken,
   } = useAppSession();
 
+  const [myApprovedFriendIds, setMyApprovedFriendIds] = useState<Set<number>>(
+    () => new Set(),
+  );
+
   const lookup = useMemo(() => {
     if (userId !== undefined && userId !== "") {
       const id = Number.parseInt(userId, 10);
@@ -121,6 +126,28 @@ export default function FriendProfilePage() {
   const [reloadKey, setReloadKey] = useState(0);
   const unfriendBoxRef = useRef<HTMLDivElement | null>(null);
   const ownUserId = sessionUser?.user?.id ?? null;
+
+  useEffect(() => {
+    if (!sessionUser?.user.is_approved) {
+      setMyApprovedFriendIds(new Set());
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const t = await getApiAccessToken();
+        const d = await fetchFriendsList(t);
+        if (!cancelled) {
+          setMyApprovedFriendIds(new Set(d.approved_friends.map((f) => f.id)));
+        }
+      } catch {
+        if (!cancelled) setMyApprovedFriendIds(new Set());
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionUser?.user.is_approved, getApiAccessToken]);
 
   useEffect(() => {
     if (lookup.kind === "invalid") {
@@ -781,6 +808,16 @@ export default function FriendProfilePage() {
                       friends={theirFriends}
                       showCountInTitle
                       withCardShell={false}
+                      showRequestFriendActions={summary?.friendship_status === "friends"}
+                      viewerId={ownUserId ?? undefined}
+                      viewerApprovedFriendIds={myApprovedFriendIds}
+                      onRequestFriend={async (uid) => {
+                        const t = await getApiAccessToken();
+                        await requestFriendByUserId(t, uid);
+                        setActionSuccess("Friend request sent.");
+                        const d = await fetchFriendsList(t);
+                        setMyApprovedFriendIds(new Set(d.approved_friends.map((f) => f.id)));
+                      }}
                     />
                   </Tabs.Content>
                   {hasAchievements ? (

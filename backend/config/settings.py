@@ -95,6 +95,7 @@ INSTALLED_APPS = [
     "qff.apps.QffConfig",
     "closet.apps.ClosetConfig",
     "songaday.apps.SongadayConfig",
+    "friend_comments.apps.FriendCommentsConfig",
     "meal.apps.MealConfig",
     "contact.apps.ContactConfig",
     # allauth

@@ -6,6 +6,7 @@ from rest_framework.test import APIClient
 
 from friends.models import FriendRequest
 from songaday.models import SongPrompt, SongResponse
+from users.models import Profile
 
 User = get_user_model()
 
@@ -234,3 +235,38 @@ class SongadayApiTests(TestCase):
         self.assertFalse(p2["has_next"])
         self.assertTrue(p2["has_prev"])
         self.assertEqual(p2["results"][-1]["prompt_snapshot"], "Y2015")
+
+    def test_for_date_all_approved_non_friend_sees(self):
+        prof = self.alice.profile
+        prof.songaday_visibility = Profile.SongadayVisibility.ALL_APPROVED
+        prof.save(update_fields=["songaday_visibility"])
+        self.alice_client.post(
+            "/api/v1/songaday/responses/",
+            {
+                "entry_date": "2026-04-12",
+                "prompt_snapshot": "Spring song",
+                "raw_label": "A",
+            },
+            format="json",
+        )
+        rs = self.stranger_client.get("/api/v1/songaday/responses/for-date/?year=2026&month=4&day=12")
+        self.assertEqual(rs.status_code, 200)
+        self.assertEqual(len(rs.json()), 1)
+
+    def test_for_date_private_friend_does_not_see(self):
+        self._accept_pair(self.alice, self.bob)
+        self.alice_client.post(
+            "/api/v1/songaday/responses/",
+            {
+                "entry_date": "2026-04-12",
+                "prompt_snapshot": "Spring song",
+                "raw_label": "A",
+            },
+            format="json",
+        )
+        prof = self.alice.profile
+        prof.songaday_visibility = Profile.SongadayVisibility.PRIVATE
+        prof.save(update_fields=["songaday_visibility"])
+        rb = self.bob_client.get("/api/v1/songaday/responses/for-date/?year=2026&month=4&day=12")
+        self.assertEqual(rb.status_code, 200)
+        self.assertEqual(len(rb.json()), 0)

@@ -101,6 +101,17 @@ class Profile(models.Model):
         help_text="When true, show pantry inventory and related grocery hints.",
     )
 
+    class SongadayVisibility(models.TextChoices):
+        PRIVATE = "private", "Private (only me)"
+        FRIENDS_ONLY = "friends_only", "Friends only"
+        ALL_APPROVED = "all_approved", "All approved users"
+
+    songaday_visibility = models.CharField(
+        max_length=20,
+        choices=SongadayVisibility.choices,
+        default=SongadayVisibility.FRIENDS_ONLY,
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

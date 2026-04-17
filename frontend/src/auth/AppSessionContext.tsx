@@ -22,6 +22,8 @@ export type Profile = {
   meal_slot_labels?: Record<string, string[]> | null;
   /** Pantry inventory and grocery hints (Meal Maestro). */
   meal_pantry_enabled?: boolean;
+  /** Who can see your Song-a-Day submissions. */
+  songaday_visibility?: "private" | "friends_only" | "all_approved";
 };
 
 export type AppUser = {
@@ -56,6 +58,7 @@ export type ProfilePatch = Partial<
     | "meal_crud_partner_id"
     | "meal_slot_labels"
     | "meal_pantry_enabled"
+    | "songaday_visibility"
   >
 > & {
   avatar_image_key?: string;

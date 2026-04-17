@@ -12,4 +12,5 @@ urlpatterns = [
     path("qff/", include("qff.urls")),
     path("closet/", include("closet.urls")),
     path("songaday/", include("songaday.urls")),
+    path("friend-comments/", include("friend_comments.urls")),
 ]

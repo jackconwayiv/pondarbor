@@ -110,6 +110,7 @@ def serialize_me(user):
             "meal_partner_incoming_pending": incoming_meal_partner_pending(user=user),
             "meal_slot_labels": profile.meal_slot_labels,
             "meal_pantry_enabled": profile.meal_pantry_enabled,
+            "songaday_visibility": profile.songaday_visibility,
         },
         "achievements": achievements_payload_for_user(user, public_only=False),
     }
@@ -422,6 +423,8 @@ def patch_me_profile(request):
             profile.meal_slot_labels = {**(profile.meal_slot_labels or {}), **incoming}
     if "meal_pantry_enabled" in data:
         profile.meal_pantry_enabled = bool(data["meal_pantry_enabled"])
+    if "songaday_visibility" in data:
+        profile.songaday_visibility = data["songaday_visibility"]
     profile.save()
     if "meal_crud_partner_id" in data:
         evaluate_meal_maestro_partner_for_user(request.user.id)

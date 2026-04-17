@@ -65,6 +65,7 @@ class SongResponseReadSerializer(serializers.ModelSerializer):
     user = serializers.SerializerMethodField()
     heart_count = serializers.IntegerField(read_only=True)
     viewer_has_hearted = serializers.BooleanField(read_only=True)
+    comment_count = serializers.SerializerMethodField()
 
     class Meta:
         model = SongResponse
@@ -86,10 +87,14 @@ class SongResponseReadSerializer(serializers.ModelSerializer):
             "updated_at",
             "heart_count",
             "viewer_has_hearted",
+            "comment_count",
         ]
 
     def get_user(self, obj: SongResponse) -> dict:
         return user_row_for_songaday(obj.user)
+
+    def get_comment_count(self, obj: SongResponse) -> int:
+        return int(getattr(obj, "comment_count", 0) or 0)
 
 
 class SongResponseCreateSerializer(serializers.Serializer):

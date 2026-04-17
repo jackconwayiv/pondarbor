@@ -3,7 +3,7 @@ from datetime import date
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Count, Exists, OuterRef, Q
+from django.db.models import Count, Exists, OuterRef
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -16,7 +16,9 @@ from achievements.services import (
     evaluate_songaday_music_lover_for_user,
 )
 from friends.services import friend_ids_for_user
+from songaday.access import can_view_song_response, visible_song_responses_q
 from songaday.models import SongPrompt, SongResponse, SongResponseHeart
+from users.models import Profile
 from songaday.resolve_link import ResolveError, resolve_from_youtube_video_id, resolve_song_link_metadata
 from songaday.serializers import (
     SongResponseCreateSerializer,
@@ -46,9 +48,8 @@ def _parse_ymd(request):
 
 def _visible_responses_qs(*, viewer, entry: date):
     friend_ids = friend_ids_for_user(user=viewer)
-    return SongResponse.objects.filter(entry_date=entry).filter(
-        Q(user_id=viewer.id) | Q(user_id__in=friend_ids)
-    )
+    q_vis = visible_song_responses_q(viewer=viewer, friend_ids=friend_ids)
+    return SongResponse.objects.filter(entry_date=entry).filter(q_vis)
 
 
 def _annotate_hearts(qs, viewer_id: int):
@@ -59,13 +60,12 @@ def _annotate_hearts(qs, viewer_id: int):
     return qs.annotate(
         heart_count=Count("hearts", distinct=True),
         viewer_has_hearted=Exists(heart_sub),
+        comment_count=Count("comments", distinct=True),
     )
 
 
 def _can_view_response(*, viewer, response: SongResponse) -> bool:
-    if response.user_id == viewer.id:
-        return True
-    return response.user_id in friend_ids_for_user(user=viewer)
+    return can_view_song_response(viewer=viewer, response=response)
 
 
 @api_view(["GET"])
@@ -126,7 +126,15 @@ def responses_archive(request):
     except (TypeError, ValueError):
         page_size = 10
 
-    base = SongResponse.objects.filter(user_id=target_id).order_by("-entry_date", "-id")
+    if target_id != viewer.id:
+        owner = get_object_or_404(User.objects.select_related("profile"), pk=target_id)
+        prof = getattr(owner, "profile", None)
+        if prof and prof.songaday_visibility == Profile.SongadayVisibility.PRIVATE:
+            base = SongResponse.objects.none()
+        else:
+            base = SongResponse.objects.filter(user_id=target_id).order_by("-entry_date", "-id")
+    else:
+        base = SongResponse.objects.filter(user_id=target_id).order_by("-entry_date", "-id")
     qs = _annotate_hearts(base, viewer.id).select_related("user", "user__profile", "prompt")
     total = qs.count()
     start = (page - 1) * page_size

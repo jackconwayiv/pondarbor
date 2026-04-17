@@ -23,6 +23,7 @@ import {
   PANEL_NESTED_BLOCK_PROPS,
 } from "../theme/typography";
 import { deleteResponse, fetchResponse, patchResponse, toggleHeart } from "./api";
+import SongadayCommentsPanel from "./SongadayCommentsPanel";
 import { cleanStreamingTitleLine } from "./cleanSongLabel";
 import { MealEditorBackdropDismiss } from "../meal/MealEditorBackdropDismiss";
 import SongadayHeartButton from "./SongadayHeartButton";
@@ -272,7 +273,7 @@ export default function SongadayEntryDetailPage() {
             </Heading>
             <Box flexShrink={0}>
               {isMine ? (
-                <SongadayHeartReadOnly heartCount={entry.heart_count} />
+                <SongadayHeartReadOnly heartCount={entry.heart_count} plain />
               ) : (
                 <SongadayHeartButton
                   heartCount={entry.heart_count}
@@ -429,6 +430,22 @@ export default function SongadayEntryDetailPage() {
                 ) : null}
               </Stack>
             )}
+
+            {(isMine ? (entry.comment_count ?? 0) > 0 : true) ? (
+              <SongadayCommentsPanel
+                getAccessToken={getApiAccessToken}
+                responseId={entry.id}
+                myUserId={myUserId}
+                ownerNotes={entry.notes}
+                showOwnerNotesBlock={!isMine}
+                ownerNotesLabel="Note"
+                maxListHeight="320px"
+                hideComposeUntilCommentFromOther={isMine}
+                onCommentCountChanged={(c) => {
+                  setEntry((prev) => (prev ? { ...prev, comment_count: c } : prev));
+                }}
+              />
+            ) : null}
           </Stack>
         </Card.Body>
       </Card.Root>

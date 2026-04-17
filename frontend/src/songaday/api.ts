@@ -25,6 +25,10 @@ import type {
   SongPromptCatalogRow,
 } from "./types";
 
+function normalizeSongResponse(row: SongadayResponse): SongadayResponse {
+  return { ...row, comment_count: row.comment_count ?? 0 };
+}
+
 function apiBase(): string {
   return import.meta.env.VITE_API_BASE_URL ?? "";
 }
@@ -115,7 +119,8 @@ export async function fetchResponsesForDate(
   if (!response.ok) {
     throw new Error(await parseApiError(response));
   }
-  return (await response.json()) as SongadayResponse[];
+  const raw = (await response.json()) as SongadayResponse[];
+  return raw.map(normalizeSongResponse);
 }
 
 /** Newest first; optional `userId` loads a friend's archive (must be an approved friend). */
@@ -140,7 +145,11 @@ export async function fetchResponsesArchive(
   if (!response.ok) {
     throw new Error(await parseApiError(response));
   }
-  return (await response.json()) as SongadayArchiveListResponse;
+  const payload = (await response.json()) as SongadayArchiveListResponse;
+  return {
+    ...payload,
+    results: payload.results.map(normalizeSongResponse),
+  };
 }
 
 /** Friend IDs who have at least one submission (for archive friend picker). */
@@ -173,7 +182,7 @@ export async function fetchResponse(
   if (!response.ok) {
     throw new Error(await parseApiError(response));
   }
-  return (await response.json()) as SongadayResponse;
+  return normalizeSongResponse((await response.json()) as SongadayResponse);
 }
 
 export async function createResponse(
@@ -202,7 +211,7 @@ export async function createResponse(
   if (!response.ok) {
     throw new Error(await parseApiError(response));
   }
-  return (await response.json()) as SongadayResponse;
+  return normalizeSongResponse((await response.json()) as SongadayResponse);
 }
 
 export async function patchResponse(
@@ -224,7 +233,7 @@ export async function patchResponse(
   if (!response.ok) {
     throw new Error(await parseApiError(response));
   }
-  return (await response.json()) as SongadayResponse;
+  return normalizeSongResponse((await response.json()) as SongadayResponse);
 }
 
 export async function deleteResponse(accessToken: string | null, id: number): Promise<void> {

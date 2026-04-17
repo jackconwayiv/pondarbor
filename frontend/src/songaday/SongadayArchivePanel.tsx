@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link as RouterLink } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
+import type { Profile } from "../auth/AppSessionContext";
 import { fetchFriendsList } from "../friends/api";
 import PondButton from "../PondButton";
 import { fullBleedStackProps } from "../responsive";
@@ -49,7 +50,8 @@ export default function SongadayArchivePanel({
   variant,
   entryDetailReturnTo,
 }: SongadayArchivePanelProps) {
-  const { sessionUser, getApiAccessToken, refreshSession } = useAppSession();
+  const { sessionUser, getApiAccessToken, refreshSession, patchMyProfile, updateProfileLocally } =
+    useAppSession();
 
   const myUserId = sessionUser?.user.id ?? 0;
   const [friends, setFriends] = useState<Array<{ id: number; label: string }>>([]);
@@ -241,6 +243,37 @@ export default function SongadayArchivePanel({
         </HStack>
       )}
 
+      {sessionUser?.user.is_approved ? (
+        <Stack gap="2" w="full" maxW="md">
+          <Text fontSize={APP_TEXT_SIZES.label} fontWeight="bold">
+            Song-a-Day settings
+          </Text>
+          <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+            Who can see my Song-a-Day posts
+          </Text>
+          <NativeSelectRoot size="sm" maxW={{ base: "full", sm: "280px" }}>
+            <NativeSelectField
+              value={sessionUser.profile.songaday_visibility ?? "friends_only"}
+              onChange={(e) => {
+                const v = e.currentTarget.value as Profile["songaday_visibility"];
+                void (async () => {
+                  try {
+                    await patchMyProfile({ songaday_visibility: v });
+                    updateProfileLocally({ songaday_visibility: v });
+                  } catch {
+                    /* ignore */
+                  }
+                })();
+              }}
+            >
+              <option value="private">Only me</option>
+              <option value="friends_only">Friends only</option>
+              <option value="all_approved">All approved users</option>
+            </NativeSelectField>
+          </NativeSelectRoot>
+        </Stack>
+      ) : null}
+
       {loadError ? (
         <Text fontSize={APP_TEXT_SIZES.helper} color="nautical.solid" role="alert">
           {loadError}
@@ -348,7 +381,7 @@ export default function SongadayArchivePanel({
                               mt="3"
                             >
                               {isMine ? (
-                                <SongadayHeartReadOnly heartCount={entry.heart_count} />
+                                <SongadayHeartReadOnly heartCount={entry.heart_count} plain />
                               ) : (
                                 <SongadayHeartButton
                                   heartCount={entry.heart_count}

@@ -23,6 +23,7 @@ export type SongadayResponse = {
   updated_at: string;
   heart_count: number;
   viewer_has_hearted: boolean;
+  comment_count: number;
 };
 
 export type SongadayPromptPayload = {

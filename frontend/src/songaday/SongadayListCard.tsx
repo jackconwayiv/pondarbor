@@ -1,12 +1,10 @@
 import { Box, HStack, Image, Stack, Text } from "@chakra-ui/react";
 import type { MouseEvent, ReactNode } from "react";
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router";
+import { Link as RouterLink } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
-import PondButton from "../PondButton";
 import { APP_TEXT_SIZES, MAPPED_LIST_CARD_OUTER_PROPS } from "../theme/typography";
-import { cleanStreamingTitleLine, songadayEntryTitleLine } from "./cleanSongLabel";
 import SongadayHeartButton from "./SongadayHeartButton";
 import SongadayHeartReadOnly, { SongadayHeartReadOnlyBlockLink } from "./SongadayHeartReadOnly";
 import SongadayMediaBlock from "./SongadayMediaBlock";
@@ -19,7 +17,6 @@ function UserAvatarBlock({
 }: {
   avatar: string;
   label: string;
-  /** e.g. `40px` for denser list cards */
   boxSize?: string;
 }) {
   const [failed, setFailed] = useState(false);
@@ -65,29 +62,28 @@ type Props = {
   onHeartToggle?: (entryId: number) => void;
   /** Non-interactive card (no link); use for inline read-only preview */
   readOnly?: boolean;
-  /** Shown below the card body when `readOnly` (legacy; unused on prompt page) */
+  /** Shown below the card body (owner read-only card or friend card with inline comments). */
   footer?: ReactNode;
+  /** Own card: toggle inline submission editor (parent renders editor). */
+  onMineCardClick?: () => void;
+  /** Highlights own card while submission editor is open. */
+  submissionEditOpen?: boolean;
 };
 
 export default function SongadayListCard({
   entry,
-  returnTo,
+  returnTo: _returnTo,
   myUserId,
   heartBusy,
   onHeartToggle,
   readOnly,
   footer,
+  onMineCardClick,
+  submissionEditOpen,
 }: Props) {
-  const navigate = useNavigate();
   const { sessionUser, auth0User } = useAppSession();
   const isMine = entry.user.id === myUserId;
-  const [mediaExpanded, setMediaExpanded] = useState(false);
 
-  useEffect(() => {
-    setMediaExpanded(false);
-  }, [entry.id]);
-
-  /** Match navbar: profile URL, then Auth0 picture; API payload only has DB profile (often stale vs Auth0). */
   const apiAvatar = (entry.user.avatar_url || "").trim();
   const sessionId = sessionUser?.user.id;
   const avatar =
@@ -98,9 +94,6 @@ export default function SongadayListCard({
       : apiAvatar;
   const label = entry.user.nickname || entry.user.email.split("@")[0];
 
-  const detailPath = `/songaday/entries/${entry.id}`;
-  const detailState = { songadayReturnTo: returnTo };
-
   const notesText = entry.notes.trim();
   const notesBlock =
     notesText.length > 0 ? (
@@ -109,48 +102,20 @@ export default function SongadayListCard({
       </Text>
     ) : null;
 
-  const titleClean = cleanStreamingTitleLine(entry.title);
-  const artistClean = cleanStreamingTitleLine(entry.artist);
-  const showTitleArtistLines = !!(titleClean || artistClean);
-
-  const mineCollapsedMeta = (
-    <Stack gap="1" w="full">
-      {showTitleArtistLines ? (
-        <>
-          {titleClean ? (
-            <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.body} lineClamp={3}>
-              {titleClean}
-            </Text>
-          ) : null}
-          {artistClean ? (
-            <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" lineClamp={2}>
-              {artistClean}
-            </Text>
-          ) : null}
-        </>
-      ) : (
-        <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.helper} lineClamp={3}>
-          {songadayEntryTitleLine(entry)}
-        </Text>
-      )}
-      {notesBlock}
-    </Stack>
-  );
-
   const stopCardNav = (e: MouseEvent) => {
     e.stopPropagation();
   };
 
   const heartBox = (
-    <Box
+    <HStack
+      gap="2"
       flexShrink={0}
       alignSelf="flex-start"
-      lineHeight="1"
       onClick={readOnly && isMine ? stopCardNav : undefined}
     >
       {isMine ? (
         readOnly ? (
-          <SongadayHeartReadOnly heartCount={entry.heart_count} />
+          <SongadayHeartReadOnly heartCount={entry.heart_count} plain />
         ) : (
           <SongadayHeartReadOnlyBlockLink heartCount={entry.heart_count} />
         )
@@ -162,12 +127,26 @@ export default function SongadayListCard({
           onToggle={() => onHeartToggle(entry.id)}
         />
       ) : null}
-    </Box>
+    </HStack>
   );
+
+  const avatarEl = <UserAvatarBlock avatar={avatar} label={label} boxSize="40px" />;
 
   const headerRow = (
     <HStack gap="2" align="flex-start" w="full">
-      <UserAvatarBlock avatar={avatar} label={label} boxSize="40px" />
+      {!isMine ? (
+        <RouterLink
+          to={`/friend/${entry.user.id}`}
+          onClick={(e) => {
+            e.stopPropagation();
+          }}
+          style={{ flexShrink: 0, textDecoration: "none", color: "inherit" }}
+        >
+          {avatarEl}
+        </RouterLink>
+      ) : (
+        avatarEl
+      )}
       <Stack gap="0" flex="1" minW={0} align="stretch">
         <Text fontWeight="bold" fontSize={APP_TEXT_SIZES.label} lineClamp={1}>
           {label}
@@ -180,58 +159,38 @@ export default function SongadayListCard({
     </HStack>
   );
 
-  const openEditor = () => {
-    navigate(detailPath, { state: detailState });
-  };
-
-  let cardBody: ReactNode;
-
-  if (readOnly && isMine) {
-    cardBody = (
-      <Stack flex="1" display="flex" flexDirection="column" gap="2">
-        {headerRow}
-        {!mediaExpanded ? (
-          <>
-            {mineCollapsedMeta}
-            <PondButton
-              type="button"
-              variant="outline"
-              colorPalette="lilypad"
-              w="full"
-              onClick={(e) => {
-                e.stopPropagation();
-                setMediaExpanded(true);
-              }}
-            >
-              Show player
-            </PondButton>
-          </>
-        ) : (
-          <Box onClick={stopCardNav}>
-            <SongadayMediaBlock entry={entry} compact autoplayOnMount />
-          </Box>
-        )}
-        {footer ? <Box pt="2">{footer}</Box> : null}
-      </Stack>
-    );
-  } else {
-    cardBody = (
+  const cardBody =
+    readOnly && isMine ? (
       <Stack flex="1" display="flex" flexDirection="column" gap="2">
         {headerRow}
         {notesBlock}
-        <SongadayMediaBlock entry={entry} compact />
+        <Box onClick={stopCardNav}>
+          <SongadayMediaBlock entry={entry} compact />
+        </Box>
+        {footer ? <Box onClick={stopCardNav}>{footer}</Box> : null}
+      </Stack>
+    ) : (
+      <Stack flex="1" display="flex" flexDirection="column" gap="2">
+        {headerRow}
+        {notesBlock}
+        <Box onClick={footer ? stopCardNav : undefined}>
+          <SongadayMediaBlock entry={entry} compact />
+        </Box>
+        {footer ? (
+          <Box onClick={stopCardNav}>
+            {footer}
+          </Box>
+        ) : null}
       </Stack>
     );
-  }
 
   const card = (
     <Box
       bg="white"
       borderWidth="1px"
-      borderColor="border"
+      borderColor={submissionEditOpen && isMine ? "lilypad.solid" : "border"}
       borderRadius="xl"
       overflow="hidden"
-      h="auto"
       cursor={readOnly && isMine ? "pointer" : undefined}
       {...MAPPED_LIST_CARD_OUTER_PROPS}
       _hover={
@@ -248,7 +207,12 @@ export default function SongadayListCard({
 
   if (readOnly && isMine) {
     return (
-      <Box onClick={openEditor} cursor="pointer" aria-label="Open submission editor">
+      <Box
+        onClick={() => onMineCardClick?.()}
+        cursor="pointer"
+        aria-label="Toggle submission editor"
+        role="button"
+      >
         {card}
       </Box>
     );

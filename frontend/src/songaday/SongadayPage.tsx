@@ -36,7 +36,10 @@ import {
 } from "./api";
 import { parseSongPasteInput } from "./parseSongInput";
 import SongadayArchivePanel from "./SongadayArchivePanel";
+import SongadayCommentChatButton from "./SongadayCommentChatButton";
+import SongadayCommentsPanel from "./SongadayCommentsPanel";
 import SongadayListCard from "./SongadayListCard";
+import SongadaySubmissionEditBlock from "./SongadaySubmissionEditBlock";
 import type {
   ParsedSongFields,
   SongadayPromptPayload,
@@ -189,6 +192,10 @@ export default function SongadayPage() {
   );
 
   const [heartBusyId, setHeartBusyId] = useState<number | null>(null);
+  /** Which friend entry has the inline comment panel open (toggle with 💬). */
+  const [friendCommentPanelOpenId, setFriendCommentPanelOpenId] = useState<number | null>(null);
+  const [ownCommentPanelOpen, setOwnCommentPanelOpen] = useState(false);
+  const [submissionEditOpen, setSubmissionEditOpen] = useState(false);
 
   const myUserId = sessionUser?.user.id ?? 0;
   const isStaff = !!sessionUser?.user.is_staff;
@@ -296,6 +303,18 @@ export default function SongadayPage() {
     () => responses.find((r) => r.user.id === myUserId) ?? null,
     [responses, myUserId],
   );
+
+  useEffect(() => {
+    setSubmissionEditOpen(false);
+    setFriendCommentPanelOpenId(null);
+    setOwnCommentPanelOpen(false);
+  }, [selectedDate, myEntry?.id]);
+
+  useEffect(() => {
+    if ((myEntry?.comment_count ?? 0) === 0) {
+      setOwnCommentPanelOpen(false);
+    }
+  }, [myEntry?.comment_count]);
 
   /** Other users only, newest activity first. */
   const friendsResponsesOrdered = useMemo(() => {
@@ -766,15 +785,6 @@ export default function SongadayPage() {
               </HStack>
             )}
 
-            {myEntry ? (
-              <SongadayListCard
-                readOnly
-                entry={myEntry}
-                returnTo={returnTo}
-                myUserId={myUserId}
-              />
-            ) : null}
-
             {!myEntry && !isApproved ? (
               <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
                 Your account must be approved to submit.
@@ -1023,12 +1033,57 @@ export default function SongadayPage() {
               >
                 {responsesLoadError}
               </Text>
-            ) : friendsResponsesOrdered.length === 0 ? (
+            ) : !myEntry && friendsResponsesOrdered.length === 0 ? (
               <Text fontSize={APP_TEXT_SIZES.body} color="fg.muted">
                 No other responses for this day yet.
               </Text>
             ) : (
-              <SimpleGrid columns={{ base: 1, md: 2 }} gap="3">
+              <SimpleGrid
+                columns={{ base: 1, md: 2 }}
+                gap="3"
+                w="full"
+                alignItems="start"
+              >
+                {myEntry ? (
+                  <SongadayListCard
+                    key={myEntry.id}
+                    readOnly
+                    entry={myEntry}
+                    returnTo={returnTo}
+                    myUserId={myUserId}
+                    submissionEditOpen={submissionEditOpen}
+                    onMineCardClick={() => setSubmissionEditOpen((v) => !v)}
+                    footer={
+                      (myEntry.comment_count ?? 0) > 0 ? (
+                        <SongadayCommentsPanel
+                          getAccessToken={getApiAccessToken}
+                          responseId={myEntry.id}
+                          myUserId={myUserId}
+                          ownerNotes={myEntry.notes}
+                          showOwnerNotesBlock={false}
+                          maxListHeight="220px"
+                          hideComposeUntilCommentFromOther
+                          composeExpanded={ownCommentPanelOpen}
+                          middleSlot={
+                            <Box alignSelf="flex-start">
+                              <SongadayCommentChatButton
+                                commentCount={myEntry.comment_count ?? 0}
+                                hideCount
+                                expanded={ownCommentPanelOpen}
+                                onToggle={() => setOwnCommentPanelOpen((o) => !o)}
+                              />
+                            </Box>
+                          }
+                          onCommentCountChanged={(c) => {
+                            setResponses((prev) =>
+                              prev.map((r) => (r.id === myEntry.id ? { ...r, comment_count: c } : r)),
+                            );
+                          }}
+                        />
+                      ) : null
+                    }
+                  />
+                ) : null}
                 {friendsResponsesOrdered.map((entry) => (
                   <SongadayListCard
                     key={entry.id}
@@ -1037,10 +1092,52 @@ export default function SongadayPage() {
                     myUserId={myUserId}
                     heartBusy={heartBusyId === entry.id}
                     onHeartToggle={() => void onHeartToggle(entry.id)}
+                    footer={
+                      <SongadayCommentsPanel
+                        getAccessToken={getApiAccessToken}
+                        responseId={entry.id}
+                        myUserId={myUserId}
+                        ownerNotes={entry.notes}
+                        showOwnerNotesBlock={false}
+                        maxListHeight="220px"
+                        composeExpanded={friendCommentPanelOpenId === entry.id}
+                        middleSlot={
+                          <Box alignSelf="flex-start">
+                            <SongadayCommentChatButton
+                              commentCount={entry.comment_count ?? 0}
+                              hideCount
+                              expanded={friendCommentPanelOpenId === entry.id}
+                              onToggle={() =>
+                                setFriendCommentPanelOpenId((cur) =>
+                                  cur === entry.id ? null : entry.id,
+                                )
+                              }
+                            />
+                          </Box>
+                        }
+                        onCommentCountChanged={(c) => {
+                          setResponses((prev) =>
+                            prev.map((r) => (r.id === entry.id ? { ...r, comment_count: c } : r)),
+                          );
+                        }}
+                      />
+                    }
                   />
                 ))}
               </SimpleGrid>
             )}
+
+            {myEntry && submissionEditOpen ? (
+              <SongadaySubmissionEditBlock
+                entry={myEntry}
+                getAccessToken={getApiAccessToken}
+                onSaved={(row) => {
+                  setResponses((prev) => prev.map((r) => (r.id === row.id ? row : r)));
+                  void refreshSession();
+                }}
+                onClose={() => setSubmissionEditOpen(false)}
+              />
+            ) : null}
           </Stack>
         </Tabs.Content>
 

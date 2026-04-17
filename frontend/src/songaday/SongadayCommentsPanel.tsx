@@ -78,6 +78,8 @@ type Props = {
    * Ignored when `middleSlot` is absent.
    */
   composeExpanded?: boolean;
+  /** Called after a new comment is posted successfully (e.g. collapse inline compose on Song-a-Day cards). */
+  onCommentPosted?: () => void;
 };
 
 export default function SongadayCommentsPanel({
@@ -92,6 +94,7 @@ export default function SongadayCommentsPanel({
   hideComposeUntilCommentFromOther = false,
   middleSlot,
   composeExpanded = true,
+  onCommentPosted,
 }: Props) {
   const [rows, setRows] = useState<FriendCommentRow[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -106,6 +109,8 @@ export default function SongadayCommentsPanel({
   /** Parent often passes an inline handler; keep out of `load` deps to avoid refetch loops. */
   const onCommentCountChangedRef = useRef(onCommentCountChanged);
   onCommentCountChangedRef.current = onCommentCountChanged;
+  const onCommentPostedRef = useRef(onCommentPosted);
+  onCommentPostedRef.current = onCommentPosted;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -152,6 +157,7 @@ export default function SongadayCommentsPanel({
         queueMicrotask(() => onCommentCountChangedRef.current?.(next.length));
         return next;
       });
+      onCommentPostedRef.current?.();
     } catch {
       /* ignore */
     } finally {

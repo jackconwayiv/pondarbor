@@ -10,8 +10,8 @@ import {
   Text,
   Textarea,
 } from "@chakra-ui/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Navigate, Link as RouterLink } from "react-router";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Navigate, Link as RouterLink, useLocation, useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
 import { MealEditorBackdropDismiss } from "../meal/MealEditorBackdropDismiss";
@@ -103,6 +103,65 @@ function canGoToPrevDay(selected: Date): boolean {
   return startOfDay(selected) > getMinSelectableDate();
 }
 
+/** Prev / prompt / Next + Jump to today (right column). */
+function PromptDayNavChrome({
+  selectedDate,
+  onPrev,
+  onNext,
+  onJumpToToday,
+  children,
+}: {
+  selectedDate: Date;
+  onPrev: () => void;
+  onNext: () => void;
+  onJumpToToday: () => void;
+  children: ReactNode;
+}) {
+  const isViewingToday =
+    startOfDay(selectedDate).getTime() === getTodayStart().getTime();
+  return (
+    <HStack align="flex-start" gap="3" w="100%">
+      <PondButton
+        type="button"
+        size="sm"
+        variant="outline"
+        colorPalette="nautical"
+        alignSelf="center"
+        flexShrink={0}
+        disabled={!canGoToPrevDay(selectedDate)}
+        onClick={onPrev}
+      >
+        ← Prev
+      </PondButton>
+      <Box flex="1" minW="0">
+        {children}
+      </Box>
+      <Stack align="center" gap="1" flexShrink={0} alignSelf="center">
+        <PondButton
+          type="button"
+          size="sm"
+          variant="outline"
+          colorPalette="nautical"
+          disabled={!canGoToNextDay(selectedDate)}
+          onClick={onNext}
+        >
+          Next →
+        </PondButton>
+        <PondButton
+          type="button"
+          size="sm"
+          variant="ghost"
+          colorPalette="nautical"
+          disabled={isViewingToday}
+          onClick={onJumpToToday}
+        >
+          Jump to today
+        </PondButton>
+      </Stack>
+    </HStack>
+  );
+}
+
 const emptyFields = (): ParsedSongFields & { notes: string } => ({
   artist: "",
   title: "",
@@ -145,6 +204,11 @@ function hasMinimumSongFields(
 type SongadayMainTab = "prompt" | "archive" | "bulk";
 
 export default function SongadayPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const songadayEntryDateFromNav = (
+    location.state as { songadayEntryDate?: string } | null
+  )?.songadayEntryDate;
   const {
     isAuthenticated,
     isLoading,
@@ -288,13 +352,11 @@ export default function SongadayPage() {
     setSubmitError(null);
   }, [selectedDate]);
 
+  /** Only clamp future dates; allow past dates (e.g. jump from archive). */
   useEffect(() => {
     const s = startOfDay(selectedDate);
-    const min = getMinSelectableDate();
     const max = getTodayStart();
-    if (s.getTime() < min.getTime()) {
-      setSelectedDate(min);
-    } else if (s.getTime() > max.getTime()) {
+    if (s.getTime() > max.getTime()) {
       setSelectedDate(max);
     }
   }, [selectedDate]);
@@ -482,6 +544,27 @@ export default function SongadayPage() {
     setSelectedDate(startOfDay(d));
   }, [selectedDate]);
 
+  const goToToday = useCallback(() => {
+    setSelectedDate(getTodayStart());
+  }, []);
+
+  useEffect(() => {
+    const raw = songadayEntryDateFromNav;
+    if (!raw || typeof raw !== "string") return;
+    const parts = raw.split("-");
+    if (parts.length !== 3) return;
+    const y = Number(parts[0]);
+    const m = Number(parts[1]);
+    const d = Number(parts[2]);
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d))
+      return;
+    const dt = startOfDay(new Date(y, m - 1, d));
+    const max = getTodayStart();
+    setSelectedDate(dt.getTime() > max.getTime() ? max : dt);
+    setTab("prompt");
+    navigate("/songaday", { replace: true, state: {} });
+  }, [songadayEntryDateFromNav, navigate]);
+
   const onDismissNewSubmissionCard = useCallback(() => {
     setShowResponseDetails(false);
     setSubmitError(null);
@@ -606,25 +689,13 @@ export default function SongadayPage() {
         <Tabs.Content value="prompt" p={{ base: "2", md: "2" }}>
           <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP}>
             {promptLoading ? (
-              <HStack align="flex-start" gap="3" w="100%">
-                <PondButton
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  colorPalette="nautical"
-                  alignSelf="center"
-                  flexShrink={0}
-                  disabled={!canGoToPrevDay(selectedDate)}
-                  onClick={goPrev}
-                >
-                  ← Prev
-                </PondButton>
-                <Box
-                  flex="1"
-                  minW="0"
-                  {...PANEL_ENTRY_CARD_PROPS}
-                  {...PROMPT_CARD_TEXT_ALIGN}
-                >
+              <PromptDayNavChrome
+                selectedDate={selectedDate}
+                onPrev={goPrev}
+                onNext={goNext}
+                onJumpToToday={goToToday}
+              >
+                <Box {...PANEL_ENTRY_CARD_PROPS} {...PROMPT_CARD_TEXT_ALIGN}>
                   <HStack justifyContent="center" gap="2">
                     <Spinner size="sm" colorPalette="lilypad" />
                     <Text fontSize={APP_TEXT_SIZES.body} fontWeight="medium">
@@ -632,39 +703,15 @@ export default function SongadayPage() {
                     </Text>
                   </HStack>
                 </Box>
-                <PondButton
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  colorPalette="nautical"
-                  alignSelf="center"
-                  flexShrink={0}
-                  disabled={!canGoToNextDay(selectedDate)}
-                  onClick={goNext}
-                >
-                  Next →
-                </PondButton>
-              </HStack>
+              </PromptDayNavChrome>
             ) : promptLoadError ? (
-              <HStack align="flex-start" gap="3" w="100%">
-                <PondButton
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  colorPalette="nautical"
-                  alignSelf="center"
-                  flexShrink={0}
-                  disabled={!canGoToPrevDay(selectedDate)}
-                  onClick={goPrev}
-                >
-                  ← Prev
-                </PondButton>
-                <Box
-                  flex="1"
-                  minW="0"
-                  {...PANEL_ENTRY_CARD_PROPS}
-                  {...PROMPT_CARD_TEXT_ALIGN}
-                >
+              <PromptDayNavChrome
+                selectedDate={selectedDate}
+                onPrev={goPrev}
+                onNext={goNext}
+                onJumpToToday={goToToday}
+              >
+                <Box {...PANEL_ENTRY_CARD_PROPS} {...PROMPT_CARD_TEXT_ALIGN}>
                   <Text
                     fontSize={APP_TEXT_SIZES.helper}
                     color="nautical.solid"
@@ -674,39 +721,15 @@ export default function SongadayPage() {
                     {promptLoadError}
                   </Text>
                 </Box>
-                <PondButton
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  colorPalette="nautical"
-                  alignSelf="center"
-                  flexShrink={0}
-                  disabled={!canGoToNextDay(selectedDate)}
-                  onClick={goNext}
-                >
-                  Next →
-                </PondButton>
-              </HStack>
+              </PromptDayNavChrome>
             ) : !hasPrompt ? (
-              <HStack align="flex-start" gap="3" w="100%">
-                <PondButton
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  colorPalette="nautical"
-                  alignSelf="center"
-                  flexShrink={0}
-                  disabled={!canGoToPrevDay(selectedDate)}
-                  onClick={goPrev}
-                >
-                  ← Prev
-                </PondButton>
-                <Box
-                  flex="1"
-                  minW="0"
-                  {...NO_PROMPT_CARD_PROPS}
-                  {...PROMPT_CARD_TEXT_ALIGN}
-                >
+              <PromptDayNavChrome
+                selectedDate={selectedDate}
+                onPrev={goPrev}
+                onNext={goNext}
+                onJumpToToday={goToToday}
+              >
+                <Box {...NO_PROMPT_CARD_PROPS} {...PROMPT_CARD_TEXT_ALIGN}>
                   <Text
                     fontSize={APP_TEXT_SIZES.label}
                     fontWeight="normal"
@@ -728,39 +751,15 @@ export default function SongadayPage() {
                     </RouterLink>
                   </Text>
                 </Box>
-                <PondButton
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  colorPalette="nautical"
-                  alignSelf="center"
-                  flexShrink={0}
-                  disabled={!canGoToNextDay(selectedDate)}
-                  onClick={goNext}
-                >
-                  Next →
-                </PondButton>
-              </HStack>
+              </PromptDayNavChrome>
             ) : (
-              <HStack align="flex-start" gap="3" w="100%">
-                <PondButton
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  colorPalette="nautical"
-                  alignSelf="center"
-                  flexShrink={0}
-                  disabled={!canGoToPrevDay(selectedDate)}
-                  onClick={goPrev}
-                >
-                  ← Prev
-                </PondButton>
-                <Box
-                  flex="1"
-                  minW="0"
-                  {...PANEL_ENTRY_CARD_PROPS}
-                  {...PROMPT_CARD_TEXT_ALIGN}
-                >
+              <PromptDayNavChrome
+                selectedDate={selectedDate}
+                onPrev={goPrev}
+                onNext={goNext}
+                onJumpToToday={goToToday}
+              >
+                <Box {...PANEL_ENTRY_CARD_PROPS} {...PROMPT_CARD_TEXT_ALIGN}>
                   <Text
                     fontSize={APP_TEXT_SIZES.label}
                     fontWeight="normal"
@@ -770,19 +769,7 @@ export default function SongadayPage() {
                   </Text>
                   <Text {...PROMPT_BODY_STYLE}>{promptPayload?.prompt}</Text>
                 </Box>
-                <PondButton
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  colorPalette="nautical"
-                  alignSelf="center"
-                  flexShrink={0}
-                  disabled={!canGoToNextDay(selectedDate)}
-                  onClick={goNext}
-                >
-                  Next →
-                </PondButton>
-              </HStack>
+              </PromptDayNavChrome>
             )}
 
             {!myEntry && !isApproved ? (
@@ -1079,6 +1066,7 @@ export default function SongadayPage() {
                               prev.map((r) => (r.id === myEntry.id ? { ...r, comment_count: c } : r)),
                             );
                           }}
+                          onCommentPosted={() => setOwnCommentPanelOpen(false)}
                         />
                       ) : null
                     }
@@ -1120,6 +1108,7 @@ export default function SongadayPage() {
                             prev.map((r) => (r.id === entry.id ? { ...r, comment_count: c } : r)),
                           );
                         }}
+                        onCommentPosted={() => setFriendCommentPanelOpenId(null)}
                       />
                     }
                   />
@@ -1144,7 +1133,19 @@ export default function SongadayPage() {
         <Tabs.Content value="archive" p={{ base: "2", md: "2" }}>
           <SongadayArchivePanel
             variant="embedded"
-            entryDetailReturnTo="/songaday"
+            onSelectArchiveEntryDate={(iso) => {
+              const parts = iso.split("-");
+              if (parts.length !== 3) return;
+              const y = Number(parts[0]);
+              const m = Number(parts[1]);
+              const d = Number(parts[2]);
+              if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d))
+                return;
+              const dt = startOfDay(new Date(y, m - 1, d));
+              const max = getTodayStart();
+              setSelectedDate(dt.getTime() > max.getTime() ? max : dt);
+              setTab("prompt");
+            }}
           />
         </Tabs.Content>
 

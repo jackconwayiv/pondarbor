@@ -19,6 +19,7 @@ const SLUG_TO_EMOJI: Record<string, string> = {
   i_can_smell_it_from_here: "\u{1F963}",
   month_of_music: "\u{1F3B6}",
   music_lover: "\u{1F493}",
+  musically_multiloquent: "\u{1F4AC}",
 };
 
 const DEFAULT_EMOJI = "🏆";

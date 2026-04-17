@@ -358,10 +358,7 @@ export default function FriendsPage() {
               </Box>
             ) : null}
 
-            <ApprovedFriendsListBlock
-              friends={approved}
-              showCountInTitle
-            />
+            <ApprovedFriendsListBlock friends={approved} showCountInTitle />
           </Stack>
         </Box>
       </Box>

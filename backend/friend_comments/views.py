@@ -5,6 +5,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
+from achievements.services import evaluate_songaday_musically_multiloquent_for_user
 from friend_comments.models import FriendComment
 from friend_comments.permissions import TARGET_SONGADAY_SONGRESPONSE, resolve_target
 from friend_comments.serializers import FriendCommentReadSerializer, FriendCommentWriteSerializer
@@ -68,6 +69,7 @@ def comments_collection(request):
         author=viewer,
         body=body,
     )
+    evaluate_songaday_musically_multiloquent_for_user(viewer.id)
     row = FriendComment.objects.select_related("author", "author__profile").get(pk=row.pk)
     return Response(FriendCommentReadSerializer(row).data, status=status.HTTP_201_CREATED)
 

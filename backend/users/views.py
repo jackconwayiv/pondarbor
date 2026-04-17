@@ -144,7 +144,9 @@ def upcoming_birthdays(request):
         day = today + timedelta(days=offset)
         window_offsets_by_month_day[(day.month, day.day)] = offset
 
+    friend_ids = friend_ids_for_user(user=request.user)
     profiles = Profile.objects.select_related("user").filter(
+        user_id__in=friend_ids,
         user__account_status=UserModel.AccountStatus.APPROVED,
         user__deleted_at__isnull=True,
         birth_date__isnull=False,

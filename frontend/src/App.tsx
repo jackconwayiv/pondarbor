@@ -243,7 +243,7 @@ function App() {
   ]);
 
   useEffect(() => {
-    if (!isAuthenticated || !sessionUser?.user?.is_approved) return;
+    if (!isAuthenticated || !sessionUser) return;
     void refreshSession().catch(() => {
       /* ignore initial refresh failure */
     });
@@ -256,7 +256,7 @@ function App() {
     return () => {
       window.clearInterval(tid);
     };
-  }, [isAuthenticated, sessionUser?.user?.is_approved, refreshSession]);
+  }, [isAuthenticated, sessionUser?.user?.id, refreshSession]);
 
   useEffect(() => {
     let isCancelled = false;

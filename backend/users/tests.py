@@ -357,13 +357,21 @@ class UsersApiTests(TestCase):
         response = self.client.get("/api/v1/users/upcoming-birthdays/")
         self.assertEqual(response.status_code, 403)
 
-    def test_upcoming_birthdays_returns_only_approved_users_in_window(self):
+    def test_upcoming_birthdays_returns_only_friends_in_window(self):
         caller = User.objects.create_user(email="caller@example.com", password="secret12345")
         caller.account_status = User.AccountStatus.APPROVED
         caller.save()
         self.client.force_login(caller)
 
         today = timezone.localdate()
+
+        def accept_pair(a, b):
+            FriendRequest.objects.update_or_create(
+                requester=a, requested=b, defaults={"is_accepted": True}
+            )
+            FriendRequest.objects.update_or_create(
+                requester=b, requested=a, defaults={"is_accepted": True}
+            )
 
         in_future = User.objects.create_user(
             email="future@example.com", password="secret12345"
@@ -373,6 +381,7 @@ class UsersApiTests(TestCase):
         in_future.profile.display_name = "FutureNick"
         in_future.profile.birth_date = today + timedelta(days=7)
         in_future.profile.save()
+        accept_pair(caller, in_future)
 
         in_past = User.objects.create_user(email="past@example.com", password="secret12345")
         in_past.account_status = User.AccountStatus.APPROVED
@@ -380,6 +389,16 @@ class UsersApiTests(TestCase):
         in_past.profile.display_name = "PastNick"
         in_past.profile.birth_date = today - timedelta(days=2)
         in_past.profile.save()
+        accept_pair(caller, in_past)
+
+        not_friend_in_window = User.objects.create_user(
+            email="strangerbday@example.com", password="secret12345"
+        )
+        not_friend_in_window.account_status = User.AccountStatus.APPROVED
+        not_friend_in_window.save()
+        not_friend_in_window.profile.display_name = "StrangerBirthday"
+        not_friend_in_window.profile.birth_date = today + timedelta(days=1)
+        not_friend_in_window.profile.save()
 
         out_future = User.objects.create_user(
             email="outfuture@example.com", password="secret12345"
@@ -389,6 +408,7 @@ class UsersApiTests(TestCase):
         out_future.profile.display_name = "OutFutureNick"
         out_future.profile.birth_date = today + timedelta(days=8)
         out_future.profile.save()
+        accept_pair(caller, out_future)
 
         out_past = User.objects.create_user(
             email="outpast@example.com", password="secret12345"
@@ -398,6 +418,7 @@ class UsersApiTests(TestCase):
         out_past.profile.display_name = "OutPastNick"
         out_past.profile.birth_date = today - timedelta(days=3)
         out_past.profile.save()
+        accept_pair(caller, out_past)
 
         pending_in_range = User.objects.create_user(
             email="pendingrange@example.com", password="secret12345"
@@ -414,6 +435,7 @@ class UsersApiTests(TestCase):
         no_birth_date.profile.display_name = "NoBirthDateNick"
         no_birth_date.profile.birth_date = None
         no_birth_date.profile.save()
+        accept_pair(caller, no_birth_date)
 
         response = self.client.get("/api/v1/users/upcoming-birthdays/")
         self.assertEqual(response.status_code, 200)

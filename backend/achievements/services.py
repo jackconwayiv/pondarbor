@@ -92,6 +92,7 @@ SLUG_SMORGASBORD = "smorgasbord"
 SLUG_I_CAN_SMELL_IT_FROM_HERE = "i_can_smell_it_from_here"
 SLUG_MONTH_OF_MUSIC = "month_of_music"
 SLUG_MUSIC_LOVER = "music_lover"
+SLUG_MUSICALLY_MULTILOQUENT = "musically_multiloquent"
 
 ARCHIVIST_MIN_QUOTES = 10
 TOWN_CRIER_MIN_PUBLIC = 10
@@ -102,6 +103,7 @@ TASTY_PLANS_MIN_FILLED_SLOTS = 14
 SMORGASBORD_MIN_MEALS = 20
 MONTH_OF_MUSIC_MIN_RESPONSES = 30
 MUSIC_LOVER_MIN_HEARTS = 10
+MUSICALLY_MULTILOQUENT_MIN_DISTINCT_FRIEND_POSTS = 10
 
 
 def _filled_meal_instance_slot_count(instance_id: int) -> int:
@@ -257,6 +259,41 @@ def evaluate_songaday_music_lover_for_user(user_id: int) -> None:
         _try_unlock(user_id, SLUG_MUSIC_LOVER)
 
 
+def evaluate_songaday_musically_multiloquent_for_user(user_id: int) -> None:
+    """
+    Unlock when the user has commented on >= N distinct Song-a-Day posts owned by friends
+    (not own posts). Multiple comments on the same post count once.
+    """
+    from django.contrib.contenttypes.models import ContentType
+
+    from friend_comments.models import FriendComment
+    from friends.services import friend_ids_for_user
+    from songaday.models import SongResponse
+
+    user = User.objects.filter(pk=user_id).first()
+    if user is None:
+        return
+    friends = friend_ids_for_user(user=user)
+    if not friends:
+        return
+    ct = ContentType.objects.get_for_model(SongResponse)
+    qualifying_response_ids = SongResponse.objects.filter(user_id__in=friends).exclude(
+        user_id=user_id
+    ).values_list("pk", flat=True)
+    n = (
+        FriendComment.objects.filter(
+            author_id=user_id,
+            content_type=ct,
+            object_id__in=qualifying_response_ids,
+        )
+        .values("object_id")
+        .distinct()
+        .count()
+    )
+    if n >= MUSICALLY_MULTILOQUENT_MIN_DISTINCT_FRIEND_POSTS:
+        _try_unlock(user_id, SLUG_MUSICALLY_MULTILOQUENT)
+
+
 def _count_ended_sessions_for_user(user_id: int) -> int:
     from whatif.models import WhatIfSession
 
@@ -346,6 +383,7 @@ def backfill_all_achievements() -> None:
         evaluate_meal_maestro_smorgasbord_for_user(uid)
         evaluate_songaday_month_of_music_for_user(uid)
         evaluate_songaday_music_lover_for_user(uid)
+        evaluate_songaday_musically_multiloquent_for_user(uid)
 
     for row in ClickerGameSave.objects.iterator():
         evaluate_pondclicker_achievements_for_user(row.user_id, row.state or {})

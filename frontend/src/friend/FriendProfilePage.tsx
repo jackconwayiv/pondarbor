@@ -8,7 +8,7 @@ import {
   Tabs,
   Text,
 } from "@chakra-ui/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useParams } from "react-router";
 import { AchievementSummaryCard } from "../achievements/AchievementSummaryCard";
 import {
@@ -92,6 +92,15 @@ export default function FriendProfilePage() {
   const [myApprovedFriendIds, setMyApprovedFriendIds] = useState<Set<number>>(
     () => new Set(),
   );
+  const [myIncomingPendingIds, setMyIncomingPendingIds] = useState<Set<number>>(
+    () => new Set(),
+  );
+  const [myOutgoingPendingIds, setMyOutgoingPendingIds] = useState<Set<number>>(
+    () => new Set(),
+  );
+  const [acceptFriendBusyUserId, setAcceptFriendBusyUserId] = useState<
+    number | null
+  >(null);
 
   const lookup = useMemo(() => {
     if (userId !== undefined && userId !== "") {
@@ -127,27 +136,29 @@ export default function FriendProfilePage() {
   const unfriendBoxRef = useRef<HTMLDivElement | null>(null);
   const ownUserId = sessionUser?.user?.id ?? null;
 
+  const syncViewerFriendsListFromApi = useCallback(async () => {
+    try {
+      const t = await getApiAccessToken();
+      const d = await fetchFriendsList(t);
+      setMyApprovedFriendIds(new Set(d.approved_friends.map((f) => f.id)));
+      setMyIncomingPendingIds(new Set(d.incoming_pending.map((f) => f.id)));
+      setMyOutgoingPendingIds(new Set(d.outgoing_pending.map((f) => f.id)));
+    } catch {
+      setMyApprovedFriendIds(new Set());
+      setMyIncomingPendingIds(new Set());
+      setMyOutgoingPendingIds(new Set());
+    }
+  }, [getApiAccessToken]);
+
   useEffect(() => {
     if (!sessionUser?.user.is_approved) {
       setMyApprovedFriendIds(new Set());
+      setMyIncomingPendingIds(new Set());
+      setMyOutgoingPendingIds(new Set());
       return;
     }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const t = await getApiAccessToken();
-        const d = await fetchFriendsList(t);
-        if (!cancelled) {
-          setMyApprovedFriendIds(new Set(d.approved_friends.map((f) => f.id)));
-        }
-      } catch {
-        if (!cancelled) setMyApprovedFriendIds(new Set());
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [sessionUser?.user.is_approved, getApiAccessToken]);
+    void syncViewerFriendsListFromApi();
+  }, [sessionUser?.user.is_approved, syncViewerFriendsListFromApi]);
 
   useEffect(() => {
     if (lookup.kind === "invalid") {
@@ -811,12 +822,32 @@ export default function FriendProfilePage() {
                       showRequestFriendActions={summary?.friendship_status === "friends"}
                       viewerId={ownUserId ?? undefined}
                       viewerApprovedFriendIds={myApprovedFriendIds}
+                      viewerIncomingPendingIds={myIncomingPendingIds}
+                      viewerOutgoingPendingIds={myOutgoingPendingIds}
+                      acceptFriendBusyUserId={acceptFriendBusyUserId}
                       onRequestFriend={async (uid) => {
                         const t = await getApiAccessToken();
                         await requestFriendByUserId(t, uid);
                         setActionSuccess("Friend request sent.");
-                        const d = await fetchFriendsList(t);
-                        setMyApprovedFriendIds(new Set(d.approved_friends.map((f) => f.id)));
+                        await syncViewerFriendsListFromApi();
+                      }}
+                      onAcceptFriendRequest={async (uid) => {
+                        setAcceptFriendBusyUserId(uid);
+                        setActionError(null);
+                        try {
+                          const t = await getApiAccessToken();
+                          await acceptFriend(t, uid);
+                          setActionSuccess("Friend request accepted.");
+                          await syncViewerFriendsListFromApi();
+                        } catch (err: unknown) {
+                          setActionError(
+                            err instanceof Error
+                              ? err.message
+                              : "Could not accept request.",
+                          );
+                        } finally {
+                          setAcceptFriendBusyUserId(null);
+                        }
                       }}
                     />
                   </Tabs.Content>

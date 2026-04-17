@@ -1,11 +1,12 @@
 import { Stack, Text } from "@chakra-ui/react";
-import { Navigate } from "react-router";
+import { Navigate, useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
 import SongadayArchivePanel from "./SongadayArchivePanel";
 
 export default function SongadayArchivePage() {
   const { isAuthenticated, isLoading, sessionUser } = useAppSession();
+  const navigate = useNavigate();
 
   if (!isAuthenticated) {
     return <Navigate to="/" replace />;
@@ -19,6 +20,11 @@ export default function SongadayArchivePage() {
   }
 
   return (
-    <SongadayArchivePanel variant="embedded" entryDetailReturnTo="/songaday/archive" />
+    <SongadayArchivePanel
+      variant="page"
+      onSelectArchiveEntryDate={(iso) => {
+        navigate("/songaday", { state: { songadayEntryDate: iso } });
+      }}
+    />
   );
 }

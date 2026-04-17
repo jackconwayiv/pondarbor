@@ -1,8 +1,12 @@
-import { KNOWN_UPGRADE_IDS, clampOwnedStacksForUpgrade, getUpgradeDef } from "./catalog";
+import {
+  KNOWN_UPGRADE_IDS,
+  clampOwnedStacksForUpgrade,
+  getUpgradeDef,
+} from "./catalog";
 
 export const SCHEMA_VERSION = 7;
 
-export const CATALOG_CONTENT_VERSION = 5;
+export const CATALOG_CONTENT_VERSION = 19;
 
 export type ClickerGameStateV1 = {
   energy: number;
@@ -32,9 +36,15 @@ export type ClickerStateResponse = {
   updated_at: string | null;
   last_played_at: string | null;
   server_time: string;
+  /** Present on POST /clicker/state/ when the server granted new pondclicker tier badges. */
+  pondclicker_badges_unlocked?: boolean;
 };
 
-function numField(raw: Record<string, unknown>, key: string, fallback: number): number {
+function numField(
+  raw: Record<string, unknown>,
+  key: string,
+  fallback: number,
+): number {
   const v = raw[key];
   if (typeof v !== "number" || !Number.isFinite(v)) return fallback;
   return Math.max(0, v);
@@ -55,7 +65,10 @@ export function createDefaultClickerState(): ClickerGameStateV1 {
 }
 
 /** Reconcile saved order with current owned set; append missing owned ids sorted lexicographically. */
-export function normalizeOwnedUpgradeOrder(raw: unknown, owned: Record<string, number>): string[] {
+export function normalizeOwnedUpgradeOrder(
+  raw: unknown,
+  owned: Record<string, number>,
+): string[] {
   const ownedKeys = new Set(
     Object.entries(owned)
       .filter(([, lv]) => typeof lv === "number" && lv > 0)
@@ -72,7 +85,9 @@ export function normalizeOwnedUpgradeOrder(raw: unknown, owned: Record<string, n
       seen.add(item);
     }
   }
-  const missing = [...ownedKeys].filter((k) => !seen.has(k)).sort((a, b) => a.localeCompare(b));
+  const missing = [...ownedKeys]
+    .filter((k) => !seen.has(k))
+    .sort((a, b) => a.localeCompare(b));
   out.push(...missing);
   return out;
 }
@@ -85,7 +100,11 @@ export function normalizeClickerState(raw: unknown): ClickerGameStateV1 {
   const o = raw as Record<string, unknown>;
   const energy = numField(o, "energy", 0);
   const owned_upgrades: Record<string, number> = {};
-  if (o.owned_upgrades && typeof o.owned_upgrades === "object" && o.owned_upgrades !== null) {
+  if (
+    o.owned_upgrades &&
+    typeof o.owned_upgrades === "object" &&
+    o.owned_upgrades !== null
+  ) {
     const ou = o.owned_upgrades as Record<string, unknown>;
     for (const [k, v] of Object.entries(ou)) {
       if (!KNOWN_UPGRADE_IDS.has(k)) continue;
@@ -98,7 +117,11 @@ export function normalizeClickerState(raw: unknown): ClickerGameStateV1 {
     }
   }
   const revealed_upgrades: Record<string, boolean> = {};
-  if (o.revealed_upgrades && typeof o.revealed_upgrades === "object" && o.revealed_upgrades !== null) {
+  if (
+    o.revealed_upgrades &&
+    typeof o.revealed_upgrades === "object" &&
+    o.revealed_upgrades !== null
+  ) {
     const rv = o.revealed_upgrades as Record<string, unknown>;
     for (const [k, v] of Object.entries(rv)) {
       if (!KNOWN_UPGRADE_IDS.has(k)) continue;
@@ -108,7 +131,10 @@ export function normalizeClickerState(raw: unknown): ClickerGameStateV1 {
     }
   }
 
-  const owned_upgrade_order = normalizeOwnedUpgradeOrder(o.owned_upgrade_order, owned_upgrades);
+  const owned_upgrade_order = normalizeOwnedUpgradeOrder(
+    o.owned_upgrade_order,
+    owned_upgrades,
+  );
   const unlocked_mechanics = Array.isArray(o.unlocked_mechanics)
     ? o.unlocked_mechanics.filter((x): x is string => typeof x === "string")
     : [];
@@ -125,14 +151,22 @@ export function normalizeClickerState(raw: unknown): ClickerGameStateV1 {
       const b = item as Record<string, unknown>;
       const id = b.id;
       const expires_at_ms = b.expires_at_ms;
-      if (typeof id === "string" && typeof expires_at_ms === "number" && Number.isFinite(expires_at_ms)) {
+      if (
+        typeof id === "string" &&
+        typeof expires_at_ms === "number" &&
+        Number.isFinite(expires_at_ms)
+      ) {
         active_buffs.push({ id, expires_at_ms });
       }
     }
   }
 
   let statistics = { total_clicks: 0, total_energy_earned: 0 };
-  if (o.statistics && typeof o.statistics === "object" && o.statistics !== null) {
+  if (
+    o.statistics &&
+    typeof o.statistics === "object" &&
+    o.statistics !== null
+  ) {
     const s = o.statistics as Record<string, unknown>;
     statistics = {
       total_clicks: numField(s, "total_clicks", 0),
@@ -152,13 +186,17 @@ export function normalizeClickerState(raw: unknown): ClickerGameStateV1 {
   };
 }
 
+/**
+ * Loads server JSON into `ClickerGameStateV1`. Older `schema_version` rows are still
+ * normalized field-by-field (unknown upgrade keys stripped, stacks clamped); we do not
+ * wipe progress solely because the stored schema integer differs from `SCHEMA_VERSION`.
+ * Next POST will persist the current schema version.
+ */
 export function normalizeClickerStateForSchema(
   raw: unknown,
   schemaVersion: number | undefined,
 ): ClickerGameStateV1 {
-  if (schemaVersion !== SCHEMA_VERSION) {
-    return createDefaultClickerState();
-  }
+  void schemaVersion;
   const normalized = normalizeClickerState(raw);
   if (!Number.isFinite(normalized.energy)) {
     normalized.energy = 0;
@@ -172,7 +210,9 @@ function apiBase(): string {
 
 function authHeaders(accessToken: string | null): Record<string, string> {
   if (!accessToken) {
-    throw new Error("Missing API access token. Refresh your session and try again.");
+    throw new Error(
+      "Missing API access token. Refresh your session and try again.",
+    );
   }
   return {
     Authorization: `Bearer ${accessToken}`,
@@ -181,7 +221,11 @@ function authHeaders(accessToken: string | null): Record<string, string> {
 }
 
 /** Pull a short message from DRF-style JSON errors (`detail`, etc.). */
-function formatClickerApiError(status: number, bodyText: string, verb: "load" | "save"): string {
+function formatClickerApiError(
+  status: number,
+  bodyText: string,
+  verb: "load" | "save",
+): string {
   const trimmed = bodyText.trim();
   let detail: string | undefined;
   if (trimmed.startsWith("{")) {
@@ -189,7 +233,8 @@ function formatClickerApiError(status: number, bodyText: string, verb: "load" | 
       const parsed = JSON.parse(trimmed) as Record<string, unknown>;
       const d = parsed.detail;
       if (typeof d === "string") detail = d;
-      else if (Array.isArray(d) && d.every((x) => typeof x === "string")) detail = d.join(" ");
+      else if (Array.isArray(d) && d.every((x) => typeof x === "string"))
+        detail = d.join(" ");
     } catch {
       // keep raw body below
     }
@@ -203,7 +248,9 @@ function formatClickerApiError(status: number, bodyText: string, verb: "load" | 
   return `Failed to ${verb} clicker state (${status})`;
 }
 
-export async function fetchClickerState(accessToken: string | null): Promise<ClickerStateResponse> {
+export async function fetchClickerState(
+  accessToken: string | null,
+): Promise<ClickerStateResponse> {
   const response = await fetch(`${apiBase()}/api/v1/clicker/state/`, {
     method: "GET",
     headers: authHeaders(accessToken),

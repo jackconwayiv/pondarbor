@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import { useAppSession } from "../auth/AppSessionContext";
+import { emojiForAchievementSlug } from "./achievementIcon";
 import { achievementToaster } from "./achievementToaster";
 
 /**
@@ -39,7 +40,7 @@ export function AchievementUnlockListener() {
           achievementToaster.create({
             type: "success",
             closable: true,
-            title: `Achievement Unlocked: ${a.title}`,
+            title: `${emojiForAchievementSlug(a.slug)} Unlocked: ${a.title}`,
             description: a.description,
           });
         }

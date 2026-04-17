@@ -1,5 +1,4 @@
 import { useAuth0 } from "@auth0/auth0-react";
-import { keyframes } from "@emotion/react";
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -19,6 +18,11 @@ import {
 } from "./auth/auth0LoginParams";
 import { fetchClosetActionSummary } from "./closet/api";
 import { fetchFriendsList } from "./friends/api";
+import {
+  LILYPAD_FLOAT_KEYFRAMES,
+  LILYPAD_HOVER_HINT_VISIBLE,
+  LILYPAD_WEDGE_CLIP_PATH,
+} from "./lilypadHomeConstants";
 import PondButton from "./PondButton";
 import { fullBleedStackProps } from "./responsive";
 import { APP_TEXT_SIZES } from "./theme/typography";
@@ -28,19 +32,6 @@ import {
   type StaffPendingSummary,
   type UpcomingBirthday,
 } from "./users/api";
-
-const LILYPAD_WEDGE_CLIP_PATH =
-  "polygon(0% 0%, 43% 0%, 46% 12%, 48% 24%, 50% 36%, 52% 24%, 54% 12%, 57% 0%, 100% 0%, 100% 100%, 0% 100%)";
-
-const LILYPAD_HOVER_HINT_VISIBLE = {
-  opacity: 1,
-  maxHeight: "4.5rem",
-} as const;
-
-const LILYPAD_FLOAT_KEYFRAMES = keyframes`
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-6px); }
-`;
 
 const HOME_LILYPAD_TILES = [
   {
@@ -68,8 +59,11 @@ const HOME_LILYPAD_TILES = [
     label: "Meal Maestro",
     hoverText: "manage your meal plans and recipes",
   },
-  // { to: "/clicker", label: "PondClicker", hoverText: "idle pond-growing game" },
-  { to: "/whatif", label: "WhatIf", hoverText: "multiplayer party game" },
+  {
+    to: "/games",
+    label: "Games",
+    hoverText: "PondClicker, WhatIf, and more",
+  },
 ] as const;
 
 const HOME_PURPOSE_BLURB =
@@ -511,7 +505,8 @@ function App() {
           w="100%"
         >
           {HOME_LILYPAD_TILES.map((tile, index) => {
-            const tileInteractive = isAuthenticated || tile.to === "/whatif";
+            const tileInteractive =
+              isAuthenticated || tile.to === "/games";
             const tileWrapProps = {
               flex: "0 0 auto",
               w: { base: "10.25rem", sm: "11rem", md: "12rem" },

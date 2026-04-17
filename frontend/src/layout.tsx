@@ -56,6 +56,16 @@ const navBarLinkProps = {
   },
 } as const;
 
+function isGamesNavTreeActive(pathname: string): boolean {
+  return (
+    pathname === "/games" ||
+    pathname === "/clicker" ||
+    pathname.startsWith("/clicker/") ||
+    pathname === "/whatif" ||
+    pathname.startsWith("/whatif/")
+  );
+}
+
 function isDesktopNavRouteActive(pathname: string, to: string): boolean {
   switch (to) {
     case "/quotes":
@@ -74,6 +84,8 @@ function isDesktopNavRouteActive(pathname: string, to: string): boolean {
       return pathname === "/clicker" || pathname.startsWith("/clicker/");
     case "/whatif":
       return pathname === "/whatif" || pathname.startsWith("/whatif/");
+    case "/games":
+      return isGamesNavTreeActive(pathname);
     case "/about":
       return pathname === "/about";
     default:
@@ -101,7 +113,7 @@ export default function AppLayout() {
 
   // `auth0User` is cleared when the Auth0 client logs out; rely on it so nav stays in sync.
   const showProfileNav = isAuthenticated && !!auth0User;
-  const desktopNavLinks = useMemo(
+  const desktopNavEntries = useMemo(
     () =>
       showProfileNav
         ? [
@@ -110,12 +122,11 @@ export default function AppLayout() {
             { to: "/closet", label: "Closet" },
             { to: "/quotes", label: "Quotes" },
             { to: "/meal", label: "Meal Maestro" },
-            // { to: "/clicker", label: "PondClicker" },
-            { to: "/whatif", label: "WhatIf" },
+            { to: "/games", label: "Games" },
             { to: "/about", label: "About" },
           ]
         : [
-            { to: "/whatif", label: "WhatIf" },
+            { to: "/games", label: "Games" },
             { to: "/about", label: "About" },
           ],
     [showProfileNav],
@@ -125,6 +136,7 @@ export default function AppLayout() {
     location.pathname === "/clicker" ||
     location.pathname.startsWith("/clicker/");
   const isHomeIndex = location.pathname === "/";
+  const isGamesHubIndex = location.pathname === "/games";
 
   useEffect(() => {
     const { pathname } = location;
@@ -327,21 +339,13 @@ export default function AppLayout() {
                         >
                           Meal Maestro
                         </Menu.Item>
-                        {/* <Menu.Item
-                          value="clicker"
-                          onSelect={() => {
-                            navigate("/clicker");
-                          }}
-                        >
-                          Clicker
-                        </Menu.Item> */}
                         <Menu.Item
-                          value="whatif"
+                          value="games-hub"
                           onSelect={() => {
-                            navigate("/whatif");
+                            navigate("/games");
                           }}
                         >
-                          WhatIf
+                          Games
                         </Menu.Item>
                       </>
                     ) : (
@@ -369,12 +373,12 @@ export default function AppLayout() {
                           Sign Up
                         </Menu.Item>
                         <Menu.Item
-                          value="whatif"
+                          value="games-hub"
                           onSelect={() => {
-                            navigate("/whatif");
+                            navigate("/games");
                           }}
                         >
-                          WhatIf
+                          Games
                         </Menu.Item>
                       </>
                     )}
@@ -461,14 +465,14 @@ export default function AppLayout() {
                 <Link to="/">PondArbor</Link>
               </ChakraLink>
 
-              {desktopNavLinks.map((link) => {
+              {desktopNavEntries.map((entry) => {
                 const active = isDesktopNavRouteActive(
                   location.pathname,
-                  link.to,
+                  entry.to,
                 );
                 return (
                   <ChakraLink
-                    key={link.to}
+                    key={entry.to}
                     asChild
                     colorPalette="gray"
                     variant="plain"
@@ -488,7 +492,7 @@ export default function AppLayout() {
                       color: active ? "white" : "black",
                     }}
                   >
-                    <Link to={link.to}>
+                    <Link to={entry.to}>
                       <Box
                         as="span"
                         position="relative"
@@ -501,7 +505,7 @@ export default function AppLayout() {
                           fontWeight="bold"
                           opacity={active ? 1 : 0}
                         >
-                          {link.label}
+                          {entry.label}
                         </Box>
                         <Box
                           as="span"
@@ -511,7 +515,7 @@ export default function AppLayout() {
                           fontWeight="normal"
                           opacity={active ? 0 : 1}
                         >
-                          {link.label}
+                          {entry.label}
                         </Box>
                       </Box>
                     </Link>
@@ -535,7 +539,8 @@ export default function AppLayout() {
           : {
               px: { base: "2", md: "2" },
               // Home embeds a full-width footer; main bottom padding would show sky below it.
-              pb: isHomeIndex ? 0 : { base: "2", md: "2" },
+              pb:
+                isHomeIndex || isGamesHubIndex ? 0 : { base: "2", md: "2" },
               pt: 0,
             })}
         bg="transparent"

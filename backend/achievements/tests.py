@@ -11,6 +11,8 @@ from achievements.services import (
     SLUG_ARCHIVIST,
     SLUG_GOOD_AS_NEW,
     SLUG_PONDCLICKER_TIER_1,
+    SLUG_PONDCLICKER_TIER_2,
+    SLUG_PONDCLICKER_TIER_6,
     SLUG_SHARING_IS_CARING,
     SLUG_SOMETHING_BORROWED,
     SLUG_SMORGASBORD,
@@ -159,9 +161,22 @@ class PondClickerAchievementTests(TestCase):
             },
         )
 
-    def test_tier1_unlocks_when_three_marquee_denizens_owned(self):
+    def test_tier1_unlocks_when_all_five_marquee_denizens_owned(self):
         user = User.objects.create_user(email="pond@example.com", password="secret12345")
         evaluate_pondclicker_achievements_for_user(user.id, {"owned_upgrades": {"pond_snails": 1}})
+        self.assertFalse(
+            UserAchievement.objects.filter(user=user, achievement__slug=SLUG_PONDCLICKER_TIER_1).exists()
+        )
+
+        partial = {
+            "owned_upgrades": {
+                "pond_snails": 1,
+                "tadpoles": 1,
+                "water_fleas": 1,
+                "dragonfly_nymph": 1,
+            },
+        }
+        evaluate_pondclicker_achievements_for_user(user.id, partial)
         self.assertFalse(
             UserAchievement.objects.filter(user=user, achievement__slug=SLUG_PONDCLICKER_TIER_1).exists()
         )
@@ -171,11 +186,71 @@ class PondClickerAchievementTests(TestCase):
                 "pond_snails": 1,
                 "tadpoles": 1,
                 "water_fleas": 1,
+                "dragonfly_nymph": 1,
+                "leeches": 1,
             },
         }
         evaluate_pondclicker_achievements_for_user(user.id, state_ok)
         self.assertTrue(
             UserAchievement.objects.filter(user=user, achievement__slug=SLUG_PONDCLICKER_TIER_1).exists()
+        )
+
+    def test_tier2_unlocks_when_all_five_marquee_denizens_owned(self):
+        AchievementDefinition.objects.get_or_create(
+            slug=SLUG_PONDCLICKER_TIER_2,
+            defaults={
+                "title": "Tier 2 Pond",
+                "description": "",
+                "category": "pondclicker",
+                "order": 51,
+            },
+        )
+        user = User.objects.create_user(email="pond2@example.com", password="secret12345")
+        state_ok = {
+            "owned_upgrades": {
+                "crayfish": 1,
+                "minnows": 1,
+                "green_frogs": 1,
+                "water_striders": 1,
+                "diving_beetles": 1,
+            },
+        }
+        evaluate_pondclicker_achievements_for_user(user.id, state_ok)
+        self.assertTrue(
+            UserAchievement.objects.filter(user=user, achievement__slug=SLUG_PONDCLICKER_TIER_2).exists()
+        )
+
+    def test_tier6_unlocks_in_same_pass_as_tier1_when_state_has_both(self):
+        AchievementDefinition.objects.get_or_create(
+            slug=SLUG_PONDCLICKER_TIER_6,
+            defaults={
+                "title": "Tier 6 Pond",
+                "description": "",
+                "category": "pondclicker",
+                "order": 55,
+            },
+        )
+        user = User.objects.create_user(email="pond6@example.com", password="secret12345")
+        state = {
+            "owned_upgrades": {
+                "pond_snails": 1,
+                "tadpoles": 1,
+                "water_fleas": 1,
+                "dragonfly_nymph": 1,
+                "leeches": 1,
+                "otters": 1,
+                "beavers": 1,
+                "bald_eagles": 1,
+                "bowfin": 1,
+                "mute_swans": 1,
+            },
+        }
+        evaluate_pondclicker_achievements_for_user(user.id, state)
+        self.assertTrue(
+            UserAchievement.objects.filter(user=user, achievement__slug=SLUG_PONDCLICKER_TIER_1).exists()
+        )
+        self.assertTrue(
+            UserAchievement.objects.filter(user=user, achievement__slug=SLUG_PONDCLICKER_TIER_6).exists()
         )
 
 

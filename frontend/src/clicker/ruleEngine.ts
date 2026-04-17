@@ -1,6 +1,6 @@
 import {
   CATALOG_UPGRADES,
-  TIER1_MARQUEE_IDS,
+  FINAL_TIER_MARQUEE_IDS,
   effectiveOwnedStacks,
   getOwnedCount,
   getUpgradeDef,
@@ -22,7 +22,9 @@ export function emptyPondStats(): PondStats {
   return { fertility: 0, oxygen: 0, depth: 0, shelter: 0 };
 }
 
-export function computePondStats(ownedUpgrades: Record<string, number>): PondStats {
+export function computePondStats(
+  ownedUpgrades: Record<string, number>,
+): PondStats {
   const s = emptyPondStats();
   for (const upgrade of CATALOG_UPGRADES) {
     const stacks = effectiveOwnedStacks(upgrade, ownedUpgrades);
@@ -36,35 +38,104 @@ export function computePondStats(ownedUpgrades: Record<string, number>): PondSta
   return s;
 }
 
-export function computeBiodiversity(ownedUpgrades: Record<string, number>): number {
+export function computeBiodiversity(
+  ownedUpgrades: Record<string, number>,
+): number {
   let n = 0;
   for (const upgrade of CATALOG_UPGRADES) {
-    if (!upgrade.countsTowardBiodiversity) continue;
-    if (getOwnedCount(ownedUpgrades, upgrade.id) >= 1) n += 1;
+    n += effectiveOwnedStacks(upgrade, ownedUpgrades);
   }
   return n * 100;
 }
 
-/** Min value for `stat_threshold` / `biodiversity_threshold` at the next purchase; scales with stacks owned of this upgrade. */
+function scalingPerOwnedFor(
+  upgrade: UpgradeDef,
+  key: PondStatId,
+): number {
+  return upgrade.meta?.requirementScalingPerOwned?.[key] ?? 0;
+}
+
+/** Min value for `stat_threshold` at the next purchase; scales with stacks owned of this upgrade. */
 export function scaledNumericGateMin(
   requirement: { min: number },
   upgrade: UpgradeDef,
   ownedUpgrades: Record<string, number>,
+  key: PondStatId,
 ): number {
   const owned = getOwnedCount(ownedUpgrades, upgrade.id);
-  return Math.ceil(requirement.min * (owned + 1));
+  const perOwned = scalingPerOwnedFor(upgrade, key);
+  return requirement.min + owned * perOwned;
 }
 
+/** Sum of effective owned stacks for all upgrades in `family` (not “distinct upgrades owned”). */
 export function countOwnedByFamily(
   family: UpgradeFamily,
   ownedUpgrades: Record<string, number>,
 ): number {
-  let count = 0;
+  let total = 0;
   for (const upgrade of CATALOG_UPGRADES) {
     if (upgrade.family !== family) continue;
-    if (effectiveOwnedStacks(upgrade, ownedUpgrades) > 0) count += 1;
+    total += effectiveOwnedStacks(upgrade, ownedUpgrades);
   }
-  return count;
+  return total;
+}
+
+function isStackableUpgrade(def: UpgradeDef): boolean {
+  return (def.maxOwned ?? Number.POSITIVE_INFINITY) > 1;
+}
+
+/** Marquee denizens need 2+ stacks of a stackable prerequisite upgrade. */
+function minStacksForPrerequisite(
+  prereqDef: UpgradeDef,
+  subject: UpgradeDef,
+): number {
+  if (
+    subject.nodeType === "Denizen" &&
+    subject.isMarquee &&
+    isStackableUpgrade(prereqDef)
+  ) {
+    return 2;
+  }
+  return 1;
+}
+
+function prerequisiteRequirementMet(
+  requirement: UpgradeRequirement,
+  ownedUpgrades: Record<string, number>,
+  subject: UpgradeDef,
+): boolean {
+  switch (requirement.type) {
+    case "prerequisite_upgrade":
+      return requirement.upgradeIds.every((id) => {
+        const def = getUpgradeDef(id);
+        if (!def) return false;
+        const min = minStacksForPrerequisite(def, subject);
+        return effectiveOwnedStacks(def, ownedUpgrades) >= min;
+      });
+    case "owned_upgrade_threshold": {
+      const def = getUpgradeDef(requirement.upgradeId);
+      if (!def) return false;
+      return effectiveOwnedStacks(def, ownedUpgrades) >= requirement.minLevel;
+    }
+    case "family_threshold":
+      return (
+        countOwnedByFamily(requirement.family, ownedUpgrades) >=
+        requirement.minOwned
+      );
+    case "stat_threshold":
+      return true;
+    default:
+      return false;
+  }
+}
+
+export function isUpgradePrereqVisible(
+  upgrade: UpgradeDef,
+  ownedUpgrades: Record<string, number>,
+): boolean {
+  return upgrade.requirements.every((req) =>
+    prerequisiteRequirementMet(req, ownedUpgrades, upgrade),
+  );
 }
 
 function requirementMet(
@@ -75,12 +146,14 @@ function requirementMet(
   pondStats: PondStats,
   biodiversity: number,
 ): boolean {
+  void biodiversity;
   switch (requirement.type) {
     case "prerequisite_upgrade":
       return requirement.upgradeIds.every((id) => {
         const def = getUpgradeDef(id);
         if (!def) return false;
-        return effectiveOwnedStacks(def, ownedUpgrades) >= 1;
+        const min = minStacksForPrerequisite(def, upgrade);
+        return effectiveOwnedStacks(def, ownedUpgrades) >= min;
       });
     case "owned_upgrade_threshold": {
       const def = getUpgradeDef(requirement.upgradeId);
@@ -88,11 +161,20 @@ function requirementMet(
       return effectiveOwnedStacks(def, ownedUpgrades) >= requirement.minLevel;
     }
     case "family_threshold":
-      return countOwnedByFamily(requirement.family, ownedUpgrades) >= requirement.minOwned;
+      return (
+        countOwnedByFamily(requirement.family, ownedUpgrades) >=
+        requirement.minOwned
+      );
     case "stat_threshold":
-      return pondStats[requirement.stat] >= scaledNumericGateMin(requirement, upgrade, ownedUpgrades);
-    case "biodiversity_threshold":
-      return biodiversity >= scaledNumericGateMin(requirement, upgrade, ownedUpgrades);
+      return (
+        pondStats[requirement.stat] >=
+        scaledNumericGateMin(
+          requirement,
+          upgrade,
+          ownedUpgrades,
+          requirement.stat,
+        )
+      );
     default:
       return false;
   }
@@ -106,7 +188,14 @@ export function isUpgradeUnlocked(
   biodiversity: number,
 ): boolean {
   return upgrade.requirements.every((req) =>
-    requirementMet(req, upgrade, ownedUpgrades, resources, pondStats, biodiversity),
+    requirementMet(
+      req,
+      upgrade,
+      ownedUpgrades,
+      resources,
+      pondStats,
+      biodiversity,
+    ),
   );
 }
 
@@ -118,12 +207,23 @@ export function getUnmetRequirements(
   biodiversity: number,
 ): UpgradeRequirement[] {
   return upgrade.requirements.filter(
-    (req) => !requirementMet(req, upgrade, ownedUpgrades, resources, pondStats, biodiversity),
+    (req) =>
+      !requirementMet(
+        req,
+        upgrade,
+        ownedUpgrades,
+        resources,
+        pondStats,
+        biodiversity,
+      ),
   );
 }
 
 /** Half of next purchase energy cost (rounded up); reveal threshold. */
-export function revealEnergyThresholdForNextPurchase(upgrade: UpgradeDef, ownedCount: number): number {
+export function revealEnergyThresholdForNextPurchase(
+  upgrade: UpgradeDef,
+  ownedCount: number,
+): number {
   const nextCost = nextPurchaseCost(upgrade, ownedCount);
   if (!nextCost) return Number.POSITIVE_INFINITY;
   return Math.ceil(nextCost.energy / 2);
@@ -134,46 +234,51 @@ export function isUpgradeVisible(
   ownedUpgrades: Record<string, number>,
   resources: ResourceBalances,
   revealedUpgrades: Record<string, boolean>,
-  pondStats: PondStats,
-  biodiversity: number,
 ): boolean {
   const ownedCount = getOwnedCount(ownedUpgrades, upgrade.id);
-  if (nextPurchaseCost(upgrade, ownedCount) === null) return false;
-  if (!isUpgradeUnlocked(upgrade, ownedUpgrades, resources, pondStats, biodiversity)) return false;
+  const nextCost = nextPurchaseCost(upgrade, ownedCount);
+
+  if (nextCost === null) return false;
+  if (ownedCount > 0) return true;
+  if (revealedUpgrades[upgrade.id]) return true;
+  if (!isUpgradePrereqVisible(upgrade, ownedUpgrades)) return false;
 
   const thr = revealEnergyThresholdForNextPurchase(upgrade, ownedCount);
-
-  if (revealedUpgrades[upgrade.id]) {
-    return true;
-  }
   return resources.energy >= thr;
 }
 
 export function requirementSummary(requirement: UpgradeRequirement): string {
   switch (requirement.type) {
     case "prerequisite_upgrade": {
-      const names = requirement.upgradeIds.map((id) => getUpgradeDef(id)?.name ?? id);
+      const names = requirement.upgradeIds.map(
+        (id) => getUpgradeDef(id)?.name ?? id,
+      );
       return `Requires ${names.join(" + ")}`;
     }
     case "owned_upgrade_threshold": {
-      const name = getUpgradeDef(requirement.upgradeId)?.name ?? requirement.upgradeId;
+      const name =
+        getUpgradeDef(requirement.upgradeId)?.name ?? requirement.upgradeId;
       return `Requires ${name} ×${requirement.minLevel}+`;
     }
     case "family_threshold":
-      return `Requires ${requirement.minOwned}+ ${requirement.family} upgrades`;
+      return `Requires ${requirement.minOwned}+ total stacks in ${requirement.family}`;
     case "stat_threshold":
       return `Requires ${requirement.min} ${requirement.stat} (scales with stacks)`;
-    case "biodiversity_threshold":
-      return `Requires ${requirement.min} biodiversity (scales with stacks)`;
     default:
       return "Requirement not met";
   }
 }
 
-export function canAffordCosts(costs: { energy: number }, resources: ResourceBalances): boolean {
+export function canAffordCosts(
+  costs: { energy: number },
+  resources: ResourceBalances,
+): boolean {
   return resources.energy >= costs.energy;
 }
-
-export function tier1PondComplete(ownedUpgrades: Record<string, number>): boolean {
-  return TIER1_MARQUEE_IDS.every((id) => getOwnedCount(ownedUpgrades, id) >= 1);
+export function finalTierPondComplete(
+  ownedUpgrades: Record<string, number>,
+): boolean {
+  return FINAL_TIER_MARQUEE_IDS.every(
+    (id) => getOwnedCount(ownedUpgrades, id) >= 1,
+  );
 }

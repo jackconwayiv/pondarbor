@@ -26,6 +26,63 @@ SLUG_TOWN_CRIER = "town_crier"
 SLUG_WHATIF_WIZ = "whatif_wiz"
 SLUG_WHATIF_WARRIOR = "whatif_warrior"
 SLUG_PONDCLICKER_TIER_1 = "pondclicker_tier_1_pond"
+SLUG_PONDCLICKER_TIER_2 = "pondclicker_tier_2_pond"
+SLUG_PONDCLICKER_TIER_3 = "pondclicker_tier_3_pond"
+SLUG_PONDCLICKER_TIER_4 = "pondclicker_tier_4_pond"
+SLUG_PONDCLICKER_TIER_5 = "pondclicker_tier_5_pond"
+SLUG_PONDCLICKER_TIER_6 = "pondclicker_tier_6_pond"
+
+# Marquee denizen ids per tier (mirrors frontend `MARQUEE_IDS_BY_TIER` in clicker/catalog.ts).
+PONDCLICKER_MARQUEE_BY_TIER: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        SLUG_PONDCLICKER_TIER_1,
+        (
+            "pond_snails",
+            "tadpoles",
+            "water_fleas",
+            "dragonfly_nymph",
+            "leeches",
+        ),
+    ),
+    (
+        SLUG_PONDCLICKER_TIER_2,
+        ("crayfish", "minnows", "green_frogs", "water_striders", "diving_beetles"),
+    ),
+    (
+        SLUG_PONDCLICKER_TIER_3,
+        (
+            "bluegill",
+            "pumpkinseed_sunfish",
+            "painted_turtles",
+            "salamanders",
+            "perch",
+        ),
+    ),
+    (
+        SLUG_PONDCLICKER_TIER_4,
+        (
+            "largemouth_bass",
+            "softshell_turtle",
+            "bullfrogs",
+            "muskrats",
+            "catfish",
+        ),
+    ),
+    (
+        SLUG_PONDCLICKER_TIER_5,
+        (
+            "northern_pike",
+            "snapping_turtle",
+            "mallard_ducks",
+            "great_blue_herons",
+            "canada_geese",
+        ),
+    ),
+    (
+        SLUG_PONDCLICKER_TIER_6,
+        ("otters", "beavers", "bald_eagles", "bowfin", "mute_swans"),
+    ),
+)
 SLUG_SHARING_IS_CARING = "sharing_is_caring"
 SLUG_SOMETHING_BORROWED = "something_borrowed"
 SLUG_GOOD_AS_NEW = "good_as_new"
@@ -75,21 +132,32 @@ def _try_unlock(user_id: int, slug: str, *, context: dict | None = None) -> bool
     return created
 
 
-def evaluate_pondclicker_achievements_for_user(user_id: int, state: dict) -> None:
-    """
-    Unlock Tier 1 pond when save includes all three Tier 1 marquee denizens.
-    """
-    if not isinstance(state, dict):
-        return
-    owned = state.get("owned_upgrades")
-    if not isinstance(owned, dict):
-        return
-    required = ("pond_snails", "tadpoles", "water_fleas")
-    for key in required:
+def _pondclicker_marquee_tier_complete(owned: dict, upgrade_ids: tuple[str, ...]) -> bool:
+    for key in upgrade_ids:
         raw = owned.get(key)
         if not isinstance(raw, (int, float)) or raw < 1:
-            return
-    _try_unlock(user_id, SLUG_PONDCLICKER_TIER_1)
+            return False
+    return True
+
+
+def evaluate_pondclicker_achievements_for_user(user_id: int, state: dict) -> bool:
+    """
+    Unlock pondclicker tier badges when the save includes all five marquee denizens
+    for that tier. Idempotent via `_try_unlock`. Returns True if any new unlock was
+    granted on this call.
+    """
+    if not isinstance(state, dict):
+        return False
+    owned = state.get("owned_upgrades")
+    if not isinstance(owned, dict):
+        return False
+    any_new = False
+    for slug, required in PONDCLICKER_MARQUEE_BY_TIER:
+        if not _pondclicker_marquee_tier_complete(owned, required):
+            continue
+        if _try_unlock(user_id, slug):
+            any_new = True
+    return any_new
 
 
 def evaluate_quote_achievements_for_user(user_id: int) -> None:

@@ -269,13 +269,10 @@ function UpgradeCatalogCard({ upgrade: u }: { upgrade: UpgradeDef }) {
             </Box>
           )}
         </Box>
-        {u.denizenKind || u.countsTowardBiodiversity || u.pondVisual ? (
+        {u.denizenKind || u.pondVisual ? (
           <HStack flexWrap="wrap" gap="1" pt="0.5">
             {u.denizenKind ? (
               <CatalogTag>Denizen: {u.denizenKind}</CatalogTag>
-            ) : null}
-            {u.countsTowardBiodiversity ? (
-              <CatalogTag greenAccent>Counts toward biodiversity</CatalogTag>
             ) : null}
             {u.pondVisual ? (
               <CatalogTag>Pond visual: {u.pondVisual.type}</CatalogTag>

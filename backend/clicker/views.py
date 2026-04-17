@@ -98,8 +98,14 @@ def game_state(request):
         },
     )
     row.refresh_from_db()
-    evaluate_pondclicker_achievements_for_user(request.user.pk, state)
-    return Response({**_serialize_save(row), **_server_time_payload()})
+    badges_unlocked = evaluate_pondclicker_achievements_for_user(request.user.pk, state)
+    return Response(
+        {
+            **_serialize_save(row),
+            "pondclicker_badges_unlocked": badges_unlocked,
+            **_server_time_payload(),
+        }
+    )
 
 
 @api_view(["GET"])

@@ -60,6 +60,7 @@ const MealWeeksPage = lazy(() => import("./meal/MealWeeksPage"));
 const MealWeekEditPage = lazy(() => import("./meal/MealWeekEditPage"));
 const MealInstanceDetailPage = lazy(() => import("./meal/MealInstanceDetailPage"));
 const MealGroceryPage = lazy(() => import("./meal/MealGroceryPage"));
+const GamesMenu = lazy(() => import("./GamesMenu"));
 
 function lazyRouteElement(element: ReactNode): ReactNode {
   return <Suspense fallback={<RouteLoadingFallback />}>{element}</Suspense>;
@@ -77,6 +78,10 @@ export const router = sentryCreateBrowserRouter([
       {
         index: true,
         element: <App />,
+      },
+      {
+        path: "games",
+        element: lazyRouteElement(<GamesMenu />),
       },
       {
         path: "about",

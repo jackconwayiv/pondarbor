@@ -1,15 +1,15 @@
 /**
- * Pace check: time to own all TIER1_MARQUEE_IDS with passive 1Hz + effective click rate.
- * Design target ~600s at 0.75 effective cps (25% active @ 3 Hz); economy is tuned in catalog
- * (sunlight passive, nutrient_silt click), not a global multiplier. Run: npx tsx src/clicker/tier1PaceSim.ts
+ * Pace check: greedy sim until `finalTierPondComplete` using passive 1Hz + effective click rate.
+ * Catalog order + costs + unlock rules drive outcomes. Run from frontend:
+ * `npx tsx src/clicker/tier1PaceSim.ts`
  */
 import { CATALOG_UPGRADES, nextPurchaseCost } from "./catalog";
 import {
   computeBiodiversity,
   computePondStats,
+  finalTierPondComplete,
   isUpgradeUnlocked,
   isUpgradeVisible,
-  tier1PondComplete,
 } from "./ruleEngine";
 import { simulateOwnedUpgrades } from "./simulation";
 
@@ -23,8 +23,9 @@ function tryBuyNext(
   const pondStats = computePondStats(owned);
   const biodiversity = computeBiodiversity(owned);
   for (const def of CATALOG_UPGRADES) {
-    if (!isUpgradeVisible(def, owned, resources, revealed, pondStats, biodiversity)) continue;
-    if (!isUpgradeUnlocked(def, owned, resources, pondStats, biodiversity)) continue;
+    if (!isUpgradeVisible(def, owned, resources, revealed)) continue;
+    if (!isUpgradeUnlocked(def, owned, resources, pondStats, biodiversity))
+      continue;
     const o = owned[def.id] ?? 0;
     const cost = nextPurchaseCost(def, o);
     if (cost === null) continue;
@@ -35,7 +36,10 @@ function tryBuyNext(
   return null;
 }
 
-function simulateSeconds(clicksPerSec: number, maxSeconds: number): { seconds: number; complete: boolean } {
+function simulateSeconds(
+  clicksPerSec: number,
+  maxSeconds: number,
+): { seconds: number; complete: boolean } {
   const owned: Owned = {};
   const revealed: Record<string, boolean> = {};
   let energy = 0;
@@ -53,11 +57,11 @@ function simulateSeconds(clicksPerSec: number, maxSeconds: number): { seconds: n
       revealed[buy.id] = true;
     }
 
-    if (tier1PondComplete(owned)) {
+    if (finalTierPondComplete(owned)) {
       return { seconds: t + 1, complete: true };
     }
   }
-  return { seconds: maxSeconds, complete: tier1PondComplete(owned) };
+  return { seconds: maxSeconds, complete: finalTierPondComplete(owned) };
 }
 
 const REFERENCE_CLICK_HZ = 3;

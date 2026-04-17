@@ -19,12 +19,27 @@ import {
   TooltipTrigger,
   useMediaQuery,
 } from "@chakra-ui/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
 import { APP_TEXT_SIZES } from "../theme/typography";
+import {
+  CATALOG_CONTENT_VERSION,
+  createDefaultClickerState,
+  fetchClickerState,
+  normalizeClickerStateForSchema,
+  saveClickerState,
+  type ClickerGameStateV1,
+} from "./api";
 import {
   CATALOG_UPGRADES,
   FAMILY_PRESENTATION,
@@ -37,32 +52,36 @@ import {
   type PrimaryResourceId,
   type UpgradeDef,
   type UpgradeEffect,
+  type UpgradeFamily,
 } from "./catalog";
-import { EcologyBlurbText, ecologyPopoverContentProps, ecologyTooltipSurfaceProps } from "./ecologyUi";
-import {
-  CATALOG_CONTENT_VERSION,
-  createDefaultClickerState,
-  fetchClickerState,
-  normalizeClickerStateForSchema,
-  saveClickerState,
-  type ClickerGameStateV1,
-} from "./api";
-import PondStage from "./PondStage";
 import { ClickerPageShell } from "./ClickerShell";
+import {
+  ecologyPopoverContentProps,
+  ecologyTooltipRootBaseProps,
+  ecologyTooltipSurfaceProps,
+} from "./ecologyUi.constants.ts";
+import { EcologyBlurbText } from "./ecologyUi.tsx";
+import PondStage from "./PondStage";
+import { pondStageEmojiForUpgrade } from "./upgradeEmojis";
 import {
   canAffordCosts,
   computeBiodiversity,
   computePondStats,
+  finalTierPondComplete,
   getOwnedCount,
   isUpgradeUnlocked,
   isUpgradeVisible,
   revealEnergyThresholdForNextPurchase,
   scaledNumericGateMin,
-  tier1PondComplete,
   type ResourceBalances,
 } from "./ruleEngine";
-import { applyResourceDelta, simulateOwnedUpgrades } from "./simulation";
-
+import {
+  applyResourceDelta,
+  marginalClickIfBuyNextTier,
+  marginalRatesIfBuyNextTier,
+  simulateOwnedUpgrades,
+  upgradeContributionToEnergyAndClick,
+} from "./simulation";
 const SAVE_INTERVAL_MS = 2000;
 const PASSIVE_TICK_MS = 1000;
 
@@ -73,26 +92,119 @@ function formatPassiveRate(n: number): string {
   return s.endsWith("0") ? s.slice(0, -1) : s;
 }
 
+const HUD_NUMBER_LOCALE = "en-US" as const;
+
+/** M / B / T with three digits after the decimal (e.g. `1.234 M`), grouped with commas. */
+function formatHudAbbreviatedMbt(x: number): string | null {
+  if (!Number.isFinite(x) || x < 1e6) return null;
+  if (x >= 1e12)
+    return `${(x / 1e12).toLocaleString(HUD_NUMBER_LOCALE, {
+      minimumFractionDigits: 3,
+      maximumFractionDigits: 3,
+    })} T`;
+  if (x >= 1e9)
+    return `${(x / 1e9).toLocaleString(HUD_NUMBER_LOCALE, {
+      minimumFractionDigits: 3,
+      maximumFractionDigits: 3,
+    })} B`;
+  return `${(x / 1e6).toLocaleString(HUD_NUMBER_LOCALE, {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
+  })} M`;
+}
+
+/** Rates and deltas: same M/B/T style as the energy meter; finer below 1e6. */
+function formatHudRate(n: number): string {
+  if (!Number.isFinite(n)) return "0";
+  const sign = n < 0 ? "-" : "";
+  const ax = Math.abs(n);
+  const abbreviated = formatHudAbbreviatedMbt(ax);
+  if (abbreviated != null) return `${sign}${abbreviated}`;
+  const r = Math.round(n * 10) / 10;
+  return r.toLocaleString(HUD_NUMBER_LOCALE, {
+    minimumFractionDigits: Number.isInteger(r) ? 0 : 1,
+    maximumFractionDigits: 1,
+  });
+}
+
 function formatHudResourceAmount(n: number): string {
   const x = Math.max(0, n);
   if (!Number.isFinite(x)) return "0";
-  const oneDec = (v: number): string => {
-    const rounded = Math.round(v * 10) / 10;
-    const s = rounded.toFixed(1);
-    return s.endsWith(".0") ? s.slice(0, -2) : s;
-  };
-  if (x >= 1e12) return `${oneDec(x / 1e12)} T`;
-  if (x >= 1e9) return `${oneDec(x / 1e9)} B`;
-  if (x >= 1e6) return `${oneDec(x / 1e6)} M`;
-  return String(Math.floor(x));
+  const abbreviated = formatHudAbbreviatedMbt(x);
+  if (abbreviated != null) return abbreviated;
+  return Math.floor(x).toLocaleString(HUD_NUMBER_LOCALE);
+}
+
+function formatShopCostAmount(v: number): string {
+  return Math.round(v).toLocaleString(HUD_NUMBER_LOCALE);
 }
 
 const initialGameState = (): ClickerGameStateV1 => createDefaultClickerState();
+
+/** Roman labels for owned-upgrade tier filter tabs (1–6); tier 0 uses digit `0` (no Roman zero). */
+const TIER_ROMAN: readonly string[] = ["", "I", "II", "III", "IV", "V", "VI"];
+
+function tierFilterTabLabel(tier: number): string {
+  if (tier === 0) return "0";
+  if (tier >= 1 && tier <= 6) return TIER_ROMAN[tier] ?? String(tier);
+  return String(tier);
+}
 
 type LoadStatus = "loading" | "ready" | "error";
 
 const MECHANIC_DISPLAY_LABELS: Record<string, string> = {
   pond_unlocked: "Pond",
+};
+
+const POND_STAT_IMPORTANCE_COPY: Record<keyof typeof POND_STAT_LABELS, string> =
+  {
+    depth:
+      "How much water your pond can hold and how deep it gets. Deeper water stays cooler on hot days and gives fish more room to live and hide.",
+    fertility:
+      "Food-building material in the water and mud. More of it helps tiny plants and animals grow, which feeds larger animals up the chain.",
+    oxygen:
+      "Dissolved oxygen animals breathe underwater. Healthy mixing and plants help keep it up so the pond does not go stale.",
+    shelter:
+      "Logs, plants, and nooks where small animals can hide. Cover spreads out hunting so one species does not wipe out another.",
+  };
+
+const BIODIVERSITY_HUD_COPY =
+  "Biodiversity is how many kinds of organisms live in an area and how different their jobs are—who eats whom, who builds shelter, who cycles nutrients. Richer variety often makes an ecosystem more stable when one species hits hard times.";
+
+/** Tier filter tab: one plain sentence each (Roman / 0 band). */
+const OWNED_TIER_ECOLOGY_SENTENCE: Record<number, string> = {
+  0: "A brand-new pond is mostly clear water over open mud. Sun reaches the bottom, a faint film of algae and bacteria forms, and bits of debris and insects collect at the rim before bigger plants take hold.",
+  1: "Once light and a thin algae film are in place, warm shallows grow thicker green films and soft mats. Tiny grazers and very small fish show up and turn that microscopic growth into food for larger animals.",
+  2: "Tier II adds plants and structure; small hunters trim the plankton bloom and minnows link algae to bigger fish food.",
+  3: "Tier III widens the edges and seasons; nests, frogs, and birds start tying land litter and rain pulses to life in the water.",
+  4: "Tier IV adds snags and slower water so ambush fish can hunt; storms and banks feed open-water microbes and visiting birds.",
+  5: "Tier V is thick weeds and busy waterfowl paths; nutrients get stored in plants and surface films that shuffle who feeds where.",
+  6: "Tier VI is a mature pond—big wood, calm evenings, and large mammals sharing deep, oxygen-rich water with slow bottom life and fast predators.",
+};
+
+const FAMILY_ECOSYSTEM_ROLE: Record<UpgradeFamily, string> = {
+  Geology:
+    "Shapes the bowl of the pond—banks, bottom, and depth that set where water sits and where animals can hide.",
+  Hydrology:
+    "Moves and refreshes water—inflow, mixing, and exchange so chemicals cycle and oxygen stays available.",
+  Nutrients:
+    "Builds the food base—fertility and decay that feed tiny producers, then everything above them.",
+  Structure:
+    "Adds logs, rocks, and complexity so many species can live in the same pond without one group taking over.",
+  Plants:
+    "Living structure: shade, cover, and food from underwater and edge plants.",
+  "Microbes, Algae, and Plankton":
+    "Tiny cells and drifting life that turn nutrients into food for the smallest animals.",
+  Invertebrates:
+    "Bugs, snails, and larvae that graze plants and each other and pass energy up to fish and frogs.",
+  Herptiles:
+    "Frogs, toads, turtles, and snakes that hunt in shallow water and tie the pond to the land.",
+  Fish:
+    "Fish schools and predators that move a lot of energy and keep weaker prey from exploding out of control.",
+  Birds:
+    "Wading and swimming birds that feed in the pond and carry nutrients in and out.",
+  Mammals:
+    "Muskrats, otters, and other mammals that reshape banks and move food and mud along the shore.",
 };
 
 function mechanicUnlockLabel(mechanicId: string): string {
@@ -105,74 +217,144 @@ function multiplierTargetLabel(target: "global" | "click" | "passive"): string {
   return "all outputs";
 }
 
-/** Single schema for shop cards: what each owned copy does (no marginal/delta line). */
-function shopCardFunctionLine(def: UpgradeDef): string | null {
+function resourceLabelForInline(meta: { label: string }): string {
+  // Keep gameplay readouts consistent regardless of card text casing.
+  return meta.label.toLowerCase();
+}
+
+function tierRomanHeading(tier: number): string {
+  if (tier >= 1 && tier <= 6) return `Tier ${TIER_ROMAN[tier]}`;
+  return `Tier ${tier}`;
+}
+
+/** Marginal +/s line only when this upgrade adds raw passive gen (not multiplier-only). */
+function upgradeHasEnergyPassiveGeneration(def: UpgradeDef): boolean {
+  return def.effects.some(
+    (e) => e.type === "passive_generation" && e.resource === "energy",
+  );
+}
+
+/** Marginal +/click line only when this upgrade adds raw click bonus (not multiplier-only). */
+function upgradeHasClickBonus(def: UpgradeDef): boolean {
+  return def.effects.some((e) => e.type === "click_bonus");
+}
+
+/**
+ * Shop card: **only** the marginal gain from the **next** Buy (one purchase). Never cumulative
+ * totals. Energy lines use simulation deltas; multipliers/thresholds use per-purchase increments.
+ */
+function shopCardFunctionLine(
+  def: UpgradeDef,
+  ownedUpgrades: Record<string, number>,
+): string | null {
   const parts: string[] = [];
+  const passiveDelta = marginalRatesIfBuyNextTier(def, ownedUpgrades).energy;
+  const clickDelta = marginalClickIfBuyNextTier(def, ownedUpgrades);
+  if (upgradeHasEnergyPassiveGeneration(def) && passiveDelta > 0) {
+    const meta = RESOURCE_PRESENTATION.energy;
+    parts.push(
+      `+${formatHudRate(passiveDelta)} ${resourceLabelForInline(meta)}/second`,
+    );
+  }
+  if (upgradeHasClickBonus(def) && clickDelta > 0) {
+    parts.push(`+${formatHudRate(clickDelta)} energy/click`);
+  }
   for (const e of def.effects) {
-    if (e.type === "passive_generation") {
-      const meta = RESOURCE_PRESENTATION[e.resource];
-      parts.push(`+${formatPassiveRate(e.amount)} ${meta.label}/s`);
-    } else if (e.type === "multiplier") {
+    if (e.type === "passive_generation" || e.type === "click_bonus") continue;
+    if (e.type === "multiplier") {
       const pct = Math.round(e.value * 100);
-      parts.push(`Multiplies ${multiplierTargetLabel(e.target)} (+${pct}%)`);
-    } else if (e.type === "click_bonus") {
-      parts.push(`Adds +${formatPassiveRate(e.amount)} energy per click`);
+      parts.push(
+        `Multiplies ${multiplierTargetLabel(e.target)} (+${pct}%)`,
+      );
     } else if (e.type === "unlock") {
       parts.push(`Unlocks ${mechanicUnlockLabel(e.mechanicId)}`);
     } else if (e.type === "threshold_delta") {
-      parts.push(`+${formatPassiveRate(e.delta)} ${POND_STAT_LABELS[e.stat]}`);
+      parts.push(
+        `+${formatPassiveRate(e.delta)} ${POND_STAT_LABELS[e.stat]}`,
+      );
     }
   }
   if (parts.length === 0) return null;
   return parts.join(" · ");
 }
 
-function scaleEffectForDisplay(effect: UpgradeEffect, level: number): UpgradeEffect {
-  if (effect.type === "click_bonus") return { ...effect, amount: effect.amount * level };
-  if (effect.type === "passive_generation") return { ...effect, amount: effect.amount * level };
-  if (effect.type === "multiplier") return { ...effect, value: effect.value * level };
-  if (effect.type === "threshold_delta") return { ...effect, delta: effect.delta * level };
+function scaleEffectForDisplay(
+  effect: UpgradeEffect,
+  level: number,
+): UpgradeEffect {
+  if (effect.type === "click_bonus")
+    return { ...effect, amount: effect.amount * level };
+  if (effect.type === "passive_generation")
+    return { ...effect, amount: effect.amount * level };
+  if (effect.type === "multiplier")
+    return { ...effect, value: effect.value * level };
+  if (effect.type === "threshold_delta")
+    return { ...effect, delta: effect.delta * level };
   return effect;
 }
 
-/** Actual contribution at current stack count (matches simulation; excludes other upgrades’ multipliers). */
-function effectSummaryAtLevel(def: UpgradeDef, level: number): string | null {
-  if (level <= 0) return null;
-  let clickBonus = 0;
+/** Owned-card effect line; flat +/s and +/click only for direct passive/click effects. */
+function ownedCardEffectLine(
+  def: UpgradeDef,
+  ownedUpgrades: Record<string, number>,
+): string | null {
+  const stacks = effectiveOwnedStacks(def, ownedUpgrades);
+  if (stacks <= 0) return null;
   const lines: string[] = [];
+  const contrib = upgradeContributionToEnergyAndClick(def, ownedUpgrades);
+  if (upgradeHasClickBonus(def) && contrib.clickPerClick > 0) {
+    lines.push(`+${formatHudRate(contrib.clickPerClick)} energy/click`);
+  }
+  if (upgradeHasEnergyPassiveGeneration(def) && contrib.passivePerSec > 0) {
+    const meta = RESOURCE_PRESENTATION.energy;
+    lines.push(
+      `+${formatHudRate(contrib.passivePerSec)} ${resourceLabelForInline(meta)}/second`,
+    );
+  }
   for (const effect of def.effects) {
-    const scaled = scaleEffectForDisplay(effect, level);
-    if (scaled.type === "click_bonus") clickBonus += scaled.amount;
-    if (scaled.type === "passive_generation") {
-      const meta = RESOURCE_PRESENTATION[scaled.resource];
-      lines.push(`+${formatPassiveRate(scaled.amount)} ${meta.label}/s`);
-    }
+    if (effect.type === "passive_generation" || effect.type === "click_bonus")
+      continue;
+    const scaled = scaleEffectForDisplay(effect, stacks);
     if (scaled.type === "multiplier") {
       lines.push(`+${Math.round(scaled.value * 100)}% ${scaled.target}`);
     }
     if (scaled.type === "unlock") {
       lines.push(`Unlock: ${mechanicUnlockLabel(scaled.mechanicId)}`);
     }
-    if (scaled.type === "threshold_delta") {
-      lines.push(`+${formatPassiveRate(scaled.delta)} ${POND_STAT_LABELS[scaled.stat]}`);
+    if (
+      scaled.type === "threshold_delta" &&
+      effect.type === "threshold_delta"
+    ) {
+      const perStack = effect.delta;
+      lines.push(
+        `+${formatPassiveRate(perStack)} ${POND_STAT_LABELS[scaled.stat]}/stack`,
+      );
     }
   }
-  if (clickBonus > 0) lines.unshift(`+${formatPassiveRate(clickBonus)} per click`);
   return lines.length > 0 ? lines.join(" • ") : null;
 }
 
-function formatResourceCostParts(costs: Partial<Record<PrimaryResourceId, number>>): string[] {
+function formatResourceCostParts(
+  costs: Partial<Record<PrimaryResourceId, number>>,
+): string[] {
   const parts: string[] = [];
   for (const resourceId of PRIMARY_RESOURCE_IDS) {
     const v = costs[resourceId];
     if (typeof v === "number" && v > 0) {
-      parts.push(`${v} ${RESOURCE_PRESENTATION[resourceId].symbol}`);
+      parts.push(
+        `${formatShopCostAmount(v)} ${RESOURCE_PRESENTATION[resourceId].symbol}`,
+      );
     }
   }
   return parts;
 }
 
-type PondGateRow = { title: string; required: number; current: number; met: boolean };
+type PondGateRow = {
+  title: string;
+  required: number;
+  current: number;
+  met: boolean;
+};
 
 function pondGateRowsForShopCard(
   def: UpgradeDef,
@@ -180,10 +362,11 @@ function pondGateRowsForShopCard(
   pondStats: ReturnType<typeof computePondStats>,
   biodiversity: number,
 ): PondGateRow[] {
+  void biodiversity;
   const rows: PondGateRow[] = [];
   for (const r of def.requirements) {
     if (r.type === "stat_threshold") {
-      const required = scaledNumericGateMin(r, def, ownedUpgrades);
+      const required = scaledNumericGateMin(r, def, ownedUpgrades, r.stat);
       const current = pondStats[r.stat];
       rows.push({
         title: POND_STAT_LABELS[r.stat],
@@ -191,21 +374,19 @@ function pondGateRowsForShopCard(
         current,
         met: current >= required,
       });
-    } else if (r.type === "biodiversity_threshold") {
-      const required = scaledNumericGateMin(r, def, ownedUpgrades);
-      rows.push({
-        title: "Biodiversity",
-        required,
-        current: biodiversity,
-        met: biodiversity >= required,
-      });
     }
   }
   return rows;
 }
 
 /** Mobile / coarse pointer only: small black “?” opens the ecology popover. */
-function EcologyHelpMobileButton({ upgradeName, ecologyNote }: { upgradeName: string; ecologyNote: string }) {
+function EcologyHelpMobileButton({
+  upgradeName,
+  ecologyNote,
+}: {
+  upgradeName: string;
+  ecologyNote: string;
+}) {
   const trigger = (
     <IconButton
       variant="plain"
@@ -236,7 +417,10 @@ function EcologyHelpMobileButton({ upgradeName, ecologyNote }: { upgradeName: st
     <PopoverRoot positioning={{ placement: "bottom-end" }}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverPositioner>
-        <PopoverContent {...ecologyPopoverContentProps} w={{ base: "calc(100vw - 2rem)", md: "auto" }}>
+        <PopoverContent
+          {...ecologyPopoverContentProps}
+          w={{ base: "calc(100vw - 2rem)", md: "auto" }}
+        >
           <PopoverBody bg="white" color="black" p="3" border="none">
             <EcologyBlurbText>{ecologyNote}</EcologyBlurbText>
           </PopoverBody>
@@ -252,7 +436,7 @@ function ClickerResourceHud({
   clickPower,
   hasBasin,
   pondStats,
-  biodiversity,
+  biodiversityStackTotal,
 }: {
   resources: ResourceBalances;
   rates: ResourceBalances;
@@ -261,8 +445,17 @@ function ClickerResourceHud({
   /** After Pond Basin, show per-click line in the HUD (hidden before that). */
   hasBasin: boolean;
   pondStats: ReturnType<typeof computePondStats>;
-  biodiversity: number;
+  /** Sum of effective stacks across all catalog upgrades (computeBiodiversity / 100). */
+  biodiversityStackTotal: number;
 }) {
+  const [canHoverFinePointer] = useMediaQuery(
+    ["(hover: hover) and (pointer: fine)"],
+    {
+      ssr: false,
+      fallback: [false],
+    },
+  );
+
   return (
     <Box
       borderWidth="1px"
@@ -285,7 +478,13 @@ function ClickerResourceHud({
         maxW="100%"
         minW="0"
       >
-        <GridItem minW="0" maxW="100%" boxSizing="border-box" display="flex" flexDirection="column">
+        <GridItem
+          minW="0"
+          maxW="100%"
+          boxSizing="border-box"
+          display="flex"
+          flexDirection="column"
+        >
           {PRIMARY_RESOURCE_IDS.map((resourceId) => {
             const rate = rates[resourceId];
             const meta = RESOURCE_PRESENTATION[resourceId];
@@ -317,7 +516,11 @@ function ClickerResourceHud({
                   flexDirection="column"
                   justifyContent="center"
                 >
-                  <Stack gap="0.5" align={isEnergy ? "center" : "stretch"} w="full">
+                  <Stack
+                    gap="0.5"
+                    align={isEnergy ? "center" : "stretch"}
+                    w="full"
+                  >
                     <Text
                       fontSize="2xs"
                       fontWeight="bold"
@@ -343,7 +546,13 @@ function ClickerResourceHud({
                   </Stack>
                 </Box>
                 {resourceId === "energy" ? (
-                  <Stack gap="1" justify="center" minW="0" py="0.5" alignSelf="center">
+                  <Stack
+                    gap="1"
+                    justify="center"
+                    minW="0"
+                    py="0.5"
+                    alignSelf="center"
+                  >
                     <Text
                       fontSize="2xs"
                       color="gray.600"
@@ -354,8 +563,8 @@ function ClickerResourceHud({
                       aria-hidden={rate === 0}
                     >
                       {rate > 0 ? "+" : ""}
-                      {formatPassiveRate(rate)}
-                      {meta.symbol}/s
+                      {formatHudRate(rate)}
+                      {meta.symbol}/second
                     </Text>
                     {hasBasin ? (
                       <Text
@@ -364,10 +573,9 @@ function ClickerResourceHud({
                         lineHeight="1.2"
                         fontVariantNumeric="tabular-nums"
                         whiteSpace="nowrap"
-                        title="Energy per pond click"
                       >
                         {clickPower > 0 ? "+" : ""}
-                        {formatPassiveRate(clickPower)}
+                        {formatHudRate(clickPower)}
                         {meta.symbol}/click
                       </Text>
                     ) : null}
@@ -378,71 +586,170 @@ function ClickerResourceHud({
           })}
         </GridItem>
         <GridItem minW="0" display="flex" flexDirection="column">
-          <SimpleGrid columns={{ base: 2, sm: 3, md: 5 }} gap="2" w="full" minW="0" flex="1">
-            {(Object.keys(POND_STAT_LABELS) as Array<keyof typeof POND_STAT_LABELS>).map((k) => (
-              <Box
-                key={k}
-                borderWidth="1px"
-                borderColor="border"
-                borderRadius="md"
-                bg="bg.subtle"
-                px="2"
-                py="1.5"
-                minW="0"
+          <SimpleGrid
+            columns={{ base: 2, sm: 3, md: 5 }}
+            gap="2"
+            w="full"
+            minW="0"
+            flex="1"
+            justifyItems="stretch"
+          >
+            {(
+              Object.keys(POND_STAT_LABELS) as Array<
+                keyof typeof POND_STAT_LABELS
               >
-                <Stack gap="0.5" align="center">
-                  <Text
-                    fontSize="2xs"
-                    fontWeight="bold"
-                    color="fg"
-                    lineHeight="1.2"
-                    textAlign="center"
-                    w="full"
-                  >
-                    {POND_STAT_LABELS[k]}
-                  </Text>
-                  <Text
-                    fontSize="sm"
-                    fontWeight="semibold"
-                    fontVariantNumeric="tabular-nums"
-                    lineHeight="1.2"
-                    textAlign="center"
-                    w="full"
-                  >
-                    {Math.round(pondStats[k])}
-                  </Text>
-                </Stack>
-              </Box>
-            ))}
-            <Box
-              borderWidth="1px"
-              borderColor="border"
-              borderRadius="md"
-              bg="bg.subtle"
-              px="2"
-              py="1.5"
-              minW="0"
-            >
-              <Stack gap="0.5" align="center">
-                <Text fontSize="2xs" fontWeight="bold" color="fg" lineHeight="1.2" textAlign="center" w="full">
-                  Biodiversity
-                </Text>
-                <Text
-                  fontSize="sm"
-                  fontWeight="semibold"
-                  fontVariantNumeric="tabular-nums"
-                  lineHeight="1.2"
-                  textAlign="center"
-                  w="full"
+            ).map((k) => {
+              const label = POND_STAT_LABELS[k];
+              const blurb = POND_STAT_IMPORTANCE_COPY[k];
+              const tile = (
+                <Box
+                  key={k}
+                  borderWidth="1px"
+                  borderColor="border"
+                  borderRadius="md"
+                  bg="bg.subtle"
+                  px="2"
+                  py="1.5"
+                  minW="0"
+                  title={!canHoverFinePointer ? blurb : undefined}
                 >
-                  {Math.round(biodiversity)}
-                </Text>
-              </Stack>
-            </Box>
+                  <Stack gap="0.5" align="center">
+                    <Text
+                      fontSize="2xs"
+                      fontWeight="bold"
+                      color="fg"
+                      lineHeight="1.2"
+                      textAlign="center"
+                      w="full"
+                    >
+                      {label}
+                    </Text>
+                    <Text
+                      fontSize="sm"
+                      fontWeight="semibold"
+                      fontVariantNumeric="tabular-nums"
+                      lineHeight="1.2"
+                      textAlign="center"
+                      w="full"
+                    >
+                      {Math.round(pondStats[k])}
+                    </Text>
+                  </Stack>
+                </Box>
+              );
+
+              if (!canHoverFinePointer) return tile;
+
+              return (
+                <TooltipRoot
+                  key={k}
+                  {...ecologyTooltipRootBaseProps}
+                  openDelay={650}
+                  positioning={{ placement: "top" }}
+                >
+                  <TooltipTrigger asChild>{tile}</TooltipTrigger>
+                  <TooltipPositioner>
+                    <TooltipContent {...ecologyTooltipSurfaceProps}>
+                      <EcologyBlurbText>{blurb}</EcologyBlurbText>
+                    </TooltipContent>
+                  </TooltipPositioner>
+                </TooltipRoot>
+              );
+            })}
+            {(() => {
+              const bioTile = (
+                <Box
+                  key="biodiversity"
+                  borderWidth="1px"
+                  borderColor="border"
+                  borderRadius="md"
+                  bg="bg.subtle"
+                  px="2"
+                  py="1.5"
+                  minW="0"
+                  title={
+                    !canHoverFinePointer ? BIODIVERSITY_HUD_COPY : undefined
+                  }
+                >
+                  <Stack gap="0.5" align="center">
+                    <Text
+                      fontSize="2xs"
+                      fontWeight="bold"
+                      color="fg"
+                      lineHeight="1.2"
+                      textAlign="center"
+                      w="full"
+                    >
+                      Biodiversity
+                    </Text>
+                    <Text
+                      fontSize="sm"
+                      fontWeight="semibold"
+                      fontVariantNumeric="tabular-nums"
+                      lineHeight="1.2"
+                      textAlign="center"
+                      w="full"
+                    >
+                      {biodiversityStackTotal}
+                    </Text>
+                  </Stack>
+                </Box>
+              );
+              if (!canHoverFinePointer) return bioTile;
+              return (
+                <TooltipRoot
+                  key="biodiversity-tip"
+                  {...ecologyTooltipRootBaseProps}
+                  openDelay={650}
+                  positioning={{ placement: "top" }}
+                >
+                  <TooltipTrigger asChild>{bioTile}</TooltipTrigger>
+                  <TooltipPositioner>
+                    <TooltipContent {...ecologyTooltipSurfaceProps}>
+                      <EcologyBlurbText>{BIODIVERSITY_HUD_COPY}</EcologyBlurbText>
+                    </TooltipContent>
+                  </TooltipPositioner>
+                </TooltipRoot>
+              );
+            })()}
           </SimpleGrid>
         </GridItem>
       </Grid>
     </Box>
+  );
+}
+
+/** Filled ★ / empty ☆ for each ownable stack (shop card, centered row). */
+function ShopCardStackStars({
+  maxOwned,
+  filledStacks,
+}: {
+  maxOwned: number;
+  filledStacks: number;
+}) {
+  const filled = Math.max(0, Math.min(filledStacks, maxOwned));
+  const starSize = maxOwned > 5 ? "2xs" : "xs";
+  return (
+    <Flex
+      role="img"
+      aria-label={`${filled} of ${maxOwned} owned`}
+      align="center"
+      justify="center"
+      gap="0.125rem"
+      flexShrink={0}
+    >
+      {Array.from({ length: maxOwned }, (_, i) => (
+        <Text
+          as="span"
+          key={i}
+          fontSize={starSize}
+          lineHeight="1"
+          color={i < filled ? "yellow.400" : "gray.400"}
+        >
+          {i < filled ? "★" : "☆"}
+        </Text>
+      ))}
+    </Flex>
   );
 }
 
@@ -453,6 +760,7 @@ function UpgradeCard({
   pondStats,
   biodiversity,
   onBuy,
+  shopListRevision,
 }: {
   def: UpgradeDef;
   resources: ResourceBalances;
@@ -460,23 +768,53 @@ function UpgradeCard({
   pondStats: ReturnType<typeof computePondStats>;
   biodiversity: number;
   onBuy: (def: UpgradeDef) => void;
+  /** Bumps Tooltip `key` when shop order or ownership changes so no tooltip instance survives stale. */
+  shopListRevision: string;
 }) {
-  const [canHoverFinePointer] = useMediaQuery(["(hover: hover) and (pointer: fine)"], {
-    ssr: false,
-    fallback: [false],
-  });
+  const [canHoverFinePointer] = useMediaQuery(
+    ["(hover: hover) and (pointer: fine)"],
+    {
+      ssr: false,
+      fallback: [false],
+    },
+  );
 
   const ownedCount = getOwnedCount(ownedUpgrades, def.id);
+
   const maxed = nextPurchaseCost(def, ownedCount) === null;
   const nextCost = nextPurchaseCost(def, ownedCount);
-  const unlocked = isUpgradeUnlocked(def, ownedUpgrades, resources, pondStats, biodiversity);
-  const affordable = !maxed && nextCost !== null && unlocked && canAffordCosts(nextCost, resources);
-  const cantAfford =
-    unlocked && nextCost !== null && !maxed && !canAffordCosts(nextCost, resources);
+  const unlocked = isUpgradeUnlocked(
+    def,
+    ownedUpgrades,
+    resources,
+    pondStats,
+    biodiversity,
+  );
+  const canPay = nextCost !== null && canAffordCosts(nextCost, resources);
+
+  const lockedByRequirements = !maxed && !unlocked;
+  const lockedByCost = !maxed && unlocked && !canPay;
+  const affordable = !maxed && nextCost !== null && unlocked && canPay;
+  // const disabledCard = !maxed && !affordable;
+  // const cantAfford =
+  //   unlocked &&
+  //   nextCost !== null &&
+  //   !maxed &&
+  //   !canAffordCosts(nextCost, resources);
   const costLine = nextCost ? formatResourceCostParts(nextCost).join(" ") : "";
   const familyMeta = FAMILY_PRESENTATION[def.family];
-  const functionLine = shopCardFunctionLine(def);
-  const pondGateRows = pondGateRowsForShopCard(def, ownedUpgrades, pondStats, biodiversity);
+  const functionLine =
+    shopCardFunctionLine(def, ownedUpgrades) ?? def.effectText ?? null;
+  const pondGateRows = pondGateRowsForShopCard(
+    def,
+    ownedUpgrades,
+    pondStats,
+    biodiversity,
+  );
+  const pondCardEmoji = pondStageEmojiForUpgrade(def);
+  const upgradeTitleDisplay = pondCardEmoji
+    ? `${pondCardEmoji} ${def.name}`
+    : def.name;
 
   const cardBody = (
     <Box
@@ -487,7 +825,7 @@ function UpgradeCard({
       py={{ base: "1", md: "1.5" }}
       px={{ base: "1.5", md: "2" }}
       pr={{ base: "1.625rem", md: "2" }}
-      bg={cantAfford ? "gray.200" : "bg"}
+      bg={lockedByRequirements || lockedByCost ? "gray.200" : "bg"}
       h="full"
       minH="0"
       w="full"
@@ -496,7 +834,10 @@ function UpgradeCard({
     >
       {!canHoverFinePointer ? (
         <Box position="absolute" top="0.375rem" right="0.375rem" zIndex={1}>
-          <EcologyHelpMobileButton upgradeName={def.name} ecologyNote={def.ecologyNote} />
+          <EcologyHelpMobileButton
+            upgradeName={upgradeTitleDisplay}
+            ecologyNote={def.ecologyNote}
+          />
         </Box>
       ) : null}
       <Flex justify="space-between" align="flex-start" gap="2" w="full">
@@ -508,7 +849,7 @@ function UpgradeCard({
           flex="1"
           minW="0"
         >
-          {def.name}
+          {upgradeTitleDisplay}
         </Text>
         <Text
           fontSize="xs"
@@ -522,23 +863,55 @@ function UpgradeCard({
           {familyMeta.symbol} {familyMeta.label}
         </Text>
       </Flex>
-      {functionLine ? (
-        <Text fontSize="xs" color="gray.700" mt="1" lineHeight="1.3">
-          {functionLine}
+      <Flex
+        justify="space-between"
+        align="baseline"
+        gap="2"
+        mt="1"
+        w="full"
+        minW="0"
+      >
+        {functionLine ? (
+          <Text
+            fontSize="xs"
+            color="gray.700"
+            lineHeight="1.3"
+            flex="1"
+            minW="0"
+          >
+            {functionLine}
+          </Text>
+        ) : (
+          <Box flex="1" minW="0" />
+        )}
+        <Text
+          fontSize="2xs"
+          fontWeight="medium"
+          color="gray.500"
+          opacity={0.88}
+          lineHeight="1.3"
+          flexShrink={0}
+          letterSpacing="0.02em"
+        >
+          {tierRomanHeading(def.tier)}
         </Text>
-      ) : null}
+      </Flex>
       {pondGateRows.length > 0 ? (
         <Stack gap="0.5" mt="1" align="stretch">
           {pondGateRows.map((row) => (
             <Text
               key={row.title}
               fontSize="2xs"
-              color={row.met ? "lilypad.solid" : "gray.700"}
+              color={row.met ? "lilypad.solid" : "nautical.solid"}
               lineHeight="1.3"
               fontVariantNumeric="tabular-nums"
             >
               {row.title} ≥ {row.required}
-              <Box as="span" color={row.met ? "lilypad.solid" : "gray.600"} fontWeight="normal">
+              <Box
+                as="span"
+                color={row.met ? "lilypad.solid" : "nautical.solid"}
+                fontWeight="normal"
+              >
                 {" "}
                 ({Math.round(row.current)}/{row.required})
               </Box>
@@ -546,12 +919,75 @@ function UpgradeCard({
           ))}
         </Stack>
       ) : null}
-      {!maxed && nextCost ? (
-        <Flex align="center" justify="space-between" gap="1.5" mt="1.5" w="full" minW="0">
+      {def.maxOwned != null && def.maxOwned > 0 ? (
+        <Flex
+          align="center"
+          justify="space-between"
+          gap="1.5"
+          mt="1.5"
+          w="full"
+          minW="0"
+        >
+          <Box flex="1" minW="0" pr="1" display="flex" alignItems="center">
+            {!maxed && nextCost ? (
+              <Text fontSize="xs" color="gray.700" lineClamp={1}>
+                <strong>{costLine}</strong>
+              </Text>
+            ) : maxed ? (
+              <Text fontSize="xs" color="gray.500">
+                Max
+              </Text>
+            ) : (
+              <Text fontSize="xs" color="gray.500">
+                —
+              </Text>
+            )}
+          </Box>
+          <Flex
+            align="center"
+            justify="flex-end"
+            gap="1"
+            flexShrink={0}
+            minW="0"
+          >
+            <ShopCardStackStars
+              maxOwned={def.maxOwned}
+              filledStacks={effectiveOwnedStacks(def, ownedUpgrades)}
+            />
+            {!maxed && nextCost ? (
+              <PondButton
+                type="button"
+                size="xs"
+                colorPalette="nautical"
+                disabled={!affordable}
+                flexShrink={0}
+                onClick={() => onBuy(def)}
+              >
+                Buy
+              </PondButton>
+            ) : null}
+          </Flex>
+        </Flex>
+      ) : !maxed && nextCost ? (
+        <Flex
+          align="center"
+          justify="space-between"
+          gap="1.5"
+          mt="1.5"
+          w="full"
+          minW="0"
+        >
           <Text fontSize="xs" color="gray.700" flexShrink={0}>
             <strong>{costLine}</strong>
           </Text>
-          <PondButton type="button" size="xs" colorPalette="nautical" disabled={!affordable} flexShrink={0} onClick={() => onBuy(def)}>
+          <PondButton
+            type="button"
+            size="xs"
+            colorPalette="nautical"
+            disabled={!affordable}
+            flexShrink={0}
+            onClick={() => onBuy(def)}
+          >
             Buy
           </PondButton>
         </Flex>
@@ -561,7 +997,12 @@ function UpgradeCard({
 
   if (canHoverFinePointer) {
     return (
-      <TooltipRoot openDelay={1000} closeDelay={150} interactive positioning={{ placement: "top-start" }}>
+      <TooltipRoot
+        key={`shop-eco-${def.id}-${shopListRevision}-${ownedCount}`}
+        {...ecologyTooltipRootBaseProps}
+        openDelay={1000}
+        positioning={{ placement: "top-start" }}
+      >
         <TooltipTrigger asChild>
           <Box w="full" minW="0" display="block" cursor="default">
             {cardBody}
@@ -583,15 +1024,33 @@ function isClickerAuthFailureMessage(msg: string): boolean {
   return msg.includes("(401)") || msg.includes("(403)");
 }
 
-function OwnedChip({ def, ownedUpgrades }: { def: UpgradeDef; ownedUpgrades: Record<string, number> }) {
-  const [canHoverFinePointer] = useMediaQuery(["(hover: hover) and (pointer: fine)"], {
-    ssr: false,
-    fallback: [false],
-  });
+function OwnedChip({
+  def,
+  ownedUpgrades,
+}: {
+  def: UpgradeDef;
+  ownedUpgrades: Record<string, number>;
+}) {
+  const [canHoverFinePointer] = useMediaQuery(
+    ["(hover: hover) and (pointer: fine)"],
+    {
+      ssr: false,
+      fallback: [false],
+    },
+  );
   const stacks = effectiveOwnedStacks(def, ownedUpgrades);
-  const fx = effectSummaryAtLevel(def, stacks);
+  const fx = ownedCardEffectLine(def, ownedUpgrades);
   const familyMeta = FAMILY_PRESENTATION[def.family];
-  const qtyLabel = def.maxOwned !== undefined ? `${stacks} / ${def.maxOwned}` : String(stacks);
+
+  const hasCap = typeof def.maxOwned === "number" && def.maxOwned > 0;
+  const MAX_STARS = 5;
+  const starCap = hasCap ? Math.min(def.maxOwned!, MAX_STARS) : MAX_STARS;
+  const filledStars = Math.max(0, Math.min(stacks, starCap));
+  const emptyStars = Math.max(0, starCap - filledStars);
+  const pondCardEmoji = pondStageEmojiForUpgrade(def);
+  const upgradeTitleDisplay = pondCardEmoji
+    ? `${pondCardEmoji} ${def.name}`
+    : def.name;
 
   const chipBody = (
     <Box
@@ -611,31 +1070,119 @@ function OwnedChip({ def, ownedUpgrades }: { def: UpgradeDef; ownedUpgrades: Rec
     >
       {!canHoverFinePointer ? (
         <Box position="absolute" top="0.375rem" right="0.5rem" zIndex={1}>
-          <EcologyHelpMobileButton upgradeName={def.name} ecologyNote={def.ecologyNote} />
+          <EcologyHelpMobileButton
+            upgradeName={upgradeTitleDisplay}
+            ecologyNote={def.ecologyNote}
+          />
         </Box>
       ) : null}
-      <Text fontSize="sm" fontWeight="bold" lineHeight="1.3" minW="0" lineClamp={2}>
-        {def.name}
+      <Text
+        fontSize="sm"
+        fontWeight="bold"
+        lineHeight="1.3"
+        minW="0"
+        lineClamp={2}
+      >
+        {upgradeTitleDisplay}
       </Text>
-      {fx ? (
-        <Text fontSize={APP_TEXT_SIZES.meta} color="gray.600" lineHeight="1.35">
-          {fx}
+      <Flex
+        justify="space-between"
+        align="baseline"
+        gap="2"
+        w="full"
+        minW="0"
+      >
+        {fx ? (
+          <Text
+            fontSize={APP_TEXT_SIZES.meta}
+            color="gray.600"
+            lineHeight="1.35"
+            flex="1"
+            minW="0"
+          >
+            {fx}
+          </Text>
+        ) : (
+          <Box flex="1" minW="0" />
+        )}
+        <Text
+          fontSize="2xs"
+          fontWeight="medium"
+          color="gray.500"
+          opacity={0.88}
+          lineHeight="1.35"
+          flexShrink={0}
+          letterSpacing="0.02em"
+        >
+          {tierRomanHeading(def.tier)}
         </Text>
-      ) : null}
+      </Flex>
       <Flex justify="space-between" align="center" gap="2" w="full" minW="0">
-        <Text fontSize="xs" fontWeight="medium" color={familyMeta.accent} lineClamp={2} flex="1" minW="0">
+        <Text
+          fontSize="xs"
+          fontWeight="medium"
+          color={familyMeta.accent}
+          lineClamp={2}
+          flex="1"
+          minW="0"
+        >
           {familyMeta.symbol} {familyMeta.label}
         </Text>
-        <Text fontSize="xs" fontWeight="medium" color="gray.600" fontVariantNumeric="tabular-nums" flexShrink={0}>
-          ×{qtyLabel}
-        </Text>
+        <Flex
+          align="center"
+          gap="0.5"
+          flexShrink={0}
+          title={
+            hasCap
+              ? `${stacks} of ${def.maxOwned} stacks owned`
+              : `${stacks} stack${stacks === 1 ? "" : "s"} owned`
+          }
+        >
+          <Flex gap="0.25">
+            {Array.from({ length: filledStars }).map((_, i) => (
+              <Text key={`f-${i}`} fontSize="xs" color="yellow.400">
+                ★
+              </Text>
+            ))}
+            {Array.from({ length: emptyStars }).map((_, i) => (
+              <Text key={`e-${i}`} fontSize="xs" color="gray.400">
+                ☆
+              </Text>
+            ))}
+          </Flex>
+          {!hasCap && (
+            <Text
+              fontSize="xs"
+              fontWeight="medium"
+              color="gray.600"
+              fontVariantNumeric="tabular-nums"
+            >
+              {stacks}
+            </Text>
+          )}
+          {hasCap && def.maxOwned! > MAX_STARS && (
+            <Text
+              fontSize="xs"
+              fontWeight="medium"
+              color="gray.600"
+              fontVariantNumeric="tabular-nums"
+            >
+              {stacks}/{def.maxOwned}
+            </Text>
+          )}
+        </Flex>
       </Flex>
     </Box>
   );
 
   if (canHoverFinePointer) {
     return (
-      <TooltipRoot openDelay={1000} closeDelay={150} interactive positioning={{ placement: "top-start" }}>
+      <TooltipRoot
+        key={`owned-eco-${def.id}-${stacks}`}
+        {...ecologyTooltipRootBaseProps}
+        openDelay={1000}
+        positioning={{ placement: "top-start" }}
+      >
         <TooltipTrigger asChild>
           <Box display="block" cursor="default" flexShrink={0}>
             {chipBody}
@@ -666,7 +1213,16 @@ function applyNormalizedState(
     setStatistics: (s: ClickerGameStateV1["statistics"]) => void;
   },
 ) {
-  const { setResources, setOwnedUpgrades, setOwnedUpgradeOrder, setRevealedUpgrades, setUnlockedMechanics, setCatalogVersion, setActiveBuffs, setStatistics } = setters;
+  const {
+    setResources,
+    setOwnedUpgrades,
+    setOwnedUpgradeOrder,
+    setRevealedUpgrades,
+    setUnlockedMechanics,
+    setCatalogVersion,
+    setActiveBuffs,
+    setStatistics,
+  } = setters;
   setResources({ energy: normalized.energy });
   setOwnedUpgrades(normalized.owned_upgrades);
   setOwnedUpgradeOrder(normalized.owned_upgrade_order);
@@ -689,24 +1245,50 @@ export default function ClickerGamePage() {
   } = useAppSession();
 
   const [resources, setResources] = useState<ResourceBalances>({ energy: 0 });
-  const [ownedUpgrades, setOwnedUpgrades] = useState<Record<string, number>>({});
-  const [ownedUpgradeOrder, setOwnedUpgradeOrder] = useState<string[]>(() => initialGameState().owned_upgrade_order);
-  const [revealedUpgrades, setRevealedUpgrades] = useState<Record<string, boolean>>({});
+  const [ownedUpgrades, setOwnedUpgrades] = useState<Record<string, number>>(
+    {},
+  );
+  const [ownedUpgradeOrder, setOwnedUpgradeOrder] = useState<string[]>(
+    () => initialGameState().owned_upgrade_order,
+  );
+  const [revealedUpgrades, setRevealedUpgrades] = useState<
+    Record<string, boolean>
+  >({});
   const [unlockedMechanics, setUnlockedMechanics] = useState<string[]>([]);
   const [catalogVersion, setCatalogVersion] = useState(CATALOG_CONTENT_VERSION);
-  const [activeBuffs, setActiveBuffs] = useState<Array<{ id: string; expires_at_ms: number }>>([]);
-  const [statistics, setStatistics] = useState(() => createDefaultClickerState().statistics);
+  const [activeBuffs, setActiveBuffs] = useState<
+    Array<{ id: string; expires_at_ms: number }>
+  >([]);
+  const [statistics, setStatistics] = useState(
+    () => createDefaultClickerState().statistics,
+  );
+  const [ownedFamilyFilter, setOwnedFamilyFilter] =
+    useState<UpgradeFamily | null>(null);
+  const [ownedTierFilter, setOwnedTierFilter] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveAuthBlocked, setSaveAuthBlocked] = useState(false);
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("loading");
   const [loadAttempt, setLoadAttempt] = useState(0);
+  const [canHoverEcologyTooltips] = useMediaQuery(
+    ["(hover: hover) and (pointer: fine)"],
+    { ssr: false, fallback: [false] },
+  );
   const [confirmServerReset, setConfirmServerReset] = useState(false);
   const [serverResetBusy, setServerResetBusy] = useState(false);
   const [serverResetError, setServerResetError] = useState<string | null>(null);
-  const [confirmTier1Reset, setConfirmTier1Reset] = useState(false);
-  const [tier1ResetBusy, setTier1ResetBusy] = useState(false);
-  const tier1CompleteBeforeSaveRef = useRef(false);
+  const [confirmFinalReset, setConfirmFinalReset] = useState(false);
+  const [finalResetBusy, setFinalResetBusy] = useState(false);
+  const finalCompleteBeforeSaveRef = useRef(false);
+  /** Stable purchasable-first shop order; new purchasable ids append (catalog order for same-frame adds). */
+  const shopPurchasableOrderRef = useRef<string[]>([]);
+
+  /** Any local change since last successful save. */
+  const saveDirtyRef = useRef(false);
+  /** Last high-frequency user action (clicking/buying) — used to avoid saving mid-spam. */
+  const lastInteractionAtMsRef = useRef(0);
+  const saveInFlightRef = useRef(false);
+  const saveIdleHandleRef = useRef<number | null>(null);
 
   const ownedRef = useRef<Record<string, number>>({});
   ownedRef.current = ownedUpgrades;
@@ -714,12 +1296,22 @@ export default function ClickerGamePage() {
   const gameRef = useRef(resources);
   gameRef.current = resources;
 
-  const pondStats = useMemo(() => computePondStats(ownedUpgrades), [ownedUpgrades]);
-  const biodiversity = useMemo(() => computeBiodiversity(ownedUpgrades), [ownedUpgrades]);
+  const pondStats = useMemo(
+    () => computePondStats(ownedUpgrades),
+    [ownedUpgrades],
+  );
+  const biodiversity = useMemo(
+    () => computeBiodiversity(ownedUpgrades),
+    [ownedUpgrades],
+  );
+  const biodiversityStackTotal = useMemo(
+    () => Math.round(biodiversity / 100),
+    [biodiversity],
+  );
 
-  const tier1Complete = tier1PondComplete(ownedUpgrades);
-  /** Tier 1 finished: no passive energy, no clicks, no purchases until reset. */
-  const gamePaused = tier1Complete;
+  /** Tier 6 finished: no passive energy, no clicks, no purchases until reset. */
+  const finalTierComplete = finalTierPondComplete(ownedUpgrades);
+  const gamePaused = finalTierComplete;
 
   const stateRef = useRef<ClickerGameStateV1>(initialGameState());
   stateRef.current = {
@@ -741,8 +1333,8 @@ export default function ClickerGamePage() {
       await saveClickerState(token, createDefaultClickerState());
       setConfirmServerReset(false);
       setLoadError(null);
-      setConfirmTier1Reset(false);
-      tier1CompleteBeforeSaveRef.current = false;
+      setConfirmFinalReset(false);
+      finalCompleteBeforeSaveRef.current = false;
       setLoadAttempt((n) => n + 1);
     } catch (e) {
       setServerResetError(e instanceof Error ? e.message : "Reset failed");
@@ -752,7 +1344,7 @@ export default function ClickerGamePage() {
   }, [getApiAccessToken]);
 
   const performTier1Reset = useCallback(async () => {
-    setTier1ResetBusy(true);
+    setFinalResetBusy(true);
     try {
       const token = await getApiAccessToken();
       const fresh = createDefaultClickerState();
@@ -769,21 +1361,21 @@ export default function ClickerGamePage() {
       });
       ownedRef.current = fresh.owned_upgrades;
       stateRef.current = fresh;
-      setConfirmTier1Reset(false);
-      tier1CompleteBeforeSaveRef.current = false;
+      setConfirmFinalReset(false);
+      finalCompleteBeforeSaveRef.current = false;
       void refreshSession();
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "Reset failed");
     } finally {
-      setTier1ResetBusy(false);
+      setFinalResetBusy(false);
     }
   }, [getApiAccessToken, refreshSession]);
 
   useEffect(() => {
-    if (!tier1Complete) {
-      setConfirmTier1Reset(false);
+    if (!finalTierComplete) {
+      setConfirmFinalReset(false);
     }
-  }, [tier1Complete]);
+  }, [finalTierComplete]);
 
   useEffect(() => {
     if (!isAuthenticated || !sessionUser) {
@@ -797,7 +1389,10 @@ export default function ClickerGamePage() {
         const token = await getApiAccessToken();
         const res = await fetchClickerState(token);
         if (cancelled) return;
-        const normalized = normalizeClickerStateForSchema(res.state, res.schema_version);
+        const normalized = normalizeClickerStateForSchema(
+          res.state,
+          res.schema_version,
+        );
         setResources({ energy: normalized.energy });
         setOwnedUpgrades(normalized.owned_upgrades);
         setOwnedUpgradeOrder(normalized.owned_upgrade_order);
@@ -808,10 +1403,13 @@ export default function ClickerGamePage() {
         setStatistics(normalized.statistics);
         ownedRef.current = normalized.owned_upgrades;
         stateRef.current = normalized;
+        saveDirtyRef.current = false;
         setLoadStatus("ready");
         setSaveAuthBlocked(false);
         setSaveError(null);
-        tier1CompleteBeforeSaveRef.current = tier1PondComplete(normalized.owned_upgrades);
+        finalCompleteBeforeSaveRef.current = finalTierPondComplete(
+          normalized.owned_upgrades,
+        );
       } catch (e) {
         if (!cancelled) {
           setLoadError(e instanceof Error ? e.message : "Failed to load");
@@ -825,31 +1423,90 @@ export default function ClickerGamePage() {
   }, [isAuthenticated, sessionUser, loadAttempt, getApiAccessToken]);
 
   useEffect(() => {
-    if (!isAuthenticated || !sessionUser || loadStatus !== "ready" || saveAuthBlocked) return;
-    const tick = () => {
-      void (async () => {
-        try {
-          setSaveError(null);
-          const token = await getApiAccessToken();
-          await saveClickerState(token, stateRef.current);
-          setSaveAuthBlocked(false);
-          const nowTier1 = tier1PondComplete(stateRef.current.owned_upgrades);
-          if (nowTier1 && !tier1CompleteBeforeSaveRef.current) {
-            tier1CompleteBeforeSaveRef.current = true;
-            void refreshSession();
+    if (
+      !isAuthenticated ||
+      !sessionUser ||
+      loadStatus !== "ready" ||
+      saveAuthBlocked
+    )
+      return;
+    const scheduleIdleSave = () => {
+      if (!saveDirtyRef.current) return;
+      if (saveInFlightRef.current) return;
+      // If the user is actively clicking/buying, don't interrupt input handling.
+      if (Date.now() - lastInteractionAtMsRef.current < 650) return;
+      if (saveIdleHandleRef.current !== null) return;
+
+      const run = () => {
+        saveIdleHandleRef.current = null;
+        if (!saveDirtyRef.current) return;
+        if (saveInFlightRef.current) return;
+        if (Date.now() - lastInteractionAtMsRef.current < 650) return;
+        saveInFlightRef.current = true;
+        void (async () => {
+          try {
+            // Avoid a re-render every autosave when there's no visible error.
+            setSaveError((prev) => (prev ? null : prev));
+            const token = await getApiAccessToken();
+            // JSON.stringify can be chunky — do it only when idle.
+            const saveRes = await saveClickerState(token, stateRef.current);
+            saveDirtyRef.current = false;
+            setSaveAuthBlocked(false);
+            const nowFinalComplete = finalTierPondComplete(
+              stateRef.current.owned_upgrades,
+            );
+            if (saveRes.pondclicker_badges_unlocked) {
+              void refreshSession();
+            }
+            if (nowFinalComplete && !finalCompleteBeforeSaveRef.current) {
+              finalCompleteBeforeSaveRef.current = true;
+              if (!saveRes.pondclicker_badges_unlocked) {
+                void refreshSession();
+              }
+            }
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : "Save failed";
+            setSaveError(msg);
+            if (isClickerAuthFailureMessage(msg)) {
+              setSaveAuthBlocked(true);
+            }
+          } finally {
+            saveInFlightRef.current = false;
           }
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : "Save failed";
-          setSaveError(msg);
-          if (isClickerAuthFailureMessage(msg)) {
-            setSaveAuthBlocked(true);
-          }
-        }
-      })();
+        })();
+      };
+
+      const ric = (window as unknown as { requestIdleCallback?: Function })
+        .requestIdleCallback;
+      if (typeof ric === "function") {
+        saveIdleHandleRef.current = ric(run, { timeout: 1200 }) as number;
+      } else {
+        saveIdleHandleRef.current = window.setTimeout(run, 0);
+      }
     };
-    const id = window.setInterval(tick, SAVE_INTERVAL_MS);
-    return () => window.clearInterval(id);
-  }, [isAuthenticated, sessionUser, loadStatus, getApiAccessToken, saveAuthBlocked, refreshSession]);
+
+    const id = window.setInterval(scheduleIdleSave, SAVE_INTERVAL_MS);
+    return () => {
+      window.clearInterval(id);
+      if (saveIdleHandleRef.current !== null) {
+        const cancelRic = (window as unknown as { cancelIdleCallback?: Function })
+          .cancelIdleCallback;
+        if (typeof cancelRic === "function") {
+          cancelRic(saveIdleHandleRef.current);
+        } else {
+          window.clearTimeout(saveIdleHandleRef.current);
+        }
+        saveIdleHandleRef.current = null;
+      }
+    };
+  }, [
+    isAuthenticated,
+    sessionUser,
+    loadStatus,
+    getApiAccessToken,
+    saveAuthBlocked,
+    refreshSession,
+  ]);
 
   useEffect(() => {
     if (!isAuthenticated || loadStatus !== "ready" || gamePaused) return;
@@ -860,7 +1517,11 @@ export default function ClickerGamePage() {
       setResources((curr) => applyResourceDelta(curr, sim.resourceRates, dt));
       setUnlockedMechanics(sim.unlockedMechanics);
       if (energyGain > 0) {
-        setStatistics((s) => ({ ...s, total_energy_earned: s.total_energy_earned + energyGain }));
+        saveDirtyRef.current = true;
+        setStatistics((s) => ({
+          ...s,
+          total_energy_earned: s.total_energy_earned + energyGain,
+        }));
       }
     }, PASSIVE_TICK_MS);
     return () => window.clearInterval(id);
@@ -871,9 +1532,30 @@ export default function ClickerGamePage() {
     setRevealedUpgrades((prev) => {
       let next: Record<string, boolean> | null = null;
       for (const def of CATALOG_UPGRADES) {
+        // Sticky behavior: once a card has ever been visible in the shop,
+        // keep it revealed regardless of later energy drops or stat scaling.
+        if (
+          !getOwnedCount(ownedUpgrades, def.id) &&
+          !((next ?? prev)[def.id] ?? false) &&
+          isUpgradeVisible(def, ownedUpgrades, resources, prev)
+        ) {
+          if (!next) next = { ...prev };
+          next[def.id] = true;
+          continue;
+        }
+
         if (getOwnedCount(ownedUpgrades, def.id) > 0) continue;
         if ((next ?? prev)[def.id]) continue;
-        if (!isUpgradeUnlocked(def, ownedUpgrades, resources, pondStats, biodiversity)) continue;
+        if (
+          !isUpgradeUnlocked(
+            def,
+            ownedUpgrades,
+            resources,
+            pondStats,
+            biodiversity,
+          )
+        )
+          continue;
         const tier1Cost = nextPurchaseCost(def, 0);
         if (!tier1Cost) continue;
         const thr = Math.ceil((tier1Cost.energy ?? 0) / 2);
@@ -884,64 +1566,70 @@ export default function ClickerGamePage() {
       }
       return next ?? prev;
     });
-  }, [resources.energy, ownedUpgrades, loadStatus, resources, pondStats, biodiversity]);
+  }, [
+    resources.energy,
+    ownedUpgrades,
+    loadStatus,
+    resources,
+    pondStats,
+    biodiversity,
+  ]);
 
-  const buyUpgrade = useCallback(
-    (def: UpgradeDef) => {
-      const owned = ownedRef.current;
-      if (tier1PondComplete(owned)) return;
-      const resBefore = gameRef.current;
-      const statsBefore = computePondStats(owned);
-      const bioBefore = computeBiodiversity(owned);
-      const ownedCount = getOwnedCount(owned, def.id);
-      if (nextPurchaseCost(def, ownedCount) === null) return;
-      const nextCost = nextPurchaseCost(def, ownedCount);
-      if (!nextCost) return;
-      if (!isUpgradeUnlocked(def, owned, resBefore, statsBefore, bioBefore)) return;
-      if (!canAffordCosts(nextCost, resBefore)) return;
+  const buyUpgrade = useCallback((def: UpgradeDef) => {
+    const owned = ownedRef.current;
+    if (finalTierPondComplete(owned)) return;
+    const resBefore = gameRef.current;
+    const statsBefore = computePondStats(owned);
+    const bioBefore = computeBiodiversity(owned);
+    const ownedCount = getOwnedCount(owned, def.id);
+    if (nextPurchaseCost(def, ownedCount) === null) return;
+    const nextCost = nextPurchaseCost(def, ownedCount);
+    if (!nextCost) return;
+    if (!isUpgradeUnlocked(def, owned, resBefore, statsBefore, bioBefore))
+      return;
+    if (!canAffordCosts(nextCost, resBefore)) return;
 
-      const resAfter: ResourceBalances = {
-        energy: Math.max(0, resBefore.energy - nextCost.energy),
-      };
-      const ownedAfterPurchase = ownedCount + 1;
+    const resAfter: ResourceBalances = {
+      energy: Math.max(0, resBefore.energy - nextCost.energy),
+    };
+    const ownedAfterPurchase = ownedCount + 1;
 
-      setRevealedUpgrades((prev) => {
-        const next = { ...prev };
+    setRevealedUpgrades((prev) => {
+      const next = { ...prev };
 
-        for (const u of CATALOG_UPGRADES) {
-          if (u.id === def.id) continue;
-          const oc = getOwnedCount(owned, u.id);
-          if (!isUpgradeUnlocked(u, owned, resBefore, statsBefore, bioBefore)) continue;
-          const t = revealEnergyThresholdForNextPurchase(u, oc);
-          if (resBefore.energy >= t) {
-            next[u.id] = true;
-          }
+      for (const u of CATALOG_UPGRADES) {
+        if (u.id === def.id) continue;
+        const oc = getOwnedCount(owned, u.id);
+        if (!isUpgradeUnlocked(u, owned, resBefore, statsBefore, bioBefore))
+          continue;
+        const t = revealEnergyThresholdForNextPurchase(u, oc);
+        if (resBefore.energy >= t) {
+          next[u.id] = true;
         }
+      }
 
-        if (nextPurchaseCost(def, ownedAfterPurchase) !== null) {
-          const thrPurchased = revealEnergyThresholdForNextPurchase(def, ownedAfterPurchase);
-          if (resAfter.energy < thrPurchased) {
-            next[def.id] = false;
-          } else {
-            next[def.id] = true;
-          }
-        }
+      if (nextPurchaseCost(def, ownedAfterPurchase) !== null) {
+        next[def.id] = true;
+      }
 
-        return next;
-      });
+      return next;
+    });
 
-      setResources(() => resAfter);
-      setOwnedUpgradeOrder((ord) => [def.id, ...ord.filter((k) => k !== def.id)]);
-      setOwnedUpgrades((o) => {
-        const next = { ...o, [def.id]: ownedCount + 1 };
-        ownedRef.current = next;
-        return next;
-      });
-    },
-    [],
+    lastInteractionAtMsRef.current = Date.now();
+    saveDirtyRef.current = true;
+    setResources(() => resAfter);
+    setOwnedUpgradeOrder((ord) => [def.id, ...ord.filter((k) => k !== def.id)]);
+    setOwnedUpgrades((o) => {
+      const next = { ...o, [def.id]: ownedCount + 1 };
+      ownedRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const simulation = useMemo(
+    () => simulateOwnedUpgrades(ownedUpgrades),
+    [ownedUpgrades],
   );
-
-  const simulation = useMemo(() => simulateOwnedUpgrades(ownedUpgrades), [ownedUpgrades]);
   const rates = gamePaused ? { energy: 0 } : simulation.resourceRates;
 
   const ownedListOrdered = useMemo(() => {
@@ -963,23 +1651,124 @@ export default function ClickerGamePage() {
     return list;
   }, [ownedUpgradeOrder, ownedUpgrades]);
 
-  const shopVisible = CATALOG_UPGRADES.filter((def) =>
-    isUpgradeVisible(def, ownedUpgrades, resources, revealedUpgrades, pondStats, biodiversity),
+  const ownedCountsByFamily = useMemo(() => {
+    const counts = {} as Record<UpgradeFamily, number>;
+    for (const family of Object.keys(FAMILY_PRESENTATION) as UpgradeFamily[]) {
+      counts[family] = 0;
+    }
+    for (const def of CATALOG_UPGRADES) {
+      counts[def.family] += effectiveOwnedStacks(def, ownedUpgrades);
+    }
+    return counts;
+  }, [ownedUpgrades]);
+
+  const ownedCountsByTier = useMemo(() => {
+    const counts: Record<number, number> = {
+      0: 0,
+      1: 0,
+      2: 0,
+      3: 0,
+      4: 0,
+      5: 0,
+      6: 0,
+    };
+    for (const def of CATALOG_UPGRADES) {
+      const t = def.tier;
+      if (t >= 0 && t <= 6) counts[t] += effectiveOwnedStacks(def, ownedUpgrades);
+    }
+    return counts;
+  }, [ownedUpgrades]);
+
+  const hasTierOnePlusOwned = useMemo(() => {
+    let s = 0;
+    for (let t = 1; t <= 6; t++) s += ownedCountsByTier[t] ?? 0;
+    return s > 0;
+  }, [ownedCountsByTier]);
+
+  useEffect(() => {
+    if (!hasTierOnePlusOwned) setOwnedTierFilter(null);
+  }, [hasTierOnePlusOwned]);
+
+  const ownedListFiltered = useMemo(() => {
+    let list = ownedListOrdered;
+    if (ownedFamilyFilter) {
+      list = list.filter((def) => def.family === ownedFamilyFilter);
+    }
+    if (ownedTierFilter !== null) {
+      list = list.filter((def) => def.tier === ownedTierFilter);
+    }
+    return list;
+  }, [ownedListOrdered, ownedFamilyFilter, ownedTierFilter]);
+
+  const shopVisible = useMemo(
+    () =>
+      CATALOG_UPGRADES.filter((def) =>
+        isUpgradeVisible(def, ownedUpgrades, resources, revealedUpgrades),
+      ),
+    [ownedUpgrades, resources, revealedUpgrades],
   );
-  const shopOrdered = [...shopVisible].sort((a, b) => {
-    const costA = nextPurchaseCost(a, getOwnedCount(ownedUpgrades, a.id));
-    const costB = nextPurchaseCost(b, getOwnedCount(ownedUpgrades, b.id));
-    const pa =
-      costA !== null &&
-      isUpgradeUnlocked(a, ownedUpgrades, resources, pondStats, biodiversity) &&
-      canAffordCosts(costA, resources);
-    const pb =
-      costB !== null &&
-      isUpgradeUnlocked(b, ownedUpgrades, resources, pondStats, biodiversity) &&
-      canAffordCosts(costB, resources);
-    if (pa !== pb) return pa ? -1 : 1;
-    return a.tier - b.tier;
-  });
+
+  const shopOrdered = useMemo(() => {
+    const isPurchasable = (def: UpgradeDef) => {
+      const c = nextPurchaseCost(def, getOwnedCount(ownedUpgrades, def.id));
+      return (
+        c !== null &&
+        isUpgradeUnlocked(
+          def,
+          ownedUpgrades,
+          resources,
+          pondStats,
+          biodiversity,
+        ) &&
+        canAffordCosts(c, resources)
+      );
+    };
+
+    const purchasableDefs = shopVisible.filter(isPurchasable);
+    const purchIds = new Set(purchasableDefs.map((d) => d.id));
+
+    const order = shopPurchasableOrderRef.current.filter((id) =>
+      purchIds.has(id),
+    );
+    for (const def of CATALOG_UPGRADES) {
+      if (!purchIds.has(def.id)) continue;
+      if (!order.includes(def.id)) order.push(def.id);
+    }
+    shopPurchasableOrderRef.current = order;
+
+    const idToDef = new Map(CATALOG_UPGRADES.map((d) => [d.id, d] as const));
+    const purchOrdered = order
+      .map((id) => idToDef.get(id))
+      .filter(
+        (d): d is UpgradeDef =>
+          d !== undefined &&
+          shopVisible.some((v) => v.id === d.id) &&
+          isPurchasable(d),
+      );
+
+    const unpurch = shopVisible
+      .filter((d) => !isPurchasable(d))
+      .sort((a, b) => {
+        const ca = nextPurchaseCost(a, getOwnedCount(ownedUpgrades, a.id));
+        const cb = nextPurchaseCost(b, getOwnedCount(ownedUpgrades, b.id));
+        const ea = ca?.energy ?? Number.POSITIVE_INFINITY;
+        const eb = cb?.energy ?? Number.POSITIVE_INFINITY;
+        return ea - eb;
+      });
+
+    return [...purchOrdered, ...unpurch];
+  }, [
+    shopVisible,
+    ownedUpgrades,
+    resources,
+    pondStats,
+    biodiversity,
+  ]);
+
+  const shopListRevision = useMemo(
+    () => shopOrdered.map((d) => d.id).join("|"),
+    [shopOrdered],
+  );
 
   if (!isAuthenticated) {
     return (
@@ -996,7 +1785,8 @@ export default function ClickerGamePage() {
       <ClickerPageShell>
         <Box maxW="7xl" mx="auto">
           <Text fontSize={{ base: "sm", md: "md" }} color="fg">
-            {sessionError ?? "Could not load your account session. Try signing in again."}
+            {sessionError ??
+              "Could not load your account session. Try signing in again."}
           </Text>
         </Box>
       </ClickerPageShell>
@@ -1026,20 +1816,37 @@ export default function ClickerGamePage() {
               </Text>
               {is403 ? (
                 <Text mt="2" fontSize={APP_TEXT_SIZES.helper} color="gray.600">
-                  This is usually a sign-in or session issue. Try signing out and back in.
+                  This is usually a sign-in or session issue. Try signing out
+                  and back in.
                 </Text>
               ) : null}
             </Box>
             {serverResetError ? (
-              <Text role="alert" fontSize={APP_TEXT_SIZES.helper} color="nautical.solid" fontWeight="medium">
+              <Text
+                role="alert"
+                fontSize={APP_TEXT_SIZES.helper}
+                color="nautical.solid"
+                fontWeight="medium"
+              >
                 {serverResetError}
               </Text>
             ) : null}
             <Flex flexWrap="wrap" gap="2" align="center">
-              <PondButton type="button" size="md" colorPalette="nautical" onClick={() => navigate("/clicker")}>
+              <PondButton
+                type="button"
+                size="md"
+                colorPalette="nautical"
+                onClick={() => navigate("/clicker")}
+              >
                 Back to lobby
               </PondButton>
-              <PondButton type="button" size="md" colorPalette="nautical" variant="outline" onClick={() => setLoadAttempt((n) => n + 1)}>
+              <PondButton
+                type="button"
+                size="md"
+                colorPalette="nautical"
+                variant="outline"
+                onClick={() => setLoadAttempt((n) => n + 1)}
+              >
                 Try again
               </PondButton>
               <PondButton
@@ -1077,9 +1884,9 @@ export default function ClickerGamePage() {
           clickPower={gamePaused ? 0 : simulation.clickValue}
           hasBasin={getOwnedCount(ownedUpgrades, "pond_basin") >= 1}
           pondStats={pondStats}
-          biodiversity={biodiversity}
+          biodiversityStackTotal={biodiversityStackTotal}
         />
-        {tier1Complete ? (
+        {finalTierComplete ? (
           <Box
             borderWidth="1px"
             borderColor="border"
@@ -1093,13 +1900,13 @@ export default function ClickerGamePage() {
             <Stack gap="3">
               <Box>
                 <Heading as="h2" size="sm">
-                  Tier 1 complete
+                  Tier 6 complete
                 </Heading>
                 <Text fontSize="sm" color="fg" mt="1">
-                  You have welcomed snails, tadpoles, and water fleas—your pond’s first animal web is alive. This is the
-                  end of Tier 1. The game is paused for now: you cannot earn more energy or buy upgrades. Reset your
-                  pond to play again, or stay tuned for updates with further pond progression. Your game will be
-                  unpaused at that point.
+                  You have welcomed the final Tier 6 marquee denizens and
+                  completed this pond. The game is paused for now: you cannot
+                  earn more energy or buy upgrades. Reset your pond to play
+                  again.
                 </Text>
               </Box>
               <PondButton
@@ -1108,18 +1915,18 @@ export default function ClickerGamePage() {
                 colorPalette="orange"
                 w={{ base: "full", sm: "auto" }}
                 alignSelf={{ base: "stretch", sm: "flex-start" }}
-                loading={tier1ResetBusy}
-                disabled={tier1ResetBusy}
+                loading={finalResetBusy}
+                disabled={finalResetBusy}
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (!confirmTier1Reset) {
-                    setConfirmTier1Reset(true);
+                  if (!confirmFinalReset) {
+                    setConfirmFinalReset(true);
                     return;
                   }
                   void performTier1Reset();
                 }}
               >
-                {confirmTier1Reset ? "Confirm reset pond" : "Reset pond"}
+                {confirmFinalReset ? "Confirm reset pond" : "Reset pond"}
               </PondButton>
             </Stack>
           </Box>
@@ -1131,13 +1938,21 @@ export default function ClickerGamePage() {
             </Text>
             {saveAuthBlocked ? (
               <Text fontSize={APP_TEXT_SIZES.meta} color="gray.700">
-                Your session may have expired. Try logging out and logging back in.
+                Your session may have expired. Try logging out and logging back
+                in.
               </Text>
             ) : null}
           </Stack>
         ) : null}
 
-        <Grid templateColumns={{ base: "1fr", md: "minmax(260px, 1.1fr) minmax(240px, 1fr)" }} gap={{ base: 2, md: 3 }} alignItems="start">
+        <Grid
+          templateColumns={{
+            base: "1fr",
+            md: "minmax(260px, 1.1fr) minmax(240px, 1fr)",
+          }}
+          gap={{ base: 2, md: 3 }}
+          alignItems="start"
+        >
           <Stack
             gap="2"
             order={{ base: 1, md: 1 }}
@@ -1150,13 +1965,26 @@ export default function ClickerGamePage() {
               hasBasin={getOwnedCount(ownedUpgrades, "pond_basin") >= 1}
               ownedUpgrades={ownedUpgrades}
               ecologyHoverNote={
-                getOwnedCount(ownedUpgrades, "pond_basin") >= 1 ? POND_STAGE_ECOLOGY_NOTE : undefined
+                getOwnedCount(ownedUpgrades, "pond_basin") >= 1
+                  ? POND_STAGE_ECOLOGY_NOTE
+                  : undefined
               }
-              clickDisabled={gamePaused || getOwnedCount(ownedUpgrades, "pond_basin") < 1}
+              clickDisabled={
+                gamePaused || getOwnedCount(ownedUpgrades, "pond_basin") < 1
+              }
               onClickPond={() => {
-                if (gamePaused || getOwnedCount(ownedUpgrades, "pond_basin") < 1) return;
+                if (
+                  gamePaused ||
+                  getOwnedCount(ownedUpgrades, "pond_basin") < 1
+                )
+                  return;
                 const gain = simulation.clickValue;
-                setResources((curr) => ({ ...curr, energy: curr.energy + gain }));
+                lastInteractionAtMsRef.current = Date.now();
+                saveDirtyRef.current = true;
+                setResources((curr) => ({
+                  ...curr,
+                  energy: curr.energy + gain,
+                }));
                 setStatistics((s) => ({
                   ...s,
                   total_clicks: s.total_clicks + 1,
@@ -1166,9 +1994,204 @@ export default function ClickerGamePage() {
             />
             {ownedListOrdered.length > 0 ? (
               <Stack gap="1" w="full">
-                <Heading as="h2" size="xs">
-                  Owned ({ownedListOrdered.length})
-                </Heading>
+                {hasTierOnePlusOwned ? (
+                  <Flex align="center" gap="2" flexWrap="wrap">
+                    <Heading as="h2" size="xs">
+                      Tier:
+                    </Heading>
+                    <Flex gap="1" flexWrap="wrap" align="center">
+                      {([0, 1, 2, 3, 4, 5, 6] as const).map((tier) => {
+                        const n = ownedCountsByTier[tier] ?? 0;
+                        if (n <= 0) return null;
+                        const label = tierFilterTabLabel(tier);
+                        const isSelected = ownedTierFilter === tier;
+                        const isDimmed =
+                          ownedTierFilter !== null && !isSelected;
+                        const tooltip =
+                          OWNED_TIER_ECOLOGY_SENTENCE[tier] ??
+                          `Tier ${label}: upgrades in this band change how full and busy the pond feels.`;
+                        const pill = (
+                          <Flex
+                            role="button"
+                            tabIndex={0}
+                            aria-pressed={isSelected}
+                            align="center"
+                            gap="1"
+                            px="2"
+                            py="1"
+                            borderWidth="1px"
+                            borderColor={isSelected ? "black" : "border"}
+                            borderRadius="md"
+                            bg={isSelected ? "gray.100" : "bg.subtle"}
+                            cursor="pointer"
+                            userSelect="none"
+                            opacity={isDimmed ? 0.35 : 1}
+                            filter={isDimmed ? "grayscale(1)" : "none"}
+                            onClick={() =>
+                              setOwnedTierFilter((curr) =>
+                                curr === tier ? null : tier,
+                              )
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                setOwnedTierFilter((curr) =>
+                                  curr === tier ? null : tier,
+                                );
+                              }
+                            }}
+                            title={
+                              !canHoverEcologyTooltips ? tooltip : undefined
+                            }
+                          >
+                            <Text
+                              fontSize="xs"
+                              fontWeight="semibold"
+                              color="gray.700"
+                              lineHeight="1"
+                            >
+                              {label}
+                            </Text>
+                            <Text
+                              as="span"
+                              fontSize="xs"
+                              fontWeight="semibold"
+                              color="gray.500"
+                              lineHeight="1"
+                              aria-hidden
+                            >
+                              ·
+                            </Text>
+                            <Text
+                              fontSize="xs"
+                              fontWeight="semibold"
+                              fontVariantNumeric="tabular-nums"
+                              color="gray.700"
+                              lineHeight="1"
+                            >
+                              {n}
+                            </Text>
+                          </Flex>
+                        );
+                        return (
+                          <Fragment key={`tier-${tier}`}>
+                            {canHoverEcologyTooltips ? (
+                              <TooltipRoot
+                                {...ecologyTooltipRootBaseProps}
+                                openDelay={700}
+                                positioning={{ placement: "top" }}
+                              >
+                                <TooltipTrigger asChild>{pill}</TooltipTrigger>
+                                <TooltipPositioner>
+                                  <TooltipContent
+                                    {...ecologyTooltipSurfaceProps}
+                                  >
+                                    <EcologyBlurbText>{tooltip}</EcologyBlurbText>
+                                  </TooltipContent>
+                                </TooltipPositioner>
+                              </TooltipRoot>
+                            ) : (
+                              pill
+                            )}
+                          </Fragment>
+                        );
+                      })}
+                    </Flex>
+                  </Flex>
+                ) : null}
+                <Flex align="center" gap="2" flexWrap="wrap">
+                  <Heading as="h2" size="xs">
+                    Biodiversity:
+                  </Heading>
+                  <Flex gap="1" flexWrap="wrap" align="center">
+                    {(
+                      Object.keys(FAMILY_PRESENTATION) as UpgradeFamily[]
+                    ).map((family) => {
+                      const n = ownedCountsByFamily[family] ?? 0;
+                      if (n <= 0) return null;
+                      const meta = FAMILY_PRESENTATION[family];
+                      const isSelected = ownedFamilyFilter === family;
+                      const isDimmed =
+                        ownedFamilyFilter !== null && !isSelected;
+                      const tooltip = `${meta.label} — ${FAMILY_ECOSYSTEM_ROLE[family]}`;
+                      const pill = (
+                        <Flex
+                          role="button"
+                          tabIndex={0}
+                          aria-pressed={isSelected}
+                          align="center"
+                          gap="1"
+                          px="2"
+                          py="1"
+                          borderWidth="1px"
+                          borderColor={isSelected ? "black" : "border"}
+                          borderRadius="md"
+                          bg={isSelected ? "gray.100" : "bg.subtle"}
+                          cursor="pointer"
+                          userSelect="none"
+                          opacity={isDimmed ? 0.35 : 1}
+                          filter={isDimmed ? "grayscale(1)" : "none"}
+                          onClick={() =>
+                            setOwnedFamilyFilter((curr) =>
+                              curr === family ? null : family,
+                            )
+                          }
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setOwnedFamilyFilter((curr) =>
+                                curr === family ? null : family,
+                              );
+                            }
+                          }}
+                          title={
+                            !canHoverEcologyTooltips ? tooltip : undefined
+                          }
+                        >
+                          <Text
+                            fontSize="sm"
+                            lineHeight="1"
+                            color={isSelected ? meta.accent : "gray.700"}
+                          >
+                            {meta.symbol}
+                          </Text>
+                          <Text
+                            fontSize="xs"
+                            fontWeight="semibold"
+                            fontVariantNumeric="tabular-nums"
+                            color="gray.700"
+                            lineHeight="1"
+                          >
+                            {n}
+                          </Text>
+                        </Flex>
+                      );
+
+                      return (
+                        <Fragment key={family}>
+                          {canHoverEcologyTooltips ? (
+                            <TooltipRoot
+                              {...ecologyTooltipRootBaseProps}
+                              openDelay={700}
+                              positioning={{ placement: "top" }}
+                            >
+                              <TooltipTrigger asChild>{pill}</TooltipTrigger>
+                              <TooltipPositioner>
+                                <TooltipContent
+                                  {...ecologyTooltipSurfaceProps}
+                                >
+                                  <EcologyBlurbText>{tooltip}</EcologyBlurbText>
+                                </TooltipContent>
+                              </TooltipPositioner>
+                            </TooltipRoot>
+                          ) : (
+                            pill
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                  </Flex>
+                </Flex>
                 <Flex
                   gap="1.5"
                   w="full"
@@ -1177,9 +2200,16 @@ export default function ClickerGamePage() {
                   pb={{ base: "0.5", md: "0" }}
                   style={{ scrollSnapType: "x mandatory" }}
                 >
-                  {ownedListOrdered.map((def) => (
-                    <Box key={def.id} flexShrink={0} style={{ scrollSnapAlign: "start" }}>
-                      <OwnedChip def={def} ownedUpgrades={ownedUpgrades} />
+                  {ownedListFiltered.map((def) => (
+                    <Box
+                      key={def.id}
+                      flexShrink={0}
+                      style={{ scrollSnapAlign: "start" }}
+                    >
+                      <OwnedChip
+                        def={def}
+                        ownedUpgrades={ownedUpgrades}
+                      />
                     </Box>
                   ))}
                 </Flex>
@@ -1187,13 +2217,26 @@ export default function ClickerGamePage() {
             ) : null}
           </Stack>
 
-          <Stack gap="1.5" order={{ base: 2, md: 2 }} w="full" minW="0" minH="0" opacity={gamePaused ? 0.45 : 1} pointerEvents={gamePaused ? "none" : "auto"}>
+          <Stack
+            gap="1.5"
+            order={{ base: 2, md: 2 }}
+            w="full"
+            minW="0"
+            minH="0"
+            opacity={gamePaused ? 0.45 : 1}
+            pointerEvents={gamePaused ? "none" : "auto"}
+          >
             {shopOrdered.length > 0 ? (
               <>
                 <Heading as="h2" size="xs">
                   Shop
                 </Heading>
-                <Grid templateColumns="repeat(2, minmax(0, 1fr))" gap="1.5" w="full" alignItems="stretch">
+                <Grid
+                  templateColumns="repeat(2, minmax(0, 1fr))"
+                  gap="1.5"
+                  w="full"
+                  alignItems="stretch"
+                >
                   {shopOrdered.map((def) => (
                     <GridItem key={def.id} minW="0" h="full">
                       <UpgradeCard
@@ -1203,6 +2246,7 @@ export default function ClickerGamePage() {
                         pondStats={pondStats}
                         biodiversity={biodiversity}
                         onBuy={buyUpgrade}
+                        shopListRevision={shopListRevision}
                       />
                     </GridItem>
                   ))}

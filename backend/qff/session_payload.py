@@ -29,6 +29,7 @@ from qff.models import (
     Interactable,
     ItemInstance,
     Npc,
+    Room,
     RoomBroadcast,
     RoomExit,
     RoomItem,
@@ -100,6 +101,18 @@ def build_area_map(character) -> dict:
         )
     )
     current_area = character.current_room.area
+    temp_minimap_lit: set[int] = set()
+    for x in character.dark_minimap_lit_room_ids or []:
+        try:
+            temp_minimap_lit.add(int(x))
+        except (TypeError, ValueError):
+            continue
+
+    permanent_minimap_by_area: dict[int, set[int]] = defaultdict(set)
+    for rid, aid in Room.objects.filter(permanent_minimap_light=True).values_list(
+        "id", "area_id"
+    ):
+        permanent_minimap_by_area[aid].add(rid)
     seen_exit_ids = set(
         CharacterExitSeen.objects.filter(character=character).values_list(
             "room_exit_id", flat=True
@@ -136,6 +149,7 @@ def build_area_map(character) -> dict:
         }
 
     if not visited_ids:
+        lit_here = permanent_minimap_by_area[current_area.id] | {character.current_room_id}
         return {
             "current_area_id": current_area.id,
             "grids": [
@@ -145,6 +159,8 @@ def build_area_map(character) -> dict:
                     "grid_width": current_area.grid_width,
                     "grid_height": current_area.grid_height,
                     "cells": [],
+                    "is_dark_minimap": current_area.is_dark_minimap,
+                    "lit_room_ids": sorted(lit_here),
                 }
             ],
         }
@@ -170,6 +186,13 @@ def build_area_map(character) -> dict:
         for ac in area_cells[aid]:
             cells_out.append(cell_payload(ac.room, ac))
         cells_out.sort(key=lambda c: (c["y"], c["x"]))
+        visited_in_area = {c["room_id"] for c in cells_out}
+        lit_here = (
+            (temp_minimap_lit & visited_in_area)
+            | permanent_minimap_by_area[area.id]
+        )
+        if character.current_room.area_id == area.id:
+            lit_here = lit_here | {character.current_room_id}
         grids.append(
             {
                 "area_id": area.id,
@@ -177,6 +200,8 @@ def build_area_map(character) -> dict:
                 "grid_width": area.grid_width,
                 "grid_height": area.grid_height,
                 "cells": cells_out,
+                "is_dark_minimap": area.is_dark_minimap,
+                "lit_room_ids": sorted(lit_here),
             }
         )
 

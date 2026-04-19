@@ -244,6 +244,7 @@ def _dm_area_dict(area: Area) -> dict:
         "description": area.description,
         "grid_width": area.grid_width,
         "grid_height": area.grid_height,
+        "is_dark_minimap": area.is_dark_minimap,
         "theme": resolved_area_theme(area),
         "theme_primary": area.theme_primary or "",
         "theme_secondary": area.theme_secondary or "",
@@ -296,6 +297,8 @@ def dm_area_detail(request, pk):
     for tf in ("theme_primary", "theme_secondary", "theme_accent"):
         if tf in request.data:
             setattr(area, tf, normalize_hex_color(request.data.get(tf)))
+    if "is_dark_minimap" in request.data:
+        area.is_dark_minimap = bool(request.data["is_dark_minimap"])
     area.save()
     return Response(_dm_area_dict(area))
 
@@ -723,6 +726,8 @@ def dm_room_list_create(request, area_id):
                     "description": r.description,
                     "search_text": r.search_text,
                     "search_chance": r.search_chance,
+                    "permanent_minimap_light": r.permanent_minimap_light,
+                    "reset_dark_lighting_on_enter": r.reset_dark_lighting_on_enter,
                     "cell": (
                         {"id": c.id, "x": c.x, "y": c.y}
                         if c
@@ -788,6 +793,8 @@ def dm_room_detail(request, pk):
                 "description": room.description,
                 "search_text": room.search_text,
                 "search_chance": room.search_chance,
+                "permanent_minimap_light": room.permanent_minimap_light,
+                "reset_dark_lighting_on_enter": room.reset_dark_lighting_on_enter,
                 "cell": (
                     {"id": c.id, "x": c.x, "y": c.y}
                     if c
@@ -806,6 +813,12 @@ def dm_room_detail(request, pk):
             room.search_chance = max(1, min(100, int(request.data["search_chance"])))
         except (TypeError, ValueError):
             pass
+    if "permanent_minimap_light" in request.data:
+        room.permanent_minimap_light = bool(request.data["permanent_minimap_light"])
+    if "reset_dark_lighting_on_enter" in request.data:
+        room.reset_dark_lighting_on_enter = bool(
+            request.data["reset_dark_lighting_on_enter"]
+        )
     room.save()
     return Response(
         {
@@ -815,6 +828,8 @@ def dm_room_detail(request, pk):
             "description": room.description,
             "search_text": room.search_text,
             "search_chance": room.search_chance,
+            "permanent_minimap_light": room.permanent_minimap_light,
+            "reset_dark_lighting_on_enter": room.reset_dark_lighting_on_enter,
         }
     )
 

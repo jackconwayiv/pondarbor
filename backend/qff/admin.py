@@ -14,13 +14,19 @@ from qff.models import (
 
 @admin.register(Area)
 class AreaAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "slug", "grid_width", "grid_height")
+    list_display = ("id", "name", "slug", "grid_width", "grid_height", "is_dark_minimap")
 
 
 @admin.register(Room)
 class RoomAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "area")
-    list_filter = ("area",)
+    list_display = (
+        "id",
+        "name",
+        "area",
+        "permanent_minimap_light",
+        "reset_dark_lighting_on_enter",
+    )
+    list_filter = ("area", "permanent_minimap_light", "reset_dark_lighting_on_enter")
 
 
 @admin.register(AreaCell)

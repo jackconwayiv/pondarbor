@@ -736,7 +736,8 @@ export default function QffPlayPage() {
   );
 }
 
-const MAP_MAX_DIM = 15;
+/** Room cells in the minimap window (interleaved grid is 2n−1 slots per axis). */
+const MAP_VIEWPORT_ROOMS = 7;
 const MAP_SLOT_PX = "11px";
 
 function exitDirectionsForCell(cell: QffAreaMapCell | undefined): Set<string> {
@@ -748,7 +749,7 @@ function exitDirectionsForCell(cell: QffAreaMapCell | undefined): Set<string> {
   return s;
 }
 
-/** Single-area interleaved grid: rooms on even indices; `-` / `|` / `/` / `\` for seen exits. */
+/** Single-area interleaved grid centered on the player: rooms on even indices; exit glyphs between. */
 function QffMiniMapGrid({
   grid,
   currentRoomId,
@@ -756,18 +757,124 @@ function QffMiniMapGrid({
   grid: QffSessionWithCharacter["area_map"]["grids"][0];
   currentRoomId: number;
 }) {
-  const { grid_width, grid_height, cells } = grid;
+  const {
+    grid_width,
+    grid_height,
+    cells,
+    is_dark_minimap = false,
+    lit_room_ids = [],
+  } = grid;
   if (!grid_width || !grid_height) return <Text color={HUD_PANEL_TEXT_MUTED}>—</Text>;
 
-  const w = Math.min(grid_width, MAP_MAX_DIM);
-  const h = Math.min(grid_height, MAP_MAX_DIM);
+  const cur = cells.find((c) => c.room_id === currentRoomId);
+  if (!cur) return <Text color={HUD_PANEL_TEXT_MUTED}>—</Text>;
+
+  const cx = cur.x;
+  const cy = cur.y;
+  const half = Math.floor(MAP_VIEWPORT_ROOMS / 2);
+  const litSet = new Set(lit_room_ids);
+
   const byKey = new Map<string, QffAreaMapCell>();
   for (const c of cells) {
-    if (c.x < w && c.y < h) byKey.set(`${c.x},${c.y}`, c);
+    byKey.set(`${c.x},${c.y}`, c);
   }
 
-  const roomAt = (x: number, y: number) => byKey.get(`${x},${y}`);
-  const exitsAt = (x: number, y: number) => exitDirectionsForCell(roomAt(x, y));
+  const roomAtWorld = (wx: number, wy: number) => byKey.get(`${wx},${wy}`);
+
+  const cellVisible = (cell: QffAreaMapCell | undefined): boolean => {
+    if (!cell) return false;
+    if (!is_dark_minimap) return true;
+    if (cell.room_id === currentRoomId) return true;
+    return litSet.has(cell.room_id);
+  };
+
+  const exitsAtWorld = (wx: number, wy: number) =>
+    exitDirectionsForCell(roomAtWorld(wx, wy));
+
+  const showHorizontal = (leftWx: number, leftWy: number, rightWx: number, rightWy: number) => {
+    const left = roomAtWorld(leftWx, leftWy);
+    const right = roomAtWorld(rightWx, rightWy);
+    const leftVis = left && cellVisible(left);
+    const rightVis = right && cellVisible(right);
+    const leftHere = leftWx === cx && leftWy === cy;
+    const rightHere = rightWx === cx && rightWy === cy;
+    if (!is_dark_minimap) {
+      return exitsAtWorld(leftWx, leftWy).has("e") || exitsAtWorld(rightWx, rightWy).has("w");
+    }
+    if (leftHere && left && exitsAtWorld(leftWx, leftWy).has("e")) return true;
+    if (rightHere && right && exitsAtWorld(rightWx, rightWy).has("w")) return true;
+    if (leftVis && rightVis) {
+      return exitsAtWorld(leftWx, leftWy).has("e") || exitsAtWorld(rightWx, rightWy).has("w");
+    }
+    return false;
+  };
+
+  const showVertical = (topWx: number, topWy: number, botWx: number, botWy: number) => {
+    const top = roomAtWorld(topWx, topWy);
+    const bot = roomAtWorld(botWx, botWy);
+    const topVis = top && cellVisible(top);
+    const botVis = bot && cellVisible(bot);
+    const topHere = topWx === cx && topWy === cy;
+    const botHere = botWx === cx && botWy === cy;
+    if (!is_dark_minimap) {
+      return exitsAtWorld(topWx, topWy).has("s") || exitsAtWorld(botWx, botWy).has("n");
+    }
+    if (topHere && top && exitsAtWorld(topWx, topWy).has("s")) return true;
+    if (botHere && bot && exitsAtWorld(botWx, botWy).has("n")) return true;
+    if (topVis && botVis) {
+      return exitsAtWorld(topWx, topWy).has("s") || exitsAtWorld(botWx, botWy).has("n");
+    }
+    return false;
+  };
+
+  const showDiagBackslash = (
+    tlWx: number,
+    tlWy: number,
+    brWx: number,
+    brWy: number,
+  ) => {
+    const tl = roomAtWorld(tlWx, tlWy);
+    const br = roomAtWorld(brWx, brWy);
+    const tlVis = tl && cellVisible(tl);
+    const brVis = br && cellVisible(br);
+    const tlHere = tlWx === cx && tlWy === cy;
+    const brHere = brWx === cx && brWy === cy;
+    if (!is_dark_minimap) {
+      return (
+        exitsAtWorld(tlWx, tlWy).has("se") || exitsAtWorld(brWx, brWy).has("nw")
+      );
+    }
+    if (tlHere && tl && exitsAtWorld(tlWx, tlWy).has("se")) return true;
+    if (brHere && br && exitsAtWorld(brWx, brWy).has("nw")) return true;
+    if (tlVis && brVis) {
+      return (
+        exitsAtWorld(tlWx, tlWy).has("se") || exitsAtWorld(brWx, brWy).has("nw")
+      );
+    }
+    return false;
+  };
+
+  const showDiagSlash = (trWx: number, trWy: number, blWx: number, blWy: number) => {
+    const tr = roomAtWorld(trWx, trWy);
+    const bl = roomAtWorld(blWx, blWy);
+    const trVis = tr && cellVisible(tr);
+    const blVis = bl && cellVisible(bl);
+    const trHere = trWx === cx && trWy === cy;
+    const blHere = blWx === cx && blWy === cy;
+    if (!is_dark_minimap) {
+      return (
+        exitsAtWorld(blWx, blWy).has("ne") || exitsAtWorld(trWx, trWy).has("sw")
+      );
+    }
+    if (blHere && bl && exitsAtWorld(blWx, blWy).has("ne")) return true;
+    if (trHere && tr && exitsAtWorld(trWx, trWy).has("sw")) return true;
+    if (trVis && blVis) {
+      return (
+        exitsAtWorld(blWx, blWy).has("ne") || exitsAtWorld(trWx, trWy).has("sw")
+      );
+    }
+    return false;
+  };
 
   const slotStyle = {
     w: MAP_SLOT_PX,
@@ -782,26 +889,29 @@ function QffMiniMapGrid({
   };
 
   const rows: ReactNode[] = [];
-  const rowsH = 2 * h - 1;
+  const rowsH = 2 * MAP_VIEWPORT_ROOMS - 1;
+  const colsW = 2 * MAP_VIEWPORT_ROOMS - 1;
 
   for (let sy = 0; sy < rowsH; sy++) {
     const cols: ReactNode[] = [];
-    for (let sx = 0; sx < 2 * w - 1; sx++) {
+    for (let sx = 0; sx < colsW; sx++) {
       const key = `m-${sx}-${sy}`;
 
       if (sx % 2 === 0 && sy % 2 === 0) {
-        const x = sx / 2;
-        const y = sy / 2;
-        const cell = roomAt(x, y);
-        if (!cell) {
+        const vx = sx / 2;
+        const vy = sy / 2;
+        const wx = cx + vx - half;
+        const wy = cy + vy - half;
+        if (wx < 0 || wx >= grid_width || wy < 0 || wy >= grid_height) {
           cols.push(
-            <Box
-              key={key}
-              {...slotStyle}
-              borderWidth={0}
-              bg="#121212"
-              aria-hidden
-            />,
+            <Box key={key} {...slotStyle} borderWidth={0} bg="#121212" aria-hidden />,
+          );
+          continue;
+        }
+        const cell = roomAtWorld(wx, wy);
+        if (!cell || !cellVisible(cell)) {
+          cols.push(
+            <Box key={key} {...slotStyle} borderWidth={0} bg="#121212" aria-hidden />,
           );
           continue;
         }
@@ -823,11 +933,13 @@ function QffMiniMapGrid({
       }
 
       if (sx % 2 === 1 && sy % 2 === 0) {
-        const x = (sx - 1) / 2;
-        const y = sy / 2;
-        const left = exitsAt(x, y).has("e");
-        const right = exitsAt(x + 1, y).has("w");
-        const ch = left || right ? "-" : "";
+        const vx = (sx - 1) / 2;
+        const vy = sy / 2;
+        const leftWx = cx + vx - half;
+        const leftWy = cy + vy - half;
+        const rightWx = leftWx + 1;
+        const rightWy = leftWy;
+        const ch = showHorizontal(leftWx, leftWy, rightWx, rightWy) ? "-" : "";
         cols.push(
           <Box key={key} {...slotStyle} color="#888888">
             {ch}
@@ -837,11 +949,13 @@ function QffMiniMapGrid({
       }
 
       if (sx % 2 === 0 && sy % 2 === 1) {
-        const x = sx / 2;
-        const y = (sy - 1) / 2;
-        const top = exitsAt(x, y).has("s");
-        const bottom = exitsAt(x, y + 1).has("n");
-        const ch = top || bottom ? "|" : "";
+        const vx = sx / 2;
+        const vy = (sy - 1) / 2;
+        const topWx = cx + vx - half;
+        const topWy = cy + vy - half;
+        const botWx = topWx;
+        const botWy = topWy + 1;
+        const ch = showVertical(topWx, topWy, botWx, botWy) ? "|" : "";
         cols.push(
           <Box key={key} {...slotStyle} color="#888888">
             {ch}
@@ -850,15 +964,15 @@ function QffMiniMapGrid({
         continue;
       }
 
-      const x = (sx - 1) / 2;
-      const y = (sy - 1) / 2;
-      const se = exitsAt(x, y).has("se");
-      const nw = exitsAt(x + 1, y + 1).has("nw");
-      const ne = exitsAt(x, y + 1).has("ne");
-      const sw = exitsAt(x + 1, y).has("sw");
+      const vx = (sx - 1) / 2;
+      const vy = (sy - 1) / 2;
+      const wx0 = cx + vx - half;
+      const wy0 = cy + vy - half;
+      const se = showDiagBackslash(wx0, wy0, wx0 + 1, wy0 + 1);
+      const ne = showDiagSlash(wx0 + 1, wy0, wx0, wy0 + 1);
       let ch = "";
-      if (se || nw) ch = "\\";
-      else if (ne || sw) ch = "/";
+      if (se) ch = "\\";
+      else if (ne) ch = "/";
       cols.push(
         <Box key={key} {...slotStyle} color="#888888">
           {ch}

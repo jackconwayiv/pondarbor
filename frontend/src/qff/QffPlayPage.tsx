@@ -262,22 +262,31 @@ export default function QffPlayPage() {
     const raw = line.trim();
     if (!raw) return;
     setLine("");
+    setLogLines((prev) => {
+      const nextId = () => logLineIdRef.current++;
+      return [
+        { id: nextId(), text: `> ${raw}`, recent: true },
+        ...prev.map((p) => ({ ...p, recent: false })),
+      ];
+    });
     try {
       const token = await getTokenRef.current();
       const res = await sendQffCommand(token, raw);
       setSession(res.session);
       setLogLines((prev) => {
         const nextId = () => logLineIdRef.current++;
+        const rest = prev[0]?.text === `> ${raw}` ? prev.slice(1) : prev;
         const block = [`> ${raw}`, ...res.messages].map((text) => ({
           id: nextId(),
           text,
           recent: true,
         }));
-        return [...block, ...prev.map((p) => ({ ...p, recent: false }))];
+        return [...block, ...rest.map((p) => ({ ...p, recent: false }))];
       });
     } catch (e) {
       setLogLines((prev) => {
         const nextId = () => logLineIdRef.current++;
+        const rest = prev[0]?.text === `> ${raw}` ? prev.slice(1) : prev;
         const block = [
           { id: nextId(), text: `> ${raw}`, recent: true },
           {
@@ -286,7 +295,7 @@ export default function QffPlayPage() {
             recent: true,
           },
         ];
-        return [...block, ...prev.map((p) => ({ ...p, recent: false }))];
+        return [...block, ...rest.map((p) => ({ ...p, recent: false }))];
       });
     }
   }, [line]);

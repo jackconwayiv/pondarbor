@@ -1,6 +1,7 @@
 """Build GET /qff/session/ JSON."""
 
 import re
+from collections import defaultdict
 from datetime import timedelta
 
 from django.utils import timezone
@@ -104,9 +105,18 @@ def build_area_map(character) -> dict:
         )
     )
 
+    exits_by_from: dict[int, list[RoomExit]] = defaultdict(list)
+    if visited_ids:
+        for ex in (
+            RoomExit.objects.filter(from_room_id__in=visited_ids)
+            .select_related("to_room")
+            .order_by("from_room_id", "id")
+        ):
+            exits_by_from[ex.from_room_id].append(ex)
+
     def cell_payload(room, cell) -> dict:
         exits_out = []
-        for ex in RoomExit.objects.filter(from_room_id=room.id):
+        for ex in exits_by_from.get(room.id, ()):
             if ex.id not in seen_exit_ids:
                 continue
             exits_out.append(
@@ -233,17 +243,11 @@ def _room_item_labels(
     return out
 
 
-def _room_you_see_labels(room_id: int, character) -> list[str]:
-    """Interactable names first, then floor instances, then room item slots (matches play HUD order)."""
+def _room_you_see_tail_labels(room_id: int, character) -> list[str]:
+    """Floor instances and room item slots (after interactable names in the HUD)."""
     floor_template_ids = unowned_floor_item_template_ids_in_room(room_id)
-    interact = [
-        o.name
-        for o in Interactable.objects.filter(room_id=room_id).order_by("name")
-    ]
-    return (
-        interact
-        + _room_floor_labels(room_id, character)
-        + _room_item_labels(room_id, character, floor_template_ids)
+    return _room_floor_labels(room_id, character) + _room_item_labels(
+        room_id, character, floor_template_ids
     )
 
 
@@ -320,6 +324,13 @@ def build_session_for_character(character) -> dict:
 
     action_log = consume_room_broadcasts(character)
 
+    room_interactables = list(
+        Interactable.objects.filter(room_id=room.id).order_by("name")
+    )
+    you_see = [o.name for o in room_interactables] + _room_you_see_tail_labels(
+        room.id, character
+    )
+
     return {
         "has_character": True,
         "character": {
@@ -336,14 +347,14 @@ def build_session_for_character(character) -> dict:
             "id": room.id,
             "name": room.name,
             "description": room.description,
-            "youSee": _room_you_see_labels(room.id, character),
+            "youSee": you_see,
             "npcs": [
                 {"slug": n.slug, "name": n.name}
                 for n in Npc.objects.filter(room_id=room.id).order_by("name")
             ],
             "interactables": [
                 {"slug": o.slug, "name": o.name, "kind": o.kind}
-                for o in Interactable.objects.filter(room_id=room.id).order_by("name")
+                for o in room_interactables
             ],
         },
         "area": {

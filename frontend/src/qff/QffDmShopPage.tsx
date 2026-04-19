@@ -274,7 +274,6 @@ export default function QffDmShopPage() {
           effects later in{" "}
           <Box
             as="button"
-            type="button"
             color="#a8c896"
             textDecoration="underline"
             cursor="pointer"

@@ -12,6 +12,7 @@ import StaffRoute from "./staff/StaffRoute";
 import AboutPage from "./AboutPage";
 import AboutPrivacyPage from "./about/AboutPrivacyPage";
 import AboutTermsPage from "./about/AboutTermsPage";
+import RouteErrorPage from "./RouteErrorPage";
 import RouteLoadingFallback from "./RouteLoadingFallback";
 import {
   LegacyRedirectPlansTemplateDetail,
@@ -78,6 +79,7 @@ export const router = sentryCreateBrowserRouter([
   {
     path: "/",
     element: <AppLayout />,
+    errorElement: <RouteErrorPage />,
     children: [
       {
         index: true,

@@ -1,16 +1,16 @@
 import {
   Box,
-  FormControl,
-  FormLabel,
+  Field,
   Heading,
   HStack,
   Input,
-  Select,
+  NativeSelectField,
+  NativeSelectRoot,
   Stack,
   Text,
   Textarea,
 } from "@chakra-ui/react";
-import { useCallback, useEffect, useState } from "react";
+import { type ChangeEvent, useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
 import QffButton from "./QffButton";
@@ -197,15 +197,15 @@ export default function QffDmInteractablesPage() {
       </QffButton>
 
       <HStack gap={4} mb={4} alignItems="flex-end" flexWrap="wrap">
-        <FormControl maxW="200px">
-          <FormLabel fontSize="sm">Filter by room_id</FormLabel>
+        <Field.Root maxW="200px">
+          <Field.Label fontSize="sm">Filter by room_id</Field.Label>
           <Input
             size="sm"
             value={roomFilter}
             onChange={(e) => setRoomFilter(e.target.value)}
             placeholder="e.g. 12"
           />
-        </FormControl>
+        </Field.Root>
         <QffButton onClick={() => load().catch((e) => setErr(String(e)))}>Apply filter</QffButton>
       </HStack>
 
@@ -216,66 +216,70 @@ export default function QffDmInteractablesPage() {
           </Heading>
           <Stack gap={2}>
             <HStack flexWrap="wrap" gap={2}>
-              <FormControl maxW="120px">
-                <FormLabel fontSize="xs">room_id</FormLabel>
+              <Field.Root maxW="120px">
+                <Field.Label fontSize="xs">room_id</Field.Label>
                 <Input
                   size="sm"
                   value={createForm.room_id}
                   onChange={(e) => setCreateForm((f) => ({ ...f, room_id: e.target.value }))}
                 />
-              </FormControl>
-              <FormControl maxW="160px">
-                <FormLabel fontSize="xs">slug</FormLabel>
+              </Field.Root>
+              <Field.Root maxW="160px">
+                <Field.Label fontSize="xs">slug</Field.Label>
                 <Input
                   size="sm"
                   value={createForm.slug}
                   onChange={(e) => setCreateForm((f) => ({ ...f, slug: e.target.value }))}
                 />
-              </FormControl>
-              <FormControl maxW="200px">
-                <FormLabel fontSize="xs">name</FormLabel>
+              </Field.Root>
+              <Field.Root maxW="200px">
+                <Field.Label fontSize="xs">name</Field.Label>
                 <Input
                   size="sm"
                   value={createForm.name}
                   onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value }))}
                 />
-              </FormControl>
-              <FormControl maxW="160px">
-                <FormLabel fontSize="xs">kind</FormLabel>
-                <Select
-                  size="sm"
-                  value={createForm.kind}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, kind: e.target.value }))}
-                >
-                  {KIND_OPTIONS.map((k) => (
-                    <option key={k} value={k}>
-                      {k}
-                    </option>
-                  ))}
-                </Select>
-              </FormControl>
+              </Field.Root>
+              <Field.Root maxW="160px">
+                <Field.Label fontSize="xs">kind</Field.Label>
+                <NativeSelectRoot size="sm">
+                  <NativeSelectField
+                    value={createForm.kind}
+                    onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+                      setCreateForm((f) => ({ ...f, kind: e.target.value }))
+                    }
+                    bg="#222"
+                  >
+                    {KIND_OPTIONS.map((k) => (
+                      <option key={k} value={k}>
+                        {k}
+                      </option>
+                    ))}
+                  </NativeSelectField>
+                </NativeSelectRoot>
+              </Field.Root>
             </HStack>
-            <FormControl>
-              <FormLabel fontSize="xs">inspect_text</FormLabel>
+            <Field.Root>
+              <Field.Label fontSize="xs">inspect_text</Field.Label>
               <Textarea
                 size="sm"
                 rows={2}
                 value={createForm.inspect_text}
                 onChange={(e) => setCreateForm((f) => ({ ...f, inspect_text: e.target.value }))}
               />
-            </FormControl>
-            <FormControl>
-              <FormLabel fontSize="xs">read_text (tome / long read)</FormLabel>
+            </Field.Root>
+            <Field.Root>
+              <Field.Label fontSize="xs">read_text (tome / long read)</Field.Label>
               <Textarea
                 size="sm"
                 rows={2}
                 value={createForm.read_text}
                 onChange={(e) => setCreateForm((f) => ({ ...f, read_text: e.target.value }))}
               />
-            </FormControl>
+            </Field.Root>
             <HStack gap={4} flexWrap="wrap">
-              <FormControl maxW="140px">
-                <FormLabel fontSize="xs">map_reveal_minutes (kind=map)</FormLabel>
+              <Field.Root maxW="140px">
+                <Field.Label fontSize="xs">map_reveal_minutes (kind=map)</Field.Label>
                 <Input
                   type="number"
                   size="sm"
@@ -284,9 +288,9 @@ export default function QffDmInteractablesPage() {
                     setCreateForm((f) => ({ ...f, map_reveal_minutes: e.target.value }))
                   }
                 />
-              </FormControl>
-              <FormControl maxW="140px">
-                <FormLabel fontSize="xs">quest_transition_id</FormLabel>
+              </Field.Root>
+              <Field.Root maxW="140px">
+                <Field.Label fontSize="xs">quest_transition_id</Field.Label>
                 <Input
                   size="sm"
                   value={createForm.quest_transition_id}
@@ -294,15 +298,15 @@ export default function QffDmInteractablesPage() {
                     setCreateForm((f) => ({ ...f, quest_transition_id: e.target.value }))
                   }
                 />
-              </FormControl>
-              <FormControl maxW="140px">
-                <FormLabel fontSize="xs">unlocks_exit_id</FormLabel>
+              </Field.Root>
+              <Field.Root maxW="140px">
+                <Field.Label fontSize="xs">unlocks_exit_id</Field.Label>
                 <Input
                   size="sm"
                   value={createForm.unlocks_exit_id}
                   onChange={(e) => setCreateForm((f) => ({ ...f, unlocks_exit_id: e.target.value }))}
                 />
-              </FormControl>
+              </Field.Root>
             </HStack>
             <QffButton onClick={() => onCreate()}>Create interactable</QffButton>
           </Stack>
@@ -344,66 +348,70 @@ export default function QffDmInteractablesPage() {
             </Heading>
             <Stack gap={2}>
               <HStack flexWrap="wrap" gap={2}>
-                <FormControl maxW="120px">
-                  <FormLabel fontSize="xs">room_id</FormLabel>
+                <Field.Root maxW="120px">
+                  <Field.Label fontSize="xs">room_id</Field.Label>
                   <Input
                     size="sm"
                     value={editForm.room_id}
                     onChange={(e) => setEditForm((f) => ({ ...f, room_id: e.target.value }))}
                   />
-                </FormControl>
-                <FormControl maxW="160px">
-                  <FormLabel fontSize="xs">slug</FormLabel>
+                </Field.Root>
+                <Field.Root maxW="160px">
+                  <Field.Label fontSize="xs">slug</Field.Label>
                   <Input
                     size="sm"
                     value={editForm.slug}
                     onChange={(e) => setEditForm((f) => ({ ...f, slug: e.target.value }))}
                   />
-                </FormControl>
-                <FormControl maxW="200px">
-                  <FormLabel fontSize="xs">name</FormLabel>
+                </Field.Root>
+                <Field.Root maxW="200px">
+                  <Field.Label fontSize="xs">name</Field.Label>
                   <Input
                     size="sm"
                     value={editForm.name}
                     onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
                   />
-                </FormControl>
-                <FormControl maxW="160px">
-                  <FormLabel fontSize="xs">kind</FormLabel>
-                  <Select
-                    size="sm"
-                    value={editForm.kind}
-                    onChange={(e) => setEditForm((f) => ({ ...f, kind: e.target.value }))}
-                  >
-                    {KIND_OPTIONS.map((k) => (
-                      <option key={k} value={k}>
-                        {k}
-                      </option>
-                    ))}
-                  </Select>
-                </FormControl>
+                </Field.Root>
+                <Field.Root maxW="160px">
+                  <Field.Label fontSize="xs">kind</Field.Label>
+                  <NativeSelectRoot size="sm">
+                    <NativeSelectField
+                      value={editForm.kind}
+                      onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+                        setEditForm((f) => ({ ...f, kind: e.target.value }))
+                      }
+                      bg="#222"
+                    >
+                      {KIND_OPTIONS.map((k) => (
+                        <option key={k} value={k}>
+                          {k}
+                        </option>
+                      ))}
+                    </NativeSelectField>
+                  </NativeSelectRoot>
+                </Field.Root>
               </HStack>
-              <FormControl>
-                <FormLabel fontSize="xs">inspect_text</FormLabel>
+              <Field.Root>
+                <Field.Label fontSize="xs">inspect_text</Field.Label>
                 <Textarea
                   size="sm"
                   rows={2}
                   value={editForm.inspect_text}
                   onChange={(e) => setEditForm((f) => ({ ...f, inspect_text: e.target.value }))}
                 />
-              </FormControl>
-              <FormControl>
-                <FormLabel fontSize="xs">read_text</FormLabel>
+              </Field.Root>
+              <Field.Root>
+                <Field.Label fontSize="xs">read_text</Field.Label>
                 <Textarea
                   size="sm"
                   rows={2}
                   value={editForm.read_text}
                   onChange={(e) => setEditForm((f) => ({ ...f, read_text: e.target.value }))}
                 />
-              </FormControl>
+              </Field.Root>
               <HStack gap={4} flexWrap="wrap">
-                <FormControl maxW="140px">
-                  <FormLabel fontSize="xs">map_reveal_minutes</FormLabel>
+                <Field.Root maxW="140px">
+                  <Field.Label fontSize="xs">map_reveal_minutes</Field.Label>
                   <Input
                     type="number"
                     size="sm"
@@ -412,9 +420,9 @@ export default function QffDmInteractablesPage() {
                       setEditForm((f) => ({ ...f, map_reveal_minutes: e.target.value }))
                     }
                   />
-                </FormControl>
-                <FormControl maxW="140px">
-                  <FormLabel fontSize="xs">quest_transition_id</FormLabel>
+                </Field.Root>
+                <Field.Root maxW="140px">
+                  <Field.Label fontSize="xs">quest_transition_id</Field.Label>
                   <Input
                     size="sm"
                     value={editForm.quest_transition_id}
@@ -422,15 +430,15 @@ export default function QffDmInteractablesPage() {
                       setEditForm((f) => ({ ...f, quest_transition_id: e.target.value }))
                     }
                   />
-                </FormControl>
-                <FormControl maxW="140px">
-                  <FormLabel fontSize="xs">unlocks_exit_id</FormLabel>
+                </Field.Root>
+                <Field.Root maxW="140px">
+                  <Field.Label fontSize="xs">unlocks_exit_id</Field.Label>
                   <Input
                     size="sm"
                     value={editForm.unlocks_exit_id}
                     onChange={(e) => setEditForm((f) => ({ ...f, unlocks_exit_id: e.target.value }))}
                   />
-                </FormControl>
+                </Field.Root>
               </HStack>
               <QffButton onClick={() => onSaveEdit()}>Save changes</QffButton>
             </Stack>

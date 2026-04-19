@@ -88,6 +88,14 @@ export default function QffDmLobbyPage() {
         </Text>
       </Box>
       <Box mb={8}>
+        <PondButton onClick={() => navigate("/qff/dm/ineffective-inputs")}>
+          Ineffective commands
+        </PondButton>
+        <Text mt={2} fontSize="sm" color="#889977">
+          Unknown parser lines (“nothing happens”) with player email and timestamp.
+        </Text>
+      </Box>
+      <Box mb={8}>
         <Text mb={2} fontSize="sm" color="#889977">
           Export JSON (backup / migration)
         </Text>

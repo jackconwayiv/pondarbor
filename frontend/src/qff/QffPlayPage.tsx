@@ -17,14 +17,15 @@ import { useAppSession } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
 import {
   fetchQffSession,
+  qffSessionWsUrl,
   sendQffCommand,
   type QffAreaMapCell,
   type QffSessionWithCharacter,
 } from "./api";
-import { parseQffCommandLine } from "./commandParser";
 
-/** Room state, presence, action_log (others’ say lines), and youSee refresh cadence. */
-const POLL_MS = 2000;
+/** Presence heartbeat over the WebSocket (server updates last_activity_at). */
+const WS_PING_MS = 30_000;
+const WS_RECONNECT_BASE_MS = 2000;
 
 /** Charcoal + light gray (same family as action log). */
 const HUD_PANEL_BG = "#141414";
@@ -130,13 +131,82 @@ export default function QffPlayPage() {
     };
   }, [isAuthenticated, sessionUser?.user?.is_approved, load]);
 
+  const characterId = session?.has_character ? session.character.id : null;
+
   useEffect(() => {
-    if (!isAuthenticated || !sessionUser?.user?.is_approved || !session) return;
-    const id = window.setInterval(() => {
-      load().catch(() => {});
-    }, POLL_MS);
-    return () => window.clearInterval(id);
-  }, [isAuthenticated, sessionUser?.user?.is_approved, session, load]);
+    if (!isAuthenticated || !sessionUser?.user?.is_approved || characterId == null) return;
+
+    let cancelled = false;
+    let ws: WebSocket | null = null;
+    let pingId: number | null = null;
+    let reconnectTimer: number | null = null;
+    let attempt = 0;
+
+    const scheduleReconnect = () => {
+      if (cancelled) return;
+      const delay = Math.min(WS_RECONNECT_BASE_MS * 2 ** attempt, 60_000);
+      attempt += 1;
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null;
+        void connect();
+      }, delay);
+    };
+
+    const connect = async () => {
+      if (cancelled) return;
+      const token = await getTokenRef.current();
+      if (!token || cancelled) return;
+      let socket: WebSocket;
+      try {
+        socket = new WebSocket(qffSessionWsUrl(token));
+      } catch {
+        scheduleReconnect();
+        return;
+      }
+      ws = socket;
+      socket.onopen = () => {
+        attempt = 0;
+        if (pingId != null) window.clearInterval(pingId);
+        pingId = window.setInterval(() => {
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: "ping" }));
+          }
+        }, WS_PING_MS);
+      };
+      socket.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data) as { type?: string; session?: QffSessionWithCharacter };
+          if (data.type === "session" && data.session?.has_character) {
+            setSession(data.session);
+          }
+        } catch {
+          /* ignore */
+        }
+      };
+      socket.onclose = () => {
+        if (pingId != null) {
+          window.clearInterval(pingId);
+          pingId = null;
+        }
+        if (!cancelled) scheduleReconnect();
+      };
+      socket.onerror = () => {
+        socket.close();
+      };
+    };
+
+    void connect();
+
+    return () => {
+      cancelled = true;
+      if (reconnectTimer != null) window.clearTimeout(reconnectTimer);
+      if (pingId != null) window.clearInterval(pingId);
+      if (ws) {
+        ws.onclose = null;
+        ws.close();
+      }
+    };
+  }, [isAuthenticated, sessionUser?.user?.is_approved, characterId]);
 
   useEffect(() => {
     if (session) inputRef.current?.focus();
@@ -192,22 +262,6 @@ export default function QffPlayPage() {
     const raw = line.trim();
     if (!raw) return;
     setLine("");
-    const parsed = parseQffCommandLine(raw);
-    if (parsed.kind === "unknown") {
-      setLogLines((prev) => {
-        const nextId = () => logLineIdRef.current++;
-        const block = [
-          { id: nextId(), text: `> ${raw}`, recent: true },
-          {
-            id: nextId(),
-            text: "You try that, but nothing happens.",
-            recent: true,
-          },
-        ];
-        return [...block, ...prev.map((p) => ({ ...p, recent: false }))];
-      });
-      return;
-    }
     try {
       const token = await getTokenRef.current();
       const res = await sendQffCommand(token, raw);

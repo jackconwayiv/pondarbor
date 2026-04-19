@@ -6,6 +6,26 @@
  * - `https://host` → `https://host/api/v1/qff/...`
  * - path prefix `/proxy` → `/proxy/api/v1/qff/...`
  */
+/** WebSocket URL for live QFF session sync (Auth0 token in query string). */
+export function qffSessionWsUrl(accessToken: string): string {
+  const path = "/api/v1/qff/ws/session/";
+  const tokenParam = `token=${encodeURIComponent(accessToken)}`;
+  const raw = (import.meta.env.VITE_API_BASE_URL ?? "").trim();
+  if (!raw) {
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${proto}//${window.location.host}${path}?${tokenParam}`;
+  }
+  if (/^https?:\/\//i.test(raw)) {
+    const u = new URL(raw);
+    const wsProto = u.protocol === "https:" ? "wss:" : "ws:";
+    return `${wsProto}//${u.host}${path}?${tokenParam}`;
+  }
+  const prefix = raw.startsWith("/") ? raw : `/${raw}`;
+  const base = prefix.replace(/\/$/, "");
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${proto}//${window.location.host}${base}${path}?${tokenParam}`;
+}
+
 function qffJoinBase(path: string): string {
   const raw = (import.meta.env.VITE_API_BASE_URL ?? "").trim();
   const p = path.startsWith("/") ? path : `/${path}`;
@@ -208,6 +228,47 @@ export async function sendQffCommand(
     throw new Error(`QFF command (${response.status}): ${text}`);
   }
   return (await response.json()) as QffCommandResponse;
+}
+
+export type DmIneffectiveInputRow = {
+  id: number;
+  user_id: number;
+  user_email: string;
+  raw_line: string;
+  created_at: string;
+};
+
+export async function dmFetchIneffectiveInputs(
+  accessToken: string | null,
+  params?: { limit?: number; offset?: number },
+): Promise<{ count: number; results: DmIneffectiveInputRow[] }> {
+  const sp = new URLSearchParams();
+  if (params?.limit != null) sp.set("limit", String(params.limit));
+  if (params?.offset != null) sp.set("offset", String(params.offset));
+  const q = sp.toString();
+  const path = `/api/v1/qff/dm/ineffective-inputs/${q ? `?${q}` : ""}`;
+  const response = await fetch(qffJoinBase(path), {
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as { count: number; results: DmIneffectiveInputRow[] };
+}
+
+export async function dmDeleteIneffectiveInput(
+  accessToken: string | null,
+  id: number,
+): Promise<void> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/ineffective-inputs/${id}/`), {
+    method: "DELETE",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (response.status === 204) return;
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`QFF delete ineffective input (${response.status}): ${text}`);
+  }
 }
 
 /** --- DM (staff) --- */

@@ -48,6 +48,9 @@ const QffDmClassesPage = lazy(() => import("./qff/QffDmClassesPage"));
 const QffDmInteractablesPage = lazy(() => import("./qff/QffDmInteractablesPage"));
 const QffDmNpcsPage = lazy(() => import("./qff/QffDmNpcsPage"));
 const QffDmQuestsPage = lazy(() => import("./qff/QffDmQuestsPage"));
+const QffDmIneffectiveInputsPage = lazy(
+  () => import("./qff/QffDmIneffectiveInputsPage"),
+);
 const MealLayout = lazy(() => import("./meal/MealLayout"));
 const MealHomePage = lazy(() => import("./meal/MealHomePage"));
 const MealMealsPage = lazy(() => import("./meal/MealMealsPage"));
@@ -260,6 +263,10 @@ export const router = sentryCreateBrowserRouter([
           {
             path: "dm/interactables",
             element: lazyRouteElement(<QffDmInteractablesPage />),
+          },
+          {
+            path: "dm/ineffective-inputs",
+            element: lazyRouteElement(<QffDmIneffectiveInputsPage />),
           },
         ],
       },

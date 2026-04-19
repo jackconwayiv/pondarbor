@@ -48,4 +48,6 @@ urlpatterns = [
     path("dm/npc-dialogues/<int:pk>/", staff_content.dm_npc_dialogue_detail),
     path("dm/interactables/", staff_content.dm_interactable_list_create),
     path("dm/interactables/<int:pk>/", staff_content.dm_interactable_detail),
+    path("dm/ineffective-inputs/", views.dm_ineffective_inputs_list),
+    path("dm/ineffective-inputs/<int:pk>/", views.dm_ineffective_input_detail),
 ]

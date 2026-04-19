@@ -25,12 +25,14 @@ from qff.models import (
     ItemInstance,
     Quest,
     QuestState,
+    QffIneffectiveInput,
     Room,
     RoomExit,
     RoomItem,
     validate_character_name,
 )
 from qff.game_helpers import encumbrance_excess
+from qff.realtime import notify_qff_rooms
 from qff.session_payload import (
     build_session_for_character,
     normalize_hex_color,
@@ -189,11 +191,22 @@ def command_view(request):
             {"messages": ["Type a command."], "session": build_session_for_character(char)},
         )
 
+    old_room_id = char.current_room_id
     parsed = parse_command(line)
     messages = list(execute_command(char, parsed))
+    if messages and messages[0] == "You try that, but nothing happens.":
+        email = (request.user.email or "").strip()
+        QffIneffectiveInput.objects.create(
+            user=request.user,
+            user_email=email[:254] if email else "",
+            raw_line=line,
+        )
     char = _get_character(request.user)
     if char and encumbrance_excess(char) > 0:
         messages.append("You are encumbered!")
+    if char:
+        new_room_id = char.current_room_id
+        notify_qff_rooms([old_room_id, new_room_id])
     return Response({"messages": messages, "session": build_session_for_character(char)})
 
 
@@ -1594,3 +1607,41 @@ def dm_class_detail(request, pk):
             status=status.HTTP_400_BAD_REQUEST,
         )
     return Response(_dm_class_dict(cc))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsStaffUser])
+def dm_ineffective_inputs_list(request):
+    try:
+        limit = min(int(request.query_params.get("limit", 100)), 500)
+        offset = max(int(request.query_params.get("offset", 0)), 0)
+    except ValueError:
+        return Response(
+            {"detail": "Invalid limit or offset."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    qs = QffIneffectiveInput.objects.order_by("-created_at")[offset : offset + limit]
+    total = QffIneffectiveInput.objects.count()
+    return Response(
+        {
+            "count": total,
+            "results": [
+                {
+                    "id": row.id,
+                    "user_id": row.user_id,
+                    "user_email": row.user_email,
+                    "raw_line": row.raw_line,
+                    "created_at": row.created_at.isoformat(),
+                }
+                for row in qs
+            ],
+        }
+    )
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated, IsStaffUser])
+def dm_ineffective_input_detail(request, pk):
+    row = get_object_or_404(QffIneffectiveInput, pk=pk)
+    row.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)

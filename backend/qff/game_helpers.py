@@ -19,6 +19,34 @@ def presence_threshold():
     return timezone.now() - timedelta(minutes=PRESENCE_MINUTES)
 
 
+def peer_arrival_line(actor_name: str, travel_direction: str) -> str:
+    """Observers in the destination room see this when someone enters along `travel_direction`."""
+    from qff.models import RoomExit
+
+    d = RoomExit.Direction
+    opposite = {
+        d.N: "south",
+        d.S: "north",
+        d.E: "west",
+        d.W: "east",
+        d.NW: "southeast",
+        d.NE: "southwest",
+        d.SW: "northeast",
+        d.SE: "northwest",
+    }
+    if travel_direction in opposite:
+        return f"{actor_name} enters from the {opposite[travel_direction]}."
+    if travel_direction == d.UP:
+        return f"{actor_name} enters from below."
+    if travel_direction == d.DOWN:
+        return f"{actor_name} enters from above."
+    if travel_direction == d.IN:
+        return f"{actor_name} enters from outside."
+    if travel_direction == d.OUT:
+        return f"{actor_name} enters from inside."
+    return f"{actor_name} enters."
+
+
 _EQUIP_SLOTS = (
     "head_item",
     "main_hand_item",

@@ -79,13 +79,6 @@ def session_view(request):
                 "character_classes": classes,
             }
         )
-    # Ping presence on every session poll so idle players stay visible to others.
-    now = timezone.now()
-    Character.objects.filter(pk=char.pk).update(
-        last_activity_at=now,
-        updated_at=now,
-    )
-    char.refresh_from_db(fields=["last_activity_at", "updated_at"])
     return Response(build_session_for_character(char))
 
 

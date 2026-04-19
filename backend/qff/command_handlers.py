@@ -32,6 +32,7 @@ from qff.game_helpers import (
     display_name_for_instance,
     format_item_inspect_parenthetical,
     item_meets_requirements,
+    peer_arrival_line,
     presence_threshold,
     roll_d100_plus_stat_encumbered,
     slot_field_for_item_slot,
@@ -385,6 +386,7 @@ def _handle_move(char: CharacterType, parsed: ParsedMove) -> list[str]:
     char.save(update_fields=["current_room", "last_activity_at", "updated_at"])
     on_leave_room(left_room_id)
     on_enter_room(char, dest.id)
+    _notify_peers_third_person(char, dest.id, peer_arrival_line(char.name, ex.direction))
     return [f"You head {dir_label}."]
 
 

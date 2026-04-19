@@ -1,5 +1,7 @@
 """Play-path behavior for approved non-staff users (no is_staff; IsApprovedUser)."""
 
+from datetime import timedelta
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
@@ -9,6 +11,7 @@ from rest_framework.test import APIClient
 from qff.command_handlers import execute_command
 from qff.command_parser import parse_command
 from qff.models import (
+    Area,
     Character,
     CharacterClass,
     CharacterQuestProgress,
@@ -18,6 +21,7 @@ from qff.models import (
     Quest,
     QuestState,
     Room,
+    RoomExit,
 )
 from qff.session_payload import build_session_for_character, consume_room_broadcasts
 
@@ -122,6 +126,48 @@ class ApprovedNonStaffPlayTests(TestCase):
         npcs = body["room"]["npcs"]
         self.assertEqual(len(npcs), 1)
         self.assertEqual(npcs[0]["name"], "Villager")
+
+    def test_session_get_does_not_touch_last_activity_at(self):
+        u = _approved_user("session-presence@example.com")
+        c = self._character("SessionHero", u)
+        stale = timezone.now() - timedelta(hours=2)
+        Character.objects.filter(pk=c.pk).update(last_activity_at=stale)
+        client = APIClient()
+        client.force_login(u)
+        res = client.get("/api/v1/qff/session/")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        c.refresh_from_db()
+        self.assertEqual(c.last_activity_at, stale)
+
+    def test_peer_sees_arrival_line_when_actor_enters_room(self):
+        area = Area.objects.create(
+            name="NavArea",
+            slug="nav-arrival-test",
+            grid_width=1,
+            grid_height=1,
+        )
+        room_a = Room.objects.create(area=area, name="A", slug="nav-arrival-a")
+        room_b = Room.objects.create(area=area, name="B", slug="nav-arrival-b")
+        RoomExit.objects.create(
+            from_room=room_a,
+            to_room=room_b,
+            direction=RoomExit.Direction.N,
+        )
+        u1 = _approved_user("walker@example.com")
+        u2 = _approved_user("watchin@example.com")
+        c1 = self._character("Walker", u1)
+        c1.current_room = room_a
+        c1.save(update_fields=["current_room"])
+        c2 = self._character("Watcher", u2)
+        c2.current_room = room_b
+        c2.save(update_fields=["current_room", "last_activity_at", "updated_at"])
+        execute_command(c1, parse_command("north"))
+        c2 = Character.objects.get(pk=c2.pk)
+        lines = consume_room_broadcasts(c2)
+        self.assertTrue(
+            any("Walker" in ln and "enters from the south" in ln for ln in lines),
+            lines,
+        )
 
     def test_approved_non_staff_can_post_command(self):
         u = _approved_user("cmd@example.com")

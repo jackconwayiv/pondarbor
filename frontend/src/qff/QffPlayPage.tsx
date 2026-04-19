@@ -23,7 +23,7 @@ import {
   type QffSessionWithCharacter,
 } from "./api";
 
-/** Presence heartbeat over the WebSocket (server updates last_activity_at). */
+/** WebSocket keepalive; server may broadcast room session updates without changing activity. */
 const WS_PING_MS = 30_000;
 const WS_RECONNECT_BASE_MS = 2000;
 

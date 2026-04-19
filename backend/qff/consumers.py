@@ -8,13 +8,11 @@ from urllib.parse import parse_qs
 from asgiref.sync import sync_to_async
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
-from django.utils import timezone
 from rest_framework import exceptions
 
 from users.auth0_backend import authenticate_bearer_token
 from users.models import User
 
-from qff.models import Character
 from qff.realtime import async_notify_qff_rooms
 from qff.session_payload import build_session_for_character
 from qff.views import _get_character
@@ -54,13 +52,6 @@ class QffSessionConsumer(AsyncWebsocketConsumer):
         await self.channel_layer.group_add(self._room_group_name, self.channel_name)
         await self.accept()
 
-        now = timezone.now()
-        await database_sync_to_async(
-            lambda: Character.objects.filter(pk=char.pk).update(
-                last_activity_at=now,
-                updated_at=now,
-            )
-        )()
         await async_notify_qff_rooms([char.current_room_id])
 
         session = await database_sync_to_async(build_session_for_character)(char)
@@ -82,13 +73,6 @@ class QffSessionConsumer(AsyncWebsocketConsumer):
         char = await database_sync_to_async(_get_character)(self.user)
         if not char:
             return
-        now = timezone.now()
-        await database_sync_to_async(
-            lambda: Character.objects.filter(pk=char.pk).update(
-                last_activity_at=now,
-                updated_at=now,
-            )
-        )()
         await async_notify_qff_rooms([char.current_room_id])
 
     async def room_update(self, event):

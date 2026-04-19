@@ -266,6 +266,9 @@ export default function QffDmPage() {
   const [areaThemeAccent, setAreaThemeAccent] = useState("");
   const [panelCellX, setPanelCellX] = useState("0");
   const [panelCellY, setPanelCellY] = useState("0");
+  const [areaDarkMinimap, setAreaDarkMinimap] = useState(false);
+  const [panelPermanentMinimapLight, setPanelPermanentMinimapLight] = useState(false);
+  const [panelResetDarkLighting, setPanelResetDarkLighting] = useState(false);
   const dmMapColumnRef = useRef<HTMLDivElement | null>(null);
   const dmRoomPanelRef = useRef<HTMLDivElement | null>(null);
   const roomsImportInputRef = useRef<HTMLInputElement | null>(null);
@@ -301,6 +304,7 @@ export default function QffDmPage() {
       setAreaThemeAccent(
         snapHexToAreaHuePreset(area.theme_accent || area.theme.accent),
       );
+      setAreaDarkMinimap(!!area.is_dark_minimap);
       setShowAreaDescEditor(false);
     }
   }, [area]);
@@ -478,6 +482,8 @@ export default function QffDmPage() {
       setPanelDesc("");
       setPanelSearch("");
       setPanelSearchChance("50");
+      setPanelPermanentMinimapLight(false);
+      setPanelResetDarkLighting(false);
       setExits([]);
       setRoomItems([]);
       return;
@@ -486,6 +492,8 @@ export default function QffDmPage() {
     setPanelDesc(selectedRoom.description);
     setPanelSearch(selectedRoom.search_text);
     setPanelSearchChance(String(selectedRoom.search_chance ?? 50));
+    setPanelPermanentMinimapLight(!!selectedRoom.permanent_minimap_light);
+    setPanelResetDarkLighting(!!selectedRoom.reset_dark_lighting_on_enter);
     let cancelled = false;
     (async () => {
       const token = await getTokenRef.current();
@@ -563,6 +571,8 @@ export default function QffDmPage() {
         description: panelDesc,
         search_text: panelSearch,
         search_chance: sc,
+        permanent_minimap_light: panelPermanentMinimapLight,
+        reset_dark_lighting_on_enter: panelResetDarkLighting,
       });
       if (areaId) {
         const r = await dmFetchRooms(await getTokenRef.current(), areaId);
@@ -572,7 +582,17 @@ export default function QffDmPage() {
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Save failed");
     }
-  }, [selectedRoomId, panelName, panelDesc, panelSearch, panelSearchChance, areaId, refreshExitDestRooms]);
+  }, [
+    selectedRoomId,
+    panelName,
+    panelDesc,
+    panelSearch,
+    panelSearchChance,
+    panelPermanentMinimapLight,
+    panelResetDarkLighting,
+    areaId,
+    refreshExitDestRooms,
+  ]);
 
   const addExit = useCallback(async () => {
     if (!selectedRoomId || newExitTo == null) return;
@@ -906,6 +926,22 @@ export default function QffDmPage() {
             </Field.Root>
             <Field.Root flex="1" minW="240px">
               <Field.Label fontSize="xs">Colors</Field.Label>
+              <Flex align="center" gap={2} mt={1} mb={2}>
+                <Switch.Root
+                  size="sm"
+                  checked={areaDarkMinimap}
+                  onCheckedChange={(d) => setAreaDarkMinimap(!!d.checked)}
+                  colorPalette="green"
+                >
+                  <Switch.HiddenInput />
+                  <Switch.Control>
+                    <Switch.Thumb />
+                  </Switch.Control>
+                  <Switch.Label fontSize="xs" color="#aaa">
+                    Dark minimap (torch / lantern oil)
+                  </Switch.Label>
+                </Switch.Root>
+              </Flex>
               <Stack gap={2} mt={1}>
                 <DmAreaThemeHueRow
                   rowLabel="Room"
@@ -946,6 +982,7 @@ export default function QffDmPage() {
                     description: areaDescription,
                     grid_width: areaGridW,
                     grid_height: areaGridH,
+                    is_dark_minimap: areaDarkMinimap,
                     theme_primary: areaThemePrimary,
                     theme_secondary: areaThemeSecondary,
                     theme_accent: areaThemeAccent,
@@ -1074,6 +1111,38 @@ export default function QffDmPage() {
                         bg="#222"
                       />
                     </Field.Root>
+                    <Stack gap={2}>
+                      <Switch.Root
+                        size="sm"
+                        checked={panelPermanentMinimapLight}
+                        onCheckedChange={(d) =>
+                          setPanelPermanentMinimapLight(!!d.checked)
+                        }
+                        colorPalette="green"
+                      >
+                        <Switch.HiddenInput />
+                        <Switch.Control>
+                          <Switch.Thumb />
+                        </Switch.Control>
+                        <Switch.Label fontSize="xs" color="#aaa">
+                          Permanent minimap light (sconce; survives dark reset)
+                        </Switch.Label>
+                      </Switch.Root>
+                      <Switch.Root
+                        size="sm"
+                        checked={panelResetDarkLighting}
+                        onCheckedChange={(d) => setPanelResetDarkLighting(!!d.checked)}
+                        colorPalette="orange"
+                      >
+                        <Switch.HiddenInput />
+                        <Switch.Control>
+                          <Switch.Thumb />
+                        </Switch.Control>
+                        <Switch.Label fontSize="xs" color="#aaa">
+                          Entering this room clears players&apos; temporary cave light
+                        </Switch.Label>
+                      </Switch.Root>
+                    </Stack>
 
                     <Text fontWeight="bold" mt={3}>
                       Room items

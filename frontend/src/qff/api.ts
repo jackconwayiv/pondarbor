@@ -84,6 +84,8 @@ export type QffAreaMapGrid = {
   grid_width: number;
   grid_height: number;
   cells: QffAreaMapCell[];
+  is_dark_minimap?: boolean;
+  lit_room_ids?: number[];
 };
 
 export type QffAreaTheme = {
@@ -283,6 +285,8 @@ export type DmArea = {
   description: string;
   grid_width: number;
   grid_height: number;
+  /** When true, play minimap uses fog-of-war until lit. */
+  is_dark_minimap?: boolean;
   theme: QffAreaTheme;
   theme_primary: string;
   theme_secondary: string;
@@ -386,6 +390,7 @@ export async function dmPatchArea(
       | "description"
       | "grid_width"
       | "grid_height"
+      | "is_dark_minimap"
       | "theme_primary"
       | "theme_secondary"
       | "theme_accent"
@@ -497,6 +502,8 @@ export type DmRoom = {
   description: string;
   search_text: string;
   search_chance: number;
+  permanent_minimap_light?: boolean;
+  reset_dark_lighting_on_enter?: boolean;
   cell: { id: number; x: number; y: number } | null;
 };
 
@@ -512,7 +519,17 @@ export async function dmFetchRooms(accessToken: string | null, areaId: number): 
 export async function dmPatchRoom(
   accessToken: string | null,
   roomId: number,
-  body: Partial<Pick<DmRoom, "name" | "description" | "search_text" | "search_chance">>,
+  body: Partial<
+    Pick<
+      DmRoom,
+      | "name"
+      | "description"
+      | "search_text"
+      | "search_chance"
+      | "permanent_minimap_light"
+      | "reset_dark_lighting_on_enter"
+    >
+  >,
 ): Promise<void> {
   const response = await fetch(qffJoinBase(`/api/v1/qff/dm/rooms/${roomId}/`), {
     method: "PATCH",

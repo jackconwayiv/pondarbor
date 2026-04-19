@@ -28,7 +28,7 @@ from qff.exits import (
     exit_is_passable,
     exit_is_visible_to_character,
 )
-from qff.consumable_effects import apply_consume_effects
+from qff.consumable_effects import apply_consume_effects, validate_consume_effects
 from qff.game_helpers import (
     display_name_for_instance,
     format_item_inspect_parenthetical,
@@ -723,6 +723,10 @@ def _consume_inventory_instance(
         if inst.pk not in inv or not inst.item.consumable:
             char.save(update_fields=["last_activity_at", "updated_at"])
             return ["You don't have that."]
+        err = validate_consume_effects(char, inst.item)
+        if err:
+            char.save(update_fields=["last_activity_at", "updated_at"])
+            return [err]
         base_label = display_name_for_instance(inst)
         effect_lines = apply_consume_effects(char, inst.item)
         qty = max(1, int(inst.quantity or 1))
@@ -734,6 +738,7 @@ def _consume_inventory_instance(
                 update_fields=[
                     "cur_health",
                     "cur_mana",
+                    "dark_minimap_lit_room_ids",
                     "last_activity_at",
                     "updated_at",
                 ]
@@ -747,6 +752,7 @@ def _consume_inventory_instance(
                     "inventory",
                     "cur_health",
                     "cur_mana",
+                    "dark_minimap_lit_room_ids",
                     "last_activity_at",
                     "updated_at",
                 ]

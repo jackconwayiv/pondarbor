@@ -26,6 +26,8 @@ class Area(models.Model):
     theme_primary = models.CharField(max_length=7, blank=True, default="")
     theme_secondary = models.CharField(max_length=7, blank=True, default="")
     theme_accent = models.CharField(max_length=7, blank=True, default="")
+    # When true, play minimap uses fog-of-war: only current room, temp lit, and sconce rooms show.
+    is_dark_minimap = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -46,6 +48,10 @@ class Room(models.Model):
     search_text = models.TextField(blank=True)
     # 1–100: roll 1d100 + Sense must meet or exceed this to reveal search_text.
     search_chance = models.PositiveSmallIntegerField(default=50)
+    # Sconce / permanent light: visible on dark minimap even after temp lighting reset.
+    permanent_minimap_light = models.BooleanField(default=False)
+    # Entering this room clears character.dark_minimap_lit_room_ids (cave mouth, etc.).
+    reset_dark_lighting_on_enter = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -567,6 +573,8 @@ class Character(models.Model):
         related_name="+",
     )
     last_room_broadcast_id = models.PositiveIntegerField(default=0)
+    # Temporarily lit room ids for dark minimap (torch / lamp oil); cleared at flagged entrances.
+    dark_minimap_lit_room_ids = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

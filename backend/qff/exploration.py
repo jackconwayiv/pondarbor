@@ -13,6 +13,7 @@ from qff.models import (
     CharacterExitSeen,
     CharacterRoomVisit,
     ItemInstance,
+    Room,
     RoomBroadcast,
     RoomExit,
 )
@@ -88,7 +89,16 @@ def on_enter_room(character: Character, room_id: int) -> None:
     sync_seen_exits_for_character(character)
     max_bid = RoomBroadcast.objects.filter(room_id=room_id).aggregate(m=Max("id"))["m"]
     character.last_room_broadcast_id = int(max_bid or 0)
-    character.save(update_fields=["last_room_broadcast_id", "updated_at"])
+    update_fields = ["last_room_broadcast_id", "updated_at"]
+    reset_dark = (
+        Room.objects.filter(pk=room_id)
+        .values_list("reset_dark_lighting_on_enter", flat=True)
+        .first()
+    )
+    if reset_dark:
+        character.dark_minimap_lit_room_ids = []
+        update_fields.append("dark_minimap_lit_room_ids")
+    character.save(update_fields=update_fields)
 
 
 def mark_exit_used(character: Character, room_exit: RoomExit) -> None:

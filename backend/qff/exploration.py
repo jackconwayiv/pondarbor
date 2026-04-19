@@ -98,6 +98,9 @@ def on_enter_room(character: Character, room_id: int) -> None:
     if reset_dark:
         character.dark_minimap_lit_room_ids = []
         update_fields.append("dark_minimap_lit_room_ids")
+    character.container_focus_interactable_id = None
+    character.container_focus_expires_at = None
+    update_fields.extend(["container_focus_interactable", "container_focus_expires_at"])
     character.save(update_fields=update_fields)
 
 

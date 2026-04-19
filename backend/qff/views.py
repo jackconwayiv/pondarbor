@@ -23,6 +23,7 @@ from qff.models import (
     AreaCell,
     Character,
     CharacterClass,
+    Interactable,
     Item,
     ItemInstance,
     Quest,
@@ -210,6 +211,8 @@ def command_view(request):
             {"messages": ["Type a command."], "session": build_session_for_character(char)},
         )
 
+    command_room = char.current_room
+    command_room_name = (command_room.name or "").strip()[:200]
     old_room_id = char.current_room_id
     parsed = parse_command(line)
     messages = list(execute_command(char, parsed))
@@ -219,6 +222,8 @@ def command_view(request):
             user=request.user,
             user_email=email[:254] if email else "",
             raw_line=line,
+            room=command_room,
+            room_name=command_room_name,
         )
     char = _get_character(request.user)
     if char and encumbrance_excess(char) > 0:
@@ -852,6 +857,7 @@ def _dm_floor_item_dict(inst: ItemInstance) -> dict:
         "visible_quest_state_slug": (
             inst.visible_quest_state.slug if inst.visible_quest_state_id else None
         ),
+        "container_interactable_id": inst.container_interactable_id,
     }
 
 
@@ -874,6 +880,7 @@ def _dm_room_item_dict(ri: RoomItem) -> dict:
             ri.visible_quest_state.slug if ri.visible_quest_state_id else None
         ),
         "allow_repeat_while_carrying": ri.allow_repeat_while_carrying,
+        "interactable_id": ri.interactable_id,
     }
 
 
@@ -910,12 +917,28 @@ def dm_room_room_items(request, room_id):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         get_object_or_404(QuestState, pk=visible_quest_state_id)
+    interactable_id = request.data.get("interactable_id")
+    if interactable_id not in (None, ""):
+        try:
+            interactable_id = int(interactable_id)
+        except (TypeError, ValueError):
+            interactable_id = None
+        if interactable_id is not None:
+            o = get_object_or_404(Interactable, pk=interactable_id)
+            if o.room_id != room.id:
+                return Response(
+                    {"detail": "interactable must belong to this room."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+    else:
+        interactable_id = None
     ri = RoomItem.objects.create(
         room=room,
         item_id=item_id,
         nickname=nick or None,
         visible_quest_state_id=visible_quest_state_id,
         allow_repeat_while_carrying=bool(request.data.get("allow_repeat_while_carrying")),
+        interactable_id=interactable_id,
     )
     ri = RoomItem.objects.select_related("item", "visible_quest_state__quest").get(pk=ri.pk)
     return Response(_dm_room_item_dict(ri), status=status.HTTP_201_CREATED)
@@ -951,6 +974,25 @@ def dm_room_item_detail(request, pk):
                 ri.visible_quest_state_id = None
     if "allow_repeat_while_carrying" in request.data:
         ri.allow_repeat_while_carrying = bool(request.data.get("allow_repeat_while_carrying"))
+    if "interactable_id" in request.data:
+        v = request.data.get("interactable_id")
+        if v in (None, ""):
+            ri.interactable_id = None
+        else:
+            try:
+                oid = int(v)
+            except (TypeError, ValueError):
+                oid = None
+            if oid is not None:
+                o = get_object_or_404(Interactable, pk=oid)
+                if o.room_id != ri.room_id:
+                    return Response(
+                        {"detail": "interactable must belong to this room."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                ri.interactable_id = oid
+            else:
+                ri.interactable_id = None
     ri.save()
     ri = RoomItem.objects.select_related("item", "visible_quest_state__quest").get(pk=ri.pk)
     return Response(_dm_room_item_dict(ri))
@@ -989,6 +1031,21 @@ def dm_room_floor_items(request, room_id):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         get_object_or_404(QuestState, pk=visible_quest_state_id)
+    container_interactable_id = request.data.get("container_interactable_id")
+    if container_interactable_id not in (None, ""):
+        try:
+            container_interactable_id = int(container_interactable_id)
+        except (TypeError, ValueError):
+            container_interactable_id = None
+        if container_interactable_id is not None:
+            o = get_object_or_404(Interactable, pk=container_interactable_id)
+            if o.room_id != room.id:
+                return Response(
+                    {"detail": "container_interactable must belong to this room."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+    else:
+        container_interactable_id = None
     qty = max(1, int(request.data.get("quantity") or 1))
     inst = ItemInstance.objects.create(
         item_id=item_id,
@@ -999,6 +1056,7 @@ def dm_room_floor_items(request, room_id):
         nickname=nick or None,
         visible_quest_state_id=visible_quest_state_id,
         quantity=qty,
+        container_interactable_id=container_interactable_id,
     )
     inst = ItemInstance.objects.select_related(
         "item", "visible_quest_state__quest"
@@ -1042,6 +1100,25 @@ def dm_floor_item_detail(request, pk):
             inst.quantity = max(1, q)
         except (TypeError, ValueError):
             pass
+    if "container_interactable_id" in request.data:
+        v = request.data.get("container_interactable_id")
+        if v in (None, ""):
+            inst.container_interactable_id = None
+        else:
+            try:
+                oid = int(v)
+            except (TypeError, ValueError):
+                oid = None
+            if oid is not None:
+                o = get_object_or_404(Interactable, pk=oid)
+                if o.room_id != inst.room_id:
+                    return Response(
+                        {"detail": "container_interactable must belong to this room."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                inst.container_interactable_id = oid
+            else:
+                inst.container_interactable_id = None
     inst.save()
     inst = ItemInstance.objects.select_related(
         "item", "visible_quest_state__quest"
@@ -1297,6 +1374,8 @@ def _dm_item_dict(item: Item) -> dict:
         "bonus_smarts": item.bonus_smarts,
         "bonus_sense": item.bonus_sense,
         "bonus_rizz": item.bonus_rizz,
+        "unsellable": item.unsellable,
+        "vendor_refuses_buy": item.vendor_refuses_buy,
     }
 
 
@@ -1393,6 +1472,8 @@ def dm_item_list_create(request):
         bonus_smarts=int(request.data.get("bonus_smarts") or 0),
         bonus_sense=int(request.data.get("bonus_sense") or 0),
         bonus_rizz=int(request.data.get("bonus_rizz") or 0),
+        unsellable=bool(request.data.get("unsellable")),
+        vendor_refuses_buy=bool(request.data.get("vendor_refuses_buy")),
     )
     return Response(_dm_item_dict(item), status=status.HTTP_201_CREATED)
 
@@ -1491,6 +1572,10 @@ def dm_item_detail(request, pk):
     ):
         if bf in request.data:
             setattr(item, bf, int(request.data.get(bf) or 0))
+    if "unsellable" in request.data:
+        item.unsellable = bool(request.data["unsellable"])
+    if "vendor_refuses_buy" in request.data:
+        item.vendor_refuses_buy = bool(request.data["vendor_refuses_buy"])
     item.save()
     return Response(_dm_item_dict(item))
 
@@ -1723,6 +1808,8 @@ def dm_ineffective_inputs_list(request):
                     "user_id": row.user_id,
                     "user_email": row.user_email,
                     "raw_line": row.raw_line,
+                    "room_id": row.room_id,
+                    "room_name": row.room_name or "",
                     "created_at": row.created_at.isoformat(),
                 }
                 for row in qs

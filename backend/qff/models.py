@@ -350,6 +350,14 @@ class Item(models.Model):
         blank=True,
         help_text="Template metadata; e.g. consume_effects list for consumable items.",
     )
+    unsellable = models.BooleanField(
+        default=False,
+        help_text="If true, players cannot sell this template to vendors.",
+    )
+    vendor_refuses_buy = models.BooleanField(
+        default=False,
+        help_text="If true, vendors treat this as junk and will not buy it from players.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -403,12 +411,25 @@ class ItemInstance(models.Model):
         help_text="If set, only characters in this quest state see this floor item; "
         "hidden if they already carry this item template.",
     )
+    container_interactable = models.ForeignKey(
+        "Interactable",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="container_items",
+        help_text="If set, this floor item is inside this container (not loose in the room).",
+    )
+    is_crafted = models.BooleanField(
+        default=False,
+        help_text="If true, shop consignment decay does not apply to this instance.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         indexes = [
             models.Index(fields=["owner_character", "room"]),
+            models.Index(fields=["container_interactable", "room"]),
         ]
         constraints = [
             models.CheckConstraint(
@@ -449,6 +470,14 @@ class RoomItem(models.Model):
         default=False,
         help_text="If true, slot stays visible even when the character already carries this "
         "template (e.g. farmable pickups). Default hides while carrying.",
+    )
+    interactable = models.ForeignKey(
+        "Interactable",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="container_room_items",
+        help_text="If set, this pickup appears only while this container is focused (opened).",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -575,6 +604,26 @@ class Character(models.Model):
     last_room_broadcast_id = models.PositiveIntegerField(default=0)
     # Temporarily lit room ids for dark minimap (torch / lamp oil); cleared at flagged entrances.
     dark_minimap_lit_room_ids = models.JSONField(default=list, blank=True)
+    # Sconce interactables: rooms permanently lit on this hero's dark minimap (per-character).
+    hero_permanent_minimap_lit_room_ids = models.JSONField(default=list, blank=True)
+    # Dungeon map item: reveal all visited rooms in this area until expiry.
+    minimap_full_reveal_area = models.ForeignKey(
+        "Area",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="characters_map_reveal",
+    )
+    minimap_full_reveal_until = models.DateTimeField(null=True, blank=True)
+    # Last opened container for get-from-chest (cleared on room change).
+    container_focus_interactable = models.ForeignKey(
+        "Interactable",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="characters_with_focus",
+    )
+    container_focus_expires_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -687,6 +736,19 @@ class QuestTransition(models.Model):
         related_name="+",
         help_text="If set, character must carry this item template (inventory or equipped).",
     )
+    revert_after_minutes = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="If set, character quest state reverts after this many minutes (silent rewind).",
+    )
+    revert_to_state = models.ForeignKey(
+        QuestState,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="transitions_revert_to",
+        help_text="State to revert to; defaults to from_state when null.",
+    )
     sort_order = models.PositiveSmallIntegerField(default=0)
 
     class Meta:
@@ -747,6 +809,14 @@ class CharacterQuestProgress(models.Model):
         on_delete=models.PROTECT,
         related_name="characters_here",
     )
+    quest_revert_at = models.DateTimeField(null=True, blank=True)
+    quest_revert_to_state = models.ForeignKey(
+        QuestState,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="quest_progress_pending_revert",
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -777,6 +847,79 @@ class Npc(models.Model):
         return self.name
 
 
+class NpcShop(models.Model):
+    """Merchant inventory and pricing attached to one NPC."""
+
+    npc = models.OneToOneField(
+        Npc,
+        on_delete=models.CASCADE,
+        related_name="shop",
+    )
+    welcome_text = models.TextField(
+        blank=True,
+        help_text="Shown when players list the shop (shop / list / buy with no args).",
+    )
+    enabled = models.BooleanField(default=True)
+    sell_price_percent = models.PositiveSmallIntegerField(
+        default=50,
+        help_text="Percent of Item.cost offered when a player sells (e.g. 50 = half).",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"Shop({self.npc_id})"
+
+
+class NpcShopStockLine(models.Model):
+    """One offer row in an NPC shop (static restock or player consignment)."""
+
+    class Kind(models.TextChoices):
+        STATIC = "static", "Static"
+        CONSIGNMENT = "consignment", "Consignment"
+
+    shop = models.ForeignKey(
+        NpcShop,
+        on_delete=models.CASCADE,
+        related_name="stock_lines",
+    )
+    item = models.ForeignKey(
+        Item,
+        on_delete=models.CASCADE,
+        related_name="shop_stock_lines",
+    )
+    price = models.PositiveIntegerField(help_text="Gold per purchase (per unit for stackable).")
+    quantity = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Stock remaining; null = unlimited (static only).",
+    )
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    kind = models.CharField(
+        max_length=16,
+        choices=Kind.choices,
+        default=Kind.STATIC,
+    )
+    times_shown_without_sale = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Consignment: increments when listed and not bought; removed at 5 (unless crafted).",
+    )
+    consignment_item_instance = models.OneToOneField(
+        ItemInstance,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="shop_consignment_line",
+        help_text="If set, this row sells that exact instance (consignment).",
+    )
+
+    class Meta:
+        ordering = ["shop_id", "sort_order", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.shop_id} {self.item.name}"
+
+
 class NpcDialogue(models.Model):
     npc = models.ForeignKey(Npc, on_delete=models.CASCADE, related_name="dialogues")
     quest = models.ForeignKey(
@@ -803,9 +946,17 @@ class NpcDialogue(models.Model):
 class Interactable(models.Model):
     class Kind(models.TextChoices):
         SIGN = "sign", "Sign"
+        TOME = "tome", "Tome"
         CHEST = "chest", "Chest"
+        BARREL = "barrel", "Barrel"
+        CRATE = "crate", "Crate"
+        SACK = "sack", "Sack"
         BUTTON = "button", "Button"
         LEVER = "lever", "Lever"
+        SWITCH = "switch", "Switch"
+        PULLEY = "pulley", "Pulley"
+        SCONCE = "sconce", "Sconce"
+        MAP = "map", "Map"
         OTHER = "other", "Other"
 
     room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="interactables")
@@ -813,6 +964,15 @@ class Interactable(models.Model):
     name = models.CharField(max_length=200)
     kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.OTHER)
     inspect_text = models.TextField(blank=True)
+    read_text = models.TextField(
+        blank=True,
+        help_text="Long text for read/tome; falls back to inspect_text when empty.",
+    )
+    map_reveal_minutes = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="For kind=map: duration of full visited-map reveal in this area.",
+    )
     quest_transition = models.ForeignKey(
         QuestTransition,
         null=True,
@@ -890,6 +1050,19 @@ class QffIneffectiveInput(models.Model):
     )
     user_email = models.CharField(max_length=254)
     raw_line = models.TextField()
+    room = models.ForeignKey(
+        Room,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="qff_ineffective_inputs",
+        help_text="Room the character was in when the command was issued (may be null if deleted).",
+    )
+    room_name = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="Snapshot of room name at log time (for display even if room is renamed).",
+    )
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:

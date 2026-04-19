@@ -82,6 +82,12 @@ export default function QffDmLobbyPage() {
         </Text>
       </Box>
       <Box mb={8}>
+        <QffButton onClick={() => navigate("/qff/dm/shops")}>NPC shops</QffButton>
+        <Text mt={2} fontSize="sm" color="#889977">
+          Merchant stock, pricing, and sell rules (separate from the NPC dialogue editor).
+        </Text>
+      </Box>
+      <Box mb={8}>
         <QffButton onClick={() => navigate("/qff/dm/interactables")}>Interactables</QffButton>
         <Text mt={2} fontSize="sm" color="#889977">
           Signs, levers, chests, and exit unlock links.

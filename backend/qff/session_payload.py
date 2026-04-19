@@ -12,6 +12,7 @@ from qff.exits import exit_is_passable, exit_is_visible_to_character
 from qff.quest_engine import (
     floor_item_visible_to_character,
     room_item_visible_to_character,
+    sync_character_world_before_session,
     unowned_floor_item_template_ids_in_room,
 )
 from qff.game_helpers import (
@@ -95,6 +96,7 @@ def consume_room_broadcasts(character) -> list[str]:
 def build_area_map(character) -> dict:
     """Visited rooms per area — each grid uses that area's dimensions (multi-area travel)."""
     sync_seen_exits_for_character(character)
+    now = timezone.now()
     visited_ids = set(
         CharacterRoomVisit.objects.filter(character=character).values_list(
             "room_id", flat=True
@@ -105,6 +107,13 @@ def build_area_map(character) -> dict:
     for x in character.dark_minimap_lit_room_ids or []:
         try:
             temp_minimap_lit.add(int(x))
+        except (TypeError, ValueError):
+            continue
+
+    hero_perm_lit: set[int] = set()
+    for x in character.hero_permanent_minimap_lit_room_ids or []:
+        try:
+            hero_perm_lit.add(int(x))
         except (TypeError, ValueError):
             continue
 
@@ -149,7 +158,17 @@ def build_area_map(character) -> dict:
         }
 
     if not visited_ids:
-        lit_here = permanent_minimap_by_area[current_area.id] | {character.current_room_id}
+        lit_here = (
+            permanent_minimap_by_area[current_area.id]
+            | (hero_perm_lit & {character.current_room_id})
+            | {character.current_room_id}
+        )
+        visited_here = [character.current_room_id]
+        map_reveal = bool(
+            character.minimap_full_reveal_area_id == current_area.id
+            and character.minimap_full_reveal_until
+            and now < character.minimap_full_reveal_until
+        )
         return {
             "current_area_id": current_area.id,
             "grids": [
@@ -161,6 +180,8 @@ def build_area_map(character) -> dict:
                     "cells": [],
                     "is_dark_minimap": current_area.is_dark_minimap,
                     "lit_room_ids": sorted(lit_here),
+                    "visited_room_ids": visited_here,
+                    "map_full_reveal_active": map_reveal,
                 }
             ],
         }
@@ -190,9 +211,15 @@ def build_area_map(character) -> dict:
         lit_here = (
             (temp_minimap_lit & visited_in_area)
             | permanent_minimap_by_area[area.id]
+            | (hero_perm_lit & visited_in_area)
         )
         if character.current_room.area_id == area.id:
             lit_here = lit_here | {character.current_room_id}
+        map_reveal = bool(
+            character.minimap_full_reveal_area_id == area.id
+            and character.minimap_full_reveal_until
+            and now < character.minimap_full_reveal_until
+        )
         grids.append(
             {
                 "area_id": area.id,
@@ -202,6 +229,8 @@ def build_area_map(character) -> dict:
                 "cells": cells_out,
                 "is_dark_minimap": area.is_dark_minimap,
                 "lit_room_ids": sorted(lit_here),
+                "visited_room_ids": sorted(visited_in_area),
+                "map_full_reveal_active": map_reveal,
             }
         )
 
@@ -332,6 +361,7 @@ def build_character_profile(character) -> dict:
 
 
 def build_session_for_character(character) -> dict:
+    character = sync_character_world_before_session(character)
     room = character.current_room
     area = room.area
     exits = []

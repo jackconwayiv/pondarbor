@@ -14,8 +14,12 @@ from qff.command_parser import (
     ParsedGet,
     ParsedLookInspect,
     ParsedMove,
+    ParsedRead,
     ParsedSay,
     ParsedSearch,
+    ParsedSell,
+    ParsedShopBrowse,
+    ParsedShopBuy,
     ParsedTalk,
     ParsedUnequip,
     ParsedUnknown,
@@ -40,7 +44,7 @@ from qff.game_helpers import (
     slot_field_for_item_slot,
 )
 from qff.inventory_absorb import absorb_item_quantity
-from qff.models import Character, ItemInstance, RoomBroadcast, RoomExit, RoomItem
+from qff.models import Character, Interactable, ItemInstance, RoomBroadcast, RoomExit, RoomItem
 from qff.quest_engine import (
     ensure_quests_started_from_npc,
     find_interactable_in_room,
@@ -49,8 +53,17 @@ from qff.quest_engine import (
     handle_interactable_use,
     resolve_npc_dialogue,
     room_item_visible_to_character,
+    sync_character_world_before_session,
     try_item_transitions_on_talk,
     unowned_floor_item_template_ids_in_room,
+)
+from qff.shop_engine import (
+    browse_shop,
+    find_inventory_instance,
+    get_enabled_shops_in_room,
+    purchase_from_shop,
+    resolve_shop,
+    sell_to_shop,
 )
 
 if TYPE_CHECKING:
@@ -283,8 +296,100 @@ def _format_say_line(name: str, text: str) -> str:
     return f"{name} says: {text}"
 
 
+def _maybe_split_npc_prefix(
+    shops: list,
+    npc_query: str,
+    item_query: str,
+) -> tuple[str, str]:
+    """If several shops in room and no npc hint, treat first word as NPC name when it matches."""
+    npc_q = (npc_query or "").strip()
+    item_q = (item_query or "").strip()
+    if npc_q or len(shops) <= 1:
+        return npc_q, item_q
+    parts = item_q.split(None, 1)
+    if len(parts) < 2:
+        return npc_q, item_q
+    w0, rest = parts[0], parts[1]
+    w0l = w0.lower()
+    for s in shops:
+        n = s.npc
+        if n.slug.lower() == w0l:
+            return w0, rest
+        nl = n.name.lower()
+        if nl.startswith(w0l) or (n.name and nl.split()[0] == w0l):
+            return w0, rest
+    return npc_q, item_q
+
+
+def _instance_is_equipped(char: CharacterType, inst_pk: int) -> bool:
+    for attr in SLOT_ATTRS:
+        inst = getattr(char, attr, None)
+        if inst is not None and inst.pk == inst_pk:
+            return True
+    return False
+
+
+def _handle_shop_browse(char: CharacterType, parsed: ParsedShopBrowse) -> list[str]:
+    _touch_activity(char)
+    char.save(update_fields=["last_activity_at", "updated_at"])
+    npc_q = (parsed.npc_query or "").strip()
+    shop, err = resolve_shop(char, npc_q)
+    if err:
+        return [err]
+    return browse_shop(char, shop)
+
+
+def _handle_shop_buy(char: CharacterType, parsed: ParsedShopBuy) -> list[str]:
+    _touch_activity(char)
+    char.save(update_fields=["last_activity_at", "updated_at"])
+    item_q = (parsed.item_query or "").strip()
+    npc_q = (parsed.npc_query or "").strip()
+    if not item_q:
+        shop, err = resolve_shop(char, npc_q)
+        if err:
+            return [err]
+        return browse_shop(char, shop)
+    shops = list(get_enabled_shops_in_room(char.current_room_id))
+    npc_q, item_q = _maybe_split_npc_prefix(shops, npc_q, item_q)
+    shop, err = resolve_shop(char, npc_q)
+    if err:
+        return [err]
+    return purchase_from_shop(char, shop, item_q)
+
+
+def _handle_shop_sell(char: CharacterType, parsed: ParsedSell) -> list[str]:
+    _touch_activity(char)
+    char.save(update_fields=["last_activity_at", "updated_at"])
+    item_q = (parsed.item_query or "").strip()
+    npc_q = (parsed.npc_query or "").strip()
+    if not item_q:
+        return ["Sell what?"]
+    shops = list(get_enabled_shops_in_room(char.current_room_id))
+    npc_q, item_q = _maybe_split_npc_prefix(shops, npc_q, item_q)
+    shop, err = resolve_shop(char, npc_q)
+    if err:
+        return [err]
+    char = Character.objects.select_related(
+        "head_item",
+        "main_hand_item",
+        "off_hand_item",
+        "chest_item",
+        "feet_item",
+        "ring_item",
+        "amulet_item",
+    ).get(pk=char.pk)
+    inst = find_inventory_instance(char, item_q)
+    if not inst:
+        return ["You don't have that."]
+    if _instance_is_equipped(char, inst.pk):
+        return ["Unequip that first."]
+    return sell_to_shop(char, shop, item_q)
+
+
 def execute_command(char: CharacterType, parsed) -> list[str]:
     """Mutates character state as needed; caller must reload or use returned session."""
+    char = sync_character_world_before_session(char)
+
     if isinstance(parsed, ParsedSay):
         _touch_activity(char)
         text = (parsed.text or "").strip()
@@ -301,6 +406,15 @@ def execute_command(char: CharacterType, parsed) -> list[str]:
         char.last_room_broadcast_id = rb.id
         char.save(update_fields=["last_room_broadcast_id", "updated_at"])
         return [line]
+
+    if isinstance(parsed, ParsedShopBrowse):
+        return _handle_shop_browse(char, parsed)
+
+    if isinstance(parsed, ParsedShopBuy):
+        return _handle_shop_buy(char, parsed)
+
+    if isinstance(parsed, ParsedSell):
+        return _handle_shop_sell(char, parsed)
 
     if isinstance(parsed, ParsedSearch):
         _touch_activity(char)
@@ -342,6 +456,9 @@ def execute_command(char: CharacterType, parsed) -> list[str]:
 
     if isinstance(parsed, ParsedLookInspect):
         return _handle_look_inspect(char, parsed)
+
+    if isinstance(parsed, ParsedRead):
+        return _handle_read(char, parsed)
 
     if isinstance(parsed, ParsedTalk):
         return _handle_talk(char, parsed)
@@ -770,6 +887,25 @@ def _consume_inventory_instance(
     return [f"You use the {base_label}."] + effect_lines
 
 
+def _handle_read(char: CharacterType, parsed: ParsedRead) -> list[str]:
+    _touch_activity(char)
+    target = (parsed.target or "").strip()
+    if not target:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return ["Read what?"]
+    obj = find_interactable_in_room(char, target)
+    if not obj:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return ["You don't see that here."]
+    text = (obj.read_text or "").strip() or (obj.inspect_text or "").strip()
+    if not text:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return ["There is nothing to read."]
+    _notify_peers_third_person(char, char.current_room_id, f"{char.name} reads the {obj.name}.")
+    char.save(update_fields=["last_activity_at", "updated_at"])
+    return [text]
+
+
 def _handle_look_inspect(char: CharacterType, parsed: ParsedLookInspect) -> list[str]:
     _touch_activity(char)
     char.save(update_fields=["last_activity_at", "updated_at"])
@@ -787,7 +923,31 @@ def _handle_look_inspect(char: CharacterType, parsed: ParsedLookInspect) -> list
     if interactable:
         _look_focus_peers(char, parsed, interactable.name)
         t = (interactable.inspect_text or "").strip() or f"You see {interactable.name}."
-        return [t]
+        out = [t]
+        if interactable.kind in (
+            Interactable.Kind.CHEST,
+            Interactable.Kind.BARREL,
+            Interactable.Kind.CRATE,
+            Interactable.Kind.SACK,
+        ):
+            floor_ids = unowned_floor_item_template_ids_in_room(char.current_room_id)
+            inside: list[str] = []
+            for inst in ItemInstance.objects.filter(
+                room_id=char.current_room_id,
+                container_interactable_id=interactable.pk,
+                owner_character__isnull=True,
+            ).select_related("item", "visible_quest_state"):
+                if floor_item_visible_to_character(char, inst):
+                    inside.append(display_name_for_instance(inst))
+            for ri in RoomItem.objects.filter(
+                room_id=char.current_room_id,
+                interactable_id=interactable.pk,
+            ).select_related("item", "visible_quest_state"):
+                if room_item_visible_to_character(char, ri, floor_ids):
+                    inside.append(_room_item_display_label(ri))
+            if inside:
+                out.append(f"Inside: {_natural_join_phrases(inside)}.")
+        return out
 
     subj = _find_character_target(char, target)
     if subj:

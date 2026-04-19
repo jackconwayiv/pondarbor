@@ -51,6 +51,7 @@ const QffDmQuestsPage = lazy(() => import("./qff/QffDmQuestsPage"));
 const QffDmIneffectiveInputsPage = lazy(
   () => import("./qff/QffDmIneffectiveInputsPage"),
 );
+const QffDmShopPage = lazy(() => import("./qff/QffDmShopPage"));
 const MealLayout = lazy(() => import("./meal/MealLayout"));
 const MealHomePage = lazy(() => import("./meal/MealHomePage"));
 const MealMealsPage = lazy(() => import("./meal/MealMealsPage"));
@@ -268,6 +269,7 @@ export const router = sentryCreateBrowserRouter([
             path: "dm/ineffective-inputs",
             element: lazyRouteElement(<QffDmIneffectiveInputsPage />),
           },
+          { path: "dm/shops", element: lazyRouteElement(<QffDmShopPage />) },
         ],
       },
       {

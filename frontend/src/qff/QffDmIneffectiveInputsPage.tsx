@@ -88,6 +88,7 @@ export default function QffDmIneffectiveInputsPage() {
             <Table.Header>
               <Table.Row>
                 <Table.ColumnHeader>Time (UTC)</Table.ColumnHeader>
+                <Table.ColumnHeader>Room</Table.ColumnHeader>
                 <Table.ColumnHeader>Email</Table.ColumnHeader>
                 <Table.ColumnHeader>Input</Table.ColumnHeader>
                 <Table.ColumnHeader textAlign="right">
@@ -100,6 +101,9 @@ export default function QffDmIneffectiveInputsPage() {
                 <Table.Row key={r.id}>
                   <Table.Cell whiteSpace="nowrap" color="#889977">
                     {r.created_at.replace("T", " ").replace(/\.\d+Z$/, " Z")}
+                  </Table.Cell>
+                  <Table.Cell title={r.room_id != null ? `room_id ${r.room_id}` : undefined}>
+                    {r.room_name || (r.room_id != null ? `—${r.room_id}` : "—")}
                   </Table.Cell>
                   <Table.Cell>{r.user_email}</Table.Cell>
                   <Table.Cell fontFamily="mono" fontSize="xs">

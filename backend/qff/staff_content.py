@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from django.db import IntegrityError
+from django.db.models import Exists, OuterRef
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -16,6 +17,8 @@ from qff.models import (
     Item,
     Npc,
     NpcDialogue,
+    NpcShop,
+    NpcShopStockLine,
     Quest,
     QuestEffect,
     QuestState,
@@ -53,6 +56,8 @@ def _quest_transition_dict(tr: QuestTransition) -> dict:
         "to_state_id": tr.to_state_id,
         "requires_item_id": tr.requires_item_id,
         "sort_order": tr.sort_order,
+        "revert_after_minutes": tr.revert_after_minutes,
+        "revert_to_state_id": tr.revert_to_state_id,
         "effects": [
             _quest_effect_dict(e)
             for e in tr.effects.order_by("sort_order", "id")
@@ -211,12 +216,16 @@ def dm_quest_transition_create(request, quest_id):
             {"detail": "Both states must belong to this quest."},
             status=status.HTTP_400_BAD_REQUEST,
         )
+    ram = request.data.get("revert_after_minutes")
+    rts = request.data.get("revert_to_state_id")
     tr = QuestTransition.objects.create(
         quest=quest,
         from_state_id=fs,
         to_state_id=ts,
         requires_item_id=request.data.get("requires_item_id") or None,
         sort_order=max(0, int(request.data.get("sort_order") or 0)),
+        revert_after_minutes=int(ram) if ram not in (None, "") else None,
+        revert_to_state_id=int(rts) if rts not in (None, "") else None,
     )
     return Response(_quest_transition_dict(tr), status=status.HTTP_201_CREATED)
 
@@ -238,6 +247,11 @@ def dm_quest_transition_detail(request, pk):
         tr.requires_item_id = request.data["requires_item_id"] or None
     if "sort_order" in request.data:
         tr.sort_order = max(0, int(request.data.get("sort_order") or 0))
+    if "revert_after_minutes" in request.data:
+        v = request.data.get("revert_after_minutes")
+        tr.revert_after_minutes = int(v) if v not in (None, "") else None
+    if "revert_to_state_id" in request.data:
+        tr.revert_to_state_id = request.data.get("revert_to_state_id") or None
     tr.save()
     return Response(_quest_transition_dict(tr))
 
@@ -422,6 +436,172 @@ def dm_npc_dialogue_detail(request, pk):
     )
 
 
+def _dm_npc_shop_stock_line_dict(sl: NpcShopStockLine) -> dict:
+    return {
+        "id": sl.id,
+        "item_id": sl.item_id,
+        "item_name": sl.item.name,
+        "item_slug": sl.item.slug,
+        "price": sl.price,
+        "quantity": sl.quantity,
+        "sort_order": sl.sort_order,
+        "kind": sl.kind,
+        "times_shown_without_sale": sl.times_shown_without_sale,
+        "consignment_item_instance_id": sl.consignment_item_instance_id,
+    }
+
+
+def _dm_npc_shop_dict(shop: NpcShop) -> dict:
+    lines = [
+        _dm_npc_shop_stock_line_dict(sl)
+        for sl in shop.stock_lines.select_related("item").order_by("sort_order", "id")
+    ]
+    return {
+        "id": shop.id,
+        "npc_id": shop.npc_id,
+        "welcome_text": shop.welcome_text,
+        "enabled": shop.enabled,
+        "sell_price_percent": shop.sell_price_percent,
+        "stock_lines": lines,
+    }
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsStaffUser])
+def dm_npc_shop_picker(request):
+    """NPC list for shop editor (room / area labels; has_shop flag)."""
+    shop_exists = NpcShop.objects.filter(npc_id=OuterRef("pk"))
+    qs = (
+        Npc.objects.select_related("room", "room__area")
+        .annotate(has_shop=Exists(shop_exists))
+        .order_by("room_id", "name")
+    )
+    rows = []
+    for n in qs:
+        rows.append(
+            {
+                "id": n.id,
+                "slug": n.slug,
+                "name": n.name,
+                "room_id": n.room_id,
+                "room_name": n.room.name,
+                "area_name": n.room.area.name,
+                "has_shop": n.has_shop,
+            }
+        )
+    return Response(rows)
+
+
+@api_view(["GET", "POST", "PATCH"])
+@permission_classes([IsAuthenticated, IsStaffUser])
+def dm_npc_shop_by_npc(request, npc_id):
+    npc = get_object_or_404(Npc.objects.select_related("room"), pk=npc_id)
+    if request.method == "GET":
+        shop = (
+            NpcShop.objects.filter(npc=npc)
+            .prefetch_related("stock_lines__item")
+            .first()
+        )
+        if not shop:
+            return Response({"detail": "No shop for this NPC."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(_dm_npc_shop_dict(shop))
+    if request.method == "POST":
+        if NpcShop.objects.filter(npc=npc).exists():
+            return Response(
+                {"detail": "This NPC already has a shop."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        shop = NpcShop.objects.create(
+            npc=npc,
+            welcome_text=(request.data.get("welcome_text") or "")[:],
+            enabled=bool(request.data.get("enabled", True)),
+            sell_price_percent=max(1, min(100, int(request.data.get("sell_price_percent") or 50))),
+        )
+        shop = NpcShop.objects.prefetch_related("stock_lines__item").get(pk=shop.pk)
+        return Response(_dm_npc_shop_dict(shop), status=status.HTTP_201_CREATED)
+    shop = NpcShop.objects.filter(npc=npc).first()
+    if not shop:
+        return Response({"detail": "No shop for this NPC."}, status=status.HTTP_404_NOT_FOUND)
+    if "welcome_text" in request.data:
+        shop.welcome_text = request.data.get("welcome_text") or ""
+    if "enabled" in request.data:
+        shop.enabled = bool(request.data["enabled"])
+    if "sell_price_percent" in request.data:
+        shop.sell_price_percent = max(1, min(100, int(request.data.get("sell_price_percent") or 50)))
+    shop.save()
+    shop = NpcShop.objects.prefetch_related("stock_lines__item").get(pk=shop.pk)
+    return Response(_dm_npc_shop_dict(shop))
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsStaffUser])
+def dm_npc_shop_stock_line_create(request, npc_id):
+    npc = get_object_or_404(Npc, pk=npc_id)
+    shop = get_object_or_404(NpcShop, npc=npc)
+    kind = str(request.data.get("kind") or NpcShopStockLine.Kind.STATIC).strip()
+    if kind != NpcShopStockLine.Kind.STATIC:
+        return Response(
+            {"detail": "Only static stock lines can be created from the DM UI."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    item_id = request.data.get("item_id")
+    try:
+        item_id = int(item_id)
+    except (TypeError, ValueError):
+        return Response({"detail": "item_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+    get_object_or_404(Item, pk=item_id)
+    price = max(1, int(request.data.get("price") or 0))
+    qty_raw = request.data.get("quantity")
+    quantity = None if qty_raw in (None, "", "unlimited") else max(1, int(qty_raw))
+    sort_order = max(0, int(request.data.get("sort_order") or 0))
+    line = NpcShopStockLine.objects.create(
+        shop=shop,
+        item_id=item_id,
+        price=price,
+        quantity=quantity,
+        sort_order=sort_order,
+        kind=NpcShopStockLine.Kind.STATIC,
+        times_shown_without_sale=0,
+        consignment_item_instance=None,
+    )
+    line = NpcShopStockLine.objects.select_related("item").get(pk=line.pk)
+    return Response(_dm_npc_shop_stock_line_dict(line), status=status.HTTP_201_CREATED)
+
+
+@api_view(["PATCH", "DELETE"])
+@permission_classes([IsAuthenticated, IsStaffUser])
+def dm_npc_shop_stock_line_detail(request, pk):
+    line = get_object_or_404(
+        NpcShopStockLine.objects.select_related("shop", "item", "consignment_item_instance"),
+        pk=pk,
+    )
+    if request.method == "DELETE":
+        if line.consignment_item_instance_id:
+            line.consignment_item_instance.delete()
+        else:
+            line.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    if "item_id" in request.data:
+        iid = int(request.data["item_id"])
+        get_object_or_404(Item, pk=iid)
+        line.item_id = iid
+    if "price" in request.data:
+        line.price = max(1, int(request.data.get("price") or 0))
+    if "quantity" in request.data:
+        qty_raw = request.data.get("quantity")
+        line.quantity = None if qty_raw in (None, "", "unlimited") else max(1, int(qty_raw))
+    if "sort_order" in request.data:
+        line.sort_order = max(0, int(request.data.get("sort_order") or 0))
+    if line.kind == NpcShopStockLine.Kind.STATIC:
+        line.save()
+        line = NpcShopStockLine.objects.select_related("item").get(pk=line.pk)
+        return Response(_dm_npc_shop_stock_line_dict(line))
+    return Response(
+        {"detail": "Consignment lines are managed by gameplay; delete instead of editing."},
+        status=status.HTTP_400_BAD_REQUEST,
+    )
+
+
 def _interactable_dict(o: Interactable) -> dict:
     return {
         "id": o.id,
@@ -430,6 +610,8 @@ def _interactable_dict(o: Interactable) -> dict:
         "name": o.name,
         "kind": o.kind,
         "inspect_text": o.inspect_text,
+        "read_text": o.read_text,
+        "map_reveal_minutes": o.map_reveal_minutes,
         "quest_transition_id": o.quest_transition_id,
         "unlocks_exit_id": o.unlocks_exit_id,
     }
@@ -459,12 +641,15 @@ def dm_interactable_list_create(request):
     get_object_or_404(Room, pk=rid)
     kind = (request.data.get("kind") or Interactable.Kind.OTHER).strip()
     try:
+        mm = request.data.get("map_reveal_minutes")
         o = Interactable.objects.create(
             room_id=rid,
             slug=slug,
             name=name,
             kind=kind,
             inspect_text=(request.data.get("inspect_text") or "")[:],
+            read_text=(request.data.get("read_text") or "")[:],
+            map_reveal_minutes=int(mm) if mm not in (None, "") else None,
             quest_transition_id=request.data.get("quest_transition_id") or None,
             unlocks_exit_id=request.data.get("unlocks_exit_id") or None,
         )
@@ -493,6 +678,11 @@ def dm_interactable_detail(request, pk):
         o.kind = request.data["kind"]
     if "inspect_text" in request.data:
         o.inspect_text = request.data.get("inspect_text") or ""
+    if "read_text" in request.data:
+        o.read_text = request.data.get("read_text") or ""
+    if "map_reveal_minutes" in request.data:
+        v = request.data.get("map_reveal_minutes")
+        o.map_reveal_minutes = int(v) if v not in (None, "") else None
     if "room_id" in request.data:
         get_object_or_404(Room, pk=int(request.data["room_id"]))
         o.room_id = int(request.data["room_id"])
@@ -571,6 +761,8 @@ def _interactable_export_dict(o: Interactable) -> dict:
         "name": o.name,
         "kind": o.kind,
         "inspect_text": o.inspect_text,
+        "read_text": o.read_text,
+        "map_reveal_minutes": o.map_reveal_minutes,
         "quest_transition_hint": (
             {
                 "quest_slug": o.quest_transition.quest.slug,

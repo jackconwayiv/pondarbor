@@ -58,6 +58,8 @@ class IneffectiveInputTests(TestCase):
         self.assertEqual(row.user_id, u.id)
         self.assertEqual(row.user_email, "player@example.com")
         self.assertEqual(row.raw_line, "xyzzy plugh")
+        self.assertEqual(row.room_id, self.room.id)
+        self.assertEqual(row.room_name, self.room.name)
 
     def test_known_command_does_not_create_row(self):
         u = _approved_user("player2@example.com")
@@ -82,6 +84,8 @@ class IneffectiveInputTests(TestCase):
         self.assertEqual(body["count"], 1)
         self.assertEqual(len(body["results"]), 1)
         self.assertEqual(body["results"][0]["raw_line"], "nope")
+        self.assertEqual(body["results"][0]["room_id"], self.room.id)
+        self.assertEqual(body["results"][0]["room_name"], self.room.name)
 
         res = client.delete(f"/api/v1/qff/dm/ineffective-inputs/{row.id}/")
         self.assertEqual(res.status_code, status.HTTP_204_NO_CONTENT)

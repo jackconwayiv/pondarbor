@@ -65,6 +65,8 @@ function emptyForm(): Partial<DmItem> {
     hidden_bonus_stat: "",
     hidden_bonus_value: 0,
     two_handed: false,
+    unsellable: false,
+    vendor_refuses_buy: false,
     req_gains: null,
     req_moves: null,
     req_guts: null,
@@ -545,6 +547,41 @@ export default function QffDmItemsPage() {
                 value={form.two_handed ? "1" : "0"}
                 onChange={(e) =>
                   setForm((f) => ({ ...f, two_handed: e.target.value === "1" }))
+                }
+                bg="#222"
+                w="100px"
+              >
+                <option value="0">No</option>
+                <option value="1">Yes</option>
+              </NativeSelectField>
+            </NativeSelectRoot>
+          </Field.Root>
+          <Field.Root>
+            <Field.Label>Unsellable</Field.Label>
+            <NativeSelectRoot>
+              <NativeSelectField
+                value={form.unsellable ? "1" : "0"}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, unsellable: e.target.value === "1" }))
+                }
+                bg="#222"
+                w="100px"
+              >
+                <option value="0">No</option>
+                <option value="1">Yes</option>
+              </NativeSelectField>
+            </NativeSelectRoot>
+          </Field.Root>
+          <Field.Root>
+            <Field.Label>Vendor refuses buy (junk)</Field.Label>
+            <NativeSelectRoot>
+              <NativeSelectField
+                value={form.vendor_refuses_buy ? "1" : "0"}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    vendor_refuses_buy: e.target.value === "1",
+                  }))
                 }
                 bg="#222"
                 w="100px"

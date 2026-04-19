@@ -61,6 +61,11 @@ class ParsedLookInspect:
 
 
 @dataclass
+class ParsedRead:
+    target: str
+
+
+@dataclass
 class ParsedTalk:
     target: str
 
@@ -69,6 +74,29 @@ class ParsedTalk:
 class ParsedUse:
     verb: str  # use | pull | push | open
     target: str
+
+
+@dataclass
+class ParsedShopBrowse:
+    """shop / list / bare buy|purchase — optional npc_query for disambiguation."""
+
+    npc_query: str = ""
+
+
+@dataclass
+class ParsedShopBuy:
+    """buy|purchase <item> or buy <item> from <npc>."""
+
+    item_query: str = ""
+    npc_query: str = ""
+
+
+@dataclass
+class ParsedSell:
+    """sell <item> or sell <item> to <npc>."""
+
+    item_query: str = ""
+    npc_query: str = ""
 
 
 @dataclass
@@ -193,6 +221,51 @@ def parse_command(line: str):
         return ParsedLookInspect(verb="inspect", target=n[8:].strip())
     if low == "inspect":
         return ParsedLookInspect(verb="inspect", target="")
+
+    # read (signs, tomes)
+    if low.startswith("read "):
+        return ParsedRead(target=n[5:].strip())
+    if low == "read":
+        return ParsedRead(target="")
+
+    # shop / list / buy / purchase / sell
+    if low in ("shop", "list"):
+        return ParsedShopBrowse()
+    if low.startswith("shop "):
+        return ParsedShopBrowse(npc_query=n[5:].strip())
+    if low.startswith("list "):
+        return ParsedShopBrowse(npc_query=n[5:].strip())
+    if low in ("buy", "purchase"):
+        return ParsedShopBrowse()
+    if low.startswith("buy "):
+        rest = n[4:].strip()
+        m = re.match(r"(?is)^(.+?)\s+from\s+(.+)$", rest)
+        if m:
+            return ParsedShopBuy(
+                item_query=m.group(1).strip(),
+                npc_query=m.group(2).strip(),
+            )
+        return ParsedShopBuy(item_query=rest, npc_query="")
+    if low.startswith("purchase "):
+        rest = n[9:].strip()
+        m = re.match(r"(?is)^(.+?)\s+from\s+(.+)$", rest)
+        if m:
+            return ParsedShopBuy(
+                item_query=m.group(1).strip(),
+                npc_query=m.group(2).strip(),
+            )
+        return ParsedShopBuy(item_query=rest, npc_query="")
+    if low == "sell":
+        return ParsedSell()
+    if low.startswith("sell "):
+        rest = n[5:].strip()
+        m = re.match(r"(?is)^(.+?)\s+to\s+(.+)$", rest)
+        if m:
+            return ParsedSell(
+                item_query=m.group(1).strip(),
+                npc_query=m.group(2).strip(),
+            )
+        return ParsedSell(item_query=rest, npc_query="")
 
     # unequip
     if low.startswith("unequip "):

@@ -129,6 +129,11 @@ class MinimapDarkTests(TestCase):
         g = m["grids"][0]
         self.assertTrue(g["is_dark_minimap"])
         self.assertIn(c.current_room_id, g["lit_room_ids"])
+        self.assertEqual(
+            set(g["visited_room_ids"]),
+            {c["room_id"] for c in g["cells"]},
+        )
+        self.assertIn("map_full_reveal_active", g)
 
     def test_torch_adds_lit_rooms_in_radius(self):
         self._visit_all()

@@ -763,6 +763,8 @@ function QffMiniMapGrid({
     cells,
     is_dark_minimap = false,
     lit_room_ids = [],
+    visited_room_ids = [],
+    map_full_reveal_active = false,
   } = grid;
   if (!grid_width || !grid_height) return <Text color={HUD_PANEL_TEXT_MUTED}>—</Text>;
 
@@ -773,6 +775,7 @@ function QffMiniMapGrid({
   const cy = cur.y;
   const half = Math.floor(MAP_VIEWPORT_ROOMS / 2);
   const litSet = new Set(lit_room_ids);
+  const visitedSet = new Set(visited_room_ids);
 
   const byKey = new Map<string, QffAreaMapCell>();
   for (const c of cells) {
@@ -785,8 +788,16 @@ function QffMiniMapGrid({
     if (!cell) return false;
     if (!is_dark_minimap) return true;
     if (cell.room_id === currentRoomId) return true;
-    return litSet.has(cell.room_id);
+    if (litSet.has(cell.room_id)) return true;
+    if (map_full_reveal_active && visitedSet.has(cell.room_id)) return true;
+    return false;
   };
+
+  const isMapOnlyReveal = (roomId: number): boolean =>
+    map_full_reveal_active &&
+    visitedSet.has(roomId) &&
+    !litSet.has(roomId) &&
+    roomId !== currentRoomId;
 
   const exitsAtWorld = (wx: number, wy: number) =>
     exitDirectionsForCell(roomAtWorld(wx, wy));
@@ -916,17 +927,18 @@ function QffMiniMapGrid({
           continue;
         }
         const isHere = cell.room_id === currentRoomId;
+        const mapOnly = isMapOnlyReveal(cell.room_id);
         cols.push(
           <Box
             key={key}
             {...slotStyle}
             borderWidth="1px"
-            borderColor={isHere ? "#c0c0c0" : "#666666"}
-            bg={isHere ? "#252525" : "#1c1c1c"}
-            color={isHere ? HUD_PANEL_TEXT : HUD_PANEL_TEXT_MUTED}
+            borderColor={isHere ? "#c0c0c0" : mapOnly ? "#555555" : "#666666"}
+            bg={isHere ? "#252525" : mapOnly ? "#181818" : "#1c1c1c"}
+            color={isHere ? HUD_PANEL_TEXT : mapOnly ? "#6a6a6a" : HUD_PANEL_TEXT_MUTED}
             title={cell.room_name}
           >
-            {isHere ? "◆" : "▢"}
+            {isHere ? "◆" : mapOnly ? "▫" : "▢"}
           </Box>,
         );
         continue;

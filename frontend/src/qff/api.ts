@@ -86,6 +86,10 @@ export type QffAreaMapGrid = {
   cells: QffAreaMapCell[];
   is_dark_minimap?: boolean;
   lit_room_ids?: number[];
+  /** Visited room ids in this area (for map-reveal vs fog-lit styling). */
+  visited_room_ids?: number[];
+  /** When true, visited-but-unlit rooms show as map-revealed (secondary style). */
+  map_full_reveal_active?: boolean;
 };
 
 export type QffAreaTheme = {
@@ -240,6 +244,8 @@ export type DmIneffectiveInputRow = {
   user_id: number;
   user_email: string;
   raw_line: string;
+  room_id: number | null;
+  room_name: string;
   created_at: string;
 };
 
@@ -692,6 +698,8 @@ export type DmItem = {
   bonus_smarts: number;
   bonus_sense: number;
   bonus_rizz: number;
+  unsellable: boolean;
+  vendor_refuses_buy: boolean;
 };
 
 export async function dmFetchItems(accessToken: string | null): Promise<DmItem[]> {
@@ -1402,6 +1410,142 @@ export async function dmDeleteNpcDialogue(
   if (!response.ok) throw new Error(await response.text());
 }
 
+export type DmNpcShopPickerRow = {
+  id: number;
+  slug: string;
+  name: string;
+  room_id: number;
+  room_name: string;
+  area_name: string;
+  has_shop: boolean;
+};
+
+export type DmNpcShopStockLine = {
+  id: number;
+  item_id: number;
+  item_name: string;
+  item_slug: string;
+  price: number;
+  quantity: number | null;
+  sort_order: number;
+  kind: string;
+  times_shown_without_sale: number;
+  consignment_item_instance_id: number | null;
+};
+
+export type DmNpcShopDetail = {
+  id: number;
+  npc_id: number;
+  welcome_text: string;
+  enabled: boolean;
+  sell_price_percent: number;
+  stock_lines: DmNpcShopStockLine[];
+};
+
+export async function dmFetchNpcShopPicker(
+  accessToken: string | null,
+): Promise<DmNpcShopPickerRow[]> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/npc-shop-picker/`), {
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmNpcShopPickerRow[];
+}
+
+export async function dmFetchNpcShop(
+  accessToken: string | null,
+  npcId: number,
+): Promise<DmNpcShopDetail | null> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/npcs/${npcId}/shop/`), {
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmNpcShopDetail;
+}
+
+export async function dmCreateNpcShop(
+  accessToken: string | null,
+  npcId: number,
+  body: Partial<Pick<DmNpcShopDetail, "welcome_text" | "enabled" | "sell_price_percent">>,
+): Promise<DmNpcShopDetail> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/npcs/${npcId}/shop/`), {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmNpcShopDetail;
+}
+
+export async function dmPatchNpcShop(
+  accessToken: string | null,
+  npcId: number,
+  body: Partial<Pick<DmNpcShopDetail, "welcome_text" | "enabled" | "sell_price_percent">>,
+): Promise<DmNpcShopDetail> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/npcs/${npcId}/shop/`), {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmNpcShopDetail;
+}
+
+export async function dmCreateNpcShopStockLine(
+  accessToken: string | null,
+  npcId: number,
+  body: {
+    item_id: number;
+    price: number;
+    quantity?: number | null;
+    sort_order?: number;
+  },
+): Promise<DmNpcShopStockLine> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/npcs/${npcId}/shop/stock-lines/`), {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmNpcShopStockLine;
+}
+
+export async function dmPatchNpcShopStockLine(
+  accessToken: string | null,
+  lineId: number,
+  body: Partial<
+    Pick<DmNpcShopStockLine, "item_id" | "price" | "quantity" | "sort_order">
+  >,
+): Promise<DmNpcShopStockLine> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/npc-shop-stock-lines/${lineId}/`), {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmNpcShopStockLine;
+}
+
+export async function dmDeleteNpcShopStockLine(
+  accessToken: string | null,
+  lineId: number,
+): Promise<void> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/npc-shop-stock-lines/${lineId}/`), {
+    method: "DELETE",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (response.status === 204) return;
+  if (!response.ok) throw new Error(await response.text());
+}
+
 export type DmInteractableRow = {
   id: number;
   room_id: number;
@@ -1409,6 +1553,8 @@ export type DmInteractableRow = {
   name: string;
   kind: string;
   inspect_text: string;
+  read_text: string;
+  map_reveal_minutes: number | null;
   quest_transition_id: number | null;
   unlocks_exit_id: number | null;
 };
@@ -1427,4 +1573,33 @@ export async function dmFetchInteractables(
   });
   if (!response.ok) throw new Error(await response.text());
   return (await response.json()) as DmInteractableRow[];
+}
+
+export async function dmPatchInteractable(
+  accessToken: string | null,
+  id: number,
+  body: Record<string, unknown>,
+): Promise<DmInteractableRow> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/interactables/${id}/`), {
+    method: "PATCH",
+    headers: { ...authHeaders(accessToken), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    credentials: "omit",
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmInteractableRow;
+}
+
+export async function dmCreateInteractable(
+  accessToken: string | null,
+  body: Record<string, unknown>,
+): Promise<DmInteractableRow> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/interactables/`), {
+    method: "POST",
+    headers: { ...authHeaders(accessToken), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    credentials: "omit",
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmInteractableRow;
 }

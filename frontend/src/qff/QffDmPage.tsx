@@ -17,7 +17,8 @@ import type { ChangeEvent } from "react";
 import { useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
-import PondButton from "../PondButton";
+import QffButton from "./QffButton";
+import { qffGridCellButtonProps } from "./qffUi";
 import {
   dmCreateArea,
   dmCreateExit,
@@ -846,9 +847,9 @@ export default function QffDmPage() {
               />
             </Stack>
           </Field.Root>
-          <PondButton type="button" {...DM_PRIMARY_BTN} onClick={() => void handleCreateArea()}>
+          <QffButton type="button" {...DM_PRIMARY_BTN} onClick={() => void handleCreateArea()}>
             Create new area
-          </PondButton>
+          </QffButton>
         </Flex>
       </Box>
 
@@ -922,7 +923,7 @@ export default function QffDmPage() {
                 />
               </Stack>
             </Field.Root>
-            <PondButton
+            <QffButton
               type="button"
               variant="outline"
               borderColor="#555"
@@ -930,8 +931,8 @@ export default function QffDmPage() {
               onClick={() => setShowAreaDescEditor((v) => !v)}
             >
               {showAreaDescEditor ? "Hide description" : "Edit description"}
-            </PondButton>
-            <PondButton
+            </QffButton>
+            <QffButton
               type="button"
               {...DM_PRIMARY_BTN}
               onClick={async () => {
@@ -955,7 +956,7 @@ export default function QffDmPage() {
               }}
             >
               Save area
-            </PondButton>
+            </QffButton>
             <input
               ref={roomsImportInputRef}
               type="file"
@@ -963,7 +964,7 @@ export default function QffDmPage() {
               style={{ display: "none" }}
               onChange={(e) => void handleRoomsImportFile(e)}
             />
-            <PondButton
+            <QffButton
               type="button"
               variant="outline"
               borderColor="#555"
@@ -971,8 +972,8 @@ export default function QffDmPage() {
               onClick={() => void handleDownloadRoomsJson()}
             >
               Download rooms JSON
-            </PondButton>
-            <PondButton
+            </QffButton>
+            <QffButton
               type="button"
               variant="outline"
               borderColor="#555"
@@ -980,7 +981,7 @@ export default function QffDmPage() {
               onClick={() => roomsImportInputRef.current?.click()}
             >
               Upload rooms JSON
-            </PondButton>
+            </QffButton>
           </>
         )}
       </Flex>
@@ -1131,7 +1132,7 @@ export default function QffDmPage() {
                                   #{ri.id}
                                 </Text>
                               </Text>
-                              <PondButton
+                              <QffButton
                                 type="button"
                                 size="sm"
                                 {...DM_PRIMARY_BTN}
@@ -1146,7 +1147,7 @@ export default function QffDmPage() {
                                 }}
                               >
                                 Remove
-                              </PondButton>
+                              </QffButton>
                             </Flex>
                             <Text fontSize="xs" color="#888">
                               Show this slot only when:
@@ -1389,7 +1390,7 @@ export default function QffDmPage() {
                         </Field.Root>
                       </Flex>
                       <Box>
-                        <PondButton
+                        <QffButton
                           type="button"
                           size="sm"
                           {...DM_PRIMARY_BTN}
@@ -1434,7 +1435,7 @@ export default function QffDmPage() {
                           }}
                         >
                           Add room item
-                        </PondButton>
+                        </QffButton>
                       </Box>
                     </Stack>
 
@@ -1483,14 +1484,14 @@ export default function QffDmPage() {
                           onChange={(e) => setPanelCellY(e.target.value)}
                           bg="#222"
                         />
-                        <PondButton
+                        <QffButton
                           type="button"
                           size="sm"
                           {...DM_PRIMARY_BTN}
                           onClick={() => void applyCellPosition()}
                         >
                           Apply position
-                        </PondButton>
+                        </QffButton>
                       </Flex>
                     </Field.Root>
 
@@ -1531,7 +1532,7 @@ export default function QffDmPage() {
                             <Text>
                               {ex.direction} → {destLabel}
                             </Text>
-                            <PondButton
+                            <QffButton
                               type="button"
                               size="sm"
                               {...DM_PRIMARY_BTN}
@@ -1546,7 +1547,7 @@ export default function QffDmPage() {
                               }}
                             >
                               Del
-                            </PondButton>
+                            </QffButton>
                           </Flex>
                           <Flex align="center" gap={2} fontSize="xs" flexWrap="wrap">
                             <label
@@ -1823,9 +1824,9 @@ export default function QffDmPage() {
                           </NativeSelectField>
                         </NativeSelectRoot>
                       </Field.Root>
-                      <PondButton type="button" size="sm" {...DM_PRIMARY_BTN} onClick={addExit}>
+                      <QffButton type="button" size="sm" {...DM_PRIMARY_BTN} onClick={addExit}>
                         Add exit
-                      </PondButton>
+                      </QffButton>
                     </Flex>
                   </Stack>
                 </Box>
@@ -1840,17 +1841,17 @@ export default function QffDmPage() {
                   borderColor="#444"
                   bg="#141414"
                 >
-                  <PondButton type="button" {...DM_PRIMARY_BTN} onClick={saveRoom}>
+                  <QffButton type="button" {...DM_PRIMARY_BTN} onClick={saveRoom}>
                     Save room
-                  </PondButton>
-                  <PondButton
+                  </QffButton>
+                  <QffButton
                     type="button"
                     colorPalette="red"
                     variant="solid"
                     onClick={() => void deleteRoom()}
                   >
                     Delete room
-                  </PondButton>
+                  </QffButton>
                 </Flex>
               </>
             )}
@@ -1987,6 +1988,7 @@ function DmGrid({
         <Button
           key={`${x}-${y}`}
           variant="outline"
+          {...qffGridCellButtonProps}
           borderWidth="1px"
           borderColor={sel ? "#6a8a6a" : "#444"}
           bg={cell ? "#243024" : "#121212"}

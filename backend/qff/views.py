@@ -34,6 +34,7 @@ from qff.models import (
     validate_character_name,
 )
 from qff.game_helpers import encumbrance_excess
+from qff.glyph_class_map import normalize_glyphs, slug_for_glyphs
 from qff.realtime import notify_qff_rooms
 from qff.session_payload import (
     build_session_for_character,
@@ -78,22 +79,7 @@ def _get_character(user):
 def session_view(request):
     char = _get_character(request.user)
     if not char:
-        classes = list(
-            CharacterClass.objects.order_by("sort_order", "name").values(
-                "id",
-                "slug",
-                "name",
-                "description",
-                "priority_stat_1",
-                "priority_stat_2",
-            )
-        )
-        return Response(
-            {
-                "has_character": False,
-                "character_classes": classes,
-            }
-        )
+        return Response({"has_character": False})
     return Response(build_session_for_character(char))
 
 
@@ -134,7 +120,31 @@ def character_create(request):
 
     body = request.data
     name = (body.get("name") or "").strip()
-    class_slug = (body.get("character_class") or body.get("class") or "").strip()
+    glyphs_payload = body.get("glyphs")
+    glyphs_to_store: list[str] = []
+
+    if glyphs_payload is not None:
+        norm = normalize_glyphs(glyphs_payload if isinstance(glyphs_payload, list) else None)
+        if not norm:
+            return Response(
+                {"detail": "Invalid glyphs."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        resolved_slug = slug_for_glyphs(norm[0], norm[1])
+        if not resolved_slug:
+            return Response(
+                {"detail": "Invalid glyph combination."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        class_slug = resolved_slug
+        glyphs_to_store = [norm[0], norm[1]]
+    else:
+        class_slug = (body.get("character_class") or body.get("class") or "").strip()
+        if not class_slug:
+            return Response(
+                {"detail": "Provide glyphs or character_class."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
     try:
         validate_character_name(name)
@@ -169,6 +179,7 @@ def character_create(request):
                 current_room=room,
                 spawn_room=room,
                 last_activity_at=now,
+                glyphs=glyphs_to_store,
             )
             char.save()
             on_enter_room(char, room.id)

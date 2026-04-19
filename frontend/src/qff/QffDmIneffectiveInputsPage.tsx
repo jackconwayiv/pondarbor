@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
-import PondButton from "../PondButton";
+import QffButton from "./QffButton";
 import {
   dmDeleteIneffectiveInput,
   dmFetchIneffectiveInputs,
@@ -77,9 +77,9 @@ export default function QffDmIneffectiveInputsPage() {
           {err}
         </Text>
       )}
-      <PondButton onClick={() => navigate("/qff/dm")} mb={6}>
+      <QffButton onClick={() => navigate("/qff/dm")} mb={6}>
         ← DM home
-      </PondButton>
+      </QffButton>
       {rows.length === 0 ? (
         <Text color="#889977">No rows yet.</Text>
       ) : (
@@ -106,7 +106,7 @@ export default function QffDmIneffectiveInputsPage() {
                     {r.raw_line}
                   </Table.Cell>
                   <Table.Cell textAlign="right">
-                    <PondButton
+                    <QffButton
                       type="button"
                       size="sm"
                       colorPalette="red"
@@ -114,7 +114,7 @@ export default function QffDmIneffectiveInputsPage() {
                       onClick={() => void handleDelete(r.id)}
                     >
                       Delete
-                    </PondButton>
+                    </QffButton>
                   </Table.Cell>
                 </Table.Row>
               ))}

@@ -2,7 +2,7 @@ import { Box, Heading, Stack, Text } from "@chakra-ui/react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
-import PondButton from "../PondButton";
+import QffButton from "./QffButton";
 import { dmFetchInteractables, type DmInteractableRow } from "./api";
 
 export default function QffDmInteractablesPage() {
@@ -53,9 +53,9 @@ export default function QffDmInteractablesPage() {
           {err}
         </Text>
       )}
-      <PondButton onClick={() => navigate("/qff/dm")} mb={6}>
+      <QffButton onClick={() => navigate("/qff/dm")} mb={6}>
         ← DM home
-      </PondButton>
+      </QffButton>
       <Stack gap={2} fontSize="sm">
         {rows.map((o) => (
           <Box key={o.id} borderWidth="1px" borderRadius="md" p={2} borderColor="whiteAlpha.300">

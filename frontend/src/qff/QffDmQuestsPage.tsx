@@ -15,7 +15,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
-import PondButton from "../PondButton";
+import QffButton from "./QffButton";
+import { qffGhostRowButtonProps, qffOutlineMutedButtonProps } from "./qffUi";
 import {
   dmCreateQuest,
   dmCreateQuestEffect,
@@ -283,19 +284,19 @@ export default function QffDmQuestsPage() {
       <Flex justify="space-between" align="center" mb={4} flexWrap="wrap" gap={2}>
         <Heading size="lg">Quests</Heading>
         <Flex gap={2} flexWrap="wrap">
-          <PondButton type="button" onClick={() => navigate("/qff/dm")}>
+          <QffButton type="button" onClick={() => navigate("/qff/dm")}>
             DM home
-          </PondButton>
-          <PondButton type="button" onClick={newQuest}>
+          </QffButton>
+          <QffButton type="button" onClick={newQuest}>
             New quest
-          </PondButton>
-          <PondButton type="button" onClick={() => void saveQuest()}>
+          </QffButton>
+          <QffButton type="button" onClick={() => void saveQuest()}>
             Save quest
-          </PondButton>
+          </QffButton>
           {editingId != null && (
-            <PondButton type="button" onClick={() => void deleteQuest()}>
+            <QffButton type="button" onClick={() => void deleteQuest()}>
               Delete quest
-            </PondButton>
+            </QffButton>
           )}
         </Flex>
       </Flex>
@@ -336,6 +337,7 @@ export default function QffDmQuestsPage() {
                 px={2}
                 textAlign="left"
                 borderRadius="md"
+                {...qffGhostRowButtonProps}
                 bg={editingId === q.id ? "#2a3a2a" : "transparent"}
                 _hover={{ bg: "#252525" }}
                 onClick={() => void selectQuest(q)}
@@ -457,9 +459,9 @@ export default function QffDmQuestsPage() {
                           </NativeSelectField>
                         </NativeSelectRoot>
                       </Field.Root>
-                      <PondButton type="button" onClick={() => void addState()}>
+                      <QffButton type="button" onClick={() => void addState()}>
                         Add state
-                      </PondButton>
+                      </QffButton>
                     </Flex>
                   </Box>
                 </Stack>
@@ -556,9 +558,9 @@ export default function QffDmQuestsPage() {
                           bg="#222"
                         />
                       </Field.Root>
-                      <PondButton type="button" onClick={() => void addTransition()}>
+                      <QffButton type="button" onClick={() => void addTransition()}>
                         Add transition
-                      </PondButton>
+                      </QffButton>
                     </Flex>
                   </Box>
                 </Stack>
@@ -661,10 +663,16 @@ function StateRow({
         </Field.Root>
       </Flex>
       <Flex gap={2}>
-        <PondButton type="button" onClick={() => void save()}>
+        <QffButton type="button" onClick={() => void save()}>
           Update state
-        </PondButton>
-        <Button type="button" variant="outline" size="sm" onClick={() => void del()}>
+        </QffButton>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          {...qffOutlineMutedButtonProps}
+          onClick={() => void del()}
+        >
           Delete
         </Button>
       </Flex>
@@ -792,10 +800,16 @@ function TransitionBlock({
             bg="#222"
           />
         </Field.Root>
-        <PondButton type="button" onClick={() => void saveTr()}>
+        <QffButton type="button" onClick={() => void saveTr()}>
           Update
-        </PondButton>
-        <Button type="button" variant="outline" size="sm" onClick={() => void delTr()}>
+        </QffButton>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          {...qffOutlineMutedButtonProps}
+          onClick={() => void delTr()}
+        >
           Delete transition
         </Button>
       </Flex>
@@ -865,9 +879,9 @@ function TransitionBlock({
               bg="#222"
             />
           </Field.Root>
-          <PondButton type="button" onClick={onAddEffect}>
+          <QffButton type="button" onClick={onAddEffect}>
             Add effect
-          </PondButton>
+          </QffButton>
         </Flex>
       </Stack>
     </Box>
@@ -958,10 +972,16 @@ function EffectRow({
           <Field.Label fontSize="xs">Sort</Field.Label>
           <Input value={sort} onChange={(e) => setSort(e.target.value)} bg="#222" />
         </Field.Root>
-        <PondButton type="button" onClick={() => void save()}>
+        <QffButton type="button" onClick={() => void save()}>
           Update
-        </PondButton>
-        <Button type="button" variant="outline" size="sm" onClick={() => void del()}>
+        </QffButton>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          {...qffOutlineMutedButtonProps}
+          onClick={() => void del()}
+        >
           Delete
         </Button>
       </Flex>

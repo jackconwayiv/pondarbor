@@ -9,6 +9,7 @@ import {
   NativeSelectField,
   NativeSelectRoot,
   Stack,
+  Switch,
   Text,
   Textarea,
 } from "@chakra-ui/react";
@@ -1274,6 +1275,30 @@ export default function QffDmPage() {
                                   </NativeSelectField>
                                 </NativeSelectRoot>
                               </Field.Root>
+                            </Flex>
+                            <Flex align="center" gap={2} mt={1}>
+                              <Switch.Root
+                                size="sm"
+                                checked={!!ri.allow_repeat_while_carrying}
+                                onCheckedChange={async (d) => {
+                                  const token = await getTokenRef.current();
+                                  const nx = await dmPatchRoomItem(token, ri.id, {
+                                    allow_repeat_while_carrying: d.checked,
+                                  });
+                                  setRoomItems((prev) =>
+                                    prev.map((x) => (x.id === ri.id ? nx : x)),
+                                  );
+                                }}
+                                colorPalette="green"
+                              >
+                                <Switch.HiddenInput />
+                                <Switch.Control>
+                                  <Switch.Thumb />
+                                </Switch.Control>
+                                <Switch.Label fontSize="xs" color="#aaa">
+                                  Allow get again while carrying (farmable / stacks)
+                                </Switch.Label>
+                              </Switch.Root>
                             </Flex>
                           </Stack>
                         );

@@ -156,6 +156,8 @@ export type QffCharacterProfile = {
   inventory: number[];
   /** Display names in order (most recently stowed first). */
   inventoryItems: string[];
+  /** Parallel stack sizes (same order as inventory / inventoryItems). */
+  inventoryQuantities?: number[];
   stats: {
     base: QffStatBlock;
     modified: QffStatBlock;
@@ -645,6 +647,9 @@ export type DmItem = {
   /** Null = cannot be equipped (quest item, consumable without wear slot, etc.). */
   slot: string | null;
   consumable: boolean;
+  stackable: boolean;
+  max_stack: number;
+  extra_data: Record<string, unknown>;
   cost: number;
   description: string;
   lore: string;
@@ -726,6 +731,7 @@ export type DmFloorItem = {
   item_id: number;
   item_slug: string;
   item_name: string;
+  quantity: number;
   nickname: string;
   visible_quest_state_id: number | null;
   visible_quest_id: number | null;
@@ -801,6 +807,7 @@ export type DmRoomItem = {
   visible_quest_id: number | null;
   visible_quest_slug: string | null;
   visible_quest_state_slug: string | null;
+  allow_repeat_while_carrying: boolean;
 };
 
 export async function dmFetchRoomRoomItems(
@@ -822,6 +829,7 @@ export async function dmCreateRoomRoomItem(
     item_id: number;
     nickname?: string;
     visible_quest_state_id?: number | null;
+    allow_repeat_while_carrying?: boolean;
   },
 ): Promise<DmRoomItem> {
   const response = await fetch(qffJoinBase(`/api/v1/qff/dm/rooms/${roomId}/room-items/`), {
@@ -837,7 +845,11 @@ export async function dmCreateRoomRoomItem(
 export async function dmPatchRoomItem(
   accessToken: string | null,
   roomItemId: number,
-  body: { nickname?: string; visible_quest_state_id?: number | null },
+  body: {
+    nickname?: string;
+    visible_quest_state_id?: number | null;
+    allow_repeat_while_carrying?: boolean;
+  },
 ): Promise<DmRoomItem> {
   const response = await fetch(qffJoinBase(`/api/v1/qff/dm/room-items/${roomItemId}/`), {
     method: "PATCH",

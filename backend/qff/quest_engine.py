@@ -77,7 +77,9 @@ def room_item_visible_to_character(
             current_state_id=st.id,
         ).exists():
             return False
-    if character_carries_item_template(character, room_item.item_id):
+    if not room_item.allow_repeat_while_carrying and character_carries_item_template(
+        character, room_item.item_id
+    ):
         return False
     if room_item.item_id in floor_template_ids_in_room:
         return False

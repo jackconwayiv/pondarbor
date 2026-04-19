@@ -101,16 +101,21 @@ def consume_key_and_unlock(
         return False
     char = Character.objects.select_for_update().get(pk=character.pk)
     inst = ItemInstance.objects.select_for_update().get(pk=inst.pk)
-    for attr in SLOT_ATTRS:
-        cur = getattr(char, attr, None)
-        if cur and cur.pk == inst.pk:
-            setattr(char, attr, None)
-            break
-    inv = list(char.inventory or [])
-    if inst.pk in inv:
-        inv = [x for x in inv if x != inst.pk]
-        char.inventory = inv
-    inst.delete()
+    qty = max(1, int(inst.quantity or 1))
+    if qty > 1:
+        inst.quantity = qty - 1
+        inst.save(update_fields=["quantity", "updated_at"])
+    else:
+        for attr in SLOT_ATTRS:
+            cur = getattr(char, attr, None)
+            if cur and cur.pk == inst.pk:
+                setattr(char, attr, None)
+                break
+        inv = list(char.inventory or [])
+        if inst.pk in inv:
+            inv = [x for x in inv if x != inst.pk]
+            char.inventory = inv
+        inst.delete()
     if room_exit.key_unlock_scope == RoomExit.KeyUnlockScope.REALM_TIMED:
         _set_realm_unlock(room_exit, seconds=int(room_exit.unlock_duration_seconds))
     else:

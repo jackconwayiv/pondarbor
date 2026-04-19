@@ -15,7 +15,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
-import PondButton from "../PondButton";
+import QffButton from "./QffButton";
+import { qffGhostRowButtonProps, qffOutlineMutedButtonProps } from "./qffUi";
 import {
   dmCreateNpc,
   dmCreateNpcDialogue,
@@ -303,19 +304,19 @@ export default function QffDmNpcsPage() {
       <Flex justify="space-between" align="center" mb={4} flexWrap="wrap" gap={2}>
         <Heading size="lg">NPCs</Heading>
         <Flex gap={2} flexWrap="wrap">
-          <PondButton type="button" onClick={() => navigate("/qff/dm")}>
+          <QffButton type="button" onClick={() => navigate("/qff/dm")}>
             DM home
-          </PondButton>
-          <PondButton type="button" onClick={newNpc}>
+          </QffButton>
+          <QffButton type="button" onClick={newNpc}>
             New NPC
-          </PondButton>
-          <PondButton type="button" onClick={() => void saveNpc()}>
+          </QffButton>
+          <QffButton type="button" onClick={() => void saveNpc()}>
             Save NPC
-          </PondButton>
+          </QffButton>
           {editingId != null && (
-            <PondButton type="button" onClick={() => void deleteNpc()}>
+            <QffButton type="button" onClick={() => void deleteNpc()}>
               Delete NPC
-            </PondButton>
+            </QffButton>
           )}
         </Flex>
       </Flex>
@@ -357,6 +358,7 @@ export default function QffDmNpcsPage() {
                 px={2}
                 textAlign="left"
                 borderRadius="md"
+                {...qffGhostRowButtonProps}
                 bg={editingId === n.id ? "#2a3a2a" : "transparent"}
                 _hover={{ bg: "#252525" }}
                 onClick={() => void selectNpc(n)}
@@ -480,9 +482,9 @@ export default function QffDmNpcsPage() {
                       }
                       ensureQuestStates={ensureQuestStates}
                     />
-                    <PondButton type="button" onClick={() => void addDialogue()}>
+                    <QffButton type="button" onClick={() => void addDialogue()}>
                       Add dialogue line
-                    </PondButton>
+                    </QffButton>
                   </Stack>
                 </Box>
               </Stack>
@@ -639,10 +641,16 @@ function DialogueEditor({
         ensureQuestStates={ensureQuestStates}
       />
       <Flex gap={2}>
-        <PondButton type="button" onClick={() => onSave(build())}>
+        <QffButton type="button" onClick={() => onSave(build())}>
           Update line
-        </PondButton>
-        <Button type="button" variant="outline" size="sm" onClick={onDelete}>
+        </QffButton>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          {...qffOutlineMutedButtonProps}
+          onClick={onDelete}
+        >
           Delete line
         </Button>
       </Flex>

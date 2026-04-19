@@ -15,7 +15,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
-import PondButton from "../PondButton";
+import QffButton from "./QffButton";
+import { qffGhostRowButtonProps } from "./qffUi";
 import {
   dmCreateClass,
   dmDeleteClass,
@@ -182,19 +183,19 @@ export default function QffDmClassesPage() {
       <Flex justify="space-between" align="center" mb={4} flexWrap="wrap" gap={2}>
         <Heading size="lg">Character classes</Heading>
         <Flex gap={2} flexWrap="wrap">
-          <PondButton type="button" onClick={() => navigate("/qff/dm")}>
+          <QffButton type="button" onClick={() => navigate("/qff/dm")}>
             DM home
-          </PondButton>
-          <PondButton type="button" onClick={newClass}>
+          </QffButton>
+          <QffButton type="button" onClick={newClass}>
             New class
-          </PondButton>
-          <PondButton type="button" onClick={() => save()}>
+          </QffButton>
+          <QffButton type="button" onClick={() => save()}>
             Save
-          </PondButton>
+          </QffButton>
           {editingId != null && (
-            <PondButton type="button" onClick={() => void del()}>
+            <QffButton type="button" onClick={() => void del()}>
               Delete
-            </PondButton>
+            </QffButton>
           )}
         </Flex>
       </Flex>
@@ -217,6 +218,7 @@ export default function QffDmClassesPage() {
               px={2}
               textAlign="left"
               borderRadius="md"
+              {...qffGhostRowButtonProps}
               bg={editingId === c.id ? "#2a3a2a" : "transparent"}
               _hover={{ bg: "#252525" }}
               onClick={() => selectClass(c)}

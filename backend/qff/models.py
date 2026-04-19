@@ -484,6 +484,11 @@ class Character(models.Model):
     sense = models.PositiveSmallIntegerField(default=1)
     rizz = models.PositiveSmallIntegerField(default=1)
     inventory = models.JSONField(default=list)
+    glyphs = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Ordered glyph ids from character creation: war, survival, study, devotion.",
+    )
     head_item = models.ForeignKey(
         ItemInstance,
         null=True,

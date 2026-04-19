@@ -14,7 +14,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
-import PondButton from "../PondButton";
+import QffButton from "./QffButton";
 import {
   fetchQffSession,
   qffSessionWsUrl,
@@ -633,9 +633,9 @@ export default function QffPlayPage() {
         }}
         autoFocus
       />
-      <PondButton type="button" onClick={submit}>
+      <QffButton type="button" onClick={submit}>
         Send
-      </PondButton>
+      </QffButton>
     </Flex>
   );
 
@@ -664,9 +664,9 @@ export default function QffPlayPage() {
             {area.name}
           </Text>
         </Flex>
-        <PondButton type="button" size="sm" onClick={() => navigate("/qff")}>
+        <QffButton type="button" size="sm" onClick={() => navigate("/qff")}>
           Lobby
-        </PondButton>
+        </QffButton>
       </Flex>
 
       <Box flex="1" minH={0} minW={0} overflowY="auto" overflowX="hidden" overscrollBehavior="contain">

@@ -57,7 +57,6 @@ export type QffCharacterClass = {
 
 export type QffSessionNoCharacter = {
   has_character: false;
-  character_classes: QffCharacterClass[];
 };
 
 export type QffExit = {
@@ -100,6 +99,7 @@ export type QffSessionWithCharacter = {
     name: string;
     class_slug: string;
     class_name: string;
+    glyphs: string[];
     spawn_room: { id: number; name: string };
   };
   room: {
@@ -143,6 +143,7 @@ export type QffCharacterProfile = {
   /** Sum of armor from equipped items. */
   armorTotal: number;
   class: { slug: string; name: string };
+  glyphs: string[];
   equipment_slots: {
     head: string | null;
     mainHand: string | null;
@@ -185,7 +186,7 @@ export async function fetchQffSession(accessToken: string | null): Promise<QffSe
 
 export async function createQffCharacter(
   accessToken: string | null,
-  body: { name: string; character_class: string },
+  body: { name: string; glyphs: string[] },
 ): Promise<QffSessionWithCharacter> {
   const response = await fetch(qffJoinBase(`/api/v1/qff/character/`), {
     method: "POST",

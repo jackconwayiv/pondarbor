@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
-import PondButton from "../PondButton";
+import QffButton from "./QffButton";
 import { deleteQffCharacter, fetchQffSession } from "./api";
 import { QFF_STORY, QFF_SUBTITLES } from "./copy";
 
@@ -113,11 +113,11 @@ export default function QffLobbyPage() {
 
         {approved && hasCharacter === true && (
           <Flex gap={3} flexWrap="wrap" align="center">
-            <PondButton type="button" onClick={() => navigate("/qff/play")}>
+            <QffButton type="button" onClick={() => navigate("/qff/play")}>
               Continue quest
-            </PondButton>
+            </QffButton>
             <Box ref={deleteButtonWrapRef} display="inline-block">
-              <PondButton
+              <QffButton
                 type="button"
                 disabled={deleteBusy}
                 colorPalette={deleteConfirm ? "red" : undefined}
@@ -141,15 +141,15 @@ export default function QffLobbyPage() {
                 }}
               >
                 {deleteConfirm ? "Click again to delete character" : "Delete character"}
-              </PondButton>
+              </QffButton>
             </Box>
           </Flex>
         )}
 
         {approved && hasCharacter === false && (
-          <PondButton type="button" onClick={() => navigate("/qff/create")}>
+          <QffButton type="button" onClick={() => navigate("/qff/create")}>
             Create character
-          </PondButton>
+          </QffButton>
         )}
       </Stack>
     </Box>

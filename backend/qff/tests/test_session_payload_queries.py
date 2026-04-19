@@ -16,6 +16,7 @@ from qff.models import (
     Room,
     RoomExit,
 )
+from qff.exploration import sync_seen_exits_for_character
 from qff.session_payload import build_area_map, build_session_for_character
 
 User = get_user_model()
@@ -117,3 +118,98 @@ class BuildAreaMapQueryTests(TestCase):
             [o["name"] for o in interact],
             you_see[: len(interact)],
         )
+
+
+class SyncSeenExitsQueryTests(TestCase):
+    """sync_seen_exits_for_character must not use get_or_create per exit (live DB latency)."""
+
+    def setUp(self):
+        self.area = Area.objects.create(
+            name="SyncGrid",
+            slug="sync-grid",
+            grid_width=5,
+            grid_height=5,
+        )
+        self.cc = CharacterClass.objects.create(slug="sync-war", name="Warrior", sort_order=0)
+        self.rooms: list[Room] = []
+        for i in range(25):
+            self.rooms.append(
+                Room.objects.create(
+                    area=self.area,
+                    name=f"S{i}",
+                    slug=f"sync-r{i}",
+                )
+            )
+        for y in range(5):
+            for x in range(5):
+                idx = y * 5 + x
+                AreaCell.objects.create(
+                    area=self.area, x=x, y=y, room=self.rooms[idx]
+                )
+        for y in range(5):
+            for x in range(5):
+                idx = y * 5 + x
+                room = self.rooms[idx]
+                if x < 4:
+                    RoomExit.objects.create(
+                        from_room=room,
+                        to_room=self.rooms[idx + 1],
+                        direction=RoomExit.Direction.E,
+                    )
+                if y < 4:
+                    RoomExit.objects.create(
+                        from_room=room,
+                        to_room=self.rooms[idx + 5],
+                        direction=RoomExit.Direction.S,
+                    )
+
+        user = User.objects.create_user(email="sync@example.com", password="test-pass-12345")
+        self.character = Character.objects.create(
+            user=user,
+            name="Syncer",
+            name_normalized="syncer",
+            character_class=self.cc,
+            current_room=self.rooms[0],
+            spawn_room=self.rooms[0],
+            last_activity_at=timezone.now(),
+        )
+        for r in self.rooms:
+            CharacterRoomVisit.objects.create(character=self.character, room=r)
+
+    def _fresh_character(self) -> Character:
+        return Character.objects.select_related(
+            "character_class",
+            "current_room",
+            "current_room__area",
+            "spawn_room",
+            "head_item__item",
+            "main_hand_item__item",
+            "off_hand_item__item",
+            "chest_item__item",
+            "feet_item__item",
+            "ring_item__item",
+            "amulet_item__item",
+        ).get(pk=self.character.pk)
+
+    def test_sync_seen_exits_bulk_bounded_queries(self):
+        char = self._fresh_character()
+        exit_count = RoomExit.objects.count()
+        self.assertGreater(exit_count, 20)
+        with CaptureQueriesContext(connection) as ctx:
+            sync_seen_exits_for_character(char)
+        self.assertLessEqual(
+            len(ctx.captured_queries),
+            12,
+            "Expected bulk CharacterExitSeen insert, not per-exit get_or_create",
+        )
+        self.assertEqual(
+            CharacterExitSeen.objects.filter(character=char).count(),
+            exit_count,
+        )
+
+    def test_second_sync_is_cheap(self):
+        char = self._fresh_character()
+        sync_seen_exits_for_character(char)
+        with CaptureQueriesContext(connection) as ctx:
+            sync_seen_exits_for_character(char)
+        self.assertLessEqual(len(ctx.captured_queries), 8)

@@ -30,18 +30,38 @@ def mark_room_visited(character: Character, room_id: int) -> None:
 
 def sync_seen_exits_for_character(character: Character) -> None:
     """Mark exits the character can currently see (including conditionally revealed)."""
-    visited = CharacterRoomVisit.objects.filter(character=character).values_list(
-        "room_id", flat=True
+    visited = list(
+        CharacterRoomVisit.objects.filter(character=character).values_list(
+            "room_id", flat=True
+        )
     )
+    if not visited:
+        return
+    visible_ids: list[int] = []
     for ex in RoomExit.objects.filter(from_room_id__in=visited).select_related(
         "reveal_item",
         "reveal_quest_state",
     ):
         if exit_is_visible_to_character(character, ex):
-            CharacterExitSeen.objects.get_or_create(
-                character=character,
-                room_exit=ex,
-            )
+            visible_ids.append(ex.pk)
+    if not visible_ids:
+        return
+    existing = set(
+        CharacterExitSeen.objects.filter(
+            character_id=character.pk,
+            room_exit_id__in=visible_ids,
+        ).values_list("room_exit_id", flat=True)
+    )
+    missing = [rid for rid in visible_ids if rid not in existing]
+    if not missing:
+        return
+    CharacterExitSeen.objects.bulk_create(
+        [
+            CharacterExitSeen(character_id=character.pk, room_exit_id=rid)
+            for rid in missing
+        ],
+        ignore_conflicts=True,
+    )
 
 
 @transaction.atomic
@@ -72,7 +92,12 @@ def on_enter_room(character: Character, room_id: int) -> None:
 
 
 def mark_exit_used(character: Character, room_exit: RoomExit) -> None:
-    CharacterExitSeen.objects.get_or_create(
-        character=character,
-        room_exit=room_exit,
+    CharacterExitSeen.objects.bulk_create(
+        [
+            CharacterExitSeen(
+                character_id=character.pk,
+                room_exit_id=room_exit.pk,
+            )
+        ],
+        ignore_conflicts=True,
     )

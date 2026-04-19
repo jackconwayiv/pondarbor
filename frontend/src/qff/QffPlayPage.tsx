@@ -20,6 +20,7 @@ import {
   qffSessionWsUrl,
   sendQffCommand,
   type QffAreaMapCell,
+  type QffCommandResponse,
   type QffSessionWithCharacter,
 } from "./api";
 
@@ -92,6 +93,8 @@ export default function QffPlayPage() {
   const { isAuthenticated, sessionUser, isLoading, getApiAccessToken } = useAppSession();
   const getTokenRef = useRef(getApiAccessToken);
   getTokenRef.current = getApiAccessToken;
+  /** Last token used for a successful QFF HTTP call — avoids await getAccessTokenSilently on every command. */
+  const commandTokenRef = useRef<string | null>(null);
   const [session, setSession] = useState<QffSessionWithCharacter | null>(null);
   const [initialSessionLoadDone, setInitialSessionLoadDone] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -105,6 +108,7 @@ export default function QffPlayPage() {
   const load = useCallback(async () => {
     const token = await getTokenRef.current();
     const s = await fetchQffSession(token);
+    commandTokenRef.current = token;
     if (!s.has_character) {
       setSession(null);
       return;
@@ -270,8 +274,23 @@ export default function QffPlayPage() {
       ];
     });
     try {
-      const token = await getTokenRef.current();
-      const res = await sendQffCommand(token, raw);
+      let token = commandTokenRef.current;
+      if (!token) {
+        token = await getTokenRef.current();
+      }
+      let res: QffCommandResponse;
+      try {
+        res = await sendQffCommand(token, raw);
+      } catch (firstErr) {
+        const msg = firstErr instanceof Error ? firstErr.message : "";
+        if (/\(401\)|\(403\)/.test(msg)) {
+          token = await getTokenRef.current();
+          res = await sendQffCommand(token, raw);
+        } else {
+          throw firstErr;
+        }
+      }
+      commandTokenRef.current = token;
       setSession(res.session);
       setLogLines((prev) => {
         const nextId = () => logLineIdRef.current++;

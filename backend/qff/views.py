@@ -1,4 +1,6 @@
 import json
+import logging
+import threading
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
@@ -38,6 +40,19 @@ from qff.session_payload import (
     normalize_hex_color,
     resolved_area_theme,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def _notify_qff_rooms_async(room_ids):
+    def run():
+        try:
+            notify_qff_rooms(room_ids)
+        except Exception:
+            logger.exception("notify_qff_rooms failed")
+
+    threading.Thread(target=run, daemon=True).start()
+
 
 def _get_character(user):
     try:
@@ -197,10 +212,10 @@ def command_view(request):
     char = _get_character(request.user)
     if char and encumbrance_excess(char) > 0:
         messages.append("You are encumbered!")
+    session = build_session_for_character(char)
     if char:
-        new_room_id = char.current_room_id
-        notify_qff_rooms([old_room_id, new_room_id])
-    return Response({"messages": messages, "session": build_session_for_character(char)})
+        _notify_qff_rooms_async([old_room_id, char.current_room_id])
+    return Response({"messages": messages, "session": session})
 
 
 # --- DM (staff) ---

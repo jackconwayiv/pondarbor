@@ -825,6 +825,7 @@ def _dm_floor_item_dict(inst: ItemInstance) -> dict:
         "item_id": inst.item_id,
         "item_slug": inst.item.slug,
         "item_name": inst.item.name,
+        "quantity": max(1, int(inst.quantity or 1)),
         "nickname": inst.nickname or "",
         "visible_quest_state_id": inst.visible_quest_state_id,
         "visible_quest_id": (
@@ -857,6 +858,7 @@ def _dm_room_item_dict(ri: RoomItem) -> dict:
         "visible_quest_state_slug": (
             ri.visible_quest_state.slug if ri.visible_quest_state_id else None
         ),
+        "allow_repeat_while_carrying": ri.allow_repeat_while_carrying,
     }
 
 
@@ -898,6 +900,7 @@ def dm_room_room_items(request, room_id):
         item_id=item_id,
         nickname=nick or None,
         visible_quest_state_id=visible_quest_state_id,
+        allow_repeat_while_carrying=bool(request.data.get("allow_repeat_while_carrying")),
     )
     ri = RoomItem.objects.select_related("item", "visible_quest_state__quest").get(pk=ri.pk)
     return Response(_dm_room_item_dict(ri), status=status.HTTP_201_CREATED)
@@ -931,6 +934,8 @@ def dm_room_item_detail(request, pk):
                 ri.visible_quest_state_id = vsid
             else:
                 ri.visible_quest_state_id = None
+    if "allow_repeat_while_carrying" in request.data:
+        ri.allow_repeat_while_carrying = bool(request.data.get("allow_repeat_while_carrying"))
     ri.save()
     ri = RoomItem.objects.select_related("item", "visible_quest_state__quest").get(pk=ri.pk)
     return Response(_dm_room_item_dict(ri))
@@ -969,6 +974,7 @@ def dm_room_floor_items(request, room_id):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         get_object_or_404(QuestState, pk=visible_quest_state_id)
+    qty = max(1, int(request.data.get("quantity") or 1))
     inst = ItemInstance.objects.create(
         item_id=item_id,
         room=room,
@@ -977,6 +983,7 @@ def dm_room_floor_items(request, room_id):
         floor_dropped_at=timezone.now(),
         nickname=nick or None,
         visible_quest_state_id=visible_quest_state_id,
+        quantity=qty,
     )
     inst = ItemInstance.objects.select_related(
         "item", "visible_quest_state__quest"
@@ -1014,6 +1021,12 @@ def dm_floor_item_detail(request, pk):
                 inst.visible_quest_state_id = vsid
             else:
                 inst.visible_quest_state_id = None
+    if "quantity" in request.data:
+        try:
+            q = int(request.data.get("quantity") or 1)
+            inst.quantity = max(1, q)
+        except (TypeError, ValueError):
+            pass
     inst.save()
     inst = ItemInstance.objects.select_related(
         "item", "visible_quest_state__quest"
@@ -1215,6 +1228,24 @@ def _parse_item_slot_optional(raw) -> str | None:
     return s
 
 
+def _parse_extra_data_payload(raw):
+    """Return dict, None if missing/omit, or sentinel invalid."""
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        s = raw.strip()
+        if not s:
+            return {}
+        try:
+            o = json.loads(s)
+            return o if isinstance(o, dict) else None
+        except json.JSONDecodeError:
+            return None
+    return None
+
+
 def _dm_item_dict(item: Item) -> dict:
     return {
         "id": item.id,
@@ -1223,6 +1254,9 @@ def _dm_item_dict(item: Item) -> dict:
         "item_type": item.item_type,
         "slot": item.slot,
         "consumable": item.consumable,
+        "stackable": item.stackable,
+        "max_stack": item.max_stack,
+        "extra_data": item.extra_data or {},
         "cost": item.cost,
         "description": item.description,
         "lore": item.lore,
@@ -1302,12 +1336,21 @@ def dm_item_list_create(request):
             {"detail": "invalid hidden_bonus_stat."},
             status=status.HTTP_400_BAD_REQUEST,
         )
+    ed = _parse_extra_data_payload(request.data.get("extra_data"))
+    if request.data.get("extra_data") is not None and ed is None:
+        return Response(
+            {"detail": "extra_data must be a JSON object."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     item = Item.objects.create(
         slug=slug[:80],
         name=name[:200],
         item_type=(request.data.get("item_type") or "")[:64],
         slot=slot,
         consumable=bool(request.data.get("consumable")),
+        stackable=bool(request.data.get("stackable")),
+        max_stack=max(1, min(9999, int(request.data.get("max_stack") or 99))),
+        extra_data=ed or {},
         cost=int(request.data.get("cost") or 0),
         description=(request.data.get("description") or "")[:],
         lore=(request.data.get("lore") or "")[:],
@@ -1364,6 +1407,21 @@ def dm_item_detail(request, pk):
         item.slot = slot
     if "consumable" in request.data:
         item.consumable = bool(request.data.get("consumable"))
+    if "stackable" in request.data:
+        item.stackable = bool(request.data.get("stackable"))
+    if "max_stack" in request.data:
+        try:
+            item.max_stack = max(1, min(9999, int(request.data.get("max_stack") or 99)))
+        except (TypeError, ValueError):
+            pass
+    if "extra_data" in request.data:
+        ed = _parse_extra_data_payload(request.data.get("extra_data"))
+        if ed is None:
+            return Response(
+                {"detail": "extra_data must be a JSON object."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        item.extra_data = ed
     if "description" in request.data:
         item.description = request.data.get("description") or ""
     if "lore" in request.data:

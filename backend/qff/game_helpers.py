@@ -170,6 +170,17 @@ def display_name_for_instance(
     return base
 
 
+def inventory_stack_label(
+    inst: "ItemInstance", *, include_lock_hint: bool = False
+) -> str:
+    """Display name with xN suffix when quantity > 1."""
+    base = display_name_for_instance(inst, include_lock_hint=include_lock_hint)
+    q = int(getattr(inst, "quantity", 1) or 1)
+    if q > 1:
+        return f"{base} x{q}"
+    return base
+
+
 def roll_d100() -> int:
     return random.randint(1, 100)
 
@@ -201,7 +212,7 @@ def carried_item_instance_count(character: "Character") -> int:
 
 
 def encumbrance_cap(character: "Character") -> int:
-    return 3 + int(character.gains) // 2
+    return 5 + int(character.gains) // 10
 
 
 def encumbrance_excess(character: "Character") -> int:

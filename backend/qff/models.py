@@ -331,6 +331,19 @@ class Item(models.Model):
     bonus_smarts = models.SmallIntegerField(default=0)
     bonus_sense = models.SmallIntegerField(default=0)
     bonus_rizz = models.SmallIntegerField(default=0)
+    stackable = models.BooleanField(
+        default=False,
+        help_text="If true, inventory merges same-template stacks up to max_stack per row.",
+    )
+    max_stack = models.PositiveSmallIntegerField(
+        default=99,
+        help_text="Max units per ItemInstance when stackable (clamped 1–9999 in logic).",
+    )
+    extra_data = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Template metadata; e.g. consume_effects list for consumable items.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -345,6 +358,10 @@ class ItemInstance(models.Model):
     """A concrete item somewhere in the realm."""
 
     item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name="instances")
+    quantity = models.PositiveIntegerField(
+        default=1,
+        help_text="Stack size when item.stackable; always 1 for non-stackable templates.",
+    )
     nickname = models.CharField(max_length=200, blank=True, null=True)
     unlocked = models.BooleanField(default=False)
     chars_failed_to_inspect = models.JSONField(default=list)
@@ -387,6 +404,12 @@ class ItemInstance(models.Model):
         indexes = [
             models.Index(fields=["owner_character", "room"]),
         ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(quantity__gte=1),
+                name="qff_iteminstance_quantity_gte_1",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.item.name}#{self.pk}"
@@ -415,6 +438,11 @@ class RoomItem(models.Model):
         help_text="If set, only characters in this quest state see this slot; "
         "hidden if they carry this item template; hidden if an unowned floor instance "
         "of this template exists in the room.",
+    )
+    allow_repeat_while_carrying = models.BooleanField(
+        default=False,
+        help_text="If true, slot stays visible even when the character already carries this "
+        "template (e.g. farmable pickups). Default hides while carrying.",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

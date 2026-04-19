@@ -16,6 +16,7 @@ from qff.quest_engine import (
 )
 from qff.game_helpers import (
     display_name_for_instance,
+    inventory_stack_label,
     modified_stats,
     stat_bonus_totals,
     total_armor_from_equipment,
@@ -188,14 +189,14 @@ def build_area_map(character) -> dict:
 def _slot_label(inst) -> str | None:
     if inst is None:
         return None
-    return display_name_for_instance(inst, include_lock_hint=True)
+    return inventory_stack_label(inst, include_lock_hint=True)
 
 
-def _inventory_item_labels(character) -> list[str]:
-    """Names in inventory order (index 0 = most recently stowed)."""
+def _inventory_display_rows(character) -> tuple[list[str], list[int]]:
+    """Labels and parallel quantities (index 0 = most recently stowed)."""
     inv_ids = list(character.inventory or [])
     if not inv_ids:
-        return []
+        return [], []
     by_id = {
         i.id: i
         for i in ItemInstance.objects.filter(
@@ -203,12 +204,18 @@ def _inventory_item_labels(character) -> list[str]:
             owner_character_id=character.pk,
         ).select_related("item")
     }
-    out = []
+    labels: list[str] = []
+    quantities: list[int] = []
     for iid in inv_ids:
         inst = by_id.get(iid)
         if inst:
-            out.append(display_name_for_instance(inst, include_lock_hint=True))
-    return out
+            labels.append(inventory_stack_label(inst, include_lock_hint=True))
+            quantities.append(max(1, int(inst.quantity or 1)))
+    return labels, quantities
+
+
+def _inventory_item_labels(character) -> list[str]:
+    return _inventory_display_rows(character)[0]
 
 
 def _room_floor_labels(room_id: int, character) -> list[str]:
@@ -263,6 +270,7 @@ def build_character_profile(character) -> dict:
     mod = modified_stats(character)
     bonus = stat_bonus_totals(character)
     inv_ids = list(character.inventory or [])
+    inv_labels, inv_quantities = _inventory_display_rows(character)
     return {
         "name": character.name,
         "level": character.level,
@@ -288,7 +296,8 @@ def build_character_profile(character) -> dict:
             "amulet": _slot_label(character.amulet_item),
         },
         "inventory": inv_ids,
-        "inventoryItems": _inventory_item_labels(character),
+        "inventoryItems": inv_labels,
+        "inventoryQuantities": inv_quantities,
         "stats": {
             "base": base,
             "modified": mod,

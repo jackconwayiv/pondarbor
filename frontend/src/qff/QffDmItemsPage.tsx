@@ -49,6 +49,9 @@ function emptyForm(): Partial<DmItem> {
     item_type: "",
     slot: "",
     consumable: false,
+    stackable: false,
+    max_stack: 99,
+    extra_data: {} as Record<string, unknown>,
     cost: 0,
     description: "",
     lore: "",
@@ -99,7 +102,14 @@ export default function QffDmItemsPage() {
 
   const selectItem = (it: DmItem) => {
     setEditingId(it.id);
-    setForm({ ...it, slot: it.slot ?? "", consumable: it.consumable ?? false });
+    setForm({
+      ...it,
+      slot: it.slot ?? "",
+      consumable: it.consumable ?? false,
+      stackable: it.stackable ?? false,
+      max_stack: it.max_stack ?? 99,
+      extra_data: (it.extra_data ?? {}) as Record<string, unknown>,
+    });
   };
 
   const newItem = () => {
@@ -122,12 +132,18 @@ export default function QffDmItemsPage() {
           name: form.name!.trim(),
           slot: form.slot?.trim() ? form.slot : null,
           consumable: !!form.consumable,
+          stackable: !!form.stackable,
+          max_stack: form.max_stack ?? 99,
+          extra_data: form.extra_data ?? {},
         });
       } else {
         await dmPatchItem(token, editingId, {
           ...form,
           slot: form.slot?.trim() ? form.slot : null,
           consumable: !!form.consumable,
+          stackable: !!form.stackable,
+          max_stack: form.max_stack ?? 99,
+          extra_data: form.extra_data ?? {},
         });
       }
       await load();
@@ -296,7 +312,69 @@ export default function QffDmItemsPage() {
                 </Switch.Label>
               </Switch.Root>
             </Field.Root>
+            <Field.Root flex="1" minW="200px">
+              <Field.Label>Stackable</Field.Label>
+              <Text fontSize="xs" color="#888" mb={1}>
+                Same template merges in inventory up to max stack (one encumbrance slot per row).
+              </Text>
+              <Switch.Root
+                checked={!!form.stackable}
+                onCheckedChange={(d) => setForm((f) => ({ ...f, stackable: d.checked }))}
+                colorPalette="green"
+              >
+                <Switch.HiddenInput />
+                <Switch.Control>
+                  <Switch.Thumb />
+                </Switch.Control>
+                <Switch.Label fontSize="sm">
+                  {form.stackable ? "Yes — stacks" : "No — one unit per instance"}
+                </Switch.Label>
+              </Switch.Root>
+            </Field.Root>
+            <Field.Root minW="100px">
+              <Field.Label>Max stack</Field.Label>
+              <Input
+                type="number"
+                value={form.max_stack ?? 99}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, max_stack: Math.max(1, Number(e.target.value) || 99) }))
+                }
+                bg="#222"
+                w="100px"
+              />
+            </Field.Root>
           </Flex>
+          <Field.Root>
+            <Field.Label>Consumable effects (extra_data JSON)</Field.Label>
+            <Text fontSize="xs" color="#888" mb={1}>
+              Optional. Example:{" "}
+              <Text as="code" fontSize="xs">
+                {`{"consume_effects":[{"kind":"heal_hp","amount":10},{"kind":"restore_mana","amount":5}]}`}
+              </Text>
+            </Text>
+            <Textarea
+              value={JSON.stringify(form.extra_data ?? {}, null, 2)}
+              onChange={(e) => {
+                const raw = e.target.value.trim();
+                if (!raw) {
+                  setForm((f) => ({ ...f, extra_data: {} }));
+                  return;
+                }
+                try {
+                  const o = JSON.parse(raw) as Record<string, unknown>;
+                  if (o && typeof o === "object" && !Array.isArray(o)) {
+                    setForm((f) => ({ ...f, extra_data: o }));
+                  }
+                } catch {
+                  /* keep typing */
+                }
+              }}
+              bg="#222"
+              fontFamily="mono"
+              fontSize="sm"
+              minH="100px"
+            />
+          </Field.Root>
           <Field.Root>
             <Field.Label>Type</Field.Label>
             <Input

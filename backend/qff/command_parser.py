@@ -27,6 +27,8 @@ class ParsedSay:
 @dataclass
 class ParsedDrop:
     target: str
+    # If set, drop only this many from a stack (inventory only); None = entire instance.
+    quantity: int | None = None
 
 
 @dataclass
@@ -200,7 +202,16 @@ def parse_command(line: str):
 
     # drop / get / equip
     if low.startswith("drop "):
-        return ParsedDrop(target=n[5:].strip())
+        rest = n[5:].strip()
+        qty: int | None = None
+        target = rest
+        m = re.fullmatch(r"(\d+)\s+(.+)", rest)
+        if m:
+            q = int(m.group(1))
+            if q >= 1:
+                qty = q
+                target = m.group(2).strip()
+        return ParsedDrop(target=target, quantity=qty)
     if low == "drop":
         return ParsedDrop(target="")
     if low.startswith("get "):

@@ -28,15 +28,18 @@ from qff.exits import (
     exit_is_passable,
     exit_is_visible_to_character,
 )
+from qff.consumable_effects import apply_consume_effects
 from qff.game_helpers import (
     display_name_for_instance,
     format_item_inspect_parenthetical,
+    inventory_stack_label,
     item_meets_requirements,
     peer_arrival_line,
     presence_threshold,
     roll_d100_plus_stat_encumbered,
     slot_field_for_item_slot,
 )
+from qff.inventory_absorb import absorb_item_quantity
 from qff.models import Character, ItemInstance, RoomBroadcast, RoomExit, RoomItem
 from qff.quest_engine import (
     ensure_quests_started_from_npc,
@@ -323,7 +326,7 @@ def execute_command(char: CharacterType, parsed) -> list[str]:
         return _handle_move(char, parsed)
 
     if isinstance(parsed, ParsedDrop):
-        return _handle_drop(char, parsed.target)
+        return _handle_drop(char, parsed.target, parsed.quantity)
 
     if isinstance(parsed, ParsedGet):
         return _handle_get(char, parsed.target)
@@ -390,19 +393,84 @@ def _handle_move(char: CharacterType, parsed: ParsedMove) -> list[str]:
     return [f"You head {dir_label}."]
 
 
-def _handle_drop(char: CharacterType, target: str) -> list[str]:
+def _handle_drop(
+    char: CharacterType, target: str, want_qty: int | None = None
+) -> list[str]:
     _touch_activity(char)
-    inst = _find_item_instance_inventory_first(char, target)
+    q = (target or "").strip()
+    if not q:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return ["Drop what?"]
+    if want_qty is not None and want_qty < 1:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return ["Drop how many?"]
+
+    inst = _find_item_instance_inventory_first(char, q)
     if not inst or inst.owner_character_id != char.pk:
         char.save(update_fields=["last_activity_at", "updated_at"])
         return ["You don't have that."]
     rid = char.current_room_id
+    held = max(1, int(inst.quantity or 1))
+    inv = list(char.inventory or [])
+    in_inv = inst.pk in inv
+    equipped_attr: str | None = None
+    for attr in SLOT_ATTRS:
+        cur = getattr(char, attr, None)
+        if cur and cur.pk == inst.pk:
+            equipped_attr = attr
+            break
+
+    if want_qty is not None:
+        if want_qty > held:
+            char.save(update_fields=["last_activity_at", "updated_at"])
+            return ["You don't have that many."]
+        if not inst.item.stackable and want_qty > 1:
+            char.save(update_fields=["last_activity_at", "updated_at"])
+            return ["You can't split that stack."]
+        if equipped_attr is not None and want_qty < held:
+            char.save(update_fields=["last_activity_at", "updated_at"])
+            return ["Unequip that first if you want to drop only some."]
+
+    drop_qty = held if want_qty is None else want_qty
+
+    if drop_qty < held:
+        floor_label = ""
+        with transaction.atomic():
+            char = Character.objects.select_for_update().get(pk=char.pk)
+            inst = ItemInstance.objects.select_for_update().select_related("item").get(
+                pk=inst.pk
+            )
+            inv2 = list(char.inventory or [])
+            if inst.pk not in inv2 or inst.owner_character_id != char.pk:
+                char.save(update_fields=["last_activity_at", "updated_at"])
+                return ["You don't have that."]
+            held2 = max(1, int(inst.quantity or 1))
+            inst.quantity = held2 - drop_qty
+            inst.save(update_fields=["quantity", "updated_at"])
+            floor_inst = ItemInstance.objects.create(
+                item_id=inst.item_id,
+                quantity=drop_qty,
+                room_id=rid,
+                owner_character=None,
+                nickname=inst.nickname,
+                unlocked=inst.unlocked,
+                chars_failed_to_inspect=list(inst.chars_failed_to_inspect or []),
+                neglect_count=0,
+                floor_dropped_at=timezone.now(),
+                visible_quest_state_id=None,
+            )
+            char.last_activity_at = timezone.now()
+            char.save(update_fields=["last_activity_at", "updated_at"])
+            floor_label = inventory_stack_label(floor_inst)
+        char = Character.objects.get(pk=char.pk)
+        _notify_peers_third_person(char, rid, f"{char.name} drops the {floor_label}.")
+        return [f"You drop the {floor_label}."]
+
     for attr in SLOT_ATTRS:
         cur = getattr(char, attr, None)
         if cur and cur.pk == inst.pk:
             setattr(char, attr, None)
             break
-    inv = list(char.inventory or [])
     if inst.pk in inv:
         inv = [x for x in inv if x != inst.pk]
         char.inventory = inv
@@ -424,7 +492,7 @@ def _handle_drop(char: CharacterType, target: str) -> list[str]:
         ]
     )
     char.save()
-    label = display_name_for_instance(inst)
+    label = inventory_stack_label(inst)
     _notify_peers_third_person(char, rid, f"{char.name} drops the {label}.")
     return [f"You drop the {label}."]
 
@@ -433,30 +501,37 @@ def _handle_get(char: CharacterType, target: str) -> list[str]:
     _touch_activity(char)
     inst = _find_item_instance_floor_first(char, target)
     if inst and inst.room_id == char.current_room_id and inst.owner_character_id is None:
-        char.inventory = _prepend_inv(char.inventory, inst.pk)
-        inst.room_id = None
-        inst.owner_character_id = char.pk
-        inst.neglect_count = 0
-        inst.floor_dropped_at = None
-        inst.save(
-            update_fields=[
-                "room_id",
-                "owner_character_id",
-                "neglect_count",
-                "floor_dropped_at",
-                "updated_at",
-            ]
+        pickup_label = inventory_stack_label(inst)
+        donor_qty = max(1, int(inst.quantity or 1))
+        with transaction.atomic():
+            char = Character.objects.select_for_update().get(pk=char.pk)
+            inst = (
+                ItemInstance.objects.select_for_update()
+                .select_related("item")
+                .get(pk=inst.pk)
+            )
+            if inst.room_id != char.current_room_id or inst.owner_character_id is not None:
+                char.save(update_fields=["last_activity_at", "updated_at"])
+                return ["You don't see that here."]
+            item = inst.item
+            new_pks = absorb_item_quantity(char, item, donor_qty, donor=inst)
+            inst.delete()
+            for pk in reversed(new_pks):
+                char.inventory = _prepend_inv(char.inventory, pk)
+            char.last_activity_at = timezone.now()
+            char.save(update_fields=["inventory", "last_activity_at", "updated_at"])
+        char = Character.objects.get(pk=char.pk)
+        _notify_peers_third_person(
+            char, char.current_room_id, f"{char.name} takes the {pickup_label}."
         )
-        char.save(update_fields=["inventory", "last_activity_at", "updated_at"])
-        label = display_name_for_instance(inst)
-        _notify_peers_third_person(char, char.current_room_id, f"{char.name} takes the {label}.")
-        return [f"You pick up the {label}."]
+        return [f"You pick up the {pickup_label}."]
 
     floor_ids = unowned_floor_item_template_ids_in_room(char.current_room_id)
     ri = _find_room_item(char, target, floor_ids)
     if not ri:
         char.save(update_fields=["last_activity_at", "updated_at"])
         return ["You don't see that here."]
+    pickup_name = ri.nickname if ri.nickname else ri.item.name
     with transaction.atomic():
         char = Character.objects.select_for_update().get(pk=char.pk)
         ri = RoomItem.objects.select_related("item", "visible_quest_state").get(pk=ri.pk)
@@ -464,16 +539,16 @@ def _handle_get(char: CharacterType, target: str) -> list[str]:
         if not room_item_visible_to_character(char, ri, floor_ids_locked):
             char.save(update_fields=["last_activity_at", "updated_at"])
             return ["You don't see that here."]
-        new_inst = ItemInstance.objects.create(
-            item_id=ri.item_id,
-            owner_character=char,
-            room=None,
-        )
-        char.inventory = _prepend_inv(char.inventory, new_inst.pk)
+        new_pks = absorb_item_quantity(char, ri.item, 1, donor=None)
+        for pk in reversed(new_pks):
+            char.inventory = _prepend_inv(char.inventory, pk)
+        char.last_activity_at = timezone.now()
         char.save(update_fields=["inventory", "last_activity_at", "updated_at"])
-    label = display_name_for_instance(new_inst)
-    _notify_peers_third_person(char, char.current_room_id, f"{char.name} takes the {label}.")
-    return [f"You pick up the {label}."]
+    char = Character.objects.get(pk=char.pk)
+    _notify_peers_third_person(
+        char, char.current_room_id, f"{char.name} takes the {pickup_name}."
+    )
+    return [f"You pick up the {pickup_name}."]
 
 
 def _handle_equip(char: CharacterType, target: str) -> list[str]:
@@ -633,13 +708,14 @@ def _handle_consume_item(char: CharacterType, parsed: ParsedConsumeItem) -> list
 def _consume_inventory_instance(
     char: CharacterType, inst: ItemInstance, verb: str
 ) -> list[str]:
-    """Remove a consumable from inventory and destroy the instance."""
+    """Remove one consumable from a stack (or destroy the instance)."""
     from qff.models import ItemInstance as II
 
-    label = display_name_for_instance(inst)
     room_id = char.current_room_id
     actor_name = char.name
     actor_pk = char.pk
+    effect_lines: list[str] = []
+    base_label = ""
     with transaction.atomic():
         char = Character.objects.select_for_update().get(pk=char.pk)
         inst = II.objects.select_for_update().select_related("item").get(pk=inst.pk)
@@ -647,22 +723,45 @@ def _consume_inventory_instance(
         if inst.pk not in inv or not inst.item.consumable:
             char.save(update_fields=["last_activity_at", "updated_at"])
             return ["You don't have that."]
-        inv = [x for x in inv if x != inst.pk]
-        char.inventory = inv
+        base_label = display_name_for_instance(inst)
+        effect_lines = apply_consume_effects(char, inst.item)
+        qty = max(1, int(inst.quantity or 1))
         char.last_activity_at = timezone.now()
-        char.save(update_fields=["inventory", "last_activity_at", "updated_at"])
-        inst.delete()
+        if qty > 1:
+            inst.quantity = qty - 1
+            inst.save(update_fields=["quantity", "updated_at"])
+            char.save(
+                update_fields=[
+                    "cur_health",
+                    "cur_mana",
+                    "last_activity_at",
+                    "updated_at",
+                ]
+            )
+        else:
+            inv = [x for x in inv if x != inst.pk]
+            char.inventory = inv
+            inst.delete()
+            char.save(
+                update_fields=[
+                    "inventory",
+                    "cur_health",
+                    "cur_mana",
+                    "last_activity_at",
+                    "updated_at",
+                ]
+            )
 
     ch = Character.objects.get(pk=actor_pk)
     v = verb.lower()
     if v == "eat":
-        _notify_peers_third_person(ch, room_id, f"{actor_name} eats the {label}.")
-        return [f"You eat the {label}."]
+        _notify_peers_third_person(ch, room_id, f"{actor_name} eats the {base_label}.")
+        return [f"You eat the {base_label}."] + effect_lines
     if v == "drink":
-        _notify_peers_third_person(ch, room_id, f"{actor_name} drinks the {label}.")
-        return [f"You drink the {label}."]
-    _notify_peers_third_person(ch, room_id, f"{actor_name} uses the {label}.")
-    return [f"You use the {label}."]
+        _notify_peers_third_person(ch, room_id, f"{actor_name} drinks the {base_label}.")
+        return [f"You drink the {base_label}."] + effect_lines
+    _notify_peers_third_person(ch, room_id, f"{actor_name} uses the {base_label}.")
+    return [f"You use the {base_label}."] + effect_lines
 
 
 def _handle_look_inspect(char: CharacterType, parsed: ParsedLookInspect) -> list[str]:

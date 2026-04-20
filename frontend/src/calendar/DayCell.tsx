@@ -1,5 +1,3 @@
-import type React from "react";
-
 import { Box, HStack, Stack, Text } from "@chakra-ui/react";
 
 import { APP_TEXT_SIZES } from "../theme/typography";
@@ -29,25 +27,23 @@ export default function DayCell({
   const overflow = Math.max(0, events.length - MAX_CHIPS_VISIBLE);
   const visible = events.slice(0, MAX_CHIPS_VISIBLE);
 
-  const handleCellClick = onCellClick
-    ? () => onCellClick(date)
-    : undefined;
-  const handleCellKeyDown = onCellClick
-    ? (e: React.KeyboardEvent<HTMLDivElement>) => {
-        if (e.target !== e.currentTarget) return;
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onCellClick(date);
-        }
-      }
-    : undefined;
   return (
     <Box
       role={onCellClick ? "button" : undefined}
       tabIndex={onCellClick ? 0 : undefined}
       aria-label={onCellClick ? `Add event on ${date.toDateString()}` : undefined}
-      onClick={handleCellClick}
-      onKeyDown={handleCellKeyDown}
+      onClick={onCellClick ? () => onCellClick(date) : undefined}
+      onKeyDown={
+        onCellClick
+          ? (e) => {
+              if (e.target !== e.currentTarget) return;
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onCellClick(date);
+              }
+            }
+          : undefined
+      }
       textAlign="left"
       bg={inMonth ? "white" : "gray.50"}
       opacity={inMonth ? 1 : 0.7}

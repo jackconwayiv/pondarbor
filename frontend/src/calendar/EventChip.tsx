@@ -1,5 +1,3 @@
-import type React from "react";
-
 import { Box, Text } from "@chakra-ui/react";
 
 import { APP_TEXT_SIZES } from "../theme/typography";
@@ -19,19 +17,19 @@ export default function EventChip({ event, onClick }: EventChipProps) {
   const label = titlePrefix
     ? `${titlePrefix} ${event.title}`
     : event.title;
-  const handleClick = onClick
-    ? (e: React.MouseEvent<HTMLButtonElement>) => {
-        // Prevent the click from bubbling to the day cell, which would
-        // otherwise open the "Add event" dialog.
-        e.stopPropagation();
-        onClick();
-      }
-    : undefined;
   return (
     <Box
       as={onClick ? "button" : "div"}
-      onClick={handleClick}
-      type={onClick ? "button" : undefined}
+      onClick={
+        onClick
+          ? (e) => {
+              // Prevent the click from bubbling to the day cell, which would
+              // otherwise open the "Add event" dialog.
+              e.stopPropagation();
+              onClick();
+            }
+          : undefined
+      }
       textAlign="left"
       display="block"
       w="100%"

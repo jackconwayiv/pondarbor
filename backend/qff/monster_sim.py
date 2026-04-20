@@ -214,9 +214,12 @@ def monster_step_room(monster: MonsterInstance, dest_room_id: int) -> None:
 
 
 def monsters_follow_hero_move(hero: Character, old_room_id: int, dest_room_id: int) -> None:
-    qs = MonsterInstance.objects.filter(
-        Q(engaged_character_id=hero.pk) | Q(pursuit_target_character_id=hero.pk),
-        current_room_id=old_room_id,
+    qs = (
+        MonsterInstance.objects.filter(
+            Q(engaged_character_id=hero.pk) | Q(pursuit_target_character_id=hero.pk),
+            current_room_id=old_room_id,
+        )
+        .select_related("template")
     )
     for m in qs:
         _retarget_or_pursue_leaver(m, hero, old_room_id, dest_room_id)
@@ -231,7 +234,9 @@ def monsters_follow_hero_move(hero: Character, old_room_id: int, dest_room_id: i
             ]
         )
 
-    for m in MonsterInstance.objects.filter(pursuit_target_character_id=hero.pk):
+    for m in MonsterInstance.objects.filter(pursuit_target_character_id=hero.pk).select_related(
+        "template"
+    ):
         path = [int(x) for x in (m.pursuit_path or []) if x is not None]
         if not path or path[-1] != dest_room_id:
             path.append(dest_room_id)
@@ -243,7 +248,7 @@ def monsters_follow_hero_move(hero: Character, old_room_id: int, dest_room_id: i
     for m in MonsterInstance.objects.filter(
         pursuit_target_character_id=hero.pk,
         current_room_id=old_room_id,
-    ):
+    ).select_related("template"):
         path = [int(x) for x in (m.pursuit_path or []) if x is not None]
         if path and path[0] == dest_room_id:
             dest = Room.objects.filter(pk=dest_room_id).first()
@@ -266,11 +271,7 @@ def monsters_follow_hero_move(hero: Character, old_room_id: int, dest_room_id: i
 def safe_room_disengage(hero: Character, room: Room) -> bool:
     if not room.is_safe:
         return False
-    had_engaged = MonsterInstance.objects.filter(engaged_character_id=hero.pk).exists()
-    had_pursuit = MonsterInstance.objects.filter(pursuit_target_character_id=hero.pk).exists()
-    if not had_engaged and not had_pursuit:
-        return False
-    MonsterInstance.objects.filter(
+    n = MonsterInstance.objects.filter(
         Q(engaged_character_id=hero.pk) | Q(pursuit_target_character_id=hero.pk)
     ).update(
         engaged_character_id=None,
@@ -280,6 +281,8 @@ def safe_room_disengage(hero: Character, room: Room) -> bool:
         monster_strike_pending=False,
         updated_at=timezone.now(),
     )
+    if not n:
+        return False
     hero.next_action_at = None
     hero.combat_target_monster_id = None
     hero.save(
@@ -342,8 +345,19 @@ def engage_monsters_for_new_arrivals(hero: Character, room_id: int) -> None:
 
 
 def sense_adjacent_monsters(hero: Character, room_id: int) -> None:
-    for ex in RoomExit.objects.filter(from_room_id=room_id).select_related("to_room"):
-        if not MonsterInstance.objects.filter(current_room_id=ex.to_room_id).exists():
+    exits = list(
+        RoomExit.objects.filter(from_room_id=room_id).select_related("to_room"),
+    )
+    if not exits:
+        return
+    to_ids = [ex.to_room_id for ex in exits]
+    occupied = set(
+        MonsterInstance.objects.filter(current_room_id__in=to_ids).values_list(
+            "current_room_id", flat=True
+        )
+    )
+    for ex in exits:
+        if ex.to_room_id not in occupied:
             continue
         roll = roll_d100() + int(hero.sense) - encumbrance_excess(hero)
         if roll >= MONSTER_SENSE_ADJACENT_DC:

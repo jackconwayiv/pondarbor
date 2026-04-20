@@ -648,14 +648,11 @@ def _handle_move(char: CharacterType, parsed: ParsedMove) -> list[str]:
     )
 
     messages = [f"You head {dir_label}."]
-    char = Character.objects.select_related("current_room").get(pk=char.pk)
-    dest_room = char.current_room
+    dest_room = dest
     on_spawn_room_enter(char, dest_room)
-    char.refresh_from_db()
 
     if safe_room_disengage(char, dest_room):
         messages.append("You feel safer here.")
-        char.refresh_from_db()
     elif not dest_room.is_safe and char.next_action_at:
         char.next_action_at = timezone.now() + timedelta(seconds=COMBAT_ROUND_SECONDS)
         char.save(update_fields=["next_action_at", "updated_at"])

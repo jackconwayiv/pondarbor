@@ -23,3 +23,10 @@ COMBAT_ROUND_SECONDS = 6
 PURSUIT_STEP_SECONDS = 2
 MONSTER_SENSE_ADJACENT_DC = 50
 XP_PER_LEVEL = 100
+
+# Unarmed hero: weapon rating when main hand has no damage.
+UNARMED_WEAPON_RATING = 1
+
+# Death: keep equipped item if roll_d100() <= this percent cap (1 + guts // 8, max 25).
+GUTS_EQUIPMENT_KEEP_GUTS_DIVISOR = 8
+GUTS_EQUIPMENT_KEEP_MAX_PCT = 25

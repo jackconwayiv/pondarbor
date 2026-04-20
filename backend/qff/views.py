@@ -1,6 +1,5 @@
 import json
 import logging
-import threading
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
@@ -14,6 +13,7 @@ from rest_framework.response import Response
 
 from users.permissions import IsApprovedUser, IsStaffUser
 
+from qff.command_echo import should_echo_command
 from qff.command_handlers import execute_command
 from qff.command_parser import parse_command
 from qff.exploration import on_enter_room
@@ -56,16 +56,6 @@ from qff.session_payload import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _notify_qff_rooms_async(room_ids):
-    def run():
-        try:
-            notify_qff_rooms(room_ids)
-        except Exception:
-            logger.exception("notify_qff_rooms failed")
-
-    threading.Thread(target=run, daemon=True).start()
 
 
 def _get_character(user):
@@ -272,7 +262,11 @@ def command_view(request):
     line = (request.data.get("line") or "").strip()
     if not line:
         return Response(
-            {"messages": ["Type a command."], "session": build_session_for_character(char)},
+            {
+                "messages": ["Type a command."],
+                "session": build_session_for_character(char),
+                "echo_command": True,
+            },
         )
 
     command_room = char.current_room
@@ -280,6 +274,7 @@ def command_view(request):
     old_room_id = char.current_room_id
     parsed = parse_command(line)
     messages = list(execute_command(char, parsed))
+    echo_command = should_echo_command(parsed, messages)
     if messages and messages[0] == "You try that, but nothing happens.":
         email = (request.user.email or "").strip()
         QffIneffectiveInput.objects.create(
@@ -290,15 +285,18 @@ def command_view(request):
             room_name=command_room_name,
         )
     char = _get_character(request.user)
+    affected: list[int] = []
     if char:
-        run_lazy_simulation()
+        affected = run_lazy_simulation(notify_rooms=False)
         char = _get_character(request.user)
     if char and encumbrance_excess(char) > 0:
         messages.append("You are encumbered!")
     session = build_session_for_character(char)
     if char:
-        _notify_qff_rooms_async([old_room_id, char.current_room_id])
-    return Response({"messages": messages, "session": session})
+        notify_qff_rooms(set(affected) | {old_room_id, char.current_room_id})
+    return Response(
+        {"messages": messages, "session": session, "echo_command": echo_command}
+    )
 
 
 # --- DM (staff) ---
@@ -943,6 +941,11 @@ def _dm_monster_template_dict(t: MonsterTemplate) -> dict:
         "loot_table": t.loot_table or [],
         "armor": t.armor,
         "accuracy": t.accuracy,
+        "penetration": t.penetration,
+        "crit_chance_bonus_pct": t.crit_chance_bonus_pct,
+        "crit_damage_bonus": t.crit_damage_bonus,
+        "dodge_reduction": t.dodge_reduction,
+        "dodge_ignore": t.dodge_ignore,
     }
 
 
@@ -984,6 +987,31 @@ def dm_monster_template_detail(request, pk):
     if "accuracy" in request.data:
         try:
             tpl.accuracy = int(request.data.get("accuracy") or 0)
+        except (TypeError, ValueError):
+            pass
+    if "penetration" in request.data:
+        try:
+            tpl.penetration = max(0, int(request.data.get("penetration") or 0))
+        except (TypeError, ValueError):
+            pass
+    if "crit_chance_bonus_pct" in request.data:
+        try:
+            tpl.crit_chance_bonus_pct = int(request.data.get("crit_chance_bonus_pct") or 0)
+        except (TypeError, ValueError):
+            pass
+    if "crit_damage_bonus" in request.data:
+        try:
+            tpl.crit_damage_bonus = float(request.data.get("crit_damage_bonus") or 0)
+        except (TypeError, ValueError):
+            pass
+    if "dodge_reduction" in request.data:
+        try:
+            tpl.dodge_reduction = int(request.data.get("dodge_reduction") or 0)
+        except (TypeError, ValueError):
+            pass
+    if "dodge_ignore" in request.data:
+        try:
+            tpl.dodge_ignore = int(request.data.get("dodge_ignore") or 0)
         except (TypeError, ValueError):
             pass
     if "loot_table" in request.data:

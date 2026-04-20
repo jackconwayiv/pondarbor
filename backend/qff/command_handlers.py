@@ -56,6 +56,7 @@ from qff.models import (
     Npc,
     RoomBroadcast,
     RoomExit,
+    RoomGoldPile,
     RoomItem,
 )
 from qff.quest_engine import (
@@ -108,12 +109,25 @@ def _find_monster_in_room(actor: CharacterType, query: str) -> MonsterInstance |
     q = (query or "").strip().lower()
     if not q:
         return None
+    # First match by id order wins (stable tie-break if several names contain the same token).
     for m in MonsterInstance.objects.filter(current_room_id=actor.current_room_id).select_related(
         "template"
     ).order_by("id"):
         name = m.template.name.lower()
         slug = m.template.slug.lower()
-        if name == q or slug == q or name.startswith(q) or slug.startswith(q):
+        slug_spaced = slug.replace("_", " ")
+        word_match = any(
+            part == q or part.startswith(q) for part in name.split() if part
+        )
+        if (
+            name == q
+            or slug == q
+            or name.startswith(q)
+            or slug.startswith(q)
+            or q in name
+            or q in slug_spaced
+            or word_match
+        ):
             return m
     return None
 
@@ -544,7 +558,10 @@ def _handle_attack(char: CharacterType, parsed: ParsedAttack) -> list[str]:
 def _handle_buy_abilities(char: CharacterType) -> list[str]:
     _touch_activity(char)
     char.save(update_fields=["last_activity_at", "updated_at"])
-    return ["You cannot buy abilities yet — trainers only offer lessons for now."]
+    return [
+        "Nobody here is selling ability scrolls yet. "
+        "(Magic combat is still a stub — see qff.magic_combat.)"
+    ]
 
 
 def _handle_train(char: CharacterType) -> list[str]:
@@ -746,8 +763,51 @@ def _handle_drop(
     return [f"You drop the {label}."]
 
 
+def _find_gold_pile_for_take(char: CharacterType, target: str) -> RoomGoldPile | None:
+    q = (target or "").strip().lower()
+    rid = char.current_room_id
+    piles = list(
+        RoomGoldPile.objects.filter(room_id=rid, amount_remaining__gt=0).order_by("id")
+    )
+    if not piles:
+        return None
+    generic = q in ("", "gold", "coins", "coin", "money", "pile")
+    if generic:
+        return piles[0] if len(piles) == 1 else None
+    for p in piles:
+        lab = (p.label or "").lower()
+        if q in lab or lab in q:
+            return p
+    return None
+
+
 def _handle_get(char: CharacterType, target: str) -> list[str]:
     _touch_activity(char)
+    pile = _find_gold_pile_for_take(char, target)
+    if pile:
+        with transaction.atomic():
+            char = Character.objects.select_for_update().get(pk=char.pk)
+            gp = RoomGoldPile.objects.select_for_update().filter(pk=pile.pk).first()
+            if (
+                not gp
+                or gp.room_id != char.current_room_id
+                or int(gp.amount_remaining or 0) <= 0
+            ):
+                char.save(update_fields=["last_activity_at", "updated_at"])
+                return ["You don't see that here."]
+            amt = int(gp.amount_remaining)
+            char.gold = int(char.gold or 0) + amt
+            char.last_activity_at = timezone.now()
+            char.save(update_fields=["gold", "last_activity_at", "updated_at"])
+            gp.delete()
+        char = Character.objects.get(pk=char.pk)
+        _notify_peers_third_person(
+            char,
+            char.current_room_id,
+            f"{char.name} scoops up {amt} gold.",
+        )
+        return [f"You pick up {amt} gold."]
+
     inst = _find_item_instance_floor_first(char, target)
     if inst and inst.room_id == char.current_room_id and inst.owner_character_id is None:
         pickup_label = inventory_stack_label(inst)

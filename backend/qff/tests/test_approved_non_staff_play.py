@@ -179,6 +179,31 @@ class ApprovedNonStaffPlayTests(TestCase):
         body = res.json()
         self.assertIn("session", body)
         self.assertTrue(body["session"]["has_character"])
+        self.assertIn("echo_command", body)
+        self.assertFalse(body["echo_command"])
+
+    def test_command_echo_true_for_unknown_line(self):
+        u = _approved_user("unk@example.com")
+        self._character("HeroUnk", u)
+        client = APIClient()
+        client.force_login(u)
+        res = client.post("/api/v1/qff/command/", {"line": "xyzzy plugh"}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertTrue(res.json()["echo_command"])
+
+    def test_session_action_log_entries_have_id_and_text(self):
+        u1 = _approved_user("sayer@example.com")
+        u2 = _approved_user("hearer@example.com")
+        c1 = self._character("Sayer", u1)
+        c2 = self._character("Hearer", u2)
+        execute_command(c1, parse_command("say hi"))
+        c2 = Character.objects.get(pk=c2.pk)
+        session = build_session_for_character(c2)
+        self.assertEqual(len(session["action_log"]), 1)
+        entry = session["action_log"][0]
+        self.assertIn("id", entry)
+        self.assertIn("text", entry)
+        self.assertIsInstance(entry["id"], int)
 
     def test_peer_sees_third_person_action_lines(self):
         """Observers get RoomBroadcast lines for search, drop, talk (not only `say`)."""

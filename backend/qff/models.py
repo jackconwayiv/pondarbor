@@ -1125,6 +1125,14 @@ class MonsterTemplate(models.Model):
         default=0,
         help_text="WeaponAccuracy term when this monster attacks.",
     )
+    penetration = models.PositiveSmallIntegerField(default=0)
+    crit_chance_bonus_pct = models.SmallIntegerField(
+        default=0,
+        help_text="Percentage points added to crit chance (same semantics as Item).",
+    )
+    crit_damage_bonus = models.FloatField(default=0.0)
+    dodge_reduction = models.SmallIntegerField(default=0)
+    dodge_ignore = models.SmallIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -1172,6 +1180,11 @@ class MonsterInstance(models.Model):
     max_hp = models.PositiveSmallIntegerField(default=1)
     next_action_at = models.DateTimeField(null=True, blank=True)
     next_pursuit_at = models.DateTimeField(null=True, blank=True)
+    monster_strike_pending = models.BooleanField(
+        default=False,
+        help_text="If True, next combat tick resolves damage (wind-up already shown).",
+    )
+    xp_contribution = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

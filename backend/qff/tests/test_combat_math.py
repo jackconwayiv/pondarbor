@@ -136,3 +136,13 @@ class ResolvePhysicalStrikeTests(TestCase):
         self.assertEqual(r_soft.outcome, "hit")
         self.assertEqual(r_hard.outcome, "hit")
         self.assertGreater(r_soft.damage, r_hard.damage)
+
+    def test_flat_base_damage_skips_weapon_formula(self):
+        atk = {**self._sample_attacker(), "weapon": 0}
+        dfn = self._sample_defender()
+        with patch("qff.combat_math.roll_d100", side_effect=[50, 99]), patch(
+            "qff.combat_math.random.random", return_value=0.99
+        ):
+            r = resolve_physical_strike(atk, dfn, flat_base_damage=3)
+        self.assertEqual(r.outcome, "hit")
+        self.assertEqual(r.base_damage, 3)

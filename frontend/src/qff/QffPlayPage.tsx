@@ -24,9 +24,24 @@ import {
   type QffSessionWithCharacter,
 } from "./api";
 
-/** WebSocket keepalive; server may broadcast room session updates without changing activity. */
-const WS_PING_MS = 30_000;
+/** WebSocket keepalive; must be ≤ combat round length so lazy sim runs on time (~6s). */
+const WS_PING_MS = 6_000;
 const WS_RECONNECT_BASE_MS = 2000;
+
+function formatCombatCooldownHint(iso: string): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) {
+    return `Next combat action: ${iso}`;
+  }
+  const sec = Math.ceil((t - Date.now()) / 1000);
+  if (sec <= 0) {
+    return "Combat action ready.";
+  }
+  if (sec === 1) {
+    return "Next combat action in ~1 second.";
+  }
+  return `Next combat action in ~${sec} seconds.`;
+}
 
 /** Charcoal + light gray (same family as action log). */
 const HUD_PANEL_BG = "#141414";
@@ -102,8 +117,12 @@ export default function QffPlayPage() {
   const [logLines, setLogLines] = useState<Array<{ id: number; text: string; recent: boolean }>>([]);
   const [mapVisible, setMapVisible] = useState(true);
   const logLineIdRef = useRef(0);
+  const lastBroadcastIdRef = useRef(0);
+  /** Blocks a second command until the first HTTP round-trip finishes (avoids move “warping”). */
+  const commandInFlightRef = useRef(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const logScrollRef = useRef<HTMLDivElement | null>(null);
+  const [commandPending, setCommandPending] = useState(false);
 
   const load = useCallback(async () => {
     const token = await getTokenRef.current();
@@ -251,13 +270,17 @@ export default function QffPlayPage() {
     logScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }, [logLines]);
 
-  /** Room broadcasts from other players (session poll consumes server queue). */
+  /** Room broadcasts (targeted + room); skip ids already applied (HTTP + WS can repeat the same session). */
   useEffect(() => {
-    const lines = session?.action_log;
-    if (!lines?.length) return;
+    const entries = session?.action_log;
+    if (!entries?.length) return;
+    const maxIncoming = Math.max(...entries.map((e) => e.id));
+    const fresh = entries.filter((e) => e.id > lastBroadcastIdRef.current);
+    if (!fresh.length) return;
+    lastBroadcastIdRef.current = Math.max(lastBroadcastIdRef.current, maxIncoming);
     setLogLines((prev) => {
       const nextId = () => logLineIdRef.current++;
-      const block = lines.map((text) => ({ id: nextId(), text, recent: true }));
+      const block = fresh.map((e) => ({ id: nextId(), text: e.text, recent: true }));
       return [...block, ...prev.map((p) => ({ ...p, recent: false }))];
     });
   }, [session]);
@@ -265,14 +288,23 @@ export default function QffPlayPage() {
   const submit = useCallback(async () => {
     const raw = line.trim();
     if (!raw) return;
+    if (session?.has_character && session.character_profile.isDead) {
+      setLogLines((prev) => {
+        const nextId = () => logLineIdRef.current++;
+        return [
+          { id: nextId(), text: "You are dead and cannot act.", recent: true },
+          ...prev.map((p) => ({ ...p, recent: false })),
+        ];
+      });
+      setLine("");
+      return;
+    }
+    if (commandInFlightRef.current) {
+      return;
+    }
+    commandInFlightRef.current = true;
+    setCommandPending(true);
     setLine("");
-    setLogLines((prev) => {
-      const nextId = () => logLineIdRef.current++;
-      return [
-        { id: nextId(), text: `> ${raw}`, recent: true },
-        ...prev.map((p) => ({ ...p, recent: false })),
-      ];
-    });
     try {
       let token = commandTokenRef.current;
       if (!token) {
@@ -294,18 +326,18 @@ export default function QffPlayPage() {
       setSession(res.session);
       setLogLines((prev) => {
         const nextId = () => logLineIdRef.current++;
-        const rest = prev[0]?.text === `> ${raw}` ? prev.slice(1) : prev;
-        const block = [`> ${raw}`, ...res.messages].map((text) => ({
+        const toShow: string[] =
+          res.echo_command === true ? [`> ${raw}`, ...res.messages] : [...res.messages];
+        const block = toShow.map((text) => ({
           id: nextId(),
           text,
           recent: true,
         }));
-        return [...block, ...rest.map((p) => ({ ...p, recent: false }))];
+        return [...block, ...prev.map((p) => ({ ...p, recent: false }))];
       });
     } catch (e) {
       setLogLines((prev) => {
         const nextId = () => logLineIdRef.current++;
-        const rest = prev[0]?.text === `> ${raw}` ? prev.slice(1) : prev;
         const block = [
           { id: nextId(), text: `> ${raw}`, recent: true },
           {
@@ -314,10 +346,14 @@ export default function QffPlayPage() {
             recent: true,
           },
         ];
-        return [...block, ...rest.map((p) => ({ ...p, recent: false }))];
+        return [...block, ...prev.map((p) => ({ ...p, recent: false }))];
       });
+    } finally {
+      commandInFlightRef.current = false;
+      setCommandPending(false);
+      queueMicrotask(() => inputRef.current?.focus());
     }
-  }, [line]);
+  }, [line, session]);
 
   if (!isAuthenticated) {
     return (
@@ -368,6 +404,8 @@ export default function QffPlayPage() {
   const { room, area, exits, others_here, area_map } = session;
   const t = area.theme;
   const cp = session.character_profile;
+  const heroDead = cp.isDead === true;
+  const roomMonsters = room.monsters ?? [];
   const eq = cp.equipment_slots;
   const st = cp.stats.modified;
   const stBase = cp.stats.base;
@@ -389,7 +427,9 @@ export default function QffPlayPage() {
                 .join(", ")}
         </Text>
       </Text>
-      {(others_here.length > 0 || (room.npcs?.length ?? 0) > 0) && (
+      {(others_here.length > 0 ||
+        (room.npcs?.length ?? 0) > 0 ||
+        roomMonsters.length > 0) && (
         <Text fontSize="sm">
           <Text as="span" color={t.secondary}>
             Also here:{" "}
@@ -397,13 +437,23 @@ export default function QffPlayPage() {
           {others_here.map((name, i) => (
             <Text as="span" key={`oh-p-${i}`} fontWeight="bold" color={t.accent}>
               {name}
-              {i < others_here.length - 1 || (room.npcs?.length ?? 0) > 0 ? ", " : ""}
+              {i < others_here.length - 1 ||
+              (room.npcs?.length ?? 0) > 0 ||
+              roomMonsters.length > 0
+                ? ", "
+                : ""}
             </Text>
           ))}
           {room.npcs?.map((n, i) => (
             <Text as="span" key={n.slug} color={t.accent}>
               {n.name}
-              {i < (room.npcs!.length - 1) ? ", " : ""}
+              {i < (room.npcs!.length - 1) || roomMonsters.length > 0 ? ", " : ""}
+            </Text>
+          ))}
+          {roomMonsters.map((m, i) => (
+            <Text as="span" key={`m-${m.id}`} color={t.accent} fontWeight="semibold">
+              {m.name}
+              {i < roomMonsters.length - 1 ? ", " : ""}
             </Text>
           ))}
         </Text>
@@ -514,6 +564,16 @@ export default function QffPlayPage() {
         HP {cp.curHealth}/{cp.maxHealth} · MP {cp.curMana}/{cp.maxMana} · XP {cp.xp} · Gold{" "}
         {cp.gold ?? 0}
       </Text>
+      {heroDead && (
+        <Text fontSize="xs" color="#c08080" textAlign="center" mt={1} fontWeight="semibold">
+          You are dead — you cannot take action until you revive.
+        </Text>
+      )}
+      {cp.nextCombatAt && !heroDead && (
+        <Text fontSize="xs" color={HUD_PANEL_TEXT_MUTED} textAlign="center" mt={1}>
+          {formatCombatCooldownHint(cp.nextCombatAt)}
+        </Text>
+      )}
       <Grid templateColumns="1fr 1fr" gap={3} mt={2} w="100%" alignItems="start">
         <GridItem minW={0}>
           <Stack gap={0} flexShrink={0}>
@@ -622,7 +682,12 @@ export default function QffPlayPage() {
         value={line}
         onChange={(e) => setLine(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter") submit();
+          if (e.key !== "Enter") return;
+          if (commandInFlightRef.current) {
+            e.preventDefault();
+            return;
+          }
+          void submit();
         }}
         bg="#1e1e1e"
         borderColor="#a0a0a0"
@@ -632,9 +697,12 @@ export default function QffPlayPage() {
           boxShadow: "none",
         }}
         autoFocus
+        disabled={heroDead || commandPending}
+        aria-busy={commandPending}
+        aria-disabled={heroDead || commandPending}
       />
-      <QffButton type="button" onClick={submit}>
-        Send
+      <QffButton type="button" onClick={submit} disabled={heroDead || commandPending}>
+        {commandPending ? "…" : "Send"}
       </QffButton>
     </Flex>
   );
@@ -654,8 +722,9 @@ export default function QffPlayPage() {
     >
       <Flex flexShrink={0} justify="space-between" align="center" mb={4} flexWrap="wrap" gap={2}>
         <Flex align="baseline" flexWrap="wrap" gap={1} minW={0}>
-          <Heading size="md" color={t.primary}>
+          <Heading size="md" color={heroDead ? "#888888" : t.primary}>
             {room.name}
+            {heroDead ? " (dead)" : ""}
           </Heading>
           <Text as="span" fontSize="sm" color={t.secondary}>
             {"  |  "}

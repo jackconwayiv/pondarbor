@@ -18,10 +18,17 @@ from qff.combat_math import (
 )
 from qff.constants import (
     COMBAT_ROUND_SECONDS,
+    GUTS_EQUIPMENT_KEEP_GUTS_DIVISOR,
+    GUTS_EQUIPMENT_KEEP_MAX_PCT,
     MONSTER_SENSE_ADJACENT_DC,
     PURSUIT_STEP_SECONDS,
 )
-from qff.game_helpers import encumbrance_excess, presence_threshold, roll_d100
+from qff.game_helpers import (
+    encumbrance_excess,
+    modified_stats,
+    presence_threshold,
+    roll_d100,
+)
 from qff.models import (
     Character,
     Item,
@@ -144,12 +151,19 @@ def _retarget_or_pursue_leaver(
     mname = monster.template.name
     dir_label = _exit_direction_label(old_room_id, dest_room_id)
     if dest and dest.is_safe:
-        # Hero left combat by entering safe; keep chase along path but no engagement.
+        # Hero reached safety: drop engagement and pursuit (no pathing through safe rooms).
         monster.engaged_character_id = None
-        monster.pursuit_target_character_id = leaver.pk
-    else:
-        monster.engaged_character_id = leaver.pk
-        monster.pursuit_target_character_id = leaver.pk
+        monster.pursuit_target_character_id = None
+        monster.pursuit_path = []
+        monster.next_pursuit_at = None
+        monster.monster_strike_pending = False
+        _narrate(
+            old_room_id,
+            f"The {mname} snarls but does not follow {leaver.name} toward the {dir_label}.",
+        )
+        return
+    monster.engaged_character_id = leaver.pk
+    monster.pursuit_target_character_id = leaver.pk
     _narrate(
         old_room_id,
         f"{mname} pursues {leaver.name} toward the {dir_label}.",
@@ -210,6 +224,9 @@ def monsters_follow_hero_move(hero: Character, old_room_id: int, dest_room_id: i
             update_fields=[
                 "engaged_character",
                 "pursuit_target_character",
+                "pursuit_path",
+                "next_pursuit_at",
+                "monster_strike_pending",
                 "updated_at",
             ]
         )
@@ -249,11 +266,18 @@ def monsters_follow_hero_move(hero: Character, old_room_id: int, dest_room_id: i
 def safe_room_disengage(hero: Character, room: Room) -> bool:
     if not room.is_safe:
         return False
-    had = MonsterInstance.objects.filter(engaged_character_id=hero.pk).exists()
-    if not had:
+    had_engaged = MonsterInstance.objects.filter(engaged_character_id=hero.pk).exists()
+    had_pursuit = MonsterInstance.objects.filter(pursuit_target_character_id=hero.pk).exists()
+    if not had_engaged and not had_pursuit:
         return False
-    MonsterInstance.objects.filter(engaged_character_id=hero.pk).update(
+    MonsterInstance.objects.filter(
+        Q(engaged_character_id=hero.pk) | Q(pursuit_target_character_id=hero.pk)
+    ).update(
         engaged_character_id=None,
+        pursuit_target_character_id=None,
+        pursuit_path=[],
+        next_pursuit_at=None,
+        monster_strike_pending=False,
         updated_at=timezone.now(),
     )
     hero.next_action_at = None
@@ -268,41 +292,53 @@ def safe_room_disengage(hero: Character, room: Room) -> bool:
     return True
 
 
+def try_bind_monster_to_room_heroes(monster: MonsterInstance, room_id: int, now) -> bool:
+    """Pick a living hero in ``room_id`` and start engagement + strike wind-up. Returns True if bound."""
+    if monster.current_room_id != room_id:
+        return False
+    if monster.engaged_character_id:
+        return False
+    heroes = _heroes_in_room(room_id)
+    if not heroes:
+        return False
+    target = _pick_engagement_target(room_id)
+    if not target:
+        return False
+    monster.engaged_character_id = target.pk
+    monster.pursuit_target_character_id = target.pk
+    monster.monster_strike_pending = True
+    if monster.next_action_at is None:
+        monster.next_action_at = now + timedelta(seconds=COMBAT_ROUND_SECONDS)
+    monster.save(
+        update_fields=[
+            "engaged_character",
+            "pursuit_target_character",
+            "monster_strike_pending",
+            "next_action_at",
+            "updated_at",
+        ]
+    )
+    mname = monster.template.name
+    _narrate(
+        room_id,
+        f"{mname} prepares to strike you!",
+        target_character_id=target.pk,
+    )
+    for h in heroes:
+        if h.pk != target.pk:
+            _narrate(
+                room_id,
+                f"{mname} prepares to strike {target.name}!",
+                target_character_id=h.pk,
+            )
+    return True
+
+
 def engage_monsters_for_new_arrivals(hero: Character, room_id: int) -> None:
     for m in MonsterInstance.objects.filter(current_room_id=room_id).select_related("template"):
         if m.engaged_character_id:
             continue
-        heroes = _heroes_in_room(room_id)
-        if not heroes:
-            continue
-        target = _pick_engagement_target(room_id)
-        if not target:
-            continue
-        m.engaged_character_id = target.pk
-        m.pursuit_target_character_id = target.pk
-        if m.next_action_at is None:
-            m.next_action_at = timezone.now() + timedelta(seconds=COMBAT_ROUND_SECONDS)
-        m.save(
-            update_fields=[
-                "engaged_character",
-                "pursuit_target_character",
-                "next_action_at",
-                "updated_at",
-            ]
-        )
-        mname = m.template.name
-        _narrate(
-            room_id,
-            f"{mname} prepares to attack you!",
-            target_character_id=target.pk,
-        )
-        for h in heroes:
-            if h.pk != target.pk:
-                _narrate(
-                    room_id,
-                    f"{mname} prepares to attack {target.name}!",
-                    target_character_id=h.pk,
-                )
+        try_bind_monster_to_room_heroes(m, room_id, timezone.now())
 
 
 def sense_adjacent_monsters(hero: Character, room_id: int) -> None:
@@ -311,12 +347,17 @@ def sense_adjacent_monsters(hero: Character, room_id: int) -> None:
             continue
         roll = roll_d100() + int(hero.sense) - encumbrance_excess(hero)
         if roll >= MONSTER_SENSE_ADJACENT_DC:
-            label = ex.get_direction_display().lower()
-            _narrate(
-                room_id,
-                f"You sense the presence of an enemy to the {label}.",
-                target_character_id=hero.pk,
-            )
+            d = ex.direction
+            if d == RoomExit.Direction.UP:
+                line = "You sense the presence of an enemy above you."
+            elif d == RoomExit.Direction.DOWN:
+                line = "You sense the presence of an enemy below you."
+            elif d in (RoomExit.Direction.IN, RoomExit.Direction.OUT):
+                line = "You sense the presence of an enemy through the entryway."
+            else:
+                label = ex.get_direction_display().lower()
+                line = f"You sense the presence of an enemy to the {label}."
+            _narrate(room_id, line, target_character_id=hero.pk)
 
 
 def maybe_spawn_lairs(now) -> set[int]:
@@ -344,6 +385,8 @@ def maybe_spawn_lairs(now) -> set[int]:
         room.lair_last_instance_id = inst.pk
         room.lair_next_spawn_at = None
         room.save(update_fields=["lair_last_instance", "lair_next_spawn_at", "updated_at"])
+        inst = MonsterInstance.objects.select_related("template").get(pk=inst.pk)
+        try_bind_monster_to_room_heroes(inst, room.pk, now)
         affected.add(room.pk)
     return affected
 
@@ -351,21 +394,55 @@ def maybe_spawn_lairs(now) -> set[int]:
 def award_kill(monster: MonsterInstance, room_id: int, now) -> None:
     tpl = monster.template
     heroes = _heroes_in_room(room_id)
-    if heroes and tpl.xp_value:
-        share = tpl.xp_value // len(heroes)
-        for h in heroes:
-            h.xp = int(h.xp) + share
-            h.save(update_fields=["xp", "updated_at"])
+    xp_val = int(tpl.xp_value or 0)
+    if heroes and xp_val:
+        contrib = {str(k): int(v) for k, v in (monster.xp_contribution or {}).items()}
+        weights = [max(0, contrib.get(str(h.pk), 0)) for h in heroes]
+        total_w = sum(weights)
+        if total_w <= 0:
+            share = xp_val // len(heroes)
+            rem = xp_val - share * len(heroes)
+            for i, h in enumerate(heroes):
+                add = share + (1 if i < rem else 0)
+                h.xp = int(h.xp) + add
+                h.save(update_fields=["xp", "updated_at"])
+        else:
+            amounts = []
+            allocated = 0
+            for w in weights:
+                amt = (xp_val * w) // total_w
+                amounts.append(amt)
+                allocated += amt
+            rem = xp_val - allocated
+            for i in range(rem):
+                amounts[i % len(heroes)] += 1
+            for h, add in zip(heroes, amounts, strict=True):
+                h.xp = int(h.xp) + add
+                h.save(update_fields=["xp", "updated_at"])
     gold = random.randint(int(tpl.gold_min), int(tpl.gold_max))
     if gold > 0:
         RoomGoldPile.objects.create(room_id=room_id, amount_remaining=gold, label=tpl.name)
         _narrate(room_id, f"{tpl.name} drops {gold} gold.")
+    loot_rows: list[tuple[int, dict]] = []
     for entry in tpl.loot_table or []:
         if not isinstance(entry, dict):
             continue
         slug = entry.get("slug") or entry.get("item_slug")
         if not slug:
             continue
+        raw_ch = entry.get("chance", entry.get("pct"))
+        if raw_ch is None:
+            ch = 100
+        else:
+            ch = max(0, min(100, int(raw_ch)))
+        loot_rows.append((ch, entry))
+    # One d100 per row, in template list order (do not reorder by chance).
+    for ch, entry in loot_rows:
+        if ch <= 0:
+            continue
+        if roll_d100() > ch:
+            continue
+        slug = entry.get("slug") or entry.get("item_slug")
         qty = max(1, int(entry.get("qty", entry.get("quantity", 1))))
         item = Item.objects.filter(slug=str(slug)).first()
         if not item:
@@ -379,6 +456,7 @@ def award_kill(monster: MonsterInstance, room_id: int, now) -> None:
             floor_dropped_at=timezone.now(),
         )
         _narrate(room_id, f"The {tpl.name} drops {item.name}.")
+        break
     lair_room_id = monster.lair_room_id
     monster.delete()
     if lair_room_id:
@@ -394,15 +472,23 @@ def _resolve_monster_strike(monster: MonsterInstance, now) -> None:
     room_id = monster.current_room_id
     tgt_id = monster.engaged_character_id
     if not tgt_id:
-        mname = monster.template.name
+        m2 = MonsterInstance.objects.select_related("template").get(pk=monster.pk)
+        if try_bind_monster_to_room_heroes(m2, room_id, now):
+            return
+        mname = m2.template.name
         _narrate(room_id, f"{mname} is spoiling for a fight.")
         return
     hero = _character_for_combat(tgt_id)
     if not hero or hero.current_room_id != room_id:
         return
-    atk = monster_attacker_stats(monster.template)
+    tpl = monster.template
+    lo, hi = int(tpl.damage_min), int(tpl.damage_max)
+    if hi < lo:
+        lo, hi = hi, lo
+    rolled = random.randint(lo, hi)
+    atk = monster_attacker_stats(tpl)
     dfn = hero_defender_stats(hero)
-    res = resolve_physical_strike(atk, dfn)
+    res = resolve_physical_strike(atk, dfn, flat_base_damage=rolled)
     mname = monster.template.name
     if res.outcome == "miss":
         _narrate(
@@ -448,7 +534,7 @@ def _resolve_monster_strike(monster: MonsterInstance, now) -> None:
         if h.pk != hero.pk:
             _narrate(room_id, hit_peer, target_character_id=h.pk)
     if nh <= 0:
-        _hero_die(hero, room_id)
+        _hero_die(hero, room_id, killer_monster_id=monster.pk)
 
 
 def _resolve_hero_strike(char: Character, now) -> None:
@@ -505,6 +591,12 @@ def _resolve_hero_strike(char: Character, now) -> None:
     dmg = res.damage
     nm = max(0, int(monster.cur_hp) - dmg)
     MonsterInstance.objects.filter(pk=monster.pk).update(cur_hp=nm, updated_at=timezone.now())
+    if dmg > 0:
+        m2 = MonsterInstance.objects.get(pk=monster.pk)
+        cdict = dict(m2.xp_contribution or {})
+        cdict[str(char.pk)] = int(cdict.get(str(char.pk), 0)) + dmg
+        m2.xp_contribution = cdict
+        m2.save(update_fields=["xp_contribution", "updated_at"])
     monster = MonsterInstance.objects.get(pk=monster.pk)
     if res.outcome == "crit":
         you = f"You land a critical hit on the {mname} for {dmg} damage!"
@@ -540,6 +632,11 @@ def _resolve_hero_strike(char: Character, now) -> None:
 def hero_drop_all(hero: Character) -> None:
     rid = hero.current_room_id
     g = int(int(hero.gold) * 0.25)
+    guts = int(modified_stats(hero)["guts"])
+    keep_pct = min(
+        GUTS_EQUIPMENT_KEEP_MAX_PCT,
+        1 + guts // GUTS_EQUIPMENT_KEEP_GUTS_DIVISOR,
+    )
     slot_attrs = (
         "head_item",
         "main_hand_item",
@@ -555,6 +652,8 @@ def hero_drop_all(hero: Character) -> None:
     for attr in slot_attrs:
         inst = getattr(hero, attr, None)
         if inst:
+            if roll_d100() <= keep_pct:
+                continue
             setattr(hero, attr, None)
             ItemInstance.objects.filter(pk=inst.pk).update(
                 room_id=rid,
@@ -572,7 +671,7 @@ def hero_drop_all(hero: Character) -> None:
     hero.save(update_fields=["gold", "inventory", *slot_attrs])
 
 
-def _hero_die(hero: Character, room_id: int) -> None:
+def _hero_die(hero: Character, room_id: int, killer_monster_id: int | None = None) -> None:
     for h in _heroes_in_room(room_id):
         if h.pk == hero.pk:
             _narrate(room_id, "You were slain!", target_character_id=h.pk)
@@ -601,8 +700,19 @@ def _hero_die(hero: Character, room_id: int) -> None:
     )
     MonsterInstance.objects.filter(pursuit_target_character_id=hero.pk).update(
         pursuit_target_character_id=None,
+        pursuit_path=[],
+        next_pursuit_at=None,
+        monster_strike_pending=False,
         updated_at=timezone.now(),
     )
+    if killer_monster_id:
+        killer = (
+            MonsterInstance.objects.select_related("template")
+            .filter(pk=killer_monster_id)
+            .first()
+        )
+        if killer and killer.current_room_id == room_id:
+            try_bind_monster_to_room_heroes(killer, room_id, timezone.now())
 
 
 def _revive_heroes(now) -> None:
@@ -651,9 +761,17 @@ def flush_pursuit_steps(now) -> set[int]:
         nxt = path[0]
         dest = Room.objects.filter(pk=nxt).first()
         if dest and dest.is_safe:
+            # Do not skip through safe rooms; abandon pursuit instead of teleporting the path.
+            pu = m.pursuit_target_character_id
+            engaged_clear = {}
+            if pu and m.engaged_character_id == pu:
+                engaged_clear = {"engaged_character_id": None}
             MonsterInstance.objects.filter(pk=m.pk).update(
-                pursuit_path=path[1:],
-                next_pursuit_at=now + timedelta(seconds=PURSUIT_STEP_SECONDS),
+                pursuit_path=[],
+                pursuit_target_character_id=None,
+                next_pursuit_at=None,
+                monster_strike_pending=False,
+                **engaged_clear,
                 updated_at=timezone.now(),
             )
             continue
@@ -688,63 +806,88 @@ def flush_combat_rounds(now) -> set[int]:
     due_h = list(
         Character.objects.filter(next_action_at__lte=now, is_dead=False).order_by("id")
     )
-    actors: list[tuple[int, str, int, object]] = []
-    for m in due_m:
-        actors.append((_initiative_roll_monster(m), "m", m.pk, m))
-    for h in due_h:
-        actors.append((_initiative_roll_hero(h), "h", h.pk, h))
-    actors.sort(key=lambda x: (-x[0], x[1], x[2]))
+    room_ids = {m.current_room_id for m in due_m} | {h.current_room_id for h in due_h}
+    m_by_pk = {m.pk: m for m in due_m}
+    h_by_pk = {h.pk: h for h in due_h}
 
-    seen_m: set[int] = set()
-    seen_h: set[int] = set()
-    for _roll, kind, pk, _obj in actors:
-        if kind == "m":
-            if pk in seen_m:
-                continue
-            m = MonsterInstance.objects.select_related("template").filter(pk=pk).first()
-            if not m or not m.next_action_at or m.next_action_at > now:
-                continue
-            seen_m.add(pk)
-            tgt = m.engaged_character_id
-            if tgt:
-                mname = m.template.name
-                _narrate(
-                    m.current_room_id,
-                    f"{mname} is engaged in combat with you!",
-                    target_character_id=tgt,
+    for room_id in sorted(room_ids):
+        entries: list[tuple[str, int]] = []
+        for m in due_m:
+            if m.current_room_id == room_id:
+                entries.append(("m", m.pk))
+        for h in due_h:
+            if h.current_room_id == room_id:
+                entries.append(("h", h.pk))
+        actors: list[tuple[int, str, int]] = []
+        for kind, pk in entries:
+            if kind == "m":
+                mi = m_by_pk.get(pk)
+                if mi:
+                    actors.append((_initiative_roll_monster(mi), "m", pk))
+            else:
+                hi = h_by_pk.get(pk)
+                if hi:
+                    actors.append((_initiative_roll_hero(hi), "h", pk))
+        actors.sort(key=lambda x: (-x[0], x[1], x[2]))
+
+        seen_m: set[int] = set()
+        seen_h: set[int] = set()
+        for _roll, kind, pk in actors:
+            if kind == "m":
+                if pk in seen_m:
+                    continue
+                m = MonsterInstance.objects.select_related("template").filter(pk=pk).first()
+                if not m or not m.next_action_at or m.next_action_at > now:
+                    continue
+                seen_m.add(pk)
+                tgt = m.engaged_character_id
+                if tgt and not m.monster_strike_pending:
+                    mname = m.template.name
+                    _narrate(
+                        m.current_room_id,
+                        f"The {mname} prepares to strike!",
+                        target_character_id=tgt,
+                    )
+                    hc = Character.objects.filter(pk=tgt).first()
+                    hn = hc.name if hc else "someone"
+                    for h in _heroes_in_room(m.current_room_id):
+                        if h.pk != tgt:
+                            _narrate(
+                                m.current_room_id,
+                                f"The {mname} prepares to strike at {hn}!",
+                                target_character_id=h.pk,
+                            )
+                    MonsterInstance.objects.filter(pk=m.pk).update(
+                        monster_strike_pending=True,
+                        next_action_at=now + timedelta(seconds=COMBAT_ROUND_SECONDS),
+                        updated_at=timezone.now(),
+                    )
+                    affected.add(m.current_room_id)
+                    continue
+                _resolve_monster_strike(m, now)
+                MonsterInstance.objects.filter(pk=m.pk).update(
+                    next_action_at=now + timedelta(seconds=COMBAT_ROUND_SECONDS),
+                    monster_strike_pending=False,
+                    updated_at=timezone.now(),
                 )
-                hc = Character.objects.filter(pk=tgt).first()
-                hn = hc.name if hc else "someone"
-                for h in _heroes_in_room(m.current_room_id):
-                    if h.pk != tgt:
-                        _narrate(
-                            m.current_room_id,
-                            f"{mname} is engaged in combat with {hn}!",
-                            target_character_id=h.pk,
-                        )
-            _resolve_monster_strike(m, now)
-            MonsterInstance.objects.filter(pk=m.pk).update(
-                next_action_at=now + timedelta(seconds=COMBAT_ROUND_SECONDS),
-                updated_at=timezone.now(),
-            )
-            affected.add(m.current_room_id)
-        else:
-            if pk in seen_h:
-                continue
-            h = Character.objects.filter(pk=pk, is_dead=False).first()
-            if not h or not h.next_action_at or h.next_action_at > now:
-                continue
-            seen_h.add(pk)
-            _resolve_hero_strike(h, now)
-            Character.objects.filter(pk=h.pk).update(
-                next_action_at=now + timedelta(seconds=COMBAT_ROUND_SECONDS),
-                updated_at=timezone.now(),
-            )
-            affected.add(h.current_room_id)
+                affected.add(m.current_room_id)
+            else:
+                if pk in seen_h:
+                    continue
+                h = Character.objects.filter(pk=pk, is_dead=False).first()
+                if not h or not h.next_action_at or h.next_action_at > now:
+                    continue
+                seen_h.add(pk)
+                _resolve_hero_strike(h, now)
+                Character.objects.filter(pk=h.pk).update(
+                    next_action_at=now + timedelta(seconds=COMBAT_ROUND_SECONDS),
+                    updated_at=timezone.now(),
+                )
+                affected.add(h.current_room_id)
     return affected
 
 
-def run_lazy_simulation(now=None) -> list[int]:
+def run_lazy_simulation(now=None, *, notify_rooms: bool = True) -> list[int]:
     now = now or timezone.now()
     rooms: set[int] = set()
     with transaction.atomic():
@@ -752,7 +895,7 @@ def run_lazy_simulation(now=None) -> list[int]:
         rooms |= flush_pursuit_steps(now)
         rooms |= flush_combat_rounds(now)
         _revive_heroes(now)
-    if rooms:
+    if rooms and notify_rooms:
         notify_qff_rooms(rooms)
     return list(rooms)
 

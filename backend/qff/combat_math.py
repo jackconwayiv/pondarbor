@@ -7,6 +7,7 @@ import random
 from dataclasses import dataclass
 from typing import Literal
 
+from qff.constants import UNARMED_WEAPON_RATING
 from qff.game_helpers import (
     _equipped_items,
     modified_stats,
@@ -110,8 +111,9 @@ def sum_equipped_combat_bonuses(character: Character) -> dict:
 def main_hand_weapon_damage(character: Character) -> int:
     inst = character.main_hand_item
     if not inst:
-        return 0
-    return int(inst.item.damage or 0)
+        return UNARMED_WEAPON_RATING
+    d = int(inst.item.damage or 0)
+    return UNARMED_WEAPON_RATING if d <= 0 else d
 
 
 def hero_attacker_stats(character: Character) -> dict:
@@ -152,24 +154,29 @@ def monster_defender_stats(monster: MonsterInstance) -> dict:
 
 
 def monster_attacker_stats(template: MonsterTemplate) -> dict:
-    weapon = int(round((int(template.damage_min) + int(template.damage_max)) / 2))
     return {
         "atk_moves": int(template.moves or 0),
         "weapon_accuracy": int(template.accuracy or 0),
-        "weapon": weapon,
+        "weapon": 0,
         "gains": max(1, int(template.level)),
         "level": int(template.level),
         "sense": 0,
-        "crit_chance_bonus_pct": 0,
-        "crit_damage_bonus": 0.0,
-        "penetration": 0,
-        "dodge_reduction": 0,
-        "dodge_ignore": 0,
+        "crit_chance_bonus_pct": int(template.crit_chance_bonus_pct or 0),
+        "crit_damage_bonus": float(template.crit_damage_bonus or 0),
+        "penetration": int(template.penetration or 0),
+        "dodge_reduction": int(template.dodge_reduction or 0),
+        "dodge_ignore": int(template.dodge_ignore or 0),
     }
 
 
-def resolve_physical_strike(attacker: dict, defender: dict) -> StrikeResult:
-    """Roll hit → dodge → crit; apply mitigation. Uses global RNG."""
+def resolve_physical_strike(
+    attacker: dict, defender: dict, *, flat_base_damage: int | None = None
+) -> StrikeResult:
+    """Roll hit → dodge → crit; apply mitigation. Uses global RNG.
+
+    If ``flat_base_damage`` is set (typical for monsters), it replaces the
+    hero-style ``compute_base_damage`` weapon/gains/level formula for this strike.
+    """
     hit_chance = compute_hit_chance(
         attacker["atk_moves"],
         attacker["weapon_accuracy"],
@@ -212,9 +219,12 @@ def resolve_physical_strike(attacker: dict, defender: dict) -> StrikeResult:
     )
     crit_ch = min(0.95, max(0.0, crit_ch))
 
-    base = compute_base_damage(
-        attacker["weapon"], attacker["gains"], attacker["level"]
-    )
+    if flat_base_damage is not None:
+        base = max(1, int(flat_base_damage))
+    else:
+        base = compute_base_damage(
+            attacker["weapon"], attacker["gains"], attacker["level"]
+        )
     crit_mult = compute_crit_multiplier(
         attacker["level"], attacker["crit_damage_bonus"]
     )

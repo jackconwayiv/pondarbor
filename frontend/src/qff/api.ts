@@ -115,6 +115,8 @@ export type QffSessionWithCharacter = {
     youSee: string[];
     npcs?: Array<{ slug: string; name: string }>;
     interactables?: Array<{ slug: string; name: string; kind: string }>;
+    monsters?: Array<{ id: number; slug: string; name: string; cur_hp: number; max_hp: number }>;
+    gold_piles?: Array<{ id: number; amount: number; label: string }>;
   };
   area: { id: number; name: string; theme: QffAreaTheme };
   exits: QffExit[];
@@ -125,7 +127,8 @@ export type QffSessionWithCharacter = {
     grids: QffAreaMapGrid[];
   };
   character_profile: QffCharacterProfile;
-  action_log: string[];
+  /** Room narrative queue; ids prevent duplicate lines when HTTP and WebSocket both deliver a session. */
+  action_log: Array<{ id: number; text: string }>;
 };
 
 export type QffStatBlock = {
@@ -142,6 +145,10 @@ export type QffCharacterProfile = {
   level: number;
   xp: number;
   gold: number;
+  /** When true, the hero cannot act until revive. */
+  isDead?: boolean;
+  /** ISO timestamp for next combat round action, if armed. */
+  nextCombatAt?: string | null;
   curHealth: number;
   maxHealth: number;
   curMana: number;
@@ -177,6 +184,8 @@ export type QffSession = QffSessionNoCharacter | QffSessionWithCharacter;
 export type QffCommandResponse = {
   messages: string[];
   session: QffSessionWithCharacter;
+  /** When true, the client should show the user's raw command line with the messages. */
+  echo_command?: boolean;
 };
 
 export async function fetchQffSession(accessToken: string | null): Promise<QffSession> {
@@ -532,6 +541,11 @@ export type DmMonsterTemplate = {
   loot_table: unknown[];
   armor: number;
   accuracy: number;
+  penetration?: number;
+  crit_chance_bonus_pct?: number;
+  crit_damage_bonus?: number;
+  dodge_reduction?: number;
+  dodge_ignore?: number;
 };
 
 export async function dmFetchMonsterTemplates(

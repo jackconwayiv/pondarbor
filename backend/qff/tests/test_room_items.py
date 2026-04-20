@@ -15,6 +15,7 @@ from qff.models import (
     Quest,
     QuestState,
     Room,
+    RoomGoldPile,
     RoomItem,
 )
 from qff.session_payload import build_session_for_character
@@ -122,6 +123,16 @@ class RoomItemTests(TestCase):
         labels = self._you_see(c)
         # Floor instance still appears once; room slot must not add a second label.
         self.assertEqual(labels.count("Brass Key"), 1, labels)
+
+    def test_you_see_includes_gold_piles(self):
+        RoomGoldPile.objects.create(room=self.room, amount_remaining=12, label="")
+        RoomGoldPile.objects.create(
+            room=self.room, amount_remaining=5, label="Sewer Rat"
+        )
+        c = self._char("Goldy")
+        labels = self._you_see(c)
+        self.assertIn("12 gold", labels)
+        self.assertIn("5 gold (Sewer Rat)", labels)
 
     def test_look_at_room_item_uses_template(self):
         RoomItem.objects.create(room=self.room, item=self.item)

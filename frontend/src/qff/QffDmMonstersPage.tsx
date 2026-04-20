@@ -35,6 +35,11 @@ function emptyForm(): Partial<DmMonsterTemplate> {
     gold_max: 0,
     armor: 0,
     accuracy: 0,
+    penetration: 0,
+    crit_chance_bonus_pct: 0,
+    crit_damage_bonus: 0,
+    dodge_reduction: 0,
+    dodge_ignore: 0,
     loot_table: [],
   };
 }
@@ -120,8 +125,9 @@ export default function QffDmMonstersPage() {
         </QffButton>
       </Flex>
       <Text mb={4} color="#889977" fontSize="sm">
-        Edit stats, armor, accuracy, and loot JSON. New templates: create via API or Django admin
-        for now.
+        Edit stats, armor, accuracy, penetration/crit/dodge mods, and loot JSON. Each loot row
+        may include chance (1–100); rows sort ascending by chance; first successful d100 wins one
+        drop. New templates: API or Django admin.
       </Text>
       {err && (
         <Text color="nautical.solid" mb={4} role="alert">
@@ -190,6 +196,11 @@ export default function QffDmMonstersPage() {
                     ["gold_max", "Gold max"],
                     ["armor", "Armor"],
                     ["accuracy", "Accuracy"],
+                    ["penetration", "Penetration"],
+                    ["crit_chance_bonus_pct", "Crit % pts"],
+                    ["crit_damage_bonus", "Crit dmg+"],
+                    ["dodge_reduction", "Dodge red."],
+                    ["dodge_ignore", "Dodge ign."],
                   ] as const
                 ).map(([key, label]) => (
                   <Field.Root key={key} maxW="140px">
@@ -198,8 +209,13 @@ export default function QffDmMonstersPage() {
                       type="number"
                       value={String(form[key] ?? 0)}
                       onChange={(e) => {
-                        const n = parseInt(e.target.value, 10);
-                        setForm((f) => ({ ...f, [key]: Number.isFinite(n) ? n : 0 }));
+                        if (key === "crit_damage_bonus") {
+                          const n = parseFloat(e.target.value);
+                          setForm((f) => ({ ...f, [key]: Number.isFinite(n) ? n : 0 }));
+                        } else {
+                          const n = parseInt(e.target.value, 10);
+                          setForm((f) => ({ ...f, [key]: Number.isFinite(n) ? n : 0 }));
+                        }
                       }}
                       bg="#222"
                     />

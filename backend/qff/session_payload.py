@@ -78,8 +78,8 @@ def others_here(character) -> list[str]:
     return list(qs)
 
 
-def consume_room_broadcasts(character) -> list[str]:
-    """Return new broadcast lines for this character and advance cursor."""
+def consume_room_broadcast_entries(character) -> list[dict]:
+    """Return new room broadcasts as ``{id, text}`` and advance ``last_room_broadcast_id``."""
     qs = (
         RoomBroadcast.objects.filter(
             room_id=character.current_room_id,
@@ -90,11 +90,16 @@ def consume_room_broadcasts(character) -> list[str]:
         .order_by("id")
     )
     rows = list(qs)
-    lines = [b.text for b in rows]
+    out = [{"id": b.id, "text": b.text} for b in rows]
     if rows:
         character.last_room_broadcast_id = rows[-1].id
         character.save(update_fields=["last_room_broadcast_id", "updated_at"])
-    return lines
+    return out
+
+
+def consume_room_broadcasts(character) -> list[str]:
+    """Return new broadcast lines only (see ``consume_room_broadcast_entries`` for ids)."""
+    return [str(e["text"]) for e in consume_room_broadcast_entries(character)]
 
 
 def build_area_map(character) -> dict:
@@ -308,11 +313,28 @@ def _room_item_labels(
     return out
 
 
+def _room_gold_pile_labels(room_id: int) -> list[str]:
+    """Unpicked gold on the floor (monster drops, death tolls, etc.)."""
+    out: list[str] = []
+    for p in RoomGoldPile.objects.filter(
+        room_id=room_id, amount_remaining__gt=0
+    ).order_by("id"):
+        amt = int(p.amount_remaining)
+        lab = (p.label or "").strip()
+        if lab:
+            out.append(f"{amt} gold ({lab})")
+        else:
+            out.append(f"{amt} gold")
+    return out
+
+
 def _room_you_see_tail_labels(room_id: int, character) -> list[str]:
-    """Floor instances and room item slots (after interactable names in the HUD)."""
+    """Gold piles, floor instances, and room item slots (after interactable names in the HUD)."""
     floor_template_ids = unowned_floor_item_template_ids_in_room(room_id)
-    return _room_floor_labels(room_id, character) + _room_item_labels(
-        room_id, character, floor_template_ids
+    return (
+        _room_gold_pile_labels(room_id)
+        + _room_floor_labels(room_id, character)
+        + _room_item_labels(room_id, character, floor_template_ids)
     )
 
 
@@ -396,7 +418,7 @@ def build_session_for_character(character) -> dict:
             }
         )
 
-    action_log = consume_room_broadcasts(character)
+    action_log = consume_room_broadcast_entries(character)
 
     room_interactables = list(
         Interactable.objects.filter(room_id=room.id).order_by("name")

@@ -39,6 +39,7 @@ from qff.monster_sim import (
     _resolve_hero_strike,
     _resolve_monster_strike,
     award_kill,
+    engage_monsters_for_new_arrivals,
     hero_drop_all,
     maybe_spawn_lairs,
     run_lazy_simulation,
@@ -591,6 +592,28 @@ class MonsterCombatTests(TestCase):
             log_tone="hero_hit",
         ).first()
         self.assertIsNotNone(b)
+
+    def test_engage_monsters_pursuit_preserves_strike_pending(self):
+        """Arriving hero + monster pursuing them must not restart wind-up via random bind."""
+        na = timezone.now() + timedelta(seconds=3)
+        self.monster.engaged_character_id = None
+        self.monster.pursuit_target_character_id = self.hero.pk
+        self.monster.monster_strike_pending = True
+        self.monster.next_action_at = na
+        self.monster.save(
+            update_fields=[
+                "engaged_character",
+                "pursuit_target_character",
+                "monster_strike_pending",
+                "next_action_at",
+                "updated_at",
+            ]
+        )
+        engage_monsters_for_new_arrivals(self.hero, self.room_danger.id)
+        self.monster.refresh_from_db()
+        self.assertEqual(self.monster.engaged_character_id, self.hero.pk)
+        self.assertTrue(self.monster.monster_strike_pending)
+        self.assertEqual(self.monster.next_action_at, na)
 
     def test_try_bind_preserves_next_action_when_pursuing_same_hero(self):
         """Monster already chasing the hero keeps its combat timer when bind runs again."""

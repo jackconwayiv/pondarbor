@@ -5,6 +5,7 @@ import time
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.db.models import Max
 from django.db.models.deletion import ProtectedError
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -309,6 +310,8 @@ def command_view(request):
                 room=command_room,
                 room_name=command_room_name,
             )
+        # Max broadcast id after execute_command, before lazy sim — splits ambient/exec vs combat sim.
+        max_after_exec = RoomBroadcast.objects.aggregate(m=Max("id"))["m"] or 0
         char = _get_character(request.user)
         affected: list[int] = []
         if char:
@@ -316,11 +319,24 @@ def command_view(request):
             affected = run_lazy_simulation(notify_rooms=False)
             sim_ms = (time.perf_counter() - t1) * 1000
             char = _get_character(request.user)
+        enc_lines: list[str] = []
         if char and encumbrance_excess(char) > 0:
-            messages.append("You are encumbered!")
+            enc_lines.append("You are encumbered!")
+        messages.extend(enc_lines)
         t2 = time.perf_counter()
         session = build_session_for_character(char, world_sync=False)
         session_ms = (time.perf_counter() - t2) * 1000
+        # Chronological narrative: room broadcasts during command, then command lines, then sim, then encumbrance.
+        raw_log = session.get("action_log") or []
+        if raw_log and char:
+            exec_part = [e for e in raw_log if e["id"] <= max_after_exec]
+            sim_part = [e for e in raw_log if e["id"] > max_after_exec]
+            cmd_only = (
+                messages[: -len(enc_lines)] if enc_lines else list(messages)
+            )
+            synth_cmd = [{"id": -(i + 1), "text": m} for i, m in enumerate(cmd_only)]
+            synth_enc = [{"id": -(200 + i), "text": m} for i, m in enumerate(enc_lines)]
+            session["action_log"] = exec_part + synth_cmd + sim_part + synth_enc
         if char:
             room_ids = frozenset(affected) | {old_room_id, char.current_room_id}
 

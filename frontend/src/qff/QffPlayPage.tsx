@@ -264,21 +264,26 @@ export default function QffPlayPage() {
   }, []);
 
   useEffect(() => {
-    logScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    const el = logScrollRef.current;
+    if (el) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    }
   }, [logLines]);
 
   /** Room broadcasts (targeted + room); skip ids already applied (HTTP + WS can repeat the same session). */
   useEffect(() => {
     const entries = session?.action_log;
     if (!entries?.length) return;
-    const maxIncoming = Math.max(...entries.map((e) => e.id));
     const fresh = entries.filter((e) => e.id > lastBroadcastIdRef.current);
     if (!fresh.length) return;
-    lastBroadcastIdRef.current = Math.max(lastBroadcastIdRef.current, maxIncoming);
+    const posIds = fresh.map((e) => e.id).filter((id) => id > 0);
+    if (posIds.length) {
+      lastBroadcastIdRef.current = Math.max(lastBroadcastIdRef.current, ...posIds);
+    }
     setLogLines((prev) => {
       const nextId = () => logLineIdRef.current++;
       const block = fresh.map((e) => ({ id: nextId(), text: e.text, recent: true }));
-      return [...block, ...prev.map((p) => ({ ...p, recent: false }))];
+      return [...prev.map((p) => ({ ...p, recent: false })), ...block];
     });
   }, [session]);
 
@@ -290,8 +295,8 @@ export default function QffPlayPage() {
       setLogLines((prev) => {
         const nextId = () => logLineIdRef.current++;
         return [
-          { id: nextId(), text: "You are dead and cannot act.", recent: true },
           ...prev.map((p) => ({ ...p, recent: false })),
+          { id: nextId(), text: "You are dead and cannot act.", recent: true },
         ];
       });
       setLine("");
@@ -314,9 +319,9 @@ export default function QffPlayPage() {
         const oid2 = logLineIdRef.current++;
         optimisticCommandLogIdsRef.current = [oid1, oid2];
         setLogLines((prev) => [
+          ...prev.map((p) => ({ ...p, recent: false })),
           { id: oid1, text: `> ${raw}`, recent: true },
           { id: oid2, text: optimisticSecond ?? "…", recent: true },
-          ...prev.map((p) => ({ ...p, recent: false })),
         ]);
         let token = commandTokenRef.current;
         if (!token) {
@@ -341,14 +346,24 @@ export default function QffPlayPage() {
           optimisticCommandLogIdsRef.current = [];
           const filtered = pending.length ? prev.filter((p) => !pending.includes(p.id)) : prev;
           const nextId = () => logLineIdRef.current++;
+          const al = res.session.action_log ?? [];
+          const narr =
+            al.length > 0 ? al.map((e) => e.text) : res.messages;
           const toShow: string[] =
-            res.echo_command === true ? [`> ${raw}`, ...res.messages] : [...res.messages];
+            res.echo_command === true ? [`> ${raw}`, ...narr] : narr;
           const block = toShow.map((text) => ({
             id: nextId(),
             text,
             recent: true,
           }));
-          return [...block, ...filtered.map((p) => ({ ...p, recent: false }))];
+          const pos = al.filter((e) => e.id > 0).map((e) => e.id);
+          if (pos.length) {
+            lastBroadcastIdRef.current = Math.max(
+              lastBroadcastIdRef.current,
+              ...pos,
+            );
+          }
+          return [...filtered.map((p) => ({ ...p, recent: false })), ...block];
         });
       } catch (e) {
         setLogLines((prev) => {
@@ -364,7 +379,7 @@ export default function QffPlayPage() {
               recent: true,
             },
           ];
-          return [...block, ...filtered.map((p) => ({ ...p, recent: false }))];
+          return [...filtered.map((p) => ({ ...p, recent: false })), ...block];
         });
       } finally {
         commandInFlightRef.current = false;

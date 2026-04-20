@@ -66,9 +66,15 @@ def resolved_area_theme(area) -> dict:
 
 
 def others_here_detailed(character) -> list[dict]:
-    """Other heroes in the room, each with ``inactive`` if 5+ minutes since last input."""
+    """Other heroes in the room who have issued a command within the AFK window.
+
+    Characters with no recent input (beyond ``AFK_LOBBY_KICK_MINUTES``) are omitted — they are
+    not treated as present in the realm for this HUD. Among those listed, ``inactive`` is True
+    if their last command was more than ``PRESENCE_MINUTES`` ago.
+    """
     now = timezone.now()
     inactive_threshold = now - timedelta(minutes=PRESENCE_MINUTES)
+    visible_threshold = now - timedelta(minutes=AFK_LOBBY_KICK_MINUTES)
     qs = (
         Character.objects.filter(current_room_id=character.current_room_id)
         .exclude(pk=character.pk)
@@ -77,7 +83,9 @@ def others_here_detailed(character) -> list[dict]:
     )
     out: list[dict] = []
     for name, la in qs:
-        inactive = not la or la < inactive_threshold
+        if not la or la < visible_threshold:
+            continue
+        inactive = la < inactive_threshold
         out.append({"name": name, "inactive": inactive})
     return out
 

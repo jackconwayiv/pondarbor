@@ -179,3 +179,10 @@ class RoomItemTests(TestCase):
             s2["others_here"],
             [{"name": "Peer", "inactive": True}],
         )
+
+        peer.last_activity_at = timezone.now() - timedelta(
+            minutes=AFK_LOBBY_KICK_MINUTES + 1
+        )
+        peer.save(update_fields=["last_activity_at", "updated_at"])
+        s3 = build_session_for_character(c)
+        self.assertEqual(s3["others_here"], [])

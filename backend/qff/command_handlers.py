@@ -72,6 +72,7 @@ from qff.quest_engine import (
     try_item_transitions_on_talk,
     unowned_floor_item_template_ids_in_room,
 )
+from qff.monster_sim import add_gold_to_room_floor
 from qff.shop_engine import (
     browse_shop,
     find_inventory_instance,
@@ -668,6 +669,28 @@ def _handle_move(char: CharacterType, parsed: ParsedMove) -> list[str]:
     return messages
 
 
+def _handle_drop_gold(char: CharacterType, want_qty: int | None) -> list[str]:
+    """Drop gold from wallet onto the room floor (``want_qty`` None = all gold)."""
+    rid = char.current_room_id
+    with transaction.atomic():
+        char = Character.objects.select_for_update().get(pk=char.pk)
+        wallet = int(char.gold or 0)
+        if wallet <= 0:
+            char.save(update_fields=["last_activity_at", "updated_at"])
+            return ["You don't have any gold."]
+        drop_amt = wallet if want_qty is None else min(int(want_qty), wallet)
+        if drop_amt <= 0:
+            char.save(update_fields=["last_activity_at", "updated_at"])
+            return ["Drop how many?"]
+        char.gold = wallet - drop_amt
+        char.last_activity_at = timezone.now()
+        char.save(update_fields=["gold", "last_activity_at", "updated_at"])
+    add_gold_to_room_floor(rid, drop_amt)
+    char = Character.objects.get(pk=char.pk)
+    _notify_peers_third_person(char, rid, f"{char.name} drops {drop_amt} gold.")
+    return [f"You drop {drop_amt} gold."]
+
+
 def _handle_drop(
     char: CharacterType, target: str, want_qty: int | None = None
 ) -> list[str]:
@@ -679,6 +702,13 @@ def _handle_drop(
     if want_qty is not None and want_qty < 1:
         char.save(update_fields=["last_activity_at", "updated_at"])
         return ["Drop how many?"]
+
+    t = (target or "").strip().lower()
+    if _wants_floor_gold_take(target) or (
+        want_qty is not None
+        and t in ("gold", "coins", "coin", "money", "pile")
+    ):
+        return _handle_drop_gold(char, want_qty)
 
     inst = _find_item_instance_inventory_first(char, q)
     if not inst or inst.owner_character_id != char.pk:

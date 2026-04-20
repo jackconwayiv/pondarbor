@@ -14,7 +14,7 @@ LEGACY_START_ROOM_SLUG = "village-well"
 LEGACY_START_AREA_FALLBACK_NAMES = ("Village of Ort",)
 
 PRESENCE_MINUTES = 5
-# Heroes with last_activity older than this are "inactive" in the HUD (still listed).
+# In others_here: listed only if last_activity within AFK_LOBBY_KICK_MINUTES; "inactive" if older than PRESENCE_MINUTES.
 AFK_LOBBY_KICK_MINUTES = 10
 SAY_MAX_LEN = 200
 # Floor items: only removable by neglect after this long on the floor (since last drop).

@@ -1,6 +1,7 @@
 from django.test import SimpleTestCase
 
 from qff.command_parser import (
+    ParsedAttack,
     ParsedBuyAbilities,
     ParsedConsumeItem,
     ParsedGet,
@@ -49,6 +50,12 @@ class CommandParserTests(SimpleTestCase):
         self.assertIsInstance(p, ParsedMove)
         assert isinstance(p, ParsedMove)
         self.assertEqual(p.direction, RoomExit.Direction.OUT)
+
+    def test_mud_prompt_prefix_stripped(self):
+        p = parse_command("> attack sewer rat")
+        self.assertIsInstance(p, ParsedAttack)
+        assert isinstance(p, ParsedAttack)
+        self.assertEqual(p.target, "sewer rat")
 
     def test_search(self):
         self.assertIsInstance(parse_command("search"), ParsedSearch)

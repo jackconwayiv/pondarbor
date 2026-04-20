@@ -1186,7 +1186,7 @@ class MonsterInstance(models.Model):
     next_pursuit_at = models.DateTimeField(null=True, blank=True)
     monster_strike_pending = models.BooleanField(
         default=False,
-        help_text="If True, next combat tick resolves damage (wind-up already shown).",
+        help_text="Legacy field; kept for migrations. Combat no longer uses a separate wind-up tick.",
     )
     xp_contribution = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

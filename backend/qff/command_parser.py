@@ -140,6 +140,8 @@ def _strip_go_prefix(s: str) -> str:
 
 def _normalize(line: str) -> str:
     line = line.strip()
+    # Many MUD clients send a prompt prefix like "> look" or ">> north".
+    line = line.lstrip(">").strip()
     if line.startswith("/"):
         line = line[1:].strip()
     line = _strip_go_prefix(line)

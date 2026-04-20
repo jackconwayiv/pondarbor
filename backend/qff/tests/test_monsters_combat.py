@@ -4,7 +4,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.db.models import Max
+from django.db.models import Max, Q
 from django.test import TestCase
 from django.utils import timezone
 
@@ -42,8 +42,10 @@ from qff.monster_sim import (
     engage_monsters_for_new_arrivals,
     flush_bind_monsters_with_room_heroes,
     flush_combat_rounds,
+    flush_pursuit_steps,
     hero_drop_all,
     maybe_spawn_lairs,
+    monsters_follow_hero_move,
     run_lazy_simulation,
     sense_adjacent_monsters,
     try_bind_monster_to_room_heroes,
@@ -112,7 +114,7 @@ class MonsterCombatTests(TestCase):
             max_hp=5,
             engaged_character=self.hero,
             pursuit_target_character=self.hero,
-            monster_strike_pending=True,
+            monster_strike_pending=False,
         )
 
     def test_attack_sets_timer_and_target(self):
@@ -463,13 +465,75 @@ class MonsterCombatTests(TestCase):
         self.hero.save(update_fields=["current_room", "updated_at"])
         now = timezone.now()
         maybe_spawn_lairs(now)
+        run_lazy_simulation(now, notify_rooms=False)
         m = MonsterInstance.objects.filter(current_room=lair).first()
         self.assertIsNotNone(m)
         self.assertEqual(m.engaged_character_id, self.hero.pk)
         self.assertFalse(m.monster_strike_pending)
 
-    def test_engagement_first_combat_tick_is_wind_up_not_damage(self):
-        """Bind leaves strike pending False; first due flush narrates wind-up, no HP loss."""
+    def test_pursuit_sync_step_does_not_double_advance_same_request(self):
+        """Hero move + lazy sim must not flush an immediate second pursuit step."""
+        ra = Room.objects.create(area=self.area, name="Pa", slug="pursuit-sync-a")
+        rb = Room.objects.create(area=self.area, name="Pb", slug="pursuit-sync-b")
+        rc = Room.objects.create(area=self.area, name="Pc", slug="pursuit-sync-c")
+        RoomExit.objects.create(from_room=ra, to_room=rb, direction=RoomExit.Direction.E)
+        RoomExit.objects.create(from_room=rb, to_room=rc, direction=RoomExit.Direction.E)
+        self.hero.current_room = ra
+        self.hero.save(update_fields=["current_room", "updated_at"])
+        self.monster.current_room = ra
+        self.monster.pursuit_target_character_id = self.hero.pk
+        self.monster.engaged_character_id = self.hero.pk
+        self.monster.pursuit_path = [rb.pk, rc.pk]
+        self.monster.next_pursuit_at = timezone.now()
+        self.monster.save(
+            update_fields=[
+                "current_room",
+                "pursuit_target_character",
+                "engaged_character",
+                "pursuit_path",
+                "next_pursuit_at",
+                "updated_at",
+            ]
+        )
+        max_before = RoomBroadcast.objects.aggregate(m=Max("id"))["m"] or 0
+        monsters_follow_hero_move(self.hero, ra.pk, rb.pk)
+        flush_pursuit_steps(timezone.now())
+        arrives = RoomBroadcast.objects.filter(
+            id__gt=max_before,
+            text__icontains="arrives from",
+        ).count()
+        self.assertEqual(arrives, 1)
+        self.monster.refresh_from_db()
+        self.assertEqual(self.monster.current_room_id, rb.pk)
+
+    def test_attack_arms_monster_on_same_round_length_as_hero(self):
+        """After attack + lazy sim, hero and newly bound monster use the same round spacing."""
+        self.monster.engaged_character_id = None
+        self.monster.pursuit_target_character_id = None
+        self.monster.monster_strike_pending = False
+        self.monster.next_action_at = None
+        self.monster.save(
+            update_fields=[
+                "engaged_character",
+                "pursuit_target_character",
+                "monster_strike_pending",
+                "next_action_at",
+                "updated_at",
+            ]
+        )
+        execute_command(self.hero, parse_command("attack rat"), world_sync=False)
+        run_lazy_simulation(timezone.now(), notify_rooms=False)
+        self.hero.refresh_from_db()
+        self.monster.refresh_from_db()
+        self.assertIsNotNone(self.hero.next_action_at)
+        self.assertIsNotNone(self.monster.next_action_at)
+        delta = abs(
+            (self.monster.next_action_at - self.hero.next_action_at).total_seconds()
+        )
+        self.assertLess(delta, 2.0, (self.monster.next_action_at, self.hero.next_action_at))
+
+    def test_engagement_narrates_prepare_then_next_flush_can_strike(self):
+        """Engagement broadcasts prepare and arms ~COMBAT_ROUND_SECONDS; later flush resolves a swing."""
         self.monster.engaged_character_id = None
         self.monster.pursuit_target_character_id = None
         self.monster.monster_strike_pending = False
@@ -493,29 +557,38 @@ class MonsterCombatTests(TestCase):
         )
         self.monster.refresh_from_db()
         self.assertFalse(self.monster.monster_strike_pending)
+        prep = RoomBroadcast.objects.filter(
+            room_id=self.room_danger.id,
+            target_character_id=self.hero.pk,
+            text__icontains="prepare",
+        ).exists()
+        self.assertTrue(prep)
+        self.assertGreater(self.monster.next_action_at, now)
         self.assertLessEqual(
             self.monster.next_action_at,
-            now + timedelta(seconds=2),
+            now + timedelta(seconds=COMBAT_ROUND_SECONDS + 1),
         )
-        hp_before = self.hero.cur_health
+        max_id = RoomBroadcast.objects.aggregate(m=Max("id"))["m"] or 0
         run_lazy_simulation(now + timedelta(seconds=COMBAT_ROUND_SECONDS + 1))
-        self.hero.refresh_from_db()
-        self.assertEqual(self.hero.cur_health, hp_before)
-        b = (
-            RoomBroadcast.objects.filter(
-                room_id=self.room_danger.id, target_character_id=self.hero.pk
-            )
-            .order_by("-id")
-            .first()
+        swing = RoomBroadcast.objects.filter(
+            id__gt=max_id,
+            room_id=self.room_danger.id,
+            target_character_id=self.hero.pk,
+        ).exclude(text__icontains="prepare")
+        self.assertTrue(
+            swing.filter(
+                Q(text__icontains="swing")
+                | Q(text__icontains="strike")
+                | Q(text__icontains="miss")
+                | Q(text__icontains="dodge")
+                | Q(text__icontains="critically")
+            ).exists()
         )
-        self.assertIsNotNone(b)
-        self.assertIn("prepare", b.text.lower())
-        self.assertNotIn("strike you for", b.text.lower())
 
     def test_spoiling_strike_engages_hero(self):
         self.monster.engaged_character_id = None
         self.monster.pursuit_target_character_id = None
-        self.monster.monster_strike_pending = True
+        self.monster.monster_strike_pending = False
         self.monster.next_action_at = timezone.now()
         self.monster.save(
             update_fields=[
@@ -571,7 +644,7 @@ class MonsterCombatTests(TestCase):
                 "updated_at",
             ]
         )
-        self.monster.monster_strike_pending = True
+        self.monster.monster_strike_pending = False
         self.monster.engaged_character_id = self.hero.pk
         self.monster.save(
             update_fields=["monster_strike_pending", "engaged_character", "updated_at"]
@@ -595,12 +668,12 @@ class MonsterCombatTests(TestCase):
         ).first()
         self.assertIsNotNone(b)
 
-    def test_engage_monsters_pursuit_preserves_strike_pending(self):
-        """Arriving hero + monster pursuing them must not restart wind-up via random bind."""
+    def test_engage_monsters_pursuit_preserves_timer_when_already_armed(self):
+        """Arriving hero + monster pursuing them keeps cadence when already armed."""
         na = timezone.now() + timedelta(seconds=3)
         self.monster.engaged_character_id = None
         self.monster.pursuit_target_character_id = self.hero.pk
-        self.monster.monster_strike_pending = True
+        self.monster.monster_strike_pending = False
         self.monster.next_action_at = na
         self.monster.save(
             update_fields=[
@@ -614,15 +687,15 @@ class MonsterCombatTests(TestCase):
         engage_monsters_for_new_arrivals(self.hero, self.room_danger.id)
         self.monster.refresh_from_db()
         self.assertEqual(self.monster.engaged_character_id, self.hero.pk)
-        self.assertTrue(self.monster.monster_strike_pending)
+        self.assertFalse(self.monster.monster_strike_pending)
         self.assertEqual(self.monster.next_action_at, na)
 
-    def test_try_bind_preserves_next_action_when_pursuing_same_hero(self):
-        """Monster already chasing the hero keeps its combat timer when bind runs again."""
+    def test_try_bind_noop_when_already_engaged_and_armed(self):
+        """Monster with engagement + timer does not re-bind or reset clock."""
         na = timezone.now() + timedelta(seconds=4)
-        self.monster.engaged_character_id = None
+        self.monster.engaged_character_id = self.hero.pk
         self.monster.pursuit_target_character_id = self.hero.pk
-        self.monster.monster_strike_pending = True
+        self.monster.monster_strike_pending = False
         self.monster.next_action_at = na
         self.monster.save(
             update_fields=[
@@ -634,7 +707,7 @@ class MonsterCombatTests(TestCase):
             ]
         )
         now = timezone.now()
-        self.assertTrue(
+        self.assertFalse(
             try_bind_monster_to_room_heroes(
                 MonsterInstance.objects.select_related("template").get(pk=self.monster.pk),
                 self.room_danger.id,
@@ -642,7 +715,6 @@ class MonsterCombatTests(TestCase):
             )
         )
         self.monster.refresh_from_db()
-        self.assertEqual(self.monster.engaged_character_id, self.hero.pk)
         self.assertEqual(self.monster.next_action_at, na)
 
     def test_roombroadcast_log_tone_enemy_hit(self):
@@ -656,7 +728,7 @@ class MonsterCombatTests(TestCase):
             effective_dodge_chance=5,
             crit_chance=0.05,
         )
-        self.monster.monster_strike_pending = True
+        self.monster.monster_strike_pending = False
         self.monster.engaged_character_id = self.hero.pk
         self.monster.save(
             update_fields=["monster_strike_pending", "engaged_character", "updated_at"]
@@ -674,13 +746,13 @@ class MonsterCombatTests(TestCase):
         self.assertIsNotNone(b)
 
     def test_flush_does_not_advance_monster_when_engaged_target_wrong_room(self):
-        """Invalid strike target must not clear strike_pending / bump next_action_at."""
+        """Invalid strike target must not bump next_action_at."""
         now = timezone.now()
         na = now - timedelta(seconds=1)
         self.hero.current_room_id = self.room_safe.id
         self.hero.save(update_fields=["current_room", "updated_at"])
         self.monster.engaged_character_id = self.hero.pk
-        self.monster.monster_strike_pending = True
+        self.monster.monster_strike_pending = False
         self.monster.next_action_at = na
         self.monster.save(
             update_fields=[
@@ -692,7 +764,6 @@ class MonsterCombatTests(TestCase):
         )
         flush_combat_rounds(now)
         self.monster.refresh_from_db()
-        self.assertTrue(self.monster.monster_strike_pending)
         self.assertEqual(self.monster.next_action_at, na)
 
     def test_attack_only_engages_target_instance_preserves_other_pacing(self):
@@ -726,7 +797,7 @@ class MonsterCombatTests(TestCase):
             max_hp=5,
             engaged_character_id=self.hero.pk,
             pursuit_target_character_id=self.hero.pk,
-            monster_strike_pending=True,
+            monster_strike_pending=False,
             next_action_at=na,
         )
         m_b = MonsterInstance.objects.create(
@@ -739,14 +810,13 @@ class MonsterCombatTests(TestCase):
         run_lazy_simulation(timezone.now(), notify_rooms=False)
         m_a.refresh_from_db()
         self.assertEqual(m_a.next_action_at, na)
-        self.assertTrue(m_a.monster_strike_pending)
         m_b.refresh_from_db()
         self.assertEqual(m_b.engaged_character_id, self.hero.pk)
 
     def test_monster_miss_in_flush_still_advances_schedule(self):
         now = timezone.now()
         self.monster.next_action_at = now - timedelta(seconds=1)
-        self.monster.monster_strike_pending = True
+        self.monster.monster_strike_pending = False
         self.monster.engaged_character_id = self.hero.pk
         self.monster.save(
             update_fields=[
@@ -782,7 +852,7 @@ class MonsterCombatTests(TestCase):
             max_hp=5,
             engaged_character_id=self.hero.pk,
             pursuit_target_character_id=self.hero.pk,
-            monster_strike_pending=True,
+            monster_strike_pending=False,
             next_action_at=na_armed,
         )
         m_stale = MonsterInstance.objects.create(
@@ -799,7 +869,6 @@ class MonsterCombatTests(TestCase):
         m_armed.refresh_from_db()
         m_stale.refresh_from_db()
         self.assertEqual(m_armed.next_action_at, na_armed)
-        self.assertTrue(m_armed.monster_strike_pending)
         self.assertIsNotNone(m_stale.next_action_at)
 
     def test_survivor_pacing_unchanged_when_sibling_monster_award_killed(self):
@@ -821,16 +890,15 @@ class MonsterCombatTests(TestCase):
             max_hp=5,
             engaged_character_id=self.hero.pk,
             pursuit_target_character_id=self.hero.pk,
-            monster_strike_pending=True,
+            monster_strike_pending=False,
             next_action_at=na_survivor,
         )
         award_kill(m_victim, self.room_danger.id, timezone.now())
         self.assertFalse(MonsterInstance.objects.filter(pk=m_victim.pk).exists())
         m_survivor.refresh_from_db()
         self.assertEqual(m_survivor.next_action_at, na_survivor)
-        self.assertTrue(m_survivor.monster_strike_pending)
 
-    def test_try_bind_orphan_cadence_restores_engagement_without_resetting_clock(self):
+    def test_try_bind_orphan_cadence_engages_and_resets_timer_from_engagement(self):
         na = timezone.now() + timedelta(seconds=12)
         m = MonsterInstance.objects.create(
             template=self.tpl,
@@ -839,7 +907,7 @@ class MonsterCombatTests(TestCase):
             max_hp=5,
             engaged_character_id=None,
             pursuit_target_character_id=self.hero.pk,
-            monster_strike_pending=True,
+            monster_strike_pending=False,
             next_action_at=na,
         )
         now = timezone.now()
@@ -852,8 +920,11 @@ class MonsterCombatTests(TestCase):
         )
         m.refresh_from_db()
         self.assertEqual(m.engaged_character_id, self.hero.pk)
-        self.assertEqual(m.next_action_at, na)
-        self.assertTrue(m.monster_strike_pending)
+        self.assertFalse(m.monster_strike_pending)
+        self.assertGreater(m.next_action_at, now)
+        self.assertLessEqual(
+            m.next_action_at, now + timedelta(seconds=COMBAT_ROUND_SECONDS + 1)
+        )
 
     def test_lazy_sim_arms_monster_with_sole_hero_without_move_or_attack(self):
         """Monsters in a room with one hero bind and arm without waiting for attack."""
@@ -885,7 +956,7 @@ class MonsterCombatTests(TestCase):
         )
         self.monster.engaged_character_id = self.hero.pk
         self.monster.pursuit_target_character_id = self.hero.pk
-        self.monster.monster_strike_pending = True
+        self.monster.monster_strike_pending = False
         self.monster.save(
             update_fields=[
                 "engaged_character",
@@ -920,7 +991,7 @@ class MonsterCombatTests(TestCase):
         )
         self.monster.engaged_character_id = self.hero.pk
         self.monster.pursuit_target_character_id = self.hero.pk
-        self.monster.monster_strike_pending = True
+        self.monster.monster_strike_pending = False
         self.monster.save(
             update_fields=[
                 "engaged_character",

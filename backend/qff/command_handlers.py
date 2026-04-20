@@ -118,9 +118,10 @@ def _find_monster_in_room(actor: CharacterType, query: str) -> MonsterInstance |
     if not q:
         return None
     # First match by id order wins (stable tie-break if several names contain the same token).
-    for m in MonsterInstance.objects.filter(current_room_id=actor.current_room_id).select_related(
-        "template"
-    ).order_by("id"):
+    for m in MonsterInstance.objects.filter(
+        current_room_id=actor.current_room_id,
+        cur_hp__gt=0,
+    ).select_related("template").order_by("id"):
         name = m.template.name.lower()
         slug = m.template.slug.lower()
         slug_spaced = slug.replace("_", " ")

@@ -82,6 +82,38 @@ def _get_character(user):
         return None
 
 
+def _get_character_by_pk(pk: int):
+    """Same query shape as :func:`_get_character` for session rebuild by primary key."""
+    try:
+        return Character.objects.select_related(
+            "character_class",
+            "current_room",
+            "current_room__area",
+            "spawn_room",
+            "head_item__item",
+            "main_hand_item__item",
+            "off_hand_item__item",
+            "chest_item__item",
+            "feet_item__item",
+            "ring_item__item",
+            "amulet_item__item",
+        ).get(pk=pk)
+    except Character.DoesNotExist:
+        return None
+
+
+def _action_log_entry_id(entry) -> int:
+    if not isinstance(entry, dict):
+        return 0
+    raw = entry.get("id")
+    if raw is None:
+        return 0
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated, IsApprovedUser])
 def session_view(request):
@@ -286,59 +318,82 @@ def command_view(request):
             },
         )
 
+    character_pk = char.pk
     command_room = char.current_room
     command_room_name = (command_room.name or "").strip()[:200]
     old_room_id = char.current_room_id
     wall_start = time.perf_counter()
-    sim_ms = 0.0
-    sync_ms = 0.0
 
-    with transaction.atomic():
-        t_sync = time.perf_counter()
-        char = sync_character_world_before_session(char)
-        sync_ms = (time.perf_counter() - t_sync) * 1000
-        parsed = parse_command(line)
-        t0 = time.perf_counter()
-        messages = list(execute_command(char, parsed, world_sync=False))
-        exec_ms = (time.perf_counter() - t0) * 1000
-        echo_command = should_echo_command(parsed, messages)
-        if messages and messages[0] == "You try that, but nothing happens.":
-            email = (request.user.email or "").strip()
-            QffIneffectiveInput.objects.create(
-                user=request.user,
-                user_email=email[:254] if email else "",
-                raw_line=line,
-                room=command_room,
-                room_name=command_room_name,
-            )
-        # Max broadcast id after execute_command, before lazy sim — splits ambient/exec vs combat sim.
-        max_after_exec = RoomBroadcast.objects.aggregate(m=Max("id"))["m"] or 0
-        char = _get_character(request.user)
-        affected: list[int] = []
-        if char:
-            t1 = time.perf_counter()
-            affected = run_lazy_simulation(notify_rooms=False)
-            sim_ms = (time.perf_counter() - t1) * 1000
+    try:
+        with transaction.atomic():
+            t_sync = time.perf_counter()
+            char = sync_character_world_before_session(char)
+            sync_ms = (time.perf_counter() - t_sync) * 1000
+            parsed = parse_command(line)
+            t0 = time.perf_counter()
+            messages = list(execute_command(char, parsed, world_sync=False))
+            exec_ms = (time.perf_counter() - t0) * 1000
+            echo_command = should_echo_command(parsed, messages)
+            if messages and messages[0] == "You try that, but nothing happens.":
+                email = (request.user.email or "").strip()
+                QffIneffectiveInput.objects.create(
+                    user=request.user,
+                    user_email=email[:254] if email else "",
+                    raw_line=line,
+                    room=command_room,
+                    room_name=command_room_name,
+                )
+            # Max broadcast id after execute_command, before lazy sim — splits ambient/exec vs combat sim.
+            max_after_exec = RoomBroadcast.objects.aggregate(m=Max("id"))["m"] or 0
             char = _get_character(request.user)
-        enc_lines: list[str] = []
-        if char and encumbrance_excess(char) > 0:
-            enc_lines.append("You are encumbered!")
-        messages.extend(enc_lines)
-        t2 = time.perf_counter()
-        session = build_session_for_character(char, world_sync=False)
-        session_ms = (time.perf_counter() - t2) * 1000
-        # Chronological narrative: room broadcasts during command, then command lines, then sim, then encumbrance.
-        raw_log = session.get("action_log") or []
-        if raw_log and char:
-            exec_part = [e for e in raw_log if e["id"] <= max_after_exec]
-            sim_part = [e for e in raw_log if e["id"] > max_after_exec]
-            cmd_only = (
-                messages[: -len(enc_lines)] if enc_lines else list(messages)
-            )
-            synth_cmd = [{"id": -(i + 1), "text": m} for i, m in enumerate(cmd_only)]
-            synth_enc = [{"id": -(200 + i), "text": m} for i, m in enumerate(enc_lines)]
-            session["action_log"] = exec_part + synth_cmd + sim_part + synth_enc
-        if char:
+            if char is None:
+                char = _get_character_by_pk(character_pk)
+            affected: list[int] = []
+            if char:
+                t1 = time.perf_counter()
+                affected = run_lazy_simulation(notify_rooms=False)
+                sim_ms = (time.perf_counter() - t1) * 1000
+                char = _get_character(request.user)
+                if char is None:
+                    char = _get_character_by_pk(character_pk)
+            else:
+                sim_ms = 0.0
+            enc_lines: list[str] = []
+            if char and encumbrance_excess(char) > 0:
+                enc_lines.append("You are encumbered!")
+            messages.extend(enc_lines)
+            if char is None:
+                logger.error(
+                    "qff.command character missing after exec user_id=%s character_pk=%s line=%r",
+                    getattr(request.user, "pk", None),
+                    character_pk,
+                    line[:500],
+                )
+                return Response(
+                    {
+                        "detail": "Character not found after command.",
+                        "messages": messages,
+                        "session": {"has_character": False},
+                        "echo_command": echo_command,
+                    },
+                    status=status.HTTP_410_GONE,
+                )
+            t2 = time.perf_counter()
+            session = build_session_for_character(char, world_sync=False)
+            session_ms = (time.perf_counter() - t2) * 1000
+            # Chronological narrative: room broadcasts during command, then command lines, then sim, then encumbrance.
+            raw_log = session.get("action_log") or []
+            if raw_log and char:
+                exec_part = [
+                    e for e in raw_log if _action_log_entry_id(e) <= max_after_exec
+                ]
+                sim_part = [e for e in raw_log if _action_log_entry_id(e) > max_after_exec]
+                cmd_only = (
+                    messages[: -len(enc_lines)] if enc_lines else list(messages)
+                )
+                synth_cmd = [{"id": -(i + 1), "text": m} for i, m in enumerate(cmd_only)]
+                synth_enc = [{"id": -(200 + i), "text": m} for i, m in enumerate(enc_lines)]
+                session["action_log"] = exec_part + synth_cmd + sim_part + synth_enc
             room_ids = frozenset(affected) | {old_room_id, char.current_room_id}
 
             def _queue_notify() -> None:
@@ -346,27 +401,14 @@ def command_view(request):
 
             transaction.on_commit(_queue_notify)
 
-    total_ms = (time.perf_counter() - wall_start) * 1000
-    uid = getattr(request.user, "pk", None)
-    session_pct = (100.0 * session_ms / total_ms) if total_ms > 0 else 0.0
-    # Work outside exec/sim/session: _get_character (×2), ineffective-input insert, encumbrance, etc.
-    gap_ms = max(0.0, total_ms - sync_ms - exec_ms - sim_ms - session_ms)
-    parsed_kind = type(parsed).__name__
-    logger.debug(
-        "qff.command user_id=%s parsed=%s sync_ms=%.1f exec_ms=%.1f sim_ms=%.1f session_ms=%.1f gap_ms=%.1f total_ms=%.1f session_pct=%.1f",
-        uid,
-        parsed_kind,
-        sync_ms,
-        exec_ms,
-        sim_ms,
-        session_ms,
-        gap_ms,
-        total_ms,
-        session_pct,
-    )
-    if getattr(settings, "QFF_COMMAND_TIMING_LOG", False):
-        logger.info(
-            "qff_command_timing user_id=%s parsed=%s sync_ms=%.2f exec_ms=%.2f sim_ms=%.2f session_ms=%.2f gap_ms=%.2f total_ms=%.2f session_pct=%.2f",
+        total_ms = (time.perf_counter() - wall_start) * 1000
+        uid = getattr(request.user, "pk", None)
+        session_pct = (100.0 * session_ms / total_ms) if total_ms > 0 else 0.0
+        # Work outside exec/sim/session: _get_character (×2), ineffective-input insert, encumbrance, etc.
+        gap_ms = max(0.0, total_ms - sync_ms - exec_ms - sim_ms - session_ms)
+        parsed_kind = type(parsed).__name__
+        logger.debug(
+            "qff.command user_id=%s parsed=%s sync_ms=%.1f exec_ms=%.1f sim_ms=%.1f session_ms=%.1f gap_ms=%.1f total_ms=%.1f session_pct=%.1f",
             uid,
             parsed_kind,
             sync_ms,
@@ -377,10 +419,39 @@ def command_view(request):
             total_ms,
             session_pct,
         )
+        if getattr(settings, "QFF_COMMAND_TIMING_LOG", False):
+            logger.info(
+                "qff_command_timing user_id=%s parsed=%s sync_ms=%.2f exec_ms=%.2f sim_ms=%.2f session_ms=%.2f gap_ms=%.2f total_ms=%.2f session_pct=%.2f",
+                uid,
+                parsed_kind,
+                sync_ms,
+                exec_ms,
+                sim_ms,
+                session_ms,
+                gap_ms,
+                total_ms,
+                session_pct,
+            )
 
-    return Response(
-        {"messages": messages, "session": session, "echo_command": echo_command}
-    )
+        return Response(
+            {"messages": messages, "session": session, "echo_command": echo_command}
+        )
+    except Exception:
+        logger.exception(
+            "qff.command_view failed user_id=%s character_pk=%s line=%r",
+            getattr(request.user, "pk", None),
+            character_pk,
+            line[:500],
+        )
+        return Response(
+            {
+                "detail": "A server error occurred while processing your command.",
+                "messages": [],
+                "session": None,
+                "echo_command": False,
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
 # --- DM (staff) ---

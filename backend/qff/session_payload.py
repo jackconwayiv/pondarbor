@@ -8,7 +8,7 @@ from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
 
-from qff.constants import PRESENCE_MINUTES
+from qff.constants import AFK_LOBBY_KICK_MINUTES, PRESENCE_MINUTES
 from qff.exploration import sync_seen_exits_for_character
 from qff.exits import exit_is_passable, exit_is_visible_to_character
 from qff.quest_engine import (
@@ -65,18 +65,35 @@ def resolved_area_theme(area) -> dict:
     }
 
 
-def others_here(character) -> list[str]:
-    threshold = timezone.now() - timedelta(minutes=PRESENCE_MINUTES)
+def others_here_detailed(character) -> list[dict]:
+    """Other heroes in the room, each with ``inactive`` if 5+ minutes since last input."""
+    now = timezone.now()
+    inactive_threshold = now - timedelta(minutes=PRESENCE_MINUTES)
     qs = (
-        Character.objects.filter(
-            current_room_id=character.current_room_id,
-            last_activity_at__gte=threshold,
-        )
+        Character.objects.filter(current_room_id=character.current_room_id)
         .exclude(pk=character.pk)
         .order_by("name")
-        .values_list("name", flat=True)
+        .values_list("name", "last_activity_at")
     )
-    return list(qs)
+    out: list[dict] = []
+    for name, la in qs:
+        inactive = not la or la < inactive_threshold
+        out.append({"name": name, "inactive": inactive})
+    return out
+
+
+def _character_is_inactive_for_hud(character) -> bool:
+    la = character.last_activity_at
+    if not la:
+        return True
+    return la < timezone.now() - timedelta(minutes=PRESENCE_MINUTES)
+
+
+def _force_lobby_for_inactivity(character) -> bool:
+    la = character.last_activity_at
+    if not la:
+        return True
+    return la < timezone.now() - timedelta(minutes=AFK_LOBBY_KICK_MINUTES)
 
 
 def consume_room_broadcast_entries(character) -> list[dict]:
@@ -315,18 +332,23 @@ def _room_item_labels(
 
 
 def _room_gold_pile_labels(room_id: int) -> list[str]:
-    """Unpicked gold on the floor (monster drops, death tolls, etc.)."""
-    out: list[str] = []
-    for p in RoomGoldPile.objects.filter(
-        room_id=room_id, amount_remaining__gt=0
-    ).order_by("id"):
-        amt = int(p.amount_remaining)
-        lab = (p.label or "").strip()
-        if lab:
-            out.append(f"{amt} gold ({lab})")
-        else:
-            out.append(f"{amt} gold")
-    return out
+    """Unpicked gold on the floor (aggregated; no source labels)."""
+    total = 0
+    for p in RoomGoldPile.objects.filter(room_id=room_id, amount_remaining__gt=0):
+        total += int(p.amount_remaining)
+    if total <= 0:
+        return []
+    return [f"{total} gold"]
+
+
+def _room_gold_piles_json(room_id: int) -> list[dict]:
+    piles = list(RoomGoldPile.objects.filter(room_id=room_id).order_by("id"))
+    if not piles:
+        return []
+    total = sum(int(p.amount_remaining) for p in piles if int(p.amount_remaining) > 0)
+    if total <= 0:
+        return []
+    return [{"id": piles[0].id, "amount": total, "label": ""}]
 
 
 def _room_you_see_tail_labels(room_id: int, character) -> list[str]:
@@ -362,6 +384,7 @@ def build_character_profile(character) -> dict:
         "nextCombatAt": (
             character.next_action_at.isoformat() if character.next_action_at else None
         ),
+        "isInactive": _character_is_inactive_for_hud(character),
         "curHealth": character.cur_health,
         "maxHealth": character.max_health,
         "curMana": character.cur_mana,
@@ -461,10 +484,7 @@ def build_session_for_character(character, *, world_sync: bool = True) -> dict:
                 .select_related("template")
                 .order_by("id")
             ],
-            "gold_piles": [
-                {"id": p.id, "amount": p.amount_remaining, "label": p.label}
-                for p in RoomGoldPile.objects.filter(room_id=room.id).order_by("id")
-            ],
+            "gold_piles": _room_gold_piles_json(room.id),
             "youSee": you_see,
             "npcs": [
                 {"slug": n.slug, "name": n.name}
@@ -481,7 +501,8 @@ def build_session_for_character(character, *, world_sync: bool = True) -> dict:
             "theme": resolved_area_theme(area),
         },
         "exits": exits,
-        "others_here": others_here(character),
+        "others_here": others_here_detailed(character),
+        "force_lobby": _force_lobby_for_inactivity(character),
         "area_map": (
             {
                 "current_area_id": area.id,

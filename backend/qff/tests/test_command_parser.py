@@ -4,6 +4,8 @@ from qff.command_parser import (
     ParsedBuyAbilities,
     ParsedConsumeItem,
     ParsedGet,
+    ParsedLookDirection,
+    ParsedLookInspect,
     ParsedMove,
     ParsedRead,
     ParsedSearch,
@@ -64,6 +66,20 @@ class CommandParserTests(SimpleTestCase):
         self.assertIsInstance(p, ParsedGet)
         assert isinstance(p, ParsedGet)
         self.assertEqual(p.target, "red potion")
+        self.assertIsNone(p.quantity)
+
+    def test_take_quantity_gold(self):
+        p = parse_command("take 3 gold")
+        self.assertIsInstance(p, ParsedGet)
+        assert isinstance(p, ParsedGet)
+        self.assertEqual(p.target, "gold")
+        self.assertEqual(p.quantity, 3)
+
+    def test_pick_up(self):
+        p = parse_command("pick up gold")
+        self.assertIsInstance(p, ParsedGet)
+        assert isinstance(p, ParsedGet)
+        self.assertEqual(p.target, "gold")
 
     def test_eat_drink(self):
         e = parse_command("eat bread")
@@ -118,3 +134,18 @@ class CommandParserTests(SimpleTestCase):
         assert isinstance(s2, ParsedSell)
         self.assertEqual(s2.item_query, "gem")
         self.assertEqual(s2.npc_query, "alice")
+
+    def test_look_direction_tokens(self):
+        p = parse_command("look e")
+        self.assertIsInstance(p, ParsedLookDirection)
+        assert isinstance(p, ParsedLookDirection)
+        self.assertEqual(p.direction, RoomExit.Direction.E)
+        self.assertEqual(p.original_token, "e")
+        p2 = parse_command("look north")
+        self.assertIsInstance(p2, ParsedLookDirection)
+        assert isinstance(p2, ParsedLookDirection)
+        self.assertEqual(p2.direction, RoomExit.Direction.N)
+        p3 = parse_command("look at e")
+        self.assertIsInstance(p3, ParsedLookInspect)
+        assert isinstance(p3, ParsedLookInspect)
+        self.assertEqual(p3.target, "e")

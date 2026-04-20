@@ -41,6 +41,28 @@ from qff.models import (
 )
 from qff.realtime import notify_qff_rooms
 
+
+def add_gold_to_room_floor(room_id: int, amount: int) -> None:
+    """Add gold to the room floor, merging into existing piles and clearing labels."""
+    if amount <= 0:
+        return
+    with transaction.atomic():
+        piles = list(
+            RoomGoldPile.objects.filter(room_id=room_id).select_for_update().order_by("id")
+        )
+        if not piles:
+            RoomGoldPile.objects.create(room_id=room_id, amount_remaining=amount, label="")
+            return
+        keep = piles[0]
+        total = int(keep.amount_remaining) + amount
+        for p in piles[1:]:
+            total += int(p.amount_remaining)
+            p.delete()
+        keep.amount_remaining = total
+        keep.label = ""
+        keep.save(update_fields=["amount_remaining", "label"])
+
+
 _CHARACTER_COMBAT_SELECT = (
     "head_item__item",
     "main_hand_item__item",
@@ -309,9 +331,9 @@ def try_bind_monster_to_room_heroes(monster: MonsterInstance, room_id: int, now)
         return False
     monster.engaged_character_id = target.pk
     monster.pursuit_target_character_id = target.pk
-    monster.monster_strike_pending = True
-    if monster.next_action_at is None:
-        monster.next_action_at = now + timedelta(seconds=COMBAT_ROUND_SECONDS)
+    # False so the first combat flush runs wind-up ("prepares to strike"), not damage.
+    monster.monster_strike_pending = False
+    monster.next_action_at = now + timedelta(seconds=COMBAT_ROUND_SECONDS)
     monster.save(
         update_fields=[
             "engaged_character",
@@ -321,19 +343,6 @@ def try_bind_monster_to_room_heroes(monster: MonsterInstance, room_id: int, now)
             "updated_at",
         ]
     )
-    mname = monster.template.name
-    _narrate(
-        room_id,
-        f"{mname} prepares to strike you!",
-        target_character_id=target.pk,
-    )
-    for h in heroes:
-        if h.pk != target.pk:
-            _narrate(
-                room_id,
-                f"{mname} prepares to strike {target.name}!",
-                target_character_id=h.pk,
-            )
     return True
 
 
@@ -435,7 +444,7 @@ def award_kill(monster: MonsterInstance, room_id: int, now) -> None:
                 h.save(update_fields=["xp", "updated_at"])
     gold = random.randint(int(tpl.gold_min), int(tpl.gold_max))
     if gold > 0:
-        RoomGoldPile.objects.create(room_id=room_id, amount_remaining=gold, label=tpl.name)
+        add_gold_to_room_floor(room_id, gold)
         _narrate(room_id, f"{tpl.name} drops {gold} gold.")
     loot_rows: list[tuple[int, dict]] = []
     for entry in tpl.loot_table or []:
@@ -662,7 +671,7 @@ def hero_drop_all(hero: Character) -> None:
     )
     if g > 0:
         hero.gold = max(0, int(hero.gold) - g)
-        RoomGoldPile.objects.create(room_id=rid, amount_remaining=g, label=hero.name)
+        add_gold_to_room_floor(rid, g)
     for attr in slot_attrs:
         inst = getattr(hero, attr, None)
         if inst:

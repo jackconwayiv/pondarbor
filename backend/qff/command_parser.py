@@ -34,6 +34,7 @@ class ParsedDrop:
 @dataclass
 class ParsedGet:
     target: str
+    quantity: int | None = None
 
 
 @dataclass
@@ -58,6 +59,15 @@ class ParsedUnequip:
 class ParsedLookInspect:
     verb: str  # "look" | "inspect"
     target: str
+
+
+@dataclass
+class ParsedLookDirection:
+    """look east / look e — resolved to an exit when passable and visible (see handler)."""
+
+    direction: str  # RoomExit.Direction value
+    original_token: str
+    verb: str = "look"  # "look" | "inspect"
 
 
 @dataclass
@@ -177,6 +187,39 @@ _TWO_LETTER = {
 }
 
 
+def _parsed_get_from_rest(rest: str) -> ParsedGet:
+    """Parse get/take/pick up remainder; optional leading ``N `` for quantity (e.g. ``3 gold``)."""
+    rest = (rest or "").strip()
+    if not rest:
+        return ParsedGet(target="")
+    m = re.fullmatch(r"(\d+)\s+(.+)", rest)
+    if m:
+        q = int(m.group(1))
+        if q >= 1:
+            return ParsedGet(target=m.group(2).strip(), quantity=q)
+    return ParsedGet(target=rest, quantity=None)
+
+
+def _direction_for_look_remainder(remainder: str) -> tuple[str, str] | None:
+    """If ``remainder`` is a single direction token, return (RoomExit.Direction, token)."""
+    parts = remainder.strip().split()
+    if len(parts) != 1:
+        return None
+    tok = parts[0].lower()
+    if tok in _SINGLE_LETTER:
+        return (_SINGLE_LETTER[tok], tok)
+    if tok in _TWO_LETTER:
+        return (_TWO_LETTER[tok], tok)
+    if tok in ("in",):
+        return (RoomExit.Direction.IN, tok)
+    if tok in ("out",):
+        return (RoomExit.Direction.OUT, tok)
+    for word, direction in _DIRECTION_SYNONYMS:
+        if tok == word:
+            return (direction, tok)
+    return None
+
+
 def parse_command(line: str):
     """Return structured parse result for movement, search, social, items, or unknown."""
     raw = line
@@ -231,11 +274,25 @@ def parse_command(line: str):
     if low.startswith("look at "):
         return ParsedLookInspect(verb="look", target=n[8:].strip())
     if low.startswith("look "):
-        return ParsedLookInspect(verb="look", target=n[5:].strip())
+        rem = n[5:].strip()
+        if rem:
+            dr = _direction_for_look_remainder(rem)
+            if dr:
+                return ParsedLookDirection(
+                    direction=dr[0], original_token=dr[1], verb="look"
+                )
+        return ParsedLookInspect(verb="look", target=rem)
     if low == "look":
         return ParsedLookInspect(verb="look", target="")
     if low.startswith("inspect "):
-        return ParsedLookInspect(verb="inspect", target=n[8:].strip())
+        rem = n[8:].strip()
+        if rem:
+            dr = _direction_for_look_remainder(rem)
+            if dr:
+                return ParsedLookDirection(
+                    direction=dr[0], original_token=dr[1], verb="inspect"
+                )
+        return ParsedLookInspect(verb="inspect", target=rem)
     if low == "inspect":
         return ParsedLookInspect(verb="inspect", target="")
 
@@ -314,12 +371,16 @@ def parse_command(line: str):
         return ParsedDrop(target=target, quantity=qty)
     if low == "drop":
         return ParsedDrop(target="")
+    if low.startswith("pick up "):
+        return _parsed_get_from_rest(n[8:])
+    if low == "pick up":
+        return ParsedGet(target="")
     if low.startswith("get "):
-        return ParsedGet(target=n[4:].strip())
+        return _parsed_get_from_rest(n[4:])
     if low == "get":
         return ParsedGet(target="")
     if low.startswith("take "):
-        return ParsedGet(target=n[5:].strip())
+        return _parsed_get_from_rest(n[5:])
     if low == "take":
         return ParsedGet(target="")
     if low.startswith("equip "):

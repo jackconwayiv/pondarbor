@@ -89,6 +89,18 @@ def session_view(request):
     return Response(build_session_for_character(char))
 
 
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsApprovedUser])
+def session_activity_view(request):
+    """Refresh ``last_activity_at`` (GET /session/ does not). Used when entering play after lobby."""
+    char = _get_character(request.user)
+    if not char:
+        return Response({"ok": False}, status=status.HTTP_404_NOT_FOUND)
+    now = timezone.now()
+    Character.objects.filter(pk=char.pk).update(last_activity_at=now, updated_at=now)
+    return Response({"ok": True})
+
+
 def _pick_hub_start_room(
     qs,
     *,
@@ -1001,6 +1013,8 @@ def _dm_monster_template_dict(t: MonsterTemplate) -> dict:
         "crit_damage_bonus": t.crit_damage_bonus,
         "dodge_reduction": t.dodge_reduction,
         "dodge_ignore": t.dodge_ignore,
+        "description": t.description or "",
+        "hidden_description": t.hidden_description or "",
     }
 
 
@@ -1073,6 +1087,10 @@ def dm_monster_template_detail(request, pk):
         raw = request.data.get("loot_table")
         if isinstance(raw, list):
             tpl.loot_table = raw
+    if "description" in request.data:
+        tpl.description = (request.data.get("description") or "")[:20000]
+    if "hidden_description" in request.data:
+        tpl.hidden_description = (request.data.get("hidden_description") or "")[:20000]
     tpl.save()
     return Response(_dm_monster_template_dict(tpl))
 

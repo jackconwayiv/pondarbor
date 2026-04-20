@@ -220,6 +220,12 @@ export function parseQffCommandLine(line: string): QffParseResult {
   if (low === "drop") {
     return { kind: "known" };
   }
+  if (low.startsWith("pick up ")) {
+    return { kind: "known" };
+  }
+  if (low === "pick up") {
+    return { kind: "known" };
+  }
   if (low.startsWith("get ")) {
     return { kind: "known" };
   }

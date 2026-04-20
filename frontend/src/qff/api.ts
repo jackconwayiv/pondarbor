@@ -120,7 +120,9 @@ export type QffSessionWithCharacter = {
   };
   area: { id: number; name: string; theme: QffAreaTheme };
   exits: QffExit[];
-  others_here: string[];
+  others_here: Array<{ name: string; inactive: boolean }>;
+  /** When true, client should leave play (e.g. AFK kick to lobby). */
+  force_lobby?: boolean;
   /** One minimap grid per visited area; current_area_id marks where the player is. */
   area_map: {
     current_area_id: number;
@@ -151,6 +153,8 @@ export type QffCharacterProfile = {
   isDead?: boolean;
   /** ISO timestamp for next combat round action, if armed. */
   nextCombatAt?: string | null;
+  /** True if 5+ minutes since last command/input (AFK for HUD). */
+  isInactive?: boolean;
   curHealth: number;
   maxHealth: number;
   curMana: number;
@@ -201,6 +205,19 @@ export async function fetchQffSession(accessToken: string | null): Promise<QffSe
     throw new Error(`QFF session (${response.status}): ${text}`);
   }
   return (await response.json()) as QffSession;
+}
+
+/** Bump ``last_activity_at`` so returning from lobby clears AFK kick (GET session does not touch it). */
+export async function postQffSessionActivity(accessToken: string | null): Promise<void> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/session/activity/`), {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`QFF session activity (${response.status}): ${text}`);
+  }
 }
 
 export async function createQffCharacter(
@@ -555,6 +572,8 @@ export type DmMonsterTemplate = {
   crit_damage_bonus?: number;
   dodge_reduction?: number;
   dodge_ignore?: number;
+  description?: string;
+  hidden_description?: string;
 };
 
 export async function dmFetchMonsterTemplates(

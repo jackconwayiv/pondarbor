@@ -17,6 +17,7 @@ import { useAppSession } from "../auth/AppSessionContext";
 import QffButton from "./QffButton";
 import {
   fetchQffSession,
+  postQffSessionActivity,
   qffSessionWsUrl,
   sendQffCommand,
   type QffAreaMapCell,
@@ -28,21 +29,6 @@ import { optimisticMoveHeadLine, tryParseQffMoveDirection } from "./commandParse
 /** WebSocket keepalive; must be ≤ combat round length so lazy sim runs on time (~6s). */
 const WS_PING_MS = 6_000;
 const WS_RECONNECT_BASE_MS = 2000;
-
-function formatCombatCooldownHint(iso: string): string {
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) {
-    return `Next combat action: ${iso}`;
-  }
-  const sec = Math.ceil((t - Date.now()) / 1000);
-  if (sec <= 0) {
-    return "Combat action ready.";
-  }
-  if (sec === 1) {
-    return "Next combat action in ~1 second.";
-  }
-  return `Next combat action in ~${sec} seconds.`;
-}
 
 /** Charcoal + light gray (same family as action log). */
 const HUD_PANEL_BG = "#141414";
@@ -132,6 +118,11 @@ export default function QffPlayPage() {
 
   const load = useCallback(async () => {
     const token = await getTokenRef.current();
+    try {
+      await postQffSessionActivity(token);
+    } catch {
+      /* ignore — session GET still works */
+    }
     const s = await fetchQffSession(token);
     commandTokenRef.current = token;
     if (!s.has_character) {
@@ -433,6 +424,10 @@ export default function QffPlayPage() {
     return <Navigate to="/qff/create" replace />;
   }
 
+  if (session.force_lobby) {
+    return <Navigate to="/qff" replace />;
+  }
+
   const { room, area, exits, others_here, area_map } = session;
   const mapMinimal = area_map.minimal === true;
   const t = area.theme;
@@ -467,9 +462,10 @@ export default function QffPlayPage() {
           <Text as="span" color={t.secondary}>
             Also here:{" "}
           </Text>
-          {others_here.map((name, i) => (
+          {others_here.map((o, i) => (
             <Text as="span" key={`oh-p-${i}`} fontWeight="bold" color={t.accent}>
-              {name}
+              {o.name}
+              {o.inactive ? " (inactive)" : ""}
               {i < others_here.length - 1 ||
               (room.npcs?.length ?? 0) > 0 ||
               roomMonsters.length > 0
@@ -602,9 +598,9 @@ export default function QffPlayPage() {
           You are dead — you cannot take action until you revive.
         </Text>
       )}
-      {cp.nextCombatAt && !heroDead && (
+      {cp.isInactive && !heroDead && (
         <Text fontSize="xs" color={HUD_PANEL_TEXT_MUTED} textAlign="center" mt={1}>
-          {formatCombatCooldownHint(cp.nextCombatAt)}
+          You are inactive (no commands for 5+ minutes).
         </Text>
       )}
       <Grid templateColumns="1fr 1fr" gap={3} mt={2} w="100%" alignItems="start">

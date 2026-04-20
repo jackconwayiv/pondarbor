@@ -40,6 +40,8 @@ function emptyForm(): Partial<DmMonsterTemplate> {
     crit_damage_bonus: 0,
     dodge_reduction: 0,
     dodge_ignore: 0,
+    description: "",
+    hidden_description: "",
     loot_table: [],
   };
 }
@@ -222,6 +224,24 @@ export default function QffDmMonstersPage() {
                   </Field.Root>
                 ))}
               </Flex>
+              <Field.Root>
+                <Field.Label>Description (look)</Field.Label>
+                <Textarea
+                  value={form.description ?? ""}
+                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                  rows={4}
+                  bg="#222"
+                />
+              </Field.Root>
+              <Field.Root>
+                <Field.Label>Hidden description (inspect only)</Field.Label>
+                <Textarea
+                  value={form.hidden_description ?? ""}
+                  onChange={(e) => setForm((f) => ({ ...f, hidden_description: e.target.value }))}
+                  rows={4}
+                  bg="#222"
+                />
+              </Field.Root>
               <Field.Root>
                 <Field.Label>loot_table (JSON array)</Field.Label>
                 <Textarea

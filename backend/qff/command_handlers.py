@@ -15,6 +15,7 @@ from qff.command_parser import (
     ParsedDrop,
     ParsedEquip,
     ParsedGet,
+    ParsedLookDirection,
     ParsedLookInspect,
     ParsedMove,
     ParsedRead,
@@ -513,7 +514,7 @@ def execute_command(
         return _handle_drop(char, parsed.target, parsed.quantity)
 
     if isinstance(parsed, ParsedGet):
-        return _handle_get(char, parsed.target)
+        return _handle_get(char, parsed.target, parsed.quantity)
 
     if isinstance(parsed, ParsedConsumeItem):
         return _handle_consume_item(char, parsed)
@@ -523,6 +524,9 @@ def execute_command(
 
     if isinstance(parsed, ParsedUnequip):
         return _handle_unequip(char, parsed.target)
+
+    if isinstance(parsed, ParsedLookDirection):
+        return _handle_look_direction(char, parsed)
 
     if isinstance(parsed, ParsedLookInspect):
         return _handle_look_inspect(char, parsed)
@@ -768,50 +772,65 @@ def _handle_drop(
     return [f"You drop the {label}."]
 
 
-def _find_gold_pile_for_take(char: CharacterType, target: str) -> RoomGoldPile | None:
+def _wants_floor_gold_take(target: str) -> bool:
     q = (target or "").strip().lower()
+    if not q:
+        return True
+    return q in ("gold", "coins", "coin", "money", "pile")
+
+
+def _handle_take_floor_gold(char: CharacterType, want_qty: int | None) -> list[str]:
+    """Take all floor gold (``want_qty`` None) or up to ``want_qty`` (capped by available)."""
     rid = char.current_room_id
-    piles = list(
-        RoomGoldPile.objects.filter(room_id=rid, amount_remaining__gt=0).order_by("id")
-    )
-    if not piles:
-        return None
-    generic = q in ("", "gold", "coins", "coin", "money", "pile")
-    if generic:
-        return piles[0] if len(piles) == 1 else None
-    for p in piles:
-        lab = (p.label or "").lower()
-        if q in lab or lab in q:
-            return p
-    return None
-
-
-def _handle_get(char: CharacterType, target: str) -> list[str]:
     _touch_activity(char)
-    pile = _find_gold_pile_for_take(char, target)
-    if pile:
-        with transaction.atomic():
-            char = Character.objects.select_for_update().get(pk=char.pk)
-            gp = RoomGoldPile.objects.select_for_update().filter(pk=pile.pk).first()
-            if (
-                not gp
-                or gp.room_id != char.current_room_id
-                or int(gp.amount_remaining or 0) <= 0
-            ):
-                char.save(update_fields=["last_activity_at", "updated_at"])
-                return ["You don't see that here."]
-            amt = int(gp.amount_remaining)
-            char.gold = int(char.gold or 0) + amt
-            char.last_activity_at = timezone.now()
-            char.save(update_fields=["gold", "last_activity_at", "updated_at"])
-            gp.delete()
-        char = Character.objects.get(pk=char.pk)
-        _notify_peers_third_person(
-            char,
-            char.current_room_id,
-            f"{char.name} scoops up {amt} gold.",
+    with transaction.atomic():
+        char = Character.objects.select_for_update().get(pk=char.pk)
+        piles = list(
+            RoomGoldPile.objects.filter(room_id=rid, amount_remaining__gt=0)
+            .select_for_update()
+            .order_by("id")
         )
-        return [f"You pick up {amt} gold."]
+        if not piles:
+            char.save(update_fields=["last_activity_at", "updated_at"])
+            return ["You don't see that here."]
+        total_floor = sum(int(p.amount_remaining) for p in piles)
+        take_amt = total_floor if want_qty is None else min(int(want_qty), total_floor)
+        if take_amt <= 0:
+            char.save(update_fields=["last_activity_at", "updated_at"])
+            return ["You don't see that here."]
+        char.gold = int(char.gold or 0) + take_amt
+        char.last_activity_at = timezone.now()
+        char.save(update_fields=["gold", "last_activity_at", "updated_at"])
+        left = take_amt
+        for p in piles:
+            if left <= 0:
+                break
+            v = int(p.amount_remaining)
+            use = min(v, left)
+            left -= use
+            nv = v - use
+            if nv <= 0:
+                RoomGoldPile.objects.filter(pk=p.pk).delete()
+            else:
+                RoomGoldPile.objects.filter(pk=p.pk).update(amount_remaining=nv)
+    char = Character.objects.get(pk=char.pk)
+    _notify_peers_third_person(
+        char, char.current_room_id, f"{char.name} scoops up {take_amt} gold."
+    )
+    return [f"You pick up {take_amt} gold."]
+
+
+def _handle_get(
+    char: CharacterType, target: str, want_qty: int | None = None
+) -> list[str]:
+    t = (target or "").strip().lower()
+    if _wants_floor_gold_take(target) or (
+        want_qty is not None
+        and t in ("gold", "coins", "coin", "money", "pile")
+    ):
+        return _handle_take_floor_gold(char, want_qty)
+
+    _touch_activity(char)
 
     inst = _find_item_instance_floor_first(char, target)
     if inst and inst.room_id == char.current_room_id and inst.owner_character_id is None:
@@ -1103,6 +1122,41 @@ def _handle_read(char: CharacterType, parsed: ParsedRead) -> list[str]:
     return [text]
 
 
+def _handle_look_direction(char: CharacterType, parsed: ParsedLookDirection) -> list[str]:
+    """look e / look north — describe the exit when visible, non-hidden, and unlocked."""
+    ex = (
+        RoomExit.objects.filter(
+            from_room_id=char.current_room_id,
+            direction=parsed.direction,
+        )
+        .select_related("to_room")
+        .first()
+    )
+    if (
+        ex
+        and exit_is_visible_to_character(char, ex)
+        and not ex.is_hidden
+        and ex.lock_kind == RoomExit.LockKind.NONE
+    ):
+        _touch_activity(char)
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        dest = ex.to_room
+        dir_label = ex.get_direction_display().lower()
+        name = (dest.name or "").strip() or "somewhere"
+        teaser = (dest.description or "").strip().replace("\n", " ")
+        if len(teaser) > 120:
+            teaser = teaser[:117] + "..."
+        line = f"To the {dir_label}, {name} lies ahead."
+        out = [line]
+        if teaser:
+            out.append(teaser)
+        return out
+    return _handle_look_inspect(
+        char,
+        ParsedLookInspect(verb=parsed.verb, target=parsed.original_token),
+    )
+
+
 def _handle_look_inspect(char: CharacterType, parsed: ParsedLookInspect) -> list[str]:
     _touch_activity(char)
     char.save(update_fields=["last_activity_at", "updated_at"])
@@ -1145,6 +1199,15 @@ def _handle_look_inspect(char: CharacterType, parsed: ParsedLookInspect) -> list
             if inside:
                 out.append(f"Inside: {_natural_join_phrases(inside)}.")
         return out
+
+    monster = _find_monster_in_room(char, target)
+    if monster:
+        _look_focus_peers(char, parsed, monster.template.name)
+        tpl = monster.template
+        base = (tpl.description or "").strip() or f"You see the {tpl.name}."
+        if parsed.verb == "inspect" and (tpl.hidden_description or "").strip():
+            return [base, (tpl.hidden_description or "").strip()]
+        return [base]
 
     subj = _find_character_target(char, target)
     if subj:

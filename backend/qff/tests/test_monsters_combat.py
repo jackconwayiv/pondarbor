@@ -42,6 +42,7 @@ from qff.monster_sim import (
     maybe_spawn_lairs,
     run_lazy_simulation,
     sense_adjacent_monsters,
+    try_bind_monster_to_room_heroes,
 )
 from qff.session_payload import build_session_for_character, consume_room_broadcasts
 
@@ -339,6 +340,18 @@ class MonsterCombatTests(TestCase):
         self.assertEqual(self.hero.gold, 12)
         self.assertFalse(RoomGoldPile.objects.filter(room_id=self.room_danger.id).exists())
 
+    def test_take_partial_gold_floor(self):
+        RoomGoldPile.objects.create(room_id=self.room_danger.id, amount_remaining=12, label="")
+        self.hero.gold = 0
+        self.hero.save(update_fields=["gold", "updated_at"])
+        lines = execute_command(self.hero, parse_command("take 5 gold"))
+        self.assertTrue(any("5 gold" in ln.lower() for ln in lines), lines)
+        self.hero.refresh_from_db()
+        self.assertEqual(self.hero.gold, 5)
+        left = RoomGoldPile.objects.filter(room_id=self.room_danger.id).first()
+        self.assertIsNotNone(left)
+        self.assertEqual(int(left.amount_remaining), 7)
+
     def test_award_kill_xp_by_contribution(self):
         u2 = _test_user("h2@example.com")
         h2 = Character.objects.create(
@@ -449,6 +462,47 @@ class MonsterCombatTests(TestCase):
         m = MonsterInstance.objects.filter(current_room=lair).first()
         self.assertIsNotNone(m)
         self.assertEqual(m.engaged_character_id, self.hero.pk)
+        self.assertFalse(m.monster_strike_pending)
+
+    def test_engagement_first_combat_tick_is_wind_up_not_damage(self):
+        """Bind leaves strike pending False; first due flush narrates wind-up, no HP loss."""
+        self.monster.engaged_character_id = None
+        self.monster.pursuit_target_character_id = None
+        self.monster.monster_strike_pending = False
+        self.monster.next_action_at = None
+        self.monster.save(
+            update_fields=[
+                "engaged_character",
+                "pursuit_target_character",
+                "monster_strike_pending",
+                "next_action_at",
+                "updated_at",
+            ]
+        )
+        now = timezone.now()
+        self.assertTrue(
+            try_bind_monster_to_room_heroes(
+                MonsterInstance.objects.select_related("template").get(pk=self.monster.pk),
+                self.room_danger.id,
+                now,
+            )
+        )
+        self.monster.refresh_from_db()
+        self.assertFalse(self.monster.monster_strike_pending)
+        hp_before = self.hero.cur_health
+        run_lazy_simulation(now + timedelta(seconds=COMBAT_ROUND_SECONDS + 1))
+        self.hero.refresh_from_db()
+        self.assertEqual(self.hero.cur_health, hp_before)
+        b = (
+            RoomBroadcast.objects.filter(
+                room_id=self.room_danger.id, target_character_id=self.hero.pk
+            )
+            .order_by("-id")
+            .first()
+        )
+        self.assertIsNotNone(b)
+        self.assertIn("prepare", b.text.lower())
+        self.assertNotIn("strike you for", b.text.lower())
 
     def test_spoiling_strike_engages_hero(self):
         self.monster.engaged_character_id = None

@@ -1,11 +1,14 @@
 """Room item slots: mint-on-get, quest visibility, floor suppression."""
 
+from datetime import timedelta
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 
 from qff.command_handlers import execute_command
 from qff.command_parser import parse_command
+from qff.constants import AFK_LOBBY_KICK_MINUTES, PRESENCE_MINUTES
 from qff.models import (
     Character,
     CharacterClass,
@@ -15,6 +18,7 @@ from qff.models import (
     Quest,
     QuestState,
     Room,
+    RoomExit,
     RoomGoldPile,
     RoomItem,
 )
@@ -131,8 +135,8 @@ class RoomItemTests(TestCase):
         )
         c = self._char("Goldy")
         labels = self._you_see(c)
-        self.assertIn("12 gold", labels)
-        self.assertIn("5 gold (Sewer Rat)", labels)
+        self.assertIn("17 gold", labels)
+        self.assertEqual(sum(1 for x in labels if "gold" in x.lower()), 1)
 
     def test_look_at_room_item_uses_template(self):
         RoomItem.objects.create(room=self.room, item=self.item)
@@ -141,3 +145,37 @@ class RoomItemTests(TestCase):
         c = self._char("Looker")
         lines = execute_command(c, parse_command("look at brass"))
         self.assertIn("heavy key", lines[0].lower())
+
+    def test_look_direction_exit(self):
+        east = _room("RIEast", "ri-east")
+        RoomExit.objects.create(
+            from_room=self.room,
+            to_room=east,
+            direction=RoomExit.Direction.E,
+        )
+        c = self._char("LookDir")
+        lines = execute_command(c, parse_command("look e"))
+        self.assertTrue(any("east" in ln.lower() for ln in lines), lines)
+        self.assertTrue(any("lies ahead" in ln.lower() for ln in lines), lines)
+
+    def test_session_afk_and_others_here(self):
+        c = self._char("Active")
+        c.last_activity_at = timezone.now() - timedelta(minutes=AFK_LOBBY_KICK_MINUTES + 1)
+        c.save(update_fields=["last_activity_at", "updated_at"])
+        s = build_session_for_character(c)
+        self.assertTrue(s["character_profile"]["isInactive"])
+        self.assertTrue(s["force_lobby"])
+        self.assertEqual(s["others_here"], [])
+
+        peer = self._char("Peer")
+        peer.current_room = c.current_room
+        peer.last_activity_at = timezone.now() - timedelta(minutes=PRESENCE_MINUTES + 1)
+        peer.save(update_fields=["current_room", "last_activity_at", "updated_at"])
+        c.last_activity_at = timezone.now()
+        c.save(update_fields=["last_activity_at", "updated_at"])
+        s2 = build_session_for_character(c)
+        self.assertFalse(s2["force_lobby"])
+        self.assertEqual(
+            s2["others_here"],
+            [{"name": "Peer", "inactive": True}],
+        )

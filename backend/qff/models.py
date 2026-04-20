@@ -1133,6 +1133,8 @@ class MonsterTemplate(models.Model):
     crit_damage_bonus = models.FloatField(default=0.0)
     dodge_reduction = models.SmallIntegerField(default=0)
     dodge_ignore = models.SmallIntegerField(default=0)
+    description = models.TextField(blank=True)
+    hidden_description = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

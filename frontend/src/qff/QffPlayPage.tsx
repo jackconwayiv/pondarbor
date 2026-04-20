@@ -23,6 +23,7 @@ import {
   type QffCommandResponse,
   type QffSessionWithCharacter,
 } from "./api";
+import { optimisticMoveHeadLine, tryParseQffMoveDirection } from "./commandParser";
 
 /** WebSocket keepalive; must be ≤ combat round length so lazy sim runs on time (~6s). */
 const WS_PING_MS = 6_000;
@@ -111,6 +112,8 @@ export default function QffPlayPage() {
   /** Last token used for a successful QFF HTTP call — avoids await getAccessTokenSilently on every command. */
   const commandTokenRef = useRef<string | null>(null);
   const [session, setSession] = useState<QffSessionWithCharacter | null>(null);
+  const sessionRef = useRef<QffSessionWithCharacter | null>(null);
+  sessionRef.current = session;
   const [initialSessionLoadDone, setInitialSessionLoadDone] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [line, setLine] = useState("");
@@ -120,8 +123,9 @@ export default function QffPlayPage() {
   const lastBroadcastIdRef = useRef(0);
   /** Log line ids for in-flight optimistic `> cmd` + `…` rows (stripped when the HTTP response arrives). */
   const optimisticCommandLogIdsRef = useRef<number[]>([]);
-  /** Blocks a second command until the first HTTP round-trip finishes (avoids move “warping”). */
+  /** In-flight POST /command; a second Enter queues at most one follow-up in `queuedLineRef`. */
   const commandInFlightRef = useRef(false);
+  const queuedLineRef = useRef<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const logScrollRef = useRef<HTMLDivElement | null>(null);
   const [commandPending, setCommandPending] = useState(false);
@@ -287,10 +291,11 @@ export default function QffPlayPage() {
     });
   }, [session]);
 
-  const submit = useCallback(async () => {
-    const raw = line.trim();
+  const runCommand = useCallback(async (rawLine: string) => {
+    const raw = rawLine.trim();
     if (!raw) return;
-    if (session?.has_character && session.character_profile.isDead) {
+    const s = sessionRef.current;
+    if (s?.has_character && s.character_profile.isDead) {
       setLogLines((prev) => {
         const nextId = () => logLineIdRef.current++;
         return [
@@ -302,74 +307,85 @@ export default function QffPlayPage() {
       return;
     }
     if (commandInFlightRef.current) {
+      queuedLineRef.current = raw;
+      setLine("");
       return;
     }
     commandInFlightRef.current = true;
     setCommandPending(true);
     setLine("");
-    try {
-      const oid1 = logLineIdRef.current++;
-      const oid2 = logLineIdRef.current++;
-      optimisticCommandLogIdsRef.current = [oid1, oid2];
-      setLogLines((prev) => [
-        { id: oid1, text: `> ${raw}`, recent: true },
-        { id: oid2, text: "…", recent: true },
-        ...prev.map((p) => ({ ...p, recent: false })),
-      ]);
-      let token = commandTokenRef.current;
-      if (!token) {
-        token = await getTokenRef.current();
-      }
-      let res: QffCommandResponse;
+    const moveDir = tryParseQffMoveDirection(raw);
+    const cur = sessionRef.current;
+    const optimisticSecond =
+      cur?.has_character && moveDir ? optimisticMoveHeadLine(cur.exits, moveDir) : null;
       try {
-        res = await sendQffCommand(token, raw);
-      } catch (firstErr) {
-        const msg = firstErr instanceof Error ? firstErr.message : "";
-        if (/\(401\)|\(403\)/.test(msg)) {
+        const oid1 = logLineIdRef.current++;
+        const oid2 = logLineIdRef.current++;
+        optimisticCommandLogIdsRef.current = [oid1, oid2];
+        setLogLines((prev) => [
+          { id: oid1, text: `> ${raw}`, recent: true },
+          { id: oid2, text: optimisticSecond ?? "…", recent: true },
+          ...prev.map((p) => ({ ...p, recent: false })),
+        ]);
+        let token = commandTokenRef.current;
+        if (!token) {
           token = await getTokenRef.current();
-          res = await sendQffCommand(token, raw);
-        } else {
-          throw firstErr;
         }
-      }
-      commandTokenRef.current = token;
-      setSession(res.session);
-      setLogLines((prev) => {
-        const pending = optimisticCommandLogIdsRef.current;
-        optimisticCommandLogIdsRef.current = [];
-        const filtered = pending.length ? prev.filter((p) => !pending.includes(p.id)) : prev;
-        const nextId = () => logLineIdRef.current++;
-        const toShow: string[] =
-          res.echo_command === true ? [`> ${raw}`, ...res.messages] : [...res.messages];
-        const block = toShow.map((text) => ({
-          id: nextId(),
-          text,
-          recent: true,
-        }));
-        return [...block, ...filtered.map((p) => ({ ...p, recent: false }))];
-      });
-    } catch (e) {
-      setLogLines((prev) => {
-        const pending = optimisticCommandLogIdsRef.current;
-        optimisticCommandLogIdsRef.current = [];
-        const filtered = pending.length ? prev.filter((p) => !pending.includes(p.id)) : prev;
-        const nextId = () => logLineIdRef.current++;
-        const block = [
-          { id: nextId(), text: `> ${raw}`, recent: true },
-          {
+        let res: QffCommandResponse;
+        try {
+          res = await sendQffCommand(token, raw);
+        } catch (firstErr) {
+          const msg = firstErr instanceof Error ? firstErr.message : "";
+          if (/\(401\)|\(403\)/.test(msg)) {
+            token = await getTokenRef.current();
+            res = await sendQffCommand(token, raw);
+          } else {
+            throw firstErr;
+          }
+        }
+        commandTokenRef.current = token;
+        setSession(res.session);
+        setLogLines((prev) => {
+          const pending = optimisticCommandLogIdsRef.current;
+          optimisticCommandLogIdsRef.current = [];
+          const filtered = pending.length ? prev.filter((p) => !pending.includes(p.id)) : prev;
+          const nextId = () => logLineIdRef.current++;
+          const toShow: string[] =
+            res.echo_command === true ? [`> ${raw}`, ...res.messages] : [...res.messages];
+          const block = toShow.map((text) => ({
             id: nextId(),
-            text: e instanceof Error ? e.message : "Error.",
+            text,
             recent: true,
-          },
-        ];
-        return [...block, ...filtered.map((p) => ({ ...p, recent: false }))];
-      });
-    } finally {
-      commandInFlightRef.current = false;
-      setCommandPending(false);
-      queueMicrotask(() => inputRef.current?.focus());
-    }
-  }, [line, session]);
+          }));
+          return [...block, ...filtered.map((p) => ({ ...p, recent: false }))];
+        });
+      } catch (e) {
+        setLogLines((prev) => {
+          const pending = optimisticCommandLogIdsRef.current;
+          optimisticCommandLogIdsRef.current = [];
+          const filtered = pending.length ? prev.filter((p) => !pending.includes(p.id)) : prev;
+          const nextId = () => logLineIdRef.current++;
+          const block = [
+            { id: nextId(), text: `> ${raw}`, recent: true },
+            {
+              id: nextId(),
+              text: e instanceof Error ? e.message : "Error.",
+              recent: true,
+            },
+          ];
+          return [...block, ...filtered.map((p) => ({ ...p, recent: false }))];
+        });
+      } finally {
+        commandInFlightRef.current = false;
+        setCommandPending(false);
+        const next = queuedLineRef.current;
+        queuedLineRef.current = null;
+        queueMicrotask(() => {
+          inputRef.current?.focus();
+          if (next) void runCommand(next);
+        });
+      }
+  }, []);
 
   if (!isAuthenticated) {
     return (
@@ -700,11 +716,8 @@ export default function QffPlayPage() {
         onChange={(e) => setLine(e.target.value)}
         onKeyDown={(e) => {
           if (e.key !== "Enter") return;
-          if (commandInFlightRef.current) {
-            e.preventDefault();
-            return;
-          }
-          void submit();
+          e.preventDefault();
+          void runCommand(line);
         }}
         bg="#1e1e1e"
         borderColor="#a0a0a0"
@@ -714,11 +727,11 @@ export default function QffPlayPage() {
           boxShadow: "none",
         }}
         autoFocus
-        disabled={heroDead || commandPending}
+        disabled={heroDead}
         aria-busy={commandPending}
-        aria-disabled={heroDead || commandPending}
+        aria-disabled={heroDead}
       />
-      <QffButton type="button" onClick={submit} disabled={heroDead || commandPending}>
+      <QffButton type="button" onClick={() => void runCommand(line)} disabled={heroDead}>
         {commandPending ? "…" : "Send"}
       </QffButton>
     </Flex>

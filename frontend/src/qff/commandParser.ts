@@ -69,6 +69,67 @@ const TWO_LETTER: Record<string, string> = {
   se: Direction.SE,
 };
 
+/** Same rules as backend movement parsing; null if the line is not a bare move. */
+function directionFromNormalized(low: string): string | null {
+  for (const [word, dir] of DIRECTION_SYNONYMS) {
+    if (low === word || low === `go ${word}`) {
+      return dir;
+    }
+  }
+  const parts = low.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) {
+    const tok = parts[0]!;
+    if (tok in SINGLE_LETTER) {
+      return SINGLE_LETTER[tok]!;
+    }
+    if (tok in TWO_LETTER) {
+      return TWO_LETTER[tok]!;
+    }
+    if (tok === "in") {
+      return Direction.IN;
+    }
+    if (tok === "out") {
+      return Direction.OUT;
+    }
+  }
+  if (parts.length === 2 && parts[0] === "go") {
+    const rest = parts[1]!;
+    if (rest in SINGLE_LETTER) {
+      return SINGLE_LETTER[rest]!;
+    }
+    if (rest in TWO_LETTER) {
+      return TWO_LETTER[rest]!;
+    }
+    for (const [word, dir] of DIRECTION_SYNONYMS) {
+      if (rest === word) {
+        return dir;
+      }
+    }
+  }
+  return null;
+}
+
+/** Direction slug (`n`, `nw`, …) or null if `line` is not a movement command. */
+export function tryParseQffMoveDirection(line: string): string | null {
+  const n = normalize(line);
+  if (!n) return null;
+  return directionFromNormalized(n.toLowerCase());
+}
+
+/**
+ * When the session lists exactly one passable exit in this direction, the server’s first line on
+ * success is `You head ${label.toLowerCase()}.` — show it optimistically before HTTP returns.
+ */
+export function optimisticMoveHeadLine(
+  exits: Array<{ direction: string; label: string; is_blocked?: boolean }> | null | undefined,
+  direction: string,
+): string | null {
+  if (!exits?.length) return null;
+  const candidates = exits.filter((ex) => ex.direction === direction && ex.is_blocked !== true);
+  if (candidates.length !== 1) return null;
+  return `You head ${candidates[0].label.toLowerCase()}.`;
+}
+
 export function parseQffCommandLine(line: string): QffParseResult {
   const raw = line;
   const n = normalize(line);
@@ -201,42 +262,8 @@ export function parseQffCommandLine(line: string): QffParseResult {
     return { kind: "known" };
   }
 
-  for (const [word] of DIRECTION_SYNONYMS) {
-    if (low === word || low === `go ${word}`) {
-      return { kind: "known" };
-    }
-  }
-
-  const parts = low.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) {
-    const tok = parts[0]!;
-    if (tok in SINGLE_LETTER) {
-      return { kind: "known" };
-    }
-    if (tok in TWO_LETTER) {
-      return { kind: "known" };
-    }
-    if (tok === "in") {
-      return { kind: "known" };
-    }
-    if (tok === "out") {
-      return { kind: "known" };
-    }
-  }
-
-  if (parts.length === 2 && parts[0] === "go") {
-    const rest = parts[1]!;
-    if (rest in SINGLE_LETTER) {
-      return { kind: "known" };
-    }
-    if (rest in TWO_LETTER) {
-      return { kind: "known" };
-    }
-    for (const [word] of DIRECTION_SYNONYMS) {
-      if (rest === word) {
-        return { kind: "known" };
-      }
-    }
+  if (directionFromNormalized(low) != null) {
+    return { kind: "known" };
   }
 
   return { kind: "unknown", raw };

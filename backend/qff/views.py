@@ -277,9 +277,12 @@ def command_view(request):
     old_room_id = char.current_room_id
     wall_start = time.perf_counter()
     sim_ms = 0.0
+    sync_ms = 0.0
 
     with transaction.atomic():
+        t_sync = time.perf_counter()
         char = sync_character_world_before_session(char)
+        sync_ms = (time.perf_counter() - t_sync) * 1000
         parsed = parse_command(line)
         t0 = time.perf_counter()
         messages = list(execute_command(char, parsed, world_sync=False))
@@ -317,25 +320,31 @@ def command_view(request):
     total_ms = (time.perf_counter() - wall_start) * 1000
     uid = getattr(request.user, "pk", None)
     session_pct = (100.0 * session_ms / total_ms) if total_ms > 0 else 0.0
+    # Work outside exec/sim/session: _get_character (×2), ineffective-input insert, encumbrance, etc.
+    gap_ms = max(0.0, total_ms - sync_ms - exec_ms - sim_ms - session_ms)
     parsed_kind = type(parsed).__name__
     logger.debug(
-        "qff.command user_id=%s parsed=%s exec_ms=%.1f sim_ms=%.1f session_ms=%.1f total_ms=%.1f session_pct=%.1f",
+        "qff.command user_id=%s parsed=%s sync_ms=%.1f exec_ms=%.1f sim_ms=%.1f session_ms=%.1f gap_ms=%.1f total_ms=%.1f session_pct=%.1f",
         uid,
         parsed_kind,
+        sync_ms,
         exec_ms,
         sim_ms,
         session_ms,
+        gap_ms,
         total_ms,
         session_pct,
     )
     if getattr(settings, "QFF_COMMAND_TIMING_LOG", False):
         logger.info(
-            "qff_command_timing user_id=%s parsed=%s exec_ms=%.2f sim_ms=%.2f session_ms=%.2f total_ms=%.2f session_pct=%.2f",
+            "qff_command_timing user_id=%s parsed=%s sync_ms=%.2f exec_ms=%.2f sim_ms=%.2f session_ms=%.2f gap_ms=%.2f total_ms=%.2f session_pct=%.2f",
             uid,
             parsed_kind,
+            sync_ms,
             exec_ms,
             sim_ms,
             session_ms,
+            gap_ms,
             total_ms,
             session_pct,
         )

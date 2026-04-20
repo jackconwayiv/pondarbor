@@ -77,7 +77,7 @@ from qff.quest_engine import (
     try_item_transitions_on_talk,
     unowned_floor_item_template_ids_in_room,
 )
-from qff.monster_sim import add_gold_to_room_floor
+from qff.monster_sim import add_gold_to_room_floor, ensure_monster_engaged_by_attacker
 from qff.narrative_visibility import occupant_labels_for_look, room_is_narratively_visible
 from qff.shop_engine import (
     browse_shop,
@@ -561,6 +561,7 @@ def _handle_attack(char: CharacterType, parsed: ParsedAttack) -> list[str]:
         char.save(update_fields=["last_activity_at", "updated_at"])
         return ["You don't see that here."]
     now = timezone.now()
+    ensure_monster_engaged_by_attacker(m, char, now)
     char.combat_target_monster_id = m.pk
     char.next_action_at = now + timedelta(seconds=COMBAT_ROUND_SECONDS)
     char.save(

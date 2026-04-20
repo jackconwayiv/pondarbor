@@ -40,6 +40,7 @@ from qff.monster_sim import (
     _resolve_monster_strike,
     award_kill,
     engage_monsters_for_new_arrivals,
+    flush_combat_rounds,
     hero_drop_all,
     maybe_spawn_lairs,
     run_lazy_simulation,
@@ -670,3 +671,102 @@ class MonsterCombatTests(TestCase):
             log_tone="enemy_hit",
         ).first()
         self.assertIsNotNone(b)
+
+    def test_flush_does_not_advance_monster_when_engaged_target_wrong_room(self):
+        """Invalid strike target must not clear strike_pending / bump next_action_at."""
+        now = timezone.now()
+        na = now - timedelta(seconds=1)
+        self.hero.current_room_id = self.room_safe.id
+        self.hero.save(update_fields=["current_room", "updated_at"])
+        self.monster.engaged_character_id = self.hero.pk
+        self.monster.monster_strike_pending = True
+        self.monster.next_action_at = na
+        self.monster.save(
+            update_fields=[
+                "engaged_character",
+                "monster_strike_pending",
+                "next_action_at",
+                "updated_at",
+            ]
+        )
+        flush_combat_rounds(now)
+        self.monster.refresh_from_db()
+        self.assertTrue(self.monster.monster_strike_pending)
+        self.assertEqual(self.monster.next_action_at, na)
+
+    def test_attack_only_engages_target_instance_preserves_other_pacing(self):
+        tpl_a = MonsterTemplate.objects.create(
+            slug="alpha_vermin",
+            name="Alpha Vermin",
+            max_hp=5,
+            damage_min=1,
+            damage_max=2,
+            moves=0,
+            xp_value=5,
+            gold_min=0,
+            gold_max=0,
+        )
+        tpl_b = MonsterTemplate.objects.create(
+            slug="beta_vermin",
+            name="Beta Vermin",
+            max_hp=5,
+            damage_min=1,
+            damage_max=2,
+            moves=0,
+            xp_value=5,
+            gold_min=0,
+            gold_max=0,
+        )
+        na = timezone.now() + timedelta(seconds=42)
+        m_a = MonsterInstance.objects.create(
+            template=tpl_a,
+            current_room=self.room_danger,
+            cur_hp=5,
+            max_hp=5,
+            engaged_character_id=self.hero.pk,
+            pursuit_target_character_id=self.hero.pk,
+            monster_strike_pending=True,
+            next_action_at=na,
+        )
+        m_b = MonsterInstance.objects.create(
+            template=tpl_b,
+            current_room=self.room_danger,
+            cur_hp=5,
+            max_hp=5,
+        )
+        execute_command(self.hero, parse_command("attack beta"))
+        run_lazy_simulation(timezone.now(), notify_rooms=False)
+        m_a.refresh_from_db()
+        self.assertEqual(m_a.next_action_at, na)
+        self.assertTrue(m_a.monster_strike_pending)
+        m_b.refresh_from_db()
+        self.assertEqual(m_b.engaged_character_id, self.hero.pk)
+
+    def test_monster_miss_in_flush_still_advances_schedule(self):
+        now = timezone.now()
+        self.monster.next_action_at = now - timedelta(seconds=1)
+        self.monster.monster_strike_pending = True
+        self.monster.engaged_character_id = self.hero.pk
+        self.monster.save(
+            update_fields=[
+                "next_action_at",
+                "monster_strike_pending",
+                "engaged_character",
+                "updated_at",
+            ]
+        )
+        miss = StrikeResult(
+            outcome="miss",
+            damage=0,
+            base_damage=0,
+            damage_after_mitigation=0,
+            was_crit=False,
+            hit_chance=50,
+            effective_dodge_chance=5,
+            crit_chance=0.05,
+        )
+        with patch("qff.monster_sim.resolve_physical_strike", return_value=miss):
+            flush_combat_rounds(now)
+        self.monster.refresh_from_db()
+        self.assertFalse(self.monster.monster_strike_pending)
+        self.assertGreater(self.monster.next_action_at, now)

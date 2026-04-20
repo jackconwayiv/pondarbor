@@ -397,6 +397,39 @@ def _sync_or_bind_monster_to_arriving_hero(
     )
 
 
+def ensure_monster_engaged_by_attacker(
+    monster: MonsterInstance, hero: Character, now
+) -> None:
+    """Bind monster to the attacking hero without resetting an already-armed combat cadence."""
+    if monster.current_room_id != hero.current_room_id:
+        return
+    if monster.next_action_at is not None or monster.monster_strike_pending:
+        if (
+            monster.engaged_character_id == hero.pk
+            and monster.pursuit_target_character_id == hero.pk
+        ):
+            return
+        monster.engaged_character_id = hero.pk
+        monster.pursuit_target_character_id = hero.pk
+        monster.save(
+            update_fields=["engaged_character", "pursuit_target_character", "updated_at"]
+        )
+        return
+    monster.engaged_character_id = hero.pk
+    monster.pursuit_target_character_id = hero.pk
+    monster.monster_strike_pending = False
+    monster.next_action_at = now + timedelta(seconds=MONSTER_ENGAGEMENT_FIRST_TICK_SECONDS)
+    monster.save(
+        update_fields=[
+            "engaged_character",
+            "pursuit_target_character",
+            "monster_strike_pending",
+            "next_action_at",
+            "updated_at",
+        ]
+    )
+
+
 def engage_monsters_for_new_arrivals(hero: Character, room_id: int) -> None:
     now = timezone.now()
     for m in MonsterInstance.objects.filter(current_room_id=room_id).select_related("template"):
@@ -546,19 +579,20 @@ def award_kill(monster: MonsterInstance, room_id: int, now) -> None:
             lr.save(update_fields=["lair_last_instance", "lair_next_spawn_at", "updated_at"])
 
 
-def _resolve_monster_strike(monster: MonsterInstance, now) -> None:
+def _resolve_monster_strike(monster: MonsterInstance, now) -> bool:
+    """Resolve monster damage turn if due. Returns True if monster combat schedule should advance."""
     room_id = monster.current_room_id
     tgt_id = monster.engaged_character_id
     if not tgt_id:
         m2 = MonsterInstance.objects.select_related("template").get(pk=monster.pk)
         if try_bind_monster_to_room_heroes(m2, room_id, now):
-            return
+            return True
         mname = m2.template.name
         _narrate(room_id, f"{mname} is spoiling for a fight.")
-        return
+        return True
     hero = _character_for_combat(tgt_id)
     if not hero or hero.current_room_id != room_id:
-        return
+        return False
     tpl = monster.template
     lo, hi = int(tpl.damage_min), int(tpl.damage_max)
     if hi < lo:
@@ -583,7 +617,7 @@ def _resolve_monster_strike(monster: MonsterInstance, now) -> None:
                     target_character_id=h.pk,
                     log_tone="miss",
                 )
-        return
+        return True
     if res.outcome == "dodge":
         _narrate(
             room_id,
@@ -599,7 +633,7 @@ def _resolve_monster_strike(monster: MonsterInstance, now) -> None:
                     target_character_id=h.pk,
                     log_tone="miss",
                 )
-        return
+        return True
 
     dmg = res.damage
     nh = max(0, int(hero.cur_health) - dmg)
@@ -619,6 +653,7 @@ def _resolve_monster_strike(monster: MonsterInstance, now) -> None:
             )
     if nh <= 0:
         _hero_die(hero, room_id, killer_monster_id=monster.pk)
+    return True
 
 
 def _resolve_hero_strike(char: Character, now) -> None:
@@ -956,12 +991,12 @@ def flush_combat_rounds(now) -> set[int]:
                     )
                     affected.add(m.current_room_id)
                     continue
-                _resolve_monster_strike(m, now)
-                MonsterInstance.objects.filter(pk=m.pk).update(
-                    next_action_at=now + timedelta(seconds=COMBAT_ROUND_SECONDS),
-                    monster_strike_pending=False,
-                    updated_at=timezone.now(),
-                )
+                if _resolve_monster_strike(m, now):
+                    MonsterInstance.objects.filter(pk=m.pk).update(
+                        next_action_at=now + timedelta(seconds=COMBAT_ROUND_SECONDS),
+                        monster_strike_pending=False,
+                        updated_at=timezone.now(),
+                    )
                 affected.add(m.current_room_id)
             else:
                 if pk in seen_h:

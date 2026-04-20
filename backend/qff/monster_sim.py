@@ -18,6 +18,7 @@ from qff.combat_math import (
 )
 from qff.constants import (
     COMBAT_ROUND_SECONDS,
+    MONSTER_ENGAGEMENT_FIRST_TICK_SECONDS,
     GUTS_EQUIPMENT_KEEP_GUTS_DIVISOR,
     GUTS_EQUIPMENT_KEEP_MAX_PCT,
     MONSTER_SENSE_ADJACENT_DC,
@@ -88,15 +89,18 @@ def _narrate(
     *,
     target_character_id: int | None = None,
     speaker_id: int | None = None,
+    log_tone: str = "",
 ) -> None:
     t = (text or "").strip()[:500]
     if not t:
         return
+    tone = (log_tone or "").strip()[:16]
     RoomBroadcast.objects.create(
         room_id=room_id,
         speaker_id=speaker_id,
         target_character_id=target_character_id,
         text=t,
+        log_tone=tone,
     )
 
 
@@ -333,7 +337,9 @@ def try_bind_monster_to_room_heroes(monster: MonsterInstance, room_id: int, now)
     monster.pursuit_target_character_id = target.pk
     # False so the first combat flush runs wind-up ("prepares to strike"), not damage.
     monster.monster_strike_pending = False
-    monster.next_action_at = now + timedelta(seconds=COMBAT_ROUND_SECONDS)
+    monster.next_action_at = now + timedelta(
+        seconds=MONSTER_ENGAGEMENT_FIRST_TICK_SECONDS
+    )
     monster.save(
         update_fields=[
             "engaged_character",
@@ -518,6 +524,7 @@ def _resolve_monster_strike(monster: MonsterInstance, now) -> None:
             room_id,
             f"{mname} swings at you but misses!",
             target_character_id=hero.pk,
+            log_tone="miss",
         )
         for h in _heroes_in_room(room_id):
             if h.pk != hero.pk:
@@ -525,6 +532,7 @@ def _resolve_monster_strike(monster: MonsterInstance, now) -> None:
                     room_id,
                     f"{mname} swings at {hero.name} but misses.",
                     target_character_id=h.pk,
+                    log_tone="miss",
                 )
         return
     if res.outcome == "dodge":
@@ -532,6 +540,7 @@ def _resolve_monster_strike(monster: MonsterInstance, now) -> None:
             room_id,
             f"You dodge the {mname}'s attack!",
             target_character_id=hero.pk,
+            log_tone="miss",
         )
         for h in _heroes_in_room(room_id):
             if h.pk != hero.pk:
@@ -539,6 +548,7 @@ def _resolve_monster_strike(monster: MonsterInstance, now) -> None:
                     room_id,
                     f"{hero.name} dodges the {mname}.",
                     target_character_id=h.pk,
+                    log_tone="miss",
                 )
         return
 
@@ -552,10 +562,12 @@ def _resolve_monster_strike(monster: MonsterInstance, now) -> None:
     else:
         hit_you = f"{mname} strikes you for {dmg} damage!"
         hit_peer = f"{mname} strikes {hero.name} for {dmg} damage!"
-    _narrate(room_id, hit_you, target_character_id=hero.pk)
+    _narrate(room_id, hit_you, target_character_id=hero.pk, log_tone="enemy_hit")
     for h in _heroes_in_room(room_id):
         if h.pk != hero.pk:
-            _narrate(room_id, hit_peer, target_character_id=h.pk)
+            _narrate(
+                room_id, hit_peer, target_character_id=h.pk, log_tone="enemy_hit"
+            )
     if nh <= 0:
         _hero_die(hero, room_id, killer_monster_id=monster.pk)
 
@@ -587,13 +599,19 @@ def _resolve_hero_strike(char: Character, now) -> None:
     mname = monster.template.name
     rid = char.current_room_id
     if res.outcome == "miss":
-        _narrate(rid, f"You swing at the {mname} but miss.", target_character_id=char.pk)
+        _narrate(
+            rid,
+            f"You swing at the {mname} but miss.",
+            target_character_id=char.pk,
+            log_tone="miss",
+        )
         for h in _heroes_in_room(rid):
             if h.pk != char.pk:
                 _narrate(
                     rid,
                     f"{char.name} swings at the {mname} but misses.",
                     target_character_id=h.pk,
+                    log_tone="miss",
                 )
         return
     if res.outcome == "dodge":
@@ -601,6 +619,7 @@ def _resolve_hero_strike(char: Character, now) -> None:
             rid,
             f"The {mname} evades your attack!",
             target_character_id=char.pk,
+            log_tone="miss",
         )
         for h in _heroes_in_room(rid):
             if h.pk != char.pk:
@@ -608,6 +627,7 @@ def _resolve_hero_strike(char: Character, now) -> None:
                     rid,
                     f"The {mname} evades {char.name}'s attack.",
                     target_character_id=h.pk,
+                    log_tone="miss",
                 )
         return
 
@@ -627,10 +647,10 @@ def _resolve_hero_strike(char: Character, now) -> None:
     else:
         you = f"You strike the {mname} for {dmg} damage!"
         peer = f"{char.name} strikes the {mname} for {dmg} damage!"
-    _narrate(rid, you, target_character_id=char.pk)
+    _narrate(rid, you, target_character_id=char.pk, log_tone="hero_hit")
     for h in _heroes_in_room(rid):
         if h.pk != char.pk:
-            _narrate(rid, peer, target_character_id=h.pk)
+            _narrate(rid, peer, target_character_id=h.pk, log_tone="hero_hit")
     if nm <= 0:
         for h in _heroes_in_room(rid):
             if h.pk == char.pk:

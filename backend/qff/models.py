@@ -546,6 +546,8 @@ class RoomBroadcast(models.Model):
         related_name="room_broadcasts_targeted",
     )
     text = models.CharField(max_length=500)
+    # Combat log tint in play HUD (hero_hit / enemy_hit / miss); empty = default.
+    log_tone = models.CharField(max_length=16, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

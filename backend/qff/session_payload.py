@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from qff.constants import AFK_LOBBY_KICK_MINUTES, PRESENCE_MINUTES
 from qff.exploration import sync_seen_exits_for_character
+from qff.narrative_visibility import room_is_narratively_visible
 from qff.exits import exit_is_passable, exit_is_visible_to_character
 from qff.quest_engine import (
     floor_item_visible_to_character,
@@ -116,7 +117,10 @@ def consume_room_broadcast_entries(character) -> list[dict]:
         .order_by("id")
     )
     rows = list(qs)
-    out = [{"id": b.id, "text": b.text} for b in rows]
+    out = [
+        {"id": b.id, "text": b.text, "log_tone": (b.log_tone or "").strip()}
+        for b in rows
+    ]
     if rows:
         character.last_room_broadcast_id = rows[-1].id
         character.save(update_fields=["last_room_broadcast_id", "updated_at"])
@@ -478,6 +482,7 @@ def build_session_for_character(character, *, world_sync: bool = True) -> dict:
             "id": room.id,
             "name": room.name,
             "description": room.description,
+            "details_visible": room_is_narratively_visible(character, room),
             "is_safe": room.is_safe,
             "is_spawn_point": room.is_spawn_point,
             "monsters": [

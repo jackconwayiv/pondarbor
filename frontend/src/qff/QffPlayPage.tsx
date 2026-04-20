@@ -37,6 +37,17 @@ const HUD_PANEL_TEXT = "#c8c8c8";
 const HUD_PANEL_TEXT_MUTED = "#909090";
 /** Most recent command + response in the log */
 const HUD_LOG_RECENT = "#f5f5f5";
+/** Combat log tones (placeholders; revise when spells/healing land). */
+const HUD_LOG_HERO_HIT = "#dff7e8";
+const HUD_LOG_ENEMY_HIT = "#fce8f0";
+const HUD_LOG_MISS = "#faf6e0";
+
+function hudLogLineColor(recent: boolean, logTone: string | undefined): string {
+  if (logTone === "hero_hit") return HUD_LOG_HERO_HIT;
+  if (logTone === "enemy_hit") return HUD_LOG_ENEMY_HIT;
+  if (logTone === "miss") return HUD_LOG_MISS;
+  return recent ? HUD_LOG_RECENT : HUD_PANEL_TEXT;
+}
 /** Stat total (modified) */
 const HUD_STAT_TOTAL = "#f0f0f0";
 /** (base + modifiers) — darker than label + total */
@@ -103,7 +114,9 @@ export default function QffPlayPage() {
   const [initialSessionLoadDone, setInitialSessionLoadDone] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [line, setLine] = useState("");
-  const [logLines, setLogLines] = useState<Array<{ id: number; text: string; recent: boolean }>>([]);
+  const [logLines, setLogLines] = useState<
+    Array<{ id: number; text: string; recent: boolean; logTone?: string }>
+  >([]);
   const [mapVisible, setMapVisible] = useState(true);
   const logLineIdRef = useRef(0);
   const lastBroadcastIdRef = useRef(0);
@@ -282,7 +295,12 @@ export default function QffPlayPage() {
     }
     setLogLines((prev) => {
       const nextId = () => logLineIdRef.current++;
-      const block = fresh.map((e) => ({ id: nextId(), text: e.text, recent: true }));
+      const block = fresh.map((e) => ({
+        id: nextId(),
+        text: e.text,
+        recent: true,
+        logTone: e.log_tone?.trim() || undefined,
+      }));
       return [...prev.map((p) => ({ ...p, recent: false })), ...block];
     });
   }, [session]);
@@ -347,15 +365,27 @@ export default function QffPlayPage() {
           const filtered = pending.length ? prev.filter((p) => !pending.includes(p.id)) : prev;
           const nextId = () => logLineIdRef.current++;
           const al = res.session.action_log ?? [];
-          const narr =
-            al.length > 0 ? al.map((e) => e.text) : res.messages;
-          const toShow: string[] =
-            res.echo_command === true ? [`> ${raw}`, ...narr] : narr;
-          const block = toShow.map((text) => ({
-            id: nextId(),
-            text,
-            recent: true,
-          }));
+          let block: Array<{ id: number; text: string; recent: boolean; logTone?: string }>;
+          if (al.length > 0) {
+            block = al.map((e) => ({
+              id: nextId(),
+              text: e.text,
+              recent: true,
+              logTone: e.log_tone?.trim() || undefined,
+            }));
+            if (res.echo_command === true) {
+              block = [{ id: nextId(), text: `> ${raw}`, recent: true }, ...block];
+            }
+          } else {
+            const narr = res.messages;
+            const toShow: string[] =
+              res.echo_command === true ? [`> ${raw}`, ...narr] : narr;
+            block = toShow.map((text) => ({
+              id: nextId(),
+              text,
+              recent: true,
+            }));
+          }
           const pos = al.filter((e) => e.id > 0).map((e) => e.id);
           if (pos.length) {
             lastBroadcastIdRef.current = Math.max(
@@ -446,6 +476,7 @@ export default function QffPlayPage() {
   const { room, area, exits, others_here, area_map } = session;
   const mapMinimal = area_map.minimal === true;
   const t = area.theme;
+  const roomDetailsVisible = room.details_visible !== false;
   const cp = session.character_profile;
   const heroDead = cp.isDead === true;
   const roomMonsters = room.monsters ?? [];
@@ -696,8 +727,8 @@ export default function QffPlayPage() {
         "&::-webkit-scrollbar": { display: "none" },
       }}
     >
-      {logLines.map(({ id, text, recent }) => (
-        <Text key={id} fontSize="sm" color={recent ? HUD_LOG_RECENT : HUD_PANEL_TEXT}>
+      {logLines.map(({ id, text, recent, logTone }) => (
+        <Text key={id} fontSize="sm" color={hudLogLineColor(recent, logTone)}>
           {text}
         </Text>
       ))}
@@ -803,7 +834,7 @@ export default function QffPlayPage() {
                 fontSize="sm"
                 color={t.accent}
               >
-                {room.description}
+                {roomDetailsVisible ? room.description : "This area is too dark to see."}
               </Text>
               <Stack gap={1}>{exitsBlock}</Stack>
             </Stack>

@@ -19,6 +19,7 @@ def _test_user(email: str) -> User:
 
 from qff.command_handlers import execute_command
 from qff.command_parser import ParsedAttack, ParsedTrain, parse_command
+from qff.combat_math import StrikeResult
 from qff.constants import COMBAT_ROUND_SECONDS, XP_PER_LEVEL
 from qff.models import (
     Area,
@@ -489,6 +490,10 @@ class MonsterCombatTests(TestCase):
         )
         self.monster.refresh_from_db()
         self.assertFalse(self.monster.monster_strike_pending)
+        self.assertLessEqual(
+            self.monster.next_action_at,
+            now + timedelta(seconds=2),
+        )
         hp_before = self.hero.cur_health
         run_lazy_simulation(now + timedelta(seconds=COMBAT_ROUND_SECONDS + 1))
         self.hero.refresh_from_db()
@@ -550,3 +555,67 @@ class MonsterCombatTests(TestCase):
         m = MonsterInstance.objects.filter(pk=self.monster.pk).first()
         self.assertIsNotNone(m)
         self.assertEqual(m.engaged_character_id, surv.pk)
+
+    def test_roombroadcast_log_tone_hero_hit(self):
+        self.hero.last_command_at = None
+        self.hero.combat_target_monster_id = self.monster.pk
+        self.hero.next_action_at = timezone.now()
+        self.hero.save(
+            update_fields=[
+                "last_command_at",
+                "combat_target_monster",
+                "next_action_at",
+                "updated_at",
+            ]
+        )
+        self.monster.monster_strike_pending = True
+        self.monster.engaged_character_id = self.hero.pk
+        self.monster.save(
+            update_fields=["monster_strike_pending", "engaged_character", "updated_at"]
+        )
+        fake = StrikeResult(
+            outcome="hit",
+            damage=2,
+            base_damage=2,
+            damage_after_mitigation=2,
+            was_crit=False,
+            hit_chance=50,
+            effective_dodge_chance=5,
+            crit_chance=0.05,
+        )
+        with patch("qff.monster_sim.resolve_physical_strike", return_value=fake):
+            _resolve_hero_strike(Character.objects.get(pk=self.hero.pk), timezone.now())
+        b = RoomBroadcast.objects.filter(
+            room_id=self.room_danger.id,
+            target_character_id=self.hero.pk,
+            log_tone="hero_hit",
+        ).first()
+        self.assertIsNotNone(b)
+
+    def test_roombroadcast_log_tone_enemy_hit(self):
+        fake = StrikeResult(
+            outcome="hit",
+            damage=1,
+            base_damage=1,
+            damage_after_mitigation=1,
+            was_crit=False,
+            hit_chance=50,
+            effective_dodge_chance=5,
+            crit_chance=0.05,
+        )
+        self.monster.monster_strike_pending = True
+        self.monster.engaged_character_id = self.hero.pk
+        self.monster.save(
+            update_fields=["monster_strike_pending", "engaged_character", "updated_at"]
+        )
+        with patch("qff.monster_sim.resolve_physical_strike", return_value=fake):
+            _resolve_monster_strike(
+                MonsterInstance.objects.select_related("template").get(pk=self.monster.pk),
+                timezone.now(),
+            )
+        b = RoomBroadcast.objects.filter(
+            room_id=self.room_danger.id,
+            target_character_id=self.hero.pk,
+            log_tone="enemy_hit",
+        ).first()
+        self.assertIsNotNone(b)

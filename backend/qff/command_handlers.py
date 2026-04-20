@@ -73,6 +73,7 @@ from qff.quest_engine import (
     unowned_floor_item_template_ids_in_room,
 )
 from qff.monster_sim import add_gold_to_room_floor
+from qff.narrative_visibility import occupant_labels_for_look, room_is_narratively_visible
 from qff.shop_engine import (
     browse_shop,
     find_inventory_instance,
@@ -1171,15 +1172,15 @@ def _handle_look_direction(char: CharacterType, parsed: ParsedLookDirection) -> 
         _touch_activity(char)
         char.save(update_fields=["last_activity_at", "updated_at"])
         dest = ex.to_room
+        if not room_is_narratively_visible(char, dest):
+            return ["It's too dark to see!"]
         dir_label = ex.get_direction_display().lower()
         name = (dest.name or "").strip() or "somewhere"
-        teaser = (dest.description or "").strip().replace("\n", " ")
-        if len(teaser) > 120:
-            teaser = teaser[:117] + "..."
         line = f"To the {dir_label}, {name} lies ahead."
         out = [line]
-        if teaser:
-            out.append(teaser)
+        labels = occupant_labels_for_look(char, dest.id)
+        if labels:
+            out.append(f"You make out: {_natural_join_phrases(labels)}.")
         return out
     return _handle_look_inspect(
         char,
@@ -1192,7 +1193,15 @@ def _handle_look_inspect(char: CharacterType, parsed: ParsedLookInspect) -> list
     char.save(update_fields=["last_activity_at", "updated_at"])
     target = (parsed.target or "").strip()
     if not target:
-        return ["Look at what?"]
+        room = char.current_room
+        if not room_is_narratively_visible(char, room):
+            return ["This area is too dark to see."]
+        rname = (room.name or "").strip() or "here"
+        out = [rname + "."]
+        labels = occupant_labels_for_look(char, room.id)
+        if labels:
+            out.append(f"You make out: {_natural_join_phrases(labels)}.")
+        return out
 
     npc = find_npc_in_room(char, target)
     if npc:

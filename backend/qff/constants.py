@@ -22,6 +22,8 @@ FLOOR_ITEM_MIN_AGE_BEFORE_DELETE_MINUTES = 5
 
 # Monsters / combat (see QFF plan)
 COMBAT_ROUND_SECONDS = 6
+# First combat tick after a monster binds to a hero (wind-up); 0 = due in same lazy_sim flush as move.
+MONSTER_ENGAGEMENT_FIRST_TICK_SECONDS = 0
 PURSUIT_STEP_SECONDS = 2
 MONSTER_SENSE_ADJACENT_DC = 50
 XP_PER_LEVEL = 100

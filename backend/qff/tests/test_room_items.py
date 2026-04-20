@@ -15,6 +15,7 @@ from qff.models import (
     CharacterQuestProgress,
     Item,
     ItemInstance,
+    Npc,
     Quest,
     QuestState,
     Room,
@@ -148,6 +149,9 @@ class RoomItemTests(TestCase):
 
     def test_look_direction_exit(self):
         east = _room("RIEast", "ri-east")
+        east.description = "A long east room description that must not appear on directional look."
+        east.save(update_fields=["description", "updated_at"])
+        Npc.objects.create(room=east, slug="shop-ri", name="Shopkeeper")
         RoomExit.objects.create(
             from_room=self.room,
             to_room=east,
@@ -157,6 +161,11 @@ class RoomItemTests(TestCase):
         lines = execute_command(c, parse_command("look e"))
         self.assertTrue(any("east" in ln.lower() for ln in lines), lines)
         self.assertTrue(any("lies ahead" in ln.lower() for ln in lines), lines)
+        self.assertFalse(
+            any("long east room description" in ln.lower() for ln in lines), lines
+        )
+        self.assertTrue(any("make out" in ln.lower() for ln in lines), lines)
+        self.assertTrue(any("shopkeeper" in ln.lower() for ln in lines), lines)
 
     def test_session_afk_and_others_here(self):
         c = self._char("Active")

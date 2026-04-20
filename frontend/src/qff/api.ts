@@ -112,6 +112,8 @@ export type QffSessionWithCharacter = {
     id: number;
     name: string;
     description: string;
+    /** When false (dark unlit room), play UI hides room description prose. */
+    details_visible?: boolean;
     youSee: string[];
     npcs?: Array<{ slug: string; name: string }>;
     interactables?: Array<{ slug: string; name: string; kind: string }>;
@@ -132,7 +134,7 @@ export type QffSessionWithCharacter = {
   };
   character_profile: QffCharacterProfile;
   /** Room narrative queue; ids prevent duplicate lines when HTTP and WebSocket both deliver a session. */
-  action_log: Array<{ id: number; text: string }>;
+  action_log: Array<{ id: number; text: string; log_tone?: string }>;
 };
 
 export type QffStatBlock = {

@@ -15,10 +15,11 @@ from qff.models import (
     CharacterRoomVisit,
     Item,
     ItemInstance,
+    Npc,
     Room,
     RoomExit,
 )
-from qff.session_payload import build_area_map
+from qff.session_payload import build_area_map, build_session_for_character
 
 User = get_user_model()
 
@@ -220,3 +221,44 @@ class MinimapDarkTests(TestCase):
         self.assertTrue(any("don't need light" in ln.lower() for ln in lines))
         c = Character.objects.get(pk=c.pk)
         self.assertEqual(len(c.inventory), 1)
+
+    def test_look_direction_dark_unlit_destination(self):
+        self._visit_all()
+        c = self._fresh_char()
+        lines = execute_command(c, parse_command("look e"))
+        self.assertEqual(lines, ["It's too dark to see!"])
+
+    def test_bare_look_and_session_dark_unlit_current_room(self):
+        self._visit_all()
+        c = self._fresh_char()
+        lines = execute_command(c, parse_command("look"))
+        self.assertEqual(lines, ["This area is too dark to see."])
+        lines_i = execute_command(c, parse_command("inspect"))
+        self.assertEqual(lines_i, ["This area is too dark to see."])
+        c = Character.objects.select_related("current_room", "current_room__area").get(pk=c.pk)
+        s = build_session_for_character(c)
+        self.assertFalse(s["room"]["details_visible"])
+
+    def test_narrative_visible_with_permanent_light(self):
+        self._visit_all()
+        c = self._fresh_char()
+        r = c.current_room
+        r.permanent_minimap_light = True
+        r.name = "Lit Nook"
+        r.save(update_fields=["permanent_minimap_light", "name", "updated_at"])
+        c = Character.objects.select_related("current_room", "current_room__area").get(pk=c.pk)
+        lines = execute_command(c, parse_command("look"))
+        self.assertTrue(lines[0].startswith("Lit Nook"))
+        s = build_session_for_character(c)
+        self.assertTrue(s["room"]["details_visible"])
+
+    def test_look_direction_sees_occupants_when_lit(self):
+        self._visit_all()
+        c = self._fresh_char()
+        east = self.rooms[13]
+        east.permanent_minimap_light = True
+        east.save(update_fields=["permanent_minimap_light", "updated_at"])
+        Npc.objects.create(room=east, slug="cave-npc", name="Hermit")
+        lines = execute_command(c, parse_command("look e"))
+        self.assertTrue(any("lies ahead" in ln.lower() for ln in lines), lines)
+        self.assertTrue(any("hermit" in ln.lower() for ln in lines), lines)

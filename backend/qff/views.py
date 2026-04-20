@@ -50,6 +50,7 @@ from qff.constants import (
     LEGACY_START_ROOM_SLUG,
 )
 from qff.game_helpers import encumbrance_excess
+from qff.ensure_glyph_character_class import ensure_glyph_character_class
 from qff.glyph_class_map import normalize_glyphs, slug_for_glyphs
 from qff.monster_sim import run_lazy_simulation
 from qff.quest_engine import sync_character_world_before_session
@@ -257,6 +258,8 @@ def character_create(request):
         return Response({"detail": msg}, status=status.HTTP_400_BAD_REQUEST)
 
     cc = CharacterClass.objects.filter(slug=class_slug).first()
+    if not cc:
+        cc = ensure_glyph_character_class(class_slug)
     if not cc:
         return Response(
             {"detail": "Invalid character class."},

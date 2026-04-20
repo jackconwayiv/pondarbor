@@ -70,17 +70,14 @@ function defaultCharacterNameFromSession(sessionUser: SessionUser): string {
 
 function GlyphTile({
   gid,
-  step,
   selected,
   onSelect,
 }: {
   gid: GlyphId;
-  step: 1 | 2;
   selected: GlyphId | null;
   onSelect: (g: GlyphId) => void;
 }) {
   const d = GLYPH_DISPLAY[gid];
-  const label = step === 1 ? d.step1Label : d.step2Label;
   const isSel = selected === gid;
   return (
     <TooltipRoot {...tooltipRootProps}>
@@ -93,10 +90,10 @@ function GlyphTile({
           alignItems="center"
           justifyContent="center"
           gap={2}
-          minH={{ base: "120px", md: "140px" }}
+          minH={{ base: "100px", md: "120px" }}
           h="auto"
-          py={4}
-          px={3}
+          py={3}
+          px={2}
           w="100%"
           bg={isSel ? "#2a3a2a" : "#141414"}
           borderWidth="2px"
@@ -104,11 +101,11 @@ function GlyphTile({
           color="#c8e6a8"
           whiteSpace="normal"
         >
-          <Text fontSize="4xl" lineHeight="1" aria-hidden>
+          <Text fontSize="3xl" lineHeight="1" aria-hidden>
             {d.emoji}
           </Text>
-          <Text fontSize="md" fontWeight="semibold" letterSpacing="wide">
-            {label}
+          <Text fontSize="xs" fontWeight="semibold" letterSpacing="wide" textAlign="center">
+            {d.bannerLabel}
           </Text>
         </QffButton>
       </TooltipTrigger>
@@ -246,7 +243,7 @@ export default function QffCreatePage() {
   }
 
   return (
-    <Box w="100%" maxW="lg" minW={0} mx="auto" px={4} py={8}>
+    <Box w="100%" maxW="5xl" minW={0} mx="auto" px={4} py={8}>
       <Heading size="md" mb={6} color="#e8f5c8">
         Create your Hero of Fat
       </Heading>
@@ -255,19 +252,53 @@ export default function QffCreatePage() {
         <VStack gap={6} align="stretch" w="100%" minW={0}>
           <Text color="#c8e6a8" lineHeight="tall">
             {step === 1
-              ? "Your childhood was shaped by…"
-              : "Before setting out on adventure, you spent time focused on…"}
+              ? "Your childhood was most impacted by…"
+              : "Before setting out on adventure, you focused on learning how to withstand the effects of…"}
           </Text>
 
-          <SimpleGrid columns={2} gap={4} w="100%">
+          <Box
+            minH="88px"
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            borderWidth="2px"
+            borderColor="#3a4a3a"
+            bg="#141414"
+            px={4}
+            py={4}
+            rounded="md"
+          >
+            {pick != null ? (
+              <Flex
+                align="center"
+                gap={{ base: 3, md: 6 }}
+                flexWrap="wrap"
+                justify="center"
+                w="100%"
+              >
+                <Text fontSize={{ base: "4xl", md: "5xl" }} lineHeight="1" aria-hidden>
+                  {GLYPH_DISPLAY[pick].emoji}
+                </Text>
+                <Text
+                  fontSize={{ base: "lg", sm: "xl", md: "2xl" }}
+                  fontWeight="extrabold"
+                  letterSpacing={{ base: "wider", md: "widest" }}
+                  color="#e8f5c8"
+                  textAlign="center"
+                >
+                  {GLYPH_DISPLAY[pick].bannerLabel}
+                </Text>
+              </Flex>
+            ) : (
+              <Text color="#5a6a5a" fontSize="sm" letterSpacing="wide">
+                Select an option below
+              </Text>
+            )}
+          </Box>
+
+          <SimpleGrid columns={{ base: 2, sm: 3, md: 5 }} gap={3} w="100%">
             {GLYPH_IDS.map((gid) => (
-              <GlyphTile
-                key={gid}
-                gid={gid}
-                step={step === 2 ? 2 : 1}
-                selected={pick}
-                onSelect={setPick}
-              />
+              <GlyphTile key={gid} gid={gid} selected={pick} onSelect={setPick} />
             ))}
           </SimpleGrid>
 
@@ -305,9 +336,15 @@ export default function QffCreatePage() {
 
       {step === 3 && glyph1 != null && glyph2 != null && summary && (
         <VStack gap={6} align="stretch" w="100%" minW={0}>
-          <Text color="#a8d080" fontSize="sm" fontWeight="medium" letterSpacing="wide">
-            {GLYPH_DISPLAY[glyph1].emoji} {GLYPH_DISPLAY[glyph1].step1Label} →{" "}
-            {GLYPH_DISPLAY[glyph2].emoji} {GLYPH_DISPLAY[glyph2].step2Label}
+          <Text
+            color="#a8d080"
+            fontSize={{ base: "xs", md: "sm" }}
+            fontWeight="medium"
+            letterSpacing="wide"
+            lineHeight="tall"
+          >
+            {GLYPH_DISPLAY[glyph1].emoji} {GLYPH_DISPLAY[glyph1].bannerLabel} →{" "}
+            {GLYPH_DISPLAY[glyph2].emoji} {GLYPH_DISPLAY[glyph2].bannerLabel}
           </Text>
           <Box>
             <Text color="#e8f5c8" fontSize="lg" fontWeight="semibold" mb={2}>

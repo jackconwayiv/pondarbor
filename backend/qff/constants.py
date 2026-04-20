@@ -2,11 +2,11 @@
 
 # New characters: [`views._starting_room`] tries these hubs in order, then first room by PK.
 # Multiple area slugs cover hyphen vs underscore and minor import/DM differences.
-DEFAULT_START_AREA_SLUGS = ("survivors-camp", "survivors_camp")
-DEFAULT_START_ROOM_NAME = "Village Brown"
-DEFAULT_START_ROOM_SLUG = "village-brown"
+DEFAULT_START_AREA_SLUGS = ("scrapers-gulch", "scrapers_gulch")
+DEFAULT_START_ROOM_NAME = "Dusty Path"
+DEFAULT_START_ROOM_SLUG = "dusty-path"
 # If area slug in DB does not match, still find the hub by display name + room name (case-insensitive).
-DEFAULT_START_AREA_FALLBACK_NAMES = ("Survivors Camp",)
+DEFAULT_START_AREA_FALLBACK_NAMES = ("Scrapers Gulch",)
 
 LEGACY_START_AREA_SLUGS = ("village-of-ort",)
 LEGACY_START_ROOM_NAME = "Village Well"

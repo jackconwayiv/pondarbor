@@ -1,146 +1,147 @@
-/** Glyph character creation — canonical ids match backend `qff.glyph_class_map`. */
+/** Glyph character creation — ids are emoji strings; must match backend `qff.glyph_class_map`. */
 
-export type GlyphId = "war" | "survival" | "study" | "devotion";
+export type GlyphId = "👽" | "🤖" | "🌡️" | "🏛️" | "🦠";
 
-export const GLYPH_IDS: GlyphId[] = ["war", "survival", "study", "devotion"];
+export const GLYPH_IDS: GlyphId[] = ["👽", "🤖", "🌡️", "🏛️", "🦠"];
 
 export const GLYPH_DISPLAY: Record<
   GlyphId,
-  { emoji: string; step1Label: string; step2Label: string; tooltip: string }
+  { emoji: string; bannerLabel: string; tooltip: string }
 > = {
-  war: {
-    emoji: "⚔️",
-    step1Label: "WAR",
-    step2Label: "COMBAT",
+  "👽": {
+    emoji: "👽",
+    bannerLabel: "ALIEN INVASION",
     tooltip:
-      "Grants access to heavier weapons and armor, and improves your ability to deal physical damage.",
+      "You're light on your feet and adaptable to otherworldly challenges.",
   },
-  survival: {
-    emoji: "🪶",
-    step1Label: "SURVIVAL",
-    step2Label: "FINESSE",
+  "🤖": {
+    emoji: "🤖",
+    bannerLabel: "MACHINE REBELLION",
     tooltip:
-      "Improves stealth, dodging, and initiative, and grants access to light finesse weapons.",
+      "You have a knack for machines, including mechanical locks and traps.",
   },
-  study: {
-    emoji: "📖",
-    step1Label: "STUDY",
-    step2Label: "MAGIC",
+  "🌡️": {
+    emoji: "🌡️",
+    bannerLabel: "CLIMATE CATASTROPHE",
     tooltip:
-      "Improves your knowledge of foes and magic items, and grants access to damaging magic spells.",
+      "You know your way around an environment of scarcity and decay.",
   },
-  devotion: {
-    emoji: "🕯️",
-    step1Label: "DEVOTION",
-    step2Label: "SERVICE",
+  "🏛️": {
+    emoji: "🏛️",
+    bannerLabel: "COLLAPSE OF ORDER",
     tooltip:
-      "Grants access to supportive magic spells, and heightens your awareness of your surroundings.",
+      "You can influence people and command the attention of enemies.",
+  },
+  "🦠": {
+    emoji: "🦠",
+    bannerLabel: "GLOBAL PANDEMIC",
+    tooltip:
+      "Your knowledge of sickness and health makes you a natural healer.",
   },
 };
 
-/** Ordered pair → CharacterClass slug (same as backend `GLYPH_PAIR_TO_SLUG`). */
-const PAIR_KEY = (a: GlyphId, b: GlyphId) => `${a}|${b}`;
+/** Unordered pair → CharacterClass slug (same as backend `CLASSES_BY_PAIR`). */
+function pairKey(a: GlyphId, b: GlyphId): string {
+  return [a, b].sort((x, y) => x.localeCompare(y)).join("|");
+}
 
 const GLYPH_PAIR_TO_SLUG: Record<string, string> = {
-  [PAIR_KEY("war", "war")]: "bulwark",
-  [PAIR_KEY("survival", "survival")]: "scoundrel",
-  [PAIR_KEY("study", "study")]: "magister",
-  [PAIR_KEY("devotion", "devotion")]: "devotee",
-  [PAIR_KEY("war", "survival")]: "skirmisher",
-  [PAIR_KEY("survival", "war")]: "wayfarer",
-  [PAIR_KEY("war", "study")]: "savant",
-  [PAIR_KEY("study", "war")]: "spellblade",
-  [PAIR_KEY("war", "devotion")]: "warden",
-  [PAIR_KEY("devotion", "war")]: "champion",
-  [PAIR_KEY("survival", "study")]: "virtuoso",
-  [PAIR_KEY("study", "survival")]: "tinker",
-  [PAIR_KEY("survival", "devotion")]: "firebrand",
-  [PAIR_KEY("devotion", "survival")]: "seeker",
-  [PAIR_KEY("study", "devotion")]: "physicker",
-  [PAIR_KEY("devotion", "study")]: "visionary",
+  [pairKey("🏛️", "🏛️")]: "warlord",
+  [pairKey("🌡️", "🌡️")]: "wastelander",
+  [pairKey("👽", "👽")]: "ravager",
+  [pairKey("🦠", "🦠")]: "medic",
+  [pairKey("🤖", "🤖")]: "mechanist",
+  [pairKey("🏛️", "🤖")]: "sentinel",
+  [pairKey("🤖", "🦠")]: "splicer",
+  [pairKey("🦠", "👽")]: "witness",
+  [pairKey("👽", "🌡️")]: "runner",
+  [pairKey("🌡️", "🏛️")]: "handler",
+  [pairKey("🏛️", "🦠")]: "caretaker",
+  [pairKey("🤖", "👽")]: "saboteur",
+  [pairKey("🦠", "🌡️")]: "survivalist",
+  [pairKey("👽", "🏛️")]: "liaison",
+  [pairKey("🌡️", "🤖")]: "scavenger",
 };
 
 export function classSlugForGlyphs(g1: GlyphId, g2: GlyphId): string | undefined {
-  return GLYPH_PAIR_TO_SLUG[PAIR_KEY(g1, g2)];
+  return GLYPH_PAIR_TO_SLUG[pairKey(g1, g2)];
 }
 
 /** Long-form class blurbs for the summary step (hard-coded; not loaded from the API). */
 export const CLASS_SUMMARY_BY_SLUG: Record<string, { name: string; description: string }> = {
-  bulwark: {
-    name: "Bulwark",
+  warlord: {
+    name: "Warlord",
     description:
-      "A brutal frontliner who overwhelms enemies with sheer force, heavy armor, and relentless pressure.",
+      "A commanding force who uses strength and presence to dominate enemies and rally allies.",
   },
-  scoundrel: {
-    name: "Scoundrel",
+  wastelander: {
+    name: "Wastelander",
     description:
-      "A stealthy finesse fighter who relies on speed, evasion, and quick strikes.",
+      "A hardened survivor who endures brutal conditions through sheer toughness and resilience.",
   },
-  magister: {
-    name: "Magister",
-    description: "A dedicated spellcaster focused on magical damage and arcane knowledge.",
-  },
-  devotee: {
-    name: "Devotee",
+  ravager: {
+    name: "Ravager",
     description:
-      "A supportive mystic focused on awareness, protection, and sustaining magic.",
+      "A relentless combatant who crashes into enemies and tears through them with speed and force.",
   },
-  skirmisher: {
-    name: "Skirmisher",
+  medic: {
+    name: "Medic",
     description:
-      "A fast, aggressive fighter who blends force with mobility and precision.",
+      "A battlefield healer who diagnoses, stabilizes, and restores allies through skill and awareness.",
   },
-  wayfarer: {
-    name: "Wayfarer",
+  mechanist: {
+    name: "Mechanist",
     description:
-      "A capable survivor who combines martial skill with adaptability and awareness.",
+      "A technical warrior who understands machines and dismantles them with force and precision.",
   },
-  savant: {
-    name: "Savant",
-    description: "A battle-mage who pairs physical force with destructive magic.",
-  },
-  spellblade: {
-    name: "Spellblade",
+  sentinel: {
+    name: "Sentinel",
     description:
-      "A close-range combatant who combines weapon skill with offensive spells.",
+      "A vigilant defender who reads threats and holds the line against hostile machines.",
   },
-  warden: {
-    name: "Warden",
+  splicer: {
+    name: "Splicer",
     description:
-      "A durable protector who mixes martial strength with awareness and support magic.",
+      "A resilient specialist who blends science and endurance to combat biological dangers.",
   },
-  champion: {
-    name: "Champion",
+  witness: {
+    name: "Witness",
     description:
-      "A devoted frontliner who holds the line, absorbs pressure, and rallies those beside them.",
+      "A survivor who has seen the truth and drives others to act through clarity and conviction.",
   },
-  virtuoso: {
-    name: "Virtuoso",
+  runner: {
+    name: "Runner",
     description:
-      "A clever arcane duelist who uses finesse, precision, and magical control.",
+      "A mobile scout who navigates dangerous terrain and identifies threats before they strike.",
   },
-  tinker: {
-    name: "Tinker",
+  handler: {
+    name: "Handler",
     description:
-      "A nimble problem-solver who mixes practical knowledge, quick hands, and magic.",
+      "A strategic organizer who keeps allies supplied, coordinated, and ready for any challenge.",
   },
-  firebrand: {
-    name: "Firebrand",
+  caretaker: {
+    name: "Caretaker",
     description:
-      "A swift zealot who fights with speed, conviction, and relentless pressure.",
+      "A steady survivor who sustains and guides others through hardship with resilience and resolve.",
   },
-  seeker: {
-    name: "Seeker",
-    description: "An alert scout who uses finesse and awareness to pursue hidden things.",
-  },
-  physicker: {
-    name: "Physicker",
+  saboteur: {
+    name: "Saboteur",
     description:
-      "A healer and support caster with deep practical and magical knowledge.",
+      "A precision operative who disrupts enemy systems through speed, skill, and technical insight.",
   },
-  visionary: {
-    name: "Visionary",
+  survivalist: {
+    name: "Survivalist",
     description:
-      "An insightful mystic who blends devotion, knowledge, and supernatural perception.",
+      "A resourceful survivor who withstands harsh environments through awareness and endurance.",
+  },
+  liaison: {
+    name: "Liaison",
+    description:
+      "A cunning intermediary who moves between factions, using agility and charm to navigate danger.",
+  },
+  scavenger: {
+    name: "Scavenger",
+    description:
+      "A scrappy opportunist who survives by recovering and repurposing what others leave behind.",
   },
 };

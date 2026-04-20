@@ -48,24 +48,52 @@ class GlyphCharacterCreateTests(TestCase):
         client.force_login(u)
         res = client.post(
             "/api/v1/qff/character/",
-            {"name": "Skirm", "glyphs": ["war", "survival"]},
+            {"name": "Skirm", "glyphs": ["🦠", "👽"]},
             format="json",
         )
         self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.content)
         body = res.json()
         self.assertTrue(body["has_character"])
-        self.assertEqual(body["character"]["class_slug"], "skirmisher")
-        self.assertEqual(body["character"]["glyphs"], ["war", "survival"])
-        self.assertEqual(body["character_profile"]["glyphs"], ["war", "survival"])
+        self.assertEqual(body["character"]["class_slug"], "witness")
+        self.assertEqual(body["character"]["glyphs"], ["🦠", "👽"])
+        self.assertEqual(body["character_profile"]["glyphs"], ["🦠", "👽"])
 
         char = Character.objects.select_related(
             "chest_item__item",
             "main_hand_item__item",
         ).get(user=u)
-        self.assertEqual(char.character_class.slug, "skirmisher")
-        self.assertEqual(char.glyphs, ["war", "survival"])
-        self.assertEqual(char.chest_item.item.slug, "stained-jerkin")
-        self.assertEqual(char.main_hand_item.item.slug, "chipped-knife")
+        self.assertEqual(char.character_class.slug, "witness")
+        self.assertEqual(char.glyphs, ["🦠", "👽"])
+        self.assertEqual(char.chest_item.item.slug, "hospital-gown")
+        self.assertEqual(char.main_hand_item.item.slug, "stolen-blaster")
+
+    def test_unordered_glyphs_same_class(self):
+        u = _approved_user("glyph-unord@example.com")
+        client = APIClient()
+        client.force_login(u)
+        res = client.post(
+            "/api/v1/qff/character/",
+            {"name": "Unord", "glyphs": ["👽", "🦠"]},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.content)
+        self.assertEqual(res.json()["character"]["class_slug"], "witness")
+
+    def test_create_recreates_glyph_class_if_missing_from_db(self):
+        """Unmigrated or manually cleared DB: canon metadata repopulates the row."""
+        CharacterClass.objects.filter(slug="witness").delete()
+        u = _approved_user("glyph-recreate@example.com")
+        client = APIClient()
+        client.force_login(u)
+        res = client.post(
+            "/api/v1/qff/character/",
+            {"name": "Recreate", "glyphs": ["🦠", "👽"]},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.content)
+        self.assertTrue(
+            CharacterClass.objects.filter(slug="witness", name="Witness").exists()
+        )
 
     def test_create_with_character_class_legacy_path_empty_glyphs(self):
         u = _approved_user("glyph2@example.com")
@@ -87,7 +115,7 @@ class GlyphCharacterCreateTests(TestCase):
         client.force_login(u)
         res = client.post(
             "/api/v1/qff/character/",
-            {"name": "Bad", "glyphs": ["war", "nope"]},
+            {"name": "Bad", "glyphs": ["🦠", "⭐"]},
             format="json",
         )
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)

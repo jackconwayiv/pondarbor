@@ -7,15 +7,6 @@ from django.db import transaction
 from qff.glyph_starting_items import resolve_starter_item_slugs
 from qff.models import Character, CharacterClass, Item, ItemInstance
 
-# Fallback when class has no chest/main templates (jacket + stick).
-DEFAULT_STARTER_SLUGS = ("denim-jacket", "wooden-stick")
-
-
-def _items_from_slugs() -> tuple[Item | None, Item | None]:
-    jacket = Item.objects.filter(slug=DEFAULT_STARTER_SLUGS[0]).first()
-    stick = Item.objects.filter(slug=DEFAULT_STARTER_SLUGS[1]).first()
-    return jacket, stick
-
 
 def _equip_chest_and_main(character: Character, chest_it: Item, mh_it: Item) -> None:
     chest_inst = ItemInstance.objects.create(
@@ -65,9 +56,6 @@ def apply_starting_loadout(character: Character) -> None:
     mh_it = cc.starter_main_hand_item
 
     if not (chest_it and mh_it):
-        jacket, stick = _items_from_slugs()
-        if not (jacket and stick):
-            return
-        chest_it, mh_it = jacket, stick
+        return
 
     _equip_chest_and_main(character, chest_it, mh_it)

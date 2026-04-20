@@ -13,78 +13,82 @@ from qff.views import _starting_room
 
 
 class StartingRoomTests(TestCase):
-    def test_prefers_survivors_camp_village_brown_when_present(self):
+    def setUp(self):
+        # Migration 0035 seeds Scrapers Gulch for production; tests own hub layout.
+        Area.objects.filter(slug__in=("scrapers-gulch", "scrapers_gulch")).delete()
+
+    def test_prefers_scrapers_gulch_dusty_path_when_present(self):
         other = Area.objects.create(name="Other", slug="other-area", grid_width=1, grid_height=1)
         first = Room.objects.create(area=other, name="First", slug="first")
         camp = Area.objects.create(
-            name="Survivors Camp",
+            name="Scrapers Gulch",
             slug=DEFAULT_START_AREA_SLUGS[0],
             grid_width=1,
             grid_height=1,
         )
-        brown = Room.objects.create(
+        dusty = Room.objects.create(
             area=camp,
             name=DEFAULT_START_ROOM_NAME,
-            slug="village-brown",
+            slug="dusty-path",
         )
-        self.assertEqual(_starting_room().pk, brown.pk)
+        self.assertEqual(_starting_room().pk, dusty.pk)
         self.assertNotEqual(_starting_room().pk, first.pk)
 
     def test_matches_case_insensitive_room_name(self):
         camp = Area.objects.create(
-            name="Survivors Camp",
+            name="Scrapers Gulch",
             slug=DEFAULT_START_AREA_SLUGS[0],
             grid_width=1,
             grid_height=1,
         )
-        brown = Room.objects.create(
+        dusty = Room.objects.create(
             area=camp,
-            name="village brown",
-            slug="vb",
+            name="dusty path",
+            slug="dp",
         )
-        self.assertEqual(_starting_room().pk, brown.pk)
+        self.assertEqual(_starting_room().pk, dusty.pk)
 
     def test_matches_alternate_area_slug_underscore(self):
         camp = Area.objects.create(
-            name="Survivors Camp",
-            slug="survivors_camp",
+            name="Scrapers Gulch",
+            slug="scrapers_gulch",
             grid_width=1,
             grid_height=1,
         )
-        brown = Room.objects.create(
+        dusty = Room.objects.create(
             area=camp,
             name=DEFAULT_START_ROOM_NAME,
-            slug="village-brown",
+            slug="dusty-path",
         )
-        self.assertEqual(_starting_room().pk, brown.pk)
+        self.assertEqual(_starting_room().pk, dusty.pk)
 
     def test_matches_by_room_slug_when_name_differs(self):
         camp = Area.objects.create(
-            name="Survivors Camp",
+            name="Scrapers Gulch",
             slug=DEFAULT_START_AREA_SLUGS[0],
             grid_width=1,
             grid_height=1,
         )
-        brown = Room.objects.create(
+        dusty = Room.objects.create(
             area=camp,
-            name="Brown house",
-            slug="village-brown",
+            name="Dust patch",
+            slug="dusty-path",
         )
-        self.assertEqual(_starting_room().pk, brown.pk)
+        self.assertEqual(_starting_room().pk, dusty.pk)
 
     def test_matches_by_area_display_name_fallback(self):
         camp = Area.objects.create(
-            name="Survivors Camp",
-            slug="custom-survivors-slug",
+            name="Scrapers Gulch",
+            slug="custom-gulch-slug",
             grid_width=1,
             grid_height=1,
         )
-        brown = Room.objects.create(
+        dusty = Room.objects.create(
             area=camp,
             name=DEFAULT_START_ROOM_NAME,
             slug="vb",
         )
-        self.assertEqual(_starting_room().pk, brown.pk)
+        self.assertEqual(_starting_room().pk, dusty.pk)
 
     def test_falls_back_to_legacy_village_well(self):
         noise = Area.objects.create(name="X", slug="x", grid_width=1, grid_height=1)

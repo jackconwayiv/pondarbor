@@ -599,7 +599,10 @@ class Character(models.Model):
     glyphs = models.JSONField(
         default=list,
         blank=True,
-        help_text="Ordered glyph ids from character creation: war, survival, study, devotion.",
+        help_text=(
+            "Ordered glyph ids from character creation (emoji strings, e.g. 👽, 🤖). "
+            "Class is determined by the unordered pair; starting gear uses this order."
+        ),
     )
     head_item = models.ForeignKey(
         ItemInstance,

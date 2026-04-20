@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
@@ -48,7 +49,7 @@ from qff.constants import (
 from qff.game_helpers import encumbrance_excess
 from qff.glyph_class_map import normalize_glyphs, slug_for_glyphs
 from qff.monster_sim import run_lazy_simulation
-from qff.realtime import notify_qff_rooms
+from qff.realtime import schedule_notify_qff_rooms
 from qff.session_payload import (
     build_session_for_character,
     normalize_hex_color,
@@ -272,28 +273,54 @@ def command_view(request):
     command_room = char.current_room
     command_room_name = (command_room.name or "").strip()[:200]
     old_room_id = char.current_room_id
-    parsed = parse_command(line)
-    messages = list(execute_command(char, parsed))
-    echo_command = should_echo_command(parsed, messages)
-    if messages and messages[0] == "You try that, but nothing happens.":
-        email = (request.user.email or "").strip()
-        QffIneffectiveInput.objects.create(
-            user=request.user,
-            user_email=email[:254] if email else "",
-            raw_line=line,
-            room=command_room,
-            room_name=command_room_name,
-        )
-    char = _get_character(request.user)
-    affected: list[int] = []
-    if char:
-        affected = run_lazy_simulation(notify_rooms=False)
+    wall_start = time.perf_counter()
+    sim_ms = 0.0
+
+    with transaction.atomic():
+        parsed = parse_command(line)
+        t0 = time.perf_counter()
+        messages = list(execute_command(char, parsed))
+        exec_ms = (time.perf_counter() - t0) * 1000
+        echo_command = should_echo_command(parsed, messages)
+        if messages and messages[0] == "You try that, but nothing happens.":
+            email = (request.user.email or "").strip()
+            QffIneffectiveInput.objects.create(
+                user=request.user,
+                user_email=email[:254] if email else "",
+                raw_line=line,
+                room=command_room,
+                room_name=command_room_name,
+            )
         char = _get_character(request.user)
-    if char and encumbrance_excess(char) > 0:
-        messages.append("You are encumbered!")
-    session = build_session_for_character(char)
-    if char:
-        notify_qff_rooms(set(affected) | {old_room_id, char.current_room_id})
+        affected: list[int] = []
+        if char:
+            t1 = time.perf_counter()
+            affected = run_lazy_simulation(notify_rooms=False)
+            sim_ms = (time.perf_counter() - t1) * 1000
+            char = _get_character(request.user)
+        if char and encumbrance_excess(char) > 0:
+            messages.append("You are encumbered!")
+        t2 = time.perf_counter()
+        session = build_session_for_character(char)
+        session_ms = (time.perf_counter() - t2) * 1000
+        if char:
+            room_ids = frozenset(affected) | {old_room_id, char.current_room_id}
+
+            def _queue_notify() -> None:
+                schedule_notify_qff_rooms(room_ids)
+
+            transaction.on_commit(_queue_notify)
+
+    total_ms = (time.perf_counter() - wall_start) * 1000
+    logger.debug(
+        "qff.command user_id=%s exec_ms=%.1f sim_ms=%.1f session_ms=%.1f total_ms=%.1f",
+        getattr(request.user, "pk", None),
+        exec_ms,
+        sim_ms,
+        session_ms,
+        total_ms,
+    )
+
     return Response(
         {"messages": messages, "session": session, "echo_command": echo_command}
     )

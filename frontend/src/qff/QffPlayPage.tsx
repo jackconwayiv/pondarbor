@@ -118,6 +118,8 @@ export default function QffPlayPage() {
   const [mapVisible, setMapVisible] = useState(true);
   const logLineIdRef = useRef(0);
   const lastBroadcastIdRef = useRef(0);
+  /** Log line ids for in-flight optimistic `> cmd` + `…` rows (stripped when the HTTP response arrives). */
+  const optimisticCommandLogIdsRef = useRef<number[]>([]);
   /** Blocks a second command until the first HTTP round-trip finishes (avoids move “warping”). */
   const commandInFlightRef = useRef(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -306,6 +308,14 @@ export default function QffPlayPage() {
     setCommandPending(true);
     setLine("");
     try {
+      const oid1 = logLineIdRef.current++;
+      const oid2 = logLineIdRef.current++;
+      optimisticCommandLogIdsRef.current = [oid1, oid2];
+      setLogLines((prev) => [
+        { id: oid1, text: `> ${raw}`, recent: true },
+        { id: oid2, text: "…", recent: true },
+        ...prev.map((p) => ({ ...p, recent: false })),
+      ]);
       let token = commandTokenRef.current;
       if (!token) {
         token = await getTokenRef.current();
@@ -325,6 +335,9 @@ export default function QffPlayPage() {
       commandTokenRef.current = token;
       setSession(res.session);
       setLogLines((prev) => {
+        const pending = optimisticCommandLogIdsRef.current;
+        optimisticCommandLogIdsRef.current = [];
+        const filtered = pending.length ? prev.filter((p) => !pending.includes(p.id)) : prev;
         const nextId = () => logLineIdRef.current++;
         const toShow: string[] =
           res.echo_command === true ? [`> ${raw}`, ...res.messages] : [...res.messages];
@@ -333,10 +346,13 @@ export default function QffPlayPage() {
           text,
           recent: true,
         }));
-        return [...block, ...prev.map((p) => ({ ...p, recent: false }))];
+        return [...block, ...filtered.map((p) => ({ ...p, recent: false }))];
       });
     } catch (e) {
       setLogLines((prev) => {
+        const pending = optimisticCommandLogIdsRef.current;
+        optimisticCommandLogIdsRef.current = [];
+        const filtered = pending.length ? prev.filter((p) => !pending.includes(p.id)) : prev;
         const nextId = () => logLineIdRef.current++;
         const block = [
           { id: nextId(), text: `> ${raw}`, recent: true },
@@ -346,7 +362,7 @@ export default function QffPlayPage() {
             recent: true,
           },
         ];
-        return [...block, ...prev.map((p) => ({ ...p, recent: false }))];
+        return [...block, ...filtered.map((p) => ({ ...p, recent: false }))];
       });
     } finally {
       commandInFlightRef.current = false;

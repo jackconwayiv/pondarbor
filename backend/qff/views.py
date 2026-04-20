@@ -35,6 +35,12 @@ from qff.models import (
     RoomItem,
     validate_character_name,
 )
+from qff.constants import (
+    DEFAULT_START_AREA_SLUG,
+    DEFAULT_START_ROOM_NAME,
+    LEGACY_START_AREA_SLUG,
+    LEGACY_START_ROOM_NAME,
+)
 from qff.game_helpers import encumbrance_excess
 from qff.glyph_class_map import normalize_glyphs, slug_for_glyphs
 from qff.monster_sim import run_lazy_simulation
@@ -87,19 +93,20 @@ def session_view(request):
 
 
 def _starting_room():
-    """Spawn new characters in the Village Well when `seed_qff` data exists.
+    """Pick the room for new characters: primary world start, then legacy demo seed, else first room.
 
-    Lowest-PK room was wrong: seed creates Mayor's House before Village Well, so
-    ``order_by('pk').first()`` started players in the mayor's house.
+    Staff should mark the default start room with **Spawn point** in the DM editor so
+    death/revival tracks the same hub (`Room.is_spawn_point` → `Character.spawn_room`).
     """
-    preferred = (
-        Room.objects.select_related("area")
-        .filter(area__slug="village-of-ort", name="Village Well")
-        .first()
-    )
-    if preferred:
-        return preferred
-    return Room.objects.select_related("area").order_by("pk").first()
+    qs = Room.objects.select_related("area")
+    for area_slug, room_name in (
+        (DEFAULT_START_AREA_SLUG, DEFAULT_START_ROOM_NAME),
+        (LEGACY_START_AREA_SLUG, LEGACY_START_ROOM_NAME),
+    ):
+        hit = qs.filter(area__slug=area_slug, name=room_name).first()
+        if hit:
+            return hit
+    return qs.order_by("pk").first()
 
 
 @api_view(["POST", "DELETE"])

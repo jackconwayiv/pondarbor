@@ -34,6 +34,7 @@ import {
   dmFetchAreas,
   dmFetchCells,
   dmFetchExits,
+  dmFetchInteractables,
   dmFetchItems,
   dmFetchMonsterTemplates,
   dmPatchMonsterTemplate,
@@ -50,6 +51,7 @@ import {
   type DmAreaExit,
   type DmAreaRoomsJson,
   type DmExit,
+  type DmInteractableRow,
   type DmItem,
   type DmMonsterTemplate,
   type DmRoomItem,
@@ -226,6 +228,7 @@ export default function QffDmPage() {
   const [exits, setExits] = useState<DmExit[]>([]);
   const [roomItems, setRoomItems] = useState<DmRoomItem[]>([]);
   const [itemTemplates, setItemTemplates] = useState<DmItem[]>([]);
+  const [allInteractables, setAllInteractables] = useState<DmInteractableRow[]>([]);
   const [dmQuests, setDmQuests] = useState<DmQuestSummary[]>([]);
   const [questDetailById, setQuestDetailById] = useState<Map<number, DmQuestDetail>>(
     () => new Map(),
@@ -298,6 +301,17 @@ export default function QffDmPage() {
     if (!Number.isFinite(qid)) return undefined;
     return questDetailById.get(qid);
   }, [newRoomVisibleQuestId, questDetailById]);
+
+  const sortedInteractables = useMemo(
+    () =>
+      [...allInteractables].sort(
+        (a, b) =>
+          a.room_id - b.room_id ||
+          a.name.localeCompare(b.name) ||
+          a.slug.localeCompare(b.slug),
+      ),
+    [allInteractables],
+  );
 
   useEffect(() => {
     if (area) {
@@ -482,6 +496,19 @@ export default function QffDmPage() {
     let cancelled = false;
     (async () => {
       const token = await getTokenRef.current();
+      const list = await dmFetchInteractables(token);
+      if (!cancelled) setAllInteractables(list);
+    })().catch((e) => setErr(String(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, [isStaff, isAuthenticated]);
+
+  useEffect(() => {
+    if (!isStaff || !isAuthenticated) return;
+    let cancelled = false;
+    (async () => {
+      const token = await getTokenRef.current();
       const list = await dmFetchQuests(token);
       if (!cancelled) setDmQuests(list);
     })().catch((e) => setErr(String(e)));
@@ -498,6 +525,10 @@ export default function QffDmPage() {
       const questIds = new Set<number>();
       for (const ex of exits) {
         if (ex.reveal_quest_id != null) questIds.add(ex.reveal_quest_id);
+        if (ex.lock_kind === "quest" && ex.quest_required_quest_slug) {
+          const q = dmQuests.find((x) => x.slug === ex.quest_required_quest_slug);
+          if (q) questIds.add(q.id);
+        }
       }
       for (const ri of roomItems) {
         if (ri.visible_quest_id != null) questIds.add(ri.visible_quest_id);
@@ -518,7 +549,7 @@ export default function QffDmPage() {
     return () => {
       cancelled = true;
     };
-  }, [exits, roomItems]);
+  }, [exits, roomItems, dmQuests]);
 
   const selectedRoom = rooms.find((r) => r.id === selectedRoomId) ?? null;
 
@@ -1216,9 +1247,15 @@ export default function QffDmPage() {
                           <Switch.Thumb />
                         </Switch.Control>
                         <Switch.Label fontSize="xs" color="#aaa">
-                          Permanent minimap light (sconce; survives dark reset)
+                          Permanent minimap light (always lit for everyone)
                         </Switch.Label>
                       </Switch.Root>
+                      <Text fontSize="xs" color="#666">
+                        For dark areas, prefer an <strong>Interactable</strong> of kind{" "}
+                        <strong>sconce</strong> so players can toggle light with{" "}
+                        <strong>use</strong>. Reserve this checkbox for always-on shafts or
+                        special cases.
+                      </Text>
                       <Switch.Root
                         size="sm"
                         checked={panelResetDarkLighting}
@@ -1261,6 +1298,11 @@ export default function QffDmPage() {
                           Spawn point (sets player respawn on enter)
                         </Switch.Label>
                       </Switch.Root>
+                      <Text fontSize="xs" color="#666">
+                        New characters start in the configured hub (e.g. Survivors Camp, Village
+                        Brown) when that room exists. Turn this on for that hub so revival and
+                        walking in keep <strong>spawn_room</strong> aligned.
+                      </Text>
                     </Stack>
                     <Field.Root>
                       <Field.Label>Monster lair template</Field.Label>
@@ -1784,8 +1826,8 @@ export default function QffDmPage() {
                       Exits
                     </Text>
                     <Text fontSize="xs" color="#888" mb={1}>
-                      Hidden exits are invisible in play until reveal conditions (if any) are met.
-                      Lock kind still controls passing through.
+                      Hidden exits stay invisible until reveal conditions are met. A visible exit
+                      can still be <strong>locked</strong> (key, lever/device, or quest state).
                     </Text>
                     {exits.map((ex) => {
                       const dest = exitDestRooms.find((r) => r.id === ex.to_room_id);
@@ -1796,6 +1838,12 @@ export default function QffDmPage() {
                         ex.reveal_quest_id != null
                           ? questDetailById.get(ex.reveal_quest_id)
                           : undefined;
+                      const lockQuestId =
+                        ex.lock_kind === "quest" && ex.quest_required_quest_slug
+                          ? dmQuests.find((q) => q.slug === ex.quest_required_quest_slug)?.id
+                          : undefined;
+                      const lockQuestDetail =
+                        lockQuestId != null ? questDetailById.get(lockQuestId) : undefined;
                       const mergeExit = (patch: DmExit) =>
                         patch.to_room_name != null
                           ? patch
@@ -2024,6 +2072,330 @@ export default function QffDmPage() {
                                         : "— pick quest —"}
                                     </option>
                                     {(revealQuestDetail?.states ?? [])
+                                      .slice()
+                                      .sort(
+                                        (a, b) =>
+                                          a.sort_order - b.sort_order ||
+                                          a.name.localeCompare(b.name),
+                                      )
+                                      .map((s) => (
+                                        <option key={s.id} value={String(s.id)}>
+                                          {s.name} ({s.slug})
+                                        </option>
+                                      ))}
+                                  </NativeSelectField>
+                                </NativeSelectRoot>
+                              </Field.Root>
+                            </Flex>
+                          )}
+                          <Field.Root maxW="240px">
+                            <Field.Label fontSize="xs">Pass-through lock</Field.Label>
+                            <NativeSelectRoot>
+                              <NativeSelectField
+                                value={ex.lock_kind || "none"}
+                                onChange={async (e) => {
+                                  const lk = e.target.value;
+                                  const token = await getTokenRef.current();
+                                  const patch: {
+                                    lock_kind: string;
+                                    key_item_id?: number | null;
+                                    device_interactable_id?: number | null;
+                                    quest_required_state_id?: number | null;
+                                  } = { lock_kind: lk };
+                                  if (lk === "none") {
+                                    patch.key_item_id = null;
+                                    patch.device_interactable_id = null;
+                                    patch.quest_required_state_id = null;
+                                  } else if (lk === "key") {
+                                    patch.device_interactable_id = null;
+                                    patch.quest_required_state_id = null;
+                                  } else if (lk === "device") {
+                                    patch.key_item_id = null;
+                                    patch.quest_required_state_id = null;
+                                  } else if (lk === "quest") {
+                                    patch.key_item_id = null;
+                                    patch.device_interactable_id = null;
+                                  }
+                                  const nx = mergeExit(
+                                    await dmPatchExit(token, ex.id, patch),
+                                  );
+                                  setExits((prev) =>
+                                    prev.map((x) => (x.id === ex.id ? nx : x)),
+                                  );
+                                  if (areaId) {
+                                    setAreaExits(await dmFetchAreaExits(token, areaId));
+                                  }
+                                }}
+                                bg="#222"
+                              >
+                                <option value="none">None (open)</option>
+                                <option value="key">Key (carry to pass; optional consume)</option>
+                                <option value="device">
+                                  Device (use linked interactable to realm-unlock)
+                                </option>
+                                <option value="quest">Quest (must be in required state)</option>
+                              </NativeSelectField>
+                            </NativeSelectRoot>
+                          </Field.Root>
+                          {ex.lock_kind === "key" && (
+                            <Flex gap={2} flexWrap="wrap" align="flex-end">
+                              <Field.Root maxW="220px" flex="1" minW="140px">
+                                <Field.Label fontSize="xs">Key item template</Field.Label>
+                                <NativeSelectRoot>
+                                  <NativeSelectField
+                                    value={
+                                      ex.key_item_id != null ? String(ex.key_item_id) : ""
+                                    }
+                                    onChange={async (e) => {
+                                      const raw = e.target.value;
+                                      const parsed =
+                                        raw === "" ? null : parseInt(raw, 10);
+                                      const kid =
+                                        parsed != null && Number.isFinite(parsed)
+                                          ? parsed
+                                          : null;
+                                      const token = await getTokenRef.current();
+                                      const nx = mergeExit(
+                                        await dmPatchExit(token, ex.id, {
+                                          key_item_id: kid,
+                                        }),
+                                      );
+                                      setExits((prev) =>
+                                        prev.map((x) => (x.id === ex.id ? nx : x)),
+                                      );
+                                    }}
+                                    bg="#222"
+                                  >
+                                    <option value="">— pick item —</option>
+                                    {itemTemplates.map((it) => (
+                                      <option key={it.id} value={String(it.id)}>
+                                        {it.name} ({it.slug})
+                                      </option>
+                                    ))}
+                                  </NativeSelectField>
+                                </NativeSelectRoot>
+                              </Field.Root>
+                              <Field.Root maxW="200px" flex="1" minW="120px">
+                                <Field.Label fontSize="xs">Key unlock scope</Field.Label>
+                                <NativeSelectRoot>
+                                  <NativeSelectField
+                                    value={ex.key_unlock_scope || "realm_timed"}
+                                    onChange={async (e) => {
+                                      const token = await getTokenRef.current();
+                                      const nx = mergeExit(
+                                        await dmPatchExit(token, ex.id, {
+                                          key_unlock_scope: e.target.value,
+                                        }),
+                                      );
+                                      setExits((prev) =>
+                                        prev.map((x) => (x.id === ex.id ? nx : x)),
+                                      );
+                                    }}
+                                    bg="#222"
+                                  >
+                                    <option value="realm_timed">
+                                      Realm (timed after use)
+                                    </option>
+                                    <option value="character">This character only</option>
+                                  </NativeSelectField>
+                                </NativeSelectRoot>
+                              </Field.Root>
+                              <Field.Root maxW="120px">
+                                <Field.Label fontSize="xs">
+                                  Unlock seconds (realm)
+                                </Field.Label>
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  value={String(ex.unlock_duration_seconds ?? 600)}
+                                  onChange={async (e) => {
+                                    const n = parseInt(e.target.value, 10);
+                                    if (!Number.isFinite(n) || n < 1) return;
+                                    const token = await getTokenRef.current();
+                                    const nx = mergeExit(
+                                      await dmPatchExit(token, ex.id, {
+                                        unlock_duration_seconds: n,
+                                      }),
+                                    );
+                                    setExits((prev) =>
+                                      prev.map((x) => (x.id === ex.id ? nx : x)),
+                                    );
+                                  }}
+                                  bg="#222"
+                                />
+                              </Field.Root>
+                            </Flex>
+                          )}
+                          {ex.lock_kind === "device" && (
+                            <Flex gap={2} flexWrap="wrap" align="flex-end">
+                              <Field.Root flex="1" minW="200px">
+                                <Field.Label fontSize="xs">
+                                  Interactable (pair with unlocks_exit in Interactables editor)
+                                </Field.Label>
+                                <NativeSelectRoot>
+                                  <NativeSelectField
+                                    value={
+                                      ex.device_interactable_id != null
+                                        ? String(ex.device_interactable_id)
+                                        : ""
+                                    }
+                                    onChange={async (e) => {
+                                      const raw = e.target.value;
+                                      const iid =
+                                        raw === "" ? null : parseInt(raw, 10);
+                                      const token = await getTokenRef.current();
+                                      const nx = mergeExit(
+                                        await dmPatchExit(token, ex.id, {
+                                          device_interactable_id:
+                                            iid != null && Number.isFinite(iid)
+                                              ? iid
+                                              : null,
+                                        }),
+                                      );
+                                      setExits((prev) =>
+                                        prev.map((x) => (x.id === ex.id ? nx : x)),
+                                      );
+                                    }}
+                                    bg="#222"
+                                  >
+                                    <option value="">— pick interactable —</option>
+                                    {sortedInteractables.map((it) => (
+                                      <option key={it.id} value={String(it.id)}>
+                                        #{it.id} room {it.room_id} · {it.name} ({it.kind})
+                                      </option>
+                                    ))}
+                                  </NativeSelectField>
+                                </NativeSelectRoot>
+                              </Field.Root>
+                              <Field.Root maxW="120px">
+                                <Field.Label fontSize="xs">Unlock seconds</Field.Label>
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  value={String(ex.unlock_duration_seconds ?? 600)}
+                                  onChange={async (e) => {
+                                    const n = parseInt(e.target.value, 10);
+                                    if (!Number.isFinite(n) || n < 1) return;
+                                    const token = await getTokenRef.current();
+                                    const nx = mergeExit(
+                                      await dmPatchExit(token, ex.id, {
+                                        unlock_duration_seconds: n,
+                                      }),
+                                    );
+                                    setExits((prev) =>
+                                      prev.map((x) => (x.id === ex.id ? nx : x)),
+                                    );
+                                  }}
+                                  bg="#222"
+                                />
+                              </Field.Root>
+                            </Flex>
+                          )}
+                          {ex.lock_kind === "device" && (
+                            <Text fontSize="xs" color="#666">
+                              Players only pass after the chosen interactable fires a realm unlock
+                              for this exit. Set that interactable&apos;s <strong>unlocks_exit</strong>{" "}
+                              to this exit in the Interactables tool; duration uses{" "}
+                              <strong>unlock_duration_seconds</strong> above.
+                            </Text>
+                          )}
+                          {ex.lock_kind === "quest" && (
+                            <Flex gap={2} flexWrap="wrap" align="flex-end">
+                              <Field.Root maxW="200px" flex="1" minW="120px">
+                                <Field.Label fontSize="xs">Required quest</Field.Label>
+                                <NativeSelectRoot>
+                                  <NativeSelectField
+                                    value={
+                                      lockQuestId != null ? String(lockQuestId) : ""
+                                    }
+                                    onChange={async (e) => {
+                                      const raw = e.target.value;
+                                      const qid =
+                                        raw === "" ? null : parseInt(raw, 10);
+                                      const token = await getTokenRef.current();
+                                      if (qid != null) {
+                                        revealQuestFetchedRef.current.add(qid);
+                                        const d = await dmFetchQuestDetail(token, qid);
+                                        setQuestDetailById((prev) =>
+                                          new Map(prev).set(qid, d),
+                                        );
+                                      }
+                                      const rawNx = mergeExit(
+                                        await dmPatchExit(token, ex.id, {
+                                          quest_required_state_id: null,
+                                        }),
+                                      );
+                                      setExits((prev) =>
+                                        prev.map((x) =>
+                                          x.id === ex.id
+                                            ? {
+                                                ...rawNx,
+                                                quest_required_quest_slug:
+                                                  qid != null
+                                                    ? dmQuests.find((q) => q.id === qid)
+                                                        ?.slug ?? null
+                                                    : null,
+                                                quest_required_state_slug: null,
+                                              }
+                                            : x,
+                                        ),
+                                      );
+                                    }}
+                                    bg="#222"
+                                  >
+                                    <option value="">— quest —</option>
+                                    {[...dmQuests]
+                                      .sort((a, b) => a.name.localeCompare(b.name))
+                                      .map((q) => (
+                                        <option key={q.id} value={String(q.id)}>
+                                          {q.name}
+                                        </option>
+                                      ))}
+                                  </NativeSelectField>
+                                </NativeSelectRoot>
+                              </Field.Root>
+                              <Field.Root maxW="200px" flex="1" minW="120px">
+                                <Field.Label fontSize="xs">Required state</Field.Label>
+                                <NativeSelectRoot>
+                                  <NativeSelectField
+                                    value={
+                                      ex.quest_required_state_id != null
+                                        ? String(ex.quest_required_state_id)
+                                        : ""
+                                    }
+                                    pointerEvents={
+                                      !lockQuestDetail ? "none" : undefined
+                                    }
+                                    onChange={async (e) => {
+                                      const raw = e.target.value;
+                                      const sid =
+                                        raw === ""
+                                          ? null
+                                          : parseInt(raw, 10);
+                                      const token = await getTokenRef.current();
+                                      const nx = mergeExit(
+                                        await dmPatchExit(token, ex.id, {
+                                          quest_required_state_id:
+                                            sid != null && Number.isFinite(sid)
+                                              ? sid
+                                              : null,
+                                        }),
+                                      );
+                                      setExits((prev) =>
+                                        prev.map((x) =>
+                                          x.id === ex.id ? nx : x,
+                                        ),
+                                      );
+                                    }}
+                                    bg="#222"
+                                    opacity={!lockQuestDetail ? 0.55 : undefined}
+                                  >
+                                    <option value="">
+                                      {lockQuestDetail
+                                        ? "— state —"
+                                        : "— pick quest —"}
+                                    </option>
+                                    {(lockQuestDetail?.states ?? [])
                                       .slice()
                                       .sort(
                                         (a, b) =>

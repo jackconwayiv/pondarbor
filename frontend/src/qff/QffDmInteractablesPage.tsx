@@ -184,8 +184,11 @@ export default function QffDmInteractablesPage() {
         Interactables
       </Heading>
       <Text mb={4} color="#889977" fontSize="sm">
-        Signs, tomes, containers, map/sconce, levers. Use <strong>read</strong> in play for sign/tome text.
-        Link unlocks_exit_id or quest_transition_id as needed.
+        Signs, tomes, containers, levers. Use <strong>read</strong> in play for sign/tome text.
+        Kind <strong>sconce</strong> and <strong>map</strong>: players <strong>use</strong> to toggle
+        permanent room light and full-map reveal (timed) in dark areas—prefer these over the room
+        &quot;permanent minimap light&quot; checkbox. Link unlocks_exit_id or quest_transition_id as
+        needed.
       </Text>
       {err && (
         <Text color="nautical.solid" mb={4} role="alert">

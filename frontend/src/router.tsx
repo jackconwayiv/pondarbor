@@ -42,9 +42,11 @@ const QffLayout = lazy(() => import("./qff/QffLayout"));
 const QffLobbyPage = lazy(() => import("./qff/QffLobbyPage"));
 const QffCreatePage = lazy(() => import("./qff/QffCreatePage"));
 const QffPlayPage = lazy(() => import("./qff/QffPlayPage"));
+const QffDmStaffLayout = lazy(() => import("./qff/QffDmStaffLayout"));
 const QffDmLobbyPage = lazy(() => import("./qff/QffDmLobbyPage"));
 const QffDmPage = lazy(() => import("./qff/QffDmPage"));
 const QffDmItemsPage = lazy(() => import("./qff/QffDmItemsPage"));
+const QffDmMonstersPage = lazy(() => import("./qff/QffDmMonstersPage"));
 const QffDmClassesPage = lazy(() => import("./qff/QffDmClassesPage"));
 const QffDmInteractablesPage = lazy(() => import("./qff/QffDmInteractablesPage"));
 const QffDmNpcsPage = lazy(() => import("./qff/QffDmNpcsPage"));
@@ -254,24 +256,31 @@ export const router = sentryCreateBrowserRouter([
           { index: true, element: lazyRouteElement(<QffLobbyPage />) },
           { path: "create", element: lazyRouteElement(<QffCreatePage />) },
           { path: "play", element: lazyRouteElement(<QffPlayPage />) },
-          { path: "dm", element: lazyRouteElement(<QffDmLobbyPage />) },
-          { path: "dm/world", element: lazyRouteElement(<QffDmPage />) },
-          { path: "dm/items", element: lazyRouteElement(<QffDmItemsPage />) },
           {
-            path: "dm/classes",
-            element: lazyRouteElement(<QffDmClassesPage />),
+            path: "dm",
+            element: lazyRouteElement(<QffDmStaffLayout />),
+            children: [
+              { index: true, element: lazyRouteElement(<QffDmLobbyPage />) },
+              { path: "world", element: lazyRouteElement(<QffDmPage />) },
+              { path: "items", element: lazyRouteElement(<QffDmItemsPage />) },
+              { path: "monsters", element: lazyRouteElement(<QffDmMonstersPage />) },
+              {
+                path: "classes",
+                element: lazyRouteElement(<QffDmClassesPage />),
+              },
+              { path: "quests", element: lazyRouteElement(<QffDmQuestsPage />) },
+              { path: "npcs", element: lazyRouteElement(<QffDmNpcsPage />) },
+              {
+                path: "interactables",
+                element: lazyRouteElement(<QffDmInteractablesPage />),
+              },
+              {
+                path: "ineffective-inputs",
+                element: lazyRouteElement(<QffDmIneffectiveInputsPage />),
+              },
+              { path: "shops", element: lazyRouteElement(<QffDmShopPage />) },
+            ],
           },
-          { path: "dm/quests", element: lazyRouteElement(<QffDmQuestsPage />) },
-          { path: "dm/npcs", element: lazyRouteElement(<QffDmNpcsPage />) },
-          {
-            path: "dm/interactables",
-            element: lazyRouteElement(<QffDmInteractablesPage />),
-          },
-          {
-            path: "dm/ineffective-inputs",
-            element: lazyRouteElement(<QffDmIneffectiveInputsPage />),
-          },
-          { path: "dm/shops", element: lazyRouteElement(<QffDmShopPage />) },
         ],
       },
       {

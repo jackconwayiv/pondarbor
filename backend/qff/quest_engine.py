@@ -409,23 +409,46 @@ def handle_interactable_use(character: Character, obj: Interactable) -> list[str
     if k == Interactable.Kind.SCONCE:
         rid = char.current_room_id
         prev = list(char.hero_permanent_minimap_lit_room_ids or [])
-        if rid not in prev:
+        if rid in prev:
+            prev = [x for x in prev if int(x) != int(rid)]
+            char.hero_permanent_minimap_lit_room_ids = sorted(prev)
+            char.save(update_fields=["hero_permanent_minimap_lit_room_ids", "updated_at"])
+            out.append("The remembered light fades from this chamber.")
+        else:
             prev.append(rid)
             char.hero_permanent_minimap_lit_room_ids = sorted(prev)
             char.save(update_fields=["hero_permanent_minimap_lit_room_ids", "updated_at"])
-        out.append("The area stays lit in your mind's eye.")
+            out.append("The area stays lit in your mind's eye.")
     elif k == Interactable.Kind.MAP:
-        mins = max(1, int(obj.map_reveal_minutes or 60))
-        char.minimap_full_reveal_until = timezone.now() + timedelta(minutes=mins)
-        char.minimap_full_reveal_area_id = char.current_room.area_id
-        char.save(
-            update_fields=[
-                "minimap_full_reveal_until",
-                "minimap_full_reveal_area",
-                "updated_at",
-            ]
+        now = timezone.now()
+        active = (
+            char.minimap_full_reveal_area_id == char.current_room.area_id
+            and char.minimap_full_reveal_until
+            and now < char.minimap_full_reveal_until
         )
-        out.append("The passages you've seen are laid bare on your map.")
+        if active:
+            char.minimap_full_reveal_until = None
+            char.minimap_full_reveal_area = None
+            char.save(
+                update_fields=[
+                    "minimap_full_reveal_until",
+                    "minimap_full_reveal_area",
+                    "updated_at",
+                ]
+            )
+            out.append("You fold the map away; the maze closes back into shadow.")
+        else:
+            mins = max(1, int(obj.map_reveal_minutes or 60))
+            char.minimap_full_reveal_until = now + timedelta(minutes=mins)
+            char.minimap_full_reveal_area_id = char.current_room.area_id
+            char.save(
+                update_fields=[
+                    "minimap_full_reveal_until",
+                    "minimap_full_reveal_area",
+                    "updated_at",
+                ]
+            )
+            out.append("The passages you've seen are laid bare on your map.")
     elif k in (
         Interactable.Kind.CHEST,
         Interactable.Kind.BARREL,

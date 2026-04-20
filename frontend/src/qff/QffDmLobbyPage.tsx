@@ -62,6 +62,14 @@ export default function QffDmLobbyPage() {
         </Text>
       </Box>
       <Box mb={8}>
+        <QffButton onClick={() => navigate("/qff/dm/monsters")}>
+          Monster templates
+        </QffButton>
+        <Text mt={2} fontSize="sm" color="#889977">
+          Stats, combat fields, and loot JSON for lairs and encounters.
+        </Text>
+      </Box>
+      <Box mb={8}>
         <QffButton onClick={() => navigate("/qff/dm/classes")}>
           Character classes
         </QffButton>

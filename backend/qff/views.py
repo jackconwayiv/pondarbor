@@ -34,6 +34,7 @@ from qff.models import (
     QuestState,
     QffIneffectiveInput,
     Room,
+    RoomBroadcast,
     RoomExit,
     RoomItem,
     validate_character_name,

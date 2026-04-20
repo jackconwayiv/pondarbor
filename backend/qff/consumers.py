@@ -13,6 +13,7 @@ from rest_framework import exceptions
 from users.auth0_backend import authenticate_bearer_token
 from users.models import User
 
+from qff.monster_sim import run_lazy_simulation
 from qff.realtime import async_notify_qff_rooms
 from qff.session_payload import build_session_for_character
 from qff.views import _get_character
@@ -70,6 +71,10 @@ class QffSessionConsumer(AsyncWebsocketConsumer):
             return
         if data.get("type") != "ping":
             return
+        char = await database_sync_to_async(_get_character)(self.user)
+        if not char:
+            return
+        await database_sync_to_async(run_lazy_simulation)()
         char = await database_sync_to_async(_get_character)(self.user)
         if not char:
             return

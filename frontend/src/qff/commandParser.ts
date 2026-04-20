@@ -178,6 +178,22 @@ export function parseQffCommandLine(line: string): QffParseResult {
     return { kind: "known" };
   }
 
+  if (low.startsWith("attack ")) {
+    return { kind: "known" };
+  }
+  if (low === "attack" || low === "atk") {
+    return { kind: "known" };
+  }
+  if (low.startsWith("atk ")) {
+    return { kind: "known" };
+  }
+  if (low === "train") {
+    return { kind: "known" };
+  }
+  if (low === "buy abilities" || low === "purchase abilities") {
+    return { kind: "known" };
+  }
+
   if (low === "search" || low === "search room" || low === "scr") {
     return { kind: "known" };
   }

@@ -1,6 +1,7 @@
 from django.test import SimpleTestCase
 
 from qff.command_parser import (
+    ParsedBuyAbilities,
     ParsedConsumeItem,
     ParsedGet,
     ParsedMove,
@@ -53,6 +54,10 @@ class CommandParserTests(SimpleTestCase):
 
     def test_unknown(self):
         self.assertIsInstance(parse_command("xyzzy"), ParsedUnknown)
+
+    def test_buy_abilities_placeholder(self):
+        self.assertIsInstance(parse_command("buy abilities"), ParsedBuyAbilities)
+        self.assertIsInstance(parse_command("/purchase abilities"), ParsedBuyAbilities)
 
     def test_take_alias(self):
         p = parse_command("take red potion")

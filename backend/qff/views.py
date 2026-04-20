@@ -26,6 +26,7 @@ from qff.models import (
     Interactable,
     Item,
     ItemInstance,
+    MonsterTemplate,
     Quest,
     QuestState,
     QffIneffectiveInput,
@@ -36,6 +37,7 @@ from qff.models import (
 )
 from qff.game_helpers import encumbrance_excess
 from qff.glyph_class_map import normalize_glyphs, slug_for_glyphs
+from qff.monster_sim import run_lazy_simulation
 from qff.realtime import notify_qff_rooms
 from qff.session_payload import (
     build_session_for_character,
@@ -226,6 +228,9 @@ def command_view(request):
             room_name=command_room_name,
         )
     char = _get_character(request.user)
+    if char:
+        run_lazy_simulation()
+        char = _get_character(request.user)
     if char and encumbrance_excess(char) > 0:
         messages.append("You are encumbered!")
     session = build_session_for_character(char)
@@ -733,6 +738,9 @@ def dm_room_list_create(request, area_id):
                     "search_chance": r.search_chance,
                     "permanent_minimap_light": r.permanent_minimap_light,
                     "reset_dark_lighting_on_enter": r.reset_dark_lighting_on_enter,
+                    "is_safe": r.is_safe,
+                    "is_spawn_point": r.is_spawn_point,
+                    "monster_lair_template_id": r.monster_lair_template_id,
                     "cell": (
                         {"id": c.id, "x": c.x, "y": c.y}
                         if c
@@ -800,6 +808,9 @@ def dm_room_detail(request, pk):
                 "search_chance": room.search_chance,
                 "permanent_minimap_light": room.permanent_minimap_light,
                 "reset_dark_lighting_on_enter": room.reset_dark_lighting_on_enter,
+                "is_safe": room.is_safe,
+                "is_spawn_point": room.is_spawn_point,
+                "monster_lair_template_id": room.monster_lair_template_id,
                 "cell": (
                     {"id": c.id, "x": c.x, "y": c.y}
                     if c
@@ -824,6 +835,17 @@ def dm_room_detail(request, pk):
         room.reset_dark_lighting_on_enter = bool(
             request.data["reset_dark_lighting_on_enter"]
         )
+    if "is_safe" in request.data:
+        room.is_safe = bool(request.data["is_safe"])
+    if "is_spawn_point" in request.data:
+        room.is_spawn_point = bool(request.data["is_spawn_point"])
+    if "monster_lair_template_id" in request.data:
+        v = request.data["monster_lair_template_id"]
+        if v in (None, "", 0, "0"):
+            room.monster_lair_template_id = None
+        else:
+            get_object_or_404(MonsterTemplate, pk=int(v))
+            room.monster_lair_template_id = int(v)
     room.save()
     return Response(
         {
@@ -835,8 +857,79 @@ def dm_room_detail(request, pk):
             "search_chance": room.search_chance,
             "permanent_minimap_light": room.permanent_minimap_light,
             "reset_dark_lighting_on_enter": room.reset_dark_lighting_on_enter,
+            "is_safe": room.is_safe,
+            "is_spawn_point": room.is_spawn_point,
+            "monster_lair_template_id": room.monster_lair_template_id,
         }
     )
+
+
+def _dm_monster_template_dict(t: MonsterTemplate) -> dict:
+    return {
+        "id": t.id,
+        "slug": t.slug,
+        "name": t.name,
+        "spawn_cooldown_minutes": t.spawn_cooldown_minutes,
+        "level": t.level,
+        "max_hp": t.max_hp,
+        "damage_min": t.damage_min,
+        "damage_max": t.damage_max,
+        "moves": t.moves,
+        "xp_value": t.xp_value,
+        "gold_min": t.gold_min,
+        "gold_max": t.gold_max,
+        "loot_table": t.loot_table or [],
+        "armor": t.armor,
+        "accuracy": t.accuracy,
+    }
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsStaffUser])
+def dm_monster_template_list(_request):
+    return Response(
+        [_dm_monster_template_dict(t) for t in MonsterTemplate.objects.order_by("name")]
+    )
+
+
+@api_view(["GET", "PATCH"])
+@permission_classes([IsAuthenticated, IsStaffUser])
+def dm_monster_template_detail(request, pk):
+    tpl = get_object_or_404(MonsterTemplate, pk=pk)
+    if request.method == "GET":
+        return Response(_dm_monster_template_dict(tpl))
+    if "slug" in request.data:
+        tpl.slug = (request.data.get("slug") or "").strip()[:80]
+    if "name" in request.data:
+        tpl.name = (request.data.get("name") or "").strip()[:200]
+    for f in (
+        "spawn_cooldown_minutes",
+        "level",
+        "max_hp",
+        "damage_min",
+        "damage_max",
+        "moves",
+        "xp_value",
+        "gold_min",
+        "gold_max",
+        "armor",
+    ):
+        if f in request.data:
+            try:
+                setattr(tpl, f, max(0, int(request.data.get(f) or 0)))
+            except (TypeError, ValueError):
+                pass
+    if "accuracy" in request.data:
+        try:
+            tpl.accuracy = int(request.data.get("accuracy") or 0)
+        except (TypeError, ValueError):
+            pass
+    if "loot_table" in request.data:
+        raw = request.data.get("loot_table")
+        if isinstance(raw, list):
+            tpl.loot_table = raw
+    tpl.save()
+    return Response(_dm_monster_template_dict(tpl))
 
 
 def _dm_floor_item_dict(inst: ItemInstance) -> dict:
@@ -1374,6 +1467,13 @@ def _dm_item_dict(item: Item) -> dict:
         "bonus_smarts": item.bonus_smarts,
         "bonus_sense": item.bonus_sense,
         "bonus_rizz": item.bonus_rizz,
+        "weapon_accuracy": item.weapon_accuracy,
+        "crit_chance_bonus_pct": item.crit_chance_bonus_pct,
+        "crit_damage_bonus": item.crit_damage_bonus,
+        "penetration": item.penetration,
+        "dodge_bonus": item.dodge_bonus,
+        "dodge_reduction": item.dodge_reduction,
+        "dodge_ignore": item.dodge_ignore,
         "unsellable": item.unsellable,
         "vendor_refuses_buy": item.vendor_refuses_buy,
     }
@@ -1472,6 +1572,13 @@ def dm_item_list_create(request):
         bonus_smarts=int(request.data.get("bonus_smarts") or 0),
         bonus_sense=int(request.data.get("bonus_sense") or 0),
         bonus_rizz=int(request.data.get("bonus_rizz") or 0),
+        weapon_accuracy=int(request.data.get("weapon_accuracy") or 0),
+        crit_chance_bonus_pct=int(request.data.get("crit_chance_bonus_pct") or 0),
+        crit_damage_bonus=float(request.data.get("crit_damage_bonus") or 0),
+        penetration=max(0, int(request.data.get("penetration") or 0)),
+        dodge_bonus=int(request.data.get("dodge_bonus") or 0),
+        dodge_reduction=int(request.data.get("dodge_reduction") or 0),
+        dodge_ignore=int(request.data.get("dodge_ignore") or 0),
         unsellable=bool(request.data.get("unsellable")),
         vendor_refuses_buy=bool(request.data.get("vendor_refuses_buy")),
     )
@@ -1569,9 +1676,24 @@ def dm_item_detail(request, pk):
         "bonus_smarts",
         "bonus_sense",
         "bonus_rizz",
+        "weapon_accuracy",
+        "crit_chance_bonus_pct",
+        "dodge_bonus",
+        "dodge_reduction",
+        "dodge_ignore",
     ):
         if bf in request.data:
             setattr(item, bf, int(request.data.get(bf) or 0))
+    if "crit_damage_bonus" in request.data:
+        try:
+            item.crit_damage_bonus = float(request.data.get("crit_damage_bonus") or 0)
+        except (TypeError, ValueError):
+            pass
+    if "penetration" in request.data:
+        try:
+            item.penetration = max(0, int(request.data.get("penetration") or 0))
+        except (TypeError, ValueError):
+            pass
     if "unsellable" in request.data:
         item.unsellable = bool(request.data["unsellable"])
     if "vendor_refuses_buy" in request.data:

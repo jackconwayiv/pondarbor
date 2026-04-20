@@ -8,6 +8,7 @@ import {
   NativeSelectField,
   NativeSelectRoot,
   Stack,
+  Switch,
   Text,
   Textarea,
 } from "@chakra-ui/react";
@@ -54,12 +55,14 @@ function emptyForm(firstRoomId: number): {
   slug: string;
   name: string;
   description: string;
+  is_trainer: boolean;
 } {
   return {
     room_id: firstRoomId,
     slug: "",
     name: "",
     description: "",
+    is_trainer: false,
   };
 }
 
@@ -125,6 +128,7 @@ export default function QffDmNpcsPage() {
         slug: d.slug,
         name: d.name,
         description: d.description,
+        is_trainer: !!d.is_trainer,
       });
     },
     [getApiAccessToken],
@@ -159,6 +163,7 @@ export default function QffDmNpcsPage() {
         slug: d.slug,
         name: d.name,
         description: d.description,
+        is_trainer: !!d.is_trainer,
       });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Load failed");
@@ -187,6 +192,7 @@ export default function QffDmNpcsPage() {
           slug: form.slug.trim(),
           name: form.name.trim(),
           description: form.description,
+          is_trainer: form.is_trainer,
         });
         await loadList();
         setEditingId(created.id);
@@ -197,6 +203,7 @@ export default function QffDmNpcsPage() {
           slug: form.slug.trim(),
           name: form.name.trim(),
           description: form.description,
+          is_trainer: form.is_trainer,
         });
         setDetail(d);
         await loadList();
@@ -422,6 +429,20 @@ export default function QffDmNpcsPage() {
               placeholder="Shown when players look at this NPC."
             />
           </Field.Root>
+          <Switch.Root
+            size="sm"
+            checked={form.is_trainer}
+            onCheckedChange={(d) => setForm((f) => ({ ...f, is_trainer: !!d.checked }))}
+            colorPalette="green"
+          >
+            <Switch.HiddenInput />
+            <Switch.Control>
+              <Switch.Thumb />
+            </Switch.Control>
+            <Switch.Label fontSize="xs" color="#aaa">
+              Trainer (players use <strong>train</strong> here for level ups)
+            </Switch.Label>
+          </Switch.Root>
 
           {editingId != null && detail && (
             <Box borderWidth="1px" borderRadius="md" borderColor="#404040" p={3} bg="#1a1a1a">

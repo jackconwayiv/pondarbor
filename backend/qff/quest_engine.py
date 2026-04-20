@@ -7,6 +7,7 @@ from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
 
+from qff.constants import XP_PER_LEVEL
 from qff.exits import _set_character_unlock, _set_realm_unlock
 from qff.game_helpers import display_name_for_instance
 from qff.models import (
@@ -139,6 +140,16 @@ def _npc_says_line(npc: Npc, utterance: str) -> str:
     return f"{npc.name} says: {u}."
 
 
+def _with_trainer_xp_hint(character: Character, npc: Npc, line: str) -> str:
+    if not npc.is_trainer:
+        return line
+    need = int(character.level) * XP_PER_LEVEL
+    trimmed = (line or "").rstrip()
+    if trimmed.endswith("."):
+        trimmed = trimmed[:-1]
+    return f"{trimmed} (Training requires {need} XP; you have {character.xp})."
+
+
 def resolve_npc_dialogue(character: Character, npc: Npc) -> str:
     cqps = {
         p.quest_id: p
@@ -152,14 +163,20 @@ def resolve_npc_dialogue(character: Character, npc: Npc) -> str:
     for d in dialogues:
         if d.quest_id is None:
             raw = (d.text or "").strip()
-            return _npc_says_line(npc, raw or "I'm here.")
+            return _with_trainer_xp_hint(
+                character, npc, _npc_says_line(npc, raw or "I'm here.")
+            )
         cqp = cqps.get(d.quest_id)
         if not cqp:
             continue
         if d.quest_state_id and cqp.current_state_id != d.quest_state_id:
             continue
-        return _npc_says_line(npc, (d.text or "").strip() or "…")
-    return _npc_says_line(npc, "I don't have much to say.")
+        return _with_trainer_xp_hint(
+            character, npc, _npc_says_line(npc, (d.text or "").strip() or "…")
+        )
+    return _with_trainer_xp_hint(
+        character, npc, _npc_says_line(npc, "I don't have much to say.")
+    )
 
 
 def try_item_transitions_on_talk(character: Character, npc: Npc) -> list[str]:

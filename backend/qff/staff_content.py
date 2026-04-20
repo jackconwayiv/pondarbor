@@ -303,6 +303,7 @@ def _npc_dict(npc: Npc, dialogues: bool = False) -> dict:
         "slug": npc.slug,
         "name": npc.name,
         "description": npc.description,
+        "is_trainer": npc.is_trainer,
     }
     if dialogues:
         out["dialogues"] = [
@@ -346,6 +347,7 @@ def dm_npc_list_create(request):
             slug=slug,
             name=name,
             description=(request.data.get("description") or "")[:],
+            is_trainer=bool(request.data.get("is_trainer")),
         )
     except IntegrityError:
         return Response(
@@ -370,6 +372,8 @@ def dm_npc_detail(request, pk):
         npc.name = (request.data.get("name") or "").strip()[:200]
     if "description" in request.data:
         npc.description = request.data.get("description") or ""
+    if "is_trainer" in request.data:
+        npc.is_trainer = bool(request.data["is_trainer"])
     if "room_id" in request.data:
         get_object_or_404(Room, pk=int(request.data["room_id"]))
         npc.room_id = int(request.data["room_id"])

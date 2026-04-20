@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from django.db import transaction
 from django.utils import timezone
 
 from qff.command_parser import (
+    ParsedAttack,
+    ParsedBuyAbilities,
     ParsedConsumeItem,
     ParsedDrop,
     ParsedEquip,
@@ -21,11 +24,12 @@ from qff.command_parser import (
     ParsedShopBrowse,
     ParsedShopBuy,
     ParsedTalk,
+    ParsedTrain,
     ParsedUnequip,
     ParsedUnknown,
     ParsedUse,
 )
-from qff.constants import SAY_MAX_LEN
+from qff.constants import COMBAT_ROUND_SECONDS, SAY_MAX_LEN, XP_PER_LEVEL
 from qff.exploration import mark_exit_used, on_enter_room, on_leave_room
 from qff.exits import (
     consume_key_if_entering_locked,
@@ -44,7 +48,16 @@ from qff.game_helpers import (
     slot_field_for_item_slot,
 )
 from qff.inventory_absorb import absorb_item_quantity
-from qff.models import Character, Interactable, ItemInstance, RoomBroadcast, RoomExit, RoomItem
+from qff.models import (
+    Character,
+    Interactable,
+    ItemInstance,
+    MonsterInstance,
+    Npc,
+    RoomBroadcast,
+    RoomExit,
+    RoomItem,
+)
 from qff.quest_engine import (
     ensure_quests_started_from_npc,
     find_interactable_in_room,
@@ -83,6 +96,26 @@ SLOT_ATTRS = (
 
 def _touch_activity(char: CharacterType) -> None:
     char.last_activity_at = timezone.now()
+
+
+def _mark_command_boundary(char: CharacterType) -> None:
+    now = timezone.now()
+    Character.objects.filter(pk=char.pk).update(last_command_at=now, updated_at=now)
+    char.last_command_at = now
+
+
+def _find_monster_in_room(actor: CharacterType, query: str) -> MonsterInstance | None:
+    q = (query or "").strip().lower()
+    if not q:
+        return None
+    for m in MonsterInstance.objects.filter(current_room_id=actor.current_room_id).select_related(
+        "template"
+    ).order_by("id"):
+        name = m.template.name.lower()
+        slug = m.template.slug.lower()
+        if name == q or slug == q or name.startswith(q) or slug.startswith(q):
+            return m
+    return None
 
 
 def _others_present_count(char: CharacterType) -> int:
@@ -390,11 +423,18 @@ def execute_command(char: CharacterType, parsed) -> list[str]:
     """Mutates character state as needed; caller must reload or use returned session."""
     char = sync_character_world_before_session(char)
 
+    if char.is_dead:
+        return ["You are dead and cannot act."]
+
+    if isinstance(parsed, ParsedUnknown):
+        return ["You try that, but nothing happens."]
+
     if isinstance(parsed, ParsedSay):
-        _touch_activity(char)
         text = (parsed.text or "").strip()
         if not text:
             return []
+        _mark_command_boundary(char)
+        _touch_activity(char)
         if _others_present_count(char) == 0:
             return []
         line = _format_say_line(char.name, text[:SAY_MAX_LEN])
@@ -406,6 +446,8 @@ def execute_command(char: CharacterType, parsed) -> list[str]:
         char.last_room_broadcast_id = rb.id
         char.save(update_fields=["last_room_broadcast_id", "updated_at"])
         return [line]
+
+    _mark_command_boundary(char)
 
     if isinstance(parsed, ParsedShopBrowse):
         return _handle_shop_browse(char, parsed)
@@ -433,8 +475,14 @@ def execute_command(char: CharacterType, parsed) -> list[str]:
             f"You spend some time searching the {room.name} but find nothing of note."
         ]
 
-    if isinstance(parsed, ParsedUnknown):
-        return ["You try that, but nothing happens."]
+    if isinstance(parsed, ParsedAttack):
+        return _handle_attack(char, parsed)
+
+    if isinstance(parsed, ParsedTrain):
+        return _handle_train(char)
+
+    if isinstance(parsed, ParsedBuyAbilities):
+        return _handle_buy_abilities(char)
 
     if isinstance(parsed, ParsedMove):
         return _handle_move(char, parsed)
@@ -467,6 +515,64 @@ def execute_command(char: CharacterType, parsed) -> list[str]:
         return _handle_use(char, parsed)
 
     return ["You try that, but nothing happens."]
+
+
+def _handle_attack(char: CharacterType, parsed: ParsedAttack) -> list[str]:
+    _touch_activity(char)
+    q = (parsed.target or "").strip()
+    if not q:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return ["Attack what?"]
+    m = _find_monster_in_room(char, q)
+    if not m:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return ["You don't see that here."]
+    now = timezone.now()
+    char.combat_target_monster_id = m.pk
+    char.next_action_at = now + timedelta(seconds=COMBAT_ROUND_SECONDS)
+    char.save(
+        update_fields=[
+            "combat_target_monster",
+            "next_action_at",
+            "last_activity_at",
+            "updated_at",
+        ]
+    )
+    return ["You ready an attack."]
+
+
+def _handle_buy_abilities(char: CharacterType) -> list[str]:
+    _touch_activity(char)
+    char.save(update_fields=["last_activity_at", "updated_at"])
+    return ["You cannot buy abilities yet — trainers only offer lessons for now."]
+
+
+def _handle_train(char: CharacterType) -> list[str]:
+    _touch_activity(char)
+    trainer = Npc.objects.filter(room_id=char.current_room_id, is_trainer=True).first()
+    if not trainer:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return ["There is no trainer here."]
+    need = int(char.level) * XP_PER_LEVEL
+    if int(char.xp) < need:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return [
+            f"You need at least {need} XP to train further. (You have {char.xp}.)"
+        ]
+    char.level = int(char.level) + 1
+    char.unspent_stat_points = int(char.unspent_stat_points or 0) + 3
+    char.save(
+        update_fields=[
+            "level",
+            "unspent_stat_points",
+            "last_activity_at",
+            "updated_at",
+        ]
+    )
+    return [
+        f"You train with {trainer.name} and advance to level {char.level}! "
+        f"You have {char.unspent_stat_points} unspent stat points."
+    ]
 
 
 def _handle_move(char: CharacterType, parsed: ParsedMove) -> list[str]:
@@ -507,7 +613,33 @@ def _handle_move(char: CharacterType, parsed: ParsedMove) -> list[str]:
     on_leave_room(left_room_id)
     on_enter_room(char, dest.id)
     _notify_peers_third_person(char, dest.id, peer_arrival_line(char.name, ex.direction))
-    return [f"You head {dir_label}."]
+
+    from qff.monster_sim import (
+        engage_monsters_for_new_arrivals,
+        monsters_follow_hero_move,
+        on_spawn_room_enter,
+        safe_room_disengage,
+        sense_adjacent_monsters,
+    )
+
+    messages = [f"You head {dir_label}."]
+    char = Character.objects.select_related("current_room").get(pk=char.pk)
+    dest_room = char.current_room
+    on_spawn_room_enter(char, dest_room)
+    char.refresh_from_db()
+
+    if safe_room_disengage(char, dest_room):
+        messages.append("You feel safer here.")
+        char.refresh_from_db()
+    elif not dest_room.is_safe and char.next_action_at:
+        char.next_action_at = timezone.now() + timedelta(seconds=COMBAT_ROUND_SECONDS)
+        char.save(update_fields=["next_action_at", "updated_at"])
+
+    monsters_follow_hero_move(char, left_room_id, dest.id)
+    sense_adjacent_monsters(char, dest.id)
+    engage_monsters_for_new_arrivals(char, dest.id)
+
+    return messages
 
 
 def _handle_drop(

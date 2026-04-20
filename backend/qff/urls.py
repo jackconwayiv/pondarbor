@@ -15,6 +15,8 @@ urlpatterns = [
     path("dm/cells/<int:pk>/", views.dm_cell_detail),
     path("dm/areas/<int:area_id>/rooms/", views.dm_room_list_create),
     path("dm/rooms/<int:pk>/", views.dm_room_detail),
+    path("dm/monster-templates/", views.dm_monster_template_list),
+    path("dm/monster-templates/<int:pk>/", views.dm_monster_template_detail),
     path("dm/rooms/<int:room_id>/floor-items/", views.dm_room_floor_items),
     path("dm/rooms/<int:room_id>/room-items/", views.dm_room_room_items),
     path("dm/floor-items/<int:pk>/", views.dm_floor_item_detail),

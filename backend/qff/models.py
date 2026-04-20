@@ -52,6 +52,25 @@ class Room(models.Model):
     permanent_minimap_light = models.BooleanField(default=False)
     # Entering this room clears character.dark_minimap_lit_room_ids (cave mouth, etc.).
     reset_dark_lighting_on_enter = models.BooleanField(default=False)
+    # Monsters cannot enter; pursuit stops at threshold; hero combat engagement ends (v1).
+    is_safe = models.BooleanField(default=False)
+    # Entering sets Character.spawn_room to this room.
+    is_spawn_point = models.BooleanField(default=False)
+    monster_lair_template = models.ForeignKey(
+        "MonsterTemplate",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="lair_rooms",
+    )
+    lair_last_instance = models.ForeignKey(
+        "MonsterInstance",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="remembered_by_lairs",
+    )
+    lair_next_spawn_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -337,6 +356,25 @@ class Item(models.Model):
     bonus_smarts = models.SmallIntegerField(default=0)
     bonus_sense = models.SmallIntegerField(default=0)
     bonus_rizz = models.SmallIntegerField(default=0)
+    weapon_accuracy = models.SmallIntegerField(default=0)
+    crit_chance_bonus_pct = models.SmallIntegerField(
+        default=0,
+        help_text="Added as percentage points to crit chance (5 = +5%).",
+    )
+    crit_damage_bonus = models.FloatField(
+        default=0.0,
+        help_text="Added to crit multiplier (ItemCritDamage term).",
+    )
+    penetration = models.PositiveSmallIntegerField(default=0)
+    dodge_bonus = models.SmallIntegerField(default=0)
+    dodge_reduction = models.SmallIntegerField(
+        default=0,
+        help_text="Reduces target effective dodge when you attack.",
+    )
+    dodge_ignore = models.SmallIntegerField(
+        default=0,
+        help_text="Further reduces target effective dodge when you attack.",
+    )
     stackable = models.BooleanField(
         default=False,
         help_text="If true, inventory merges same-template stacks up to max_stack per row.",
@@ -495,8 +533,17 @@ class RoomBroadcast(models.Model):
     )
     speaker = models.ForeignKey(
         "Character",
+        null=True,
+        blank=True,
         on_delete=models.CASCADE,
         related_name="room_broadcasts_sent",
+    )
+    target_character = models.ForeignKey(
+        "Character",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="room_broadcasts_targeted",
     )
     text = models.CharField(max_length=500)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -624,6 +671,19 @@ class Character(models.Model):
         related_name="characters_with_focus",
     )
     container_focus_expires_at = models.DateTimeField(null=True, blank=True)
+    # Combat pacing (armed by /attack); cleared on safe-room disengage.
+    next_action_at = models.DateTimeField(null=True, blank=True)
+    combat_target_monster = models.ForeignKey(
+        "MonsterInstance",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="targeted_by_heroes",
+    )
+    last_command_at = models.DateTimeField(null=True, blank=True)
+    is_dead = models.BooleanField(default=False)
+    died_at = models.DateTimeField(null=True, blank=True)
+    unspent_stat_points = models.PositiveSmallIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -833,6 +893,7 @@ class Npc(models.Model):
     slug = models.SlugField(max_length=80)
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
+    is_trainer = models.BooleanField(default=False)
 
     class Meta:
         constraints = [
@@ -1038,6 +1099,106 @@ class CharacterExitUnlock(models.Model):
                 name="qff_charexitunlock_uniq",
             ),
         ]
+
+
+class MonsterTemplate(models.Model):
+    slug = models.SlugField(max_length=80, unique=True)
+    name = models.CharField(max_length=200)
+    spawn_cooldown_minutes = models.PositiveSmallIntegerField(default=5)
+    level = models.PositiveSmallIntegerField(default=1)
+    max_hp = models.PositiveSmallIntegerField(default=5)
+    damage_min = models.PositiveSmallIntegerField(default=1)
+    damage_max = models.PositiveSmallIntegerField(default=3)
+    moves = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Added to d100 for initiative (0 if not set).",
+    )
+    xp_value = models.PositiveIntegerField(default=5)
+    gold_min = models.PositiveIntegerField(default=0)
+    gold_max = models.PositiveIntegerField(default=3)
+    loot_table = models.JSONField(default=list, blank=True)
+    armor = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Physical mitigation when this monster is hit.",
+    )
+    accuracy = models.SmallIntegerField(
+        default=0,
+        help_text="WeaponAccuracy term when this monster attacks.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class MonsterInstance(models.Model):
+    template = models.ForeignKey(
+        MonsterTemplate,
+        on_delete=models.CASCADE,
+        related_name="instances",
+    )
+    current_room = models.ForeignKey(
+        Room,
+        on_delete=models.CASCADE,
+        related_name="monster_instances",
+    )
+    lair_room = models.ForeignKey(
+        Room,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="lair_spawned_instances",
+    )
+    engaged_character = models.ForeignKey(
+        Character,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="monsters_engaged",
+    )
+    pursuit_target_character = models.ForeignKey(
+        Character,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="monsters_pursuing",
+    )
+    pursuit_path = models.JSONField(default=list, blank=True)
+    cur_hp = models.PositiveSmallIntegerField(default=1)
+    max_hp = models.PositiveSmallIntegerField(default=1)
+    next_action_at = models.DateTimeField(null=True, blank=True)
+    next_pursuit_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["id"]
+        indexes = [
+            models.Index(fields=["current_room"]),
+            models.Index(fields=["next_action_at"]),
+            models.Index(fields=["next_pursuit_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.template.name}@{self.current_room_id}"
+
+
+class RoomGoldPile(models.Model):
+    room = models.ForeignKey(
+        Room,
+        on_delete=models.CASCADE,
+        related_name="gold_piles",
+    )
+    amount_remaining = models.PositiveIntegerField()
+    label = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
 
 
 class QffIneffectiveInput(models.Model):

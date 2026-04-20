@@ -510,8 +510,55 @@ export type DmRoom = {
   search_chance: number;
   permanent_minimap_light?: boolean;
   reset_dark_lighting_on_enter?: boolean;
+  is_safe?: boolean;
+  is_spawn_point?: boolean;
+  monster_lair_template_id?: number | null;
   cell: { id: number; x: number; y: number } | null;
 };
+
+export type DmMonsterTemplate = {
+  id: number;
+  slug: string;
+  name: string;
+  spawn_cooldown_minutes: number;
+  level: number;
+  max_hp: number;
+  damage_min: number;
+  damage_max: number;
+  moves: number;
+  xp_value: number;
+  gold_min: number;
+  gold_max: number;
+  loot_table: unknown[];
+  armor: number;
+  accuracy: number;
+};
+
+export async function dmFetchMonsterTemplates(
+  accessToken: string | null,
+): Promise<DmMonsterTemplate[]> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/monster-templates/`), {
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmMonsterTemplate[];
+}
+
+export async function dmPatchMonsterTemplate(
+  accessToken: string | null,
+  templateId: number,
+  body: Partial<DmMonsterTemplate>,
+): Promise<DmMonsterTemplate> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/monster-templates/${templateId}/`), {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmMonsterTemplate;
+}
 
 export async function dmFetchRooms(accessToken: string | null, areaId: number): Promise<DmRoom[]> {
   const response = await fetch(qffJoinBase(`/api/v1/qff/dm/areas/${areaId}/rooms/`), {
@@ -534,6 +581,9 @@ export async function dmPatchRoom(
       | "search_chance"
       | "permanent_minimap_light"
       | "reset_dark_lighting_on_enter"
+      | "is_safe"
+      | "is_spawn_point"
+      | "monster_lair_template_id"
     >
   >,
 ): Promise<void> {
@@ -698,6 +748,13 @@ export type DmItem = {
   bonus_smarts: number;
   bonus_sense: number;
   bonus_rizz: number;
+  weapon_accuracy: number;
+  crit_chance_bonus_pct: number;
+  crit_damage_bonus: number;
+  penetration: number;
+  dodge_bonus: number;
+  dodge_reduction: number;
+  dodge_ignore: number;
   unsellable: boolean;
   vendor_refuses_buy: boolean;
 };
@@ -1253,6 +1310,7 @@ export type DmNpcRow = {
   slug: string;
   name: string;
   description: string;
+  is_trainer?: boolean;
 };
 
 export type DmNpcDialogue = {
@@ -1325,6 +1383,7 @@ export async function dmCreateNpc(
     slug: string;
     name: string;
     description?: string;
+    is_trainer?: boolean;
   },
 ): Promise<DmNpcRow> {
   const response = await fetch(qffJoinBase(`/api/v1/qff/dm/npcs/`), {
@@ -1340,7 +1399,9 @@ export async function dmCreateNpc(
 export async function dmPatchNpc(
   accessToken: string | null,
   npcId: number,
-  body: Partial<Pick<DmNpcRow, "room_id" | "slug" | "name" | "description">>,
+  body: Partial<
+    Pick<DmNpcRow, "room_id" | "slug" | "name" | "description" | "is_trainer">
+  >,
 ): Promise<DmNpcDetail> {
   const response = await fetch(qffJoinBase(`/api/v1/qff/dm/npcs/${npcId}/`), {
     method: "PATCH",

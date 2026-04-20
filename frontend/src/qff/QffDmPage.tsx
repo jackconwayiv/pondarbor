@@ -35,6 +35,8 @@ import {
   dmFetchCells,
   dmFetchExits,
   dmFetchItems,
+  dmFetchMonsterTemplates,
+  dmPatchMonsterTemplate,
   dmFetchQuestDetail,
   dmFetchQuests,
   dmFetchRoomRoomItems,
@@ -49,6 +51,7 @@ import {
   type DmAreaRoomsJson,
   type DmExit,
   type DmItem,
+  type DmMonsterTemplate,
   type DmRoomItem,
   type DmQuestDetail,
   type DmQuestSummary,
@@ -269,6 +272,13 @@ export default function QffDmPage() {
   const [areaDarkMinimap, setAreaDarkMinimap] = useState(false);
   const [panelPermanentMinimapLight, setPanelPermanentMinimapLight] = useState(false);
   const [panelResetDarkLighting, setPanelResetDarkLighting] = useState(false);
+  const [panelIsSafe, setPanelIsSafe] = useState(false);
+  const [panelIsSpawnPoint, setPanelIsSpawnPoint] = useState(false);
+  const [panelMonsterLairTemplateId, setPanelMonsterLairTemplateId] = useState("");
+  const [panelLairTemplateArmor, setPanelLairTemplateArmor] = useState("");
+  const [panelLairTemplateAccuracy, setPanelLairTemplateAccuracy] = useState("");
+  const [panelLairTemplateCombatBusy, setPanelLairTemplateCombatBusy] = useState(false);
+  const [monsterTemplates, setMonsterTemplates] = useState<DmMonsterTemplate[]>([]);
   const dmMapColumnRef = useRef<HTMLDivElement | null>(null);
   const dmRoomPanelRef = useRef<HTMLDivElement | null>(null);
   const roomsImportInputRef = useRef<HTMLInputElement | null>(null);
@@ -320,6 +330,42 @@ export default function QffDmPage() {
     if (!isStaff) return;
     refreshAreas().catch((e) => setErr(String(e)));
   }, [isStaff, refreshAreas]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isStaff) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getTokenRef.current();
+        const list = await dmFetchMonsterTemplates(token);
+        if (!cancelled) setMonsterTemplates(list);
+      } catch {
+        if (!cancelled) setMonsterTemplates([]);
+      }
+    })().catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isStaff]);
+
+  useEffect(() => {
+    if (!panelMonsterLairTemplateId) {
+      setPanelLairTemplateArmor("");
+      setPanelLairTemplateAccuracy("");
+      return;
+    }
+    const tid = parseInt(panelMonsterLairTemplateId, 10);
+    if (!Number.isFinite(tid)) {
+      setPanelLairTemplateArmor("");
+      setPanelLairTemplateAccuracy("");
+      return;
+    }
+    const t = monsterTemplates.find((x) => x.id === tid);
+    if (t) {
+      setPanelLairTemplateArmor(String(t.armor ?? 0));
+      setPanelLairTemplateAccuracy(String(t.accuracy ?? 0));
+    }
+  }, [panelMonsterLairTemplateId, monsterTemplates]);
 
   useEffect(() => {
     if (areaId == null && areas.length > 0) {
@@ -484,6 +530,9 @@ export default function QffDmPage() {
       setPanelSearchChance("50");
       setPanelPermanentMinimapLight(false);
       setPanelResetDarkLighting(false);
+      setPanelIsSafe(false);
+      setPanelIsSpawnPoint(false);
+      setPanelMonsterLairTemplateId("");
       setExits([]);
       setRoomItems([]);
       return;
@@ -494,6 +543,13 @@ export default function QffDmPage() {
     setPanelSearchChance(String(selectedRoom.search_chance ?? 50));
     setPanelPermanentMinimapLight(!!selectedRoom.permanent_minimap_light);
     setPanelResetDarkLighting(!!selectedRoom.reset_dark_lighting_on_enter);
+    setPanelIsSafe(!!selectedRoom.is_safe);
+    setPanelIsSpawnPoint(!!selectedRoom.is_spawn_point);
+    setPanelMonsterLairTemplateId(
+      selectedRoom.monster_lair_template_id != null
+        ? String(selectedRoom.monster_lair_template_id)
+        : "",
+    );
     let cancelled = false;
     (async () => {
       const token = await getTokenRef.current();
@@ -573,6 +629,12 @@ export default function QffDmPage() {
         search_chance: sc,
         permanent_minimap_light: panelPermanentMinimapLight,
         reset_dark_lighting_on_enter: panelResetDarkLighting,
+        is_safe: panelIsSafe,
+        is_spawn_point: panelIsSpawnPoint,
+        monster_lair_template_id:
+          panelMonsterLairTemplateId === ""
+            ? null
+            : parseInt(panelMonsterLairTemplateId, 10),
       });
       if (areaId) {
         const r = await dmFetchRooms(await getTokenRef.current(), areaId);
@@ -590,9 +652,38 @@ export default function QffDmPage() {
     panelSearchChance,
     panelPermanentMinimapLight,
     panelResetDarkLighting,
+    panelIsSafe,
+    panelIsSpawnPoint,
+    panelMonsterLairTemplateId,
     areaId,
     refreshExitDestRooms,
   ]);
+
+  const saveLairTemplateCombatStats = useCallback(async () => {
+    if (!panelMonsterLairTemplateId) return;
+    const tid = parseInt(panelMonsterLairTemplateId, 10);
+    if (!Number.isFinite(tid)) return;
+    let armor = parseInt(panelLairTemplateArmor, 10);
+    if (Number.isNaN(armor) || armor < 0) armor = 0;
+    armor = Math.min(65535, armor);
+    let accuracy = parseInt(panelLairTemplateAccuracy, 10);
+    if (Number.isNaN(accuracy)) accuracy = 0;
+    accuracy = Math.max(-32768, Math.min(32767, accuracy));
+    setErr(null);
+    setPanelLairTemplateCombatBusy(true);
+    try {
+      const token = await getTokenRef.current();
+      const updated = await dmPatchMonsterTemplate(token, tid, {
+        armor,
+        accuracy,
+      });
+      setMonsterTemplates((prev) => prev.map((x) => (x.id === tid ? updated : x)));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Template combat save failed");
+    } finally {
+      setPanelLairTemplateCombatBusy(false);
+    }
+  }, [panelMonsterLairTemplateId, panelLairTemplateArmor, panelLairTemplateAccuracy]);
 
   const addExit = useCallback(async () => {
     if (!selectedRoomId || newExitTo == null) return;
@@ -1142,7 +1233,107 @@ export default function QffDmPage() {
                           Entering this room clears players&apos; temporary cave light
                         </Switch.Label>
                       </Switch.Root>
+                      <Switch.Root
+                        size="sm"
+                        checked={panelIsSafe}
+                        onCheckedChange={(d) => setPanelIsSafe(!!d.checked)}
+                        colorPalette="blue"
+                      >
+                        <Switch.HiddenInput />
+                        <Switch.Control>
+                          <Switch.Thumb />
+                        </Switch.Control>
+                        <Switch.Label fontSize="xs" color="#aaa">
+                          Safe room (monsters cannot enter; ends combat engagement)
+                        </Switch.Label>
+                      </Switch.Root>
+                      <Switch.Root
+                        size="sm"
+                        checked={panelIsSpawnPoint}
+                        onCheckedChange={(d) => setPanelIsSpawnPoint(!!d.checked)}
+                        colorPalette="purple"
+                      >
+                        <Switch.HiddenInput />
+                        <Switch.Control>
+                          <Switch.Thumb />
+                        </Switch.Control>
+                        <Switch.Label fontSize="xs" color="#aaa">
+                          Spawn point (sets player respawn on enter)
+                        </Switch.Label>
+                      </Switch.Root>
                     </Stack>
+                    <Field.Root>
+                      <Field.Label>Monster lair template</Field.Label>
+                      <NativeSelectRoot>
+                        <NativeSelectField
+                          value={panelMonsterLairTemplateId}
+                          onChange={(e) => setPanelMonsterLairTemplateId(e.target.value)}
+                          bg="#222"
+                        >
+                          <option value="">None</option>
+                          {monsterTemplates.map((t) => (
+                            <option key={t.id} value={String(t.id)}>
+                              {t.name} ({t.slug})
+                            </option>
+                          ))}
+                        </NativeSelectField>
+                      </NativeSelectRoot>
+                      <Text fontSize="xs" color="#888" mt={1}>
+                        Lazy-spawns an instance when players are active; cooldown after kill.
+                      </Text>
+                    </Field.Root>
+                    {panelMonsterLairTemplateId !== "" ? (
+                      <Box
+                        borderLeftWidth="3px"
+                        borderColor="#6a5a4a"
+                        pl={2}
+                        py={1.5}
+                        mb={1}
+                        bg="rgba(106, 90, 74, 0.12)"
+                        borderRadius="sm"
+                      >
+                        <Text fontSize="xs" fontWeight="bold" color="#d8c8b8" mb={2}>
+                          Lair template — physical combat (mitigation / monster hit)
+                        </Text>
+                        <Flex gap={2} wrap="wrap" align="flex-end">
+                          <Field.Root maxW="100px">
+                            <Field.Label fontSize="xs">Armor</Field.Label>
+                            <Input
+                              size="sm"
+                              type="number"
+                              min={0}
+                              value={panelLairTemplateArmor}
+                              onChange={(e) => setPanelLairTemplateArmor(e.target.value)}
+                              bg="#222"
+                            />
+                          </Field.Root>
+                          <Field.Root maxW="100px">
+                            <Field.Label fontSize="xs">Accuracy</Field.Label>
+                            <Input
+                              size="sm"
+                              type="number"
+                              value={panelLairTemplateAccuracy}
+                              onChange={(e) => setPanelLairTemplateAccuracy(e.target.value)}
+                              bg="#222"
+                            />
+                          </Field.Root>
+                          <Button
+                            size="sm"
+                            colorPalette="orange"
+                            loading={panelLairTemplateCombatBusy}
+                            onClick={() => {
+                              void saveLairTemplateCombatStats();
+                            }}
+                          >
+                            Save template combat
+                          </Button>
+                        </Flex>
+                        <Text fontSize="xs" color="#888" mt={1}>
+                          Armor reduces damage when heroes hit this monster; accuracy helps the
+                          monster land hits.
+                        </Text>
+                      </Box>
+                    ) : null}
 
                     <Text fontWeight="bold" mt={3}>
                       Room items

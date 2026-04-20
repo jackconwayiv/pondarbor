@@ -79,6 +79,13 @@ function emptyForm(): Partial<DmItem> {
     bonus_smarts: 0,
     bonus_sense: 0,
     bonus_rizz: 0,
+    weapon_accuracy: 0,
+    crit_chance_bonus_pct: 0,
+    crit_damage_bonus: 0,
+    penetration: 0,
+    dodge_bonus: 0,
+    dodge_reduction: 0,
+    dodge_ignore: 0,
   };
 }
 
@@ -457,6 +464,99 @@ export default function QffDmItemsPage() {
               bg="#222"
             />
           </Field.Root>
+          <Text fontWeight="bold" fontSize="sm" color="#889977">
+            Combat (physical formulas)
+          </Text>
+          <Flex gap={2} flexWrap="wrap">
+            <Field.Root minW="100px">
+              <Field.Label>Wpn accuracy</Field.Label>
+              <Input
+                type="number"
+                value={form.weapon_accuracy ?? 0}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, weapon_accuracy: Number(e.target.value) }))
+                }
+                bg="#222"
+                w="100px"
+              />
+            </Field.Root>
+            <Field.Root minW="100px">
+              <Field.Label>Crit % bonus</Field.Label>
+              <Input
+                type="number"
+                value={form.crit_chance_bonus_pct ?? 0}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, crit_chance_bonus_pct: Number(e.target.value) }))
+                }
+                bg="#222"
+                w="100px"
+              />
+            </Field.Root>
+            <Field.Root minW="100px">
+              <Field.Label>Crit dmg +</Field.Label>
+              <Input
+                type="number"
+                step="any"
+                value={form.crit_damage_bonus ?? 0}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    crit_damage_bonus: Number(e.target.value),
+                  }))
+                }
+                bg="#222"
+                w="100px"
+              />
+            </Field.Root>
+            <Field.Root minW="100px">
+              <Field.Label>Penetration</Field.Label>
+              <Input
+                type="number"
+                value={form.penetration ?? 0}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, penetration: Number(e.target.value) }))
+                }
+                bg="#222"
+                w="100px"
+              />
+            </Field.Root>
+            <Field.Root minW="100px">
+              <Field.Label>Dodge bonus</Field.Label>
+              <Input
+                type="number"
+                value={form.dodge_bonus ?? 0}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, dodge_bonus: Number(e.target.value) }))
+                }
+                bg="#222"
+                w="100px"
+              />
+            </Field.Root>
+            <Field.Root minW="100px">
+              <Field.Label>Dodge reduce</Field.Label>
+              <Input
+                type="number"
+                value={form.dodge_reduction ?? 0}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, dodge_reduction: Number(e.target.value) }))
+                }
+                bg="#222"
+                w="100px"
+              />
+            </Field.Root>
+            <Field.Root minW="100px">
+              <Field.Label>Dodge ignore</Field.Label>
+              <Input
+                type="number"
+                value={form.dodge_ignore ?? 0}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, dodge_ignore: Number(e.target.value) }))
+                }
+                bg="#222"
+                w="100px"
+              />
+            </Field.Root>
+          </Flex>
           <Field.Root>
             <Field.Label>Hidden special</Field.Label>
             <NativeSelectRoot>

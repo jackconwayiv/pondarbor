@@ -92,6 +92,23 @@ class ParsedShopBuy:
 
 
 @dataclass
+class ParsedAttack:
+    target: str
+
+
+@dataclass
+class ParsedTrain:
+    pass
+
+
+@dataclass
+class ParsedBuyAbilities:
+    """Placeholder until spell / ability shop ships."""
+
+    pass
+
+
+@dataclass
 class ParsedSell:
     """sell <item> or sell <item> to <npc>."""
 
@@ -237,6 +254,8 @@ def parse_command(line: str):
         return ParsedShopBrowse(npc_query=n[5:].strip())
     if low in ("buy", "purchase"):
         return ParsedShopBrowse()
+    if low in ("buy abilities", "purchase abilities"):
+        return ParsedBuyAbilities()
     if low.startswith("buy "):
         rest = n[4:].strip()
         m = re.match(r"(?is)^(.+?)\s+from\s+(.+)$", rest)
@@ -255,6 +274,14 @@ def parse_command(line: str):
                 npc_query=m.group(2).strip(),
             )
         return ParsedShopBuy(item_query=rest, npc_query="")
+    if low.startswith("attack "):
+        return ParsedAttack(target=n[7:].strip())
+    if low in ("attack", "atk"):
+        return ParsedAttack(target="")
+    if low.startswith("atk "):
+        return ParsedAttack(target=n[4:].strip())
+    if low in ("train",):
+        return ParsedTrain()
     if low == "sell":
         return ParsedSell()
     if low.startswith("sell "):

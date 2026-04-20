@@ -4,6 +4,7 @@ import re
 from collections import defaultdict
 from datetime import timedelta
 
+from django.db.models import Q
 from django.utils import timezone
 
 from qff.constants import PRESENCE_MINUTES
@@ -29,10 +30,12 @@ from qff.models import (
     CharacterRoomVisit,
     Interactable,
     ItemInstance,
+    MonsterInstance,
     Npc,
     Room,
     RoomBroadcast,
     RoomExit,
+    RoomGoldPile,
     RoomItem,
 )
 
@@ -82,6 +85,7 @@ def consume_room_broadcasts(character) -> list[str]:
             room_id=character.current_room_id,
             id__gt=character.last_room_broadcast_id,
         )
+        .filter(Q(target_character_id__isnull=True) | Q(target_character_id=character.pk))
         .exclude(speaker_id=character.pk)
         .order_by("id")
     )
@@ -330,6 +334,11 @@ def build_character_profile(character) -> dict:
         "level": character.level,
         "xp": character.xp,
         "gold": character.gold,
+        "isDead": character.is_dead,
+        "unspentStatPoints": character.unspent_stat_points,
+        "nextCombatAt": (
+            character.next_action_at.isoformat() if character.next_action_at else None
+        ),
         "curHealth": character.cur_health,
         "maxHealth": character.max_health,
         "curMana": character.cur_mana,
@@ -413,6 +422,24 @@ def build_session_for_character(character) -> dict:
             "id": room.id,
             "name": room.name,
             "description": room.description,
+            "is_safe": room.is_safe,
+            "is_spawn_point": room.is_spawn_point,
+            "monsters": [
+                {
+                    "id": m.id,
+                    "slug": m.template.slug,
+                    "name": m.template.name,
+                    "cur_hp": m.cur_hp,
+                    "max_hp": m.max_hp,
+                }
+                for m in MonsterInstance.objects.filter(current_room_id=room.id)
+                .select_related("template")
+                .order_by("id")
+            ],
+            "gold_piles": [
+                {"id": p.id, "amount": p.amount_remaining, "label": p.label}
+                for p in RoomGoldPile.objects.filter(room_id=room.id).order_by("id")
+            ],
             "youSee": you_see,
             "npcs": [
                 {"slug": n.slug, "name": n.name}

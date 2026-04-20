@@ -2,7 +2,7 @@
 
 from django.contrib.auth import get_user_model
 from django.db import connection
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
@@ -118,6 +118,15 @@ class BuildAreaMapQueryTests(TestCase):
             [o["name"] for o in interact],
             you_see[: len(interact)],
         )
+
+    @override_settings(QFF_SESSION_MINIMAL_AREA_MAP=True)
+    def test_build_session_minimal_area_map_skips_build_area_map(self):
+        char = self._fresh_character()
+        session = build_session_for_character(char)
+        am = session["area_map"]
+        self.assertTrue(am.get("minimal"))
+        self.assertEqual(am["grids"], [])
+        self.assertEqual(am["current_area_id"], self.area.id)
 
 
 class SyncSeenExitsQueryTests(TestCase):

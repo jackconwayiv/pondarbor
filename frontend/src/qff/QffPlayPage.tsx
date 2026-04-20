@@ -418,6 +418,7 @@ export default function QffPlayPage() {
   }
 
   const { room, area, exits, others_here, area_map } = session;
+  const mapMinimal = area_map.minimal === true;
   const t = area.theme;
   const cp = session.character_profile;
   const heroDead = cp.isDead === true;
@@ -796,12 +797,13 @@ export default function QffPlayPage() {
             gridRow={{ base: "auto", lg: "1 / span 2" }}
             minH={0}
             minW={0}
+            display={mapMinimal ? "none" : undefined}
           >
             {mapPanel}
           </Box>
           <Box
             gridColumn={{ base: "1", lg: "2" }}
-            gridRow={{ base: "auto", lg: "3 / span 2" }}
+            gridRow={{ base: "auto", lg: mapMinimal ? "1 / span 2" : "3 / span 2" }}
             w="100%"
             maxH={{ base: "min(300px, 42vh)", lg: "min(460px, 48vh)" }}
             minW={0}

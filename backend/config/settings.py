@@ -261,6 +261,16 @@ EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "true").lower() in ("true", "1", "yes
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@localhost")
 CONTACT_INBOX_EMAIL = os.getenv("CONTACT_INBOX_EMAIL", "pondarbor@gmail.com").strip()
 
+# QFF: structured INFO logs per command (exec_ms, sim_ms, session_ms, total_ms) for staging/prod profiling.
+QFF_COMMAND_TIMING_LOG = os.getenv("QFF_COMMAND_TIMING_LOG", "").lower() in ("true", "1", "yes")
+
+# QFF: omit expensive minimap from session payload (empty grids + minimal flag). Default off; enable after data justifies it.
+QFF_SESSION_MINIMAL_AREA_MAP = os.getenv("QFF_SESSION_MINIMAL_AREA_MAP", "").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+
 # Logs go to stderr so Gunicorn / Appliku "App Logs" shows tracebacks for 500s.
 LOGGING = {
     "version": 1,

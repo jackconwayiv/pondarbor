@@ -2,6 +2,7 @@ import json
 import logging
 import time
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models.deletion import ProtectedError
@@ -312,14 +313,27 @@ def command_view(request):
             transaction.on_commit(_queue_notify)
 
     total_ms = (time.perf_counter() - wall_start) * 1000
+    uid = getattr(request.user, "pk", None)
+    session_pct = (100.0 * session_ms / total_ms) if total_ms > 0 else 0.0
     logger.debug(
-        "qff.command user_id=%s exec_ms=%.1f sim_ms=%.1f session_ms=%.1f total_ms=%.1f",
-        getattr(request.user, "pk", None),
+        "qff.command user_id=%s exec_ms=%.1f sim_ms=%.1f session_ms=%.1f total_ms=%.1f session_pct=%.1f",
+        uid,
         exec_ms,
         sim_ms,
         session_ms,
         total_ms,
+        session_pct,
     )
+    if getattr(settings, "QFF_COMMAND_TIMING_LOG", False):
+        logger.info(
+            "qff_command_timing user_id=%s exec_ms=%.2f sim_ms=%.2f session_ms=%.2f total_ms=%.2f session_pct=%.2f",
+            uid,
+            exec_ms,
+            sim_ms,
+            session_ms,
+            total_ms,
+            session_pct,
+        )
 
     return Response(
         {"messages": messages, "session": session, "echo_command": echo_command}

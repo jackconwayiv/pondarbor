@@ -4,6 +4,7 @@ import re
 from collections import defaultdict
 from datetime import timedelta
 
+from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
 
@@ -480,7 +481,15 @@ def build_session_for_character(character) -> dict:
         },
         "exits": exits,
         "others_here": others_here(character),
-        "area_map": build_area_map(character),
+        "area_map": (
+            {
+                "current_area_id": area.id,
+                "grids": [],
+                "minimal": True,
+            }
+            if getattr(settings, "QFF_SESSION_MINIMAL_AREA_MAP", False)
+            else build_area_map(character)
+        ),
         "character_profile": build_character_profile(character),
         "action_log": action_log,
     }

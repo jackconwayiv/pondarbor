@@ -125,6 +125,8 @@ export type QffSessionWithCharacter = {
   area_map: {
     current_area_id: number;
     grids: QffAreaMapGrid[];
+    /** Server skipped minimap build (QFF_SESSION_MINIMAL_AREA_MAP); hide map panel. */
+    minimal?: boolean;
   };
   character_profile: QffCharacterProfile;
   /** Room narrative queue; ids prevent duplicate lines when HTTP and WebSocket both deliver a session. */
@@ -235,6 +237,8 @@ export async function sendQffCommand(
   accessToken: string | null,
   line: string,
 ): Promise<QffCommandResponse> {
+  const t0 =
+    typeof performance !== "undefined" && performance.now ? performance.now() : null;
   const response = await fetch(qffJoinBase(`/api/v1/qff/command/`), {
     method: "POST",
     headers: authHeaders(accessToken),
@@ -245,7 +249,12 @@ export async function sendQffCommand(
     const text = await response.text();
     throw new Error(`QFF command (${response.status}): ${text}`);
   }
-  return (await response.json()) as QffCommandResponse;
+  const data = (await response.json()) as QffCommandResponse;
+  if (import.meta.env.DEV && t0 != null && typeof performance !== "undefined") {
+    const ms = Math.round(performance.now() - t0);
+    console.debug(`qff.command roundtrip_ms=${ms} (fetch+JSON; use Network tab for TTFB)`);
+  }
+  return data;
 }
 
 export type DmIneffectiveInputRow = {

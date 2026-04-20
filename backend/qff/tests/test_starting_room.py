@@ -3,9 +3,9 @@
 from django.test import TestCase
 
 from qff.constants import (
-    DEFAULT_START_AREA_SLUG,
+    DEFAULT_START_AREA_SLUGS,
     DEFAULT_START_ROOM_NAME,
-    LEGACY_START_AREA_SLUG,
+    LEGACY_START_AREA_SLUGS,
     LEGACY_START_ROOM_NAME,
 )
 from qff.models import Area, Room
@@ -18,7 +18,7 @@ class StartingRoomTests(TestCase):
         first = Room.objects.create(area=other, name="First", slug="first")
         camp = Area.objects.create(
             name="Survivors Camp",
-            slug=DEFAULT_START_AREA_SLUG,
+            slug=DEFAULT_START_AREA_SLUGS[0],
             grid_width=1,
             grid_height=1,
         )
@@ -30,12 +30,68 @@ class StartingRoomTests(TestCase):
         self.assertEqual(_starting_room().pk, brown.pk)
         self.assertNotEqual(_starting_room().pk, first.pk)
 
+    def test_matches_case_insensitive_room_name(self):
+        camp = Area.objects.create(
+            name="Survivors Camp",
+            slug=DEFAULT_START_AREA_SLUGS[0],
+            grid_width=1,
+            grid_height=1,
+        )
+        brown = Room.objects.create(
+            area=camp,
+            name="village brown",
+            slug="vb",
+        )
+        self.assertEqual(_starting_room().pk, brown.pk)
+
+    def test_matches_alternate_area_slug_underscore(self):
+        camp = Area.objects.create(
+            name="Survivors Camp",
+            slug="survivors_camp",
+            grid_width=1,
+            grid_height=1,
+        )
+        brown = Room.objects.create(
+            area=camp,
+            name=DEFAULT_START_ROOM_NAME,
+            slug="village-brown",
+        )
+        self.assertEqual(_starting_room().pk, brown.pk)
+
+    def test_matches_by_room_slug_when_name_differs(self):
+        camp = Area.objects.create(
+            name="Survivors Camp",
+            slug=DEFAULT_START_AREA_SLUGS[0],
+            grid_width=1,
+            grid_height=1,
+        )
+        brown = Room.objects.create(
+            area=camp,
+            name="Brown house",
+            slug="village-brown",
+        )
+        self.assertEqual(_starting_room().pk, brown.pk)
+
+    def test_matches_by_area_display_name_fallback(self):
+        camp = Area.objects.create(
+            name="Survivors Camp",
+            slug="custom-survivors-slug",
+            grid_width=1,
+            grid_height=1,
+        )
+        brown = Room.objects.create(
+            area=camp,
+            name=DEFAULT_START_ROOM_NAME,
+            slug="vb",
+        )
+        self.assertEqual(_starting_room().pk, brown.pk)
+
     def test_falls_back_to_legacy_village_well(self):
         noise = Area.objects.create(name="X", slug="x", grid_width=1, grid_height=1)
         Room.objects.create(area=noise, name="Alpha", slug="alpha")
         ort = Area.objects.create(
             name="Ort",
-            slug=LEGACY_START_AREA_SLUG,
+            slug=LEGACY_START_AREA_SLUGS[0],
             grid_width=1,
             grid_height=1,
         )

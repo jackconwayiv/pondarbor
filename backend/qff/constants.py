@@ -1,10 +1,17 @@
 """Shared QFF gameplay constants."""
 
-# New characters: [`views._starting_room`] tries these in order, then first room by PK.
-DEFAULT_START_AREA_SLUG = "survivors-camp"
+# New characters: [`views._starting_room`] tries these hubs in order, then first room by PK.
+# Multiple area slugs cover hyphen vs underscore and minor import/DM differences.
+DEFAULT_START_AREA_SLUGS = ("survivors-camp", "survivors_camp")
 DEFAULT_START_ROOM_NAME = "Village Brown"
-LEGACY_START_AREA_SLUG = "village-of-ort"
+DEFAULT_START_ROOM_SLUG = "village-brown"
+# If area slug in DB does not match, still find the hub by display name + room name (case-insensitive).
+DEFAULT_START_AREA_FALLBACK_NAMES = ("Survivors Camp",)
+
+LEGACY_START_AREA_SLUGS = ("village-of-ort",)
 LEGACY_START_ROOM_NAME = "Village Well"
+LEGACY_START_ROOM_SLUG = "village-well"
+LEGACY_START_AREA_FALLBACK_NAMES = ("Village of Ort",)
 
 PRESENCE_MINUTES = 5
 SAY_MAX_LEN = 200

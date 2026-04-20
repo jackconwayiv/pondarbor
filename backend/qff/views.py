@@ -36,10 +36,14 @@ from qff.models import (
     validate_character_name,
 )
 from qff.constants import (
-    DEFAULT_START_AREA_SLUG,
+    DEFAULT_START_AREA_FALLBACK_NAMES,
+    DEFAULT_START_AREA_SLUGS,
     DEFAULT_START_ROOM_NAME,
-    LEGACY_START_AREA_SLUG,
+    DEFAULT_START_ROOM_SLUG,
+    LEGACY_START_AREA_FALLBACK_NAMES,
+    LEGACY_START_AREA_SLUGS,
     LEGACY_START_ROOM_NAME,
+    LEGACY_START_ROOM_SLUG,
 )
 from qff.game_helpers import encumbrance_excess
 from qff.glyph_class_map import normalize_glyphs, slug_for_glyphs
@@ -92,6 +96,46 @@ def session_view(request):
     return Response(build_session_for_character(char))
 
 
+def _pick_hub_start_room(
+    qs,
+    *,
+    area_slugs: tuple[str, ...],
+    room_name: str,
+    room_slug: str,
+    area_fallback_names: tuple[str, ...],
+):
+    """Match hub room by area slug(s), case-insensitive name, canonical room slug, or area display name."""
+    rn = (room_name or "").strip()
+    rs = (room_slug or "").strip()
+    if not rn:
+        return None
+    for area_slug in area_slugs:
+        slug = (area_slug or "").strip()
+        if not slug:
+            continue
+        hit = qs.filter(area__slug=slug, name=rn).first()
+        if hit:
+            return hit
+        hit = qs.filter(area__slug=slug, name__iexact=rn).first()
+        if hit:
+            return hit
+        if rs:
+            hit = qs.filter(area__slug=slug, slug=rs).first()
+            if hit:
+                return hit
+            hit = qs.filter(area__slug=slug, slug__iexact=rs).first()
+            if hit:
+                return hit
+    for an in area_fallback_names:
+        label = (an or "").strip()
+        if not label:
+            continue
+        hit = qs.filter(area__name__iexact=label, name__iexact=rn).first()
+        if hit:
+            return hit
+    return None
+
+
 def _starting_room():
     """Pick the room for new characters: primary world start, then legacy demo seed, else first room.
 
@@ -99,13 +143,24 @@ def _starting_room():
     death/revival tracks the same hub (`Room.is_spawn_point` → `Character.spawn_room`).
     """
     qs = Room.objects.select_related("area")
-    for area_slug, room_name in (
-        (DEFAULT_START_AREA_SLUG, DEFAULT_START_ROOM_NAME),
-        (LEGACY_START_AREA_SLUG, LEGACY_START_ROOM_NAME),
-    ):
-        hit = qs.filter(area__slug=area_slug, name=room_name).first()
-        if hit:
-            return hit
+    hit = _pick_hub_start_room(
+        qs,
+        area_slugs=DEFAULT_START_AREA_SLUGS,
+        room_name=DEFAULT_START_ROOM_NAME,
+        room_slug=DEFAULT_START_ROOM_SLUG,
+        area_fallback_names=DEFAULT_START_AREA_FALLBACK_NAMES,
+    )
+    if hit:
+        return hit
+    hit = _pick_hub_start_room(
+        qs,
+        area_slugs=LEGACY_START_AREA_SLUGS,
+        room_name=LEGACY_START_ROOM_NAME,
+        room_slug=LEGACY_START_ROOM_SLUG,
+        area_fallback_names=LEGACY_START_AREA_FALLBACK_NAMES,
+    )
+    if hit:
+        return hit
     return qs.order_by("pk").first()
 
 

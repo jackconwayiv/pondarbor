@@ -30,7 +30,12 @@ from qff.command_parser import (
     ParsedUnknown,
     ParsedUse,
 )
-from qff.constants import COMBAT_ROUND_SECONDS, SAY_MAX_LEN, XP_PER_LEVEL
+from qff.constants import (
+    COMBAT_ROUND_SECONDS,
+    NARRATIVE_TOO_DARK_MESSAGE,
+    SAY_MAX_LEN,
+    XP_PER_LEVEL,
+)
 from qff.exploration import mark_exit_used, on_enter_room, on_leave_room
 from qff.exits import (
     consume_key_if_entering_locked,
@@ -1173,7 +1178,7 @@ def _handle_look_direction(char: CharacterType, parsed: ParsedLookDirection) -> 
         char.save(update_fields=["last_activity_at", "updated_at"])
         dest = ex.to_room
         if not room_is_narratively_visible(char, dest):
-            return ["It's too dark to see!"]
+            return [NARRATIVE_TOO_DARK_MESSAGE]
         dir_label = ex.get_direction_display().lower()
         name = (dest.name or "").strip() or "somewhere"
         line = f"To the {dir_label}, {name} lies ahead."
@@ -1195,7 +1200,7 @@ def _handle_look_inspect(char: CharacterType, parsed: ParsedLookInspect) -> list
     if not target:
         room = char.current_room
         if not room_is_narratively_visible(char, room):
-            return ["This area is too dark to see."]
+            return [NARRATIVE_TOO_DARK_MESSAGE]
         rname = (room.name or "").strip() or "here"
         out = [rname + "."]
         labels = occupant_labels_for_look(char, room.id)

@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from qff.command_handlers import execute_command
 from qff.command_parser import parse_command
+from qff.constants import NARRATIVE_TOO_DARK_MESSAGE
 from qff.exploration import on_enter_room
 from qff.models import (
     Area,
@@ -226,15 +227,15 @@ class MinimapDarkTests(TestCase):
         self._visit_all()
         c = self._fresh_char()
         lines = execute_command(c, parse_command("look e"))
-        self.assertEqual(lines, ["It's too dark to see!"])
+        self.assertEqual(lines, [NARRATIVE_TOO_DARK_MESSAGE])
 
     def test_bare_look_and_session_dark_unlit_current_room(self):
         self._visit_all()
         c = self._fresh_char()
         lines = execute_command(c, parse_command("look"))
-        self.assertEqual(lines, ["This area is too dark to see."])
+        self.assertEqual(lines, [NARRATIVE_TOO_DARK_MESSAGE])
         lines_i = execute_command(c, parse_command("inspect"))
-        self.assertEqual(lines_i, ["This area is too dark to see."])
+        self.assertEqual(lines_i, [NARRATIVE_TOO_DARK_MESSAGE])
         c = Character.objects.select_related("current_room", "current_room__area").get(pk=c.pk)
         s = build_session_for_character(c)
         self.assertFalse(s["room"]["details_visible"])

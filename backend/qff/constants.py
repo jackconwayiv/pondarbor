@@ -17,6 +17,8 @@ PRESENCE_MINUTES = 5
 # In others_here: listed only if last_activity within AFK_LOBBY_KICK_MINUTES; "inactive" if older than PRESENCE_MINUTES.
 AFK_LOBBY_KICK_MINUTES = 10
 SAY_MAX_LEN = 200
+# Dark-area narrative (session play panel + look commands); keep in sync with frontend `QFF_NARRATIVE_TOO_DARK`.
+NARRATIVE_TOO_DARK_MESSAGE = "It's too dark to see much!"
 # Floor items: only removable by neglect after this long on the floor (since last drop).
 FLOOR_ITEM_MIN_AGE_BEFORE_DELETE_MINUTES = 5
 

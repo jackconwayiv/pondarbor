@@ -25,6 +25,7 @@ import {
   type QffSessionWithCharacter,
 } from "./api";
 import { optimisticMoveHeadLine, tryParseQffMoveDirection } from "./commandParser";
+import { QFF_NARRATIVE_TOO_DARK } from "./copy";
 
 /** WebSocket keepalive; must be ≤ combat round length so lazy sim runs on time (~6s). */
 const WS_PING_MS = 6_000;
@@ -47,6 +48,12 @@ function hudLogLineColor(recent: boolean, logTone: string | undefined): string {
   if (logTone === "enemy_hit") return HUD_LOG_ENEMY_HIT;
   if (logTone === "miss") return HUD_LOG_MISS;
   return recent ? HUD_LOG_RECENT : HUD_PANEL_TEXT;
+}
+
+/** Accept snake_case or camelCase (some proxies / serializers rename keys). */
+function actionLogEntryTone(e: { log_tone?: string; logTone?: string }): string | undefined {
+  const raw = (e.log_tone ?? e.logTone ?? "").trim();
+  return raw || undefined;
 }
 /** Stat total (modified) */
 const HUD_STAT_TOTAL = "#f0f0f0";
@@ -299,7 +306,7 @@ export default function QffPlayPage() {
         id: nextId(),
         text: e.text,
         recent: true,
-        logTone: e.log_tone?.trim() || undefined,
+        logTone: actionLogEntryTone(e),
       }));
       return [...prev.map((p) => ({ ...p, recent: false })), ...block];
     });
@@ -371,7 +378,7 @@ export default function QffPlayPage() {
               id: nextId(),
               text: e.text,
               recent: true,
-              logTone: e.log_tone?.trim() || undefined,
+              logTone: actionLogEntryTone(e),
             }));
             if (res.echo_command === true) {
               block = [{ id: nextId(), text: `> ${raw}`, recent: true }, ...block];
@@ -476,6 +483,7 @@ export default function QffPlayPage() {
   const { room, area, exits, others_here, area_map } = session;
   const mapMinimal = area_map.minimal === true;
   const t = area.theme;
+  // When absent (older API), treat as visible until backend with `room.details_visible` is deployed.
   const roomDetailsVisible = room.details_visible !== false;
   const cp = session.character_profile;
   const heroDead = cp.isDead === true;
@@ -728,7 +736,11 @@ export default function QffPlayPage() {
       }}
     >
       {logLines.map(({ id, text, recent, logTone }) => (
-        <Text key={id} fontSize="sm" color={hudLogLineColor(recent, logTone)}>
+        <Text
+          key={id}
+          fontSize="sm"
+          style={{ color: hudLogLineColor(recent, logTone) }}
+        >
           {text}
         </Text>
       ))}
@@ -834,7 +846,7 @@ export default function QffPlayPage() {
                 fontSize="sm"
                 color={t.accent}
               >
-                {roomDetailsVisible ? room.description : "This area is too dark to see."}
+                {roomDetailsVisible ? room.description : QFF_NARRATIVE_TOO_DARK}
               </Text>
               <Stack gap={1}>{exitsBlock}</Stack>
             </Stack>

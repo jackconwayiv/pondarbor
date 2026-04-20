@@ -134,7 +134,7 @@ export type QffSessionWithCharacter = {
   };
   character_profile: QffCharacterProfile;
   /** Room narrative queue; ids prevent duplicate lines when HTTP and WebSocket both deliver a session. */
-  action_log: Array<{ id: number; text: string; log_tone?: string }>;
+  action_log: Array<{ id: number; text: string; log_tone?: string; logTone?: string }>;
 };
 
 export type QffStatBlock = {

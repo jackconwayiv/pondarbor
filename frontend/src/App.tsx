@@ -60,6 +60,11 @@ const HOME_LILYPAD_TILES = [
     hoverText: "manage your meal plans and recipes",
   },
   {
+    to: "/calendar",
+    label: "Calendar",
+    hoverText: "see when friends are out or busy",
+  },
+  {
     to: "/games",
     label: "Games",
     hoverText: "PondClicker, WhatIf, and more",

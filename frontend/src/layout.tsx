@@ -78,6 +78,8 @@ function isDesktopNavRouteActive(pathname: string, to: string): boolean {
       return pathname === "/songaday" || pathname.startsWith("/songaday/");
     case "/closet":
       return pathname === "/closet" || pathname.startsWith("/closet/");
+    case "/calendar":
+      return pathname === "/calendar" || pathname.startsWith("/calendar/");
     case "/meal":
       return pathname === "/meal" || pathname.startsWith("/meal/");
     case "/clicker":
@@ -98,6 +100,7 @@ const HIDE_DOCUMENT_SCROLLBAR_PREFIXES = [
   "/quotes",
   "/songaday",
   "/closet",
+  "/calendar",
   "/meal",
 ] as const;
 /** Exact paths only (e.g. WhatIf entry at `/whatif`, not lobby/play/hand). */
@@ -120,6 +123,7 @@ export default function AppLayout() {
             { to: "/friends", label: "Friends" },
             { to: "/songaday", label: "Song-a-Day" },
             { to: "/closet", label: "Closet" },
+            { to: "/calendar", label: "Calendar" },
             { to: "/quotes", label: "Quotes" },
             { to: "/meal", label: "Meal Maestro" },
             { to: "/games", label: "Games" },
@@ -322,6 +326,14 @@ export default function AppLayout() {
                           }}
                         >
                           Closet
+                        </Menu.Item>
+                        <Menu.Item
+                          value="calendar"
+                          onSelect={() => {
+                            navigate("/calendar");
+                          }}
+                        >
+                          Calendar
                         </Menu.Item>
                         <Menu.Item
                           value="quotes"

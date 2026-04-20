@@ -29,3 +29,29 @@ Use the path that exists inside the deployed image (commonly):
 `python3 /code/backend/manage.py collectstatic --noinput`
 
 If `migrate` reports nothing to apply but the API errors with **missing tables**, the `django_migrations` rows may not match reality; fix DB history or reset the schema in a safe environment before relying on the app.
+
+## Calendar sync
+
+The `calendars` app imports Google Calendar feeds via their "Secret address in iCal format" URL (`https://calendar.google.com/calendar/ical/...`). iCal sources are shared by pasting one URL; no OAuth dance is needed, and every approved user sees every other approved user's events in the monthly view.
+
+### How refresh actually happens today
+
+Syncing is pull-based and **lazy-only** in the deployed setup — there's no scheduled job wired up. When a browser hits `GET /api/v1/calendars/events/`, the view opportunistically re-fetches any iCal sources whose `last_synced_at` is older than ~15 minutes (capped at 5 sources per request) before returning the response. Fetches use conditional `If-None-Match` / `If-Modified-Since` so unchanged feeds cost a single 304.
+
+Net effect: calendars are fresh whenever someone is actually looking at them. If nobody visits the page, nothing refreshes — which is fine because there's no one to show the data to.
+
+### Optional: run a scheduled refresh
+
+If you want proactive background sync (e.g., to drive notifications in the future), a `sync_calendars` management command is provided. It's safe to run repeatedly and is a no-op when everything is already fresh.
+
+```
+python manage.py sync_calendars
+```
+
+Flags:
+
+- `--max-age-minutes N` — only re-sync feeds older than N minutes (defaults to 15).
+- `--source-id <id>` — sync a single source (ignores age).
+- `--force` — re-sync every active iCal source regardless of age.
+
+How to schedule it depends on where the backend is deployed: a host crontab entry (`*/15 * * * * ... python manage.py sync_calendars`), a platform cron feature (Appliku Cron Jobs, Render Cron Jobs, K8s `CronJob`, etc.), or an external pinger (GitHub Actions `schedule` + a shared-secret HTTP endpoint). None of these are currently set up in this repo.

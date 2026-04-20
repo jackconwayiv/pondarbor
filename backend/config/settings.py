@@ -100,6 +100,7 @@ INSTALLED_APPS = [
     "friend_comments.apps.FriendCommentsConfig",
     "meal.apps.MealConfig",
     "contact.apps.ContactConfig",
+    "calendars.apps.CalendarsConfig",
     # allauth
     "allauth",
     "allauth.account",

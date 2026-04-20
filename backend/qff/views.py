@@ -50,6 +50,7 @@ from qff.constants import (
 from qff.game_helpers import encumbrance_excess
 from qff.glyph_class_map import normalize_glyphs, slug_for_glyphs
 from qff.monster_sim import run_lazy_simulation
+from qff.quest_engine import sync_character_world_before_session
 from qff.realtime import schedule_notify_qff_rooms
 from qff.session_payload import (
     build_session_for_character,
@@ -278,9 +279,10 @@ def command_view(request):
     sim_ms = 0.0
 
     with transaction.atomic():
+        char = sync_character_world_before_session(char)
         parsed = parse_command(line)
         t0 = time.perf_counter()
-        messages = list(execute_command(char, parsed))
+        messages = list(execute_command(char, parsed, world_sync=False))
         exec_ms = (time.perf_counter() - t0) * 1000
         echo_command = should_echo_command(parsed, messages)
         if messages and messages[0] == "You try that, but nothing happens.":
@@ -302,7 +304,7 @@ def command_view(request):
         if char and encumbrance_excess(char) > 0:
             messages.append("You are encumbered!")
         t2 = time.perf_counter()
-        session = build_session_for_character(char)
+        session = build_session_for_character(char, world_sync=False)
         session_ms = (time.perf_counter() - t2) * 1000
         if char:
             room_ids = frozenset(affected) | {old_room_id, char.current_room_id}
@@ -315,9 +317,11 @@ def command_view(request):
     total_ms = (time.perf_counter() - wall_start) * 1000
     uid = getattr(request.user, "pk", None)
     session_pct = (100.0 * session_ms / total_ms) if total_ms > 0 else 0.0
+    parsed_kind = type(parsed).__name__
     logger.debug(
-        "qff.command user_id=%s exec_ms=%.1f sim_ms=%.1f session_ms=%.1f total_ms=%.1f session_pct=%.1f",
+        "qff.command user_id=%s parsed=%s exec_ms=%.1f sim_ms=%.1f session_ms=%.1f total_ms=%.1f session_pct=%.1f",
         uid,
+        parsed_kind,
         exec_ms,
         sim_ms,
         session_ms,
@@ -326,8 +330,9 @@ def command_view(request):
     )
     if getattr(settings, "QFF_COMMAND_TIMING_LOG", False):
         logger.info(
-            "qff_command_timing user_id=%s exec_ms=%.2f sim_ms=%.2f session_ms=%.2f total_ms=%.2f session_pct=%.2f",
+            "qff_command_timing user_id=%s parsed=%s exec_ms=%.2f sim_ms=%.2f session_ms=%.2f total_ms=%.2f session_pct=%.2f",
             uid,
+            parsed_kind,
             exec_ms,
             sim_ms,
             session_ms,

@@ -277,7 +277,9 @@ def apply_due_quest_reverts(character: Character) -> None:
 def sync_character_world_before_session(character: Character) -> Character:
     """Apply due quest reverts and clear expired container focus; return a fresh Character row."""
     apply_due_quest_reverts(character)
-    ch = Character.objects.get(pk=character.pk)
+    ch = Character.objects.select_related(
+        "spawn_room", "character_class", "current_room", "current_room__area"
+    ).get(pk=character.pk)
     if (
         ch.container_focus_interactable_id
         and ch.container_focus_expires_at
@@ -292,9 +294,7 @@ def sync_character_world_before_session(character: Character) -> Character:
                 "updated_at",
             ]
         )
-    return Character.objects.select_related(
-        "spawn_room", "character_class", "current_room", "current_room__area"
-    ).get(pk=character.pk)
+    return ch
 
 
 def _apply_effect(character: Character, eff: QuestEffect) -> list[str]:

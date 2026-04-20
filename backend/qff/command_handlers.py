@@ -433,9 +433,17 @@ def _handle_shop_sell(char: CharacterType, parsed: ParsedSell) -> list[str]:
     return sell_to_shop(char, shop, item_q)
 
 
-def execute_command(char: CharacterType, parsed) -> list[str]:
-    """Mutates character state as needed; caller must reload or use returned session."""
-    char = sync_character_world_before_session(char)
+def execute_command(
+    char: CharacterType, parsed, *, world_sync: bool = True
+) -> list[str]:
+    """Mutates character state as needed; caller must reload or use returned session.
+
+    When ``world_sync`` is False, the caller has already run
+    :func:`~qff.quest_engine.sync_character_world_before_session` for this request
+    (e.g. :func:`~qff.views.command_view`) to avoid duplicate DB work.
+    """
+    if world_sync:
+        char = sync_character_world_before_session(char)
 
     if char.is_dead:
         return ["You are dead and cannot act."]

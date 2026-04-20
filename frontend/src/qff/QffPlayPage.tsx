@@ -792,15 +792,16 @@ export default function QffPlayPage() {
             minH={0}
             aria-hidden
           />
-          <Box
-            gridColumn={{ base: "1", lg: "2" }}
-            gridRow={{ base: "auto", lg: "1 / span 2" }}
-            minH={0}
-            minW={0}
-            display={mapMinimal ? "none" : undefined}
-          >
-            {mapPanel}
-          </Box>
+          {!mapMinimal ? (
+            <Box
+              gridColumn={{ base: "1", lg: "2" }}
+              gridRow={{ base: "auto", lg: "1 / span 2" }}
+              minH={0}
+              minW={0}
+            >
+              {mapPanel}
+            </Box>
+          ) : null}
           <Box
             gridColumn={{ base: "1", lg: "2" }}
             gridRow={{ base: "auto", lg: mapMinimal ? "1 / span 2" : "3 / span 2" }}

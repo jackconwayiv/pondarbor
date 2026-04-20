@@ -392,9 +392,10 @@ def build_character_profile(character) -> dict:
     }
 
 
-def build_session_for_character(character) -> dict:
+def build_session_for_character(character, *, world_sync: bool = True) -> dict:
     # Costly: minimap, exits, inventory. ``qff.views.command_view`` logs ``session_ms`` for profiling.
-    character = sync_character_world_before_session(character)
+    if world_sync:
+        character = sync_character_world_before_session(character)
     room = character.current_room
     area = room.area
     exits = []

@@ -322,7 +322,11 @@ def safe_room_disengage(hero: Character, room: Room) -> bool:
 
 
 def try_bind_monster_to_room_heroes(monster: MonsterInstance, room_id: int, now) -> bool:
-    """Pick a living hero in ``room_id`` and start engagement + strike wind-up. Returns True if bound."""
+    """Pick a living hero in ``room_id`` and start engagement + strike wind-up. Returns True if bound.
+
+    If the monster was already pursuing/chasing the chosen hero and has an armed ``next_action_at``,
+    only restore ``engaged_character`` so combat pacing continues (e.g. followed into a new room).
+    """
     if monster.current_room_id != room_id:
         return False
     if monster.engaged_character_id:
@@ -333,6 +337,13 @@ def try_bind_monster_to_room_heroes(monster: MonsterInstance, room_id: int, now)
     target = _pick_engagement_target(room_id)
     if not target:
         return False
+    if (
+        monster.pursuit_target_character_id == target.pk
+        and monster.next_action_at is not None
+    ):
+        monster.engaged_character_id = target.pk
+        monster.save(update_fields=["engaged_character", "updated_at"])
+        return True
     monster.engaged_character_id = target.pk
     monster.pursuit_target_character_id = target.pk
     # False so the first combat flush runs wind-up ("prepares to strike"), not damage.

@@ -592,6 +592,34 @@ class MonsterCombatTests(TestCase):
         ).first()
         self.assertIsNotNone(b)
 
+    def test_try_bind_preserves_next_action_when_pursuing_same_hero(self):
+        """Monster already chasing the hero keeps its combat timer when bind runs again."""
+        na = timezone.now() + timedelta(seconds=4)
+        self.monster.engaged_character_id = None
+        self.monster.pursuit_target_character_id = self.hero.pk
+        self.monster.monster_strike_pending = True
+        self.monster.next_action_at = na
+        self.monster.save(
+            update_fields=[
+                "engaged_character",
+                "pursuit_target_character",
+                "monster_strike_pending",
+                "next_action_at",
+                "updated_at",
+            ]
+        )
+        now = timezone.now()
+        self.assertTrue(
+            try_bind_monster_to_room_heroes(
+                MonsterInstance.objects.select_related("template").get(pk=self.monster.pk),
+                self.room_danger.id,
+                now,
+            )
+        )
+        self.monster.refresh_from_db()
+        self.assertEqual(self.monster.engaged_character_id, self.hero.pk)
+        self.assertEqual(self.monster.next_action_at, na)
+
     def test_roombroadcast_log_tone_enemy_hit(self):
         fake = StrikeResult(
             outcome="hit",

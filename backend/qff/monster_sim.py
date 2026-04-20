@@ -147,6 +147,115 @@ def _pick_engagement_target(room_id: int, exclude_pk: int | None = None) -> Char
     return heroes[-1]
 
 
+def _normalize_monster_engagement_to_room_heroes(
+    monster: MonsterInstance, room_id: int, heroes: list[Character]
+) -> None:
+    """With one active hero in the room, monster always aggros them. With several, retarget if the
+    engaged hero is no longer present (rizz-weighted pick). No narration."""
+    if not heroes:
+        return
+    hero_ids = {h.pk for h in heroes}
+    update_fields: list[str] = []
+    if len(heroes) == 1:
+        sole = heroes[0]
+        if monster.engaged_character_id != sole.pk:
+            monster.engaged_character_id = sole.pk
+            update_fields.append("engaged_character")
+        if monster.pursuit_target_character_id != sole.pk:
+            monster.pursuit_target_character_id = sole.pk
+            update_fields.append("pursuit_target_character")
+    elif monster.engaged_character_id and monster.engaged_character_id not in hero_ids:
+        new_t = _pick_engagement_target(room_id)
+        if new_t:
+            monster.engaged_character_id = new_t.pk
+            monster.pursuit_target_character_id = new_t.pk
+            update_fields.extend(["engaged_character", "pursuit_target_character"])
+    if update_fields:
+        monster.save(update_fields=[*update_fields, "updated_at"])
+
+
+def _reevaluate_monster_engagement_in_room(monster: MonsterInstance, room_id: int) -> None:
+    """Rizz-weighted retarget among present heroes after a strike (or similar).
+
+    If ``engaged_character`` changes, gaze lines go to each hero in the room.
+    Never updates ``next_action_at`` or ``monster_strike_pending``.
+    """
+    heroes = _heroes_in_room(room_id)
+    if not heroes:
+        return
+    hero_ids = {h.pk for h in heroes}
+    old_pk = monster.engaged_character_id
+    if len(heroes) == 1:
+        new_t = heroes[0]
+    else:
+        new_t = _pick_engagement_target(room_id)
+    if not new_t:
+        return
+    if old_pk and old_pk in hero_ids and new_t.pk == old_pk:
+        return
+    monster.engaged_character_id = new_t.pk
+    monster.pursuit_target_character_id = new_t.pk
+    monster.save(
+        update_fields=["engaged_character", "pursuit_target_character", "updated_at"]
+    )
+    mname = monster.template.name
+    for h in heroes:
+        if h.pk == new_t.pk:
+            _narrate(
+                room_id,
+                f"The {mname} turns its gaze to you!",
+                target_character_id=h.pk,
+            )
+        else:
+            _narrate(
+                room_id,
+                f"The {mname} turns its gaze to {new_t.name}!",
+                target_character_id=h.pk,
+            )
+
+
+def _finish_monster_strike_turn(monster_pk: int, room_id: int, now) -> None:
+    """Re-pick engagement after resolving a strike; arm if cadence still needs it."""
+    m = MonsterInstance.objects.select_related("template").get(pk=monster_pk)
+    _reevaluate_monster_engagement_in_room(m, room_id)
+    m2 = MonsterInstance.objects.select_related("template").get(pk=monster_pk)
+    try_bind_monster_to_room_heroes(m2, room_id, now)
+
+
+def _arm_monster_try_bind(monster_pk: int, room_id: int, now) -> None:
+    m = MonsterInstance.objects.select_related("template").get(pk=monster_pk)
+    try_bind_monster_to_room_heroes(m, room_id, now)
+
+
+def flush_bind_monsters_with_room_heroes(now) -> set[int]:
+    """Bind and arm any monster sharing a room with active heroes (no move required)."""
+    affected: set[int] = set()
+    th = presence_threshold()
+    room_ids = (
+        Character.objects.filter(
+            last_activity_at__gte=th,
+            is_dead=False,
+        )
+        .values_list("current_room_id", flat=True)
+        .distinct()
+    )
+    for room_id in room_ids:
+        if not room_id:
+            continue
+        if not MonsterInstance.objects.filter(current_room_id=room_id).exists():
+            continue
+        heroes = _heroes_in_room(room_id)
+        if not heroes:
+            continue
+        for m in MonsterInstance.objects.filter(current_room_id=room_id).select_related(
+            "template"
+        ):
+            _normalize_monster_engagement_to_room_heroes(m, room_id, heroes)
+            _arm_monster_try_bind(m.pk, room_id, now)
+        affected.add(room_id)
+    return affected
+
+
 def _retarget_or_pursue_leaver(
     monster: MonsterInstance,
     leaver: Character,
@@ -156,20 +265,25 @@ def _retarget_or_pursue_leaver(
     heroes_here = [h for h in _heroes_in_room(old_room_id) if h.pk != leaver.pk]
     if heroes_here and random.random() < 0.5:
         new_t = _pick_engagement_target(old_room_id)
-        if new_t and new_t.pk != leaver.pk:
+        if new_t:
             monster.engaged_character_id = new_t.pk
             monster.pursuit_target_character_id = new_t.pk
-            mname = monster.template.name
-            _narrate(
-                old_room_id,
-                f"{mname} turns its attention to you!",
-                target_character_id=new_t.pk,
+            monster.save(
+                update_fields=["engaged_character", "pursuit_target_character", "updated_at"]
             )
-            for h in heroes_here:
-                if h.pk != new_t.pk:
+            mname = monster.template.name
+            observers = _heroes_in_room(old_room_id)
+            for h in observers:
+                if h.pk == new_t.pk:
                     _narrate(
                         old_room_id,
-                        f"{mname} turns its attention toward {new_t.name}!",
+                        f"The {mname} turns its gaze to you!",
+                        target_character_id=h.pk,
+                    )
+                else:
+                    _narrate(
+                        old_room_id,
+                        f"The {mname} turns its gaze to {new_t.name}!",
                         target_character_id=h.pk,
                     )
             return
@@ -201,30 +315,42 @@ def _retarget_on_monster_enter_room(monster: MonsterInstance, room_id: int) -> N
     if not heroes:
         return
     hero_ids = {h.pk for h in heroes}
+    now = timezone.now()
     if monster.engaged_character_id in hero_ids:
+        _normalize_monster_engagement_to_room_heroes(monster, room_id, heroes)
+        _arm_monster_try_bind(monster.pk, room_id, now)
         return
     if monster.pursuit_target_character_id in hero_ids:
-        # Followed a hero here: keep combat cadence; only sync engagement FK.
         monster.engaged_character_id = monster.pursuit_target_character_id
+        monster.save(update_fields=["engaged_character", "updated_at"])
+        _normalize_monster_engagement_to_room_heroes(monster, room_id, heroes)
+        _arm_monster_try_bind(monster.pk, room_id, now)
         return
-    if random.random() < 0.55:
+    if len(heroes) == 1:
+        new_t = heroes[0]
+    else:
         new_t = _pick_engagement_target(room_id)
-        if new_t:
-            monster.engaged_character_id = new_t.pk
-            monster.pursuit_target_character_id = new_t.pk
-            mname = monster.template.name
+    if not new_t:
+        return
+    mname = monster.template.name
+    _narrate(
+        room_id,
+        f"{mname} turns its attention to you!",
+        target_character_id=new_t.pk,
+    )
+    for h in heroes:
+        if h.pk != new_t.pk:
             _narrate(
                 room_id,
-                f"{mname} turns its attention to you!",
-                target_character_id=new_t.pk,
+                f"{mname} turns its attention toward {new_t.name}!",
+                target_character_id=h.pk,
             )
-            for h in heroes:
-                if h.pk != new_t.pk:
-                    _narrate(
-                        room_id,
-                        f"{mname} turns its attention toward {new_t.name}!",
-                        target_character_id=h.pk,
-                    )
+    monster.engaged_character_id = new_t.pk
+    monster.pursuit_target_character_id = new_t.pk
+    monster.save(
+        update_fields=["engaged_character", "pursuit_target_character", "updated_at"]
+    )
+    _arm_monster_try_bind(monster.pk, room_id, now)
 
 
 def monster_step_room(monster: MonsterInstance, dest_room_id: int) -> None:
@@ -327,28 +453,66 @@ def safe_room_disengage(hero: Character, room: Room) -> bool:
 
 
 def try_bind_monster_to_room_heroes(monster: MonsterInstance, room_id: int, now) -> bool:
-    """Pick a living hero in ``room_id`` and start engagement + strike wind-up. Returns True if bound.
+    """Arm or restore monster engagement in ``room_id``. Returns True if state was updated.
 
-    If the monster was already pursuing/chasing the chosen hero and combat is armed
-    (``next_action_at`` or ``monster_strike_pending``), only restore ``engaged_character``
-    so pacing continues (e.g. followed into a new room).
+    - Engaged + armed: noop (False).
+    - Engaged + unarmed: first combat tick for existing engaged hero if still in room.
+    - Unarmed + cadence (orphan pacing): restore ``engaged_character`` (prefer pursuit target)
+      without changing ``next_action_at`` / ``monster_strike_pending``.
+    - Fully idle: full bind (random hero, first-tick wind-up schedule).
     """
     if monster.current_room_id != room_id:
-        return False
-    if monster.engaged_character_id:
         return False
     heroes = _heroes_in_room(room_id)
     if not heroes:
         return False
+
+    armed = monster.next_action_at is not None or monster.monster_strike_pending
+
+    if monster.engaged_character_id:
+        if armed:
+            return False
+        hero_e = _character_for_combat(monster.engaged_character_id)
+        if not hero_e or hero_e.current_room_id != room_id:
+            return False
+        if monster.pursuit_target_character_id is None:
+            monster.pursuit_target_character_id = hero_e.pk
+        monster.monster_strike_pending = False
+        monster.next_action_at = now + timedelta(
+            seconds=MONSTER_ENGAGEMENT_FIRST_TICK_SECONDS
+        )
+        monster.save(
+            update_fields=[
+                "pursuit_target_character",
+                "monster_strike_pending",
+                "next_action_at",
+                "updated_at",
+            ]
+        )
+        return True
+
+    if armed:
+        target: Character | None = None
+        pt = monster.pursuit_target_character_id
+        if pt:
+            h = _character_for_combat(pt)
+            if h and h.current_room_id == room_id:
+                target = h
+        if not target:
+            target = _pick_engagement_target(room_id)
+        if not target:
+            return False
+        monster.engaged_character_id = target.pk
+        if monster.pursuit_target_character_id is None:
+            monster.pursuit_target_character_id = target.pk
+        monster.save(
+            update_fields=["engaged_character", "pursuit_target_character", "updated_at"]
+        )
+        return True
+
     target = _pick_engagement_target(room_id)
     if not target:
         return False
-    if monster.pursuit_target_character_id == target.pk and (
-        monster.next_action_at is not None or monster.monster_strike_pending
-    ):
-        monster.engaged_character_id = target.pk
-        monster.save(update_fields=["engaged_character", "updated_at"])
-        return True
     monster.engaged_character_id = target.pk
     monster.pursuit_target_character_id = target.pk
     # False so the first combat flush runs wind-up ("prepares to strike"), not damage.
@@ -433,7 +597,8 @@ def ensure_monster_engaged_by_attacker(
 def engage_monsters_for_new_arrivals(hero: Character, room_id: int) -> None:
     now = timezone.now()
     for m in MonsterInstance.objects.filter(current_room_id=room_id).select_related("template"):
-        if m.engaged_character_id:
+        armed = m.next_action_at is not None or m.monster_strike_pending
+        if m.engaged_character_id and armed:
             continue
         if m.pursuit_target_character_id == hero.pk:
             _sync_or_bind_monster_to_arriving_hero(m, hero, room_id, now)
@@ -617,6 +782,7 @@ def _resolve_monster_strike(monster: MonsterInstance, now) -> bool:
                     target_character_id=h.pk,
                     log_tone="miss",
                 )
+        _finish_monster_strike_turn(monster.pk, room_id, now)
         return True
     if res.outcome == "dodge":
         _narrate(
@@ -633,6 +799,7 @@ def _resolve_monster_strike(monster: MonsterInstance, now) -> bool:
                     target_character_id=h.pk,
                     log_tone="miss",
                 )
+        _finish_monster_strike_turn(monster.pk, room_id, now)
         return True
 
     dmg = res.damage
@@ -653,6 +820,7 @@ def _resolve_monster_strike(monster: MonsterInstance, now) -> bool:
             )
     if nh <= 0:
         _hero_die(hero, room_id, killer_monster_id=monster.pk)
+    _finish_monster_strike_turn(monster.pk, room_id, now)
     return True
 
 
@@ -832,14 +1000,6 @@ def _hero_die(hero: Character, room_id: int, killer_monster_id: int | None = Non
         monster_strike_pending=False,
         updated_at=timezone.now(),
     )
-    if killer_monster_id:
-        killer = (
-            MonsterInstance.objects.select_related("template")
-            .filter(pk=killer_monster_id)
-            .first()
-        )
-        if killer and killer.current_room_id == room_id:
-            try_bind_monster_to_room_heroes(killer, room_id, timezone.now())
 
 
 def _revive_heroes(now) -> None:
@@ -1019,6 +1179,7 @@ def run_lazy_simulation(now=None, *, notify_rooms: bool = True) -> list[int]:
     rooms: set[int] = set()
     with transaction.atomic():
         rooms |= maybe_spawn_lairs(now)
+        rooms |= flush_bind_monsters_with_room_heroes(now)
         rooms |= flush_pursuit_steps(now)
         rooms |= flush_combat_rounds(now)
         _revive_heroes(now)

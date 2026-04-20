@@ -40,6 +40,7 @@ from qff.monster_sim import (
     _resolve_monster_strike,
     award_kill,
     engage_monsters_for_new_arrivals,
+    flush_bind_monsters_with_room_heroes,
     flush_combat_rounds,
     hero_drop_all,
     maybe_spawn_lairs,
@@ -770,3 +771,174 @@ class MonsterCombatTests(TestCase):
         self.monster.refresh_from_db()
         self.assertFalse(self.monster.monster_strike_pending)
         self.assertGreater(self.monster.next_action_at, now)
+
+    def test_engage_monsters_arms_engaged_but_unarmed_instance(self):
+        """Second monster with only an engagement FK must get a combat clock on hero enter."""
+        na_armed = timezone.now() + timedelta(seconds=50)
+        m_armed = MonsterInstance.objects.create(
+            template=self.tpl,
+            current_room=self.room_danger,
+            cur_hp=5,
+            max_hp=5,
+            engaged_character_id=self.hero.pk,
+            pursuit_target_character_id=self.hero.pk,
+            monster_strike_pending=True,
+            next_action_at=na_armed,
+        )
+        m_stale = MonsterInstance.objects.create(
+            template=self.tpl,
+            current_room=self.room_danger,
+            cur_hp=5,
+            max_hp=5,
+            engaged_character_id=self.hero.pk,
+            pursuit_target_character_id=self.hero.pk,
+            monster_strike_pending=False,
+            next_action_at=None,
+        )
+        engage_monsters_for_new_arrivals(self.hero, self.room_danger.id)
+        m_armed.refresh_from_db()
+        m_stale.refresh_from_db()
+        self.assertEqual(m_armed.next_action_at, na_armed)
+        self.assertTrue(m_armed.monster_strike_pending)
+        self.assertIsNotNone(m_stale.next_action_at)
+
+    def test_survivor_pacing_unchanged_when_sibling_monster_award_killed(self):
+        na_survivor = timezone.now() + timedelta(seconds=77)
+        m_victim = MonsterInstance.objects.create(
+            template=self.tpl,
+            current_room=self.room_danger,
+            cur_hp=1,
+            max_hp=5,
+            engaged_character_id=self.hero.pk,
+            pursuit_target_character_id=self.hero.pk,
+            monster_strike_pending=False,
+            next_action_at=timezone.now(),
+        )
+        m_survivor = MonsterInstance.objects.create(
+            template=self.tpl,
+            current_room=self.room_danger,
+            cur_hp=5,
+            max_hp=5,
+            engaged_character_id=self.hero.pk,
+            pursuit_target_character_id=self.hero.pk,
+            monster_strike_pending=True,
+            next_action_at=na_survivor,
+        )
+        award_kill(m_victim, self.room_danger.id, timezone.now())
+        self.assertFalse(MonsterInstance.objects.filter(pk=m_victim.pk).exists())
+        m_survivor.refresh_from_db()
+        self.assertEqual(m_survivor.next_action_at, na_survivor)
+        self.assertTrue(m_survivor.monster_strike_pending)
+
+    def test_try_bind_orphan_cadence_restores_engagement_without_resetting_clock(self):
+        na = timezone.now() + timedelta(seconds=12)
+        m = MonsterInstance.objects.create(
+            template=self.tpl,
+            current_room=self.room_danger,
+            cur_hp=5,
+            max_hp=5,
+            engaged_character_id=None,
+            pursuit_target_character_id=self.hero.pk,
+            monster_strike_pending=True,
+            next_action_at=na,
+        )
+        now = timezone.now()
+        self.assertTrue(
+            try_bind_monster_to_room_heroes(
+                MonsterInstance.objects.select_related("template").get(pk=m.pk),
+                self.room_danger.id,
+                now,
+            )
+        )
+        m.refresh_from_db()
+        self.assertEqual(m.engaged_character_id, self.hero.pk)
+        self.assertEqual(m.next_action_at, na)
+        self.assertTrue(m.monster_strike_pending)
+
+    def test_lazy_sim_arms_monster_with_sole_hero_without_move_or_attack(self):
+        """Monsters in a room with one hero bind and arm without waiting for attack."""
+        wanderer = MonsterInstance.objects.create(
+            template=self.tpl,
+            current_room=self.room_danger,
+            cur_hp=5,
+            max_hp=5,
+            engaged_character_id=None,
+            pursuit_target_character_id=None,
+            monster_strike_pending=False,
+            next_action_at=None,
+        )
+        flush_bind_monsters_with_room_heroes(timezone.now())
+        wanderer.refresh_from_db()
+        self.assertEqual(wanderer.engaged_character_id, self.hero.pk)
+        self.assertEqual(wanderer.pursuit_target_character_id, self.hero.pk)
+        self.assertIsNotNone(wanderer.next_action_at)
+
+    def test_strike_reeval_gaze_when_engagement_changes(self):
+        u2 = _test_user("gaze-peer@example.com")
+        other = Character.objects.create(
+            user=u2,
+            name="Peer",
+            character_class=self.cc,
+            current_room=self.room_danger,
+            spawn_room=self.room_danger,
+            last_activity_at=timezone.now(),
+        )
+        self.monster.engaged_character_id = self.hero.pk
+        self.monster.pursuit_target_character_id = self.hero.pk
+        self.monster.monster_strike_pending = True
+        self.monster.save(
+            update_fields=[
+                "engaged_character",
+                "pursuit_target_character",
+                "monster_strike_pending",
+                "updated_at",
+            ]
+        )
+        max_id_before = RoomBroadcast.objects.aggregate(m=Max("id"))["m"] or 0
+        now = timezone.now()
+        with patch("qff.combat_math.roll_d100", return_value=100):
+            with patch("qff.monster_sim._pick_engagement_target", return_value=other):
+                _resolve_monster_strike(self.monster, now)
+        self.monster.refresh_from_db()
+        self.assertEqual(self.monster.engaged_character_id, other.pk)
+        new_gaze = RoomBroadcast.objects.filter(
+            id__gt=max_id_before,
+            room_id=self.room_danger.id,
+            text__icontains="turns its gaze",
+        )
+        self.assertTrue(new_gaze.exists())
+
+    def test_strike_reeval_no_gaze_when_same_target(self):
+        u2 = _test_user("gaze-same@example.com")
+        Character.objects.create(
+            user=u2,
+            name="Ignored",
+            character_class=self.cc,
+            current_room=self.room_danger,
+            spawn_room=self.room_danger,
+            last_activity_at=timezone.now(),
+        )
+        self.monster.engaged_character_id = self.hero.pk
+        self.monster.pursuit_target_character_id = self.hero.pk
+        self.monster.monster_strike_pending = True
+        self.monster.save(
+            update_fields=[
+                "engaged_character",
+                "pursuit_target_character",
+                "monster_strike_pending",
+                "updated_at",
+            ]
+        )
+        max_id_before = RoomBroadcast.objects.aggregate(m=Max("id"))["m"] or 0
+        now = timezone.now()
+        with patch("qff.combat_math.roll_d100", return_value=100):
+            with patch("qff.monster_sim._pick_engagement_target", return_value=self.hero):
+                _resolve_monster_strike(self.monster, now)
+        self.monster.refresh_from_db()
+        self.assertEqual(self.monster.engaged_character_id, self.hero.pk)
+        new_gaze = RoomBroadcast.objects.filter(
+            id__gt=max_id_before,
+            room_id=self.room_danger.id,
+            text__icontains="turns its gaze",
+        )
+        self.assertFalse(new_gaze.exists())

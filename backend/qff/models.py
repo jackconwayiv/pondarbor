@@ -1210,7 +1210,8 @@ class Interactable(models.Model):
     )
     untranslated = models.BooleanField(
         default=False,
-        help_text="If true, heroes without the 👽 glyph see only the alien-language block message.",
+        help_text="If true, /read uses read_text only; heroes without the 👽 glyph get a denial line "
+        "and never see the alien text. look/inspect still use inspect_text.",
     )
     map_reveal_minutes = models.PositiveIntegerField(
         null=True,

@@ -96,3 +96,15 @@ class ContainerSessionAndOpenTests(TestCase):
         self.assertEqual(self.twig_inst.container_interactable_id, self.chest.pk)
         self.assertEqual(self.twig_inst.room_id, self.room.id)
         self.assertIsNone(self.twig_inst.owner_character_id)
+
+    def test_open_container_slot_in_panel_not_in_you_see(self):
+        execute_command(self.char, parse_command("open wood"))
+        self.char.refresh_from_db()
+        session = build_session_for_character(self.char)
+        you_see = session["room"]["youSee"]
+        self.assertNotIn("Slot Prize", you_see)
+        oc = session["room"]["opened_container"]
+        self.assertIsNotNone(oc)
+        names = [it["name"] for it in oc["items"]]
+        self.assertIn("Spark Gem", names)
+        self.assertIn("Slot Prize", names)

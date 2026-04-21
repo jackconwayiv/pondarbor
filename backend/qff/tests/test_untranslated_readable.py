@@ -1,4 +1,4 @@
-"""Untranslated readables: read wrapper without glyph; look/inspect not blocked."""
+"""Untranslated readables: /read requires 👽 for text; look/inspect use inspect_text only."""
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -42,11 +42,17 @@ class UntranslatedReadableTests(TestCase):
             untranslated=True,
         )
 
-    def test_read_without_glyph_wraps_text(self):
+    def test_read_without_glyph_denies_without_spoiler(self):
         lines = execute_command(self.char, parse_command("read alien"))
         self.assertEqual(len(lines), 1)
-        self.assertIn("The alien script says something to the effect of:", lines[0])
-        self.assertIn("BEWARE THE VOID", lines[0])
+        self.assertEqual(lines[0], "You don't understand the alien language.")
+        self.assertNotIn("BEWARE", lines[0])
+
+    def test_read_with_glyph_shows_read_text(self):
+        self.char.glyphs = ["👽"]
+        self.char.save(update_fields=["glyphs", "updated_at"])
+        lines = execute_command(self.char, parse_command("read alien"))
+        self.assertEqual(lines, ["BEWARE THE VOID"])
 
     def test_look_shows_inspect_not_block(self):
         lines = execute_command(self.char, parse_command("look alien"))
@@ -55,3 +61,18 @@ class UntranslatedReadableTests(TestCase):
     def test_inspect_shows_inspect_not_block(self):
         lines = execute_command(self.char, parse_command("inspect alien"))
         self.assertTrue(any("slab" in ln.lower() or "symbols" in ln.lower() for ln in lines), lines)
+
+    def test_untranslated_empty_read_text_read_says_nothing_look_shows_inspect(self):
+        Interactable.objects.create(
+            room=self.room,
+            slug="alien-note",
+            name="alien note",
+            kind=Interactable.Kind.READABLE,
+            inspect_text="Cold to the touch.",
+            read_text="",
+            untranslated=True,
+        )
+        read_lines = execute_command(self.char, parse_command("read note"))
+        self.assertEqual(read_lines, ["There is nothing to read."])
+        look_lines = execute_command(self.char, parse_command("look note"))
+        self.assertTrue(any("cold" in ln.lower() for ln in look_lines), look_lines)

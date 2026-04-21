@@ -1917,7 +1917,10 @@ def _handle_read(char: CharacterType, parsed: ParsedRead) -> list[str]:
         return [NARRATIVE_TOO_DARK_MESSAGE]
     obj = find_interactable_in_room(char, target)
     if obj:
-        text = (obj.read_text or "").strip() or (obj.inspect_text or "").strip()
+        if obj.untranslated:
+            text = (obj.read_text or "").strip()
+        else:
+            text = (obj.read_text or "").strip() or (obj.inspect_text or "").strip()
         if not text:
             char.save(update_fields=["last_activity_at", "updated_at"])
             return ["There is nothing to read."]
@@ -1926,7 +1929,7 @@ def _handle_read(char: CharacterType, parsed: ParsedRead) -> list[str]:
         )
         char.save(update_fields=["last_activity_at", "updated_at"])
         if obj.untranslated and not _character_has_alien_glyph(char):
-            return [f"The alien script says something to the effect of: '{text}.'"]
+            return ["You don't understand the alien language."]
         return [text]
 
     inv = list(char.inventory or [])

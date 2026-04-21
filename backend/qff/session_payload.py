@@ -73,6 +73,17 @@ def _opened_container_session_dict(character: Character, room: Room) -> dict | N
                 "quantity": max(1, int(inst.quantity or 1)),
             }
         )
+    floor_ids = unowned_floor_item_template_ids_in_room(room.id)
+    for ri in (
+        RoomItem.objects.filter(room_id=room.id, interactable_id=cid)
+        .select_related("item", "visible_quest_state")
+        .order_by("id")
+    ):
+        if not room_item_visible_to_character(character, ri, floor_ids):
+            continue
+        label = ri.nickname if ri.nickname else ri.item.name
+        # Negative id namespaces RoomItem slots vs ItemInstance pks in the same JSON list.
+        items.append({"id": -ri.id, "name": label, "quantity": 1})
     return {"id": obj.id, "slug": obj.slug, "name": obj.name, "items": items}
 
 DEFAULT_THEME_PRIMARY = "#c8e6a8"
@@ -371,7 +382,7 @@ def _room_item_labels(
     """Room slots (mint-on-get); labels after floor items, same display pattern as floor."""
     out: list[str] = []
     for ri in (
-        RoomItem.objects.filter(room_id=room_id)
+        RoomItem.objects.filter(room_id=room_id, interactable__isnull=True)
         .select_related("item", "visible_quest_state")
         .order_by("id")
     ):

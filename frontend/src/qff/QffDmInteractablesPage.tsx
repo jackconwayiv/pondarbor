@@ -18,6 +18,7 @@ import {
   dmCreateInteractable,
   dmFetchAllDmRooms,
   dmFetchAreaExits,
+  dmFetchExitMutualPair,
   dmFetchInteractables,
   dmPatchInteractable,
   type DmAreaExit,
@@ -34,6 +35,82 @@ function exitPickLabel(ex: DmAreaExit, roomList: RoomOption[]): string {
   const from = roomList.find((r) => r.id === ex.from_room_id);
   const fromName = from?.name ?? `room ${ex.from_room_id}`;
   return `#${ex.id} · ${fromName} · ${ex.direction} → ${ex.to_room_name}`;
+}
+
+type ExitUnlockPairFieldsProps = {
+  primaryValue: string;
+  secondaryValue: string;
+  areaExits: DmAreaExit[];
+  mutualExits: DmAreaExit[];
+  rooms: RoomOption[];
+  onPrimaryChange: (v: string) => void;
+  onSecondaryChange: (v: string) => void;
+  onFillMutual: () => void;
+};
+
+function ExitUnlockPairFields({
+  primaryValue,
+  secondaryValue,
+  areaExits,
+  mutualExits,
+  rooms,
+  onPrimaryChange,
+  onSecondaryChange,
+  onFillMutual,
+}: ExitUnlockPairFieldsProps) {
+  const hasPrimary = primaryValue.trim().length > 0;
+  return (
+    <Stack gap={2}>
+      <Field.Root flex="1" minW="280px" maxW="520px">
+        <Field.Label fontSize="xs">Primary exit (A→B, from this area)</Field.Label>
+        <NativeSelectRoot size="sm">
+          <NativeSelectField value={primaryValue} onChange={(e) => onPrimaryChange(e.target.value)} bg="#222">
+            <option value="">(none)</option>
+            {areaExits.map((ex) => (
+              <option key={ex.id} value={String(ex.id)}>
+                {exitPickLabel(ex, rooms)}
+              </option>
+            ))}
+          </NativeSelectField>
+        </NativeSelectRoot>
+      </Field.Root>
+      <HStack gap={3} flexWrap="wrap" align="flex-end">
+        <Field.Root flex="1" minW="280px" maxW="520px">
+          <Field.Label fontSize="xs">Return exit (B→A, mutual pair)</Field.Label>
+          <NativeSelectRoot size="sm" disabled={!hasPrimary}>
+            <NativeSelectField
+              value={secondaryValue}
+              onChange={(e) => onSecondaryChange(e.target.value)}
+              bg="#222"
+            >
+              <option value="">(none — single exit only)</option>
+              {mutualExits.map((ex) => (
+                <option key={ex.id} value={String(ex.id)}>
+                  {exitPickLabel(ex, rooms)}
+                </option>
+              ))}
+            </NativeSelectField>
+          </NativeSelectRoot>
+        </Field.Root>
+        {mutualExits.length === 1 && (
+          <QffButton size="sm" mb={0.5} onClick={onFillMutual}>
+            Use return leg #{mutualExits[0].id}
+          </QffButton>
+        )}
+      </HStack>
+      {hasPrimary && mutualExits.length === 0 && (
+        <Text fontSize="xs" color="#887760">
+          No B→A exit exists yet for that leg. Create the reverse exit in the world editor (from the
+          destination room back here), then pick it or use the button when exactly one match exists.
+        </Text>
+      )}
+      {hasPrimary && mutualExits.length > 1 && (
+        <Text fontSize="xs" color="#887760">
+          Multiple return exits match; pick the correct B→A leg.
+        </Text>
+      )}
+    </Stack>
+  );
 }
 
 const KIND_OPTIONS = [
@@ -62,6 +139,7 @@ const emptyForm = () => ({
   map_reveal_minutes: "",
   quest_transition_id: "",
   unlocks_exit_id: "",
+  unlocks_exit_secondary_id: "",
 });
 
 export default function QffDmInteractablesPage() {
@@ -74,6 +152,8 @@ export default function QffDmInteractablesPage() {
   const [rooms, setRooms] = useState<RoomOption[]>([]);
   const [createAreaExits, setCreateAreaExits] = useState<DmAreaExit[]>([]);
   const [editAreaExits, setEditAreaExits] = useState<DmAreaExit[]>([]);
+  const [createMutualExits, setCreateMutualExits] = useState<DmAreaExit[]>([]);
+  const [editMutualExits, setEditMutualExits] = useState<DmAreaExit[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [createForm, setCreateForm] = useState(emptyForm);
   const [editForm, setEditForm] = useState(emptyForm);
@@ -119,18 +199,18 @@ export default function QffDmInteractablesPage() {
       if (which === "create") {
         setCreateAreaExits(exits);
         setCreateForm((f) => {
-          if (!f.unlocks_exit_id.trim()) return f;
+          if (!f.unlocks_exit_id.trim()) return { ...f, unlocks_exit_secondary_id: "" };
           const eid = parseInt(f.unlocks_exit_id, 10);
           if (Number.isFinite(eid) && exits.some((e) => e.id === eid)) return f;
-          return { ...f, unlocks_exit_id: "" };
+          return { ...f, unlocks_exit_id: "", unlocks_exit_secondary_id: "" };
         });
       } else {
         setEditAreaExits(exits);
         setEditForm((f) => {
-          if (!f.unlocks_exit_id.trim()) return f;
+          if (!f.unlocks_exit_id.trim()) return { ...f, unlocks_exit_secondary_id: "" };
           const eid = parseInt(f.unlocks_exit_id, 10);
           if (Number.isFinite(eid) && exits.some((e) => e.id === eid)) return f;
-          return { ...f, unlocks_exit_id: "" };
+          return { ...f, unlocks_exit_id: "", unlocks_exit_secondary_id: "" };
         });
       }
     },
@@ -146,6 +226,66 @@ export default function QffDmInteractablesPage() {
     if (!isAuthenticated || !isStaff || rooms.length === 0) return;
     loadExitsForRoomId(editForm.room_id, "edit").catch((e) => setErr(String(e)));
   }, [isAuthenticated, isStaff, rooms, editForm.room_id, loadExitsForRoomId]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isStaff) return;
+    const pid = createForm.unlocks_exit_id.trim();
+    if (!pid || !Number.isFinite(parseInt(pid, 10))) {
+      setCreateMutualExits([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getApiAccessToken();
+        const list = await dmFetchExitMutualPair(token, parseInt(pid, 10));
+        if (!cancelled) {
+          setCreateMutualExits(list);
+          setCreateForm((f) => {
+            if (!f.unlocks_exit_secondary_id.trim()) return f;
+            const sid = parseInt(f.unlocks_exit_secondary_id, 10);
+            if (Number.isFinite(sid) && list.some((e) => e.id === sid)) return f;
+            return { ...f, unlocks_exit_secondary_id: "" };
+          });
+        }
+      } catch (e) {
+        if (!cancelled) setErr(String(e));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [createForm.unlocks_exit_id, isAuthenticated, isStaff, getApiAccessToken]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isStaff) return;
+    const pid = editForm.unlocks_exit_id.trim();
+    if (!pid || !Number.isFinite(parseInt(pid, 10))) {
+      setEditMutualExits([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getApiAccessToken();
+        const list = await dmFetchExitMutualPair(token, parseInt(pid, 10));
+        if (!cancelled) {
+          setEditMutualExits(list);
+          setEditForm((f) => {
+            if (!f.unlocks_exit_secondary_id.trim()) return f;
+            const sid = parseInt(f.unlocks_exit_secondary_id, 10);
+            if (Number.isFinite(sid) && list.some((e) => e.id === sid)) return f;
+            return { ...f, unlocks_exit_secondary_id: "" };
+          });
+        }
+      } catch (e) {
+        if (!cancelled) setErr(String(e));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [editForm.unlocks_exit_id, isAuthenticated, isStaff, getApiAccessToken]);
 
   useEffect(() => {
     if (!isAuthenticated || !isStaff) return;
@@ -176,6 +316,10 @@ export default function QffDmInteractablesPage() {
       quest_transition_id:
         selected.quest_transition_id != null ? String(selected.quest_transition_id) : "",
       unlocks_exit_id: selected.unlocks_exit_id != null ? String(selected.unlocks_exit_id) : "",
+      unlocks_exit_secondary_id:
+        selected.unlocks_exit_secondary_id != null
+          ? String(selected.unlocks_exit_secondary_id)
+          : "",
     });
   }, [selected]);
 
@@ -205,6 +349,9 @@ export default function QffDmInteractablesPage() {
       if (createForm.unlocks_exit_id.trim()) {
         body.unlocks_exit_id = parseInt(createForm.unlocks_exit_id, 10);
       }
+      if (createForm.unlocks_exit_secondary_id.trim()) {
+        body.unlocks_exit_secondary_id = parseInt(createForm.unlocks_exit_secondary_id, 10);
+      }
       await dmCreateInteractable(token, body);
       setCreateForm(emptyForm());
       await load();
@@ -233,6 +380,9 @@ export default function QffDmInteractablesPage() {
           : null,
         unlocks_exit_id: editForm.unlocks_exit_id.trim()
           ? parseInt(editForm.unlocks_exit_id, 10)
+          : null,
+        unlocks_exit_secondary_id: editForm.unlocks_exit_secondary_id.trim()
+          ? parseInt(editForm.unlocks_exit_secondary_id, 10)
           : null,
       };
       await dmPatchInteractable(token, selectedId, body);
@@ -269,8 +419,8 @@ export default function QffDmInteractablesPage() {
         Signs, tomes, containers, levers. Use <strong>read</strong> in play for sign/tome text.
         Kind <strong>sconce</strong> and <strong>map</strong>: players <strong>use</strong> to toggle
         permanent room light and full-map reveal (timed) in dark areas—prefer these over the room
-        &quot;permanent minimap light&quot; checkbox. Link unlocks_exit_id or quest_transition_id as
-        needed.
+        &quot;permanent minimap light&quot; checkbox. Link a primary exit and optionally its mutual
+        return leg so one lever opens both directions; or link quest_transition_id.
       </Text>
       {err && (
         <Text color="nautical.solid" mb={4} role="alert">
@@ -407,26 +557,29 @@ export default function QffDmInteractablesPage() {
                   }
                 />
               </Field.Root>
-              <Field.Root flex="1" minW="280px" maxW="520px">
-                <Field.Label fontSize="xs">unlocks_exit (same area as room)</Field.Label>
-                <NativeSelectRoot size="sm">
-                  <NativeSelectField
-                    value={createForm.unlocks_exit_id}
-                    onChange={(e: ChangeEvent<HTMLSelectElement>) =>
-                      setCreateForm((f) => ({ ...f, unlocks_exit_id: e.target.value }))
-                    }
-                    bg="#222"
-                  >
-                    <option value="">(none)</option>
-                    {createAreaExits.map((ex) => (
-                      <option key={ex.id} value={String(ex.id)}>
-                        {exitPickLabel(ex, rooms)}
-                      </option>
-                    ))}
-                  </NativeSelectField>
-                </NativeSelectRoot>
-              </Field.Root>
             </HStack>
+            <ExitUnlockPairFields
+              primaryValue={createForm.unlocks_exit_id}
+              secondaryValue={createForm.unlocks_exit_secondary_id}
+              areaExits={createAreaExits}
+              mutualExits={createMutualExits}
+              rooms={rooms}
+              onPrimaryChange={(v) =>
+                setCreateForm((f) => ({
+                  ...f,
+                  unlocks_exit_id: v,
+                  unlocks_exit_secondary_id: v.trim() ? f.unlocks_exit_secondary_id : "",
+                }))
+              }
+              onSecondaryChange={(v) =>
+                setCreateForm((f) => ({ ...f, unlocks_exit_secondary_id: v }))
+              }
+              onFillMutual={() => {
+                const m = createMutualExits[0];
+                if (m)
+                  setCreateForm((f) => ({ ...f, unlocks_exit_secondary_id: String(m.id) }));
+              }}
+            />
             <QffButton onClick={() => onCreate()}>Create interactable</QffButton>
           </Stack>
         </Box>
@@ -561,26 +714,28 @@ export default function QffDmInteractablesPage() {
                     }
                   />
                 </Field.Root>
-                <Field.Root flex="1" minW="280px" maxW="520px">
-                  <Field.Label fontSize="xs">unlocks_exit (same area as room)</Field.Label>
-                  <NativeSelectRoot size="sm">
-                    <NativeSelectField
-                      value={editForm.unlocks_exit_id}
-                      onChange={(e: ChangeEvent<HTMLSelectElement>) =>
-                        setEditForm((f) => ({ ...f, unlocks_exit_id: e.target.value }))
-                      }
-                      bg="#222"
-                    >
-                      <option value="">(none)</option>
-                      {editAreaExits.map((ex) => (
-                        <option key={ex.id} value={String(ex.id)}>
-                          {exitPickLabel(ex, rooms)}
-                        </option>
-                      ))}
-                    </NativeSelectField>
-                  </NativeSelectRoot>
-                </Field.Root>
               </HStack>
+              <ExitUnlockPairFields
+                primaryValue={editForm.unlocks_exit_id}
+                secondaryValue={editForm.unlocks_exit_secondary_id}
+                areaExits={editAreaExits}
+                mutualExits={editMutualExits}
+                rooms={rooms}
+                onPrimaryChange={(v) =>
+                  setEditForm((f) => ({
+                    ...f,
+                    unlocks_exit_id: v,
+                    unlocks_exit_secondary_id: v.trim() ? f.unlocks_exit_secondary_id : "",
+                  }))
+                }
+                onSecondaryChange={(v) =>
+                  setEditForm((f) => ({ ...f, unlocks_exit_secondary_id: v }))
+                }
+                onFillMutual={() => {
+                  const m = editMutualExits[0];
+                  if (m) setEditForm((f) => ({ ...f, unlocks_exit_secondary_id: String(m.id) }));
+                }}
+              />
               <QffButton onClick={() => onSaveEdit()}>Save changes</QffButton>
             </Stack>
           </Box>

@@ -25,6 +25,7 @@ urlpatterns = [
     path("dm/room-items/<int:pk>/", views.dm_room_item_detail),
     path("dm/rooms/<int:room_id>/exits/", views.dm_exit_list_create),
     path("dm/exits/<int:pk>/", views.dm_exit_detail),
+    path("dm/exits/<int:pk>/mutual-pair/", views.dm_exit_mutual_pair_list),
     path("dm/items/", views.dm_item_list_create),
     path("dm/items/<int:pk>/", views.dm_item_detail),
     path("dm/classes/", views.dm_class_list_create),

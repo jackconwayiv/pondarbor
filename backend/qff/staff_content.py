@@ -24,6 +24,7 @@ from qff.models import (
     QuestState,
     QuestTransition,
     Room,
+    RoomExit,
 )
 
 
@@ -621,6 +622,37 @@ def dm_npc_shop_stock_line_detail(request, pk):
     )
 
 
+def _interactable_exit_unlock_validation_error(
+    *, primary_id, secondary_id
+) -> str | None:
+    """Require mutual A↔B when secondary is set; primary alone stays valid."""
+    pid = primary_id if primary_id not in ("", None) else None
+    sid = secondary_id if secondary_id not in ("", None) else None
+    try:
+        pid_i = int(pid) if pid is not None else None
+    except (TypeError, ValueError):
+        return "Invalid unlocks_exit_id"
+    try:
+        sid_i = int(sid) if sid is not None else None
+    except (TypeError, ValueError):
+        return "Invalid unlocks_exit_secondary_id"
+    if sid_i is not None and pid_i is None:
+        return "unlocks_exit_secondary requires unlocks_exit"
+    if pid_i is None:
+        return None
+    if sid_i is None:
+        return None
+    if sid_i == pid_i:
+        return "Primary and secondary exit cannot be the same"
+    ex_a = RoomExit.objects.filter(pk=pid_i).first()
+    ex_b = RoomExit.objects.filter(pk=sid_i).first()
+    if not ex_a or not ex_b:
+        return "Invalid exit id"
+    if ex_a.from_room_id != ex_b.to_room_id or ex_a.to_room_id != ex_b.from_room_id:
+        return "Exits must be mutual (one A→B, the other B→A)"
+    return None
+
+
 def _interactable_dict(o: Interactable) -> dict:
     return {
         "id": o.id,
@@ -633,6 +665,7 @@ def _interactable_dict(o: Interactable) -> dict:
         "map_reveal_minutes": o.map_reveal_minutes,
         "quest_transition_id": o.quest_transition_id,
         "unlocks_exit_id": o.unlocks_exit_id,
+        "unlocks_exit_secondary_id": o.unlocks_exit_secondary_id,
     }
 
 
@@ -659,6 +692,12 @@ def dm_interactable_list_create(request):
         )
     get_object_or_404(Room, pk=rid)
     kind = (request.data.get("kind") or Interactable.Kind.OTHER).strip()
+    primary_e = _interactable_exit_unlock_validation_error(
+        primary_id=request.data.get("unlocks_exit_id"),
+        secondary_id=request.data.get("unlocks_exit_secondary_id"),
+    )
+    if primary_e:
+        return Response({"detail": primary_e}, status=status.HTTP_400_BAD_REQUEST)
     try:
         mm = request.data.get("map_reveal_minutes")
         o = Interactable.objects.create(
@@ -671,6 +710,8 @@ def dm_interactable_list_create(request):
             map_reveal_minutes=int(mm) if mm not in (None, "") else None,
             quest_transition_id=request.data.get("quest_transition_id") or None,
             unlocks_exit_id=request.data.get("unlocks_exit_id") or None,
+            unlocks_exit_secondary_id=request.data.get("unlocks_exit_secondary_id")
+            or None,
         )
     except IntegrityError:
         return Response(
@@ -709,6 +750,16 @@ def dm_interactable_detail(request, pk):
         o.quest_transition_id = request.data["quest_transition_id"] or None
     if "unlocks_exit_id" in request.data:
         o.unlocks_exit_id = request.data["unlocks_exit_id"] or None
+        if not o.unlocks_exit_id:
+            o.unlocks_exit_secondary_id = None
+    if "unlocks_exit_secondary_id" in request.data:
+        o.unlocks_exit_secondary_id = request.data["unlocks_exit_secondary_id"] or None
+    primary_e = _interactable_exit_unlock_validation_error(
+        primary_id=o.unlocks_exit_id,
+        secondary_id=o.unlocks_exit_secondary_id,
+    )
+    if primary_e:
+        return Response({"detail": primary_e}, status=status.HTTP_400_BAD_REQUEST)
     try:
         o.save()
     except IntegrityError:
@@ -792,6 +843,7 @@ def _interactable_export_dict(o: Interactable) -> dict:
             else None
         ),
         "unlocks_exit_id": o.unlocks_exit_id,
+        "unlocks_exit_secondary_id": o.unlocks_exit_secondary_id,
     }
 
 

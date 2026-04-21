@@ -1727,6 +1727,31 @@ def dm_exit_list_create(request, room_id):
     )
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsStaffUser])
+def dm_exit_mutual_pair_list(request, pk):
+    """All exits that close the round-trip for this leg (B→A when ``pk`` is A→B)."""
+    ex = get_object_or_404(RoomExit, pk=pk)
+    rev = (
+        RoomExit.objects.filter(from_room_id=ex.to_room_id, to_room_id=ex.from_room_id)
+        .select_related(
+            "from_room",
+            "to_room",
+            "key_item",
+            "quest_required_state__quest",
+            "reveal_item",
+            "reveal_quest_state__quest",
+        )
+        .order_by("id")
+    )
+    return Response(
+        [
+            _dm_exit_dict(e) | {"to_room_name": e.to_room.name}
+            for e in rev
+        ]
+    )
+
+
 @api_view(["GET", "PATCH", "DELETE"])
 @permission_classes([IsAuthenticated, IsStaffUser])
 def dm_exit_detail(request, pk):

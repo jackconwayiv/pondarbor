@@ -1103,6 +1103,14 @@ class Interactable(models.Model):
         on_delete=models.SET_NULL,
         related_name="interactable_unlocks",
     )
+    unlocks_exit_secondary = models.ForeignKey(
+        RoomExit,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="interactable_unlocks_secondary",
+        help_text="Optional return leg: must be the mutual opposite of unlocks_exit (B→A if primary is A→B).",
+    )
 
     class Meta:
         constraints = [

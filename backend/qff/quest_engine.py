@@ -486,6 +486,9 @@ def handle_interactable_use(character: Character, obj: Interactable) -> list[str
     if obj.unlocks_exit_id:
         ex = RoomExit.objects.get(pk=obj.unlocks_exit_id)
         _set_realm_unlock(ex, seconds=int(ex.unlock_duration_seconds))
+        if obj.unlocks_exit_secondary_id:
+            ex2 = RoomExit.objects.get(pk=obj.unlocks_exit_secondary_id)
+            _set_realm_unlock(ex2, seconds=int(ex2.unlock_duration_seconds))
         out.append("You work the mechanism. Something shifts.")
     if obj.quest_transition_id:
         tr = QuestTransition.objects.select_related("from_state", "to_state", "quest").get(

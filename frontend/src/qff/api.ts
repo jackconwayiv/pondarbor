@@ -754,6 +754,22 @@ export async function dmFetchAreaExits(
   return (await response.json()) as DmAreaExit[];
 }
 
+/** B→A exits for an A→B leg (any area); for paired device unlocks in the interactables editor. */
+export async function dmFetchExitMutualPair(
+  accessToken: string | null,
+  exitId: number,
+): Promise<DmAreaExit[]> {
+  const response = await fetch(
+    qffJoinBase(`/api/v1/qff/dm/exits/${exitId}/mutual-pair/`),
+    {
+      headers: authHeaders(accessToken),
+      credentials: "omit",
+    },
+  );
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmAreaExit[];
+}
+
 export async function dmFetchExits(
   accessToken: string | null,
   roomId: number,
@@ -1746,6 +1762,7 @@ export type DmInteractableRow = {
   map_reveal_minutes: number | null;
   quest_transition_id: number | null;
   unlocks_exit_id: number | null;
+  unlocks_exit_secondary_id: number | null;
 };
 
 export async function dmFetchInteractables(

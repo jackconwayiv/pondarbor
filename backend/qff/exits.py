@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from qff.models import (
     Character,
+    CharacterExitSeen,
     CharacterExitUnlock,
     ItemInstance,
     RealmExitUnlock,
@@ -139,22 +140,24 @@ def exit_is_visible_to_character(character: Character, room_exit: RoomExit) -> b
         return True
     need_item = room_exit.reveal_item_id
     need_quest = room_exit.reveal_quest_state_id
-    if not need_item and not need_quest:
-        return False
-    ok_item = True
-    ok_quest = True
-    if need_item:
-        ok_item = bool(_find_key_instance(character, need_item))
-    if need_quest:
-        from qff.models import CharacterQuestProgress
+    if need_item or need_quest:
+        ok_item = True
+        ok_quest = True
+        if need_item:
+            ok_item = bool(_find_key_instance(character, need_item))
+        if need_quest:
+            from qff.models import CharacterQuestProgress
 
-        qs = room_exit.reveal_quest_state
-        ok_quest = CharacterQuestProgress.objects.filter(
-            character=character,
-            quest_id=qs.quest_id,
-            current_state_id=qs.id,
-        ).exists()
-    return ok_item and ok_quest
+            qs = room_exit.reveal_quest_state
+            ok_quest = CharacterQuestProgress.objects.filter(
+                character=character,
+                quest_id=qs.quest_id,
+                current_state_id=qs.id,
+            ).exists()
+        return ok_item and ok_quest
+    return CharacterExitSeen.objects.filter(
+        character_id=character.pk, room_exit_id=room_exit.pk
+    ).exists()
 
 
 def exit_is_passable(character: Character, room_exit: RoomExit) -> bool:

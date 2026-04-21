@@ -662,6 +662,7 @@ def _interactable_dict(o: Interactable) -> dict:
         "kind": o.kind,
         "inspect_text": o.inspect_text,
         "read_text": o.read_text,
+        "untranslated": bool(o.untranslated),
         "map_reveal_minutes": o.map_reveal_minutes,
         "quest_transition_id": o.quest_transition_id,
         "unlocks_exit_id": o.unlocks_exit_id,
@@ -707,6 +708,7 @@ def dm_interactable_list_create(request):
             kind=kind,
             inspect_text=(request.data.get("inspect_text") or "")[:],
             read_text=(request.data.get("read_text") or "")[:],
+            untranslated=bool(request.data.get("untranslated")),
             map_reveal_minutes=int(mm) if mm not in (None, "") else None,
             quest_transition_id=request.data.get("quest_transition_id") or None,
             unlocks_exit_id=request.data.get("unlocks_exit_id") or None,
@@ -740,6 +742,8 @@ def dm_interactable_detail(request, pk):
         o.inspect_text = request.data.get("inspect_text") or ""
     if "read_text" in request.data:
         o.read_text = request.data.get("read_text") or ""
+    if "untranslated" in request.data:
+        o.untranslated = bool(request.data.get("untranslated"))
     if "map_reveal_minutes" in request.data:
         v = request.data.get("map_reveal_minutes")
         o.map_reveal_minutes = int(v) if v not in (None, "") else None
@@ -832,6 +836,7 @@ def _interactable_export_dict(o: Interactable) -> dict:
         "kind": o.kind,
         "inspect_text": o.inspect_text,
         "read_text": o.read_text,
+        "untranslated": bool(o.untranslated),
         "map_reveal_minutes": o.map_reveal_minutes,
         "quest_transition_hint": (
             {

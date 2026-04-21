@@ -22,6 +22,8 @@ from qff.command_parser import (
     ParsedLookDirection,
     ParsedLookInspect,
     ParsedMove,
+    ParsedOpenContainer,
+    ParsedPut,
     ParsedRead,
     ParsedRestSleep,
     ParsedSay,
@@ -42,6 +44,7 @@ from qff.constants import (
     XP_PER_LEVEL,
 )
 from qff.exploration import mark_exit_used, on_enter_room, on_leave_room
+from qff.glyph_class_map import normalize_glyph
 from qff.exits import (
     consume_key_if_entering_locked,
     exit_is_passable,
@@ -65,6 +68,8 @@ from qff.game_helpers import (
 from qff.inventory_absorb import absorb_item_quantity
 from qff.models import (
     Character,
+    CharacterExitSeen,
+    CharacterRoomSearchClaim,
     Interactable,
     ItemInstance,
     MonsterInstance,
@@ -138,6 +143,25 @@ SLOT_ATTRS = (
     "ring_item",
     "amulet_item",
 )
+
+_ALIEN_GLYPH = normalize_glyph("👽")
+
+
+def _character_has_alien_glyph(char: CharacterType) -> bool:
+    for g in char.glyphs or []:
+        if normalize_glyph(str(g)) == _ALIEN_GLYPH:
+            return True
+    return False
+
+
+def _untranslated_readable_block_message(
+    char: CharacterType, interactable: Interactable
+) -> str | None:
+    if not interactable.untranslated:
+        return None
+    if _character_has_alien_glyph(char):
+        return None
+    return "You can't read the alien language."
 
 
 def _touch_activity(char: CharacterType) -> None:
@@ -308,17 +332,34 @@ def _find_room_item(
 
 
 def _find_item_instance_floor_first(actor: CharacterType, query: str) -> ItemInstance | None:
-    """Prefer floor, then inventory order, then equipped (get / look at item)."""
+    """Prefer opened-container floor loot, then other floor, then inventory, then equipped."""
     from qff.models import ItemInstance as II
 
     q = (query or "").strip().lower()
     if not q:
         return None
+    cid = getattr(actor, "opened_container_interactable_id", None)
+    if cid:
+        for inst in (
+            II.objects.filter(
+                room_id=actor.current_room_id,
+                owner_character__isnull=True,
+                container_interactable_id=cid,
+            )
+            .select_related("item", "visible_quest_state")
+            .order_by("id")
+        ):
+            if not floor_item_visible_to_character(actor, inst):
+                continue
+            if _instance_matches_query(inst, q):
+                return inst
     for inst in (
         II.objects.filter(room_id=actor.current_room_id, owner_character__isnull=True)
         .select_related("item", "visible_quest_state")
         .order_by("id")
     ):
+        if cid and inst.container_interactable_id == cid:
+            continue
         if not floor_item_visible_to_character(actor, inst):
             continue
         if _instance_matches_query(inst, q):
@@ -358,6 +399,55 @@ def _find_item_instance_inventory_first(actor: CharacterType, query: str) -> Ite
         if inst and _instance_matches_query(inst, q):
             return inst
     return None
+
+
+def _inventory_consumable_candidates(
+    char: CharacterType, query: str
+) -> list[ItemInstance]:
+    """Inventory then equipped, all consumables matching ``query`` (same walk order as inventory-first)."""
+    from qff.models import ItemInstance as II
+
+    q = (query or "").strip().lower()
+    if not q:
+        return []
+    out: list[ItemInstance] = []
+    for iid in char.inventory or []:
+        inst = (
+            II.objects.filter(pk=iid, owner_character_id=char.pk)
+            .select_related("item")
+            .first()
+        )
+        if inst and inst.item.consumable and _instance_matches_query(inst, q):
+            out.append(inst)
+    for attr in SLOT_ATTRS:
+        inst = getattr(char, attr, None)
+        if inst and inst.item.consumable and _instance_matches_query(inst, q):
+            out.append(inst)
+    return out
+
+
+def _pick_single_consumable_candidate(
+    candidates: list[ItemInstance], query: str
+) -> ItemInstance | None:
+    q = (query or "").strip().lower()
+    if not candidates:
+        return None
+    exact = [
+        i for i in candidates if display_name_for_instance(i).lower() == q
+    ]
+    if len(exact) == 1:
+        return exact[0]
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
+
+
+def _consumable_matches_inventory_verb(item, attempted_verb: str) -> bool:
+    """Blank ``consume_verb`` = any; otherwise inventory consume must match that verb."""
+    req = (getattr(item, "consume_verb", None) or "").strip().lower()
+    if not req:
+        return True
+    return req == (attempted_verb or "").strip().lower()
 
 
 def _prepend_inv(inv, pk: int) -> list:
@@ -551,19 +641,69 @@ def _dispatch_non_leave(char: CharacterType, parsed) -> list[str]:
     if isinstance(parsed, ParsedSearch):
         _touch_activity(char)
         char.save(update_fields=["last_activity_at", "updated_at"])
-        _notify_peers_third_person(char, char.current_room_id, f"{char.name} is searching the area.")
         room = char.current_room
+        if not room_is_narratively_visible(char, room):
+            return [NARRATIVE_TOO_DARK_MESSAGE]
+        _notify_peers_third_person(char, char.current_room_id, f"{char.name} is searching the area.")
         hidden = (room.search_text or "").strip()
-        if not hidden:
+        has_rewards = bool(room.search_reward_item_id or room.search_reveals_exit_id)
+        if not hidden and not has_rewards:
             return [
                 f"You spend some time searching the {room.name} but find nothing of note."
             ]
         roll = roll_d100_plus_stat_encumbered(char, int(char.sense))
-        if roll >= int(room.search_chance):
-            return [hidden]
-        return [
-            f"You spend some time searching the {room.name} but find nothing of note."
-        ]
+        if roll < int(room.search_chance):
+            return [
+                f"You spend some time searching the {room.name} but find nothing of note."
+            ]
+        out: list[str] = [hidden] if hidden else []
+        with transaction.atomic():
+            char_locked = Character.objects.select_for_update().get(pk=char.pk)
+            room_locked = (
+                Room.objects.select_for_update()
+                .select_related("search_reward_item", "search_reveals_exit")
+                .get(pk=room.id)
+            )
+            claim, _ = CharacterRoomSearchClaim.objects.select_for_update().get_or_create(
+                character_id=char_locked.pk,
+                room_id=room_locked.pk,
+            )
+            claim_updates: list[str] = []
+            if room_locked.search_reward_item_id and not claim.item_reward_granted:
+                inst = ItemInstance.objects.create(
+                    item_id=room_locked.search_reward_item_id,
+                    owner_character=char_locked,
+                    room=None,
+                )
+                inv = list(char_locked.inventory or [])
+                char_locked.inventory = [inst.pk] + [x for x in inv if x != inst.pk]
+                claim.item_reward_granted = True
+                claim_updates.append("item_reward_granted")
+                char_locked.save(update_fields=["inventory", "updated_at"])
+                item_name = (
+                    room_locked.search_reward_item.name
+                    if room_locked.search_reward_item
+                    else "something"
+                )
+                out.append(f"You find {item_name} and slip it into your pack.")
+            if room_locked.search_reveals_exit_id and not claim.exit_reward_granted:
+                ex = RoomExit.objects.filter(
+                    pk=room_locked.search_reveals_exit_id,
+                    from_room_id=room_locked.id,
+                ).first()
+                if ex:
+                    CharacterExitSeen.objects.get_or_create(
+                        character_id=char_locked.pk,
+                        room_exit_id=ex.pk,
+                    )
+                    claim.exit_reward_granted = True
+                    claim_updates.append("exit_reward_granted")
+                    out.append("You uncover a passage you had missed before.")
+            if claim_updates:
+                claim.save(update_fields=claim_updates)
+        if not out:
+            out.append(f"You search the {room.name} and uncover something new.")
+        return out
 
     if isinstance(parsed, ParsedAttack):
         return _handle_attack(char, parsed)
@@ -586,6 +726,9 @@ def _dispatch_non_leave(char: CharacterType, parsed) -> list[str]:
     if isinstance(parsed, ParsedGet):
         return _handle_get(char, parsed.target, parsed.quantity)
 
+    if isinstance(parsed, ParsedPut):
+        return _handle_put(char, parsed.target)
+
     if isinstance(parsed, ParsedConsumeItem):
         return _handle_consume_item(char, parsed)
 
@@ -606,6 +749,9 @@ def _dispatch_non_leave(char: CharacterType, parsed) -> list[str]:
 
     if isinstance(parsed, ParsedTalk):
         return _handle_talk(char, parsed)
+
+    if isinstance(parsed, ParsedOpenContainer):
+        return _handle_open_container(char, parsed)
 
     if isinstance(parsed, ParsedUse):
         return _handle_use(char, parsed)
@@ -1126,6 +1272,66 @@ def _handle_get(
     return [f"You pick up the {pickup_name}."]
 
 
+def _handle_put(char: CharacterType, target: str) -> list[str]:
+    _touch_activity(char)
+    q = (target or "").strip()
+    if not q:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return ["Put what?"]
+    cid = char.opened_container_interactable_id
+    if not cid:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return ["You have nothing open to put that in."]
+    obj = Interactable.objects.filter(pk=cid, room_id=char.current_room_id).first()
+    if not obj:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return ["You have nothing open to put that in."]
+    inst = _find_item_instance_inventory_first(char, q)
+    inv = list(char.inventory or [])
+    if not inst or inst.pk not in inv:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return ["You don't have that."]
+    if inst.room_id is not None:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return ["You don't have that."]
+    if _instance_is_equipped(char, inst.pk):
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return ["Remove that before you stash it."]
+    label = display_name_for_instance(inst)
+    with transaction.atomic():
+        char = Character.objects.select_for_update().get(pk=char.pk)
+        inst = ItemInstance.objects.select_for_update().select_related("item").get(pk=inst.pk)
+        inv = list(char.inventory or [])
+        if inst.pk not in inv or inst.owner_character_id != char.pk:
+            char.save(update_fields=["last_activity_at", "updated_at"])
+            return ["You don't have that."]
+        if not char.opened_container_interactable_id:
+            char.save(update_fields=["last_activity_at", "updated_at"])
+            return ["You have nothing open to put that in."]
+        cid_locked = char.opened_container_interactable_id
+        inv = [x for x in inv if x != inst.pk]
+        char.inventory = inv
+        inst.owner_character_id = None
+        inst.room_id = char.current_room_id
+        inst.container_interactable_id = cid_locked
+        inst.save(
+            update_fields=[
+                "owner_character",
+                "room",
+                "container_interactable",
+                "updated_at",
+            ]
+        )
+        char.save(update_fields=["inventory", "last_activity_at", "updated_at"])
+    char = Character.objects.get(pk=char.pk)
+    _notify_peers_third_person(
+        char,
+        char.current_room_id,
+        f"{char.name} puts the {label} into the {obj.name}.",
+    )
+    return [f"You put the {label} into the {obj.name}."]
+
+
 def _handle_equip(char: CharacterType, target: str) -> list[str]:
     _touch_activity(char)
     inst = _find_item_instance_inventory_first(char, target)
@@ -1211,16 +1417,26 @@ def _consume_verb_rejection_message(item, attempted_verb: str) -> str | None:
             return "That isn't something you drink."
         if got == "use":
             return "You need to eat that, not use it."
+        if got == "read":
+            return "You need to eat that, not read it."
         return "You can't consume that that way."
     if required == "drink":
         if got == "eat":
             return "That isn't something you eat."
         if got == "use":
             return "You need to drink that, not use it."
+        if got == "read":
+            return "You need to drink that, not read it."
         return "You can't consume that that way."
     if required == "use":
-        if got in ("eat", "drink"):
+        if got in ("eat", "drink", "read"):
             return "You need to use that."
+        return "You can't consume that that way."
+    if required == "read":
+        if got in ("eat", "drink"):
+            return "You need to read that, not consume it like food."
+        if got == "use":
+            return "You need to read that, not use it."
         return "You can't consume that that way."
     return None
 
@@ -1424,6 +1640,29 @@ def _handle_talk(char: CharacterType, parsed: ParsedTalk) -> list[str]:
     return extra + [main]
 
 
+def _handle_open_container(char: CharacterType, parsed: ParsedOpenContainer) -> list[str]:
+    _touch_activity(char)
+    target = (parsed.target or "").strip()
+    if not target:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return ["Open what?"]
+    if not room_is_narratively_visible(char, char.current_room):
+        return [NARRATIVE_TOO_DARK_MESSAGE]
+    obj = find_interactable_in_room(char, target)
+    if not obj:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return ["You don't see that here."]
+    lines = handle_interactable_use(char, obj)
+    char = Character.objects.get(pk=char.pk)
+    char.save(update_fields=["last_activity_at", "updated_at"])
+    _notify_peers_third_person(
+        char,
+        char.current_room_id,
+        _interactable_observer_line(char.name, "open", obj.name),
+    )
+    return lines
+
+
 def _handle_rest_sleep(char: CharacterType, _parsed: ParsedRestSleep) -> list[str]:
     _touch_activity(char)
     npc = (
@@ -1453,6 +1692,8 @@ def _handle_use(char: CharacterType, parsed: ParsedUse) -> list[str]:
         if not obj:
             char.save(update_fields=["last_activity_at", "updated_at"])
             return ["You don't see that here."]
+        if not room_is_narratively_visible(char, char.current_room):
+            return [NARRATIVE_TOO_DARK_MESSAGE]
         lines = handle_interactable_use(char, obj)
         char = Character.objects.get(pk=char.pk)
         char.save(update_fields=["last_activity_at", "updated_at"])
@@ -1465,6 +1706,8 @@ def _handle_use(char: CharacterType, parsed: ParsedUse) -> list[str]:
 
     obj = find_interactable_in_room(char, target)
     if obj:
+        if not room_is_narratively_visible(char, char.current_room):
+            return [NARRATIVE_TOO_DARK_MESSAGE]
         lines = handle_interactable_use(char, obj)
         char = Character.objects.get(pk=char.pk)
         char.save(update_fields=["last_activity_at", "updated_at"])
@@ -1475,8 +1718,18 @@ def _handle_use(char: CharacterType, parsed: ParsedUse) -> list[str]:
         )
         return lines
 
-    inst = _find_item_instance_inventory_first(char, target)
     inv = list(char.inventory or [])
+    inv_consumables = [
+        c for c in _inventory_consumable_candidates(char, target) if c.pk in inv
+    ]
+    picked = _pick_single_consumable_candidate(inv_consumables, target)
+    if picked:
+        return _consume_inventory_instance(char, picked, "use")
+    if len(inv_consumables) > 1:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return ["What do you want to use?"]
+
+    inst = _find_item_instance_inventory_first(char, target)
     if inst and inst.pk in inv and inst.item.consumable:
         return _consume_inventory_instance(char, inst, "use")
 
@@ -1493,15 +1746,29 @@ def _handle_consume_item(char: CharacterType, parsed: ParsedConsumeItem) -> list
         char.save(update_fields=["last_activity_at", "updated_at"])
         what = "Eat" if parsed.verb == "eat" else "Drink" if parsed.verb == "drink" else "Use"
         return [f"{what} what?"]
-    inst = _find_item_instance_inventory_first(char, target)
+    verb = parsed.verb
     inv = list(char.inventory or [])
+    inv_consumables = [
+        c
+        for c in _inventory_consumable_candidates(char, target)
+        if c.pk in inv and _consumable_matches_inventory_verb(c.item, verb)
+    ]
+    picked = _pick_single_consumable_candidate(inv_consumables, target)
+    if picked:
+        return _consume_inventory_instance(char, picked, verb)
+    if len(inv_consumables) > 1:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        if verb == "eat":
+            return ["What do you want to eat?"]
+        return ["What do you want to drink?"]
+    inst = _find_item_instance_inventory_first(char, target)
     if not inst or inst.pk not in inv:
         char.save(update_fields=["last_activity_at", "updated_at"])
         return ["You don't have that."]
     if not inst.item.consumable:
         char.save(update_fields=["last_activity_at", "updated_at"])
         return ["You can't consume that."]
-    return _consume_inventory_instance(char, inst, parsed.verb)
+    return _consume_inventory_instance(char, inst, verb)
 
 
 def _consume_inventory_instance(
@@ -1571,6 +1838,9 @@ def _consume_inventory_instance(
     elif v == "drink":
         _notify_peers_third_person(ch, room_id, f"{actor_name} drinks the {base_label}.")
         out = [f"You drink the {base_label}."] + effect_lines
+    elif v == "read":
+        _notify_peers_third_person(ch, room_id, f"{actor_name} reads the {base_label}.")
+        out = [f"You read the {base_label}."] + effect_lines
     else:
         _notify_peers_third_person(ch, room_id, f"{actor_name} uses the {base_label}.")
         out = [f"You use the {base_label}."] + effect_lines
@@ -1585,17 +1855,43 @@ def _handle_read(char: CharacterType, parsed: ParsedRead) -> list[str]:
     if not target:
         char.save(update_fields=["last_activity_at", "updated_at"])
         return ["Read what?"]
+    if not room_is_narratively_visible(char, char.current_room):
+        return [NARRATIVE_TOO_DARK_MESSAGE]
     obj = find_interactable_in_room(char, target)
-    if not obj:
+    if obj:
+        blocked = _untranslated_readable_block_message(char, obj)
+        if blocked:
+            char.save(update_fields=["last_activity_at", "updated_at"])
+            return [blocked]
+        text = (obj.read_text or "").strip() or (obj.inspect_text or "").strip()
+        if not text:
+            char.save(update_fields=["last_activity_at", "updated_at"])
+            return ["There is nothing to read."]
+        _notify_peers_third_person(
+            char, char.current_room_id, f"{char.name} reads the {obj.name}."
+        )
         char.save(update_fields=["last_activity_at", "updated_at"])
-        return ["You don't see that here."]
-    text = (obj.read_text or "").strip() or (obj.inspect_text or "").strip()
-    if not text:
+        return [text]
+
+    inv = list(char.inventory or [])
+    inv_read = [
+        c
+        for c in _inventory_consumable_candidates(char, target)
+        if c.pk in inv
+        and (
+            not (c.item.consume_verb or "").strip()
+            or (c.item.consume_verb or "").strip().lower() == "read"
+        )
+    ]
+    picked = _pick_single_consumable_candidate(inv_read, target)
+    if picked:
+        return _consume_inventory_instance(char, picked, "read")
+    if len(inv_read) > 1:
         char.save(update_fields=["last_activity_at", "updated_at"])
-        return ["There is nothing to read."]
-    _notify_peers_third_person(char, char.current_room_id, f"{char.name} reads the {obj.name}.")
+        return ["What do you want to read?"]
+
     char.save(update_fields=["last_activity_at", "updated_at"])
-    return [text]
+    return ["You don't see that here."]
 
 
 def _handle_look_direction(char: CharacterType, parsed: ParsedLookDirection) -> list[str]:
@@ -1648,6 +1944,9 @@ def _handle_look_inspect(char: CharacterType, parsed: ParsedLookInspect) -> list
             out.append(f"You make out: {_natural_join_phrases(labels)}.")
         return out
 
+    if not room_is_narratively_visible(char, char.current_room):
+        return [NARRATIVE_TOO_DARK_MESSAGE]
+
     npc = find_npc_in_room(char, target)
     if npc:
         _look_focus_peers(char, parsed, npc.name)
@@ -1657,14 +1956,12 @@ def _handle_look_inspect(char: CharacterType, parsed: ParsedLookInspect) -> list
     interactable = find_interactable_in_room(char, target)
     if interactable:
         _look_focus_peers(char, parsed, interactable.name)
+        blocked = _untranslated_readable_block_message(char, interactable)
+        if blocked:
+            return [blocked]
         t = (interactable.inspect_text or "").strip() or f"You see {interactable.name}."
         out = [t]
-        if interactable.kind in (
-            Interactable.Kind.CHEST,
-            Interactable.Kind.BARREL,
-            Interactable.Kind.CRATE,
-            Interactable.Kind.SACK,
-        ):
+        if interactable.kind == Interactable.Kind.CONTAINER:
             floor_ids = unowned_floor_item_template_ids_in_room(char.current_room_id)
             inside: list[str] = []
             for inst in ItemInstance.objects.filter(
@@ -1689,8 +1986,16 @@ def _handle_look_inspect(char: CharacterType, parsed: ParsedLookInspect) -> list
         _look_focus_peers(char, parsed, monster.template.name)
         tpl = monster.template
         base = (tpl.description or "").strip() or f"You see the {tpl.name}."
-        if parsed.verb == "inspect" and (tpl.hidden_description or "").strip():
-            return [base, (tpl.hidden_description or "").strip()]
+        hidden = (tpl.hidden_description or "").strip()
+        if hidden:
+            threshold = (
+                int(tpl.hidden_description_chance)
+                if tpl.hidden_description_chance is not None
+                else 50
+            )
+            roll = roll_d100_plus_stat_encumbered(char, int(char.sense))
+            if roll >= threshold:
+                return [base, hidden]
         return [base]
 
     subj = _find_character_target(char, target)

@@ -43,6 +43,35 @@ from qff.models import (
 )
 from qff.shop_engine import get_enabled_shops_in_room
 
+
+def _opened_container_session_dict(character: Character, room: Room) -> dict | None:
+    cid = getattr(character, "opened_container_interactable_id", None)
+    if not cid:
+        return None
+    obj = Interactable.objects.filter(pk=cid, room_id=room.id).first()
+    if not obj:
+        return None
+    items: list[dict] = []
+    for inst in (
+        ItemInstance.objects.filter(
+            room_id=room.id,
+            container_interactable_id=cid,
+            owner_character__isnull=True,
+        )
+        .select_related("item", "visible_quest_state")
+        .order_by("id")
+    ):
+        if not floor_item_visible_to_character(character, inst):
+            continue
+        items.append(
+            {
+                "id": inst.id,
+                "name": display_name_for_instance(inst),
+                "quantity": max(1, int(inst.quantity or 1)),
+            }
+        )
+    return {"id": obj.id, "slug": obj.slug, "name": obj.name, "items": items}
+
 DEFAULT_THEME_PRIMARY = "#c8e6a8"
 DEFAULT_THEME_SECONDARY = "#889977"
 DEFAULT_THEME_ACCENT = "#e8f5c8"
@@ -537,6 +566,7 @@ def build_session_for_character(character, *, world_sync: bool = True) -> dict:
             "name": room.name,
             "description": room.description,
             "details_visible": room_is_narratively_visible(character, room),
+            "opened_container": _opened_container_session_dict(character, room),
             "is_safe": room.is_safe,
             "is_spawn_point": room.is_spawn_point,
             "monsters": [

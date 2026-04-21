@@ -1073,6 +1073,8 @@ def dm_room_list_create(request, area_id):
                     "description": r.description,
                     "search_text": r.search_text,
                     "search_chance": r.search_chance,
+                    "search_reward_item_id": r.search_reward_item_id,
+                    "search_reveals_exit_id": r.search_reveals_exit_id,
                     "permanent_minimap_light": r.permanent_minimap_light,
                     "reset_dark_lighting_on_enter": r.reset_dark_lighting_on_enter,
                     "is_safe": r.is_safe,
@@ -1123,6 +1125,8 @@ def dm_room_list_create(request, area_id):
             "description": room.description,
             "search_text": room.search_text,
             "search_chance": room.search_chance,
+            "search_reward_item_id": room.search_reward_item_id,
+            "search_reveals_exit_id": room.search_reveals_exit_id,
         },
         status=status.HTTP_201_CREATED,
     )
@@ -1131,7 +1135,9 @@ def dm_room_list_create(request, area_id):
 @api_view(["GET", "PATCH", "DELETE"])
 @permission_classes([IsAuthenticated, IsStaffUser])
 def dm_room_detail(request, pk):
-    room = get_object_or_404(Room.objects.select_related("area"), pk=pk)
+    room = get_object_or_404(
+        Room.objects.select_related("area", "search_reward_item"), pk=pk
+    )
     if request.method == "GET":
         c = AreaCell.objects.filter(room=room).first()
         return Response(
@@ -1143,6 +1149,8 @@ def dm_room_detail(request, pk):
                 "description": room.description,
                 "search_text": room.search_text,
                 "search_chance": room.search_chance,
+                "search_reward_item_id": room.search_reward_item_id,
+                "search_reveals_exit_id": room.search_reveals_exit_id,
                 "permanent_minimap_light": room.permanent_minimap_light,
                 "reset_dark_lighting_on_enter": room.reset_dark_lighting_on_enter,
                 "is_safe": room.is_safe,
@@ -1183,6 +1191,27 @@ def dm_room_detail(request, pk):
         else:
             get_object_or_404(MonsterTemplate, pk=int(v))
             room.monster_lair_template_id = int(v)
+    if "search_reward_item_id" in request.data:
+        v = request.data.get("search_reward_item_id")
+        if v in (None, "", 0, "0"):
+            room.search_reward_item_id = None
+        else:
+            get_object_or_404(Item, pk=int(v))
+            room.search_reward_item_id = int(v)
+    if "search_reveals_exit_id" in request.data:
+        v = request.data.get("search_reveals_exit_id")
+        if v in (None, "", 0, "0"):
+            room.search_reveals_exit_id = None
+        else:
+            ex = get_object_or_404(RoomExit, pk=int(v))
+            if ex.from_room_id != room.id:
+                return Response(
+                    {
+                        "detail": "search_reveals_exit_id must reference an exit that starts in this room."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            room.search_reveals_exit_id = ex.pk
     room.save()
     return Response(
         {
@@ -1192,6 +1221,8 @@ def dm_room_detail(request, pk):
             "description": room.description,
             "search_text": room.search_text,
             "search_chance": room.search_chance,
+            "search_reward_item_id": room.search_reward_item_id,
+            "search_reveals_exit_id": room.search_reveals_exit_id,
             "permanent_minimap_light": room.permanent_minimap_light,
             "reset_dark_lighting_on_enter": room.reset_dark_lighting_on_enter,
             "is_safe": room.is_safe,
@@ -1225,6 +1256,7 @@ def _dm_monster_template_dict(t: MonsterTemplate) -> dict:
         "dodge_ignore": t.dodge_ignore,
         "description": t.description or "",
         "hidden_description": t.hidden_description or "",
+        "hidden_description_chance": t.hidden_description_chance,
     }
 
 
@@ -1316,6 +1348,15 @@ def dm_monster_template_detail(request, pk):
         tpl.description = (request.data.get("description") or "")[:20000]
     if "hidden_description" in request.data:
         tpl.hidden_description = (request.data.get("hidden_description") or "")[:20000]
+    if "hidden_description_chance" in request.data:
+        v = request.data.get("hidden_description_chance")
+        if v in (None, "", "null"):
+            tpl.hidden_description_chance = None
+        else:
+            try:
+                tpl.hidden_description_chance = max(1, min(100, int(v)))
+            except (TypeError, ValueError):
+                pass
     tpl.save()
     return Response(_dm_monster_template_dict(tpl))
 

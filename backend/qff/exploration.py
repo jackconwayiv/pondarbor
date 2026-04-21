@@ -71,6 +71,7 @@ def on_leave_room(room_id: int) -> None:
     ItemInstance.objects.filter(
         room_id=room_id,
         owner_character__isnull=True,
+        container_interactable__isnull=True,
     ).update(neglect_count=F("neglect_count") + 1)
     older_than = timezone.now() - timedelta(
         minutes=FLOOR_ITEM_MIN_AGE_BEFORE_DELETE_MINUTES
@@ -78,6 +79,7 @@ def on_leave_room(room_id: int) -> None:
     ItemInstance.objects.filter(
         room_id=room_id,
         owner_character__isnull=True,
+        container_interactable__isnull=True,
         neglect_count__gte=FLOOR_ITEM_NEGLECT_DELETE_AT,
         floor_dropped_at__lte=older_than,
     ).delete()
@@ -100,7 +102,14 @@ def on_enter_room(character: Character, room_id: int) -> None:
         update_fields.append("dark_minimap_lit_room_ids")
     character.container_focus_interactable_id = None
     character.container_focus_expires_at = None
-    update_fields.extend(["container_focus_interactable", "container_focus_expires_at"])
+    character.opened_container_interactable_id = None
+    update_fields.extend(
+        [
+            "container_focus_interactable",
+            "container_focus_expires_at",
+            "opened_container_interactable",
+        ]
+    )
     character.save(update_fields=update_fields)
 
 

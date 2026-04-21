@@ -7,6 +7,7 @@ import {
   NativeSelectField,
   NativeSelectRoot,
   Stack,
+  Switch,
   Text,
   Textarea,
 } from "@chakra-ui/react";
@@ -114,12 +115,8 @@ function ExitUnlockPairFields({
 }
 
 const KIND_OPTIONS = [
-  "sign",
-  "tome",
-  "chest",
-  "barrel",
-  "crate",
-  "sack",
+  "readable",
+  "container",
   "button",
   "lever",
   "switch",
@@ -133,9 +130,10 @@ const emptyForm = () => ({
   room_id: "",
   slug: "",
   name: "",
-  kind: "sign" as string,
+  kind: "readable" as string,
   inspect_text: "",
   read_text: "",
+  untranslated: false,
   map_reveal_minutes: "",
   quest_transition_id: "",
   unlocks_exit_id: "",
@@ -311,6 +309,7 @@ export default function QffDmInteractablesPage() {
       kind: selected.kind,
       inspect_text: selected.inspect_text,
       read_text: selected.read_text ?? "",
+      untranslated: !!selected.untranslated,
       map_reveal_minutes:
         selected.map_reveal_minutes != null ? String(selected.map_reveal_minutes) : "",
       quest_transition_id:
@@ -339,6 +338,7 @@ export default function QffDmInteractablesPage() {
         kind: createForm.kind,
         inspect_text: createForm.inspect_text,
         read_text: createForm.read_text,
+        untranslated: createForm.untranslated,
       };
       if (createForm.map_reveal_minutes.trim()) {
         body.map_reveal_minutes = parseInt(createForm.map_reveal_minutes, 10);
@@ -372,6 +372,7 @@ export default function QffDmInteractablesPage() {
         kind: editForm.kind,
         inspect_text: editForm.inspect_text,
         read_text: editForm.read_text,
+        untranslated: editForm.untranslated,
         map_reveal_minutes: editForm.map_reveal_minutes.trim()
           ? parseInt(editForm.map_reveal_minutes, 10)
           : null,
@@ -416,7 +417,8 @@ export default function QffDmInteractablesPage() {
         Interactables
       </Heading>
       <Text mb={4} color="#889977" fontSize="sm">
-        Signs, tomes, containers, levers. Use <strong>read</strong> in play for sign/tome text.
+        Readable surfaces, containers, levers. Use <strong>read</strong> in play for long read_text;
+        look/inspect use inspect_text. Untranslated + no 👽 glyph shows a block message only.
         Kind <strong>sconce</strong> and <strong>map</strong>: players <strong>use</strong> to toggle
         permanent room light and full-map reveal (timed) in dark areas—prefer these over the room
         &quot;permanent minimap light&quot; checkbox. Link a primary exit and optionally its mutual
@@ -535,6 +537,21 @@ export default function QffDmInteractablesPage() {
                 onChange={(e) => setCreateForm((f) => ({ ...f, read_text: e.target.value }))}
               />
             </Field.Root>
+            <Switch.Root
+              checked={createForm.untranslated}
+              onCheckedChange={(d) =>
+                setCreateForm((f) => ({ ...f, untranslated: d.checked }))
+              }
+              colorPalette="orange"
+            >
+              <Switch.HiddenInput />
+              <Switch.Control>
+                <Switch.Thumb />
+              </Switch.Control>
+              <Switch.Label fontSize="xs">
+                Untranslated (👽 glyph required for full read / look / inspect)
+              </Switch.Label>
+            </Switch.Root>
             <HStack gap={4} flexWrap="wrap">
               <Field.Root maxW="140px">
                 <Field.Label fontSize="xs">map_reveal_minutes (kind=map)</Field.Label>
@@ -692,6 +709,21 @@ export default function QffDmInteractablesPage() {
                   onChange={(e) => setEditForm((f) => ({ ...f, read_text: e.target.value }))}
                 />
               </Field.Root>
+              <Switch.Root
+                checked={editForm.untranslated}
+                onCheckedChange={(d) =>
+                  setEditForm((f) => ({ ...f, untranslated: d.checked }))
+                }
+                colorPalette="orange"
+              >
+                <Switch.HiddenInput />
+                <Switch.Control>
+                  <Switch.Thumb />
+                </Switch.Control>
+                <Switch.Label fontSize="xs">
+                  Untranslated (👽 glyph required for full read / look / inspect)
+                </Switch.Label>
+              </Switch.Root>
               <HStack gap={4} flexWrap="wrap">
                 <Field.Root maxW="140px">
                   <Field.Label fontSize="xs">map_reveal_minutes</Field.Label>

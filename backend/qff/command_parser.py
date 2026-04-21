@@ -38,6 +38,13 @@ class ParsedGet:
 
 
 @dataclass
+class ParsedPut:
+    """put / place — deposit an inventory item into the opened container."""
+
+    target: str
+
+
+@dataclass
 class ParsedConsumeItem:
     """Eat / drink / use-on-item (inventory consumable)."""
 
@@ -81,8 +88,15 @@ class ParsedTalk:
 
 
 @dataclass
+class ParsedOpenContainer:
+    """open / open <name> — interactables only (containers, maps, etc.)."""
+
+    target: str
+
+
+@dataclass
 class ParsedUse:
-    verb: str  # use | pull | push | open
+    verb: str  # use | pull | push
     target: str
 
 
@@ -310,7 +324,9 @@ def parse_command(line: str):
     if low.startswith("push "):
         return ParsedUse(verb="push", target=n[5:].strip())
     if low.startswith("open "):
-        return ParsedUse(verb="open", target=n[5:].strip())
+        return ParsedOpenContainer(target=n[5:].strip())
+    if low == "open":
+        return ParsedOpenContainer(target="")
 
     # look / inspect
     if low.startswith("look at "):
@@ -402,6 +418,14 @@ def parse_command(line: str):
         return ParsedUnequip(target=n[8:].strip())
     if low == "unequip":
         return ParsedUnequip(target="")
+    if low.startswith("remove "):
+        return ParsedUnequip(target=n[7:].strip())
+    if low == "remove":
+        return ParsedUnequip(target="")
+    if low.startswith("take off "):
+        return ParsedUnequip(target=n[9:].strip())
+    if low == "take off":
+        return ParsedUnequip(target="")
 
     # drop / get / equip
     if low.startswith("drop "):
@@ -425,6 +449,10 @@ def parse_command(line: str):
         return _parsed_get_from_rest(n[4:])
     if low == "get":
         return ParsedGet(target="")
+    if low.startswith("grab "):
+        return _parsed_get_from_rest(n[5:])
+    if low == "grab":
+        return ParsedGet(target="")
     if low.startswith("take "):
         return _parsed_get_from_rest(n[5:])
     if low == "take":
@@ -433,6 +461,22 @@ def parse_command(line: str):
         return ParsedEquip(target=n[6:].strip())
     if low == "equip":
         return ParsedEquip(target="")
+    if low.startswith("wear "):
+        return ParsedEquip(target=n[5:].strip())
+    if low == "wear":
+        return ParsedEquip(target="")
+    if low.startswith("put on "):
+        return ParsedEquip(target=n[7:].strip())
+    if low == "put on":
+        return ParsedEquip(target="")
+    if low.startswith("put "):
+        return ParsedPut(target=n[4:].strip())
+    if low == "put":
+        return ParsedPut(target="")
+    if low.startswith("place "):
+        return ParsedPut(target=n[6:].strip())
+    if low == "place":
+        return ParsedPut(target="")
 
     # Search
     if low in ("search", "search room", "scr"):

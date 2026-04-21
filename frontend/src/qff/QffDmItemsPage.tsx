@@ -372,10 +372,11 @@ export default function QffDmItemsPage() {
                   }}
                   bg="#222"
                 >
-                  <option value="">Any (eat / drink / use)</option>
+                  <option value="">Any (eat / drink / use / read)</option>
                   <option value="eat">Eat</option>
                   <option value="drink">Drink</option>
                   <option value="use">Use</option>
+                  <option value="read">Read</option>
                 </NativeSelectField>
               </NativeSelectRoot>
             </Field.Root>

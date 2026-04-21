@@ -244,6 +244,8 @@ export default function QffDmPage() {
   const [panelDesc, setPanelDesc] = useState("");
   const [panelSearch, setPanelSearch] = useState("");
   const [panelSearchChance, setPanelSearchChance] = useState("50");
+  const [panelSearchRewardItemId, setPanelSearchRewardItemId] = useState("");
+  const [panelSearchRevealsExitId, setPanelSearchRevealsExitId] = useState("");
   const [newExitDir, setNewExitDir] = useState<string>("n");
   const [newExitTo, setNewExitTo] = useState<number | null>(null);
   /** Area chosen in exit destination picker (room list is filtered to this area). */
@@ -280,6 +282,10 @@ export default function QffDmPage() {
   const [panelMonsterLairTemplateId, setPanelMonsterLairTemplateId] = useState("");
   const [panelLairTemplateArmor, setPanelLairTemplateArmor] = useState("");
   const [panelLairTemplateAccuracy, setPanelLairTemplateAccuracy] = useState("");
+  const [panelLairTemplateDescription, setPanelLairTemplateDescription] = useState("");
+  const [panelLairTemplateHiddenDescription, setPanelLairTemplateHiddenDescription] =
+    useState("");
+  const [panelLairTemplateHiddenChance, setPanelLairTemplateHiddenChance] = useState("");
   const [panelLairTemplateCombatBusy, setPanelLairTemplateCombatBusy] = useState(false);
   const [monsterTemplates, setMonsterTemplates] = useState<DmMonsterTemplate[]>([]);
   const dmMapColumnRef = useRef<HTMLDivElement | null>(null);
@@ -366,18 +372,31 @@ export default function QffDmPage() {
     if (!panelMonsterLairTemplateId) {
       setPanelLairTemplateArmor("");
       setPanelLairTemplateAccuracy("");
+      setPanelLairTemplateDescription("");
+      setPanelLairTemplateHiddenDescription("");
+      setPanelLairTemplateHiddenChance("");
       return;
     }
     const tid = parseInt(panelMonsterLairTemplateId, 10);
     if (!Number.isFinite(tid)) {
       setPanelLairTemplateArmor("");
       setPanelLairTemplateAccuracy("");
+      setPanelLairTemplateDescription("");
+      setPanelLairTemplateHiddenDescription("");
+      setPanelLairTemplateHiddenChance("");
       return;
     }
     const t = monsterTemplates.find((x) => x.id === tid);
     if (t) {
       setPanelLairTemplateArmor(String(t.armor ?? 0));
       setPanelLairTemplateAccuracy(String(t.accuracy ?? 0));
+      setPanelLairTemplateDescription(t.description ?? "");
+      setPanelLairTemplateHiddenDescription(t.hidden_description ?? "");
+      setPanelLairTemplateHiddenChance(
+        t.hidden_description_chance != null && t.hidden_description_chance !== undefined
+          ? String(t.hidden_description_chance)
+          : "",
+      );
     }
   }, [panelMonsterLairTemplateId, monsterTemplates]);
 
@@ -559,6 +578,8 @@ export default function QffDmPage() {
       setPanelDesc("");
       setPanelSearch("");
       setPanelSearchChance("50");
+      setPanelSearchRewardItemId("");
+      setPanelSearchRevealsExitId("");
       setPanelPermanentMinimapLight(false);
       setPanelResetDarkLighting(false);
       setPanelIsSafe(false);
@@ -572,6 +593,16 @@ export default function QffDmPage() {
     setPanelDesc(selectedRoom.description);
     setPanelSearch(selectedRoom.search_text);
     setPanelSearchChance(String(selectedRoom.search_chance ?? 50));
+    setPanelSearchRewardItemId(
+      selectedRoom.search_reward_item_id != null
+        ? String(selectedRoom.search_reward_item_id)
+        : "",
+    );
+    setPanelSearchRevealsExitId(
+      selectedRoom.search_reveals_exit_id != null
+        ? String(selectedRoom.search_reveals_exit_id)
+        : "",
+    );
     setPanelPermanentMinimapLight(!!selectedRoom.permanent_minimap_light);
     setPanelResetDarkLighting(!!selectedRoom.reset_dark_lighting_on_enter);
     setPanelIsSafe(!!selectedRoom.is_safe);
@@ -658,6 +689,14 @@ export default function QffDmPage() {
         description: panelDesc,
         search_text: panelSearch,
         search_chance: sc,
+        search_reward_item_id:
+          panelSearchRewardItemId.trim() === ""
+            ? null
+            : parseInt(panelSearchRewardItemId, 10),
+        search_reveals_exit_id:
+          panelSearchRevealsExitId.trim() === ""
+            ? null
+            : parseInt(panelSearchRevealsExitId, 10),
         permanent_minimap_light: panelPermanentMinimapLight,
         reset_dark_lighting_on_enter: panelResetDarkLighting,
         is_safe: panelIsSafe,
@@ -681,6 +720,8 @@ export default function QffDmPage() {
     panelDesc,
     panelSearch,
     panelSearchChance,
+    panelSearchRewardItemId,
+    panelSearchRevealsExitId,
     panelPermanentMinimapLight,
     panelResetDarkLighting,
     panelIsSafe,
@@ -700,6 +741,18 @@ export default function QffDmPage() {
     let accuracy = parseInt(panelLairTemplateAccuracy, 10);
     if (Number.isNaN(accuracy)) accuracy = 0;
     accuracy = Math.max(-32768, Math.min(32767, accuracy));
+    const desc = panelLairTemplateDescription;
+    const hiddenDesc = panelLairTemplateHiddenDescription;
+    const chanceRaw = panelLairTemplateHiddenChance.trim();
+    let hiddenChance: number | null = null;
+    if (chanceRaw !== "") {
+      const n = parseInt(chanceRaw, 10);
+      if (!Number.isFinite(n)) {
+        setErr("Hidden lore chance must be empty (off) or a number from 1 to 100.");
+        return;
+      }
+      hiddenChance = Math.min(100, Math.max(1, n));
+    }
     setErr(null);
     setPanelLairTemplateCombatBusy(true);
     try {
@@ -707,14 +760,24 @@ export default function QffDmPage() {
       const updated = await dmPatchMonsterTemplate(token, tid, {
         armor,
         accuracy,
+        description: desc,
+        hidden_description: hiddenDesc,
+        hidden_description_chance: hiddenChance,
       });
       setMonsterTemplates((prev) => prev.map((x) => (x.id === tid ? updated : x)));
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Template combat save failed");
+      setErr(e instanceof Error ? e.message : "Template save failed");
     } finally {
       setPanelLairTemplateCombatBusy(false);
     }
-  }, [panelMonsterLairTemplateId, panelLairTemplateArmor, panelLairTemplateAccuracy]);
+  }, [
+    panelMonsterLairTemplateId,
+    panelLairTemplateArmor,
+    panelLairTemplateAccuracy,
+    panelLairTemplateDescription,
+    panelLairTemplateHiddenDescription,
+    panelLairTemplateHiddenChance,
+  ]);
 
   const addExit = useCallback(async () => {
     if (!selectedRoomId || newExitTo == null) return;
@@ -1335,7 +1398,7 @@ export default function QffDmPage() {
                         borderRadius="sm"
                       >
                         <Text fontSize="xs" fontWeight="bold" color="#d8c8b8" mb={2}>
-                          Lair template — physical combat (mitigation / monster hit)
+                          Lair template — combat, inspect text, and hidden lore
                         </Text>
                         <Flex gap={2} wrap="wrap" align="flex-end">
                           <Field.Root maxW="100px">
@@ -1367,13 +1430,50 @@ export default function QffDmPage() {
                               void saveLairTemplateCombatStats();
                             }}
                           >
-                            Save template combat
+                            Save lair template
                           </Button>
                         </Flex>
                         <Text fontSize="xs" color="#888" mt={1}>
                           Armor reduces damage when heroes hit this monster; accuracy helps the
                           monster land hits.
                         </Text>
+                        <Field.Root mt={2}>
+                          <Field.Label fontSize="xs">Description (look / inspect)</Field.Label>
+                          <Textarea
+                            size="sm"
+                            rows={3}
+                            value={panelLairTemplateDescription}
+                            onChange={(e) => setPanelLairTemplateDescription(e.target.value)}
+                            bg="#222"
+                          />
+                        </Field.Root>
+                        <Field.Root mt={2}>
+                          <Field.Label fontSize="xs">
+                            Hidden description (Sense roll; leave blank to disable)
+                          </Field.Label>
+                          <Textarea
+                            size="sm"
+                            rows={3}
+                            value={panelLairTemplateHiddenDescription}
+                            onChange={(e) => setPanelLairTemplateHiddenDescription(e.target.value)}
+                            bg="#222"
+                          />
+                        </Field.Root>
+                        <Field.Root maxW="120px" mt={2}>
+                          <Field.Label fontSize="xs">
+                            Hidden lore chance % (empty = off)
+                          </Field.Label>
+                          <Input
+                            size="sm"
+                            type="number"
+                            min={1}
+                            max={100}
+                            placeholder="e.g. 25"
+                            value={panelLairTemplateHiddenChance}
+                            onChange={(e) => setPanelLairTemplateHiddenChance(e.target.value)}
+                            bg="#222"
+                          />
+                        </Field.Root>
                       </Box>
                     ) : null}
 
@@ -1400,7 +1500,12 @@ export default function QffDmPage() {
                       <Text fontSize="xs" color="#aaa" mb={2}>
                         Same rules as floor items: quest state, not shown if the player already
                         carries this template, and not shown if an unowned floor instance of this
-                        template is in the room.
+                        template is in the room. For a pickup that only appears while a{" "}
+                        <strong>container</strong> is open in play, set this row&apos;s{" "}
+                        <strong>interactable</strong> (via the room-items API) to that
+                        container&apos;s interactable id — heroes use <strong>open</strong> or{" "}
+                        <strong>use</strong> on the container; the server tracks{" "}
+                        <code>opened_container</code> (no separate one-time spawn model).
                       </Text>
                     </Box>
                     {roomItems.length === 0 ? (
@@ -1786,6 +1891,40 @@ export default function QffDmPage() {
                         onChange={(e) => setPanelSearchChance(e.target.value)}
                         bg="#222"
                       />
+                    </Field.Root>
+                    <Field.Root>
+                      <Field.Label>Search reward item (optional, first success per hero)</Field.Label>
+                      <NativeSelectRoot>
+                        <NativeSelectField
+                          value={panelSearchRewardItemId}
+                          onChange={(e) => setPanelSearchRewardItemId(e.target.value)}
+                          bg="#222"
+                        >
+                          <option value="">(none)</option>
+                          {itemTemplates.map((it) => (
+                            <option key={it.id} value={String(it.id)}>
+                              {it.name}
+                            </option>
+                          ))}
+                        </NativeSelectField>
+                      </NativeSelectRoot>
+                    </Field.Root>
+                    <Field.Root>
+                      <Field.Label>Search reveals exit (optional, this room)</Field.Label>
+                      <NativeSelectRoot>
+                        <NativeSelectField
+                          value={panelSearchRevealsExitId}
+                          onChange={(e) => setPanelSearchRevealsExitId(e.target.value)}
+                          bg="#222"
+                        >
+                          <option value="">(none)</option>
+                          {exits.map((ex) => (
+                            <option key={ex.id} value={String(ex.id)}>
+                              {ex.direction} → {ex.to_room_name}
+                            </option>
+                          ))}
+                        </NativeSelectField>
+                      </NativeSelectRoot>
                     </Field.Root>
                     <Field.Root>
                       <Field.Label>Grid cell (0-based)</Field.Label>

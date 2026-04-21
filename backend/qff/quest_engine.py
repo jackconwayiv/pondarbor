@@ -36,15 +36,29 @@ SLOT_ATTRS = (
 )
 
 
+def container_interactable_active_for_character(
+    character: Character, interactable_id: int | None
+) -> bool:
+    """True if this hero may see contents keyed to a container interactable (opened or focused)."""
+    if not interactable_id:
+        return False
+    if character.opened_container_interactable_id == interactable_id:
+        return True
+    if character.container_focus_interactable_id != interactable_id:
+        return False
+    exp = character.container_focus_expires_at
+    if exp and timezone.now() >= exp:
+        return False
+    return True
+
+
 def floor_item_visible_to_character(character: Character, inst: ItemInstance) -> bool:
     """Unowned floor item: if gated by quest state, require that state and no duplicate template."""
     if inst.owner_character_id is not None:
         return True
     if inst.container_interactable_id:
         cid = inst.container_interactable_id
-        if character.container_focus_interactable_id != cid:
-            return False
-        if character.container_focus_expires_at and timezone.now() >= character.container_focus_expires_at:
+        if not container_interactable_active_for_character(character, cid):
             return False
     if not inst.visible_quest_state_id:
         return True
@@ -78,9 +92,9 @@ def room_item_visible_to_character(
 ) -> bool:
     """Room slot: quest gate (if set), not carrying template, no unowned floor instance of template."""
     if room_item.interactable_id:
-        if character.container_focus_interactable_id != room_item.interactable_id:
-            return False
-        if character.container_focus_expires_at and timezone.now() >= character.container_focus_expires_at:
+        if not container_interactable_active_for_character(
+            character, room_item.interactable_id
+        ):
             return False
     if room_item.visible_quest_state_id:
         st = room_item.visible_quest_state
@@ -465,16 +479,13 @@ def handle_interactable_use(character: Character, obj: Interactable) -> list[str
                 ]
             )
             out.append("The passages you've seen are laid bare on your map.")
-    elif k in (
-        Interactable.Kind.CHEST,
-        Interactable.Kind.BARREL,
-        Interactable.Kind.CRATE,
-        Interactable.Kind.SACK,
-    ):
+    elif k == Interactable.Kind.CONTAINER:
+        char.opened_container_interactable_id = obj.pk
         char.container_focus_interactable_id = obj.pk
-        char.container_focus_expires_at = timezone.now() + timedelta(minutes=5)
+        char.container_focus_expires_at = None
         char.save(
             update_fields=[
+                "opened_container_interactable",
                 "container_focus_interactable",
                 "container_focus_expires_at",
                 "updated_at",

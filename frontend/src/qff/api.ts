@@ -119,6 +119,13 @@ export type QffSessionWithCharacter = {
     interactables?: Array<{ slug: string; name: string; kind: string }>;
     monsters?: Array<{ id: number; slug: string; name: string; cur_hp: number; max_hp: number }>;
     gold_piles?: Array<{ id: number; amount: number; label: string }>;
+    /** Opened container in this room (hero-specific); null if none. */
+    opened_container?: {
+      id: number;
+      slug: string;
+      name: string;
+      items: Array<{ id: number; name: string; quantity: number }>;
+    } | null;
   };
   area: { id: number; name: string; theme: QffAreaTheme };
   exits: QffExit[];
@@ -596,6 +603,8 @@ export type DmRoom = {
   description: string;
   search_text: string;
   search_chance: number;
+  search_reward_item_id?: number | null;
+  search_reveals_exit_id?: number | null;
   permanent_minimap_light?: boolean;
   reset_dark_lighting_on_enter?: boolean;
   is_safe?: boolean;
@@ -627,6 +636,7 @@ export type DmMonsterTemplate = {
   dodge_ignore?: number;
   description?: string;
   hidden_description?: string;
+  hidden_description_chance?: number | null;
 };
 
 export async function dmFetchMonsterTemplates(
@@ -688,6 +698,8 @@ export async function dmPatchRoom(
       | "description"
       | "search_text"
       | "search_chance"
+      | "search_reward_item_id"
+      | "search_reveals_exit_id"
       | "permanent_minimap_light"
       | "reset_dark_lighting_on_enter"
       | "is_safe"
@@ -1759,6 +1771,7 @@ export type DmInteractableRow = {
   kind: string;
   inspect_text: string;
   read_text: string;
+  untranslated?: boolean;
   map_reveal_minutes: number | null;
   quest_transition_id: number | null;
   unlocks_exit_id: number | null;

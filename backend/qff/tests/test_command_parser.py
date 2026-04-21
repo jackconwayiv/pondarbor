@@ -4,15 +4,19 @@ from qff.command_parser import (
     ParsedAttack,
     ParsedBuyAbilities,
     ParsedConsumeItem,
+    ParsedEquip,
     ParsedGet,
     ParsedLookDirection,
     ParsedLookInspect,
     ParsedMove,
+    ParsedOpenContainer,
+    ParsedPut,
     ParsedRead,
     ParsedSearch,
     ParsedSell,
     ParsedShopBrowse,
     ParsedShopBuy,
+    ParsedUnequip,
     ParsedUnknown,
     parse_command,
 )
@@ -113,6 +117,58 @@ class CommandParserTests(SimpleTestCase):
         self.assertIsInstance(p3, ParsedRead)
         assert isinstance(p3, ParsedRead)
         self.assertEqual(p3.target, "")
+
+    def test_equip_synonyms(self):
+        w = parse_command("wear hat")
+        self.assertIsInstance(w, ParsedEquip)
+        assert isinstance(w, ParsedEquip)
+        self.assertEqual(w.target, "hat")
+        p = parse_command("put on boots")
+        self.assertIsInstance(p, ParsedEquip)
+        assert isinstance(p, ParsedEquip)
+        self.assertEqual(p.target, "boots")
+
+    def test_unequip_synonyms(self):
+        r = parse_command("remove ring")
+        self.assertIsInstance(r, ParsedUnequip)
+        assert isinstance(r, ParsedUnequip)
+        self.assertEqual(r.target, "ring")
+        t = parse_command("take off cloak")
+        self.assertIsInstance(t, ParsedUnequip)
+        assert isinstance(t, ParsedUnequip)
+        self.assertEqual(t.target, "cloak")
+
+    def test_take_off_not_parsed_as_get(self):
+        p = parse_command("take off ring")
+        self.assertIsInstance(p, ParsedUnequip)
+        assert isinstance(p, ParsedUnequip)
+        self.assertEqual(p.target, "ring")
+
+    def test_grab_alias(self):
+        g = parse_command("grab coin")
+        self.assertIsInstance(g, ParsedGet)
+        assert isinstance(g, ParsedGet)
+        self.assertEqual(g.target, "coin")
+
+    def test_put_place(self):
+        p = parse_command("put scroll")
+        self.assertIsInstance(p, ParsedPut)
+        assert isinstance(p, ParsedPut)
+        self.assertEqual(p.target, "scroll")
+        p2 = parse_command("place torch")
+        self.assertIsInstance(p2, ParsedPut)
+        assert isinstance(p2, ParsedPut)
+        self.assertEqual(p2.target, "torch")
+
+    def test_open_container_parse_type(self):
+        p = parse_command("open chest")
+        self.assertIsInstance(p, ParsedOpenContainer)
+        assert isinstance(p, ParsedOpenContainer)
+        self.assertEqual(p.target, "chest")
+        bare = parse_command("open")
+        self.assertIsInstance(bare, ParsedOpenContainer)
+        assert isinstance(bare, ParsedOpenContainer)
+        self.assertEqual(bare.target, "")
 
     def test_shop_commands(self):
         self.assertIsInstance(parse_command("shop"), ParsedShopBrowse)

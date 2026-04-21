@@ -129,6 +129,8 @@ export default function QffPlayPage() {
   // When true, the shop panel takes over the minimap's grid slot until the player
   // types `map` (or leaves a room with no shops).
   const [shopPanelOpen, setShopPanelOpen] = useState(false);
+  /** When true, container contents replace the minimap (same grid slot as shop). */
+  const [containerPanelOpen, setContainerPanelOpen] = useState(false);
   const prevRoomIdRef = useRef<number | null>(null);
   const logLineIdRef = useRef(0);
   const lastBroadcastIdRef = useRef(0);
@@ -356,8 +358,16 @@ export default function QffPlayPage() {
     if (prev !== null && prev !== roomId) {
       // Left the room — only auto-close if the new room has no shops at all.
       if ((session.shops?.length ?? 0) === 0) setShopPanelOpen(false);
+      setContainerPanelOpen(false);
     }
   }, [session]);
+
+  useEffect(() => {
+    if (!session?.has_character) return;
+    if (!session.room.opened_container) {
+      setContainerPanelOpen(false);
+    }
+  }, [session?.has_character, session?.room?.opened_container]);
 
   const runCommand = useCallback(async (rawLine: string) => {
     const raw = rawLine.trim();
@@ -366,6 +376,7 @@ export default function QffPlayPage() {
     const mapWord = raw.replace(/^>+\s*/, "").replace(/^\//, "").trim().toLowerCase();
     if (mapWord === "map") {
       setShopPanelOpen(false);
+      setContainerPanelOpen(false);
       setMapVisible(true);
       setLine("");
       queueMicrotask(() => inputRef.current?.focus());
@@ -437,6 +448,11 @@ export default function QffPlayPage() {
           verb === "purchase";
         if (shopVerb && (res.session.shops?.length ?? 0) > 0) {
           setShopPanelOpen(true);
+          setContainerPanelOpen(false);
+        }
+        if (verb === "open" && res.session.room.opened_container) {
+          setContainerPanelOpen(true);
+          setShopPanelOpen(false);
         }
         setLogLines((prev) => {
           const pending = optimisticCommandLogIdsRef.current;
@@ -772,6 +788,65 @@ export default function QffPlayPage() {
     </Box>
   );
 
+  const openedForPanel = room.opened_container;
+  const containerPanel =
+    openedForPanel != null ? (
+      <Box
+        position="relative"
+        flexShrink={0}
+        w="100%"
+        minW={0}
+        borderWidth="1px"
+        borderColor={HUD_PANEL_BORDER}
+        borderRadius="md"
+        p={2}
+        bg={HUD_PANEL_BG}
+        fontSize="xs"
+        display="flex"
+        flexDirection="column"
+        overflowY="auto"
+        maxH={{ base: "min(300px, 42vh)", lg: "min(460px, 48vh)" }}
+      >
+        <Flex justify="space-between" align="center" mb={1}>
+          <Text fontWeight="semibold" color={HUD_PANEL_TEXT}>
+            Container
+          </Text>
+          <Text
+            as="button"
+            fontSize="xs"
+            color={HUD_PANEL_TEXT_MUTED}
+            _hover={{ color: HUD_PANEL_TEXT }}
+            onClick={() => {
+              setContainerPanelOpen(false);
+              setMapVisible(true);
+            }}
+            title="Close (or type 'map')"
+          >
+            [map]
+          </Text>
+        </Flex>
+        <Text color={t.accent} fontWeight="medium" mb={1}>
+          {openedForPanel.name}
+        </Text>
+        {openedForPanel.items.length === 0 ? (
+          <Text color={HUD_PANEL_TEXT_MUTED}>Empty.</Text>
+        ) : (
+          <Stack gap={0.5}>
+            {openedForPanel.items.map((it) => (
+              <Text key={it.id} color={HUD_PANEL_TEXT}>
+                {it.name}
+                {it.quantity > 1 ? ` ×${it.quantity}` : ""}
+              </Text>
+            ))}
+          </Stack>
+        )}
+        <Text mt={2} color={HUD_PANEL_TEXT_MUTED} fontSize="2xs">
+          <strong>get</strong> / <strong>take</strong> to pick up · <strong>put</strong> /{" "}
+          <strong>place</strong> to stash · <strong>map</strong> or leave the room to close.
+        </Text>
+      </Box>
+    ) : null;
+
   const characterPanel = (
     <Box
       flexShrink={0}
@@ -1018,14 +1093,18 @@ export default function QffPlayPage() {
             minH={0}
             aria-hidden
           />
-          {!mapMinimal || shopPanelOpen ? (
+          {!mapMinimal || shopPanelOpen || containerPanelOpen ? (
             <Box
               gridColumn={{ base: "1", lg: "2" }}
               gridRow={{ base: "auto", lg: "1 / span 2" }}
               minH={0}
               minW={0}
             >
-              {shopPanelOpen ? shopPanel : mapPanel}
+              {shopPanelOpen
+                ? shopPanel
+                : containerPanelOpen && containerPanel
+                  ? containerPanel
+                  : mapPanel}
             </Box>
           ) : null}
           <Box

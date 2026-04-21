@@ -48,6 +48,22 @@ class Room(models.Model):
     search_text = models.TextField(blank=True)
     # 1–100: roll 1d100 + Sense must meet or exceed this to reveal search_text.
     search_chance = models.PositiveSmallIntegerField(default=50)
+    search_reward_item = models.ForeignKey(
+        "Item",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="rooms_search_reward",
+        help_text="Optional: on first successful search roll per hero, mint one into inventory.",
+    )
+    search_reveals_exit = models.ForeignKey(
+        "RoomExit",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="rooms_search_reveal_exit",
+        help_text="Optional: on first successful search roll per hero, grant CharacterExitSeen for this exit.",
+    )
     # Sconce / permanent light: visible on dark minimap even after temp lighting reset.
     permanent_minimap_light = models.BooleanField(default=False)
     # Entering this room clears character.dark_minimap_lit_room_ids (cave mouth, etc.).
@@ -297,10 +313,11 @@ class Item(models.Model):
         RIZZ = "rizz", "Rizz"
 
     class ConsumeVerb(models.TextChoices):
-        ANY = "", "Any (eat / drink / use)"
+        ANY = "", "Any (eat / drink / use / read)"
         EAT = "eat", "Eat"
         DRINK = "drink", "Drink"
         USE = "use", "Use"
+        READ = "read", "Read"
 
     slug = models.SlugField(max_length=80, unique=True)
     name = models.CharField(max_length=200)
@@ -314,7 +331,7 @@ class Item(models.Model):
     )
     consumable = models.BooleanField(
         default=False,
-        help_text="If true, eat/drink/use can consume from inventory (non-consumables cannot).",
+        help_text="If true, eat/drink/use/read can consume from inventory (non-consumables cannot).",
     )
     consume_verb = models.CharField(
         max_length=8,
@@ -712,6 +729,14 @@ class Character(models.Model):
         related_name="characters_with_focus",
     )
     container_focus_expires_at = models.DateTimeField(null=True, blank=True)
+    # Durable "opened" container for UI / get-put (cleared on room change); use with container kinds.
+    opened_container_interactable = models.ForeignKey(
+        "Interactable",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="characters_with_opened_container",
+    )
     # Combat pacing (armed by /attack); cleared on safe-room disengage.
     next_action_at = models.DateTimeField(null=True, blank=True)
     combat_target_monster = models.ForeignKey(
@@ -763,6 +788,28 @@ class CharacterRoomVisit(models.Model):
             models.UniqueConstraint(
                 fields=["character", "room"],
                 name="qff_charroomvisit_uniq",
+            ),
+        ]
+
+
+class CharacterRoomSearchClaim(models.Model):
+    """Tracks one-time search rewards per hero per room (item mint / exit reveal)."""
+
+    character = models.ForeignKey(
+        Character, on_delete=models.CASCADE, related_name="room_search_claims"
+    )
+    room = models.ForeignKey(
+        Room, on_delete=models.CASCADE, related_name="search_claims"
+    )
+    item_reward_granted = models.BooleanField(default=False)
+    exit_reward_granted = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["character", "room"],
+                name="qff_charroomsearchclaim_uniq",
             ),
         ]
 
@@ -1061,12 +1108,8 @@ class NpcDialogue(models.Model):
 
 class Interactable(models.Model):
     class Kind(models.TextChoices):
-        SIGN = "sign", "Sign"
-        TOME = "tome", "Tome"
-        CHEST = "chest", "Chest"
-        BARREL = "barrel", "Barrel"
-        CRATE = "crate", "Crate"
-        SACK = "sack", "Sack"
+        READABLE = "readable", "Readable"
+        CONTAINER = "container", "Container"
         BUTTON = "button", "Button"
         LEVER = "lever", "Lever"
         SWITCH = "switch", "Switch"
@@ -1082,7 +1125,11 @@ class Interactable(models.Model):
     inspect_text = models.TextField(blank=True)
     read_text = models.TextField(
         blank=True,
-        help_text="Long text for read/tome; falls back to inspect_text when empty.",
+        help_text="Long text for read; falls back to inspect_text when empty.",
+    )
+    untranslated = models.BooleanField(
+        default=False,
+        help_text="If true, heroes without the 👽 glyph see only the alien-language block message.",
     )
     map_reveal_minutes = models.PositiveIntegerField(
         null=True,
@@ -1198,6 +1245,12 @@ class MonsterTemplate(models.Model):
     dodge_ignore = models.SmallIntegerField(default=0)
     description = models.TextField(blank=True)
     hidden_description = models.TextField(blank=True)
+    # 1–100: roll d100+Sense >= this to append hidden_description on look/inspect; null = 50.
+    hidden_description_chance = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text="Sense roll threshold (1–100) for extra monster text; null defaults to 50.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

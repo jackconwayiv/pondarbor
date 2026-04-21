@@ -22,6 +22,7 @@ from qff.models import (
     QuestTransition,
     RoomExit,
     RoomItem,
+    RoomItemCharacterClaim,
     RoomItemSpawn,
 )
 
@@ -108,7 +109,12 @@ def room_item_visible_to_character(
         character, room_item.item_id
     ):
         return False
-    if not room_item.allow_repeat_while_carrying and RoomItemSpawn.objects.filter(
+    if room_item.mint_policy == RoomItem.MintPolicy.ONCE_EVER:
+        if RoomItemCharacterClaim.objects.filter(
+            room_item_id=room_item.id, character_id=character.id
+        ).exists():
+            return False
+    elif not room_item.allow_repeat_while_carrying and RoomItemSpawn.objects.filter(
         room_item_id=room_item.id, character_id=character.id
     ).exists():
         return False
@@ -430,6 +436,14 @@ def find_interactable_in_room(character: Character, query: str) -> Interactable 
     return None
 
 
+def _natural_join_phrases(items: list[str]) -> str:
+    if len(items) == 1:
+        return items[0]
+    if len(items) == 2:
+        return f"{items[0]} and {items[1]}"
+    return ", ".join(items[:-1]) + ", and " + items[-1]
+
+
 @transaction.atomic
 def handle_interactable_use(character: Character, obj: Interactable) -> list[str]:
     assert isinstance(obj, Interactable)
@@ -492,6 +506,25 @@ def handle_interactable_use(character: Character, obj: Interactable) -> list[str
             ]
         )
         out.append(f"You open the {obj.name}.")
+        floor_ids = unowned_floor_item_template_ids_in_room(char.current_room_id)
+        inside: list[str] = []
+        for inst in ItemInstance.objects.filter(
+            room_id=char.current_room_id,
+            container_interactable_id=obj.pk,
+            owner_character__isnull=True,
+        ).select_related("item", "visible_quest_state"):
+            if floor_item_visible_to_character(char, inst):
+                inside.append(display_name_for_instance(inst))
+        for ri in RoomItem.objects.filter(
+            room_id=char.current_room_id,
+            interactable_id=obj.pk,
+        ).select_related("item", "visible_quest_state"):
+            if room_item_visible_to_character(char, ri, floor_ids):
+                inside.append(ri.nickname if ri.nickname else ri.item.name)
+        if inside:
+            out.append(f"Inside: {_natural_join_phrases(inside)}.")
+        else:
+            out.append("It's empty.")
 
     character = char
     if obj.unlocks_exit_id:

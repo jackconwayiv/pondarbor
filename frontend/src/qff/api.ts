@@ -1041,6 +1041,9 @@ export type DmRoomItem = {
   visible_quest_slug: string | null;
   visible_quest_state_slug: string | null;
   allow_repeat_while_carrying: boolean;
+  interactable_id: number | null;
+  /** while_instance = again after minted item gone; once_ever = first get only */
+  mint_policy: "while_instance" | "once_ever";
 };
 
 export async function dmFetchRoomRoomItems(
@@ -1063,6 +1066,8 @@ export async function dmCreateRoomRoomItem(
     nickname?: string;
     visible_quest_state_id?: number | null;
     allow_repeat_while_carrying?: boolean;
+    interactable_id?: number | null;
+    mint_policy?: "while_instance" | "once_ever";
   },
 ): Promise<DmRoomItem> {
   const response = await fetch(qffJoinBase(`/api/v1/qff/dm/rooms/${roomId}/room-items/`), {
@@ -1082,6 +1087,8 @@ export async function dmPatchRoomItem(
     nickname?: string;
     visible_quest_state_id?: number | null;
     allow_repeat_while_carrying?: boolean;
+    interactable_id?: number | null;
+    mint_policy?: "while_instance" | "once_ever";
   },
 ): Promise<DmRoomItem> {
   const response = await fetch(qffJoinBase(`/api/v1/qff/dm/room-items/${roomItemId}/`), {

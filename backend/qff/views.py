@@ -1406,6 +1406,7 @@ def _dm_room_item_dict(ri: RoomItem) -> dict:
         ),
         "allow_repeat_while_carrying": ri.allow_repeat_while_carrying,
         "interactable_id": ri.interactable_id,
+        "mint_policy": ri.mint_policy,
     }
 
 
@@ -1457,6 +1458,15 @@ def dm_room_room_items(request, room_id):
                 )
     else:
         interactable_id = None
+    mp = (request.data.get("mint_policy") or "").strip()
+    mint_policy = RoomItem.MintPolicy.WHILE_INSTANCE
+    if mp == RoomItem.MintPolicy.ONCE_EVER:
+        mint_policy = RoomItem.MintPolicy.ONCE_EVER
+    elif mp and mp != RoomItem.MintPolicy.WHILE_INSTANCE:
+        return Response(
+            {"detail": "mint_policy must be while_instance or once_ever."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     ri = RoomItem.objects.create(
         room=room,
         item_id=item_id,
@@ -1464,6 +1474,7 @@ def dm_room_room_items(request, room_id):
         visible_quest_state_id=visible_quest_state_id,
         allow_repeat_while_carrying=bool(request.data.get("allow_repeat_while_carrying")),
         interactable_id=interactable_id,
+        mint_policy=mint_policy,
     )
     ri = RoomItem.objects.select_related("item", "visible_quest_state__quest").get(pk=ri.pk)
     return Response(_dm_room_item_dict(ri), status=status.HTTP_201_CREATED)
@@ -1518,6 +1529,17 @@ def dm_room_item_detail(request, pk):
                 ri.interactable_id = oid
             else:
                 ri.interactable_id = None
+    if "mint_policy" in request.data:
+        mp = (request.data.get("mint_policy") or "").strip()
+        if mp == RoomItem.MintPolicy.ONCE_EVER:
+            ri.mint_policy = RoomItem.MintPolicy.ONCE_EVER
+        elif mp == RoomItem.MintPolicy.WHILE_INSTANCE:
+            ri.mint_policy = RoomItem.MintPolicy.WHILE_INSTANCE
+        elif mp:
+            return Response(
+                {"detail": "mint_policy must be while_instance or once_ever."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
     ri.save()
     ri = RoomItem.objects.select_related("item", "visible_quest_state__quest").get(pk=ri.pk)
     return Response(_dm_room_item_dict(ri))

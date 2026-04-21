@@ -513,6 +513,16 @@ class ItemInstance(models.Model):
 class RoomItem(models.Model):
     """DM-placed item template in a room; get mints a new ItemInstance per player (not a shared floor row)."""
 
+    class MintPolicy(models.TextChoices):
+        WHILE_INSTANCE = (
+            "while_instance",
+            "Once if item no longer exists (per hero)",
+        )
+        ONCE_EVER = (
+            "once_ever",
+            "Once per character (never again from this slot)",
+        )
+
     room = models.ForeignKey(
         Room,
         on_delete=models.CASCADE,
@@ -547,6 +557,13 @@ class RoomItem(models.Model):
         related_name="container_room_items",
         help_text="If set, this pickup appears only while this container is focused (opened).",
     )
+    mint_policy = models.CharField(
+        max_length=32,
+        choices=MintPolicy.choices,
+        default=MintPolicy.WHILE_INSTANCE,
+        help_text="while_instance: hide while this hero's minted instance still exists. "
+        "once_ever: hide forever after this hero's first successful get from this slot.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -555,6 +572,29 @@ class RoomItem(models.Model):
 
     def __str__(self) -> str:
         return f"{self.room_id} {self.item.name}"
+
+
+class RoomItemCharacterClaim(models.Model):
+    """Permanent per-hero claim for a room-item slot when mint_policy is once_ever (survives item delete)."""
+
+    room_item = models.ForeignKey(
+        RoomItem, on_delete=models.CASCADE, related_name="character_claims"
+    )
+    character = models.ForeignKey(
+        "Character", on_delete=models.CASCADE, related_name="room_item_character_claims"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["room_item", "character"],
+                name="qff_roomitemcharacterclaim_unique_slot_hero",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["room_item", "character"]),
+        ]
 
 
 class RoomItemSpawn(models.Model):

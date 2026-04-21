@@ -361,6 +361,7 @@ def _room_floor_labels(room_id: int, character) -> list[str]:
         ItemInstance.objects.filter(
             room_id=room_id,
             owner_character__isnull=True,
+            container_interactable__isnull=True,
         )
         .select_related("item", "visible_quest_state")
         .order_by("id")

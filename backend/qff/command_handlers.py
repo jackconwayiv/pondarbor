@@ -80,6 +80,7 @@ from qff.models import (
     RoomExit,
     RoomGoldPile,
     RoomItem,
+    RoomItemCharacterClaim,
     RoomItemSpawn,
 )
 from qff.quest_engine import (
@@ -153,16 +154,6 @@ def _character_has_alien_glyph(char: CharacterType) -> bool:
         if normalize_glyph(str(g)) == _ALIEN_GLYPH:
             return True
     return False
-
-
-def _untranslated_readable_block_message(
-    char: CharacterType, interactable: Interactable
-) -> str | None:
-    if not interactable.untranslated:
-        return None
-    if _character_has_alien_glyph(char):
-        return None
-    return "You can't read the alien language."
 
 
 def _touch_activity(char: CharacterType) -> None:
@@ -1264,6 +1255,10 @@ def _handle_get(
                 character_id=char.pk,
                 item_instance_id=dest_pk,
             )
+        if ri.mint_policy == RoomItem.MintPolicy.ONCE_EVER:
+            RoomItemCharacterClaim.objects.get_or_create(
+                room_item_id=ri.pk, character_id=char.pk
+            )
         char.last_activity_at = timezone.now()
         char.save(update_fields=["inventory", "last_activity_at", "updated_at"])
     char = Character.objects.get(pk=char.pk)
@@ -1282,11 +1277,13 @@ def _handle_put(char: CharacterType, target: str) -> list[str]:
     cid = char.opened_container_interactable_id
     if not cid:
         char.save(update_fields=["last_activity_at", "updated_at"])
-        return ["You have nothing open to put that in."]
+        return ["Open a container first — nothing is open to put things into."]
     obj = Interactable.objects.filter(pk=cid, room_id=char.current_room_id).first()
     if not obj:
         char.save(update_fields=["last_activity_at", "updated_at"])
-        return ["You have nothing open to put that in."]
+        return [
+            "Nothing is open to receive that — the container you had open is no longer here."
+        ]
     inst = _find_item_instance_inventory_first(char, q)
     inv = list(char.inventory or [])
     if not inst or inst.pk not in inv:
@@ -1308,7 +1305,9 @@ def _handle_put(char: CharacterType, target: str) -> list[str]:
             return ["You don't have that."]
         if not char.opened_container_interactable_id:
             char.save(update_fields=["last_activity_at", "updated_at"])
-            return ["You have nothing open to put that in."]
+            return [
+                "Nothing is open to put that into anymore — open the container again first."
+            ]
         cid_locked = char.opened_container_interactable_id
         inv = [x for x in inv if x != inst.pk]
         char.inventory = inv
@@ -1860,10 +1859,6 @@ def _handle_read(char: CharacterType, parsed: ParsedRead) -> list[str]:
         return [NARRATIVE_TOO_DARK_MESSAGE]
     obj = find_interactable_in_room(char, target)
     if obj:
-        blocked = _untranslated_readable_block_message(char, obj)
-        if blocked:
-            char.save(update_fields=["last_activity_at", "updated_at"])
-            return [blocked]
         text = (obj.read_text or "").strip() or (obj.inspect_text or "").strip()
         if not text:
             char.save(update_fields=["last_activity_at", "updated_at"])
@@ -1872,6 +1867,8 @@ def _handle_read(char: CharacterType, parsed: ParsedRead) -> list[str]:
             char, char.current_room_id, f"{char.name} reads the {obj.name}."
         )
         char.save(update_fields=["last_activity_at", "updated_at"])
+        if obj.untranslated and not _character_has_alien_glyph(char):
+            return [f"The alien script says something to the effect of: '{text}.'"]
         return [text]
 
     inv = list(char.inventory or [])
@@ -1957,9 +1954,6 @@ def _handle_look_inspect(char: CharacterType, parsed: ParsedLookInspect) -> list
     interactable = find_interactable_in_room(char, target)
     if interactable:
         _look_focus_peers(char, parsed, interactable.name)
-        blocked = _untranslated_readable_block_message(char, interactable)
-        if blocked:
-            return [blocked]
         t = (interactable.inspect_text or "").strip() or f"You see {interactable.name}."
         out = [t]
         if interactable.kind == Interactable.Kind.CONTAINER:

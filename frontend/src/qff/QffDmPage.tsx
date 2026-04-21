@@ -238,6 +238,10 @@ export default function QffDmPage() {
   const [newRoomNickname, setNewRoomNickname] = useState<string>("");
   const [newRoomVisibleQuestId, setNewRoomVisibleQuestId] = useState<string>("");
   const [newRoomVisibleStateId, setNewRoomVisibleStateId] = useState<string>("");
+  const [newRoomItemInteractableId, setNewRoomItemInteractableId] = useState<string>("");
+  const [newRoomMintPolicy, setNewRoomMintPolicy] = useState<"while_instance" | "once_ever">(
+    "while_instance",
+  );
   /** Exits from every room in the selected area — drives map edge markers. */
   const [areaExits, setAreaExits] = useState<DmAreaExit[]>([]);
   const [panelName, setPanelName] = useState("");
@@ -574,6 +578,13 @@ export default function QffDmPage() {
 
   const selectedRoom = rooms.find((r) => r.id === selectedRoomId) ?? null;
 
+  const roomContainerInteractables = useMemo(() => {
+    if (!selectedRoom) return [];
+    return [...allInteractables]
+      .filter((o) => o.room_id === selectedRoom.id && o.kind === "container")
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [allInteractables, selectedRoom]);
+
   useEffect(() => {
     if (!selectedRoom) {
       setPanelName("");
@@ -589,6 +600,8 @@ export default function QffDmPage() {
       setPanelMonsterLairTemplateId("");
       setExits([]);
       setRoomItems([]);
+      setNewRoomItemInteractableId("");
+      setNewRoomMintPolicy("while_instance");
       return;
     }
     setPanelName(selectedRoom.name);
@@ -1513,12 +1526,12 @@ export default function QffDmPage() {
                       <Text fontSize="xs" color="#aaa" mb={2}>
                         Same rules as floor items: quest state, not shown if the player already
                         carries this template, and not shown if an unowned floor instance of this
-                        template is in the room. For a pickup that only appears while a{" "}
-                        <strong>container</strong> is open in play, set this row&apos;s{" "}
-                        <strong>interactable</strong> (via the room-items API) to that
-                        container&apos;s interactable id — heroes use <strong>open</strong> or{" "}
-                        <strong>use</strong> on the container; the server tracks{" "}
-                        <code>opened_container</code> (no separate one-time spawn model).
+                        template is in the room.                         For a pickup that only appears while a{" "}
+                        <strong>container</strong> is open in play, choose that container in{" "}
+                        <strong>Container (optional)</strong> below (or PATCH{" "}
+                        <code>interactable_id</code> via the API). Heroes use{" "}
+                        <strong>open</strong> or <strong>use</strong> on the container; the server
+                        tracks <code>opened_container</code> (no separate interior-slot model).
                       </Text>
                     </Box>
                     {roomItems.length === 0 ? (
@@ -1696,6 +1709,43 @@ export default function QffDmPage() {
                                 </NativeSelectRoot>
                               </Field.Root>
                             </Flex>
+                            <Field.Root flex="1" minW="200px" mt={1}>
+                              <Field.Label fontSize="xs">
+                                Container (optional) — slot only while this is open in play
+                              </Field.Label>
+                              <NativeSelectRoot>
+                                <NativeSelectField
+                                  value={
+                                    ri.interactable_id != null
+                                      ? String(ri.interactable_id)
+                                      : ""
+                                  }
+                                  onChange={async (e) => {
+                                    const raw = e.target.value;
+                                    const oid =
+                                      raw === "" ? null : parseInt(raw, 10);
+                                    const token = await getTokenRef.current();
+                                    const nx = await dmPatchRoomItem(token, ri.id, {
+                                      interactable_id:
+                                        oid != null && Number.isFinite(oid)
+                                          ? oid
+                                          : null,
+                                    });
+                                    setRoomItems((prev) =>
+                                      prev.map((x) => (x.id === ri.id ? nx : x)),
+                                    );
+                                  }}
+                                  bg="#222"
+                                >
+                                  <option value="">— room only (not in a container) —</option>
+                                  {roomContainerInteractables.map((o) => (
+                                    <option key={o.id} value={String(o.id)}>
+                                      {o.name} ({o.slug})
+                                    </option>
+                                  ))}
+                                </NativeSelectField>
+                              </NativeSelectRoot>
+                            </Field.Root>
                             <Flex align="center" gap={2} mt={1}>
                               <Switch.Root
                                 size="sm"
@@ -1720,6 +1770,43 @@ export default function QffDmPage() {
                                 </Switch.Label>
                               </Switch.Root>
                             </Flex>
+                            <Field.Root flex="1" minW="200px" mt={1}>
+                              <Field.Label fontSize="xs">
+                                Per-hero mint (separate from carrying toggle above)
+                              </Field.Label>
+                              <NativeSelectRoot>
+                                <NativeSelectField
+                                  value={ri.mint_policy ?? "while_instance"}
+                                  onChange={async (e) => {
+                                    const v = e.target.value as
+                                      | "while_instance"
+                                      | "once_ever";
+                                    const token = await getTokenRef.current();
+                                    const nx = await dmPatchRoomItem(token, ri.id, {
+                                      mint_policy: v,
+                                    });
+                                    setRoomItems((prev) =>
+                                      prev.map((x) => (x.id === ri.id ? nx : x)),
+                                    );
+                                  }}
+                                  bg="#222"
+                                >
+                                  <option value="while_instance">
+                                    Once if item no longer exists — hero can get again after their
+                                    minted copy is gone (consumed, etc.)
+                                  </option>
+                                  <option value="once_ever">
+                                    Once per character — first successful get only; drop/consume
+                                    does not reopen
+                                  </option>
+                                </NativeSelectField>
+                              </NativeSelectRoot>
+                              <Text fontSize="xs" color="#666" mt={1}>
+                                Once if item no longer exists: hero can take again after their minted
+                                copy is gone. Once per character: first successful get only — drop
+                                or consume does not reopen.
+                              </Text>
+                            </Field.Root>
                           </Stack>
                         );
                       })
@@ -1834,6 +1921,52 @@ export default function QffDmPage() {
                           </NativeSelectRoot>
                         </Field.Root>
                       </Flex>
+                      <Field.Root flex="1" minW="200px">
+                        <Field.Label fontSize="xs">
+                          Container (optional) — mint slot only while open in play
+                        </Field.Label>
+                        <NativeSelectRoot>
+                          <NativeSelectField
+                            value={newRoomItemInteractableId}
+                            onChange={(e) =>
+                              setNewRoomItemInteractableId(e.target.value)
+                            }
+                            bg="#222"
+                          >
+                            <option value="">— room only (not in a container) —</option>
+                            {roomContainerInteractables.map((o) => (
+                              <option key={o.id} value={String(o.id)}>
+                                {o.name} ({o.slug})
+                              </option>
+                            ))}
+                          </NativeSelectField>
+                        </NativeSelectRoot>
+                      </Field.Root>
+                      <Field.Root flex="1" minW="200px">
+                        <Field.Label fontSize="xs">Per-hero mint for this new slot</Field.Label>
+                        <NativeSelectRoot>
+                          <NativeSelectField
+                            value={newRoomMintPolicy}
+                            onChange={(e) =>
+                              setNewRoomMintPolicy(
+                                e.target.value as "while_instance" | "once_ever",
+                              )
+                            }
+                            bg="#222"
+                          >
+                            <option value="while_instance">
+                              Once if item no longer exists (per hero)
+                            </option>
+                            <option value="once_ever">
+                              Once per character (never again from this slot)
+                            </option>
+                          </NativeSelectField>
+                        </NativeSelectRoot>
+                        <Text fontSize="xs" color="#666" mt={1}>
+                          Same mint rules as above: &quot;while instance&quot; vs one lifetime claim
+                          per hero.
+                        </Text>
+                      </Field.Root>
                       <Box>
                         <QffButton
                           type="button"
@@ -1861,6 +1994,9 @@ export default function QffDmPage() {
                             }
                             setErr(null);
                             const token = await getTokenRef.current();
+                            const iRaw = newRoomItemInteractableId.trim();
+                            const iid =
+                              iRaw === "" ? null : parseInt(iRaw, 10);
                             await dmCreateRoomRoomItem(token, selectedRoom!.id, {
                               item_id: id,
                               nickname: newRoomNickname.trim() || undefined,
@@ -1868,10 +2004,15 @@ export default function QffDmPage() {
                                 vsid != null && Number.isFinite(vsid)
                                   ? vsid
                                   : undefined,
+                              interactable_id:
+                                iid != null && Number.isFinite(iid) ? iid : undefined,
+                              mint_policy: newRoomMintPolicy,
                             });
                             setNewRoomNickname("");
                             setNewRoomVisibleQuestId("");
                             setNewRoomVisibleStateId("");
+                            setNewRoomItemInteractableId("");
+                            setNewRoomMintPolicy("while_instance");
                             const next = await dmFetchRoomRoomItems(
                               token,
                               selectedRoom!.id,

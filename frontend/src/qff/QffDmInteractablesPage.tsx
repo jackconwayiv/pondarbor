@@ -21,9 +21,12 @@ import {
   dmFetchAreaExits,
   dmFetchExitMutualPair,
   dmFetchInteractables,
+  dmFetchRoomRoomItems,
   dmPatchInteractable,
+  dmPatchRoomItem,
   type DmAreaExit,
   type DmInteractableRow,
+  type DmRoomItem,
 } from "./api";
 
 type RoomOption = { id: number; name: string; area_id: number; area_name: string };
@@ -155,6 +158,7 @@ export default function QffDmInteractablesPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [createForm, setCreateForm] = useState(emptyForm);
   const [editForm, setEditForm] = useState(emptyForm);
+  const [containerRoomItems, setContainerRoomItems] = useState<DmRoomItem[]>([]);
 
   const loadRooms = useCallback(async () => {
     const token = await getApiAccessToken();
@@ -298,6 +302,30 @@ export default function QffDmInteractablesPage() {
   const selected = selectedId != null ? rows.find((r) => r.id === selectedId) : undefined;
 
   useEffect(() => {
+    if (!isAuthenticated || !isStaff || !selected || selected.kind !== "container") {
+      setContainerRoomItems([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getApiAccessToken();
+        const all = await dmFetchRoomRoomItems(token, selected.room_id);
+        if (!cancelled) {
+          setContainerRoomItems(
+            all.filter((ri) => ri.interactable_id === selected.id),
+          );
+        }
+      } catch (e) {
+        if (!cancelled) setErr(String(e));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isStaff, selected, getApiAccessToken]);
+
+  useEffect(() => {
     if (!selected) {
       setEditForm(emptyForm());
       return;
@@ -418,7 +446,8 @@ export default function QffDmInteractablesPage() {
       </Heading>
       <Text mb={4} color="#889977" fontSize="sm">
         Readable surfaces, containers, levers. Use <strong>read</strong> in play for long read_text;
-        look/inspect use inspect_text. Untranslated + no 👽 glyph shows a block message only.
+        look/inspect use inspect_text. Untranslated: without 👽 glyph, <strong>read</strong> shows
+        approximate wrapped text; look/inspect use inspect_text as usual.
         Kind <strong>sconce</strong> and <strong>map</strong>: players <strong>use</strong> to toggle
         permanent room light and full-map reveal (timed) in dark areas—prefer these over the room
         &quot;permanent minimap light&quot; checkbox. Link a primary exit and optionally its mutual
@@ -549,7 +578,8 @@ export default function QffDmInteractablesPage() {
                 <Switch.Thumb />
               </Switch.Control>
               <Switch.Label fontSize="xs">
-                Untranslated (👽 glyph required for full read / look / inspect)
+                Untranslated (👽 glyph: plain read; without glyph, read shows approximate text;
+                look/inspect unchanged)
               </Switch.Label>
             </Switch.Root>
             <HStack gap={4} flexWrap="wrap">
@@ -721,7 +751,8 @@ export default function QffDmInteractablesPage() {
                   <Switch.Thumb />
                 </Switch.Control>
                 <Switch.Label fontSize="xs">
-                  Untranslated (👽 glyph required for full read / look / inspect)
+                  Untranslated (👽 glyph: plain read; without glyph, read shows approximate text;
+                  look/inspect unchanged)
                 </Switch.Label>
               </Switch.Root>
               <HStack gap={4} flexWrap="wrap">
@@ -768,6 +799,60 @@ export default function QffDmInteractablesPage() {
                   if (m) setEditForm((f) => ({ ...f, unlocks_exit_secondary_id: String(m.id) }));
                 }}
               />
+              {selected.kind === "container" ? (
+                <Box borderLeftWidth="3px" borderColor="#5a6a8a" pl={2} py={2} borderRadius="sm">
+                  <Text fontSize="xs" fontWeight="bold" color="#c8d0e8" mb={1}>
+                    Room items bound to this container
+                  </Text>
+                  <Text fontSize="xs" color="#aaa" mb={2}>
+                    Create or edit slots on the room page (same API); set each row&apos;s
+                    interactable to this id ({selected.id}). Mint policy here matches the room
+                    editor. <strong>Once if item no longer exists:</strong> hero can take again
+                    after their minted copy is gone. <strong>Once per character:</strong> first get
+                    only — drop or consume does not reopen.
+                  </Text>
+                  {containerRoomItems.length === 0 ? (
+                    <Text fontSize="xs" color="#666">
+                      No room items with interactable_id = {selected.id} in this room.
+                    </Text>
+                  ) : (
+                    <Stack gap={2}>
+                      {containerRoomItems.map((ri) => (
+                        <Box key={ri.id} borderTopWidth="1px" borderColor="#333" pt={2}>
+                          <Text fontSize="xs" mb={1}>
+                            {ri.nickname ? `${ri.nickname} (${ri.item_name})` : ri.item_name} #
+                            {ri.id}
+                          </Text>
+                          <Field.Root>
+                            <Field.Label fontSize="xs">Per-hero mint</Field.Label>
+                            <NativeSelectRoot size="sm">
+                              <NativeSelectField
+                                value={ri.mint_policy ?? "while_instance"}
+                                onChange={async (e) => {
+                                  const v = e.target.value as "while_instance" | "once_ever";
+                                  const token = await getApiAccessToken();
+                                  const nx = await dmPatchRoomItem(token, ri.id, {
+                                    mint_policy: v,
+                                  });
+                                  setContainerRoomItems((prev) =>
+                                    prev.map((x) => (x.id === ri.id ? nx : x)),
+                                  );
+                                }}
+                                bg="#222"
+                              >
+                                <option value="while_instance">
+                                  Once if item no longer exists (per hero)
+                                </option>
+                                <option value="once_ever">Once per character (never again)</option>
+                              </NativeSelectField>
+                            </NativeSelectRoot>
+                          </Field.Root>
+                        </Box>
+                      ))}
+                    </Stack>
+                  )}
+                </Box>
+              ) : null}
               <QffButton onClick={() => onSaveEdit()}>Save changes</QffButton>
             </Stack>
           </Box>

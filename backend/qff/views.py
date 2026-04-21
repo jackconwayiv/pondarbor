@@ -1,10 +1,12 @@
 import json
 import logging
+import random
 import time
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.db.utils import OperationalError
 from django.db.models import Max
 from django.db.models.deletion import ProtectedError
 from django.shortcuts import get_object_or_404
@@ -62,6 +64,33 @@ from qff.session_payload import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _retry_on_deadlock(fn, *, attempts: int = 3, base_sleep: float = 0.02):
+    """Run ``fn``; on Postgres deadlock, sleep briefly with jitter and retry."""
+    last_exc: OperationalError | None = None
+    for attempt in range(attempts):
+        try:
+            return fn()
+        except OperationalError as e:
+            last_exc = e
+            if attempt >= attempts - 1:
+                raise
+            cause = getattr(e, "__cause__", None)
+            msg = str(e).lower()
+            is_deadlock = "deadlock" in msg
+            try:
+                from psycopg.errors import DeadlockDetected
+
+                if isinstance(cause, DeadlockDetected):
+                    is_deadlock = True
+            except ImportError:
+                pass
+            if not is_deadlock:
+                raise
+            time.sleep(base_sleep * (1.0 + random.random()))
+    assert last_exc is not None
+    raise last_exc
 
 
 def _get_character(user):
@@ -147,9 +176,28 @@ def session_leave_view(request):
     char = _get_character(request.user)
     if not char:
         return Response({"ok": False}, status=status.HTTP_404_NOT_FOUND)
-    messages = execute_command(char, ParsedLeave())
-    run_lazy_simulation(notify_rooms=False)
-    char.refresh_from_db()
+
+    try:
+        messages: list[str] = []
+        with transaction.atomic():
+            fresh = _get_character(request.user)
+            if fresh:
+                messages = list(execute_command(fresh, ParsedLeave()))
+        _retry_on_deadlock(lambda: run_lazy_simulation(notify_rooms=False))
+    except Exception:
+        logger.exception(
+            "qff.session_leave_view failed user_id=%s character_pk=%s",
+            getattr(request.user, "pk", None),
+            getattr(char, "pk", None),
+        )
+        return Response(
+            {"ok": False, "detail": "A server error occurred while leaving."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    char = _get_character(request.user)
+    if not char:
+        return Response({"ok": False}, status=status.HTTP_404_NOT_FOUND)
     pending = char.pending_leave_at is not None and char.is_in_realm
     wait_seconds = 0
     if pending and char.pending_leave_at is not None:
@@ -358,13 +406,19 @@ def command_view(request):
     wall_start = time.perf_counter()
 
     try:
+        parsed = None
+        messages: list[str] = []
+        echo_command = False
+        sync_ms = exec_ms = 0.0
+        max_after_exec = 0
+
         with transaction.atomic():
             t_sync = time.perf_counter()
-            char = sync_character_world_before_session(char)
+            char_work = sync_character_world_before_session(char)
             sync_ms = (time.perf_counter() - t_sync) * 1000
             # Service-NPC y/n prompt (healer_pay / innkeeper_stay) consumes the next
             # command when set; non-y/n clears the prompt and falls through to parse.
-            prompt_messages = maybe_handle_pending_prompt(char, line)
+            prompt_messages = maybe_handle_pending_prompt(char_work, line)
             if prompt_messages is not None:
                 parsed = None
                 messages = list(prompt_messages)
@@ -372,7 +426,7 @@ def command_view(request):
             else:
                 parsed = parse_command(line)
                 t0 = time.perf_counter()
-                messages = list(execute_command(char, parsed, world_sync=False))
+                messages = list(execute_command(char_work, parsed, world_sync=False))
                 exec_ms = (time.perf_counter() - t0) * 1000
             echo_command = should_echo_command(parsed, messages)
             if messages and messages[0] == "You try that, but nothing happens.":
@@ -386,24 +440,30 @@ def command_view(request):
                 )
             # Max broadcast id after execute_command, before lazy sim — splits ambient/exec vs combat sim.
             max_after_exec = RoomBroadcast.objects.aggregate(m=Max("id"))["m"] or 0
-            char = _get_character(request.user)
-            if char is None:
-                char = _get_character_by_pk(character_pk)
+
+        def _sim_session_and_response():
+            """Post-commit path only; safe to retry on deadlock without re-running the command."""
+            sim_ms = session_ms = 0.0
             affected: list[int] = []
-            if char:
+            msgs_out = list(messages)
+            char_after = _get_character(request.user)
+            if char_after is None:
+                char_after = _get_character_by_pk(character_pk)
+            if char_after:
                 t1 = time.perf_counter()
                 affected = run_lazy_simulation(notify_rooms=False)
                 sim_ms = (time.perf_counter() - t1) * 1000
-                char = _get_character(request.user)
-                if char is None:
-                    char = _get_character_by_pk(character_pk)
+                char_after = _get_character(request.user)
+                if char_after is None:
+                    char_after = _get_character_by_pk(character_pk)
             else:
                 sim_ms = 0.0
+
             enc_lines: list[str] = []
-            if char and encumbrance_excess(char) > 0:
+            if char_after and encumbrance_excess(char_after) > 0:
                 enc_lines.append("You are encumbered!")
-            messages.extend(enc_lines)
-            if char is None:
+            msgs_out.extend(enc_lines)
+            if char_after is None:
                 logger.error(
                     "qff.command character missing after exec user_id=%s character_pk=%s line=%r",
                     getattr(request.user, "pk", None),
@@ -413,56 +473,39 @@ def command_view(request):
                 return Response(
                     {
                         "detail": "Character not found after command.",
-                        "messages": messages,
+                        "messages": msgs_out,
                         "session": {"has_character": False},
                         "echo_command": echo_command,
                     },
                     status=status.HTTP_410_GONE,
                 )
             t2 = time.perf_counter()
-            session = build_session_for_character(char, world_sync=False)
+            session = build_session_for_character(char_after, world_sync=False)
             session_ms = (time.perf_counter() - t2) * 1000
             # Chronological narrative: room broadcasts during command, then command lines, then sim, then encumbrance.
             raw_log = session.get("action_log") or []
-            if raw_log and char:
+            if raw_log and char_after:
                 exec_part = [
                     e for e in raw_log if _action_log_entry_id(e) <= max_after_exec
                 ]
                 sim_part = [e for e in raw_log if _action_log_entry_id(e) > max_after_exec]
                 cmd_only = (
-                    messages[: -len(enc_lines)] if enc_lines else list(messages)
+                    msgs_out[: -len(enc_lines)] if enc_lines else list(msgs_out)
                 )
                 synth_cmd = [{"id": -(i + 1), "text": m} for i, m in enumerate(cmd_only)]
                 synth_enc = [{"id": -(200 + i), "text": m} for i, m in enumerate(enc_lines)]
                 session["action_log"] = exec_part + synth_cmd + sim_part + synth_enc
-            room_ids = frozenset(affected) | {old_room_id, char.current_room_id}
+            room_ids = frozenset(affected) | {old_room_id, char_after.current_room_id}
+            schedule_notify_qff_rooms(room_ids)
 
-            def _queue_notify() -> None:
-                schedule_notify_qff_rooms(room_ids)
-
-            transaction.on_commit(_queue_notify)
-
-        total_ms = (time.perf_counter() - wall_start) * 1000
-        uid = getattr(request.user, "pk", None)
-        session_pct = (100.0 * session_ms / total_ms) if total_ms > 0 else 0.0
-        # Work outside exec/sim/session: _get_character (×2), ineffective-input insert, encumbrance, etc.
-        gap_ms = max(0.0, total_ms - sync_ms - exec_ms - sim_ms - session_ms)
-        parsed_kind = type(parsed).__name__
-        logger.debug(
-            "qff.command user_id=%s parsed=%s sync_ms=%.1f exec_ms=%.1f sim_ms=%.1f session_ms=%.1f gap_ms=%.1f total_ms=%.1f session_pct=%.1f",
-            uid,
-            parsed_kind,
-            sync_ms,
-            exec_ms,
-            sim_ms,
-            session_ms,
-            gap_ms,
-            total_ms,
-            session_pct,
-        )
-        if getattr(settings, "QFF_COMMAND_TIMING_LOG", False):
-            logger.info(
-                "qff_command_timing user_id=%s parsed=%s sync_ms=%.2f exec_ms=%.2f sim_ms=%.2f session_ms=%.2f gap_ms=%.2f total_ms=%.2f session_pct=%.2f",
+            total_ms = (time.perf_counter() - wall_start) * 1000
+            uid = getattr(request.user, "pk", None)
+            session_pct = (100.0 * session_ms / total_ms) if total_ms > 0 else 0.0
+            # Work outside exec/sim/session: _get_character (×2), ineffective-input insert, encumbrance, etc.
+            gap_ms = max(0.0, total_ms - sync_ms - exec_ms - sim_ms - session_ms)
+            parsed_kind = type(parsed).__name__
+            logger.debug(
+                "qff.command user_id=%s parsed=%s sync_ms=%.1f exec_ms=%.1f sim_ms=%.1f session_ms=%.1f gap_ms=%.1f total_ms=%.1f session_pct=%.1f",
                 uid,
                 parsed_kind,
                 sync_ms,
@@ -473,10 +516,25 @@ def command_view(request):
                 total_ms,
                 session_pct,
             )
+            if getattr(settings, "QFF_COMMAND_TIMING_LOG", False):
+                logger.info(
+                    "qff_command_timing user_id=%s parsed=%s sync_ms=%.2f exec_ms=%.2f sim_ms=%.2f session_ms=%.2f gap_ms=%.2f total_ms=%.2f session_pct=%.2f",
+                    uid,
+                    parsed_kind,
+                    sync_ms,
+                    exec_ms,
+                    sim_ms,
+                    session_ms,
+                    gap_ms,
+                    total_ms,
+                    session_pct,
+                )
 
-        return Response(
-            {"messages": messages, "session": session, "echo_command": echo_command}
-        )
+            return Response(
+                {"messages": msgs_out, "session": session, "echo_command": echo_command}
+            )
+
+        return _retry_on_deadlock(_sim_session_and_response)
     except Exception:
         logger.exception(
             "qff.command_view failed user_id=%s character_pk=%s line=%r",

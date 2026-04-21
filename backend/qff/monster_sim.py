@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import random
 from datetime import timedelta
 
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models import Q
 from django.utils import timezone
 
@@ -40,6 +41,11 @@ from qff.models import (
     RoomGoldPile,
 )
 from qff.realtime import notify_qff_rooms
+
+logger = logging.getLogger(__name__)
+
+# Serialize lazy sim across concurrent requests (Postgres advisory lock).
+QFF_LAZY_SIM_LOCK_KEY = 0x5146465F53494D00
 
 
 def add_gold_to_room_floor(room_id: int, amount: int) -> None:
@@ -251,7 +257,7 @@ def flush_bind_monsters_with_room_heroes(now) -> set[int]:
     """Bind and arm any monster sharing a room with active heroes (no move required)."""
     affected: set[int] = set()
     th = presence_threshold()
-    room_ids = (
+    room_ids = sorted(
         Character.objects.filter(
             last_activity_at__gte=th,
             is_dead=False,
@@ -1043,7 +1049,7 @@ def _revive_heroes(now) -> None:
         is_dead=True,
         died_at__isnull=False,
         died_at__lte=now - timedelta(seconds=COMBAT_ROUND_SECONDS),
-    )
+    ).order_by("id")
     for h in due:
         rid = h.spawn_room_id
         h.is_dead = False
@@ -1212,7 +1218,7 @@ def flush_pending_leaves(now) -> set[int]:
         is_in_realm=True,
         pending_leave_at__isnull=False,
         pending_leave_at__lte=now,
-    )
+    ).order_by("id")
     for hero in due:
         affected.add(_boot_hero_to_lobby(hero))
     return affected
@@ -1232,7 +1238,7 @@ def flush_afk_boots(now) -> set[int]:
         is_dead=False,
         is_in_realm=True,
         last_activity_at__lt=threshold,
-    )
+    ).order_by("id")
     for hero in due:
         affected.add(_boot_hero_to_lobby(hero))
     return affected
@@ -1242,6 +1248,13 @@ def run_lazy_simulation(now=None, *, notify_rooms: bool = True) -> list[int]:
     now = now or timezone.now()
     rooms: set[int] = set()
     with transaction.atomic():
+        if connection.vendor == "postgresql":
+            with connection.cursor() as cur:
+                cur.execute("SELECT pg_try_advisory_xact_lock(%s)", [QFF_LAZY_SIM_LOCK_KEY])
+                got = cur.fetchone()[0]
+            if not got:
+                logger.debug("run_lazy_simulation skipped: advisory lock not acquired")
+                return []
         rooms |= maybe_spawn_lairs(now)
         rooms |= flush_pursuit_steps(now)
         rooms |= flush_pending_leaves(now)

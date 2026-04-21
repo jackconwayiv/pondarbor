@@ -4,6 +4,7 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from qff.combat_math import (
+    apply_damage_swing,
     clamp_hit_chance,
     compute_base_damage,
     compute_crit_chance,
@@ -17,6 +18,7 @@ from qff.combat_math import (
     level_factor,
     resolve_physical_strike,
 )
+from qff.constants import UNARMED_WEAPON_RATING
 
 
 class CombatMathFormulaTests(TestCase):
@@ -109,20 +111,21 @@ class ResolvePhysicalStrikeTests(TestCase):
     def test_hit_not_crit(self):
         with patch("qff.combat_math.roll_d100", side_effect=[50, 99]), patch(
             "qff.combat_math.random.random", return_value=0.99
-        ):
+        ), patch("qff.combat_math.random.randint", return_value=0):
             r = resolve_physical_strike(self._sample_attacker(), self._sample_defender())
         self.assertEqual(r.outcome, "hit")
         self.assertFalse(r.was_crit)
         self.assertGreater(r.damage, 0)
+        self.assertEqual(r.rolled_base, r.base_damage)
 
     def test_crit_branch(self):
         with patch("qff.combat_math.roll_d100", side_effect=[50, 99]), patch(
             "qff.combat_math.random.random", return_value=0.0
-        ):
+        ), patch("qff.combat_math.random.randint", return_value=0):
             r = resolve_physical_strike(self._sample_attacker(), self._sample_defender())
         self.assertEqual(r.outcome, "crit")
         self.assertTrue(r.was_crit)
-        self.assertGreaterEqual(r.damage, r.base_damage)
+        self.assertGreaterEqual(r.damage, r.rolled_base)
 
     def test_mitigation_reduces_damage(self):
         atk = self._sample_attacker()
@@ -130,7 +133,7 @@ class ResolvePhysicalStrikeTests(TestCase):
         hard = {**soft, "armor": 200}
         with patch("qff.combat_math.roll_d100", side_effect=[50, 99, 50, 99]), patch(
             "qff.combat_math.random.random", return_value=0.99
-        ):
+        ), patch("qff.combat_math.random.randint", return_value=0):
             r_soft = resolve_physical_strike(atk, soft)
             r_hard = resolve_physical_strike(atk, hard)
         self.assertEqual(r_soft.outcome, "hit")
@@ -142,7 +145,95 @@ class ResolvePhysicalStrikeTests(TestCase):
         dfn = self._sample_defender()
         with patch("qff.combat_math.roll_d100", side_effect=[50, 99]), patch(
             "qff.combat_math.random.random", return_value=0.99
-        ):
+        ), patch("qff.combat_math.random.randint", return_value=0):
             r = resolve_physical_strike(atk, dfn, flat_base_damage=3)
         self.assertEqual(r.outcome, "hit")
         self.assertEqual(r.base_damage, 3)
+        self.assertEqual(r.rolled_base, 3)
+
+    def test_level_one_gains_one_unarmed_base_damage_is_five(self):
+        """Default Character has gains=1; unarmed weapon rating is 1 → (3×1+2×1)×LevelFactor(1)=5."""
+        self.assertEqual(UNARMED_WEAPON_RATING, 1)
+        self.assertEqual(compute_base_damage(UNARMED_WEAPON_RATING, 1, 1), 5)
+
+    def test_monster_paper_in_range_then_positive_swing_can_exceed_template_max(self):
+        """Paper is the template-interval roll (here fixed 3); +L can push above damage_max."""
+        atk = {**self._sample_attacker(), "level": 1}
+        dfn = self._sample_defender()
+        with patch("qff.combat_math.roll_d100", side_effect=[50, 99]), patch(
+            "qff.combat_math.random.random", return_value=0.99
+        ), patch("qff.combat_math.random.randint", return_value=1):
+            r = resolve_physical_strike(atk, dfn, flat_base_damage=3)
+        self.assertEqual(r.outcome, "hit")
+        self.assertEqual(r.base_damage, 3)
+        self.assertEqual(r.rolled_base, 4)
+        self.assertEqual(r.damage, 4)
+
+    def test_monster_flat_base_damage_mitigation_matches_formula(self):
+        """``flat_base_damage`` is monster paper (uniform [min,max] in sim); mitigation matches Armor/(Armor+Scale)."""
+        atk = {
+            "atk_moves": 0,
+            "weapon_accuracy": 0,
+            "weapon": 0,
+            "gains": 1,
+            "level": 1,
+            "sense": 0,
+            "crit_chance_bonus_pct": 0,
+            "crit_damage_bonus": 0.0,
+            "penetration": 0,
+            "dodge_reduction": 0,
+            "dodge_ignore": 0,
+        }
+        dfn = {"def_moves": 0, "dodge_bonus": 0, "armor": 100}
+        with patch("qff.combat_math.roll_d100", side_effect=[50, 99]), patch(
+            "qff.combat_math.random.random", return_value=0.99
+        ), patch("qff.combat_math.random.randint", return_value=0):
+            r = resolve_physical_strike(atk, dfn, flat_base_damage=10)
+        self.assertEqual(r.outcome, "hit")
+        self.assertEqual(r.base_damage, 10)
+        self.assertEqual(r.rolled_base, 10)
+        dr = compute_damage_reduction(100, 0)
+        self.assertAlmostEqual(dr, 0.5)
+        self.assertEqual(r.damage, compute_final_damage(10, dr))
+
+    def test_crit_damage_branch_uses_floor_base_times_multiplier(self):
+        atk = self._sample_attacker()
+        dfn = self._sample_defender()
+        base = compute_base_damage(atk["weapon"], atk["gains"], atk["level"])
+        mult = compute_crit_multiplier(atk["level"], atk["crit_damage_bonus"])
+        crit_raw = compute_crit_damage(base, mult)
+        with patch("qff.combat_math.roll_d100", side_effect=[50, 99]), patch(
+            "qff.combat_math.random.random", return_value=0.0
+        ), patch("qff.combat_math.random.randint", return_value=0):
+            r = resolve_physical_strike(atk, dfn)
+        self.assertEqual(r.outcome, "crit")
+        self.assertEqual(r.base_damage, base)
+        self.assertEqual(r.rolled_base, base)
+        self.assertEqual(r.damage, compute_final_damage(crit_raw, 0.0))
+
+    def test_apply_damage_swing(self):
+        with patch("qff.combat_math.random.randint", return_value=-2):
+            self.assertEqual(apply_damage_swing(5, 2), 3)
+        with patch("qff.combat_math.random.randint", return_value=2):
+            self.assertEqual(apply_damage_swing(5, 2), 7)
+        with patch("qff.combat_math.random.randint", return_value=-10):
+            self.assertEqual(apply_damage_swing(5, 10), 1)
+
+    def test_damage_swing_level_one_band_on_starter_base(self):
+        """Paper base 5 at level 1, L=1 → rolled in {4,5,6} before armor."""
+        atk = {
+            **self._sample_attacker(),
+            "weapon": UNARMED_WEAPON_RATING,
+            "gains": 1,
+        }
+        dfn = self._sample_defender()
+        self.assertEqual(compute_base_damage(UNARMED_WEAPON_RATING, 1, 1), 5)
+        for u in (-1, 0, 1):
+            with patch("qff.combat_math.roll_d100", side_effect=[50, 99]), patch(
+                "qff.combat_math.random.random", return_value=0.99
+            ), patch("qff.combat_math.random.randint", return_value=u):
+                r = resolve_physical_strike(atk, dfn)
+            self.assertEqual(r.outcome, "hit")
+            self.assertEqual(r.base_damage, 5)
+            self.assertEqual(r.rolled_base, 5 + u)
+            self.assertEqual(r.damage, 5 + u)

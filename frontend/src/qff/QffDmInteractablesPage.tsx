@@ -17,8 +17,10 @@ import QffButton from "./QffButton";
 import {
   dmCreateInteractable,
   dmFetchAllDmRooms,
+  dmFetchAreaExits,
   dmFetchInteractables,
   dmPatchInteractable,
+  type DmAreaExit,
   type DmInteractableRow,
 } from "./api";
 
@@ -26,6 +28,12 @@ type RoomOption = { id: number; name: string; area_id: number; area_name: string
 
 function roomLabel(r: RoomOption): string {
   return `${r.area_name} — ${r.name}`;
+}
+
+function exitPickLabel(ex: DmAreaExit, roomList: RoomOption[]): string {
+  const from = roomList.find((r) => r.id === ex.from_room_id);
+  const fromName = from?.name ?? `room ${ex.from_room_id}`;
+  return `#${ex.id} · ${fromName} · ${ex.direction} → ${ex.to_room_name}`;
 }
 
 const KIND_OPTIONS = [
@@ -64,6 +72,8 @@ export default function QffDmInteractablesPage() {
   const [err, setErr] = useState<string | null>(null);
   const [roomFilter, setRoomFilter] = useState("");
   const [rooms, setRooms] = useState<RoomOption[]>([]);
+  const [createAreaExits, setCreateAreaExits] = useState<DmAreaExit[]>([]);
+  const [editAreaExits, setEditAreaExits] = useState<DmAreaExit[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [createForm, setCreateForm] = useState(emptyForm);
   const [editForm, setEditForm] = useState(emptyForm);
@@ -89,6 +99,53 @@ export default function QffDmInteractablesPage() {
     const data = await dmFetchInteractables(token, roomId);
     setRows(data);
   }, [getApiAccessToken, roomFilter]);
+
+  const loadExitsForRoomId = useCallback(
+    async (roomIdStr: string, which: "create" | "edit") => {
+      const rid = parseInt(roomIdStr.trim(), 10);
+      if (!Number.isFinite(rid)) {
+        if (which === "create") setCreateAreaExits([]);
+        else setEditAreaExits([]);
+        return;
+      }
+      const room = rooms.find((r) => r.id === rid);
+      if (!room) {
+        if (which === "create") setCreateAreaExits([]);
+        else setEditAreaExits([]);
+        return;
+      }
+      const token = await getApiAccessToken();
+      const exits = await dmFetchAreaExits(token, room.area_id);
+      if (which === "create") {
+        setCreateAreaExits(exits);
+        setCreateForm((f) => {
+          if (!f.unlocks_exit_id.trim()) return f;
+          const eid = parseInt(f.unlocks_exit_id, 10);
+          if (Number.isFinite(eid) && exits.some((e) => e.id === eid)) return f;
+          return { ...f, unlocks_exit_id: "" };
+        });
+      } else {
+        setEditAreaExits(exits);
+        setEditForm((f) => {
+          if (!f.unlocks_exit_id.trim()) return f;
+          const eid = parseInt(f.unlocks_exit_id, 10);
+          if (Number.isFinite(eid) && exits.some((e) => e.id === eid)) return f;
+          return { ...f, unlocks_exit_id: "" };
+        });
+      }
+    },
+    [getApiAccessToken, rooms],
+  );
+
+  useEffect(() => {
+    if (!isAuthenticated || !isStaff || rooms.length === 0) return;
+    loadExitsForRoomId(createForm.room_id, "create").catch((e) => setErr(String(e)));
+  }, [isAuthenticated, isStaff, rooms, createForm.room_id, loadExitsForRoomId]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isStaff || rooms.length === 0) return;
+    loadExitsForRoomId(editForm.room_id, "edit").catch((e) => setErr(String(e)));
+  }, [isAuthenticated, isStaff, rooms, editForm.room_id, loadExitsForRoomId]);
 
   useEffect(() => {
     if (!isAuthenticated || !isStaff) return;
@@ -350,13 +407,24 @@ export default function QffDmInteractablesPage() {
                   }
                 />
               </Field.Root>
-              <Field.Root maxW="140px">
-                <Field.Label fontSize="xs">unlocks_exit_id</Field.Label>
-                <Input
-                  size="sm"
-                  value={createForm.unlocks_exit_id}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, unlocks_exit_id: e.target.value }))}
-                />
+              <Field.Root flex="1" minW="280px" maxW="520px">
+                <Field.Label fontSize="xs">unlocks_exit (same area as room)</Field.Label>
+                <NativeSelectRoot size="sm">
+                  <NativeSelectField
+                    value={createForm.unlocks_exit_id}
+                    onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+                      setCreateForm((f) => ({ ...f, unlocks_exit_id: e.target.value }))
+                    }
+                    bg="#222"
+                  >
+                    <option value="">(none)</option>
+                    {createAreaExits.map((ex) => (
+                      <option key={ex.id} value={String(ex.id)}>
+                        {exitPickLabel(ex, rooms)}
+                      </option>
+                    ))}
+                  </NativeSelectField>
+                </NativeSelectRoot>
               </Field.Root>
             </HStack>
             <QffButton onClick={() => onCreate()}>Create interactable</QffButton>
@@ -493,13 +561,24 @@ export default function QffDmInteractablesPage() {
                     }
                   />
                 </Field.Root>
-                <Field.Root maxW="140px">
-                  <Field.Label fontSize="xs">unlocks_exit_id</Field.Label>
-                  <Input
-                    size="sm"
-                    value={editForm.unlocks_exit_id}
-                    onChange={(e) => setEditForm((f) => ({ ...f, unlocks_exit_id: e.target.value }))}
-                  />
+                <Field.Root flex="1" minW="280px" maxW="520px">
+                  <Field.Label fontSize="xs">unlocks_exit (same area as room)</Field.Label>
+                  <NativeSelectRoot size="sm">
+                    <NativeSelectField
+                      value={editForm.unlocks_exit_id}
+                      onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+                        setEditForm((f) => ({ ...f, unlocks_exit_id: e.target.value }))
+                      }
+                      bg="#222"
+                    >
+                      <option value="">(none)</option>
+                      {editAreaExits.map((ex) => (
+                        <option key={ex.id} value={String(ex.id)}>
+                          {exitPickLabel(ex, rooms)}
+                        </option>
+                      ))}
+                    </NativeSelectField>
+                  </NativeSelectRoot>
                 </Field.Root>
               </HStack>
               <QffButton onClick={() => onSaveEdit()}>Save changes</QffButton>

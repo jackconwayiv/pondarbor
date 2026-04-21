@@ -842,6 +842,46 @@ class MonsterCombatTests(TestCase):
         self.assertFalse(self.monster.monster_strike_pending)
         self.assertGreater(self.monster.next_action_at, now)
 
+    def test_flush_combat_at_most_one_enemy_hit_broadcast_per_due_tick(self):
+        """Regression: each monster resolves at most one strike pass per flush_combat_rounds call."""
+        now = timezone.now()
+        max_id_before = RoomBroadcast.objects.aggregate(m=Max("id"))["m"] or 0
+        self.hero.current_room_id = self.room_danger.id
+        self.hero.last_activity_at = now
+        self.hero.save(update_fields=["current_room", "last_activity_at", "updated_at"])
+        self.monster.next_action_at = now - timedelta(seconds=1)
+        self.monster.monster_strike_pending = False
+        self.monster.engaged_character_id = self.hero.pk
+        self.monster.save(
+            update_fields=[
+                "next_action_at",
+                "monster_strike_pending",
+                "engaged_character",
+                "updated_at",
+            ]
+        )
+        hit = StrikeResult(
+            outcome="hit",
+            damage=1,
+            base_damage=1,
+            damage_after_mitigation=1,
+            was_crit=False,
+            hit_chance=50,
+            effective_dodge_chance=5,
+            crit_chance=0.05,
+        )
+        with patch("qff.monster_sim.resolve_physical_strike", return_value=hit):
+            flush_combat_rounds(now)
+        with patch("qff.monster_sim.resolve_physical_strike", return_value=hit):
+            flush_combat_rounds(now)
+        hits = RoomBroadcast.objects.filter(
+            id__gt=max_id_before,
+            room_id=self.room_danger.id,
+            target_character_id=self.hero.pk,
+            log_tone="enemy_hit",
+        ).count()
+        self.assertEqual(hits, 1)
+
     def test_engage_monsters_arms_engaged_but_unarmed_instance(self):
         """Second monster with only an engagement FK must get a combat clock on hero enter."""
         na_armed = timezone.now() + timedelta(seconds=50)

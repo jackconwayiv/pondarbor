@@ -795,10 +795,13 @@ def _resolve_monster_strike(monster: MonsterInstance, now) -> bool:
     lo, hi = int(tpl.damage_min), int(tpl.damage_max)
     if hi < lo:
         lo, hi = hi, lo
-    rolled = random.randint(lo, hi)
+    # Paper damage: one uniform roll on [damage_min, damage_max] inclusive.
+    # resolve_physical_strike then applies ±L (L = max(1, template.level)), so
+    # final pre-mitigation damage can exceed damage_max (e.g. 3 + L at level 1 → 4).
+    paper_damage = random.randint(lo, hi)
     atk = monster_attacker_stats(tpl)
     dfn = hero_defender_stats(hero)
-    res = resolve_physical_strike(atk, dfn, flat_base_damage=rolled)
+    res = resolve_physical_strike(atk, dfn, flat_base_damage=paper_damage)
     mname = monster.template.name
     if res.outcome == "miss":
         _narrate(
@@ -1159,6 +1162,7 @@ def flush_combat_rounds(now) -> set[int]:
                     actors.append((_initiative_roll_hero(hi), "h", pk))
         actors.sort(key=lambda x: (-x[0], x[1], x[2]))
 
+        # Each monster pk is processed at most once per room per tick (one strike cadence step).
         seen_m: set[int] = set()
         seen_h: set[int] = set()
         for _roll, kind, pk in actors:

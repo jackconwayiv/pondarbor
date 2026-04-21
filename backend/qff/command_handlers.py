@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Max, Q
 from django.utils import timezone
 
 from qff.command_parser import (
@@ -92,6 +93,28 @@ from qff.monster_sim import (
     add_gold_to_room_floor,
     ensure_monster_engaged_by_attacker,
 )
+
+# Max RoomBroadcast.id immediately before engage_monsters (move/teleport); command_view
+# reads via consume_action_log_pre_engagement_cutover() to order action_log.
+_action_log_pre_engagement_max_id: ContextVar[int | None] = ContextVar(
+    "qff_action_log_pre_engagement_max_id", default=None
+)
+
+
+def consume_action_log_pre_engagement_cutover() -> int | None:
+    """Return and clear cutover id for splitting exec-phase action_log (see command_view)."""
+    v = _action_log_pre_engagement_max_id.get()
+    _action_log_pre_engagement_max_id.set(None)
+    return v
+
+
+def _engage_monsters_after_arrival(hero: Character, dest_room_id: int) -> None:
+    """Run monster engagement hooks; record RoomBroadcast id cutover for action_log ordering."""
+    from qff.monster_sim import engage_monsters_for_new_arrivals
+
+    max_id = RoomBroadcast.objects.aggregate(m=Max("id"))["m"] or 0
+    _action_log_pre_engagement_max_id.set(max_id)
+    engage_monsters_for_new_arrivals(hero, dest_room_id)
 from qff.narrative_visibility import occupant_labels_for_look, room_is_narratively_visible
 from qff.shop_engine import (
     browse_shop,
@@ -829,7 +852,6 @@ def _handle_move(char: CharacterType, parsed: ParsedMove) -> list[str]:
     _notify_peers_third_person(char, dest.id, peer_arrival_line(char.name, ex.direction))
 
     from qff.monster_sim import (
-        engage_monsters_for_new_arrivals,
         monsters_follow_hero_move,
         on_spawn_room_enter,
         safe_room_disengage,
@@ -848,7 +870,7 @@ def _handle_move(char: CharacterType, parsed: ParsedMove) -> list[str]:
 
     monsters_follow_hero_move(char, left_room_id, dest.id)
     sense_adjacent_monsters(char, dest.id)
-    engage_monsters_for_new_arrivals(char, dest.id)
+    _engage_monsters_after_arrival(char, dest.id)
 
     return messages
 
@@ -1206,7 +1228,6 @@ def _consume_verb_rejection_message(item, attempted_verb: str) -> str | None:
 def _apply_teleport_spawn_scroll(actor_pk: int, left_room_id: int) -> list[str]:
     """Move hero to spawn_room after consuming a teleport scroll (same hooks as walking)."""
     from qff.monster_sim import (
-        engage_monsters_for_new_arrivals,
         monsters_follow_hero_move,
         on_spawn_room_enter,
         safe_room_disengage,
@@ -1229,7 +1250,7 @@ def _apply_teleport_spawn_scroll(actor_pk: int, left_room_id: int) -> list[str]:
     safe_room_disengage(ch, dest)
     monsters_follow_hero_move(ch, left_room_id, dest_id)
     sense_adjacent_monsters(ch, dest_id)
-    engage_monsters_for_new_arrivals(ch, dest_id)
+    _engage_monsters_after_arrival(ch, dest_id)
     return ["The scroll whisks you back to where you began."]
 
 

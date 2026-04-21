@@ -19,7 +19,11 @@ from rest_framework.response import Response
 from users.permissions import IsApprovedUser, IsStaffUser
 
 from qff.command_echo import should_echo_command
-from qff.command_handlers import execute_command, maybe_handle_pending_prompt
+from qff.command_handlers import (
+    consume_action_log_pre_engagement_cutover,
+    execute_command,
+    maybe_handle_pending_prompt,
+)
 from qff.command_parser import ParsedLeave, parse_command
 from qff.exploration import on_enter_room
 from qff.loadout import apply_starting_loadout
@@ -441,6 +445,8 @@ def command_view(request):
             # Max broadcast id after execute_command, before lazy sim — splits ambient/exec vs combat sim.
             max_after_exec = RoomBroadcast.objects.aggregate(m=Max("id"))["m"] or 0
 
+        action_log_pre_engagement_cutover = consume_action_log_pre_engagement_cutover()
+
         def _sim_session_and_response():
             """Post-commit path only; safe to retry on deadlock without re-running the command."""
             sim_ms = session_ms = 0.0
@@ -482,19 +488,36 @@ def command_view(request):
             t2 = time.perf_counter()
             session = build_session_for_character(char_after, world_sync=False)
             session_ms = (time.perf_counter() - t2) * 1000
-            # Chronological narrative: room broadcasts during command, then command lines, then sim, then encumbrance.
+            # Chronological narrative: move/teleport put first-person lines before engagement broadcasts.
             raw_log = session.get("action_log") or []
             if raw_log and char_after:
-                exec_part = [
-                    e for e in raw_log if _action_log_entry_id(e) <= max_after_exec
-                ]
-                sim_part = [e for e in raw_log if _action_log_entry_id(e) > max_after_exec]
                 cmd_only = (
                     msgs_out[: -len(enc_lines)] if enc_lines else list(msgs_out)
                 )
                 synth_cmd = [{"id": -(i + 1), "text": m} for i, m in enumerate(cmd_only)]
                 synth_enc = [{"id": -(200 + i), "text": m} for i, m in enumerate(enc_lines)]
-                session["action_log"] = exec_part + synth_cmd + sim_part + synth_enc
+                if action_log_pre_engagement_cutover is not None:
+                    cut = action_log_pre_engagement_cutover
+                    exec_pre = [e for e in raw_log if _action_log_entry_id(e) <= cut]
+                    exec_engagement = [
+                        e
+                        for e in raw_log
+                        if cut < _action_log_entry_id(e) <= max_after_exec
+                    ]
+                    sim_part = [
+                        e for e in raw_log if _action_log_entry_id(e) > max_after_exec
+                    ]
+                    session["action_log"] = (
+                        exec_pre + synth_cmd + exec_engagement + sim_part + synth_enc
+                    )
+                else:
+                    exec_part = [
+                        e for e in raw_log if _action_log_entry_id(e) <= max_after_exec
+                    ]
+                    sim_part = [
+                        e for e in raw_log if _action_log_entry_id(e) > max_after_exec
+                    ]
+                    session["action_log"] = exec_part + synth_cmd + sim_part + synth_enc
             room_ids = frozenset(affected) | {old_room_id, char_after.current_room_id}
             schedule_notify_qff_rooms(room_ids)
 

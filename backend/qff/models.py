@@ -1245,11 +1245,15 @@ class MonsterTemplate(models.Model):
     dodge_ignore = models.SmallIntegerField(default=0)
     description = models.TextField(blank=True)
     hidden_description = models.TextField(blank=True)
-    # 1–100: roll d100+Sense >= this to append hidden_description on look/inspect; null = 50.
-    hidden_description_chance = models.PositiveSmallIntegerField(
+    lore_dc = models.PositiveSmallIntegerField(
         null=True,
         blank=True,
-        help_text="Sense roll threshold (1–100) for extra monster text; null defaults to 50.",
+        help_text="Look/inspect: hero needs d100+Smarts (encumbered) ≥ this DC for hidden text; null uses template level.",
+    )
+    attack_weapon_label = models.CharField(
+        max_length=120,
+        blank=True,
+        help_text="Optional flavor for monster hit lines (e.g. claws, rusty blade).",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

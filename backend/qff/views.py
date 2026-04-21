@@ -1256,7 +1256,8 @@ def _dm_monster_template_dict(t: MonsterTemplate) -> dict:
         "dodge_ignore": t.dodge_ignore,
         "description": t.description or "",
         "hidden_description": t.hidden_description or "",
-        "hidden_description_chance": t.hidden_description_chance,
+        "lore_dc": t.lore_dc,
+        "attack_weapon_label": t.attack_weapon_label or "",
     }
 
 
@@ -1348,15 +1349,17 @@ def dm_monster_template_detail(request, pk):
         tpl.description = (request.data.get("description") or "")[:20000]
     if "hidden_description" in request.data:
         tpl.hidden_description = (request.data.get("hidden_description") or "")[:20000]
-    if "hidden_description_chance" in request.data:
-        v = request.data.get("hidden_description_chance")
+    if "lore_dc" in request.data:
+        v = request.data.get("lore_dc")
         if v in (None, "", "null"):
-            tpl.hidden_description_chance = None
+            tpl.lore_dc = None
         else:
             try:
-                tpl.hidden_description_chance = max(1, min(100, int(v)))
+                tpl.lore_dc = max(1, min(65535, int(v)))
             except (TypeError, ValueError):
                 pass
+    if "attack_weapon_label" in request.data:
+        tpl.attack_weapon_label = (request.data.get("attack_weapon_label") or "")[:120]
     tpl.save()
     return Response(_dm_monster_template_dict(tpl))
 

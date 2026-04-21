@@ -375,7 +375,7 @@ class MonsterCombatTests(TestCase):
         self.tpl.save(update_fields=["xp_value", "updated_at"])
         hero_xp_before = int(self.hero.xp)
         now = timezone.now()
-        award_kill(self.monster, self.room_danger.id, now)
+        award_kill(self.monster, self.room_danger.id, now, killer=self.hero)
         self.hero.refresh_from_db()
         h2.refresh_from_db()
         self.assertEqual(self.hero.xp, hero_xp_before + 90)
@@ -395,7 +395,7 @@ class MonsterCombatTests(TestCase):
         )
         now = timezone.now()
         with patch("qff.monster_sim.roll_d100", return_value=50):
-            award_kill(m2, self.room_danger.id, now)
+            award_kill(m2, self.room_danger.id, now, killer=self.hero)
 
         self.assertFalse(MonsterInstance.objects.filter(pk=m2.pk).exists())
         self.assertTrue(
@@ -419,7 +419,7 @@ class MonsterCombatTests(TestCase):
         )
         now = timezone.now()
         with patch("qff.monster_sim.roll_d100", return_value=50):
-            award_kill(m2, self.room_danger.id, now)
+            award_kill(m2, self.room_danger.id, now, killer=self.hero)
         self.assertTrue(
             ItemInstance.objects.filter(room_id=self.room_danger.id, item=it_common).exists()
         )
@@ -440,14 +440,122 @@ class MonsterCombatTests(TestCase):
         self.tpl.save(update_fields=["loot_table", "updated_at"])
         ItemInstance.objects.filter(room_id=self.room_danger.id).delete()
         now = timezone.now()
-        with patch("qff.monster_sim.roll_d100", side_effect=[50, 50]):
-            award_kill(m3, self.room_danger.id, now)
+        with patch("qff.monster_sim.roll_d100", return_value=50):
+            award_kill(m3, self.room_danger.id, now, killer=self.hero)
         self.assertFalse(
             ItemInstance.objects.filter(room_id=self.room_danger.id, item=it_rare).exists()
         )
         self.assertTrue(
             ItemInstance.objects.filter(room_id=self.room_danger.id, item=it_common).exists()
         )
+
+    def test_award_kill_quest_loot_skips_when_all_carry_quest_item(self):
+        q_item = Item.objects.create(slug="quest_key_mc", name="Quest Key", slot=None)
+        self.tpl.loot_table = [
+            {"slug": "quest_key_mc", "chance": 100, "quest_only": True},
+        ]
+        self.tpl.save(update_fields=["loot_table", "updated_at"])
+        inst = ItemInstance.objects.create(
+            item=q_item, owner_character=self.hero, room=None, quantity=1
+        )
+        self.hero.inventory = [inst.pk]
+        self.hero.save(update_fields=["inventory"])
+        m = MonsterInstance.objects.create(
+            template=self.tpl,
+            current_room=self.room_danger,
+            cur_hp=1,
+            max_hp=5,
+        )
+        now = timezone.now()
+        award_kill(m, self.room_danger.id, now, killer=self.hero)
+        self.assertFalse(
+            ItemInstance.objects.filter(
+                room_id=self.room_danger.id,
+                item=q_item,
+                owner_character__isnull=True,
+            ).exists()
+        )
+
+    def test_award_kill_solo_xp_kill_broadcast(self):
+        self.tpl.xp_value = 7
+        self.tpl.save(update_fields=["xp_value", "updated_at"])
+        m = MonsterInstance.objects.create(
+            template=self.tpl,
+            current_room=self.room_danger,
+            cur_hp=1,
+            max_hp=5,
+        )
+        m.xp_contribution = {str(self.hero.pk): 10}
+        m.save(update_fields=["xp_contribution", "updated_at"])
+        now = timezone.now()
+        max_id = RoomBroadcast.objects.aggregate(m=Max("id"))["m"] or 0
+        award_kill(m, self.room_danger.id, now, killer=self.hero)
+        texts = list(
+            RoomBroadcast.objects.filter(
+                room_id=self.room_danger.id, id__gt=max_id
+            ).values_list("text", flat=True)
+        )
+        self.assertTrue(any("You earn 7 experience points" in t for t in texts), texts)
+
+    def test_award_kill_split_shows_your_share(self):
+        u2 = _test_user("splitxp@example.com")
+        h2 = Character.objects.create(
+            user=u2,
+            name="Ally",
+            character_class=self.cc,
+            current_room=self.room_danger,
+            spawn_room=self.room_danger,
+            last_activity_at=timezone.now(),
+            xp=0,
+        )
+        self.tpl.xp_value = 11
+        self.tpl.save(update_fields=["xp_value", "updated_at"])
+        self.monster.xp_contribution = {str(self.hero.pk): 5, str(h2.pk): 5}
+        self.monster.save(update_fields=["xp_contribution", "updated_at"])
+        now = timezone.now()
+        max_id = RoomBroadcast.objects.aggregate(m=Max("id"))["m"] or 0
+        award_kill(self.monster, self.room_danger.id, now, killer=self.hero)
+        texts = list(
+            RoomBroadcast.objects.filter(
+                room_id=self.room_danger.id, id__gt=max_id
+            ).values_list("text", flat=True)
+        )
+        self.assertTrue(any("Your share is" in t for t in texts), texts)
+
+    def test_monster_strike_with_weapon_label_narration(self):
+        self.tpl.attack_weapon_label = "filthy claws"
+        self.tpl.save(update_fields=["attack_weapon_label", "updated_at"])
+        self.monster.next_action_at = timezone.now()
+        self.monster.save(update_fields=["next_action_at", "updated_at"])
+        max_id = RoomBroadcast.objects.aggregate(m=Max("id"))["m"] or 0
+        with patch(
+            "qff.monster_sim.resolve_physical_strike",
+            return_value=StrikeResult(
+                outcome="hit",
+                damage=3,
+                base_damage=2,
+                damage_after_mitigation=3,
+                was_crit=False,
+                hit_chance=90,
+                effective_dodge_chance=5,
+                crit_chance=0.1,
+            ),
+        ):
+            _resolve_monster_strike(self.monster, timezone.now())
+        msgs = list(
+            RoomBroadcast.objects.filter(
+                room_id=self.room_danger.id, id__gt=max_id
+            ).values_list("text", flat=True)
+        )
+        self.assertTrue(any("filthy claws" in m for m in msgs), msgs)
+
+    def test_monster_look_hidden_uses_smarts_vs_lore_dc(self):
+        self.tpl.hidden_description = "Ancient evil stirs."
+        self.tpl.lore_dc = 5
+        self.tpl.save(update_fields=["hidden_description", "lore_dc", "updated_at"])
+        with patch("qff.command_handlers.roll_d100_plus_stat_encumbered", return_value=99):
+            lines = execute_command(self.hero, parse_command("look test rat"))
+        self.assertIn("Ancient evil stirs.", "\n".join(lines))
 
     def test_attack_rat_targets_sewer_rat_name(self):
         self.tpl.name = "Sewer Rat"
@@ -933,7 +1041,7 @@ class MonsterCombatTests(TestCase):
             monster_strike_pending=False,
             next_action_at=na_survivor,
         )
-        award_kill(m_victim, self.room_danger.id, timezone.now())
+        award_kill(m_victim, self.room_danger.id, timezone.now(), killer=self.hero)
         self.assertFalse(MonsterInstance.objects.filter(pk=m_victim.pk).exists())
         m_survivor.refresh_from_db()
         self.assertEqual(m_survivor.next_action_at, na_survivor)

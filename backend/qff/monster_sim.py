@@ -35,11 +35,13 @@ from qff.models import (
     Item,
     ItemInstance,
     MonsterInstance,
+    MonsterTemplate,
     Room,
     RoomBroadcast,
     RoomExit,
     RoomGoldPile,
 )
+from qff.quest_engine import character_carries_item_template
 from qff.realtime import notify_qff_rooms
 
 logger = logging.getLogger(__name__)
@@ -700,11 +702,78 @@ def maybe_spawn_lairs(now) -> set[int]:
     return affected
 
 
-def award_kill(monster: MonsterInstance, room_id: int, now) -> None:
+def _normalize_loot_partition_chances(chances: list[int]) -> list[int]:
+    """Scale row weights down so their sum is at most 100 (single d100 partition)."""
+    total = sum(chances)
+    if total <= 0:
+        return chances
+    if total <= 100:
+        return chances
+    n = len(chances)
+    scaled = [(100 * ch) // total for ch in chances]
+    shortfall = 100 - sum(scaled)
+    idx = 0
+    while shortfall > 0 and n > 0:
+        scaled[idx % n] += 1
+        shortfall -= 1
+        idx += 1
+    return scaled
+
+
+def _monster_loot_pick_partition(tpl: MonsterTemplate, room_id: int) -> tuple[Item, int] | None:
+    """One d100 selects at most one loot row; quest_only rows need an eligible hero in room."""
+    heroes = _heroes_in_room(room_id)
+    rows: list[tuple[int, dict, Item]] = []
+    for entry in tpl.loot_table or []:
+        if not isinstance(entry, dict):
+            continue
+        slug = entry.get("slug") or entry.get("item_slug")
+        if not slug:
+            continue
+        raw_ch = entry.get("chance", entry.get("pct"))
+        ch = 100 if raw_ch is None else max(0, min(100, int(raw_ch)))
+        quest_only = bool(entry.get("quest_only") or entry.get("quest"))
+        item = Item.objects.filter(slug=str(slug)).first()
+        if not item:
+            continue
+        if quest_only:
+            eligible = any(
+                not character_carries_item_template(h, item.pk) for h in heroes
+            )
+            if not eligible:
+                ch = 0
+        if ch > 0:
+            rows.append((ch, entry, item))
+    if not rows:
+        return None
+    chances = [c for c, _, _ in rows]
+    norm = _normalize_loot_partition_chances(chances)
+    if sum(norm) <= 0:
+        return None
+    r = roll_d100()
+    cum = 0
+    for i, ch in enumerate(norm):
+        cum += ch
+        if r <= cum:
+            _, entry, item = rows[i]
+            qty = max(1, int(entry.get("qty", entry.get("quantity", 1))))
+            return item, qty
+    return None
+
+
+def award_kill(
+    monster: MonsterInstance,
+    room_id: int,
+    now,
+    killer: Character | None = None,
+) -> None:
     tpl = monster.template
     heroes = _heroes_in_room(room_id)
+    mname = tpl.name
     xp_val = int(tpl.xp_value or 0)
-    if heroes and xp_val:
+
+    xp_alloc: list[tuple[Character, int]] = []
+    if heroes and xp_val > 0:
         contrib = {str(k): int(v) for k, v in (monster.xp_contribution or {}).items()}
         weights = [max(0, contrib.get(str(h.pk), 0)) for h in heroes]
         total_w = sum(weights)
@@ -713,49 +782,63 @@ def award_kill(monster: MonsterInstance, room_id: int, now) -> None:
             rem = xp_val - share * len(heroes)
             for i, h in enumerate(heroes):
                 add = share + (1 if i < rem else 0)
-                h.xp = int(h.xp) + add
-                h.save(update_fields=["xp", "updated_at"])
+                xp_alloc.append((h, add))
         else:
             amounts = []
-            allocated = 0
             for w in weights:
                 amt = (xp_val * w) // total_w
                 amounts.append(amt)
-                allocated += amt
-            rem = xp_val - allocated
+            rem = xp_val - sum(amounts)
             for i in range(rem):
                 amounts[i % len(heroes)] += 1
             for h, add in zip(heroes, amounts, strict=True):
+                xp_alloc.append((h, add))
+    elif heroes:
+        xp_alloc = [(h, 0) for h in heroes]
+
+    killer_eff = killer or (heroes[0] if len(heroes) == 1 else None)
+    split_xp = sum(1 for _, a in xp_alloc if a > 0) > 1 if xp_alloc else False
+
+    if heroes:
+        for h, add in xp_alloc:
+            if killer_eff and h.pk == killer_eff.pk:
+                if add > 0 and xp_val > 0:
+                    msg = (
+                        f"You have slain the {mname}! Your share is {add} experience points!"
+                        if split_xp
+                        else f"You have slain the {mname}! You earn {add} experience points!"
+                    )
+                else:
+                    msg = f"You have slain the {mname}!"
+                _narrate(room_id, msg, target_character_id=h.pk)
+            elif killer_eff:
+                if add > 0 and xp_val > 0 and split_xp:
+                    msg = f"{killer_eff.name} has slain the {mname}! Your share is {add} experience points!"
+                else:
+                    msg = f"{killer_eff.name} has slain the {mname}!"
+                _narrate(room_id, msg, target_character_id=h.pk)
+            else:
+                if add > 0 and xp_val > 0 and split_xp:
+                    msg = f"The {mname} is defeated! Your share is {add} experience points!"
+                elif add > 0 and xp_val > 0:
+                    msg = f"The {mname} is defeated! You earn {add} experience points!"
+                else:
+                    msg = f"The {mname} is defeated!"
+                _narrate(room_id, msg, target_character_id=h.pk)
+
+        for h, add in xp_alloc:
+            if add > 0:
                 h.xp = int(h.xp) + add
                 h.save(update_fields=["xp", "updated_at"])
+
     gold = random.randint(int(tpl.gold_min), int(tpl.gold_max))
     if gold > 0:
         add_gold_to_room_floor(room_id, gold)
         _narrate(room_id, f"{tpl.name} drops {gold} gold.")
-    loot_rows: list[tuple[int, dict]] = []
-    for entry in tpl.loot_table or []:
-        if not isinstance(entry, dict):
-            continue
-        slug = entry.get("slug") or entry.get("item_slug")
-        if not slug:
-            continue
-        raw_ch = entry.get("chance", entry.get("pct"))
-        if raw_ch is None:
-            ch = 100
-        else:
-            ch = max(0, min(100, int(raw_ch)))
-        loot_rows.append((ch, entry))
-    # One d100 per row, in template list order (do not reorder by chance).
-    for ch, entry in loot_rows:
-        if ch <= 0:
-            continue
-        if roll_d100() > ch:
-            continue
-        slug = entry.get("slug") or entry.get("item_slug")
-        qty = max(1, int(entry.get("qty", entry.get("quantity", 1))))
-        item = Item.objects.filter(slug=str(slug)).first()
-        if not item:
-            continue
+
+    picked = _monster_loot_pick_partition(tpl, room_id)
+    if picked:
+        item, qty = picked
         ItemInstance.objects.create(
             item=item,
             quantity=qty,
@@ -765,7 +848,7 @@ def award_kill(monster: MonsterInstance, room_id: int, now) -> None:
             floor_dropped_at=timezone.now(),
         )
         _narrate(room_id, f"The {tpl.name} drops {item.name}.")
-        break
+
     lair_room_id = monster.lair_room_id
     monster.delete()
     if lair_room_id:
@@ -803,6 +886,7 @@ def _resolve_monster_strike(monster: MonsterInstance, now) -> bool:
     dfn = hero_defender_stats(hero)
     res = resolve_physical_strike(atk, dfn, flat_base_damage=paper_damage)
     mname = monster.template.name
+    wpn = (tpl.attack_weapon_label or "").strip()
     if res.outcome == "miss":
         _narrate(
             room_id,
@@ -842,7 +926,14 @@ def _resolve_monster_strike(monster: MonsterInstance, now) -> bool:
     nh = max(0, int(hero.cur_health) - dmg)
     Character.objects.filter(pk=hero.pk).update(cur_health=nh, updated_at=timezone.now())
     hero = Character.objects.get(pk=hero.pk)
-    if res.outcome == "crit":
+    if wpn:
+        if res.outcome == "crit":
+            hit_you = f"The {mname} attacks you with its {wpn} for a critical hit — {dmg} damage!"
+            hit_peer = f"The {mname} attacks {hero.name} with its {wpn} for a critical hit — {dmg} damage!"
+        else:
+            hit_you = f"The {mname} attacks you with its {wpn} for {dmg} damage!"
+            hit_peer = f"The {mname} attacks {hero.name} with its {wpn} for {dmg} damage!"
+    elif res.outcome == "crit":
         hit_you = f"{mname} critically strikes you for {dmg} damage!"
         hit_peer = f"{mname} critically strikes {hero.name} for {dmg} damage!"
     else:
@@ -932,6 +1023,8 @@ def _resolve_hero_strike(char: Character, now) -> None:
     if dmg > 0:
         m2 = MonsterInstance.objects.get(pk=monster.pk)
         cdict = dict(m2.xp_contribution or {})
+        # Damage drives XP weights today; party heal/shield/buff-on-ally hooks can add
+        # contribution here when those actions exist (see monster plan: support XP).
         cdict[str(char.pk)] = int(cdict.get(str(char.pk), 0)) + dmg
         m2.xp_contribution = cdict
         m2.save(update_fields=["xp_contribution", "updated_at"])
@@ -947,20 +1040,7 @@ def _resolve_hero_strike(char: Character, now) -> None:
         if h.pk != char.pk:
             _narrate(rid, peer, target_character_id=h.pk, log_tone="hero_hit")
     if nm <= 0:
-        for h in _heroes_in_room(rid):
-            if h.pk == char.pk:
-                _narrate(
-                    rid,
-                    f"You have slain the {mname}!",
-                    target_character_id=char.pk,
-                )
-            else:
-                _narrate(
-                    rid,
-                    f"{char.name} has slain the {mname}!",
-                    target_character_id=h.pk,
-                )
-        award_kill(monster, rid, now)
+        award_kill(monster, rid, now, killer=char)
         Character.objects.filter(pk=char.pk).update(
             combat_target_monster_id=None,
             updated_at=timezone.now(),

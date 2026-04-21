@@ -60,6 +60,7 @@ from qff.game_helpers import (
     format_item_inspect_parenthetical,
     inventory_stack_label,
     item_meets_requirements,
+    modified_stats,
     peer_arrival_line,
     presence_threshold,
     roll_d100_plus_stat_encumbered,
@@ -1988,13 +1989,10 @@ def _handle_look_inspect(char: CharacterType, parsed: ParsedLookInspect) -> list
         base = (tpl.description or "").strip() or f"You see the {tpl.name}."
         hidden = (tpl.hidden_description or "").strip()
         if hidden:
-            threshold = (
-                int(tpl.hidden_description_chance)
-                if tpl.hidden_description_chance is not None
-                else 50
-            )
-            roll = roll_d100_plus_stat_encumbered(char, int(char.sense))
-            if roll >= threshold:
+            dc = int(tpl.lore_dc) if tpl.lore_dc is not None else int(tpl.level)
+            smarts = int(modified_stats(char)["smarts"])
+            roll = roll_d100_plus_stat_encumbered(char, smarts)
+            if roll >= dc:
                 return [base, hidden]
         return [base]
 

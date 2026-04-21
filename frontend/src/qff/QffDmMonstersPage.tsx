@@ -1,9 +1,12 @@
 import {
   Box,
+  Button,
   Field,
   Flex,
   Heading,
   Input,
+  NativeSelectField,
+  NativeSelectRoot,
   Stack,
   Text,
   Textarea,
@@ -16,10 +19,15 @@ import QffButton from "./QffButton";
 import { qffGhostRowButtonProps } from "./qffUi";
 import {
   dmCreateMonsterTemplate,
+  dmFetchItems,
   dmFetchMonsterTemplates,
   dmPatchMonsterTemplate,
+  type DmItem,
+  type DmMonsterLootRow,
   type DmMonsterTemplate,
 } from "./api";
+
+type LootEditorRow = { slug: string; chance: string; questOnly: boolean };
 
 function emptyForm(): Partial<DmMonsterTemplate> {
   return {
@@ -43,8 +51,32 @@ function emptyForm(): Partial<DmMonsterTemplate> {
     dodge_ignore: 0,
     description: "",
     hidden_description: "",
+    lore_dc: null,
+    attack_weapon_label: "",
     loot_table: [],
   };
+}
+
+function lootRowsFromTable(t: DmMonsterLootRow[] | undefined): LootEditorRow[] {
+  const rows = t ?? [];
+  if (rows.length === 0) {
+    return [{ slug: "", chance: "0", questOnly: false }];
+  }
+  return rows.map((r) => ({
+    slug: String(r.slug || r.item_slug || ""),
+    chance: String(r.chance ?? (r as { pct?: number }).pct ?? 0),
+    questOnly: !!(r as { quest_only?: boolean }).quest_only,
+  }));
+}
+
+function lootTableFromRows(rows: LootEditorRow[]): DmMonsterLootRow[] {
+  return rows
+    .filter((r) => r.slug.trim())
+    .map((r) => ({
+      slug: r.slug.trim(),
+      chance: Math.min(100, Math.max(0, parseInt(r.chance, 10) || 0)),
+      quest_only: r.questOnly,
+    }));
 }
 
 export default function QffDmMonstersPage() {
@@ -52,11 +84,15 @@ export default function QffDmMonstersPage() {
   const { isAuthenticated, sessionUser, isLoading, getApiAccessToken } = useAppSession();
   const isStaff = !!sessionUser?.user?.is_staff;
   const [rows, setRows] = useState<DmMonsterTemplate[]>([]);
+  const [items, setItems] = useState<DmItem[]>([]);
   const [err, setErr] = useState<string | null>(null);
+  const [lootRows, setLootRows] = useState<LootEditorRow[]>([{ slug: "", chance: "0", questOnly: false }]);
+  const [showLootJson, setShowLootJson] = useState(false);
   const [lootJson, setLootJson] = useState("[]");
   const [form, setForm] = useState<Partial<DmMonsterTemplate>>(emptyForm());
   const [editingId, setEditingId] = useState<number | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [loreDcInput, setLoreDcInput] = useState("");
 
   const load = useCallback(async () => {
     const token = await getApiAccessToken();
@@ -64,40 +100,83 @@ export default function QffDmMonstersPage() {
     setRows(list);
   }, [getApiAccessToken]);
 
+  const loadItems = useCallback(async () => {
+    const token = await getApiAccessToken();
+    const list = await dmFetchItems(token);
+    setItems(list.sort((a, b) => a.name.localeCompare(b.name)));
+  }, [getApiAccessToken]);
+
   useEffect(() => {
     if (!isAuthenticated || !isStaff) return;
     load().catch((e) => setErr(String(e)));
-  }, [isAuthenticated, isStaff, load]);
+    loadItems().catch(() => setItems([]));
+  }, [isAuthenticated, isStaff, load, loadItems]);
 
   const newTemplate = () => {
     setErr(null);
     setEditingId(null);
     setIsCreating(true);
     setForm(emptyForm());
+    setLootRows([{ slug: "", chance: "0", questOnly: false }]);
     setLootJson("[]");
+    setShowLootJson(false);
+    setLoreDcInput("");
   };
 
   const selectRow = (t: DmMonsterTemplate) => {
     setIsCreating(false);
     setEditingId(t.id);
     setForm({ ...t });
+    setLootRows(lootRowsFromTable(t.loot_table));
+    setLoreDcInput(t.lore_dc != null && t.lore_dc !== undefined ? String(t.lore_dc) : "");
     try {
       setLootJson(JSON.stringify(t.loot_table ?? [], null, 2));
     } catch {
       setLootJson("[]");
     }
+    setShowLootJson(false);
   };
 
   const save = async () => {
     setErr(null);
-    let loot_table: unknown[] = [];
-    try {
-      const parsed = JSON.parse(lootJson || "[]");
-      loot_table = Array.isArray(parsed) ? parsed : [];
-    } catch {
-      setErr("loot_table must be valid JSON array.");
-      return;
+    let loot_table: DmMonsterLootRow[];
+    if (showLootJson) {
+      try {
+        const parsed = JSON.parse(lootJson || "[]");
+        loot_table = Array.isArray(parsed) ? parsed : [];
+      } catch {
+        setErr("loot_table must be valid JSON array.");
+        return;
+      }
+    } else {
+      const sum = lootRows
+        .filter((r) => r.slug.trim())
+        .reduce((a, r) => a + (parseInt(r.chance, 10) || 0), 0);
+      if (sum > 100) {
+        setErr(`Loot chances sum to ${sum}; maximum is 100 (one d100 partition).`);
+        return;
+      }
+      loot_table = lootTableFromRows(lootRows);
     }
+
+    const loreRaw = loreDcInput.trim();
+    let lore_dc: number | null = null;
+    if (loreRaw !== "") {
+      const n = parseInt(loreRaw, 10);
+      if (!Number.isFinite(n) || n < 1) {
+        setErr("Lore DC must be empty (use level) or an integer ≥ 1.");
+        return;
+      }
+      lore_dc = Math.min(65535, n);
+    }
+
+    const body: Partial<DmMonsterTemplate> = {
+      ...form,
+      loot_table,
+      lore_dc,
+      attack_weapon_label: form.attack_weapon_label ?? "",
+    };
+
     try {
       const token = await getApiAccessToken();
       if (editingId == null && isCreating) {
@@ -110,25 +189,29 @@ export default function QffDmMonstersPage() {
           name: form.name!.trim(),
         });
         const updated = await dmPatchMonsterTemplate(token, created.id, {
-          ...form,
+          ...body,
           slug: form.slug!.trim(),
           name: form.name!.trim(),
-          loot_table,
         });
         setRows((prev) => [...prev, updated].sort((a, b) => a.name.localeCompare(b.name)));
         setEditingId(updated.id);
         setIsCreating(false);
         setForm(updated);
+        setLootRows(lootRowsFromTable(updated.loot_table));
+        setLoreDcInput(
+          updated.lore_dc != null && updated.lore_dc !== undefined ? String(updated.lore_dc) : "",
+        );
         setLootJson(JSON.stringify(updated.loot_table ?? [], null, 2));
         return;
       }
       if (editingId == null) return;
-      const updated = await dmPatchMonsterTemplate(token, editingId, {
-        ...form,
-        loot_table,
-      });
+      const updated = await dmPatchMonsterTemplate(token, editingId, body);
       setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
       setForm(updated);
+      setLootRows(lootRowsFromTable(updated.loot_table));
+      setLoreDcInput(
+        updated.lore_dc != null && updated.lore_dc !== undefined ? String(updated.lore_dc) : "",
+      );
       setLootJson(JSON.stringify(updated.loot_table ?? [], null, 2));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Save failed");
@@ -165,9 +248,10 @@ export default function QffDmMonstersPage() {
         </Flex>
       </Flex>
       <Text mb={4} color="#889977" fontSize="sm">
-        Edit stats, armor, accuracy, penetration/crit/dodge mods, and loot JSON. Each loot row
-        may include chance (1–100); rows sort ascending by chance; first successful d100 wins one
-        drop. Use <strong>New monster template</strong> to create one, then Save.
+        Loot uses one d100 roll: cumulative chance bands in list order (sum ≤ 100). At most one
+        item drops per kill. Quest-only rows drop only if at least one hero in the room does not
+        already carry that item template. Hidden lore uses d100 + Smarts (encumbered) vs Lore DC
+        (blank = monster level).
       </Text>
       {err && (
         <Text color="nautical.solid" mb={4} role="alert">
@@ -175,7 +259,16 @@ export default function QffDmMonstersPage() {
         </Text>
       )}
       <Flex gap={6} align="start" flexDir={{ base: "column", lg: "row" }}>
-        <Box flex="0 0 280px" w="100%" maxH="70vh" overflowY="auto" borderWidth="1px" borderRadius="md" borderColor="#333" p={2}>
+        <Box
+          flex="0 0 280px"
+          w="100%"
+          maxH="70vh"
+          overflowY="auto"
+          borderWidth="1px"
+          borderRadius="md"
+          borderColor="#333"
+          p={2}
+        >
           <Stack gap={0}>
             {rows.map((t) => (
               <Box
@@ -267,7 +360,22 @@ export default function QffDmMonstersPage() {
                 ))}
               </Flex>
               <Field.Root>
-                <Field.Label>Description (look)</Field.Label>
+                <Field.Label>Attack weapon (combat flavor)</Field.Label>
+                <Input
+                  value={form.attack_weapon_label ?? ""}
+                  placeholder="e.g. rusty blade, filthy claws"
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, attack_weapon_label: e.target.value }))
+                  }
+                  bg="#222"
+                />
+                <Text fontSize="xs" color="#888" mt={1}>
+                  Shown in hit lines: “The Name attacks you with its …” Leave blank for generic
+                  strikes.
+                </Text>
+              </Field.Root>
+              <Field.Root>
+                <Field.Label>Description (look / inspect)</Field.Label>
                 <Textarea
                   value={form.description ?? ""}
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
@@ -276,25 +384,133 @@ export default function QffDmMonstersPage() {
                 />
               </Field.Root>
               <Field.Root>
-                <Field.Label>Hidden description (inspect only)</Field.Label>
+                <Field.Label>Hidden description (lore)</Field.Label>
                 <Textarea
                   value={form.hidden_description ?? ""}
                   onChange={(e) => setForm((f) => ({ ...f, hidden_description: e.target.value }))}
                   rows={4}
                   bg="#222"
                 />
+                <Text fontSize="xs" color="#888" mt={1}>
+                  Revealed when d100 + Smarts (encumbered) ≥ Lore DC (see below).
+                </Text>
               </Field.Root>
-              <Field.Root>
-                <Field.Label>loot_table (JSON array)</Field.Label>
-                <Textarea
-                  value={lootJson}
-                  onChange={(e) => setLootJson(e.target.value)}
-                  rows={10}
+              <Field.Root maxW="160px">
+                <Field.Label fontSize="xs">Lore DC (blank = use level)</Field.Label>
+                <Input
+                  size="sm"
+                  type="number"
+                  min={1}
+                  max={65535}
+                  placeholder={`default ${form.level ?? 1}`}
+                  value={loreDcInput}
+                  onChange={(e) => setLoreDcInput(e.target.value)}
                   bg="#222"
-                  fontFamily="monospace"
-                  fontSize="sm"
                 />
               </Field.Root>
+
+              <Text fontSize="sm" fontWeight="semibold" color="#b8c8a8" mt={2}>
+                Loot table
+              </Text>
+              {!showLootJson ? (
+                <Stack gap={2}>
+                  {lootRows.map((row, idx) => (
+                    <Flex key={idx} gap={2} align="flex-end" flexWrap="wrap">
+                      <Field.Root flex="1" minW="180px">
+                        <Field.Label fontSize="xs">Item</Field.Label>
+                        <NativeSelectRoot>
+                          <NativeSelectField
+                            value={row.slug}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setLootRows((prev) =>
+                                prev.map((r, i) => (i === idx ? { ...r, slug: v } : r)),
+                              );
+                            }}
+                            bg="#222"
+                          >
+                            <option value="">—</option>
+                            {items.map((it) => (
+                              <option key={it.id} value={it.slug}>
+                                {it.name} ({it.slug})
+                              </option>
+                            ))}
+                          </NativeSelectField>
+                        </NativeSelectRoot>
+                      </Field.Root>
+                      <Field.Root maxW="90px">
+                        <Field.Label fontSize="xs">Chance %</Field.Label>
+                        <Input
+                          size="sm"
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={row.chance}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setLootRows((prev) =>
+                              prev.map((r, i) => (i === idx ? { ...r, chance: v } : r)),
+                            );
+                          }}
+                          bg="#222"
+                        />
+                      </Field.Root>
+                      <Field.Root>
+                        <Field.Label fontSize="xs">Quest-only</Field.Label>
+                        <Flex align="center" h="32px">
+                          <input
+                            type="checkbox"
+                            checked={row.questOnly}
+                            onChange={(e) => {
+                              const c = e.target.checked;
+                              setLootRows((prev) =>
+                                prev.map((r, i) => (i === idx ? { ...r, questOnly: c } : r)),
+                              );
+                            }}
+                          />
+                        </Flex>
+                      </Field.Root>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          setLootRows((prev) =>
+                            prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx),
+                          )
+                        }
+                        disabled={lootRows.length <= 1}
+                      >
+                        Remove
+                      </Button>
+                    </Flex>
+                  ))}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setLootRows((prev) => [...prev, { slug: "", chance: "0", questOnly: false }])
+                    }
+                  >
+                    Add loot row
+                  </Button>
+                </Stack>
+              ) : (
+                <Field.Root>
+                  <Field.Label>loot_table (JSON)</Field.Label>
+                  <Textarea
+                    value={lootJson}
+                    onChange={(e) => setLootJson(e.target.value)}
+                    rows={10}
+                    bg="#222"
+                    fontFamily="monospace"
+                    fontSize="sm"
+                  />
+                </Field.Root>
+              )}
+              <Button size="xs" variant="ghost" onClick={() => setShowLootJson((v) => !v)}>
+                {showLootJson ? "Use loot grid editor" : "Edit loot as JSON"}
+              </Button>
+
               <QffButton type="button" onClick={() => void save()}>
                 {isCreating ? "Create" : "Save"}
               </QffButton>

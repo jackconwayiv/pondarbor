@@ -613,6 +613,16 @@ export type DmRoom = {
   cell: { id: number; x: number; y: number } | null;
 };
 
+/** One row in MonsterTemplate.loot_table (JSON). */
+export type DmMonsterLootRow = {
+  slug?: string;
+  item_slug?: string;
+  chance?: number;
+  qty?: number;
+  quantity?: number;
+  quest_only?: boolean;
+};
+
 export type DmMonsterTemplate = {
   id: number;
   slug: string;
@@ -626,7 +636,7 @@ export type DmMonsterTemplate = {
   xp_value: number;
   gold_min: number;
   gold_max: number;
-  loot_table: unknown[];
+  loot_table: DmMonsterLootRow[];
   armor: number;
   accuracy: number;
   penetration?: number;
@@ -636,7 +646,9 @@ export type DmMonsterTemplate = {
   dodge_ignore?: number;
   description?: string;
   hidden_description?: string;
-  hidden_description_chance?: number | null;
+  /** Null = use template level for DC. */
+  lore_dc?: number | null;
+  attack_weapon_label?: string;
 };
 
 export async function dmFetchMonsterTemplates(

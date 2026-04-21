@@ -285,7 +285,8 @@ export default function QffDmPage() {
   const [panelLairTemplateDescription, setPanelLairTemplateDescription] = useState("");
   const [panelLairTemplateHiddenDescription, setPanelLairTemplateHiddenDescription] =
     useState("");
-  const [panelLairTemplateHiddenChance, setPanelLairTemplateHiddenChance] = useState("");
+  const [panelLairTemplateLoreDc, setPanelLairTemplateLoreDc] = useState("");
+  const [panelLairTemplateWeaponLabel, setPanelLairTemplateWeaponLabel] = useState("");
   const [panelLairTemplateCombatBusy, setPanelLairTemplateCombatBusy] = useState(false);
   const [monsterTemplates, setMonsterTemplates] = useState<DmMonsterTemplate[]>([]);
   const dmMapColumnRef = useRef<HTMLDivElement | null>(null);
@@ -374,7 +375,8 @@ export default function QffDmPage() {
       setPanelLairTemplateAccuracy("");
       setPanelLairTemplateDescription("");
       setPanelLairTemplateHiddenDescription("");
-      setPanelLairTemplateHiddenChance("");
+      setPanelLairTemplateLoreDc("");
+      setPanelLairTemplateWeaponLabel("");
       return;
     }
     const tid = parseInt(panelMonsterLairTemplateId, 10);
@@ -383,7 +385,8 @@ export default function QffDmPage() {
       setPanelLairTemplateAccuracy("");
       setPanelLairTemplateDescription("");
       setPanelLairTemplateHiddenDescription("");
-      setPanelLairTemplateHiddenChance("");
+      setPanelLairTemplateLoreDc("");
+      setPanelLairTemplateWeaponLabel("");
       return;
     }
     const t = monsterTemplates.find((x) => x.id === tid);
@@ -392,11 +395,10 @@ export default function QffDmPage() {
       setPanelLairTemplateAccuracy(String(t.accuracy ?? 0));
       setPanelLairTemplateDescription(t.description ?? "");
       setPanelLairTemplateHiddenDescription(t.hidden_description ?? "");
-      setPanelLairTemplateHiddenChance(
-        t.hidden_description_chance != null && t.hidden_description_chance !== undefined
-          ? String(t.hidden_description_chance)
-          : "",
+      setPanelLairTemplateLoreDc(
+        t.lore_dc != null && t.lore_dc !== undefined ? String(t.lore_dc) : "",
       );
+      setPanelLairTemplateWeaponLabel(t.attack_weapon_label ?? "");
     }
   }, [panelMonsterLairTemplateId, monsterTemplates]);
 
@@ -743,15 +745,15 @@ export default function QffDmPage() {
     accuracy = Math.max(-32768, Math.min(32767, accuracy));
     const desc = panelLairTemplateDescription;
     const hiddenDesc = panelLairTemplateHiddenDescription;
-    const chanceRaw = panelLairTemplateHiddenChance.trim();
-    let hiddenChance: number | null = null;
-    if (chanceRaw !== "") {
-      const n = parseInt(chanceRaw, 10);
-      if (!Number.isFinite(n)) {
-        setErr("Hidden lore chance must be empty (off) or a number from 1 to 100.");
+    const loreRaw = panelLairTemplateLoreDc.trim();
+    let lore_dc: number | null = null;
+    if (loreRaw !== "") {
+      const n = parseInt(loreRaw, 10);
+      if (!Number.isFinite(n) || n < 1) {
+        setErr("Lore DC must be empty (use template level) or an integer ≥ 1.");
         return;
       }
-      hiddenChance = Math.min(100, Math.max(1, n));
+      lore_dc = Math.min(65535, n);
     }
     setErr(null);
     setPanelLairTemplateCombatBusy(true);
@@ -762,7 +764,8 @@ export default function QffDmPage() {
         accuracy,
         description: desc,
         hidden_description: hiddenDesc,
-        hidden_description_chance: hiddenChance,
+        lore_dc,
+        attack_weapon_label: panelLairTemplateWeaponLabel.trim(),
       });
       setMonsterTemplates((prev) => prev.map((x) => (x.id === tid ? updated : x)));
     } catch (e) {
@@ -776,7 +779,8 @@ export default function QffDmPage() {
     panelLairTemplateAccuracy,
     panelLairTemplateDescription,
     panelLairTemplateHiddenDescription,
-    panelLairTemplateHiddenChance,
+    panelLairTemplateLoreDc,
+    panelLairTemplateWeaponLabel,
   ]);
 
   const addExit = useCallback(async () => {
@@ -1448,9 +1452,7 @@ export default function QffDmPage() {
                           />
                         </Field.Root>
                         <Field.Root mt={2}>
-                          <Field.Label fontSize="xs">
-                            Hidden description (Sense roll; leave blank to disable)
-                          </Field.Label>
+                          <Field.Label fontSize="xs">Hidden description (lore)</Field.Label>
                           <Textarea
                             size="sm"
                             rows={3}
@@ -1458,19 +1460,30 @@ export default function QffDmPage() {
                             onChange={(e) => setPanelLairTemplateHiddenDescription(e.target.value)}
                             bg="#222"
                           />
+                          <Text fontSize="xs" color="#888" mt={1}>
+                            Shown when d100 + Smarts (encumbered) ≥ Lore DC.
+                          </Text>
                         </Field.Root>
-                        <Field.Root maxW="120px" mt={2}>
-                          <Field.Label fontSize="xs">
-                            Hidden lore chance % (empty = off)
-                          </Field.Label>
+                        <Field.Root maxW="140px" mt={2}>
+                          <Field.Label fontSize="xs">Lore DC (blank = level)</Field.Label>
                           <Input
                             size="sm"
                             type="number"
                             min={1}
-                            max={100}
-                            placeholder="e.g. 25"
-                            value={panelLairTemplateHiddenChance}
-                            onChange={(e) => setPanelLairTemplateHiddenChance(e.target.value)}
+                            max={65535}
+                            placeholder="level"
+                            value={panelLairTemplateLoreDc}
+                            onChange={(e) => setPanelLairTemplateLoreDc(e.target.value)}
+                            bg="#222"
+                          />
+                        </Field.Root>
+                        <Field.Root mt={2}>
+                          <Field.Label fontSize="xs">Attack weapon (combat flavor)</Field.Label>
+                          <Input
+                            size="sm"
+                            value={panelLairTemplateWeaponLabel}
+                            onChange={(e) => setPanelLairTemplateWeaponLabel(e.target.value)}
+                            placeholder="e.g. filthy claws"
                             bg="#222"
                           />
                         </Field.Root>

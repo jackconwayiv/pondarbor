@@ -7,6 +7,7 @@ from django.db.models import Max
 
 from qff.game_helpers import display_name_for_instance, format_item_inspect_parenthetical
 from qff.inventory_absorb import absorb_item_quantity
+from qff.quest_engine import name_token_prefix_match
 from qff.models import Character, ItemInstance, Npc, NpcShop, NpcShopStockLine
 
 SHOP_DECAY_THRESHOLD = 5
@@ -34,6 +35,9 @@ def find_npc_in_room_by_query(room_id: int, query: str) -> Npc | None:
             return n
     for n in npcs.order_by("id"):
         if n.name.lower().startswith(q) or n.slug.lower().startswith(q):
+            return n
+    for n in npcs.order_by("id"):
+        if name_token_prefix_match(n.name.lower(), q):
             return n
     return None
 
@@ -190,7 +194,7 @@ def purchase_from_shop(character: Character, shop: NpcShop, query: str) -> list[
         return ["That item is sold out."]
     char.gold = int(char.gold) - price
     char.save(update_fields=["gold", "updated_at"])
-    new_pks = absorb_item_quantity(char, it, 1, donor=None)
+    _destination_pks, new_pks = absorb_item_quantity(char, it, 1, donor=None)
     char = Character.objects.select_for_update().get(pk=char.pk)
     inv = list(char.inventory or [])
     for pk in reversed(new_pks):

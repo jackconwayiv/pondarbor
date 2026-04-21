@@ -15,6 +15,7 @@ import { useAppSession } from "../auth/AppSessionContext";
 import QffButton from "./QffButton";
 import { qffGhostRowButtonProps } from "./qffUi";
 import {
+  dmCreateMonsterTemplate,
   dmFetchMonsterTemplates,
   dmPatchMonsterTemplate,
   type DmMonsterTemplate,
@@ -55,6 +56,7 @@ export default function QffDmMonstersPage() {
   const [lootJson, setLootJson] = useState("[]");
   const [form, setForm] = useState<Partial<DmMonsterTemplate>>(emptyForm());
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
 
   const load = useCallback(async () => {
     const token = await getApiAccessToken();
@@ -67,7 +69,16 @@ export default function QffDmMonstersPage() {
     load().catch((e) => setErr(String(e)));
   }, [isAuthenticated, isStaff, load]);
 
+  const newTemplate = () => {
+    setErr(null);
+    setEditingId(null);
+    setIsCreating(true);
+    setForm(emptyForm());
+    setLootJson("[]");
+  };
+
   const selectRow = (t: DmMonsterTemplate) => {
+    setIsCreating(false);
     setEditingId(t.id);
     setForm({ ...t });
     try {
@@ -78,7 +89,6 @@ export default function QffDmMonstersPage() {
   };
 
   const save = async () => {
-    if (editingId == null) return;
     setErr(null);
     let loot_table: unknown[] = [];
     try {
@@ -90,6 +100,29 @@ export default function QffDmMonstersPage() {
     }
     try {
       const token = await getApiAccessToken();
+      if (editingId == null && isCreating) {
+        if (!form.slug?.trim() || !form.name?.trim()) {
+          setErr("slug and name are required to create a template.");
+          return;
+        }
+        const created = await dmCreateMonsterTemplate(token, {
+          slug: form.slug!.trim(),
+          name: form.name!.trim(),
+        });
+        const updated = await dmPatchMonsterTemplate(token, created.id, {
+          ...form,
+          slug: form.slug!.trim(),
+          name: form.name!.trim(),
+          loot_table,
+        });
+        setRows((prev) => [...prev, updated].sort((a, b) => a.name.localeCompare(b.name)));
+        setEditingId(updated.id);
+        setIsCreating(false);
+        setForm(updated);
+        setLootJson(JSON.stringify(updated.loot_table ?? [], null, 2));
+        return;
+      }
+      if (editingId == null) return;
       const updated = await dmPatchMonsterTemplate(token, editingId, {
         ...form,
         loot_table,
@@ -122,14 +155,19 @@ export default function QffDmMonstersPage() {
     <Box maxW="6xl" mx="auto" px={4} py={8} color="#c8e6a8">
       <Flex justify="space-between" align="center" mb={4} flexWrap="wrap" gap={2}>
         <Heading size="lg">Monster templates</Heading>
-        <QffButton type="button" onClick={() => navigate("/qff/dm")}>
-          DM home
-        </QffButton>
+        <Flex gap={2} flexWrap="wrap">
+          <QffButton type="button" onClick={() => navigate("/qff/dm")}>
+            DM home
+          </QffButton>
+          <QffButton type="button" onClick={newTemplate}>
+            New monster template
+          </QffButton>
+        </Flex>
       </Flex>
       <Text mb={4} color="#889977" fontSize="sm">
         Edit stats, armor, accuracy, penetration/crit/dodge mods, and loot JSON. Each loot row
         may include chance (1–100); rows sort ascending by chance; first successful d100 wins one
-        drop. New templates: API or Django admin.
+        drop. Use <strong>New monster template</strong> to create one, then Save.
       </Text>
       {err && (
         <Text color="nautical.solid" mb={4} role="alert">
@@ -164,16 +202,20 @@ export default function QffDmMonstersPage() {
           </Stack>
         </Box>
         <Box flex="1" minW={0}>
-          {editingId == null ? (
-            <Text color="#888">Select a monster to edit.</Text>
+          {editingId == null && !isCreating ? (
+            <Text color="#888">Select a monster to edit, or click &quot;New monster template&quot;.</Text>
           ) : (
             <Stack gap={3}>
+              <Text fontSize="sm" color="#889977">
+                {isCreating ? "Creating new template" : `Editing #${editingId}`}
+              </Text>
               <Field.Root>
                 <Field.Label>Slug</Field.Label>
                 <Input
                   value={form.slug ?? ""}
                   onChange={(e) => setForm((f) => ({ ...f, slug: e.target.value }))}
                   bg="#222"
+                  disabled={editingId != null && !isCreating}
                 />
               </Field.Root>
               <Field.Root>
@@ -254,7 +296,7 @@ export default function QffDmMonstersPage() {
                 />
               </Field.Root>
               <QffButton type="button" onClick={() => void save()}>
-                Save
+                {isCreating ? "Create" : "Save"}
               </QffButton>
             </Stack>
           )}

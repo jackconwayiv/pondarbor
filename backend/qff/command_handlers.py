@@ -42,7 +42,11 @@ from qff.exits import (
     exit_is_passable,
     exit_is_visible_to_character,
 )
-from qff.consumable_effects import apply_consume_effects, validate_consume_effects
+from qff.consumable_effects import (
+    apply_consume_effects,
+    consume_effects_contain_teleport_spawn,
+    validate_consume_effects,
+)
 from qff.game_helpers import (
     display_name_for_instance,
     format_item_inspect_parenthetical,
@@ -60,10 +64,12 @@ from qff.models import (
     ItemInstance,
     MonsterInstance,
     Npc,
+    Room,
     RoomBroadcast,
     RoomExit,
     RoomGoldPile,
     RoomItem,
+    RoomItemSpawn,
 )
 from qff.quest_engine import (
     ensure_quests_started_from_npc,
@@ -885,7 +891,7 @@ def _handle_get(
                 char.save(update_fields=["last_activity_at", "updated_at"])
                 return ["You don't see that here."]
             item = inst.item
-            new_pks = absorb_item_quantity(char, item, donor_qty, donor=inst)
+            _dest_pks, new_pks = absorb_item_quantity(char, item, donor_qty, donor=inst)
             inst.delete()
             for pk in reversed(new_pks):
                 char.inventory = _prepend_inv(char.inventory, pk)
@@ -910,9 +916,15 @@ def _handle_get(
         if not room_item_visible_to_character(char, ri, floor_ids_locked):
             char.save(update_fields=["last_activity_at", "updated_at"])
             return ["You don't see that here."]
-        new_pks = absorb_item_quantity(char, ri.item, 1, donor=None)
+        destination_pks, new_pks = absorb_item_quantity(char, ri.item, 1, donor=None)
         for pk in reversed(new_pks):
             char.inventory = _prepend_inv(char.inventory, pk)
+        for dest_pk in destination_pks:
+            RoomItemSpawn.objects.create(
+                room_item_id=ri.pk,
+                character_id=char.pk,
+                item_instance_id=dest_pk,
+            )
         char.last_activity_at = timezone.now()
         char.save(update_fields=["inventory", "last_activity_at", "updated_at"])
     char = Character.objects.get(pk=char.pk)
@@ -992,6 +1004,63 @@ def _handle_unequip(char: CharacterType, target: str) -> list[str]:
     label = display_name_for_instance(inst)
     _notify_peers_third_person(char, char.current_room_id, f"{char.name} removes the {label}.")
     return [f"You remove the {label}."]
+
+
+def _consume_verb_rejection_message(item, attempted_verb: str) -> str | None:
+    """If Item.consume_verb is set, require matching eat/drink/use."""
+    required = (getattr(item, "consume_verb", None) or "").strip().lower()
+    if not required:
+        return None
+    got = (attempted_verb or "").strip().lower()
+    if got == required:
+        return None
+    if required == "eat":
+        if got == "drink":
+            return "That isn't something you drink."
+        if got == "use":
+            return "You need to eat that, not use it."
+        return "You can't consume that that way."
+    if required == "drink":
+        if got == "eat":
+            return "That isn't something you eat."
+        if got == "use":
+            return "You need to drink that, not use it."
+        return "You can't consume that that way."
+    if required == "use":
+        if got in ("eat", "drink"):
+            return "You need to use that."
+        return "You can't consume that that way."
+    return None
+
+
+def _apply_teleport_spawn_scroll(actor_pk: int, left_room_id: int) -> list[str]:
+    """Move hero to spawn_room after consuming a teleport scroll (same hooks as walking)."""
+    from qff.monster_sim import (
+        engage_monsters_for_new_arrivals,
+        monsters_follow_hero_move,
+        on_spawn_room_enter,
+        safe_room_disengage,
+        sense_adjacent_monsters,
+    )
+
+    ch = Character.objects.select_related("spawn_room").get(pk=actor_pk)
+    dest_id = ch.spawn_room_id
+    if not dest_id or dest_id == ch.current_room_id:
+        return []
+    actor_name = ch.name
+    _notify_peers_third_person(ch, left_room_id, f"{actor_name} vanishes in a swirl of light.")
+    dest = Room.objects.get(pk=dest_id)
+    ch.current_room = dest
+    ch.save(update_fields=["current_room", "updated_at"])
+    on_leave_room(left_room_id)
+    on_enter_room(ch, dest_id)
+    _notify_peers_third_person(ch, dest_id, f"{actor_name} appears in a swirl of light.")
+    on_spawn_room_enter(ch, dest)
+    safe_room_disengage(ch, dest)
+    monsters_follow_hero_move(ch, left_room_id, dest_id)
+    sense_adjacent_monsters(ch, dest_id)
+    engage_monsters_for_new_arrivals(ch, dest_id)
+    return ["The scroll whisks you back to where you began."]
 
 
 def _handle_talk(char: CharacterType, parsed: ParsedTalk) -> list[str]:
@@ -1087,6 +1156,7 @@ def _consume_inventory_instance(
     actor_pk = char.pk
     effect_lines: list[str] = []
     base_label = ""
+    had_teleport = False
     with transaction.atomic():
         char = Character.objects.select_for_update().get(pk=char.pk)
         inst = II.objects.select_for_update().select_related("item").get(pk=inst.pk)
@@ -1094,6 +1164,11 @@ def _consume_inventory_instance(
         if inst.pk not in inv or not inst.item.consumable:
             char.save(update_fields=["last_activity_at", "updated_at"])
             return ["You don't have that."]
+        rej = _consume_verb_rejection_message(inst.item, verb)
+        if rej:
+            char.save(update_fields=["last_activity_at", "updated_at"])
+            return [rej]
+        had_teleport = consume_effects_contain_teleport_spawn(inst.item)
         err = validate_consume_effects(char, inst.item)
         if err:
             char.save(update_fields=["last_activity_at", "updated_at"])
@@ -1133,12 +1208,16 @@ def _consume_inventory_instance(
     v = verb.lower()
     if v == "eat":
         _notify_peers_third_person(ch, room_id, f"{actor_name} eats the {base_label}.")
-        return [f"You eat the {base_label}."] + effect_lines
-    if v == "drink":
+        out = [f"You eat the {base_label}."] + effect_lines
+    elif v == "drink":
         _notify_peers_third_person(ch, room_id, f"{actor_name} drinks the {base_label}.")
-        return [f"You drink the {base_label}."] + effect_lines
-    _notify_peers_third_person(ch, room_id, f"{actor_name} uses the {base_label}.")
-    return [f"You use the {base_label}."] + effect_lines
+        out = [f"You drink the {base_label}."] + effect_lines
+    else:
+        _notify_peers_third_person(ch, room_id, f"{actor_name} uses the {base_label}.")
+        out = [f"You use the {base_label}."] + effect_lines
+    if had_teleport:
+        out = out + _apply_teleport_spawn_scroll(actor_pk, room_id)
+    return out
 
 
 def _handle_read(char: CharacterType, parsed: ParsedRead) -> list[str]:

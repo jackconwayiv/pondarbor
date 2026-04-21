@@ -12,7 +12,7 @@ import {
   Text,
   Textarea,
 } from "@chakra-ui/react";
-import { useCallback, useEffect, useState } from "react";
+import { type ChangeEvent, useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
@@ -42,6 +42,36 @@ const DMG = ["physical", "magic"] as const;
 const HIDDEN = ["none", "crit_chain", "lifesteal", "mana_on_hit"] as const;
 const HIDDEN_BONUS_STAT = ["", "gains", "moves", "guts", "smarts", "sense", "rizz"] as const;
 
+type EffectPresetId =
+  | "none"
+  | "advanced"
+  | "heal_hp"
+  | "restore_mana"
+  | "light_x3"
+  | "light_x5"
+  | "teleport_spawn";
+
+function currentEffectPreset(extra: Record<string, unknown> | undefined): {
+  id: EffectPresetId;
+  amount?: number;
+} {
+  const raw = extra?.consume_effects;
+  if (!Array.isArray(raw) || raw.length === 0) return { id: "none" };
+  if (raw.length > 1) return { id: "advanced" };
+  const e = raw[0] as Record<string, unknown>;
+  const k = String(e.kind || "").trim();
+  if (k === "heal_hp") return { id: "heal_hp", amount: Number(e.amount) || 1 };
+  if (k === "restore_mana") return { id: "restore_mana", amount: Number(e.amount) || 1 };
+  if (k === "dark_minimap_light") {
+    const r = Number(e.radius);
+    if (r === 3) return { id: "light_x3" };
+    if (r === 5) return { id: "light_x5" };
+    return { id: "advanced" };
+  }
+  if (k === "teleport_spawn") return { id: "teleport_spawn" };
+  return { id: "advanced" };
+}
+
 function emptyForm(): Partial<DmItem> {
   return {
     slug: "",
@@ -49,6 +79,7 @@ function emptyForm(): Partial<DmItem> {
     item_type: "",
     slot: "",
     consumable: false,
+    consume_verb: "",
     stackable: false,
     max_stack: 99,
     extra_data: {} as Record<string, unknown>,
@@ -115,6 +146,7 @@ export default function QffDmItemsPage() {
       ...it,
       slot: it.slot ?? "",
       consumable: it.consumable ?? false,
+      consume_verb: it.consume_verb ?? "",
       stackable: it.stackable ?? false,
       max_stack: it.max_stack ?? 99,
       extra_data: (it.extra_data ?? {}) as Record<string, unknown>,
@@ -197,6 +229,8 @@ export default function QffDmItemsPage() {
       </Box>
     );
   }
+
+  const effectPreset = currentEffectPreset(form.extra_data as Record<string, unknown> | undefined);
 
   return (
     <Box maxW="6xl" mx="auto" px={4} py={8} color="#c8e6a8">
@@ -322,6 +356,30 @@ export default function QffDmItemsPage() {
               </Switch.Root>
             </Field.Root>
             <Field.Root flex="1" minW="200px">
+              <Field.Label>Consume verb</Field.Label>
+              <Text fontSize="xs" color="#888" mb={1}>
+                Required command when set. Leave &quot;Any&quot; for legacy items.
+              </Text>
+              <NativeSelectRoot
+                opacity={form.consumable ? undefined : 0.45}
+                pointerEvents={form.consumable ? undefined : "none"}
+              >
+                <NativeSelectField
+                  value={form.consume_verb ?? ""}
+                  onChange={(e: ChangeEvent<HTMLSelectElement>) => {
+                    if (!form.consumable) return;
+                    setForm((f) => ({ ...f, consume_verb: e.target.value }));
+                  }}
+                  bg="#222"
+                >
+                  <option value="">Any (eat / drink / use)</option>
+                  <option value="eat">Eat</option>
+                  <option value="drink">Drink</option>
+                  <option value="use">Use</option>
+                </NativeSelectField>
+              </NativeSelectRoot>
+            </Field.Root>
+            <Field.Root flex="1" minW="200px">
               <Field.Label>Stackable</Field.Label>
               <Text fontSize="xs" color="#888" mb={1}>
                 Same template merges in inventory up to max stack (one encumbrance slot per row).
@@ -354,12 +412,86 @@ export default function QffDmItemsPage() {
             </Field.Root>
           </Flex>
           <Field.Root>
+            <Field.Label>Consumable effect preset</Field.Label>
+            <Text fontSize="xs" color="#888" mb={1}>
+              Quick picks write <Text as="code">consume_effects</Text>. Use JSON below for combos or
+              custom fields.
+            </Text>
+            <Flex gap={2} flexWrap="wrap" alignItems="flex-end">
+              <NativeSelectRoot
+                maxW="280px"
+                opacity={form.consumable ? undefined : 0.45}
+                pointerEvents={form.consumable ? undefined : "none"}
+              >
+                <NativeSelectField
+                  value={effectPreset.id === "advanced" ? "advanced" : effectPreset.id}
+                  onChange={(e: ChangeEvent<HTMLSelectElement>) => {
+                    if (!form.consumable) return;
+                    const v = e.target.value as EffectPresetId | "advanced";
+                    if (v === "advanced") return;
+                    setForm((f) => {
+                      const data = { ...(f.extra_data ?? {}) } as Record<string, unknown>;
+                      if (v === "none") {
+                        delete data.consume_effects;
+                        return { ...f, extra_data: data };
+                      }
+                      if (v === "heal_hp") {
+                        data.consume_effects = [{ kind: "heal_hp", amount: 10 }];
+                      } else if (v === "restore_mana") {
+                        data.consume_effects = [{ kind: "restore_mana", amount: 10 }];
+                      } else if (v === "light_x3") {
+                        data.consume_effects = [{ kind: "dark_minimap_light", radius: 3 }];
+                      } else if (v === "light_x5") {
+                        data.consume_effects = [{ kind: "dark_minimap_light", radius: 5 }];
+                      } else if (v === "teleport_spawn") {
+                        data.consume_effects = [{ kind: "teleport_spawn" }];
+                      }
+                      return { ...f, extra_data: data };
+                    });
+                  }}
+                  bg="#222"
+                >
+                  <option value="none">None</option>
+                  <option value="heal_hp">Healing (HP)</option>
+                  <option value="restore_mana">Restore mana</option>
+                  <option value="light_x3">Dark minimap light — radius 3</option>
+                  <option value="light_x5">Dark minimap light — radius 5</option>
+                  <option value="teleport_spawn">Teleport to spawn (scroll)</option>
+                  {effectPreset.id === "advanced" && (
+                    <option value="advanced" disabled>
+                      Advanced (edit JSON below)
+                    </option>
+                  )}
+                </NativeSelectField>
+              </NativeSelectRoot>
+              {(effectPreset.id === "heal_hp" || effectPreset.id === "restore_mana") && (
+                <Field.Root maxW="100px">
+                  <Field.Label fontSize="xs">Amount</Field.Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={effectPreset.amount ?? 10}
+                    onChange={(e) => {
+                      if (!form.consumable) return;
+                      const n = Math.max(1, parseInt(e.target.value, 10) || 1);
+                      const kind = effectPreset.id;
+                      setForm((f) => {
+                        const data = { ...(f.extra_data ?? {}) } as Record<string, unknown>;
+                        data.consume_effects = [{ kind, amount: n }];
+                        return { ...f, extra_data: data };
+                      });
+                    }}
+                    bg="#222"
+                  />
+                </Field.Root>
+              )}
+            </Flex>
+          </Field.Root>
+          <Field.Root>
             <Field.Label>Consumable effects (extra_data JSON)</Field.Label>
             <Text fontSize="xs" color="#888" mb={1}>
-              Optional. Example:{" "}
-              <Text as="code" fontSize="xs">
-                {`{"consume_effects":[{"kind":"heal_hp","amount":10},{"kind":"restore_mana","amount":5}]}`}
-              </Text>
+              Optional. For multi-effect or experimental data. Preset above is enough for common
+              items.
             </Text>
             <Textarea
               value={JSON.stringify(form.extra_data ?? {}, null, 2)}

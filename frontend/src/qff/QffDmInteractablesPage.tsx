@@ -16,10 +16,17 @@ import { useAppSession } from "../auth/AppSessionContext";
 import QffButton from "./QffButton";
 import {
   dmCreateInteractable,
+  dmFetchAllDmRooms,
   dmFetchInteractables,
   dmPatchInteractable,
   type DmInteractableRow,
 } from "./api";
+
+type RoomOption = { id: number; name: string; area_id: number; area_name: string };
+
+function roomLabel(r: RoomOption): string {
+  return `${r.area_name} — ${r.name}`;
+}
 
 const KIND_OPTIONS = [
   "sign",
@@ -56,9 +63,20 @@ export default function QffDmInteractablesPage() {
   const [rows, setRows] = useState<DmInteractableRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [roomFilter, setRoomFilter] = useState("");
+  const [rooms, setRooms] = useState<RoomOption[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [createForm, setCreateForm] = useState(emptyForm);
   const [editForm, setEditForm] = useState(emptyForm);
+
+  const loadRooms = useCallback(async () => {
+    const token = await getApiAccessToken();
+    const list = await dmFetchAllDmRooms(token);
+    setRooms(list);
+    setCreateForm((f) => ({
+      ...f,
+      room_id: f.room_id || (list[0] ? String(list[0].id) : ""),
+    }));
+  }, [getApiAccessToken]);
 
   const load = useCallback(async () => {
     const token = await getApiAccessToken();
@@ -71,6 +89,11 @@ export default function QffDmInteractablesPage() {
     const data = await dmFetchInteractables(token, roomId);
     setRows(data);
   }, [getApiAccessToken, roomFilter]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isStaff) return;
+    loadRooms().catch((e) => setErr(String(e)));
+  }, [isAuthenticated, isStaff, loadRooms]);
 
   useEffect(() => {
     if (!isAuthenticated || !isStaff) return;
@@ -105,7 +128,7 @@ export default function QffDmInteractablesPage() {
       const token = await getApiAccessToken();
       const rid = parseInt(createForm.room_id.trim(), 10);
       if (!Number.isFinite(rid)) {
-        setErr("Create: room_id must be a number.");
+        setErr("Create: choose a room.");
         return;
       }
       const body: Record<string, unknown> = {
@@ -178,6 +201,8 @@ export default function QffDmInteractablesPage() {
     );
   }
 
+  const roomById = (rid: number) => rooms.find((r) => r.id === rid);
+
   return (
     <Box maxW="4xl" mx="auto" px={4} py={8} color="#c8e6a8">
       <Heading size="lg" mb={2}>
@@ -199,17 +224,30 @@ export default function QffDmInteractablesPage() {
         ← DM home
       </QffButton>
 
+      {rooms.length === 0 && (
+        <Text color="nautical.solid" mb={4} fontSize="sm">
+          No rooms found — create an area and rooms in the world editor first.
+        </Text>
+      )}
+
       <HStack gap={4} mb={4} alignItems="flex-end" flexWrap="wrap">
-        <Field.Root maxW="200px">
-          <Field.Label fontSize="sm">Filter by room_id</Field.Label>
-          <Input
-            size="sm"
-            value={roomFilter}
-            onChange={(e) => setRoomFilter(e.target.value)}
-            placeholder="e.g. 12"
-          />
+        <Field.Root flex="1" minW="220px" maxW="360px">
+          <Field.Label fontSize="sm">Filter by room</Field.Label>
+          <NativeSelectRoot size="sm">
+            <NativeSelectField
+              value={roomFilter}
+              onChange={(e: ChangeEvent<HTMLSelectElement>) => setRoomFilter(e.target.value)}
+              bg="#222"
+            >
+              <option value="">All rooms</option>
+              {rooms.map((r) => (
+                <option key={r.id} value={String(r.id)}>
+                  {roomLabel(r)}
+                </option>
+              ))}
+            </NativeSelectField>
+          </NativeSelectRoot>
         </Field.Root>
-        <QffButton onClick={() => load().catch((e) => setErr(String(e)))}>Apply filter</QffButton>
       </HStack>
 
       <Stack gap={6}>
@@ -219,13 +257,23 @@ export default function QffDmInteractablesPage() {
           </Heading>
           <Stack gap={2}>
             <HStack flexWrap="wrap" gap={2}>
-              <Field.Root maxW="120px">
-                <Field.Label fontSize="xs">room_id</Field.Label>
-                <Input
-                  size="sm"
-                  value={createForm.room_id}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, room_id: e.target.value }))}
-                />
+              <Field.Root flex="1" minW="200px" maxW="320px">
+                <Field.Label fontSize="xs">Room</Field.Label>
+                <NativeSelectRoot size="sm">
+                  <NativeSelectField
+                    value={createForm.room_id}
+                    onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+                      setCreateForm((f) => ({ ...f, room_id: e.target.value }))
+                    }
+                    bg="#222"
+                  >
+                    {rooms.map((r) => (
+                      <option key={r.id} value={String(r.id)}>
+                        {roomLabel(r)}
+                      </option>
+                    ))}
+                  </NativeSelectField>
+                </NativeSelectRoot>
               </Field.Root>
               <Field.Root maxW="160px">
                 <Field.Label fontSize="xs">slug</Field.Label>
@@ -337,7 +385,8 @@ export default function QffDmInteractablesPage() {
                   </Text>
                 </Text>
                 <Text color="#889977">
-                  id {o.id} · room {o.room_id} · {o.slug}
+                  id {o.id} · room {o.room_id}
+                  {roomById(o.room_id) ? ` · ${roomLabel(roomById(o.room_id)!)}` : ""} · {o.slug}
                 </Text>
               </Box>
             ))}
@@ -351,13 +400,23 @@ export default function QffDmInteractablesPage() {
             </Heading>
             <Stack gap={2}>
               <HStack flexWrap="wrap" gap={2}>
-                <Field.Root maxW="120px">
-                  <Field.Label fontSize="xs">room_id</Field.Label>
-                  <Input
-                    size="sm"
-                    value={editForm.room_id}
-                    onChange={(e) => setEditForm((f) => ({ ...f, room_id: e.target.value }))}
-                  />
+                <Field.Root flex="1" minW="200px" maxW="320px">
+                  <Field.Label fontSize="xs">Room</Field.Label>
+                  <NativeSelectRoot size="sm">
+                    <NativeSelectField
+                      value={editForm.room_id}
+                      onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+                        setEditForm((f) => ({ ...f, room_id: e.target.value }))
+                      }
+                      bg="#222"
+                    >
+                      {rooms.map((r) => (
+                        <option key={r.id} value={String(r.id)}>
+                          {roomLabel(r)}
+                        </option>
+                      ))}
+                    </NativeSelectField>
+                  </NativeSelectRoot>
                 </Field.Root>
                 <Field.Root maxW="160px">
                   <Field.Label fontSize="xs">slug</Field.Label>

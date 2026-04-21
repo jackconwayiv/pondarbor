@@ -296,6 +296,12 @@ class Item(models.Model):
         SENSE = "sense", "Sense"
         RIZZ = "rizz", "Rizz"
 
+    class ConsumeVerb(models.TextChoices):
+        ANY = "", "Any (eat / drink / use)"
+        EAT = "eat", "Eat"
+        DRINK = "drink", "Drink"
+        USE = "use", "Use"
+
     slug = models.SlugField(max_length=80, unique=True)
     name = models.CharField(max_length=200)
     item_type = models.CharField(max_length=64, blank=True)
@@ -309,6 +315,13 @@ class Item(models.Model):
     consumable = models.BooleanField(
         default=False,
         help_text="If true, eat/drink/use can consume from inventory (non-consumables cannot).",
+    )
+    consume_verb = models.CharField(
+        max_length=8,
+        choices=ConsumeVerb.choices,
+        blank=True,
+        default=ConsumeVerb.ANY,
+        help_text="Which verb must the player use to consume this? Blank = any (legacy).",
     )
     cost = models.PositiveIntegerField(default=0)
     description = models.TextField(blank=True)
@@ -525,6 +538,29 @@ class RoomItem(models.Model):
 
     def __str__(self) -> str:
         return f"{self.room_id} {self.item.name}"
+
+
+class RoomItemSpawn(models.Model):
+    """A RoomItem pickup by a specific hero. Cascades away when the underlying ItemInstance is deleted (consumed), re-opening the slot."""
+
+    room_item = models.ForeignKey(
+        RoomItem, on_delete=models.CASCADE, related_name="spawns"
+    )
+    character = models.ForeignKey(
+        "Character", on_delete=models.CASCADE, related_name="room_item_spawns"
+    )
+    item_instance = models.ForeignKey(
+        "ItemInstance",
+        on_delete=models.CASCADE,
+        related_name="room_item_spawn_origins",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["room_item", "character"]),
+            models.Index(fields=["character", "room_item"]),
+        ]
 
 
 class RoomBroadcast(models.Model):

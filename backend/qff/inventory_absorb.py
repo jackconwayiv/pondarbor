@@ -47,16 +47,22 @@ def absorb_item_quantity(
     item: "Item",
     qty: int,
     donor: ItemInstance | None = None,
-) -> list[int]:
+) -> tuple[list[int], list[int]]:
     """Add qty units of template `item` to character inventory.
 
-    Merges into existing locked stacks where possible. Returns primary keys of
-    newly created instances (caller should ``_prepend_inv`` in reverse order).
+    Merges into existing locked stacks where possible.
+
+    Returns ``(destination_pks, newly_created_pks)`` where:
+
+    - ``destination_pks`` — every ItemInstance that received any of the absorbed
+      quantity (merged-into stacks first, then new rows), deduplicated in order.
+    - ``newly_created_pks`` — only rows created in this call (caller should
+      ``_prepend_inv`` these in reverse order).
 
     ``character`` must already be select_for_update locked.
     """
     if qty < 1:
-        return []
+        return ([], [])
 
     if not item.stackable:
         new_pks: list[int] = []
@@ -69,11 +75,12 @@ def absorb_item_quantity(
                 **_donor_instance_defaults(donor),
             )
             new_pks.append(inst.pk)
-        return new_pks
+        return (new_pks, new_pks)
 
     max_s = effective_max_stack(item)
     remaining = qty
     inv = list(character.inventory or [])
+    merged_into: list[int] = []
 
     for iid in inv:
         if remaining <= 0:
@@ -97,9 +104,10 @@ def absorb_item_quantity(
             inst.visible_quest_state_id = donor.visible_quest_state_id
             ufields.append("visible_quest_state_id")
         inst.save(update_fields=ufields)
+        merged_into.append(inst.pk)
         remaining -= add
 
-    new_pks = []
+    new_pks: list[int] = []
     defaults = _donor_instance_defaults(donor)
     while remaining > 0:
         chunk = min(max_s, remaining)
@@ -112,4 +120,7 @@ def absorb_item_quantity(
         )
         new_pks.append(inst.pk)
         remaining -= chunk
-    return new_pks
+
+    # Preserve order: merged stacks (first touch order), then new rows; dedupe.
+    destination_pks = list(dict.fromkeys(merged_into + new_pks))
+    return (destination_pks, new_pks)

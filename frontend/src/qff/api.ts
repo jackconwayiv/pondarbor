@@ -604,6 +604,20 @@ export async function dmPatchMonsterTemplate(
   return (await response.json()) as DmMonsterTemplate;
 }
 
+export async function dmCreateMonsterTemplate(
+  accessToken: string | null,
+  body: Partial<DmMonsterTemplate> & { slug: string; name: string },
+): Promise<DmMonsterTemplate> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/monster-templates/`), {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmMonsterTemplate;
+}
+
 export async function dmFetchRooms(accessToken: string | null, areaId: number): Promise<DmRoom[]> {
   const response = await fetch(qffJoinBase(`/api/v1/qff/dm/areas/${areaId}/rooms/`), {
     headers: authHeaders(accessToken),
@@ -764,6 +778,8 @@ export type DmItem = {
   /** Null = cannot be equipped (quest item, consumable without wear slot, etc.). */
   slot: string | null;
   consumable: boolean;
+  /** eat | drink | use | "" (any) */
+  consume_verb?: string;
   stackable: boolean;
   max_stack: number;
   extra_data: Record<string, unknown>;

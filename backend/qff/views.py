@@ -1109,12 +1109,27 @@ def _dm_monster_template_dict(t: MonsterTemplate) -> dict:
     }
 
 
-@api_view(["GET"])
+@api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated, IsStaffUser])
-def dm_monster_template_list(_request):
-    return Response(
-        [_dm_monster_template_dict(t) for t in MonsterTemplate.objects.order_by("name")]
-    )
+def dm_monster_template_list(request):
+    if request.method == "GET":
+        return Response(
+            [_dm_monster_template_dict(t) for t in MonsterTemplate.objects.order_by("name")]
+        )
+    slug = (request.data.get("slug") or "").strip()
+    name = (request.data.get("name") or "").strip()
+    if not slug or not name:
+        return Response(
+            {"detail": "slug and name are required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if MonsterTemplate.objects.filter(slug=slug).exists():
+        return Response(
+            {"detail": "That slug is already in use."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    tpl = MonsterTemplate.objects.create(slug=slug[:80], name=name[:200])
+    return Response(_dm_monster_template_dict(tpl), status=status.HTTP_201_CREATED)
 
 
 @api_view(["GET", "PATCH"])
@@ -1693,6 +1708,7 @@ def _dm_item_dict(item: Item) -> dict:
         "item_type": item.item_type,
         "slot": item.slot,
         "consumable": item.consumable,
+        "consume_verb": item.consume_verb or "",
         "stackable": item.stackable,
         "max_stack": item.max_stack,
         "extra_data": item.extra_data or {},
@@ -1743,6 +1759,16 @@ def _parse_optional_positive_int(val):
         return None
 
 
+def _coerce_consume_verb(val):
+    """Return consume_verb string, or None if invalid."""
+    if val is None or (isinstance(val, str) and not val.strip()):
+        return ""
+    v = str(val).strip().lower()
+    if v not in ("eat", "drink", "use"):
+        return None
+    return v
+
+
 def _coerce_hidden_bonus_stat(val):
     """Return Item.HiddenBonusStat value, or None if invalid."""
     if val is None or (isinstance(val, str) and not val.strip()):
@@ -1784,6 +1810,12 @@ def dm_item_list_create(request):
             {"detail": "invalid hidden_bonus_stat."},
             status=status.HTTP_400_BAD_REQUEST,
         )
+    cv = _coerce_consume_verb(request.data.get("consume_verb"))
+    if cv is None:
+        return Response(
+            {"detail": "invalid consume_verb."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     ed = _parse_extra_data_payload(request.data.get("extra_data"))
     if request.data.get("extra_data") is not None and ed is None:
         return Response(
@@ -1796,6 +1828,7 @@ def dm_item_list_create(request):
         item_type=(request.data.get("item_type") or "")[:64],
         slot=slot,
         consumable=bool(request.data.get("consumable")),
+        consume_verb=cv,
         stackable=bool(request.data.get("stackable")),
         max_stack=max(1, min(9999, int(request.data.get("max_stack") or 99))),
         extra_data=ed or {},
@@ -1864,6 +1897,14 @@ def dm_item_detail(request, pk):
         item.slot = slot
     if "consumable" in request.data:
         item.consumable = bool(request.data.get("consumable"))
+    if "consume_verb" in request.data:
+        cv = _coerce_consume_verb(request.data.get("consume_verb"))
+        if cv is None:
+            return Response(
+                {"detail": "invalid consume_verb."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        item.consume_verb = cv
     if "stackable" in request.data:
         item.stackable = bool(request.data.get("stackable"))
     if "max_stack" in request.data:

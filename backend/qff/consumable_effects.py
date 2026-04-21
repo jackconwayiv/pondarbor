@@ -78,6 +78,17 @@ def dark_minimap_light_additions(character: "Character", radius: int) -> set[int
     return out
 
 
+def consume_effects_contain_teleport_spawn(item: "Item") -> bool:
+    """True if template lists a teleport_spawn effect (handled outside apply_consume_effects)."""
+    raw = (item.extra_data or {}).get("consume_effects")
+    if not raw or not isinstance(raw, list):
+        return False
+    for eff in raw:
+        if isinstance(eff, dict) and (eff.get("kind") or "").strip() == "teleport_spawn":
+            return True
+    return False
+
+
 def validate_consume_effects(character: "Character", item: "Item") -> str | None:
     """Return an error message if the consumable must not be applied; else None."""
     raw = (item.extra_data or {}).get("consume_effects")
@@ -88,6 +99,12 @@ def validate_consume_effects(character: "Character", item: "Item") -> str | None
         if not isinstance(eff, dict):
             continue
         kind = (eff.get("kind") or "").strip()
+        if kind == "teleport_spawn":
+            if not character.spawn_room_id:
+                return "Nothing happens."
+            if character.spawn_room_id == character.current_room_id:
+                return "Nothing happens."
+            continue
         if kind != "dark_minimap_light":
             continue
         radius = _coerce_positive_int(eff.get("radius"), 0)
@@ -145,6 +162,9 @@ def apply_consume_effects(character: "Character", item: "Item") -> list[str]:
                 ch.dark_minimap_lit_room_ids = sorted(merged)
                 msg = (eff.get("message") or "").strip()
                 lines.append(msg or "The light reveals nearby passages.")
+        elif kind == "teleport_spawn":
+            # Applied in command_handlers after the instance is consumed (room move).
+            pass
 
     if hp_gain > 0:
         lines.append(f"You recover {hp_gain} health.")

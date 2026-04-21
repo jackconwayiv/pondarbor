@@ -22,6 +22,7 @@ from qff.models import (
     QuestTransition,
     RoomExit,
     RoomItem,
+    RoomItemSpawn,
 )
 
 SLOT_ATTRS = (
@@ -92,6 +93,10 @@ def room_item_visible_to_character(
     if not room_item.allow_repeat_while_carrying and character_carries_item_template(
         character, room_item.item_id
     ):
+        return False
+    if not room_item.allow_repeat_while_carrying and RoomItemSpawn.objects.filter(
+        room_item_id=room_item.id, character_id=character.id
+    ).exists():
         return False
     if room_item.item_id in floor_template_ids_in_room:
         return False
@@ -372,6 +377,11 @@ def _delete_instance_from_character(character: Character, inst: ItemInstance) ->
     return label
 
 
+def name_token_prefix_match(name_lower: str, q: str) -> bool:
+    """True if any whitespace-separated token in ``name_lower`` starts with ``q``."""
+    return any(tok.startswith(q) for tok in name_lower.split())
+
+
 def find_npc_in_room(character: Character, query: str) -> Npc | None:
     q = (query or "").strip().lower()
     if not q:
@@ -382,6 +392,9 @@ def find_npc_in_room(character: Character, query: str) -> Npc | None:
             return n
     for n in npcs.order_by("id"):
         if n.name.lower().startswith(q) or n.slug.lower().startswith(q):
+            return n
+    for n in npcs.order_by("id"):
+        if name_token_prefix_match(n.name.lower(), q):
             return n
     return None
 
@@ -396,6 +409,9 @@ def find_interactable_in_room(character: Character, query: str) -> Interactable 
             return o
     for o in objs.order_by("id"):
         if o.name.lower().startswith(q) or o.slug.lower().startswith(q):
+            return o
+    for o in objs.order_by("id"):
+        if name_token_prefix_match(o.name.lower(), q):
             return o
     return None
 

@@ -18,6 +18,7 @@ import QffButton from "./QffButton";
 import {
   fetchQffSession,
   postQffSessionActivity,
+  postQffSessionLeave,
   qffSessionWsUrl,
   sendQffCommand,
   type QffAreaMapCell,
@@ -139,6 +140,7 @@ export default function QffPlayPage() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const logScrollRef = useRef<HTMLDivElement | null>(null);
   const [commandPending, setCommandPending] = useState(false);
+  const [leavePending, setLeavePending] = useState<false | { waitSeconds: number }>(false);
 
   const load = useCallback(async () => {
     const token = await getTokenRef.current();
@@ -155,6 +157,36 @@ export default function QffPlayPage() {
     }
     setSession(s);
   }, []);
+
+  const handleLeaveClick = useCallback(async () => {
+    if (leavePending !== false) return;
+    const token = await getTokenRef.current();
+    try {
+      const res = await postQffSessionLeave(token);
+      if (!res.pending) {
+        navigate("/qff");
+        return;
+      }
+      setLeavePending({ waitSeconds: res.wait_seconds });
+      const delayMs = Math.max(0, res.wait_seconds * 1000) + 250;
+      window.setTimeout(async () => {
+        try {
+          const s = await fetchQffSession(token);
+          if (!s.has_character || s.force_lobby) {
+            navigate("/qff");
+            return;
+          }
+          setSession(s);
+        } catch {
+          /* fall through: leave state stays; user can retry */
+        } finally {
+          setLeavePending(false);
+        }
+      }, delayMs);
+    } catch {
+      setLeavePending(false);
+    }
+  }, [leavePending, navigate]);
 
   useEffect(() => {
     if (!isAuthenticated || !sessionUser?.user?.is_approved) return;
@@ -939,8 +971,13 @@ export default function QffPlayPage() {
             {area.name}
           </Text>
         </Flex>
-        <QffButton type="button" size="sm" onClick={() => navigate("/qff")}>
-          Lobby
+        <QffButton
+          type="button"
+          size="sm"
+          onClick={handleLeaveClick}
+          disabled={leavePending !== false}
+        >
+          {leavePending !== false ? `Leaving in ${leavePending.waitSeconds}s…` : "Lobby"}
         </QffButton>
       </Flex>
 

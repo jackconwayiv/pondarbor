@@ -6,6 +6,7 @@ from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from qff.command_parser import (
@@ -13,8 +14,10 @@ from qff.command_parser import (
     ParsedBuyAbilities,
     ParsedConsumeItem,
     ParsedDrop,
+    ParsedEmote,
     ParsedEquip,
     ParsedGet,
+    ParsedLeave,
     ParsedLookDirection,
     ParsedLookInspect,
     ParsedMove,
@@ -84,7 +87,11 @@ from qff.quest_engine import (
     try_item_transitions_on_talk,
     unowned_floor_item_template_ids_in_room,
 )
-from qff.monster_sim import add_gold_to_room_floor, ensure_monster_engaged_by_attacker
+from qff.monster_sim import (
+    _disengage_monsters_from_hero,
+    add_gold_to_room_floor,
+    ensure_monster_engaged_by_attacker,
+)
 from qff.narrative_visibility import occupant_labels_for_look, room_is_narratively_visible
 from qff.shop_engine import (
     browse_shop,
@@ -152,6 +159,7 @@ def _others_present_count(char: CharacterType) -> int:
     return (
         Character.objects.filter(
             current_room_id=char.current_room_id,
+            is_in_realm=True,
             last_activity_at__gte=presence_threshold(),
         )
         .exclude(pk=char.pk)
@@ -164,6 +172,7 @@ def _others_in_room(witness_room_id: int, exclude_character_pk: int) -> int:
     return (
         Character.objects.filter(
             current_room_id=witness_room_id,
+            is_in_realm=True,
             last_activity_at__gte=presence_threshold(),
         )
         .exclude(pk=exclude_character_pk)
@@ -210,6 +219,8 @@ def _visible_in_room(actor: CharacterType, other: CharacterType) -> bool:
         return False
     if other.pk == actor.pk:
         return True
+    if not getattr(other, "is_in_realm", True):
+        return False
     return other.last_activity_at >= presence_threshold()
 
 
@@ -467,6 +478,21 @@ def execute_command(
     if isinstance(parsed, ParsedUnknown):
         return ["You try that, but nothing happens."]
 
+    if isinstance(parsed, ParsedLeave):
+        _mark_command_boundary(char)
+        return _handle_leave(char)
+
+    cancel_prefix: list[str] = []
+    if char.pending_leave_at is not None:
+        char.pending_leave_at = None
+        char.save(update_fields=["pending_leave_at", "updated_at"])
+        cancel_prefix = ["You abort your escape."]
+
+    result = _dispatch_non_leave(char, parsed)
+    return cancel_prefix + result
+
+
+def _dispatch_non_leave(char: CharacterType, parsed) -> list[str]:
     if isinstance(parsed, ParsedSay):
         text = (parsed.text or "").strip()
         if not text:
@@ -518,6 +544,9 @@ def execute_command(
 
     if isinstance(parsed, ParsedAttack):
         return _handle_attack(char, parsed)
+
+    if isinstance(parsed, ParsedEmote):
+        return _handle_emote(char, parsed)
 
     if isinstance(parsed, ParsedTrain):
         return _handle_train(char)
@@ -571,6 +600,10 @@ def _handle_attack(char: CharacterType, parsed: ParsedAttack) -> list[str]:
     if not m:
         char.save(update_fields=["last_activity_at", "updated_at"])
         return ["You don't see that here."]
+    mname = m.template.name
+    if char.combat_target_monster_id == m.pk and char.next_action_at is not None:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return [f"You are already attacking the {mname}."]
     now = timezone.now()
     ensure_monster_engaged_by_attacker(m, char, now)
     char.combat_target_monster_id = m.pk
@@ -583,7 +616,140 @@ def _handle_attack(char: CharacterType, parsed: ParsedAttack) -> list[str]:
             "updated_at",
         ]
     )
-    return ["You ready an attack."]
+    return [f"You prepare to attack the {mname}."]
+
+
+def _hero_has_aggro(char: CharacterType) -> bool:
+    """True if any monster in the realm is engaged with or pursuing this hero."""
+    return MonsterInstance.objects.filter(
+        cur_hp__gt=0,
+    ).filter(
+        Q(engaged_character_id=char.pk) | Q(pursuit_target_character_id=char.pk),
+    ).exists()
+
+
+def _complete_leave(char: CharacterType) -> None:
+    """Finalize a leave: drop aggro, clear pending, flip is_in_realm False."""
+    _disengage_monsters_from_hero(char, reset_hero_combat=False)
+    char.next_action_at = None
+    char.combat_target_monster_id = None
+    char.pending_leave_at = None
+    char.is_in_realm = False
+    char.save(
+        update_fields=[
+            "next_action_at",
+            "combat_target_monster",
+            "pending_leave_at",
+            "is_in_realm",
+            "updated_at",
+        ]
+    )
+
+
+def _handle_leave(char: CharacterType) -> list[str]:
+    _touch_activity(char)
+    now = timezone.now()
+    if char.pending_leave_at is not None and char.pending_leave_at > now:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return ["You are already preparing to leave the realm."]
+    room = char.current_room
+    room_is_safe = bool(getattr(room, "is_safe", False))
+    if room_is_safe or not _hero_has_aggro(char):
+        _notify_peers_third_person(
+            char, char.current_room_id, f"{char.name} vanishes from the realm."
+        )
+        _complete_leave(char)
+        char.last_activity_at = now
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return ["You step out of the realm and return to the lobby."]
+    char.pending_leave_at = now + timedelta(seconds=COMBAT_ROUND_SECONDS)
+    char.save(
+        update_fields=[
+            "pending_leave_at",
+            "last_activity_at",
+            "updated_at",
+        ]
+    )
+    _notify_peers_third_person(
+        char, char.current_room_id, f"{char.name} prepares to leave the realm."
+    )
+    return [
+        f"You prepare to leave the realm. Stay alive for {COMBAT_ROUND_SECONDS} seconds..."
+    ]
+
+
+_EMOTE_LINES: dict[str, dict[str, str]] = {
+    "wave": {
+        "self_no_target": "You wave at the room.",
+        "peer_no_target": "{actor} waves.",
+        "self_target": "You wave at {target}.",
+        "target": "{actor} waves at you.",
+        "peer_target": "{actor} waves at {target}.",
+        "self_self": "You wave at yourself.",
+    },
+}
+
+
+def _handle_emote(char: CharacterType, parsed: ParsedEmote) -> list[str]:
+    _touch_activity(char)
+    lines = _EMOTE_LINES.get(parsed.verb)
+    if lines is None:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return ["You try that, but nothing happens."]
+    query = (parsed.target or "").strip()
+    other: CharacterType | None = None
+    if query:
+        other = _find_character_target(char, query)
+
+    def _save_activity() -> None:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+
+    if not query or other is None:
+        # Untargeted (or target not visible): broadcast to room, actor sees first-person.
+        _save_activity()
+        if _others_present_count(char) > 0:
+            _notify_peers_third_person(
+                char,
+                char.current_room_id,
+                lines["peer_no_target"].format(actor=char.name),
+            )
+        return [lines["self_no_target"]]
+
+    if other.pk == char.pk:
+        _save_activity()
+        return [lines["self_self"]]
+
+    _save_activity()
+    # Line the target hero sees.
+    target_rb = RoomBroadcast.objects.create(
+        room_id=char.current_room_id,
+        speaker_id=char.pk,
+        target_character_id=other.pk,
+        text=lines["target"].format(actor=char.name)[:500],
+    )
+    last_id = target_rb.id
+
+    # Per-onlooker targeted broadcasts so the target doesn't also see the third-person line.
+    peer_line = lines["peer_target"].format(actor=char.name, target=other.name)
+    for hero in Character.objects.filter(
+        current_room_id=char.current_room_id,
+        is_in_realm=True,
+    ).exclude(pk__in=[char.pk, other.pk]):
+        if not _visible_in_room(char, hero):
+            continue
+        rb = RoomBroadcast.objects.create(
+            room_id=char.current_room_id,
+            speaker_id=char.pk,
+            target_character_id=hero.pk,
+            text=peer_line[:500],
+        )
+        last_id = max(last_id, rb.id)
+
+    Character.objects.filter(pk=char.pk).update(
+        last_room_broadcast_id=last_id,
+        updated_at=timezone.now(),
+    )
+    return [lines["self_target"].format(target=other.name)]
 
 
 def _handle_buy_abilities(char: CharacterType) -> list[str]:
@@ -1228,14 +1394,12 @@ def _handle_talk(char: CharacterType, parsed: ParsedTalk) -> list[str]:
     char = Character.objects.get(pk=char.pk)
     extra = try_item_transitions_on_talk(char, npc)
     char = Character.objects.get(pk=char.pk)
-    # Service NPCs (healer/innkeeper) replace the normal dialogue line with an offer,
-    # so the y/n flow isn't buried under flavor text.
-    service = _service_offer(char, npc)
-    if service is not None:
-        char.save(update_fields=["last_activity_at", "updated_at"])
-        return extra + service
     main = resolve_npc_dialogue(char, npc)
+    char = Character.objects.get(pk=char.pk)
+    service = _service_offer(char, npc)
     char.save(update_fields=["last_activity_at", "updated_at"])
+    if service is not None:
+        return extra + [main] + service
     return extra + [main]
 
 

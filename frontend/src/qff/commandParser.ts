@@ -254,6 +254,12 @@ export function parseQffCommandLine(line: string): QffParseResult {
   if (low.startsWith("atk ")) {
     return { kind: "known" };
   }
+  if (low === "leave" || low === "exit" || low === "quit") {
+    return { kind: "known" };
+  }
+  if (low === "wave" || low.startsWith("wave ")) {
+    return { kind: "known" };
+  }
   if (low === "train") {
     return { kind: "known" };
   }

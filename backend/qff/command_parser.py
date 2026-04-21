@@ -134,6 +134,21 @@ class ParsedRestSleep:
 
 
 @dataclass
+class ParsedLeave:
+    """leave / exit / quit — queue a return to the lobby (delayed in unsafe rooms)."""
+
+    pass
+
+
+@dataclass
+class ParsedEmote:
+    """Generic social emote (wave, etc.). ``target`` is a player name or empty."""
+
+    verb: str
+    target: str = ""
+
+
+@dataclass
 class ParsedUnknown:
     raw: str
 
@@ -175,9 +190,13 @@ _DIRECTION_SYNONYMS: list[tuple[str, str]] = [
     ("down", RoomExit.Direction.DOWN),
     ("up", RoomExit.Direction.UP),
     ("enter", RoomExit.Direction.IN),
-    ("leave", RoomExit.Direction.OUT),
-    ("exit", RoomExit.Direction.OUT),
 ]
+
+# Bare "leave"/"exit"/"quit" now mean "return to lobby"; use "out" for the OUT exit.
+_LEAVE_WORDS = {"leave", "exit", "quit"}
+
+# Single-word emote verbs; extend as we add more (bow, smile, etc.).
+_EMOTE_VERBS: set[str] = {"wave"}
 
 _SINGLE_LETTER = {
     "n": RoomExit.Direction.N,
@@ -237,6 +256,18 @@ def parse_command(line: str):
         return ParsedUnknown(raw=raw)
 
     low = n.lower()
+
+    # leave / exit / quit — return to lobby (queued in unsafe rooms)
+    if low in _LEAVE_WORDS:
+        return ParsedLeave()
+
+    # Emotes (wave, ...): "wave", "wave <name>", "wave at <name>"
+    first, _, remainder = low.partition(" ")
+    if first in _EMOTE_VERBS:
+        remainder_raw = n[len(first):].strip()
+        if remainder_raw.lower().startswith("at "):
+            remainder_raw = remainder_raw[3:].strip()
+        return ParsedEmote(verb=first, target=remainder_raw)
 
     # say / say …
     if low == "say":

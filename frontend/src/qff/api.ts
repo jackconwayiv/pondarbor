@@ -251,6 +251,28 @@ export async function postQffSessionActivity(accessToken: string | null): Promis
   }
 }
 
+export type QffLeaveResponse = {
+  ok: boolean;
+  pending: boolean;
+  wait_seconds: number;
+  in_realm: boolean;
+  messages: string[];
+};
+
+/** Queue a return to lobby; ``pending=true`` means wait ``wait_seconds`` before navigating. */
+export async function postQffSessionLeave(accessToken: string | null): Promise<QffLeaveResponse> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/session/leave/`), {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`QFF session leave (${response.status}): ${text}`);
+  }
+  return (await response.json()) as QffLeaveResponse;
+}
+
 export async function createQffCharacter(
   accessToken: string | null,
   body: { name: string; glyphs: string[] },

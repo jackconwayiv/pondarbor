@@ -445,9 +445,11 @@ def monsters_follow_hero_move(hero: Character, old_room_id: int, dest_room_id: i
             )
 
 
-def safe_room_disengage(hero: Character, room: Room) -> bool:
-    if not room.is_safe:
-        return False
+def _disengage_monsters_from_hero(hero: Character, *, reset_hero_combat: bool = True) -> int:
+    """Clear aggro from any monster pointed at ``hero``; optionally reset hero combat state.
+
+    Returns the number of monster rows updated. Used by safe-room entry and by the /leave flow.
+    """
     n = MonsterInstance.objects.filter(
         Q(engaged_character_id=hero.pk) | Q(pursuit_target_character_id=hero.pk)
     ).update(
@@ -458,18 +460,24 @@ def safe_room_disengage(hero: Character, room: Room) -> bool:
         monster_strike_pending=False,
         updated_at=timezone.now(),
     )
-    if not n:
+    if reset_hero_combat and n:
+        hero.next_action_at = None
+        hero.combat_target_monster_id = None
+        hero.save(
+            update_fields=[
+                "next_action_at",
+                "combat_target_monster",
+                "updated_at",
+            ]
+        )
+    return n
+
+
+def safe_room_disengage(hero: Character, room: Room) -> bool:
+    if not room.is_safe:
         return False
-    hero.next_action_at = None
-    hero.combat_target_monster_id = None
-    hero.save(
-        update_fields=[
-            "next_action_at",
-            "combat_target_monster",
-            "updated_at",
-        ]
-    )
-    return True
+    n = _disengage_monsters_from_hero(hero)
+    return bool(n)
 
 
 def try_bind_monster_to_room_heroes(monster: MonsterInstance, room_id: int, now) -> bool:
@@ -869,10 +877,17 @@ def _resolve_hero_strike(char: Character, now) -> None:
     res = resolve_physical_strike(atk, dfn)
     mname = monster.template.name
     rid = char.current_room_id
+    mh = char.main_hand_item
+    mh_item = mh.item if mh else None
+    weapon_name = mh_item.name if mh_item else "fists"
+    elem = (mh_item.element if mh_item else "") or ""
+    verb_map = {"bludgeoning": "bludgeon", "slashing": "slash", "piercing": "pierce"}
+    verb = verb_map.get(elem.lower(), "hit")
+    verbs = f"{verb}s"
     if res.outcome == "miss":
         _narrate(
             rid,
-            f"You swing at the {mname} but miss.",
+            f"Your attack misses the {mname}.",
             target_character_id=char.pk,
             log_tone="miss",
         )
@@ -880,7 +895,7 @@ def _resolve_hero_strike(char: Character, now) -> None:
             if h.pk != char.pk:
                 _narrate(
                     rid,
-                    f"{char.name} swings at the {mname} but misses.",
+                    f"{char.name}'s attack misses the {mname}.",
                     target_character_id=h.pk,
                     log_tone="miss",
                 )
@@ -913,11 +928,11 @@ def _resolve_hero_strike(char: Character, now) -> None:
         m2.save(update_fields=["xp_contribution", "updated_at"])
     monster = MonsterInstance.objects.get(pk=monster.pk)
     if res.outcome == "crit":
-        you = f"You land a critical hit on the {mname} for {dmg} damage!"
-        peer = f"{char.name} critically strikes the {mname} for {dmg} damage!"
+        you = f"You critically {verb} the {mname} with your {weapon_name} for {dmg} damage!"
+        peer = f"{char.name} critically {verbs} the {mname} with their {weapon_name} for {dmg} damage!"
     else:
-        you = f"You strike the {mname} for {dmg} damage!"
-        peer = f"{char.name} strikes the {mname} for {dmg} damage!"
+        you = f"You {verb} the {mname} with your {weapon_name} for {dmg} damage!"
+        peer = f"{char.name} {verbs} the {mname} with their {weapon_name} for {dmg} damage!"
     _narrate(rid, you, target_character_id=char.pk, log_tone="hero_hit")
     for h in _heroes_in_room(rid):
         if h.pk != char.pk:
@@ -998,6 +1013,7 @@ def _hero_die(hero: Character, room_id: int, killer_monster_id: int | None = Non
     hero.died_at = timezone.now()
     hero.next_action_at = None
     hero.combat_target_monster_id = None
+    hero.pending_leave_at = None
     hero.save(
         update_fields=[
             "cur_health",
@@ -1005,6 +1021,7 @@ def _hero_die(hero: Character, room_id: int, killer_monster_id: int | None = Non
             "died_at",
             "next_action_at",
             "combat_target_monster",
+            "pending_leave_at",
             "updated_at",
         ]
     )
@@ -1169,12 +1186,66 @@ def flush_combat_rounds(now) -> set[int]:
     return affected
 
 
+def _boot_hero_to_lobby(hero: Character) -> int:
+    """Persist an out-of-realm transition for ``hero``: drop aggro, clear combat/pending, narrate.
+
+    Returns the affected room id (for batched WS notifies).
+    """
+    _disengage_monsters_from_hero(hero, reset_hero_combat=False)
+    rid = hero.current_room_id
+    _narrate(rid, f"{hero.name} vanishes from the realm.")
+    Character.objects.filter(pk=hero.pk).update(
+        next_action_at=None,
+        combat_target_monster_id=None,
+        pending_leave_at=None,
+        is_in_realm=False,
+        updated_at=timezone.now(),
+    )
+    return rid
+
+
+def flush_pending_leaves(now) -> set[int]:
+    """Complete leaves for heroes whose pending_leave_at is due. Returns affected room ids."""
+    affected: set[int] = set()
+    due = Character.objects.filter(
+        is_dead=False,
+        is_in_realm=True,
+        pending_leave_at__isnull=False,
+        pending_leave_at__lte=now,
+    )
+    for hero in due:
+        affected.add(_boot_hero_to_lobby(hero))
+    return affected
+
+
+def flush_afk_boots(now) -> set[int]:
+    """Boot AFK heroes (last_activity_at older than ``AFK_LOBBY_KICK_MINUTES``) out of the realm.
+
+    Mirrors the /leave completion path so peers + monsters see the player leave the realm
+    instead of just disappearing from the visibility window.
+    """
+    from qff.constants import AFK_LOBBY_KICK_MINUTES
+
+    threshold = now - timedelta(minutes=AFK_LOBBY_KICK_MINUTES)
+    affected: set[int] = set()
+    due = Character.objects.filter(
+        is_dead=False,
+        is_in_realm=True,
+        last_activity_at__lt=threshold,
+    )
+    for hero in due:
+        affected.add(_boot_hero_to_lobby(hero))
+    return affected
+
+
 def run_lazy_simulation(now=None, *, notify_rooms: bool = True) -> list[int]:
     now = now or timezone.now()
     rooms: set[int] = set()
     with transaction.atomic():
         rooms |= maybe_spawn_lairs(now)
         rooms |= flush_pursuit_steps(now)
+        rooms |= flush_pending_leaves(now)
+        rooms |= flush_afk_boots(now)
         rooms |= flush_combat_rounds(now)
         rooms |= flush_bind_monsters_with_room_heroes(now)
         _revive_heroes(now)

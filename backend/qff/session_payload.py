@@ -79,7 +79,10 @@ def others_here_detailed(character) -> list[dict]:
     inactive_threshold = now - timedelta(minutes=PRESENCE_MINUTES)
     visible_threshold = now - timedelta(minutes=AFK_LOBBY_KICK_MINUTES)
     qs = (
-        Character.objects.filter(current_room_id=character.current_room_id)
+        Character.objects.filter(
+            current_room_id=character.current_room_id,
+            is_in_realm=True,
+        )
         .exclude(pk=character.pk)
         .order_by("name")
         .values_list("name", "last_activity_at")
@@ -101,10 +104,20 @@ def _character_is_inactive_for_hud(character) -> bool:
 
 
 def _force_lobby_for_inactivity(character) -> bool:
+    if not getattr(character, "is_in_realm", True):
+        return True
     la = character.last_activity_at
     if not la:
         return True
-    return la < timezone.now() - timedelta(minutes=AFK_LOBBY_KICK_MINUTES)
+    if la >= timezone.now() - timedelta(minutes=AFK_LOBBY_KICK_MINUTES):
+        return False
+    # AFK threshold crossed: eagerly run the same completion as /leave so peers stop
+    # seeing this character and monsters drop aggro before the next sim tick.
+    from qff.monster_sim import _boot_hero_to_lobby
+
+    _boot_hero_to_lobby(character)
+    character.is_in_realm = False
+    return True
 
 
 def consume_room_broadcast_entries(character) -> list[dict]:

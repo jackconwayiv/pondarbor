@@ -728,6 +728,11 @@ class Character(models.Model):
     # Pending y/n confirm from a service NPC (healer_pay / innkeeper_stay).
     # Shape: {"kind": str, "npc_id": int, "cost": int}. Cleared on accept/decline or fall-through.
     pending_prompt = models.JSONField(null=True, blank=True, default=None)
+    # False while the player is in the lobby; True once they've entered the realm.
+    # Presence filters hide out-of-realm characters from other players.
+    is_in_realm = models.BooleanField(default=True)
+    # Set when /leave is issued in an unsafe room; completion happens in the sim tick.
+    pending_leave_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

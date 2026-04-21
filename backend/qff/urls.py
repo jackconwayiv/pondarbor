@@ -5,6 +5,7 @@ from qff import staff_content, views
 urlpatterns = [
     path("session/", views.session_view),
     path("session/activity/", views.session_activity_view),
+    path("session/leave/", views.session_leave_view),
     path("character/", views.character_create),
     path("command/", views.command_view),
     path("dm/areas/", views.dm_area_list_create),

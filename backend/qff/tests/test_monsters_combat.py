@@ -119,7 +119,7 @@ class MonsterCombatTests(TestCase):
 
     def test_attack_sets_timer_and_target(self):
         lines = execute_command(self.hero, parse_command("attack test rat"))
-        self.assertIn("You ready an attack.", lines)
+        self.assertIn("You prepare to attack the Test Rat.", lines)
         self.hero.refresh_from_db()
         self.assertEqual(self.hero.combat_target_monster_id, self.monster.pk)
         self.assertIsNotNone(self.hero.next_action_at)
@@ -453,7 +453,7 @@ class MonsterCombatTests(TestCase):
         self.tpl.name = "Sewer Rat"
         self.tpl.save(update_fields=["name", "updated_at"])
         lines = execute_command(self.hero, parse_command("attack rat"))
-        self.assertTrue(any("ready" in ln.lower() for ln in lines), lines)
+        self.assertTrue(any("prepare to attack" in ln.lower() for ln in lines), lines)
         self.hero.refresh_from_db()
         self.assertEqual(self.hero.combat_target_monster_id, self.monster.pk)
 

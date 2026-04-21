@@ -46,7 +46,7 @@ class CommandParserTests(SimpleTestCase):
         self.assertIsInstance(p, ParsedMove)
         assert isinstance(p, ParsedMove)
         self.assertEqual(p.direction, RoomExit.Direction.IN)
-        p = parse_command("leave")
+        p = parse_command("out")
         self.assertIsInstance(p, ParsedMove)
         assert isinstance(p, ParsedMove)
         self.assertEqual(p.direction, RoomExit.Direction.OUT)

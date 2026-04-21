@@ -180,8 +180,10 @@ class RoomItemTests(TestCase):
         peer.current_room = c.current_room
         peer.last_activity_at = timezone.now() - timedelta(minutes=PRESENCE_MINUTES + 1)
         peer.save(update_fields=["current_room", "last_activity_at", "updated_at"])
+        # Re-entering the realm (what session_activity_view does) flips is_in_realm True.
         c.last_activity_at = timezone.now()
-        c.save(update_fields=["last_activity_at", "updated_at"])
+        c.is_in_realm = True
+        c.save(update_fields=["last_activity_at", "is_in_realm", "updated_at"])
         s2 = build_session_for_character(c)
         self.assertFalse(s2["force_lobby"])
         self.assertEqual(

@@ -18,7 +18,7 @@ from users.permissions import IsApprovedUser, IsStaffUser
 
 from qff.command_echo import should_echo_command
 from qff.command_handlers import execute_command, maybe_handle_pending_prompt
-from qff.command_parser import parse_command
+from qff.command_parser import ParsedLeave, parse_command
 from qff.exploration import on_enter_room
 from qff.loadout import apply_starting_loadout
 from qff.models import (
@@ -132,8 +132,38 @@ def session_activity_view(request):
     if not char:
         return Response({"ok": False}, status=status.HTTP_404_NOT_FOUND)
     now = timezone.now()
-    Character.objects.filter(pk=char.pk).update(last_activity_at=now, updated_at=now)
+    Character.objects.filter(pk=char.pk).update(
+        last_activity_at=now,
+        is_in_realm=True,
+        updated_at=now,
+    )
     return Response({"ok": True})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsApprovedUser])
+def session_leave_view(request):
+    """Queue a return to lobby. Safe rooms (or no aggro) leave immediately; else a 6s delay."""
+    char = _get_character(request.user)
+    if not char:
+        return Response({"ok": False}, status=status.HTTP_404_NOT_FOUND)
+    messages = execute_command(char, ParsedLeave())
+    run_lazy_simulation(notify_rooms=False)
+    char.refresh_from_db()
+    pending = char.pending_leave_at is not None and char.is_in_realm
+    wait_seconds = 0
+    if pending and char.pending_leave_at is not None:
+        delta = (char.pending_leave_at - timezone.now()).total_seconds()
+        wait_seconds = max(0, int(round(delta)))
+    return Response(
+        {
+            "ok": True,
+            "pending": pending,
+            "wait_seconds": wait_seconds,
+            "in_realm": bool(char.is_in_realm),
+            "messages": messages,
+        }
+    )
 
 
 def _pick_hub_start_room(

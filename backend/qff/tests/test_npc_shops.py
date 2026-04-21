@@ -1,6 +1,7 @@
 """NPC shop buy/sell/list, consignment decay, crafted exemption."""
 
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.test import TestCase
 from django.utils import timezone
 
@@ -17,7 +18,7 @@ from qff.models import (
     NpcShopStockLine,
     Room,
 )
-from qff.shop_engine import SHOP_DECAY_THRESHOLD, browse_shop
+from qff.shop_engine import SHOP_DECAY_THRESHOLD, browse_shop, purchase_from_shop
 
 User = get_user_model()
 
@@ -199,3 +200,35 @@ class NpcShopTests(TestCase):
         c = self._char("X")
         out = execute_command(c, parse_command("shop"))
         self.assertTrue(any("which merchant" in m.lower() for m in out))
+
+    def test_browse_and_purchase_inside_atomic_block(self):
+        """Regression: production POST /command/ wraps execute_command in a
+        savepoint via the request middleware, so select_for_update inside
+        browse_shop / purchase_from_shop runs in a real transaction.
+
+        Without of=("self",) on the consignment line lock, Postgres rejects this
+        with "FOR UPDATE cannot be applied to the nullable side of an outer
+        join". SQLite is permissive and would let the bug slip through, so we
+        simulate the surrounding atomic block here to keep the call shapes
+        honest."""
+        npc = Npc.objects.create(room=self.room, slug="atomicshop", name="Tach", description="")
+        shop = NpcShop.objects.create(npc=npc, welcome_text="Hi.", enabled=True)
+        sword = Item.objects.create(slug="sw-atomic", name="Iron Blade", cost=20)
+        NpcShopStockLine.objects.create(
+            shop=shop, item=sword, price=10, quantity=1, sort_order=0,
+            kind=NpcShopStockLine.Kind.STATIC,
+        )
+        # A live consignment line forces the LEFT OUTER JOIN onto the nullable OneToOne.
+        gem = Item.objects.create(slug="gem-atomic", name="Glow Gem", cost=8)
+        gem_inst = ItemInstance.objects.create(item=gem, owner_character=None, room=None, quantity=1)
+        NpcShopStockLine.objects.create(
+            shop=shop, item=gem, price=4, quantity=1, sort_order=1,
+            kind=NpcShopStockLine.Kind.CONSIGNMENT, consignment_item_instance=gem_inst,
+        )
+        c = self._char("Hero", gold=50)
+        with transaction.atomic():
+            browse_lines = browse_shop(c, shop)
+        self.assertTrue(any("Hi." in line for line in browse_lines))
+        with transaction.atomic():
+            buy_lines = purchase_from_shop(c, shop, "iron blade")
+        self.assertTrue(any("buy" in line.lower() for line in buy_lines))

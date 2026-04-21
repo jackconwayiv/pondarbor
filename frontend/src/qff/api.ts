@@ -135,6 +135,35 @@ export type QffSessionWithCharacter = {
   character_profile: QffCharacterProfile;
   /** Room narrative queue; ids prevent duplicate lines when HTTP and WebSocket both deliver a session. */
   action_log: Array<{ id: number; text: string; log_tone?: string; logTone?: string }>;
+  /** Shops in the current room; populated for the play UI's shop panel. */
+  shops?: QffShopPanelData[];
+  /** Pending y/n service-NPC prompt (healer_pay / innkeeper_stay) or null. */
+  pending_prompt?: QffPendingPrompt | null;
+};
+
+export type QffShopPanelLine = {
+  id: number;
+  item_id: number;
+  name: string;
+  /** "static" | "consignment" — matches NpcShopStockLine.Kind. */
+  kind: string;
+  price: number;
+  quantity: number;
+};
+
+export type QffShopPanelData = {
+  id: number;
+  npc_id: number;
+  npc_name: string;
+  welcome_text: string;
+  stock_lines: QffShopPanelLine[];
+};
+
+export type QffPendingPrompt = {
+  /** "healer_pay" | "innkeeper_stay" */
+  kind: string;
+  npc_id: number;
+  cost: number;
 };
 
 export type QffStatBlock = {
@@ -1371,6 +1400,10 @@ export type DmNpcRow = {
   name: string;
   description: string;
   is_trainer?: boolean;
+  is_healer?: boolean;
+  is_innkeeper?: boolean;
+  /** Gold to heal (healer) or stay the night (innkeeper). 0 = free. */
+  healing_cost?: number;
 };
 
 export type DmNpcDialogue = {
@@ -1444,6 +1477,9 @@ export async function dmCreateNpc(
     name: string;
     description?: string;
     is_trainer?: boolean;
+    is_healer?: boolean;
+    is_innkeeper?: boolean;
+    healing_cost?: number;
   },
 ): Promise<DmNpcRow> {
   const response = await fetch(qffJoinBase(`/api/v1/qff/dm/npcs/`), {
@@ -1460,7 +1496,17 @@ export async function dmPatchNpc(
   accessToken: string | null,
   npcId: number,
   body: Partial<
-    Pick<DmNpcRow, "room_id" | "slug" | "name" | "description" | "is_trainer">
+    Pick<
+      DmNpcRow,
+      | "room_id"
+      | "slug"
+      | "name"
+      | "description"
+      | "is_trainer"
+      | "is_healer"
+      | "is_innkeeper"
+      | "healing_cost"
+    >
   >,
 ): Promise<DmNpcDetail> {
   const response = await fetch(qffJoinBase(`/api/v1/qff/dm/npcs/${npcId}/`), {

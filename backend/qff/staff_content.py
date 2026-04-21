@@ -304,6 +304,9 @@ def _npc_dict(npc: Npc, dialogues: bool = False) -> dict:
         "name": npc.name,
         "description": npc.description,
         "is_trainer": npc.is_trainer,
+        "is_healer": npc.is_healer,
+        "is_innkeeper": npc.is_innkeeper,
+        "healing_cost": int(npc.healing_cost or 0),
     }
     if dialogues:
         out["dialogues"] = [
@@ -348,6 +351,9 @@ def dm_npc_list_create(request):
             name=name,
             description=(request.data.get("description") or "")[:],
             is_trainer=bool(request.data.get("is_trainer")),
+            is_healer=bool(request.data.get("is_healer")),
+            is_innkeeper=bool(request.data.get("is_innkeeper")),
+            healing_cost=max(0, int(request.data.get("healing_cost") or 0)),
         )
     except IntegrityError:
         return Response(
@@ -374,6 +380,15 @@ def dm_npc_detail(request, pk):
         npc.description = request.data.get("description") or ""
     if "is_trainer" in request.data:
         npc.is_trainer = bool(request.data["is_trainer"])
+    if "is_healer" in request.data:
+        npc.is_healer = bool(request.data["is_healer"])
+    if "is_innkeeper" in request.data:
+        npc.is_innkeeper = bool(request.data["is_innkeeper"])
+    if "healing_cost" in request.data:
+        try:
+            npc.healing_cost = max(0, int(request.data["healing_cost"] or 0))
+        except (TypeError, ValueError):
+            npc.healing_cost = 0
     if "room_id" in request.data:
         get_object_or_404(Room, pk=int(request.data["room_id"]))
         npc.room_id = int(request.data["room_id"])

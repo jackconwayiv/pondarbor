@@ -73,8 +73,12 @@ def resolve_shop(character: Character, npc_query: str) -> tuple[NpcShop | None, 
 def _consignment_decay(shop: NpcShop) -> None:
     """Increment neglect on consignment lines; remove at threshold (non-crafted only)."""
     with transaction.atomic():
+        # of=("self",) so FOR UPDATE only locks the stock-line row; without it,
+        # select_related("consignment_item_instance") forces a LEFT OUTER JOIN onto
+        # a nullable OneToOne, which Postgres rejects ("FOR UPDATE cannot be applied
+        # to the nullable side of an outer join"). SQLite silently ignores `of`.
         for line in (
-            NpcShopStockLine.objects.select_for_update()
+            NpcShopStockLine.objects.select_for_update(of=("self",))
             .filter(shop=shop, kind=NpcShopStockLine.Kind.CONSIGNMENT)
             .select_related("consignment_item_instance")
         ):
@@ -166,13 +170,15 @@ def purchase_from_shop(character: Character, shop: NpcShop, query: str) -> list[
         return ["You don't see that for sale."]
     price = int(line.price)
     char = Character.objects.select_for_update().get(pk=character.pk)
-    line = NpcShopStockLine.objects.select_for_update().select_related(
+    # of=("self",) — lock only the stock-line row; consignment_item_instance is a
+    # nullable OneToOne (LEFT OUTER JOIN), which Postgres disallows for FOR UPDATE.
+    line = NpcShopStockLine.objects.select_for_update(of=("self",)).select_related(
         "item", "consignment_item_instance"
     ).get(pk=line.pk)
     if line.shop_id != shop.pk:
         return ["That item is no longer available."]
     if int(char.gold) < price:
-        return ["You can't afford that."]
+        return ["You can't afford that item!"]
     if line.kind == NpcShopStockLine.Kind.STATIC:
         if line.quantity is not None and line.quantity < 1:
             return ["That item is sold out."]

@@ -725,6 +725,9 @@ class Character(models.Model):
     is_dead = models.BooleanField(default=False)
     died_at = models.DateTimeField(null=True, blank=True)
     unspent_stat_points = models.PositiveSmallIntegerField(default=0)
+    # Pending y/n confirm from a service NPC (healer_pay / innkeeper_stay).
+    # Shape: {"kind": str, "npc_id": int, "cost": int}. Cleared on accept/decline or fall-through.
+    pending_prompt = models.JSONField(null=True, blank=True, default=None)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -935,6 +938,12 @@ class Npc(models.Model):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     is_trainer = models.BooleanField(default=False)
+    is_healer = models.BooleanField(default=False)
+    is_innkeeper = models.BooleanField(default=False)
+    healing_cost = models.PositiveIntegerField(
+        default=0,
+        help_text="Gold for a heal (healer) or a night's stay (innkeeper). 0 = free.",
+    )
 
     class Meta:
         constraints = [

@@ -127,6 +127,13 @@ class ParsedSell:
 
 
 @dataclass
+class ParsedRestSleep:
+    """rest / sleep / nap — triggers the current room's innkeeper (preferred) or healer."""
+
+    pass
+
+
+@dataclass
 class ParsedUnknown:
     raw: str
 
@@ -247,6 +254,8 @@ def parse_command(line: str):
         return ParsedTalk(target="")
     if low.startswith("speak to "):
         return ParsedTalk(target=n[9:].strip())
+    if low.startswith("speak with "):
+        return ParsedTalk(target=n[11:].strip())
     if low.startswith("speak "):
         return ParsedTalk(target=n[6:].strip())
     if low.startswith("greet "):
@@ -303,6 +312,10 @@ def parse_command(line: str):
         return ParsedRead(target=n[5:].strip())
     if low == "read":
         return ParsedRead(target="")
+
+    # rest / sleep / nap — service NPC (innkeeper preferred, healer fallback)
+    if low in ("rest", "sleep", "nap"):
+        return ParsedRestSleep()
 
     # shop / list / buy / purchase / sell
     if low in ("shop", "list"):

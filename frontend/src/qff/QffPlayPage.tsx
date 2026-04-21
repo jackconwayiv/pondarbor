@@ -125,6 +125,10 @@ export default function QffPlayPage() {
     Array<{ id: number; text: string; recent: boolean; logTone?: string }>
   >([]);
   const [mapVisible, setMapVisible] = useState(true);
+  // When true, the shop panel takes over the minimap's grid slot until the player
+  // types `map` (or leaves a room with no shops).
+  const [shopPanelOpen, setShopPanelOpen] = useState(false);
+  const prevRoomIdRef = useRef<number | null>(null);
   const logLineIdRef = useRef(0);
   const lastBroadcastIdRef = useRef(0);
   /** Log line ids for in-flight optimistic `> cmd` + `…` rows (stripped when the HTTP response arrives). */
@@ -312,9 +316,29 @@ export default function QffPlayPage() {
     });
   }, [session]);
 
+  useEffect(() => {
+    if (!session?.has_character) return;
+    const roomId = session.room.id;
+    const prev = prevRoomIdRef.current;
+    prevRoomIdRef.current = roomId;
+    if (prev !== null && prev !== roomId) {
+      // Left the room — only auto-close if the new room has no shops at all.
+      if ((session.shops?.length ?? 0) === 0) setShopPanelOpen(false);
+    }
+  }, [session]);
+
   const runCommand = useCallback(async (rawLine: string) => {
     const raw = rawLine.trim();
     if (!raw) return;
+    // Client-only "map" command: restore the minimap to its grid slot. No HTTP, no log echo.
+    const mapWord = raw.replace(/^>+\s*/, "").replace(/^\//, "").trim().toLowerCase();
+    if (mapWord === "map") {
+      setShopPanelOpen(false);
+      setMapVisible(true);
+      setLine("");
+      queueMicrotask(() => inputRef.current?.focus());
+      return;
+    }
     const s = sessionRef.current;
     if (s?.has_character && s.character_profile.isDead) {
       setLogLines((prev) => {
@@ -366,6 +390,22 @@ export default function QffPlayPage() {
         }
         commandTokenRef.current = token;
         setSession(res.session);
+        // After a shop verb, open the shop panel if the room actually has shops.
+        // (Server returns "There are no shops here." otherwise — that line shows in the log.)
+        const verb = raw
+          .replace(/^>+\s*/, "")
+          .replace(/^\//, "")
+          .trim()
+          .toLowerCase()
+          .split(/\s+/, 1)[0];
+        const shopVerb =
+          verb === "shop" ||
+          verb === "list" ||
+          verb === "buy" ||
+          verb === "purchase";
+        if (shopVerb && (res.session.shops?.length ?? 0) > 0) {
+          setShopPanelOpen(true);
+        }
         setLogLines((prev) => {
           const pending = optimisticCommandLogIdsRef.current;
           optimisticCommandLogIdsRef.current = [];
@@ -619,6 +659,87 @@ export default function QffPlayPage() {
     </Box>
   );
 
+  const shopsForPanel = session.shops ?? [];
+  const shopPanel = (
+    <Box
+      position="relative"
+      flexShrink={0}
+      w="100%"
+      minW={0}
+      borderWidth="1px"
+      borderColor={HUD_PANEL_BORDER}
+      borderRadius="md"
+      p={2}
+      bg={HUD_PANEL_BG}
+      fontSize="xs"
+      display="flex"
+      flexDirection="column"
+      overflowY="auto"
+      maxH={{ base: "min(300px, 42vh)", lg: "min(460px, 48vh)" }}
+    >
+      <Flex justify="space-between" align="center" mb={1}>
+        <Text fontWeight="semibold" color={HUD_PANEL_TEXT}>
+          Wares for sale
+        </Text>
+        <Text
+          as="button"
+          fontSize="xs"
+          color={HUD_PANEL_TEXT_MUTED}
+          _hover={{ color: HUD_PANEL_TEXT }}
+          onClick={() => {
+            setShopPanelOpen(false);
+            setMapVisible(true);
+          }}
+          title="Close (or type 'map')"
+        >
+          [map]
+        </Text>
+      </Flex>
+      {shopsForPanel.length === 0 ? (
+        <Text color={HUD_PANEL_TEXT_MUTED}>No shops here.</Text>
+      ) : (
+        shopsForPanel.map((sh) => (
+          <Box key={sh.id} mt={2}>
+            <Text color={t.accent} fontWeight="medium">
+              {sh.npc_name}
+            </Text>
+            {sh.welcome_text && (
+              <Text color={HUD_PANEL_TEXT_MUTED} fontStyle="italic" mb={1}>
+                {sh.welcome_text}
+              </Text>
+            )}
+            {sh.stock_lines.length === 0 ? (
+              <Text color={HUD_PANEL_TEXT_MUTED}>(nothing for sale)</Text>
+            ) : (
+              <Stack gap={0}>
+                {sh.stock_lines.map((sl) => (
+                  <Flex
+                    key={sl.id}
+                    justify="space-between"
+                    gap={2}
+                    color={HUD_PANEL_TEXT}
+                  >
+                    <Text>
+                      {sl.name}
+                      {sl.kind === "consignment" ? " (used)" : ""}
+                    </Text>
+                    <Text color={HUD_PANEL_TEXT_MUTED}>
+                      {sl.price}g · ×{sl.quantity}
+                    </Text>
+                  </Flex>
+                ))}
+              </Stack>
+            )}
+          </Box>
+        ))
+      )}
+      <Text mt={2} color={HUD_PANEL_TEXT_MUTED} fontSize="2xs">
+        Type <strong>buy &lt;item&gt;</strong> to purchase. <strong>map</strong> to
+        return.
+      </Text>
+    </Box>
+  );
+
   const characterPanel = (
     <Box
       flexShrink={0}
@@ -773,6 +894,7 @@ export default function QffPlayPage() {
           e.preventDefault();
           void runCommand(line);
         }}
+        placeholder={session.pending_prompt ? "(y/n)" : undefined}
         bg="#1e1e1e"
         borderColor="#a0a0a0"
         color="#e0e0e0"
@@ -859,14 +981,14 @@ export default function QffPlayPage() {
             minH={0}
             aria-hidden
           />
-          {!mapMinimal ? (
+          {!mapMinimal || shopPanelOpen ? (
             <Box
               gridColumn={{ base: "1", lg: "2" }}
               gridRow={{ base: "auto", lg: "1 / span 2" }}
               minH={0}
               minW={0}
             >
-              {mapPanel}
+              {shopPanelOpen ? shopPanel : mapPanel}
             </Box>
           ) : null}
           <Box

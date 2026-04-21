@@ -34,12 +34,14 @@ from qff.models import (
     ItemInstance,
     MonsterInstance,
     Npc,
+    NpcShopStockLine,
     Room,
     RoomBroadcast,
     RoomExit,
     RoomGoldPile,
     RoomItem,
 )
+from qff.shop_engine import get_enabled_shops_in_room
 
 DEFAULT_THEME_PRIMARY = "#c8e6a8"
 DEFAULT_THEME_SECONDARY = "#889977"
@@ -427,6 +429,45 @@ def build_character_profile(character) -> dict:
     }
 
 
+def _shops_in_room_json(room_id: int) -> list[dict]:
+    """Current-room shops for the play UI's shop panel. Mirrors `browse_shop` data, in structured form."""
+    out: list[dict] = []
+    for shop in get_enabled_shops_in_room(room_id):
+        lines_out: list[dict] = []
+        for sl in (
+            NpcShopStockLine.objects.filter(shop=shop)
+            .select_related("item", "consignment_item_instance")
+            .order_by("sort_order", "id")
+        ):
+            inst = sl.consignment_item_instance
+            if sl.kind == NpcShopStockLine.Kind.CONSIGNMENT and inst is not None:
+                name = display_name_for_instance(inst)
+                qty = int(inst.quantity or 1)
+            else:
+                name = sl.item.name
+                qty = sl.quantity
+            lines_out.append(
+                {
+                    "id": sl.id,
+                    "item_id": sl.item_id,
+                    "name": name,
+                    "kind": sl.kind,
+                    "price": int(sl.price),
+                    "quantity": qty,
+                }
+            )
+        out.append(
+            {
+                "id": shop.id,
+                "npc_id": shop.npc_id,
+                "npc_name": shop.npc.name,
+                "welcome_text": shop.welcome_text or "",
+                "stock_lines": lines_out,
+            }
+        )
+    return out
+
+
 def build_session_for_character(character, *, world_sync: bool = True) -> dict:
     # Costly: minimap, exits, inventory. ``qff.views.command_view`` logs ``session_ms`` for profiling.
     if world_sync:
@@ -527,4 +568,6 @@ def build_session_for_character(character, *, world_sync: bool = True) -> dict:
         ),
         "character_profile": build_character_profile(character),
         "action_log": action_log,
+        "shops": _shops_in_room_json(room.id),
+        "pending_prompt": getattr(character, "pending_prompt", None) or None,
     }

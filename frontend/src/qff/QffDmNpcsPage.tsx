@@ -56,6 +56,9 @@ function emptyForm(firstRoomId: number): {
   name: string;
   description: string;
   is_trainer: boolean;
+  is_healer: boolean;
+  is_innkeeper: boolean;
+  healing_cost: string;
 } {
   return {
     room_id: firstRoomId,
@@ -63,6 +66,9 @@ function emptyForm(firstRoomId: number): {
     name: "",
     description: "",
     is_trainer: false,
+    is_healer: false,
+    is_innkeeper: false,
+    healing_cost: "0",
   };
 }
 
@@ -129,6 +135,9 @@ export default function QffDmNpcsPage() {
         name: d.name,
         description: d.description,
         is_trainer: !!d.is_trainer,
+        is_healer: !!d.is_healer,
+        is_innkeeper: !!d.is_innkeeper,
+        healing_cost: String(d.healing_cost ?? 0),
       });
     },
     [getApiAccessToken],
@@ -164,6 +173,9 @@ export default function QffDmNpcsPage() {
         name: d.name,
         description: d.description,
         is_trainer: !!d.is_trainer,
+        is_healer: !!d.is_healer,
+        is_innkeeper: !!d.is_innkeeper,
+        healing_cost: String(d.healing_cost ?? 0),
       });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Load failed");
@@ -186,6 +198,7 @@ export default function QffDmNpcsPage() {
         setErr("Room, slug, and name are required.");
         return;
       }
+      const healingCost = Math.max(0, parseInt(form.healing_cost, 10) || 0);
       if (editingId == null) {
         const created = await dmCreateNpc(token, {
           room_id: form.room_id,
@@ -193,6 +206,9 @@ export default function QffDmNpcsPage() {
           name: form.name.trim(),
           description: form.description,
           is_trainer: form.is_trainer,
+          is_healer: form.is_healer,
+          is_innkeeper: form.is_innkeeper,
+          healing_cost: healingCost,
         });
         await loadList();
         setEditingId(created.id);
@@ -204,6 +220,9 @@ export default function QffDmNpcsPage() {
           name: form.name.trim(),
           description: form.description,
           is_trainer: form.is_trainer,
+          is_healer: form.is_healer,
+          is_innkeeper: form.is_innkeeper,
+          healing_cost: healingCost,
         });
         setDetail(d);
         await loadList();
@@ -443,6 +462,49 @@ export default function QffDmNpcsPage() {
               Trainer (players use <strong>train</strong> here for level ups)
             </Switch.Label>
           </Switch.Root>
+          <Switch.Root
+            size="sm"
+            checked={form.is_healer}
+            onCheckedChange={(d) => setForm((f) => ({ ...f, is_healer: !!d.checked }))}
+            colorPalette="green"
+          >
+            <Switch.HiddenInput />
+            <Switch.Control>
+              <Switch.Thumb />
+            </Switch.Control>
+            <Switch.Label fontSize="xs" color="#aaa">
+              Healer (<strong>talk</strong> / <strong>rest</strong> restores HP for the cost below)
+            </Switch.Label>
+          </Switch.Root>
+          <Switch.Root
+            size="sm"
+            checked={form.is_innkeeper}
+            onCheckedChange={(d) =>
+              setForm((f) => ({ ...f, is_innkeeper: !!d.checked }))
+            }
+            colorPalette="green"
+          >
+            <Switch.HiddenInput />
+            <Switch.Control>
+              <Switch.Thumb />
+            </Switch.Control>
+            <Switch.Label fontSize="xs" color="#aaa">
+              Innkeeper (<strong>talk</strong> / <strong>rest</strong> restores HP+mana and rebinds
+              respawn here)
+            </Switch.Label>
+          </Switch.Root>
+          <Field.Root maxW="180px">
+            <Field.Label>Healing / Stay cost (gold, 0 = free)</Field.Label>
+            <Input
+              type="number"
+              min={0}
+              value={form.healing_cost}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, healing_cost: e.target.value }))
+              }
+              bg="#222"
+            />
+          </Field.Root>
 
           {editingId != null && detail && (
             <Box borderWidth="1px" borderRadius="md" borderColor="#404040" p={3} bg="#1a1a1a">

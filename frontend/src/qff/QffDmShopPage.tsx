@@ -507,7 +507,19 @@ export default function QffDmShopPage() {
                 <NativeSelectRoot>
                   <NativeSelectField
                     value={newLine.item_id}
-                    onChange={(e) => setNewLine((n) => ({ ...n, item_id: e.target.value }))}
+                    onChange={(e) => {
+                      const itemId = e.target.value;
+                      const chosen = items.find(
+                        (it) => String(it.id) === itemId,
+                      );
+                      setNewLine((n) => ({
+                        ...n,
+                        item_id: itemId,
+                        price: chosen
+                          ? String(Math.max(1, chosen.cost || 1))
+                          : n.price,
+                      }));
+                    }}
                     bg="#222"
                   >
                     <option value="">— item —</option>

@@ -19,6 +19,7 @@ from qff.command_parser import (
     ParsedLookInspect,
     ParsedMove,
     ParsedRead,
+    ParsedRestSleep,
     ParsedSay,
     ParsedSearch,
     ParsedSell,
@@ -494,6 +495,9 @@ def execute_command(
 
     if isinstance(parsed, ParsedSell):
         return _handle_shop_sell(char, parsed)
+
+    if isinstance(parsed, ParsedRestSleep):
+        return _handle_rest_sleep(char, parsed)
 
     if isinstance(parsed, ParsedSearch):
         _touch_activity(char)
@@ -1063,6 +1067,152 @@ def _apply_teleport_spawn_scroll(actor_pk: int, left_room_id: int) -> list[str]:
     return ["The scroll whisks you back to where you began."]
 
 
+def _healer_offer(char: CharacterType, npc: Npc) -> list[str]:
+    if int(char.cur_health) >= int(char.max_health):
+        return [f"{npc.name} says: You don't need my services right now."]
+    cost = int(npc.healing_cost or 0)
+    if cost <= 0:
+        char.cur_health = char.max_health
+        char.save(update_fields=["cur_health", "last_activity_at", "updated_at"])
+        return [f"{npc.name} heals you to full health."]
+    if int(char.gold) < cost:
+        return ["You can't afford my services!"]
+    char.pending_prompt = {"kind": "healer_pay", "npc_id": npc.id, "cost": cost}
+    char.save(update_fields=["pending_prompt", "last_activity_at", "updated_at"])
+    return [f"{npc.name} says: I can restore your health for {cost} gold. Pay? (y/n)"]
+
+
+def _innkeeper_offer(char: CharacterType, npc: Npc) -> list[str]:
+    already_rested = (
+        int(char.cur_health) >= int(char.max_health)
+        and int(char.cur_mana) >= int(char.max_mana)
+        and char.spawn_room_id == npc.room_id
+    )
+    if already_rested:
+        return [f"{npc.name} says: You look well-rested already."]
+    cost = int(npc.healing_cost or 0)
+    if cost <= 0:
+        char.cur_health = char.max_health
+        char.cur_mana = char.max_mana
+        char.spawn_room_id = npc.room_id
+        char.save(
+            update_fields=[
+                "cur_health",
+                "cur_mana",
+                "spawn_room",
+                "last_activity_at",
+                "updated_at",
+            ]
+        )
+        return [
+            f"You stay the night. {npc.name} welcomes you; this inn is now your refuge."
+        ]
+    if int(char.gold) < cost:
+        return ["You can't afford my services!"]
+    char.pending_prompt = {"kind": "innkeeper_stay", "npc_id": npc.id, "cost": cost}
+    char.save(update_fields=["pending_prompt", "last_activity_at", "updated_at"])
+    return [
+        f"{npc.name} says: A room for the night is {cost} gold — "
+        f"it'll restore you and you'll wake here if you fall. Stay? (y/n)"
+    ]
+
+
+def _service_offer(char: CharacterType, npc: Npc) -> list[str] | None:
+    """Return service-NPC offer lines if this NPC is a healer/innkeeper, else None.
+
+    Innkeepers take precedence when both flags are set (superset of healer behavior).
+    """
+    if getattr(npc, "is_innkeeper", False):
+        return _innkeeper_offer(char, npc)
+    if getattr(npc, "is_healer", False):
+        return _healer_offer(char, npc)
+    return None
+
+
+def _healer_pay_accept(char: CharacterType, pending: dict) -> list[str]:
+    npc_id = int(pending.get("npc_id") or 0)
+    cost = int(pending.get("cost") or 0)
+    npc = Npc.objects.filter(pk=npc_id, room_id=char.current_room_id, is_healer=True).first()
+    if not npc or int(npc.healing_cost or 0) != cost or int(char.gold) < cost:
+        char.pending_prompt = None
+        char.save(update_fields=["pending_prompt", "updated_at"])
+        return ["Never mind."]
+    char.gold = int(char.gold) - cost
+    char.cur_health = char.max_health
+    char.pending_prompt = None
+    char.save(
+        update_fields=["gold", "cur_health", "pending_prompt", "updated_at"]
+    )
+    return [f"You pay {cost} gold and are healed to full health."]
+
+
+def _innkeeper_stay_accept(char: CharacterType, pending: dict) -> list[str]:
+    npc_id = int(pending.get("npc_id") or 0)
+    cost = int(pending.get("cost") or 0)
+    npc = Npc.objects.filter(
+        pk=npc_id, room_id=char.current_room_id, is_innkeeper=True
+    ).first()
+    if not npc or int(npc.healing_cost or 0) != cost or int(char.gold) < cost:
+        char.pending_prompt = None
+        char.save(update_fields=["pending_prompt", "updated_at"])
+        return ["Never mind."]
+    char.gold = int(char.gold) - cost
+    char.cur_health = char.max_health
+    char.cur_mana = char.max_mana
+    char.spawn_room_id = npc.room_id
+    char.pending_prompt = None
+    char.save(
+        update_fields=[
+            "gold",
+            "cur_health",
+            "cur_mana",
+            "spawn_room",
+            "pending_prompt",
+            "updated_at",
+        ]
+    )
+    return [
+        f"You pay {cost} gold and stay the night. You feel fully restored. "
+        f"This inn is now your refuge."
+    ]
+
+
+def _prompt_decline(char: CharacterType) -> list[str]:
+    char.pending_prompt = None
+    char.save(update_fields=["pending_prompt", "updated_at"])
+    return ["You decline."]
+
+
+def maybe_handle_pending_prompt(char: CharacterType, line: str) -> list[str] | None:
+    """Intercept y/n answers to a pending service-NPC prompt.
+
+    Returns message lines if the line was consumed by the prompt, else None. A
+    non-y/n answer clears the prompt and returns None so the caller falls through
+    to normal parsing.
+    """
+    pending = getattr(char, "pending_prompt", None)
+    if not isinstance(pending, dict):
+        return None
+    kind = pending.get("kind")
+    if kind not in ("healer_pay", "innkeeper_stay"):
+        return None
+    raw = (line or "").strip().lower().lstrip(">").strip()
+    if raw.startswith("/"):
+        raw = raw[1:].strip()
+    if raw in ("y", "yes", "aye"):
+        _touch_activity(char)
+        if kind == "healer_pay":
+            return _healer_pay_accept(char, pending)
+        return _innkeeper_stay_accept(char, pending)
+    if raw in ("n", "no", "nay"):
+        _touch_activity(char)
+        return _prompt_decline(char)
+    # Fall-through: clear prompt and let normal parsing run.
+    char.pending_prompt = None
+    char.save(update_fields=["pending_prompt", "updated_at"])
+    return None
+
+
 def _handle_talk(char: CharacterType, parsed: ParsedTalk) -> list[str]:
     _touch_activity(char)
     target = (parsed.target or "").strip()
@@ -1078,9 +1228,33 @@ def _handle_talk(char: CharacterType, parsed: ParsedTalk) -> list[str]:
     char = Character.objects.get(pk=char.pk)
     extra = try_item_transitions_on_talk(char, npc)
     char = Character.objects.get(pk=char.pk)
+    # Service NPCs (healer/innkeeper) replace the normal dialogue line with an offer,
+    # so the y/n flow isn't buried under flavor text.
+    service = _service_offer(char, npc)
+    if service is not None:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return extra + service
     main = resolve_npc_dialogue(char, npc)
     char.save(update_fields=["last_activity_at", "updated_at"])
     return extra + [main]
+
+
+def _handle_rest_sleep(char: CharacterType, _parsed: ParsedRestSleep) -> list[str]:
+    _touch_activity(char)
+    npc = (
+        Npc.objects.filter(room_id=char.current_room_id, is_innkeeper=True)
+        .order_by("id")
+        .first()
+        or Npc.objects.filter(room_id=char.current_room_id, is_healer=True)
+        .order_by("id")
+        .first()
+    )
+    if not npc:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return ["There's no place to rest here."]
+    lines = _service_offer(char, npc) or []
+    char.save(update_fields=["last_activity_at", "updated_at"])
+    return lines
 
 
 def _handle_use(char: CharacterType, parsed: ParsedUse) -> list[str]:

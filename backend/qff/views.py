@@ -17,7 +17,7 @@ from rest_framework.response import Response
 from users.permissions import IsApprovedUser, IsStaffUser
 
 from qff.command_echo import should_echo_command
-from qff.command_handlers import execute_command
+from qff.command_handlers import execute_command, maybe_handle_pending_prompt
 from qff.command_parser import parse_command
 from qff.exploration import on_enter_room
 from qff.loadout import apply_starting_loadout
@@ -332,10 +332,18 @@ def command_view(request):
             t_sync = time.perf_counter()
             char = sync_character_world_before_session(char)
             sync_ms = (time.perf_counter() - t_sync) * 1000
-            parsed = parse_command(line)
-            t0 = time.perf_counter()
-            messages = list(execute_command(char, parsed, world_sync=False))
-            exec_ms = (time.perf_counter() - t0) * 1000
+            # Service-NPC y/n prompt (healer_pay / innkeeper_stay) consumes the next
+            # command when set; non-y/n clears the prompt and falls through to parse.
+            prompt_messages = maybe_handle_pending_prompt(char, line)
+            if prompt_messages is not None:
+                parsed = None
+                messages = list(prompt_messages)
+                exec_ms = 0.0
+            else:
+                parsed = parse_command(line)
+                t0 = time.perf_counter()
+                messages = list(execute_command(char, parsed, world_sync=False))
+                exec_ms = (time.perf_counter() - t0) * 1000
             echo_command = should_echo_command(parsed, messages)
             if messages and messages[0] == "You try that, but nothing happens.":
                 email = (request.user.email or "").strip()

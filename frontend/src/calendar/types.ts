@@ -22,33 +22,25 @@ export type CalendarSource = {
   updated_at: string;
 };
 
+/**
+ * Date-only "busy" event. The API returns `title` only for manual events
+ * owned by the requesting user — for any shared/iCal-imported event, `title`
+ * is always `null`.
+ */
 export type CalendarEvent = {
   id: number;
   owner: CalendarOwnerRow;
-  source: number;
-  source_display_name: string;
   source_type: CalendarSourceType;
-  color: CalendarColor;
-  external_uid: string;
-  title: string;
-  location: string;
-  notes: string;
-  start_at: string;
-  end_at: string;
-  all_day: boolean;
   is_manual: boolean;
-  source_timezone: string;
-  created_at: string;
-  updated_at: string;
+  title: string | null;
+  start_date: string; // YYYY-MM-DD
+  end_date: string; // YYYY-MM-DD, inclusive
 };
 
 export type EventWritePayload = {
-  title: string;
-  location?: string;
-  notes?: string;
-  start_at: string;
-  end_at: string;
-  all_day?: boolean;
+  title?: string;
+  start_date: string;
+  end_date: string;
 };
 
 export type SourceCreatePayload = {

@@ -1,0 +1,369 @@
+import { Box, HStack, Heading, Stack, Text } from "@chakra-ui/react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link as RouterLink, Navigate, useParams } from "react-router";
+
+import { useAppSession } from "../auth/AppSessionContext";
+import PondButton from "../PondButton";
+import { fullBleedStackProps, useIsMobile } from "../responsive";
+import { APP_TEXT_SIZES } from "../theme/typography";
+import {
+  deleteCalendarEvent,
+  fetchApprovedUsers,
+  fetchCalendarEvents,
+  updateCalendarEvent,
+} from "./api";
+import EventFormDialog from "./EventFormDialog";
+import { eventCoversDay, parseIsoDate } from "./monthMath";
+import type {
+  CalendarEvent,
+  CalendarOwnerRow,
+  EventWritePayload,
+} from "./types";
+import UserCheckboxList from "./UserCheckboxList";
+import {
+  USER_COLOR_HEX,
+  USER_COLOR_TEXT_ON,
+  colorForCheckedUser,
+} from "./userColors";
+import { buildUsersQueryFragment, useCheckedUsers } from "./useCheckedUsers";
+
+const ENTRY_CARD_PROPS = {
+  bg: "white",
+  borderWidth: "1px",
+  borderColor: "border",
+  borderRadius: "xl",
+  p: { base: "2", md: "2" },
+} as const;
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export default function CalendarDayPage() {
+  const params = useParams<{ date: string }>();
+  const isMobile = useIsMobile();
+  const {
+    isAuthenticated,
+    isLoading,
+    sessionUser,
+    getApiAccessToken,
+    refreshSession,
+    error: sessionError,
+  } = useAppSession();
+
+  const dayIso = params.date ?? "";
+  const dateValid = ISO_DATE_RE.test(dayIso);
+
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [approvedUsers, setApprovedUsers] = useState<CalendarOwnerRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<CalendarEvent | null>(null);
+
+  const { orderedCheckedUserIds, setCheckedUserIds } =
+    useCheckedUsers(approvedUsers);
+
+  const ownersById = useMemo(
+    () => new Map(approvedUsers.map((u) => [u.id, u])),
+    [approvedUsers],
+  );
+  const currentUserId = sessionUser?.user.id ?? null;
+
+  const loadAll = useCallback(async () => {
+    if (!sessionUser || !dateValid) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const token = await getApiAccessToken();
+      const [eventResults, userResults] = await Promise.all([
+        fetchCalendarEvents(token, {
+          start_date: dayIso,
+          end_date: dayIso,
+          owner: "all",
+        }),
+        fetchApprovedUsers(token, ""),
+      ]);
+      setEvents(eventResults);
+      setApprovedUsers(userResults);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to load day.");
+    } finally {
+      setLoading(false);
+    }
+  }, [dateValid, dayIso, getApiAccessToken, sessionUser]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !sessionUser) return;
+    void loadAll();
+  }, [isAuthenticated, loadAll, sessionUser]);
+
+  const eventsForDay = useMemo(
+    () =>
+      events.filter((ev) => eventCoversDay(ev.start_date, ev.end_date, dayIso)),
+    [events, dayIso],
+  );
+
+  /** Owner ids busy this day, restricted to checked users, in checked-order. */
+  const busyOwnerIds = useMemo(() => {
+    const busySet = new Set(eventsForDay.map((ev) => ev.owner.id));
+    return orderedCheckedUserIds.filter((id) => busySet.has(id));
+  }, [eventsForDay, orderedCheckedUserIds]);
+
+  const handleSaveEdit = async (payload: EventWritePayload) => {
+    if (!editing) return;
+    const token = await getApiAccessToken();
+    await updateCalendarEvent(token, editing.id, payload);
+    setEditing(null);
+    await loadAll();
+  };
+
+  const handleDeleteEdit = async () => {
+    if (!editing) return;
+    const token = await getApiAccessToken();
+    await deleteCalendarEvent(token, editing.id);
+    setEditing(null);
+    await loadAll();
+  };
+
+  if (isLoading) return <Text>Loading…</Text>;
+  if (!isAuthenticated) return <Navigate to="/" replace />;
+  if (!sessionUser) {
+    return (
+      <Stack gap="4" maxW="3xl">
+        <Text fontWeight="semibold">Reconnecting your API session…</Text>
+        <Text fontSize={APP_TEXT_SIZES.helper}>
+          {sessionError ||
+            "You are authenticated, but the API session is not ready yet."}
+        </Text>
+        <HStack>
+          <PondButton colorPalette="sky" onClick={() => void refreshSession()}>
+            Retry session sync
+          </PondButton>
+        </HStack>
+      </Stack>
+    );
+  }
+  if (!sessionUser.user.is_approved) {
+    return (
+      <Stack
+        flex="1"
+        minH="full"
+        gap="4"
+        px={{ base: "2", md: "2" }}
+        py={{ base: "2", md: "2" }}
+        {...fullBleedStackProps}
+      >
+        <Text fontSize={{ base: "sm", md: "md" }}>Approval required.</Text>
+      </Stack>
+    );
+  }
+
+  if (!dateValid) {
+    return (
+      <Stack flex="1" minH="full" gap="2" {...fullBleedStackProps} p="4">
+        <Text color="nautical.solid">
+          Invalid date. Use the format YYYY-MM-DD.
+        </Text>
+        <PondButton
+          size="sm"
+          colorPalette="sky"
+          variant="outline"
+          asChild
+        >
+          <RouterLink to="/calendar">Back to month</RouterLink>
+        </PondButton>
+      </Stack>
+    );
+  }
+
+  const dayDate = parseIsoDate(dayIso);
+  const dayLabel = dayDate.toLocaleDateString(undefined, {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const backHref = `/calendar${buildUsersQueryFragment(
+    orderedCheckedUserIds,
+    approvedUsers,
+  )}`;
+
+  return (
+    <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
+      <Box
+        flex="1"
+        bg="sky.solid"
+        px={{ base: "2", md: "2" }}
+        py={{ base: "2", md: "2" }}
+      >
+        <Box
+          maxW="5xl"
+          w="100%"
+          mx="auto"
+          bg="gray.100"
+          borderWidth="1px"
+          borderColor="border"
+          borderRadius="xl"
+          overflow="hidden"
+        >
+          <Stack
+            gap={{ base: "4", md: "4" }}
+            px={{ base: "2", md: "2" }}
+            pt={{ base: "2", md: "2" }}
+            pb="2"
+          >
+            <Box {...ENTRY_CARD_PROPS}>
+              <HStack justify="space-between" align="center" flexWrap="wrap" gap="2">
+                <Stack gap="0">
+                  <Heading
+                    as="h1"
+                    size={{ base: "md", md: "lg" }}
+                    fontWeight="bold"
+                  >
+                    {dayLabel}
+                  </Heading>
+                  <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                    {busyOwnerIds.length === 0
+                      ? "No one selected is busy."
+                      : `${busyOwnerIds.length} ${
+                          busyOwnerIds.length === 1 ? "person" : "people"
+                        } busy this day`}
+                  </Text>
+                </Stack>
+                <PondButton size="sm" colorPalette="sky" variant="outline" asChild>
+                  <RouterLink to={backHref}>Back to month</RouterLink>
+                </PondButton>
+              </HStack>
+            </Box>
+          </Stack>
+          <Box p={{ base: "2", md: "2" }}>
+            <Stack
+              direction={isMobile ? "column" : "row"}
+              gap="2"
+              align="stretch"
+            >
+              <UserCheckboxList
+                approvedUsers={approvedUsers}
+                orderedCheckedUserIds={orderedCheckedUserIds}
+                onChange={setCheckedUserIds}
+              />
+              <Stack flex="1" minW="0" gap="2">
+                {loading ? (
+                  <Text fontSize={APP_TEXT_SIZES.helper}>Loading…</Text>
+                ) : null}
+                {error ? (
+                  <Text color="nautical.solid" role="alert">
+                    {error}
+                  </Text>
+                ) : null}
+                {!loading && busyOwnerIds.length === 0 ? (
+                  <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                    No one is busy this day. Check more people on the left to
+                    expand the view, or pick another day from the month grid.
+                  </Text>
+                ) : null}
+                {busyOwnerIds.map((ownerId) => {
+                  const color = colorForCheckedUser(
+                    ownerId,
+                    orderedCheckedUserIds,
+                  );
+                  if (color === null) return null;
+                  const owner = ownersById.get(ownerId);
+                  const ownerLabel =
+                    owner?.display_name || owner?.email || `User ${ownerId}`;
+                  const ownerEvents = eventsForDay.filter(
+                    (ev) => ev.owner.id === ownerId,
+                  );
+                  return (
+                    <Box
+                      key={ownerId}
+                      borderWidth="1px"
+                      borderColor="border"
+                      borderRadius="md"
+                      bg="white"
+                      overflow="hidden"
+                    >
+                      <Box
+                        px="2"
+                        py="1"
+                        style={{
+                          background: USER_COLOR_HEX[color],
+                          color: USER_COLOR_TEXT_ON[color],
+                        }}
+                      >
+                        <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="semibold">
+                          {ownerLabel}
+                        </Text>
+                      </Box>
+                      <Stack gap="1" p="2">
+                        {ownerEvents.map((ev) => {
+                          const isOwnManual =
+                            ev.is_manual && ev.owner.id === currentUserId;
+                          const titleText = ev.title ?? "";
+                          const label = isOwnManual
+                            ? titleText || "Busy"
+                            : "Busy";
+                          return (
+                            <HStack
+                              key={ev.id}
+                              gap="2"
+                              align="center"
+                              justify="space-between"
+                            >
+                              <Stack gap="0">
+                                <Text fontSize={APP_TEXT_SIZES.helper}>
+                                  {label}
+                                </Text>
+                                <Text
+                                  fontSize={APP_TEXT_SIZES.meta}
+                                  color="fg.muted"
+                                >
+                                  {ev.start_date === ev.end_date
+                                    ? "Single day"
+                                    : `${ev.start_date} → ${ev.end_date}`}
+                                  {ev.is_manual ? " · manual" : " · imported"}
+                                </Text>
+                              </Stack>
+                              {isOwnManual ? (
+                                <PondButton
+                                  size="sm"
+                                  colorPalette="sky"
+                                  variant="outline"
+                                  onClick={() => setEditing(ev)}
+                                >
+                                  Edit
+                                </PondButton>
+                              ) : null}
+                            </HStack>
+                          );
+                        })}
+                      </Stack>
+                    </Box>
+                  );
+                })}
+              </Stack>
+            </Stack>
+          </Box>
+        </Box>
+      </Box>
+
+      <EventFormDialog
+        open={editing !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditing(null);
+        }}
+        onSubmit={handleSaveEdit}
+        onDelete={handleDeleteEdit}
+        title="Edit event"
+        submitLabel="Save changes"
+        initial={
+          editing
+            ? {
+                title: editing.title ?? "",
+                start_date: editing.start_date,
+                end_date: editing.end_date,
+              }
+            : undefined
+        }
+      />
+    </Stack>
+  );
+}

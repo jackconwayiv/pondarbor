@@ -73,6 +73,14 @@ class CalendarSource(models.Model):
 
 
 class Event(models.Model):
+    """A "busy" date range for one user.
+
+    The calendar is intentionally binary: a day is either busy (1+ events) or
+    free. We store only dates and (for manual events) an optional title that is
+    kept private to the owner; iCal-imported rows store no human-readable text
+    at all.
+    """
+
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -83,15 +91,15 @@ class Event(models.Model):
         on_delete=models.CASCADE,
         related_name="events",
     )
-    # VEVENT UID from the ICS feed; null for manual events.
+    # VEVENT UID from the ICS feed; "" for manual events. Kept for dedup only,
+    # never exposed to the API.
     external_uid = models.CharField(max_length=500, blank=True, default="")
-    title = models.CharField(max_length=500)
-    location = models.CharField(max_length=500, blank=True, default="")
-    notes = models.TextField(blank=True, default="")
-    start_at = models.DateTimeField()
-    end_at = models.DateTimeField()
-    all_day = models.BooleanField(default=False)
-    source_timezone = models.CharField(max_length=64, blank=True, default="")
+    # Optional, owner-only title for manual events. Forced to "" for any
+    # non-manual source (see save()/clean()) so shared-feed text can never be
+    # persisted even if upstream parsing changes.
+    title = models.CharField(max_length=500, blank=True, default="")
+    start_date = models.DateField()
+    end_date = models.DateField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -103,15 +111,34 @@ class Event(models.Model):
                 name="uniq_event_source_external_uid",
             ),
             models.CheckConstraint(
-                condition=Q(end_at__gte=models.F("start_at")),
-                name="event_end_at_after_start_at",
+                condition=Q(end_date__gte=models.F("start_date")),
+                name="event_end_date_after_start_date",
             ),
         ]
         indexes = [
-            models.Index(fields=["owner", "start_at"]),
-            models.Index(fields=["source", "start_at"]),
+            models.Index(fields=["owner", "start_date"]),
+            models.Index(fields=["source", "start_date"]),
         ]
-        ordering = ["start_at", "id"]
+        ordering = ["start_date", "id"]
+
+    def clean(self) -> None:
+        super().clean()
+        if self.source_id and self.source.source_type != CalendarSource.SourceType.MANUAL:
+            self.title = ""
+
+    def save(self, *args, **kwargs) -> None:
+        # Defense-in-depth: even if a future code path bypasses the serializer,
+        # never persist a non-empty title for a non-manual source.
+        if self.source_id:
+            source_type = (
+                self.source.source_type
+                if hasattr(self, "_state") and self.source is not None
+                else None
+            )
+            if source_type and source_type != CalendarSource.SourceType.MANUAL:
+                self.title = ""
+        super().save(*args, **kwargs)
 
     def __str__(self) -> str:
-        return f"{self.title} @ {self.start_at:%Y-%m-%d %H:%M}"
+        label = self.title or "(busy)"
+        return f"{label} {self.start_date}–{self.end_date}"

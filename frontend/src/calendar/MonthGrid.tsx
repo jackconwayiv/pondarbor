@@ -1,44 +1,61 @@
 import { Box, SimpleGrid, Text } from "@chakra-ui/react";
+import { useMemo } from "react";
 
 import { APP_TEXT_SIZES } from "../theme/typography";
 import DayCell from "./DayCell";
 import {
   SHORT_WEEKDAY_LABELS,
-  eventOverlapsDay,
+  eventCoversDay,
+  isoDateForLocalDay,
   monthGridDays,
   type MonthAnchor,
 } from "./monthMath";
-import type { CalendarEvent } from "./types";
+import type { CalendarEvent, CalendarOwnerRow } from "./types";
 
 type Props = {
   anchor: MonthAnchor;
   events: CalendarEvent[];
-  onEventClick?: (event: CalendarEvent) => void;
+  /** Currently checked user ids, in the order they were checked. */
+  orderedCheckedUserIds: number[];
+  /** Lookup table for displaying owner names on the day bars. */
+  ownersById: Map<number, CalendarOwnerRow>;
   onDayClick?: (date: Date) => void;
 };
 
 export default function MonthGrid({
   anchor,
   events,
-  onEventClick,
+  orderedCheckedUserIds,
+  ownersById,
   onDayClick,
 }: Props) {
-  const days = monthGridDays(anchor);
+  const days = useMemo(() => monthGridDays(anchor), [anchor]);
+  const checkedSet = useMemo(
+    () => new Set(orderedCheckedUserIds),
+    [orderedCheckedUserIds],
+  );
 
-  // Parse events once; map them to the days they cover.
-  const eventsByDay = new Map<string, CalendarEvent[]>();
-  for (const ev of events) {
-    const start = new Date(ev.start_at);
-    const end = new Date(ev.end_at);
+  /**
+   * For each day cell ISO, the *unique* set of owner ids who are busy that
+   * day, restricted to currently-checked users. Multiple events for the same
+   * user on the same day collapse into one bar.
+   */
+  const busyOwnersByDay = useMemo(() => {
+    const map = new Map<string, Set<number>>();
     for (const cell of days) {
-      if (eventOverlapsDay(start, end, cell.date)) {
-        const key = cellKey(cell.date);
-        const bucket = eventsByDay.get(key) ?? [];
-        bucket.push(ev);
-        eventsByDay.set(key, bucket);
+      map.set(isoDateForLocalDay(cell.date), new Set<number>());
+    }
+    for (const ev of events) {
+      if (!checkedSet.has(ev.owner.id)) continue;
+      for (const cell of days) {
+        const iso = isoDateForLocalDay(cell.date);
+        if (eventCoversDay(ev.start_date, ev.end_date, iso)) {
+          map.get(iso)?.add(ev.owner.id);
+        }
       }
     }
-  }
+    return map;
+  }, [days, events, checkedSet]);
 
   return (
     <Box>
@@ -56,21 +73,27 @@ export default function MonthGrid({
         ))}
       </SimpleGrid>
       <SimpleGrid columns={7} gap="1">
-        {days.map((cell) => (
-          <DayCell
-            key={cellKey(cell.date)}
-            date={cell.date}
-            inMonth={cell.inMonth}
-            events={eventsByDay.get(cellKey(cell.date)) ?? []}
-            onEventClick={onEventClick}
-            onCellClick={onDayClick}
-          />
-        ))}
+        {days.map((cell) => {
+          const iso = isoDateForLocalDay(cell.date);
+          const busyOwnerIds = busyOwnersByDay.get(iso) ?? new Set<number>();
+          // Render bars in the same order as the checked-user list so a
+          // person occupies the same row across days when they're busy.
+          const orderedBusy = orderedCheckedUserIds.filter((id) =>
+            busyOwnerIds.has(id),
+          );
+          return (
+            <DayCell
+              key={iso}
+              date={cell.date}
+              inMonth={cell.inMonth}
+              busyOwnerIds={orderedBusy}
+              orderedCheckedUserIds={orderedCheckedUserIds}
+              ownersById={ownersById}
+              onCellClick={onDayClick}
+            />
+          );
+        })}
       </SimpleGrid>
     </Box>
   );
-}
-
-function cellKey(d: Date): string {
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }

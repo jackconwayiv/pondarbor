@@ -7,11 +7,11 @@ import {
   Text,
 } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Navigate, useSearchParams } from "react-router";
+import { Navigate, useNavigate, useSearchParams } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
-import { fullBleedStackProps } from "../responsive";
+import { fullBleedStackProps, useIsMobile } from "../responsive";
 import { APP_TEXT_SIZES } from "../theme/typography";
 import {
   createCalendarEvent,
@@ -23,7 +23,6 @@ import {
   fetchCalendarSources,
   syncCalendarSource,
   updateCalendarEvent,
-  type OwnerQuery,
 } from "./api";
 import EventFormDialog from "./EventFormDialog";
 import ImportIcalDialog from "./ImportIcalDialog";
@@ -31,11 +30,11 @@ import MonthGrid from "./MonthGrid";
 import {
   addMonths,
   formatMonthLabel,
+  isoDateForLocalDay,
   monthAnchorFromDate,
-  monthGridRangeIso,
+  monthGridDateRange,
   type MonthAnchor,
 } from "./monthMath";
-import OwnerFilter from "./OwnerFilter";
 import type {
   CalendarEvent,
   CalendarOwnerRow,
@@ -43,6 +42,8 @@ import type {
   EventWritePayload,
   SourceCreatePayload,
 } from "./types";
+import UserCheckboxList from "./UserCheckboxList";
+import { buildUsersQueryFragment, useCheckedUsers } from "./useCheckedUsers";
 
 type CalendarTab = "month" | "sources";
 
@@ -61,6 +62,8 @@ function parseTab(value: string | null): CalendarTab {
 export default function CalendarPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = parseTab(searchParams.get("tab"));
+  const isMobile = useIsMobile();
+  const navigate = useNavigate();
   const {
     isAuthenticated,
     isLoading,
@@ -73,7 +76,6 @@ export default function CalendarPage() {
   const [anchor, setAnchor] = useState<MonthAnchor>(() =>
     monthAnchorFromDate(new Date()),
   );
-  const [owner, setOwner] = useState<OwnerQuery>("all");
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [sources, setSources] = useState<CalendarSource[]>([]);
   const [approvedUsers, setApprovedUsers] = useState<CalendarOwnerRow[]>([]);
@@ -84,7 +86,7 @@ export default function CalendarPage() {
     message: string;
   } | null>(null);
   const [eventDialog, setEventDialog] = useState<
-    | { mode: "create"; defaultDate?: Date }
+    | { mode: "create" }
     | { mode: "edit"; event: CalendarEvent }
     | null
   >(null);
@@ -95,6 +97,9 @@ export default function CalendarPage() {
   );
   const hasLoadedOnceRef = useRef(false);
 
+  const { orderedCheckedUserIds, setCheckedUserIds } =
+    useCheckedUsers(approvedUsers);
+
   const setActiveTab = useCallback(
     (tab: CalendarTab) => {
       const next = new URLSearchParams(searchParams);
@@ -104,19 +109,25 @@ export default function CalendarPage() {
     [searchParams, setSearchParams],
   );
 
-  const currentUserId = sessionUser?.user.id ?? null;
-  const monthRange = useMemo(() => monthGridRangeIso(anchor), [anchor]);
+  const monthRange = useMemo(() => monthGridDateRange(anchor), [anchor]);
+  const ownersById = useMemo(
+    () => new Map(approvedUsers.map((u) => [u.id, u])),
+    [approvedUsers],
+  );
 
   const loadEvents = useCallback(async () => {
     if (!sessionUser) return;
     const token = await getApiAccessToken();
+    // We always pull every approved user's events for the visible range and
+    // do client-side filtering so flipping a checkbox is instant. The set is
+    // small (max 200 approved users x ~6 weeks of events).
     const result = await fetchCalendarEvents(token, {
-      start: monthRange.start,
-      end: monthRange.end,
-      owner,
+      start_date: monthRange.start,
+      end_date: monthRange.end,
+      owner: "all",
     });
     setEvents(result);
-  }, [getApiAccessToken, monthRange.end, monthRange.start, owner, sessionUser]);
+  }, [getApiAccessToken, monthRange.end, monthRange.start, sessionUser]);
 
   const loadSources = useCallback(async () => {
     if (!sessionUser) return;
@@ -248,6 +259,18 @@ export default function CalendarPage() {
     }
   };
 
+  const handleDayClick = useCallback(
+    (date: Date) => {
+      const iso = isoDateForLocalDay(date);
+      const fragment = buildUsersQueryFragment(
+        orderedCheckedUserIds,
+        approvedUsers,
+      );
+      navigate(`/calendar/day/${iso}${fragment}`);
+    },
+    [approvedUsers, navigate, orderedCheckedUserIds],
+  );
+
   if (isLoading) return <Text>Loading…</Text>;
   if (!isAuthenticated) return <Navigate to="/" replace />;
   if (!sessionUser) {
@@ -303,14 +326,14 @@ export default function CalendarPage() {
           py={{ base: "2", md: "2" }}
         >
           {loading && !hasLoadedOnceRef.current ? (
-            <Box maxW="4xl" w="100%" mx="auto" pb="2">
+            <Box maxW="5xl" w="100%" mx="auto" pb="2">
               <Text fontSize={APP_TEXT_SIZES.body} fontWeight="medium">
                 Loading calendar…
               </Text>
             </Box>
           ) : null}
           <Box
-            maxW="4xl"
+            maxW="5xl"
             w="100%"
             mx="auto"
             bg="gray.100"
@@ -340,9 +363,8 @@ export default function CalendarPage() {
                   </HStack>
                 </Heading>
                 <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
-                  See when you and other approved friends are unavailable. Add manual
-                  events or import a single Google Calendar by pasting its iCal
-                  secret URL.
+                  See which days you and others are busy. Tick the calendars you want to see
+                  on the left; click any day for the full list of busy people.
                 </Text>
               </Box>
             </Stack>
@@ -431,12 +453,6 @@ export default function CalendarPage() {
                     Add event
                   </PondButton>
                 </HStack>
-                <OwnerFilter
-                  value={owner}
-                  onChange={setOwner}
-                  approvedUsers={approvedUsers}
-                  currentUserId={currentUserId}
-                />
                 {notice ? (
                   <Text
                     fontSize={APP_TEXT_SIZES.helper}
@@ -448,24 +464,26 @@ export default function CalendarPage() {
                     {notice.message}
                   </Text>
                 ) : null}
-                <MonthGrid
-                  anchor={anchor}
-                  events={events}
-                  onEventClick={(ev) => {
-                    if (ev.is_manual && ev.owner.id === currentUserId) {
-                      setEventDialog({ mode: "edit", event: ev });
-                    }
-                  }}
-                  onDayClick={(day) =>
-                    setEventDialog({ mode: "create", defaultDate: day })
-                  }
-                />
-                {events.length === 0 && !loading ? (
-                  <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-                    No events in this month yet. Click a day or "Add event" to get
-                    started.
-                  </Text>
-                ) : null}
+                <Stack
+                  direction={isMobile ? "column" : "row"}
+                  gap="2"
+                  align="stretch"
+                >
+                  <UserCheckboxList
+                    approvedUsers={approvedUsers}
+                    orderedCheckedUserIds={orderedCheckedUserIds}
+                    onChange={setCheckedUserIds}
+                  />
+                  <Box flex="1" minW="0">
+                    <MonthGrid
+                      anchor={anchor}
+                      events={events}
+                      orderedCheckedUserIds={orderedCheckedUserIds}
+                      ownersById={ownersById}
+                      onDayClick={handleDayClick}
+                    />
+                  </Box>
+                </Stack>
               </Stack>
             </Tabs.Content>
 
@@ -474,7 +492,8 @@ export default function CalendarPage() {
                 <HStack justify="space-between" align="center" flexWrap="wrap" gap="2">
                   <Text fontSize={APP_TEXT_SIZES.body}>
                     Calendars you've imported. They refresh automatically every
-                    ~15 minutes.
+                    ~15 minutes. Only dates are pulled — titles and descriptions
+                    are never read or stored.
                   </Text>
                   <PondButton
                     size="sm"
@@ -564,17 +583,11 @@ export default function CalendarPage() {
         initial={
           eventDialog?.mode === "edit"
             ? {
-                title: eventDialog.event.title,
-                location: eventDialog.event.location,
-                notes: eventDialog.event.notes,
-                start_at: eventDialog.event.start_at,
-                end_at: eventDialog.event.end_at,
-                all_day: eventDialog.event.all_day,
+                title: eventDialog.event.title ?? "",
+                start_date: eventDialog.event.start_date,
+                end_date: eventDialog.event.end_date,
               }
             : undefined
-        }
-        defaultDate={
-          eventDialog?.mode === "create" ? eventDialog.defaultDate : undefined
         }
       />
       <ImportIcalDialog

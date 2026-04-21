@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
+from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
 from django.db.models import Q
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 # How far in either direction we'll accept in a single `GET /events/` query.
-MAX_RANGE = timedelta(days=366)
+MAX_RANGE_DAYS = 366
 
 
 def _approved_users_qs():
@@ -46,16 +46,29 @@ def _approved_users_qs():
     )
 
 
-def _parse_datetime_param(raw: str | None):
+def _parse_date_param(raw: str | None) -> date | None:
     if not raw:
         return None
     try:
-        parsed = timezone.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        return date.fromisoformat(raw.strip())
     except ValueError:
         return None
-    if timezone.is_naive(parsed):
-        parsed = timezone.make_aware(parsed, timezone.utc)
-    return parsed
+
+
+def _parse_owner_ids(raw: str | None) -> list[int] | None:
+    """Parse a comma-separated owner_ids list. Returns None if not provided."""
+    if raw is None or raw == "":
+        return None
+    out: list[int] = []
+    for piece in raw.split(","):
+        piece = piece.strip()
+        if not piece:
+            continue
+        try:
+            out.append(int(piece))
+        except ValueError:
+            return None
+    return out
 
 
 @api_view(["GET", "POST"])
@@ -64,22 +77,23 @@ def events_list(request):
     if request.method == "POST":
         return _create_event(request)
 
-    start = _parse_datetime_param(request.query_params.get("start"))
-    end = _parse_datetime_param(request.query_params.get("end"))
-    if start is None or end is None:
+    start_date = _parse_date_param(request.query_params.get("start_date"))
+    end_date = _parse_date_param(request.query_params.get("end_date"))
+    if start_date is None or end_date is None:
         return Response(
-            {"detail": "start and end query params (ISO 8601) are required."},
+            {"detail": "start_date and end_date query params (YYYY-MM-DD) are required."},
             status=400,
         )
-    if end <= start:
-        return Response({"detail": "end must be after start."}, status=400)
-    if end - start > MAX_RANGE:
+    if end_date < start_date:
+        return Response({"detail": "end_date must be on or after start_date."}, status=400)
+    if (end_date - start_date) > timedelta(days=MAX_RANGE_DAYS):
         return Response(
-            {"detail": f"Range cannot exceed {MAX_RANGE.days} days."},
+            {"detail": f"Range cannot exceed {MAX_RANGE_DAYS} days."},
             status=400,
         )
 
     owner_param = (request.query_params.get("owner") or "all").strip().lower()
+    owner_ids = _parse_owner_ids(request.query_params.get("owner_ids"))
     user = request.user
 
     owner_filter = Q()
@@ -103,11 +117,28 @@ def events_list(request):
             return Response({"detail": "That user is not available."}, status=404)
         owner_filter = Q(owner=target)
 
+    if owner_ids is None:
+        if request.query_params.get("owner_ids") is not None:
+            return Response(
+                {"detail": "owner_ids must be a comma-separated list of integers."},
+                status=400,
+            )
+        owner_id_filter = Q()
+    else:
+        # Restrict to approved owners only — clients can't peek at suspended
+        # or deleted users by enumerating ids.
+        approved_ids = set(_approved_users_qs().values_list("id", flat=True))
+        kept = [oid for oid in owner_ids if oid in approved_ids]
+        if not kept:
+            return Response({"results": []})
+        owner_id_filter = Q(owner_id__in=kept)
+
     events_qs = (
         Event.objects.select_related("owner", "owner__profile", "source")
         .filter(owner_filter)
-        .filter(start_at__lt=end, end_at__gt=start)
-        .order_by("start_at", "id")[:2_000]
+        .filter(owner_id_filter)
+        .filter(start_date__lte=end_date, end_date__gte=start_date)
+        .order_by("start_date", "id")[:2_000]
     )
 
     # Opportunistic lazy refresh: if any iCal source contributing to this view is
@@ -115,8 +146,6 @@ def events_list(request):
     # request so a single pageview never pays for dozens of HTTP round-trips.
     threshold = timezone.now() - LAZY_REFRESH_MAX_AGE
     owner_ids_for_refresh = set(events_qs.values_list("owner_id", flat=True))
-    # Also include the current viewer if they asked for their own events but have
-    # sources with zero events so far (first paint after an import).
     owner_ids_for_refresh.add(user.id)
     stale_sources = list(
         CalendarSource.objects.filter(
@@ -139,13 +168,16 @@ def events_list(request):
         events_qs = (
             Event.objects.select_related("owner", "owner__profile", "source")
             .filter(owner_filter)
-            .filter(start_at__lt=end, end_at__gt=start)
-            .order_by("start_at", "id")[:2_000]
+            .filter(owner_id_filter)
+            .filter(start_date__lte=end_date, end_date__gte=start_date)
+            .order_by("start_date", "id")[:2_000]
         )
 
     return Response(
         {
-            "results": EventSerializer(events_qs, many=True).data,
+            "results": EventSerializer(
+                events_qs, many=True, context={"request": request}
+            ).data,
         }
     )
 
@@ -157,14 +189,14 @@ def _create_event(request):
     event = Event.objects.create(
         owner=request.user,
         source=source,
-        title=serializer.validated_data["title"],
-        location=serializer.validated_data.get("location", ""),
-        notes=serializer.validated_data.get("notes", ""),
-        start_at=serializer.validated_data["start_at"],
-        end_at=serializer.validated_data["end_at"],
-        all_day=serializer.validated_data.get("all_day", False),
+        title=serializer.validated_data.get("title", ""),
+        start_date=serializer.validated_data["start_date"],
+        end_date=serializer.validated_data["end_date"],
     )
-    return Response(EventSerializer(event).data, status=status.HTTP_201_CREATED)
+    return Response(
+        EventSerializer(event, context={"request": request}).data,
+        status=status.HTTP_201_CREATED,
+    )
 
 
 @api_view(["PATCH", "DELETE"])
@@ -188,24 +220,11 @@ def event_detail(request, event_id: int):
 
     serializer = EventWriteSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
-    event.title = serializer.validated_data["title"]
-    event.location = serializer.validated_data.get("location", "")
-    event.notes = serializer.validated_data.get("notes", "")
-    event.start_at = serializer.validated_data["start_at"]
-    event.end_at = serializer.validated_data["end_at"]
-    event.all_day = serializer.validated_data.get("all_day", False)
-    event.save(
-        update_fields=[
-            "title",
-            "location",
-            "notes",
-            "start_at",
-            "end_at",
-            "all_day",
-            "updated_at",
-        ]
-    )
-    return Response(EventSerializer(event).data)
+    event.title = serializer.validated_data.get("title", "")
+    event.start_date = serializer.validated_data["start_date"]
+    event.end_date = serializer.validated_data["end_date"]
+    event.save(update_fields=["title", "start_date", "end_date", "updated_at"])
+    return Response(EventSerializer(event, context={"request": request}).data)
 
 
 @api_view(["GET", "POST"])
@@ -309,7 +328,7 @@ def source_detail(request, source_id: int):
 @api_view(["GET"])
 @permission_classes([IsApprovedUser])
 def approved_users_list(request):
-    """All approved users (including the viewer), for owner filter + search."""
+    """All approved users (including the viewer), for the user-filter list."""
     search = (request.query_params.get("q") or "").strip()
     qs = _approved_users_qs().order_by("profile__display_name", "email")
     if search:

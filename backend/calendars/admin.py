@@ -21,7 +21,6 @@ class CalendarSourceAdmin(admin.ModelAdmin):
 
 @admin.register(Event)
 class EventAdmin(admin.ModelAdmin):
-    list_display = ("id", "owner", "title", "start_at", "end_at", "all_day", "source")
-    list_filter = ("all_day",)
+    list_display = ("id", "owner", "title", "start_date", "end_date", "source")
     search_fields = ("title", "owner__email", "external_uid")
-    date_hierarchy = "start_at"
+    date_hierarchy = "start_date"

@@ -1,8 +1,7 @@
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import date
 from unittest.mock import patch
 
 from django.test import TestCase
-from django.utils import timezone
 
 from calendars.models import CalendarSource, Event
 from calendars.services import (
@@ -13,6 +12,8 @@ from calendars.services import (
 from calendars.tests.helpers import CalendarTestMixin
 
 
+# A feed deliberately stuffed with text properties — none of which we should
+# ever read or persist. Only DTSTART/DTEND/UID matter.
 SAMPLE_ICS = """BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//Test//EN
@@ -21,6 +22,10 @@ UID:event-one@example.com
 SUMMARY:Beach trip
 LOCATION:Oceanside
 DESCRIPTION:Bring sunscreen\\, and a towel.
+ORGANIZER:mailto:alice@example.com
+ATTENDEE:mailto:bob@example.com
+URL:https://example.com/trip
+CATEGORIES:Vacation,Family
 DTSTART:20260601T130000Z
 DTEND:20260604T200000Z
 END:VEVENT
@@ -40,45 +45,33 @@ BEGIN:VEVENT
 UID:event-one@example.com
 SUMMARY:Beach trip (updated)
 DTSTART:20260601T130000Z
-DTEND:20260604T200000Z
+DTEND:20260605T200000Z
 END:VEVENT
 END:VCALENDAR
 """
 
 
 class ParseIcsTests(TestCase):
-    def test_parses_timed_and_all_day_events(self):
+    def test_parses_dates_and_ignores_all_text_properties(self):
         parsed = parse_ics(SAMPLE_ICS)
         self.assertEqual(len(parsed), 2)
         timed, all_day = parsed
         self.assertEqual(timed.uid, "event-one@example.com")
-        self.assertEqual(timed.title, "Beach trip")
-        self.assertEqual(timed.location, "Oceanside")
-        self.assertEqual(timed.notes, "Bring sunscreen, and a towel.")
-        self.assertFalse(timed.all_day)
-        self.assertEqual(
-            timed.start_at,
-            datetime(2026, 6, 1, 13, 0, tzinfo=dt_timezone.utc),
-        )
-        self.assertEqual(
-            timed.end_at,
-            datetime(2026, 6, 4, 20, 0, tzinfo=dt_timezone.utc),
-        )
+        self.assertEqual(timed.start_date, date(2026, 6, 1))
+        self.assertEqual(timed.end_date, date(2026, 6, 4))
+        # ParsedEvent has no title/location/notes fields at all.
+        self.assertFalse(hasattr(timed, "title"))
+        self.assertFalse(hasattr(timed, "location"))
+        self.assertFalse(hasattr(timed, "notes"))
 
         self.assertEqual(all_day.uid, "event-two@example.com")
-        self.assertTrue(all_day.all_day)
-        self.assertEqual(
-            all_day.start_at,
-            datetime(2026, 7, 1, 0, 0, tzinfo=dt_timezone.utc),
-        )
-        self.assertEqual(
-            all_day.end_at,
-            datetime(2026, 7, 2, 0, 0, tzinfo=dt_timezone.utc),
-        )
+        # All-day DTEND in ICS is exclusive; we store inclusive.
+        self.assertEqual(all_day.start_date, date(2026, 7, 1))
+        self.assertEqual(all_day.end_date, date(2026, 7, 1))
 
     def test_unfolds_continuation_lines(self):
-        # RFC 5545 folding: inserting CRLF + a single whitespace character is removed
-        # on unfold, so exactly one (leading) whitespace disappears with the newline.
+        # Folded SUMMARY is no-op now because we ignore SUMMARY entirely; this
+        # test just verifies the folding doesn't break date parsing.
         ics = (
             "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:x\r\n"
             "SUMMARY:Long\r\n wrapped title\r\n"
@@ -86,7 +79,8 @@ class ParseIcsTests(TestCase):
             "END:VEVENT\r\nEND:VCALENDAR\r\n"
         )
         parsed = parse_ics(ics)
-        self.assertEqual(parsed[0].title, "Longwrapped title")
+        self.assertEqual(parsed[0].uid, "x")
+        self.assertEqual(parsed[0].start_date, date(2026, 1, 1))
 
 
 class SyncIcalSourceTests(CalendarTestMixin, TestCase):
@@ -114,7 +108,7 @@ class SyncIcalSourceTests(CalendarTestMixin, TestCase):
 
         return fake_fetch
 
-    def test_initial_sync_creates_events(self):
+    def test_initial_sync_creates_events_with_no_text(self):
         with patch(
             "calendars.services._fetch_ical",
             side_effect=self._mock_fetch(body=SAMPLE_ICS, etag='W/"abc"', last_modified="Sun"),
@@ -128,10 +122,14 @@ class SyncIcalSourceTests(CalendarTestMixin, TestCase):
         self.assertEqual(self.source.last_etag, 'W/"abc"')
         self.assertEqual(self.source.last_modified_header, "Sun")
         self.assertIsNotNone(self.source.last_synced_at)
+        events = list(Event.objects.filter(source=self.source).order_by("external_uid"))
         self.assertEqual(
-            set(Event.objects.filter(source=self.source).values_list("external_uid", flat=True)),
+            {ev.external_uid for ev in events},
             {"event-one@example.com", "event-two@example.com"},
         )
+        # Crucially: zero shared-feed text persisted.
+        for ev in events:
+            self.assertEqual(ev.title, "")
 
     def test_not_modified_preserves_events(self):
         with patch(
@@ -141,7 +139,6 @@ class SyncIcalSourceTests(CalendarTestMixin, TestCase):
             sync_ical_source(self.source)
         self.assertEqual(Event.objects.filter(source=self.source).count(), 2)
 
-        # Subsequent fetch returns 304 Not Modified.
         def fake_fetch(url, *, etag, last_modified):
             return 304, "", {}
 
@@ -165,12 +162,14 @@ class SyncIcalSourceTests(CalendarTestMixin, TestCase):
             result = sync_ical_source(self.source)
 
         self.assertTrue(result.ok)
+        # event-one's end_date changed (4th -> 5th); event-two went away.
         self.assertEqual(result.updated, 1)
         self.assertEqual(result.deleted, 1)
-        self.assertEqual(
-            Event.objects.filter(source=self.source).values_list("external_uid", "title")[0],
-            ("event-one@example.com", "Beach trip (updated)"),
-        )
+        survivor = Event.objects.get(source=self.source)
+        self.assertEqual(survivor.external_uid, "event-one@example.com")
+        self.assertEqual(survivor.title, "")
+        self.assertEqual(survivor.start_date, date(2026, 6, 1))
+        self.assertEqual(survivor.end_date, date(2026, 6, 5))
 
     def test_fetch_failure_records_error(self):
         def fake_fetch(url, *, etag, last_modified):

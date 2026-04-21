@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   addMonths,
-  eventOverlapsDay,
+  eventCoversDay,
   formatMonthLabel,
+  isoDateForLocalDay,
+  monthGridDateRange,
   monthGridDays,
-  monthGridRangeIso,
 } from "./monthMath";
 
 describe("addMonths", () => {
@@ -47,35 +48,35 @@ describe("monthGridDays", () => {
   });
 });
 
-describe("monthGridRangeIso", () => {
-  it("spans from the first grid cell through the day after the last", () => {
-    const { start, end } = monthGridRangeIso({ year: 2026, month: 3 });
-    expect(new Date(end).getTime() - new Date(start).getTime()).toBe(
-      42 * 24 * 60 * 60 * 1000,
-    );
+describe("monthGridDateRange", () => {
+  it("returns ISO dates for the first and last grid cells (inclusive)", () => {
+    const { start, end } = monthGridDateRange({ year: 2026, month: 3 });
+    expect(start).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(end).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // 42 cells = 41 days between first and last.
+    const startMs = Date.parse(`${start}T00:00:00Z`);
+    const endMs = Date.parse(`${end}T00:00:00Z`);
+    expect(endMs - startMs).toBe(41 * 24 * 60 * 60 * 1000);
   });
 });
 
-describe("eventOverlapsDay", () => {
-  it("returns true for events fully within the day", () => {
-    const day = new Date(2026, 3, 10);
-    const start = new Date(2026, 3, 10, 9, 0);
-    const end = new Date(2026, 3, 10, 10, 0);
-    expect(eventOverlapsDay(start, end, day)).toBe(true);
+describe("eventCoversDay", () => {
+  it("returns true when the day is within an event range (inclusive)", () => {
+    expect(eventCoversDay("2026-04-10", "2026-04-12", "2026-04-10")).toBe(true);
+    expect(eventCoversDay("2026-04-10", "2026-04-12", "2026-04-11")).toBe(true);
+    expect(eventCoversDay("2026-04-10", "2026-04-12", "2026-04-12")).toBe(true);
   });
 
-  it("returns false for events that end before the day", () => {
-    const day = new Date(2026, 3, 10);
-    const start = new Date(2026, 3, 9, 9, 0);
-    const end = new Date(2026, 3, 9, 10, 0);
-    expect(eventOverlapsDay(start, end, day)).toBe(false);
+  it("returns false when the day is outside the range", () => {
+    expect(eventCoversDay("2026-04-10", "2026-04-12", "2026-04-09")).toBe(false);
+    expect(eventCoversDay("2026-04-10", "2026-04-12", "2026-04-13")).toBe(false);
   });
+});
 
-  it("returns true for multi-day events that cross this day", () => {
-    const day = new Date(2026, 3, 10);
-    const start = new Date(2026, 3, 8, 9, 0);
-    const end = new Date(2026, 3, 12, 10, 0);
-    expect(eventOverlapsDay(start, end, day)).toBe(true);
+describe("isoDateForLocalDay", () => {
+  it("formats local-time dates to YYYY-MM-DD", () => {
+    expect(isoDateForLocalDay(new Date(2026, 3, 5))).toBe("2026-04-05");
+    expect(isoDateForLocalDay(new Date(2026, 11, 31))).toBe("2026-12-31");
   });
 });
 

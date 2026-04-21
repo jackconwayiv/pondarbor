@@ -87,44 +87,7 @@ export function monthGridRangeIso(anchor: MonthAnchor): {
   return { start: start.toISOString(), end: end.toISOString() };
 }
 
-/** Midnight-to-midnight UTC for an all-day event that starts on `d`. */
-export function allDayUtcRangeForLocalDate(d: Date): { startUtc: Date; endUtc: Date } {
-  const startUtc = new Date(
-    Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0),
-  );
-  const endUtc = new Date(
-    Date.UTC(d.getFullYear(), d.getMonth(), d.getDate() + 1, 0, 0, 0, 0),
-  );
-  return { startUtc, endUtc };
-}
-
-/** Yes, this event overlaps the calendar cell for `day`. */
-export function eventOverlapsDay(
-  eventStart: Date,
-  eventEnd: Date,
-  day: Date,
-): boolean {
-  const dayStart = new Date(
-    day.getFullYear(),
-    day.getMonth(),
-    day.getDate(),
-    0,
-    0,
-    0,
-    0,
-  );
-  const dayEnd = new Date(
-    day.getFullYear(),
-    day.getMonth(),
-    day.getDate() + 1,
-    0,
-    0,
-    0,
-    0,
-  );
-  return eventStart < dayEnd && eventEnd > dayStart;
-}
-
+/** Whether two `Date`s point at the same local calendar day. */
 export function sameLocalDay(a: Date, b: Date): boolean {
   return (
     a.getFullYear() === b.getFullYear() &&
@@ -145,27 +108,38 @@ export function formatShortDate(d: Date): string {
   });
 }
 
-export function formatTimeRange(
+/** Stable YYYY-MM-DD for a local Date. */
+export function isoDateForLocalDay(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** Parse a YYYY-MM-DD into a local Date at midnight. */
+export function parseIsoDate(iso: string): Date {
+  const [y, m, d] = iso.split("-").map((p) => Number(p));
+  return new Date(y, (m ?? 1) - 1, d ?? 1);
+}
+
+/** Inclusive: does the event's [start_date, end_date] cover this day? */
+export function eventCoversDay(
   startIso: string,
   endIso: string,
-  allDay: boolean,
-): string {
-  if (allDay) return "All day";
-  const start = new Date(startIso);
-  const end = new Date(endIso);
-  const sameDay = sameLocalDay(start, end);
-  const timeOpts: Intl.DateTimeFormatOptions = {
-    hour: "numeric",
-    minute: "2-digit",
+  dayIso: string,
+): boolean {
+  return startIso <= dayIso && endIso >= dayIso;
+}
+
+/**
+ * The visible month-grid range as inclusive ISO dates, for the events API.
+ * Returns the YYYY-MM-DD of the first cell and the last cell.
+ */
+export function monthGridDateRange(anchor: MonthAnchor): {
+  start: string;
+  end: string;
+} {
+  const days = monthGridDays(anchor);
+  return {
+    start: isoDateForLocalDay(days[0].date),
+    end: isoDateForLocalDay(days[days.length - 1].date),
   };
-  const dateOpts: Intl.DateTimeFormatOptions = {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  };
-  if (sameDay) {
-    return `${start.toLocaleTimeString(undefined, timeOpts)} – ${end.toLocaleTimeString(undefined, timeOpts)}`;
-  }
-  return `${start.toLocaleString(undefined, dateOpts)} – ${end.toLocaleString(undefined, dateOpts)}`;
 }

@@ -51,15 +51,35 @@ function ownerParam(value: OwnerQuery): string {
   return String(value);
 }
 
+export type FetchEventsParams = {
+  /** Inclusive ISO date (YYYY-MM-DD). */
+  start_date: string;
+  /** Inclusive ISO date (YYYY-MM-DD). */
+  end_date: string;
+  /** "all", "me", or a single user id. Defaults to "all". */
+  owner?: OwnerQuery;
+  /**
+   * Optional comma-separated allow-list of approved user ids. When supplied,
+   * the server only returns events for these owners (in addition to the
+   * `owner` filter above). If the list is empty after filtering to approved
+   * owners, the server returns an empty result.
+   */
+  ownerIds?: number[];
+};
+
 export async function fetchCalendarEvents(
   accessToken: string | null,
-  params: { start: string; end: string; owner: OwnerQuery },
+  params: FetchEventsParams,
 ): Promise<CalendarEvent[]> {
   const query = new URLSearchParams({
-    start: params.start,
-    end: params.end,
-    owner: ownerParam(params.owner),
+    start_date: params.start_date,
+    end_date: params.end_date,
+    owner: ownerParam(params.owner ?? "all"),
   });
+  if (params.ownerIds !== undefined) {
+    // Send the list explicitly even when empty so the server can return [].
+    query.set("owner_ids", params.ownerIds.join(","));
+  }
   const response = await fetch(
     `${apiBase()}/api/v1/calendars/events/?${query.toString()}`,
     {

@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta, timezone as dt_timezone
+from datetime import date, datetime, timedelta, timezone as dt_timezone
 from typing import Iterable
 
 import requests
@@ -45,10 +45,12 @@ class IcalParseError(Exception):
 # ---------------------------------------------------------------------------
 # ICS parsing
 # ---------------------------------------------------------------------------
+#
+# The calendar is binary busy/free per day, so we deliberately read **only**
+# DTSTART, DTEND, and UID from VEVENT. We never look at SUMMARY, DESCRIPTION,
+# LOCATION, ORGANIZER, ATTENDEE, URL, CATEGORIES, or any other property — no
+# user-facing text from a shared feed should ever land in our database.
 
-# Minimal line unfolding + VEVENT parser. We avoid introducing a new runtime
-# dep for v1; ICS is a simple line-based format and we only need a handful of
-# properties. If the format variability grows, swap in `icalendar`.
 _LINE_CONTINUATION_RE = re.compile(r"\r?\n[ \t]")
 
 
@@ -58,7 +60,6 @@ def _unfold(text: str) -> str:
 
 def _split_prop(raw_line: str) -> tuple[str, dict[str, str], str]:
     """Return ``(name, params, value)`` for a single content line."""
-    # Split name/params from value on the first unquoted ':'
     in_quotes = False
     colon_idx = -1
     for idx, ch in enumerate(raw_line):
@@ -82,12 +83,11 @@ def _split_prop(raw_line: str) -> tuple[str, dict[str, str], str]:
     return name, params, value
 
 
-def _parse_ics_datetime(raw: str, params: dict[str, str]) -> tuple[datetime, bool, str]:
-    """Parse an ICS DTSTART/DTEND/etc value.
+def _parse_ics_datetime(raw: str, params: dict[str, str]) -> tuple[datetime, bool]:
+    """Parse an ICS DTSTART/DTEND value into an aware UTC datetime.
 
-    Returns ``(dt, all_day, source_tz)`` where ``dt`` is an aware UTC datetime.
-    For ``VALUE=DATE``, the returned datetime is midnight UTC of that day and
-    ``all_day`` is True.
+    Returns ``(dt, is_date_only)``. For ``VALUE=DATE``, the returned datetime
+    is midnight UTC of that day.
     """
     value = (raw or "").strip()
     is_date_only = params.get("VALUE", "").upper() == "DATE" or (
@@ -101,10 +101,9 @@ def _parse_ics_datetime(raw: str, params: dict[str, str]) -> tuple[datetime, boo
         year = int(value[0:4])
         month = int(value[4:6])
         day = int(value[6:8])
-        dt = datetime.combine(date(year, month, day), time(0, 0, 0), tzinfo=dt_timezone.utc)
-        return dt, True, tzid
+        dt = datetime(year, month, day, tzinfo=dt_timezone.utc)
+        return dt, True
 
-    # DATE-TIME forms: YYYYMMDDTHHMMSS or YYYYMMDDTHHMMSSZ
     match = re.fullmatch(
         r"(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)", value
     )
@@ -121,35 +120,18 @@ def _parse_ics_datetime(raw: str, params: dict[str, str]) -> tuple[datetime, boo
             tz = zoneinfo.ZoneInfo(tzid)
             aware = naive.replace(tzinfo=tz).astimezone(dt_timezone.utc)
         except Exception:
-            # Unknown tzid: fall back to treating as UTC (best-effort).
             aware = naive.replace(tzinfo=dt_timezone.utc)
     else:
-        # Floating time: treat as UTC. Better than guessing server TZ.
+        # Floating time: treat as UTC. Better than guessing the server TZ.
         aware = naive.replace(tzinfo=dt_timezone.utc)
-    return aware, False, tzid
-
-
-def _unescape_text(value: str) -> str:
-    # ICS text escapes per RFC 5545 § 3.3.11
-    return (
-        value.replace("\\n", "\n")
-        .replace("\\N", "\n")
-        .replace("\\,", ",")
-        .replace("\\;", ";")
-        .replace("\\\\", "\\")
-    )
+    return aware, False
 
 
 @dataclass
 class ParsedEvent:
     uid: str
-    title: str
-    location: str
-    notes: str
-    start_at: datetime
-    end_at: datetime
-    all_day: bool
-    source_timezone: str
+    start_date: date
+    end_date: date
 
 
 def parse_ics(text: str) -> list[ParsedEvent]:
@@ -180,21 +162,15 @@ def parse_ics(text: str) -> list[ParsedEvent]:
         if not in_event:
             continue
         name, params, value = _split_prop(stripped)
+        # Only DTSTART, DTEND, and UID are inspected. Every other property
+        # (SUMMARY, DESCRIPTION, LOCATION, ORGANIZER, etc.) is intentionally
+        # ignored — see module-level comment.
         if name in ("DTSTART", "DTEND"):
-            dt, all_day, tzid = _parse_ics_datetime(value, params)
+            dt, all_day = _parse_ics_datetime(value, params)
             current[name] = dt
             current[f"{name}__ALL_DAY"] = all_day
-            current[f"{name}__TZID"] = tzid
-        elif name == "DURATION":
-            current["DURATION"] = value
         elif name == "UID":
             current["UID"] = value.strip()
-        elif name == "SUMMARY":
-            current["SUMMARY"] = _unescape_text(value)
-        elif name == "LOCATION":
-            current["LOCATION"] = _unescape_text(value)
-        elif name == "DESCRIPTION":
-            current["DESCRIPTION"] = _unescape_text(value)
 
     return events
 
@@ -204,28 +180,33 @@ def _finalize_event(current: dict) -> ParsedEvent | None:
     if dtstart is None:
         return None
     dtend = current.get("DTEND")
-    all_day = bool(current.get("DTSTART__ALL_DAY"))
+    start_all_day = bool(current.get("DTSTART__ALL_DAY"))
+    end_all_day = bool(current.get("DTEND__ALL_DAY"))
+
+    start_date = dtstart.date()
+
     if dtend is None:
-        # Fall back to DURATION if present, otherwise assume all-day or zero-length.
-        if all_day:
-            dtend = dtstart + timedelta(days=1)
-        else:
-            dtend = dtstart
-    if dtend < dtstart:
-        dtend = dtstart
+        # No DTEND: a single-day event.
+        end_date = start_date
+    elif end_all_day:
+        # Per RFC 5545, all-day DTEND is exclusive (the day after the last day
+        # of the event). Convert to inclusive.
+        inclusive = (dtend - timedelta(days=1)).date()
+        end_date = inclusive if inclusive >= start_date else start_date
+    else:
+        # Timed DTEND is inclusive in our binary model: any day the event
+        # touches counts as busy.
+        end_date = dtend.date()
+        # Guard against a zero-length midnight event accidentally bleeding
+        # into the previous day.
+        if end_date < start_date:
+            end_date = start_date
+
     uid = (current.get("UID") or "").strip()
-    title = (current.get("SUMMARY") or "").strip() or "(Untitled event)"
     return ParsedEvent(
         uid=uid[:500],
-        title=title[:500],
-        location=(current.get("LOCATION") or "")[:500],
-        notes=current.get("DESCRIPTION") or "",
-        start_at=dtstart,
-        end_at=dtend,
-        all_day=all_day,
-        source_timezone=(
-            current.get("DTSTART__TZID") or current.get("DTEND__TZID") or ""
-        )[:64],
+        start_date=start_date,
+        end_date=end_date,
     )
 
 
@@ -255,7 +236,6 @@ def _fetch_ical(url: str, *, etag: str, last_modified: str) -> tuple[int, str, d
         raise IcalFetchError(
             f"Unexpected status {response.status_code} from iCal feed."
         )
-    # Enforce max body size while streaming.
     buf = bytearray()
     try:
         for chunk in response.iter_content(chunk_size=65536):
@@ -284,7 +264,9 @@ def _apply_events(source: CalendarSource, parsed: Iterable[ParsedEvent]) -> tupl
         if p.uid  # Ignore feed entries without UIDs (rare); we can't dedupe them.
     }
     existing = list(
-        source.events.all().only("id", "external_uid")
+        source.events.all().only(
+            "id", "external_uid", "start_date", "end_date"
+        )
     )
     existing_by_uid = {ev.external_uid: ev for ev in existing if ev.external_uid}
 
@@ -293,39 +275,27 @@ def _apply_events(source: CalendarSource, parsed: Iterable[ParsedEvent]) -> tupl
     for uid, p in by_uid.items():
         existing_event = existing_by_uid.get(uid)
         if existing_event is None:
+            # title is forced to "" by Event.save() for non-manual sources.
             Event.objects.create(
                 owner=source.owner,
                 source=source,
                 external_uid=uid,
-                title=p.title,
-                location=p.location,
-                notes=p.notes,
-                start_at=p.start_at,
-                end_at=p.end_at,
-                all_day=p.all_day,
-                source_timezone=p.source_timezone,
+                start_date=p.start_date,
+                end_date=p.end_date,
             )
             created += 1
         else:
             changed_fields: list[str] = []
-
-            def _maybe_set(field: str, value) -> None:
-                if getattr(existing_event, field) != value:
-                    setattr(existing_event, field, value)
-                    changed_fields.append(field)
-
-            _maybe_set("title", p.title)
-            _maybe_set("location", p.location)
-            _maybe_set("notes", p.notes)
-            _maybe_set("start_at", p.start_at)
-            _maybe_set("end_at", p.end_at)
-            _maybe_set("all_day", p.all_day)
-            _maybe_set("source_timezone", p.source_timezone)
+            if existing_event.start_date != p.start_date:
+                existing_event.start_date = p.start_date
+                changed_fields.append("start_date")
+            if existing_event.end_date != p.end_date:
+                existing_event.end_date = p.end_date
+                changed_fields.append("end_date")
             if changed_fields:
                 existing_event.save(update_fields=changed_fields + ["updated_at"])
                 updated += 1
 
-    # Delete events whose UIDs disappeared from the feed.
     stale_ids = [
         ev.id for ev in existing if ev.external_uid and ev.external_uid not in by_uid
     ]

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from urllib.parse import urlparse
 
-from django.utils import timezone
 from rest_framework import serializers
 
 from calendars.models import CalendarSource, Event
@@ -13,8 +12,9 @@ from calendars.models import CalendarSource, Event
 ALLOWED_ICAL_HOSTS = {"calendar.google.com"}
 
 EVENT_TITLE_MAX = 500
-EVENT_TEXT_MAX = 20_000
-EVENT_LOCATION_MAX = 500
+# Hard cap to keep "you forgot to set an end date" mistakes from blocking
+# enormous swaths of the calendar.
+EVENT_MAX_RANGE_DAYS = 366
 
 
 def _owner_row(user) -> dict:
@@ -39,6 +39,9 @@ class CalendarSourceSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CalendarSource
+        # ical_url, last_etag, and last_modified_header are intentionally
+        # excluded; they're feed-internal metadata that the frontend doesn't
+        # need and we don't want to expose.
         fields = (
             "id",
             "owner",
@@ -96,10 +99,17 @@ class CalendarSourceCreateSerializer(serializers.Serializer):
 
 
 class EventSerializer(serializers.ModelSerializer):
+    """Read serializer for events.
+
+    The shape is deliberately minimal: only what is needed to render a
+    busy/free calendar. ``title`` is exposed *only* to the owner of a manual
+    event; for any iCal/shared-source row, ``title`` is always ``null`` even
+    if a stale value somehow lingers in the database.
+    """
+
     owner = serializers.SerializerMethodField()
-    source_display_name = serializers.CharField(source="source.display_name", read_only=True)
     source_type = serializers.CharField(source="source.source_type", read_only=True)
-    color = serializers.CharField(source="source.color", read_only=True)
+    title = serializers.SerializerMethodField()
     is_manual = serializers.SerializerMethodField()
 
     class Meta:
@@ -107,21 +117,11 @@ class EventSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "owner",
-            "source",
-            "source_display_name",
             "source_type",
-            "color",
-            "external_uid",
-            "title",
-            "location",
-            "notes",
-            "start_at",
-            "end_at",
-            "all_day",
             "is_manual",
-            "source_timezone",
-            "created_at",
-            "updated_at",
+            "title",
+            "start_date",
+            "end_date",
         )
         read_only_fields = fields
 
@@ -131,54 +131,43 @@ class EventSerializer(serializers.ModelSerializer):
     def get_is_manual(self, obj: Event) -> bool:
         return obj.source.source_type == CalendarSource.SourceType.MANUAL
 
+    def get_title(self, obj: Event) -> str | None:
+        if obj.source.source_type != CalendarSource.SourceType.MANUAL:
+            return None
+        request = self.context.get("request")
+        viewer = getattr(request, "user", None)
+        viewer_id = getattr(viewer, "id", None)
+        if viewer_id is None or viewer_id != obj.owner_id:
+            return None
+        return obj.title or ""
+
 
 class EventWriteSerializer(serializers.Serializer):
-    title = serializers.CharField(max_length=EVENT_TITLE_MAX)
-    location = serializers.CharField(
-        max_length=EVENT_LOCATION_MAX, required=False, allow_blank=True, default=""
+    """Write serializer for the manual "Add event" flow.
+
+    Only the manual source accepts writes; iCal-imported events are read-only.
+    Times are not collected or stored — the calendar is binary busy/free per
+    day.
+    """
+
+    title = serializers.CharField(
+        max_length=EVENT_TITLE_MAX, required=False, allow_blank=True, default=""
     )
-    notes = serializers.CharField(
-        max_length=EVENT_TEXT_MAX, required=False, allow_blank=True, default=""
-    )
-    start_at = serializers.DateTimeField()
-    end_at = serializers.DateTimeField()
-    all_day = serializers.BooleanField(required=False, default=False)
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
 
     def validate_title(self, value: str) -> str:
-        trimmed = (value or "").strip()
-        if not trimmed:
-            raise serializers.ValidationError("Title is required.")
-        return trimmed
+        return (value or "").strip()
 
     def validate(self, attrs):
-        start = attrs["start_at"]
-        end = attrs["end_at"]
-        if timezone.is_naive(start):
-            start = timezone.make_aware(start, timezone.utc)
-            attrs["start_at"] = start
-        if timezone.is_naive(end):
-            end = timezone.make_aware(end, timezone.utc)
-            attrs["end_at"] = end
-        if end <= start:
-            raise serializers.ValidationError({"end_at": "End must be after start."})
-        # Sanity guard: no single event spans more than one year.
-        if end - start > timedelta(days=366):
+        start = attrs["start_date"]
+        end = attrs["end_date"]
+        if end < start:
             raise serializers.ValidationError(
-                {"end_at": "Event cannot span more than a year."}
+                {"end_date": "End date must be on or after start date."}
             )
-        if attrs.get("all_day"):
-            # All-day events should be day-aligned; the client is responsible for the
-            # exact day math but we reject anything that isn't midnight-to-midnight UTC
-            # so search and rendering stay consistent.
-            for field_name in ("start_at", "end_at"):
-                value: datetime = attrs[field_name]
-                if not (
-                    value.hour == 0
-                    and value.minute == 0
-                    and value.second == 0
-                    and value.microsecond == 0
-                ):
-                    raise serializers.ValidationError(
-                        {field_name: "All-day events must start and end at midnight UTC."}
-                    )
+        if (end - start) > timedelta(days=EVENT_MAX_RANGE_DAYS):
+            raise serializers.ValidationError(
+                {"end_date": f"Event cannot span more than {EVENT_MAX_RANGE_DAYS} days."}
+            )
         return attrs

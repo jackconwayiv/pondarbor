@@ -69,6 +69,7 @@ const MealInstanceDetailPage = lazy(() => import("./meal/MealInstanceDetailPage"
 const MealGroceryPage = lazy(() => import("./meal/MealGroceryPage"));
 const GamesMenu = lazy(() => import("./GamesMenu"));
 const CalendarPage = lazy(() => import("./calendar/CalendarPage"));
+const CalendarDayPage = lazy(() => import("./calendar/CalendarDayPage"));
 
 function lazyRouteElement(element: ReactNode): ReactNode {
   return <Suspense fallback={<RouteLoadingFallback />}>{element}</Suspense>;
@@ -122,7 +123,13 @@ export const router = sentryCreateBrowserRouter([
       },
       {
         path: "calendar",
-        element: lazyRouteElement(<CalendarPage />),
+        children: [
+          { index: true, element: lazyRouteElement(<CalendarPage />) },
+          {
+            path: "day/:date",
+            element: lazyRouteElement(<CalendarDayPage />),
+          },
+        ],
       },
       {
         path: "closet/items/:itemId",

@@ -103,7 +103,7 @@ def _format_stats_line(it) -> str:
 
 def format_stock_line_row(line: NpcShopStockLine) -> str:
     it = line.item
-    qty_s = "∞" if line.quantity is None else str(line.quantity)
+    qty_s = "-" if line.quantity is None else str(line.quantity)
     if line.kind == NpcShopStockLine.Kind.CONSIGNMENT and line.consignment_item_instance_id:
         inst = line.consignment_item_instance
         label = display_name_for_instance(inst)

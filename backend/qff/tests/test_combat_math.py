@@ -36,6 +36,10 @@ class CombatMathFormulaTests(TestCase):
         self.assertEqual(compute_hit_chance(-100, 0, 200), 5)
         self.assertEqual(compute_hit_chance(200, 0, -200), 95)
 
+    def test_compute_hit_chance_custom_base(self):
+        self.assertEqual(compute_hit_chance(0, 0, 0, base=50), 50)
+        self.assertEqual(compute_hit_chance(10, 0, 0, base=50), 55)
+
     def test_dodge_and_effective(self):
         self.assertEqual(compute_dodge_chance(0, 0), 1)
         self.assertEqual(compute_dodge_chance(19, 0), 1)
@@ -100,6 +104,14 @@ class ResolvePhysicalStrikeTests(TestCase):
             r = resolve_physical_strike(self._sample_attacker(), self._sample_defender())
         self.assertEqual(r.outcome, "miss")
         self.assertEqual(r.damage, 0)
+        self.assertEqual(m_roll.call_count, 1)
+
+    def test_miss_with_lower_hit_chance_base(self):
+        atk = {**self._sample_attacker(), "hit_chance_base": 50}
+        with patch("qff.combat_math.roll_d100", return_value=60) as m_roll:
+            r = resolve_physical_strike(atk, self._sample_defender())
+        self.assertEqual(r.outcome, "miss")
+        self.assertEqual(r.hit_chance, 50)
         self.assertEqual(m_roll.call_count, 1)
 
     def test_dodge_on_second_roll(self):

@@ -53,15 +53,15 @@ class InteractableMinimapToggleTests(TestCase):
             map_reveal_minutes=60,
         )
 
-    def test_sconce_toggles_hero_permanent_lit(self):
+    def test_sconce_toggles_area_lit(self):
         lines_on = handle_interactable_use(self.character, self.sconce)
         self.character.refresh_from_db()
-        self.assertIn(self.room.pk, self.character.hero_permanent_minimap_lit_room_ids)
+        self.assertIn(self.area.pk, self.character.sconce_full_narrative_area_ids)
         self.assertTrue(any("stays lit" in ln.lower() for ln in lines_on))
 
         lines_off = handle_interactable_use(self.character, self.sconce)
         self.character.refresh_from_db()
-        self.assertNotIn(self.room.pk, self.character.hero_permanent_minimap_lit_room_ids)
+        self.assertNotIn(self.area.pk, self.character.sconce_full_narrative_area_ids)
         self.assertTrue(any("fade" in ln.lower() for ln in lines_off))
 
     def test_map_toggles_full_reveal(self):

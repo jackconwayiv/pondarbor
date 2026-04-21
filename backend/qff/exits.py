@@ -195,4 +195,6 @@ def consume_key_if_entering_locked(character: Character, room_exit: RoomExit) ->
         return
     if passable_unlock_state(character, room_exit):
         return
+    if not room_exit.consume_key_on_pass:
+        return
     consume_key_and_unlock(character, room_exit)

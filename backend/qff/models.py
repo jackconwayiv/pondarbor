@@ -26,7 +26,8 @@ class Area(models.Model):
     theme_primary = models.CharField(max_length=7, blank=True, default="")
     theme_secondary = models.CharField(max_length=7, blank=True, default="")
     theme_accent = models.CharField(max_length=7, blank=True, default="")
-    # When true, play minimap uses fog-of-war: only current room, temp lit, and sconce rooms show.
+    # When true, play minimap uses fog-of-war for this whole area (torch radius, visited cells);
+    # heroes who used a sconce here see the minimap as if the area were not dark.
     is_dark_minimap = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -63,6 +64,33 @@ class Room(models.Model):
         on_delete=models.SET_NULL,
         related_name="rooms_search_reveal_exit",
         help_text="Optional: on first successful search roll per hero, grant CharacterExitSeen for this exit.",
+    )
+    search_floor_once_item = models.ForeignKey(
+        "Item",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="rooms_search_floor_once",
+        help_text="Optional: on first successful search roll per hero, mint one unowned floor instance "
+        "(once per character ever from this room).",
+    )
+    search_floor_quest_item = models.ForeignKey(
+        "Item",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="rooms_search_floor_quest",
+        help_text="Optional: with search_floor_quest_state, mint a quest-gated floor instance on "
+        "successful search when eligible (while-instance: no duplicate on floor / not carrying).",
+    )
+    search_floor_quest_state = models.ForeignKey(
+        "QuestState",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="rooms_search_floor_quest_gate",
+        help_text="Required with search_floor_quest_item: only heroes in this quest state receive "
+        "the spawn; minted instance uses this visible quest state.",
     )
     # Sconce / permanent light: visible on dark minimap even after temp lighting reset.
     permanent_minimap_light = models.BooleanField(default=False)
@@ -211,6 +239,8 @@ class RoomExit(models.Model):
         default=600,
         help_text="Realm-timed unlock duration (KEY realm_timed, DEVICE).",
     )
+    # If False, carrying the key is enough to pass; the item is not destroyed or decremented.
+    consume_key_on_pass = models.BooleanField(default=True)
 
     class Meta:
         constraints = [
@@ -749,8 +779,15 @@ class Character(models.Model):
     last_room_broadcast_id = models.PositiveIntegerField(default=0)
     # Temporarily lit room ids for dark minimap (torch / lamp oil); cleared at flagged entrances.
     dark_minimap_lit_room_ids = models.JSONField(default=list, blank=True)
-    # Sconce interactables: rooms permanently lit on this hero's dark minimap (per-character).
+    # When set, ``dark_minimap_lit_room_ids`` is recomputed from the hero's current cell at this radius.
+    dark_minimap_torch_radius = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+    )
+    # Legacy: room ids from older sconce saves; mapped to areas for minimap/narrative (prefer sconce area list).
     hero_permanent_minimap_lit_room_ids = models.JSONField(default=list, blank=True)
+    # Areas where this hero lit a sconce: minimap behaves like a non-dark area; persists past temp-light resets.
+    sconce_full_narrative_area_ids = models.JSONField(default=list, blank=True)
     # Dungeon map item: reveal all visited rooms in this area until expiry.
     minimap_full_reveal_area = models.ForeignKey(
         "Area",
@@ -843,6 +880,10 @@ class CharacterRoomSearchClaim(models.Model):
     )
     item_reward_granted = models.BooleanField(default=False)
     exit_reward_granted = models.BooleanField(default=False)
+    floor_once_reward_granted = models.BooleanField(
+        default=False,
+        help_text="Set when search_floor_once_item was minted to the floor for this hero.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

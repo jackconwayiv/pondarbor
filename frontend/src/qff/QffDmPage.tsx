@@ -250,6 +250,10 @@ export default function QffDmPage() {
   const [panelSearchChance, setPanelSearchChance] = useState("50");
   const [panelSearchRewardItemId, setPanelSearchRewardItemId] = useState("");
   const [panelSearchRevealsExitId, setPanelSearchRevealsExitId] = useState("");
+  const [panelSearchFloorOnceItemId, setPanelSearchFloorOnceItemId] = useState("");
+  const [panelSearchFloorQuestQuestId, setPanelSearchFloorQuestQuestId] = useState("");
+  const [panelSearchFloorQuestItemId, setPanelSearchFloorQuestItemId] = useState("");
+  const [panelSearchFloorQuestStateId, setPanelSearchFloorQuestStateId] = useState("");
   const [newExitDir, setNewExitDir] = useState<string>("n");
   const [newExitTo, setNewExitTo] = useState<number | null>(null);
   /** Area chosen in exit destination picker (room list is filtered to this area). */
@@ -312,6 +316,12 @@ export default function QffDmPage() {
     if (!Number.isFinite(qid)) return undefined;
     return questDetailById.get(qid);
   }, [newRoomVisibleQuestId, questDetailById]);
+
+  const searchFloorQuestDetail = useMemo(() => {
+    const qid = parseInt(panelSearchFloorQuestQuestId, 10);
+    if (!Number.isFinite(qid)) return undefined;
+    return questDetailById.get(qid);
+  }, [panelSearchFloorQuestQuestId, questDetailById]);
 
   const sortedInteractables = useMemo(
     () =>
@@ -593,6 +603,10 @@ export default function QffDmPage() {
       setPanelSearchChance("50");
       setPanelSearchRewardItemId("");
       setPanelSearchRevealsExitId("");
+      setPanelSearchFloorOnceItemId("");
+      setPanelSearchFloorQuestQuestId("");
+      setPanelSearchFloorQuestItemId("");
+      setPanelSearchFloorQuestStateId("");
       setPanelPermanentMinimapLight(false);
       setPanelResetDarkLighting(false);
       setPanelIsSafe(false);
@@ -618,6 +632,26 @@ export default function QffDmPage() {
         ? String(selectedRoom.search_reveals_exit_id)
         : "",
     );
+    setPanelSearchFloorOnceItemId(
+      selectedRoom.search_floor_once_item_id != null
+        ? String(selectedRoom.search_floor_once_item_id)
+        : "",
+    );
+    setPanelSearchFloorQuestItemId(
+      selectedRoom.search_floor_quest_item_id != null
+        ? String(selectedRoom.search_floor_quest_item_id)
+        : "",
+    );
+    setPanelSearchFloorQuestStateId(
+      selectedRoom.search_floor_quest_state_id != null
+        ? String(selectedRoom.search_floor_quest_state_id)
+        : "",
+    );
+    setPanelSearchFloorQuestQuestId(
+      selectedRoom.search_floor_quest_quest_id != null
+        ? String(selectedRoom.search_floor_quest_quest_id)
+        : "",
+    );
     setPanelPermanentMinimapLight(!!selectedRoom.permanent_minimap_light);
     setPanelResetDarkLighting(!!selectedRoom.reset_dark_lighting_on_enter);
     setPanelIsSafe(!!selectedRoom.is_safe);
@@ -637,6 +671,18 @@ export default function QffDmPage() {
       if (!cancelled) {
         setExits(ex);
         setRoomItems(roomSlots);
+      }
+      const qq = selectedRoom.search_floor_quest_quest_id;
+      if (qq != null && Number.isFinite(qq)) {
+        revealQuestFetchedRef.current.add(qq);
+        try {
+          const d = await dmFetchQuestDetail(await getTokenRef.current(), qq);
+          if (!cancelled) {
+            setQuestDetailById((prev) => new Map(prev).set(qq, d));
+          }
+        } catch {
+          revealQuestFetchedRef.current.delete(qq);
+        }
       }
     })().catch((e) => setErr(String(e)));
     return () => {
@@ -712,6 +758,18 @@ export default function QffDmPage() {
           panelSearchRevealsExitId.trim() === ""
             ? null
             : parseInt(panelSearchRevealsExitId, 10),
+        search_floor_once_item_id:
+          panelSearchFloorOnceItemId.trim() === ""
+            ? null
+            : parseInt(panelSearchFloorOnceItemId, 10),
+        search_floor_quest_item_id:
+          panelSearchFloorQuestItemId.trim() === ""
+            ? null
+            : parseInt(panelSearchFloorQuestItemId, 10),
+        search_floor_quest_state_id:
+          panelSearchFloorQuestStateId.trim() === ""
+            ? null
+            : parseInt(panelSearchFloorQuestStateId, 10),
         permanent_minimap_light: panelPermanentMinimapLight,
         reset_dark_lighting_on_enter: panelResetDarkLighting,
         is_safe: panelIsSafe,
@@ -737,6 +795,9 @@ export default function QffDmPage() {
     panelSearchChance,
     panelSearchRewardItemId,
     panelSearchRevealsExitId,
+    panelSearchFloorOnceItemId,
+    panelSearchFloorQuestItemId,
+    panelSearchFloorQuestStateId,
     panelPermanentMinimapLight,
     panelResetDarkLighting,
     panelIsSafe,
@@ -1331,10 +1392,11 @@ export default function QffDmPage() {
                         </Switch.Label>
                       </Switch.Root>
                       <Text fontSize="xs" color="#666">
-                        For dark areas, prefer an <strong>Interactable</strong> of kind{" "}
-                        <strong>sconce</strong> so players can toggle light with{" "}
-                        <strong>use</strong>. Reserve this checkbox for always-on shafts or
-                        special cases.
+                        For dark areas, add an <strong>Interactable</strong> of kind{" "}
+                        <strong>sconce</strong>: <strong>use</strong> permanently lights the{" "}
+                        <em>whole area</em> on that hero&apos;s map and narrative (not
+                        per-room). Reserve this checkbox for always-on shafts or special
+                        cases.
                       </Text>
                       <Switch.Root
                         size="sm"
@@ -1347,7 +1409,7 @@ export default function QffDmPage() {
                           <Switch.Thumb />
                         </Switch.Control>
                         <Switch.Label fontSize="xs" color="#aaa">
-                          Entering this room clears players&apos; temporary cave light
+                          Entering clears torch / temp light only (not sconce area unlock)
                         </Switch.Label>
                       </Switch.Root>
                       <Switch.Root
@@ -2081,6 +2143,121 @@ export default function QffDmPage() {
                       </NativeSelectRoot>
                     </Field.Root>
                     <Field.Root>
+                      <Field.Label>
+                        Search → floor item, once per character ever (optional)
+                      </Field.Label>
+                      <NativeSelectRoot>
+                        <NativeSelectField
+                          value={panelSearchFloorOnceItemId}
+                          onChange={(e) => setPanelSearchFloorOnceItemId(e.target.value)}
+                          bg="#222"
+                        >
+                          <option value="">(none)</option>
+                          {itemTemplates.map((it) => (
+                            <option key={it.id} value={String(it.id)}>
+                              {it.name}
+                            </option>
+                          ))}
+                        </NativeSelectField>
+                      </NativeSelectRoot>
+                      <Text fontSize="xs" color="#666" mt={1}>
+                        On first successful search roll, drops one unowned instance on the floor. That
+                        hero will not get another from this room even if they lose the item.
+                      </Text>
+                    </Field.Root>
+                    <Text fontSize="xs" color="#888">
+                      Quest search floor (optional): on successful search, mint a quest-gated floor
+                      drop if the hero is in the chosen state and does not already hold an unclaimed
+                      copy on the floor (same as &quot;once if item no longer exists&quot;).
+                    </Text>
+                    <Flex gap={2} flexWrap="wrap" align="flex-end">
+                      <Field.Root flex="1" minW="140px">
+                        <Field.Label fontSize="xs">Quest</Field.Label>
+                        <NativeSelectRoot>
+                          <NativeSelectField
+                            value={panelSearchFloorQuestQuestId}
+                            onChange={async (e) => {
+                              const v = e.target.value;
+                              setPanelSearchFloorQuestQuestId(v);
+                              setPanelSearchFloorQuestStateId("");
+                              setPanelSearchFloorQuestItemId("");
+                              const qid = v === "" ? null : parseInt(v, 10);
+                              if (qid != null && Number.isFinite(qid)) {
+                                revealQuestFetchedRef.current.add(qid);
+                                try {
+                                  const token = await getTokenRef.current();
+                                  const d = await dmFetchQuestDetail(token, qid);
+                                  setQuestDetailById((prev) => new Map(prev).set(qid, d));
+                                } catch {
+                                  revealQuestFetchedRef.current.delete(qid);
+                                }
+                              }
+                            }}
+                            bg="#222"
+                          >
+                            <option value="">(none)</option>
+                            {[...dmQuests]
+                              .sort((a, b) => a.name.localeCompare(b.name))
+                              .map((q) => (
+                                <option key={q.id} value={String(q.id)}>
+                                  {q.name}
+                                </option>
+                              ))}
+                          </NativeSelectField>
+                        </NativeSelectRoot>
+                      </Field.Root>
+                      <Field.Root flex="1" minW="140px">
+                        <Field.Label fontSize="xs">Quest state</Field.Label>
+                        <NativeSelectRoot>
+                          <NativeSelectField
+                            value={panelSearchFloorQuestStateId}
+                            onChange={(e) => setPanelSearchFloorQuestStateId(e.target.value)}
+                            pointerEvents={!searchFloorQuestDetail ? "none" : undefined}
+                            bg="#222"
+                            opacity={!searchFloorQuestDetail ? 0.55 : undefined}
+                          >
+                            <option value="">
+                              {searchFloorQuestDetail
+                                ? "— choose state —"
+                                : "— pick quest first —"}
+                            </option>
+                            {(searchFloorQuestDetail?.states ?? [])
+                              .slice()
+                              .sort(
+                                (a, b) =>
+                                  a.sort_order - b.sort_order ||
+                                  a.name.localeCompare(b.name),
+                              )
+                              .map((s) => (
+                                <option key={s.id} value={String(s.id)}>
+                                  {s.name} ({s.slug})
+                                </option>
+                              ))}
+                          </NativeSelectField>
+                        </NativeSelectRoot>
+                      </Field.Root>
+                    </Flex>
+                    <Field.Root>
+                      <Field.Label>Quest search floor item template</Field.Label>
+                      <NativeSelectRoot>
+                        <NativeSelectField
+                          value={panelSearchFloorQuestItemId}
+                          onChange={(e) => setPanelSearchFloorQuestItemId(e.target.value)}
+                          bg="#222"
+                        >
+                          <option value="">(none)</option>
+                          {itemTemplates.map((it) => (
+                            <option key={it.id} value={String(it.id)}>
+                              {it.name}
+                            </option>
+                          ))}
+                        </NativeSelectField>
+                      </NativeSelectRoot>
+                      <Text fontSize="xs" color="#666" mt={1}>
+                        Requires quest + state above. Cleared together in the API if only one is set.
+                      </Text>
+                    </Field.Root>
+                    <Field.Root>
                       <Field.Label>Grid cell (0-based)</Field.Label>
                       <Flex gap={2} flexWrap="wrap" align="center">
                         <Input
@@ -2422,7 +2599,7 @@ export default function QffDmPage() {
                                 bg="#222"
                               >
                                 <option value="none">None (open)</option>
-                                <option value="key">Key (carry to pass; optional consume)</option>
+                                <option value="key">Key (carry item to pass)</option>
                                 <option value="device">
                                   Device (use linked interactable to realm-unlock)
                                 </option>
@@ -2517,6 +2694,35 @@ export default function QffDmPage() {
                                   bg="#222"
                                 />
                               </Field.Root>
+                              <Flex align="center" minW="200px" pb={1}>
+                                <Switch.Root
+                                  size="sm"
+                                  checked={ex.consume_key_on_pass !== false}
+                                  onCheckedChange={async (d) => {
+                                    const token = await getTokenRef.current();
+                                    const nx = mergeExit(
+                                      await dmPatchExit(token, ex.id, {
+                                        consume_key_on_pass: !!d.checked,
+                                      }),
+                                    );
+                                    setExits((prev) =>
+                                      prev.map((x) => (x.id === ex.id ? nx : x)),
+                                    );
+                                    if (areaId) {
+                                      setAreaExits(await dmFetchAreaExits(token, areaId));
+                                    }
+                                  }}
+                                  colorPalette="green"
+                                >
+                                  <Switch.HiddenInput />
+                                  <Switch.Control>
+                                    <Switch.Thumb />
+                                  </Switch.Control>
+                                  <Switch.Label fontSize="xs" color="#aaa">
+                                    Consume key when passing (off = keep item)
+                                  </Switch.Label>
+                                </Switch.Root>
+                              </Flex>
                             </Flex>
                           )}
                           {ex.lock_kind === "device" && (

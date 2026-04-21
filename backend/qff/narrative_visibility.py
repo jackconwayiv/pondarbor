@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from django.utils import timezone
 
 from qff.constants import AFK_LOBBY_KICK_MINUTES
-from qff.models import Character, CharacterRoomVisit, MonsterInstance, Npc
+from qff.models import Character, CharacterRoomVisit, MonsterInstance, Npc, Room
 
 if TYPE_CHECKING:
     from qff.models import Character as CharacterType
@@ -25,6 +25,22 @@ def _int_id_set(raw: list | None) -> set[int]:
     return out
 
 
+def sconce_lit_area_ids_for_character(character: CharacterType) -> set[int]:
+    """Area ids where this hero used a sconce (whole area lit for narrative + minimap).
+
+    Includes legacy data: rooms listed in ``hero_permanent_minimap_lit_room_ids`` are mapped to
+    their areas so older saves still behave.
+    """
+    out = _int_id_set(getattr(character, "sconce_full_narrative_area_ids", None))
+    hero_rooms = _int_id_set(getattr(character, "hero_permanent_minimap_lit_room_ids", None))
+    if hero_rooms:
+        for aid in Room.objects.filter(pk__in=hero_rooms).values_list(
+            "area_id", flat=True
+        ).distinct():
+            out.add(int(aid))
+    return out
+
+
 def room_is_narratively_visible(character: CharacterType, room: RoomType) -> bool:
     """True if the hero may read room prose / directional peek for this room.
 
@@ -32,6 +48,8 @@ def room_is_narratively_visible(character: CharacterType, room: RoomType) -> boo
     """
     area = room.area
     if not area.is_dark_minimap:
+        return True
+    if int(room.area_id) in sconce_lit_area_ids_for_character(character):
         return True
     now = timezone.now()
     reveal_area_id = getattr(character, "minimap_full_reveal_area_id", None)
@@ -48,8 +66,6 @@ def room_is_narratively_visible(character: CharacterType, room: RoomType) -> boo
     if room.permanent_minimap_light:
         return True
     if room.id in _int_id_set(character.dark_minimap_lit_room_ids):
-        return True
-    if room.id in _int_id_set(character.hero_permanent_minimap_lit_room_ids):
         return True
     return False
 

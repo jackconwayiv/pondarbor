@@ -134,6 +134,8 @@ export default function QffPlayPage() {
   const prevRoomIdRef = useRef<number | null>(null);
   const logLineIdRef = useRef(0);
   const lastBroadcastIdRef = useRef(0);
+  /** RoomBroadcast ids already applied via POST /command (avoids duplicating lines when session effect runs). */
+  const commandActionLogBroadcastIdsRef = useRef<Set<number>>(new Set());
   /** Log line ids for in-flight optimistic `> cmd` + `…` rows (stripped when the HTTP response arrives). */
   const optimisticCommandLogIdsRef = useRef<number[]>([]);
   /** In-flight POST /command; a second Enter queues at most one follow-up in `queuedLineRef`. */
@@ -332,7 +334,13 @@ export default function QffPlayPage() {
   useEffect(() => {
     const entries = session?.action_log;
     if (!entries?.length) return;
-    const fresh = entries.filter((e) => e.id > lastBroadcastIdRef.current);
+    const fresh = entries.filter((e) => {
+      if (e.id <= lastBroadcastIdRef.current) return false;
+      if (typeof e.id === "number" && e.id > 0 && commandActionLogBroadcastIdsRef.current.has(e.id)) {
+        return false;
+      }
+      return true;
+    });
     if (!fresh.length) return;
     const posIds = fresh.map((e) => e.id).filter((id) => id > 0);
     if (posIds.length) {
@@ -401,6 +409,7 @@ export default function QffPlayPage() {
     }
     commandInFlightRef.current = true;
     setCommandPending(true);
+    commandActionLogBroadcastIdsRef.current.clear();
     setLine("");
     const moveDir = tryParseQffMoveDirection(raw);
     const cur = sessionRef.current;
@@ -432,9 +441,7 @@ export default function QffPlayPage() {
           }
         }
         commandTokenRef.current = token;
-        setSession(res.session);
-        // After a shop verb, open the shop panel if the room actually has shops.
-        // (Server returns "There are no shops here." otherwise — that line shows in the log.)
+        const sessionSnapshot = res.session;
         const verb = raw
           .replace(/^>+\s*/, "")
           .replace(/^\//, "")
@@ -446,20 +453,13 @@ export default function QffPlayPage() {
           verb === "list" ||
           verb === "buy" ||
           verb === "purchase";
-        if (shopVerb && (res.session.shops?.length ?? 0) > 0) {
-          setShopPanelOpen(true);
-          setContainerPanelOpen(false);
-        }
-        if (verb === "open" && res.session.room.opened_container) {
-          setContainerPanelOpen(true);
-          setShopPanelOpen(false);
-        }
+        // Apply log (and broadcast-id bookkeeping) before session so effects see an up-to-date watermark.
         setLogLines((prev) => {
           const pending = optimisticCommandLogIdsRef.current;
           optimisticCommandLogIdsRef.current = [];
           const filtered = pending.length ? prev.filter((p) => !pending.includes(p.id)) : prev;
           const nextId = () => logLineIdRef.current++;
-          const al = res.session.action_log ?? [];
+          const al = sessionSnapshot.action_log ?? [];
           let block: Array<{ id: number; text: string; recent: boolean; logTone?: string }>;
           if (al.length > 0) {
             block = al.map((e) => ({
@@ -482,6 +482,9 @@ export default function QffPlayPage() {
             }));
           }
           const pos = al.filter((e) => e.id > 0).map((e) => e.id);
+          for (const id of pos) {
+            commandActionLogBroadcastIdsRef.current.add(id);
+          }
           if (pos.length) {
             lastBroadcastIdRef.current = Math.max(
               lastBroadcastIdRef.current,
@@ -490,6 +493,15 @@ export default function QffPlayPage() {
           }
           return [...filtered.map((p) => ({ ...p, recent: false })), ...block];
         });
+        if (shopVerb && (sessionSnapshot.shops?.length ?? 0) > 0) {
+          setShopPanelOpen(true);
+          setContainerPanelOpen(false);
+        }
+        if (verb === "open" && sessionSnapshot.room.opened_container) {
+          setContainerPanelOpen(true);
+          setShopPanelOpen(false);
+        }
+        setSession(sessionSnapshot);
       } catch (e) {
         setLogLines((prev) => {
           const pending = optimisticCommandLogIdsRef.current;
@@ -772,7 +784,7 @@ export default function QffPlayPage() {
                       {sl.kind === "consignment" ? " (used)" : ""}
                     </Text>
                     <Text color={HUD_PANEL_TEXT_MUTED}>
-                      {sl.price}g · ×{sl.quantity}
+                      {sl.price}g · {sl.quantity == null ? "-" : `×${sl.quantity}`}
                     </Text>
                   </Flex>
                 ))}

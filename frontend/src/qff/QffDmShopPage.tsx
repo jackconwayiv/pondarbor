@@ -447,9 +447,9 @@ export default function QffDmShopPage() {
                         />
                       </Field.Root>
                       <Field.Root minW="90px">
-                        <Field.Label>Qty (∞ empty)</Field.Label>
+                        <Field.Label>Qty (- empty)</Field.Label>
                         <Input
-                          placeholder="∞"
+                          placeholder="-"
                           defaultValue={
                             line.quantity == null ? "" : String(line.quantity)
                           }
@@ -540,9 +540,9 @@ export default function QffDmShopPage() {
                 />
               </Field.Root>
               <Field.Root minW="100px">
-                <Field.Label>Qty (∞ empty)</Field.Label>
+                <Field.Label>Qty (- empty)</Field.Label>
                 <Input
-                  placeholder="∞"
+                  placeholder="-"
                   value={newLine.quantity}
                   onChange={(e) => setNewLine((n) => ({ ...n, quantity: e.target.value }))}
                   bg="#222"

@@ -13,7 +13,9 @@ Pipeline (``resolve_physical_strike``), same order as rolls occur:
 
 Formulas (integer ``//`` where the spec uses floor for moves):
 
-- ``HitChance = clamp(75 + floor(AtkMoves/2) + WeaponAccuracy − floor(DefMoves/2), 5, 95)``
+- ``HitChance = clamp(Base + floor(AtkMoves/2) + WeaponAccuracy − floor(DefMoves/2), 5, 95)``
+  where ``Base`` is **75**, or **50** when the hero attacks from an unlit dark area (no torch,
+  sconce area unlock, or permanent room light).
 - ``DodgeChance = max(1, floor(DefMoves/20) + DodgeBonus)``
 - ``EffectiveDodgeChance = max(1, DodgeChance − DodgeReduction − DodgeIgnore)`` (reduction/ignore from attacker)
 - ``CritChance = 0.001×Sense + 0.001×Level + (crit_chance_bonus_pct / 100)`` — item/template ``crit_chance_bonus_pct`` is **percentage points** (5 means +5%, i.e. +0.05), then clamped to ``[0, 0.95]``.
@@ -36,6 +38,7 @@ from qff.game_helpers import (
     total_armor_from_equipment,
 )
 from qff.models import Character, MonsterInstance, MonsterTemplate
+from qff.narrative_visibility import sconce_lit_area_ids_for_character
 
 
 Outcome = Literal["miss", "dodge", "hit", "crit"]
@@ -58,9 +61,38 @@ def clamp_hit_chance(hit_chance: int) -> int:
     return max(5, min(95, int(hit_chance)))
 
 
-def compute_hit_chance(atk_moves: int, weapon_accuracy: int, def_moves: int) -> int:
-    raw = 75 + (atk_moves // 2) + int(weapon_accuracy) - (def_moves // 2)
+def compute_hit_chance(
+    atk_moves: int,
+    weapon_accuracy: int,
+    def_moves: int,
+    *,
+    base: int = 75,
+) -> int:
+    raw = int(base) + (atk_moves // 2) + int(weapon_accuracy) - (def_moves // 2)
     return clamp_hit_chance(raw)
+
+
+def hero_unlit_dark_area_for_combat(character: Character) -> bool:
+    """True when the hero's attack uses the lower hit base (50): dark area without usable light."""
+    room = character.current_room
+    if room is None:
+        return False
+    area = room.area
+    if not area.is_dark_minimap:
+        return False
+    if int(area.id) in sconce_lit_area_ids_for_character(character):
+        return False
+    if getattr(room, "permanent_minimap_light", False):
+        return False
+    tr = getattr(character, "dark_minimap_torch_radius", None)
+    if tr is not None and int(tr) > 0:
+        return False
+    return True
+
+
+def hero_hit_chance_base(character: Character) -> int:
+    """75 normally; 50 in an unlit dark area (see ``hero_unlit_dark_area_for_combat``)."""
+    return 50 if hero_unlit_dark_area_for_combat(character) else 75
 
 
 def compute_dodge_chance(def_moves: int, dodge_bonus: int) -> int:
@@ -161,6 +193,7 @@ def hero_attacker_stats(character: Character) -> dict:
         "penetration": b["penetration"],
         "dodge_reduction": b["dodge_reduction"],
         "dodge_ignore": b["dodge_ignore"],
+        "hit_chance_base": hero_hit_chance_base(character),
     }
 
 
@@ -208,10 +241,12 @@ def resolve_physical_strike(
     this strike: the caller should roll it uniformly on ``[damage_min, damage_max]``
     inclusive. ``apply_damage_swing`` then adds ``±L`` on top (see module docstring).
     """
+    hit_base = int(attacker.get("hit_chance_base", 75))
     hit_chance = compute_hit_chance(
         attacker["atk_moves"],
         attacker["weapon_accuracy"],
         defender["def_moves"],
+        base=hit_base,
     )
     dodge_ch = compute_dodge_chance(defender["def_moves"], defender["dodge_bonus"])
     eff_dodge = compute_effective_dodge_chance(

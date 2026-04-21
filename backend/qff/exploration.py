@@ -99,7 +99,8 @@ def on_enter_room(character: Character, room_id: int) -> None:
     )
     if reset_dark:
         character.dark_minimap_lit_room_ids = []
-        update_fields.append("dark_minimap_lit_room_ids")
+        character.dark_minimap_torch_radius = None
+        update_fields.extend(["dark_minimap_lit_room_ids", "dark_minimap_torch_radius"])
     character.container_focus_interactable_id = None
     character.container_focus_expires_at = None
     character.opened_container_interactable_id = None

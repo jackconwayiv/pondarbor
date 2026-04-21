@@ -490,12 +490,12 @@ def command_view(request):
             session_ms = (time.perf_counter() - t2) * 1000
             # Chronological narrative: move/teleport put first-person lines before engagement broadcasts.
             raw_log = session.get("action_log") or []
+            cmd_only = (
+                msgs_out[: -len(enc_lines)] if enc_lines else list(msgs_out)
+            )
+            synth_cmd = [{"id": -(i + 1), "text": m} for i, m in enumerate(cmd_only)]
+            synth_enc = [{"id": -(200 + i), "text": m} for i, m in enumerate(enc_lines)]
             if raw_log and char_after:
-                cmd_only = (
-                    msgs_out[: -len(enc_lines)] if enc_lines else list(msgs_out)
-                )
-                synth_cmd = [{"id": -(i + 1), "text": m} for i, m in enumerate(cmd_only)]
-                synth_enc = [{"id": -(200 + i), "text": m} for i, m in enumerate(enc_lines)]
                 if action_log_pre_engagement_cutover is not None:
                     cut = action_log_pre_engagement_cutover
                     exec_pre = [e for e in raw_log if _action_log_entry_id(e) <= cut]
@@ -518,6 +518,9 @@ def command_view(request):
                         e for e in raw_log if _action_log_entry_id(e) > max_after_exec
                     ]
                     session["action_log"] = exec_part + synth_cmd + sim_part + synth_enc
+            elif char_after and (cmd_only or enc_lines):
+                # No new RoomBroadcasts (e.g. move into empty room with sense lines only in ``messages``).
+                session["action_log"] = synth_cmd + synth_enc
             room_ids = frozenset(affected) | {old_room_id, char_after.current_room_id}
             schedule_notify_qff_rooms(room_ids)
 
@@ -815,6 +818,7 @@ def dm_area_rooms_export_json(request, area_id):
                         "to_room_slug": _dm_export_room_slug(to),
                         "is_hidden": ex.is_hidden,
                         "lock_kind": ex.lock_kind,
+                        "consume_key_on_pass": ex.consume_key_on_pass,
                         "reveal_item_slug": reveal_item_slug,
                         "reveal_quest_slug": reveal_quest_slug,
                         "reveal_quest_state_slug": reveal_quest_state_slug,
@@ -828,6 +832,7 @@ def dm_area_rooms_export_json(request, area_id):
                         "to_room_slug": _dm_export_room_slug(to),
                         "is_hidden": ex.is_hidden,
                         "lock_kind": ex.lock_kind,
+                        "consume_key_on_pass": ex.consume_key_on_pass,
                         "reveal_item_slug": reveal_item_slug,
                         "reveal_quest_slug": reveal_quest_slug,
                         "reveal_quest_state_slug": reveal_quest_state_slug,
@@ -1032,6 +1037,7 @@ def dm_area_rooms_import_json(request, area_id):
                     direction=direction,
                     is_hidden=bool(es.get("is_hidden")),
                     lock_kind=lk,
+                    consume_key_on_pass=bool(es.get("consume_key_on_pass", True)),
                     reveal_item_id=reveal_item_id,
                     reveal_quest_state_id=reveal_qs_id,
                 )
@@ -1061,7 +1067,11 @@ def dm_area_rooms_import_json(request, area_id):
 def dm_room_list_create(request, area_id):
     area = get_object_or_404(Area, pk=area_id)
     if request.method == "GET":
-        rooms = Room.objects.filter(area=area).order_by("name")
+        rooms = (
+            Room.objects.filter(area=area)
+            .select_related("search_floor_quest_state")
+            .order_by("name")
+        )
         out = []
         for r in rooms:
             c = AreaCell.objects.filter(room=r).first()
@@ -1075,6 +1085,14 @@ def dm_room_list_create(request, area_id):
                     "search_chance": r.search_chance,
                     "search_reward_item_id": r.search_reward_item_id,
                     "search_reveals_exit_id": r.search_reveals_exit_id,
+                    "search_floor_once_item_id": r.search_floor_once_item_id,
+                    "search_floor_quest_item_id": r.search_floor_quest_item_id,
+                    "search_floor_quest_state_id": r.search_floor_quest_state_id,
+                    "search_floor_quest_quest_id": (
+                        r.search_floor_quest_state.quest_id
+                        if r.search_floor_quest_state_id
+                        else None
+                    ),
                     "permanent_minimap_light": r.permanent_minimap_light,
                     "reset_dark_lighting_on_enter": r.reset_dark_lighting_on_enter,
                     "is_safe": r.is_safe,
@@ -1127,6 +1145,10 @@ def dm_room_list_create(request, area_id):
             "search_chance": room.search_chance,
             "search_reward_item_id": room.search_reward_item_id,
             "search_reveals_exit_id": room.search_reveals_exit_id,
+            "search_floor_once_item_id": room.search_floor_once_item_id,
+            "search_floor_quest_item_id": room.search_floor_quest_item_id,
+            "search_floor_quest_state_id": room.search_floor_quest_state_id,
+            "search_floor_quest_quest_id": None,
         },
         status=status.HTTP_201_CREATED,
     )
@@ -1136,7 +1158,14 @@ def dm_room_list_create(request, area_id):
 @permission_classes([IsAuthenticated, IsStaffUser])
 def dm_room_detail(request, pk):
     room = get_object_or_404(
-        Room.objects.select_related("area", "search_reward_item"), pk=pk
+        Room.objects.select_related(
+            "area",
+            "search_reward_item",
+            "search_floor_once_item",
+            "search_floor_quest_item",
+            "search_floor_quest_state",
+        ),
+        pk=pk,
     )
     if request.method == "GET":
         c = AreaCell.objects.filter(room=room).first()
@@ -1151,6 +1180,14 @@ def dm_room_detail(request, pk):
                 "search_chance": room.search_chance,
                 "search_reward_item_id": room.search_reward_item_id,
                 "search_reveals_exit_id": room.search_reveals_exit_id,
+                "search_floor_once_item_id": room.search_floor_once_item_id,
+                "search_floor_quest_item_id": room.search_floor_quest_item_id,
+                "search_floor_quest_state_id": room.search_floor_quest_state_id,
+                "search_floor_quest_quest_id": (
+                    room.search_floor_quest_state.quest_id
+                    if room.search_floor_quest_state_id
+                    else None
+                ),
                 "permanent_minimap_light": room.permanent_minimap_light,
                 "reset_dark_lighting_on_enter": room.reset_dark_lighting_on_enter,
                 "is_safe": room.is_safe,
@@ -1212,6 +1249,37 @@ def dm_room_detail(request, pk):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             room.search_reveals_exit_id = ex.pk
+    if "search_floor_once_item_id" in request.data:
+        v = request.data.get("search_floor_once_item_id")
+        if v in (None, "", 0, "0"):
+            room.search_floor_once_item_id = None
+        else:
+            get_object_or_404(Item, pk=int(v))
+            room.search_floor_once_item_id = int(v)
+    if "search_floor_quest_item_id" in request.data:
+        v = request.data.get("search_floor_quest_item_id")
+        if v in (None, "", 0, "0"):
+            room.search_floor_quest_item_id = None
+        else:
+            get_object_or_404(Item, pk=int(v))
+            room.search_floor_quest_item_id = int(v)
+    if "search_floor_quest_state_id" in request.data:
+        v = request.data.get("search_floor_quest_state_id")
+        if v in (None, "", 0, "0"):
+            room.search_floor_quest_state_id = None
+        else:
+            get_object_or_404(QuestState, pk=int(v))
+            room.search_floor_quest_state_id = int(v)
+    qi = room.search_floor_quest_item_id
+    qs = room.search_floor_quest_state_id
+    if bool(qi) != bool(qs):
+        return Response(
+            {
+                "detail": "search_floor_quest_item_id and search_floor_quest_state_id must both "
+                "be set or both cleared."
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     room.save()
     return Response(
         {
@@ -1223,6 +1291,14 @@ def dm_room_detail(request, pk):
             "search_chance": room.search_chance,
             "search_reward_item_id": room.search_reward_item_id,
             "search_reveals_exit_id": room.search_reveals_exit_id,
+            "search_floor_once_item_id": room.search_floor_once_item_id,
+            "search_floor_quest_item_id": room.search_floor_quest_item_id,
+            "search_floor_quest_state_id": room.search_floor_quest_state_id,
+            "search_floor_quest_quest_id": (
+                room.search_floor_quest_state.quest_id
+                if room.search_floor_quest_state_id
+                else None
+            ),
             "permanent_minimap_light": room.permanent_minimap_light,
             "reset_dark_lighting_on_enter": room.reset_dark_lighting_on_enter,
             "is_safe": room.is_safe,
@@ -1735,6 +1811,7 @@ def _dm_exit_dict(ex: RoomExit) -> dict:
             ex.quest_required_state.slug if ex.quest_required_state_id else None
         ),
         "unlock_duration_seconds": ex.unlock_duration_seconds,
+        "consume_key_on_pass": ex.consume_key_on_pass,
         "reveal_item_id": ex.reveal_item_id,
         "reveal_item_slug": (
             ex.reveal_item.slug
@@ -1866,6 +1943,8 @@ def dm_exit_detail(request, pk):
             ex.unlock_duration_seconds = max(1, int(request.data.get("unlock_duration_seconds") or 600))
         except (TypeError, ValueError):
             pass
+    if "consume_key_on_pass" in request.data:
+        ex.consume_key_on_pass = bool(request.data.get("consume_key_on_pass"))
     err = _validate_exit_spatial(ex.from_room, ex.to_room, ex.direction)
     if err:
         return Response({"detail": err}, status=status.HTTP_400_BAD_REQUEST)

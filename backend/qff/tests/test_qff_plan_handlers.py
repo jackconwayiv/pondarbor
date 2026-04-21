@@ -78,6 +78,25 @@ class PlanHandlerDarkTests(TestCase):
         self.assertEqual(lines, [NARRATIVE_TOO_DARK_MESSAGE])
 
 
+class PlanHandlerDarkUseInteractableTests(TestCase):
+    def test_use_sconce_works_when_room_unlit(self):
+        char, room = _lit_dark_room()
+        char.dark_minimap_lit_room_ids = []
+        char.save(update_fields=["dark_minimap_lit_room_ids"])
+        Interactable.objects.create(
+            room=room,
+            slug="sconce-u",
+            name="brass sconce",
+            kind=Interactable.Kind.SCONCE,
+        )
+        lines = execute_command(char, parse_command("use brass sconce"))
+        self.assertNotEqual(lines, [NARRATIVE_TOO_DARK_MESSAGE])
+        self.assertTrue(
+            any("lit" in ln.lower() or "mind" in ln.lower() for ln in lines),
+            lines,
+        )
+
+
 class PlanHandlerUseReadTests(TestCase):
     def setUp(self):
         area = Area.objects.create(name="U", slug="u-area", grid_width=1, grid_height=1)

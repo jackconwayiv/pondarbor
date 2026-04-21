@@ -19,7 +19,7 @@ def _test_user(email: str) -> User:
 
 from qff.command_handlers import execute_command
 from qff.command_parser import ParsedAttack, ParsedTrain, parse_command
-from qff.combat_math import StrikeResult
+from qff.combat_math import StrikeResult, hero_attacker_stats
 from qff.constants import COMBAT_ROUND_SECONDS, XP_PER_LEVEL
 from qff.models import (
     Area,
@@ -47,7 +47,7 @@ from qff.monster_sim import (
     maybe_spawn_lairs,
     monsters_follow_hero_move,
     run_lazy_simulation,
-    sense_adjacent_monsters,
+    sense_adjacent_monster_lines,
     try_bind_monster_to_room_heroes,
 )
 from qff.session_payload import build_session_for_character, consume_room_broadcasts
@@ -291,6 +291,69 @@ class MonsterCombatTests(TestCase):
         self.monster.refresh_from_db()
         self.assertEqual(self.monster.cur_hp, 5)
 
+    def test_dark_unlit_hero_uses_50_hit_base(self):
+        self.area.is_dark_minimap = True
+        self.area.save(update_fields=["is_dark_minimap", "updated_at"])
+        h = Character.objects.select_related("current_room", "current_room__area").get(
+            pk=self.hero.pk
+        )
+        self.assertEqual(hero_attacker_stats(h)["hit_chance_base"], 50)
+
+    def test_dark_torch_clears_hit_penalty(self):
+        self.area.is_dark_minimap = True
+        self.area.save(update_fields=["is_dark_minimap", "updated_at"])
+        self.hero.dark_minimap_torch_radius = 3
+        self.hero.save(update_fields=["dark_minimap_torch_radius", "updated_at"])
+        h = Character.objects.select_related("current_room", "current_room__area").get(
+            pk=self.hero.pk
+        )
+        self.assertEqual(hero_attacker_stats(h)["hit_chance_base"], 75)
+
+    def test_dark_sconce_area_clears_hit_penalty(self):
+        self.area.is_dark_minimap = True
+        self.area.save(update_fields=["is_dark_minimap", "updated_at"])
+        self.hero.sconce_full_narrative_area_ids = [self.area.pk]
+        self.hero.save(update_fields=["sconce_full_narrative_area_ids", "updated_at"])
+        h = Character.objects.select_related("current_room", "current_room__area").get(
+            pk=self.hero.pk
+        )
+        self.assertEqual(hero_attacker_stats(h)["hit_chance_base"], 75)
+
+    def test_dark_permanent_room_light_clears_hit_penalty(self):
+        self.area.is_dark_minimap = True
+        self.area.save(update_fields=["is_dark_minimap", "updated_at"])
+        self.room_danger.permanent_minimap_light = True
+        self.room_danger.save(update_fields=["permanent_minimap_light", "updated_at"])
+        h = Character.objects.select_related("current_room", "current_room__area").get(
+            pk=self.hero.pk
+        )
+        self.assertEqual(hero_attacker_stats(h)["hit_chance_base"], 75)
+
+    def test_hero_miss_in_dark_unlit_narrates_visibility(self):
+        self.area.is_dark_minimap = True
+        self.area.save(update_fields=["is_dark_minimap", "updated_at"])
+        now = timezone.now()
+        self.hero.combat_target_monster_id = self.monster.pk
+        self.hero.next_action_at = now
+        self.hero.last_command_at = now - timedelta(seconds=30)
+        self.hero.save(
+            update_fields=[
+                "combat_target_monster_id",
+                "next_action_at",
+                "last_command_at",
+                "updated_at",
+            ]
+        )
+        self.monster.cur_hp = 5
+        self.monster.save(update_fields=["cur_hp", "updated_at"])
+        with patch("qff.combat_math.roll_d100", return_value=100):
+            _resolve_hero_strike(self.hero, now)
+        hero_bc = RoomBroadcast.objects.filter(
+            target_character_id=self.hero.pk,
+        ).order_by("-id").first()
+        self.assertIsNotNone(hero_bc)
+        self.assertIn("hard to see", hero_bc.text.lower())
+
     def test_hero_strike_hit_reduces_monster_hp(self):
         now = timezone.now()
         self.hero.combat_target_monster_id = self.monster.pk
@@ -331,10 +394,8 @@ class MonsterCombatTests(TestCase):
             max_hp=5,
         )
         with patch("qff.monster_sim.roll_d100", return_value=50):
-            sense_adjacent_monsters(self.hero, self.room_danger.id)
-        b = RoomBroadcast.objects.filter(room_id=self.room_danger.id).order_by("-id").first()
-        self.assertIsNotNone(b)
-        self.assertIn("below you", b.text.lower())
+            lines = sense_adjacent_monster_lines(self.hero, self.room_danger.id)
+        self.assertTrue(any("below you" in ln.lower() for ln in lines), lines)
 
     def test_take_gold_pile(self):
         RoomGoldPile.objects.create(room_id=self.room_danger.id, amount_remaining=12, label="")
@@ -578,6 +639,12 @@ class MonsterCombatTests(TestCase):
         self.assertIsNotNone(m)
         self.assertEqual(m.engaged_character_id, self.hero.pk)
         self.assertFalse(m.monster_strike_pending)
+        prep = RoomBroadcast.objects.filter(
+            room_id=lair.pk,
+            target_character_id=self.hero.pk,
+            text__icontains="prepares to strike",
+        ).exists()
+        self.assertTrue(prep, "lair spawn + engage should narrate wind-up once")
 
     def test_pursuit_sync_step_does_not_double_advance_same_request(self):
         """Hero move + lazy sim must not flush an immediate second pursuit step."""
@@ -739,6 +806,33 @@ class MonsterCombatTests(TestCase):
         m = MonsterInstance.objects.filter(pk=self.monster.pk).first()
         self.assertIsNotNone(m)
         self.assertEqual(m.engaged_character_id, surv.pk)
+
+    def test_monster_kill_hero_narration_order(self):
+        self.tpl.damage_min = 50
+        self.tpl.damage_max = 50
+        self.tpl.save(update_fields=["damage_min", "damage_max", "updated_at"])
+        self.hero.cur_health = 1
+        self.hero.save(update_fields=["cur_health", "updated_at"])
+        self.monster.engaged_character_id = self.hero.pk
+        self.monster.save(update_fields=["engaged_character", "updated_at"])
+        now = timezone.now()
+        max_before = RoomBroadcast.objects.aggregate(m=Max("id"))["m"] or 0
+        with patch("qff.combat_math.roll_d100", return_value=50):
+            _resolve_monster_strike(self.monster, now)
+        new_bs = list(
+            RoomBroadcast.objects.filter(
+                id__gt=max_before,
+                room_id=self.room_danger.id,
+                target_character_id=self.hero.pk,
+            ).order_by("id")
+        )
+        texts = [b.text for b in new_bs]
+        self.assertTrue(any("strikes you" in t.lower() for t in texts), texts)
+        slain_i = next((i for i, t in enumerate(texts) if "has slain you" in t.lower()), None)
+        drop_i = next((i for i, t in enumerate(texts) if "inventory drops" in t.lower()), None)
+        self.assertIsNotNone(slain_i, texts)
+        self.assertIsNotNone(drop_i, texts)
+        self.assertLess(slain_i, drop_i, texts)
 
     def test_roombroadcast_log_tone_hero_hit(self):
         self.hero.last_command_at = None

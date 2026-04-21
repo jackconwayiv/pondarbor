@@ -53,6 +53,7 @@ from qff.exits import (
 from qff.consumable_effects import (
     apply_consume_effects,
     consume_effects_contain_teleport_spawn,
+    refresh_torch_lit_from_hero_position,
     validate_consume_effects,
 )
 from qff.game_helpers import (
@@ -84,6 +85,7 @@ from qff.models import (
     RoomItemSpawn,
 )
 from qff.quest_engine import (
+    can_spawn_search_quest_floor_item,
     ensure_quests_started_from_npc,
     find_interactable_in_room,
     find_npc_in_room,
@@ -638,7 +640,14 @@ def _dispatch_non_leave(char: CharacterType, parsed) -> list[str]:
             return [NARRATIVE_TOO_DARK_MESSAGE]
         _notify_peers_third_person(char, char.current_room_id, f"{char.name} is searching the area.")
         hidden = (room.search_text or "").strip()
-        has_rewards = bool(room.search_reward_item_id or room.search_reveals_exit_id)
+        has_rewards = bool(
+            room.search_reward_item_id
+            or room.search_reveals_exit_id
+            or room.search_floor_once_item_id
+            or (
+                room.search_floor_quest_item_id and room.search_floor_quest_state_id
+            )
+        )
         if not hidden and not has_rewards:
             return [
                 f"You spend some time searching the {room.name} but find nothing of note."
@@ -653,7 +662,13 @@ def _dispatch_non_leave(char: CharacterType, parsed) -> list[str]:
             char_locked = Character.objects.select_for_update().get(pk=char.pk)
             room_locked = (
                 Room.objects.select_for_update()
-                .select_related("search_reward_item", "search_reveals_exit")
+                .select_related(
+                    "search_reward_item",
+                    "search_reveals_exit",
+                    "search_floor_once_item",
+                    "search_floor_quest_item",
+                    "search_floor_quest_state",
+                )
                 .get(pk=room.id)
             )
             claim, _ = CharacterRoomSearchClaim.objects.select_for_update().get_or_create(
@@ -691,6 +706,49 @@ def _dispatch_non_leave(char: CharacterType, parsed) -> list[str]:
                     claim.exit_reward_granted = True
                     claim_updates.append("exit_reward_granted")
                     out.append("You uncover a passage you had missed before.")
+            if (
+                room_locked.search_floor_once_item_id
+                and not claim.floor_once_reward_granted
+            ):
+                now = timezone.now()
+                ItemInstance.objects.create(
+                    item_id=room_locked.search_floor_once_item_id,
+                    room_id=room_locked.id,
+                    owner_character=None,
+                    floor_dropped_at=now,
+                )
+                claim.floor_once_reward_granted = True
+                claim_updates.append("floor_once_reward_granted")
+                fn = (
+                    room_locked.search_floor_once_item.name
+                    if room_locked.search_floor_once_item
+                    else "something"
+                )
+                out.append(f"You uncover {fn} on the ground.")
+            if (
+                room_locked.search_floor_quest_item_id
+                and room_locked.search_floor_quest_state_id
+                and can_spawn_search_quest_floor_item(
+                    char_locked,
+                    room_locked.id,
+                    room_locked.search_floor_quest_item_id,
+                    room_locked.search_floor_quest_state_id,
+                )
+            ):
+                now = timezone.now()
+                ItemInstance.objects.create(
+                    item_id=room_locked.search_floor_quest_item_id,
+                    room_id=room_locked.id,
+                    owner_character=None,
+                    floor_dropped_at=now,
+                    visible_quest_state_id=room_locked.search_floor_quest_state_id,
+                )
+                qn = (
+                    room_locked.search_floor_quest_item.name
+                    if room_locked.search_floor_quest_item
+                    else "something"
+                )
+                out.append(f"You find {qn} among the rubble.")
             if claim_updates:
                 claim.save(update_fields=claim_updates)
         if not out:
@@ -987,13 +1045,14 @@ def _handle_move(char: CharacterType, parsed: ParsedMove) -> list[str]:
     char.save(update_fields=["current_room", "last_activity_at", "updated_at"])
     on_leave_room(left_room_id)
     on_enter_room(char, dest.id)
+    refresh_torch_lit_from_hero_position(char.pk)
     _notify_peers_third_person(char, dest.id, peer_arrival_line(char.name, ex.direction))
 
     from qff.monster_sim import (
         monsters_follow_hero_move,
         on_spawn_room_enter,
         safe_room_disengage,
-        sense_adjacent_monsters,
+        sense_adjacent_monster_lines,
     )
 
     messages = [f"You head {dir_label}."]
@@ -1007,7 +1066,7 @@ def _handle_move(char: CharacterType, parsed: ParsedMove) -> list[str]:
         char.save(update_fields=["next_action_at", "updated_at"])
 
     monsters_follow_hero_move(char, left_room_id, dest.id)
-    sense_adjacent_monsters(char, dest.id)
+    messages.extend(sense_adjacent_monster_lines(char, dest.id))
     _engage_monsters_after_arrival(char, dest.id)
 
     return messages
@@ -1447,7 +1506,7 @@ def _apply_teleport_spawn_scroll(actor_pk: int, left_room_id: int) -> list[str]:
         monsters_follow_hero_move,
         on_spawn_room_enter,
         safe_room_disengage,
-        sense_adjacent_monsters,
+        sense_adjacent_monster_lines,
     )
 
     ch = Character.objects.select_related("spawn_room").get(pk=actor_pk)
@@ -1461,13 +1520,14 @@ def _apply_teleport_spawn_scroll(actor_pk: int, left_room_id: int) -> list[str]:
     ch.save(update_fields=["current_room", "updated_at"])
     on_leave_room(left_room_id)
     on_enter_room(ch, dest_id)
+    refresh_torch_lit_from_hero_position(actor_pk)
     _notify_peers_third_person(ch, dest_id, f"{actor_name} appears in a swirl of light.")
     on_spawn_room_enter(ch, dest)
     safe_room_disengage(ch, dest)
     monsters_follow_hero_move(ch, left_room_id, dest_id)
-    sense_adjacent_monsters(ch, dest_id)
+    sense_lines = sense_adjacent_monster_lines(ch, dest_id)
     _engage_monsters_after_arrival(ch, dest_id)
-    return ["The scroll whisks you back to where you began."]
+    return ["The scroll whisks you back to where you began.", *sense_lines]
 
 
 def _healer_offer(char: CharacterType, npc: Npc) -> list[str]:
@@ -1692,8 +1752,6 @@ def _handle_use(char: CharacterType, parsed: ParsedUse) -> list[str]:
         if not obj:
             char.save(update_fields=["last_activity_at", "updated_at"])
             return ["You don't see that here."]
-        if not room_is_narratively_visible(char, char.current_room):
-            return [NARRATIVE_TOO_DARK_MESSAGE]
         lines = handle_interactable_use(char, obj)
         char = Character.objects.get(pk=char.pk)
         char.save(update_fields=["last_activity_at", "updated_at"])
@@ -1706,8 +1764,6 @@ def _handle_use(char: CharacterType, parsed: ParsedUse) -> list[str]:
 
     obj = find_interactable_in_room(char, target)
     if obj:
-        if not room_is_narratively_visible(char, char.current_room):
-            return [NARRATIVE_TOO_DARK_MESSAGE]
         lines = handle_interactable_use(char, obj)
         char = Character.objects.get(pk=char.pk)
         char.save(update_fields=["last_activity_at", "updated_at"])
@@ -1811,6 +1867,7 @@ def _consume_inventory_instance(
                     "cur_health",
                     "cur_mana",
                     "dark_minimap_lit_room_ids",
+                    "dark_minimap_torch_radius",
                     "last_activity_at",
                     "updated_at",
                 ]
@@ -1825,6 +1882,7 @@ def _consume_inventory_instance(
                     "cur_health",
                     "cur_mana",
                     "dark_minimap_lit_room_ids",
+                    "dark_minimap_torch_radius",
                     "last_activity_at",
                     "updated_at",
                 ]

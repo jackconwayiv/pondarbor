@@ -13,6 +13,7 @@ from django.utils import timezone
 from qff.combat_math import (
     hero_attacker_stats,
     hero_defender_stats,
+    hero_unlit_dark_area_for_combat,
     monster_attacker_stats,
     monster_defender_stats,
     resolve_physical_strike,
@@ -72,6 +73,8 @@ def add_gold_to_room_floor(room_id: int, amount: int) -> None:
 
 
 _CHARACTER_COMBAT_SELECT = (
+    "current_room",
+    "current_room__area",
     "head_item__item",
     "main_hand_item__item",
     "off_hand_item__item",
@@ -278,8 +281,12 @@ def flush_bind_monsters_with_room_heroes(now) -> set[int]:
         for m in MonsterInstance.objects.filter(current_room_id=room_id).select_related(
             "template"
         ):
-            _normalize_monster_engagement_to_room_heroes(m, room_id, heroes)
+            # Bind + wind-up narration before single-hero normalization. Otherwise a lair spawn
+            # (armed timer, no engagement) gets silent engagement from normalize, and try_bind
+            # treats engaged+armed as a no-op — skipping "prepares to strike!".
             _arm_monster_try_bind(m.pk, room_id, now)
+            m.refresh_from_db()
+            _normalize_monster_engagement_to_room_heroes(m, room_id, heroes)
         affected.add(room_id)
     return affected
 
@@ -643,18 +650,20 @@ def engage_monsters_for_new_arrivals(hero: Character, room_id: int) -> None:
         try_bind_monster_to_room_heroes(m, room_id, now)
 
 
-def sense_adjacent_monsters(hero: Character, room_id: int) -> None:
+def sense_adjacent_monster_lines(hero: Character, room_id: int) -> list[str]:
+    """Hero-only sense lines; returned in command ``messages`` so they stay after the move line."""
     exits = list(
         RoomExit.objects.filter(from_room_id=room_id).select_related("to_room"),
     )
     if not exits:
-        return
+        return []
     to_ids = [ex.to_room_id for ex in exits]
     occupied = set(
         MonsterInstance.objects.filter(current_room_id__in=to_ids).values_list(
             "current_room_id", flat=True
         )
     )
+    out: list[str] = []
     for ex in exits:
         if ex.to_room_id not in occupied:
             continue
@@ -670,7 +679,8 @@ def sense_adjacent_monsters(hero: Character, room_id: int) -> None:
             else:
                 label = ex.get_direction_display().lower()
                 line = f"You sense the presence of an enemy to the {label}."
-            _narrate(room_id, line, target_character_id=hero.pk)
+            out.append(line)
+    return out
 
 
 def maybe_spawn_lairs(now) -> set[int]:
@@ -985,20 +995,20 @@ def _resolve_hero_strike(char: Character, now) -> None:
     verb = verb_map.get(elem.lower(), "hit")
     verbs = f"{verb}s"
     if res.outcome == "miss":
-        _narrate(
-            rid,
-            f"Your attack misses the {mname}.",
-            target_character_id=char.pk,
-            log_tone="miss",
-        )
+        if hero_unlit_dark_area_for_combat(char):
+            you_miss = (
+                "You miss your attack — it's really hard to see in the dark!"
+            )
+            peer_miss = (
+                f"{char.name} misses their attack — it's really hard to see in the dark!"
+            )
+        else:
+            you_miss = f"Your attack misses the {mname}."
+            peer_miss = f"{char.name}'s attack misses the {mname}."
+        _narrate(rid, you_miss, target_character_id=char.pk, log_tone="miss")
         for h in _heroes_in_room(rid):
             if h.pk != char.pk:
-                _narrate(
-                    rid,
-                    f"{char.name}'s attack misses the {mname}.",
-                    target_character_id=h.pk,
-                    log_tone="miss",
-                )
+                _narrate(rid, peer_miss, target_character_id=h.pk, log_tone="miss")
         return
     if res.outcome == "dodge":
         _narrate(
@@ -1090,13 +1100,41 @@ def hero_drop_all(hero: Character) -> None:
 
 
 def _hero_die(hero: Character, room_id: int, killer_monster_id: int | None = None) -> None:
+    killer_label: str | None = None
+    if killer_monster_id:
+        killer = (
+            MonsterInstance.objects.filter(pk=killer_monster_id)
+            .select_related("template")
+            .first()
+        )
+        if killer:
+            killer_label = killer.template.name
     for h in _heroes_in_room(room_id):
         if h.pk == hero.pk:
-            _narrate(room_id, "You were slain!", target_character_id=h.pk)
+            if killer_label:
+                _narrate(
+                    room_id,
+                    f"The {killer_label} has slain you!",
+                    target_character_id=h.pk,
+                )
+            else:
+                _narrate(room_id, "You were slain!", target_character_id=h.pk)
         else:
-            _narrate(room_id, f"{hero.name} was slain!", target_character_id=h.pk)
+            if killer_label:
+                _narrate(
+                    room_id,
+                    f"The {killer_label} has slain {hero.name}!",
+                    target_character_id=h.pk,
+                )
+            else:
+                _narrate(room_id, f"{hero.name} was slain!", target_character_id=h.pk)
     hero_drop_all(hero)
     hero.refresh_from_db()
+    _narrate(
+        room_id,
+        "Your inventory drops to the floor…",
+        target_character_id=hero.pk,
+    )
     hero.cur_health = 0
     hero.is_dead = True
     hero.died_at = timezone.now()

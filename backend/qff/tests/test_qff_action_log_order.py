@@ -1,5 +1,7 @@
 """Action log ordering: first-person move lines before monster engagement narration."""
 
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
@@ -110,4 +112,64 @@ class ActionLogMoveBeforeEngagementTests(TestCase):
             move_idx,
             strike_idx,
             f"expected move before wind-up, got order={texts}",
+        )
+
+    def test_sense_line_follows_move_in_action_log(self):
+        """Adjacent sense is folded into command messages, so it never precedes ``You head …``."""
+        MonsterInstance.objects.filter(current_room=self.room_danger).delete()
+        room_east = Room.objects.create(
+            area=self.area,
+            name="EastLair",
+            slug="log-east",
+        )
+        RoomExit.objects.create(
+            from_room=self.room_danger,
+            to_room=room_east,
+            direction=RoomExit.Direction.E,
+        )
+        RoomExit.objects.create(
+            from_room=room_east,
+            to_room=self.room_danger,
+            direction=RoomExit.Direction.W,
+        )
+        MonsterInstance.objects.create(
+            template=self.tpl,
+            current_room=room_east,
+            cur_hp=5,
+            max_hp=5,
+        )
+        u = _approved_user("logorder-sense@example.com")
+        Character.objects.create(
+            user=u,
+            name="Sensor",
+            character_class=self.cc,
+            current_room=self.room_safe,
+            spawn_room=self.room_safe,
+            last_activity_at=timezone.now(),
+            cur_health=50,
+            max_health=50,
+            xp=XP_PER_LEVEL,
+            level=1,
+        )
+        client = APIClient()
+        client.force_login(u)
+        with patch("qff.monster_sim.roll_d100", return_value=50):
+            res = client.post("/api/v1/qff/command/", {"line": "south"}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        log = res.json()["session"].get("action_log") or []
+        texts = [e.get("text", "") for e in log if isinstance(e, dict)]
+        move_idx = next(
+            (i for i, t in enumerate(texts) if t.startswith("You head ") and "south" in t.lower()),
+            None,
+        )
+        sense_idx = next(
+            (i for i, t in enumerate(texts) if "sense the presence of an enemy" in t.lower()),
+            None,
+        )
+        self.assertIsNotNone(move_idx, texts)
+        self.assertIsNotNone(sense_idx, texts)
+        self.assertLess(
+            move_idx,
+            sense_idx,
+            f"expected move before adjacent sense, got order={texts}",
         )

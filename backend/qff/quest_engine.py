@@ -135,6 +135,34 @@ def character_carries_item_template(character: Character, item_id: int) -> bool:
     return False
 
 
+def can_spawn_search_quest_floor_item(
+    character: Character,
+    room_id: int,
+    item_id: int,
+    quest_state_id: int,
+) -> bool:
+    """Eligible to mint a quest search floor item (quest state + while-instance duplicate rules)."""
+    st = QuestState.objects.filter(pk=quest_state_id).only("id", "quest_id").first()
+    if not st:
+        return False
+    if not CharacterQuestProgress.objects.filter(
+        character=character,
+        quest_id=st.quest_id,
+        current_state_id=st.id,
+    ).exists():
+        return False
+    if character_carries_item_template(character, item_id):
+        return False
+    if ItemInstance.objects.filter(
+        room_id=room_id,
+        owner_character__isnull=True,
+        container_interactable__isnull=True,
+        item_id=item_id,
+    ).exists():
+        return False
+    return True
+
+
 def ensure_quests_started_from_npc(character: Character, npc: Npc) -> None:
     """Create CharacterQuestProgress at initial state for quests referenced by this NPC's dialogues."""
     quest_ids = (
@@ -451,17 +479,16 @@ def handle_interactable_use(character: Character, obj: Interactable) -> list[str
     out: list[str] = []
     k = obj.kind
     if k == Interactable.Kind.SCONCE:
-        rid = char.current_room_id
-        prev = list(char.hero_permanent_minimap_lit_room_ids or [])
-        if rid in prev:
-            prev = [x for x in prev if int(x) != int(rid)]
-            char.hero_permanent_minimap_lit_room_ids = sorted(prev)
-            char.save(update_fields=["hero_permanent_minimap_lit_room_ids", "updated_at"])
+        aid = char.current_room.area_id
+        area_ids = [int(x) for x in (char.sconce_full_narrative_area_ids or [])]
+        if aid in area_ids:
+            char.sconce_full_narrative_area_ids = [a for a in area_ids if a != aid]
+            char.save(update_fields=["sconce_full_narrative_area_ids", "updated_at"])
             out.append("The remembered light fades from this chamber.")
         else:
-            prev.append(rid)
-            char.hero_permanent_minimap_lit_room_ids = sorted(prev)
-            char.save(update_fields=["hero_permanent_minimap_lit_room_ids", "updated_at"])
+            area_ids.append(aid)
+            char.sconce_full_narrative_area_ids = area_ids
+            char.save(update_fields=["sconce_full_narrative_area_ids", "updated_at"])
             out.append("The area stays lit in your mind's eye.")
     elif k == Interactable.Kind.MAP:
         now = timezone.now()

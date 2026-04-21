@@ -155,7 +155,8 @@ export type QffShopPanelLine = {
   /** "static" | "consignment" — matches NpcShopStockLine.Kind. */
   kind: string;
   price: number;
-  quantity: number;
+  /** Remaining stock; null = unlimited (static rows). */
+  quantity: number | null;
 };
 
 export type QffShopPanelData = {
@@ -605,6 +606,13 @@ export type DmRoom = {
   search_chance: number;
   search_reward_item_id?: number | null;
   search_reveals_exit_id?: number | null;
+  /** Mint one floor item on first successful search per hero (never again). */
+  search_floor_once_item_id?: number | null;
+  /** Quest search floor: mint when hero is in state and while-instance rules pass. */
+  search_floor_quest_item_id?: number | null;
+  search_floor_quest_state_id?: number | null;
+  /** Derived: quest id for `search_floor_quest_state_id` (read-only, for DM UI). */
+  search_floor_quest_quest_id?: number | null;
   permanent_minimap_light?: boolean;
   reset_dark_lighting_on_enter?: boolean;
   is_safe?: boolean;
@@ -712,6 +720,9 @@ export async function dmPatchRoom(
       | "search_chance"
       | "search_reward_item_id"
       | "search_reveals_exit_id"
+      | "search_floor_once_item_id"
+      | "search_floor_quest_item_id"
+      | "search_floor_quest_state_id"
       | "permanent_minimap_light"
       | "reset_dark_lighting_on_enter"
       | "is_safe"
@@ -753,6 +764,8 @@ export type DmExit = {
   quest_required_quest_slug: string | null;
   quest_required_state_slug: string | null;
   unlock_duration_seconds: number;
+  /** When false, key item is only required in inventory; it is not consumed on pass. */
+  consume_key_on_pass?: boolean;
   reveal_item_id: number | null;
   reveal_item_slug: string | null;
   reveal_quest_state_id: number | null;
@@ -847,6 +860,7 @@ export async function dmPatchExit(
     device_interactable_id: number | null;
     quest_required_state_id: number | null;
     unlock_duration_seconds: number;
+    consume_key_on_pass: boolean;
     reveal_item_id: number | null;
     reveal_quest_state_id: number | null;
   }>,

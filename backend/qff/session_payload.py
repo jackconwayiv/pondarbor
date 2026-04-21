@@ -10,7 +10,10 @@ from django.utils import timezone
 
 from qff.constants import AFK_LOBBY_KICK_MINUTES, PRESENCE_MINUTES
 from qff.exploration import sync_seen_exits_for_character
-from qff.narrative_visibility import room_is_narratively_visible
+from qff.narrative_visibility import (
+    room_is_narratively_visible,
+    sconce_lit_area_ids_for_character,
+)
 from qff.exits import exit_is_passable, exit_is_visible_to_character
 from qff.quest_engine import (
     floor_item_visible_to_character,
@@ -186,17 +189,11 @@ def build_area_map(character) -> dict:
         )
     )
     current_area = character.current_room.area
+    sconce_areas = sconce_lit_area_ids_for_character(character)
     temp_minimap_lit: set[int] = set()
     for x in character.dark_minimap_lit_room_ids or []:
         try:
             temp_minimap_lit.add(int(x))
-        except (TypeError, ValueError):
-            continue
-
-    hero_perm_lit: set[int] = set()
-    for x in character.hero_permanent_minimap_lit_room_ids or []:
-        try:
-            hero_perm_lit.add(int(x))
         except (TypeError, ValueError):
             continue
 
@@ -241,11 +238,10 @@ def build_area_map(character) -> dict:
         }
 
     if not visited_ids:
-        lit_here = (
-            permanent_minimap_by_area[current_area.id]
-            | (hero_perm_lit & {character.current_room_id})
-            | {character.current_room_id}
-        )
+        effective_dark = current_area.is_dark_minimap and current_area.id not in sconce_areas
+        lit_here = permanent_minimap_by_area[current_area.id] | {character.current_room_id}
+        if effective_dark:
+            lit_here |= temp_minimap_lit
         visited_here = [character.current_room_id]
         map_reveal = bool(
             character.minimap_full_reveal_area_id == current_area.id
@@ -261,7 +257,7 @@ def build_area_map(character) -> dict:
                     "grid_width": current_area.grid_width,
                     "grid_height": current_area.grid_height,
                     "cells": [],
-                    "is_dark_minimap": current_area.is_dark_minimap,
+                    "is_dark_minimap": effective_dark,
                     "lit_room_ids": sorted(lit_here),
                     "visited_room_ids": visited_here,
                     "map_full_reveal_active": map_reveal,
@@ -291,11 +287,8 @@ def build_area_map(character) -> dict:
             cells_out.append(cell_payload(ac.room, ac))
         cells_out.sort(key=lambda c: (c["y"], c["x"]))
         visited_in_area = {c["room_id"] for c in cells_out}
-        lit_here = (
-            (temp_minimap_lit & visited_in_area)
-            | permanent_minimap_by_area[area.id]
-            | (hero_perm_lit & visited_in_area)
-        )
+        effective_dark = area.is_dark_minimap and area.id not in sconce_areas
+        lit_here = (temp_minimap_lit & visited_in_area) | permanent_minimap_by_area[area.id]
         if character.current_room.area_id == area.id:
             lit_here = lit_here | {character.current_room_id}
         map_reveal = bool(
@@ -310,7 +303,7 @@ def build_area_map(character) -> dict:
                 "grid_width": area.grid_width,
                 "grid_height": area.grid_height,
                 "cells": cells_out,
-                "is_dark_minimap": area.is_dark_minimap,
+                "is_dark_minimap": effective_dark,
                 "lit_room_ids": sorted(lit_here),
                 "visited_room_ids": sorted(visited_in_area),
                 "map_full_reveal_active": map_reveal,

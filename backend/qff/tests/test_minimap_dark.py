@@ -20,6 +20,7 @@ from qff.models import (
     Room,
     RoomExit,
 )
+from qff.narrative_visibility import room_is_narratively_visible
 from qff.session_payload import build_area_map, build_session_for_character
 
 User = get_user_model()
@@ -151,6 +152,32 @@ class MinimapDarkTests(TestCase):
         m = build_area_map(c)
         lit = set(m["grids"][0]["lit_room_ids"])
         self.assertTrue(lit.issuperset(set(c.dark_minimap_lit_room_ids)))
+        self.assertEqual(c.dark_minimap_torch_radius, 3)
+
+    def test_torch_lit_follows_hero_after_move(self):
+        self._visit_all()
+        c = self._fresh_char()
+        narrow = Item.objects.create(
+            slug="torch-narrow",
+            name="Narrow Torch",
+            slot=None,
+            consumable=True,
+            stackable=True,
+            max_stack=99,
+            extra_data={"consume_effects": [{"kind": "dark_minimap_light", "radius": 1}]},
+        )
+        inst = ItemInstance.objects.create(item=narrow, owner_character=c, quantity=1)
+        c.inventory = [inst.pk]
+        c.save(update_fields=["inventory", "updated_at"])
+        execute_command(c, parse_command("use narrow torch"))
+        c = Character.objects.get(pk=c.pk)
+        self.assertEqual(c.dark_minimap_torch_radius, 1)
+        lit_before = set(c.dark_minimap_lit_room_ids)
+        execute_command(c, parse_command("east"))
+        c = Character.objects.get(pk=c.pk)
+        self.assertEqual(c.dark_minimap_torch_radius, 1)
+        lit_after = set(c.dark_minimap_lit_room_ids)
+        self.assertNotEqual(lit_before, lit_after)
 
     def test_oil_without_lantern_does_not_consume(self):
         self._visit_all()
@@ -191,6 +218,54 @@ class MinimapDarkTests(TestCase):
         on_enter_room(c, mouth.id)
         c = Character.objects.get(pk=c.pk)
         self.assertEqual(c.dark_minimap_lit_room_ids, [])
+        self.assertIsNone(c.dark_minimap_torch_radius)
+
+    def test_reset_entrance_clears_torch_but_preserves_sconce_area(self):
+        self._visit_all()
+        c = self._fresh_char()
+        c.sconce_full_narrative_area_ids = [self.area.pk]
+        c.dark_minimap_lit_room_ids = [self.rooms[0].id]
+        c.dark_minimap_torch_radius = 3
+        c.save(
+            update_fields=[
+                "sconce_full_narrative_area_ids",
+                "dark_minimap_lit_room_ids",
+                "dark_minimap_torch_radius",
+                "updated_at",
+            ]
+        )
+        mouth = self.rooms[13]
+        mouth.reset_dark_lighting_on_enter = True
+        mouth.save(update_fields=["reset_dark_lighting_on_enter", "updated_at"])
+        on_enter_room(c, mouth.id)
+        c = Character.objects.get(pk=c.pk)
+        self.assertEqual(c.dark_minimap_lit_room_ids, [])
+        self.assertIsNone(c.dark_minimap_torch_radius)
+        self.assertEqual(c.sconce_full_narrative_area_ids, [self.area.pk])
+
+    def test_sconce_area_minimap_grid_is_not_dark(self):
+        self._visit_all()
+        c = self._fresh_char()
+        c.sconce_full_narrative_area_ids = [self.area.pk]
+        c.save(update_fields=["sconce_full_narrative_area_ids", "updated_at"])
+        m = build_area_map(c)
+        self.assertFalse(m["grids"][0]["is_dark_minimap"])
+
+    def test_sconce_area_makes_unvisited_room_narratively_visible(self):
+        self._visit_all()
+        c = self._fresh_char()
+        c.sconce_full_narrative_area_ids = [self.area.pk]
+        c.dark_minimap_lit_room_ids = []
+        c.hero_permanent_minimap_lit_room_ids = []
+        c.save(
+            update_fields=[
+                "sconce_full_narrative_area_ids",
+                "dark_minimap_lit_room_ids",
+                "hero_permanent_minimap_lit_room_ids",
+                "updated_at",
+            ]
+        )
+        self.assertTrue(room_is_narratively_visible(c, self.rooms[0]))
 
     def test_permanent_minimap_light_in_lit_ids_after_reset(self):
         self._visit_all()

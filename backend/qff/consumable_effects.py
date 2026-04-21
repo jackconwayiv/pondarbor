@@ -37,17 +37,6 @@ def _character_has_inventory_item_slug(character: "Character", slug: str) -> boo
     ).exists()
 
 
-def _parse_dark_minimap_lit_ids(character: "Character") -> set[int]:
-    raw = character.dark_minimap_lit_room_ids or []
-    out_set: set[int] = set()
-    for x in raw:
-        try:
-            out_set.add(int(x))
-        except (TypeError, ValueError):
-            continue
-    return out_set
-
-
 def dark_minimap_light_additions(character: "Character", radius: int) -> set[int]:
     """Visited rooms in the current area within Chebyshev distance <= radius of current cell."""
     room = character.current_room
@@ -158,8 +147,9 @@ def apply_consume_effects(character: "Character", item: "Item") -> list[str]:
             radius = _coerce_positive_int(eff.get("radius"), 0)
             additions = dark_minimap_light_additions(ch, radius)
             if additions:
-                merged = _parse_dark_minimap_lit_ids(ch) | additions
-                ch.dark_minimap_lit_room_ids = sorted(merged)
+                # Torch light is always centered on the hero's current cell (not accumulated from old positions).
+                ch.dark_minimap_torch_radius = radius
+                ch.dark_minimap_lit_room_ids = sorted(additions)
                 msg = (eff.get("message") or "").strip()
                 lines.append(msg or "The light reveals nearby passages.")
         elif kind == "teleport_spawn":
@@ -172,3 +162,27 @@ def apply_consume_effects(character: "Character", item: "Item") -> list[str]:
         lines.append(f"You recover {mana_gain} mana.")
 
     return lines
+
+
+def refresh_torch_lit_from_hero_position(character_pk: int) -> None:
+    """Recompute temp lit rooms from the hero's current cell when a torch radius is active (e.g. after move)."""
+    from qff.models import Character
+
+    ch = Character.objects.select_related("current_room", "current_room__area").get(pk=character_pk)
+    r = ch.dark_minimap_torch_radius
+    if r is None or int(r) <= 0:
+        return
+    if not ch.current_room.area.is_dark_minimap:
+        ch.dark_minimap_torch_radius = None
+        ch.dark_minimap_lit_room_ids = []
+        ch.save(
+            update_fields=[
+                "dark_minimap_torch_radius",
+                "dark_minimap_lit_room_ids",
+                "updated_at",
+            ]
+        )
+        return
+    additions = dark_minimap_light_additions(ch, int(r))
+    ch.dark_minimap_lit_room_ids = sorted(additions) if additions else []
+    ch.save(update_fields=["dark_minimap_lit_room_ids", "updated_at"])

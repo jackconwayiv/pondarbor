@@ -3,7 +3,6 @@ import { Box, Checkbox, HStack, Stack, Text } from "@chakra-ui/react";
 import { APP_TEXT_SIZES } from "../theme/typography";
 import {
   USER_COLOR_HEX,
-  USER_COLOR_ORDER,
   type UserColorKey,
   colorForCheckedUser,
 } from "./userColors";

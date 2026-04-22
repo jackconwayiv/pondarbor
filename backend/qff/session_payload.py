@@ -360,7 +360,7 @@ def _inventory_item_labels(character) -> list[str]:
 
 
 def _room_floor_labels(room_id: int, character) -> list[str]:
-    out: list[str] = []
+    counts: dict[str, int] = {}
     for inst in (
         ItemInstance.objects.filter(
             room_id=room_id,
@@ -372,7 +372,15 @@ def _room_floor_labels(room_id: int, character) -> list[str]:
     ):
         if not floor_item_visible_to_character(character, inst):
             continue
-        out.append(display_name_for_instance(inst))
+        base = display_name_for_instance(inst)
+        qty = max(1, int(inst.quantity or 1))
+        counts[base] = counts.get(base, 0) + qty
+    out: list[str] = []
+    for base, qty in counts.items():
+        if qty > 1:
+            out.append(f"{base} ({qty})")
+        else:
+            out.append(base)
     return out
 
 

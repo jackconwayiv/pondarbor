@@ -173,11 +173,11 @@ def display_name_for_instance(
 def inventory_stack_label(
     inst: "ItemInstance", *, include_lock_hint: bool = False
 ) -> str:
-    """Display name with xN suffix when quantity > 1."""
+    """Display name with (N) suffix when quantity > 1."""
     base = display_name_for_instance(inst, include_lock_hint=include_lock_hint)
     q = int(getattr(inst, "quantity", 1) or 1)
     if q > 1:
-        return f"{base} x{q}"
+        return f"{base} ({q})"
     return base
 
 

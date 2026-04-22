@@ -80,27 +80,17 @@ def container_interactable_active_for_character(
 
 
 def floor_item_visible_to_character(character: Character, inst: ItemInstance) -> bool:
-    """Unowned floor item: if gated by quest state, require that state and no duplicate template."""
+    """Unowned floor item visibility.
+
+    Floor items should never be hidden from a hero once they exist (except container focus rules).
+    Quest progress and inventory quantity should control *generation* of quest drops, not visibility.
+    """
     if inst.owner_character_id is not None:
         return True
     if inst.container_interactable_id:
         cid = inst.container_interactable_id
         if not container_interactable_active_for_character(character, cid):
             return False
-    if not inst.visible_quest_state_id:
-        return True
-    try:
-        st = inst.visible_quest_state
-    except ObjectDoesNotExist:
-        return False
-    if not CharacterQuestProgress.objects.filter(
-        character=character,
-        quest_id=st.quest_id,
-        current_state_id=st.id,
-    ).exists():
-        return False
-    if character_carries_item_template(character, inst.item_id):
-        return False
     return True
 
 

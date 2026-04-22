@@ -1272,6 +1272,7 @@ def _handle_get(
     if inst and inst.room_id == char.current_room_id and inst.owner_character_id is None:
         pickup_label = inventory_stack_label(inst)
         donor_qty = max(1, int(inst.quantity or 1))
+        take_qty = max(1, int(want_qty or 1))
         with transaction.atomic():
             char = Character.objects.select_for_update().get(pk=char.pk)
             inst = (
@@ -1283,8 +1284,14 @@ def _handle_get(
                 char.save(update_fields=["last_activity_at", "updated_at"])
                 return ["You don't see that here."]
             item = inst.item
-            _dest_pks, new_pks = absorb_item_quantity(char, item, donor_qty, donor=inst)
-            inst.delete()
+            donor_qty = max(1, int(inst.quantity or 1))
+            take_qty = min(take_qty, donor_qty)
+            _dest_pks, new_pks = absorb_item_quantity(char, item, take_qty, donor=inst)
+            if take_qty >= donor_qty:
+                inst.delete()
+            else:
+                inst.quantity = donor_qty - take_qty
+                inst.save(update_fields=["quantity", "updated_at"])
             for pk in reversed(new_pks):
                 char.inventory = _prepend_inv(char.inventory, pk)
             char.last_activity_at = timezone.now()
@@ -1293,7 +1300,9 @@ def _handle_get(
         _notify_peers_third_person(
             char, char.current_room_id, f"{char.name} takes the {pickup_label}."
         )
-        return [f"You pick up the {pickup_label}."]
+        if take_qty == 1:
+            return [f"You pick up the {pickup_label}."]
+        return [f"You pick up {take_qty} {pickup_label}."]
 
     floor_ids = unowned_floor_item_template_ids_in_room(char.current_room_id)
     ri = _find_room_item(char, target, floor_ids)

@@ -21,15 +21,20 @@ import {
   dmCreateMonsterTemplate,
   dmFetchItems,
   dmFetchMonsterTemplates,
+  dmFetchQuestDetail,
+  dmFetchQuests,
   dmPatchMonsterTemplate,
   type DmItem,
   type DmMonsterLootRow,
   type DmMonsterQuestDropRow,
   type DmMonsterTemplate,
+  type DmQuestDetail,
+  type DmQuestSummary,
 } from "./api";
 
 type LootEditorRow = { slug: string; chance: string; questOnly: boolean };
 type QuestDropEditorRow = {
+  questId: string;
   questStateId: string;
   itemId: string;
   perKillQty: string;
@@ -90,9 +95,10 @@ function lootTableFromRows(rows: LootEditorRow[]): DmMonsterLootRow[] {
 function questDropRowsFromTable(t: DmMonsterQuestDropRow[] | undefined): QuestDropEditorRow[] {
   const rows = t ?? [];
   if (rows.length === 0) {
-    return [{ questStateId: "", itemId: "", perKillQty: "1", chance: "100" }];
+    return [{ questId: "", questStateId: "", itemId: "", perKillQty: "1", chance: "100" }];
   }
   return rows.map((r) => ({
+    questId: "",
     questStateId: String(r.quest_state_id ?? r.state_id ?? ""),
     itemId: String(r.item_id ?? ""),
     perKillQty: String(r.per_kill_qty ?? r.qty ?? r.quantity ?? 1),
@@ -122,7 +128,7 @@ export default function QffDmMonstersPage() {
   const [showLootJson, setShowLootJson] = useState(false);
   const [lootJson, setLootJson] = useState("[]");
   const [questDropRows, setQuestDropRows] = useState<QuestDropEditorRow[]>([
-    { questStateId: "", itemId: "", perKillQty: "1", chance: "100" },
+    { questId: "", questStateId: "", itemId: "", perKillQty: "1", chance: "100" },
   ]);
   const [showQuestDropsJson, setShowQuestDropsJson] = useState(false);
   const [questDropsJson, setQuestDropsJson] = useState("[]");
@@ -130,6 +136,8 @@ export default function QffDmMonstersPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [loreDcInput, setLoreDcInput] = useState("");
+  const [quests, setQuests] = useState<DmQuestSummary[]>([]);
+  const [questDetails, setQuestDetails] = useState<Record<number, DmQuestDetail>>({});
 
   const load = useCallback(async () => {
     const token = await getApiAccessToken();
@@ -143,11 +151,29 @@ export default function QffDmMonstersPage() {
     setItems(list.sort((a, b) => a.name.localeCompare(b.name)));
   }, [getApiAccessToken]);
 
+  const loadQuests = useCallback(async () => {
+    const token = await getApiAccessToken();
+    const list = await dmFetchQuests(token);
+    setQuests(list.sort((a, b) => a.name.localeCompare(b.name)));
+  }, [getApiAccessToken]);
+
+  const ensureQuestDetail = useCallback(
+    async (questId: number) => {
+      if (!Number.isFinite(questId)) return;
+      if (questDetails[questId]) return;
+      const token = await getApiAccessToken();
+      const detail = await dmFetchQuestDetail(token, questId);
+      setQuestDetails((prev) => ({ ...prev, [questId]: detail }));
+    },
+    [getApiAccessToken, questDetails],
+  );
+
   useEffect(() => {
     if (!isAuthenticated || !isStaff) return;
     load().catch((e) => setErr(String(e)));
     loadItems().catch(() => setItems([]));
-  }, [isAuthenticated, isStaff, load, loadItems]);
+    loadQuests().catch(() => setQuests([]));
+  }, [isAuthenticated, isStaff, load, loadItems, loadQuests]);
 
   const newTemplate = () => {
     setErr(null);
@@ -157,7 +183,9 @@ export default function QffDmMonstersPage() {
     setLootRows([{ slug: "", chance: "0", questOnly: false }]);
     setLootJson("[]");
     setShowLootJson(false);
-    setQuestDropRows([{ questStateId: "", itemId: "", perKillQty: "1", chance: "100" }]);
+    setQuestDropRows([
+      { questId: "", questStateId: "", itemId: "", perKillQty: "1", chance: "100" },
+    ]);
     setQuestDropsJson("[]");
     setShowQuestDropsJson(false);
     setLoreDcInput("");
@@ -592,19 +620,57 @@ export default function QffDmMonstersPage() {
                 <Stack gap={2} mt={1}>
                   {questDropRows.map((row, idx) => (
                     <Flex key={idx} gap={2} align="flex-end" flexWrap="wrap">
-                      <Field.Root w="120px">
-                        <Field.Label fontSize="xs">Quest state id</Field.Label>
-                        <Input
-                          size="sm"
-                          value={row.questStateId}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setQuestDropRows((prev) =>
-                              prev.map((r, i) => (i === idx ? { ...r, questStateId: v } : r)),
-                            );
-                          }}
-                          bg="#222"
-                        />
+                      <Field.Root minW="220px">
+                        <Field.Label fontSize="xs">Quest</Field.Label>
+                        <NativeSelectRoot>
+                          <NativeSelectField
+                            value={row.questId}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              const qid = parseInt(v, 10);
+                              if (Number.isFinite(qid)) void ensureQuestDetail(qid);
+                              setQuestDropRows((prev) =>
+                                prev.map((r, i) =>
+                                  i === idx ? { ...r, questId: v, questStateId: "" } : r,
+                                ),
+                              );
+                            }}
+                            bg="#222"
+                          >
+                            <option value="">—</option>
+                            {quests.map((q) => (
+                              <option key={q.id} value={String(q.id)}>
+                                {q.name} ({q.slug})
+                              </option>
+                            ))}
+                          </NativeSelectField>
+                        </NativeSelectRoot>
+                      </Field.Root>
+
+                      <Field.Root minW="240px">
+                        <Field.Label fontSize="xs">Quest state</Field.Label>
+                        <NativeSelectRoot
+                          opacity={row.questId ? undefined : 0.45}
+                          pointerEvents={row.questId ? undefined : "none"}
+                        >
+                          <NativeSelectField
+                            value={row.questStateId}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setQuestDropRows((prev) =>
+                                prev.map((r, i) => (i === idx ? { ...r, questStateId: v } : r)),
+                              );
+                            }}
+                            bg="#222"
+                          >
+                            <option value="">—</option>
+                            {(questDetails[parseInt(row.questId, 10)]?.states ?? []).map((s) => (
+                              <option key={s.id} value={String(s.id)}>
+                                {s.name || s.slug} ({s.slug}) #{s.id}
+                              </option>
+                            ))}
+                          </NativeSelectField>
+                        </NativeSelectRoot>
                       </Field.Root>
                       <Field.Root flex="1" minW="220px">
                         <Field.Label fontSize="xs">Item</Field.Label>
@@ -681,7 +747,7 @@ export default function QffDmMonstersPage() {
                     onClick={() =>
                       setQuestDropRows((prev) => [
                         ...prev,
-                        { questStateId: "", itemId: "", perKillQty: "1", chance: "100" },
+                        { questId: "", questStateId: "", itemId: "", perKillQty: "1", chance: "100" },
                       ])
                     }
                   >

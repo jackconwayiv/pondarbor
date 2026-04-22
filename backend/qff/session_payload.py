@@ -493,6 +493,8 @@ def _shops_in_room_json(room_id: int) -> list[dict]:
             else:
                 name = sl.item.name
                 qty = sl.quantity
+            if qty is not None and int(qty) < 1:
+                continue
             lines_out.append(
                 {
                     "id": sl.id,

@@ -543,6 +543,7 @@ def _handle_shop_sell(char: CharacterType, parsed: ParsedSell) -> list[str]:
     char.save(update_fields=["last_activity_at", "updated_at"])
     item_q = (parsed.item_query or "").strip()
     npc_q = (parsed.npc_query or "").strip()
+    sell_all = bool(getattr(parsed, "sell_all", False))
     if not item_q:
         return ["Sell what?"]
     shops = list(get_enabled_shops_in_room(char.current_room_id))
@@ -564,7 +565,7 @@ def _handle_shop_sell(char: CharacterType, parsed: ParsedSell) -> list[str]:
         return ["You don't have that."]
     if _instance_is_equipped(char, inst.pk):
         return ["Unequip that first."]
-    return sell_to_shop(char, shop, item_q)
+    return sell_to_shop(char, shop, item_q, sell_all=sell_all)
 
 
 def execute_command(

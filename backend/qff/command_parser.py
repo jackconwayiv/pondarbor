@@ -138,6 +138,7 @@ class ParsedSell:
 
     item_query: str = ""
     npc_query: str = ""
+    sell_all: bool = False
 
 
 @dataclass
@@ -403,6 +404,16 @@ def parse_command(line: str):
         return ParsedTrain()
     if low == "sell":
         return ParsedSell()
+    if low.startswith("sell all "):
+        rest = n[9:].strip()
+        m = re.match(r"(?is)^(.+?)\s+to\s+(.+)$", rest)
+        if m:
+            return ParsedSell(
+                item_query=m.group(1).strip(),
+                npc_query=m.group(2).strip(),
+                sell_all=True,
+            )
+        return ParsedSell(item_query=rest, npc_query="", sell_all=True)
     if low.startswith("sell "):
         rest = n[5:].strip()
         m = re.match(r"(?is)^(.+?)\s+to\s+(.+)$", rest)
@@ -410,8 +421,9 @@ def parse_command(line: str):
             return ParsedSell(
                 item_query=m.group(1).strip(),
                 npc_query=m.group(2).strip(),
+                sell_all=False,
             )
-        return ParsedSell(item_query=rest, npc_query="")
+        return ParsedSell(item_query=rest, npc_query="", sell_all=False)
 
     # unequip
     if low.startswith("unequip "):

@@ -624,7 +624,10 @@ def dm_npc_shop_stock_line_detail(request, pk):
         line.quantity = None if qty_raw in (None, "", "unlimited") else max(1, int(qty_raw))
     if "sort_order" in request.data:
         line.sort_order = max(0, int(request.data.get("sort_order") or 0))
-    if line.kind == NpcShopStockLine.Kind.STATIC:
+    if line.kind == NpcShopStockLine.Kind.STATIC or (
+        line.kind == NpcShopStockLine.Kind.CONSIGNMENT
+        and line.consignment_item_instance_id is None
+    ):
         line.save()
         line = NpcShopStockLine.objects.select_related("item").get(pk=line.pk)
         return Response(_dm_npc_shop_stock_line_dict(line))

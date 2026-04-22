@@ -124,17 +124,10 @@ def browse_shop(character: Character, shop: NpcShop) -> list[str]:
         lines_out.append(w)
     else:
         lines_out.append(f"{shop.npc.name} shows you their wares.")
-    stock = (
-        NpcShopStockLine.objects.filter(shop=shop)
-        .select_related("item", "consignment_item_instance")
-        .order_by("sort_order", "id")
-    )
-    if not stock.exists():
+    # The play UI has a shop inventory panel; keep browse output short to avoid
+    # spamming the action log with full stock dumps.
+    if not NpcShopStockLine.objects.filter(shop=shop).exists():
         lines_out.append("There is nothing for sale.")
-        return lines_out
-    lines_out.append("For sale:")
-    for sl in stock:
-        lines_out.append(format_stock_line_row(sl))
     return lines_out
 
 
@@ -179,9 +172,6 @@ def purchase_from_shop(character: Character, shop: NpcShop, query: str) -> list[
         return ["That item is no longer available."]
     if int(char.gold) < price:
         return ["You can't afford that item!"]
-    if line.kind == NpcShopStockLine.Kind.STATIC:
-        if line.quantity is not None and line.quantity < 1:
-            return ["That item is sold out."]
     if line.kind == NpcShopStockLine.Kind.CONSIGNMENT and line.consignment_item_instance_id:
         inst = ItemInstance.objects.select_for_update().get(pk=line.consignment_item_instance_id)
         if inst.owner_character_id is not None:
@@ -209,12 +199,17 @@ def purchase_from_shop(character: Character, shop: NpcShop, query: str) -> list[
     char.save(update_fields=["inventory", "updated_at"])
     if line.quantity is not None:
         line.quantity = int(line.quantity) - 1
-        line.save(update_fields=["quantity"])
+        if int(line.quantity) <= 0:
+            line.delete()
+        else:
+            line.save(update_fields=["quantity"])
     return [f"You buy {it.name} for {price} gold."]
 
 
 @transaction.atomic
-def sell_to_shop(character: Character, shop: NpcShop, query: str) -> list[str]:
+def sell_to_shop(
+    character: Character, shop: NpcShop, query: str, *, sell_all: bool = False
+) -> list[str]:
     q = (query or "").strip().lower()
     if not q:
         return ["Sell what?"]
@@ -234,34 +229,78 @@ def sell_to_shop(character: Character, shop: NpcShop, query: str) -> list[str]:
     if it.pk not in inv:
         return ["You don't have that."]
     pct = max(1, min(100, int(shop.sell_price_percent)))
-    offer = max(0, int(item.cost * pct / 100))
-    inv = [x for x in inv if x != it.pk]
-    char.inventory = inv
-    char.gold = int(char.gold) + offer
+    offer_per_unit = max(0, int(item.cost * pct / 100))
+
+    held = max(1, int(it.quantity or 1))
+    if item.stackable and held > 1:
+        sale_units = held if sell_all else 1
+    else:
+        sale_units = 1
+
+    offer_total = int(offer_per_unit) * int(sale_units)
+
+    # Determine listing price (full shop price if it already sells this item).
+    listing_price = int(item.cost or 0)
+    existing_static = (
+        NpcShopStockLine.objects.select_for_update()
+        .filter(shop=shop, item_id=item.id, kind=NpcShopStockLine.Kind.STATIC)
+        .order_by("sort_order", "id")
+        .first()
+    )
+    if existing_static is not None:
+        listing_price = int(existing_static.price)
+
+    # Merge into existing row when possible.
+    merged_into: NpcShopStockLine | None = None
+    if existing_static is not None:
+        merged_into = existing_static
+    else:
+        merged_into = (
+            NpcShopStockLine.objects.select_for_update()
+            .filter(
+                shop=shop,
+                item_id=item.id,
+                kind=NpcShopStockLine.Kind.CONSIGNMENT,
+                consignment_item_instance_id__isnull=True,
+            )
+            .order_by("sort_order", "id")
+            .first()
+        )
+
+    if merged_into is not None:
+        # If unlimited, nothing to do for quantity. Otherwise increment.
+        if merged_into.quantity is not None:
+            merged_into.quantity = int(merged_into.quantity) + int(sale_units)
+            merged_into.save(update_fields=["quantity"])
+    else:
+        max_sort = (
+            NpcShopStockLine.objects.filter(shop=shop).aggregate(m=Max("sort_order"))["m"]
+            or 0
+        )
+        NpcShopStockLine.objects.create(
+            shop=shop,
+            item=item,
+            price=max(1, int(listing_price) if int(listing_price) > 0 else 1),
+            quantity=max(1, int(sale_units)),
+            sort_order=int(max_sort) + 1,
+            kind=NpcShopStockLine.Kind.CONSIGNMENT,
+            times_shown_without_sale=0,
+            consignment_item_instance=None,
+        )
+
+    # Remove items from the hero (default 1 unit for stackables).
+    if item.stackable and held > sale_units:
+        it.quantity = held - int(sale_units)
+        it.save(update_fields=["quantity", "updated_at"])
+    else:
+        char.inventory = [x for x in inv if x != it.pk]
+        it.delete()
+
+    char.gold = int(char.gold) + int(offer_total)
     char.save(update_fields=["inventory", "gold", "updated_at"])
-    it.owner_character = None
-    it.room = None
-    it.container_interactable_id = None
-    it.save(
-        update_fields=[
-            "owner_character",
-            "room",
-            "container_interactable",
-            "updated_at",
-        ]
-    )
-    max_sort = NpcShopStockLine.objects.filter(shop=shop).aggregate(m=Max("sort_order"))["m"] or 0
-    NpcShopStockLine.objects.create(
-        shop=shop,
-        item=item,
-        price=offer,
-        quantity=max(1, int(it.quantity or 1)),
-        sort_order=int(max_sort) + 1,
-        kind=NpcShopStockLine.Kind.CONSIGNMENT,
-        times_shown_without_sale=0,
-        consignment_item_instance=it,
-    )
-    return [f"You sell {display_name_for_instance(it)} for {offer} gold."]
+
+    sold_label = item.name if sale_units == 1 else f"{item.name} ×{sale_units}"
+    return [f"You sell {sold_label} for {offer_total} gold."]
 
 
 def find_inventory_instance(char: Character, query: str) -> ItemInstance | None:

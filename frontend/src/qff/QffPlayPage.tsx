@@ -781,10 +781,9 @@ export default function QffPlayPage() {
                   >
                     <Text>
                       {sl.name}
-                      {sl.kind === "consignment" ? " (used)" : ""}
                     </Text>
                     <Text color={HUD_PANEL_TEXT_MUTED}>
-                      {sl.price}g · {sl.quantity == null ? "-" : `×${sl.quantity}`}
+                      {sl.price}g · {sl.quantity == null ? "" : `×${sl.quantity}`}
                     </Text>
                   </Flex>
                 ))}

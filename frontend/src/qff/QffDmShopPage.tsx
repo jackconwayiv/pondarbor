@@ -423,14 +423,18 @@ export default function QffDmShopPage() {
                   <Text minW="200px" fontSize="sm" color="#c8e6a8">
                     {line.item_name}{" "}
                     <Box as="span" color="#889977">
-                      ({line.kind}
-                      {line.kind === "consignment"
-                        ? ` · neglect ${line.times_shown_without_sale}`
-                        : ""}
+                      (
+                      {line.kind === "static"
+                        ? "DM stock"
+                        : line.consignment_item_instance_id != null
+                          ? `used consignment · neglect ${line.times_shown_without_sale}`
+                          : "player stock"}
                       )
                     </Box>
                   </Text>
-                  {line.kind === "static" ? (
+                  {line.kind === "static" ||
+                  (line.kind === "consignment" &&
+                    line.consignment_item_instance_id == null) ? (
                     <>
                       <Field.Root minW="80px">
                         <Field.Label>Price</Field.Label>

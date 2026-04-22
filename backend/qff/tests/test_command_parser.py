@@ -197,6 +197,18 @@ class CommandParserTests(SimpleTestCase):
         assert isinstance(s2, ParsedSell)
         self.assertEqual(s2.item_query, "gem")
         self.assertEqual(s2.npc_query, "alice")
+        s3 = parse_command("sell all gem")
+        self.assertIsInstance(s3, ParsedSell)
+        assert isinstance(s3, ParsedSell)
+        self.assertEqual(s3.item_query, "gem")
+        self.assertEqual(s3.npc_query, "")
+        self.assertEqual(s3.sell_all, True)
+        s4 = parse_command("sell all gem to alice")
+        self.assertIsInstance(s4, ParsedSell)
+        assert isinstance(s4, ParsedSell)
+        self.assertEqual(s4.item_query, "gem")
+        self.assertEqual(s4.npc_query, "alice")
+        self.assertEqual(s4.sell_all, True)
 
     def test_look_direction_tokens(self):
         p = parse_command("look e")

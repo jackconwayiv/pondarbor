@@ -90,10 +90,9 @@ class NpcShopTests(TestCase):
         c = Character.objects.get(pk=c.pk)
         self.assertEqual(c.gold, 60)
         self.assertEqual(len(c.inventory), 1)
-        line = NpcShopStockLine.objects.get(shop=shop, item=sword)
-        self.assertEqual(line.quantity, 0)
+        self.assertFalse(NpcShopStockLine.objects.filter(shop=shop, item=sword).exists())
         out3 = execute_command(c, parse_command("buy rusty blade"))
-        self.assertTrue(any("sold out" in m.lower() for m in out3))
+        self.assertTrue(any("don't see" in m.lower() for m in out3))
 
     def test_sell_creates_consignment(self):
         npc = Npc.objects.create(
@@ -113,12 +112,78 @@ class NpcShopTests(TestCase):
         c = Character.objects.get(pk=c.pk)
         self.assertEqual(c.gold, 10)
         self.assertEqual(c.inventory, [])
-        self.assertEqual(
-            NpcShopStockLine.objects.filter(
-                shop__npc=npc, kind=NpcShopStockLine.Kind.CONSIGNMENT
-            ).count(),
-            1,
+        self.assertFalse(ItemInstance.objects.filter(pk=inst.pk).exists())
+        line = NpcShopStockLine.objects.get(
+            shop__npc=npc, kind=NpcShopStockLine.Kind.CONSIGNMENT
         )
+        self.assertIsNone(line.consignment_item_instance_id)
+        self.assertEqual(line.price, 20)
+        self.assertEqual(line.quantity, 1)
+
+    def test_sell_merges_into_static_stock_line_and_uses_shop_price(self):
+        npc = Npc.objects.create(room=self.room, slug="m", name="Merchant", description="")
+        shop = NpcShop.objects.create(npc=npc, welcome_text="", enabled=True, sell_price_percent=50)
+        sword = Item.objects.create(slug="disc-sword", name="Discrete Sword", cost=100, stackable=False)
+        static = NpcShopStockLine.objects.create(
+            shop=shop,
+            item=sword,
+            price=300,
+            quantity=5,
+            sort_order=0,
+            kind=NpcShopStockLine.Kind.STATIC,
+        )
+        c = self._char("Seller", gold=0)
+        inst = ItemInstance.objects.create(item=sword, owner_character=c, quantity=1)
+        c.inventory = [inst.pk]
+        c.save(update_fields=["inventory"])
+        out = execute_command(c, parse_command("sell discrete sword"))
+        self.assertTrue(any("50 gold" in line for line in out))
+        c.refresh_from_db()
+        self.assertEqual(c.gold, 50)
+        static.refresh_from_db()
+        self.assertEqual(static.price, 300)
+        self.assertEqual(static.quantity, 6)
+        self.assertFalse(ItemInstance.objects.filter(pk=inst.pk).exists())
+
+    def test_sell_stackable_defaults_to_one_and_sell_all_sells_remaining(self):
+        npc = Npc.objects.create(room=self.room, slug="p", name="Potioner", description="")
+        shop = NpcShop.objects.create(npc=npc, welcome_text="", enabled=True, sell_price_percent=50)
+        potion = Item.objects.create(
+            slug="potion-t",
+            name="Potion",
+            cost=10,
+            stackable=True,
+            max_stack=99,
+        )
+        static = NpcShopStockLine.objects.create(
+            shop=shop,
+            item=potion,
+            price=12,
+            quantity=1,
+            sort_order=0,
+            kind=NpcShopStockLine.Kind.STATIC,
+        )
+        c = self._char("Seller", gold=0)
+        inst = ItemInstance.objects.create(item=potion, owner_character=c, quantity=3)
+        c.inventory = [inst.pk]
+        c.save(update_fields=["inventory"])
+
+        out1 = execute_command(c, parse_command("sell potion"))
+        self.assertTrue(any("5 gold" in line for line in out1))
+        c.refresh_from_db()
+        self.assertEqual(c.gold, 5)
+        inst.refresh_from_db()
+        self.assertEqual(inst.quantity, 2)
+        static.refresh_from_db()
+        self.assertEqual(static.quantity, 2)
+
+        out2 = execute_command(c, parse_command("sell all potion"))
+        self.assertTrue(any("10 gold" in line for line in out2))
+        c.refresh_from_db()
+        self.assertEqual(c.gold, 15)
+        self.assertFalse(ItemInstance.objects.filter(pk=inst.pk).exists())
+        static.refresh_from_db()
+        self.assertEqual(static.quantity, 4)
 
     def test_sell_rejects_unsellable_and_junk(self):
         npc = Npc.objects.create(room=self.room, slug="v", name="Vendor", description="")

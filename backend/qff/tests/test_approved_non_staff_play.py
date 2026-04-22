@@ -203,6 +203,7 @@ class ApprovedNonStaffPlayTests(TestCase):
         entry = session["action_log"][0]
         self.assertIn("id", entry)
         self.assertIn("text", entry)
+        self.assertEqual(entry.get("scope"), "room")
         self.assertIsInstance(entry["id"], int)
 
     def test_peer_sees_third_person_action_lines(self):

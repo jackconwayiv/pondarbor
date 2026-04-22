@@ -61,6 +61,7 @@ from qff.glyph_class_map import normalize_glyphs, slug_for_glyphs
 from qff.monster_sim import run_lazy_simulation
 from qff.quest_engine import find_npc_in_room, sync_character_world_before_session
 from qff.realtime import schedule_notify_qff_rooms
+from qff.realm_presence import broadcast_realm_enter
 from qff.session_payload import (
     build_session_for_character,
     normalize_hex_color,
@@ -164,12 +165,17 @@ def session_activity_view(request):
     char = _get_character(request.user)
     if not char:
         return Response({"ok": False}, status=status.HTTP_404_NOT_FOUND)
+    was_in_realm = char.is_in_realm
     now = timezone.now()
     Character.objects.filter(pk=char.pk).update(
         last_activity_at=now,
         is_in_realm=True,
         updated_at=now,
     )
+    if not was_in_realm:
+        fresh = _get_character(request.user)
+        if fresh:
+            broadcast_realm_enter(fresh)
     return Response({"ok": True})
 
 

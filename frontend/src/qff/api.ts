@@ -150,7 +150,14 @@ export type QffSessionWithCharacter = {
   };
   character_profile: QffCharacterProfile;
   /** Room narrative queue; ids prevent duplicate lines when HTTP and WebSocket both deliver a session. */
-  action_log: Array<{ id: number; text: string; log_tone?: string; logTone?: string }>;
+  action_log: Array<{
+    id: number;
+    text: string;
+    log_tone?: string;
+    logTone?: string;
+    /** "room" | "realm" | "party" | "guild" — logical reach; delivery is still room-tied. */
+    scope?: string;
+  }>;
   /** Shops in the current room; populated for the play UI's shop panel. */
   shops?: QffShopPanelData[];
   /** In-progress (non-terminal) quest states for the play UI quest panel. */

@@ -51,6 +51,7 @@ from qff.models import (
     RoomGoldPile,
     RoomItem,
 )
+from qff.realm_presence import realm_presence_hero_qs
 from qff.shop_engine import get_enabled_shops_in_room
 
 
@@ -151,13 +152,8 @@ def active_heroes_in_realm() -> list[dict]:
 
     Each item has name, level, class_name, and area_name only (no room or other details).
     """
-    now = timezone.now()
-    visible_threshold = now - timedelta(minutes=AFK_LOBBY_KICK_MINUTES)
     qs = (
-        Character.objects.filter(
-            is_in_realm=True,
-            last_activity_at__gte=visible_threshold,
-        )
+        realm_presence_hero_qs()
         .select_related("current_room__area", "character_class")
         .order_by("name")
     )
@@ -209,7 +205,12 @@ def consume_room_broadcast_entries(character) -> list[dict]:
     )
     rows = list(qs)
     out = [
-        {"id": b.id, "text": b.text, "log_tone": (b.log_tone or "").strip()}
+        {
+            "id": b.id,
+            "text": b.text,
+            "log_tone": (b.log_tone or "").strip(),
+            "scope": b.scope,
+        }
         for b in rows
     ]
     if rows:

@@ -186,6 +186,7 @@ class MonsterCombatTests(TestCase):
             speaker_id=None,
             target_character_id=other.pk,
             text="Secret for other only.",
+            scope=RoomBroadcast.Scope.ROOM,
         )
         self.hero.last_room_broadcast_id = max_id
         self.hero.save(update_fields=["last_room_broadcast_id", "updated_at"])

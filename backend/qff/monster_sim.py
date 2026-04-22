@@ -47,6 +47,7 @@ from qff.models import (
 )
 from qff.quest_engine import character_carries_item_template, character_item_template_quantity
 from qff.realtime import notify_qff_rooms
+from qff.realm_presence import broadcast_realm_depart
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +136,7 @@ def _narrate(
         target_character_id=target_character_id,
         text=t,
         log_tone=tone,
+        scope=RoomBroadcast.Scope.ROOM,
     )
 
 
@@ -1448,14 +1450,13 @@ def flush_combat_rounds(now) -> set[int]:
     return affected
 
 
-def _boot_hero_to_lobby(hero: Character) -> int:
+def _boot_hero_to_lobby(hero: Character) -> set[int]:
     """Persist an out-of-realm transition for ``hero``: drop aggro, clear combat/pending, narrate.
 
-    Returns the affected room id (for batched WS notifies).
+    Returns room ids to notify (realm-wide fanned lines + all touched rooms).
     """
     _disengage_monsters_from_hero(hero, reset_hero_combat=False)
-    rid = hero.current_room_id
-    _narrate(rid, f"{hero.name} vanishes from the realm.")
+    rooms = broadcast_realm_depart(hero, f"{hero.name} vanishes from the realm.")
     Character.objects.filter(pk=hero.pk).update(
         next_action_at=None,
         combat_target_monster_id=None,
@@ -1463,7 +1464,7 @@ def _boot_hero_to_lobby(hero: Character) -> int:
         is_in_realm=False,
         updated_at=timezone.now(),
     )
-    return rid
+    return rooms
 
 
 def flush_pending_leaves(now) -> set[int]:
@@ -1476,7 +1477,7 @@ def flush_pending_leaves(now) -> set[int]:
         pending_leave_at__lte=now,
     ).order_by("id")
     for hero in due:
-        affected.add(_boot_hero_to_lobby(hero))
+        affected |= _boot_hero_to_lobby(hero)
     return affected
 
 
@@ -1496,7 +1497,7 @@ def flush_afk_boots(now) -> set[int]:
         last_activity_at__lt=threshold,
     ).order_by("id")
     for hero in due:
-        affected.add(_boot_hero_to_lobby(hero))
+        affected |= _boot_hero_to_lobby(hero)
     return affected
 
 

@@ -110,6 +110,7 @@ from qff.monster_sim import (
     add_gold_to_room_floor,
     ensure_monster_engaged_by_attacker,
 )
+from qff.realm_presence import broadcast_realm_depart
 
 # Max RoomBroadcast.id immediately before engage_monsters (move/teleport); command_view
 # reads via consume_action_log_pre_engagement_cutover() to order action_log.
@@ -257,6 +258,7 @@ def _notify_peers_third_person(actor: CharacterType, witness_room_id: int, text:
         room_id=witness_room_id,
         speaker_id=actor.pk,
         text=t[:500],
+        scope=RoomBroadcast.Scope.ROOM,
     )
     Character.objects.filter(pk=actor.pk).update(
         last_room_broadcast_id=rb.id,
@@ -629,6 +631,7 @@ def _dispatch_non_leave(char: CharacterType, parsed) -> list[str]:
             room_id=char.current_room_id,
             speaker_id=char.pk,
             text=line,
+            scope=RoomBroadcast.Scope.ROOM,
         )
         char.last_room_broadcast_id = rb.id
         char.save(update_fields=["last_room_broadcast_id", "updated_at"])
@@ -907,9 +910,7 @@ def _handle_leave(char: CharacterType) -> list[str]:
     room = char.current_room
     room_is_safe = bool(getattr(room, "is_safe", False))
     if room_is_safe:
-        _notify_peers_third_person(
-            char, char.current_room_id, f"{char.name} vanishes from the realm."
-        )
+        broadcast_realm_depart(char, f"{char.name} vanishes from the realm.")
         _complete_leave(char)
         char.last_activity_at = now
         char.save(update_fields=["last_activity_at", "updated_at"])
@@ -978,6 +979,7 @@ def _handle_emote(char: CharacterType, parsed: ParsedEmote) -> list[str]:
         speaker_id=char.pk,
         target_character_id=other.pk,
         text=lines["target"].format(actor=char.name)[:500],
+        scope=RoomBroadcast.Scope.ROOM,
     )
     last_id = target_rb.id
 
@@ -994,6 +996,7 @@ def _handle_emote(char: CharacterType, parsed: ParsedEmote) -> list[str]:
             speaker_id=char.pk,
             target_character_id=hero.pk,
             text=peer_line[:500],
+            scope=RoomBroadcast.Scope.ROOM,
         )
         last_id = max(last_id, rb.id)
 

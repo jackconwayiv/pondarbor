@@ -675,6 +675,14 @@ class RoomItemSpawn(models.Model):
 
 
 class RoomBroadcast(models.Model):
+    """Room-level delivery; ``scope`` labels logical reach (room vs realm fanout vs future party/guild)."""
+
+    class Scope(models.TextChoices):
+        ROOM = "room", "Room"
+        REALM = "realm", "Realm"
+        PARTY = "party", "Party"  # reserved
+        GUILD = "guild", "Guild"  # reserved
+
     room = models.ForeignKey(
         Room, on_delete=models.CASCADE, related_name="broadcasts"
     )
@@ -695,6 +703,11 @@ class RoomBroadcast(models.Model):
     text = models.CharField(max_length=500)
     # Combat log tint in play HUD (hero_hit / enemy_hit / miss); empty = default.
     log_tone = models.CharField(max_length=16, blank=True, default="")
+    scope = models.CharField(
+        max_length=16,
+        choices=Scope.choices,
+        default=Scope.ROOM,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

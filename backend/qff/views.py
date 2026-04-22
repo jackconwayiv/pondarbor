@@ -1349,6 +1349,7 @@ def _dm_monster_template_dict(t: MonsterTemplate) -> dict:
         "hidden_description": t.hidden_description or "",
         "lore_dc": t.lore_dc,
         "attack_weapon_label": t.attack_weapon_label or "",
+        "attack_verb": t.attack_verb or "",
     }
 
 
@@ -1455,6 +1456,8 @@ def dm_monster_template_detail(request, pk):
                 pass
     if "attack_weapon_label" in request.data:
         tpl.attack_weapon_label = (request.data.get("attack_weapon_label") or "")[:120]
+    if "attack_verb" in request.data:
+        tpl.attack_verb = (request.data.get("attack_verb") or "")[:80]
     tpl.save()
     return Response(_dm_monster_template_dict(tpl))
 

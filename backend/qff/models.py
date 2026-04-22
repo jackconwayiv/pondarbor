@@ -1374,6 +1374,11 @@ class MonsterTemplate(models.Model):
         blank=True,
         help_text="Optional flavor for monster hit lines (e.g. claws, rusty blade).",
     )
+    attack_verb = models.CharField(
+        max_length=80,
+        blank=True,
+        help_text="Optional verb for strikes/misses (e.g. bites, claws, slashes). Empty = default text.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

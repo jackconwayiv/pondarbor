@@ -671,6 +671,8 @@ export type DmMonsterTemplate = {
   /** Null = use template level for DC. */
   lore_dc?: number | null;
   attack_weapon_label?: string;
+  /** e.g. bites, claws — empty uses default strike/swing phrasing. */
+  attack_verb?: string;
 };
 
 export async function dmFetchMonsterTemplates(

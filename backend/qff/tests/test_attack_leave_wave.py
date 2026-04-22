@@ -314,15 +314,16 @@ class LeaveCommandTests(TestCase):
         self.assertIsNone(hero.pending_leave_at)
         self.assertTrue(any("return to the lobby" in m.lower() for m in out))
 
-    def test_leave_unsafe_no_aggro_is_immediate(self):
-        # No monsters in the unsafe room → leave immediately even without is_safe.
+    def test_leave_unsafe_no_monsters_queues_delay(self):
+        # Unsafe room: always 6s delay to leave, even with no aggro.
         hero = self._hero("Bo", self.unsafe_room)
         out = execute_command(hero, ParsedLeave())
         hero.refresh_from_db()
-        self.assertFalse(hero.is_in_realm)
-        self.assertTrue(any("return to the lobby" in m.lower() for m in out))
+        self.assertTrue(hero.is_in_realm)
+        self.assertIsNotNone(hero.pending_leave_at)
+        self.assertTrue(any("stay alive" in m.lower() for m in out))
 
-    def test_leave_with_aggro_queues_delay(self):
+    def test_leave_unsafe_while_engaged_is_blocked(self):
         hero = self._hero("Cy", self.unsafe_room)
         MonsterInstance.objects.create(
             template=self.tpl,
@@ -333,38 +334,25 @@ class LeaveCommandTests(TestCase):
         out = execute_command(hero, ParsedLeave())
         hero.refresh_from_db()
         self.assertTrue(hero.is_in_realm)
-        self.assertIsNotNone(hero.pending_leave_at)
-        self.assertTrue(any("stay alive" in m.lower() for m in out))
+        self.assertIsNone(hero.pending_leave_at)
+        self.assertTrue(any("life is at stake" in m.lower() for m in out))
 
     def test_pending_leave_completes_in_sim(self):
         hero = self._hero("Dex", self.unsafe_room)
-        mon = MonsterInstance.objects.create(
-            template=self.tpl,
-            current_room=self.unsafe_room,
-            cur_hp=5,
-            engaged_character=hero,
-        )
         execute_command(hero, ParsedLeave())
         hero.refresh_from_db()
+        self.assertIsNotNone(hero.pending_leave_at)
         # Advance pending_leave_at into the past.
         Character.objects.filter(pk=hero.pk).update(
             pending_leave_at=timezone.now() - timedelta(seconds=1)
         )
         flush_pending_leaves(timezone.now())
         hero.refresh_from_db()
-        mon.refresh_from_db()
         self.assertFalse(hero.is_in_realm)
         self.assertIsNone(hero.pending_leave_at)
-        self.assertIsNone(mon.engaged_character_id)
 
     def test_non_leave_command_cancels_pending(self):
         hero = self._hero("Eli", self.unsafe_room)
-        MonsterInstance.objects.create(
-            template=self.tpl,
-            current_room=self.unsafe_room,
-            cur_hp=5,
-            engaged_character=hero,
-        )
         execute_command(hero, ParsedLeave())
         hero.refresh_from_db()
         self.assertIsNotNone(hero.pending_leave_at)

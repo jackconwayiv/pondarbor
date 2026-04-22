@@ -16,6 +16,7 @@ from qff.models import (
     Item,
     ItemInstance,
     Room,
+    RoomItem,
 )
 
 User = get_user_model()
@@ -70,3 +71,16 @@ class ItemLoreTemplateUnlockTests(TestCase):
         self.assertTrue(any("Secret blurb" in x for x in lines))
         inst2.refresh_from_db()
         self.assertTrue(inst2.unlocked)
+
+    @patch("qff.command_handlers.roll_d100_plus_stat_encumbered", return_value=100)
+    def test_inspect_visible_room_item_unlocks_lore_without_inventory(self, _m):
+        self.hero.inventory = []
+        self.hero.save()
+        RoomItem.objects.create(room=self.room, item=self.item)
+        lines = execute_command(
+            self.hero, parse_command("inspect glint"), world_sync=False
+        )
+        self.assertTrue(any("Secret blurb" in x for x in lines))
+        self.assertTrue(
+            character_knows_item_lore_for_template(self.hero, self.item)
+        )

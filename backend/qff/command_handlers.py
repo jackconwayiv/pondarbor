@@ -7,7 +7,7 @@ from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from django.db import transaction
-from django.db.models import Max, Q
+from django.db.models import Max
 from django.utils import timezone
 
 from qff.command_parser import (
@@ -77,6 +77,7 @@ from qff.models import (
     CharacterExitSeen,
     CharacterRoomSearchClaim,
     Interactable,
+    Item,
     ItemInstance,
     MonsterInstance,
     Npc,
@@ -866,12 +867,10 @@ def _handle_attack(char: CharacterType, parsed: ParsedAttack) -> list[str]:
     return [f"You prepare to attack the {mname}."]
 
 
-def _hero_has_aggro(char: CharacterType) -> bool:
-    """True if any monster in the realm is engaged with or pursuing this hero."""
+def _monster_engaged_with_hero(char: CharacterType) -> bool:
+    """True if any living monster is actively engaged with the hero (combat)."""
     return MonsterInstance.objects.filter(
-        cur_hp__gt=0,
-    ).filter(
-        Q(engaged_character_id=char.pk) | Q(pursuit_target_character_id=char.pk),
+        cur_hp__gt=0, engaged_character_id=char.pk
     ).exists()
 
 
@@ -896,12 +895,18 @@ def _complete_leave(char: CharacterType) -> None:
 def _handle_leave(char: CharacterType) -> list[str]:
     _touch_activity(char)
     now = timezone.now()
+    if _monster_engaged_with_hero(char):
+        char.pending_leave_at = None
+        char.save(
+            update_fields=["pending_leave_at", "last_activity_at", "updated_at"]
+        )
+        return ["You can't leave the realm when your life is at stake!"]
     if char.pending_leave_at is not None and char.pending_leave_at > now:
         char.save(update_fields=["last_activity_at", "updated_at"])
         return ["You are already preparing to leave the realm."]
     room = char.current_room
     room_is_safe = bool(getattr(room, "is_safe", False))
-    if room_is_safe or not _hero_has_aggro(char):
+    if room_is_safe:
         _notify_peers_third_person(
             char, char.current_room_id, f"{char.name} vanishes from the realm."
         )
@@ -2146,11 +2151,7 @@ def _handle_look_inspect(char: CharacterType, parsed: ParsedLookInspect) -> list
     ri = _find_room_item(char, target, floor_ids)
     if ri:
         _look_focus_peers(char, parsed, f"the {_room_item_display_label(ri)}")
-        it = ri.item
-        base = (it.description or "").strip() or f"It is {it.name}."
-        extra = format_item_inspect_parenthetical(it, False)
-        text = (base + extra).strip()
-        return [text]
+        return _lines_for_item_inspect_core(char, ri.item, None)
 
     shop_line = find_any_shop_line_in_room(char, target)
     if shop_line is not None:
@@ -2225,44 +2226,62 @@ def _lines_for_character_inspect(
     return [opener + " " + " ".join(parts)]
 
 
-def _lines_for_item_inspect(actor: CharacterType, inst: ItemInstance) -> list[str]:
-    it = inst.item
+def _lines_for_item_inspect_core(
+    actor: CharacterType, it: Item, inst: ItemInstance | None
+) -> list[str]:
+    """Shared look/inspect lore for floor, inventory, or visible room items (no instance)."""
     base = (it.description or "").strip() or f"It is {it.name}."
     template_knows = character_knows_item_lore_for_template(actor, it)
-    effective = inst.unlocked or template_knows
+    if inst is not None:
+        effective = inst.unlocked or template_knows
+    else:
+        effective = template_knows
     lore_extra = ""
     enc: list[str] = []
     if it.lore_chance is None:
         if (it.lore or "").strip():
             lore_extra = " " + it.lore.strip()
-        inst.unlocked = True
-        inst.save(update_fields=["unlocked", "updated_at"])
+        if inst is not None:
+            inst.unlocked = True
+            inst.save(update_fields=["unlocked", "updated_at"])
         ensure_character_item_lore_template_unlocked(actor, it)
     else:
         if effective:
             if (it.lore or "").strip():
                 lore_extra = " " + it.lore.strip()
-            if not inst.unlocked and template_knows:
+            if inst is not None and not inst.unlocked and template_knows:
                 inst.unlocked = True
                 inst.save(update_fields=["unlocked", "updated_at"])
         else:
             enc = encumbrance_notice_if_hindered(actor)
             roll = roll_d100_plus_stat_encumbered(actor, int(actor.smarts))
             if roll >= int(it.lore_chance):
-                inst.unlocked = True
-                inst.save(update_fields=["unlocked", "updated_at"])
+                if inst is not None:
+                    inst.unlocked = True
+                    inst.save(update_fields=["unlocked", "updated_at"])
                 ensure_character_item_lore_template_unlocked(actor, it)
                 if (it.lore or "").strip():
                     lore_extra = " " + it.lore.strip()
             else:
-                failed = list(inst.chars_failed_to_inspect or [])
-                if actor.pk not in failed:
-                    failed.append(actor.pk)
-                    inst.chars_failed_to_inspect = failed
-                    inst.save(update_fields=["chars_failed_to_inspect", "updated_at"])
+                if inst is not None:
+                    failed = list(inst.chars_failed_to_inspect or [])
+                    if actor.pk not in failed:
+                        failed.append(actor.pk)
+                        inst.chars_failed_to_inspect = failed
+                        inst.save(
+                            update_fields=["chars_failed_to_inspect", "updated_at"]
+                        )
     text = (base + lore_extra).strip()
-    lore_revealed = (it.lore_chance is None) or effective
+    lore_revealed = (it.lore_chance is None) or character_knows_item_lore_for_template(
+        actor, it
+    )
+    if inst is not None and inst.unlocked:
+        lore_revealed = True
     extra = format_item_inspect_parenthetical(it, lore_revealed)
     if extra:
         text = text + extra
     return enc + [text]
+
+
+def _lines_for_item_inspect(actor: CharacterType, inst: ItemInstance) -> list[str]:
+    return _lines_for_item_inspect_core(actor, inst.item, inst)

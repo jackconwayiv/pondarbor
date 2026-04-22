@@ -1016,10 +1016,17 @@ def _resolve_monster_strike(monster: MonsterInstance, now) -> bool:
     res = resolve_physical_strike(atk, dfn, flat_base_damage=paper_damage)
     mname = monster.template.name
     wpn = (tpl.attack_weapon_label or "").strip()
+    vrb = (getattr(tpl, "attack_verb", None) or "").strip()
     if res.outcome == "miss":
+        if vrb:
+            miss_you = f"{mname} {vrb} at you but misses!"
+            miss_peer = f"{mname} {vrb} at {hero.name} but misses."
+        else:
+            miss_you = f"{mname} swings at you but misses!"
+            miss_peer = f"{mname} swings at {hero.name} but misses."
         _narrate(
             room_id,
-            f"{mname} swings at you but misses!",
+            miss_you,
             target_character_id=hero.pk,
             log_tone="miss",
         )
@@ -1027,7 +1034,7 @@ def _resolve_monster_strike(monster: MonsterInstance, now) -> bool:
             if h.pk != hero.pk:
                 _narrate(
                     room_id,
-                    f"{mname} swings at {hero.name} but misses.",
+                    miss_peer,
                     target_character_id=h.pk,
                     log_tone="miss",
                 )
@@ -1063,11 +1070,19 @@ def _resolve_monster_strike(monster: MonsterInstance, now) -> bool:
             hit_you = f"The {mname} attacks you with its {wpn} for {dmg} damage!"
             hit_peer = f"The {mname} attacks {hero.name} with its {wpn} for {dmg} damage!"
     elif res.outcome == "crit":
-        hit_you = f"{mname} critically strikes you for {dmg} damage!"
-        hit_peer = f"{mname} critically strikes {hero.name} for {dmg} damage!"
+        if vrb:
+            hit_you = f"{mname} critically {vrb} you for {dmg} damage!"
+            hit_peer = f"{mname} critically {vrb} {hero.name} for {dmg} damage!"
+        else:
+            hit_you = f"{mname} critically strikes you for {dmg} damage!"
+            hit_peer = f"{mname} critically strikes {hero.name} for {dmg} damage!"
     else:
-        hit_you = f"{mname} strikes you for {dmg} damage!"
-        hit_peer = f"{mname} strikes {hero.name} for {dmg} damage!"
+        if vrb:
+            hit_you = f"{mname} {vrb} you for {dmg} damage!"
+            hit_peer = f"{mname} {vrb} {hero.name} for {dmg} damage!"
+        else:
+            hit_you = f"{mname} strikes you for {dmg} damage!"
+            hit_peer = f"{mname} strikes {hero.name} for {dmg} damage!"
     _narrate(room_id, hit_you, target_character_id=hero.pk, log_tone="enemy_hit")
     for h in _heroes_in_room(room_id):
         if h.pk != hero.pk:

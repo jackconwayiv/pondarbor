@@ -681,6 +681,36 @@ class MonsterCombatTests(TestCase):
         )
         self.assertTrue(any("filthy claws" in m for m in msgs), msgs)
 
+    def test_monster_strike_attack_verb_miss_uses_verb_phrase(self):
+        self.tpl.attack_verb = "bites"
+        self.tpl.attack_weapon_label = ""
+        self.tpl.save(update_fields=["attack_verb", "attack_weapon_label", "updated_at"])
+        self.monster.next_action_at = timezone.now()
+        self.monster.save(update_fields=["next_action_at", "updated_at"])
+        max_id = RoomBroadcast.objects.aggregate(m=Max("id"))["m"] or 0
+        with patch(
+            "qff.monster_sim.resolve_physical_strike",
+            return_value=StrikeResult(
+                outcome="miss",
+                damage=0,
+                base_damage=0,
+                damage_after_mitigation=0,
+                was_crit=False,
+                hit_chance=10,
+                effective_dodge_chance=5,
+                crit_chance=0.1,
+            ),
+        ):
+            _resolve_monster_strike(self.monster, timezone.now())
+        msgs = list(
+            RoomBroadcast.objects.filter(
+                room_id=self.room_danger.id, id__gt=max_id
+            ).values_list("text", flat=True)
+        )
+        self.assertTrue(
+            any("bites" in m and "at you but misses" in m for m in msgs), msgs
+        )
+
     def test_monster_look_hidden_uses_smarts_vs_lore_dc(self):
         self.tpl.hidden_description = "Ancient evil stirs."
         self.tpl.lore_dc = 5

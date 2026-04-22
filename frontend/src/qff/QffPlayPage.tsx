@@ -150,7 +150,7 @@ export default function QffPlayPage() {
   const lastBroadcastIdRef = useRef(0);
   /** RoomBroadcast ids already applied via POST /command (avoids duplicating lines when session effect runs). */
   const commandActionLogBroadcastIdsRef = useRef<Set<number>>(new Set());
-  /** Log line ids for in-flight optimistic `> cmd` + `…` rows (stripped when the HTTP response arrives). */
+  /** Log line ids for in-flight optimistic `…` (and optional move preview); stripped when the HTTP response arrives. */
   const optimisticCommandLogIdsRef = useRef<number[]>([]);
   /** In-flight POST /command; a second Enter queues at most one follow-up in `queuedLineRef`. */
   const commandInFlightRef = useRef(false);
@@ -181,26 +181,46 @@ export default function QffPlayPage() {
     const token = await getTokenRef.current();
     try {
       const res = await postQffSessionLeave(token);
-      if (!res.pending) {
+      if (!res.in_realm) {
         navigate("/qff");
         return;
       }
-      setLeavePending({ waitSeconds: res.wait_seconds });
-      const delayMs = Math.max(0, res.wait_seconds * 1000) + 250;
-      window.setTimeout(async () => {
-        try {
-          const s = await fetchQffSession(token);
-          if (!s.has_character || s.force_lobby) {
-            navigate("/qff");
-            return;
+      if (res.pending) {
+        setLeavePending({ waitSeconds: res.wait_seconds });
+        const delayMs = Math.max(0, res.wait_seconds * 1000) + 250;
+        window.setTimeout(async () => {
+          try {
+            const s = await fetchQffSession(token);
+            if (!s.has_character || s.force_lobby) {
+              navigate("/qff");
+              return;
+            }
+            setSession(s);
+          } catch {
+            /* fall through: leave state stays; user can retry */
+          } finally {
+            setLeavePending(false);
           }
-          setSession(s);
-        } catch {
-          /* fall through: leave state stays; user can retry */
-        } finally {
-          setLeavePending(false);
-        }
-      }, delayMs);
+        }, delayMs);
+        return;
+      }
+      if (res.messages.length > 0) {
+        setLogLines((prev) => {
+          const nextId = () => logLineIdRef.current++;
+          const block = res.messages.map((text) => ({
+            id: nextId(),
+            text,
+            recent: true,
+          }));
+          return [...prev.map((p) => ({ ...p, recent: false })), ...block];
+        });
+      }
+      try {
+        const s = await fetchQffSession(token);
+        if (s.has_character) setSession(s);
+      } catch {
+        /* ignore */
+      }
     } catch {
       setLeavePending(false);
     }
@@ -432,14 +452,23 @@ export default function QffPlayPage() {
     const optimisticSecond =
       cur?.has_character && moveDir ? optimisticMoveHeadLine(cur.exits, moveDir) : null;
       try {
-        const oid1 = logLineIdRef.current++;
-        const oid2 = logLineIdRef.current++;
-        optimisticCommandLogIdsRef.current = [oid1, oid2];
-        setLogLines((prev) => [
-          ...prev.map((p) => ({ ...p, recent: false })),
-          { id: oid1, text: `> ${raw}`, recent: true },
-          { id: oid2, text: optimisticSecond ?? "…", recent: true },
-        ]);
+        if (optimisticSecond != null) {
+          const oid1 = logLineIdRef.current++;
+          const oid2 = logLineIdRef.current++;
+          optimisticCommandLogIdsRef.current = [oid1, oid2];
+          setLogLines((prev) => [
+            ...prev.map((p) => ({ ...p, recent: false })),
+            { id: oid1, text: "…", recent: true },
+            { id: oid2, text: optimisticSecond, recent: true },
+          ]);
+        } else {
+          const oid1 = logLineIdRef.current++;
+          optimisticCommandLogIdsRef.current = [oid1];
+          setLogLines((prev) => [
+            ...prev.map((p) => ({ ...p, recent: false })),
+            { id: oid1, text: "…", recent: true },
+          ]);
+        }
         let token = commandTokenRef.current;
         if (!token) {
           token = await getTokenRef.current();
@@ -458,6 +487,7 @@ export default function QffPlayPage() {
         }
         commandTokenRef.current = token;
         const sessionSnapshot = res.session;
+        const echoLine = res.echo_command === true;
         const verb = raw
           .replace(/^>+\s*/, "")
           .replace(/^\//, "")
@@ -484,10 +514,12 @@ export default function QffPlayPage() {
               recent: true,
               logTone: actionLogEntryTone(e),
             }));
-            block = [{ id: nextId(), text: `> ${raw}`, recent: true }, ...block];
+            if (echoLine) {
+              block = [{ id: nextId(), text: `> ${raw}`, recent: true }, ...block];
+            }
           } else {
             const narr = res.messages;
-            const toShow: string[] = [`> ${raw}`, ...narr];
+            const toShow: string[] = echoLine ? [`> ${raw}`, ...narr] : [...narr];
             block = toShow.map((text) => ({
               id: nextId(),
               text,
@@ -633,8 +665,7 @@ export default function QffPlayPage() {
             ? "none obvious"
             : exits
                 .map((e) => {
-                  if (e.is_blocked) return `${e.label} (blocked)`;
-                  if (e.is_locked) return `${e.label} (locked)`;
+                  if (e.is_blocked || e.is_locked) return `${e.label} (locked)`;
                   return e.label;
                 })
                 .join(", ")}

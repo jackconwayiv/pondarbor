@@ -295,6 +295,7 @@ export default function QffDmPage() {
     useState("");
   const [panelLairTemplateLoreDc, setPanelLairTemplateLoreDc] = useState("");
   const [panelLairTemplateWeaponLabel, setPanelLairTemplateWeaponLabel] = useState("");
+  const [panelLairTemplateAttackVerb, setPanelLairTemplateAttackVerb] = useState("");
   const [panelLairTemplateCombatBusy, setPanelLairTemplateCombatBusy] = useState(false);
   const [monsterTemplates, setMonsterTemplates] = useState<DmMonsterTemplate[]>([]);
   const dmMapColumnRef = useRef<HTMLDivElement | null>(null);
@@ -391,6 +392,7 @@ export default function QffDmPage() {
       setPanelLairTemplateHiddenDescription("");
       setPanelLairTemplateLoreDc("");
       setPanelLairTemplateWeaponLabel("");
+      setPanelLairTemplateAttackVerb("");
       return;
     }
     const tid = parseInt(panelMonsterLairTemplateId, 10);
@@ -401,6 +403,7 @@ export default function QffDmPage() {
       setPanelLairTemplateHiddenDescription("");
       setPanelLairTemplateLoreDc("");
       setPanelLairTemplateWeaponLabel("");
+      setPanelLairTemplateAttackVerb("");
       return;
     }
     const t = monsterTemplates.find((x) => x.id === tid);
@@ -413,6 +416,7 @@ export default function QffDmPage() {
         t.lore_dc != null && t.lore_dc !== undefined ? String(t.lore_dc) : "",
       );
       setPanelLairTemplateWeaponLabel(t.attack_weapon_label ?? "");
+      setPanelLairTemplateAttackVerb(t.attack_verb ?? "");
     }
   }, [panelMonsterLairTemplateId, monsterTemplates]);
 
@@ -840,6 +844,7 @@ export default function QffDmPage() {
         hidden_description: hiddenDesc,
         lore_dc,
         attack_weapon_label: panelLairTemplateWeaponLabel.trim(),
+        attack_verb: panelLairTemplateAttackVerb.trim(),
       });
       setMonsterTemplates((prev) => prev.map((x) => (x.id === tid ? updated : x)));
     } catch (e) {
@@ -855,6 +860,7 @@ export default function QffDmPage() {
     panelLairTemplateHiddenDescription,
     panelLairTemplateLoreDc,
     panelLairTemplateWeaponLabel,
+    panelLairTemplateAttackVerb,
   ]);
 
   const addExit = useCallback(async () => {
@@ -1561,6 +1567,20 @@ export default function QffDmPage() {
                             placeholder="e.g. filthy claws"
                             bg="#222"
                           />
+                        </Field.Root>
+                        <Field.Root mt={2}>
+                          <Field.Label fontSize="xs">Attack verb (optional)</Field.Label>
+                          <Input
+                            size="sm"
+                            value={panelLairTemplateAttackVerb}
+                            onChange={(e) => setPanelLairTemplateAttackVerb(e.target.value)}
+                            placeholder="e.g. bites, claws, slashes"
+                            bg="#222"
+                          />
+                          <Text fontSize="xs" color="#888" mt={1}>
+                            Used for miss and unarmed hit lines. Leave blank for default swing/strike
+                            phrasing.
+                          </Text>
                         </Field.Root>
                       </Box>
                     ) : null}

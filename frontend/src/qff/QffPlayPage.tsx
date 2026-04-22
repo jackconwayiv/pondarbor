@@ -10,7 +10,7 @@ import {
   Text,
 } from "@chakra-ui/react";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
@@ -24,6 +24,7 @@ import {
   type QffAreaMapCell,
   type QffCommandResponse,
   type QffSessionWithCharacter,
+  type QffShopPanelLine,
 } from "./api";
 import { optimisticMoveHeadLine, tryParseQffMoveDirection } from "./commandParser";
 import { QFF_NARRATIVE_TOO_DARK } from "./copy";
@@ -43,6 +44,18 @@ const HUD_LOG_RECENT = "#f5f5f5";
 const HUD_LOG_HERO_HIT = "#dff7e8";
 const HUD_LOG_ENEMY_HIT = "#fce8f0";
 const HUD_LOG_MISS = "#faf6e0";
+
+function sortShopStockForDisplay(lines: QffShopPanelLine[]): QffShopPanelLine[] {
+  return [...lines].sort((a, b) => {
+    if (a.price !== b.price) return a.price - b.price;
+    const aKey = a.quantity == null ? Number.POSITIVE_INFINITY : a.quantity;
+    const bKey = b.quantity == null ? Number.POSITIVE_INFINITY : b.quantity;
+    if (aKey !== bKey) return aKey - bKey;
+    const nc = a.name.localeCompare(b.name);
+    if (nc !== 0) return nc;
+    return a.id - b.id;
+  });
+}
 
 function hudLogLineColor(recent: boolean, logTone: string | undefined): string {
   if (logTone === "hero_hit") return HUD_LOG_HERO_HIT;
@@ -131,6 +144,7 @@ export default function QffPlayPage() {
   const [shopPanelOpen, setShopPanelOpen] = useState(false);
   /** When true, container contents replace the minimap (same grid slot as shop). */
   const [containerPanelOpen, setContainerPanelOpen] = useState(false);
+  const [questPanelOpen, setQuestPanelOpen] = useState(false);
   const prevRoomIdRef = useRef<number | null>(null);
   const logLineIdRef = useRef(0);
   const lastBroadcastIdRef = useRef(0);
@@ -367,6 +381,7 @@ export default function QffPlayPage() {
       // Left the room — only auto-close if the new room has no shops at all.
       if ((session.shops?.length ?? 0) === 0) setShopPanelOpen(false);
       setContainerPanelOpen(false);
+      setQuestPanelOpen(false);
     }
   }, [session]);
 
@@ -385,6 +400,7 @@ export default function QffPlayPage() {
     if (mapWord === "map") {
       setShopPanelOpen(false);
       setContainerPanelOpen(false);
+      setQuestPanelOpen(false);
       setMapVisible(true);
       setLine("");
       queueMicrotask(() => inputRef.current?.focus());
@@ -496,10 +512,17 @@ export default function QffPlayPage() {
         if (shopVerb && (sessionSnapshot.shops?.length ?? 0) > 0) {
           setShopPanelOpen(true);
           setContainerPanelOpen(false);
+          setQuestPanelOpen(false);
         }
         if (verb === "open" && sessionSnapshot.room.opened_container) {
           setContainerPanelOpen(true);
           setShopPanelOpen(false);
+          setQuestPanelOpen(false);
+        }
+        if (verb === "quest") {
+          setQuestPanelOpen(true);
+          setShopPanelOpen(false);
+          setContainerPanelOpen(false);
         }
         setSession(sessionSnapshot);
       } catch (e) {
@@ -737,64 +760,61 @@ export default function QffPlayPage() {
       overflowY="auto"
       maxH={{ base: "min(300px, 42vh)", lg: "min(460px, 48vh)" }}
     >
-      <Flex justify="space-between" align="center" mb={1}>
-        <Text fontWeight="semibold" color={HUD_PANEL_TEXT}>
-          Wares for sale
-        </Text>
-        <Text
-          as="button"
-          fontSize="xs"
-          color={HUD_PANEL_TEXT_MUTED}
-          _hover={{ color: HUD_PANEL_TEXT }}
-          onClick={() => {
-            setShopPanelOpen(false);
-            setMapVisible(true);
-          }}
-          title="Close (or type 'map')"
-        >
-          [map]
-        </Text>
-      </Flex>
       {shopsForPanel.length === 0 ? (
         <Text color={HUD_PANEL_TEXT_MUTED}>No shops here.</Text>
       ) : (
-        shopsForPanel.map((sh) => (
-          <Box key={sh.id} mt={2}>
-            <Text color={t.accent} fontWeight="medium">
-              {sh.npc_name}
-            </Text>
-            {sh.welcome_text && (
-              <Text color={HUD_PANEL_TEXT_MUTED} fontStyle="italic" mb={1}>
-                {sh.welcome_text}
+        shopsForPanel.map((sh, shopIdx) => {
+          const sorted = sortShopStockForDisplay(sh.stock_lines);
+          return (
+            <Box key={sh.id} mt={shopIdx === 0 ? 0 : 2}>
+              <Text fontWeight="semibold" color={HUD_PANEL_TEXT} mb={1}>
+                {sh.npc_name}&apos;s Shoppe
               </Text>
-            )}
-            {sh.stock_lines.length === 0 ? (
-              <Text color={HUD_PANEL_TEXT_MUTED}>(nothing for sale)</Text>
-            ) : (
-              <Stack gap={0}>
-                {sh.stock_lines.map((sl) => (
-                  <Flex
-                    key={sl.id}
-                    justify="space-between"
-                    gap={2}
-                    color={HUD_PANEL_TEXT}
-                  >
-                    <Text>
-                      {sl.name}
-                    </Text>
-                    <Text color={HUD_PANEL_TEXT_MUTED}>
-                      {sl.price}g · {sl.quantity == null ? "" : `×${sl.quantity}`}
-                    </Text>
-                  </Flex>
-                ))}
-              </Stack>
-            )}
-          </Box>
-        ))
+              {sh.stock_lines.length === 0 ? (
+                <Text color={HUD_PANEL_TEXT_MUTED}>(nothing for sale)</Text>
+              ) : (
+                <Grid
+                  templateColumns="minmax(2.25ch, auto) 1fr auto"
+                  columnGap={2}
+                  rowGap={0.5}
+                  alignItems="baseline"
+                >
+                  <Text color={HUD_PANEL_TEXT_MUTED} fontSize="2xs">
+                    Qty
+                  </Text>
+                  <Text color={HUD_PANEL_TEXT_MUTED} fontSize="2xs">
+                    Item
+                  </Text>
+                  <Text color={HUD_PANEL_TEXT_MUTED} fontSize="2xs" textAlign="right">
+                    Cost
+                  </Text>
+                  {sorted.map((sl) => (
+                    <Fragment key={sl.id}>
+                      <Text color={HUD_PANEL_TEXT} whiteSpace="nowrap" fontSize="xs">
+                        {sl.quantity == null ? "∞" : sl.quantity}
+                      </Text>
+                      <Text color={HUD_PANEL_TEXT} minW={0} fontSize="xs">
+                        {sl.name}
+                      </Text>
+                      <Text
+                        color={HUD_PANEL_TEXT}
+                        whiteSpace="nowrap"
+                        textAlign="right"
+                        fontSize="xs"
+                      >
+                        {sl.price}g
+                      </Text>
+                    </Fragment>
+                  ))}
+                </Grid>
+              )}
+            </Box>
+          );
+        })
       )}
       <Text mt={2} color={HUD_PANEL_TEXT_MUTED} fontSize="2xs">
-        Type <strong>buy &lt;item&gt;</strong> to purchase. <strong>map</strong> to
-        return.
+        Type <strong>buy &lt;item&gt;</strong> to purchase. <strong>look</strong> /{" "}
+        <strong>inspect</strong> a listed item. <strong>map</strong> to return.
       </Text>
     </Box>
   );
@@ -818,25 +838,7 @@ export default function QffPlayPage() {
         overflowY="auto"
         maxH={{ base: "min(300px, 42vh)", lg: "min(460px, 48vh)" }}
       >
-        <Flex justify="space-between" align="center" mb={1}>
-          <Text fontWeight="semibold" color={HUD_PANEL_TEXT}>
-            Container
-          </Text>
-          <Text
-            as="button"
-            fontSize="xs"
-            color={HUD_PANEL_TEXT_MUTED}
-            _hover={{ color: HUD_PANEL_TEXT }}
-            onClick={() => {
-              setContainerPanelOpen(false);
-              setMapVisible(true);
-            }}
-            title="Close (or type 'map')"
-          >
-            [map]
-          </Text>
-        </Flex>
-        <Text color={t.accent} fontWeight="medium" mb={1}>
+        <Text fontWeight="semibold" color={HUD_PANEL_TEXT} mb={1}>
           {openedForPanel.name}
         </Text>
         {openedForPanel.items.length === 0 ? (
@@ -857,6 +859,44 @@ export default function QffPlayPage() {
         </Text>
       </Box>
     ) : null;
+
+  const activeQuestRows = session.active_quests ?? [];
+  const questPanel = (
+    <Box
+      position="relative"
+      flexShrink={0}
+      w="100%"
+      minW={0}
+      borderWidth="1px"
+      borderColor={HUD_PANEL_BORDER}
+      borderRadius="md"
+      p={2}
+      bg={HUD_PANEL_BG}
+      fontSize="xs"
+      display="flex"
+      flexDirection="column"
+      overflowY="auto"
+      maxH={{ base: "min(300px, 42vh)", lg: "min(460px, 48vh)" }}
+    >
+      <Text fontWeight="semibold" color={HUD_PANEL_TEXT} mb={1}>
+        Active Quests
+      </Text>
+      {activeQuestRows.length === 0 ? (
+        <Text color={HUD_PANEL_TEXT_MUTED}>No active quests.</Text>
+      ) : (
+        <Stack gap={0.5}>
+          {activeQuestRows.map((q, i) => (
+            <Text key={`${q.slug}-${i}`} color={HUD_PANEL_TEXT}>
+              {q.label}
+            </Text>
+          ))}
+        </Stack>
+      )}
+      <Text mt={2} color={HUD_PANEL_TEXT_MUTED} fontSize="2xs">
+        <strong>map</strong> to return.
+      </Text>
+    </Box>
+  );
 
   const characterPanel = (
     <Box
@@ -1104,7 +1144,7 @@ export default function QffPlayPage() {
             minH={0}
             aria-hidden
           />
-          {!mapMinimal || shopPanelOpen || containerPanelOpen ? (
+          {!mapMinimal || shopPanelOpen || containerPanelOpen || questPanelOpen ? (
             <Box
               gridColumn={{ base: "1", lg: "2" }}
               gridRow={{ base: "auto", lg: "1 / span 2" }}
@@ -1115,7 +1155,9 @@ export default function QffPlayPage() {
                 ? shopPanel
                 : containerPanelOpen && containerPanel
                   ? containerPanel
-                  : mapPanel}
+                  : questPanelOpen
+                    ? questPanel
+                    : mapPanel}
             </Box>
           ) : null}
           <Box

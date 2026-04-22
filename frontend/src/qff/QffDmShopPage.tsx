@@ -60,7 +60,7 @@ export default function QffDmShopPage() {
   const [sellPct, setSellPct] = useState(50);
   const [newLine, setNewLine] = useState({
     item_id: "",
-    price: "10",
+    price: "",
     quantity: "",
     sort_order: "0",
   });
@@ -103,7 +103,7 @@ export default function QffDmShopPage() {
       setNewLine((n) => ({
         ...n,
         item_id: String(created.id),
-        price: String(Math.max(1, created.cost || 1)),
+        price: String(Math.max(0, created.cost)),
       }));
       setQuickName("");
       setQuickSlug("");
@@ -192,14 +192,20 @@ export default function QffDmShopPage() {
         setErr("Quantity must be empty (unlimited) or a positive integer.");
         return;
       }
+      const itemRow = items.find((it) => it.id === iid);
+      const priceStr = newLine.price.trim();
+      const parsedPrice = parseInt(priceStr, 10);
+      const fromTemplate = Math.max(0, itemRow?.cost ?? 0);
+      const effectivePrice =
+        priceStr !== "" && Number.isFinite(parsedPrice) ? parsedPrice : fromTemplate;
       await dmCreateNpcShopStockLine(token, npcId, {
         item_id: iid,
-        price: Math.max(1, parseInt(newLine.price, 10) || 1),
+        price: Math.max(1, effectivePrice),
         quantity,
         sort_order: Math.max(0, parseInt(newLine.sort_order, 10) || 0),
       });
       await loadShop(npcId);
-      setNewLine({ item_id: "", price: "10", quantity: "", sort_order: "0" });
+      setNewLine({ item_id: "", price: "", quantity: "", sort_order: "0" });
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Add line failed");
     }
@@ -519,9 +525,7 @@ export default function QffDmShopPage() {
                       setNewLine((n) => ({
                         ...n,
                         item_id: itemId,
-                        price: chosen
-                          ? String(Math.max(1, chosen.cost || 1))
-                          : n.price,
+                        price: chosen ? String(Math.max(0, chosen.cost)) : "",
                       }));
                     }}
                     bg="#222"

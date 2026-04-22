@@ -1,6 +1,7 @@
 from django.test import SimpleTestCase
 
 from qff.command_parser import (
+    ParsedActiveQuests,
     ParsedAttack,
     ParsedBuyAbilities,
     ParsedConsumeItem,
@@ -64,6 +65,12 @@ class CommandParserTests(SimpleTestCase):
     def test_search(self):
         self.assertIsInstance(parse_command("search"), ParsedSearch)
         self.assertIsInstance(parse_command("/search"), ParsedSearch)
+
+    def test_quest_bare_verb(self):
+        self.assertIsInstance(parse_command("quest"), ParsedActiveQuests)
+        self.assertIsInstance(parse_command("/quest"), ParsedActiveQuests)
+        self.assertIsInstance(parse_command("> quest"), ParsedActiveQuests)
+        self.assertIsInstance(parse_command("quests"), ParsedUnknown)
 
     def test_unknown(self):
         self.assertIsInstance(parse_command("xyzzy"), ParsedUnknown)

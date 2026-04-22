@@ -156,6 +156,15 @@ def find_stock_line_for_buy(shop: NpcShop, query: str) -> NpcShopStockLine | Non
     return None
 
 
+def find_any_shop_line_in_room(character: Character, query: str) -> NpcShopStockLine | None:
+    """First shop in the current room (npc name order) whose stock matches ``query``."""
+    for shop in get_enabled_shops_in_room(character.current_room_id):
+        sl = find_stock_line_for_buy(shop, query)
+        if sl is not None:
+            return sl
+    return None
+
+
 @transaction.atomic
 def purchase_from_shop(character: Character, shop: NpcShop, query: str) -> list[str]:
     line = find_stock_line_for_buy(shop, query)
@@ -222,7 +231,7 @@ def sell_to_shop(
         return ["You don't have that."]
     item = it.item
     if item.unsellable:
-        return ["You can't sell that."]
+        return ["The shopkeeper doesn't want that."]
     if item.vendor_refuses_buy:
         return ["No one here wants that junk."]
     inv = list(char.inventory or [])

@@ -156,6 +156,13 @@ class ParsedLeave:
 
 
 @dataclass
+class ParsedActiveQuests:
+    """quest / /quest — open Active Quests panel (session carries progress)."""
+
+    pass
+
+
+@dataclass
 class ParsedEmote:
     """Generic social emote (wave, etc.). ``target`` is a player name or empty."""
 
@@ -275,6 +282,9 @@ def parse_command(line: str):
     # leave / exit / quit — return to lobby (queued in unsafe rooms)
     if low in _LEAVE_WORDS:
         return ParsedLeave()
+
+    if low == "quest":
+        return ParsedActiveQuests()
 
     # Emotes (wave, ...): "wave", "wave <name>", "wave at <name>"
     first, _, remainder = low.partition(" ")

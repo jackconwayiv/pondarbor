@@ -206,12 +206,24 @@ def ensure_quests_started_from_npc(character: Character, npc: Npc) -> None:
             )
 
 
+def _ends_with_sentence_punctuation(u: str) -> bool:
+    t = (u or "").rstrip()
+    if not t:
+        return False
+    if t.endswith("…") or t.endswith("..."):
+        return True
+    c = t[-1]
+    return c in ".?!"
+
+
 def _npc_says_line(npc: Npc, utterance: str) -> str:
-    """Format as: Name says: utterance. (single trailing period)"""
+    """Format as: Name says: utterance, with a default trailing period if none given."""
     u = (utterance or "").strip()
     if not u:
         u = "…"
     u = u.rstrip(".")
+    if _ends_with_sentence_punctuation(u):
+        return f"{npc.name} says: {u}"
     return f"{npc.name} says: {u}."
 
 
@@ -389,7 +401,7 @@ def _apply_effect(character: Character, eff: QuestEffect) -> list[str]:
         if n:
             character.gold = int(character.gold) + n
             character.save(update_fields=["gold", "updated_at"])
-            out.append(f"You gain {n} gold.")
+            out.append(f"You get {n} gold.")
     elif kind == QuestEffect.Kind.GRANT_ITEM:
         if eff.item_id:
             inst = ItemInstance.objects.create(
@@ -400,7 +412,7 @@ def _apply_effect(character: Character, eff: QuestEffect) -> list[str]:
             inv = list(character.inventory or [])
             character.inventory = [inst.pk] + [x for x in inv if x != inst.pk]
             character.save(update_fields=["inventory", "updated_at"])
-            out.append(f"You receive {display_name_for_instance(inst)}.")
+            out.append(f"You get {display_name_for_instance(inst)}.")
     elif kind == QuestEffect.Kind.REMOVE_ITEM_TEMPLATE:
         if eff.item_id:
             qty = max(1, int(eff.amount or 1))

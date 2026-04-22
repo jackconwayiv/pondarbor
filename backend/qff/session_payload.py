@@ -32,6 +32,7 @@ from qff.models import (
     AreaCell,
     Character,
     CharacterExitSeen,
+    CharacterQuestProgress,
     CharacterRoomSearchClaim,
     CharacterRoomVisit,
     Interactable,
@@ -526,6 +527,24 @@ def _shops_in_room_json(room_id: int) -> list[dict]:
     return out
 
 
+def _active_quests_json(character: Character) -> list[dict]:
+    """In-progress quest states (non-terminal) for the play UI quest panel — state label only."""
+    out: list[dict] = []
+    for cqp in (
+        CharacterQuestProgress.objects.filter(
+            character=character,
+            current_state__is_terminal=False,
+        )
+        .select_related("current_state")
+        .order_by("current_state__name", "current_state__slug", "id")
+    ):
+        st = cqp.current_state
+        name = (st.name or "").strip()
+        label = name if name else (st.slug or f"state-{st.pk}")
+        out.append({"label": label, "slug": st.slug})
+    return out
+
+
 def build_session_for_character(character, *, world_sync: bool = True) -> dict:
     # Costly: minimap, exits, inventory. ``qff.views.command_view`` logs ``session_ms`` for profiling.
     if world_sync:
@@ -647,5 +666,6 @@ def build_session_for_character(character, *, world_sync: bool = True) -> dict:
         "character_profile": build_character_profile(character),
         "action_log": action_log,
         "shops": _shops_in_room_json(room.id),
+        "active_quests": _active_quests_json(character),
         "pending_prompt": getattr(character, "pending_prompt", None) or None,
     }

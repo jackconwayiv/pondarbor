@@ -200,7 +200,10 @@ class NpcShopTests(TestCase):
         i2 = ItemInstance.objects.create(item=junk, owner_character=c, quantity=1)
         c.inventory = [i1.pk, i2.pk]
         c.save(update_fields=["inventory"])
-        self.assertIn("can't sell", " ".join(execute_command(c, parse_command("sell quest"))).lower())
+        self.assertIn(
+            "shopkeeper doesn't want",
+            " ".join(execute_command(c, parse_command("sell quest"))).lower(),
+        )
         self.assertIn(
             "junk",
             " ".join(execute_command(c, parse_command("sell junk"))).lower(),
@@ -297,3 +300,51 @@ class NpcShopTests(TestCase):
         with transaction.atomic():
             buy_lines = purchase_from_shop(c, shop, "iron blade")
         self.assertTrue(any("buy" in line.lower() for line in buy_lines))
+
+    def test_look_resolves_item_on_shop_stock(self):
+        npc = Npc.objects.create(
+            room=self.room, slug="look-shop", name="Lia", description=""
+        )
+        shop = NpcShop.objects.create(npc=npc, enabled=True)
+        apple = Item.objects.create(
+            slug="apple-nps",
+            name="Crisp Apple",
+            cost=2,
+            description="Round and fragrant.",
+        )
+        NpcShopStockLine.objects.create(
+            shop=shop,
+            item=apple,
+            price=5,
+            quantity=2,
+            sort_order=0,
+            kind=NpcShopStockLine.Kind.STATIC,
+        )
+        c = self._char("Looker")
+        out = execute_command(c, parse_command("look crisp apple"))
+        self.assertTrue(any("fragrant" in m.lower() for m in out))
+        self.assertFalse(any("don't see" in m.lower() for m in out))
+
+    def test_inspect_resolves_item_on_shop_stock(self):
+        npc = Npc.objects.create(
+            room=self.room, slug="inspect-shop", name="Mia", description=""
+        )
+        shop = NpcShop.objects.create(npc=npc, enabled=True)
+        pear = Item.objects.create(
+            slug="pear-nps",
+            name="Green Pear",
+            cost=3,
+            description="Soft and sweet.",
+        )
+        NpcShopStockLine.objects.create(
+            shop=shop,
+            item=pear,
+            price=4,
+            quantity=1,
+            sort_order=0,
+            kind=NpcShopStockLine.Kind.STATIC,
+        )
+        c = self._char("Inspector")
+        out = execute_command(c, parse_command("inspect green pear"))
+        self.assertTrue(any("sweet" in m.lower() for m in out))
+        self.assertFalse(any("don't see" in m.lower() for m in out))

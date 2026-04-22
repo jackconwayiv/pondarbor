@@ -11,6 +11,7 @@ from django.db.models import Max, Q
 from django.utils import timezone
 
 from qff.command_parser import (
+    ParsedActiveQuests,
     ParsedAttack,
     ParsedBuyAbilities,
     ParsedConsumeItem,
@@ -76,6 +77,7 @@ from qff.models import (
     ItemInstance,
     MonsterInstance,
     Npc,
+    NpcShopStockLine,
     Room,
     RoomBroadcast,
     RoomExit,
@@ -127,6 +129,7 @@ def _engage_monsters_after_arrival(hero: Character, dest_room_id: int) -> None:
 from qff.narrative_visibility import occupant_labels_for_look, room_is_narratively_visible
 from qff.shop_engine import (
     browse_shop,
+    find_any_shop_line_in_room,
     find_inventory_instance,
     get_enabled_shops_in_room,
     purchase_from_shop,
@@ -510,6 +513,12 @@ def _instance_is_equipped(char: CharacterType, inst_pk: int) -> bool:
     return False
 
 
+def _handle_active_quests(char: CharacterType) -> list[str]:
+    _touch_activity(char)
+    char.save(update_fields=["last_activity_at", "updated_at"])
+    return []
+
+
 def _handle_shop_browse(char: CharacterType, parsed: ParsedShopBrowse) -> list[str]:
     _touch_activity(char)
     char.save(update_fields=["last_activity_at", "updated_at"])
@@ -620,6 +629,9 @@ def _dispatch_non_leave(char: CharacterType, parsed) -> list[str]:
         return [line]
 
     _mark_command_boundary(char)
+
+    if isinstance(parsed, ParsedActiveQuests):
+        return _handle_active_quests(char)
 
     if isinstance(parsed, ParsedShopBrowse):
         return _handle_shop_browse(char, parsed)
@@ -2097,6 +2109,28 @@ def _handle_look_inspect(char: CharacterType, parsed: ParsedLookInspect) -> list
         extra = format_item_inspect_parenthetical(it, False)
         text = (base + extra).strip()
         return [text]
+
+    shop_line = find_any_shop_line_in_room(char, target)
+    if shop_line is not None:
+        if (
+            shop_line.kind == NpcShopStockLine.Kind.CONSIGNMENT
+            and shop_line.consignment_item_instance_id
+        ):
+            cinst = (
+                ItemInstance.objects.select_related("item")
+                .filter(pk=shop_line.consignment_item_instance_id)
+                .first()
+            )
+            if cinst:
+                _look_focus_peers(
+                    char, parsed, f"the {display_name_for_instance(cinst)}"
+                )
+                return _lines_for_item_inspect(char, cinst)
+        it = shop_line.item
+        _look_focus_peers(char, parsed, f"the {it.name}")
+        base = (it.description or "").strip() or f"It is {it.name}."
+        extra = format_item_inspect_parenthetical(it, False)
+        return [(base + extra).strip()]
 
     return ["You don't see that here."]
 

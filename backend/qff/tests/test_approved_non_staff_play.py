@@ -238,3 +238,44 @@ class ApprovedNonStaffPlayTests(TestCase):
         c2 = Character.objects.get(pk=c2.pk)
         lines = consume_room_broadcasts(c2)
         self.assertTrue(any("talking to Villager" in ln for ln in lines))
+
+    def test_session_includes_active_quests_non_terminal_only(self):
+        quest = Quest.objects.create(slug="q-actv", name="ActiveQ")
+        st_mid = QuestState.objects.create(
+            quest=quest,
+            slug="mid",
+            name="In Progress",
+            is_initial=True,
+            is_terminal=False,
+            sort_order=0,
+        )
+        st_done = QuestState.objects.create(
+            quest=quest, slug="done", name="Done", sort_order=1, is_terminal=True
+        )
+        u = _approved_user("qact@example.com")
+        c = self._character("QHero2", u)
+        CharacterQuestProgress.objects.create(
+            character=c, quest=quest, current_state=st_mid
+        )
+        c = Character.objects.get(pk=c.pk)
+        session = build_session_for_character(c)
+        aq = session.get("active_quests", [])
+        self.assertEqual(len(aq), 1)
+        self.assertEqual(aq[0]["label"], "In Progress")
+        self.assertEqual(aq[0]["slug"], "mid")
+        cqp = CharacterQuestProgress.objects.get(character=c, quest=quest)
+        cqp.current_state = st_done
+        cqp.save(update_fields=["current_state", "updated_at"])
+        c = Character.objects.get(pk=c.pk)
+        session2 = build_session_for_character(c)
+        self.assertEqual(len(session2.get("active_quests", [])), 0)
+
+    def test_npc_says_line_no_period_after_question(self):
+        from qff.quest_engine import _npc_says_line
+
+        n = Npc.objects.create(
+            room=self.room, slug="rita-q", name="Rita", description=""
+        )
+        line = _npc_says_line(n, "Can you help?")
+        self.assertTrue(line.endswith("?"), line)
+        self.assertNotIn("?.", line)

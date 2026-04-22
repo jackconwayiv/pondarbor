@@ -144,8 +144,16 @@ export type QffSessionWithCharacter = {
   action_log: Array<{ id: number; text: string; log_tone?: string; logTone?: string }>;
   /** Shops in the current room; populated for the play UI's shop panel. */
   shops?: QffShopPanelData[];
+  /** In-progress (non-terminal) quest states for the play UI quest panel. */
+  active_quests?: QffActiveQuestRow[];
   /** Pending y/n service-NPC prompt (healer_pay / innkeeper_stay) or null. */
   pending_prompt?: QffPendingPrompt | null;
+};
+
+export type QffActiveQuestRow = {
+  /** Display label for the current QuestState (name or fallback slug). */
+  label: string;
+  slug: string;
 };
 
 export type QffShopPanelLine = {

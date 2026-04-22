@@ -32,6 +32,7 @@ from qff.models import (
     AreaCell,
     Character,
     CharacterExitSeen,
+    CharacterRoomSearchClaim,
     CharacterRoomVisit,
     Interactable,
     ItemInstance,
@@ -562,6 +563,25 @@ def build_session_for_character(character, *, world_sync: bool = True) -> dict:
     you_see = [o.name for o in room_interactables] + _room_you_see_tail_labels(
         room.id, character
     )
+    details_visible = room_is_narratively_visible(character, room)
+    room_description = room.description
+    if details_visible:
+        unlocked_text = (room.search_text or "").strip()
+        if unlocked_text:
+            searched = (
+                CharacterRoomSearchClaim.objects.filter(
+                    character_id=character.pk,
+                    room_id=room.pk,
+                    successful_search=True,
+                )
+                .values_list("id", flat=True)
+                .first()
+            )
+            if searched:
+                room_description = (room_description or "").rstrip()
+                if room_description:
+                    room_description += "\n"
+                room_description += unlocked_text
 
     return {
         "has_character": True,
@@ -579,8 +599,8 @@ def build_session_for_character(character, *, world_sync: bool = True) -> dict:
         "room": {
             "id": room.id,
             "name": room.name,
-            "description": room.description,
-            "details_visible": room_is_narratively_visible(character, room),
+            "description": room_description,
+            "details_visible": details_visible,
             "opened_container": _opened_container_session_dict(character, room),
             "is_safe": room.is_safe,
             "is_spawn_point": room.is_spawn_point,

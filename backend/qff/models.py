@@ -878,6 +878,10 @@ class CharacterRoomSearchClaim(models.Model):
     room = models.ForeignKey(
         Room, on_delete=models.CASCADE, related_name="search_claims"
     )
+    successful_search = models.BooleanField(
+        default=False,
+        help_text="Set after this hero's first successful search roll in this room.",
+    )
     item_reward_granted = models.BooleanField(default=False)
     exit_reward_granted = models.BooleanField(default=False)
     floor_once_reward_granted = models.BooleanField(

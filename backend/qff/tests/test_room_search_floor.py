@@ -8,6 +8,7 @@ from rest_framework.test import APIClient
 
 from qff.command_handlers import execute_command
 from qff.command_parser import parse_command
+from qff.session_payload import build_session_for_character
 from qff.models import (
     Area,
     Character,
@@ -87,6 +88,48 @@ class RoomSearchFloorTests(TestCase):
             ).count(),
             1,
         )
+
+    def test_first_success_then_further_search_yields_nothing(self):
+        self.room.search_text = "You sift through dust."
+        self.room.search_chance = 1
+        self.room.save(update_fields=["search_text", "search_chance", "updated_at"])
+        c = self._char("Hero")
+        lines1 = list(execute_command(c, parse_command("search")))
+        self.assertTrue(any("sift through dust" in ln.lower() for ln in lines1), lines1)
+        lines2 = list(execute_command(c, parse_command("search")))
+        self.assertEqual(lines2, ["Further searching this room yields nothing of note."])
+
+    def test_success_is_per_hero_not_global(self):
+        self.room.search_text = "You sift through dust."
+        self.room.search_chance = 1
+        self.room.save(update_fields=["search_text", "search_chance", "updated_at"])
+        a = self._char("HeroA")
+        b = self._char("HeroB")
+
+        self.assertTrue(
+            any("sift through dust" in ln.lower() for ln in execute_command(a, parse_command("search"))),
+        )
+        self.assertEqual(
+            execute_command(a, parse_command("search")),
+            ["Further searching this room yields nothing of note."],
+        )
+        self.assertTrue(
+            any("sift through dust" in ln.lower() for ln in execute_command(b, parse_command("search"))),
+        )
+
+    def test_room_description_appends_search_text_after_success(self):
+        self.room.description = "A plain room."
+        self.room.search_text = "You sift through dust."
+        self.room.search_chance = 1
+        self.room.save(
+            update_fields=["description", "search_text", "search_chance", "updated_at"]
+        )
+        c = self._char("Hero")
+        execute_command(c, parse_command("search"))
+        session = build_session_for_character(c, world_sync=False)
+        desc = session["room"]["description"]
+        self.assertIn("A plain room.", desc)
+        self.assertIn("You sift through dust.", desc)
 
     def test_quest_floor_mints_when_eligible(self):
         quest = Quest.objects.create(slug="q-sfa", name="QF")
@@ -178,6 +221,13 @@ class RoomSearchFloorTests(TestCase):
         self.assertIsNotNone(body.get("session"))
         msgs = body.get("messages") or []
         self.assertTrue(any("coin" in m.lower() or "uncover" in m.lower() for m in msgs), msgs)
+        res2 = client.post("/api/v1/qff/command/", {"line": "search"}, format="json")
+        self.assertEqual(
+            res2.status_code, status.HTTP_200_OK, getattr(res2, "data", res2.content)
+        )
+        body2 = res2.json()
+        msgs2 = body2.get("messages") or []
+        self.assertEqual(msgs2, ["Further searching this room yields nothing of note."])
 
     def test_command_api_search_quest_floor_returns_200(self):
         """POST /qff/command/ must succeed when search mints a quest-gated floor instance."""

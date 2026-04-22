@@ -658,7 +658,6 @@ def _dispatch_non_leave(char: CharacterType, parsed) -> list[str]:
             return [
                 f"You spend some time searching the {room.name} but find nothing of note."
             ]
-        out: list[str] = [hidden] if hidden else []
         with transaction.atomic():
             char_locked = Character.objects.select_for_update().get(pk=char.pk)
             # of=("self",): FOR UPDATE only on qff_room. Nullable select_related() uses
@@ -678,7 +677,15 @@ def _dispatch_non_leave(char: CharacterType, parsed) -> list[str]:
                 character_id=char_locked.pk,
                 room_id=room_locked.pk,
             )
+            if claim.successful_search:
+                return ["Further searching this room yields nothing of note."]
+            out: list[str] = []
+            hidden_locked = (room_locked.search_text or "").strip()
+            if hidden_locked:
+                out.append(hidden_locked)
             claim_updates: list[str] = []
+            claim.successful_search = True
+            claim_updates.append("successful_search")
             if room_locked.search_reward_item_id and not claim.item_reward_granted:
                 inst = ItemInstance.objects.create(
                     item_id=room_locked.search_reward_item_id,
@@ -754,9 +761,9 @@ def _dispatch_non_leave(char: CharacterType, parsed) -> list[str]:
                 out.append(f"You find {qn} among the rubble.")
             if claim_updates:
                 claim.save(update_fields=claim_updates)
-        if not out:
-            out.append(f"You search the {room.name} and uncover something new.")
-        return out
+            if not out:
+                out.append(f"You search the {room.name} and uncover something new.")
+            return out
 
     if isinstance(parsed, ParsedAttack):
         return _handle_attack(char, parsed)

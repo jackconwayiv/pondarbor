@@ -1414,7 +1414,10 @@ export async function dmPatchQuestTransition(
   accessToken: string | null,
   transitionId: number,
   body: Partial<
-    Pick<DmQuestTransitionRow, "from_state_id" | "to_state_id" | "requires_item_id" | "sort_order">
+    Pick<
+      DmQuestTransitionRow,
+      "from_state_id" | "to_state_id" | "requires_item_id" | "requires_item_quantity" | "sort_order"
+    >
   >,
 ): Promise<DmQuestTransitionRow> {
   const response = await fetch(qffJoinBase(`/api/v1/qff/dm/quest-transitions/${transitionId}/`), {

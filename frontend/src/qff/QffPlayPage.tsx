@@ -150,7 +150,7 @@ export default function QffPlayPage() {
   const lastBroadcastIdRef = useRef(0);
   /** RoomBroadcast ids already applied via POST /command (avoids duplicating lines when session effect runs). */
   const commandActionLogBroadcastIdsRef = useRef<Set<number>>(new Set());
-  /** Log line ids for in-flight optimistic `…` (and optional move preview); stripped when the HTTP response arrives. */
+  /** Ids for in-flight `> input`, `…`, and optional move preview; stripped when the command response is merged. */
   const optimisticCommandLogIdsRef = useRef<number[]>([]);
   /** In-flight POST /command; a second Enter queues at most one follow-up in `queuedLineRef`. */
   const commandInFlightRef = useRef(false);
@@ -453,20 +453,24 @@ export default function QffPlayPage() {
       cur?.has_character && moveDir ? optimisticMoveHeadLine(cur.exits, moveDir) : null;
       try {
         if (optimisticSecond != null) {
-          const oid1 = logLineIdRef.current++;
-          const oid2 = logLineIdRef.current++;
-          optimisticCommandLogIdsRef.current = [oid1, oid2];
+          const cmdId = logLineIdRef.current++;
+          const dotId = logLineIdRef.current++;
+          const moveId = logLineIdRef.current++;
+          optimisticCommandLogIdsRef.current = [cmdId, dotId, moveId];
           setLogLines((prev) => [
             ...prev.map((p) => ({ ...p, recent: false })),
-            { id: oid1, text: "…", recent: true },
-            { id: oid2, text: optimisticSecond, recent: true },
+            { id: cmdId, text: `> ${raw}`, recent: true },
+            { id: dotId, text: "…", recent: true },
+            { id: moveId, text: optimisticSecond, recent: true },
           ]);
         } else {
-          const oid1 = logLineIdRef.current++;
-          optimisticCommandLogIdsRef.current = [oid1];
+          const cmdId = logLineIdRef.current++;
+          const dotId = logLineIdRef.current++;
+          optimisticCommandLogIdsRef.current = [cmdId, dotId];
           setLogLines((prev) => [
             ...prev.map((p) => ({ ...p, recent: false })),
-            { id: oid1, text: "…", recent: true },
+            { id: cmdId, text: `> ${raw}`, recent: true },
+            { id: dotId, text: "…", recent: true },
           ]);
         }
         let token = commandTokenRef.current;
@@ -487,7 +491,7 @@ export default function QffPlayPage() {
         }
         commandTokenRef.current = token;
         const sessionSnapshot = res.session;
-        const echoLine = res.echo_command === true;
+        // Always show one `> line` in the HUD; do not use res.echo_command to hide it.
         const verb = raw
           .replace(/^>+\s*/, "")
           .replace(/^\//, "")
@@ -514,12 +518,10 @@ export default function QffPlayPage() {
               recent: true,
               logTone: actionLogEntryTone(e),
             }));
-            if (echoLine) {
-              block = [{ id: nextId(), text: `> ${raw}`, recent: true }, ...block];
-            }
+            block = [{ id: nextId(), text: `> ${raw}`, recent: true }, ...block];
           } else {
             const narr = res.messages;
-            const toShow: string[] = echoLine ? [`> ${raw}`, ...narr] : [...narr];
+            const toShow: string[] = [`> ${raw}`, ...narr];
             block = toShow.map((text) => ({
               id: nextId(),
               text,

@@ -65,6 +65,7 @@ function emptyForm(): Partial<DmMonsterTemplate> {
     hidden_description: "",
     lore_dc: null,
     attack_weapon_label: "",
+    attack_verb: "",
     loot_table: [],
     quest_drops: [],
   };
@@ -264,6 +265,7 @@ export default function QffDmMonstersPage() {
       quest_drops,
       lore_dc,
       attack_weapon_label: form.attack_weapon_label ?? "",
+      attack_verb: form.attack_verb ?? "",
     };
 
     try {
@@ -470,6 +472,19 @@ export default function QffDmMonstersPage() {
                 <Text fontSize="xs" color="#888" mt={1}>
                   Shown in hit lines: “The Name attacks you with its …” Leave blank for generic
                   strikes.
+                </Text>
+              </Field.Root>
+              <Field.Root>
+                <Field.Label>Attack verb (optional)</Field.Label>
+                <Input
+                  value={form.attack_verb ?? ""}
+                  placeholder="e.g. bites, claws, slashes"
+                  onChange={(e) => setForm((f) => ({ ...f, attack_verb: e.target.value }))}
+                  bg="#222"
+                />
+                <Text fontSize="xs" color="#888" mt={1}>
+                  Used for miss and unarmed hit lines when attack weapon is blank. Leave blank for
+                  default swing/strike wording.
                 </Text>
               </Field.Root>
               <Field.Root>

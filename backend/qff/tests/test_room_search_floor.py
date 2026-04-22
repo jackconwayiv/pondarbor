@@ -3,6 +3,8 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
+from rest_framework import status
+from rest_framework.test import APIClient
 
 from qff.command_handlers import execute_command
 from qff.command_parser import parse_command
@@ -20,6 +22,13 @@ from qff.models import (
 )
 
 User = get_user_model()
+
+
+def _approved_user(email: str) -> User:
+    u = User.objects.create_user(email=email, password="secret12345")
+    u.account_status = User.AccountStatus.APPROVED
+    u.save(update_fields=["account_status"])
+    return u
 
 
 def _room() -> Room:
@@ -138,3 +147,104 @@ class RoomSearchFloorTests(TestCase):
                 item=self.quest_item,
             ).exists()
         )
+
+    def test_command_api_search_floor_once_returns_200(self):
+        """Full POST /qff/command/ path must succeed when search mints a floor item."""
+        self.room.search_text = "You sift through dust."
+        self.room.search_chance = 1
+        self.room.search_floor_once_item = self.floor_once_item
+        self.room.save(
+            update_fields=[
+                "search_text",
+                "search_chance",
+                "search_floor_once_item",
+                "updated_at",
+            ]
+        )
+        u = _approved_user("api-search-floor@example.com")
+        Character.objects.create(
+            user=u,
+            name="ApiHero",
+            character_class=self.cc,
+            current_room=self.room,
+            spawn_room=self.room,
+            last_activity_at=timezone.now(),
+        )
+        client = APIClient()
+        client.force_login(u)
+        res = client.post("/api/v1/qff/command/", {"line": "search"}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_200_OK, getattr(res, "data", res.content))
+        body = res.json()
+        self.assertIsNotNone(body.get("session"))
+        msgs = body.get("messages") or []
+        self.assertTrue(any("coin" in m.lower() or "uncover" in m.lower() for m in msgs), msgs)
+
+    def test_command_api_search_quest_floor_returns_200(self):
+        """POST /qff/command/ must succeed when search mints a quest-gated floor instance."""
+        quest = Quest.objects.create(slug="q-api-sfa", name="QFApi")
+        st = QuestState.objects.create(
+            quest=quest, slug="need", name="Need", is_initial=True, sort_order=0
+        )
+        self.room.search_text = "Rummaging."
+        self.room.search_chance = 1
+        self.room.search_floor_quest_item = self.quest_item
+        self.room.search_floor_quest_state = st
+        self.room.save(
+            update_fields=[
+                "search_text",
+                "search_chance",
+                "search_floor_quest_item",
+                "search_floor_quest_state",
+                "updated_at",
+            ]
+        )
+        u = _approved_user("api-search-quest@example.com")
+        c = Character.objects.create(
+            user=u,
+            name="ApiQuest",
+            character_class=self.cc,
+            current_room=self.room,
+            spawn_room=self.room,
+            last_activity_at=timezone.now(),
+        )
+        CharacterQuestProgress.objects.create(character=c, quest=quest, current_state=st)
+        client = APIClient()
+        client.force_login(u)
+        res = client.post("/api/v1/qff/command/", {"line": "search"}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_200_OK, getattr(res, "data", res.content))
+        body = res.json()
+        self.assertIsNotNone(body.get("session"))
+        you_see = body["session"]["room"].get("youSee") or []
+        self.assertTrue(any("scroll" in s.lower() for s in you_see), you_see)
+
+    def test_command_api_search_reward_inventory_returns_200(self):
+        """POST /qff/command/ when search puts an item in inventory (not floor)."""
+        reward = Item.objects.create(slug="reward-inv", name="Brass Key", slot=None)
+        self.room.search_text = "You check the nook."
+        self.room.search_chance = 1
+        self.room.search_reward_item = reward
+        self.room.save(
+            update_fields=[
+                "search_text",
+                "search_chance",
+                "search_reward_item",
+                "updated_at",
+            ]
+        )
+        u = _approved_user("api-search-inv@example.com")
+        Character.objects.create(
+            user=u,
+            name="ApiInv",
+            character_class=self.cc,
+            current_room=self.room,
+            spawn_room=self.room,
+            last_activity_at=timezone.now(),
+        )
+        client = APIClient()
+        client.force_login(u)
+        res = client.post("/api/v1/qff/command/", {"line": "search"}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_200_OK, getattr(res, "data", res.content))
+        body = res.json()
+        prof = body["session"]["character_profile"]
+        inv_labels = prof.get("inventoryItems") or []
+        self.assertTrue(any("key" in s.lower() for s in inv_labels), inv_labels)

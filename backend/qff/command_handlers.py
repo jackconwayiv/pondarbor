@@ -660,8 +660,10 @@ def _dispatch_non_leave(char: CharacterType, parsed) -> list[str]:
         out: list[str] = [hidden] if hidden else []
         with transaction.atomic():
             char_locked = Character.objects.select_for_update().get(pk=char.pk)
+            # of=("self",): FOR UPDATE only on qff_room. Nullable select_related() uses
+            # LEFT OUTER JOINs; Postgres rejects FOR UPDATE on the nullable side of outer joins.
             room_locked = (
-                Room.objects.select_for_update()
+                Room.objects.select_for_update(of=("self",))
                 .select_related(
                     "search_reward_item",
                     "search_reveals_exit",

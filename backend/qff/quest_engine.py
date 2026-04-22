@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.utils import timezone
 
@@ -63,7 +64,10 @@ def floor_item_visible_to_character(character: Character, inst: ItemInstance) ->
             return False
     if not inst.visible_quest_state_id:
         return True
-    st = inst.visible_quest_state
+    try:
+        st = inst.visible_quest_state
+    except ObjectDoesNotExist:
+        return False
     if not CharacterQuestProgress.objects.filter(
         character=character,
         quest_id=st.quest_id,
@@ -98,7 +102,10 @@ def room_item_visible_to_character(
         ):
             return False
     if room_item.visible_quest_state_id:
-        st = room_item.visible_quest_state
+        try:
+            st = room_item.visible_quest_state
+        except ObjectDoesNotExist:
+            return False
         if not CharacterQuestProgress.objects.filter(
             character=character,
             quest_id=st.quest_id,

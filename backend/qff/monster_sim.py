@@ -27,6 +27,7 @@ from qff.constants import (
 )
 from qff.game_helpers import (
     encumbrance_excess,
+    encumbrance_notice_if_hindered,
     modified_stats,
     presence_threshold,
     roll_d100,
@@ -682,6 +683,8 @@ def sense_adjacent_monster_lines(hero: Character, room_id: int) -> list[str]:
                 label = ex.get_direction_display().lower()
                 line = f"You sense the presence of an enemy to the {label}."
             out.append(line)
+    if out and encumbrance_excess(hero) > 0:
+        return encumbrance_notice_if_hindered(hero) + out
     return out
 
 

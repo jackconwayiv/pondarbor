@@ -62,6 +62,23 @@ class CommandParserTests(SimpleTestCase):
         assert isinstance(p, ParsedAttack)
         self.assertEqual(p.target, "sewer rat")
 
+    def test_hit_strike_as_attack(self):
+        for cmd, want in (
+            ("hit goblin", "goblin"),
+            ("/hit goblin", "goblin"),
+            ("strike the boss", "the boss"),
+            ("/strike troll", "troll"),
+        ):
+            p = parse_command(cmd)
+            self.assertIsInstance(p, ParsedAttack)
+            assert isinstance(p, ParsedAttack)
+            self.assertEqual(p.target, want)
+        for bare in ("hit", "strike", "/hit", "/strike"):
+            p = parse_command(bare)
+            self.assertIsInstance(p, ParsedAttack)
+            assert isinstance(p, ParsedAttack)
+            self.assertEqual(p.target, "")
+
     def test_search(self):
         self.assertIsInstance(parse_command("search"), ParsedSearch)
         self.assertIsInstance(parse_command("/search"), ParsedSearch)

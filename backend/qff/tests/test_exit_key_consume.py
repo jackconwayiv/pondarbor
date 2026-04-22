@@ -62,7 +62,8 @@ class ExitKeyConsumeOnPassTests(TestCase):
         )
         self.hero.inventory = [inst.pk]
         self.hero.save(update_fields=["inventory", "updated_at"])
-        consume_key_if_entering_locked(self.hero, ex)
+        c, _ = consume_key_if_entering_locked(self.hero, ex)
+        self.assertFalse(c)
         self.assertTrue(
             ItemInstance.objects.filter(pk=inst.pk, owner_character=self.hero).exists()
         )
@@ -81,5 +82,7 @@ class ExitKeyConsumeOnPassTests(TestCase):
         )
         self.hero.inventory = [inst.pk]
         self.hero.save(update_fields=["inventory", "updated_at"])
-        consume_key_if_entering_locked(self.hero, ex)
+        c, kn = consume_key_if_entering_locked(self.hero, ex)
+        self.assertTrue(c)
+        self.assertEqual(kn, "Rust Key")
         self.assertFalse(ItemInstance.objects.filter(pk=inst.pk).exists())

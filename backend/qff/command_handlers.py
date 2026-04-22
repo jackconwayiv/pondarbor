@@ -58,7 +58,10 @@ from qff.consumable_effects import (
     validate_consume_effects,
 )
 from qff.game_helpers import (
+    character_knows_item_lore_for_template,
     display_name_for_instance,
+    encumbrance_notice_if_hindered,
+    ensure_character_item_lore_template_unlocked,
     format_item_inspect_parenthetical,
     inventory_stack_label,
     item_meets_requirements,
@@ -77,6 +80,7 @@ from qff.models import (
     ItemInstance,
     MonsterInstance,
     Npc,
+    NpcShop,
     NpcShopStockLine,
     Room,
     RoomBroadcast,
@@ -91,6 +95,7 @@ from qff.quest_engine import (
     ensure_quests_started_from_npc,
     find_interactable_in_room,
     find_npc_in_room,
+    find_other_hero_in_room,
     floor_item_visible_to_character,
     handle_interactable_use,
     resolve_npc_dialogue,
@@ -666,8 +671,9 @@ def _dispatch_non_leave(char: CharacterType, parsed) -> list[str]:
                 f"You spend some time searching the {room.name} but find nothing of note."
             ]
         roll = roll_d100_plus_stat_encumbered(char, int(char.sense))
+        enc = encumbrance_notice_if_hindered(char)
         if roll < int(room.search_chance):
-            return [
+            return enc + [
                 f"You spend some time searching the {room.name} but find nothing of note."
             ]
         with transaction.atomic():
@@ -775,7 +781,7 @@ def _dispatch_non_leave(char: CharacterType, parsed) -> list[str]:
                 claim.save(update_fields=claim_updates)
             if not out:
                 out.append(f"You search the {room.name} and uncover something new.")
-            return out
+            return enc + out
 
     if isinstance(parsed, ParsedAttack):
         return _handle_attack(char, parsed)
@@ -1055,13 +1061,21 @@ def _handle_move(char: CharacterType, parsed: ParsedMove) -> list[str]:
     if not exit_is_passable(char, ex):
         char.save(update_fields=["last_activity_at", "updated_at"])
         return ["You can't go that way — not yet."]
+    key_consumed, key_name = (False, None)
     if ex.lock_kind == RoomExit.LockKind.KEY:
-        consume_key_if_entering_locked(char, ex)
+        key_consumed, key_name = consume_key_if_entering_locked(char, ex)
         char = Character.objects.get(pk=char.pk)
     mark_exit_used(char, ex)
     left_room_id = char.current_room_id
     dest = ex.to_room
     dir_label = ex.get_direction_display().lower()
+    dir_label_title = ex.get_direction_display()
+    if key_consumed and key_name:
+        _notify_peers_third_person(
+            char,
+            left_room_id,
+            f"{char.name} uses the {key_name} to unlock the way to the {dir_label_title}.",
+        )
     _notify_peers_third_person(char, left_room_id, f"{char.name} heads {dir_label}.")
     char.current_room = dest
     char.save(update_fields=["current_room", "last_activity_at", "updated_at"])
@@ -1077,7 +1091,12 @@ def _handle_move(char: CharacterType, parsed: ParsedMove) -> list[str]:
         sense_adjacent_monster_lines,
     )
 
-    messages = [f"You head {dir_label}."]
+    messages: list[str] = []
+    if key_consumed and key_name:
+        messages.append(
+            f"You use the {key_name} to unlock the way to the {dir_label_title}."
+        )
+    messages.append(f"You head {dir_label}.")
     dest_room = dest
     on_spawn_room_enter(char, dest_room)
 
@@ -1286,6 +1305,19 @@ def _handle_get(
         return _handle_take_floor_gold(char, want_qty)
 
     _touch_activity(char)
+
+    interact = find_interactable_in_room(char, target)
+    if interact:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return [f"You can't take {interact.name}."]
+    npc = find_npc_in_room(char, target)
+    if npc:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return [f"{npc.name} is flattered but unable to join you."]
+    other_hero = find_other_hero_in_room(char, target)
+    if other_hero:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return [f"{other_hero.name} is flattered but unable to join you."]
 
     inst = _find_item_instance_floor_first(char, target)
     if inst and inst.room_id == char.current_room_id and inst.owner_character_id is None:
@@ -1726,11 +1758,19 @@ def _handle_talk(char: CharacterType, parsed: ParsedTalk) -> list[str]:
     char = Character.objects.get(pk=char.pk)
     main = resolve_npc_dialogue(char, npc)
     char = Character.objects.get(pk=char.pk)
+    browse_lines: list[str] = []
+    try:
+        shop = npc.shop
+        if shop.enabled:
+            browse_lines = list(browse_shop(char, shop))
+    except NpcShop.DoesNotExist:
+        pass
     service = _service_offer(char, npc)
     char.save(update_fields=["last_activity_at", "updated_at"])
+    block = extra + [main] + browse_lines
     if service is not None:
-        return extra + [main] + service
-    return extra + [main]
+        return block + service
+    return block
 
 
 def _handle_open_container(char: CharacterType, parsed: ParsedOpenContainer) -> list[str]:
@@ -2086,8 +2126,10 @@ def _handle_look_inspect(char: CharacterType, parsed: ParsedLookInspect) -> list
             dc = int(tpl.lore_dc) if tpl.lore_dc is not None else int(tpl.level)
             smarts = int(modified_stats(char)["smarts"])
             roll = roll_d100_plus_stat_encumbered(char, smarts)
+            enc = encumbrance_notice_if_hindered(char)
             if roll >= dc:
-                return [base, hidden]
+                return enc + [base, hidden]
+            return enc + [base]
         return [base]
 
     subj = _find_character_target(char, target)
@@ -2186,21 +2228,30 @@ def _lines_for_character_inspect(
 def _lines_for_item_inspect(actor: CharacterType, inst: ItemInstance) -> list[str]:
     it = inst.item
     base = (it.description or "").strip() or f"It is {it.name}."
+    template_knows = character_knows_item_lore_for_template(actor, it)
+    effective = inst.unlocked or template_knows
     lore_extra = ""
+    enc: list[str] = []
     if it.lore_chance is None:
         if (it.lore or "").strip():
             lore_extra = " " + it.lore.strip()
         inst.unlocked = True
         inst.save(update_fields=["unlocked", "updated_at"])
+        ensure_character_item_lore_template_unlocked(actor, it)
     else:
-        if inst.unlocked:
+        if effective:
             if (it.lore or "").strip():
                 lore_extra = " " + it.lore.strip()
+            if not inst.unlocked and template_knows:
+                inst.unlocked = True
+                inst.save(update_fields=["unlocked", "updated_at"])
         else:
+            enc = encumbrance_notice_if_hindered(actor)
             roll = roll_d100_plus_stat_encumbered(actor, int(actor.smarts))
             if roll >= int(it.lore_chance):
                 inst.unlocked = True
                 inst.save(update_fields=["unlocked", "updated_at"])
+                ensure_character_item_lore_template_unlocked(actor, it)
                 if (it.lore or "").strip():
                     lore_extra = " " + it.lore.strip()
             else:
@@ -2210,7 +2261,8 @@ def _lines_for_item_inspect(actor: CharacterType, inst: ItemInstance) -> list[st
                     inst.chars_failed_to_inspect = failed
                     inst.save(update_fields=["chars_failed_to_inspect", "updated_at"])
     text = (base + lore_extra).strip()
-    extra = format_item_inspect_parenthetical(it, inst.unlocked)
+    lore_revealed = (it.lore_chance is None) or effective
+    extra = format_item_inspect_parenthetical(it, lore_revealed)
     if extra:
         text = text + extra
-    return [text]
+    return enc + [text]

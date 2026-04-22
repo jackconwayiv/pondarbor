@@ -24,7 +24,7 @@ from qff.command_handlers import (
     execute_command,
     maybe_handle_pending_prompt,
 )
-from qff.command_parser import ParsedLeave, parse_command
+from qff.command_parser import ParsedLeave, ParsedTalk, parse_command
 from qff.exploration import on_enter_room
 from qff.loadout import apply_starting_loadout
 from qff.models import (
@@ -36,6 +36,7 @@ from qff.models import (
     Item,
     ItemInstance,
     MonsterTemplate,
+    NpcShop,
     Quest,
     QuestState,
     QffIneffectiveInput,
@@ -55,11 +56,10 @@ from qff.constants import (
     LEGACY_START_ROOM_NAME,
     LEGACY_START_ROOM_SLUG,
 )
-from qff.game_helpers import encumbrance_excess
 from qff.ensure_glyph_character_class import ensure_glyph_character_class
 from qff.glyph_class_map import normalize_glyphs, slug_for_glyphs
 from qff.monster_sim import run_lazy_simulation
-from qff.quest_engine import sync_character_world_before_session
+from qff.quest_engine import find_npc_in_room, sync_character_world_before_session
 from qff.realtime import schedule_notify_qff_rooms
 from qff.session_payload import (
     build_session_for_character,
@@ -466,9 +466,6 @@ def command_view(request):
                 sim_ms = 0.0
 
             enc_lines: list[str] = []
-            if char_after and encumbrance_excess(char_after) > 0:
-                enc_lines.append("You are encumbered!")
-            msgs_out.extend(enc_lines)
             if char_after is None:
                 logger.error(
                     "qff.command character missing after exec user_id=%s character_pk=%s line=%r",
@@ -556,9 +553,26 @@ def command_view(request):
                     session_pct,
                 )
 
-            return Response(
-                {"messages": msgs_out, "session": session, "echo_command": echo_command}
-            )
+            body: dict = {
+                "messages": msgs_out,
+                "session": session,
+                "echo_command": echo_command,
+            }
+            if (
+                isinstance(parsed, ParsedTalk)
+                and msgs_out
+                and msgs_out[0] not in ("Talk to whom?", "You don't see them here.")
+            ):
+                tq = (parsed.target or "").strip()
+                if tq and char_after:
+                    npc = find_npc_in_room(char_after, tq)
+                    if npc:
+                        try:
+                            if npc.shop.enabled:
+                                body["ui"] = {"openShop": True}
+                        except NpcShop.DoesNotExist:
+                            pass
+            return Response(body)
 
         return _retry_on_deadlock(_sim_session_and_response)
     except Exception:

@@ -410,6 +410,14 @@ def parse_command(line: str):
         return ParsedAttack(target="")
     if low.startswith("atk "):
         return ParsedAttack(target=n[4:].strip())
+    if low.startswith("hit "):
+        return ParsedAttack(target=n[4:].strip())
+    if low == "hit":
+        return ParsedAttack(target="")
+    if low.startswith("strike "):
+        return ParsedAttack(target=n[7:].strip())
+    if low == "strike":
+        return ParsedAttack(target="")
     if low in ("train",):
         return ParsedTrain()
     if low == "sell":

@@ -14,7 +14,11 @@ from qff.narrative_visibility import (
     room_is_narratively_visible,
     sconce_lit_area_ids_for_character,
 )
-from qff.exits import exit_is_passable, exit_is_visible_to_character
+from qff.exits import (
+    exit_appears_locked_for_display,
+    exit_is_passable,
+    exit_is_visible_to_character,
+)
 from qff.quest_engine import (
     floor_item_visible_to_character,
     room_item_visible_to_character,
@@ -23,6 +27,7 @@ from qff.quest_engine import (
 )
 from qff.game_helpers import (
     display_name_for_instance,
+    encumbrance_excess,
     inventory_stack_label,
     modified_stats,
     stat_bonus_totals,
@@ -329,10 +334,10 @@ def build_area_map(character) -> dict:
     }
 
 
-def _slot_label(inst) -> str | None:
+def _slot_label(character, inst) -> str | None:
     if inst is None:
         return None
-    return inventory_stack_label(inst, include_lock_hint=True)
+    return inventory_stack_label(inst, include_lock_hint=True, character=character)
 
 
 def _inventory_display_rows(character) -> tuple[list[str], list[int]]:
@@ -352,7 +357,7 @@ def _inventory_display_rows(character) -> tuple[list[str], list[int]]:
     for iid in inv_ids:
         inst = by_id.get(iid)
         if inst:
-            labels.append(inventory_stack_label(inst, include_lock_hint=True))
+            labels.append(inventory_stack_label(inst, include_lock_hint=True, character=character))
             quantities.append(max(1, int(inst.quantity or 1)))
     return labels, quantities
 
@@ -467,13 +472,13 @@ def build_character_profile(character) -> dict:
         },
         "glyphs": list(character.glyphs or []),
         "equipment_slots": {
-            "head": _slot_label(character.head_item),
-            "mainHand": _slot_label(character.main_hand_item),
-            "offHand": _slot_label(character.off_hand_item),
-            "chest": _slot_label(character.chest_item),
-            "feet": _slot_label(character.feet_item),
-            "ring": _slot_label(character.ring_item),
-            "amulet": _slot_label(character.amulet_item),
+            "head": _slot_label(character, character.head_item),
+            "mainHand": _slot_label(character, character.main_hand_item),
+            "offHand": _slot_label(character, character.off_hand_item),
+            "chest": _slot_label(character, character.chest_item),
+            "feet": _slot_label(character, character.feet_item),
+            "ring": _slot_label(character, character.ring_item),
+            "amulet": _slot_label(character, character.amulet_item),
         },
         "inventory": inv_ids,
         "inventoryItems": inv_labels,
@@ -483,6 +488,7 @@ def build_character_profile(character) -> dict:
             "modified": mod,
             "bonusSum": bonus,
         },
+        "isEncumbered": encumbrance_excess(character) > 0,
     }
 
 
@@ -571,6 +577,7 @@ def build_session_for_character(character, *, world_sync: bool = True) -> dict:
                 "label": ex.get_direction_display(),
                 "to_room_id": ex.to_room_id,
                 "is_blocked": not exit_is_passable(character, ex),
+                "is_locked": exit_appears_locked_for_display(character, ex),
             }
         )
 

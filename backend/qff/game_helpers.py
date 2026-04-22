@@ -152,29 +152,38 @@ def item_meets_requirements(character: "Character", item: "Item") -> bool:
     return True
 
 
-def item_instance_has_pending_lock_hint(inst: "ItemInstance") -> bool:
+def item_instance_has_pending_lock_hint(
+    inst: "ItemInstance", character: "Character | None" = None
+) -> bool:
     """True when this instance still has roll-locked inspect content (lore / hidden lines)."""
     it = inst.item
     if it.lore_chance is None:
+        return False
+    if character is not None and character_knows_item_lore_for_template(character, it):
         return False
     return not inst.unlocked
 
 
 def display_name_for_instance(
-    inst: "ItemInstance", *, include_lock_hint: bool = False
+    inst: "ItemInstance",
+    *,
+    include_lock_hint: bool = False,
+    character: "Character | None" = None,
 ) -> str:
     """(?) is only used for the play HUD (inventory + equipment). Pass True there only."""
     base = inst.nickname if inst.nickname else inst.item.name
-    if include_lock_hint and item_instance_has_pending_lock_hint(inst):
+    if include_lock_hint and item_instance_has_pending_lock_hint(inst, character):
         return f"{base} (?)"
     return base
 
 
 def inventory_stack_label(
-    inst: "ItemInstance", *, include_lock_hint: bool = False
+    inst: "ItemInstance", *, include_lock_hint: bool = False, character: "Character | None" = None
 ) -> str:
     """Display name with (N) suffix when quantity > 1."""
-    base = display_name_for_instance(inst, include_lock_hint=include_lock_hint)
+    base = display_name_for_instance(
+        inst, include_lock_hint=include_lock_hint, character=character
+    )
     q = int(getattr(inst, "quantity", 1) or 1)
     if q > 1:
         return f"{base} ({q})"
@@ -228,6 +237,30 @@ def encumbrance_cap(character: "Character") -> int:
 
 def encumbrance_excess(character: "Character") -> int:
     return max(0, inventory_distinct_instance_count(character) - encumbrance_cap(character))
+
+
+def character_knows_item_lore_for_template(character: "Character", item: "Item") -> bool:
+    """True if this character has already unlocked lore for the item template (any instance)."""
+    from qff.models import CharacterItemLoreUnlocked
+
+    return CharacterItemLoreUnlocked.objects.filter(
+        character_id=character.pk, item_id=item.pk
+    ).exists()
+
+
+def ensure_character_item_lore_template_unlocked(character: "Character", item: "Item") -> None:
+    from qff.models import CharacterItemLoreUnlocked
+
+    CharacterItemLoreUnlocked.objects.get_or_create(
+        character_id=character.pk, item_id=item.pk
+    )
+
+
+def encumbrance_notice_if_hindered(character: "Character") -> list[str]:
+    """Log line when this command used an encumbrance-penalized roll and excess is > 0."""
+    if encumbrance_excess(character) > 0:
+        return ["You are encumbered!"]
+    return []
 
 
 def roll_d100_plus_stat_encumbered(character: "Character", stat: int) -> int:

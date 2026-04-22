@@ -64,6 +64,8 @@ export type QffExit = {
   label: string;
   to_room_id: number;
   is_blocked?: boolean;
+  /** KEY exit not yet opened (show (locked) even if passable with key). */
+  is_locked?: boolean;
 };
 
 export type QffAreaMapCell = {
@@ -224,6 +226,8 @@ export type QffCharacterProfile = {
   inventoryItems: string[];
   /** Parallel stack sizes (same order as inventory / inventoryItems). */
   inventoryQuantities?: number[];
+  /** True when inventory count is over the encumbrance cap. */
+  isEncumbered?: boolean;
   stats: {
     base: QffStatBlock;
     modified: QffStatBlock;
@@ -239,6 +243,7 @@ export type QffCommandResponse = {
   session: QffSessionWithCharacter;
   /** When true, the client should show the user's raw command line with the messages. */
   echo_command?: boolean;
+  ui?: { openShop?: boolean };
 };
 
 export async function fetchQffSession(accessToken: string | null): Promise<QffSession> {

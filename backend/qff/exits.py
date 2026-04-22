@@ -134,6 +134,13 @@ def passable_unlock_state(character: Character, room_exit: RoomExit) -> bool:
     return False
 
 
+def exit_appears_locked_for_display(character: Character, room_exit: RoomExit) -> bool:
+    """True when a KEY exit has not been opened for this character/realm yet (still shows (locked))."""
+    if room_exit.lock_kind != RoomExit.LockKind.KEY:
+        return False
+    return not passable_unlock_state(character, room_exit)
+
+
 def exit_is_visible_to_character(character: Character, room_exit: RoomExit) -> bool:
     """Whether this exit appears in play (HUD, map, movement) for the character."""
     if not room_exit.is_hidden:
@@ -189,12 +196,30 @@ def exit_is_passable(character: Character, room_exit: RoomExit) -> bool:
 
 
 @transaction.atomic
-def consume_key_if_entering_locked(character: Character, room_exit: RoomExit) -> None:
-    """If KEY exit and not yet unlocked, consume key from inventory (caller verified passable)."""
+def consume_key_if_entering_locked(
+    character: Character, room_exit: RoomExit
+) -> tuple[bool, str | None]:
+    """If KEY exit and not yet unlocked, consume key when ``consume_key_on_pass``.
+
+    Returns (consumed, key_item_name) for self/room messages.
+    """
     if room_exit.lock_kind != RoomExit.LockKind.KEY:
-        return
+        return (False, None)
     if passable_unlock_state(character, room_exit):
-        return
+        return (False, None)
     if not room_exit.consume_key_on_pass:
-        return
-    consume_key_and_unlock(character, room_exit)
+        return (False, None)
+    key_name: str | None = None
+    if room_exit.key_item_id and room_exit.key_item:
+        key_name = (room_exit.key_item.name or "").strip() or "key"
+    elif room_exit.key_item_id:
+        from qff.models import Item
+
+        key_name = (
+            Item.objects.filter(pk=room_exit.key_item_id).values_list("name", flat=True).first()
+        )
+        key_name = (str(key_name).strip() if key_name else None) or "key"
+    consumed = consume_key_and_unlock(character, room_exit)
+    if consumed and not key_name:
+        key_name = "key"
+    return (consumed, key_name if consumed else None)

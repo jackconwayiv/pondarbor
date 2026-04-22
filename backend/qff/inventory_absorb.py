@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from qff.game_helpers import character_knows_item_lore_for_template
 from qff.models import ItemInstance
 
 if TYPE_CHECKING:
-    from qff.models import Character, Item
+    from qff.models import Character, Item  # noqa: F401 used in annotations
 
 
 def effective_max_stack(item: "Item") -> int:
@@ -16,13 +17,25 @@ def effective_max_stack(item: "Item") -> int:
     return max(1, min(9999, int(item.max_stack or 99)))
 
 
-def _merge_meta_compatible(inst: ItemInstance, donor: ItemInstance | None) -> bool:
+def _merge_meta_compatible(
+    inst: ItemInstance,
+    donor: ItemInstance | None,
+    *,
+    character: "Character | None" = None,
+    item: "Item | None" = None,
+) -> bool:
     if donor is None:
         return (
             not (inst.nickname or "").strip()
             and not inst.unlocked
             and not (inst.chars_failed_to_inspect or [])
         )
+    if (
+        character is not None
+        and item is not None
+        and character_knows_item_lore_for_template(character, item)
+    ):
+        return (inst.nickname or "") == (donor.nickname or "")
     return (
         (inst.nickname or "") == (donor.nickname or "")
         and bool(inst.unlocked) == bool(donor.unlocked)
@@ -31,12 +44,24 @@ def _merge_meta_compatible(inst: ItemInstance, donor: ItemInstance | None) -> bo
     )
 
 
-def _donor_instance_defaults(donor: ItemInstance | None) -> dict:
+def _donor_instance_defaults(
+    donor: ItemInstance | None, *, character: "Character | None" = None, item: "Item | None" = None
+) -> dict:
     if donor is None:
-        return {}
+        ul = bool(
+            character is not None
+            and item is not None
+            and character_knows_item_lore_for_template(character, item)
+        )
+        return {"unlocked": True} if ul else {}
+    ul = bool(donor.unlocked) or (
+        character is not None
+        and item is not None
+        and character_knows_item_lore_for_template(character, item)
+    )
     return {
         "nickname": donor.nickname,
-        "unlocked": donor.unlocked,
+        "unlocked": ul,
         "chars_failed_to_inspect": list(donor.chars_failed_to_inspect or []),
         "visible_quest_state_id": donor.visible_quest_state_id,
     }
@@ -72,7 +97,7 @@ def absorb_item_quantity(
                 owner_character=character,
                 room=None,
                 quantity=1,
-                **_donor_instance_defaults(donor),
+                **_donor_instance_defaults(donor, character=character, item=item),
             )
             new_pks.append(inst.pk)
         return (new_pks, new_pks)
@@ -92,7 +117,7 @@ def absorb_item_quantity(
         )
         if not inst or inst.item_id != item.id:
             continue
-        if not _merge_meta_compatible(inst, donor):
+        if not _merge_meta_compatible(inst, donor, character=character, item=item):
             continue
         space = max_s - inst.quantity
         if space <= 0:
@@ -103,12 +128,15 @@ def absorb_item_quantity(
         if donor is not None and donor.visible_quest_state_id:
             inst.visible_quest_state_id = donor.visible_quest_state_id
             ufields.append("visible_quest_state_id")
+        if character_knows_item_lore_for_template(character, item) and not inst.unlocked:
+            inst.unlocked = True
+            ufields.append("unlocked")
         inst.save(update_fields=ufields)
         merged_into.append(inst.pk)
         remaining -= add
 
     new_pks: list[int] = []
-    defaults = _donor_instance_defaults(donor)
+    defaults = _donor_instance_defaults(donor, character=character, item=item)
     while remaining > 0:
         chunk = min(max_s, remaining)
         inst = ItemInstance.objects.create(

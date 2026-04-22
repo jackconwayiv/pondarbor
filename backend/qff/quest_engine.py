@@ -536,6 +536,27 @@ def find_npc_in_room(character: Character, query: str) -> Npc | None:
     return None
 
 
+def find_other_hero_in_room(actor: Character, query: str) -> Character | None:
+    """Another player in the same room matching ``query`` (for social / get failures)."""
+    q = (query or "").strip().lower()
+    if not q:
+        return None
+    others = Character.objects.filter(current_room_id=actor.current_room_id).exclude(
+        pk=actor.pk
+    )
+    for ch in others.select_related("character_class").order_by("id"):
+        nn = (ch.name_normalized or "").strip().lower()
+        if ch.name.lower() == q or nn == q:
+            return ch
+    for ch in others.order_by("id"):
+        if ch.name.lower().startswith(q):
+            return ch
+    for ch in others.order_by("id"):
+        if name_token_prefix_match(ch.name.lower(), q):
+            return ch
+    return None
+
+
 def find_interactable_in_room(character: Character, query: str) -> Interactable | None:
     q = (query or "").strip().lower()
     if not q:

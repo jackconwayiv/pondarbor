@@ -484,13 +484,10 @@ export default function QffPlayPage() {
               recent: true,
               logTone: actionLogEntryTone(e),
             }));
-            if (res.echo_command === true) {
-              block = [{ id: nextId(), text: `> ${raw}`, recent: true }, ...block];
-            }
+            block = [{ id: nextId(), text: `> ${raw}`, recent: true }, ...block];
           } else {
             const narr = res.messages;
-            const toShow: string[] =
-              res.echo_command === true ? [`> ${raw}`, ...narr] : narr;
+            const toShow: string[] = [`> ${raw}`, ...narr];
             block = toShow.map((text) => ({
               id: nextId(),
               text,
@@ -510,6 +507,11 @@ export default function QffPlayPage() {
           return [...filtered.map((p) => ({ ...p, recent: false })), ...block];
         });
         if (shopVerb && (sessionSnapshot.shops?.length ?? 0) > 0) {
+          setShopPanelOpen(true);
+          setContainerPanelOpen(false);
+          setQuestPanelOpen(false);
+        }
+        if (res.ui?.openShop) {
           setShopPanelOpen(true);
           setContainerPanelOpen(false);
           setQuestPanelOpen(false);
@@ -616,7 +618,9 @@ export default function QffPlayPage() {
   const stBase = cp.stats.base;
   const stBonus = cp.stats.bonusSum;
   const invLabel =
-    cp.inventoryItems.length > 0 ? cp.inventoryItems.join(", ") : "—";
+    cp.inventoryItems.length > 0
+      ? cp.inventoryItems.join(", ") + (cp.isEncumbered ? " (encumbered)" : "")
+      : "—";
 
   const exitsBlock = (
     <>
@@ -628,7 +632,11 @@ export default function QffPlayPage() {
           {exits.length === 0
             ? "none obvious"
             : exits
-                .map((e) => (e.is_blocked ? `${e.label} (blocked)` : e.label))
+                .map((e) => {
+                  if (e.is_blocked) return `${e.label} (blocked)`;
+                  if (e.is_locked) return `${e.label} (locked)`;
+                  return e.label;
+                })
                 .join(", ")}
         </Text>
       </Text>

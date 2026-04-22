@@ -540,6 +540,30 @@ class ItemInstance(models.Model):
         return f"{self.item.name}#{self.pk}"
 
 
+class CharacterItemLoreUnlocked(models.Model):
+    """Per-character, per-item-template lore is revealed for all instances of that template."""
+
+    character = models.ForeignKey(
+        "Character",
+        on_delete=models.CASCADE,
+        related_name="item_lore_unlocks",
+    )
+    item = models.ForeignKey(
+        "Item",
+        on_delete=models.CASCADE,
+        related_name="lore_unlocked_for_characters",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["character", "item"],
+                name="qff_charitemlore_uniq",
+            )
+        ]
+
+
 class RoomItem(models.Model):
     """DM-placed item template in a room; get mints a new ItemInstance per player (not a shared floor row)."""
 

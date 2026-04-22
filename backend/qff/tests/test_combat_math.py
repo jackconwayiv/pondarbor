@@ -15,6 +15,7 @@ from qff.combat_math import (
     compute_effective_dodge_chance,
     compute_final_damage,
     compute_hit_chance,
+    compute_unarmed_paper_base,
     level_factor,
     resolve_physical_strike,
 )
@@ -163,9 +164,10 @@ class ResolvePhysicalStrikeTests(TestCase):
         self.assertEqual(r.base_damage, 3)
         self.assertEqual(r.rolled_base, 3)
 
-    def test_level_one_gains_one_unarmed_base_damage_is_five(self):
-        """Default Character has gains=1; unarmed weapon rating is 1 → (3×1+2×1)×LevelFactor(1)=5."""
-        self.assertEqual(UNARMED_WEAPON_RATING, 1)
+    def test_unarmed_paper_base_is_one_plus_level(self):
+        """Unarmed uses 1+level, not the weapon×gains formula."""
+        self.assertEqual(compute_unarmed_paper_base(1), 2)
+        self.assertEqual(compute_unarmed_paper_base(10), 11)
         self.assertEqual(compute_base_damage(UNARMED_WEAPON_RATING, 1, 1), 5)
 
     def test_monster_paper_in_range_then_positive_swing_can_exceed_template_max(self):
@@ -231,21 +233,23 @@ class ResolvePhysicalStrikeTests(TestCase):
         with patch("qff.combat_math.random.randint", return_value=-10):
             self.assertEqual(apply_damage_swing(5, 10), 1)
 
-    def test_damage_swing_level_one_band_on_starter_base(self):
-        """Paper base 5 at level 1, L=1 → rolled in {4,5,6} before armor."""
+    def test_damage_swing_level_one_band_unarmed(self):
+        """Unarmed paper = 1+level; at level 1, base 2, L=1 → rolled in {1,2,3} before armor."""
         atk = {
             **self._sample_attacker(),
             "weapon": UNARMED_WEAPON_RATING,
-            "gains": 1,
+            "gains": 99,
+            "level": 1,
+            "is_unarmed": True,
         }
         dfn = self._sample_defender()
-        self.assertEqual(compute_base_damage(UNARMED_WEAPON_RATING, 1, 1), 5)
+        self.assertEqual(compute_unarmed_paper_base(1), 2)
         for u in (-1, 0, 1):
             with patch("qff.combat_math.roll_d100", side_effect=[50, 99]), patch(
                 "qff.combat_math.random.random", return_value=0.99
             ), patch("qff.combat_math.random.randint", return_value=u):
                 r = resolve_physical_strike(atk, dfn)
             self.assertEqual(r.outcome, "hit")
-            self.assertEqual(r.base_damage, 5)
-            self.assertEqual(r.rolled_base, 5 + u)
-            self.assertEqual(r.damage, 5 + u)
+            self.assertEqual(r.base_damage, 2)
+            self.assertEqual(r.rolled_base, 2 + u)
+            self.assertEqual(r.damage, 2 + u)

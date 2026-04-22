@@ -1490,6 +1490,8 @@ def _consume_verb_rejection_message(item, attempted_verb: str) -> str | None:
     got = (attempted_verb or "").strip().lower()
     if got == required:
         return None
+    if got == "use" and required in ("eat", "drink", "read"):
+        return None
     if required == "eat":
         if got == "drink":
             return "That isn't something you drink."
@@ -1909,6 +1911,10 @@ def _consume_inventory_instance(
 
     ch = Character.objects.get(pk=actor_pk)
     v = verb.lower()
+    if v == "use":
+        req = (inst.item.consume_verb or "").strip().lower()
+        if req in ("eat", "drink", "read"):
+            v = req
     if v == "eat":
         _notify_peers_third_person(ch, room_id, f"{actor_name} eats the {base_label}.")
         out = [f"You eat the {base_label}."] + effect_lines
@@ -1949,6 +1955,8 @@ def _handle_read(char: CharacterType, parsed: ParsedRead) -> list[str]:
         char.save(update_fields=["last_activity_at", "updated_at"])
         if obj.untranslated and not _character_has_alien_glyph(char):
             return ["You don't understand the alien language."]
+        if obj.untranslated and _character_has_alien_glyph(char):
+            return [f"Your alien is rusty, but it says something like: ‘{text}’"]
         return [text]
 
     inv = list(char.inventory or [])

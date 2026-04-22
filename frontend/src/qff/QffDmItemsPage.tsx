@@ -339,7 +339,8 @@ export default function QffDmItemsPage() {
             <Field.Root flex="1" minW="200px">
               <Field.Label>Consumable</Field.Label>
               <Text fontSize="xs" color="#888" mb={1}>
-                When on, eat / drink / use work from inventory for this template.
+                When on, eat / drink / use / read from inventory work. With a set consume
+                verb, <Text as="code">/use</Text> is also accepted (e.g. use + eat).
               </Text>
               <Switch.Root
                 checked={!!form.consumable}
@@ -358,7 +359,8 @@ export default function QffDmItemsPage() {
             <Field.Root flex="1" minW="200px">
               <Field.Label>Consume verb</Field.Label>
               <Text fontSize="xs" color="#888" mb={1}>
-                Required command when set. Leave &quot;Any&quot; for legacy items.
+                Required base verb when set; players may still type <Text as="code">/use</Text> for
+                eat / drink / read. Leave &quot;Any&quot; for legacy items.
               </Text>
               <NativeSelectRoot
                 opacity={form.consumable ? undefined : 0.45}

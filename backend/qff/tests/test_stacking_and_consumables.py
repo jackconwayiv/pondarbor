@@ -96,7 +96,7 @@ class StackingAndConsumableTests(TestCase):
         self.assertEqual(inst2.quantity, 2)
         self.assertEqual(c.cur_health, 15)
         self.assertEqual(c.cur_mana, 3)
-        self.assertTrue(any("recover 5 health" in x for x in lines))
+        self.assertTrue(any("recover 5 HP" in x for x in lines))
         self.assertTrue(any("recover 3 mana" in x for x in lines))
 
     def test_encumbrance_cap_uses_gains_div_10(self):

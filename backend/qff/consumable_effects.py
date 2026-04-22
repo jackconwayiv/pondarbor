@@ -157,7 +157,7 @@ def apply_consume_effects(character: "Character", item: "Item") -> list[str]:
             pass
 
     if hp_gain > 0:
-        lines.append(f"You recover {hp_gain} health.")
+        lines.append(f"You recover {hp_gain} HP.")
     if mana_gain > 0:
         lines.append(f"You recover {mana_gain} mana.")
 

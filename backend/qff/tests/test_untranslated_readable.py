@@ -52,7 +52,10 @@ class UntranslatedReadableTests(TestCase):
         self.char.glyphs = ["👽"]
         self.char.save(update_fields=["glyphs", "updated_at"])
         lines = execute_command(self.char, parse_command("read alien"))
-        self.assertEqual(lines, ["BEWARE THE VOID"])
+        self.assertEqual(
+            lines,
+            ["Your alien is rusty, but it says something like: ‘BEWARE THE VOID’"],
+        )
 
     def test_look_shows_inspect_not_block(self):
         lines = execute_command(self.char, parse_command("look alien"))

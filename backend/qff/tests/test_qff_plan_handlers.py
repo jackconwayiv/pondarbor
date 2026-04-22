@@ -92,7 +92,7 @@ class PlanHandlerDarkUseInteractableTests(TestCase):
         lines = execute_command(char, parse_command("use brass sconce"))
         self.assertNotEqual(lines, [NARRATIVE_TOO_DARK_MESSAGE])
         self.assertTrue(
-            any("lit" in ln.lower() or "mind" in ln.lower() for ln in lines),
+            any("permanently lights up this zone" in ln.lower() for ln in lines),
             lines,
         )
 
@@ -154,6 +154,84 @@ class PlanHandlerUseReadTests(TestCase):
         lines = execute_command(self.char, parse_command("read scroll"))
         self.assertTrue(any("read" in x.lower() for x in lines), lines)
         self.assertFalse(ItemInstance.objects.filter(pk=inst.pk).exists())
+
+    def test_use_read_scroll_in_inventory_uses_read_output(self):
+        scroll = Item.objects.create(
+            slug="scroll-u",
+            name="Dusty Scroll",
+            slot=None,
+            consumable=True,
+            consume_verb=Item.ConsumeVerb.READ,
+            extra_data={"consume_effects": [{"kind": "heal_hp", "amount": 1}]},
+        )
+        inst = ItemInstance.objects.create(
+            item=scroll, owner_character=self.char, room=None, quantity=1
+        )
+        self.char.inventory = [inst.pk]
+        self.char.save(update_fields=["inventory"])
+        lines = execute_command(self.char, parse_command("use scroll"))
+        self.assertTrue(any("read" in x.lower() for x in lines), lines)
+        self.assertFalse(ItemInstance.objects.filter(pk=inst.pk).exists())
+
+    def test_use_can_drink_drink_consumable(self):
+        d = Item.objects.create(
+            slug="d-use",
+            name="Berry Juice",
+            slot=None,
+            consumable=True,
+            consume_verb=Item.ConsumeVerb.DRINK,
+            extra_data={"consume_effects": [{"kind": "heal_hp", "amount": 1}]},
+        )
+        inst = ItemInstance.objects.create(item=d, owner_character=self.char, room=None, quantity=1)
+        self.char.inventory = [inst.pk]
+        self.char.save(update_fields=["inventory"])
+        lines = execute_command(self.char, parse_command("use juice"))
+        self.assertTrue(any("drink" in x.lower() for x in lines), lines)
+
+    def test_use_can_eat_food_consumable(self):
+        f = Item.objects.create(
+            slug="f-use",
+            name="Red Apple",
+            slot=None,
+            consumable=True,
+            consume_verb=Item.ConsumeVerb.EAT,
+            extra_data={"consume_effects": [{"kind": "heal_hp", "amount": 1}]},
+        )
+        inst = ItemInstance.objects.create(item=f, owner_character=self.char, room=None, quantity=1)
+        self.char.inventory = [inst.pk]
+        self.char.save(update_fields=["inventory"])
+        lines = execute_command(self.char, parse_command("use apple"))
+        self.assertTrue(any("eat" in x.lower() for x in lines), lines)
+
+    def test_eat_rejects_drink_consumable(self):
+        d = Item.objects.create(
+            slug="d-eat-rej",
+            name="Berry Juice",
+            slot=None,
+            consumable=True,
+            consume_verb=Item.ConsumeVerb.DRINK,
+            extra_data={"consume_effects": [{"kind": "heal_hp", "amount": 1}]},
+        )
+        inst = ItemInstance.objects.create(item=d, owner_character=self.char, room=None, quantity=1)
+        self.char.inventory = [inst.pk]
+        self.char.save(update_fields=["inventory"])
+        lines = execute_command(self.char, parse_command("eat juice"))
+        self.assertEqual(lines, ["That isn't something you eat."])
+
+    def test_drink_rejects_eat_consumable(self):
+        f = Item.objects.create(
+            slug="f-drink-rej",
+            name="Red Apple",
+            slot=None,
+            consumable=True,
+            consume_verb=Item.ConsumeVerb.EAT,
+            extra_data={"consume_effects": [{"kind": "heal_hp", "amount": 1}]},
+        )
+        inst = ItemInstance.objects.create(item=f, owner_character=self.char, room=None, quantity=1)
+        self.char.inventory = [inst.pk]
+        self.char.save(update_fields=["inventory"])
+        lines = execute_command(self.char, parse_command("drink apple"))
+        self.assertEqual(lines, ["That isn't something you drink."])
 
     def test_read_sign_prefers_interactable_over_inventory(self):
         scroll = Item.objects.create(

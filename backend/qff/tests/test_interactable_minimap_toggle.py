@@ -53,16 +53,19 @@ class InteractableMinimapToggleTests(TestCase):
             map_reveal_minutes=60,
         )
 
-    def test_sconce_toggles_area_lit(self):
+    def test_sconce_marks_area_lit_permanently(self):
         lines_on = handle_interactable_use(self.character, self.sconce)
         self.character.refresh_from_db()
         self.assertIn(self.area.pk, self.character.sconce_full_narrative_area_ids)
-        self.assertTrue(any("stays lit" in ln.lower() for ln in lines_on))
+        self.assertIn(
+            "Using the brass sconce permanently lights up this zone.",
+            lines_on,
+        )
 
-        lines_off = handle_interactable_use(self.character, self.sconce)
+        lines_again = handle_interactable_use(self.character, self.sconce)
         self.character.refresh_from_db()
-        self.assertNotIn(self.area.pk, self.character.sconce_full_narrative_area_ids)
-        self.assertTrue(any("fade" in ln.lower() for ln in lines_off))
+        self.assertIn(self.area.pk, self.character.sconce_full_narrative_area_ids)
+        self.assertIn("The lights are already on in this zone.", lines_again)
 
     def test_map_toggles_full_reveal(self):
         lines_on = handle_interactable_use(self.character, self.wall_map)

@@ -559,14 +559,12 @@ def handle_interactable_use(character: Character, obj: Interactable) -> list[str
         aid = char.current_room.area_id
         area_ids = [int(x) for x in (char.sconce_full_narrative_area_ids or [])]
         if aid in area_ids:
-            char.sconce_full_narrative_area_ids = [a for a in area_ids if a != aid]
-            char.save(update_fields=["sconce_full_narrative_area_ids", "updated_at"])
-            out.append("The remembered light fades from this chamber.")
+            out.append("The lights are already on in this zone.")
         else:
             area_ids.append(aid)
             char.sconce_full_narrative_area_ids = area_ids
             char.save(update_fields=["sconce_full_narrative_area_ids", "updated_at"])
-            out.append("The area stays lit in your mind's eye.")
+            out.append(f"Using the {obj.name} permanently lights up this zone.")
     elif k == Interactable.Kind.MAP:
         now = timezone.now()
         active = (

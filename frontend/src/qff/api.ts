@@ -132,6 +132,13 @@ export type QffSessionWithCharacter = {
   area: { id: number; name: string; theme: QffAreaTheme };
   exits: QffExit[];
   others_here: Array<{ name: string; inactive: boolean }>;
+  /** In-realm heroes with recent activity; for / who panel (name, level, class, area only). */
+  active_heroes?: Array<{
+    name: string;
+    level: number;
+    class_name: string;
+    area_name: string;
+  }>;
   /** When true, client should leave play (e.g. AFK kick to lobby). */
   force_lobby?: boolean;
   /** One minimap grid per visited area; current_area_id marks where the player is. */

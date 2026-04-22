@@ -23,6 +23,7 @@ import {
   sendQffCommand,
   type QffAreaMapCell,
   type QffCommandResponse,
+  type QffSession,
   type QffSessionWithCharacter,
   type QffShopPanelLine,
 } from "./api";
@@ -145,6 +146,7 @@ export default function QffPlayPage() {
   /** When true, container contents replace the minimap (same grid slot as shop). */
   const [containerPanelOpen, setContainerPanelOpen] = useState(false);
   const [questPanelOpen, setQuestPanelOpen] = useState(false);
+  const [activeUsersPanelOpen, setActiveUsersPanelOpen] = useState(false);
   const prevRoomIdRef = useRef<number | null>(null);
   const logLineIdRef = useRef(0);
   const lastBroadcastIdRef = useRef(0);
@@ -402,6 +404,7 @@ export default function QffPlayPage() {
       if ((session.shops?.length ?? 0) === 0) setShopPanelOpen(false);
       setContainerPanelOpen(false);
       setQuestPanelOpen(false);
+      setActiveUsersPanelOpen(false);
     }
   }, [session]);
 
@@ -421,9 +424,47 @@ export default function QffPlayPage() {
       setShopPanelOpen(false);
       setContainerPanelOpen(false);
       setQuestPanelOpen(false);
+      setActiveUsersPanelOpen(false);
       setMapVisible(true);
       setLine("");
       queueMicrotask(() => inputRef.current?.focus());
+      return;
+    }
+    if (mapWord === "who" || mapWord === "whois") {
+      setShopPanelOpen(false);
+      setContainerPanelOpen(false);
+      setQuestPanelOpen(false);
+      setMapVisible(true);
+      setLine("");
+      void (async () => {
+        let token = commandTokenRef.current;
+        if (!token) {
+          token = await getTokenRef.current();
+        }
+        const applySession = (s: QffSession, t: string) => {
+          commandTokenRef.current = t;
+          if (s.has_character) {
+            setSession(s);
+          }
+        };
+        try {
+          const s = await fetchQffSession(token);
+          applySession(s, token);
+        } catch (firstErr) {
+          const msg = firstErr instanceof Error ? firstErr.message : "";
+          if (/\(401\)|\(403\)/.test(msg)) {
+            try {
+              const t2 = await getTokenRef.current();
+              const s2 = await fetchQffSession(t2);
+              applySession(s2, t2);
+            } catch {
+              /* keep prior session */
+            }
+          }
+        }
+        setActiveUsersPanelOpen(true);
+        queueMicrotask(() => inputRef.current?.focus());
+      })();
       return;
     }
     const s = sessionRef.current;
@@ -544,21 +585,25 @@ export default function QffPlayPage() {
           setShopPanelOpen(true);
           setContainerPanelOpen(false);
           setQuestPanelOpen(false);
+          setActiveUsersPanelOpen(false);
         }
         if (res.ui?.openShop) {
           setShopPanelOpen(true);
           setContainerPanelOpen(false);
           setQuestPanelOpen(false);
+          setActiveUsersPanelOpen(false);
         }
         if (verb === "open" && sessionSnapshot.room.opened_container) {
           setContainerPanelOpen(true);
           setShopPanelOpen(false);
           setQuestPanelOpen(false);
+          setActiveUsersPanelOpen(false);
         }
         if (verb === "quest") {
           setQuestPanelOpen(true);
           setShopPanelOpen(false);
           setContainerPanelOpen(false);
+          setActiveUsersPanelOpen(false);
         }
         setSession(sessionSnapshot);
       } catch (e) {
@@ -939,6 +984,55 @@ export default function QffPlayPage() {
     </Box>
   );
 
+  const activeHeroRows = session.active_heroes ?? [];
+  const activeUsersPanel = (
+    <Box
+      position="relative"
+      flexShrink={0}
+      w="100%"
+      minW={0}
+      borderWidth="1px"
+      borderColor={HUD_PANEL_BORDER}
+      borderRadius="md"
+      p={2}
+      bg={HUD_PANEL_BG}
+      fontSize="xs"
+      display="flex"
+      flexDirection="column"
+      overflowY="auto"
+      maxH={{ base: "min(300px, 42vh)", lg: "min(460px, 48vh)" }}
+    >
+      <Text fontWeight="semibold" color={HUD_PANEL_TEXT} mb={1}>
+        Active Users
+      </Text>
+      {activeHeroRows.length === 0 ? (
+        <Text color={HUD_PANEL_TEXT_MUTED}>No active users.</Text>
+      ) : (
+        <Stack gap={1}>
+          {activeHeroRows.map((h) => (
+            <Flex key={h.name} justify="space-between" align="start" gap={2} w="100%">
+              <Text color={HUD_PANEL_TEXT} minW={0} lineHeight="short">
+                {h.name} L{h.level} {h.class_name}
+              </Text>
+              <Text
+                color={HUD_PANEL_TEXT}
+                textAlign="right"
+                flexShrink={0}
+                maxW="50%"
+                lineHeight="short"
+              >
+                {h.area_name}
+              </Text>
+            </Flex>
+          ))}
+        </Stack>
+      )}
+      <Text mt={2} color={HUD_PANEL_TEXT_MUTED} fontSize="2xs">
+        <strong>map</strong> to return.
+      </Text>
+    </Box>
+  );
+
   const characterPanel = (
     <Box
       flexShrink={0}
@@ -1185,7 +1279,11 @@ export default function QffPlayPage() {
             minH={0}
             aria-hidden
           />
-          {!mapMinimal || shopPanelOpen || containerPanelOpen || questPanelOpen ? (
+          {!mapMinimal ||
+          shopPanelOpen ||
+          containerPanelOpen ||
+          questPanelOpen ||
+          activeUsersPanelOpen ? (
             <Box
               gridColumn={{ base: "1", lg: "2" }}
               gridRow={{ base: "auto", lg: "1 / span 2" }}
@@ -1198,7 +1296,9 @@ export default function QffPlayPage() {
                   ? containerPanel
                   : questPanelOpen
                     ? questPanel
-                    : mapPanel}
+                    : activeUsersPanelOpen
+                      ? activeUsersPanel
+                      : mapPanel}
             </Box>
           ) : null}
           <Box

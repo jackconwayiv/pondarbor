@@ -146,6 +146,32 @@ def others_here_detailed(character) -> list[dict]:
     return out
 
 
+def active_heroes_in_realm() -> list[dict]:
+    """All in-realm heroes with recent input (same visibility window as ``others_here``).
+
+    Each item has name, level, class_name, and area_name only (no room or other details).
+    """
+    now = timezone.now()
+    visible_threshold = now - timedelta(minutes=AFK_LOBBY_KICK_MINUTES)
+    qs = (
+        Character.objects.filter(
+            is_in_realm=True,
+            last_activity_at__gte=visible_threshold,
+        )
+        .select_related("current_room__area", "character_class")
+        .order_by("name")
+    )
+    return [
+        {
+            "name": c.name,
+            "level": c.level,
+            "class_name": c.character_class.name,
+            "area_name": c.current_room.area.name,
+        }
+        for c in qs
+    ]
+
+
 def _character_is_inactive_for_hud(character) -> bool:
     la = character.last_activity_at
     if not la:
@@ -660,6 +686,7 @@ def build_session_for_character(character, *, world_sync: bool = True) -> dict:
         },
         "exits": exits,
         "others_here": others_here_detailed(character),
+        "active_heroes": active_heroes_in_realm(),
         "force_lobby": _force_lobby_for_inactivity(character),
         "area_map": (
             {

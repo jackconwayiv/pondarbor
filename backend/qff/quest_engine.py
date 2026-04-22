@@ -38,6 +38,31 @@ SLOT_ATTRS = (
 )
 
 
+def character_item_template_quantity(character: Character, item_id: int) -> int:
+    """Total quantity of an item template carried across inventory stacks + equipped.
+
+    - Inventory: sums `ItemInstance.quantity` for matching template rows.
+    - Equipped: counts 1 per equipped instance (equipped items are non-stackable).
+    """
+    total = 0
+    for iid in character.inventory or []:
+        inst = ItemInstance.objects.filter(pk=iid, owner_character_id=character.pk).first()
+        if not inst or inst.item_id != item_id:
+            continue
+        total += max(1, int(inst.quantity or 1))
+    for attr in SLOT_ATTRS:
+        inst = getattr(character, attr, None)
+        if inst and inst.item_id == item_id:
+            total += 1
+    return total
+
+
+def character_has_item_template_quantity(
+    character: Character, item_id: int, needed_qty: int
+) -> bool:
+    return character_item_template_quantity(character, item_id) >= max(1, int(needed_qty or 1))
+
+
 def container_interactable_active_for_character(
     character: Character, interactable_id: int | None
 ) -> bool:
@@ -251,7 +276,9 @@ def try_item_transitions_on_talk(character: Character, npc: Npc) -> list[str]:
             requires_item__isnull=False,
         ).order_by("sort_order", "id")
         for tr in transitions:
-            if not character_carries_item_template(character, tr.requires_item_id):
+            if not character_has_item_template_quantity(
+                character, tr.requires_item_id, getattr(tr, "requires_item_quantity", 1)
+            ):
                 continue
             if not NpcDialogue.objects.filter(
                 npc=npc,
@@ -299,9 +326,10 @@ def apply_transition(character: Character, transition: QuestTransition) -> list[
             item_id=req_id,
         ).exists()
         if not has_remove_effect:
-            removed = _remove_one_instance_of_template(character, req_id)
-            if removed:
-                out.append(f"You give up the {removed}.")
+            qty = max(1, int(getattr(transition, "requires_item_quantity", 1) or 1))
+            removed_labels = _remove_item_template_quantity(character, req_id, qty)
+            for label in removed_labels:
+                out.append(f"You give up the {label}.")
             character = Character.objects.select_for_update().get(pk=character.pk)
     for eff in transition.effects.order_by("sort_order", "id"):
         out.extend(_apply_effect(character, eff))
@@ -385,9 +413,10 @@ def _apply_effect(character: Character, eff: QuestEffect) -> list[str]:
             out.append(f"You receive {display_name_for_instance(inst)}.")
     elif kind == QuestEffect.Kind.REMOVE_ITEM_TEMPLATE:
         if eff.item_id:
-            removed = _remove_one_instance_of_template(character, eff.item_id)
-            if removed:
-                out.append(f"You give up the {removed}.")
+            qty = max(1, int(eff.amount or 1))
+            removed_labels = _remove_item_template_quantity(character, eff.item_id, qty)
+            for label in removed_labels:
+                out.append(f"You give up the {label}.")
     elif kind == QuestEffect.Kind.REALM_UNLOCK_EXIT_TIMED:
         if eff.room_exit_id:
             ex = RoomExit.objects.get(pk=eff.room_exit_id)
@@ -412,6 +441,57 @@ def _remove_one_instance_of_template(character: Character, item_template_id: int
         if inst and inst.item_id == item_template_id:
             return _delete_instance_from_character(character, inst)
     return None
+
+
+def _remove_item_template_quantity(
+    character: Character, item_template_id: int, qty: int
+) -> list[str]:
+    """Remove up to `qty` quantity of a template across inventory stacks + equipped.
+
+    Returns display labels (one per affected instance removal/decrement) for narration.
+    """
+    remaining = max(0, int(qty or 0))
+    if remaining <= 0:
+        return []
+    labels: list[str] = []
+
+    # Prefer inventory stacks first (so equipped doesn't unexpectedly pop off).
+    for iid in list(character.inventory or []):
+        if remaining <= 0:
+            break
+        inst = ItemInstance.objects.select_for_update().filter(
+            pk=iid, owner_character_id=character.pk
+        ).first()
+        if not inst or inst.item_id != item_template_id:
+            continue
+        held = max(1, int(inst.quantity or 1))
+        if held <= remaining:
+            labels.append(display_name_for_instance(inst))
+            _delete_instance_from_character(character, inst)
+            remaining -= held
+            character = Character.objects.select_for_update().get(pk=character.pk)
+            continue
+        # Partial decrement on stack.
+        inst.quantity = held - remaining
+        inst.save(update_fields=["quantity", "updated_at"])
+        labels.append(display_name_for_instance(inst))
+        remaining = 0
+
+    # Then equipped (each counts as 1).
+    if remaining > 0:
+        character = Character.objects.select_for_update().get(pk=character.pk)
+    for attr in SLOT_ATTRS:
+        if remaining <= 0:
+            break
+        inst = getattr(character, attr, None)
+        if not inst or inst.item_id != item_template_id:
+            continue
+        labels.append(display_name_for_instance(inst))
+        _delete_instance_from_character(character, inst)
+        remaining -= 1
+        character = Character.objects.select_for_update().get(pk=character.pk)
+
+    return labels
 
 
 def _delete_instance_from_character(character: Character, inst: ItemInstance) -> str:
@@ -579,8 +659,10 @@ def handle_interactable_use(character: Character, obj: Interactable) -> list[str
             if not out:
                 out.append("Nothing happens.")
             return out
-        if tr.requires_item_id and not character_carries_item_template(
-            character, tr.requires_item_id
+        if tr.requires_item_id and not character_has_item_template_quantity(
+            character,
+            tr.requires_item_id,
+            getattr(tr, "requires_item_quantity", 1),
         ):
             if not out:
                 out.append("Nothing happens.")

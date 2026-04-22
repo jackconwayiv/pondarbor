@@ -56,6 +56,7 @@ def _quest_transition_dict(tr: QuestTransition) -> dict:
         "from_state_id": tr.from_state_id,
         "to_state_id": tr.to_state_id,
         "requires_item_id": tr.requires_item_id,
+        "requires_item_quantity": int(getattr(tr, "requires_item_quantity", 1) or 1),
         "sort_order": tr.sort_order,
         "revert_after_minutes": tr.revert_after_minutes,
         "revert_to_state_id": tr.revert_to_state_id,
@@ -219,11 +220,17 @@ def dm_quest_transition_create(request, quest_id):
         )
     ram = request.data.get("revert_after_minutes")
     rts = request.data.get("revert_to_state_id")
+    qty_raw = request.data.get("requires_item_quantity")
+    try:
+        qty = max(1, int(qty_raw)) if qty_raw not in (None, "") else 1
+    except (TypeError, ValueError):
+        qty = 1
     tr = QuestTransition.objects.create(
         quest=quest,
         from_state_id=fs,
         to_state_id=ts,
         requires_item_id=request.data.get("requires_item_id") or None,
+        requires_item_quantity=qty,
         sort_order=max(0, int(request.data.get("sort_order") or 0)),
         revert_after_minutes=int(ram) if ram not in (None, "") else None,
         revert_to_state_id=int(rts) if rts not in (None, "") else None,
@@ -246,6 +253,11 @@ def dm_quest_transition_detail(request, pk):
         tr.to_state_id = int(request.data["to_state_id"])
     if "requires_item_id" in request.data:
         tr.requires_item_id = request.data["requires_item_id"] or None
+    if "requires_item_quantity" in request.data:
+        try:
+            tr.requires_item_quantity = max(1, int(request.data.get("requires_item_quantity") or 1))
+        except (TypeError, ValueError):
+            pass
     if "sort_order" in request.data:
         tr.sort_order = max(0, int(request.data.get("sort_order") or 0))
     if "revert_after_minutes" in request.data:

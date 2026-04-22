@@ -383,7 +383,7 @@ export default function QffDmItemsPage() {
             <Field.Root flex="1" minW="200px">
               <Field.Label>Stackable</Field.Label>
               <Text fontSize="xs" color="#888" mb={1}>
-                Same template merges in inventory up to max stack (one encumbrance slot per row).
+                Same template merges in inventory up to max stack (one encumbrance slot per inventory row; equipped items don’t count).
               </Text>
               <Switch.Root
                 checked={!!form.stackable}

@@ -211,12 +211,23 @@ def carried_item_instance_count(character: "Character") -> int:
     return len(seen)
 
 
+def inventory_distinct_instance_count(character: "Character") -> int:
+    """Distinct item instances in inventory only (encumbrance ignores equipped)."""
+    seen: set[int] = set()
+    for iid in character.inventory or []:
+        try:
+            seen.add(int(iid))
+        except (TypeError, ValueError):
+            continue
+    return len(seen)
+
+
 def encumbrance_cap(character: "Character") -> int:
     return 5 + int(character.gains) // 10
 
 
 def encumbrance_excess(character: "Character") -> int:
-    return max(0, carried_item_instance_count(character) - encumbrance_cap(character))
+    return max(0, inventory_distinct_instance_count(character) - encumbrance_cap(character))
 
 
 def roll_d100_plus_stat_encumbered(character: "Character", stat: int) -> int:

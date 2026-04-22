@@ -973,6 +973,10 @@ class QuestTransition(models.Model):
         related_name="+",
         help_text="If set, character must carry this item template (inventory or equipped).",
     )
+    requires_item_quantity = models.PositiveIntegerField(
+        default=1,
+        help_text="Total quantity required across inventory stacks + equipped.",
+    )
     revert_after_minutes = models.PositiveIntegerField(
         null=True,
         blank=True,
@@ -1309,6 +1313,11 @@ class MonsterTemplate(models.Model):
     gold_min = models.PositiveIntegerField(default=0)
     gold_max = models.PositiveIntegerField(default=3)
     loot_table = models.JSONField(default=list, blank=True)
+    quest_drops = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Quest-only drop rows (separate from loot_table). Each row may include quest_state_id, item_slug/item_id, per_kill_qty, chance.",
+    )
     armor = models.PositiveSmallIntegerField(
         default=0,
         help_text="Physical mitigation when this monster is hit.",

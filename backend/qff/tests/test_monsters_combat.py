@@ -25,11 +25,15 @@ from qff.models import (
     Area,
     Character,
     CharacterClass,
+    CharacterQuestProgress,
     Item,
     ItemInstance,
     MonsterInstance,
     MonsterTemplate,
     Npc,
+    Quest,
+    QuestState,
+    QuestTransition,
     Room,
     RoomBroadcast,
     RoomExit,
@@ -535,6 +539,73 @@ class MonsterCombatTests(TestCase):
                 item=q_item,
                 owner_character__isnull=True,
             ).exists()
+        )
+
+    def test_award_kill_quest_drop_happens_only_when_on_stage_and_under_cap(self):
+        quest = Quest.objects.create(slug="qd1", name="QD1")
+        st_a = QuestState.objects.create(
+            quest=quest, slug="a", name="A", is_initial=True, sort_order=0
+        )
+        st_b = QuestState.objects.create(quest=quest, slug="b", name="B", sort_order=1)
+        q_item = Item.objects.create(
+            slug="quest_drop_x", name="Quest Drop", slot=None, stackable=True, max_stack=99
+        )
+        QuestTransition.objects.create(
+            quest=quest,
+            from_state=st_a,
+            to_state=st_b,
+            requires_item=q_item,
+            requires_item_quantity=2,
+        )
+        CharacterQuestProgress.objects.create(
+            character=self.hero, quest=quest, current_state=st_a
+        )
+
+        fallback = Item.objects.create(slug="loot_fallback", name="Fallback", slot=None)
+        self.tpl.quest_drops = [
+            {"quest_state_id": st_a.id, "item_id": q_item.id, "per_kill_qty": 1, "chance": 100},
+        ]
+        self.tpl.loot_table = [
+            {"slug": "loot_fallback", "qty": 1, "chance": 100},
+        ]
+        self.tpl.save(update_fields=["quest_drops", "loot_table", "updated_at"])
+
+        m = MonsterInstance.objects.create(
+            template=self.tpl,
+            current_room=self.room_danger,
+            cur_hp=1,
+            max_hp=5,
+        )
+        now = timezone.now()
+        award_kill(m, self.room_danger.id, now, killer=self.hero)
+        self.assertTrue(
+            ItemInstance.objects.filter(
+                room_id=self.room_danger.id,
+                item=q_item,
+                owner_character__isnull=True,
+                visible_quest_state_id=st_a.id,
+            ).exists()
+        )
+
+        # If hero already has cap quantity, quest drop should stop and fall back to loot_table.
+        inst = ItemInstance.objects.create(
+            item=q_item, owner_character=self.hero, room=None, quantity=2
+        )
+        self.hero.inventory = [inst.pk]
+        self.hero.save(update_fields=["inventory"])
+        ItemInstance.objects.filter(room_id=self.room_danger.id).delete()
+        m2 = MonsterInstance.objects.create(
+            template=self.tpl,
+            current_room=self.room_danger,
+            cur_hp=1,
+            max_hp=5,
+        )
+        award_kill(m2, self.room_danger.id, now, killer=self.hero)
+        self.assertFalse(
+            ItemInstance.objects.filter(room_id=self.room_danger.id, item=q_item).exists()
+        )
+        self.assertTrue(
+            ItemInstance.objects.filter(room_id=self.room_danger.id, item=fallback).exists()
         )
 
     def test_award_kill_solo_xp_kill_broadcast(self):

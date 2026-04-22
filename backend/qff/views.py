@@ -1323,6 +1323,7 @@ def _dm_monster_template_dict(t: MonsterTemplate) -> dict:
         "gold_min": t.gold_min,
         "gold_max": t.gold_max,
         "loot_table": t.loot_table or [],
+        "quest_drops": t.quest_drops or [],
         "armor": t.armor,
         "accuracy": t.accuracy,
         "penetration": t.penetration,
@@ -1421,6 +1422,10 @@ def dm_monster_template_detail(request, pk):
         raw = request.data.get("loot_table")
         if isinstance(raw, list):
             tpl.loot_table = raw
+    if "quest_drops" in request.data:
+        raw = request.data.get("quest_drops")
+        if isinstance(raw, list):
+            tpl.quest_drops = raw
     if "description" in request.data:
         tpl.description = (request.data.get("description") or "")[:20000]
     if "hidden_description" in request.data:

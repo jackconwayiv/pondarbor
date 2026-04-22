@@ -645,6 +645,7 @@ export type DmMonsterTemplate = {
   gold_min: number;
   gold_max: number;
   loot_table: DmMonsterLootRow[];
+  quest_drops?: DmMonsterQuestDropRow[];
   armor: number;
   accuracy: number;
   penetration?: number;
@@ -698,6 +699,19 @@ export async function dmCreateMonsterTemplate(
   if (!response.ok) throw new Error(await response.text());
   return (await response.json()) as DmMonsterTemplate;
 }
+
+export type DmMonsterQuestDropRow = {
+  quest_state_id?: number;
+  state_id?: number;
+  item_slug?: string;
+  slug?: string;
+  item_id?: number;
+  per_kill_qty?: number;
+  qty?: number;
+  quantity?: number;
+  chance?: number;
+  pct?: number;
+};
 
 export async function dmFetchRooms(accessToken: string | null, areaId: number): Promise<DmRoom[]> {
   const response = await fetch(qffJoinBase(`/api/v1/qff/dm/areas/${areaId}/rooms/`), {
@@ -1263,6 +1277,7 @@ export type DmQuestTransitionRow = {
   from_state_id: number;
   to_state_id: number;
   requires_item_id: number | null;
+  requires_item_quantity?: number;
   sort_order: number;
   effects: DmQuestEffectRow[];
 };

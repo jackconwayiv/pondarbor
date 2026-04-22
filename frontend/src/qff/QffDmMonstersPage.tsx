@@ -24,10 +24,17 @@ import {
   dmPatchMonsterTemplate,
   type DmItem,
   type DmMonsterLootRow,
+  type DmMonsterQuestDropRow,
   type DmMonsterTemplate,
 } from "./api";
 
 type LootEditorRow = { slug: string; chance: string; questOnly: boolean };
+type QuestDropEditorRow = {
+  questStateId: string;
+  itemId: string;
+  perKillQty: string;
+  chance: string;
+};
 
 function emptyForm(): Partial<DmMonsterTemplate> {
   return {
@@ -54,6 +61,7 @@ function emptyForm(): Partial<DmMonsterTemplate> {
     lore_dc: null,
     attack_weapon_label: "",
     loot_table: [],
+    quest_drops: [],
   };
 }
 
@@ -79,6 +87,30 @@ function lootTableFromRows(rows: LootEditorRow[]): DmMonsterLootRow[] {
     }));
 }
 
+function questDropRowsFromTable(t: DmMonsterQuestDropRow[] | undefined): QuestDropEditorRow[] {
+  const rows = t ?? [];
+  if (rows.length === 0) {
+    return [{ questStateId: "", itemId: "", perKillQty: "1", chance: "100" }];
+  }
+  return rows.map((r) => ({
+    questStateId: String(r.quest_state_id ?? r.state_id ?? ""),
+    itemId: String(r.item_id ?? ""),
+    perKillQty: String(r.per_kill_qty ?? r.qty ?? r.quantity ?? 1),
+    chance: String(r.chance ?? r.pct ?? 100),
+  }));
+}
+
+function questDropsFromRows(rows: QuestDropEditorRow[]): DmMonsterQuestDropRow[] {
+  return rows
+    .filter((r) => r.questStateId.trim() && r.itemId.trim())
+    .map((r) => ({
+      quest_state_id: parseInt(r.questStateId, 10),
+      item_id: parseInt(r.itemId, 10),
+      per_kill_qty: Math.max(1, parseInt(r.perKillQty, 10) || 1),
+      chance: Math.min(100, Math.max(0, parseInt(r.chance, 10) || 0)),
+    }));
+}
+
 export default function QffDmMonstersPage() {
   const navigate = useNavigate();
   const { isAuthenticated, sessionUser, isLoading, getApiAccessToken } = useAppSession();
@@ -89,6 +121,11 @@ export default function QffDmMonstersPage() {
   const [lootRows, setLootRows] = useState<LootEditorRow[]>([{ slug: "", chance: "0", questOnly: false }]);
   const [showLootJson, setShowLootJson] = useState(false);
   const [lootJson, setLootJson] = useState("[]");
+  const [questDropRows, setQuestDropRows] = useState<QuestDropEditorRow[]>([
+    { questStateId: "", itemId: "", perKillQty: "1", chance: "100" },
+  ]);
+  const [showQuestDropsJson, setShowQuestDropsJson] = useState(false);
+  const [questDropsJson, setQuestDropsJson] = useState("[]");
   const [form, setForm] = useState<Partial<DmMonsterTemplate>>(emptyForm());
   const [editingId, setEditingId] = useState<number | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -120,6 +157,9 @@ export default function QffDmMonstersPage() {
     setLootRows([{ slug: "", chance: "0", questOnly: false }]);
     setLootJson("[]");
     setShowLootJson(false);
+    setQuestDropRows([{ questStateId: "", itemId: "", perKillQty: "1", chance: "100" }]);
+    setQuestDropsJson("[]");
+    setShowQuestDropsJson(false);
     setLoreDcInput("");
   };
 
@@ -128,13 +168,20 @@ export default function QffDmMonstersPage() {
     setEditingId(t.id);
     setForm({ ...t });
     setLootRows(lootRowsFromTable(t.loot_table));
+    setQuestDropRows(questDropRowsFromTable(t.quest_drops as DmMonsterQuestDropRow[] | undefined));
     setLoreDcInput(t.lore_dc != null && t.lore_dc !== undefined ? String(t.lore_dc) : "");
     try {
       setLootJson(JSON.stringify(t.loot_table ?? [], null, 2));
     } catch {
       setLootJson("[]");
     }
+    try {
+      setQuestDropsJson(JSON.stringify(t.quest_drops ?? [], null, 2));
+    } catch {
+      setQuestDropsJson("[]");
+    }
     setShowLootJson(false);
+    setShowQuestDropsJson(false);
   };
 
   const save = async () => {
@@ -159,6 +206,19 @@ export default function QffDmMonstersPage() {
       loot_table = lootTableFromRows(lootRows);
     }
 
+    let quest_drops: DmMonsterQuestDropRow[];
+    if (showQuestDropsJson) {
+      try {
+        const parsed = JSON.parse(questDropsJson || "[]");
+        quest_drops = Array.isArray(parsed) ? parsed : [];
+      } catch {
+        setErr("quest_drops must be valid JSON array.");
+        return;
+      }
+    } else {
+      quest_drops = questDropsFromRows(questDropRows);
+    }
+
     const loreRaw = loreDcInput.trim();
     let lore_dc: number | null = null;
     if (loreRaw !== "") {
@@ -173,6 +233,7 @@ export default function QffDmMonstersPage() {
     const body: Partial<DmMonsterTemplate> = {
       ...form,
       loot_table,
+      quest_drops,
       lore_dc,
       attack_weapon_label: form.attack_weapon_label ?? "",
     };
@@ -198,10 +259,14 @@ export default function QffDmMonstersPage() {
         setIsCreating(false);
         setForm(updated);
         setLootRows(lootRowsFromTable(updated.loot_table));
+        setQuestDropRows(
+          questDropRowsFromTable(updated.quest_drops as DmMonsterQuestDropRow[] | undefined),
+        );
         setLoreDcInput(
           updated.lore_dc != null && updated.lore_dc !== undefined ? String(updated.lore_dc) : "",
         );
         setLootJson(JSON.stringify(updated.loot_table ?? [], null, 2));
+        setQuestDropsJson(JSON.stringify(updated.quest_drops ?? [], null, 2));
         return;
       }
       if (editingId == null) return;
@@ -209,10 +274,14 @@ export default function QffDmMonstersPage() {
       setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
       setForm(updated);
       setLootRows(lootRowsFromTable(updated.loot_table));
+      setQuestDropRows(
+        questDropRowsFromTable(updated.quest_drops as DmMonsterQuestDropRow[] | undefined),
+      );
       setLoreDcInput(
         updated.lore_dc != null && updated.lore_dc !== undefined ? String(updated.lore_dc) : "",
       );
       setLootJson(JSON.stringify(updated.loot_table ?? [], null, 2));
+      setQuestDropsJson(JSON.stringify(updated.quest_drops ?? [], null, 2));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Save failed");
     }
@@ -249,9 +318,10 @@ export default function QffDmMonstersPage() {
       </Flex>
       <Text mb={4} color="#889977" fontSize="sm">
         Loot uses one d100 roll: cumulative chance bands in list order (sum ≤ 100). At most one
-        item drops per kill. Quest-only rows drop only if at least one hero in the room does not
-        already carry that item template. Hidden lore uses d100 + Smarts (encumbered) vs Lore DC
-        (blank = monster level).
+        item drops per kill. Quest drops are configured separately and only apply when a hero is
+        on the specified quest stage and still needs the required quantity; otherwise loot_table is
+        used as normal. Hidden lore uses d100 + Smarts (encumbered) vs Lore DC (blank = monster
+        level).
       </Text>
       {err && (
         <Text color="nautical.solid" mb={4} role="alert">
@@ -509,6 +579,130 @@ export default function QffDmMonstersPage() {
               )}
               <Button size="xs" variant="ghost" onClick={() => setShowLootJson((v) => !v)}>
                 {showLootJson ? "Use loot grid editor" : "Edit loot as JSON"}
+              </Button>
+
+              <Text fontSize="sm" fontWeight="semibold" color="#b8c8a8" mt={3}>
+                Quest drops
+              </Text>
+              <Text fontSize="xs" color="#888">
+                Separate from loot_table. Chance defaults to 100%. Quantity cap comes from the quest
+                transition for that state (requires item qty).
+              </Text>
+              {!showQuestDropsJson ? (
+                <Stack gap={2} mt={1}>
+                  {questDropRows.map((row, idx) => (
+                    <Flex key={idx} gap={2} align="flex-end" flexWrap="wrap">
+                      <Field.Root w="120px">
+                        <Field.Label fontSize="xs">Quest state id</Field.Label>
+                        <Input
+                          size="sm"
+                          value={row.questStateId}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setQuestDropRows((prev) =>
+                              prev.map((r, i) => (i === idx ? { ...r, questStateId: v } : r)),
+                            );
+                          }}
+                          bg="#222"
+                        />
+                      </Field.Root>
+                      <Field.Root flex="1" minW="220px">
+                        <Field.Label fontSize="xs">Item</Field.Label>
+                        <NativeSelectRoot>
+                          <NativeSelectField
+                            value={row.itemId}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setQuestDropRows((prev) =>
+                                prev.map((r, i) => (i === idx ? { ...r, itemId: v } : r)),
+                              );
+                            }}
+                            bg="#222"
+                          >
+                            <option value="">—</option>
+                            {items.map((it) => (
+                              <option key={it.id} value={String(it.id)}>
+                                {it.name} (#{it.id})
+                              </option>
+                            ))}
+                          </NativeSelectField>
+                        </NativeSelectRoot>
+                      </Field.Root>
+                      <Field.Root maxW="90px">
+                        <Field.Label fontSize="xs">Qty</Field.Label>
+                        <Input
+                          size="sm"
+                          type="number"
+                          min={1}
+                          value={row.perKillQty}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setQuestDropRows((prev) =>
+                              prev.map((r, i) => (i === idx ? { ...r, perKillQty: v } : r)),
+                            );
+                          }}
+                          bg="#222"
+                        />
+                      </Field.Root>
+                      <Field.Root maxW="110px">
+                        <Field.Label fontSize="xs">Chance %</Field.Label>
+                        <Input
+                          size="sm"
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={row.chance}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setQuestDropRows((prev) =>
+                              prev.map((r, i) => (i === idx ? { ...r, chance: v } : r)),
+                            );
+                          }}
+                          bg="#222"
+                        />
+                      </Field.Root>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          setQuestDropRows((prev) =>
+                            prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx),
+                          )
+                        }
+                        disabled={questDropRows.length <= 1}
+                      >
+                        Remove
+                      </Button>
+                    </Flex>
+                  ))}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setQuestDropRows((prev) => [
+                        ...prev,
+                        { questStateId: "", itemId: "", perKillQty: "1", chance: "100" },
+                      ])
+                    }
+                  >
+                    Add quest drop row
+                  </Button>
+                </Stack>
+              ) : (
+                <Field.Root mt={1}>
+                  <Field.Label>quest_drops (JSON)</Field.Label>
+                  <Textarea
+                    value={questDropsJson}
+                    onChange={(e) => setQuestDropsJson(e.target.value)}
+                    rows={8}
+                    bg="#222"
+                    fontFamily="monospace"
+                    fontSize="sm"
+                  />
+                </Field.Root>
+              )}
+              <Button size="xs" variant="ghost" onClick={() => setShowQuestDropsJson((v) => !v)}>
+                {showQuestDropsJson ? "Use quest drops grid editor" : "Edit quest_drops as JSON"}
               </Button>
 
               <QffButton type="button" onClick={() => void save()}>

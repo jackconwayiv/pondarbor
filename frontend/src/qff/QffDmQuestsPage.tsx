@@ -716,21 +716,25 @@ function TransitionBlock({
   const [fromId, setFromId] = useState(String(tr.from_state_id));
   const [toId, setToId] = useState(String(tr.to_state_id));
   const [reqItem, setReqItem] = useState(tr.requires_item_id != null ? String(tr.requires_item_id) : "");
+  const [reqQty, setReqQty] = useState(String(tr.requires_item_quantity ?? 1));
   const [sort, setSort] = useState(tr.sort_order);
 
   useEffect(() => {
     setFromId(String(tr.from_state_id));
     setToId(String(tr.to_state_id));
     setReqItem(tr.requires_item_id != null ? String(tr.requires_item_id) : "");
+    setReqQty(String(tr.requires_item_quantity ?? 1));
     setSort(tr.sort_order);
   }, [tr]);
 
   const saveTr = async () => {
+    const qtyNum = Math.max(1, parseInt(reqQty, 10) || 1);
     const token = await getToken();
     await dmPatchQuestTransition(token, tr.id, {
       from_state_id: Number(fromId),
       to_state_id: Number(toId),
       requires_item_id: parseOptInt(reqItem),
+      requires_item_quantity: parseOptInt(reqItem) != null ? qtyNum : 1,
       sort_order: sort,
     });
     await onRefresh();
@@ -791,6 +795,16 @@ function TransitionBlock({
             </NativeSelectField>
           </NativeSelectRoot>
         </Field.Root>
+        <Field.Root w="80px" opacity={reqItem ? undefined : 0.45} pointerEvents={reqItem ? undefined : "none"}>
+          <Field.Label fontSize="xs">Qty</Field.Label>
+          <Input
+            type="number"
+            min={1}
+            value={reqQty}
+            onChange={(e) => setReqQty(e.target.value)}
+            bg="#222"
+          />
+        </Field.Root>
         <Field.Root w="80px">
           <Field.Label fontSize="xs">Sort</Field.Label>
           <Input
@@ -813,6 +827,9 @@ function TransitionBlock({
           Delete transition
         </Button>
       </Flex>
+      <Text fontSize="xs" color="#888" mb={2}>
+        Turn-in checks require total quantity carried (stacks + equipped).
+      </Text>
       <Text fontSize="xs" color="#889977" mb={2}>
         Effects
       </Text>

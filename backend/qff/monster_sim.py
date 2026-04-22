@@ -33,16 +33,18 @@ from qff.game_helpers import (
 )
 from qff.models import (
     Character,
+    CharacterQuestProgress,
     Item,
     ItemInstance,
     MonsterInstance,
     MonsterTemplate,
+    QuestTransition,
     Room,
     RoomBroadcast,
     RoomExit,
     RoomGoldPile,
 )
-from qff.quest_engine import character_carries_item_template
+from qff.quest_engine import character_carries_item_template, character_item_template_quantity
 from qff.realtime import notify_qff_rooms
 
 logger = logging.getLogger(__name__)
@@ -771,6 +773,106 @@ def _monster_loot_pick_partition(tpl: MonsterTemplate, room_id: int) -> tuple[It
     return None
 
 
+def _monster_pick_quest_drop(
+    tpl: MonsterTemplate, room_id: int, heroes: list[Character]
+) -> tuple[Item, int, int] | None:
+    """Pick a quest drop row if any hero in room is eligible.
+
+    Eligibility:
+    - hero is currently in the configured quest_state_id
+    - hero total carried quantity of the item template is below the cap
+      (cap is inferred from QuestTransition.requires_item_quantity from that state + item)
+    - row chance (default 100%) passes
+
+    Returns (item, qty_to_drop, quest_state_id) or None.
+    """
+    rows = tpl.quest_drops or []
+    if not rows or not heroes:
+        return None
+
+    hero_ids = [h.pk for h in heroes]
+    # Cache: which heroes are in which quest states.
+    state_to_hero_ids: dict[int, set[int]] = {}
+    # Cache: (state_id, item_id) -> cap_qty
+    cap_cache: dict[tuple[int, int], int] = {}
+
+    for entry in rows:
+        if not isinstance(entry, dict):
+            continue
+        qs_raw = entry.get("quest_state_id") or entry.get("state_id")
+        try:
+            quest_state_id = int(qs_raw)
+        except (TypeError, ValueError):
+            continue
+
+        item_id = None
+        if entry.get("item_id"):
+            try:
+                item_id = int(entry.get("item_id"))
+            except (TypeError, ValueError):
+                item_id = None
+        if not item_id:
+            slug = entry.get("item_slug") or entry.get("slug")
+            if slug:
+                it = Item.objects.filter(slug=str(slug)).only("id").first()
+                item_id = it.id if it else None
+        if not item_id:
+            continue
+        item = Item.objects.filter(pk=item_id).first()
+        if not item:
+            continue
+
+        raw_ch = entry.get("chance", entry.get("pct"))
+        ch = 100 if raw_ch is None else max(0, min(100, int(raw_ch)))
+        if ch <= 0:
+            continue
+        per_kill_qty = max(
+            1, int(entry.get("per_kill_qty", entry.get("qty", entry.get("quantity", 1))))
+        )
+
+        eligible_heroes = state_to_hero_ids.get(quest_state_id)
+        if eligible_heroes is None:
+            eligible_heroes = set(
+                CharacterQuestProgress.objects.filter(
+                    character_id__in=hero_ids,
+                    current_state_id=quest_state_id,
+                ).values_list("character_id", flat=True)
+            )
+            state_to_hero_ids[quest_state_id] = eligible_heroes
+        if not eligible_heroes:
+            continue
+
+        cap_key = (quest_state_id, item_id)
+        cap = cap_cache.get(cap_key)
+        if cap is None:
+            qs = (
+                QuestTransition.objects.filter(
+                    from_state_id=quest_state_id,
+                    requires_item_id=item_id,
+                )
+                .only("requires_item_quantity")
+                .order_by("-requires_item_quantity", "id")
+            )
+            tr = qs.first()
+            cap = max(1, int(getattr(tr, "requires_item_quantity", 1) or 1)) if tr else 1
+            cap_cache[cap_key] = cap
+
+        # Choose any hero in room who still needs some.
+        for h in heroes:
+            if h.pk not in eligible_heroes:
+                continue
+            cur = character_item_template_quantity(h, item_id)
+            if cur >= cap:
+                continue
+            if roll_d100() > ch:
+                continue
+            qty = min(per_kill_qty, cap - cur)
+            qty = max(1, int(qty))
+            return item, qty, quest_state_id
+
+    return None
+
+
 def award_kill(
     monster: MonsterInstance,
     room_id: int,
@@ -846,18 +948,32 @@ def award_kill(
         add_gold_to_room_floor(room_id, gold)
         _narrate(room_id, f"{tpl.name} drops {gold} gold.")
 
-    picked = _monster_loot_pick_partition(tpl, room_id)
-    if picked:
-        item, qty = picked
+    quest_picked = _monster_pick_quest_drop(tpl, room_id, heroes)
+    if quest_picked:
+        item, qty, quest_state_id = quest_picked
         ItemInstance.objects.create(
             item=item,
             quantity=qty,
             room_id=room_id,
             owner_character=None,
+            visible_quest_state_id=quest_state_id,
             neglect_count=0,
             floor_dropped_at=timezone.now(),
         )
         _narrate(room_id, f"The {tpl.name} drops {item.name}.")
+    else:
+        picked = _monster_loot_pick_partition(tpl, room_id)
+        if picked:
+            item, qty = picked
+            ItemInstance.objects.create(
+                item=item,
+                quantity=qty,
+                room_id=room_id,
+                owner_character=None,
+                neglect_count=0,
+                floor_dropped_at=timezone.now(),
+            )
+            _narrate(room_id, f"The {tpl.name} drops {item.name}.")
 
     lair_room_id = monster.lair_room_id
     monster.delete()

@@ -109,6 +109,7 @@ SLUG_I_CAN_SMELL_IT_FROM_HERE = "i_can_smell_it_from_here"
 SLUG_MONTH_OF_MUSIC = "month_of_music"
 SLUG_MUSIC_LOVER = "music_lover"
 SLUG_MUSICALLY_MULTILOQUENT = "musically_multiloquent"
+SLUG_SCHEDULE_COORDINATOR = "schedule_coordinator"
 
 ARCHIVIST_MIN_QUOTES = 10
 TOWN_CRIER_MIN_PUBLIC = 10
@@ -200,6 +201,22 @@ def evaluate_closet_sharing_is_caring_for_user(user_id: int) -> None:
     ).count()
     if active_owned_count >= SHARING_IS_CARING_MIN_ITEMS:
         _try_unlock(user_id, SLUG_SHARING_IS_CARING)
+
+
+def evaluate_schedule_coordinator_for_user(user_id: int) -> None:
+    """Unlock when the user has at least one active linked (non-manual) calendar source."""
+    from calendars.models import CalendarSource
+
+    has_linked = CalendarSource.objects.filter(
+        owner_id=user_id,
+        is_active=True,
+        source_type__in=(
+            CalendarSource.SourceType.ICAL,
+            CalendarSource.SourceType.GOOGLE_OAUTH,
+        ),
+    ).exists()
+    if has_linked:
+        _try_unlock(user_id, SLUG_SCHEDULE_COORDINATOR)
 
 
 def evaluate_closet_return_achievements_for_users(*, owner_user_id: int, borrower_user_id: int) -> None:
@@ -392,6 +409,8 @@ def backfill_all_achievements() -> None:
 
     from meal.models import MealPlanInstance
 
+    from calendars.models import CalendarSource
+
     for uid in User.objects.values_list("pk", flat=True):
         evaluate_quote_achievements_for_user(uid)
         evaluate_closet_sharing_is_caring_for_user(uid)
@@ -429,6 +448,19 @@ def backfill_all_achievements() -> None:
                 SLUG_TASTY_PLANS,
                 context={"instance_id": inst.pk},
             )
+
+    for uid in (
+        CalendarSource.objects.filter(
+            is_active=True,
+            source_type__in=(
+                CalendarSource.SourceType.ICAL,
+                CalendarSource.SourceType.GOOGLE_OAUTH,
+            ),
+        )
+        .values_list("owner_id", flat=True)
+        .distinct()
+    ):
+        evaluate_schedule_coordinator_for_user(uid)
 
 
 def achievements_payload_for_user(

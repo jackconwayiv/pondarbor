@@ -211,6 +211,7 @@ export default function CalendarPage() {
     });
     setImportOpen(false);
     await Promise.all([loadSources(), loadEvents()]);
+    void refreshSession().catch(() => {});
   };
 
   const handleRefreshSource = async (source: CalendarSource) => {
@@ -227,6 +228,7 @@ export default function CalendarPage() {
         message: `Synced ${source.display_name}: ${summary}.`,
       });
       await Promise.all([loadSources(), loadEvents()]);
+      void refreshSession().catch(() => {});
     } catch (err: unknown) {
       setNotice({
         kind: "error",
@@ -325,13 +327,6 @@ export default function CalendarPage() {
           px={{ base: "2", md: "2" }}
           py={{ base: "2", md: "2" }}
         >
-          {loading && !hasLoadedOnceRef.current ? (
-            <Box maxW="5xl" w="100%" mx="auto" pb="2">
-              <Text fontSize={APP_TEXT_SIZES.body} fontWeight="medium">
-                Loading calendar…
-              </Text>
-            </Box>
-          ) : null}
           <Box
             maxW="5xl"
             w="100%"
@@ -444,6 +439,16 @@ export default function CalendarPage() {
                     >
                       Today
                     </PondButton>
+                    {loading && !hasLoadedOnceRef.current ? (
+                      <Text
+                        fontSize={APP_TEXT_SIZES.helper}
+                        color="fg.muted"
+                        fontWeight="medium"
+                        aria-live="polite"
+                      >
+                        Loading…
+                      </Text>
+                    ) : null}
                   </HStack>
                   <PondButton
                     size="sm"

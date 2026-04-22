@@ -3,8 +3,9 @@ from __future__ import annotations
 import logging
 from datetime import date, timedelta
 
+from achievements.services import evaluate_schedule_coordinator_for_user
 from django.contrib.auth import get_user_model
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
@@ -277,6 +278,7 @@ def _create_source(request):
             message = "Google returned an error for that iCal URL."
         return Response({"detail": message}, status=400)
 
+    evaluate_schedule_coordinator_for_user(request.user.id)
     return Response(
         {
             "source": CalendarSourceSerializer(source).data,
@@ -312,6 +314,7 @@ def source_detail(request, source_id: int):
             {"detail": result.error or "Sync failed."},
             status=400,
         )
+    evaluate_schedule_coordinator_for_user(request.user.id)
     return Response(
         {
             "source": CalendarSourceSerializer(source).data,
@@ -328,9 +331,34 @@ def source_detail(request, source_id: int):
 @api_view(["GET"])
 @permission_classes([IsApprovedUser])
 def approved_users_list(request):
-    """All approved users (including the viewer), for the user-filter list."""
+    """Approved users visible in the calendar people filter (see filter below)."""
     search = (request.query_params.get("q") or "").strip()
-    qs = _approved_users_qs().order_by("profile__display_name", "email")
+    today = timezone.localdate()
+    linked_sources = CalendarSource.objects.filter(
+        owner_id=OuterRef("pk"),
+        is_active=True,
+        source_type__in=(
+            CalendarSource.SourceType.ICAL,
+            CalendarSource.SourceType.GOOGLE_OAUTH,
+        ),
+    )
+    upcoming_events = Event.objects.filter(
+        owner_id=OuterRef("pk"),
+        end_date__gte=today,
+    )
+    qs = (
+        _approved_users_qs()
+        .annotate(
+            _has_linked=Exists(linked_sources),
+            _has_upcoming=Exists(upcoming_events),
+        )
+        .filter(
+            Q(pk=request.user.pk)
+            | Q(_has_linked=True)
+            | Q(_has_upcoming=True),
+        )
+        .order_by("profile__display_name", "email")
+    )
     if search:
         qs = qs.filter(
             Q(email__icontains=search) | Q(profile__display_name__icontains=search)

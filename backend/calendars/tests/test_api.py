@@ -400,11 +400,40 @@ class SourcesApiTests(CalendarTestMixin, TestCase):
 
 
 class ApprovedUsersEndpointTests(CalendarTestMixin, TestCase):
+    """Visibility uses `timezone.localdate()` — patch for stable assertions."""
+
+    anchor = date(2026, 4, 22)
+
     def setUp(self):
         self.create_users()
+        alice_manual = CalendarSource.objects.create(
+            owner=self.alice,
+            source_type=CalendarSource.SourceType.MANUAL,
+            display_name="Manual",
+        )
+        bob_manual = CalendarSource.objects.create(
+            owner=self.bob,
+            source_type=CalendarSource.SourceType.MANUAL,
+            display_name="Manual",
+        )
+        Event.objects.create(
+            owner=self.alice,
+            source=alice_manual,
+            title="",
+            start_date=date(2026, 5, 1),
+            end_date=date(2026, 5, 2),
+        )
+        Event.objects.create(
+            owner=self.bob,
+            source=bob_manual,
+            title="",
+            start_date=date(2026, 5, 1),
+            end_date=date(2026, 5, 2),
+        )
 
     def test_returns_approved_users_only(self):
-        resp = self.alice_client.get("/api/v1/calendars/approved-users/")
+        with patch("calendars.views.timezone.localdate", return_value=self.anchor):
+            resp = self.alice_client.get("/api/v1/calendars/approved-users/")
         self.assertEqual(resp.status_code, 200)
         emails = {row["email"] for row in resp.json()["results"]}
         self.assertIn("alice@example.com", emails)
@@ -412,6 +441,35 @@ class ApprovedUsersEndpointTests(CalendarTestMixin, TestCase):
         self.assertNotIn("pending@example.com", emails)
 
     def test_query_param_search(self):
-        resp = self.alice_client.get("/api/v1/calendars/approved-users/?q=bob")
+        with patch("calendars.views.timezone.localdate", return_value=self.anchor):
+            resp = self.alice_client.get("/api/v1/calendars/approved-users/?q=bob")
         emails = {row["email"] for row in resp.json()["results"]}
         self.assertEqual(emails, {"bob@example.com"})
+
+    def test_excludes_other_with_only_past_events_and_no_linked_calendar(self):
+        june = date(2026, 6, 15)
+        with patch("calendars.views.timezone.localdate", return_value=june):
+            resp = self.alice_client.get("/api/v1/calendars/approved-users/")
+        self.assertEqual(resp.status_code, 200)
+        emails = {row["email"] for row in resp.json()["results"]}
+        self.assertEqual(emails, {"alice@example.com"})
+
+    def test_includes_other_with_linked_calendar_even_if_no_upcoming_events(self):
+        june = date(2026, 6, 15)
+        CalendarSource.objects.create(
+            owner=self.bob,
+            source_type=CalendarSource.SourceType.ICAL,
+            display_name="Trips",
+            ical_url="https://calendar.google.com/calendar/ical/x/basic.ics",
+        )
+        with patch("calendars.views.timezone.localdate", return_value=june):
+            resp = self.alice_client.get("/api/v1/calendars/approved-users/")
+        emails = {row["email"] for row in resp.json()["results"]}
+        self.assertEqual(emails, {"alice@example.com", "bob@example.com"})
+
+    def test_search_does_not_surface_hidden_users(self):
+        june = date(2026, 6, 15)
+        with patch("calendars.views.timezone.localdate", return_value=june):
+            resp = self.alice_client.get("/api/v1/calendars/approved-users/?q=bob")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["results"], [])

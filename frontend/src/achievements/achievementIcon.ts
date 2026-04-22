@@ -21,6 +21,7 @@ const SLUG_TO_EMOJI: Record<string, string> = {
   month_of_music: "\u{1F3B6}",
   music_lover: "\u{1F493}",
   musically_multiloquent: "\u{1F4AC}",
+  schedule_coordinator: "🗓️",
 };
 
 const DEFAULT_EMOJI = "🏆";

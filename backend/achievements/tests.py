@@ -1,3 +1,4 @@
+from unittest.mock import patch
 from urllib.parse import quote
 
 from django.contrib.auth import get_user_model
@@ -14,6 +15,7 @@ from achievements.services import (
     SLUG_PONDCLICKER_TIER_2,
     SLUG_PONDCLICKER_TIER_6,
     SLUG_PONDCLICKER_TIER_7,
+    SLUG_SCHEDULE_COORDINATOR,
     SLUG_SHARING_IS_CARING,
     SLUG_SOMETHING_BORROWED,
     SLUG_SMORGASBORD,
@@ -30,10 +32,14 @@ from achievements.services import (
     evaluate_meal_maestro_tasty_plans_for_instance,
     evaluate_pondclicker_achievements_for_user,
     evaluate_quote_achievements_for_user,
+    evaluate_schedule_coordinator_for_user,
     evaluate_whatif_warrior_for_user,
 )
 from datetime import date
 
+from calendars.models import CalendarSource
+from calendars.services import SyncResult
+from calendars.tests.helpers import CalendarTestMixin
 from quotes.models import Quote
 from whatif.models import WhatIfGameResult, WhatIfPlayer, WhatIfSession
 from closet.models import Item
@@ -545,3 +551,89 @@ class AchievementPublicApiTests(TestCase):
         self.assertEqual(resp_show.status_code, 200)
         ua.refresh_from_db()
         self.assertIsNone(ua.visible_to_friends)
+
+
+class ScheduleCoordinatorAchievementTests(CalendarTestMixin, TestCase):
+    def setUp(self):
+        self.create_users()
+        AchievementDefinition.objects.get_or_create(
+            slug=SLUG_SCHEDULE_COORDINATOR,
+            defaults={
+                "title": "Schedule Coordinator",
+                "description": "Share one or more calendars with your PondArbor friends.",
+                "category": "calendar",
+                "order": 130,
+            },
+        )
+
+    def test_evaluate_manual_source_only_does_not_unlock(self):
+        CalendarSource.objects.create(
+            owner=self.alice,
+            source_type=CalendarSource.SourceType.MANUAL,
+            display_name="Manual",
+        )
+        evaluate_schedule_coordinator_for_user(self.alice.id)
+        self.assertFalse(
+            UserAchievement.objects.filter(
+                user=self.alice, achievement__slug=SLUG_SCHEDULE_COORDINATOR
+            ).exists()
+        )
+
+    def test_import_success_unlocks(self):
+        with patch(
+            "calendars.views.sync_ical_source",
+            return_value=SyncResult(ok=True, created=1),
+        ):
+            resp = self.alice_client.post(
+                "/api/v1/calendars/sources/",
+                {
+                    "display_name": "Trips",
+                    "ical_url": "https://calendar.google.com/calendar/ical/x/basic.ics",
+                },
+                format="json",
+            )
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertTrue(
+            UserAchievement.objects.filter(
+                user=self.alice, achievement__slug=SLUG_SCHEDULE_COORDINATOR
+            ).exists()
+        )
+
+    def test_import_sync_failure_does_not_unlock(self):
+        with patch(
+            "calendars.views.sync_ical_source",
+            return_value=SyncResult(ok=False, error="404 Not Found"),
+        ):
+            resp = self.alice_client.post(
+                "/api/v1/calendars/sources/",
+                {
+                    "display_name": "Trips",
+                    "ical_url": "https://calendar.google.com/calendar/ical/y/basic.ics",
+                },
+                format="json",
+            )
+        self.assertEqual(resp.status_code, 400)
+        self.assertFalse(
+            UserAchievement.objects.filter(
+                user=self.alice, achievement__slug=SLUG_SCHEDULE_COORDINATOR
+            ).exists()
+        )
+
+    def test_refresh_success_unlocks(self):
+        source = CalendarSource.objects.create(
+            owner=self.alice,
+            source_type=CalendarSource.SourceType.ICAL,
+            display_name="Trips",
+            ical_url="https://calendar.google.com/calendar/ical/z/basic.ics",
+        )
+        with patch(
+            "calendars.views.sync_ical_source",
+            return_value=SyncResult(ok=True, created=0, updated=1),
+        ):
+            resp = self.alice_client.post(f"/api/v1/calendars/sources/{source.id}/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(
+            UserAchievement.objects.filter(
+                user=self.alice, achievement__slug=SLUG_SCHEDULE_COORDINATOR
+            ).exists()
+        )

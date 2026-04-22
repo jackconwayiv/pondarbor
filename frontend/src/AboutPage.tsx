@@ -17,6 +17,7 @@ import { submitContactMessage } from "./about/contactApi";
 import { useAppSession } from "./auth/AppSessionContext";
 import { auth0LoginAuthorizationParams } from "./auth/auth0LoginParams";
 import PondButton from "./PondButton";
+import { pondarborProfileSrc } from "./publicAsset";
 import { fullBleedStackProps, useIsMobile } from "./responsive";
 import { APP_TEXT_SIZES, PANEL_FIELD_PROPS } from "./theme/typography";
 
@@ -107,7 +108,7 @@ export default function AboutPage() {
                 flexDirection={isMobile ? "column" : "row"}
                 alignItems="center"
               >
-                <Image src="pondarborprofile.png" width="150px"></Image>
+                <Image src={pondarborProfileSrc()} width="150px"></Image>
                 <Text
                   fontSize={APP_TEXT_SIZES.body}
                   lineHeight="tall"

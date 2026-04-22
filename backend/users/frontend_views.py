@@ -50,5 +50,8 @@ def spa_index(request, route=None):
             "vite_css": vite_css,
             "favicon_href": _built_public_asset_url("favicon.svg"),
             "pondarbor_logo_src": _built_public_asset_url("pondarborlogo.png"),
+            "pondarbor_profile_src": _built_public_asset_url(
+                "pondarborprofile.png"
+            ),
         },
     )

@@ -25,6 +25,7 @@ import {
   LILYPAD_WEDGE_CLIP_PATH,
 } from "./lilypadHomeConstants";
 import PondButton from "./PondButton";
+import { pondarborProfileSrc } from "./publicAsset";
 import { fullBleedStackProps } from "./responsive";
 import { APP_TEXT_SIZES } from "./theme/typography";
 import {
@@ -475,7 +476,7 @@ function App() {
                 </PondButton>
               </HStack>
               <Flex alignItems="center" width="100%">
-                <Image src="pondarborprofile.png" width="150px"></Image>
+                <Image src={pondarborProfileSrc()} width="150px"></Image>
                 <Text
                   fontSize={APP_TEXT_SIZES.body}
                   lineHeight="tall"

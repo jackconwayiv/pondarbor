@@ -1,8 +1,21 @@
-import { Box, HStack, Heading, Stack, Text } from "@chakra-ui/react";
+import {
+  Avatar,
+  Box,
+  HStack,
+  Heading,
+  Link as ChakraLink,
+  Stack,
+  Text,
+} from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link as RouterLink, Navigate, useParams } from "react-router";
+import {
+  Link as RouterLink,
+  Navigate,
+  useParams,
+} from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
+import { friendProfilePath } from "../friend/profilePaths";
 import PondButton from "../PondButton";
 import { fullBleedStackProps, useIsMobile } from "../responsive";
 import { APP_TEXT_SIZES } from "../theme/typography";
@@ -266,11 +279,32 @@ export default function CalendarDayPage() {
                     orderedCheckedUserIds,
                   );
                   if (color === null) return null;
-                  const owner = ownersById.get(ownerId);
+                  const owner =
+                    ownersById.get(ownerId) ??
+                    eventsForDay.find((ev) => ev.owner.id === ownerId)?.owner;
                   const ownerLabel =
                     owner?.display_name || owner?.email || `User ${ownerId}`;
                   const ownerEvents = eventsForDay.filter(
                     (ev) => ev.owner.id === ownerId,
+                  );
+                  const isSelf =
+                    currentUserId !== null && ownerId === currentUserId;
+                  const ownerHeader = (
+                    <HStack gap="2" align="center" minW="0" py="0.5">
+                      <Avatar.Root size="sm" flexShrink={0}>
+                        <Avatar.Fallback name={ownerLabel} />
+                        {owner?.avatar_url ? (
+                          <Avatar.Image src={owner.avatar_url} />
+                        ) : null}
+                      </Avatar.Root>
+                      <Text
+                        fontSize={APP_TEXT_SIZES.helper}
+                        fontWeight="semibold"
+                        lineClamp={1}
+                      >
+                        {ownerLabel}
+                      </Text>
+                    </HStack>
                   );
                   return (
                     <Box
@@ -289,9 +323,31 @@ export default function CalendarDayPage() {
                           color: USER_COLOR_TEXT_ON[color],
                         }}
                       >
-                        <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="semibold">
-                          {ownerLabel}
-                        </Text>
+                        {isSelf ? (
+                          <Box width="100%">{ownerHeader}</Box>
+                        ) : (
+                          <ChakraLink
+                            asChild
+                            variant="plain"
+                            color="inherit"
+                            textDecoration="none"
+                            display="block"
+                            width="100%"
+                            _hover={{ opacity: 0.92 }}
+                            _focusVisible={{
+                              outline: "2px solid",
+                              outlineColor: "currentColor",
+                              outlineOffset: "2px",
+                            }}
+                          >
+                            <RouterLink
+                              to={friendProfilePath(ownerId)}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {ownerHeader}
+                            </RouterLink>
+                          </ChakraLink>
+                        )}
                       </Box>
                       <Stack gap="1" p="2">
                         {ownerEvents.map((ev) => {

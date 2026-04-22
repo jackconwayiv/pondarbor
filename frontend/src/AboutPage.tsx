@@ -1,8 +1,10 @@
 import { useAuth0 } from "@auth0/auth0-react";
 import {
   Box,
+  Flex,
   Heading,
   HStack,
+  Image,
   Link,
   Stack,
   Text,
@@ -15,11 +17,10 @@ import { submitContactMessage } from "./about/contactApi";
 import { useAppSession } from "./auth/AppSessionContext";
 import { auth0LoginAuthorizationParams } from "./auth/auth0LoginParams";
 import PondButton from "./PondButton";
-import { fullBleedStackProps } from "./responsive";
+import { fullBleedStackProps, useIsMobile } from "./responsive";
 import { APP_TEXT_SIZES, PANEL_FIELD_PROPS } from "./theme/typography";
 
 const CONTACT_MESSAGE_MAX = 4000;
-
 export default function AboutPage() {
   const { loginWithRedirect } = useAuth0();
   const { isAuthenticated, sessionUser, getApiAccessToken } = useAppSession();
@@ -29,7 +30,7 @@ export default function AboutPage() {
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
+  const isMobile = useIsMobile();
   const onSubmit = useCallback(async () => {
     const trimmed = message.trim();
     if (!trimmed) {
@@ -102,13 +103,25 @@ export default function AboutPage() {
                   <Text as="span">About</Text>
                 </HStack>
               </Heading>
-              <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
-                PondArbor (pondarbor.com) is a hobby project developed by Pond
-                Arbor Workshop (Jack Conway) to collect my various app ideas
-                together in one place. I'm sharing it with friends and family as
-                an opportunity to interact with each other through these
-                earth-shatteringly incredible apps.
-              </Text>
+              <Flex
+                flexDirection={isMobile ? "column" : "row"}
+                alignItems="center"
+              >
+                <Image src="pondarborprofile.png" width="150px"></Image>
+                <Text
+                  fontSize={APP_TEXT_SIZES.body}
+                  lineHeight="tall"
+                  color="fg"
+                  mt={isMobile ? "10px" : "0px"}
+                  ml={isMobile ? "0px" : "10px"}
+                >
+                  PondArbor (pondarbor.com) is a hobby project developed by Pond
+                  Arbor Workshop (Jack Conway) to collect my various app ideas
+                  together in one place. I'm sharing it with friends and family
+                  as an opportunity to interact with each other through these
+                  earth-shatteringly incredible apps.
+                </Text>
+              </Flex>
             </Box>
 
             <Box

@@ -7,6 +7,7 @@ import {
   Flex,
   Heading,
   HStack,
+  Image,
   Stack,
   Text,
 } from "@chakra-ui/react";
@@ -72,7 +73,7 @@ const HOME_LILYPAD_TILES = [
 ] as const;
 
 const HOME_PURPOSE_BLURB =
-  "PondArbor is a hobby project by Pond Arbor Workshop: a place for friends and family to use a variety of apps such as games, quotes, a community closet, and more.";
+  "Welcome to PondArbor! This is a hobby project by Pond Arbor Workshop (Jack Conway) for friends and family to enjoy a variety of social and lifestyle apps and games.";
 
 const MONTH_NAMES = [
   "January",
@@ -473,22 +474,18 @@ function App() {
                   Sign up
                 </PondButton>
               </HStack>
-              <Text
-                fontSize={APP_TEXT_SIZES.body}
-                lineHeight="tall"
-                color="fg"
-                maxW="3xl"
-              >
-                {HOME_PURPOSE_BLURB}{" "}
-                <ChakraLink
-                  asChild
-                  color="black"
-                  textDecoration="underline"
-                  _hover={{ color: "sky.solid" }}
+              <Flex alignItems="center" width="100%">
+                <Image src="pondarborprofile.png" width="150px"></Image>
+                <Text
+                  fontSize={APP_TEXT_SIZES.body}
+                  lineHeight="tall"
+                  color="fg"
+                  maxW="3xl"
+                  ml="10px"
                 >
-                  <RouterLink to="/about">Learn more</RouterLink>
-                </ChakraLink>
-              </Text>
+                  {HOME_PURPOSE_BLURB}{" "}
+                </Text>
+              </Flex>
             </>
           )}
           {!isAuthenticated && error && <Text color="fg">Error: {error}</Text>}
@@ -510,8 +507,7 @@ function App() {
           w="100%"
         >
           {HOME_LILYPAD_TILES.map((tile, index) => {
-            const tileInteractive =
-              isAuthenticated || tile.to === "/games";
+            const tileInteractive = isAuthenticated || tile.to === "/games";
             const tileWrapProps = {
               flex: "0 0 auto",
               w: { base: "10.25rem", sm: "11rem", md: "12rem" },

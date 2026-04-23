@@ -15,6 +15,12 @@ export function navLinkLabel(item: AppNavItem): string {
   return item.navLabel ?? item.label;
 }
 
+/** Desktop header: app link label colors (navy bar). */
+export const NAV_HEADER_LINK_TEXT = {
+  active: "white",
+  inactive: "rgba(245, 241, 232, 0.75)",
+} as const;
+
 const GAMES: AppNavItem = {
   to: "/games",
   /** Games hub. */
@@ -34,8 +40,8 @@ const ABOUT: AppNavItem = {
 /** Apps shown on the home page app grid and in the main nav. */
 export const APP_HOME_APPS: AppNavItem[] = [
   {
-    to: "/friends",
-    /** Matches `FriendsPage` h1. */
+    to: "/profile?tab=friends",
+    /** Friends tab on Profile. */
     emoji: "👥",
     label: "Friends",
     blurb: "Find and browse your friends.",

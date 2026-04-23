@@ -1,11 +1,16 @@
 import { Box, Stack, Text } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
 import { useAppSession } from "../auth/AppSessionContext";
+import {
+  PanelListRowSkeleton,
+  PanelMessageSlot,
+} from "../components/panelStatus";
 import PondButton from "../PondButton";
 import {
   APP_TEXT_SIZES,
   MAPPED_LIST_CARD_OUTER_PROPS,
   MAPPED_LIST_STACK_GAP,
+  PANEL_ENTRY_CARD_PROPS,
 } from "../theme/typography";
 import { fetchPublishedQuotes } from "./api";
 import { quoteOwnerDisplayLabel } from "./ownerDisplay";
@@ -79,21 +84,13 @@ export default function PublicQuotesPage() {
 
   return (
     <Stack gap={MAPPED_LIST_STACK_GAP} w="100%">
-      {isLoading ? (
-        <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
-          Loading…
-        </Text>
-      ) : null}
-      {error ? (
-        <Text
-          role="alert"
-          color="nautical.solid"
-          fontWeight="medium"
-          fontSize={APP_TEXT_SIZES.helper}
-        >
-          {error}
-        </Text>
-      ) : null}
+      <Box {...PANEL_ENTRY_CARD_PROPS}>
+        {isLoading ? (
+          <PanelListRowSkeleton rows={2} />
+        ) : (
+          <PanelMessageSlot error={error} />
+        )}
+      </Box>
       {!isLoading && !error && quotes.length === 0 ? (
         <Text>No published quotes yet.</Text>
       ) : null}

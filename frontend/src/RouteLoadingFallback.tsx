@@ -1,27 +1,5 @@
-import { Box, Spinner, Text, VStack } from "@chakra-ui/react";
+import { SessionLoadingCard } from "./components/panelStatus";
 
 export default function RouteLoadingFallback() {
-  return (
-    <VStack
-      minH="40"
-      justify="center"
-      align="center"
-      gap="3"
-      role="status"
-      aria-live="polite"
-    >
-      <Spinner size="sm" colorPalette="teal" />
-      <Box
-        bg="teal.solid"
-        color="teal.contrast"
-        borderRadius="xl"
-        px="2"
-        py="2"
-      >
-        <Text fontSize="sm" fontWeight="medium">
-          Loading page...
-        </Text>
-      </Box>
-    </VStack>
-  );
+  return <SessionLoadingCard />;
 }

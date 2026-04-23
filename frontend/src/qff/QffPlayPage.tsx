@@ -14,6 +14,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
+import { PanelBlockSkeleton } from "../components/panelStatus";
 import QffButton from "./QffButton";
 import {
   fetchQffSession,
@@ -645,8 +646,8 @@ export default function QffPlayPage() {
 
   if (isLoading) {
     return (
-      <Box px={4} py={8}>
-        <Text>Loading…</Text>
+      <Box px={4} py={8} maxW="md">
+        <PanelBlockSkeleton lines={2} showTitleLine />
       </Box>
     );
   }
@@ -671,8 +672,8 @@ export default function QffPlayPage() {
 
   if (!initialSessionLoadDone) {
     return (
-      <Box px={4} py={8}>
-        <Text>Loading…</Text>
+      <Box px={4} py={8} maxW="md">
+        <PanelBlockSkeleton lines={2} showTitleLine />
       </Box>
     );
   }

@@ -25,6 +25,13 @@ import {
   searchFriends,
   type FriendUser,
 } from "../friends/api";
+import {
+  PanelBlockSkeleton,
+  PanelListRowSkeleton,
+  PanelPageShell,
+  PanelSessionReconnect,
+  PanelTabBarSkeleton,
+} from "../components/panelStatus";
 import { fullBleedStackProps, usePrefersCoarsePointer } from "../responsive";
 import {
   APP_SHELL_TAB_LIST_NESTED_PROPS,
@@ -1002,9 +1009,24 @@ export default function QuotesFeedPage() {
 
   if (isLoading) {
     return (
-      <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
-        Loading…
-      </Text>
+      <PanelPageShell>
+        <Stack
+          gap={{ base: "4", md: "4" }}
+          px={{ base: "2", md: "2" }}
+          pt={{ base: "2", md: "2" }}
+          pb="2"
+        >
+          <Box {...PANEL_ENTRY_CARD_PROPS}>
+            <PanelBlockSkeleton lines={2} showTitleLine />
+          </Box>
+        </Stack>
+        <PanelTabBarSkeleton tabCount={3} />
+        <Box px={{ base: "2", md: "2" }} py={{ base: "2", md: "2" }}>
+          <Box {...PANEL_ENTRY_CARD_PROPS}>
+            <PanelListRowSkeleton rows={3} />
+          </Box>
+        </Box>
+      </PanelPageShell>
     );
   }
   if (!isAuthenticated) {
@@ -1012,18 +1034,10 @@ export default function QuotesFeedPage() {
   }
   if (!sessionUser) {
     return (
-      <Stack gap="4" maxW="5xl">
-        <Text fontWeight="semibold">Reconnecting your API session…</Text>
-        <Text fontSize={APP_TEXT_SIZES.helper}>
-          {sessionError ||
-            "You are authenticated, but the API session is not ready yet."}
-        </Text>
-        <HStack>
-          <PondButton colorPalette="sky" onClick={() => void refreshSession()}>
-            Retry session sync
-          </PondButton>
-        </HStack>
-      </Stack>
+      <PanelSessionReconnect
+        sessionError={sessionError}
+        onRetry={() => void refreshSession()}
+      />
     );
   }
 

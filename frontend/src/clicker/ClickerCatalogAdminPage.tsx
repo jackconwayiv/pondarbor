@@ -19,6 +19,7 @@ import { useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
 import { auth0LoginAuthorizationParams } from "../auth/auth0LoginParams";
+import { PanelBlockSkeleton } from "../components/panelStatus";
 import PondButton from "../PondButton";
 import { fullBleedStackProps } from "../responsive";
 import {
@@ -366,9 +367,7 @@ export default function ClickerCatalogAdminPage() {
     return (
       <ClickerCatalogFramedChrome>
         <Box {...PANEL_ENTRY_CARD_PROPS}>
-          <Text fontSize={APP_TEXT_SIZES.body} color="fg">
-            Loading…
-          </Text>
+          <PanelBlockSkeleton lines={2} showTitleLine />
         </Box>
       </ClickerCatalogFramedChrome>
     );

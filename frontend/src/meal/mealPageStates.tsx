@@ -1,15 +1,13 @@
-import { HStack, Spinner, Stack, Text } from "@chakra-ui/react";
+import { Box, Stack, Text } from "@chakra-ui/react";
+import { PanelBlockSkeleton } from "../components/panelStatus";
 import PondButton from "../PondButton";
-import { APP_TEXT_SIZES } from "../theme/typography";
+import { APP_TEXT_SIZES, PANEL_ENTRY_CARD_PROPS } from "../theme/typography";
 
 export function MealLoading() {
   return (
-    <HStack gap="2" align="center">
-      <Spinner size="sm" colorPalette="teal" />
-      <Text fontSize={APP_TEXT_SIZES.body} fontWeight="medium">
-        Loading…
-      </Text>
-    </HStack>
+    <Box {...PANEL_ENTRY_CARD_PROPS} w="100%">
+      <PanelBlockSkeleton lines={3} showTitleLine />
+    </Box>
   );
 }
 
@@ -19,21 +17,25 @@ export function MealSessionReconnect({
   onRetry: () => void;
 }) {
   return (
-    <Stack gap="2">
-      <Text fontSize={APP_TEXT_SIZES.body}>
-        Reconnecting your API session…
-      </Text>
-      <PondButton colorPalette="teal" onClick={() => void onRetry()}>
-        Retry session sync
-      </PondButton>
-    </Stack>
+    <Box {...PANEL_ENTRY_CARD_PROPS} w="100%">
+      <Stack gap="3" align="flex-start">
+        <Text fontSize={APP_TEXT_SIZES.body} fontWeight="semibold">
+          Reconnecting your API session…
+        </Text>
+        <PondButton colorPalette="teal" onClick={() => void onRetry()}>
+          Retry session sync
+        </PondButton>
+      </Stack>
+    </Box>
   );
 }
 
 export function MealApprovalRequired() {
   return (
-    <Text fontSize={APP_TEXT_SIZES.body} color="fg">
-      Approval required to use Meal Maestro.
-    </Text>
+    <Box {...PANEL_ENTRY_CARD_PROPS} w="100%">
+      <Text fontSize={APP_TEXT_SIZES.body} color="fg">
+        Approval required to use Meal Maestro.
+      </Text>
+    </Box>
   );
 }

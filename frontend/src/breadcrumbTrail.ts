@@ -16,11 +16,16 @@ function normalizePathname(pathname: string): string {
 }
 
 /**
- * Breadcrumb trail for a pathname (query string ignored). Null when no bar
- * (home index). Last item is always the current page (no `to`).
+ * Breadcrumb trail for a path. `search` is used for a few multi-surface
+ * routes (e.g. Profile tabs). Null when no bar (home index). Last item is
+ * always the current page (no `to`).
  */
-export function getBreadcrumbItems(pathname: string): BreadcrumbItem[] | null {
+export function getBreadcrumbItems(
+  pathname: string,
+  search: string = "",
+): BreadcrumbItem[] | null {
   const p = normalizePathname(pathname);
+  const sp = new URLSearchParams(search || "");
   if (p === "/") {
     return null;
   }
@@ -138,19 +143,21 @@ export function getBreadcrumbItems(pathname: string): BreadcrumbItem[] | null {
   }
 
   if (p === "/profile") {
+    if (sp.get("tab") === "friends") {
+      return [HOME, { label: "Profile", to: "/profile" }, { label: "Friends" }];
+    }
+    if (sp.get("tab") === "account") {
+      return [HOME, { label: "Profile", to: "/profile" }, { label: "Account" }];
+    }
     return [HOME, { label: "Profile" }];
   }
   if (p === "/staff") {
     return [HOME, { label: "Staff" }];
   }
-  if (p === "/friends") {
-    return [HOME, { label: "Friends" }];
-  }
-
   if (p.match(/^\/friend\/[^/]+$/)) {
     return [
       HOME,
-      { label: "Friends", to: "/friends" },
+      { label: "Friends", to: "/profile?tab=friends" },
       { label: "Profile" },
     ];
   }

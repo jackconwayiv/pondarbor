@@ -4,6 +4,7 @@ import { useNavigate } from "react-router";
 
 import { AppModal } from "../components/AppModal";
 import { useAppSession } from "../auth/AppSessionContext";
+import { PanelBlockSkeleton } from "../components/panelStatus";
 import QffButton from "./QffButton";
 import { QFF_MAIN_CONTENT_PROPS } from "./qffUi";
 import {
@@ -119,7 +120,7 @@ export default function QffLobbyPage() {
   if (isLoading || !sessionUser || sessionBusy) {
     return (
       <Box {...QFF_MAIN_CONTENT_PROPS} py={4}>
-        <Text>Loading…</Text>
+        <PanelBlockSkeleton lines={3} showTitleLine />
       </Box>
     );
   }

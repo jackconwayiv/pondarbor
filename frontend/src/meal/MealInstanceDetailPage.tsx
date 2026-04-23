@@ -1,4 +1,4 @@
-import { Card, Heading, HStack, Stack, Text } from "@chakra-ui/react";
+import { Box, Card, Heading, HStack, Stack, Text } from "@chakra-ui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link as RouterLink, Navigate, useNavigate, useParams } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
@@ -60,16 +60,30 @@ export default function MealInstanceDetailPage() {
   }
   if (!Number.isFinite(iid)) {
     return (
-      <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium" color="nautical.solid" role="alert">
-        Invalid week plan.
-      </Text>
+      <Box {...PANEL_ENTRY_CARD_PROPS} w="100%">
+        <Text
+          fontSize={APP_TEXT_SIZES.helper}
+          fontWeight="medium"
+          color="nautical.solid"
+          role="alert"
+        >
+          Invalid week plan.
+        </Text>
+      </Box>
     );
   }
   if (!inst) {
     return err ? (
-      <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium" color="nautical.solid" role="alert">
-        {err}
-      </Text>
+      <Box {...PANEL_ENTRY_CARD_PROPS} w="100%">
+        <Text
+          fontSize={APP_TEXT_SIZES.helper}
+          fontWeight="medium"
+          color="nautical.solid"
+          role="alert"
+        >
+          {err}
+        </Text>
+      </Box>
     ) : (
       <MealLoading />
     );

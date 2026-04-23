@@ -40,6 +40,11 @@ import {
 import { quoteOwnerDisplayLabel } from "../quotes/ownerDisplay";
 import QuoteCardBase from "../quotes/QuoteCardBase";
 import type { Quote } from "../quotes/types";
+import {
+  PanelBlockSkeleton,
+  PanelListRowSkeleton,
+  PanelMessageSlot,
+} from "../components/panelStatus";
 import { fullBleedStackProps } from "../responsive";
 import {
   APP_SHELL_TAB_LIST_PROPS,
@@ -314,7 +319,7 @@ export default function FriendProfilePage() {
     if (lookup.kind === "email") {
       return `/users/${encodeURIComponent(lookup.email)}/public-quotes`;
     }
-    return "/friends";
+    return "/profile?tab=friends";
   }, [lookup]);
 
   if (sessionLoading) {
@@ -329,9 +334,7 @@ export default function FriendProfilePage() {
           <Box {...APP_SHELL_TRAY_PROPS}>
             <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
               <Box {...ENTRY_CARD_PROPS}>
-                <Text fontSize={APP_TEXT_SIZES.body} color="fg">
-                  Loading…
-                </Text>
+                <PanelBlockSkeleton lines={3} showTitleLine />
               </Box>
             </Stack>
           </Box>
@@ -518,22 +521,13 @@ export default function FriendProfilePage() {
               ) : null}
             </Box>
 
-            {isLoading ? (
-              <Text fontSize={APP_TEXT_SIZES.body} color="fg">
-                Loading…
-              </Text>
-            ) : null}
-
-            {error ? (
-              <Text
-                role="alert"
-                color="nautical.solid"
-                fontWeight="medium"
-                fontSize={APP_TEXT_SIZES.helper}
-              >
-                {error}
-              </Text>
-            ) : null}
+            <Box {...ENTRY_CARD_PROPS}>
+              {isLoading ? (
+                <PanelListRowSkeleton rows={2} />
+              ) : (
+                <PanelMessageSlot error={error} reserve minH="2.75rem" />
+              )}
+            </Box>
 
             {!isLoading &&
             !error &&
@@ -654,26 +648,12 @@ export default function FriendProfilePage() {
                       Request Friend
                     </PondButton>
                   )}
-                  {actionError ? (
-                    <Text
-                      role="alert"
-                      color="nautical.solid"
-                      fontWeight="medium"
-                      fontSize={APP_TEXT_SIZES.helper}
-                    >
-                      {actionError}
-                    </Text>
-                  ) : null}
-                  {actionSuccess ? (
-                    <Text
-                      role="status"
-                      fontSize={APP_TEXT_SIZES.helper}
-                      color="teal.solid"
-                      fontWeight="medium"
-                    >
-                      {actionSuccess}
-                    </Text>
-                  ) : null}
+                  <PanelMessageSlot
+                    error={actionError}
+                    success={actionSuccess}
+                    reserve
+                    minH="2.75rem"
+                  />
                 </Stack>
               </Box>
             ) : null}
@@ -681,22 +661,14 @@ export default function FriendProfilePage() {
 
           {!isLoading && !error && summary?.can_view_full_profile ? (
             <>
-              {actionError ? (
-                <Box
-                  px={{ base: "2", md: "2" }}
-                  pb="2"
-                  w="100%"
-                >
-                  <Text
-                    role="alert"
-                    color="nautical.solid"
-                    fontWeight="medium"
-                    fontSize={APP_TEXT_SIZES.helper}
-                  >
-                    {actionError}
-                  </Text>
-                </Box>
-              ) : null}
+              <Box px={{ base: "2", md: "2" }} pb="2" w="100%">
+                <PanelMessageSlot
+                  error={actionError}
+                  success={actionSuccess}
+                  reserve
+                  minH="2.75rem"
+                />
+              </Box>
               <Tabs.Root
                 value={profileTab}
                 display="flex"

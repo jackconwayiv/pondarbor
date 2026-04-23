@@ -15,6 +15,7 @@ import {
 } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
+import { PanelSessionReconnect, SessionLoadingCard } from "../components/panelStatus";
 import { friendProfilePath } from "../friend/profilePaths";
 import PondButton from "../PondButton";
 import { fullBleedStackProps, useIsMobile } from "../responsive";
@@ -133,60 +134,15 @@ export default function CalendarDayPage() {
   };
 
   if (isLoading) {
-    return (
-      <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
-        <Box
-          flex="1"
-          bg="bg"
-          px={0}
-          py={{ base: "2", md: "2" }}
-        >
-          <Box {...APP_SHELL_TRAY_PROPS}>
-            <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
-              <Box {...PANEL_ENTRY_CARD_PROPS}>
-                <Text fontSize={APP_TEXT_SIZES.body} color="fg">
-                  Loading…
-                </Text>
-              </Box>
-            </Stack>
-          </Box>
-        </Box>
-      </Stack>
-    );
+    return <SessionLoadingCard />;
   }
   if (!isAuthenticated) return <Navigate to="/" replace />;
   if (!sessionUser) {
     return (
-      <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
-        <Box
-          flex="1"
-          bg="bg"
-          px={0}
-          py={{ base: "2", md: "2" }}
-        >
-          <Box {...APP_SHELL_TRAY_PROPS}>
-            <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
-              <Box {...PANEL_ENTRY_CARD_PROPS}>
-                <Text fontWeight="semibold" mb="2">
-                  Reconnecting your API session…
-                </Text>
-                <Text fontSize={APP_TEXT_SIZES.helper} color="fg" mb="3">
-                  {sessionError ||
-                    "You are authenticated, but the API session is not ready yet."}
-                </Text>
-                <HStack>
-                  <PondButton
-                    colorPalette="sky"
-                    onClick={() => void refreshSession()}
-                  >
-                    Retry session sync
-                  </PondButton>
-                </HStack>
-              </Box>
-            </Stack>
-          </Box>
-        </Box>
-      </Stack>
+      <PanelSessionReconnect
+        sessionError={sessionError}
+        onRetry={() => void refreshSession()}
+      />
     );
   }
   if (!sessionUser.user.is_approved) {

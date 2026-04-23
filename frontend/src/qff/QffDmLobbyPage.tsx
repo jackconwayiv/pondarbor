@@ -1,6 +1,7 @@
 import { Box, Grid, Heading, Text } from "@chakra-ui/react";
 import { useNavigate, Link as RouterLink } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
+import { PanelBlockSkeleton } from "../components/panelStatus";
 import QffButton from "./QffButton";
 import {
   dmDownloadClassesJsonExport,
@@ -69,7 +70,7 @@ export default function QffDmLobbyPage() {
   if (isLoading) {
     return (
       <Box maxW="6xl" mx="auto" px={4} py={8} color="#c8e6a8">
-        <Text>Loading…</Text>
+        <PanelBlockSkeleton lines={2} showTitleLine />
       </Box>
     );
   }

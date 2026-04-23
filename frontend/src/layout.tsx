@@ -23,10 +23,13 @@ import {
   APP_DESKTOP_NAV,
   guestHamburgerNavItems,
   navLinkLabel,
+  NAV_HEADER_LINK_TEXT,
 } from "./appNavConfig";
 import PondButton from "./PondButton";
 import { pondarborLogoSrc } from "./publicAsset";
 import BreadcrumbBar from "./BreadcrumbBar";
+import { HomeInboxPopover } from "./components/HomeInboxPopover";
+import { HomeInboxProvider } from "./home/homeInboxContext";
 import { useIsMobile } from "./responsive";
 import { APP_SHELL_CONTENT_MAX_PROPS } from "./theme/typography";
 
@@ -38,6 +41,8 @@ const NAV_WORDMARK_LINE_HEIGHT = "1.1";
 const NAV_APP_LINK_FONT_SIZE = "0.8125rem";
 const NAV_APP_LINK_LINE_HEIGHT = "1.2";
 const NAV_HSTACK_GAP = "1.5";
+/** Extra space between wordmark and first top-nav app link (desktop). */
+const WORDMARK_TO_APP_NAV_PL = { base: "0", md: "3" } as const;
 
 /** Nav bar links: no underline; no sticky focus/hover chrome after click. */
 const navBarLinkProps = {
@@ -68,11 +73,6 @@ const navBarLinkProps = {
   },
 } as const;
 
-const HEADER_NAV_LINK = {
-  active: "white",
-  inactive: "rgba(245, 241, 232, 0.75)",
-} as const;
-
 function isGamesNavTreeActive(pathname: string): boolean {
   return (
     pathname === "/games" ||
@@ -83,7 +83,20 @@ function isGamesNavTreeActive(pathname: string): boolean {
   );
 }
 
-function isDesktopNavRouteActive(pathname: string, to: string): boolean {
+function isDesktopNavRouteActive(
+  loc: { pathname: string; search: string },
+  to: string,
+): boolean {
+  const { pathname, search: locSearch } = loc;
+  if (to.startsWith("/profile?")) {
+    if (pathname !== "/profile") return false;
+    const want = new URLSearchParams(to.slice(to.indexOf("?") + 1));
+    const have = new URLSearchParams(locSearch);
+    for (const key of want.keys()) {
+      if (want.get(key) !== have.get(key)) return false;
+    }
+    return true;
+  }
   switch (to) {
     case "/quotes":
       return (
@@ -215,7 +228,7 @@ export default function AppLayout() {
             <Menu.Item
               value="friends"
               onSelect={() => {
-                navigate("/friends");
+                navigate("/profile?tab=friends");
               }}
             >
               Friends List
@@ -255,6 +268,7 @@ export default function AppLayout() {
   ) : null;
 
   return (
+    <HomeInboxProvider>
     <Box
       flex="1"
       display="flex"
@@ -408,7 +422,14 @@ export default function AppLayout() {
               </ChakraLink>
             </Box>
             <Box flex="1" display="flex" justifyContent="flex-end" minW={0}>
-              {accountMenu}
+              {showProfileNav ? (
+                <HStack gap="0" align="center" flexShrink={0}>
+                  <HomeInboxPopover />
+                  {accountMenu}
+                </HStack>
+              ) : (
+                accountMenu
+              )}
             </Box>
           </>
         ) : (
@@ -464,74 +485,87 @@ export default function AppLayout() {
                 <Link to="/">PondArbor</Link>
               </ChakraLink>
 
-              {desktopNavEntries.map((entry) => {
-                const active = isDesktopNavRouteActive(
-                  location.pathname,
-                  entry.to,
-                );
-                const label = navLinkLabel(entry);
-                return (
-                  <ChakraLink
-                    key={entry.to}
-                    asChild
-                    colorPalette="gray"
-                    variant="plain"
-                    {...navBarLinkProps}
-                    fontSize={NAV_APP_LINK_FONT_SIZE}
-                    fontWeight="normal"
-                    color={active ? HEADER_NAV_LINK.active : HEADER_NAV_LINK.inactive}
-                    _visited={{
-                      ...navBarLinkProps._visited,
-                      color: active
-                        ? HEADER_NAV_LINK.active
-                        : HEADER_NAV_LINK.inactive,
-                    }}
-                    _hover={{
-                      ...navBarLinkProps._hover,
-                      color: active
-                        ? HEADER_NAV_LINK.active
-                        : "white",
-                    }}
-                    _active={{
-                      ...navBarLinkProps._active,
-                      color: active
-                        ? HEADER_NAV_LINK.active
-                        : HEADER_NAV_LINK.inactive,
-                    }}
-                  >
-                    <Link to={entry.to}>
-                      <Box
-                        as="span"
-                        position="relative"
-                        display="inline-block"
-                        lineHeight={NAV_APP_LINK_LINE_HEIGHT}
-                        fontSize={NAV_APP_LINK_FONT_SIZE}
-                      >
+              <HStack
+                gap={NAV_HSTACK_GAP}
+                align="center"
+                pl={WORDMARK_TO_APP_NAV_PL}
+              >
+                {desktopNavEntries.map((entry) => {
+                  const active = isDesktopNavRouteActive(
+                    { pathname: location.pathname, search: location.search },
+                    entry.to,
+                  );
+                  const label = navLinkLabel(entry);
+                  return (
+                    <ChakraLink
+                      key={entry.to}
+                      asChild
+                      colorPalette="gray"
+                      variant="plain"
+                      {...navBarLinkProps}
+                      fontSize={NAV_APP_LINK_FONT_SIZE}
+                      fontWeight="normal"
+                      color={active ? NAV_HEADER_LINK_TEXT.active : NAV_HEADER_LINK_TEXT.inactive}
+                      _visited={{
+                        ...navBarLinkProps._visited,
+                        color: active
+                          ? NAV_HEADER_LINK_TEXT.active
+                          : NAV_HEADER_LINK_TEXT.inactive,
+                      }}
+                      _hover={{
+                        ...navBarLinkProps._hover,
+                        color: active
+                          ? NAV_HEADER_LINK_TEXT.active
+                          : "white",
+                      }}
+                      _active={{
+                        ...navBarLinkProps._active,
+                        color: active
+                          ? NAV_HEADER_LINK_TEXT.active
+                          : NAV_HEADER_LINK_TEXT.inactive,
+                      }}
+                    >
+                      <Link to={entry.to}>
                         <Box
                           as="span"
-                          fontWeight="bold"
-                          opacity={active ? 1 : 0}
+                          position="relative"
+                          display="inline-block"
+                          lineHeight={NAV_APP_LINK_LINE_HEIGHT}
+                          fontSize={NAV_APP_LINK_FONT_SIZE}
                         >
-                          {label}
+                          <Box
+                            as="span"
+                            fontWeight="bold"
+                            opacity={active ? 1 : 0}
+                          >
+                            {label}
+                          </Box>
+                          <Box
+                            as="span"
+                            position="absolute"
+                            top={0}
+                            left={0}
+                            fontWeight="normal"
+                            opacity={active ? 0 : 1}
+                          >
+                            {label}
+                          </Box>
                         </Box>
-                        <Box
-                          as="span"
-                          position="absolute"
-                          top={0}
-                          left={0}
-                          fontWeight="normal"
-                          opacity={active ? 0 : 1}
-                        >
-                          {label}
-                        </Box>
-                      </Box>
-                    </Link>
-                  </ChakraLink>
-                );
-              })}
+                      </Link>
+                    </ChakraLink>
+                  );
+                })}
+              </HStack>
             </HStack>
             <Spacer />
-            {accountMenu}
+            {showProfileNav ? (
+              <HStack gap="0" align="center" flexShrink={0}>
+                <HomeInboxPopover />
+                {accountMenu}
+              </HStack>
+            ) : (
+              accountMenu
+            )}
           </>
         )}
       </Flex>
@@ -590,5 +624,6 @@ export default function AppLayout() {
         </Box>
       </Box>
     </Box>
+    </HomeInboxProvider>
   );
 }

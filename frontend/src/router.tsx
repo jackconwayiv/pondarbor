@@ -7,7 +7,6 @@ import AppLayout from "./layout";
 import NotFoundPage from "./NotFoundPage";
 import ProfilePage from "./ProfilePage";
 import FriendProfilePage from "./friend/FriendProfilePage";
-import FriendsPage from "./friends/FriendsPage";
 import StaffRoute from "./staff/StaffRoute";
 import AboutPage from "./AboutPage";
 import AboutPrivacyPage from "./about/AboutPrivacyPage";
@@ -309,7 +308,7 @@ export const router = sentryCreateBrowserRouter([
       },
       {
         path: "friends",
-        element: <FriendsPage />,
+        element: <Navigate to="/profile?tab=friends" replace />,
       },
       {
         path: "users/:email/public-quotes",

@@ -9,7 +9,9 @@ services:
     build: ./frontend
     volumes:
       - ./frontend:/app
+      # Isolated from host; can go stale if package.json/lockfile changes. Re-sync on start:
       - /app/node_modules
+    command: sh -c "npm install && exec npm run dev -- --host"
     ports:
       - "5173:5173"
     depends_on:

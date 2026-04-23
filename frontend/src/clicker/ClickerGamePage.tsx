@@ -31,6 +31,7 @@ import {
 import { useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
+import { PanelBlockSkeleton } from "../components/panelStatus";
 import PondButton from "../PondButton";
 import { APP_TEXT_SIZES } from "../theme/typography";
 import {
@@ -1827,7 +1828,9 @@ export default function ClickerGamePage() {
   if (sessionLoading || !sessionUser || loadStatus === "loading") {
     return (
       <ClickerPageShell>
-        <Text fontSize={{ base: "sm", md: "md" }}>Loading…</Text>
+        <Box maxW="7xl" mx="auto" w="100%">
+          <PanelBlockSkeleton lines={2} showTitleLine />
+        </Box>
       </ClickerPageShell>
     );
   }

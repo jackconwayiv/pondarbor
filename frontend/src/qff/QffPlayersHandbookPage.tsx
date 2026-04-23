@@ -1,6 +1,7 @@
 import { Box, Flex, HStack, Heading, Tabs, Text } from "@chakra-ui/react";
 import { useNavigate } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
+import { PanelBlockSkeleton } from "../components/panelStatus";
 import QffButton from "./QffButton";
 import { QFF_MAIN_CONTENT_PROPS } from "./qffUi";
 
@@ -19,8 +20,8 @@ export default function QffPlayersHandbookPage() {
 
   if (isLoading) {
     return (
-      <Box {...QFF_MAIN_CONTENT_PROPS} py={8} color="#c8e6a8">
-        <Text>Loading…</Text>
+      <Box {...QFF_MAIN_CONTENT_PROPS} py={8} color="#c8e6a8" maxW="lg">
+        <PanelBlockSkeleton lines={2} showTitleLine />
       </Box>
     );
   }

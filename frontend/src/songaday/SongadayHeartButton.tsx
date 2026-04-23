@@ -21,11 +21,21 @@ export default function SongadayHeartButton({
     <PondButton
       type="button"
       size="sm"
-      variant={viewerHasHearted ? "solid" : "outline"}
+      variant="outline"
       colorPalette="teal"
-      bg={viewerHasHearted ? "teal.solid" : "white"}
+      bg={viewerHasHearted ? "bg.subtle" : "white"}
+      borderColor={viewerHasHearted ? "teal.solid" : undefined}
       color="black"
       borderWidth="1px"
+      _hover={
+        viewerHasHearted
+          ? {
+              bg: "bg.subtle",
+              borderColor: "teal.solid",
+              color: "teal.fg",
+            }
+          : undefined
+      }
       disabled={disabled || busy}
       onClick={(e) => {
         e.preventDefault();

@@ -14,13 +14,14 @@ import {
   Text,
 } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Navigate } from "react-router";
+import { Navigate, useSearchParams } from "react-router";
 import PondButton from "./PondButton";
 import { AchievementSummaryCard } from "./achievements/AchievementSummaryCard";
 import { fetchPublicAchievementsByUserId } from "./achievements/api";
 import { sortAchievementsNewestFirst } from "./achievements/sortAchievements";
 import type { AchievementSummary } from "./achievements/types";
 import { useAppSession } from "./auth/AppSessionContext";
+import { PanelBlockSkeleton } from "./components/panelStatus";
 import { fetchMyImageInventory } from "./closet/api";
 import { uploadClosetImageViaPresign } from "./closet/imageUpload";
 import type { ClosetImageInventoryRow } from "./closet/types";
@@ -37,6 +38,15 @@ import {
   PANEL_FIELD_PROPS,
 } from "./theme/typography";
 import { getSortedIanaTimeZones, timeZoneOptionsForValue } from "./timezones";
+import { FriendsListPanel } from "./friends/FriendsListPanel";
+
+type ProfileTab = "profile" | "friends" | "account";
+
+function tabFromSearchParams(sp: URLSearchParams): ProfileTab {
+  const t = sp.get("tab");
+  if (t === "friends" || t === "account") return t;
+  return "profile";
+}
 
 function formatBirthDateForDisplay(value: string | null | undefined): string {
   if (!value) return "—";
@@ -102,7 +112,10 @@ export default function ProfilePage() {
   const [profileAchievements, setProfileAchievements] = useState<
     AchievementSummary[]
   >([]);
-  const [activeTab, setActiveTab] = useState<"profile" | "account">("profile");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<ProfileTab>(() =>
+    tabFromSearchParams(searchParams),
+  );
   const profileEditorRef = useRef<HTMLDivElement | null>(null);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
   const [isAvatarUploading, setIsAvatarUploading] = useState(false);
@@ -117,6 +130,10 @@ export default function ProfilePage() {
     () => timeZoneOptionsForValue(timezone || "UTC", allZones),
     [timezone, allZones],
   );
+
+  useEffect(() => {
+    setActiveTab(tabFromSearchParams(searchParams));
+  }, [searchParams]);
 
   useEffect(() => {
     if (!sessionUser) return;
@@ -343,9 +360,7 @@ export default function ProfilePage() {
           <Box {...APP_SHELL_TRAY_PROPS}>
             <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
               <Box {...PROFILE_ENTRY_CARD_PROPS}>
-                <Text fontSize={APP_TEXT_SIZES.body} color="fg">
-                  Loading…
-                </Text>
+                <PanelBlockSkeleton lines={2} showTitleLine />
               </Box>
             </Stack>
           </Box>
@@ -466,9 +481,20 @@ export default function ProfilePage() {
         flexDirection="column"
         flex="1"
         minH="full"
-        onValueChange={(details) =>
-          setActiveTab(details.value === "account" ? "account" : "profile")
-        }
+        onValueChange={(details) => {
+          const v = details.value;
+          if (v !== "profile" && v !== "friends" && v !== "account") return;
+          setActiveTab(v);
+          setSearchParams(
+            (prev) => {
+              const next = new URLSearchParams(prev);
+              if (v === "profile") next.delete("tab");
+              else next.set("tab", v);
+              return next;
+            },
+            { replace: true },
+          );
+        }}
         variant="plain"
       >
         <Box
@@ -498,24 +524,56 @@ export default function ProfilePage() {
                     alignItems="center"
                   >
                     <Text as="span" aria-hidden="true">
-                      👤
+                      {activeTab === "friends"
+                        ? "👥"
+                        : activeTab === "account"
+                          ? "🔐"
+                          : "👤"}
                     </Text>
-                    <Text as="span">Profile</Text>
+                    <Text as="span">
+                      {activeTab === "friends"
+                        ? "Friends"
+                        : activeTab === "account"
+                          ? "Account"
+                          : "Profile"}
+                    </Text>
                   </HStack>
                 </Heading>
-                <Text
-                  fontSize={APP_TEXT_SIZES.body}
-                  lineHeight="tall"
-                  color="fg"
-                >
-                  Update how you appear to friends in this app and set your
-                  timezone and birthday.
-                </Text>
+                {activeTab === "friends" ? (
+                  <Text
+                    fontSize={APP_TEXT_SIZES.body}
+                    lineHeight="tall"
+                    color="fg"
+                  >
+                    Send and manage friend requests, and see people you’re
+                    connected with.
+                  </Text>
+                ) : activeTab === "account" ? (
+                  <Text
+                    fontSize={APP_TEXT_SIZES.body}
+                    lineHeight="tall"
+                    color="fg"
+                  >
+                    Your account information and sign-in options.
+                  </Text>
+                ) : (
+                  <Text
+                    fontSize={APP_TEXT_SIZES.body}
+                    lineHeight="tall"
+                    color="fg"
+                  >
+                    Update how you appear to friends in this app and set your
+                    timezone and birthday.
+                  </Text>
+                )}
               </Box>
             </Stack>
             <Tabs.List {...APP_SHELL_TAB_LIST_PROPS}>
               <Tabs.Trigger value="profile" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                 Profile
+              </Tabs.Trigger>
+              <Tabs.Trigger value="friends" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                Friends
               </Tabs.Trigger>
               <Tabs.Trigger value="account" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                 Account
@@ -832,6 +890,22 @@ export default function ProfilePage() {
                   </Stack>
                 </Stack>
               </Box>
+            </Tabs.Content>
+
+            <Tabs.Content value="friends" p={{ base: "2", md: "2" }}>
+              {user.is_approved ? (
+                <FriendsListPanel compact />
+              ) : (
+                <Box {...PROFILE_ENTRY_CARD_PROPS}>
+                  <Text
+                    fontSize={APP_TEXT_SIZES.body}
+                    lineHeight="tall"
+                    color="fg"
+                  >
+                    Friend features are available after your account is approved.
+                  </Text>
+                </Box>
+              )}
             </Tabs.Content>
 
             <Tabs.Content value="account" p={{ base: "2", md: "2" }}>

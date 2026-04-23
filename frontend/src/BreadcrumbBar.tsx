@@ -9,8 +9,8 @@ import { getBreadcrumbItems } from "./breadcrumbTrail";
  * bar.
  */
 export default function BreadcrumbBar() {
-  const { pathname } = useLocation();
-  const items = getBreadcrumbItems(pathname);
+  const { pathname, search } = useLocation();
+  const items = getBreadcrumbItems(pathname, search);
   if (items == null) {
     return null;
   }

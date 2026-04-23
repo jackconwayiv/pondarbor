@@ -1,21 +1,34 @@
-import { Stack, Text } from "@chakra-ui/react";
 import { Navigate, useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
+import {
+  PanelSessionReconnect,
+  SessionLoadingCard,
+} from "../components/panelStatus";
 import SongadayArchivePanel from "./SongadayArchivePanel";
 
 export default function SongadayArchivePage() {
-  const { isAuthenticated, isLoading, sessionUser } = useAppSession();
+  const {
+    isAuthenticated,
+    isLoading,
+    sessionUser,
+    error: sessionError,
+    refreshSession,
+  } = useAppSession();
   const navigate = useNavigate();
 
   if (!isAuthenticated) {
     return <Navigate to="/" replace />;
   }
-  if (isLoading || !sessionUser) {
+  if (isLoading) {
+    return <SessionLoadingCard />;
+  }
+  if (!sessionUser) {
     return (
-      <Stack gap="2" maxW="5xl">
-        <Text fontWeight="semibold">Loading…</Text>
-      </Stack>
+      <PanelSessionReconnect
+        sessionError={sessionError}
+        onRetry={() => void refreshSession()}
+      />
     );
   }
 

@@ -4,7 +4,6 @@ import {
   HStack,
   Input,
   SimpleGrid,
-  Spinner,
   Stack,
   Tabs,
   Text,
@@ -14,6 +13,12 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { Navigate, Link as RouterLink, useLocation, useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
+import {
+  PanelBlockSkeleton,
+  PanelListRowSkeleton,
+  PanelSessionReconnect,
+  SessionLoadingCard,
+} from "../components/panelStatus";
 import { MealEditorBackdropDismiss } from "../meal/MealEditorBackdropDismiss";
 import PondButton from "../PondButton";
 import {
@@ -598,21 +603,15 @@ export default function SongadayPage() {
   if (!isAuthenticated) {
     return <Navigate to="/" replace />;
   }
-  if (isLoading || !sessionUser) {
+  if (isLoading) {
+    return <SessionLoadingCard />;
+  }
+  if (!sessionUser) {
     return (
-      <Stack gap="2" maxW="5xl">
-        <Text fontWeight="semibold">Loading…</Text>
-        {sessionError ? (
-          <Text
-            fontSize={APP_TEXT_SIZES.helper}
-            color="nautical.solid"
-            fontWeight="medium"
-            role="alert"
-          >
-            {sessionError}
-          </Text>
-        ) : null}
-      </Stack>
+      <PanelSessionReconnect
+        sessionError={sessionError}
+        onRetry={() => void refreshSession()}
+      />
     );
   }
 
@@ -623,17 +622,6 @@ export default function SongadayPage() {
 
   return (
     <>
-      {promptLoading || responsesLoading ? (
-        <Box px={{ base: "2", md: "2" }} pb="2">
-          <Text
-            fontSize={APP_TEXT_SIZES.body}
-            color="fg.muted"
-            fontWeight="medium"
-          >
-            Loading…
-          </Text>
-        </Box>
-      ) : null}
       <Tabs.Root
         value={tab}
         display="flex"
@@ -673,12 +661,7 @@ export default function SongadayPage() {
                 onJumpToToday={goToToday}
               >
                 <Box {...PANEL_ENTRY_CARD_PROPS} {...PROMPT_CARD_TEXT_ALIGN}>
-                  <HStack justifyContent="center" gap="2">
-                    <Spinner size="sm" colorPalette="teal" />
-                    <Text fontSize={APP_TEXT_SIZES.body} fontWeight="medium">
-                      Loading prompt…
-                    </Text>
-                  </HStack>
+                  <PanelBlockSkeleton lines={3} showTitleLine />
                 </Box>
               </PromptDayNavChrome>
             ) : promptLoadError ? (
@@ -982,12 +965,9 @@ export default function SongadayPage() {
             ) : null}
 
             {responsesLoading ? (
-              <HStack>
-                <Spinner size="sm" colorPalette="teal" />
-                <Text fontSize={APP_TEXT_SIZES.body} fontWeight="medium">
-                  Loading responses…
-                </Text>
-              </HStack>
+              <Box {...PANEL_ENTRY_CARD_PROPS}>
+                <PanelListRowSkeleton rows={2} />
+              </Box>
             ) : responsesLoadError ? (
               <Text
                 fontSize={APP_TEXT_SIZES.helper}
@@ -1016,6 +996,24 @@ export default function SongadayPage() {
                     myUserId={myUserId}
                     submissionEditOpen={submissionEditOpen}
                     onMineCardClick={() => setSubmissionEditOpen((v) => !v)}
+                    inCardAfterBody={
+                      submissionEditOpen ? (
+                        <Box
+                          cursor="default"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <SongadaySubmissionEditBlock
+                            entry={myEntry}
+                            getAccessToken={getApiAccessToken}
+                            onSaved={(row) => {
+                              setResponses((prev) => prev.map((r) => (r.id === row.id ? row : r)));
+                              void refreshSession();
+                            }}
+                            onClose={() => setSubmissionEditOpen(false)}
+                          />
+                        </Box>
+                      ) : null
+                    }
                     footer={
                       (myEntry.comment_count ?? 0) > 0 ? (
                         <SongadayCommentsPanel
@@ -1090,18 +1088,6 @@ export default function SongadayPage() {
                 ))}
               </SimpleGrid>
             )}
-
-            {myEntry && submissionEditOpen ? (
-              <SongadaySubmissionEditBlock
-                entry={myEntry}
-                getAccessToken={getApiAccessToken}
-                onSaved={(row) => {
-                  setResponses((prev) => prev.map((r) => (r.id === row.id ? row : r)));
-                  void refreshSession();
-                }}
-                onClose={() => setSubmissionEditOpen(false)}
-              />
-            ) : null}
           </Stack>
         </Tabs.Content>
 
@@ -1177,9 +1163,17 @@ export default function SongadayPage() {
                 </Box>
               </Box>
               {promptCatalogLoading ? (
-                <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-                  Loading catalog…
-                </Text>
+                <Box
+                  maxH="240px"
+                  overflow="hidden"
+                  borderWidth="1px"
+                  borderColor="border"
+                  borderRadius="md"
+                  bg="bg"
+                  p="2"
+                >
+                  <PanelListRowSkeleton rows={4} />
+                </Box>
               ) : promptCatalogError ? (
                 <Text
                   fontSize={APP_TEXT_SIZES.helper}

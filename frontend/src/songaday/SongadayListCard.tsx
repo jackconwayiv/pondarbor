@@ -67,6 +67,8 @@ type Props = {
   onMineCardClick?: () => void;
   /** Highlights own card while submission editor is open. */
   submissionEditOpen?: boolean;
+  /** Renders at the bottom of the bordered card (e.g. inline submission editor). */
+  inCardAfterBody?: ReactNode;
 };
 
 export default function SongadayListCard({
@@ -78,6 +80,7 @@ export default function SongadayListCard({
   footer,
   onMineCardClick,
   submissionEditOpen,
+  inCardAfterBody,
 }: Props) {
   const { sessionUser, auth0User } = useAppSession();
   const isMine = entry.user.id === myUserId;
@@ -200,6 +203,7 @@ export default function SongadayListCard({
       }
     >
       {cardBody}
+      {inCardAfterBody}
     </Box>
   );
 

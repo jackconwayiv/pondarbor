@@ -24,6 +24,11 @@ import {
   validateClosetFreeText,
   validateClosetItemName,
 } from "../forms/validation";
+import {
+  PanelListRowSkeleton,
+  PanelSessionReconnect,
+  SessionLoadingCard,
+} from "../components/panelStatus";
 import PondButton from "../PondButton";
 import { fullBleedStackProps, useIsMobile } from "../responsive";
 import {
@@ -407,22 +412,16 @@ export default function ClosetPage() {
     return () => window.clearTimeout(id);
   }, [friendsTagInput]);
 
-  if (isLoading) return <Text>Loading…</Text>;
+  if (isLoading) {
+    return <SessionLoadingCard />;
+  }
   if (!isAuthenticated) return <Navigate to="/" replace />;
   if (!sessionUser) {
     return (
-      <Stack gap="4" maxW="3xl">
-        <Text fontWeight="semibold">Reconnecting your API session…</Text>
-        <Text fontSize={APP_TEXT_SIZES.helper}>
-          {sessionError ||
-            "You are authenticated, but the API session is not ready yet."}
-        </Text>
-        <HStack>
-          <PondButton colorPalette="sky" onClick={() => void refreshSession()}>
-            Retry session sync
-          </PondButton>
-        </HStack>
-      </Stack>
+      <PanelSessionReconnect
+        sessionError={sessionError}
+        onRetry={() => void refreshSession()}
+      />
     );
   }
 
@@ -534,13 +533,6 @@ export default function ClosetPage() {
           px={0}
           py={{ base: "2", md: "2" }}
         >
-          {loading ? (
-            <Box maxW="5xl" w="100%" mx="auto" pb="2">
-              <Text fontSize={APP_TEXT_SIZES.body} fontWeight="medium">
-                Loading closet…
-              </Text>
-            </Box>
-          ) : null}
           <Box {...APP_SHELL_TRAY_PROPS}>
             <Stack
               gap={{ base: "4", md: "4" }}
@@ -591,6 +583,11 @@ export default function ClosetPage() {
             </Tabs.List>
 
             <Tabs.Content value="my" p={{ base: "2", md: "2" }}>
+              {loading ? (
+                <Box {...PANEL_ENTRY_CARD_PROPS}>
+                  <PanelListRowSkeleton rows={4} />
+                </Box>
+              ) : (
               <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP}>
                 <Text>Manage your own inventory.</Text>
 
@@ -1237,9 +1234,15 @@ export default function ClosetPage() {
                   ) : null}
                 </>
               </Stack>
+              )}
             </Tabs.Content>
 
             <Tabs.Content value="friends" p={{ base: "2", md: "2" }}>
+              {loading ? (
+                <Box {...PANEL_ENTRY_CARD_PROPS}>
+                  <PanelListRowSkeleton rows={4} />
+                </Box>
+              ) : (
               <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP}>
                 <HStack
                   justify="space-between"
@@ -1395,8 +1398,14 @@ export default function ClosetPage() {
                   </HStack>
                 </HStack>
               </Stack>
+              )}
             </Tabs.Content>
             <Tabs.Content value="images" p={{ base: "2", md: "2" }}>
+              {loading ? (
+                <Box {...PANEL_ENTRY_CARD_PROPS}>
+                  <PanelListRowSkeleton rows={4} />
+                </Box>
+              ) : (
               <Stack gap="4">
                 <HStack
                   justify="space-between"
@@ -1584,15 +1593,22 @@ export default function ClosetPage() {
                   </Card.Root>
                 ))}
               </Stack>
+              )}
             </Tabs.Content>
+            {error ? (
+              <Box px={{ base: "2", md: "2" }} pb="2">
+                <Text
+                  fontSize={APP_TEXT_SIZES.helper}
+                  color="nautical.solid"
+                  role="alert"
+                >
+                  {error}
+                </Text>
+              </Box>
+            ) : null}
           </Box>
         </Box>
       </Tabs.Root>
-      {error ? (
-        <Text px="2" pb="2" color="nautical.solid" role="alert">
-          {error}
-        </Text>
-      ) : null}
     </Stack>
   );
 }

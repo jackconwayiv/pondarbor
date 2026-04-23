@@ -2,6 +2,7 @@ import { Link as ChakraLink, Stack, Text } from "@chakra-ui/react";
 import { useEffect } from "react";
 import { Navigate, Link as RouterLink, useNavigate } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
+import { PanelSessionReconnect, SessionLoadingCard } from "../components/panelStatus";
 import { fullBleedStackProps } from "../responsive";
 import StaffPage from "./StaffPage";
 
@@ -48,21 +49,11 @@ export default function StaffRoute() {
     isLoading,
     sessionUser,
     error: sessionError,
+    refreshSession,
   } = useAppSession();
 
   if (isLoading) {
-    return (
-      <Stack
-        flex="1"
-        minH="full"
-        gap="4"
-        px={{ base: "2", md: "2" }}
-        py={{ base: "2", md: "2" }}
-        {...fullBleedStackProps}
-      >
-        <Text fontSize={{ base: "sm", md: "md" }}>Loading…</Text>
-      </Stack>
-    );
+    return <SessionLoadingCard />;
   }
 
   if (!isAuthenticated) {
@@ -71,19 +62,10 @@ export default function StaffRoute() {
 
   if (!sessionUser) {
     return (
-      <Stack
-        flex="1"
-        minH="full"
-        gap="4"
-        px={{ base: "2", md: "2" }}
-        py={{ base: "2", md: "2" }}
-        {...fullBleedStackProps}
-      >
-        <Text fontSize={{ base: "sm", md: "md" }} color="fg">
-          {sessionError ??
-            "Could not load your account session. Try signing in again."}
-        </Text>
-      </Stack>
+      <PanelSessionReconnect
+        sessionError={sessionError}
+        onRetry={() => void refreshSession()}
+      />
     );
   }
 

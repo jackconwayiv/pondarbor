@@ -30,6 +30,11 @@ import {
   validateIsoDateRequired,
 } from "../forms/validation";
 import { fetchFriendsList } from "../friends/api";
+import {
+  PanelBlockSkeleton,
+  PanelSessionReconnect,
+  SessionLoadingCard,
+} from "../components/panelStatus";
 import PondButton from "../PondButton";
 import { MealEditorBackdropDismiss } from "../meal/MealEditorBackdropDismiss";
 import { useIsMobile } from "../responsive";
@@ -200,35 +205,52 @@ export default function ClosetItemDetailPage() {
     [item, borrowMessage, getApiAccessToken, reload],
   );
 
-  if (isLoading) return <Text fontSize={APP_TEXT_SIZES.helper}>Loading…</Text>;
+  if (isLoading) {
+    return <SessionLoadingCard />;
+  }
   if (!isAuthenticated) return <Navigate to="/" replace />;
   if (!sessionUser) {
     return (
-      <Stack gap="4" maxW="3xl">
-        <Text fontWeight="semibold">Reconnecting your API session…</Text>
-        <Text fontSize={APP_TEXT_SIZES.helper}>{sessionError ?? "Session not ready."}</Text>
-        <PondButton colorPalette="sky" onClick={() => void refreshSession()}>
-          Retry session sync
-        </PondButton>
-      </Stack>
+      <PanelSessionReconnect
+        sessionError={sessionError}
+        onRetry={() => void refreshSession()}
+      />
     );
   }
   if (!sessionUser.user.is_approved) {
-    return <Text fontSize={APP_TEXT_SIZES.helper}>Your account is not approved yet.</Text>;
+    return (
+      <Box {...PANEL_ENTRY_CARD_PROPS} w="100%" maxW="5xl" mx="auto">
+        <Text fontSize={APP_TEXT_SIZES.helper}>
+          Your account is not approved yet.
+        </Text>
+      </Box>
+    );
   }
   if (!Number.isFinite(itemId) || itemId < 1) {
     return (
-      <Text fontSize={APP_TEXT_SIZES.helper} color="nautical.solid" role="alert">
-        Invalid item.
-      </Text>
+      <Box {...PANEL_ENTRY_CARD_PROPS} w="100%" maxW="5xl" mx="auto">
+        <Text
+          fontSize={APP_TEXT_SIZES.helper}
+          color="nautical.solid"
+          role="alert"
+        >
+          Invalid item.
+        </Text>
+      </Box>
     );
   }
   if (loadError && !item) {
     return (
-      <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP}>
-        <Text fontSize={APP_TEXT_SIZES.helper} color="nautical.solid" role="alert">
-          {loadError}
-        </Text>
+      <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP} w="100%" maxW="5xl" mx="auto">
+        <Box {...PANEL_ENTRY_CARD_PROPS}>
+          <Text
+            fontSize={APP_TEXT_SIZES.helper}
+            color="nautical.solid"
+            role="alert"
+          >
+            {loadError}
+          </Text>
+        </Box>
         <RouterLink to={closetReturnTo}>
           <Text as="span" color="sky.solid" fontWeight="bold">
             ← Back
@@ -238,7 +260,11 @@ export default function ClosetItemDetailPage() {
     );
   }
   if (!item) {
-    return <Text fontSize={APP_TEXT_SIZES.helper}>Loading…</Text>;
+    return (
+      <Box {...PANEL_ENTRY_CARD_PROPS} w="100%" maxW="5xl" mx="auto">
+        <PanelBlockSkeleton lines={2} showTitleLine />
+      </Box>
+    );
   }
 
   const imageUrl = (item.image_url ?? "").trim();

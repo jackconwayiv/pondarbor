@@ -112,8 +112,7 @@ export default function QffDmLobbyPage() {
         {DM_EDITOR_CARDS.map((c) => (
           <Box
             key={c.to}
-            as={RouterLink}
-            to={c.to}
+            asChild
             display="block"
             borderWidth="1px"
             borderColor="whiteAlpha.300"
@@ -129,12 +128,14 @@ export default function QffDmLobbyPage() {
             }}
             _focusVisible={{ outline: "2px solid", outlineColor: "green.500", outlineOffset: "2px" }}
           >
-            <Text fontSize="sm" fontWeight="semibold" color="#c8e6a8" lineHeight="short">
-              {c.title}
-            </Text>
-            <Text fontSize="xs" color="#889977" mt={2} lineHeight="snug">
-              {c.blurb}
-            </Text>
+            <RouterLink to={c.to}>
+              <Text fontSize="sm" fontWeight="semibold" color="#c8e6a8" lineHeight="short">
+                {c.title}
+              </Text>
+              <Text fontSize="xs" color="#889977" mt={2} lineHeight="snug">
+                {c.blurb}
+              </Text>
+            </RouterLink>
           </Box>
         ))}
       </Grid>

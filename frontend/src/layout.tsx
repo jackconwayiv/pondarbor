@@ -28,6 +28,7 @@ import PondButton from "./PondButton";
 import { pondarborLogoSrc } from "./publicAsset";
 import BreadcrumbBar from "./BreadcrumbBar";
 import { useIsMobile } from "./responsive";
+import { APP_SHELL_CONTENT_MAX_PROPS } from "./theme/typography";
 
 /** Wordmark font; fixed look (no route-based styling). */
 const NAV_WORDMARK_FONT = '"Brush Script MT", "Segoe Script", cursive';
@@ -572,11 +573,7 @@ export default function AppLayout() {
               })}
         >
           {!(isQffRoute || isClickerRoute) ? (
-            <Box
-              w="100%"
-              maxW="100%"
-              px={{ base: "2", md: "2" }}
-            >
+            <Box {...APP_SHELL_CONTENT_MAX_PROPS} px={{ base: "2", md: "2" }}>
               <BreadcrumbBar />
             </Box>
           ) : null}

@@ -23,8 +23,8 @@ import { fetchClosetActionSummary } from "./closet/api";
 import { fetchFriendsList } from "./friends/api";
 import PondButton from "./PondButton";
 import { pondarborProfileSrc } from "./publicAsset";
-import { viewPortWidthBarProps } from "./responsive";
-import { APP_TEXT_SIZES } from "./theme/typography";
+import { fullBleedStackProps, viewPortWidthBarProps } from "./responsive";
+import { APP_SHELL_CONTENT_MAX_PROPS, APP_TEXT_SIZES } from "./theme/typography";
 import {
   fetchStaffPendingSummary,
   fetchUpcomingBirthdays,
@@ -426,28 +426,29 @@ function App() {
   }
 
   return (
-    <Stack flex="1" minH="0" gap="0" align="stretch" w="100%">
-      <Box
-        bg="bg"
-        w="full"
-        px={{ base: "2", md: "2" }}
-        py={{ base: "2", md: "2" }}
-      >
-        <Stack gap="1" w="full" mb="3">
-          <Heading as="h1" size={{ base: "lg", md: "xl" }}>
-            PondArbor
-          </Heading>
-          {isAuthenticated ? (
-            <Text
-              fontSize={{ base: "md", md: "lg" }}
-              fontWeight="medium"
-              color="fg"
-            >
-              Welcome, {nickname}!
-            </Text>
-          ) : null}
-        </Stack>
-        <Stack gap="3" w="full" maxW="3xl">
+    <Stack flex="1" minH="full" gap="0" align="stretch" w="100%" {...fullBleedStackProps}>
+      <Box flex="1" bg="bg" w="100%" px={0} py={{ base: "2", md: "2" }}>
+        <Stack
+          gap={{ base: "4", md: "4" }}
+          align="stretch"
+          {...APP_SHELL_CONTENT_MAX_PROPS}
+          px={{ base: "2", md: "2" }}
+        >
+          <Stack gap="1" w="100%">
+            <Heading as="h1" size={{ base: "lg", md: "xl" }}>
+              PondArbor
+            </Heading>
+            {isAuthenticated ? (
+              <Text
+                fontSize={{ base: "md", md: "lg" }}
+                fontWeight="medium"
+                color="fg"
+              >
+                Welcome, {nickname}!
+              </Text>
+            ) : null}
+          </Stack>
+
           {isAuthenticated ? (
             homePrompts.length > 0 || homeNoticeItems.length > 0 ? (
               <Stack gap="3" w="100%">
@@ -496,7 +497,7 @@ function App() {
               </Stack>
             ) : null
           ) : (
-            <>
+            <Stack gap="3" w="100%">
               <HStack gap="3" align="center" flexWrap="wrap">
                 <PondButton
                   colorPalette="lilypad"
@@ -519,38 +520,36 @@ function App() {
                   Sign up
                 </PondButton>
               </HStack>
-              <Flex alignItems="center" width="100%">
-                <Image src={pondarborProfileSrc()} width="150px"></Image>
+              <Flex alignItems="center" width="100%" flexWrap="wrap" gap="3">
+                <Image src={pondarborProfileSrc()} width="150px" flexShrink={0} />
                 <Text
                   fontSize={APP_TEXT_SIZES.body}
                   lineHeight="tall"
                   color="fg"
-                  maxW="3xl"
-                  ml="10px"
+                  flex="1"
+                  minW="0"
                 >
                   {HOME_PURPOSE_BLURB}{" "}
                 </Text>
               </Flex>
-            </>
+            </Stack>
           )}
-          {!isAuthenticated && error && <Text color="fg">Error: {error}</Text>}
-        </Stack>
-      </Box>
 
-      <Box flex="1" w="full" bg="transparent" py={{ base: "3", md: "4" }} px={{ base: 0, md: "3" }}>
-        <Stack gap="2" align="flex-start" w="100%">
-          <Text
-            fontSize="xs"
-            fontWeight="semibold"
-            textTransform="uppercase"
-            letterSpacing="wider"
-            color="fg.muted"
-            px={{ base: "2", md: 0 }}
-            w="100%"
-          >
-            Apps
-          </Text>
-          <HomeAppNavList isAuthenticated={isAuthenticated} />
+          {!isAuthenticated && error && <Text color="fg">Error: {error}</Text>}
+
+          <Stack gap="2" align="flex-start" w="100%" pt={{ base: "2", md: "3" }}>
+            <Text
+              fontSize="xs"
+              fontWeight="semibold"
+              textTransform="uppercase"
+              letterSpacing="wider"
+              color="fg.muted"
+              w="100%"
+            >
+              Apps
+            </Text>
+            <HomeAppNavList isAuthenticated={isAuthenticated} />
+          </Stack>
         </Stack>
       </Box>
 

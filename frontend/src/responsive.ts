@@ -31,8 +31,8 @@ export function usePrefersCoarsePointer() {
 export const fullBleedStackProps = {} as const;
 
 /**
- * For header/footer *bars* that must remain flush to the viewport edge while the page uses the
- * layout’s padded column (e.g. home and games footers).
+ * For site footer *bars* that should span the viewport while nested under the main inset
+ * (e.g. home and games hub).
  */
 export const viewPortWidthBarProps = {
   position: "relative" as const,

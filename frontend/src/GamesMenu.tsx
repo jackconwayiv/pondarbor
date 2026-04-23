@@ -15,7 +15,8 @@ import {
   auth0SignupAuthorizationParams,
 } from "./auth/auth0LoginParams";
 import PondButton from "./PondButton";
-import { viewPortWidthBarProps } from "./responsive";
+import { fullBleedStackProps, viewPortWidthBarProps } from "./responsive";
+import { APP_SHELL_CONTENT_MAX_PROPS } from "./theme/typography";
 
 const GAMES_NAV_ITEMS = [
   { to: "/clicker", label: "PondClicker", emoji: "🪷" },
@@ -40,54 +41,52 @@ export default function GamesMenu() {
   const { isAuthenticated } = useAppSession();
 
   return (
-    <Stack flex="1" minH="0" gap="0" align="stretch" w="100%">
-      {!isAuthenticated ? (
-        <Box
-          bg="bg"
-          w="full"
+    <Stack
+      flex="1"
+      minH="full"
+      gap="0"
+      align="stretch"
+      w="100%"
+      {...fullBleedStackProps}
+    >
+      <Box flex="1" w="100%" bg="bg" px={0} py={{ base: "2", md: "2" }}>
+        <Stack
+          gap={{ base: "4", md: "4" }}
+          align="flex-start"
+          {...APP_SHELL_CONTENT_MAX_PROPS}
           px={{ base: "2", md: "2" }}
-          py={{ base: "2", md: "2" }}
         >
-          <HStack gap="3" align="center" flexWrap="wrap">
-            <PondButton
-              colorPalette="lilypad"
-              onClick={() =>
-                loginWithRedirect({
-                  authorizationParams: auth0LoginAuthorizationParams(),
-                })
-              }
-            >
-              Log in
-            </PondButton>
-            <PondButton
-              colorPalette="teal"
-              onClick={() =>
-                loginWithRedirect({
-                  authorizationParams: auth0SignupAuthorizationParams(),
-                })
-              }
-            >
-              Sign up
-            </PondButton>
-          </HStack>
-        </Box>
-      ) : null}
+          {!isAuthenticated ? (
+            <HStack gap="3" align="center" flexWrap="wrap" w="100%">
+              <PondButton
+                colorPalette="lilypad"
+                onClick={() =>
+                  loginWithRedirect({
+                    authorizationParams: auth0LoginAuthorizationParams(),
+                  })
+                }
+              >
+                Log in
+              </PondButton>
+              <PondButton
+                colorPalette="teal"
+                onClick={() =>
+                  loginWithRedirect({
+                    authorizationParams: auth0SignupAuthorizationParams(),
+                  })
+                }
+              >
+                Sign up
+              </PondButton>
+            </HStack>
+          ) : null}
 
-      <Box
-        flex="1"
-        w="full"
-        bg="transparent"
-        py={{ base: "3", md: "4" }}
-        px={{ base: 0, md: "3" }}
-      >
-        <Stack gap="2" align="flex-start" w="100%">
           <Text
             fontSize="xs"
             fontWeight="semibold"
             textTransform="uppercase"
             letterSpacing="wider"
             color="fg.muted"
-            px={{ base: "2", md: 0 }}
             w="100%"
           >
             Play
@@ -174,17 +173,9 @@ export default function GamesMenu() {
             })}
           </SimpleGrid>
 
-          <Box
-            w="100%"
-            px={{ base: "2", md: 0 }}
-            pt="2"
-            display="flex"
-            justifyContent="flex-start"
-          >
-            <PondButton asChild colorPalette="teal" variant="outline" size="md">
-              <RouterLink to="/">← Back</RouterLink>
-            </PondButton>
-          </Box>
+          <PondButton asChild colorPalette="teal" variant="outline" size="md">
+            <RouterLink to="/">← Back</RouterLink>
+          </PondButton>
         </Stack>
       </Box>
 

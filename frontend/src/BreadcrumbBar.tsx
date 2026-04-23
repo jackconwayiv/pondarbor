@@ -5,8 +5,8 @@ import { getBreadcrumbItems } from "./breadcrumbTrail";
 
 /**
  * Renders a single-line breadcrumb under the app header. Hidden on the home
- * index. Parent layout is responsible for horizontal padding on full-bleed
- * routes (e.g. clicker).
+ * index. `AppLayout` wraps this in a `5xl` centered column; clicker/QFF skip the
+ * bar.
  */
 export default function BreadcrumbBar() {
   const { pathname } = useLocation();

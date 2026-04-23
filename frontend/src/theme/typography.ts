@@ -67,6 +67,16 @@ export const APP_SHELL_TRAY_PROPS = {
 } as const;
 
 /**
+ * Centered `5xl` column only — same width as `APP_SHELL_TRAY_PROPS` without the bordered tray
+ * (home, games hub, and other full-bleed `bg` pages that are not wrapped in the panel shell).
+ */
+export const APP_SHELL_CONTENT_MAX_PROPS = {
+  maxW: "5xl",
+  w: "100%",
+  mx: "auto",
+} as const;
+
+/**
  * Intro / summary blocks on the primary app tray. Matches Community Closet top intro cards
  * (`bg.panel`, no inner border; reads as one surface with the tray).
  */

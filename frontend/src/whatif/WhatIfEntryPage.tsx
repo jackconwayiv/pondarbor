@@ -24,8 +24,10 @@ import {
 import PondButton from "../PondButton";
 import { fullBleedStackProps, useIsMobile } from "../responsive";
 import {
+  APP_SHELL_TRAY_PROPS,
   APP_TEXT_SIZES,
   MAPPED_LIST_STACK_GAP,
+  PANEL_ENTRY_CARD_PROPS,
   PANEL_FIELD_PROPS,
 } from "../theme/typography";
 import {
@@ -562,7 +564,7 @@ export default function WhatIfEntryPage() {
       ) : null}
       <PondButton
         type="button"
-        colorPalette="lilypad"
+        colorPalette="teal"
         alignSelf="flex-start"
         onClick={() => void handleJoin()}
         loading={busy}
@@ -577,7 +579,7 @@ export default function WhatIfEntryPage() {
     <>
       <Tabs.Trigger
         value="join"
-        bg={playerTabValue === "join" ? "lilypad.solid" : undefined}
+        bg={playerTabValue === "join" ? "teal.solid" : undefined}
         color={playerTabValue === "join" ? "black" : undefined}
         borderTopRadius="md"
         borderBottomRadius="0"
@@ -585,15 +587,15 @@ export default function WhatIfEntryPage() {
         py="2"
         fontWeight="medium"
         _hover={{
-          bg: playerTabValue === "join" ? "lilypad.solid" : "transparent",
+          bg: playerTabValue === "join" ? "teal.solid" : "transparent",
         }}
-        _selected={{ bg: "lilypad.solid", color: "black" }}
+        _selected={{ bg: "teal.solid", color: "black" }}
       >
         Join Game
       </Tabs.Trigger>
       <Tabs.Trigger
         value="new"
-        bg={playerTabValue === "new" ? "lilypad.solid" : undefined}
+        bg={playerTabValue === "new" ? "teal.solid" : undefined}
         color={playerTabValue === "new" ? "black" : undefined}
         borderTopRadius="md"
         borderBottomRadius="0"
@@ -601,15 +603,15 @@ export default function WhatIfEntryPage() {
         py="2"
         fontWeight="medium"
         _hover={{
-          bg: playerTabValue === "new" ? "lilypad.solid" : "transparent",
+          bg: playerTabValue === "new" ? "teal.solid" : "transparent",
         }}
-        _selected={{ bg: "lilypad.solid", color: "black" }}
+        _selected={{ bg: "teal.solid", color: "black" }}
       >
         Host Game
       </Tabs.Trigger>
       <Tabs.Trigger
         value="continue"
-        bg={playerTabValue === "continue" ? "lilypad.solid" : undefined}
+        bg={playerTabValue === "continue" ? "teal.solid" : undefined}
         color={playerTabValue === "continue" ? "black" : undefined}
         borderTopRadius="md"
         borderBottomRadius="0"
@@ -617,9 +619,9 @@ export default function WhatIfEntryPage() {
         py="2"
         fontWeight="medium"
         _hover={{
-          bg: playerTabValue === "continue" ? "lilypad.solid" : "transparent",
+          bg: playerTabValue === "continue" ? "teal.solid" : "transparent",
         }}
-        _selected={{ bg: "lilypad.solid", color: "black" }}
+        _selected={{ bg: "teal.solid", color: "black" }}
       >
         Resume Game
       </Tabs.Trigger>
@@ -630,7 +632,7 @@ export default function WhatIfEntryPage() {
     <>
       <Tabs.Trigger
         value="admin-list"
-        bg={adminTabValue === "admin-list" ? "lilypad.solid" : undefined}
+        bg={adminTabValue === "admin-list" ? "teal.solid" : undefined}
         color={adminTabValue === "admin-list" ? "black" : undefined}
         borderTopRadius="md"
         borderBottomRadius="0"
@@ -638,15 +640,15 @@ export default function WhatIfEntryPage() {
         py="2"
         fontWeight="medium"
         _hover={{
-          bg: adminTabValue === "admin-list" ? "lilypad.solid" : "transparent",
+          bg: adminTabValue === "admin-list" ? "teal.solid" : "transparent",
         }}
-        _selected={{ bg: "lilypad.solid", color: "black" }}
+        _selected={{ bg: "teal.solid", color: "black" }}
       >
         Question List
       </Tabs.Trigger>
       <Tabs.Trigger
         value="admin-edit"
-        bg={adminTabValue === "admin-edit" ? "lilypad.solid" : undefined}
+        bg={adminTabValue === "admin-edit" ? "teal.solid" : undefined}
         color={adminTabValue === "admin-edit" ? "black" : undefined}
         borderTopRadius="md"
         borderBottomRadius="0"
@@ -654,15 +656,15 @@ export default function WhatIfEntryPage() {
         py="2"
         fontWeight="medium"
         _hover={{
-          bg: adminTabValue === "admin-edit" ? "lilypad.solid" : "transparent",
+          bg: adminTabValue === "admin-edit" ? "teal.solid" : "transparent",
         }}
-        _selected={{ bg: "lilypad.solid", color: "black" }}
+        _selected={{ bg: "teal.solid", color: "black" }}
       >
         Add Question
       </Tabs.Trigger>
       <Tabs.Trigger
         value="admin-bulk"
-        bg={adminTabValue === "admin-bulk" ? "lilypad.solid" : undefined}
+        bg={adminTabValue === "admin-bulk" ? "teal.solid" : undefined}
         color={adminTabValue === "admin-bulk" ? "black" : undefined}
         borderTopRadius="md"
         borderBottomRadius="0"
@@ -670,9 +672,9 @@ export default function WhatIfEntryPage() {
         py="2"
         fontWeight="medium"
         _hover={{
-          bg: adminTabValue === "admin-bulk" ? "lilypad.solid" : "transparent",
+          bg: adminTabValue === "admin-bulk" ? "teal.solid" : "transparent",
         }}
-        _selected={{ bg: "lilypad.solid", color: "black" }}
+        _selected={{ bg: "teal.solid", color: "black" }}
       >
         Bulk Import
       </Tabs.Trigger>
@@ -694,7 +696,7 @@ export default function WhatIfEntryPage() {
           </Text>
           <PondButton
             type="button"
-            colorPalette="lilypad"
+            colorPalette="teal"
             alignSelf="flex-start"
             onClick={() => void handleCreate()}
             loading={busy}
@@ -735,7 +737,7 @@ export default function WhatIfEntryPage() {
           </Stack>
           <PondButton
             type="button"
-            colorPalette="lilypad"
+            colorPalette="teal"
             alignSelf="flex-start"
             onClick={() => void handleResumeHosting()}
             loading={busy}
@@ -810,7 +812,7 @@ export default function WhatIfEntryPage() {
             </Stack>
             <PondButton
               type="button"
-              colorPalette="lilypad"
+              colorPalette="teal"
               onClick={() => void loadQuestions()}
               loading={adminBusy}
             >
@@ -883,7 +885,7 @@ export default function WhatIfEntryPage() {
             ) : null}
             <PondButton
               type="button"
-              colorPalette="lilypad"
+              colorPalette="teal"
               onClick={() => void saveQuestion()}
               loading={adminBusy}
             >
@@ -907,7 +909,7 @@ export default function WhatIfEntryPage() {
           />
           <PondButton
             type="button"
-            colorPalette="lilypad"
+            colorPalette="teal"
             alignSelf="flex-end"
             onClick={() => void runBulkImport()}
             loading={adminBusy}
@@ -922,34 +924,17 @@ export default function WhatIfEntryPage() {
   const showDesktopUnapprovedOnly =
     showJoinOnly && !isMobile && (!isAuthenticated || !isApprovedUser);
 
-  const entryCardProps = {
-    bg: "white",
-    borderWidth: "1px",
-    borderColor: "border",
-    borderRadius: "xl",
-    p: { base: "2", md: "2" },
-  } as const;
-
   return (
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
       <Box
         flex="1"
-        bg="sky.solid"
-        px={{ base: "2", md: "2" }}
+        bg="bg"
+        px={0}
         py={{ base: "2", md: "2" }}
       >
-        <Box
-          maxW="4xl"
-          w="100%"
-          mx="auto"
-          bg="gray.100"
-          borderWidth="1px"
-          borderColor="border"
-          borderRadius="xl"
-          overflow="hidden"
-        >
+        <Box {...APP_SHELL_TRAY_PROPS}>
           <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
-            <Box {...entryCardProps}>
+            <Box {...PANEL_ENTRY_CARD_PROPS}>
               <Heading
                 as="h1"
                 size={{ base: "lg", md: "xl" }}
@@ -994,7 +979,7 @@ export default function WhatIfEntryPage() {
             </Box>
 
             {!showDesktopUnapprovedOnly ? (
-              <Box {...entryCardProps}>
+              <Box {...PANEL_ENTRY_CARD_PROPS}>
                 <Stack gap="4">
                   {showJoinOnly ? (
                     joinFormContent
@@ -1024,7 +1009,7 @@ export default function WhatIfEntryPage() {
                           value="player"
                           bg={
                             outerSection === "player"
-                              ? "lilypad.solid"
+                              ? "teal.solid"
                               : undefined
                           }
                           color={
@@ -1038,10 +1023,10 @@ export default function WhatIfEntryPage() {
                           _hover={{
                             bg:
                               outerSection === "player"
-                                ? "lilypad.solid"
+                                ? "teal.solid"
                                 : "transparent",
                           }}
-                          _selected={{ bg: "lilypad.solid", color: "black" }}
+                          _selected={{ bg: "teal.solid", color: "black" }}
                         >
                           Player
                         </Tabs.Trigger>
@@ -1049,7 +1034,7 @@ export default function WhatIfEntryPage() {
                           value="admin"
                           bg={
                             outerSection === "admin"
-                              ? "lilypad.solid"
+                              ? "teal.solid"
                               : undefined
                           }
                           color={outerSection === "admin" ? "black" : undefined}
@@ -1061,10 +1046,10 @@ export default function WhatIfEntryPage() {
                           _hover={{
                             bg:
                               outerSection === "admin"
-                                ? "lilypad.solid"
+                                ? "teal.solid"
                                 : "transparent",
                           }}
-                          _selected={{ bg: "lilypad.solid", color: "black" }}
+                          _selected={{ bg: "teal.solid", color: "black" }}
                         >
                           Admin
                         </Tabs.Trigger>
@@ -1167,7 +1152,7 @@ export default function WhatIfEntryPage() {
             ) : null}
 
             {canProposeQuestions ? (
-              <Box {...entryCardProps}>
+              <Box {...PANEL_ENTRY_CARD_PROPS}>
                 <Collapsible.Root
                   open={proposeOpen}
                   onOpenChange={(details) => setProposeOpen(details.open)}
@@ -1219,7 +1204,7 @@ export default function WhatIfEntryPage() {
                         <Text
                           role="status"
                           fontSize={APP_TEXT_SIZES.helper}
-                          color="lilypad.solid"
+                          color="teal.solid"
                           fontWeight="medium"
                         >
                           {proposeSuccess}
@@ -1243,7 +1228,7 @@ export default function WhatIfEntryPage() {
                       />
                       <PondButton
                         type="button"
-                        colorPalette="lilypad"
+                        colorPalette="teal"
                         alignSelf="flex-end"
                         onClick={() => void submitPropose()}
                         loading={proposeBusy}

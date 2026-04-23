@@ -21,7 +21,15 @@ import { useAppSession } from "../auth/AppSessionContext";
 import { auth0LoginAuthorizationParams } from "../auth/auth0LoginParams";
 import PondButton from "../PondButton";
 import { fullBleedStackProps } from "../responsive";
-import { APP_TEXT_SIZES } from "../theme/typography";
+import {
+  APP_SHELL_TAB_LIST_INSET_PROPS,
+  APP_SHELL_TAB_TRIGGER_PROPS,
+} from "../theme/appShellTabs";
+import {
+  APP_SHELL_TRAY_PROPS,
+  APP_TEXT_SIZES,
+  PANEL_ENTRY_CARD_PROPS,
+} from "../theme/typography";
 import {
   CATALOG_UPGRADES,
   FAMILY_PRESENTATION,
@@ -32,30 +40,9 @@ import {
 } from "./catalog";
 import { requirementSummary } from "./ruleEngine";
 
-/** Same tab chrome as [`ProfilePage`](ProfilePage.tsx) / [`QuotesFeedPage`](quotes/QuotesFeedPage.tsx). */
-const TIER_TABS_LIST_PROPS = {
-  pt: "0",
-  pb: "0",
-  borderBottomWidth: "1px",
-  borderColor: "border",
-  gap: "1",
-  w: "100%",
-  flexWrap: "wrap" as const,
-  rowGap: "1",
-} as const;
-
-/** Matches [`ClickerLobbyPage`](ClickerLobbyPage.tsx) entry chrome. */
-const ENTRY_CARD_PROPS = {
-  bg: "white",
-  borderWidth: "1px",
-  borderColor: "border",
-  borderRadius: "xl",
-  p: { base: "2", md: "2" },
-} as const;
-
 /** Dense catalog cards: tighter padding for 2–3 column layouts. */
 const UPGRADE_CARD_SHELL_PROPS = {
-  ...ENTRY_CARD_PROPS,
+  ...PANEL_ENTRY_CARD_PROPS,
   p: { base: "2", md: "2" },
 } as const;
 
@@ -76,20 +63,11 @@ function ClickerCatalogFramedChrome({ children }: { children: ReactNode }) {
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
       <Box
         flex="1"
-        bg="sky.solid"
-        px={{ base: "2", md: "2" }}
+        bg="bg"
+        px={0}
         py={{ base: "2", md: "2" }}
       >
-        <Box
-          maxW="4xl"
-          w="100%"
-          mx="auto"
-          bg="gray.100"
-          borderWidth="1px"
-          borderColor="border"
-          borderRadius="xl"
-          overflow="hidden"
-        >
+        <Box {...APP_SHELL_TRAY_PROPS}>
           <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
             {children}
           </Stack>
@@ -150,7 +128,7 @@ function CatalogTag({
 }) {
   if (greenAccent) {
     return (
-      <Tag.Root size="sm" variant="surface" colorPalette="lilypad">
+      <Tag.Root size="sm" variant="surface" colorPalette="teal">
         <Tag.Label fontSize={UPGRADE_CARD_BODY} fontWeight="medium">
           {children}
         </Tag.Label>
@@ -321,7 +299,7 @@ export default function ClickerCatalogAdminPage() {
   if (!isAuthenticated) {
     return (
       <ClickerCatalogFramedChrome>
-        <Box {...ENTRY_CARD_PROPS}>
+        <Box {...PANEL_ENTRY_CARD_PROPS}>
           <Heading
             as="h1"
             size={{ base: "lg", md: "xl" }}
@@ -358,7 +336,7 @@ export default function ClickerCatalogAdminPage() {
   if (isAuthenticated && !sessionUser && !isLoading) {
     return (
       <ClickerCatalogFramedChrome>
-        <Box {...ENTRY_CARD_PROPS}>
+        <Box {...PANEL_ENTRY_CARD_PROPS}>
           <Heading
             as="h1"
             size={{ base: "lg", md: "xl" }}
@@ -387,7 +365,7 @@ export default function ClickerCatalogAdminPage() {
   if (isLoading || !sessionUser) {
     return (
       <ClickerCatalogFramedChrome>
-        <Box {...ENTRY_CARD_PROPS}>
+        <Box {...PANEL_ENTRY_CARD_PROPS}>
           <Text fontSize={APP_TEXT_SIZES.body} color="fg">
             Loading…
           </Text>
@@ -399,7 +377,7 @@ export default function ClickerCatalogAdminPage() {
   if (!isStaff) {
     return (
       <ClickerCatalogFramedChrome>
-        <Box {...ENTRY_CARD_PROPS}>
+        <Box {...PANEL_ENTRY_CARD_PROPS}>
           <Heading
             as="h1"
             size={{ base: "lg", md: "xl" }}
@@ -428,7 +406,7 @@ export default function ClickerCatalogAdminPage() {
 
   return (
     <ClickerCatalogFramedChrome>
-      <Box {...ENTRY_CARD_PROPS}>
+      <Box {...PANEL_ENTRY_CARD_PROPS}>
         <Stack gap="2" align="flex-start">
           {backButton}
           <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold">
@@ -454,24 +432,15 @@ export default function ClickerCatalogAdminPage() {
         w="100%"
         onValueChange={(details) => setActiveTierTab(details.value)}
       >
-        <Tabs.List {...TIER_TABS_LIST_PROPS}>
+        <Tabs.List {...APP_SHELL_TAB_LIST_INSET_PROPS} flexWrap="wrap" rowGap="2">
           {tiers.map(([tier]) => {
             const value = String(tier);
-            const selected = activeTierTab === value;
             return (
               <Tabs.Trigger
                 key={tier}
                 value={value}
-                bg={selected ? "lilypad.solid" : undefined}
-                color={selected ? "black" : undefined}
-                borderTopRadius="md"
-                borderBottomRadius="0"
-                px="2"
-                py="2"
-                fontWeight="medium"
+                {...APP_SHELL_TAB_TRIGGER_PROPS}
                 fontSize={APP_TEXT_SIZES.label}
-                _hover={{ bg: selected ? "lilypad.solid" : "transparent" }}
-                _selected={{ bg: "lilypad.solid", color: "black" }}
               >
                 Tier {tier}
               </Tabs.Trigger>

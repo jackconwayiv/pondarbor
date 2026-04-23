@@ -2,6 +2,12 @@ import { Box, Heading, HStack, Stack, Tabs, Text } from "@chakra-ui/react";
 import { Outlet, useLocation, useNavigate } from "react-router";
 import { fullBleedStackProps } from "../responsive";
 import {
+  APP_SHELL_TAB_LIST_MEAL_INNER_PROPS,
+  APP_SHELL_TAB_LIST_PROPS,
+  APP_SHELL_TAB_TRIGGER_PROPS,
+} from "../theme/appShellTabs";
+import {
+  APP_SHELL_TRAY_PROPS,
   APP_TEXT_SIZES,
   MAPPED_CLOSET_TAB_STACK_GAP,
   PANEL_ENTRY_CARD_PROPS,
@@ -27,16 +33,6 @@ const MEAL_PLAN_INNER_PATH = {
 
 type MealPlanInnerTab = keyof typeof MEAL_PLAN_INNER_PATH;
 
-const MEAL_TAB_LIST_PROPS = {
-  px: { base: "2", md: "2" } as const,
-  pt: "0",
-  pb: "0",
-  borderBottomWidth: "1px",
-  borderColor: "border",
-  gap: "1",
-  w: "100%",
-};
-
 function mealOuterFromPathname(pathname: string): MealOuterTab {
   const p = pathname.replace(/\/$/, "") || "/";
   if (p.startsWith("/meal/today")) return "today";
@@ -53,24 +49,6 @@ function mealPlanInnerFromPathname(pathname: string): MealPlanInnerTab {
   return "plans";
 }
 
-/** Same trigger props as `ClosetPage` main `Tabs.List` / `Tabs.Trigger` (Community Closet). */
-function mealTabTriggerProps(activeTab: string, value: string) {
-  return {
-    value,
-    bg: activeTab === value ? "lilypad.solid" : undefined,
-    color: activeTab === value ? "black" : undefined,
-    borderTopRadius: "md" as const,
-    borderBottomRadius: "0" as const,
-    px: "2",
-    py: "2",
-    fontWeight: "medium" as const,
-    _hover: {
-      bg: activeTab === value ? "lilypad.solid" : "transparent",
-    },
-    _selected: { bg: "lilypad.solid", color: "black" },
-  };
-}
-
 export default function MealLayout() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -83,21 +61,11 @@ export default function MealLayout() {
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
       <Box
         flex="1"
-        bg="sky.solid"
-        px={{ base: "2", md: "2" }}
+        bg="bg"
+        px={0}
         py={{ base: "2", md: "2" }}
       >
-        <Box
-          data-meal-panel-content=""
-          maxW="4xl"
-          w="100%"
-          mx="auto"
-          bg="gray.100"
-          borderWidth="1px"
-          borderColor="border"
-          borderRadius="xl"
-          overflow="hidden"
-        >
+        <Box data-meal-panel-content="" {...APP_SHELL_TRAY_PROPS}>
           <Stack
             gap={{ base: "4", md: "4" }}
             px={{ base: "2", md: "2" }}
@@ -139,17 +107,17 @@ export default function MealLayout() {
               if (path) navigate(path);
             }}
           >
-            <Tabs.List {...MEAL_TAB_LIST_PROPS} data-meal-shell-tabs="">
-              <Tabs.Trigger {...mealTabTriggerProps(outer, "today")}>
+            <Tabs.List {...APP_SHELL_TAB_LIST_PROPS} data-meal-shell-tabs="">
+              <Tabs.Trigger value="today" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                 Today
               </Tabs.Trigger>
-              <Tabs.Trigger {...mealTabTriggerProps(outer, "plan")}>
+              <Tabs.Trigger value="plan" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                 Plan
               </Tabs.Trigger>
-              <Tabs.Trigger {...mealTabTriggerProps(outer, "grocery")}>
+              <Tabs.Trigger value="grocery" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                 Grocery
               </Tabs.Trigger>
-              <Tabs.Trigger {...mealTabTriggerProps(outer, "settings")}>
+              <Tabs.Trigger value="settings" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                 Settings
               </Tabs.Trigger>
             </Tabs.List>
@@ -166,19 +134,23 @@ export default function MealLayout() {
                   if (path) navigate(path);
                 }}
               >
-                <Tabs.List {...MEAL_TAB_LIST_PROPS} data-meal-shell-tabs="">
-                  <Tabs.Trigger {...mealTabTriggerProps(planInner, "plans")}>
+                <Tabs.List
+                  {...APP_SHELL_TAB_LIST_MEAL_INNER_PROPS}
+                  data-meal-shell-tabs=""
+                >
+                  <Tabs.Trigger value="plans" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                     Weekly
                   </Tabs.Trigger>
                   <Tabs.Trigger
-                    {...mealTabTriggerProps(planInner, "templates")}
+                    value="templates"
+                    {...APP_SHELL_TAB_TRIGGER_PROPS}
                   >
                     Templates
                   </Tabs.Trigger>
-                  <Tabs.Trigger {...mealTabTriggerProps(planInner, "meals")}>
+                  <Tabs.Trigger value="meals" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                     Meals
                   </Tabs.Trigger>
-                  <Tabs.Trigger {...mealTabTriggerProps(planInner, "shared")}>
+                  <Tabs.Trigger value="shared" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                     Shared
                   </Tabs.Trigger>
                 </Tabs.List>

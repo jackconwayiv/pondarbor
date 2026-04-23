@@ -18,7 +18,15 @@ import {
   validateWhatIfQuestionDraft,
 } from "../forms/validation";
 import PondButton from "../PondButton";
-import { MAPPED_LIST_STACK_GAP } from "../theme/typography";
+import {
+  APP_SHELL_TAB_LIST_PROPS,
+  APP_SHELL_TAB_TRIGGER_PROPS,
+} from "../theme/appShellTabs";
+import {
+  APP_SHELL_TRAY_PROPS,
+  MAPPED_LIST_STACK_GAP,
+  PANEL_ENTRY_CARD_PROPS,
+} from "../theme/typography";
 import {
   bulkImportWhatIfQuestions,
   createWhatIfQuestion,
@@ -270,89 +278,53 @@ export default function WhatIfAdminPage() {
         flex="1"
         minH="full"
       >
-        <Box bg="bg" px={{ base: "2", md: "2" }} py={{ base: "2", md: "2" }}>
-          <Stack gap="3" maxW="5xl">
-            <HStack
-              justify="space-between"
-              align="center"
-              flexWrap="wrap"
-              gap="3"
+        <Box bg="bg" px={0} py={{ base: "2", md: "2" }}>
+          <Box {...APP_SHELL_TRAY_PROPS} w="100%">
+            <Stack
+              gap={{ base: "4", md: "4" }}
+              px={{ base: "2", md: "2" }}
+              pt={{ base: "2", md: "2" }}
+              pb="0"
             >
-              <Heading as="h1" size="lg">
-                Whatif Admin - Questions
-              </Heading>
-              {pendingCount > 0 ? (
-                <Text fontWeight="bold" color="orange.solid">
-                  Unreviewed submissions: {pendingCount}
-                </Text>
-              ) : null}
-            </HStack>
-            <Tabs.List
-              borderBottomWidth="1px"
-              borderColor="border"
-              gap="1"
-              maxW="full"
-              flexWrap="wrap"
-            >
-              <Tabs.Trigger
-                value="list"
-                bg={activeTab === "list" ? "lilypad.solid" : undefined}
-                color={activeTab === "list" ? "black" : undefined}
-                borderTopRadius="md"
-                borderBottomRadius="0"
-                px="2"
-                py="2"
-                fontWeight="medium"
-                _hover={{
-                  bg: activeTab === "list" ? "lilypad.solid" : "transparent",
-                }}
-                _selected={{ bg: "lilypad.solid", color: "black" }}
-              >
+              <Box {...PANEL_ENTRY_CARD_PROPS}>
+                <HStack
+                  justify="space-between"
+                  align="center"
+                  flexWrap="wrap"
+                  gap="3"
+                >
+                  <Heading as="h1" size="lg" fontWeight="bold">
+                    Whatif Admin - Questions
+                  </Heading>
+                  {pendingCount > 0 ? (
+                    <Text fontWeight="bold" color="orange.solid">
+                      Unreviewed submissions: {pendingCount}
+                    </Text>
+                  ) : null}
+                </HStack>
+              </Box>
+            </Stack>
+            <Tabs.List {...APP_SHELL_TAB_LIST_PROPS}>
+              <Tabs.Trigger value="list" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                 Question List
               </Tabs.Trigger>
-              <Tabs.Trigger
-                value="edit"
-                bg={activeTab === "edit" ? "lilypad.solid" : undefined}
-                color={activeTab === "edit" ? "black" : undefined}
-                borderTopRadius="md"
-                borderBottomRadius="0"
-                px="2"
-                py="2"
-                fontWeight="medium"
-                _hover={{
-                  bg: activeTab === "edit" ? "lilypad.solid" : "transparent",
-                }}
-                _selected={{ bg: "lilypad.solid", color: "black" }}
-              >
+              <Tabs.Trigger value="edit" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                 Add Question
               </Tabs.Trigger>
-              <Tabs.Trigger
-                value="bulk"
-                bg={activeTab === "bulk" ? "lilypad.solid" : undefined}
-                color={activeTab === "bulk" ? "black" : undefined}
-                borderTopRadius="md"
-                borderBottomRadius="0"
-                px="2"
-                py="2"
-                fontWeight="medium"
-                _hover={{
-                  bg: activeTab === "bulk" ? "lilypad.solid" : "transparent",
-                }}
-                _selected={{ bg: "lilypad.solid", color: "black" }}
-              >
+              <Tabs.Trigger value="bulk" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                 Bulk Import
               </Tabs.Trigger>
             </Tabs.List>
-          </Stack>
+          </Box>
         </Box>
 
         <Box
           flex="1"
-          bg="sky.solid"
-          px={{ base: "2", md: "2" }}
+          bg="bg"
+          px={0}
           py={{ base: "2", md: "2" }}
         >
-          <WhatIfShell maxW="5xl">
+            <WhatIfShell maxW="100%">
             <Tabs.Content value="list">
               <Stack gap="3">
                 <Text fontWeight="medium">Questions ({questions.length})</Text>
@@ -392,7 +364,7 @@ export default function WhatIfAdminPage() {
                   </Stack>
                   <PondButton
                     type="button"
-                    colorPalette="lilypad"
+                    colorPalette="teal"
                     onClick={() => void load()}
                     loading={busy}
                   >
@@ -469,7 +441,7 @@ export default function WhatIfAdminPage() {
                   ) : null}
                   <PondButton
                     type="button"
-                    colorPalette="lilypad"
+                    colorPalette="teal"
                     onClick={() => void saveQuestion()}
                     loading={busy}
                   >
@@ -491,7 +463,7 @@ export default function WhatIfAdminPage() {
                 />
                 <PondButton
                   type="button"
-                  colorPalette="lilypad"
+                  colorPalette="teal"
                   alignSelf="flex-end"
                   onClick={() => void runBulkImport()}
                   loading={busy}

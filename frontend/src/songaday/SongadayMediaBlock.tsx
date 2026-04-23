@@ -98,7 +98,7 @@ export default function SongadayMediaBlock({ entry, compact, autoplayOnMount }: 
           href={am}
           target="_blank"
           rel="noopener noreferrer"
-          color="lilypad.solid"
+          color="teal.solid"
           fontWeight="bold"
           fontSize={APP_TEXT_SIZES.helper}
         >

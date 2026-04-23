@@ -100,7 +100,7 @@ export default function MealTemplatesPage() {
                 </NativeSelectField>
               </NativeSelectRoot>
               <PondButton
-                colorPalette="lilypad"
+                colorPalette="teal"
                 flexShrink={0}
                 disabled={!name.trim()}
                 onClick={() => {

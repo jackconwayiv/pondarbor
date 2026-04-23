@@ -71,7 +71,6 @@ const effectiveClicksPerSec = REFERENCE_CLICK_HZ * ACTIVE_FRACTION;
 const TARGET_SEC = 600;
 const result = simulateSeconds(effectiveClicksPerSec, 200_000);
 const minutes = result.seconds / 60;
-// eslint-disable-next-line no-console
 console.log(
   JSON.stringify(
     {

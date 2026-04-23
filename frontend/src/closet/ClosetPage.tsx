@@ -1,6 +1,8 @@
 import {
   Box,
   Card,
+  CloseButton,
+  Dialog,
   HStack,
   Heading,
   Image,
@@ -23,10 +25,16 @@ import {
   validateClosetItemName,
 } from "../forms/validation";
 import PondButton from "../PondButton";
-import { fullBleedStackProps } from "../responsive";
+import { fullBleedStackProps, useIsMobile } from "../responsive";
 import {
+  APP_SHELL_TAB_LIST_PROPS,
+  APP_SHELL_TAB_TRIGGER_PROPS,
+} from "../theme/appShellTabs";
+import {
+  APP_SHELL_TRAY_PROPS,
   APP_TEXT_SIZES,
   MAPPED_CLOSET_TAB_STACK_GAP,
+  PANEL_ENTRY_CARD_PROPS,
   PANEL_FORM_PLACEHOLDER_PROPS,
 } from "../theme/typography";
 import {
@@ -62,14 +70,6 @@ const FRIENDS_PAGE_SIZE = 10;
 const MY_ITEMS_PAGE_SIZE = 10;
 const CLOSET_PLACEHOLDER_PROPS = PANEL_FORM_PLACEHOLDER_PROPS;
 
-const ENTRY_CARD_PROPS = {
-  bg: "white",
-  borderWidth: "1px",
-  borderColor: "border",
-  borderRadius: "xl",
-  p: { base: "2", md: "2" },
-} as const;
-
 function parseTab(value: string | null): ClosetTab {
   if (value === "friends") return "friends";
   if (value === "images") return "images";
@@ -79,6 +79,7 @@ function parseTab(value: string | null): ClosetTab {
 export default function ClosetPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = parseTab(searchParams.get("tab"));
+  const isMobile = useIsMobile();
   const {
     isAuthenticated,
     isLoading,
@@ -451,6 +452,69 @@ export default function ClosetPage() {
       ? imageRows.filter((row) => row.status === "stranded")
       : imageRows;
 
+  const showFriendsFilterPanel = !isMobile || friendsFilterToolsOpen;
+
+  const friendsFilterControls = (
+    <Stack
+      align="stretch"
+      gap="3"
+      w="100%"
+      flexDir={{ base: "column", md: "row" }}
+      flexWrap="wrap"
+    >
+      <Stack gap="1" minW="160px" flex="1">
+        <Text fontSize={APP_TEXT_SIZES.helper}>Category</Text>
+        <NativeSelectRoot maxW="280px" w="100%">
+          <NativeSelectField
+            value={friendsCategoryFilter}
+            onChange={(e) => {
+              setFriendsCategoryFilter(e.target.value);
+              setFriendsPage(1);
+            }}
+          >
+            <option value="">Any category</option>
+            {CLOSET_CATEGORY_PRESETS.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+            <option value={CLOSET_FRIENDS_CATEGORY_OTHER}>Other</option>
+          </NativeSelectField>
+        </NativeSelectRoot>
+      </Stack>
+      <Stack gap="1" minW="140px" flex="1">
+        <Text fontSize={APP_TEXT_SIZES.helper}>Tag</Text>
+        <Input
+          value={friendsTagInput}
+          onChange={(e) => setFriendsTagInput(e.target.value)}
+          placeholder="Substring match"
+          maxW="100%"
+          width="100%"
+          {...CLOSET_PLACEHOLDER_PROPS}
+        />
+      </Stack>
+      <Stack gap="1" minW="200px" flex="1">
+        <Text fontSize={APP_TEXT_SIZES.helper}>Sort</Text>
+        <NativeSelectRoot maxW="100%" w="100%">
+          <NativeSelectField
+            value={friendsSort}
+            onChange={(e) => {
+              setFriendsSort(e.target.value as FriendsItemsSort);
+              setFriendsPage(1);
+            }}
+          >
+            <option value="updated_desc">Recently updated</option>
+            <option value="updated_asc">Least recently updated</option>
+            <option value="created_desc">Newest listed</option>
+            <option value="created_asc">Oldest listed</option>
+            <option value="name_asc">Name (A–Z)</option>
+            <option value="name_desc">Name (Z–A)</option>
+          </NativeSelectField>
+        </NativeSelectRoot>
+      </Stack>
+    </Stack>
+  );
+
   return (
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
       <Tabs.Root
@@ -466,34 +530,25 @@ export default function ClosetPage() {
       >
         <Box
           flex="1"
-          bg="sky.solid"
-          px={{ base: "2", md: "2" }}
+          bg="bg"
+          px={0}
           py={{ base: "2", md: "2" }}
         >
           {loading ? (
-            <Box maxW="4xl" w="100%" mx="auto" pb="2">
+            <Box maxW="5xl" w="100%" mx="auto" pb="2">
               <Text fontSize={APP_TEXT_SIZES.body} fontWeight="medium">
                 Loading closet…
               </Text>
             </Box>
           ) : null}
-          <Box
-            maxW="4xl"
-            w="100%"
-            mx="auto"
-            bg="gray.100"
-            borderWidth="1px"
-            borderColor="border"
-            borderRadius="xl"
-            overflow="hidden"
-          >
+          <Box {...APP_SHELL_TRAY_PROPS}>
             <Stack
               gap={{ base: "4", md: "4" }}
               px={{ base: "2", md: "2" }}
               pt={{ base: "2", md: "2" }}
               pb="2"
             >
-              <Box {...ENTRY_CARD_PROPS}>
+              <Box {...PANEL_ENTRY_CARD_PROPS}>
                 <Heading
                   as="h1"
                   size={{ base: "lg", md: "xl" }}
@@ -523,61 +578,14 @@ export default function ClosetPage() {
                 </Text>
               </Box>
             </Stack>
-            <Tabs.List
-              px={{ base: "2", md: "2" }}
-              pt="0"
-              pb="0"
-              borderBottomWidth="1px"
-              borderColor="border"
-              gap="1"
-              w="100%"
-            >
-              <Tabs.Trigger
-                value="my"
-                bg={activeTab === "my" ? "lilypad.solid" : undefined}
-                color={activeTab === "my" ? "black" : undefined}
-                borderTopRadius="md"
-                borderBottomRadius="0"
-                px="2"
-                py="2"
-                fontWeight="medium"
-                _hover={{
-                  bg: activeTab === "my" ? "lilypad.solid" : "transparent",
-                }}
-                _selected={{ bg: "lilypad.solid", color: "black" }}
-              >
+            <Tabs.List {...APP_SHELL_TAB_LIST_PROPS}>
+              <Tabs.Trigger value="my" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                 My Items
               </Tabs.Trigger>
-              <Tabs.Trigger
-                value="friends"
-                bg={activeTab === "friends" ? "lilypad.solid" : undefined}
-                color={activeTab === "friends" ? "black" : undefined}
-                borderTopRadius="md"
-                borderBottomRadius="0"
-                px="2"
-                py="2"
-                fontWeight="medium"
-                _hover={{
-                  bg: activeTab === "friends" ? "lilypad.solid" : "transparent",
-                }}
-                _selected={{ bg: "lilypad.solid", color: "black" }}
-              >
+              <Tabs.Trigger value="friends" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                 Friends&apos; Items
               </Tabs.Trigger>
-              <Tabs.Trigger
-                value="images"
-                bg={activeTab === "images" ? "lilypad.solid" : undefined}
-                color={activeTab === "images" ? "black" : undefined}
-                borderTopRadius="md"
-                borderBottomRadius="0"
-                px="2"
-                py="2"
-                fontWeight="medium"
-                _hover={{
-                  bg: activeTab === "images" ? "lilypad.solid" : "transparent",
-                }}
-                _selected={{ bg: "lilypad.solid", color: "black" }}
-              >
+              <Tabs.Trigger value="images" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                 My Images
               </Tabs.Trigger>
             </Tabs.List>
@@ -592,7 +600,7 @@ export default function ClosetPage() {
                       fontSize={APP_TEXT_SIZES.helper}
                       color={
                         ownedNotice.kind === "success"
-                          ? "lilypad.solid"
+                          ? "forest.solid"
                           : "nautical.solid"
                       }
                       fontWeight="medium"
@@ -750,7 +758,7 @@ export default function ClosetPage() {
                         <HStack flexWrap="wrap">
                           <PondButton
                             size="sm"
-                            colorPalette="lilypad"
+                            colorPalette="teal"
                             onClick={async () => {
                               try {
                                 const token = await getApiAccessToken();
@@ -910,7 +918,7 @@ export default function ClosetPage() {
                         closetReturnTo="/closet?tab=my"
                         dashedBorder
                         titlePrefix={
-                          <Text fontWeight="bold" color="lilypad.solid">
+                          <Text fontWeight="bold" color="forest.solid">
                             PENDING APPROVAL:
                           </Text>
                         }
@@ -959,7 +967,7 @@ export default function ClosetPage() {
                         item={item}
                         closetReturnTo="/closet?tab=my"
                         titlePrefix={
-                          <Text fontWeight="bold" color="lilypad.solid">
+                          <Text fontWeight="bold" color="sky.solid">
                             {`LOANED TO ${displayName(item.current_holder_user).toUpperCase()}:`}
                           </Text>
                         }
@@ -1060,7 +1068,7 @@ export default function ClosetPage() {
                           </Text>
                           {newItemImageBusy ? (
                             <HStack gap="2" align="center" color="gray.700">
-                              <Spinner size="sm" colorPalette="lilypad" />
+                              <Spinner size="sm" colorPalette="teal" />
                               <Text fontSize={APP_TEXT_SIZES.helper}>
                                 Uploading photo and saving item…
                               </Text>
@@ -1069,7 +1077,7 @@ export default function ClosetPage() {
                         </Stack>
                         <HStack>
                           <PondButton
-                            colorPalette="lilypad"
+                            colorPalette="teal"
                             loading={newItemImageBusy}
                             onClick={async () => {
                               setError(null);
@@ -1176,7 +1184,7 @@ export default function ClosetPage() {
                   ) : (
                     <HStack justify="flex-start">
                       <PondButton
-                        colorPalette="lilypad"
+                        colorPalette="teal"
                         onClick={() => setIsAddItemOpen(true)}
                       >
                         Add Item
@@ -1244,7 +1252,7 @@ export default function ClosetPage() {
                     <Text
                       color={
                         friendsNotice.kind === "success"
-                          ? "lilypad.solid"
+                          ? "forest.solid"
                           : "nautical.solid"
                       }
                       fontSize={APP_TEXT_SIZES.helper}
@@ -1256,90 +1264,89 @@ export default function ClosetPage() {
                   ) : null}
                 </HStack>
                 <Stack gap="2">
-                  <PondButton
-                    type="button"
-                    alignSelf="flex-start"
-                    colorPalette="lilypad"
-                    variant={friendsFilterToolsOpen ? "solid" : "outline"}
-                    color="black"
-                    bg={friendsFilterToolsOpen ? undefined : "white"}
-                    _hover={
-                      friendsFilterToolsOpen
-                        ? { color: "black" }
-                        : {
-                            bg: "white",
-                            color: "black",
-                            borderColor: "lilypad.solid",
-                            borderWidth: "1px",
-                          }
-                    }
-                    onClick={() => setFriendsFilterToolsOpen((o) => !o)}
-                    aria-expanded={friendsFilterToolsOpen}
-                  >
-                    Filter & sort
-                  </PondButton>
-                  {friendsFilterToolsOpen ? (
-                    <HStack align="end" gap="3" flexWrap="wrap">
-                      <Stack gap="1" minW="160px" flex="1">
-                        <Text fontSize={APP_TEXT_SIZES.helper}>Category</Text>
-                        <NativeSelectRoot maxW="280px">
-                          <NativeSelectField
-                            value={friendsCategoryFilter}
-                            onChange={(e) => {
-                              setFriendsCategoryFilter(e.target.value);
-                              setFriendsPage(1);
-                            }}
-                          >
-                            <option value="">Any category</option>
-                            {CLOSET_CATEGORY_PRESETS.map((c) => (
-                              <option key={c} value={c}>
-                                {c}
-                              </option>
-                            ))}
-                            <option value={CLOSET_FRIENDS_CATEGORY_OTHER}>
-                              Other
-                            </option>
-                          </NativeSelectField>
-                        </NativeSelectRoot>
-                      </Stack>
-                      <Stack gap="1" minW="140px" flex="1">
-                        <Text fontSize={APP_TEXT_SIZES.helper}>Tag</Text>
-                        <Input
-                          value={friendsTagInput}
-                          onChange={(e) => setFriendsTagInput(e.target.value)}
-                          placeholder="Substring match"
-                          maxW="240px"
-                          {...CLOSET_PLACEHOLDER_PROPS}
-                        />
-                      </Stack>
-                      <Stack gap="1" minW="200px">
-                        <Text fontSize={APP_TEXT_SIZES.helper}>Sort</Text>
-                        <NativeSelectRoot maxW="280px">
-                          <NativeSelectField
-                            value={friendsSort}
-                            onChange={(e) => {
-                              setFriendsSort(
-                                e.target.value as FriendsItemsSort,
-                              );
-                              setFriendsPage(1);
-                            }}
-                          >
-                            <option value="updated_desc">
-                              Recently updated
-                            </option>
-                            <option value="updated_asc">
-                              Least recently updated
-                            </option>
-                            <option value="created_desc">Newest listed</option>
-                            <option value="created_asc">Oldest listed</option>
-                            <option value="name_asc">Name (A–Z)</option>
-                            <option value="name_desc">Name (Z–A)</option>
-                          </NativeSelectField>
-                        </NativeSelectRoot>
-                      </Stack>
+                  {isMobile ? (
+                    <HStack justify="space-between" align="center" w="100%">
+                      <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" flex="1" minW={0}>
+                        Sort:{" "}
+                        {friendsSort === "updated_desc"
+                          ? "Recent"
+                          : friendsSort === "updated_asc"
+                            ? "Oldest activity"
+                            : friendsSort === "created_desc"
+                              ? "Newest"
+                              : friendsSort === "created_asc"
+                                ? "Oldest"
+                                : friendsSort === "name_asc"
+                                  ? "A–Z"
+                                  : "Z–A"}
+                      </Text>
+                      <PondButton
+                        type="button"
+                        size="sm"
+                        colorPalette="teal"
+                        onClick={() => setFriendsFilterToolsOpen(true)}
+                      >
+                        Filter &amp; sort
+                      </PondButton>
                     </HStack>
                   ) : null}
+                  {showFriendsFilterPanel && !isMobile ? friendsFilterControls : null}
                 </Stack>
+                {isMobile ? (
+                  <Dialog.Root
+                    open={friendsFilterToolsOpen}
+                    lazyMount
+                    unmountOnExit
+                    onOpenChange={(d: { open: boolean }) =>
+                      setFriendsFilterToolsOpen(d.open)
+                    }
+                  >
+                    <Dialog.Backdrop />
+                    <Dialog.Positioner
+                      display="flex"
+                      alignItems="flex-end"
+                      justifyContent="center"
+                      p="0"
+                    >
+                      <Dialog.Content
+                        maxW="100vw"
+                        w="100vw"
+                        borderTopRadius="xl"
+                        borderBottomRadius="0"
+                        bg="bg.panel"
+                        borderWidth="0"
+                        p="3"
+                        pb="6"
+                        boxShadow="lg"
+                        maxH="85vh"
+                        overflowY="auto"
+                        gap="0"
+                      >
+                        <HStack justify="space-between" align="start" w="100%" mb="2">
+                          <Text fontSize="md" fontWeight="semibold">
+                            Filter &amp; sort
+                          </Text>
+                          <Dialog.CloseTrigger asChild>
+                            <CloseButton
+                              type="button"
+                              size="sm"
+                              aria-label="Close filters"
+                            />
+                          </Dialog.CloseTrigger>
+                        </HStack>
+                        <Stack gap="2">{friendsFilterControls}</Stack>
+                        <HStack justify="flex-end" pt="3">
+                          <PondButton
+                            colorPalette="teal"
+                            onClick={() => setFriendsFilterToolsOpen(false)}
+                          >
+                            Done
+                          </PondButton>
+                        </HStack>
+                      </Dialog.Content>
+                    </Dialog.Positioner>
+                  </Dialog.Root>
+                ) : null}
                 {friendsItems.length === 0 ? (
                   <Text>
                     {friendsCategoryFilter.trim() || friendsTagFilter
@@ -1404,7 +1411,7 @@ export default function ClosetPage() {
                     <Text
                       color={
                         imagesNotice.kind === "success"
-                          ? "lilypad.solid"
+                          ? "forest.solid"
                           : "nautical.solid"
                       }
                       fontSize={APP_TEXT_SIZES.helper}

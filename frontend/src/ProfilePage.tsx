@@ -26,8 +26,14 @@ import { uploadClosetImageViaPresign } from "./closet/imageUpload";
 import type { ClosetImageInventoryRow } from "./closet/types";
 import { fullBleedStackProps } from "./responsive";
 import {
+  APP_SHELL_TAB_LIST_PROPS,
+  APP_SHELL_TAB_TRIGGER_PROPS,
+} from "./theme/appShellTabs";
+import {
+  APP_SHELL_TRAY_PROPS,
   APP_TEXT_SIZES,
   MAPPED_LIST_STACK_GAP,
+  PANEL_ENTRY_CARD_PROPS,
   PANEL_FIELD_PROPS,
 } from "./theme/typography";
 import { getSortedIanaTimeZones, timeZoneOptionsForValue } from "./timezones";
@@ -53,12 +59,8 @@ function formatMemberSince(iso: string | null | undefined): string {
 type EditableField = "display_name" | "avatar_url" | "timezone" | "birth_date";
 type SavingState = Partial<Record<EditableField, boolean>>;
 
-const ENTRY_CARD_PROPS = {
-  bg: "white",
-  borderWidth: "1px",
-  borderColor: "border",
-  borderRadius: "xl",
-  p: { base: "2", md: "2" },
+const PROFILE_ENTRY_CARD_PROPS = {
+  ...PANEL_ENTRY_CARD_PROPS,
   maxW: "100%",
   overflowX: "hidden" as const,
 } as const;
@@ -334,22 +336,13 @@ export default function ProfilePage() {
       <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
         <Box
           flex="1"
-          bg="sky.solid"
-          px={{ base: "2", md: "2" }}
+          bg="bg"
+          px={0}
           py={{ base: "2", md: "2" }}
         >
-          <Box
-            maxW="4xl"
-            w="100%"
-            mx="auto"
-            bg="gray.100"
-            borderWidth="1px"
-            borderColor="border"
-            borderRadius="xl"
-            overflow="hidden"
-          >
+          <Box {...APP_SHELL_TRAY_PROPS}>
             <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
-              <Box {...ENTRY_CARD_PROPS}>
+              <Box {...PROFILE_ENTRY_CARD_PROPS}>
                 <Text fontSize={APP_TEXT_SIZES.body} color="fg">
                   Loading…
                 </Text>
@@ -370,22 +363,13 @@ export default function ProfilePage() {
       <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
         <Box
           flex="1"
-          bg="sky.solid"
-          px={{ base: "2", md: "2" }}
+          bg="bg"
+          px={0}
           py={{ base: "2", md: "2" }}
         >
-          <Box
-            maxW="4xl"
-            w="100%"
-            mx="auto"
-            bg="gray.100"
-            borderWidth="1px"
-            borderColor="border"
-            borderRadius="xl"
-            overflow="hidden"
-          >
+          <Box {...APP_SHELL_TRAY_PROPS}>
             <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
-              <Box {...ENTRY_CARD_PROPS}>
+              <Box {...PROFILE_ENTRY_CARD_PROPS}>
                 <Heading
                   as="h1"
                   size={{ base: "lg", md: "xl" }}
@@ -428,11 +412,11 @@ export default function ProfilePage() {
                   </Text>
                 )}
               </Box>
-              <Box {...ENTRY_CARD_PROPS}>
+              <Box {...PROFILE_ENTRY_CARD_PROPS}>
                 <HStack gap="3" align="center" flexWrap="wrap">
                   <PondButton
                     size="sm"
-                    colorPalette="lilypad"
+                    colorPalette="teal"
                     onClick={switchUser}
                   >
                     Switch user
@@ -489,27 +473,18 @@ export default function ProfilePage() {
       >
         <Box
           flex="1"
-          bg="sky.solid"
-          px={{ base: "2", md: "2" }}
+          bg="bg"
+          px={0}
           py={{ base: "2", md: "2" }}
         >
-          <Box
-            maxW="4xl"
-            w="100%"
-            mx="auto"
-            bg="gray.100"
-            borderWidth="1px"
-            borderColor="border"
-            borderRadius="xl"
-            overflow="hidden"
-          >
+          <Box {...APP_SHELL_TRAY_PROPS}>
             <Stack
               gap={{ base: "4", md: "4" }}
               px={{ base: "2", md: "2" }}
               pt={{ base: "2", md: "2" }}
               pb="2"
             >
-              <Box {...ENTRY_CARD_PROPS}>
+              <Box {...PROFILE_ENTRY_CARD_PROPS}>
                 <Heading
                   as="h1"
                   size={{ base: "lg", md: "xl" }}
@@ -538,50 +513,16 @@ export default function ProfilePage() {
                 </Text>
               </Box>
             </Stack>
-            <Tabs.List
-              px={{ base: "2", md: "2" }}
-              pt="0"
-              pb="0"
-              borderBottomWidth="1px"
-              borderColor="border"
-              gap="1"
-              w="100%"
-            >
-              <Tabs.Trigger
-                value="profile"
-                bg={activeTab === "profile" ? "lilypad.solid" : undefined}
-                color={activeTab === "profile" ? "black" : undefined}
-                borderTopRadius="md"
-                borderBottomRadius="0"
-                px="2"
-                py="2"
-                fontWeight="medium"
-                _hover={{
-                  bg: activeTab === "profile" ? "lilypad.solid" : "transparent",
-                }}
-                _selected={{ bg: "lilypad.solid", color: "black" }}
-              >
+            <Tabs.List {...APP_SHELL_TAB_LIST_PROPS}>
+              <Tabs.Trigger value="profile" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                 Profile
               </Tabs.Trigger>
-              <Tabs.Trigger
-                value="account"
-                bg={activeTab === "account" ? "lilypad.solid" : undefined}
-                color={activeTab === "account" ? "black" : undefined}
-                borderTopRadius="md"
-                borderBottomRadius="0"
-                px="2"
-                py="2"
-                fontWeight="medium"
-                _hover={{
-                  bg: activeTab === "account" ? "lilypad.solid" : "transparent",
-                }}
-                _selected={{ bg: "lilypad.solid", color: "black" }}
-              >
+              <Tabs.Trigger value="account" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                 Account
               </Tabs.Trigger>
             </Tabs.List>
             <Tabs.Content value="profile" p={{ base: "2", md: "2" }}>
-              <Box {...ENTRY_CARD_PROPS}>
+              <Box {...PROFILE_ENTRY_CARD_PROPS}>
                 <Stack gap="4" w="100%" minW={0} ref={profileEditorRef}>
                   <HStack gap="4" align="flex-start" flexWrap="wrap" w="100%">
                     <Avatar.Root size="lg">
@@ -593,7 +534,7 @@ export default function ProfilePage() {
                         <Circle
                           bg={
                             user.is_approved
-                              ? "lilypad.solid"
+                              ? "teal.solid"
                               : "nautical.solid"
                           }
                           size="8px"
@@ -618,7 +559,7 @@ export default function ProfilePage() {
                   {!isEditing ? (
                     <PondButton
                       size="sm"
-                      colorPalette="lilypad"
+                      colorPalette="teal"
                       alignSelf="flex-start"
                       onClick={() => {
                         setSaveError(null);
@@ -697,7 +638,7 @@ export default function ProfilePage() {
                             </PondButton>
                             <PondButton
                               size="sm"
-                              colorPalette="lilypad"
+                              colorPalette="teal"
                               loading={isImagePickerLoading}
                               disabled={
                                 fieldBusy("avatar_url") || isAvatarUploading
@@ -745,7 +686,7 @@ export default function ProfilePage() {
                                         as="button"
                                         borderWidth="2px"
                                         borderColor={
-                                          isSelected ? "black" : "lilypad.solid"
+                                          isSelected ? "black" : "teal.solid"
                                         }
                                         borderRadius="md"
                                         overflow="hidden"
@@ -772,7 +713,7 @@ export default function ProfilePage() {
                               <HStack>
                                 <PondButton
                                   size="sm"
-                                  colorPalette="lilypad"
+                                  colorPalette="teal"
                                   loading={isAvatarUploading}
                                   disabled={
                                     isAvatarUploading ||
@@ -849,7 +790,7 @@ export default function ProfilePage() {
                       <HStack gap="2" pt="2">
                         <PondButton
                           size="sm"
-                          colorPalette="lilypad"
+                          colorPalette="teal"
                           onClick={() => void commitAllFields()}
                           loading={isSavingAny}
                           disabled={isSavingAny}
@@ -894,7 +835,7 @@ export default function ProfilePage() {
             </Tabs.Content>
 
             <Tabs.Content value="account" p={{ base: "2", md: "2" }}>
-              <Box {...ENTRY_CARD_PROPS}>
+              <Box {...PROFILE_ENTRY_CARD_PROPS}>
                 <Stack gap="4">
                   <HStack
                     align="center"
@@ -908,7 +849,7 @@ export default function ProfilePage() {
                     <HStack gap="3" align="center" flexShrink={0}>
                       <PondButton
                         size="sm"
-                        colorPalette="lilypad"
+                        colorPalette="teal"
                         onClick={switchUser}
                       >
                         Switch user

@@ -22,8 +22,8 @@ export default function SongadayHeartButton({
       type="button"
       size="sm"
       variant={viewerHasHearted ? "solid" : "outline"}
-      colorPalette="lilypad"
-      bg={viewerHasHearted ? "lilypad.solid" : "white"}
+      colorPalette="teal"
+      bg={viewerHasHearted ? "teal.solid" : "white"}
       color="black"
       borderWidth="1px"
       disabled={disabled || busy}

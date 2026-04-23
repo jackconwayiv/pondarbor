@@ -50,12 +50,30 @@ export const PANEL_FIELD_PROPS = {
   ...PANEL_FORM_PLACEHOLDER_PROPS,
 } as const;
 
-/** Intro / summary card on `gray.100` tray surfaces (Quotes, Meal Maestro, Closet patterns). */
-export const PANEL_ENTRY_CARD_PROPS = {
-  bg: "white",
+/**
+ * Main content tray (replaces the older `gray.100` shell). Default width is `5xl` site-wide; same
+ * shell pattern as `ClosetPage` (Community Closet).
+ */
+export const APP_SHELL_TRAY_PROPS = {
+  maxW: "5xl",
+  w: "100%",
+  mx: "auto",
+  bg: "bg.panel",
   borderWidth: "1px",
   borderColor: "border",
   borderRadius: "xl",
+  boxShadow: "sm",
+  overflow: "hidden",
+} as const;
+
+/**
+ * Intro / summary blocks on the primary app tray. Matches Community Closet top intro cards
+ * (`bg.panel`, no inner border; reads as one surface with the tray).
+ */
+export const PANEL_ENTRY_CARD_PROPS = {
+  bg: "bg.panel",
+  borderWidth: "0",
+  borderRadius: "lg",
   p: { base: "2", md: "2" },
 } as const;
 

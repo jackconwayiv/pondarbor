@@ -65,7 +65,7 @@ export function WhatIfQuestionAdminListItem({
             fontWeight="medium"
             borderTopRadius="md"
             borderBottomRadius="0"
-            _selected={{ bg: "lilypad.solid", color: "black" }}
+            _selected={{ bg: "teal.solid", color: "black" }}
           >
             Question
           </Tabs.Trigger>
@@ -76,7 +76,7 @@ export function WhatIfQuestionAdminListItem({
             fontWeight="medium"
             borderTopRadius="md"
             borderBottomRadius="0"
-            _selected={{ bg: "lilypad.solid", color: "black" }}
+            _selected={{ bg: "teal.solid", color: "black" }}
           >
             Metadata
           </Tabs.Trigger>
@@ -100,7 +100,7 @@ export function WhatIfQuestionAdminListItem({
               <HStack gap="2" flexWrap="wrap" align="center" flexShrink={0}>
                 <PondButton
                   type="button"
-                  colorPalette="lilypad"
+                  colorPalette="teal"
                   onClick={() => onEdit(q)}
                 >
                   Edit
@@ -109,7 +109,7 @@ export function WhatIfQuestionAdminListItem({
                   <>
                     <PondButton
                       type="button"
-                      colorPalette="lilypad"
+                      colorPalette="teal"
                       size="sm"
                       loading={busy}
                       onClick={() => onApprove?.(q.id)}
@@ -144,7 +144,7 @@ export function WhatIfQuestionAdminListItem({
                     void onToggleActive(q.id, details.checked);
                   }}
                   disabled={busy}
-                  colorPalette="lilypad"
+                  colorPalette="teal"
                   size="md"
                 >
                   <Switch.HiddenInput />

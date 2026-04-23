@@ -17,7 +17,7 @@ const PondButton = forwardRef<HTMLButtonElement, ButtonProps>(
         size={size ?? "md"}
         borderRadius={borderRadius ?? "xl"}
         colorPalette={colorPalette}
-        color={color ?? "black"}
+        color={color}
         _hover={{
           // Outline-like hover: white background + colored border.
           // (Site chrome uses a white background token `bg`.)

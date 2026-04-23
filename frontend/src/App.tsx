@@ -8,10 +8,12 @@ import {
   Heading,
   HStack,
   Image,
+  SimpleGrid,
   Stack,
   Text,
 } from "@chakra-ui/react";
 import { Link as RouterLink, useNavigate } from "react-router";
+import { APP_HOME_APPS } from "./appNavConfig";
 import { useAppSession } from "./auth/AppSessionContext";
 import {
   auth0LoginAuthorizationParams,
@@ -19,14 +21,9 @@ import {
 } from "./auth/auth0LoginParams";
 import { fetchClosetActionSummary } from "./closet/api";
 import { fetchFriendsList } from "./friends/api";
-import {
-  LILYPAD_FLOAT_KEYFRAMES,
-  LILYPAD_HOVER_HINT_VISIBLE,
-  LILYPAD_WEDGE_CLIP_PATH,
-} from "./lilypadHomeConstants";
 import PondButton from "./PondButton";
 import { pondarborProfileSrc } from "./publicAsset";
-import { fullBleedStackProps } from "./responsive";
+import { viewPortWidthBarProps } from "./responsive";
 import { APP_TEXT_SIZES } from "./theme/typography";
 import {
   fetchStaffPendingSummary,
@@ -34,44 +31,6 @@ import {
   type StaffPendingSummary,
   type UpcomingBirthday,
 } from "./users/api";
-
-const HOME_LILYPAD_TILES = [
-  {
-    to: "/friends",
-    label: "Friends",
-    hoverText: "find and browse your friends",
-  },
-  {
-    to: "/songaday",
-    label: "Song-a-Day",
-    hoverText: "daily music prompts and friends' picks",
-  },
-  {
-    to: "/closet",
-    label: "Community Closet",
-    hoverText: "lend and borrow items with friends",
-  },
-  {
-    to: "/quotes",
-    label: "Quotes",
-    hoverText: "archive of user-recorded quotes",
-  },
-  {
-    to: "/meal",
-    label: "Meal Maestro",
-    hoverText: "manage your meal plans and recipes",
-  },
-  {
-    to: "/calendar",
-    label: "Calendar",
-    hoverText: "see when friends are out or busy",
-  },
-  {
-    to: "/games",
-    label: "Games",
-    hoverText: "PondClicker, WhatIf, and more",
-  },
-] as const;
 
 const HOME_PURPOSE_BLURB =
   "Welcome to PondArbor! This is a hobby project by Pond Arbor Workshop (Jack Conway) for friends and family to enjoy a variety of social and lifestyle apps and games.";
@@ -112,7 +71,7 @@ function accountStatusMessage(
 type HomePrompt = { id: string; text: string; to: string };
 type HomeNoticeItem = { id: string; text: string };
 
-function HomeNoticeLilypadCard({ text }: { text: string }) {
+function HomeNoticeCard({ text }: { text: string }) {
   return (
     <Box
       bg="lilypad.solid"
@@ -127,6 +86,91 @@ function HomeNoticeLilypadCard({ text }: { text: string }) {
     >
       {text}
     </Box>
+  );
+}
+
+function HomeAppNavList({ isAuthenticated }: { isAuthenticated: boolean }) {
+  return (
+    <SimpleGrid
+      as="ul"
+      w="100%"
+      maxW="100%"
+      p="0"
+      m="0"
+      listStyleType="none"
+      columns={{ base: 1, md: 3 }}
+      gap="2.5"
+      role="list"
+      aria-label="Apps"
+    >
+      {APP_HOME_APPS.map((item) => {
+        const canOpen =
+          isAuthenticated ||
+          item.to === "/games" ||
+          item.to === "/about";
+        const cardBody = (
+          <HStack
+            w="100%"
+            align="center"
+            gap="3"
+            py="2.5"
+            px="3"
+            minH="11"
+            _hover={canOpen ? { bg: "bg.subtle" } : undefined}
+            transition="background 0.12s ease"
+            cursor={canOpen ? "pointer" : "not-allowed"}
+            opacity={canOpen ? 1 : 0.55}
+          >
+            <Text as="span" fontSize="1.5rem" lineHeight="1" aria-hidden>
+              {item.emoji}
+            </Text>
+            <Text
+              as="span"
+              fontSize="md"
+              fontWeight="semibold"
+              color="fg"
+              lineClamp={2}
+              flex="1"
+              textAlign="left"
+            >
+              {item.label}
+            </Text>
+          </HStack>
+        );
+        const content = canOpen ? (
+          <RouterLink
+            to={item.to}
+            style={{ textDecoration: "none", color: "inherit", display: "block" }}
+          >
+            {cardBody}
+          </RouterLink>
+        ) : (
+          <Box
+            aria-label={`${item.label} (log in to open)`}
+            display="block"
+            w="100%"
+          >
+            {cardBody}
+          </Box>
+        );
+        return (
+          <Box
+            as="li"
+            key={item.to}
+            w="100%"
+            listStyleType="none"
+            borderWidth="1px"
+            borderColor="border"
+            borderRadius="lg"
+            overflow="hidden"
+            boxShadow="sm"
+            bg="bg.subtle"
+          >
+            {content}
+          </Box>
+        );
+      })}
+    </SimpleGrid>
   );
 }
 
@@ -382,7 +426,7 @@ function App() {
   }
 
   return (
-    <Stack flex="1" minH="0" gap="0" align="stretch" {...fullBleedStackProps}>
+    <Stack flex="1" minH="0" gap="0" align="stretch" w="100%">
       <Box
         bg="bg"
         w="full"
@@ -445,7 +489,7 @@ function App() {
                     aria-label="Notices"
                   >
                     {homeNoticeItems.map((item) => (
-                      <HomeNoticeLilypadCard key={item.id} text={item.text} />
+                      <HomeNoticeCard key={item.id} text={item.text} />
                     ))}
                   </HStack>
                 ) : null}
@@ -455,7 +499,7 @@ function App() {
             <>
               <HStack gap="3" align="center" flexWrap="wrap">
                 <PondButton
-                  colorPalette="sky"
+                  colorPalette="lilypad"
                   onClick={() =>
                     loginWithRedirect({
                       authorizationParams: auth0LoginAuthorizationParams(),
@@ -465,7 +509,7 @@ function App() {
                   Log in
                 </PondButton>
                 <PondButton
-                  colorPalette="lilypad"
+                  colorPalette="teal"
                   onClick={() =>
                     loginWithRedirect({
                       authorizationParams: auth0SignupAuthorizationParams(),
@@ -493,146 +537,31 @@ function App() {
         </Stack>
       </Box>
 
-      <Box
-        flex="1"
-        w="full"
-        bg="transparent"
-        // leave these at 4:
-        px={{ base: "4", md: "4" }}
-        py={{ base: "4", md: "4" }}
-      >
-        <Flex
-          flexWrap="wrap"
-          gap={{ base: "4", md: "6" }}
-          alignItems="flex-start"
-          w="100%"
-        >
-          {HOME_LILYPAD_TILES.map((tile, index) => {
-            const tileInteractive = isAuthenticated || tile.to === "/games";
-            const tileWrapProps = {
-              flex: "0 0 auto",
-              w: { base: "10.25rem", sm: "11rem", md: "12rem" },
-              maxW: "100%",
-              position: "relative",
-              animation: `${LILYPAD_FLOAT_KEYFRAMES} 5.6s ease-in-out infinite`,
-              animationDelay: `${index * 0.35}s`,
-              willChange: "transform",
-              filter: "drop-shadow(0 8px 10px rgba(0, 0, 0, 0.16))",
-              sx: {
-                "@media (prefers-reduced-motion: reduce)": {
-                  animation: "none",
-                },
-              },
-            } as const;
-            const card = (
-              <Box
-                bg={tileInteractive ? "lilypad.solid" : "#A4B89A"}
-                borderRadius="9999px"
-                borderWidth="20px"
-                borderColor={tileInteractive ? "lilypad.solid" : "#A4B89A"}
-                aspectRatio={1}
-                p={{ base: "2", md: "2" }}
-                display="flex"
-                alignItems="center"
-                justifyContent="center"
-                textAlign="center"
-                position="relative"
-                boxShadow="md"
-                transform="translateZ(0)"
-                overflow="hidden"
-                clipPath={LILYPAD_WEDGE_CLIP_PATH}
-                transition="background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease"
-                cursor={tileInteractive ? "pointer" : "not-allowed"}
-                _hover={
-                  tileInteractive
-                    ? {
-                        bg: "bg",
-                        transform: "scale(1.02)",
-                        boxShadow: "xl",
-                        "& .lilypad-hover-hint": LILYPAD_HOVER_HINT_VISIBLE,
-                      }
-                    : {
-                        "& .lilypad-hover-hint": LILYPAD_HOVER_HINT_VISIBLE,
-                      }
-                }
-                _active={
-                  tileInteractive
-                    ? {
-                        bg: "bg",
-                        transform: "scale(0.99)",
-                        boxShadow: "lg",
-                      }
-                    : undefined
-                }
-              >
-                <Stack
-                  gap="1"
-                  align="center"
-                  justify="center"
-                  w="full"
-                  minH="0"
-                  px="0.5"
-                >
-                  <Heading
-                    as="h2"
-                    size={{ base: "md", md: "lg" }}
-                    position="relative"
-                    zIndex={2}
-                    color={tileInteractive ? "fg" : "gray.600"}
-                    lineHeight="1.2"
-                  >
-                    {tile.label}
-                  </Heading>
-                  <Text
-                    className="lilypad-hover-hint"
-                    textAlign="center"
-                    fontSize={{ base: "2xs", md: "xs" }}
-                    lineHeight="1.35"
-                    fontWeight="medium"
-                    color={tileInteractive ? "fg" : "gray.600"}
-                    opacity={0}
-                    maxHeight="0"
-                    overflow="hidden"
-                    transitionProperty="opacity, max-height"
-                    transitionDuration="0.2s"
-                    transitionTimingFunction="ease"
-                    px="1"
-                  >
-                    {tile.hoverText}
-                  </Text>
-                </Stack>
-              </Box>
-            );
-
-            if (!tileInteractive) {
-              return (
-                <Box key={tile.to} {...tileWrapProps}>
-                  {card}
-                </Box>
-              );
-            }
-
-            return (
-              <Box key={tile.to} {...tileWrapProps}>
-                <Box
-                  asChild
-                  display="block"
-                  textDecoration="none"
-                  color="inherit"
-                  h="100%"
-                  _focusVisible={{
-                    "& .lilypad-hover-hint": LILYPAD_HOVER_HINT_VISIBLE,
-                  }}
-                >
-                  <RouterLink to={tile.to}>{card}</RouterLink>
-                </Box>
-              </Box>
-            );
-          })}
-        </Flex>
+      <Box flex="1" w="full" bg="transparent" py={{ base: "3", md: "4" }} px={{ base: 0, md: "3" }}>
+        <Stack gap="2" align="flex-start" w="100%">
+          <Text
+            fontSize="xs"
+            fontWeight="semibold"
+            textTransform="uppercase"
+            letterSpacing="wider"
+            color="fg.muted"
+            px={{ base: "2", md: 0 }}
+            w="100%"
+          >
+            Apps
+          </Text>
+          <HomeAppNavList isAuthenticated={isAuthenticated} />
+        </Stack>
       </Box>
 
-      <Box as="footer" w="full" flexShrink={0} bg="lilypad.solid" mt="auto">
+      <Box
+        as="footer"
+        flexShrink={0}
+        bg="navy.solid"
+        mt="auto"
+        color="navy.fg"
+        {...viewPortWidthBarProps}
+      >
         <Box py="2" px={{ base: "2", md: "2" }}>
           <Box
             display="flex"
@@ -643,11 +572,11 @@ function App() {
             columnGap={{ md: "3" }}
             rowGap="1"
           >
-            <Text textAlign="right" fontSize="xs" color="fg">
+            <Text textAlign="right" fontSize="xs" color="inherit">
               © 2026{" "}
               <ChakraLink
                 asChild
-                color="black"
+                color="inherit"
                 textDecoration="none"
                 _hover={{ color: "sky.solid", textDecoration: "none" }}
               >
@@ -655,10 +584,10 @@ function App() {
               </ChakraLink>
               . All rights reserved.
             </Text>
-            <Text textAlign="right" fontSize="xs" color="fg">
+            <Text textAlign="right" fontSize="xs" color="inherit">
               <ChakraLink
                 asChild
-                color="black"
+                color="inherit"
                 textDecoration="none"
                 _hover={{ color: "sky.solid", textDecoration: "none" }}
               >
@@ -667,7 +596,7 @@ function App() {
               |{" "}
               <ChakraLink
                 asChild
-                color="black"
+                color="inherit"
                 textDecoration="none"
                 _hover={{ color: "sky.solid", textDecoration: "none" }}
               >

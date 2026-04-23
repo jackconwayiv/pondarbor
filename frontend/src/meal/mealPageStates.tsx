@@ -5,7 +5,7 @@ import { APP_TEXT_SIZES } from "../theme/typography";
 export function MealLoading() {
   return (
     <HStack gap="2" align="center">
-      <Spinner size="sm" colorPalette="lilypad" />
+      <Spinner size="sm" colorPalette="teal" />
       <Text fontSize={APP_TEXT_SIZES.body} fontWeight="medium">
         Loading…
       </Text>
@@ -23,7 +23,7 @@ export function MealSessionReconnect({
       <Text fontSize={APP_TEXT_SIZES.body}>
         Reconnecting your API session…
       </Text>
-      <PondButton colorPalette="lilypad" onClick={() => void onRetry()}>
+      <PondButton colorPalette="teal" onClick={() => void onRetry()}>
         Retry session sync
       </PondButton>
     </Stack>

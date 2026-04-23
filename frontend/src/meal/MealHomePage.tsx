@@ -16,6 +16,10 @@ import { useAppSession } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
 import { fetchFriendsList } from "../friends/api";
 import {
+  APP_SHELL_TAB_LIST_NESTED_PROPS,
+  APP_SHELL_TAB_TRIGGER_PROPS,
+} from "../theme/appShellTabs";
+import {
   APP_TEXT_SIZES,
   MAPPED_CLOSET_TAB_STACK_GAP,
   PANEL_ENTRY_CARD_BODY_PROPS,
@@ -38,33 +42,10 @@ import {
   MealSessionReconnect,
 } from "./mealPageStates";
 
-/** Match `MealLayout` shell tabs (`MEAL_TAB_LIST_PROPS` / `mealTabTriggerProps`). */
 const MEAL_TIME_NAMES_TAB_LIST_PROPS = {
+  ...APP_SHELL_TAB_LIST_NESTED_PROPS,
   px: { base: "2", md: "2" } as const,
-  pt: "0",
-  pb: "0",
-  borderBottomWidth: "1px",
-  borderColor: "border",
-  gap: "1",
-  w: "100%",
-};
-
-function mealTimeNamesTabTriggerProps(activeTab: string, value: string) {
-  return {
-    value,
-    bg: activeTab === value ? "lilypad.solid" : undefined,
-    color: activeTab === value ? "black" : undefined,
-    borderTopRadius: "md" as const,
-    borderBottomRadius: "0" as const,
-    px: "2",
-    py: "2",
-    fontWeight: "medium" as const,
-    _hover: {
-      bg: activeTab === value ? "lilypad.solid" : "transparent",
-    },
-    _selected: { bg: "lilypad.solid", color: "black" },
-  };
-}
+} as const;
 
 function slotDraftFromProfile(raw: Record<string, string[]> | null | undefined): Record<string, string[]> {
   const out: Record<string, string[]> = {};
@@ -333,7 +314,7 @@ export default function MealHomePage() {
           >
             <Tabs.List {...MEAL_TIME_NAMES_TAB_LIST_PROPS}>
               {(["1", "2", "3", "4", "5"] as const).map((k) => (
-                <Tabs.Trigger key={k} {...mealTimeNamesTabTriggerProps(mealTimeNamesTab, k)}>
+                <Tabs.Trigger key={k} value={k} {...APP_SHELL_TAB_TRIGGER_PROPS}>
                   {k}
                 </Tabs.Trigger>
               ))}
@@ -380,7 +361,7 @@ export default function MealHomePage() {
         <Card.Root
           {...PANEL_ENTRY_CARD_PROPS}
           p="0"
-          {...(outgoingPending ? { bg: "lilypad.solid", color: "black" } : {})}
+          {...(outgoingPending ? { bg: "teal.solid", color: "black" } : {})}
         >
           <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
             <Heading size="sm" mb="2" fontWeight="semibold" color={outgoingPending ? "black" : undefined}>
@@ -448,7 +429,7 @@ export default function MealHomePage() {
                     />
                     <PondButton
                       size="sm"
-                      colorPalette="lilypad"
+                      colorPalette="teal"
                       onClick={() => void submitPartnerSelection()}
                     >
                       Submit
@@ -479,7 +460,7 @@ export default function MealHomePage() {
       ) : null}
 
       {!mutual && incomingRequesters.length > 0 ? (
-        <Card.Root {...PANEL_ENTRY_CARD_PROPS} p="0" bg="lilypad.solid" color="black">
+        <Card.Root {...PANEL_ENTRY_CARD_PROPS} p="0" bg="teal.solid" color="black">
           <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
             <Heading size="sm" mb="2" fontWeight="semibold" color="black">
               Incoming partner request
@@ -689,7 +670,7 @@ export default function MealHomePage() {
         <Text
           fontSize={APP_TEXT_SIZES.helper}
           fontWeight="medium"
-          color={notice.tone === "success" ? "lilypad.solid" : "nautical.solid"}
+          color={notice.tone === "success" ? "forest.solid" : "nautical.solid"}
           role={notice.tone === "success" ? "status" : "alert"}
         >
           {notice.text}

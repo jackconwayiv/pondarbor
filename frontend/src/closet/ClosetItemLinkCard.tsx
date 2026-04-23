@@ -29,13 +29,14 @@ export function ClosetItemLinkCard({
       style={{ textDecoration: "none", color: "inherit", display: "block" }}
     >
       <Box
-        bg="white"
+        bg="bg.panel"
         borderWidth="1px"
         borderStyle={dashedBorder ? "dashed" : "solid"}
         borderColor="border"
         borderRadius="xl"
+        transition="border-color 0.15s ease, box-shadow 0.15s ease"
         {...MAPPED_LIST_CARD_OUTER_PROPS}
-        _hover={{ borderColor: "lilypad.solid" }}
+        _hover={{ borderColor: "teal.solid", boxShadow: "sm" }}
       >
         <HStack align="stretch" gap="3">
           {imageUrl ? (
@@ -43,8 +44,8 @@ export function ClosetItemLinkCard({
               src={imageUrl}
               alt=""
               aria-hidden
-              w="72px"
-              h="72px"
+              w="64px"
+              h="64px"
               flexShrink={0}
               objectFit="cover"
               borderRadius="md"
@@ -52,10 +53,15 @@ export function ClosetItemLinkCard({
             />
           ) : null}
           <Stack gap="1" flex="1" minW={0} py="1">
-            <HStack gap="2" flexWrap="wrap" align="flex-start">
-              {titlePrefix}
-              <Text fontWeight="bold" lineClamp={2}>
-                {item.name}
+            <HStack gap="2" flexWrap="wrap" align="flex-start" justify="space-between">
+              <HStack gap="2" flexWrap="wrap" align="flex-start" flex="1" minW={0}>
+                {titlePrefix}
+                <Text fontWeight="bold" lineClamp={2}>
+                  {item.name}
+                </Text>
+              </HStack>
+              <Text as="span" aria-hidden color="fg.muted" fontSize="lg" lineHeight="1" flexShrink={0}>
+                ›
               </Text>
             </HStack>
             {subtitle ? (

@@ -126,7 +126,7 @@ export function AchievementSummaryCard({
             <Box w="100%" display="flex" justifyContent="flex-end" mt="1">
               <Checkbox.Root
                 checked={visibilityToggle.checked}
-                colorPalette="lilypad"
+                colorPalette="teal"
                 size="sm"
                 display="flex"
                 flexDirection="row-reverse"

@@ -15,6 +15,10 @@ import { Link as RouterLink, Navigate, useNavigate, useParams, useSearchParams }
 import { useAppSession } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
 import {
+  APP_SHELL_TAB_LIST_NESTED_PROPS,
+  APP_SHELL_TAB_TRIGGER_PROPS,
+} from "../theme/appShellTabs";
+import {
   APP_TEXT_SIZES,
   MAPPED_CLOSET_TAB_STACK_GAP,
   PANEL_ENTRY_CARD_BODY_PROPS,
@@ -39,14 +43,9 @@ import { linesToIngredients } from "./recipeIngredients";
 import type { Meal } from "./types";
 
 const MEAL_DETAIL_TAB_LIST_PROPS = {
+  ...APP_SHELL_TAB_LIST_NESTED_PROPS,
   px: { base: "2", md: "2" } as const,
-  pt: "0",
-  pb: "0",
-  borderBottomWidth: "1px",
-  borderColor: "border",
-  gap: "1",
-  w: "100%",
-};
+} as const;
 
 function parseTagList(raw: string): string[] {
   return raw
@@ -59,23 +58,6 @@ function tagsMatch(a: string[] | undefined, b: string[]): boolean {
   const x = [...(a ?? [])].map((t) => t.toLowerCase()).sort();
   const y = [...b].map((t) => t.toLowerCase()).sort();
   return x.length === y.length && x.every((v, i) => v === y[i]);
-}
-
-function mealDetailTabTriggerProps(activeTab: string, value: string) {
-  return {
-    value,
-    bg: activeTab === value ? "lilypad.solid" : undefined,
-    color: activeTab === value ? "black" : undefined,
-    borderTopRadius: "md" as const,
-    borderBottomRadius: "0" as const,
-    px: "2",
-    py: "2",
-    fontWeight: "medium" as const,
-    _hover: {
-      bg: activeTab === value ? "lilypad.solid" : "transparent",
-    },
-    _selected: { bg: "lilypad.solid", color: "black" },
-  };
 }
 
 export default function MealMealDetailPage() {
@@ -270,7 +252,7 @@ export default function MealMealDetailPage() {
     <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP} w="100%">
       <Text fontSize={APP_TEXT_SIZES.helper}>
         <RouterLink to="/meal/plan/meals">
-          <Text as="span" color="lilypad.solid" fontWeight="bold">
+          <Text as="span" color="teal.solid" fontWeight="bold">
             ← All meals
           </Text>
         </RouterLink>
@@ -309,7 +291,7 @@ export default function MealMealDetailPage() {
                     Add to meal plan…
                   </PondButton>
                   <PondButton
-                    colorPalette="lilypad"
+                    colorPalette="teal"
                     onClick={() => {
                       setAddToPlanNotice(null);
                       setIsEditing(true);
@@ -351,7 +333,7 @@ export default function MealMealDetailPage() {
                 <Box
                   mb="3"
                   w="100%"
-                  bg="lilypad.solid"
+                  bg="teal.solid"
                   color="black"
                   borderRadius="md"
                   px="2"
@@ -556,16 +538,18 @@ export default function MealMealDetailPage() {
             >
               <Tabs.List {...MEAL_DETAIL_TAB_LIST_PROPS}>
                 {hasIngredients ? (
-                  <Tabs.Trigger {...mealDetailTabTriggerProps(activeTab, "ingredients")}>
+                  <Tabs.Trigger value="ingredients" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                     Ingredients
                   </Tabs.Trigger>
                 ) : null}
                 {hasDirections ? (
-                  <Tabs.Trigger {...mealDetailTabTriggerProps(activeTab, "directions")}>
+                  <Tabs.Trigger value="directions" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                     Directions
                   </Tabs.Trigger>
                 ) : null}
-                <Tabs.Trigger {...mealDetailTabTriggerProps(activeTab, "details")}>Details</Tabs.Trigger>
+                <Tabs.Trigger value="details" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                  Details
+                </Tabs.Trigger>
               </Tabs.List>
               {hasIngredients ? (
                 <Tabs.Content value="ingredients">

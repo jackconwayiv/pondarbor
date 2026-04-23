@@ -16,6 +16,7 @@ import { fetchFriendsList } from "../friends/api";
 import PondButton from "../PondButton";
 import { fullBleedStackProps } from "../responsive";
 import {
+  APP_SHELL_TRAY_PROPS,
   APP_TEXT_SIZES,
   MAPPED_CLOSET_TAB_STACK_GAP,
 } from "../theme/typography";
@@ -214,7 +215,7 @@ export default function SongadayArchivePanel({
             Song archive
           </Text>
           <RouterLink to="/songaday">
-            <Text fontSize={APP_TEXT_SIZES.helper} color="lilypad.solid" fontWeight="semibold">
+            <Text fontSize={APP_TEXT_SIZES.helper} color="teal.solid" fontWeight="semibold">
               ← Song a Day
             </Text>
           </RouterLink>
@@ -373,17 +374,13 @@ export default function SongadayArchivePanel({
   if (variant === "page") {
     return (
       <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
-        <Box flex="1" bg="sky.solid" px={{ base: "2", md: "2" }} py={{ base: "2", md: "2" }}>
-          <Box
-            maxW="4xl"
-            w="100%"
-            mx="auto"
-            bg="gray.100"
-            borderWidth="1px"
-            borderColor="border"
-            borderRadius="xl"
-            overflow="hidden"
-          >
+        <Box
+          flex="1"
+          bg="bg"
+          px={0}
+          py={{ base: "2", md: "2" }}
+        >
+          <Box {...APP_SHELL_TRAY_PROPS}>
             <Stack gap={{ base: "4", md: "4" }} px={{ base: "2", md: "2" }} pt={{ base: "2", md: "2" }} pb="2">
               {body}
             </Stack>

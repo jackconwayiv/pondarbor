@@ -24,8 +24,17 @@ export function usePrefersCoarsePointer() {
   );
 }
 
-/** Page shells: span the viewport width even when `AppLayout` main adds horizontal padding. */
-export const fullBleedStackProps = {
+/**
+ * Main content is inset 2px from the viewport by `AppLayout` `main` padding; use `100%` width
+ * within that area (do not `100vw` out of the content box here).
+ */
+export const fullBleedStackProps = {} as const;
+
+/**
+ * For header/footer *bars* that must remain flush to the viewport edge while the page uses the
+ * layout’s padded column (e.g. home and games footers).
+ */
+export const viewPortWidthBarProps = {
   position: "relative" as const,
   left: "50%",
   w: "100vw",

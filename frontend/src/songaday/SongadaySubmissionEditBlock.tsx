@@ -123,7 +123,7 @@ export default function SongadaySubmissionEditBlock({
       <HStack gap="2" flexWrap="wrap">
         <PondButton
           type="button"
-          colorPalette="lilypad"
+          colorPalette="teal"
           loading={busy}
           disabled={busy}
           onClick={() => void onSave()}

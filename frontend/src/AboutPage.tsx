@@ -19,7 +19,12 @@ import { auth0LoginAuthorizationParams } from "./auth/auth0LoginParams";
 import PondButton from "./PondButton";
 import { pondarborProfileSrc } from "./publicAsset";
 import { fullBleedStackProps, useIsMobile } from "./responsive";
-import { APP_TEXT_SIZES, PANEL_FIELD_PROPS } from "./theme/typography";
+import {
+  APP_SHELL_TRAY_PROPS,
+  APP_TEXT_SIZES,
+  PANEL_ENTRY_CARD_PROPS,
+  PANEL_FIELD_PROPS,
+} from "./theme/typography";
 
 const CONTACT_MESSAGE_MAX = 4000;
 export default function AboutPage() {
@@ -64,74 +69,88 @@ export default function AboutPage() {
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
       <Box
         flex="1"
-        bg="sky.solid"
-        px={{ base: "2", md: "2" }}
+        bg="bg"
+        px={0}
         py={{ base: "2", md: "2" }}
       >
-        <Box
-          maxW="4xl"
-          w="100%"
-          mx="auto"
-          bg="gray.100"
-          borderWidth="1px"
-          borderColor="border"
-          borderRadius="xl"
-          overflow="hidden"
-        >
-          <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
-            <Box
-              bg="white"
-              borderWidth="1px"
-              borderColor="border"
-              borderRadius="xl"
-              p={{ base: "2", md: "2" }}
-            >
+        <Box {...APP_SHELL_TRAY_PROPS}>
+          <Stack
+            gap={{ base: "4", md: "4" }}
+            px={{ base: "2", md: "2" }}
+            pt={{ base: "2", md: "2" }}
+            pb="2"
+          >
+            <Box {...PANEL_ENTRY_CARD_PROPS}>
               <Heading
                 as="h1"
                 size={{ base: "lg", md: "xl" }}
                 fontWeight="bold"
                 mb="2"
+                letterSpacing="tight"
               >
-                <HStack
-                  as="span"
-                  display="inline-flex"
-                  gap="2"
-                  alignItems="center"
-                >
-                  <Text as="span" aria-hidden="true">
-                    🐢
-                  </Text>
-                  <Text as="span">About</Text>
-                </HStack>
+                PondArbor
               </Heading>
               <Flex
                 flexDirection={isMobile ? "column" : "row"}
-                alignItems="center"
+                alignItems={isMobile ? "stretch" : "flex-start"}
+                gap={isMobile ? "4" : "0"}
               >
-                <Image src={pondarborProfileSrc()} width="150px"></Image>
-                <Text
-                  fontSize={APP_TEXT_SIZES.body}
-                  lineHeight="tall"
-                  color="fg"
-                  mt={isMobile ? "10px" : "0px"}
-                  ml={isMobile ? "0px" : "10px"}
-                >
-                  PondArbor (pondarbor.com) is a hobby project developed by Pond
-                  Arbor Workshop (Jack Conway) to collect my various app ideas
-                  together in one place. I'm sharing it with friends and family
-                  as an opportunity to interact with each other through these
-                  earth-shatteringly incredible apps.
-                </Text>
+                <Image
+                  src={pondarborProfileSrc()}
+                  width="150px"
+                  maxW="100%"
+                  flexShrink={0}
+                  borderRadius="md"
+                />
+                <Stack gap="3" flex="1" minW={0}>
+                  <Text
+                    fontSize={APP_TEXT_SIZES.body}
+                    lineHeight="tall"
+                    color="fg"
+                  >
+                    PondArbor is a hobby project developed by Pond Arbor
+                    Workshop to collect various app ideas together in one place.
+                    It is shared with friends and family as an opportunity to
+                    interact through quotes, a community closet, PondClicker,
+                    WhatIf, and other features.
+                  </Text>
+                  <HStack gap="2" flexWrap="wrap" align="center">
+                    <Link
+                      asChild
+                      color="fg.muted"
+                      fontSize={APP_TEXT_SIZES.helper}
+                      fontWeight="medium"
+                      textDecoration="underline"
+                      textUnderlineOffset="0.12em"
+                      _hover={{ color: "sky.solid", textDecoration: "underline" }}
+                    >
+                      <RouterLink to="/about/privacy">Privacy Policy</RouterLink>
+                    </Link>
+                    <Text
+                      as="span"
+                      userSelect="none"
+                      color="fg.muted"
+                      fontSize={APP_TEXT_SIZES.helper}
+                    >
+                      ·
+                    </Text>
+                    <Link
+                      asChild
+                      color="fg.muted"
+                      fontSize={APP_TEXT_SIZES.helper}
+                      fontWeight="medium"
+                      textDecoration="underline"
+                      textUnderlineOffset="0.12em"
+                      _hover={{ color: "sky.solid", textDecoration: "underline" }}
+                    >
+                      <RouterLink to="/about/terms">Terms of Service</RouterLink>
+                    </Link>
+                  </HStack>
+                </Stack>
               </Flex>
             </Box>
 
-            <Box
-              bg="white"
-              borderWidth="1px"
-              borderColor="border"
-              borderRadius="xl"
-              p={{ base: "2", md: "2" }}
-            >
+            <Box {...PANEL_ENTRY_CARD_PROPS}>
               <Heading as="h2" size="md" fontWeight="semibold" mb="3">
                 Contact us
               </Heading>
@@ -191,7 +210,7 @@ export default function AboutPage() {
                   </Text>
                   <PondButton
                     type="button"
-                    colorPalette="lilypad"
+                    colorPalette="teal"
                     loading={busy}
                     disabled={busy || message.trim().length === 0}
                     alignSelf="flex-start"
@@ -203,7 +222,7 @@ export default function AboutPage() {
                     <Text
                       role="status"
                       fontSize={APP_TEXT_SIZES.helper}
-                      color="lilypad.solid"
+                      color="teal.solid"
                       fontWeight="medium"
                     >
                       {feedback}
@@ -222,32 +241,6 @@ export default function AboutPage() {
                 </Stack>
               )}
             </Box>
-
-            <HStack justify="flex-end" gap="3" flexWrap="wrap" pt="1">
-              <Link
-                asChild
-                color="black"
-                fontWeight="normal"
-                fontSize={APP_TEXT_SIZES.helper}
-                textDecoration="none"
-                _hover={{ textDecoration: "none", color: "sky.solid" }}
-              >
-                <RouterLink to="/about/privacy">Privacy Policy</RouterLink>
-              </Link>
-              <Text color="black" fontSize={APP_TEXT_SIZES.helper}>
-                |
-              </Text>
-              <Link
-                asChild
-                color="black"
-                fontWeight="normal"
-                fontSize={APP_TEXT_SIZES.helper}
-                textDecoration="none"
-                _hover={{ textDecoration: "none", color: "sky.solid" }}
-              >
-                <RouterLink to="/about/terms">Terms of Service</RouterLink>
-              </Link>
-            </HStack>
           </Stack>
         </Box>
       </Box>

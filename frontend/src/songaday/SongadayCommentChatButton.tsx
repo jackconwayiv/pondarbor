@@ -24,7 +24,7 @@ export default function SongadayCommentChatButton({
     <PondButton
       type="button"
       variant="outline"
-      colorPalette="lilypad"
+      colorPalette="teal"
       bg="white"
       color="black"
       borderWidth="1px"

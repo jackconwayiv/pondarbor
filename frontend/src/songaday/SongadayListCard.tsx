@@ -56,7 +56,6 @@ function UserAvatarBlock({
 
 type Props = {
   entry: SongadayResponse;
-  returnTo: string;
   myUserId: number;
   heartBusy?: boolean;
   onHeartToggle?: (entryId: number) => void;
@@ -72,7 +71,6 @@ type Props = {
 
 export default function SongadayListCard({
   entry,
-  returnTo: _returnTo,
   myUserId,
   heartBusy,
   onHeartToggle,
@@ -188,17 +186,17 @@ export default function SongadayListCard({
     <Box
       bg="white"
       borderWidth="1px"
-      borderColor={submissionEditOpen && isMine ? "lilypad.solid" : "border"}
+      borderColor={submissionEditOpen && isMine ? "teal.solid" : "border"}
       borderRadius="xl"
       overflow="hidden"
       cursor={readOnly && isMine ? "pointer" : undefined}
       {...MAPPED_LIST_CARD_OUTER_PROPS}
       _hover={
         readOnly && isMine
-          ? { borderColor: "lilypad.solid" }
+          ? { borderColor: "teal.solid" }
           : readOnly
             ? undefined
-            : { borderColor: "lilypad.solid" }
+            : { borderColor: "teal.solid" }
       }
     >
       {cardBody}

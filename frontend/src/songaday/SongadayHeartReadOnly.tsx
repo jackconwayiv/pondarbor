@@ -29,7 +29,7 @@ export default function SongadayHeartReadOnly({
       px="2"
       py="1"
       borderWidth="1px"
-      borderColor="lilypad.solid"
+      borderColor="teal.solid"
       borderRadius="xl"
       bg="white"
       role="img"

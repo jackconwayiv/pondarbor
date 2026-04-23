@@ -77,7 +77,7 @@ export default function MealSlotGrid({
         transition="border-color 0.15s, background 0.15s"
         aria-label={isEmpty ? `Empty ${name}, add meals` : undefined}
         _hover={
-          disabled ? undefined : { borderColor: "lilypad.solid", bg: "lilypad.subtle" }
+          disabled ? undefined : { borderColor: "teal.solid", bg: "lilypad.subtle" }
         }
         onClick={() => {
           if (!disabled) setPicker({ dayIndex, slotIndex });

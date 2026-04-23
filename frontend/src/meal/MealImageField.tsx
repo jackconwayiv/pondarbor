@@ -170,7 +170,7 @@ export function MealImageField({
                   onImageKeyChange(row.image_key);
                   setPickerOpen(false);
                 }}
-                _hover={{ borderColor: "lilypad.solid" }}
+                _hover={{ borderColor: "teal.solid" }}
               >
                 <Image
                   src={row.image_url}

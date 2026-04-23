@@ -3,37 +3,24 @@ import { Link as RouterLink } from "react-router";
 
 import PondButton from "./PondButton";
 import { fullBleedStackProps } from "./responsive";
-import { APP_TEXT_SIZES } from "./theme/typography";
-
-const ENTRY_CARD_PROPS = {
-  bg: "white",
-  borderWidth: "1px",
-  borderColor: "border",
-  borderRadius: "xl",
-  p: { base: "2", md: "2" },
-} as const;
+import {
+  APP_SHELL_TRAY_PROPS,
+  APP_TEXT_SIZES,
+  PANEL_ENTRY_CARD_PROPS,
+} from "./theme/typography";
 
 export default function NotFoundPage() {
   return (
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
       <Box
         flex="1"
-        bg="sky.solid"
-        px={{ base: "2", md: "2" }}
+        bg="bg"
+        px={0}
         py={{ base: "2", md: "2" }}
       >
-        <Box
-          maxW="4xl"
-          w="100%"
-          mx="auto"
-          bg="gray.100"
-          borderWidth="1px"
-          borderColor="border"
-          borderRadius="xl"
-          overflow="hidden"
-        >
+        <Box {...APP_SHELL_TRAY_PROPS}>
           <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
-            <Box {...ENTRY_CARD_PROPS}>
+            <Box {...PANEL_ENTRY_CARD_PROPS}>
               <Heading
                 as="h1"
                 size={{ base: "lg", md: "xl" }}
@@ -51,7 +38,7 @@ export default function NotFoundPage() {
                 We couldn&apos;t find a page at this address. It may have been
                 moved or the link might be wrong.
               </Text>
-              <PondButton asChild colorPalette="lilypad">
+              <PondButton asChild colorPalette="teal">
                 <RouterLink to="/">Back to home</RouterLink>
               </PondButton>
             </Box>

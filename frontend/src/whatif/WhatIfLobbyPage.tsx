@@ -1,9 +1,14 @@
-import { Code, Heading, HStack, Stack, Text } from "@chakra-ui/react";
+import { Box, Code, Heading, HStack, Stack, Text } from "@chakra-ui/react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 
 import PondButton from "../PondButton";
-import WhatIfShell from "./WhatIfShell";
+import { fullBleedStackProps } from "../responsive";
+import {
+  APP_SHELL_TRAY_PROPS,
+  APP_TEXT_SIZES,
+  PANEL_ENTRY_CARD_PROPS,
+} from "../theme/typography";
 import {
   fetchWhatIfTvState,
   loadHostToken,
@@ -64,85 +69,175 @@ export default function WhatIfLobbyPage() {
   }
 
   return (
-    <WhatIfShell maxW="min(100%, 90rem)">
-      <Stack gap={{ base: "4", md: "5" }}>
-        <HStack justify="space-between" align="center" w="100%" flexWrap="wrap" gap="3">
-          <Heading as="h1" fontSize="clamp(1.35rem, 3.5vh, 2.5rem)" fontWeight="bold" lineHeight="1.15">
-            Whatif Lobby
-          </Heading>
-          <Code fontSize="clamp(1.75rem, 5vh, 3.25rem)">{roomCode}</Code>
-        </HStack>
-        <Text color="gray.700" fontSize="clamp(1rem, 2.4vh, 1.35rem)">
-          {state?.players?.length ?? 0} players in game
-        </Text>
-        <Stack gap="2">
-          {(state?.players ?? []).map((p) => (
-            <HStack
-              key={p.id}
-              justify="space-between"
-              borderWidth="1px"
-              borderColor="border"
-              borderRadius="md"
-              px={{ base: "4", md: "5" }}
-              py={{ base: "3", md: "4" }}
-            >
-              <Text fontSize="clamp(1rem, 2.5vh, 1.4rem)">
-                {p.avatar_emoji} {p.display_name}
-              </Text>
-              <Text
-                fontSize="clamp(0.9rem, 2vh, 1.1rem)"
-                color={p.ready_to_start ? "lilypad.fg" : "gray.600"}
+    <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
+      <Box
+        flex="1"
+        bg="bg"
+        px={0}
+        py={{ base: "2", md: "2" }}
+      >
+        <Box {...APP_SHELL_TRAY_PROPS}>
+          <Stack
+            gap={{ base: "4", md: "4" }}
+            px={{ base: "2", md: "2" }}
+            pt={{ base: "2", md: "2" }}
+            pb="2"
+          >
+            <Box {...PANEL_ENTRY_CARD_PROPS}>
+              <Heading
+                as="h1"
+                size={{ base: "lg", md: "xl" }}
+                fontWeight="bold"
+                mb="2"
               >
-                {p.ready_to_start ? "Ready" : "Not ready"}
+                <HStack
+                  as="span"
+                  display="inline-flex"
+                  gap="2"
+                  alignItems="center"
+                >
+                  <Text as="span" aria-hidden="true">
+                    🎭
+                  </Text>
+                  <Text as="span">Whatif Lobby</Text>
+                </HStack>
+              </Heading>
+              <Text
+                fontSize={APP_TEXT_SIZES.body}
+                lineHeight="tall"
+                color="fg"
+              >
+                Host the TV; players join on their phones with the room code. When
+                everyone is ready, start the game.
               </Text>
-            </HStack>
-          ))}
-        </Stack>
+            </Box>
 
-        {hostToken &&
-        state &&
-        (state.players?.length ?? 0) >= 2 &&
-        !(state.players ?? []).every((p) => p.ready_to_start) ? (
-          <Text fontSize="clamp(0.95rem, 2vh, 1.15rem)" color="gray.600">
-            Waiting for every player to mark &quot;Ready to start&quot; on their phone.
-          </Text>
-        ) : null}
+            <Box {...PANEL_ENTRY_CARD_PROPS}>
+              <HStack
+                justify="space-between"
+                align="center"
+                w="100%"
+                flexWrap="wrap"
+                gap="3"
+                mb="3"
+              >
+                <Text
+                  fontSize={APP_TEXT_SIZES.label}
+                  fontWeight="semibold"
+                  color="fg.muted"
+                >
+                  Room code
+                </Text>
+                <Code
+                  fontSize={{ base: "md", md: "lg" }}
+                  px="2"
+                  py="1"
+                  borderRadius="md"
+                >
+                  {roomCode}
+                </Code>
+              </HStack>
+              <Text
+                fontSize={APP_TEXT_SIZES.body}
+                color="fg"
+                mb="3"
+              >
+                {state?.players?.length ?? 0} player
+                {(state?.players?.length ?? 0) === 1 ? "" : "s"} in the lobby
+              </Text>
+              <Stack gap="2">
+                {(state?.players ?? []).map((p) => (
+                  <HStack
+                    key={p.id}
+                    justify="space-between"
+                    borderWidth="1px"
+                    borderColor="border"
+                    borderRadius="md"
+                    px={{ base: "3", md: "4" }}
+                    py={{ base: "2", md: "3" }}
+                    bg="bg"
+                  >
+                    <Text fontSize={APP_TEXT_SIZES.body}>
+                      {p.avatar_emoji} {p.display_name}
+                    </Text>
+                    <Text
+                      fontSize={APP_TEXT_SIZES.helper}
+                      fontWeight="medium"
+                      color={p.ready_to_start ? "lilypad.fg" : "fg.muted"}
+                    >
+                      {p.ready_to_start ? "Ready" : "Not ready"}
+                    </Text>
+                  </HStack>
+                ))}
+              </Stack>
 
-        <PondButton
-          type="button"
-          colorPalette="lilypad"
-          alignSelf="flex-start"
-          onClick={() => void handleStart()}
-          disabled={(() => {
-            const players = state?.players ?? [];
-            return (
-              !state ||
-              !hostToken ||
-              players.length < 2 ||
-              !players.every((p) => p.ready_to_start)
-            );
-          })()}
-          loading={busy}
-        >
-          Start game
-        </PondButton>
+              {hostToken &&
+              state &&
+              (state.players?.length ?? 0) >= 2 &&
+              !(state.players ?? []).every((p) => p.ready_to_start) ? (
+                <Text
+                  fontSize={APP_TEXT_SIZES.helper}
+                  color="fg.muted"
+                  mt="3"
+                >
+                  Waiting for every player to mark &quot;Ready to start&quot; on
+                  their phone.
+                </Text>
+              ) : null}
 
-        {!hostToken ? (
-          <Text color="gray.700">
-            Host token missing (open the lobby right after creating a game while signed in).
-          </Text>
-        ) : null}
-        <Text fontSize="clamp(0.95rem, 2vh, 1.15rem)" color="gray.700">
-          Players join on their phones using the join code.
-        </Text>
+              <PondButton
+                type="button"
+                colorPalette="teal"
+                alignSelf="flex-start"
+                mt="4"
+                onClick={() => void handleStart()}
+                disabled={(() => {
+                  const players = state?.players ?? [];
+                  return (
+                    !state ||
+                    !hostToken ||
+                    players.length < 2 ||
+                    !players.every((p) => p.ready_to_start)
+                  );
+                })()}
+                loading={busy}
+              >
+                Start game
+              </PondButton>
 
-        {error ? (
-          <Text role="alert" color="nautical.solid">
-            {error}
-          </Text>
-        ) : null}
-      </Stack>
-    </WhatIfShell>
+              {!hostToken ? (
+                <Text
+                  color="fg.muted"
+                  fontSize={APP_TEXT_SIZES.helper}
+                  mt="3"
+                >
+                  Host token missing (open the lobby right after creating a game
+                  while signed in).
+                </Text>
+              ) : null}
+              <Text
+                fontSize={APP_TEXT_SIZES.helper}
+                color="fg.muted"
+                mt="2"
+              >
+                Players join on their phones using the join code.
+              </Text>
+
+              {error ? (
+                <Text
+                  role="alert"
+                  color="nautical.solid"
+                  fontWeight="medium"
+                  fontSize={APP_TEXT_SIZES.helper}
+                  mt="2"
+                >
+                  {error}
+                </Text>
+              ) : null}
+            </Box>
+          </Stack>
+        </Box>
+      </Box>
+    </Stack>
   );
 }
-

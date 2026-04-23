@@ -14,7 +14,11 @@ import { Link as RouterLink } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
 import { fullBleedStackProps } from "../responsive";
-import { APP_TEXT_SIZES } from "../theme/typography";
+import {
+  APP_SHELL_TRAY_PROPS,
+  APP_TEXT_SIZES,
+  PANEL_ENTRY_CARD_PROPS,
+} from "../theme/typography";
 import {
   fetchStaffUsers,
   patchStaffUserAccountStatus,
@@ -126,221 +130,248 @@ export default function StaffPage() {
   }
 
   return (
-    <Stack
-      flex="1"
-      minH="full"
-      gap="6"
-      px={{ base: "2", md: "2" }}
-      py={{ base: "2", md: "2" }}
-      {...fullBleedStackProps}
-    >
-      <Stack gap="2" maxW="4xl">
-        <Heading as="h1" size={{ base: "lg", md: "xl" }}>
-          Staff
-        </Heading>
-        <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted">
-          Manage member approval and open admin tools.
-        </Text>
-        <HStack gap="4" flexWrap="wrap" align="center">
-          <ChakraLink
-            asChild
-            fontSize="sm"
-            textDecoration="underline"
-            color="fg"
-          >
-            <RouterLink to="/clicker/dev/catalog">
-              PondClicker upgrade catalog
-            </RouterLink>
-          </ChakraLink>
-          <ChakraLink
-            asChild
-            fontSize="sm"
-            textDecoration="underline"
-            color="fg"
-          >
-            <RouterLink to="/whatif/admin">WhatIf question admin</RouterLink>
-          </ChakraLink>
-        </HStack>
-      </Stack>
-
-      <Stack gap="3" maxW="4xl" w="100%">
-        <HStack justify="space-between" align="center" flexWrap="wrap" gap="2">
-          <Heading as="h2" size="md">
-            Users
-          </Heading>
-          <PondButton
-            type="button"
-            size="sm"
-            colorPalette="lilypad"
-            loading={listBusy}
-            onClick={() => void loadUsers()}
-          >
-            Refresh
-          </PondButton>
-        </HStack>
-        {listError ? (
-          <Text
-            role="alert"
-            fontSize="sm"
-            color="nautical.solid"
-            fontWeight="medium"
-          >
-            {listError}
-          </Text>
-        ) : null}
-        {listBusy && users.length === 0 ? (
-          <Text fontSize="sm" color="fg.muted">
-            Loading users…
-          </Text>
-        ) : (
+    <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
+      <Box
+        flex="1"
+        bg="bg"
+        px={0}
+        py={{ base: "2", md: "2" }}
+      >
+        <Box {...APP_SHELL_TRAY_PROPS}>
           <Stack
-            gap="0"
-            borderWidth="1px"
-            borderColor="border"
-            borderRadius="md"
-            overflow="hidden"
+            gap={{ base: "4", md: "4" }}
+            px={{ base: "2", md: "2" }}
+            pt={{ base: "2", md: "2" }}
+            pb="2"
           >
-            <Box
-              display={{ base: "none", md: "grid" }}
-              gridTemplateColumns="minmax(0,1.4fr) minmax(0,1fr) minmax(0,0.5fr) minmax(0,1fr)"
-              gap="3"
-              px="2"
-              py="2"
-              bg="bg.subtle"
-              borderBottomWidth="1px"
-              borderColor="border"
-            >
-              <Text fontSize="xs" fontWeight="semibold" color="fg.muted">
-                Email / name
-              </Text>
-              <Text fontSize="xs" fontWeight="semibold" color="fg.muted">
-                Joined
-              </Text>
-              <Text fontSize="xs" fontWeight="semibold" color="fg.muted">
+            <Box {...PANEL_ENTRY_CARD_PROPS}>
+              <Heading
+                as="h1"
+                size={{ base: "lg", md: "xl" }}
+                fontWeight="bold"
+                mb="2"
+              >
                 Staff
+              </Heading>
+              <Text
+                fontSize={APP_TEXT_SIZES.meta}
+                color="fg.muted"
+                mb="3"
+              >
+                Manage member approval and open admin tools.
               </Text>
-              <Text fontSize="xs" fontWeight="semibold" color="fg.muted">
-                Account status
-              </Text>
-            </Box>
-            {sortedUsers.map((row) => {
-              const disabled = row.id === myId || rowBusyId === row.id;
-              const statusValue = STAFF_ACCOUNT_STATUS_VALUES.includes(
-                row.account_status as StaffAccountStatusValue,
-              )
-                ? (row.account_status as StaffAccountStatusValue)
-                : "pending";
-              return (
-                <Box
-                  key={row.id}
-                  px="2"
-                  py="2"
-                  bg="white"
-                  borderBottomWidth="1px"
-                  borderColor="border"
-                  _last={{ borderBottomWidth: "0" }}
+              <HStack gap="4" flexWrap="wrap" align="center">
+                <ChakraLink
+                  asChild
+                  fontSize="sm"
+                  textDecoration="underline"
+                  color="fg"
                 >
-                  <Stack gap="3" display={{ base: "flex", md: "none" }}>
-                    <Stack gap="1">
-                      <Text
-                        fontSize="sm"
-                        fontWeight="medium"
-                        wordBreak="break-word"
-                      >
-                        {row.email}
-                      </Text>
-                      <Text fontSize="xs" color="fg.muted">
-                        {row.display_name || "—"}
-                      </Text>
-                    </Stack>
-                    <HStack justify="space-between" flexWrap="wrap" gap="2">
-                      <Text fontSize="xs" color="fg.muted">
-                        Joined {formatJoined(row.date_joined)}
-                      </Text>
-                      <Text fontSize="xs" color="fg.muted">
-                        Staff: {row.is_staff ? "yes" : "no"}
-                      </Text>
-                    </HStack>
-                    <NativeSelectRoot size="sm" disabled={disabled}>
-                      <NativeSelectField
-                        value={statusValue}
-                        onChange={(e) => {
-                          void onStatusChange(
-                            row,
-                            e.target.value as StaffAccountStatusValue,
-                          );
-                        }}
-                      >
-                        {STAFF_ACCOUNT_STATUS_VALUES.map((v) => (
-                          <option key={v} value={v}>
-                            {STATUS_LABELS[v]}
-                          </option>
-                        ))}
-                      </NativeSelectField>
-                    </NativeSelectRoot>
-                    {row.id === myId ? (
-                      <Text fontSize="xs" color="fg.muted">
-                        You cannot change your own status here.
-                      </Text>
-                    ) : null}
-                  </Stack>
+                  <RouterLink to="/clicker/dev/catalog">
+                    PondClicker upgrade catalog
+                  </RouterLink>
+                </ChakraLink>
+                <ChakraLink
+                  asChild
+                  fontSize="sm"
+                  textDecoration="underline"
+                  color="fg"
+                >
+                  <RouterLink to="/whatif/admin">WhatIf question admin</RouterLink>
+                </ChakraLink>
+              </HStack>
+            </Box>
+
+            <Stack gap="3" w="100%">
+              <HStack
+                justify="space-between"
+                align="center"
+                flexWrap="wrap"
+                gap="2"
+              >
+                <Heading as="h2" size="md">
+                  Users
+                </Heading>
+                <PondButton
+                  type="button"
+                  size="sm"
+                  colorPalette="teal"
+                  loading={listBusy}
+                  onClick={() => void loadUsers()}
+                >
+                  Refresh
+                </PondButton>
+              </HStack>
+              {listError ? (
+                <Text
+                  role="alert"
+                  fontSize="sm"
+                  color="nautical.solid"
+                  fontWeight="medium"
+                >
+                  {listError}
+                </Text>
+              ) : null}
+              {listBusy && users.length === 0 ? (
+                <Text fontSize="sm" color="fg.muted">
+                  Loading users…
+                </Text>
+              ) : (
+                <Stack
+                  gap="0"
+                  borderWidth="1px"
+                  borderColor="border"
+                  borderRadius="md"
+                  overflow="hidden"
+                >
                   <Box
                     display={{ base: "none", md: "grid" }}
                     gridTemplateColumns="minmax(0,1.4fr) minmax(0,1fr) minmax(0,0.5fr) minmax(0,1fr)"
                     gap="3"
-                    alignItems="center"
+                    px="2"
+                    py="2"
+                    bg="bg.subtle"
+                    borderBottomWidth="1px"
+                    borderColor="border"
                   >
-                    <Stack gap="0" minW="0">
-                      <Text
-                        fontSize="sm"
-                        fontWeight="medium"
-                        wordBreak="break-word"
-                      >
-                        {row.email}
-                      </Text>
-                      <Text fontSize="xs" color="fg.muted">
-                        {row.display_name || "—"}
-                      </Text>
-                    </Stack>
-                    <Text fontSize="sm" color="fg.muted">
-                      {formatJoined(row.date_joined)}
+                    <Text fontSize="xs" fontWeight="semibold" color="fg.muted">
+                      Email / name
                     </Text>
-                    <Text fontSize="sm">{row.is_staff ? "Yes" : "No"}</Text>
-                    <Box minW="0">
-                      <NativeSelectRoot
-                        size="sm"
-                        disabled={disabled}
-                        maxW="100%"
-                      >
-                        <NativeSelectField
-                          value={statusValue}
-                          onChange={(e) => {
-                            void onStatusChange(
-                              row,
-                              e.target.value as StaffAccountStatusValue,
-                            );
-                          }}
-                        >
-                          {STAFF_ACCOUNT_STATUS_VALUES.map((v) => (
-                            <option key={v} value={v}>
-                              {STATUS_LABELS[v]}
-                            </option>
-                          ))}
-                        </NativeSelectField>
-                      </NativeSelectRoot>
-                      {row.id === myId ? (
-                        <Text fontSize="2xs" color="fg.muted" mt="1">
-                          Your account
-                        </Text>
-                      ) : null}
-                    </Box>
+                    <Text fontSize="xs" fontWeight="semibold" color="fg.muted">
+                      Joined
+                    </Text>
+                    <Text fontSize="xs" fontWeight="semibold" color="fg.muted">
+                      Staff
+                    </Text>
+                    <Text fontSize="xs" fontWeight="semibold" color="fg.muted">
+                      Account status
+                    </Text>
                   </Box>
-                </Box>
-              );
-            })}
+                  {sortedUsers.map((row) => {
+                    const disabled = row.id === myId || rowBusyId === row.id;
+                    const statusValue = STAFF_ACCOUNT_STATUS_VALUES.includes(
+                      row.account_status as StaffAccountStatusValue,
+                    )
+                      ? (row.account_status as StaffAccountStatusValue)
+                      : "pending";
+                    return (
+                      <Box
+                        key={row.id}
+                        px="2"
+                        py="2"
+                        bg="bg"
+                        borderBottomWidth="1px"
+                        borderColor="border"
+                        _last={{ borderBottomWidth: "0" }}
+                      >
+                        <Stack gap="3" display={{ base: "flex", md: "none" }}>
+                          <Stack gap="1">
+                            <Text
+                              fontSize="sm"
+                              fontWeight="medium"
+                              wordBreak="break-word"
+                            >
+                              {row.email}
+                            </Text>
+                            <Text fontSize="xs" color="fg.muted">
+                              {row.display_name || "—"}
+                            </Text>
+                          </Stack>
+                          <HStack
+                            justify="space-between"
+                            flexWrap="wrap"
+                            gap="2"
+                          >
+                            <Text fontSize="xs" color="fg.muted">
+                              Joined {formatJoined(row.date_joined)}
+                            </Text>
+                            <Text fontSize="xs" color="fg.muted">
+                              Staff: {row.is_staff ? "yes" : "no"}
+                            </Text>
+                          </HStack>
+                          <NativeSelectRoot size="sm" disabled={disabled}>
+                            <NativeSelectField
+                              value={statusValue}
+                              onChange={(e) => {
+                                void onStatusChange(
+                                  row,
+                                  e.target.value as StaffAccountStatusValue,
+                                );
+                              }}
+                            >
+                              {STAFF_ACCOUNT_STATUS_VALUES.map((v) => (
+                                <option key={v} value={v}>
+                                  {STATUS_LABELS[v]}
+                                </option>
+                              ))}
+                            </NativeSelectField>
+                          </NativeSelectRoot>
+                          {row.id === myId ? (
+                            <Text fontSize="xs" color="fg.muted">
+                              You cannot change your own status here.
+                            </Text>
+                          ) : null}
+                        </Stack>
+                        <Box
+                          display={{ base: "none", md: "grid" }}
+                          gridTemplateColumns="minmax(0,1.4fr) minmax(0,1fr) minmax(0,0.5fr) minmax(0,1fr)"
+                          gap="3"
+                          alignItems="center"
+                        >
+                          <Stack gap="0" minW="0">
+                            <Text
+                              fontSize="sm"
+                              fontWeight="medium"
+                              wordBreak="break-word"
+                            >
+                              {row.email}
+                            </Text>
+                            <Text fontSize="xs" color="fg.muted">
+                              {row.display_name || "—"}
+                            </Text>
+                          </Stack>
+                          <Text fontSize="sm" color="fg.muted">
+                            {formatJoined(row.date_joined)}
+                          </Text>
+                          <Text fontSize="sm">{row.is_staff ? "Yes" : "No"}</Text>
+                          <Box minW="0">
+                            <NativeSelectRoot
+                              size="sm"
+                              disabled={disabled}
+                              maxW="100%"
+                            >
+                              <NativeSelectField
+                                value={statusValue}
+                                onChange={(e) => {
+                                  void onStatusChange(
+                                    row,
+                                    e.target.value as StaffAccountStatusValue,
+                                  );
+                                }}
+                              >
+                                {STAFF_ACCOUNT_STATUS_VALUES.map((v) => (
+                                  <option key={v} value={v}>
+                                    {STATUS_LABELS[v]}
+                                  </option>
+                                ))}
+                              </NativeSelectField>
+                            </NativeSelectRoot>
+                            {row.id === myId ? (
+                              <Text fontSize="2xs" color="fg.muted" mt="1">
+                                Your account
+                              </Text>
+                            ) : null}
+                          </Box>
+                        </Box>
+                      </Box>
+                    );
+                  })}
+                </Stack>
+              )}
+            </Stack>
           </Stack>
-        )}
-      </Stack>
+        </Box>
+      </Box>
     </Stack>
   );
 }

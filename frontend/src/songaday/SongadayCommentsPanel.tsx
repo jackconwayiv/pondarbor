@@ -236,7 +236,7 @@ export default function SongadayCommentsPanel({
                 <PondButton
                   type="button"
                   size="sm"
-                  colorPalette="lilypad"
+                  colorPalette="teal"
                   loading={editBusy}
                   disabled={editBusy}
                   onClick={() => void saveEdit()}
@@ -260,7 +260,7 @@ export default function SongadayCommentsPanel({
                     <Text
                       as="button"
                       fontSize={APP_TEXT_SIZES.helper}
-                      color="lilypad.solid"
+                      color="teal.solid"
                       textDecoration="underline"
                       onClick={() => startEdit(r)}
                     >
@@ -343,7 +343,7 @@ export default function SongadayCommentsPanel({
           <PondButton
             type="button"
             size="sm"
-            colorPalette="lilypad"
+            colorPalette="teal"
             loading={postBusy}
             disabled={postBusy || !compose.trim()}
             onClick={() => void onPost()}

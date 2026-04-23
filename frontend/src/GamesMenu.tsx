@@ -1,10 +1,9 @@
 import { useAuth0 } from "@auth0/auth0-react";
 import {
   Box,
-  Flex,
-  Heading,
   HStack,
   Link as ChakraLink,
+  SimpleGrid,
   Stack,
   Text,
 } from "@chakra-ui/react";
@@ -15,255 +14,188 @@ import {
   auth0LoginAuthorizationParams,
   auth0SignupAuthorizationParams,
 } from "./auth/auth0LoginParams";
-import {
-  LILYPAD_FLOAT_KEYFRAMES,
-  LILYPAD_HOVER_HINT_VISIBLE,
-  LILYPAD_WEDGE_CLIP_PATH,
-} from "./lilypadHomeConstants";
 import PondButton from "./PondButton";
-import { fullBleedStackProps } from "./responsive";
-import { APP_TEXT_SIZES } from "./theme/typography";
+import { viewPortWidthBarProps } from "./responsive";
 
-const GAMES_LILYPAD_TILES = [
+const GAMES_NAV_ITEMS = [
+  { to: "/clicker", label: "PondClicker", emoji: "🪷" },
+  { to: "/whatif", label: "WhatIf", emoji: "🤔" },
   {
-    to: "/",
-    label: "Home",
-    hoverText: "back to the main pond",
-  },
-  {
-    to: "/clicker",
-    label: "PondClicker",
-    hoverText: "idle pond-growing game",
-  },
-  {
-    to: "/whatif",
-    label: "WhatIf",
-    hoverText: "multiplayer party game",
+    to: "/qff",
+    label: "Quest For Fat IV (demo)",
+    emoji: "⚔️",
   },
 ] as const;
 
-const GAMES_PURPOSE_BLURB =
-  "A humble selection of games to play on the pond.";
+function canOpenGameTile(
+  to: (typeof GAMES_NAV_ITEMS)[number]["to"],
+  isAuthenticated: boolean,
+): boolean {
+  if (to === "/clicker") return isAuthenticated;
+  return true;
+}
 
 export default function GamesMenu() {
   const { loginWithRedirect } = useAuth0();
   const { isAuthenticated } = useAppSession();
 
   return (
-    <Stack flex="1" minH="0" gap="0" align="stretch" {...fullBleedStackProps}>
-      <Box
-        flex="1"
-        w="full"
-        minH="0"
-        bg="sky.solid"
-        display="flex"
-        flexDirection="column"
-      >
+    <Stack flex="1" minH="0" gap="0" align="stretch" w="100%">
+      {!isAuthenticated ? (
         <Box
           bg="bg"
           w="full"
           px={{ base: "2", md: "2" }}
           py={{ base: "2", md: "2" }}
         >
-          <Stack gap="1" w="full" mb="3">
-            <Heading as="h1" size={{ base: "lg", md: "xl" }}>
-              Games
-            </Heading>
-          </Stack>
-          <Stack gap="3" w="full" maxW="3xl">
-            {!isAuthenticated ? (
-              <>
-                <HStack gap="3" align="center" flexWrap="wrap">
-                  <PondButton
-                    colorPalette="sky"
-                    onClick={() =>
-                      loginWithRedirect({
-                        authorizationParams: auth0LoginAuthorizationParams(),
-                      })
-                    }
-                  >
-                    Log in
-                  </PondButton>
-                  <PondButton
-                    colorPalette="lilypad"
-                    onClick={() =>
-                      loginWithRedirect({
-                        authorizationParams: auth0SignupAuthorizationParams(),
-                      })
-                    }
-                  >
-                    Sign up
-                  </PondButton>
-                </HStack>
-                <Text
-                  fontSize={APP_TEXT_SIZES.body}
-                  lineHeight="tall"
-                  color="fg"
-                  maxW="3xl"
-                >
-                  {GAMES_PURPOSE_BLURB}{" "}
-                  <ChakraLink
-                    asChild
-                    color="black"
-                    textDecoration="underline"
-                    _hover={{ color: "sky.solid" }}
-                  >
-                    <RouterLink to="/">Home</RouterLink>
-                  </ChakraLink>{" "}
-                  has more apps once you sign in.
-                </Text>
-              </>
-            ) : (
-              <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
-                {GAMES_PURPOSE_BLURB}
-              </Text>
-            )}
-          </Stack>
+          <HStack gap="3" align="center" flexWrap="wrap">
+            <PondButton
+              colorPalette="lilypad"
+              onClick={() =>
+                loginWithRedirect({
+                  authorizationParams: auth0LoginAuthorizationParams(),
+                })
+              }
+            >
+              Log in
+            </PondButton>
+            <PondButton
+              colorPalette="teal"
+              onClick={() =>
+                loginWithRedirect({
+                  authorizationParams: auth0SignupAuthorizationParams(),
+                })
+              }
+            >
+              Sign up
+            </PondButton>
+          </HStack>
         </Box>
+      ) : null}
 
-        <Box
-          flex="1"
-          w="full"
-          bg="transparent"
-          px={{ base: "4", md: "4" }}
-          py={{ base: "4", md: "4" }}
-        >
-          <Flex
-            flexWrap="wrap"
-            gap={{ base: "4", md: "6" }}
-            alignItems="flex-start"
+      <Box
+        flex="1"
+        w="full"
+        bg="transparent"
+        py={{ base: "3", md: "4" }}
+        px={{ base: 0, md: "3" }}
+      >
+        <Stack gap="2" align="flex-start" w="100%">
+          <Text
+            fontSize="xs"
+            fontWeight="semibold"
+            textTransform="uppercase"
+            letterSpacing="wider"
+            color="fg.muted"
+            px={{ base: "2", md: 0 }}
             w="100%"
           >
-            {GAMES_LILYPAD_TILES.map((tile, index) => {
-            const tileInteractive =
-              tile.to === "/" ||
-              tile.to === "/whatif" ||
-              (tile.to === "/clicker" && isAuthenticated);
-            const tileWrapProps = {
-              flex: "0 0 auto",
-              w: { base: "10.25rem", sm: "11rem", md: "12rem" },
-              maxW: "100%",
-              position: "relative" as const,
-              animation: `${LILYPAD_FLOAT_KEYFRAMES} 5.6s ease-in-out infinite`,
-              animationDelay: `${index * 0.35}s`,
-              willChange: "transform",
-              filter: "drop-shadow(0 8px 10px rgba(0, 0, 0, 0.16))",
-              sx: {
-                "@media (prefers-reduced-motion: reduce)": {
-                  animation: "none",
-                },
-              },
-            };
-            const card = (
-              <Box
-                bg={tileInteractive ? "lilypad.solid" : "#A4B89A"}
-                borderRadius="9999px"
-                borderWidth="20px"
-                borderColor={tileInteractive ? "lilypad.solid" : "#A4B89A"}
-                aspectRatio={1}
-                p={{ base: "2", md: "2" }}
-                display="flex"
-                alignItems="center"
-                justifyContent="center"
-                textAlign="center"
-                position="relative"
-                boxShadow="md"
-                transform="translateZ(0)"
-                overflow="hidden"
-                clipPath={LILYPAD_WEDGE_CLIP_PATH}
-                transition="background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease"
-                cursor={tileInteractive ? "pointer" : "not-allowed"}
-                _hover={
-                  tileInteractive
-                    ? {
-                        bg: "bg",
-                        transform: "scale(1.02)",
-                        boxShadow: "xl",
-                        "& .lilypad-hover-hint": LILYPAD_HOVER_HINT_VISIBLE,
-                      }
-                    : {
-                        "& .lilypad-hover-hint": LILYPAD_HOVER_HINT_VISIBLE,
-                      }
-                }
-                _active={
-                  tileInteractive
-                    ? {
-                        bg: "bg",
-                        transform: "scale(0.99)",
-                        boxShadow: "lg",
-                      }
-                    : undefined
-                }
-              >
-                <Stack
-                  gap="1"
+            Play
+          </Text>
+          <SimpleGrid
+            as="ul"
+            w="100%"
+            maxW="100%"
+            p="0"
+            m="0"
+            listStyleType="none"
+            columns={{ base: 1, md: 3 }}
+            gap="2.5"
+            role="list"
+            aria-label="Games you can play"
+          >
+            {GAMES_NAV_ITEMS.map((item) => {
+              const canOpen = canOpenGameTile(item.to, isAuthenticated);
+              const cardBody = (
+                <HStack
+                  w="100%"
                   align="center"
-                  justify="center"
-                  w="full"
-                  minH="0"
-                  px="0.5"
+                  gap="3"
+                  py="2.5"
+                  px="3"
+                  minH="11"
+                  _hover={canOpen ? { bg: "bg.subtle" } : undefined}
+                  transition="background 0.12s ease"
+                  cursor={canOpen ? "pointer" : "not-allowed"}
+                  opacity={canOpen ? 1 : 0.55}
                 >
-                  <Heading
-                    as="h2"
-                    size={{ base: "md", md: "lg" }}
-                    position="relative"
-                    zIndex={2}
-                    color={tileInteractive ? "fg" : "gray.600"}
-                    lineHeight="1.2"
-                  >
-                    {tile.label}
-                  </Heading>
-                  <Text
-                    className="lilypad-hover-hint"
-                    textAlign="center"
-                    fontSize={{ base: "2xs", md: "xs" }}
-                    lineHeight="1.35"
-                    fontWeight="medium"
-                    color={tileInteractive ? "fg" : "gray.600"}
-                    opacity={0}
-                    maxHeight="0"
-                    overflow="hidden"
-                    transitionProperty="opacity, max-height"
-                    transitionDuration="0.2s"
-                    transitionTimingFunction="ease"
-                    px="1"
-                  >
-                    {tile.hoverText}
+                  <Text as="span" fontSize="1.5rem" lineHeight="1" aria-hidden>
+                    {item.emoji}
                   </Text>
-                </Stack>
-              </Box>
-            );
-
-            if (!tileInteractive) {
-              return (
-                <Box key={tile.to} {...tileWrapProps}>
-                  {card}
-                </Box>
+                  <Text
+                    as="span"
+                    fontSize="md"
+                    fontWeight="semibold"
+                    color="fg"
+                    lineClamp={2}
+                    flex="1"
+                    textAlign="left"
+                  >
+                    {item.label}
+                  </Text>
+                </HStack>
               );
-            }
-
-            return (
-              <Box key={tile.to} {...tileWrapProps}>
-                <Box
-                  asChild
-                  display="block"
-                  textDecoration="none"
-                  color="inherit"
-                  h="100%"
-                  _focusVisible={{
-                    "& .lilypad-hover-hint": LILYPAD_HOVER_HINT_VISIBLE,
+              const content = canOpen ? (
+                <RouterLink
+                  to={item.to}
+                  style={{
+                    textDecoration: "none",
+                    color: "inherit",
+                    display: "block",
                   }}
                 >
-                  <RouterLink to={tile.to}>{card}</RouterLink>
+                  {cardBody}
+                </RouterLink>
+              ) : (
+                <Box
+                  aria-label={`${item.label} (log in to open)`}
+                  display="block"
+                  w="100%"
+                >
+                  {cardBody}
                 </Box>
-              </Box>
-            );
+              );
+              return (
+                <Box
+                  as="li"
+                  key={item.to}
+                  w="100%"
+                  listStyleType="none"
+                  borderWidth="1px"
+                  borderColor="border"
+                  borderRadius="lg"
+                  overflow="hidden"
+                  boxShadow="sm"
+                  bg="bg.subtle"
+                >
+                  {content}
+                </Box>
+              );
             })}
-          </Flex>
-        </Box>
+          </SimpleGrid>
+
+          <Box
+            w="100%"
+            px={{ base: "2", md: 0 }}
+            pt="2"
+            display="flex"
+            justifyContent="flex-start"
+          >
+            <PondButton asChild colorPalette="teal" variant="outline" size="md">
+              <RouterLink to="/">← Back</RouterLink>
+            </PondButton>
+          </Box>
+        </Stack>
       </Box>
 
-      <Box as="footer" w="full" flexShrink={0} bg="lilypad.solid" mt="auto">
+      <Box
+        as="footer"
+        flexShrink={0}
+        bg="navy.solid"
+        mt="auto"
+        color="navy.fg"
+        {...viewPortWidthBarProps}
+      >
         <Box py="2" px={{ base: "2", md: "2" }}>
           <Box
             display="flex"
@@ -274,11 +206,11 @@ export default function GamesMenu() {
             columnGap={{ md: "3" }}
             rowGap="1"
           >
-            <Text textAlign="right" fontSize="xs" color="fg">
+            <Text textAlign="right" fontSize="xs" color="inherit">
               © 2026{" "}
               <ChakraLink
                 asChild
-                color="black"
+                color="inherit"
                 textDecoration="none"
                 _hover={{ color: "sky.solid", textDecoration: "none" }}
               >
@@ -286,10 +218,10 @@ export default function GamesMenu() {
               </ChakraLink>
               . All rights reserved.
             </Text>
-            <Text textAlign="right" fontSize="xs" color="fg">
+            <Text textAlign="right" fontSize="xs" color="inherit">
               <ChakraLink
                 asChild
-                color="black"
+                color="inherit"
                 textDecoration="none"
                 _hover={{ color: "sky.solid", textDecoration: "none" }}
               >
@@ -298,7 +230,7 @@ export default function GamesMenu() {
               |{" "}
               <ChakraLink
                 asChild
-                color="black"
+                color="inherit"
                 textDecoration="none"
                 _hover={{ color: "sky.solid", textDecoration: "none" }}
               >

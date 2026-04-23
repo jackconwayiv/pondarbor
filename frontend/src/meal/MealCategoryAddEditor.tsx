@@ -141,7 +141,7 @@ export function MealCategoryAddEditor({
             ) : null}
             <HStack gap="2" flexWrap="wrap">
               <PondButton
-                colorPalette="lilypad"
+                colorPalette="teal"
                 loading={busy}
                 disabled={disabled || busy || !name.trim()}
                 onClick={() => {

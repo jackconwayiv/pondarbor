@@ -29,6 +29,7 @@ import {
 } from "./api";
 import { optimisticMoveHeadLine, tryParseQffMoveDirection } from "./commandParser";
 import { QFF_NARRATIVE_TOO_DARK } from "./copy";
+import { QFF_PLAY_PAGE_CONTENT_PROPS } from "./qffUi";
 
 /** WebSocket keepalive; must be ≤ combat round length so lazy sim runs on time (~6s). */
 const WS_PING_MS = 6_000;
@@ -1208,16 +1209,13 @@ export default function QffPlayPage() {
 
   return (
     <Box
+      {...QFF_PLAY_PAGE_CONTENT_PROPS}
       flex="1"
       minH="0"
       display="flex"
       flexDirection="column"
-      w="100%"
-      maxW="1200px"
       overflow="hidden"
-      px={{ base: 2, md: 4 }}
       py={4}
-      mx="auto"
     >
       <Flex flexShrink={0} justify="space-between" align="center" mb={4} flexWrap="wrap" gap={2}>
         <Flex align="baseline" flexWrap="wrap" gap={1} minW={0}>

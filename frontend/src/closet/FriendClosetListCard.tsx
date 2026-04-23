@@ -38,14 +38,14 @@ export function FriendClosetListCard({ item, closetReturnTo }: FriendClosetListC
         borderRadius="xl"
         p="0"
         h="100%"
-        _hover={{ borderColor: "lilypad.solid" }}
+        _hover={{ borderColor: "teal.solid" }}
       >
         <Box
           position="relative"
           flex="1"
-          minH={{ base: "200px", md: "220px" }}
-          maxH={{ base: "min(62vw, 320px)", md: "280px" }}
-          bg="gray.100"
+          minH={{ base: "140px", md: "220px" }}
+          maxH={{ base: "min(50vw, 240px)", md: "280px" }}
+          bg="bg.subtle"
           display="flex"
           alignItems="center"
           justifyContent="center"

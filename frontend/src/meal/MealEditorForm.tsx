@@ -84,7 +84,7 @@ export function MealEditorForm({
         />
         <HStack gap="2" flexShrink={0} flexWrap="wrap">
           <PondButton
-            colorPalette="lilypad"
+            colorPalette="teal"
             loading={saveLoading}
             disabled={disabled || saveDisabled}
             onClick={(e) => {

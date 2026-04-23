@@ -932,14 +932,14 @@ function UpgradeCard({
             <Text
               key={row.title}
               fontSize="2xs"
-              color={row.met ? "lilypad.solid" : "nautical.solid"}
+              color={row.met ? "teal.solid" : "nautical.solid"}
               lineHeight="1.3"
               fontVariantNumeric="tabular-nums"
             >
               {row.title} ≥ {row.required}
               <Box
                 as="span"
-                color={row.met ? "lilypad.solid" : "nautical.solid"}
+                color={row.met ? "teal.solid" : "nautical.solid"}
                 fontWeight="normal"
               >
                 {" "}
@@ -1505,7 +1505,8 @@ export default function ClickerGamePage() {
         })();
       };
 
-      const ric = (window as unknown as { requestIdleCallback?: Function })
+      type RicFn = (cb: IdleRequestCallback, opts?: IdleRequestOptions) => number;
+      const ric = (window as unknown as { requestIdleCallback?: RicFn })
         .requestIdleCallback;
       if (typeof ric === "function") {
         saveIdleHandleRef.current = ric(run, { timeout: 1200 }) as number;
@@ -1518,7 +1519,8 @@ export default function ClickerGamePage() {
     return () => {
       window.clearInterval(id);
       if (saveIdleHandleRef.current !== null) {
-        const cancelRic = (window as unknown as { cancelIdleCallback?: Function })
+        type CancelRicFn = (id: number) => void;
+        const cancelRic = (window as unknown as { cancelIdleCallback?: CancelRicFn })
           .cancelIdleCallback;
         if (typeof cancelRic === "function") {
           cancelRic(saveIdleHandleRef.current);

@@ -163,7 +163,7 @@ export default function MealTodayPage() {
                               onClick={(e) => e.stopPropagation()}
                               style={{ textDecoration: "none", color: "inherit" }}
                             >
-                              <Text as="span" color="lilypad.solid" fontWeight="semibold">
+                              <Text as="span" color="teal.solid" fontWeight="semibold">
                                 {label}
                               </Text>
                             </RouterLink>

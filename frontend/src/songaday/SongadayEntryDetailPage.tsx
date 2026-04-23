@@ -208,7 +208,7 @@ export default function SongadayEntryDetailPage() {
   }
   if (isLoading || !sessionUser) {
     return (
-      <Stack gap="2" maxW="4xl">
+      <Stack gap="2" maxW="5xl">
         <Text fontWeight="semibold">Loading…</Text>
         {sessionError ? (
           <Text
@@ -241,7 +241,7 @@ export default function SongadayEntryDetailPage() {
         >
           {loadError ?? "Not found."}
         </Text>
-        <PondButton asChild colorPalette="lilypad">
+        <PondButton asChild colorPalette="teal">
           <RouterLink to="/songaday">Return to Song a Day</RouterLink>
         </PondButton>
       </Stack>
@@ -370,7 +370,7 @@ export default function SongadayEntryDetailPage() {
                 <HStack gap="2" flexWrap="wrap" align="center">
                   <PondButton
                     type="button"
-                    colorPalette="lilypad"
+                    colorPalette="teal"
                     loading={saveBusy}
                     disabled={saveBusy}
                     onClick={() => void onSaveClick()}
@@ -457,7 +457,7 @@ export default function SongadayEntryDetailPage() {
         <Text
           fontSize={APP_TEXT_SIZES.helper}
           fontWeight="medium"
-          color={notice.kind === "error" ? "nautical.solid" : "lilypad.solid"}
+          color={notice.kind === "error" ? "nautical.solid" : "forest.solid"}
           role={notice.kind === "error" ? "alert" : "status"}
         >
           {notice.message}

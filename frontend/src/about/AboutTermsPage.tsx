@@ -2,35 +2,29 @@ import { Box, Heading, Stack, Text } from "@chakra-ui/react";
 import { Link as RouterLink } from "react-router";
 import PondButton from "../PondButton";
 import { fullBleedStackProps } from "../responsive";
-import { APP_TEXT_SIZES } from "../theme/typography";
+import {
+  APP_SHELL_TRAY_PROPS,
+  APP_TEXT_SIZES,
+  PANEL_ENTRY_CARD_PROPS,
+} from "../theme/typography";
 
 export default function AboutTermsPage() {
   return (
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
       <Box
         flex="1"
-        bg="sky.solid"
-        px={{ base: "2", md: "2" }}
+        bg="bg"
+        px={0}
         py={{ base: "2", md: "2" }}
       >
-        <Box
-          maxW="4xl"
-          w="100%"
-          mx="auto"
-          bg="gray.100"
-          borderWidth="1px"
-          borderColor="border"
-          borderRadius="xl"
-          overflow="hidden"
-        >
-          <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
-            <Box
-              bg="white"
-              borderWidth="1px"
-              borderColor="border"
-              borderRadius="xl"
-              p={{ base: "2", md: "2" }}
-            >
+        <Box {...APP_SHELL_TRAY_PROPS}>
+          <Stack
+            gap={{ base: "4", md: "4" }}
+            px={{ base: "2", md: "2" }}
+            pt={{ base: "2", md: "2" }}
+            pb="2"
+          >
+            <Box {...PANEL_ENTRY_CARD_PROPS}>
               <Heading
                 as="h1"
                 size={{ base: "lg", md: "xl" }}
@@ -44,13 +38,7 @@ export default function AboutTermsPage() {
               </Text>
             </Box>
 
-            <Box
-              bg="white"
-              borderWidth="1px"
-              borderColor="border"
-              borderRadius="xl"
-              p={{ base: "2", md: "2" }}
-            >
+            <Box {...PANEL_ENTRY_CARD_PROPS}>
               <Stack gap="3">
                 <Text
                   fontSize={APP_TEXT_SIZES.helper}
@@ -186,7 +174,7 @@ export default function AboutTermsPage() {
             </Box>
 
             <Box>
-              <PondButton asChild size="sm" colorPalette="lilypad">
+              <PondButton asChild size="sm" colorPalette="teal">
                 <RouterLink to="/about">Back to About</RouterLink>
               </PondButton>
             </Box>

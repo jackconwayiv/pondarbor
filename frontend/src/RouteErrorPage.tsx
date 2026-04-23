@@ -41,7 +41,7 @@ export default function RouteErrorPage() {
       py="8"
       role="alert"
     >
-      <Text fontSize="lg" fontWeight="semibold" color="lilypad.solid">
+      <Text fontSize="lg" fontWeight="semibold" color="teal.solid">
         {staleChunk ? "Update available" : "Something went wrong"}
       </Text>
       <Box maxW="md" textAlign="center">
@@ -52,7 +52,7 @@ export default function RouteErrorPage() {
         </Text>
       </Box>
       <Button
-        colorPalette="lilypad"
+        colorPalette="teal"
         onClick={() => {
           window.location.reload();
         }}

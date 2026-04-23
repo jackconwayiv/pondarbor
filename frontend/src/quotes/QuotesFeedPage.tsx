@@ -27,9 +27,16 @@ import {
 } from "../friends/api";
 import { fullBleedStackProps, usePrefersCoarsePointer } from "../responsive";
 import {
+  APP_SHELL_TAB_LIST_NESTED_PROPS,
+  APP_SHELL_TAB_LIST_PROPS,
+  APP_SHELL_TAB_TRIGGER_PROPS,
+} from "../theme/appShellTabs";
+import {
+  APP_SHELL_TRAY_PROPS,
   APP_TEXT_SIZES,
   MAPPED_LIST_CARD_OUTER_PROPS,
   MAPPED_LIST_STACK_GAP,
+  PANEL_ENTRY_CARD_PROPS,
   PANEL_FIELD_PROPS,
 } from "../theme/typography";
 import PublicQuotesPage from "./PublicQuotesPage";
@@ -52,14 +59,6 @@ import type {
 } from "./types";
 
 const PAGE_SIZE = 10;
-
-const ENTRY_CARD_PROPS = {
-  bg: "white",
-  borderWidth: "1px",
-  borderColor: "border",
-  borderRadius: "xl",
-  p: { base: "2", md: "2" },
-} as const;
 
 type QuoteTab = "add" | "my" | "published";
 
@@ -406,7 +405,7 @@ function QuoteCard({
           canEdit && !isEditing ? (
             <PondButton
               size="sm"
-              colorPalette="lilypad"
+              colorPalette="teal"
               disabled={deleteBusy}
               onClick={(e) => {
                 e.stopPropagation();
@@ -424,7 +423,7 @@ function QuoteCard({
               {cardSuccess ? (
                 <Text
                   fontSize={APP_TEXT_SIZES.helper}
-                  color="lilypad.solid"
+                  color="teal.solid"
                   fontWeight="medium"
                 >
                   {cardSuccess}
@@ -534,7 +533,7 @@ function QuoteCard({
                               <Tag.Root
                                 key={`edit-tag-${quote.id}-${label.id}`}
                                 size="sm"
-                                colorPalette="lilypad"
+                                colorPalette="teal"
                                 variant={isActive ? "solid" : "outline"}
                                 bg={isActive ? undefined : "bg"}
                                 cursor="pointer"
@@ -574,7 +573,7 @@ function QuoteCard({
                                 <Tag.Root
                                   key={`edit-attrib-name-${quote.id}-${label.id}`}
                                   size="sm"
-                                  colorPalette="lilypad"
+                                  colorPalette="teal"
                                   variant={isActive ? "solid" : "outline"}
                                   bg={isActive ? undefined : "bg"}
                                   cursor="pointer"
@@ -616,7 +615,7 @@ function QuoteCard({
                                 <Tag.Root
                                   key={`edit-attrib-email-${quote.id}-${label.id}`}
                                   size="sm"
-                                  colorPalette="lilypad"
+                                  colorPalette="teal"
                                   variant={isActive ? "solid" : "outline"}
                                   bg={isActive ? undefined : "bg"}
                                   cursor="pointer"
@@ -644,7 +643,7 @@ function QuoteCard({
                     <HStack>
                       <PondButton
                         size="sm"
-                        colorPalette="lilypad"
+                        colorPalette="teal"
                         loading={savingEdit}
                         disabled={savingEdit || deleteBusy}
                         onClick={(e) => {
@@ -1013,7 +1012,7 @@ export default function QuotesFeedPage() {
   }
   if (!sessionUser) {
     return (
-      <Stack gap="4" maxW="4xl">
+      <Stack gap="4" maxW="5xl">
         <Text fontWeight="semibold">Reconnecting your API session…</Text>
         <Text fontSize={APP_TEXT_SIZES.helper}>
           {sessionError ||
@@ -1054,27 +1053,18 @@ export default function QuotesFeedPage() {
       >
         <Box
           flex="1"
-          bg="sky.solid"
-          px={{ base: "2", md: "2" }}
+          bg="bg"
+          px={0}
           py={{ base: "2", md: "2" }}
         >
-          <Box
-            maxW="4xl"
-            w="100%"
-            mx="auto"
-            bg="gray.100"
-            borderWidth="1px"
-            borderColor="border"
-            borderRadius="xl"
-            overflow="hidden"
-          >
+          <Box {...APP_SHELL_TRAY_PROPS}>
             <Stack
               gap={{ base: "4", md: "4" }}
               px={{ base: "2", md: "2" }}
               pt={{ base: "2", md: "2" }}
               pb="2"
             >
-              <Box {...ENTRY_CARD_PROPS}>
+              <Box {...PANEL_ENTRY_CARD_PROPS}>
                 <Heading
                   as="h1"
                   size={{ base: "lg", md: "xl" }}
@@ -1103,62 +1093,17 @@ export default function QuotesFeedPage() {
                 </Text>
               </Box>
             </Stack>
-            <Tabs.List
-              px={{ base: "2", md: "2" }}
-              pt="0"
-              pb="0"
-              borderBottomWidth="1px"
-              borderColor="border"
-              gap="1"
-              w="100%"
-            >
-              <Tabs.Trigger
-                value="add"
-                bg={activeTab === "add" ? "lilypad.solid" : undefined}
-                color={activeTab === "add" ? "black" : undefined}
-                borderTopRadius="md"
-                borderBottomRadius="0"
-                px="2"
-                py="2"
-                fontWeight="medium"
-                _hover={{
-                  bg: activeTab === "add" ? "lilypad.solid" : "transparent",
-                }}
-                _selected={{ bg: "lilypad.solid", color: "black" }}
-              >
+            <Tabs.List {...APP_SHELL_TAB_LIST_PROPS}>
+              <Tabs.Trigger value="add" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                 Add Quote
               </Tabs.Trigger>
-              <Tabs.Trigger
-                value="my"
-                bg={activeTab === "my" ? "lilypad.solid" : undefined}
-                color={activeTab === "my" ? "black" : undefined}
-                borderTopRadius="md"
-                borderBottomRadius="0"
-                px="2"
-                py="2"
-                fontWeight="medium"
-                _hover={{
-                  bg: activeTab === "my" ? "lilypad.solid" : "transparent",
-                }}
-                _selected={{ bg: "lilypad.solid", color: "black" }}
-              >
+              <Tabs.Trigger value="my" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                 My Quotes
               </Tabs.Trigger>
               <Tabs.Trigger
                 value="published"
                 display={isApprovedUser ? undefined : "none"}
-                bg={activeTab === "published" ? "lilypad.solid" : undefined}
-                color={activeTab === "published" ? "black" : undefined}
-                borderTopRadius="md"
-                borderBottomRadius="0"
-                px="2"
-                py="2"
-                fontWeight="medium"
-                _hover={{
-                  bg:
-                    activeTab === "published" ? "lilypad.solid" : "transparent",
-                }}
-                _selected={{ bg: "lilypad.solid", color: "black" }}
+                {...APP_SHELL_TAB_TRIGGER_PROPS}
               >
                 Published Quotes
               </Tabs.Trigger>
@@ -1172,48 +1117,11 @@ export default function QuotesFeedPage() {
                 }
                 variant="plain"
               >
-                <Tabs.List
-                  borderBottomWidth="1px"
-                  borderColor="border"
-                  gap="1"
-                  w="100%"
-                >
-                  <Tabs.Trigger
-                    value="single"
-                    bg={addQuoteMode === "single" ? "lilypad.solid" : undefined}
-                    color={addQuoteMode === "single" ? "black" : undefined}
-                    borderTopRadius="md"
-                    borderBottomRadius="0"
-                    px="2"
-                    py="2"
-                    fontWeight="medium"
-                    _hover={{
-                      bg:
-                        addQuoteMode === "single"
-                          ? "lilypad.solid"
-                          : "transparent",
-                    }}
-                    _selected={{ bg: "lilypad.solid", color: "black" }}
-                  >
+                <Tabs.List {...APP_SHELL_TAB_LIST_NESTED_PROPS}>
+                  <Tabs.Trigger value="single" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                     Single Quote
                   </Tabs.Trigger>
-                  <Tabs.Trigger
-                    value="bulk"
-                    bg={addQuoteMode === "bulk" ? "lilypad.solid" : undefined}
-                    color={addQuoteMode === "bulk" ? "black" : undefined}
-                    borderTopRadius="md"
-                    borderBottomRadius="0"
-                    px="2"
-                    py="2"
-                    fontWeight="medium"
-                    _hover={{
-                      bg:
-                        addQuoteMode === "bulk"
-                          ? "lilypad.solid"
-                          : "transparent",
-                    }}
-                    _selected={{ bg: "lilypad.solid", color: "black" }}
-                  >
+                  <Tabs.Trigger value="bulk" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                     Bulk Import
                   </Tabs.Trigger>
                 </Tabs.List>
@@ -1267,7 +1175,7 @@ export default function QuotesFeedPage() {
                         </Collapsible.Trigger>
                         <PondButton
                           type="button"
-                          colorPalette="lilypad"
+                          colorPalette="teal"
                           loading={saving}
                           disabled={saving || body.trim().length === 0}
                           onClick={() => void onSaveQuote()}
@@ -1325,7 +1233,7 @@ export default function QuotesFeedPage() {
                                     <Tag.Root
                                       key={`new-tag-${label.id}`}
                                       size="sm"
-                                      colorPalette="lilypad"
+                                      colorPalette="teal"
                                       variant={isActive ? "solid" : "outline"}
                                       bg={isActive ? undefined : "bg"}
                                       cursor="pointer"
@@ -1370,7 +1278,7 @@ export default function QuotesFeedPage() {
                                       <Tag.Root
                                         key={`new-attrib-name-${label.id}`}
                                         size="sm"
-                                        colorPalette="lilypad"
+                                        colorPalette="teal"
                                         variant={isActive ? "solid" : "outline"}
                                         bg={isActive ? undefined : "bg"}
                                         cursor="pointer"
@@ -1412,7 +1320,7 @@ export default function QuotesFeedPage() {
                                       <Tag.Root
                                         key={`new-attrib-email-${label.id}`}
                                         size="sm"
-                                        colorPalette="lilypad"
+                                        colorPalette="teal"
                                         variant={isActive ? "solid" : "outline"}
                                         bg={isActive ? undefined : "bg"}
                                         cursor="pointer"
@@ -1442,7 +1350,7 @@ export default function QuotesFeedPage() {
                                   <Tag.Root
                                     key={`friend-tag-suggest-${friend.id}`}
                                     size="sm"
-                                    colorPalette="lilypad"
+                                    colorPalette="teal"
                                     variant="outline"
                                     bg="bg"
                                     cursor="pointer"
@@ -1481,7 +1389,7 @@ export default function QuotesFeedPage() {
                     <HStack justify="flex-end">
                       <PondButton
                         type="button"
-                        colorPalette="lilypad"
+                        colorPalette="teal"
                         loading={saving}
                         disabled={
                           saving ||
@@ -1504,7 +1412,7 @@ export default function QuotesFeedPage() {
               {success ? (
                 <Text
                   fontSize={APP_TEXT_SIZES.helper}
-                  color="lilypad.solid"
+                  color="teal.solid"
                   fontWeight="medium"
                 >
                   {success}

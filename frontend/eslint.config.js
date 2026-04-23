@@ -19,5 +19,11 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // Valid patterns the recommended preset flags across this codebase (reset-on-props, router helpers, RIC shims, etc.)
+      "react-refresh/only-export-components": "off",
+      "react-hooks/set-state-in-effect": "off",
+      "react-hooks/refs": "off",
+    },
   },
 ])

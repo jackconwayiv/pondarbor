@@ -242,7 +242,7 @@ export default function WhatIfHandPage() {
                 type="button"
                 size="sm"
                 variant="outline"
-                colorPalette="sky"
+                colorPalette="lilypad"
                 onClick={() =>
                   void loginWithRedirect(
                     auth0LoginWithReturnTo(`${location.pathname}${location.search}`, {
@@ -297,7 +297,7 @@ export default function WhatIfHandPage() {
 
           <PondButton
             type="button"
-            colorPalette="lilypad"
+            colorPalette="teal"
             size="md"
             alignSelf="flex-start"
             onClick={() => void handleJoin()}
@@ -441,7 +441,7 @@ export default function WhatIfHandPage() {
               <HStack gap="3" flexWrap="wrap">
                 <PondButton
                   type="button"
-                  colorPalette="lilypad"
+                  colorPalette="teal"
                   size="sm"
                   loading={busy}
                   onClick={() => void action({ type: "resolve_question_skip", approve: false })}
@@ -514,7 +514,7 @@ export default function WhatIfHandPage() {
                   void action({ type: "toggle_ready" });
                 }}
                 disabled={busy}
-                colorPalette="lilypad"
+                colorPalette="teal"
                 size="md"
               >
                 <Checkbox.HiddenInput />
@@ -565,7 +565,7 @@ export default function WhatIfHandPage() {
           {state?.status === "voting" && isActive && canReveal ? (
             <PondButton
               type="button"
-              colorPalette="lilypad"
+              colorPalette="teal"
               alignSelf="flex-start"
               onClick={() => void action({ type: "reveal" })}
               loading={busy}
@@ -590,7 +590,7 @@ export default function WhatIfHandPage() {
                 canAdvance ? (
                   <PondButton
                     type="button"
-                    colorPalette="lilypad"
+                    colorPalette="teal"
                     alignSelf="flex-start"
                     onClick={() => void action({ type: "next_turn" })}
                     loading={busy}
@@ -634,7 +634,7 @@ export default function WhatIfHandPage() {
                     _hover={{
                       bg: "white",
                       color: "black",
-                      borderColor: "lilypad.solid",
+                      borderColor: "teal.solid",
                       borderWidth: "16px",
                     }}
                     onClick={() => void action({ type: "pick_duel_opponent", target_player_id: p.id })}
@@ -701,7 +701,7 @@ export default function WhatIfHandPage() {
                         _hover={{
                           bg: "white",
                           color: "black",
-                          borderColor: "lilypad.solid",
+                          borderColor: "teal.solid",
                           borderWidth: "16px",
                         }}
                         onClick={() =>
@@ -736,7 +736,7 @@ export default function WhatIfHandPage() {
                       _hover={{
                         bg: "white",
                         color: "black",
-                        borderColor: "lilypad.solid",
+                        borderColor: "teal.solid",
                         borderWidth: "16px",
                       }}
                       onClick={() => void action({ type: "pick_subject", target_player_id: p.id })}
@@ -792,7 +792,7 @@ export default function WhatIfHandPage() {
                         _hover={{
                           bg: "white",
                           color: "black",
-                          borderColor: "lilypad.solid",
+                          borderColor: "teal.solid",
                           borderWidth: "8px",
                         }}
                         onClick={() => void action({ type: "vote", option_index: idx })}
@@ -841,7 +841,7 @@ export default function WhatIfHandPage() {
               </Text>
               <PondButton
                 type="button"
-                colorPalette="lilypad"
+                colorPalette="teal"
                 alignSelf="flex-start"
                 onClick={() => navigate("/whatif?tab=join")}
               >

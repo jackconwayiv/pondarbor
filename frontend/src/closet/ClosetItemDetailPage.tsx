@@ -1,6 +1,8 @@
 import {
   Box,
   Card,
+  CloseButton,
+  Dialog,
   HStack,
   Image,
   Input,
@@ -30,6 +32,7 @@ import {
 import { fetchFriendsList } from "../friends/api";
 import PondButton from "../PondButton";
 import { MealEditorBackdropDismiss } from "../meal/MealEditorBackdropDismiss";
+import { useIsMobile } from "../responsive";
 import {
   APP_TEXT_SIZES,
   MAPPED_CLOSET_TAB_STACK_GAP,
@@ -72,6 +75,7 @@ export default function ClosetItemDetailPage() {
   const { itemId: itemIdParam } = useParams<{ itemId: string }>();
   const location = useLocation();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const {
     isAuthenticated,
     isLoading,
@@ -226,7 +230,7 @@ export default function ClosetItemDetailPage() {
           {loadError}
         </Text>
         <RouterLink to={closetReturnTo}>
-          <Text as="span" color="lilypad.solid" fontWeight="bold">
+          <Text as="span" color="sky.solid" fontWeight="bold">
             ← Back
           </Text>
         </RouterLink>
@@ -246,21 +250,70 @@ export default function ClosetItemDetailPage() {
     !borrowedByMe &&
     sameClosetUserId(item.current_holder_user.id, item.owner_user.id);
 
+  const borrowRequestForm = (
+    <Stack gap="3">
+      <Text fontSize="sm" fontWeight="medium">
+        Need-by date
+      </Text>
+      <Input
+        type="date"
+        defaultValue={item.my_pending_request?.date_needed_by ?? ""}
+        key={`${item.id}-${item.my_pending_request?.date_needed_by ?? "new"}`}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (!v) return;
+          void submitBorrowDate(v);
+        }}
+        {...PLACEHOLDER}
+      />
+      <Text fontSize="sm" color="fg.muted">
+        Optional message
+      </Text>
+      <Textarea
+        value={borrowMessage}
+        onChange={(e) => setBorrowMessage(e.target.value)}
+        placeholder="Message to owner"
+        minH="4rem"
+        {...PLACEHOLDER}
+      />
+      {isMobile ? (
+        <Text fontSize="xs" color="fg.muted">
+          Pick a date to send. Tap Done to close, or add a message and pick a date.
+        </Text>
+      ) : (
+        <Text fontSize="xs" color="fg.muted">
+          Pick a date to send the request. Click away to cancel.
+        </Text>
+      )}
+    </Stack>
+  );
+
   return (
     <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP} w="100%">
-      <Text fontSize={APP_TEXT_SIZES.helper}>
+      <Box
+        position="sticky"
+        top="0"
+        zIndex="sticky"
+        bg="bg.panel"
+        borderBottomWidth="1px"
+        borderColor="border"
+        py="2"
+        mb="0"
+        mx={{ base: "-2", md: 0 }}
+        px="2"
+      >
         <RouterLink to={closetReturnTo}>
-          <Text as="span" color="lilypad.solid" fontWeight="bold">
+          <Text as="span" color="sky.solid" fontWeight="bold" fontSize="sm">
             ← Back
           </Text>
         </RouterLink>
-      </Text>
+      </Box>
 
       {notice ? (
         <Text
           fontSize={APP_TEXT_SIZES.helper}
           fontWeight="medium"
-          color={notice.kind === "error" ? "nautical.solid" : "lilypad.solid"}
+          color={notice.kind === "error" ? "nautical.solid" : "forest.solid"}
           role={notice.kind === "error" ? "alert" : "status"}
         >
           {notice.message}
@@ -275,7 +328,7 @@ export default function ClosetItemDetailPage() {
                 w="100%"
                 minH={{ base: "min(55vh, 420px)", md: "min(50vh, 480px)" }}
                 maxH="70vh"
-                bg="gray.100"
+                bg="bg.subtle"
                 borderRadius="md"
                 overflow="hidden"
                 display="flex"
@@ -293,7 +346,7 @@ export default function ClosetItemDetailPage() {
                     draggable={false}
                   />
                 ) : (
-                  <Text fontSize="5xl" fontWeight="bold" color="gray.400">
+                  <Text fontSize="5xl" fontWeight="bold" color="fg.muted">
                     {(item.name.trim().slice(0, 1) || "?").toUpperCase()}
                   </Text>
                 )}
@@ -302,7 +355,7 @@ export default function ClosetItemDetailPage() {
               <Stack gap="2">
                 <HStack flexWrap="wrap" gap="2" align="flex-start">
                   {item.my_pending_request ? (
-                    <Tag.Root size="sm" bg="lilypad.solid" color="black" borderWidth="0">
+                    <Tag.Root size="sm" bg="lilypad.solid" color="fg" borderWidth="0">
                       <Tag.Label fontWeight="bold">REQUESTED</Tag.Label>
                     </Tag.Root>
                   ) : null}
@@ -331,7 +384,7 @@ export default function ClosetItemDetailPage() {
                 {tagParts.length > 0 ? (
                   <HStack flexWrap="wrap" gap="2">
                     {tagParts.map((tag) => (
-                      <Tag.Root key={tag} size="sm" bg="gray.100" color="gray.600" borderWidth="0">
+                      <Tag.Root key={tag} size="sm" bg="bg.muted" color="fg.muted" borderWidth="0">
                         <Tag.Label>{tag}</Tag.Label>
                       </Tag.Root>
                     ))}
@@ -351,7 +404,7 @@ export default function ClosetItemDetailPage() {
                     <HStack flexWrap="wrap">
                       <PondButton
                         size="sm"
-                        colorPalette="lilypad"
+                        colorPalette="teal"
                         loading={custodyActionBusy}
                         onClick={() =>
                           void (async () => {
@@ -405,7 +458,7 @@ export default function ClosetItemDetailPage() {
 
                 {isOwner ? (
                   <PondButton
-                    colorPalette="lilypad"
+                    colorPalette="teal"
                     alignSelf="flex-start"
                     onClick={() => setManageOpen(true)}
                   >
@@ -413,20 +466,20 @@ export default function ClosetItemDetailPage() {
                   </PondButton>
                 ) : null}
 
-                {canRequestBorrow ? (
+                {canRequestBorrow && !isMobile ? (
                   <PopoverRoot
                     open={borrowPopoverOpen}
                     onOpenChange={(d: { open: boolean }) => setBorrowPopoverOpen(d.open)}
                     positioning={{ placement: "bottom-start" }}
                   >
                     <PopoverTrigger asChild>
-                      <PondButton colorPalette="lilypad" alignSelf="flex-start">
+                      <PondButton colorPalette="teal" alignSelf="flex-start">
                         {item.my_pending_request ? "Update borrow request" : "Request to borrow"}
                       </PondButton>
                     </PopoverTrigger>
                     <PopoverPositioner>
                       <PopoverContent
-                        bg="white"
+                        bg="bg.panel"
                         borderWidth="1px"
                         borderColor="border"
                         borderRadius="md"
@@ -434,40 +487,52 @@ export default function ClosetItemDetailPage() {
                         p="0"
                         minW="280px"
                       >
-                        <PopoverBody p="3">
-                          <Stack gap="3">
-                            <Text fontSize="sm" fontWeight="medium">
-                              Need-by date
-                            </Text>
-                            <Input
-                              type="date"
-                              defaultValue={item.my_pending_request?.date_needed_by ?? ""}
-                              key={`${item.id}-${item.my_pending_request?.date_needed_by ?? "new"}`}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                if (!v) return;
-                                void submitBorrowDate(v);
-                              }}
-                              {...PLACEHOLDER}
-                            />
-                            <Text fontSize="sm" color="fg.muted">
-                              Optional message
-                            </Text>
-                            <Textarea
-                              value={borrowMessage}
-                              onChange={(e) => setBorrowMessage(e.target.value)}
-                              placeholder="Message to owner"
-                              minH="4rem"
-                              {...PLACEHOLDER}
-                            />
-                            <Text fontSize="xs" color="fg.muted">
-                              Pick a date to send the request. Click away to cancel.
-                            </Text>
-                          </Stack>
-                        </PopoverBody>
+                        <PopoverBody p="3">{borrowRequestForm}</PopoverBody>
                       </PopoverContent>
                     </PopoverPositioner>
                   </PopoverRoot>
+                ) : null}
+                {canRequestBorrow && isMobile ? (
+                  <>
+                    <PondButton
+                      colorPalette="teal"
+                      alignSelf="flex-start"
+                      onClick={() => setBorrowPopoverOpen(true)}
+                    >
+                      {item.my_pending_request ? "Update borrow request" : "Request to borrow"}
+                    </PondButton>
+                    <Dialog.Root
+                      open={borrowPopoverOpen}
+                      lazyMount
+                      unmountOnExit
+                      onOpenChange={(d: { open: boolean }) => setBorrowPopoverOpen(d.open)}
+                    >
+                      <Dialog.Backdrop />
+                      <Dialog.Positioner px="0" py="0" display="flex" alignItems="flex-end" justifyContent="center">
+                        <Dialog.Content
+                          maxW="100vw"
+                          w="100vw"
+                          maxH="90vh"
+                          overflowY="auto"
+                          borderTopRadius="xl"
+                          borderWidth="0"
+                          p="3"
+                          pb="5"
+                          bg="bg.panel"
+                        >
+                          <HStack justify="space-between" align="start" mb="2" gap="2">
+                            <Text fontSize="md" fontWeight="semibold">
+                              Borrow request
+                            </Text>
+                            <Dialog.CloseTrigger asChild>
+                              <CloseButton type="button" size="sm" aria-label="Close" />
+                            </Dialog.CloseTrigger>
+                          </HStack>
+                          {borrowRequestForm}
+                        </Dialog.Content>
+                      </Dialog.Positioner>
+                    </Dialog.Root>
+                  </>
                 ) : null}
 
                 {borrowedByMe ? (
@@ -488,7 +553,7 @@ export default function ClosetItemDetailPage() {
                     <HStack flexWrap="wrap">
                       <PondButton
                         size="sm"
-                        colorPalette="lilypad"
+                        colorPalette="teal"
                         loading={returnBusy}
                         disabled={
                           returnBusy ||

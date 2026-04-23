@@ -9,6 +9,7 @@ import {
   Image,
   Menu,
   Spacer,
+  Text,
 } from "@chakra-ui/react";
 import { useEffect, useMemo } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
@@ -18,14 +19,24 @@ import {
   auth0LoginAuthorizationParams,
   auth0SignupAuthorizationParams,
 } from "./auth/auth0LoginParams";
+import {
+  APP_DESKTOP_NAV,
+  guestHamburgerNavItems,
+  navLinkLabel,
+} from "./appNavConfig";
 import PondButton from "./PondButton";
 import { pondarborLogoSrc } from "./publicAsset";
+import BreadcrumbBar from "./BreadcrumbBar";
 import { useIsMobile } from "./responsive";
 
 /** Wordmark font; fixed look (no route-based styling). */
 const NAV_WORDMARK_FONT = '"Brush Script MT", "Segoe Script", cursive';
-const NAV_WORDMARK_FONT_SIZE = "calc(2em + 6px)";
+const NAV_WORDMARK_FONT_SIZE = "calc(1.6em + 2px)";
 const NAV_WORDMARK_LINE_HEIGHT = "1.1";
+/** Slightly smaller app links in the top bar. */
+const NAV_APP_LINK_FONT_SIZE = "0.8125rem";
+const NAV_APP_LINK_LINE_HEIGHT = "1.2";
+const NAV_HSTACK_GAP = "1.5";
 
 /** Nav bar links: no underline; no sticky focus/hover chrome after click. */
 const navBarLinkProps = {
@@ -51,9 +62,14 @@ const navBarLinkProps = {
   },
   _focusVisible: {
     outline: "2px solid",
-    outlineColor: "rgba(0, 0, 0, 0.45)",
+    outlineColor: "rgba(245, 241, 232, 0.85)",
     outlineOffset: "2px",
   },
+} as const;
+
+const HEADER_NAV_LINK = {
+  active: "white",
+  inactive: "rgba(245, 241, 232, 0.75)",
 } as const;
 
 function isGamesNavTreeActive(pathname: string): boolean {
@@ -117,28 +133,17 @@ export default function AppLayout() {
   // `auth0User` is cleared when the Auth0 client logs out; rely on it so nav stays in sync.
   const showProfileNav = isAuthenticated && !!auth0User;
   const desktopNavEntries = useMemo(
-    () =>
-      showProfileNav
-        ? [
-            { to: "/friends", label: "Friends" },
-            { to: "/songaday", label: "Song-a-Day" },
-            { to: "/closet", label: "Closet" },
-            { to: "/calendar", label: "Calendar" },
-            { to: "/quotes", label: "Quotes" },
-            { to: "/meal", label: "Meal Maestro" },
-            { to: "/games", label: "Games" },
-            { to: "/about", label: "About" },
-          ]
-        : [
-            { to: "/games", label: "Games" },
-            { to: "/about", label: "About" },
-          ],
+    () => (showProfileNav ? APP_DESKTOP_NAV : guestHamburgerNavItems()),
     [showProfileNav],
   );
 
   const isClickerRoute =
     location.pathname === "/clicker" ||
     location.pathname.startsWith("/clicker/");
+  const isQffRoute =
+    location.pathname === "/qff" || location.pathname.startsWith("/qff/");
+  /** Aligned with `QffLayout` so the app shell is not the default cream. */
+  const qffAppShellBg = "#0c0c0c";
   const isHomeIndex = location.pathname === "/";
   const isGamesHubIndex = location.pathname === "/games";
 
@@ -236,7 +241,7 @@ export default function AppLayout() {
     </Menu.Root>
   ) : !isAuthenticated ? (
     <PondButton
-      colorPalette="sky"
+      colorPalette="lilypad"
       size="sm"
       onClick={() =>
         loginWithRedirect({
@@ -256,7 +261,7 @@ export default function AppLayout() {
       minH="100%"
       w="100%"
       maxW="100%"
-      bg="sky.solid"
+      bg={isQffRoute ? qffAppShellBg : "bg"}
       color="fg"
     >
       <Flex
@@ -264,7 +269,8 @@ export default function AppLayout() {
         px={{ base: "2", md: "2" }}
         py="2"
         align="center"
-        bg="lilypad.solid"
+        bg="navy.solid"
+        color="navy.fg"
         position="relative"
         w="100%"
       >
@@ -278,6 +284,7 @@ export default function AppLayout() {
                     variant="ghost"
                     size="sm"
                     aria-label="Open navigation menu"
+                    color="navy.fg"
                     bg="transparent"
                     _hover={{ bg: "transparent" }}
                     _active={{ bg: "transparent" }}
@@ -292,73 +299,36 @@ export default function AppLayout() {
                   </Button>
                 </Menu.Trigger>
                 <Menu.Positioner>
-                  <Menu.Content minW="48">
+                  <Menu.Content minW="52">
                     <Menu.Item
                       value="home"
                       onSelect={() => {
                         navigate("/");
                       }}
+                      fontSize="sm"
                     >
-                      Home
+                      <HStack gap="2" w="100%">
+                        <Text aria-hidden>🏠</Text>
+                        <Text>Home</Text>
+                      </HStack>
                     </Menu.Item>
                     {showProfileNav ? (
                       <>
-                        <Menu.Item
-                          value="friends"
-                          onSelect={() => {
-                            navigate("/friends");
-                          }}
-                        >
-                          Friends
-                        </Menu.Item>
-                        <Menu.Item
-                          value="songaday"
-                          onSelect={() => {
-                            navigate("/songaday");
-                          }}
-                        >
-                          Song-a-Day
-                        </Menu.Item>
-                        <Menu.Item
-                          value="closet"
-                          onSelect={() => {
-                            navigate("/closet");
-                          }}
-                        >
-                          Closet
-                        </Menu.Item>
-                        <Menu.Item
-                          value="calendar"
-                          onSelect={() => {
-                            navigate("/calendar");
-                          }}
-                        >
-                          Calendar
-                        </Menu.Item>
-                        <Menu.Item
-                          value="quotes"
-                          onSelect={() => {
-                            navigate("/quotes");
-                          }}
-                        >
-                          Quotes
-                        </Menu.Item>
-                        <Menu.Item
-                          value="meal"
-                          onSelect={() => {
-                            navigate("/meal");
-                          }}
-                        >
-                          Meal Maestro
-                        </Menu.Item>
-                        <Menu.Item
-                          value="games-hub"
-                          onSelect={() => {
-                            navigate("/games");
-                          }}
-                        >
-                          Games
-                        </Menu.Item>
+                        {APP_DESKTOP_NAV.map((item) => (
+                          <Menu.Item
+                            key={item.to}
+                            value={item.to.slice(1) || "home"}
+                            onSelect={() => {
+                              navigate(item.to);
+                            }}
+                            fontSize="sm"
+                          >
+                            <HStack gap="2" w="100%">
+                              <Text aria-hidden>{item.emoji}</Text>
+                              <Text>{item.label}</Text>
+                            </HStack>
+                          </Menu.Item>
+                        ))}
                       </>
                     ) : (
                       <>
@@ -370,8 +340,12 @@ export default function AppLayout() {
                                 auth0LoginAuthorizationParams(),
                             });
                           }}
+                          fontSize="sm"
                         >
-                          Log In
+                          <HStack gap="2" w="100%">
+                            <Text aria-hidden>🔐</Text>
+                            <Text>Log in</Text>
+                          </HStack>
                         </Menu.Item>
                         <Menu.Item
                           value="sign-up"
@@ -381,27 +355,30 @@ export default function AppLayout() {
                                 auth0SignupAuthorizationParams(),
                             });
                           }}
+                          fontSize="sm"
                         >
-                          Sign Up
+                          <HStack gap="2" w="100%">
+                            <Text aria-hidden>📝</Text>
+                            <Text>Sign up</Text>
+                          </HStack>
                         </Menu.Item>
-                        <Menu.Item
-                          value="games-hub"
-                          onSelect={() => {
-                            navigate("/games");
-                          }}
-                        >
-                          Games
-                        </Menu.Item>
+                        {guestHamburgerNavItems().map((item) => (
+                          <Menu.Item
+                            key={item.to}
+                            value={item.to.slice(1) || "home"}
+                            onSelect={() => {
+                              navigate(item.to);
+                            }}
+                            fontSize="sm"
+                          >
+                            <HStack gap="2" w="100%">
+                              <Text aria-hidden>{item.emoji}</Text>
+                              <Text>{item.label}</Text>
+                            </HStack>
+                          </Menu.Item>
+                        ))}
                       </>
                     )}
-                    <Menu.Item
-                      value="about"
-                      onSelect={() => {
-                        navigate("/about");
-                      }}
-                    >
-                      About
-                    </Menu.Item>
                   </Menu.Content>
                 </Menu.Positioner>
               </Menu.Root>
@@ -418,6 +395,7 @@ export default function AppLayout() {
                 asChild
                 colorPalette="gray"
                 variant="plain"
+                color="navy.fg"
                 {...navBarLinkProps}
                 fontFamily={NAV_WORDMARK_FONT}
                 fontWeight="normal"
@@ -434,12 +412,16 @@ export default function AppLayout() {
           </>
         ) : (
           <>
-            <HStack gap="4" align="center">
+            <HStack gap={NAV_HSTACK_GAP} align="center">
               <ChakraLink
                 asChild
                 colorPalette="gray"
                 variant="plain"
                 {...navBarLinkProps}
+                color="navy.fg"
+                _visited={{ ...navBarLinkProps._visited, color: "navy.fg" }}
+                _hover={{ ...navBarLinkProps._hover, color: "white" }}
+                _active={{ ...navBarLinkProps._active, color: "white" }}
               >
                 <Link to="/">
                   <Box
@@ -467,12 +449,16 @@ export default function AppLayout() {
                 colorPalette="gray"
                 variant="plain"
                 {...navBarLinkProps}
+                color="navy.fg"
+                _visited={{ ...navBarLinkProps._visited, color: "navy.fg" }}
+                _hover={{ ...navBarLinkProps._hover, color: "white" }}
+                _active={{ ...navBarLinkProps._active, color: "white" }}
                 fontFamily={NAV_WORDMARK_FONT}
                 fontWeight="normal"
                 letterSpacing="normal"
                 fontSize={NAV_WORDMARK_FONT_SIZE}
                 lineHeight={NAV_WORDMARK_LINE_HEIGHT}
-                mx={{ base: "2", md: "2" }}
+                mx={{ base: "1", md: "1" }}
               >
                 <Link to="/">PondArbor</Link>
               </ChakraLink>
@@ -482,6 +468,7 @@ export default function AppLayout() {
                   location.pathname,
                   entry.to,
                 );
+                const label = navLinkLabel(entry);
                 return (
                   <ChakraLink
                     key={entry.to}
@@ -489,19 +476,26 @@ export default function AppLayout() {
                     colorPalette="gray"
                     variant="plain"
                     {...navBarLinkProps}
+                    fontSize={NAV_APP_LINK_FONT_SIZE}
                     fontWeight="normal"
-                    color={active ? "white" : "black"}
+                    color={active ? HEADER_NAV_LINK.active : HEADER_NAV_LINK.inactive}
                     _visited={{
                       ...navBarLinkProps._visited,
-                      color: active ? "white" : "black",
+                      color: active
+                        ? HEADER_NAV_LINK.active
+                        : HEADER_NAV_LINK.inactive,
                     }}
                     _hover={{
                       ...navBarLinkProps._hover,
-                      color: active ? "white" : "black",
+                      color: active
+                        ? HEADER_NAV_LINK.active
+                        : "white",
                     }}
                     _active={{
                       ...navBarLinkProps._active,
-                      color: active ? "white" : "black",
+                      color: active
+                        ? HEADER_NAV_LINK.active
+                        : HEADER_NAV_LINK.inactive,
                     }}
                   >
                     <Link to={entry.to}>
@@ -509,15 +503,15 @@ export default function AppLayout() {
                         as="span"
                         position="relative"
                         display="inline-block"
-                        lineHeight={NAV_WORDMARK_LINE_HEIGHT}
+                        lineHeight={NAV_APP_LINK_LINE_HEIGHT}
+                        fontSize={NAV_APP_LINK_FONT_SIZE}
                       >
-                        {/* Keep width stable: bold text is always in-flow, normal text is overlaid when inactive. */}
                         <Box
                           as="span"
                           fontWeight="bold"
                           opacity={active ? 1 : 0}
                         >
-                          {entry.label}
+                          {label}
                         </Box>
                         <Box
                           as="span"
@@ -527,7 +521,7 @@ export default function AppLayout() {
                           fontWeight="normal"
                           opacity={active ? 0 : 1}
                         >
-                          {entry.label}
+                          {label}
                         </Box>
                       </Box>
                     </Link>
@@ -546,16 +540,14 @@ export default function AppLayout() {
         minW={0}
         w="100%"
         maxW="100%"
-        {...(isClickerRoute
-          ? { p: 0 }
+        {...(isQffRoute
+          ? { p: 0, bg: qffAppShellBg }
           : {
-              px: { base: "2", md: "2" },
-              // Home embeds a full-width footer; main bottom padding would show sky below it.
-              pb:
-                isHomeIndex || isGamesHubIndex ? 0 : { base: "2", md: "2" },
-              pt: 0,
+              pt: "2px",
+              px: "2px",
+              pb: 0,
+              bg: "transparent",
             })}
-        bg="transparent"
         display="flex"
         flexDirection="column"
         minH="0"
@@ -567,8 +559,37 @@ export default function AppLayout() {
           w="100%"
           display="flex"
           flexDirection="column"
+          {...(isClickerRoute
+            ? { p: 0 }
+            : {
+                px: 0,
+                // Home / games: full-bleed footer; avoid padding below the outlet column.
+                pb:
+                  isHomeIndex || isGamesHubIndex
+                    ? 0
+                    : { base: "2", md: "2" },
+                pt: 0,
+              })}
         >
-          <Outlet />
+          {!(isQffRoute || isClickerRoute) ? (
+            <Box
+              w="100%"
+              maxW="100%"
+              px={{ base: "2", md: "2" }}
+            >
+              <BreadcrumbBar />
+            </Box>
+          ) : null}
+          <Box
+            flex="1"
+            minH="0"
+            minW={0}
+            w="100%"
+            display="flex"
+            flexDirection="column"
+          >
+            <Outlet />
+          </Box>
         </Box>
       </Box>
     </Box>

@@ -6,28 +6,28 @@ import {
   defineSlotRecipe,
   defineTokens,
 } from "@chakra-ui/react";
-import { BRAND_COLORS } from "./tokens";
+import { BRAND_COLORS, DESIGN } from "./tokens";
 
-/** Overrides default Chakra toast colors: brand lilypad (positive) and nautical orange (warning/error). */
+/** Success: forest; warning/error: orange (nautical). */
 const pondToastSlotRecipe = defineSlotRecipe({
   slots: ["root", "title", "description", "indicator", "closeTrigger", "actionTrigger"],
   base: {
     root: {
       "&[data-type=success]": {
-        bg: "lilypad.solid",
-        color: "lilypad.contrast",
+        bg: "forest.solid",
+        color: "forest.contrast",
         "--toast-trigger-bg": "{white/10}",
         "--toast-border-color": "{white/40}",
       },
       "&[data-type=warning]": {
-        bg: "nautical.solid",
-        color: "nautical.contrast",
+        bg: "orange.solid",
+        color: "orange.contrast",
         "--toast-trigger-bg": "{white/10}",
         "--toast-border-color": "{white/40}",
       },
       "&[data-type=error]": {
-        bg: "nautical.solid",
-        color: "nautical.contrast",
+        bg: "orange.solid",
+        color: "orange.contrast",
         "--toast-trigger-bg": "{white/10}",
         "--toast-border-color": "{white/40}",
       },
@@ -35,9 +35,15 @@ const pondToastSlotRecipe = defineSlotRecipe({
   },
 });
 
+function pondHex(base: string) {
+  return {
+    value: base,
+  };
+}
+
 /**
- * Single source of truth for PondArbor UI (Chakra v3 system).
- * Sky page canvas; white `bg` panels; green nav (`lilypad`); Verdana; sky/nautical button palettes.
+ * Chakra v3: semantic color groups for `colorPalette` and `bg`/`fg` tokens.
+ * Designer system: canvas (almond), structure (navy + deep), teal/sky for buttons, warm borders.
  */
 export const system = createSystem(
   defaultConfig,
@@ -50,221 +56,157 @@ export const system = createSystem(
         }),
         colors: defineTokens.colors({
           pond: {
-            // Single-source-of-truth accent colors from `assets/colors-*.png`
-            // Sky Blue:    #7CB7DF
-            // Lilypad:     #B7D394
-            // Soft Marigold / Pond Orange: #E9A14A
-            sky: { value: BRAND_COLORS.skyBlue },
-            skyStrong: { value: BRAND_COLORS.skyBlue },
-            skySubtle: { value: BRAND_COLORS.skyBlue },
-            pondBlue: { value: BRAND_COLORS.skyBlue },
-            pondBlueStrong: { value: BRAND_COLORS.skyBlue },
-            pondBlueSubtle: { value: BRAND_COLORS.skyBlue },
+            sky: pondHex(BRAND_COLORS.skyBlue),
+            skyStrong: pondHex(DESIGN.sky),
+            skySubtle: pondHex(DESIGN.sky),
 
-            lilypad: { value: BRAND_COLORS.lilypad },
-            lilypadStrong: { value: BRAND_COLORS.lilypad },
-            lilypadSubtle: { value: BRAND_COLORS.lilypad },
+            teal: pondHex(DESIGN.teal),
+            tealStrong: pondHex(DESIGN.teal),
+            tealSubtle: pondHex(DESIGN.teal),
 
-            orange: { value: BRAND_COLORS.orange },
-            orangeStrong: { value: BRAND_COLORS.orange },
-            orangeSubtle: { value: BRAND_COLORS.orange },
-            nautical: { value: BRAND_COLORS.orange },
-            nauticalStrong: { value: BRAND_COLORS.orange },
-            nauticalSubtle: { value: BRAND_COLORS.orange },
+            lilypad: pondHex(BRAND_COLORS.lilypad),
+            lilypadStrong: pondHex(DESIGN.forest),
+            lilypadSubtle: pondHex(BRAND_COLORS.lilypad),
+
+            orange: pondHex(BRAND_COLORS.orange),
+            orangeStrong: pondHex(DESIGN.orange),
+            orangeSubtle: pondHex(BRAND_COLORS.orange),
+            /** Legacy name: same as orange (attention / warning / secondary destructive). */
+            nautical: pondHex(BRAND_COLORS.orange),
+            nauticalStrong: pondHex(DESIGN.orange),
+            nauticalSubtle: pondHex(BRAND_COLORS.orange),
+
+            forest: pondHex(DESIGN.forest),
+            forestStrong: pondHex(DESIGN.forest),
+            forestSubtle: pondHex(DESIGN.forest),
+
+            navy: pondHex(DESIGN.navy),
+            navyStrong: pondHex(DESIGN.navy),
+            navySubtle: pondHex(DESIGN.navy),
+
+            deep: pondHex(DESIGN.deep),
+            deepStrong: pondHex(DESIGN.deep),
+            deepSubtle: pondHex(DESIGN.deep),
+
+            pondBlue: pondHex(BRAND_COLORS.skyBlue),
+            pondBlueStrong: pondHex(DESIGN.sky),
+            pondBlueSubtle: pondHex(BRAND_COLORS.skyBlue),
           },
         }),
       },
       semanticTokens: {
         colors: defineSemanticTokens.colors({
           bg: {
-            DEFAULT: { value: { _light: "#ffffff", _dark: "#ffffff" } },
-            subtle: { value: { _light: "#ffffff", _dark: "#ffffff" } },
-            muted: { value: { _light: "#ffffff", _dark: "#ffffff" } },
-            emphasized: { value: { _light: "#ffffff", _dark: "#ffffff" } },
-            panel: { value: { _light: "#ffffff", _dark: "#ffffff" } },
+            DEFAULT: { value: { _light: DESIGN.almond, _dark: DESIGN.almond } },
+            subtle: { value: { _light: DESIGN.surfaceTint, _dark: DESIGN.surfaceTint } },
+            muted: { value: { _light: DESIGN.warmTan, _dark: DESIGN.warmTan } },
+            emphasized: { value: { _light: DESIGN.surface, _dark: DESIGN.surface } },
+            panel: { value: { _light: DESIGN.surface, _dark: DESIGN.surface } },
+            canvas: { value: { _light: DESIGN.almond, _dark: DESIGN.almond } },
           },
           fg: {
-            DEFAULT: { value: { _light: "#000000", _dark: "#000000" } },
-            muted: { value: { _light: "#000000", _dark: "#000000" } },
-            subtle: { value: { _light: "#000000", _dark: "#000000" } },
+            DEFAULT: { value: { _light: DESIGN.textPrimary, _dark: DESIGN.textPrimary } },
+            muted: { value: { _light: `${DESIGN.textSecondary}CC`, _dark: `${DESIGN.textSecondary}CC` } },
+            subtle: { value: { _light: `${DESIGN.textSecondary}99`, _dark: `${DESIGN.textSecondary}99` } },
+            inverted: { value: { _light: DESIGN.almond, _dark: DESIGN.almond } },
           },
           border: {
-            DEFAULT: { value: { _light: "#000000", _dark: "#000000" } },
-            muted: { value: { _light: "#000000", _dark: "#000000" } },
-            subtle: { value: { _light: "#000000", _dark: "#000000" } },
+            DEFAULT: { value: { _light: "rgba(166, 138, 100, 0.4)", _dark: "rgba(166, 138, 100, 0.4)" } },
+            muted: { value: { _light: "rgba(166, 138, 100, 0.25)", _dark: "rgba(166, 138, 100, 0.25)" } },
+            subtle: { value: { _light: "rgba(166, 138, 100, 0.15)", _dark: "rgba(166, 138, 100, 0.15)" } },
           },
           gray: {
-            fg: { value: { _light: "#000000", _dark: "#000000" } },
+            fg: { value: { _light: DESIGN.textPrimary, _dark: DESIGN.textPrimary } },
+          },
+          teal: {
+            contrast: { value: { _light: DESIGN.almond, _dark: DESIGN.almond } },
+            fg: { value: { _light: DESIGN.teal, _dark: DESIGN.teal } },
+            subtle: { value: { _light: "{colors.pond.tealSubtle}", _dark: "{colors.pond.tealSubtle}" } },
+            muted: { value: { _light: "{colors.pond.teal}", _dark: "{colors.pond.teal}" } },
+            emphasized: { value: { _light: "{colors.pond.tealStrong}", _dark: "{colors.pond.tealStrong}" } },
+            solid: { value: { _light: "{colors.pond.teal}", _dark: "{colors.pond.teal}" } },
+            focusRing: { value: { _light: DESIGN.tealActive, _dark: DESIGN.tealActive } },
+            border: { value: { _light: DESIGN.teal, _dark: DESIGN.teal } },
+          },
+          forest: {
+            contrast: { value: { _light: DESIGN.almond, _dark: DESIGN.almond } },
+            fg: { value: { _light: DESIGN.forest, _dark: DESIGN.forest } },
+            subtle: { value: { _light: "{colors.pond.forestSubtle}", _dark: "{colors.pond.forestSubtle}" } },
+            muted: { value: { _light: "{colors.pond.forest}", _dark: "{colors.pond.forest}" } },
+            emphasized: { value: { _light: "{colors.pond.forestStrong}", _dark: "{colors.pond.forestStrong}" } },
+            solid: { value: { _light: "{colors.pond.forest}", _dark: "{colors.pond.forest}" } },
+            focusRing: { value: { _light: DESIGN.forest, _dark: DESIGN.forest } },
+            border: { value: { _light: DESIGN.forest, _dark: DESIGN.forest } },
+          },
+          navy: {
+            contrast: { value: { _light: DESIGN.almond, _dark: DESIGN.almond } },
+            fg: { value: { _light: DESIGN.almond, _dark: DESIGN.almond } },
+            subtle: { value: { _light: "{colors.pond.navySubtle}", _dark: "{colors.pond.navySubtle}" } },
+            muted: { value: { _light: "{colors.pond.navy}", _dark: "{colors.pond.navy}" } },
+            emphasized: { value: { _light: "{colors.pond.navyStrong}", _dark: "{colors.pond.navyStrong}" } },
+            solid: { value: { _light: "{colors.pond.navy}", _dark: "{colors.pond.navy}" } },
+            focusRing: { value: { _light: DESIGN.sky, _dark: DESIGN.sky } },
+            border: { value: { _light: DESIGN.navy, _dark: DESIGN.navy } },
+          },
+          deep: {
+            contrast: { value: { _light: DESIGN.almond, _dark: DESIGN.almond } },
+            fg: { value: { _light: DESIGN.almond, _dark: DESIGN.almond } },
+            subtle: { value: { _light: "{colors.pond.deepSubtle}", _dark: "{colors.pond.deepSubtle}" } },
+            muted: { value: { _light: "{colors.pond.deep}", _dark: "{colors.pond.deep}" } },
+            emphasized: { value: { _light: "{colors.pond.deepStrong}", _dark: "{colors.pond.deepStrong}" } },
+            solid: { value: { _light: "{colors.pond.deep}", _dark: "{colors.pond.deep}" } },
+            focusRing: { value: { _light: DESIGN.sky, _dark: DESIGN.sky } },
+            border: { value: { _light: DESIGN.deep, _dark: DESIGN.deep } },
           },
           sky: {
-            contrast: { value: { _light: "#000000", _dark: "#000000" } },
-            fg: { value: { _light: "#000000", _dark: "#000000" } },
-            subtle: {
-              value: {
-                _light: "{colors.pond.skySubtle}",
-                _dark: "{colors.pond.skySubtle}",
-              },
-            },
+            contrast: { value: { _light: DESIGN.textPrimary, _dark: DESIGN.textPrimary } },
+            fg: { value: { _light: BRAND_COLORS.skyBlue, _dark: BRAND_COLORS.skyBlue } },
+            subtle: { value: { _light: "{colors.pond.skySubtle}", _dark: "{colors.pond.skySubtle}" } },
             muted: { value: { _light: "{colors.pond.sky}", _dark: "{colors.pond.sky}" } },
-            emphasized: {
-              value: {
-                _light: "{colors.pond.skyStrong}",
-                _dark: "{colors.pond.skyStrong}",
-              },
-            },
+            emphasized: { value: { _light: "{colors.pond.skyStrong}", _dark: "{colors.pond.skyStrong}" } },
             solid: { value: { _light: "{colors.pond.sky}", _dark: "{colors.pond.sky}" } },
-            focusRing: {
-              value: {
-                _light: "{colors.pond.skyStrong}",
-                _dark: "{colors.pond.skyStrong}",
-              },
-            },
-            border: {
-              value: {
-                _light: "{colors.pond.skyStrong}",
-                _dark: "{colors.pond.skyStrong}",
-              },
-            },
+            focusRing: { value: { _light: "{colors.pond.skyStrong}", _dark: "{colors.pond.skyStrong}" } },
+            border: { value: { _light: "{colors.pond.skyStrong}", _dark: "{colors.pond.skyStrong}" } },
           },
           nautical: {
-            contrast: { value: { _light: "#000000", _dark: "#000000" } },
-            fg: { value: { _light: "#000000", _dark: "#000000" } },
-            subtle: {
-              value: {
-                _light: "{colors.pond.nauticalSubtle}",
-                _dark: "{colors.pond.nauticalSubtle}",
-              },
-            },
+            contrast: { value: { _light: DESIGN.almond, _dark: DESIGN.almond } },
+            fg: { value: { _light: BRAND_COLORS.orange, _dark: BRAND_COLORS.orange } },
+            subtle: { value: { _light: "{colors.pond.nauticalSubtle}", _dark: "{colors.pond.nauticalSubtle}" } },
             muted: { value: { _light: "{colors.pond.nautical}", _dark: "{colors.pond.nautical}" } },
-            emphasized: {
-              value: {
-                _light: "{colors.pond.nauticalStrong}",
-                _dark: "{colors.pond.nauticalStrong}",
-              },
-            },
-            solid: {
-              value: {
-                _light: "{colors.pond.nautical}",
-                _dark: "{colors.pond.nautical}",
-              },
-            },
-            focusRing: {
-              value: {
-                _light: "{colors.pond.nauticalStrong}",
-                _dark: "{colors.pond.nauticalStrong}",
-              },
-            },
-            border: {
-              value: {
-                _light: "{colors.pond.nauticalStrong}",
-                _dark: "{colors.pond.nauticalStrong}",
-              },
-            },
+            emphasized: { value: { _light: "{colors.pond.nauticalStrong}", _dark: "{colors.pond.nauticalStrong}" } },
+            solid: { value: { _light: "{colors.pond.nautical}", _dark: "{colors.pond.nautical}" } },
+            focusRing: { value: { _light: "{colors.pond.nauticalStrong}", _dark: "{colors.pond.nauticalStrong}" } },
+            border: { value: { _light: "{colors.pond.nauticalStrong}", _dark: "{colors.pond.nauticalStrong}" } },
           },
           orange: {
-            contrast: { value: { _light: "#000000", _dark: "#000000" } },
-            fg: { value: { _light: "#000000", _dark: "#000000" } },
-            subtle: {
-              value: {
-                _light: "{colors.pond.orangeSubtle}",
-                _dark: "{colors.pond.orangeSubtle}",
-              },
-            },
+            contrast: { value: { _light: DESIGN.almond, _dark: DESIGN.almond } },
+            fg: { value: { _light: BRAND_COLORS.orange, _dark: BRAND_COLORS.orange } },
+            subtle: { value: { _light: "{colors.pond.orangeSubtle}", _dark: "{colors.pond.orangeSubtle}" } },
             muted: { value: { _light: "{colors.pond.orange}", _dark: "{colors.pond.orange}" } },
-            emphasized: {
-              value: {
-                _light: "{colors.pond.orangeStrong}",
-                _dark: "{colors.pond.orangeStrong}",
-              },
-            },
-            solid: {
-              value: {
-                _light: "{colors.pond.orange}",
-                _dark: "{colors.pond.orange}",
-              },
-            },
-            focusRing: {
-              value: {
-                _light: "{colors.pond.orangeStrong}",
-                _dark: "{colors.pond.orangeStrong}",
-              },
-            },
-            border: {
-              value: {
-                _light: "{colors.pond.orangeStrong}",
-                _dark: "{colors.pond.orangeStrong}",
-              },
-            },
+            emphasized: { value: { _light: "{colors.pond.orangeStrong}", _dark: "{colors.pond.orangeStrong}" } },
+            solid: { value: { _light: "{colors.pond.orange}", _dark: "{colors.pond.orange}" } },
+            focusRing: { value: { _light: "{colors.pond.orangeStrong}", _dark: "{colors.pond.orangeStrong}" } },
+            border: { value: { _light: "{colors.pond.orangeStrong}", _dark: "{colors.pond.orangeStrong}" } },
           },
           lilypad: {
-            contrast: { value: { _light: "#000000", _dark: "#000000" } },
-            fg: { value: { _light: "#000000", _dark: "#000000" } },
-            subtle: {
-              value: {
-                _light: "{colors.pond.lilypadSubtle}",
-                _dark: "{colors.pond.lilypadSubtle}",
-              },
-            },
+            contrast: { value: { _light: DESIGN.textPrimary, _dark: DESIGN.textPrimary } },
+            fg: { value: { _light: DESIGN.forest, _dark: DESIGN.forest } },
+            subtle: { value: { _light: "{colors.pond.lilypadSubtle}", _dark: "{colors.pond.lilypadSubtle}" } },
             muted: { value: { _light: "{colors.pond.lilypad}", _dark: "{colors.pond.lilypad}" } },
-            emphasized: {
-              value: {
-                _light: "{colors.pond.lilypadStrong}",
-                _dark: "{colors.pond.lilypadStrong}",
-              },
-            },
-            solid: {
-              value: {
-                _light: "{colors.pond.lilypad}",
-                _dark: "{colors.pond.lilypad}",
-              },
-            },
-            focusRing: {
-              value: {
-                _light: "{colors.pond.lilypadStrong}",
-                _dark: "{colors.pond.lilypadStrong}",
-              },
-            },
-            border: {
-              value: {
-                _light: "{colors.pond.lilypadStrong}",
-                _dark: "{colors.pond.lilypadStrong}",
-              },
-            },
+            emphasized: { value: { _light: "{colors.pond.lilypadStrong}", _dark: "{colors.pond.lilypadStrong}" } },
+            solid: { value: { _light: "{colors.pond.lilypad}", _dark: "{colors.pond.lilypad}" } },
+            focusRing: { value: { _light: "{colors.pond.lilypadStrong}", _dark: "{colors.pond.lilypadStrong}" } },
+            border: { value: { _light: "{colors.pond.lilypadStrong}", _dark: "{colors.pond.lilypadStrong}" } },
           },
           pond: {
-            contrast: { value: { _light: "#000000", _dark: "#000000" } },
-            fg: { value: { _light: "#000000", _dark: "#000000" } },
-            subtle: {
-              value: {
-                _light: "{colors.pond.pondBlueSubtle}",
-                _dark: "{colors.pond.pondBlueSubtle}",
-              },
-            },
+            contrast: { value: { _light: DESIGN.textPrimary, _dark: DESIGN.textPrimary } },
+            fg: { value: { _light: "{colors.pond.pondBlue}", _dark: "{colors.pond.pondBlue}" } },
+            subtle: { value: { _light: "{colors.pond.pondBlueSubtle}", _dark: "{colors.pond.pondBlueSubtle}" } },
             muted: { value: { _light: "{colors.pond.pondBlue}", _dark: "{colors.pond.pondBlue}" } },
-            emphasized: {
-              value: {
-                _light: "{colors.pond.pondBlueStrong}",
-                _dark: "{colors.pond.pondBlueStrong}",
-              },
-            },
-            solid: {
-              value: {
-                _light: "{colors.pond.pondBlue}",
-                _dark: "{colors.pond.pondBlue}",
-              },
-            },
-            focusRing: {
-              value: {
-                _light: "{colors.pond.pondBlueStrong}",
-                _dark: "{colors.pond.pondBlueStrong}",
-              },
-            },
-            border: {
-              value: {
-                _light: "{colors.pond.pondBlueStrong}",
-                _dark: "{colors.pond.pondBlueStrong}",
-              },
-            },
+            emphasized: { value: { _light: "{colors.pond.pondBlueStrong}", _dark: "{colors.pond.pondBlueStrong}" } },
+            solid: { value: { _light: "{colors.pond.pondBlue}", _dark: "{colors.pond.pondBlue}" } },
+            focusRing: { value: { _light: "{colors.pond.pondBlueStrong}", _dark: "{colors.pond.pondBlueStrong}" } },
+            border: { value: { _light: "{colors.pond.pondBlueStrong}", _dark: "{colors.pond.pondBlueStrong}" } },
           },
         }),
       },

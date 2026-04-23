@@ -15,6 +15,10 @@ import { AppModal } from "../components/AppModal";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useIsMobile } from "../responsive";
 import {
+  APP_SHELL_TAB_LIST_NESTED_PROPS,
+  APP_SHELL_TAB_TRIGGER_PROPS,
+} from "../theme/appShellTabs";
+import {
   APP_TEXT_SIZES,
   PANEL_ENTRY_CARD_BODY_PROPS,
   PANEL_ENTRY_CARD_PROPS,
@@ -32,31 +36,9 @@ const TITLE_SEARCH_DEBOUNCE_MS = 300;
 const MODAL_PAD = "2" as const;
 
 const SLOT_MODAL_TAB_LIST_PROPS = {
+  ...APP_SHELL_TAB_LIST_NESTED_PROPS,
   px: { base: "2", md: "2" } as const,
-  pt: "0",
-  pb: "0",
-  borderBottomWidth: "1px",
-  borderColor: "border",
-  gap: "1",
-  w: "100%",
-};
-
-function slotModalTabTriggerProps(activeTab: string, value: string) {
-  return {
-    value,
-    bg: activeTab === value ? "lilypad.solid" : undefined,
-    color: activeTab === value ? "black" : undefined,
-    borderTopRadius: "md" as const,
-    borderBottomRadius: "0" as const,
-    px: "2",
-    py: "2",
-    fontWeight: "medium" as const,
-    _hover: {
-      bg: activeTab === value ? "lilypad.solid" : "transparent",
-    },
-    _selected: { bg: "lilypad.solid", color: "black" },
-  };
-}
+} as const;
 
 function mealsMatchingTitle(meals: Meal[], query: string, limit: number): Meal[] {
   const q = query.trim().toLowerCase();
@@ -242,7 +224,7 @@ export function MealSlotPickerDialog({
         w={gridCell ? "100%" : undefined}
         justifyContent={gridCell ? "space-between" : undefined}
         borderRadius="md"
-        borderColor="lilypad.solid"
+        borderColor="teal.solid"
         bg="lilypad.subtle"
         fontSize={APP_TEXT_SIZES.helper}
         fontWeight="medium"
@@ -471,7 +453,7 @@ export function MealSlotPickerDialog({
         {createSuccess ? (
           <Text
             fontSize={APP_TEXT_SIZES.helper}
-            color="lilypad.solid"
+            color="teal.solid"
             fontWeight="medium"
             role="status"
             aria-live="polite"
@@ -509,8 +491,12 @@ export function MealSlotPickerDialog({
           >
             <Box>
               <Tabs.List {...SLOT_MODAL_TAB_LIST_PROPS}>
-                <Tabs.Trigger {...slotModalTabTriggerProps(slotTab, "search")}>Search</Tabs.Trigger>
-                <Tabs.Trigger {...slotModalTabTriggerProps(slotTab, "create")}>Create</Tabs.Trigger>
+                <Tabs.Trigger value="search" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                  Search
+                </Tabs.Trigger>
+                <Tabs.Trigger value="create" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                  Create
+                </Tabs.Trigger>
               </Tabs.List>
             </Box>
             <Tabs.Content value="search" p="2">

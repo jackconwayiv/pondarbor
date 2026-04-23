@@ -150,7 +150,7 @@ export default function ImportIcalDialog({ open, onOpenChange, onSubmit }: Props
           </Text>
         ) : null}
         <HStack gap="2">
-          <PondButton colorPalette="lilypad" loading={saving} onClick={handleSubmit}>
+          <PondButton colorPalette="teal" loading={saving} onClick={handleSubmit}>
             Import calendar
           </PondButton>
           <PondButton

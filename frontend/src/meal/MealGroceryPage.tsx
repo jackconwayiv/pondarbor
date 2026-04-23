@@ -268,7 +268,7 @@ export default function MealGroceryPage() {
         <Text fontSize={APP_TEXT_SIZES.body} color="fg.muted">
           No week plans yet. Create one under{" "}
           <RouterLink to="/meal/plan/plans">
-            <Text as="span" color="lilypad.solid" fontWeight="bold">
+            <Text as="span" color="teal.solid" fontWeight="bold">
               Plans
             </Text>
           </RouterLink>
@@ -329,7 +329,7 @@ export default function MealGroceryPage() {
                 {selectedInstance ? (
                   <Text fontSize={APP_TEXT_SIZES.helper}>
                     <RouterLink to={`/meal/plan/plans/${selectedInstance.id}`}>
-                      <Text as="span" color="lilypad.solid" fontWeight="bold">
+                      <Text as="span" color="teal.solid" fontWeight="bold">
                         Edit week plan
                       </Text>
                     </RouterLink>{" "}
@@ -355,7 +355,7 @@ export default function MealGroceryPage() {
                                 <span key={m.id}>
                                   {i > 0 ? ", " : null}
                                   <RouterLink to={`/meal/plan/meals/${m.id}`}>
-                                    <Text as="span" color="lilypad.solid" fontWeight="bold">
+                                    <Text as="span" color="teal.solid" fontWeight="bold">
                                       {m.title}
                                     </Text>
                                   </RouterLink>
@@ -412,7 +412,7 @@ export default function MealGroceryPage() {
                         />
                         <PondButton
                           size="sm"
-                          colorPalette="lilypad"
+                          colorPalette="teal"
                           disabled={pantryPickId === ""}
                           onClick={() => {
                             if (pantryPickId === "") return;
@@ -475,7 +475,7 @@ export default function MealGroceryPage() {
                   </Text>
                   <HStack gap="2" flexWrap="wrap">
                     <PondButton
-                      colorPalette="lilypad"
+                      colorPalette="teal"
                       onClick={() => {
                         if (resolvedSelection === "") return;
                         void loadGroceryForInstance(Number(resolvedSelection)).catch((e) =>
@@ -640,7 +640,7 @@ export default function MealGroceryPage() {
                   {copyListNotice ? (
                     <Text
                       fontSize={APP_TEXT_SIZES.meta}
-                      color="lilypad.solid"
+                      color="teal.solid"
                       fontWeight="medium"
                       role="status"
                       aria-live="polite"
@@ -804,7 +804,7 @@ function PantryRowEditor({
       {mode === "count" ? (
         <PondButton
           size="sm"
-          colorPalette="lilypad"
+          colorPalette="teal"
           loading={busy}
           onClick={() =>
             void onSave({

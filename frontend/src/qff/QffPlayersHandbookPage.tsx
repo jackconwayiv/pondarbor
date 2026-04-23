@@ -2,6 +2,7 @@ import { Box, Flex, HStack, Heading, Tabs, Text } from "@chakra-ui/react";
 import { useNavigate } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
 import QffButton from "./QffButton";
+import { QFF_MAIN_CONTENT_PROPS } from "./qffUi";
 
 export default function QffPlayersHandbookPage() {
   const navigate = useNavigate();
@@ -10,7 +11,7 @@ export default function QffPlayersHandbookPage() {
 
   if (!isLoading && !isAuthenticated) {
     return (
-      <Box maxW="3xl" mx="auto" px={4} py={8} color="#c8e6a8">
+      <Box {...QFF_MAIN_CONTENT_PROPS} py={8} color="#c8e6a8">
         <Text>Sign in to read the Player&apos;s Handbook.</Text>
       </Box>
     );
@@ -18,7 +19,7 @@ export default function QffPlayersHandbookPage() {
 
   if (isLoading) {
     return (
-      <Box maxW="3xl" mx="auto" px={4} py={8} color="#c8e6a8">
+      <Box {...QFF_MAIN_CONTENT_PROPS} py={8} color="#c8e6a8">
         <Text>Loading…</Text>
       </Box>
     );
@@ -26,7 +27,7 @@ export default function QffPlayersHandbookPage() {
 
   if (!approved) {
     return (
-      <Box maxW="3xl" mx="auto" px={4} py={8} color="#c8e6a8">
+      <Box {...QFF_MAIN_CONTENT_PROPS} py={8} color="#c8e6a8">
         <Text color="nautical.solid">Your account must be approved to view this page.</Text>
         <QffButton type="button" onClick={() => navigate("/qff")} mt={4}>
           ← Back to lobby
@@ -36,7 +37,7 @@ export default function QffPlayersHandbookPage() {
   }
 
   return (
-    <Box maxW="3xl" mx="auto" px={4} py={8} color="#c8e6a8">
+    <Box {...QFF_MAIN_CONTENT_PROPS} py={8} color="#c8e6a8">
       <Flex
         flexWrap="wrap"
         align="center"

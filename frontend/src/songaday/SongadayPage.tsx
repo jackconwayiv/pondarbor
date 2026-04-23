@@ -17,6 +17,10 @@ import { useAppSession } from "../auth/AppSessionContext";
 import { MealEditorBackdropDismiss } from "../meal/MealEditorBackdropDismiss";
 import PondButton from "../PondButton";
 import {
+  APP_SHELL_TAB_LIST_PROPS,
+  APP_SHELL_TAB_TRIGGER_PROPS,
+} from "../theme/appShellTabs";
+import {
   APP_TEXT_SIZES,
   MAPPED_CLOSET_TAB_STACK_GAP,
   PANEL_ENTRY_CARD_PROPS,
@@ -103,7 +107,7 @@ function canGoToPrevDay(selected: Date): boolean {
   return startOfDay(selected) > getMinSelectableDate();
 }
 
-/** Prev / prompt / Next + Jump to today (right column). */
+/** Prev / prompt / Next + Today (right column). */
 function PromptDayNavChrome({
   selectedDate,
   onPrev,
@@ -120,23 +124,45 @@ function PromptDayNavChrome({
   const isViewingToday =
     startOfDay(selectedDate).getTime() === getTodayStart().getTime();
   return (
-    <HStack align="flex-start" gap="3" w="100%">
-      <PondButton
-        type="button"
-        size="sm"
-        variant="outline"
-        colorPalette="nautical"
-        alignSelf="center"
-        flexShrink={0}
-        disabled={!canGoToPrevDay(selectedDate)}
-        onClick={onPrev}
+    <Box
+      display="grid"
+      w="100%"
+      columnGap="3"
+      rowGap="0"
+      alignItems="stretch"
+      gridTemplateColumns="minmax(0, 1fr) minmax(0, 2.5fr) minmax(0, 1fr)"
+    >
+      <Box
+        display="flex"
+        flexDirection="column"
+        alignItems="flex-end"
+        justifyContent="flex-start"
+        minW={0}
       >
-        ← Prev
-      </PondButton>
-      <Box flex="1" minW="0">
+        <PondButton
+          type="button"
+          size="sm"
+          variant="outline"
+          colorPalette="nautical"
+          disabled={!canGoToPrevDay(selectedDate)}
+          onClick={onPrev}
+        >
+          ← Prev
+        </PondButton>
+      </Box>
+      <Box minW={0} w="100%">
         {children}
       </Box>
-      <Stack align="center" gap="1" flexShrink={0} alignSelf="center">
+      <Stack
+        h="100%"
+        minH={0}
+        minW={0}
+        w="100%"
+        alignItems="flex-start"
+        justify="space-between"
+        gap="0"
+        py="0.5"
+      >
         <PondButton
           type="button"
           size="sm"
@@ -155,10 +181,10 @@ function PromptDayNavChrome({
           disabled={isViewingToday}
           onClick={onJumpToToday}
         >
-          Jump to today
+          Today
         </PondButton>
       </Stack>
-    </HStack>
+    </Box>
   );
 }
 
@@ -302,8 +328,6 @@ export default function SongadayPage() {
       cancelled = true;
     };
   }, [tab, isStaff, getApiAccessToken]);
-
-  const returnTo = `/songaday`;
 
   const loadPrompt = useCallback(async () => {
     setPromptLoading(true);
@@ -576,7 +600,7 @@ export default function SongadayPage() {
   }
   if (isLoading || !sessionUser) {
     return (
-      <Stack gap="2" maxW="4xl">
+      <Stack gap="2" maxW="5xl">
         <Text fontWeight="semibold">Loading…</Text>
         {sessionError ? (
           <Text
@@ -625,62 +649,15 @@ export default function SongadayPage() {
           if (v === "prompt" || v === "archive" || v === "bulk") setTab(v);
         }}
       >
-        <Tabs.List
-          px={{ base: "2", md: "2" }}
-          pt="0"
-          pb="0"
-          borderBottomWidth="1px"
-          borderColor="border"
-          gap="1"
-          w="100%"
-        >
-          <Tabs.Trigger
-            value="prompt"
-            bg={tab === "prompt" ? "lilypad.solid" : undefined}
-            color={tab === "prompt" ? "black" : undefined}
-            borderTopRadius="md"
-            borderBottomRadius="0"
-            px="2"
-            py="2"
-            fontWeight="medium"
-            _hover={{
-              bg: tab === "prompt" ? "lilypad.solid" : "transparent",
-            }}
-            _selected={{ bg: "lilypad.solid", color: "black" }}
-          >
+        <Tabs.List {...APP_SHELL_TAB_LIST_PROPS}>
+          <Tabs.Trigger value="prompt" {...APP_SHELL_TAB_TRIGGER_PROPS}>
             Prompt
           </Tabs.Trigger>
-          <Tabs.Trigger
-            value="archive"
-            bg={tab === "archive" ? "lilypad.solid" : undefined}
-            color={tab === "archive" ? "black" : undefined}
-            borderTopRadius="md"
-            borderBottomRadius="0"
-            px="2"
-            py="2"
-            fontWeight="medium"
-            _hover={{
-              bg: tab === "archive" ? "lilypad.solid" : "transparent",
-            }}
-            _selected={{ bg: "lilypad.solid", color: "black" }}
-          >
+          <Tabs.Trigger value="archive" {...APP_SHELL_TAB_TRIGGER_PROPS}>
             Archive
           </Tabs.Trigger>
           {isStaff ? (
-            <Tabs.Trigger
-              value="bulk"
-              bg={tab === "bulk" ? "lilypad.solid" : undefined}
-              color={tab === "bulk" ? "black" : undefined}
-              borderTopRadius="md"
-              borderBottomRadius="0"
-              px="2"
-              py="2"
-              fontWeight="medium"
-              _hover={{
-                bg: tab === "bulk" ? "lilypad.solid" : "transparent",
-              }}
-              _selected={{ bg: "lilypad.solid", color: "black" }}
-            >
+            <Tabs.Trigger value="bulk" {...APP_SHELL_TAB_TRIGGER_PROPS}>
               Bulk import
             </Tabs.Trigger>
           ) : null}
@@ -697,7 +674,7 @@ export default function SongadayPage() {
               >
                 <Box {...PANEL_ENTRY_CARD_PROPS} {...PROMPT_CARD_TEXT_ALIGN}>
                   <HStack justifyContent="center" gap="2">
-                    <Spinner size="sm" colorPalette="lilypad" />
+                    <Spinner size="sm" colorPalette="teal" />
                     <Text fontSize={APP_TEXT_SIZES.body} fontWeight="medium">
                       Loading prompt…
                     </Text>
@@ -817,7 +794,7 @@ export default function SongadayPage() {
                       <PondButton
                         type="button"
                         size="md"
-                        colorPalette="lilypad"
+                        colorPalette="teal"
                         onClick={() => void onSubmit()}
                         loading={submitBusy}
                         disabled={formDisabled}
@@ -1006,7 +983,7 @@ export default function SongadayPage() {
 
             {responsesLoading ? (
               <HStack>
-                <Spinner size="sm" colorPalette="lilypad" />
+                <Spinner size="sm" colorPalette="teal" />
                 <Text fontSize={APP_TEXT_SIZES.body} fontWeight="medium">
                   Loading responses…
                 </Text>
@@ -1036,7 +1013,6 @@ export default function SongadayPage() {
                     key={myEntry.id}
                     readOnly
                     entry={myEntry}
-                    returnTo={returnTo}
                     myUserId={myUserId}
                     submissionEditOpen={submissionEditOpen}
                     onMineCardClick={() => setSubmissionEditOpen((v) => !v)}
@@ -1076,7 +1052,6 @@ export default function SongadayPage() {
                   <SongadayListCard
                     key={entry.id}
                     entry={entry}
-                    returnTo={returnTo}
                     myUserId={myUserId}
                     heartBusy={heartBusyId === entry.id}
                     onHeartToggle={() => void onHeartToggle(entry.id)}
@@ -1178,7 +1153,7 @@ export default function SongadayPage() {
                     />
                     <PondButton
                       type="button"
-                      colorPalette="lilypad"
+                      colorPalette="teal"
                       onClick={() => void onBulkImport()}
                       loading={bulkBusy}
                     >
@@ -1191,7 +1166,7 @@ export default function SongadayPage() {
                         color={
                           bulkNotice.kind === "error"
                             ? "nautical.solid"
-                            : "lilypad.solid"
+                            : "teal.solid"
                         }
                         role={bulkNotice.kind === "error" ? "alert" : "status"}
                       >

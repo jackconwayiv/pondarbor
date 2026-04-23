@@ -12,7 +12,11 @@ import { Navigate, useNavigate, useSearchParams } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
 import { fullBleedStackProps, useIsMobile } from "../responsive";
-import { APP_TEXT_SIZES } from "../theme/typography";
+import {
+  APP_SHELL_TAB_LIST_PROPS,
+  APP_SHELL_TAB_TRIGGER_PROPS,
+} from "../theme/appShellTabs";
+import { APP_SHELL_TRAY_PROPS, APP_TEXT_SIZES, PANEL_ENTRY_CARD_PROPS } from "../theme/typography";
 import {
   createCalendarEvent,
   createCalendarSource,
@@ -46,14 +50,6 @@ import UserCheckboxList from "./UserCheckboxList";
 import { buildUsersQueryFragment, useCheckedUsers } from "./useCheckedUsers";
 
 type CalendarTab = "month" | "sources";
-
-const ENTRY_CARD_PROPS = {
-  bg: "white",
-  borderWidth: "1px",
-  borderColor: "border",
-  borderRadius: "xl",
-  p: { base: "2", md: "2" },
-} as const;
 
 function parseTab(value: string | null): CalendarTab {
   return value === "sources" ? "sources" : "month";
@@ -273,35 +269,82 @@ export default function CalendarPage() {
     [approvedUsers, navigate, orderedCheckedUserIds],
   );
 
-  if (isLoading) return <Text>Loading…</Text>;
+  if (isLoading) {
+    return (
+      <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
+        <Box
+          flex="1"
+          bg="bg"
+          px={0}
+          py={{ base: "2", md: "2" }}
+        >
+          <Box {...APP_SHELL_TRAY_PROPS}>
+            <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
+              <Box {...PANEL_ENTRY_CARD_PROPS}>
+                <Text fontSize={APP_TEXT_SIZES.body} color="fg">
+                  Loading…
+                </Text>
+              </Box>
+            </Stack>
+          </Box>
+        </Box>
+      </Stack>
+    );
+  }
   if (!isAuthenticated) return <Navigate to="/" replace />;
   if (!sessionUser) {
     return (
-      <Stack gap="4" maxW="3xl">
-        <Text fontWeight="semibold">Reconnecting your API session…</Text>
-        <Text fontSize={APP_TEXT_SIZES.helper}>
-          {sessionError ||
-            "You are authenticated, but the API session is not ready yet."}
-        </Text>
-        <HStack>
-          <PondButton colorPalette="sky" onClick={() => void refreshSession()}>
-            Retry session sync
-          </PondButton>
-        </HStack>
+      <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
+        <Box
+          flex="1"
+          bg="bg"
+          px={0}
+          py={{ base: "2", md: "2" }}
+        >
+          <Box {...APP_SHELL_TRAY_PROPS}>
+            <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
+              <Box {...PANEL_ENTRY_CARD_PROPS}>
+                <Text fontWeight="semibold" mb="2">
+                  Reconnecting your API session…
+                </Text>
+                <Text fontSize={APP_TEXT_SIZES.helper} color="fg" mb="3">
+                  {sessionError ||
+                    "You are authenticated, but the API session is not ready yet."}
+                </Text>
+                <HStack>
+                  <PondButton
+                    colorPalette="sky"
+                    onClick={() => void refreshSession()}
+                  >
+                    Retry session sync
+                  </PondButton>
+                </HStack>
+              </Box>
+            </Stack>
+          </Box>
+        </Box>
       </Stack>
     );
   }
   if (!sessionUser.user.is_approved) {
     return (
-      <Stack
-        flex="1"
-        minH="full"
-        gap="4"
-        px={{ base: "2", md: "2" }}
-        py={{ base: "2", md: "2" }}
-        {...fullBleedStackProps}
-      >
-        <Text fontSize={{ base: "sm", md: "md" }}>Approval required.</Text>
+      <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
+        <Box
+          flex="1"
+          bg="bg"
+          px={0}
+          py={{ base: "2", md: "2" }}
+        >
+          <Box {...APP_SHELL_TRAY_PROPS}>
+            <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
+              <Box {...PANEL_ENTRY_CARD_PROPS}>
+                <Text fontSize={APP_TEXT_SIZES.body} color="fg">
+                  Approval required.
+                </Text>
+              </Box>
+            </Stack>
+          </Box>
+        </Box>
       </Stack>
     );
   }
@@ -323,27 +366,18 @@ export default function CalendarPage() {
       >
         <Box
           flex="1"
-          bg="sky.solid"
-          px={{ base: "2", md: "2" }}
+          bg="bg"
+          px={0}
           py={{ base: "2", md: "2" }}
         >
-          <Box
-            maxW="5xl"
-            w="100%"
-            mx="auto"
-            bg="gray.100"
-            borderWidth="1px"
-            borderColor="border"
-            borderRadius="xl"
-            overflow="hidden"
-          >
+          <Box {...APP_SHELL_TRAY_PROPS}>
             <Stack
               gap={{ base: "4", md: "4" }}
               px={{ base: "2", md: "2" }}
               pt={{ base: "2", md: "2" }}
               pb="2"
             >
-              <Box {...ENTRY_CARD_PROPS}>
+              <Box {...PANEL_ENTRY_CARD_PROPS}>
                 <Heading
                   as="h1"
                   size={{ base: "lg", md: "xl" }}
@@ -363,45 +397,11 @@ export default function CalendarPage() {
                 </Text>
               </Box>
             </Stack>
-            <Tabs.List
-              px={{ base: "2", md: "2" }}
-              pt="0"
-              pb="0"
-              borderBottomWidth="1px"
-              borderColor="border"
-              gap="1"
-              w="100%"
-            >
-              <Tabs.Trigger
-                value="month"
-                bg={activeTab === "month" ? "lilypad.solid" : undefined}
-                color={activeTab === "month" ? "black" : undefined}
-                borderTopRadius="md"
-                borderBottomRadius="0"
-                px="2"
-                py="2"
-                fontWeight="medium"
-                _hover={{
-                  bg: activeTab === "month" ? "lilypad.solid" : "transparent",
-                }}
-                _selected={{ bg: "lilypad.solid", color: "black" }}
-              >
+            <Tabs.List {...APP_SHELL_TAB_LIST_PROPS}>
+              <Tabs.Trigger value="month" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                 Month
               </Tabs.Trigger>
-              <Tabs.Trigger
-                value="sources"
-                bg={activeTab === "sources" ? "lilypad.solid" : undefined}
-                color={activeTab === "sources" ? "black" : undefined}
-                borderTopRadius="md"
-                borderBottomRadius="0"
-                px="2"
-                py="2"
-                fontWeight="medium"
-                _hover={{
-                  bg: activeTab === "sources" ? "lilypad.solid" : "transparent",
-                }}
-                _selected={{ bg: "lilypad.solid", color: "black" }}
-              >
+              <Tabs.Trigger value="sources" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                 Sources
               </Tabs.Trigger>
             </Tabs.List>
@@ -452,7 +452,7 @@ export default function CalendarPage() {
                   </HStack>
                   <PondButton
                     size="sm"
-                    colorPalette="lilypad"
+                    colorPalette="teal"
                     onClick={() => setEventDialog({ mode: "create" })}
                   >
                     Add event
@@ -462,7 +462,7 @@ export default function CalendarPage() {
                   <Text
                     fontSize={APP_TEXT_SIZES.helper}
                     color={
-                      notice.kind === "success" ? "lilypad.solid" : "nautical.solid"
+                      notice.kind === "success" ? "forest.solid" : "nautical.solid"
                     }
                     fontWeight="medium"
                   >
@@ -502,7 +502,7 @@ export default function CalendarPage() {
                   </Text>
                   <PondButton
                     size="sm"
-                    colorPalette="lilypad"
+                    colorPalette="teal"
                     onClick={() => setImportOpen(true)}
                   >
                     Import Google Calendar
@@ -512,7 +512,7 @@ export default function CalendarPage() {
                   <Text
                     fontSize={APP_TEXT_SIZES.helper}
                     color={
-                      notice.kind === "success" ? "lilypad.solid" : "nautical.solid"
+                      notice.kind === "success" ? "forest.solid" : "nautical.solid"
                     }
                     fontWeight="medium"
                   >

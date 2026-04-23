@@ -3,6 +3,22 @@
  * Use with raw `Button` / `IconButton` where `QffButton` is not used.
  */
 
+/** Primary QFF content column: same width + horizontal padding as [`QffPlayersHandbookPage`](QffPlayersHandbookPage.tsx) (`/qff/handbook`) and the lobby. */
+export const QFF_MAIN_CONTENT_PROPS = {
+  w: "100%" as const,
+  maxW: "3xl" as const,
+  mx: "auto" as const,
+  px: 4 as const,
+} as const;
+
+/** Wider play surface for [`QffPlayPage`](QffPlayPage.tsx) (`/qff/play`); not used for lobby/handbook. */
+export const QFF_PLAY_PAGE_CONTENT_PROPS = {
+  w: "100%" as const,
+  maxW: "1200px" as const,
+  mx: "auto" as const,
+  px: { base: 2, md: 4 } as const,
+} as const;
+
 /** Sidebar / list row — ghost variant. */
 export const qffGhostRowButtonProps = {
   color: "#f0f0f0",

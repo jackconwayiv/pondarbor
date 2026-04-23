@@ -7,7 +7,7 @@ import {
   Toaster,
 } from "@chakra-ui/react";
 
-/** Success / error / warning backgrounds: `slotRecipes.toast` in `theme/system.ts` (lilypad / nautical). */
+/** Success / error: `slotRecipes.toast` in `theme/system.ts` (forest / orange). */
 export const achievementToaster = createToaster({
   placement: "top-end",
   pauseOnPageIdle: true,
@@ -22,7 +22,7 @@ export function AchievementToaster() {
         {(toast) => (
           <Toast.Root width={{ md: "sm" }} maxW="calc(100vw - 2rem)">
             {toast.type === "loading" ? (
-              <Spinner size="sm" colorPalette="lilypad" />
+              <Spinner size="sm" colorPalette="teal" />
             ) : (
               <Toast.Indicator />
             )}

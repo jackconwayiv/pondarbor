@@ -2,28 +2,25 @@ import { Box, Heading, HStack, Stack, Text } from "@chakra-ui/react";
 import { Outlet } from "react-router";
 
 import { fullBleedStackProps } from "../responsive";
-import { APP_TEXT_SIZES, PANEL_ENTRY_CARD_PROPS } from "../theme/typography";
+import {
+  APP_SHELL_TRAY_PROPS,
+  APP_TEXT_SIZES,
+  PANEL_ENTRY_CARD_PROPS,
+} from "../theme/typography";
 
 /**
- * Shared sky + gray tray shell with the Song-a-Day Challenge intro card; tabbed home and entry editor render below.
+ * Shared app shell with the Song-a-Day Challenge intro card; tabbed home and entry editor render below.
  */
 export default function SongadayLayout() {
   return (
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
       <Box
         flex="1"
-        bg="sky.solid"
-        px={{ base: "2", md: "2" }}
+        bg="bg"
+        px={0}
         py={{ base: "2", md: "2" }}
       >
-        <Box maxW="4xl" w="100%" mx="auto">
-          <Box
-            bg="gray.100"
-            borderWidth="1px"
-            borderColor="border"
-            borderRadius="xl"
-            overflow="hidden"
-          >
+        <Box {...APP_SHELL_TRAY_PROPS}>
             <Stack
               gap={{ base: "4", md: "4" }}
               px={{ base: "2", md: "2" }}
@@ -60,7 +57,6 @@ export default function SongadayLayout() {
               </Box>
             </Stack>
             <Outlet />
-          </Box>
         </Box>
       </Box>
     </Stack>

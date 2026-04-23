@@ -20,6 +20,7 @@ import {
 } from "../forms/validation";
 import PondButton from "../PondButton";
 import { AppModal } from "../components/AppModal";
+import { useIsMobile } from "../responsive";
 import {
   APP_TEXT_SIZES,
   PANEL_FORM_PLACEHOLDER_PROPS,
@@ -99,6 +100,7 @@ export function ClosetOwnerManageModal({
   const [localImagePreviewUrl, setLocalImagePreviewUrl] = useState<string | null>(null);
   const localImagePreviewUrlRef = useRef<string | null>(null);
   localImagePreviewUrlRef.current = localImagePreviewUrl;
+  const isMobile = useIsMobile();
 
   const isOwner = sameClosetUserId(item.owner_user.id, meId);
 
@@ -390,6 +392,22 @@ export function ClosetOwnerManageModal({
       onOpenChange={handleModalOpenChange}
       title="Manage item"
       size="lg"
+      positionerProps={
+        isMobile
+          ? { px: "0", py: "0", alignItems: "stretch", justifyContent: "center" }
+          : undefined
+      }
+      contentProps={
+        isMobile
+          ? {
+              maxW: "100vw",
+              w: "100vw",
+              minH: "100dvh",
+              borderRadius: "0",
+              borderWidth: "0",
+            }
+          : undefined
+      }
     >
       <Tabs.Root
         value={activeTab}
@@ -524,7 +542,7 @@ export function ClosetOwnerManageModal({
                 <PondButton
                   type="button"
                   size="sm"
-                  colorPalette="lilypad"
+                  colorPalette="teal"
                   loading={imagePickerLoading}
                   disabled={imageUploadBusy}
                   onClick={() => {
@@ -581,7 +599,7 @@ export function ClosetOwnerManageModal({
                           key={row.image_key}
                           as="button"
                           borderWidth="2px"
-                          borderColor="lilypad.solid"
+                          borderColor="teal.solid"
                           borderRadius="md"
                           overflow="hidden"
                           onClick={() =>
@@ -621,7 +639,7 @@ export function ClosetOwnerManageModal({
               ) : null}
               {imageUploadBusy ? (
                 <HStack gap="2" align="center" color="gray.700">
-                  <Spinner size="sm" colorPalette="lilypad" />
+                  <Spinner size="sm" colorPalette="teal" />
                   <Text fontSize={APP_TEXT_SIZES.helper}>Uploading photo…</Text>
                 </HStack>
               ) : null}
@@ -664,7 +682,7 @@ export function ClosetOwnerManageModal({
                       <HStack justify="space-between" align="end" gap="3" flexWrap="wrap">
                         <PondButton
                           size="sm"
-                          colorPalette="lilypad"
+                          colorPalette="teal"
                           onClick={async () => {
                             try {
                               const token = await getToken();
@@ -761,12 +779,12 @@ export function ClosetOwnerManageModal({
             ) : null}
             <HStack flexWrap="wrap">
               {item.active_loan_id ? (
-                <PondButton size="sm" colorPalette="lilypad" onClick={() => void onMarkReturnedAsOwner()}>
+                <PondButton size="sm" colorPalette="teal" onClick={() => void onMarkReturnedAsOwner()}>
                   Mark returned (complete loan)
                 </PondButton>
               ) : null}
               {!item.active_loan_id && item.custody_marked_returned_by_holder ? (
-                <PondButton size="sm" colorPalette="lilypad" onClick={() => void onMarkReturnedAsOwner()}>
+                <PondButton size="sm" colorPalette="teal" onClick={() => void onMarkReturnedAsOwner()}>
                   Mark returned (complete handoff)
                 </PondButton>
               ) : null}
@@ -828,7 +846,7 @@ export function ClosetOwnerManageModal({
                 </NativeSelectRoot>
                 <PondButton
                   size="sm"
-                  colorPalette="lilypad"
+                  colorPalette="teal"
                   loading={markReturnedBusy}
                   disabled={!canMarkReturnedAsOwner}
                   onClick={() => void onMarkReturnedAsOwner()}

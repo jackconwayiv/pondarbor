@@ -105,7 +105,7 @@ export function ApprovedFriendsListBlock({
                 type="button"
                 size="sm"
                 variant="outline"
-                colorPalette="lilypad"
+                colorPalette="teal"
                 flexShrink={0}
                 loading={acceptFriendBusyUserId === row.id}
                 onClick={() => void onAcceptFriendRequest(row.id)}
@@ -117,7 +117,7 @@ export function ApprovedFriendsListBlock({
                 type="button"
                 size="sm"
                 variant="outline"
-                colorPalette="lilypad"
+                colorPalette="teal"
                 flexShrink={0}
                 onClick={() => void onRequestFriend(row.id)}
               >

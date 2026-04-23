@@ -13,7 +13,7 @@ export default function SongadayArchivePage() {
   }
   if (isLoading || !sessionUser) {
     return (
-      <Stack gap="2" maxW="4xl">
+      <Stack gap="2" maxW="5xl">
         <Text fontWeight="semibold">Loading…</Text>
       </Stack>
     );

@@ -66,7 +66,7 @@ export default function DayCell({
       cursor={onCellClick ? "pointer" : "default"}
       _hover={
         onCellClick && inMonth
-          ? { borderColor: "lilypad.solid" }
+          ? { borderColor: "teal.solid" }
           : undefined
       }
     >
@@ -83,7 +83,7 @@ export default function DayCell({
             w="1.5"
             h="1.5"
             borderRadius="full"
-            bg="lilypad.solid"
+            bg="teal.solid"
             aria-hidden
           />
         ) : null}

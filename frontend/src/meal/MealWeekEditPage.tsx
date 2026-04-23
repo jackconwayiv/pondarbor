@@ -154,7 +154,7 @@ export default function MealWeekEditPage() {
     <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP} w="100%">
       <Text fontSize={APP_TEXT_SIZES.helper}>
         <RouterLink to="/meal/plan/plans">
-          <Text as="span" color="lilypad.solid" fontWeight="bold">
+          <Text as="span" color="teal.solid" fontWeight="bold">
             ← Weekly overview
           </Text>
         </RouterLink>
@@ -191,7 +191,7 @@ export default function MealWeekEditPage() {
                 </NativeSelectField>
               </NativeSelectRoot>
               <PondButton
-                colorPalette="lilypad"
+                colorPalette="teal"
                 variant="outline"
                 disabled={!applyTemplateId || busy}
                 onClick={() => {

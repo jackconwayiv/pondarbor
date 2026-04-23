@@ -42,9 +42,15 @@ import QuoteCardBase from "../quotes/QuoteCardBase";
 import type { Quote } from "../quotes/types";
 import { fullBleedStackProps } from "../responsive";
 import {
+  APP_SHELL_TAB_LIST_PROPS,
+  APP_SHELL_TAB_TRIGGER_PROPS,
+} from "../theme/appShellTabs";
+import {
+  APP_SHELL_TRAY_PROPS,
   APP_TEXT_SIZES,
   MAPPED_LIST_CARD_OUTER_PROPS,
   MAPPED_LIST_STACK_GAP,
+  PANEL_ENTRY_CARD_PROPS,
 } from "../theme/typography";
 import {
   fetchPublicUserSummaryByEmail,
@@ -55,22 +61,20 @@ import {
 
 const PAGE_SIZE = 10;
 
-const ENTRY_CARD_SHELL_PROPS = {
-  bg: "white",
-  borderWidth: "1px",
-  borderColor: "border",
-  borderRadius: "xl",
-} as const;
-
 const ENTRY_CARD_PROPS = {
-  ...ENTRY_CARD_SHELL_PROPS,
-  p: { base: "2", md: "2" },
+  ...PANEL_ENTRY_CARD_PROPS,
 } as const;
 
-/** Same shell as [`PublicQuotesPage`](../quotes/PublicQuotesPage.tsx) / editable quote rows in Quotes. */
+/** Match [`PublicQuotesPage`](../quotes/PublicQuotesPage.tsx) / read-only quote rows in Quotes. */
 function FriendProfileQuoteCard({ quote }: { quote: Quote }) {
   return (
-    <Box {...ENTRY_CARD_SHELL_PROPS} {...MAPPED_LIST_CARD_OUTER_PROPS}>
+    <Box
+      bg="white"
+      borderWidth="1px"
+      borderColor="border"
+      borderRadius="xl"
+      {...MAPPED_LIST_CARD_OUTER_PROPS}
+    >
       <QuoteCardBase
         quote={quote}
         ownerText={quoteOwnerDisplayLabel(quote.owner)}
@@ -305,25 +309,24 @@ export default function FriendProfilePage() {
     leftmostVisibleTab,
   ]);
 
+  const closetReturnTo = useMemo(() => {
+    if (lookup.kind === "id") return `/friend/${lookup.id}`;
+    if (lookup.kind === "email") {
+      return `/users/${encodeURIComponent(lookup.email)}/public-quotes`;
+    }
+    return "/friends";
+  }, [lookup]);
+
   if (sessionLoading) {
     return (
       <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
         <Box
           flex="1"
-          bg="sky.solid"
-          px={{ base: "2", md: "2" }}
+          bg="bg"
+          px={0}
           py={{ base: "2", md: "2" }}
         >
-          <Box
-            maxW="4xl"
-            w="100%"
-            mx="auto"
-            bg="gray.100"
-            borderWidth="1px"
-            borderColor="border"
-            borderRadius="xl"
-            overflow="hidden"
-          >
+          <Box {...APP_SHELL_TRAY_PROPS}>
             <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
               <Box {...ENTRY_CARD_PROPS}>
                 <Text fontSize={APP_TEXT_SIZES.body} color="fg">
@@ -358,7 +361,7 @@ export default function FriendProfilePage() {
         borderWidth="1px"
         borderColor="border"
         borderRadius="xl"
-        p={{ base: "4", md: "4" }}
+        p={{ base: "2", md: "2" }}
       >
         <Stack gap="2">
           <Text fontSize={APP_TEXT_SIZES.helper}>
@@ -393,33 +396,21 @@ export default function FriendProfilePage() {
       </Box>
     ) : null;
 
-  const closetReturnTo = useMemo(() => {
-    if (lookup.kind === "id") return `/friend/${lookup.id}`;
-    if (lookup.kind === "email") {
-      return `/users/${encodeURIComponent(lookup.email)}/public-quotes`;
-    }
-    return "/friends";
-  }, [lookup]);
-
   return (
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
       <Box
         flex="1"
-        bg="sky.solid"
-        px={{ base: "2", md: "2" }}
+        bg="bg"
+        px={0}
         py={{ base: "2", md: "2" }}
       >
-        <Box
-          maxW="4xl"
-          w="100%"
-          mx="auto"
-          bg="gray.100"
-          borderWidth="1px"
-          borderColor="border"
-          borderRadius="xl"
-          overflow="hidden"
-        >
-          <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
+        <Box {...APP_SHELL_TRAY_PROPS}>
+          <Stack
+            gap={{ base: "4", md: "4" }}
+            px={{ base: "2", md: "2" }}
+            pt={{ base: "2", md: "2" }}
+            pb="2"
+          >
             <Box {...ENTRY_CARD_PROPS}>
               {!summary?.can_view_full_profile ? (
                 <>
@@ -562,7 +553,7 @@ export default function FriendProfilePage() {
                   {summary.friendship_status === "incoming_pending" ? (
                     <HStack flexWrap="wrap" gap="2">
                       <PondButton
-                        colorPalette="lilypad"
+                        colorPalette="teal"
                         loading={actionBusy}
                         disabled={actionBusy || lookup.kind !== "id"}
                         onClick={() => {
@@ -628,7 +619,7 @@ export default function FriendProfilePage() {
                     </Text>
                   ) : (
                     <PondButton
-                      colorPalette="lilypad"
+                      colorPalette="teal"
                       loading={actionBusy}
                       disabled={actionBusy || lookup.kind !== "id"}
                       onClick={() => {
@@ -677,7 +668,7 @@ export default function FriendProfilePage() {
                     <Text
                       role="status"
                       fontSize={APP_TEXT_SIZES.helper}
-                      color="lilypad.solid"
+                      color="teal.solid"
                       fontWeight="medium"
                     >
                       {actionSuccess}
@@ -686,135 +677,77 @@ export default function FriendProfilePage() {
                 </Stack>
               </Box>
             ) : null}
+          </Stack>
 
-            {!isLoading && !error && summary?.can_view_full_profile ? (
-              <Box {...ENTRY_CARD_PROPS}>
-                {actionError ? (
+          {!isLoading && !error && summary?.can_view_full_profile ? (
+            <>
+              {actionError ? (
+                <Box
+                  px={{ base: "2", md: "2" }}
+                  pb="2"
+                  w="100%"
+                >
                   <Text
                     role="alert"
                     color="nautical.solid"
                     fontWeight="medium"
                     fontSize={APP_TEXT_SIZES.helper}
-                    mb="2"
                   >
                     {actionError}
                   </Text>
-                ) : null}
-                <Tabs.Root
-                  value={profileTab}
-                  onValueChange={(details) =>
-                    setProfileTab(
-                      details.value as
-                        | "friends"
-                        | "achievements"
-                        | "quotes"
-                        | "closet",
-                    )
-                  }
-                  variant="plain"
-                >
-                  <Tabs.List
-                    borderBottomWidth="1px"
-                    borderColor="border"
-                    gap="1"
-                    w="100%"
+                </Box>
+              ) : null}
+              <Tabs.Root
+                value={profileTab}
+                display="flex"
+                flexDirection="column"
+                flex="1"
+                minH="0"
+                w="100%"
+                onValueChange={(details) =>
+                  setProfileTab(
+                    details.value as
+                      | "friends"
+                      | "achievements"
+                      | "quotes"
+                      | "closet",
+                  )
+                }
+                variant="plain"
+              >
+                <Tabs.List {...APP_SHELL_TAB_LIST_PROPS}>
+                  <Tabs.Trigger
+                    value="friends"
+                    {...APP_SHELL_TAB_TRIGGER_PROPS}
                   >
+                    Friends
+                  </Tabs.Trigger>
+                  {hasAchievements ? (
                     <Tabs.Trigger
-                      value="friends"
-                      bg={
-                        profileTab === "friends" ? "lilypad.solid" : undefined
-                      }
-                      color={profileTab === "friends" ? "black" : undefined}
-                      borderTopRadius="md"
-                      borderBottomRadius="0"
-                      px="2"
-                      py="2"
-                      fontWeight="medium"
-                      _hover={{
-                        bg:
-                          profileTab === "friends"
-                            ? "lilypad.solid"
-                            : "transparent",
-                      }}
-                      _selected={{ bg: "lilypad.solid", color: "black" }}
+                      value="achievements"
+                      {...APP_SHELL_TAB_TRIGGER_PROPS}
                     >
-                      Friends
+                      Achievements
                     </Tabs.Trigger>
-                    {hasAchievements ? (
-                      <Tabs.Trigger
-                        value="achievements"
-                        bg={
-                          profileTab === "achievements"
-                            ? "lilypad.solid"
-                            : undefined
-                        }
-                        color={
-                          profileTab === "achievements" ? "black" : undefined
-                        }
-                        borderTopRadius="md"
-                        borderBottomRadius="0"
-                        px="2"
-                        py="2"
-                        fontWeight="medium"
-                        _hover={{
-                          bg:
-                            profileTab === "achievements"
-                              ? "lilypad.solid"
-                              : "transparent",
-                        }}
-                        _selected={{ bg: "lilypad.solid", color: "black" }}
-                      >
-                        Achievements
-                      </Tabs.Trigger>
-                    ) : null}
-                    {hasQuotes ? (
-                      <Tabs.Trigger
-                        value="quotes"
-                        bg={
-                          profileTab === "quotes" ? "lilypad.solid" : undefined
-                        }
-                        color={profileTab === "quotes" ? "black" : undefined}
-                        borderTopRadius="md"
-                        borderBottomRadius="0"
-                        px="2"
-                        py="2"
-                        fontWeight="medium"
-                        _hover={{
-                          bg:
-                            profileTab === "quotes"
-                              ? "lilypad.solid"
-                              : "transparent",
-                        }}
-                        _selected={{ bg: "lilypad.solid", color: "black" }}
-                      >
-                        Quotes
-                      </Tabs.Trigger>
-                    ) : null}
-                    {hasClosetTab ? (
-                      <Tabs.Trigger
-                        value="closet"
-                        bg={
-                          profileTab === "closet" ? "lilypad.solid" : undefined
-                        }
-                        color={profileTab === "closet" ? "black" : undefined}
-                        borderTopRadius="md"
-                        borderBottomRadius="0"
-                        px="2"
-                        py="2"
-                        fontWeight="medium"
-                        _hover={{
-                          bg:
-                            profileTab === "closet"
-                              ? "lilypad.solid"
-                              : "transparent",
-                        }}
-                        _selected={{ bg: "lilypad.solid", color: "black" }}
-                      >
-                        Closet Items
-                      </Tabs.Trigger>
-                    ) : null}
-                  </Tabs.List>
-                  <Tabs.Content value="friends" pt="2">
+                  ) : null}
+                  {hasQuotes ? (
+                    <Tabs.Trigger
+                      value="quotes"
+                      {...APP_SHELL_TAB_TRIGGER_PROPS}
+                    >
+                      Quotes
+                    </Tabs.Trigger>
+                  ) : null}
+                  {hasClosetTab ? (
+                    <Tabs.Trigger
+                      value="closet"
+                      {...APP_SHELL_TAB_TRIGGER_PROPS}
+                    >
+                      Closet Items
+                    </Tabs.Trigger>
+                  ) : null}
+                </Tabs.List>
+                <Tabs.Content value="friends" p={{ base: "2", md: "2" }}>
                     <ApprovedFriendsListBlock
                       friends={theirFriends}
                       showCountInTitle
@@ -851,8 +784,8 @@ export default function FriendProfilePage() {
                       }}
                     />
                   </Tabs.Content>
-                  {hasAchievements ? (
-                    <Tabs.Content value="achievements" pt="2">
+                {hasAchievements ? (
+                    <Tabs.Content value="achievements" p={{ base: "2", md: "2" }}>
                       <Stack gap={MAPPED_LIST_STACK_GAP}>
                         {achievements.map((a) => (
                           <AchievementSummaryCard
@@ -863,8 +796,8 @@ export default function FriendProfilePage() {
                       </Stack>
                     </Tabs.Content>
                   ) : null}
-                  {hasQuotes ? (
-                    <Tabs.Content value="quotes" pt="2">
+                {hasQuotes ? (
+                    <Tabs.Content value="quotes" p={{ base: "2", md: "2" }}>
                       <Stack gap={MAPPED_LIST_STACK_GAP}>
                         {total > PAGE_SIZE && visibleQuotes.length === PAGE_SIZE
                           ? quotePaginationToolbar
@@ -879,8 +812,8 @@ export default function FriendProfilePage() {
                       </Stack>
                     </Tabs.Content>
                   ) : null}
-                  {hasClosetTab ? (
-                    <Tabs.Content value="closet" pt="2">
+                {hasClosetTab ? (
+                    <Tabs.Content value="closet" p={{ base: "2", md: "2" }}>
                       <Stack gap={MAPPED_LIST_STACK_GAP}>
                         <Text fontSize={APP_TEXT_SIZES.helper}>
                           Open an item for details, borrowing, and returns.
@@ -901,10 +834,9 @@ export default function FriendProfilePage() {
                       </Stack>
                     </Tabs.Content>
                   ) : null}
-                </Tabs.Root>
-              </Box>
-            ) : null}
-          </Stack>
+              </Tabs.Root>
+            </>
+          ) : null}
         </Box>
       </Box>
     </Stack>

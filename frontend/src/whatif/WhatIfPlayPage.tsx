@@ -243,7 +243,7 @@ export default function WhatIfPlayPage() {
                   </Heading>
                   <PondButton
                     type="button"
-                    colorPalette="lilypad"
+                    colorPalette="teal"
                     onClick={() => navigate("/whatif?tab=new")}
                   >
                     Return to lobby

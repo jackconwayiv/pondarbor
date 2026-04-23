@@ -18,7 +18,11 @@ import { useAppSession } from "../auth/AppSessionContext";
 import { friendProfilePath } from "../friend/profilePaths";
 import PondButton from "../PondButton";
 import { fullBleedStackProps, useIsMobile } from "../responsive";
-import { APP_TEXT_SIZES } from "../theme/typography";
+import {
+  APP_SHELL_TRAY_PROPS,
+  APP_TEXT_SIZES,
+  PANEL_ENTRY_CARD_PROPS,
+} from "../theme/typography";
 import {
   deleteCalendarEvent,
   fetchApprovedUsers,
@@ -39,14 +43,6 @@ import {
   colorForCheckedUser,
 } from "./userColors";
 import { buildUsersQueryFragment, useCheckedUsers } from "./useCheckedUsers";
-
-const ENTRY_CARD_PROPS = {
-  bg: "white",
-  borderWidth: "1px",
-  borderColor: "border",
-  borderRadius: "xl",
-  p: { base: "2", md: "2" },
-} as const;
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -136,35 +132,82 @@ export default function CalendarDayPage() {
     await loadAll();
   };
 
-  if (isLoading) return <Text>Loading…</Text>;
+  if (isLoading) {
+    return (
+      <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
+        <Box
+          flex="1"
+          bg="bg"
+          px={0}
+          py={{ base: "2", md: "2" }}
+        >
+          <Box {...APP_SHELL_TRAY_PROPS}>
+            <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
+              <Box {...PANEL_ENTRY_CARD_PROPS}>
+                <Text fontSize={APP_TEXT_SIZES.body} color="fg">
+                  Loading…
+                </Text>
+              </Box>
+            </Stack>
+          </Box>
+        </Box>
+      </Stack>
+    );
+  }
   if (!isAuthenticated) return <Navigate to="/" replace />;
   if (!sessionUser) {
     return (
-      <Stack gap="4" maxW="3xl">
-        <Text fontWeight="semibold">Reconnecting your API session…</Text>
-        <Text fontSize={APP_TEXT_SIZES.helper}>
-          {sessionError ||
-            "You are authenticated, but the API session is not ready yet."}
-        </Text>
-        <HStack>
-          <PondButton colorPalette="sky" onClick={() => void refreshSession()}>
-            Retry session sync
-          </PondButton>
-        </HStack>
+      <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
+        <Box
+          flex="1"
+          bg="bg"
+          px={0}
+          py={{ base: "2", md: "2" }}
+        >
+          <Box {...APP_SHELL_TRAY_PROPS}>
+            <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
+              <Box {...PANEL_ENTRY_CARD_PROPS}>
+                <Text fontWeight="semibold" mb="2">
+                  Reconnecting your API session…
+                </Text>
+                <Text fontSize={APP_TEXT_SIZES.helper} color="fg" mb="3">
+                  {sessionError ||
+                    "You are authenticated, but the API session is not ready yet."}
+                </Text>
+                <HStack>
+                  <PondButton
+                    colorPalette="sky"
+                    onClick={() => void refreshSession()}
+                  >
+                    Retry session sync
+                  </PondButton>
+                </HStack>
+              </Box>
+            </Stack>
+          </Box>
+        </Box>
       </Stack>
     );
   }
   if (!sessionUser.user.is_approved) {
     return (
-      <Stack
-        flex="1"
-        minH="full"
-        gap="4"
-        px={{ base: "2", md: "2" }}
-        py={{ base: "2", md: "2" }}
-        {...fullBleedStackProps}
-      >
-        <Text fontSize={{ base: "sm", md: "md" }}>Approval required.</Text>
+      <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
+        <Box
+          flex="1"
+          bg="bg"
+          px={0}
+          py={{ base: "2", md: "2" }}
+        >
+          <Box {...APP_SHELL_TRAY_PROPS}>
+            <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
+              <Box {...PANEL_ENTRY_CARD_PROPS}>
+                <Text fontSize={APP_TEXT_SIZES.body} color="fg">
+                  Approval required.
+                </Text>
+              </Box>
+            </Stack>
+          </Box>
+        </Box>
       </Stack>
     );
   }
@@ -203,27 +246,18 @@ export default function CalendarDayPage() {
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
       <Box
         flex="1"
-        bg="sky.solid"
-        px={{ base: "2", md: "2" }}
+        bg="bg"
+        px={0}
         py={{ base: "2", md: "2" }}
       >
-        <Box
-          maxW="5xl"
-          w="100%"
-          mx="auto"
-          bg="gray.100"
-          borderWidth="1px"
-          borderColor="border"
-          borderRadius="xl"
-          overflow="hidden"
-        >
+        <Box {...APP_SHELL_TRAY_PROPS}>
           <Stack
             gap={{ base: "4", md: "4" }}
             px={{ base: "2", md: "2" }}
             pt={{ base: "2", md: "2" }}
             pb="2"
           >
-            <Box {...ENTRY_CARD_PROPS}>
+            <Box {...PANEL_ENTRY_CARD_PROPS}>
               <HStack justify="space-between" align="center" flexWrap="wrap" gap="2">
                 <Stack gap="0">
                   <Heading

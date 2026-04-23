@@ -1,11 +1,16 @@
-import { Avatar, Box, HStack, Input, Stack, Text } from "@chakra-ui/react";
+import { Avatar, Box, Heading, HStack, Input, Stack, Text } from "@chakra-ui/react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate } from "react-router";
 
 import PondButton from "../PondButton";
 import { useAppSession } from "../auth/AppSessionContext";
 import { fullBleedStackProps } from "../responsive";
-import { APP_TEXT_SIZES, FIELD_PLACEHOLDER_PROPS } from "../theme/typography";
+import {
+  APP_SHELL_TRAY_PROPS,
+  APP_TEXT_SIZES,
+  FIELD_PLACEHOLDER_PROPS,
+  PANEL_ENTRY_CARD_PROPS,
+} from "../theme/typography";
 import { ApprovedFriendsListBlock } from "./ApprovedFriendsListBlock";
 import {
   acceptFriend,
@@ -17,14 +22,6 @@ import {
 } from "./api";
 
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-const ENTRY_CARD_PROPS = {
-  bg: "white",
-  borderWidth: "1px",
-  borderColor: "border",
-  borderRadius: "xl",
-  p: { base: "2", md: "2" },
-} as const;
 
 export default function FriendsPage() {
   const { isAuthenticated, isLoading, sessionUser, getApiAccessToken } =
@@ -108,22 +105,13 @@ export default function FriendsPage() {
       <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
         <Box
           flex="1"
-          bg="sky.solid"
-          px={{ base: "2", md: "2" }}
+          bg="bg"
+          px={0}
           py={{ base: "2", md: "2" }}
         >
-          <Box
-            maxW="4xl"
-            w="100%"
-            mx="auto"
-            bg="gray.100"
-            borderWidth="1px"
-            borderColor="border"
-            borderRadius="xl"
-            overflow="hidden"
-          >
+          <Box {...APP_SHELL_TRAY_PROPS}>
             <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
-              <Box {...ENTRY_CARD_PROPS}>
+              <Box {...PANEL_ENTRY_CARD_PROPS}>
                 <Text fontSize={APP_TEXT_SIZES.body} color="fg">
                   Loading…
                 </Text>
@@ -141,22 +129,42 @@ export default function FriendsPage() {
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
       <Box
         flex="1"
-        bg="sky.solid"
-        px={{ base: "2", md: "2" }}
+        bg="bg"
+        px={0}
         py={{ base: "2", md: "2" }}
       >
-        <Box
-          maxW="4xl"
-          w="100%"
-          mx="auto"
-          bg="gray.100"
-          borderWidth="1px"
-          borderColor="border"
-          borderRadius="xl"
-          overflow="hidden"
-        >
+        <Box {...APP_SHELL_TRAY_PROPS}>
           <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
-            <Box {...ENTRY_CARD_PROPS}>
+            <Box {...PANEL_ENTRY_CARD_PROPS}>
+              <Heading
+                as="h1"
+                size={{ base: "lg", md: "xl" }}
+                fontWeight="bold"
+                mb="2"
+              >
+                <HStack
+                  as="span"
+                  display="inline-flex"
+                  gap="2"
+                  alignItems="center"
+                >
+                  <Text as="span" aria-hidden="true">
+                    👥
+                  </Text>
+                  <Text as="span">Friends</Text>
+                </HStack>
+              </Heading>
+              <Text
+                fontSize={APP_TEXT_SIZES.body}
+                lineHeight="tall"
+                color="fg"
+                mb="3"
+              >
+                Send requests, manage pending connections, and browse friends
+                you&apos;re connected with.
+              </Text>
+            </Box>
+            <Box {...PANEL_ENTRY_CARD_PROPS}>
               <Stack gap="2">
                 <Text fontWeight="semibold">Request Friend</Text>
                 <HStack align="start">
@@ -180,7 +188,7 @@ export default function FriendsPage() {
                     </datalist>
                   </Stack>
                   <PondButton
-                    colorPalette="lilypad"
+                    colorPalette="teal"
                     disabled={!canSubmitRequest || loading}
                     onClick={() => {
                       void (async () => {
@@ -216,7 +224,7 @@ export default function FriendsPage() {
                 {requestSuccess ? (
                   <Text
                     role="status"
-                    color="lilypad.solid"
+                    color="teal.solid"
                     fontSize={APP_TEXT_SIZES.helper}
                     fontWeight="medium"
                   >
@@ -236,6 +244,8 @@ export default function FriendsPage() {
                 Loading…
               </Text>
             ) : null}
+
+            <ApprovedFriendsListBlock friends={approved} showCountInTitle />
 
             {incoming.length > 0 || outgoing.length > 0 ? (
               <Box
@@ -275,7 +285,7 @@ export default function FriendsPage() {
                       <HStack>
                         <PondButton
                           size="sm"
-                          colorPalette="lilypad"
+                          colorPalette="teal"
                           loading={actionUserId === row.id}
                           onClick={() => {
                             void (async () => {
@@ -357,8 +367,6 @@ export default function FriendsPage() {
                 </Stack>
               </Box>
             ) : null}
-
-            <ApprovedFriendsListBlock friends={approved} showCountInTitle />
           </Stack>
         </Box>
       </Box>

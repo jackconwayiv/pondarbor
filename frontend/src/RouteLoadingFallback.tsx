@@ -10,10 +10,10 @@ export default function RouteLoadingFallback() {
       role="status"
       aria-live="polite"
     >
-      <Spinner size="sm" colorPalette="lilypad" />
+      <Spinner size="sm" colorPalette="teal" />
       <Box
-        bg="lilypad.solid"
-        color="lilypad.contrast"
+        bg="teal.solid"
+        color="teal.contrast"
         borderRadius="xl"
         px="2"
         py="2"

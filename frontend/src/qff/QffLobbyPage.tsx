@@ -1,10 +1,16 @@
-import { Box, Flex, Heading, Stack, Text } from "@chakra-ui/react";
+import { Box, Field, Flex, Heading, HStack, Input, Stack, Table, Text } from "@chakra-ui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
+import { AppModal } from "../components/AppModal";
 import { useAppSession } from "../auth/AppSessionContext";
 import QffButton from "./QffButton";
-import { deleteQffCharacter, fetchQffSession } from "./api";
+import {
+  deleteQffCharacter,
+  fetchQffLeaderboard,
+  fetchQffSession,
+  type QffLeaderboardEntry,
+} from "./api";
 import { QFF_STORY, QFF_SUBTITLES } from "./copy";
 
 export default function QffLobbyPage() {
@@ -20,13 +26,18 @@ export default function QffLobbyPage() {
   getTokenRef.current = getApiAccessToken;
   const [sessionBusy, setSessionBusy] = useState(true);
   const [hasCharacter, setHasCharacter] = useState<boolean | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [characterName, setCharacterName] = useState<string | null>(null);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteNameInput, setDeleteNameInput] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
-  const deleteButtonWrapRef = useRef<HTMLDivElement | null>(null);
+  const [leaderboard, setLeaderboard] = useState<QffLeaderboardEntry[] | null>(null);
+  const [leaderboardErr, setLeaderboardErr] = useState<string | null>(null);
 
   const subtitle = useMemo(() => {
     const i = Math.floor(Math.random() * QFF_SUBTITLES.length);
-    return QFF_SUBTITLES[i];
+    const raw = QFF_SUBTITLES[i] as string;
+    const afterColon = raw.split(/:\s/).slice(1).join(": ");
+    return afterColon || raw;
   }, []);
 
   useEffect(() => {
@@ -41,9 +52,17 @@ export default function QffLobbyPage() {
         const s = await fetchQffSession(token);
         if (!cancelled) {
           setHasCharacter(s.has_character);
+          if (s.has_character) {
+            setCharacterName(s.character.name);
+          } else {
+            setCharacterName(null);
+          }
         }
       } catch {
-        if (!cancelled) setHasCharacter(null);
+        if (!cancelled) {
+          setHasCharacter(null);
+          setCharacterName(null);
+        }
       } finally {
         if (!cancelled) setSessionBusy(false);
       }
@@ -54,16 +73,29 @@ export default function QffLobbyPage() {
   }, [isAuthenticated, sessionUser?.user?.is_approved]);
 
   useEffect(() => {
-    if (!deleteConfirm) return;
-    const cancel = (e: PointerEvent) => {
-      const el = deleteButtonWrapRef.current;
-      if (el && !el.contains(e.target as Node)) {
-        setDeleteConfirm(false);
+    if (!isAuthenticated || !sessionUser?.user?.is_approved) {
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getTokenRef.current();
+        const rows = await fetchQffLeaderboard(token);
+        if (!cancelled) {
+          setLeaderboard(rows);
+          setLeaderboardErr(null);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setLeaderboard(null);
+          setLeaderboardErr(e instanceof Error ? e.message : "Could not load leaderboard.");
+        }
       }
+    })();
+    return () => {
+      cancelled = true;
     };
-    document.addEventListener("pointerdown", cancel);
-    return () => document.removeEventListener("pointerdown", cancel);
-  }, [deleteConfirm]);
+  }, [isAuthenticated, sessionUser?.user?.is_approved]);
 
   if (!isAuthenticated) {
     return (
@@ -94,16 +126,26 @@ export default function QffLobbyPage() {
   const approved = sessionUser.user.is_approved;
 
   return (
-    <Box maxW="3xl" mx="auto" px={4} py={8}>
-      <Heading size="lg" mb={2} color="#e8f5c8" letterSpacing="wide">
-        Quest for Fat IV
-      </Heading>
-      <Text fontSize="sm" color="#889977" mb={6} fontStyle="italic">
-        {subtitle}
-      </Text>
+    <Flex
+      maxW="3xl"
+      mx="auto"
+      px={4}
+      py={8}
+      flexDirection={{ base: "column", md: "row" }}
+      align="flex-start"
+      gap={{ base: 6, md: 8 }}
+    >
+      <Stack flex="1" minW={0} maxW={{ base: "100%", md: "calc(67% - 0.5rem)" }} gap={4}>
+        <Box w="100%">
+          <Heading size="lg" mb={2} color="#e8f5c8" letterSpacing="wide">
+            Quest for Fat IV
+          </Heading>
+          <Text fontSize="sm" color="#889977" fontStyle="italic" lineHeight="short">
+            {subtitle}
+          </Text>
+        </Box>
 
-      <Stack gap={4}>
-        <Text whiteSpace="pre-wrap" lineHeight="tall">
+        <Text whiteSpace="pre-wrap" lineHeight="tall" color="#c8e6a8">
           {QFF_STORY}
         </Text>
 
@@ -112,38 +154,113 @@ export default function QffLobbyPage() {
         )}
 
         {approved && hasCharacter === true && (
-          <Flex gap={3} flexWrap="wrap" align="center">
-            <QffButton type="button" onClick={() => navigate("/qff/play")}>
-              Continue quest
-            </QffButton>
-            <Box ref={deleteButtonWrapRef} display="inline-block">
+          <>
+            <Flex
+              w="100%"
+              justify="space-between"
+              align="center"
+              flexWrap="wrap"
+              gap={3}
+            >
+              <QffButton type="button" onClick={() => navigate("/qff/play")}>
+                Continue quest
+              </QffButton>
               <QffButton
                 type="button"
-                disabled={deleteBusy}
-                colorPalette={deleteConfirm ? "red" : undefined}
-                onClick={async () => {
-                  if (deleteBusy) return;
-                  if (!deleteConfirm) {
-                    setDeleteConfirm(true);
-                    return;
-                  }
-                  setDeleteBusy(true);
-                  try {
-                    const token = await getTokenRef.current();
-                    await deleteQffCharacter(token);
-                    setHasCharacter(false);
-                    setDeleteConfirm(false);
-                  } catch {
-                    setDeleteConfirm(false);
-                  } finally {
-                    setDeleteBusy(false);
-                  }
+                variant="outline"
+                colorPalette="red"
+                flexShrink={0}
+                onClick={() => {
+                  setDeleteNameInput("");
+                  setDeleteModalOpen(true);
                 }}
+                disabled={deleteBusy}
               >
-                {deleteConfirm ? "Click again to delete character" : "Delete character"}
+                Delete character
               </QffButton>
-            </Box>
-          </Flex>
+            </Flex>
+            <AppModal
+              open={deleteModalOpen}
+              onOpenChange={(open) => {
+                setDeleteModalOpen(open);
+                if (!open) setDeleteNameInput("");
+              }}
+              title={
+                characterName
+                  ? `Really, Truly Delete ${characterName}?`
+                  : "Really, Truly Delete your character?"
+              }
+              description="Type the character name exactly to delete."
+              size="md"
+              contentProps={{
+                bg: "#1a1a1a",
+                borderColor: "#404040",
+                color: "#c8e6a8",
+              }}
+              descriptionProps={{ color: "#889977" }}
+              headerProps={{ color: "#c8e6a8" }}
+            >
+              <Stack gap={3}>
+                {characterName && (
+                  <Text fontSize="sm" color="#a8b898">
+                    Type <Text as="strong" color="#e8f5c8">{characterName}</Text> in the box
+                    below, then press DELETE. This cannot be undone.
+                  </Text>
+                )}
+                <Field.Root>
+                  <Field.Label>Character name</Field.Label>
+                  <Input
+                    value={deleteNameInput}
+                    onChange={(e) => setDeleteNameInput(e.target.value)}
+                    bg="#222"
+                    color="#c8e6a8"
+                    autoFocus
+                    autoComplete="off"
+                    placeholder={characterName ?? ""}
+                  />
+                </Field.Root>
+                <HStack gap={2} justify="flex-end" flexWrap="wrap" pt={1}>
+                  <QffButton
+                    type="button"
+                    onClick={() => {
+                      setDeleteModalOpen(false);
+                      setDeleteNameInput("");
+                    }}
+                    disabled={deleteBusy}
+                  >
+                    Cancel
+                  </QffButton>
+                  <QffButton
+                    type="button"
+                    colorPalette="red"
+                    disabled={
+                      deleteBusy ||
+                      !characterName ||
+                      deleteNameInput !== characterName
+                    }
+                    onClick={async () => {
+                      if (!characterName || deleteNameInput !== characterName) return;
+                      setDeleteBusy(true);
+                      try {
+                        const token = await getTokenRef.current();
+                        await deleteQffCharacter(token);
+                        setHasCharacter(false);
+                        setCharacterName(null);
+                        setDeleteModalOpen(false);
+                        setDeleteNameInput("");
+                      } catch {
+                        /* error surfaced elsewhere if needed */
+                      } finally {
+                        setDeleteBusy(false);
+                      }
+                    }}
+                  >
+                    {deleteBusy ? "…" : "DELETE"}
+                  </QffButton>
+                </HStack>
+              </Stack>
+            </AppModal>
+          </>
         )}
 
         {approved && hasCharacter === false && (
@@ -152,6 +269,165 @@ export default function QffLobbyPage() {
           </QffButton>
         )}
       </Stack>
-    </Box>
+
+      {approved && (
+        <Box
+          w={{ base: "100%", md: "33%" }}
+          flexShrink={0}
+          alignSelf={{ base: "stretch", md: "flex-start" }}
+          textAlign="right"
+          mt={{ base: 3, md: 0 }}
+        >
+          <Box mb={4} w="100%">
+            <QffButton
+              type="button"
+              onClick={() => navigate("/qff/handbook")}
+              w={{ base: "100%", sm: "auto" }}
+            >
+              Player&apos;s Handbook
+            </QffButton>
+          </Box>
+          <Heading
+            as="h2"
+            size="sm"
+            color="#c8e6a8"
+            mb={1}
+            textAlign="right"
+            fontWeight="semibold"
+            letterSpacing="wide"
+          >
+            Leaderboard
+          </Heading>
+          {leaderboardErr && (
+            <Text fontSize="xs" color="red.300" textAlign="right" mb={2}>
+              {leaderboardErr}
+            </Text>
+          )}
+          {leaderboard && leaderboard.length === 0 && !leaderboardErr && (
+            <Text fontSize="sm" color="#6a7a5a" textAlign="right">
+              No active heroes yet.
+            </Text>
+          )}
+          {leaderboard && leaderboard.length > 0 && (
+            <Box overflowX="auto" w="100%" ml="auto" mt={2}>
+            <Table.Root
+              size="sm"
+              variant="line"
+              w="100%"
+              bg="transparent"
+              css={{ "& th, & td": { backgroundColor: "transparent" } }}
+            >
+              <Table.Header>
+                <Table.Row bg="transparent">
+                  <Table.ColumnHeader
+                    color="#889977"
+                    textAlign="right"
+                    px={1}
+                    py={1}
+                    fontWeight="bold"
+                    bg="transparent"
+                    borderColor="whiteAlpha.200"
+                  >
+                    Lv
+                  </Table.ColumnHeader>
+                  <Table.ColumnHeader
+                    color="#889977"
+                    textAlign="right"
+                    px={1}
+                    py={1}
+                    fontWeight="bold"
+                    bg="transparent"
+                    borderColor="whiteAlpha.200"
+                  >
+                    Name
+                  </Table.ColumnHeader>
+                  <Table.ColumnHeader
+                    color="#889977"
+                    textAlign="right"
+                    px={1}
+                    py={1}
+                    fontWeight="bold"
+                    bg="transparent"
+                    borderColor="whiteAlpha.200"
+                  >
+                    Class
+                  </Table.ColumnHeader>
+                  <Table.ColumnHeader
+                    color="#889977"
+                    textAlign="right"
+                    px={1}
+                    py={1}
+                    fontWeight="bold"
+                    bg="transparent"
+                    borderColor="whiteAlpha.200"
+                  >
+                    XP
+                  </Table.ColumnHeader>
+                </Table.Row>
+              </Table.Header>
+              <Table.Body>
+                {leaderboard.map((row, i) => (
+                  <Table.Row key={`${row.class_slug}-${row.name}-${i}`} bg="transparent">
+                    <Table.Cell
+                      color="#a8b898"
+                      textAlign="right"
+                      fontFamily="monospace"
+                      fontSize="xs"
+                      px={1}
+                      py={1}
+                      bg="transparent"
+                      borderColor="whiteAlpha.200"
+                    >
+                      {row.level}
+                    </Table.Cell>
+                    <Table.Cell
+                      color="#c8e6a8"
+                      textAlign="right"
+                      fontSize="xs"
+                      overflow="hidden"
+                      textOverflow="ellipsis"
+                      maxW={{ base: "6rem", sm: "7rem" }}
+                      px={1}
+                      py={1}
+                      bg="transparent"
+                      borderColor="whiteAlpha.200"
+                    >
+                      {row.name}
+                    </Table.Cell>
+                    <Table.Cell
+                      color="#889977"
+                      textAlign="right"
+                      fontSize="xs"
+                      overflow="hidden"
+                      textOverflow="ellipsis"
+                      maxW={{ base: "4rem", sm: "5rem" }}
+                      px={1}
+                      py={1}
+                      bg="transparent"
+                      borderColor="whiteAlpha.200"
+                    >
+                      {row.class_name}
+                    </Table.Cell>
+                    <Table.Cell
+                      color="#a8c890"
+                      textAlign="right"
+                      fontFamily="monospace"
+                      fontSize="xs"
+                      px={1}
+                      py={1}
+                      bg="transparent"
+                      borderColor="whiteAlpha.200"
+                    >
+                      {row.xp}
+                    </Table.Cell>
+                  </Table.Row>
+                ))}
+              </Table.Body>
+            </Table.Root>
+            </Box>
+          )}
+        </Box>
+      )}
+    </Flex>
   );
 }

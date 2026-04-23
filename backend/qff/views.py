@@ -2,6 +2,7 @@ import json
 import logging
 import random
 import time
+from datetime import timedelta
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -156,6 +157,31 @@ def session_view(request):
     if not char:
         return Response({"has_character": False})
     return Response(build_session_for_character(char))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsApprovedUser])
+def leaderboard_view(request):
+    """Active heroes in the last 30 days, top 10 by total XP (lobby)."""
+    cutoff = timezone.now() - timedelta(days=30)
+    rows = (
+        Character.objects.filter(last_activity_at__gte=cutoff, is_dead=False)
+        .select_related("character_class")
+        .order_by("-xp", "name")
+        .values("name", "level", "xp", "character_class__name", "character_class__slug")[:10]
+    )
+    return Response(
+        [
+            {
+                "name": r["name"],
+                "level": r["level"],
+                "class_name": r["character_class__name"],
+                "class_slug": r["character_class__slug"],
+                "xp": r["xp"],
+            }
+            for r in rows
+        ]
+    )
 
 
 @api_view(["POST"])
@@ -2558,3 +2584,23 @@ def dm_ineffective_input_detail(request, pk):
     row = get_object_or_404(QffIneffectiveInput, pk=pk)
     row.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsStaffUser])
+def dm_combat_sim_preview(request):
+    """Deterministic combat math preview for DM (no DB writes)."""
+    from qff.combat_sim import preview_payload
+
+    if not isinstance(request.data, dict):
+        return Response(
+            {"detail": "JSON object body required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    try:
+        return Response(preview_payload(request.data))
+    except ValueError as e:
+        return Response(
+            {"detail": str(e)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )

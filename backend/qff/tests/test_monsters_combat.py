@@ -670,7 +670,6 @@ class MonsterCombatTests(TestCase):
                 damage_after_mitigation=3,
                 was_crit=False,
                 hit_chance=90,
-                effective_dodge_chance=5,
                 crit_chance=0.1,
             ),
         ):
@@ -698,7 +697,6 @@ class MonsterCombatTests(TestCase):
                 damage_after_mitigation=0,
                 was_crit=False,
                 hit_chance=10,
-                effective_dodge_chance=5,
                 crit_chance=0.1,
             ),
         ):
@@ -960,7 +958,6 @@ class MonsterCombatTests(TestCase):
             damage_after_mitigation=2,
             was_crit=False,
             hit_chance=50,
-            effective_dodge_chance=5,
             crit_chance=0.05,
         )
         with patch("qff.monster_sim.resolve_physical_strike", return_value=fake):
@@ -1029,7 +1026,6 @@ class MonsterCombatTests(TestCase):
             damage_after_mitigation=1,
             was_crit=False,
             hit_chance=50,
-            effective_dodge_chance=5,
             crit_chance=0.05,
         )
         self.monster.monster_strike_pending = False
@@ -1137,7 +1133,6 @@ class MonsterCombatTests(TestCase):
             damage_after_mitigation=0,
             was_crit=False,
             hit_chance=50,
-            effective_dodge_chance=5,
             crit_chance=0.05,
         )
         with patch("qff.monster_sim.resolve_physical_strike", return_value=miss):
@@ -1171,7 +1166,6 @@ class MonsterCombatTests(TestCase):
             damage_after_mitigation=1,
             was_crit=False,
             hit_chance=50,
-            effective_dodge_chance=5,
             crit_chance=0.05,
         )
         with patch("qff.monster_sim.resolve_physical_strike", return_value=hit):

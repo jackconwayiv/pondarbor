@@ -1042,23 +1042,6 @@ def _resolve_monster_strike(monster: MonsterInstance, now) -> bool:
                 )
         _finish_monster_strike_turn(monster.pk, room_id, now)
         return True
-    if res.outcome == "dodge":
-        _narrate(
-            room_id,
-            f"You dodge the {mname}'s attack!",
-            target_character_id=hero.pk,
-            log_tone="miss",
-        )
-        for h in _heroes_in_room(room_id):
-            if h.pk != hero.pk:
-                _narrate(
-                    room_id,
-                    f"{hero.name} dodges the {mname}.",
-                    target_character_id=h.pk,
-                    log_tone="miss",
-                )
-        _finish_monster_strike_turn(monster.pk, room_id, now)
-        return True
 
     dmg = res.damage
     nh = max(0, int(hero.cur_health) - dmg)
@@ -1138,22 +1121,6 @@ def _resolve_hero_strike(char: Character, now) -> None:
         for h in _heroes_in_room(rid):
             if h.pk != char.pk:
                 _narrate(rid, peer_miss, target_character_id=h.pk, log_tone="miss")
-        return
-    if res.outcome == "dodge":
-        _narrate(
-            rid,
-            f"The {mname} evades your attack!",
-            target_character_id=char.pk,
-            log_tone="miss",
-        )
-        for h in _heroes_in_room(rid):
-            if h.pk != char.pk:
-                _narrate(
-                    rid,
-                    f"The {mname} evades {char.name}'s attack.",
-                    target_character_id=h.pk,
-                    log_tone="miss",
-                )
         return
 
     dmg = res.damage

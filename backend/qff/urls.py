@@ -3,6 +3,7 @@ from django.urls import path
 from qff import staff_content, views
 
 urlpatterns = [
+    path("leaderboard/", views.leaderboard_view),
     path("session/", views.session_view),
     path("session/activity/", views.session_activity_view),
     path("session/leave/", views.session_leave_view),
@@ -59,4 +60,5 @@ urlpatterns = [
     path("dm/interactables/<int:pk>/", staff_content.dm_interactable_detail),
     path("dm/ineffective-inputs/", views.dm_ineffective_inputs_list),
     path("dm/ineffective-inputs/<int:pk>/", views.dm_ineffective_input_detail),
+    path("dm/combat-sim/preview/", views.dm_combat_sim_preview),
 ]

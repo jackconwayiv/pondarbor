@@ -19,6 +19,7 @@ import { useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
 import QffButton from "./QffButton";
+import QffDmCollapsibleSection from "./QffDmCollapsibleSection";
 import { qffGridCellButtonProps } from "./qffUi";
 import {
   dmCreateArea,
@@ -297,6 +298,10 @@ export default function QffDmPage() {
   const [panelLairTemplateWeaponLabel, setPanelLairTemplateWeaponLabel] = useState("");
   const [panelLairTemplateAttackVerb, setPanelLairTemplateAttackVerb] = useState("");
   const [panelLairTemplateCombatBusy, setPanelLairTemplateCombatBusy] = useState(false);
+  const [lairOpen, setLairOpen] = useState(false);
+  const [roomItemsOpen, setRoomItemsOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [placementOpen, setPlacementOpen] = useState(false);
   const [monsterTemplates, setMonsterTemplates] = useState<DmMonsterTemplate[]>([]);
   const dmMapColumnRef = useRef<HTMLDivElement | null>(null);
   const dmRoomPanelRef = useRef<HTMLDivElement | null>(null);
@@ -1362,6 +1367,14 @@ export default function QffDmPage() {
               <>
                 <Box flex="1" minH={0} overflowY="auto" px={3} pt={3} pb={2}>
                   <Stack gap={3}>
+                    <Box
+                      borderWidth="1px"
+                      borderRadius="md"
+                      borderColor="#404040"
+                      p={3}
+                      bg="#1a1a1a"
+                    >
+                    <Stack gap={3}>
                     <Heading size="sm">{selectedRoom.name}</Heading>
                     <Field.Root>
                       <Field.Label>Name</Field.Label>
@@ -1452,873 +1465,22 @@ export default function QffDmPage() {
                         walking in keep <strong>spawn_room</strong> aligned.
                       </Text>
                     </Stack>
-                    <Field.Root>
-                      <Field.Label>Monster lair template</Field.Label>
-                      <NativeSelectRoot>
-                        <NativeSelectField
-                          value={panelMonsterLairTemplateId}
-                          onChange={(e) => setPanelMonsterLairTemplateId(e.target.value)}
-                          bg="#222"
-                        >
-                          <option value="">None</option>
-                          {monsterTemplates.map((t) => (
-                            <option key={t.id} value={String(t.id)}>
-                              {t.name} ({t.slug})
-                            </option>
-                          ))}
-                        </NativeSelectField>
-                      </NativeSelectRoot>
-                      <Text fontSize="xs" color="#888" mt={1}>
-                        Lazy-spawns an instance when players are active; cooldown after kill.
-                      </Text>
-                    </Field.Root>
-                    {panelMonsterLairTemplateId !== "" ? (
-                      <Box
-                        borderLeftWidth="3px"
-                        borderColor="#6a5a4a"
-                        pl={2}
-                        py={1.5}
-                        mb={1}
-                        bg="rgba(106, 90, 74, 0.12)"
-                        borderRadius="sm"
-                      >
-                        <Text fontSize="xs" fontWeight="bold" color="#d8c8b8" mb={2}>
-                          Lair template — combat, inspect text, and hidden lore
-                        </Text>
-                        <Flex gap={2} wrap="wrap" align="flex-end">
-                          <Field.Root maxW="100px">
-                            <Field.Label fontSize="xs">Armor</Field.Label>
-                            <Input
-                              size="sm"
-                              type="number"
-                              min={0}
-                              value={panelLairTemplateArmor}
-                              onChange={(e) => setPanelLairTemplateArmor(e.target.value)}
-                              bg="#222"
-                            />
-                          </Field.Root>
-                          <Field.Root maxW="100px">
-                            <Field.Label fontSize="xs">Accuracy</Field.Label>
-                            <Input
-                              size="sm"
-                              type="number"
-                              value={panelLairTemplateAccuracy}
-                              onChange={(e) => setPanelLairTemplateAccuracy(e.target.value)}
-                              bg="#222"
-                            />
-                          </Field.Root>
-                          <Button
-                            size="sm"
-                            colorPalette="orange"
-                            loading={panelLairTemplateCombatBusy}
-                            onClick={() => {
-                              void saveLairTemplateCombatStats();
-                            }}
-                          >
-                            Save lair template
-                          </Button>
-                        </Flex>
-                        <Text fontSize="xs" color="#888" mt={1}>
-                          Armor reduces damage when heroes hit this monster; accuracy helps the
-                          monster land hits.
-                        </Text>
-                        <Field.Root mt={2}>
-                          <Field.Label fontSize="xs">Description (look / inspect)</Field.Label>
-                          <Textarea
-                            size="sm"
-                            rows={3}
-                            value={panelLairTemplateDescription}
-                            onChange={(e) => setPanelLairTemplateDescription(e.target.value)}
-                            bg="#222"
-                          />
-                        </Field.Root>
-                        <Field.Root mt={2}>
-                          <Field.Label fontSize="xs">Hidden description (lore)</Field.Label>
-                          <Textarea
-                            size="sm"
-                            rows={3}
-                            value={panelLairTemplateHiddenDescription}
-                            onChange={(e) => setPanelLairTemplateHiddenDescription(e.target.value)}
-                            bg="#222"
-                          />
-                          <Text fontSize="xs" color="#888" mt={1}>
-                            Shown when d100 + Smarts (encumbered) ≥ Lore DC.
-                          </Text>
-                        </Field.Root>
-                        <Field.Root maxW="140px" mt={2}>
-                          <Field.Label fontSize="xs">Lore DC (blank = level)</Field.Label>
-                          <Input
-                            size="sm"
-                            type="number"
-                            min={1}
-                            max={65535}
-                            placeholder="level"
-                            value={panelLairTemplateLoreDc}
-                            onChange={(e) => setPanelLairTemplateLoreDc(e.target.value)}
-                            bg="#222"
-                          />
-                        </Field.Root>
-                        <Field.Root mt={2}>
-                          <Field.Label fontSize="xs">Attack weapon (combat flavor)</Field.Label>
-                          <Input
-                            size="sm"
-                            value={panelLairTemplateWeaponLabel}
-                            onChange={(e) => setPanelLairTemplateWeaponLabel(e.target.value)}
-                            placeholder="e.g. filthy claws"
-                            bg="#222"
-                          />
-                        </Field.Root>
-                        <Field.Root mt={2}>
-                          <Field.Label fontSize="xs">Attack verb (optional)</Field.Label>
-                          <Input
-                            size="sm"
-                            value={panelLairTemplateAttackVerb}
-                            onChange={(e) => setPanelLairTemplateAttackVerb(e.target.value)}
-                            placeholder="e.g. bites, claws, slashes"
-                            bg="#222"
-                          />
-                          <Text fontSize="xs" color="#888" mt={1}>
-                            Used for miss and unarmed hit lines. Leave blank for default swing/strike
-                            phrasing.
-                          </Text>
-                        </Field.Root>
-                      </Box>
-                    ) : null}
-
-                    <Text fontWeight="bold" mt={3}>
-                      Room items
-                    </Text>
-                    <Text fontSize="xs" color="#888">
-                      Same appearance as floor items in play, but <strong>get</strong> mints a new
-                      instance per player (not a shared pickup). Hidden while a floor copy of the
-                      same template exists in this room.
-                    </Text>
-                    <Box
-                      borderLeftWidth="3px"
-                      borderColor="#5a6a8a"
-                      pl={2}
-                      py={1}
-                      mb={1}
-                      bg="rgba(90, 106, 138, 0.08)"
-                      borderRadius="sm"
-                    >
-                      <Text fontSize="xs" fontWeight="bold" color="#c8d0e8">
-                        Spawn conditions (optional)
-                      </Text>
-                      <Text fontSize="xs" color="#aaa" mb={2}>
-                        Same rules as floor items: quest state, not shown if the player already
-                        carries this template, and not shown if an unowned floor instance of this
-                        template is in the room.                         For a pickup that only appears while a{" "}
-                        <strong>container</strong> is open in play, choose that container in{" "}
-                        <strong>Container (optional)</strong> below (or PATCH{" "}
-                        <code>interactable_id</code> via the API). Heroes use{" "}
-                        <strong>open</strong> or <strong>use</strong> on the container; the server
-                        tracks <code>opened_container</code> (no separate interior-slot model).
-                      </Text>
-                    </Box>
-                    {roomItems.length === 0 ? (
-                      <Text fontSize="sm" color="#666">
-                        No room items yet — add one below.
-                      </Text>
-                    ) : (
-                      roomItems.map((ri) => {
-                        const roomQuestDetail =
-                          ri.visible_quest_id != null
-                            ? questDetailById.get(ri.visible_quest_id)
-                            : undefined;
-                        return (
-                          <Stack
-                            key={ri.id}
-                            gap={1}
-                            py={1.5}
-                            borderBottomWidth="1px"
-                            borderColor="#333"
-                          >
-                            <Flex
-                              justify="space-between"
-                              align="center"
-                              fontSize="sm"
-                              gap={2}
-                            >
-                              <Text>
-                                {ri.nickname
-                                  ? `${ri.nickname} (${ri.item_name})`
-                                  : ri.item_name}
-                                <Text as="span" fontSize="xs" color="#666" ml={1}>
-                                  #{ri.id}
-                                </Text>
-                              </Text>
-                              <QffButton
-                                type="button"
-                                size="sm"
-                                {...DM_PRIMARY_BTN}
-                                onClick={async () => {
-                                  const token = await getTokenRef.current();
-                                  await dmDeleteRoomItem(token, ri.id);
-                                  const next = await dmFetchRoomRoomItems(
-                                    token,
-                                    selectedRoom!.id,
-                                  );
-                                  setRoomItems(next);
-                                }}
-                              >
-                                Remove
-                              </QffButton>
-                            </Flex>
-                            <Text fontSize="xs" color="#888">
-                              Show this slot only when:
-                            </Text>
-                            <Flex gap={2} flexWrap="wrap" align="flex-end">
-                              <Field.Root flex="1" minW="140px">
-                                <Field.Label fontSize="xs">Quest</Field.Label>
-                                <NativeSelectRoot>
-                                  <NativeSelectField
-                                    value={
-                                      ri.visible_quest_id != null
-                                        ? String(ri.visible_quest_id)
-                                        : ""
-                                    }
-                                    onChange={async (e) => {
-                                      const raw = e.target.value;
-                                      const qid =
-                                        raw === ""
-                                          ? null
-                                          : parseInt(raw, 10);
-                                      const token = await getTokenRef.current();
-                                      if (qid != null) {
-                                        revealQuestFetchedRef.current.add(qid);
-                                        const d = await dmFetchQuestDetail(
-                                          token,
-                                          qid,
-                                        );
-                                        setQuestDetailById((prev) =>
-                                          new Map(prev).set(qid, d),
-                                        );
-                                      }
-                                      const nx = await dmPatchRoomItem(token, ri.id, {
-                                        visible_quest_state_id: null,
-                                      });
-                                      setRoomItems((prev) =>
-                                        prev.map((x) =>
-                                          x.id === ri.id
-                                            ? {
-                                                ...nx,
-                                                visible_quest_id: qid,
-                                                visible_quest_slug:
-                                                  qid != null
-                                                    ? dmQuests.find(
-                                                        (q) => q.id === qid,
-                                                      )?.slug ?? null
-                                                    : null,
-                                                visible_quest_state_slug: null,
-                                              }
-                                            : x,
-                                        ),
-                                      );
-                                    }}
-                                    bg="#222"
-                                  >
-                                    <option value="">— any player —</option>
-                                    {[...dmQuests]
-                                      .sort((a, b) =>
-                                        a.name.localeCompare(b.name),
-                                      )
-                                      .map((q) => (
-                                        <option key={q.id} value={String(q.id)}>
-                                          {q.name}
-                                        </option>
-                                      ))}
-                                  </NativeSelectField>
-                                </NativeSelectRoot>
-                              </Field.Root>
-                              <Field.Root flex="1" minW="140px">
-                                <Field.Label fontSize="xs">Quest state</Field.Label>
-                                <NativeSelectRoot>
-                                  <NativeSelectField
-                                    value={
-                                      ri.visible_quest_state_id != null
-                                        ? String(ri.visible_quest_state_id)
-                                        : ""
-                                    }
-                                    pointerEvents={
-                                      !roomQuestDetail ? "none" : undefined
-                                    }
-                                    onChange={async (e) => {
-                                      const raw = e.target.value;
-                                      const sid =
-                                        raw === ""
-                                          ? null
-                                          : parseInt(raw, 10);
-                                      const token = await getTokenRef.current();
-                                      const nx = await dmPatchRoomItem(
-                                        token,
-                                        ri.id,
-                                        {
-                                          visible_quest_state_id:
-                                            sid != null &&
-                                            Number.isFinite(sid)
-                                              ? sid
-                                              : null,
-                                        },
-                                      );
-                                      setRoomItems((prev) =>
-                                        prev.map((x) =>
-                                          x.id === ri.id ? nx : x,
-                                        ),
-                                      );
-                                    }}
-                                    bg="#222"
-                                    opacity={!roomQuestDetail ? 0.55 : undefined}
-                                  >
-                                    <option value="">
-                                      {roomQuestDetail
-                                        ? "— choose state —"
-                                        : "— pick quest first —"}
-                                    </option>
-                                    {(roomQuestDetail?.states ?? [])
-                                      .slice()
-                                      .sort(
-                                        (a, b) =>
-                                          a.sort_order - b.sort_order ||
-                                          a.name.localeCompare(b.name),
-                                      )
-                                      .map((s) => (
-                                        <option key={s.id} value={String(s.id)}>
-                                          {s.name} ({s.slug})
-                                        </option>
-                                      ))}
-                                  </NativeSelectField>
-                                </NativeSelectRoot>
-                              </Field.Root>
-                            </Flex>
-                            <Field.Root flex="1" minW="200px" mt={1}>
-                              <Field.Label fontSize="xs">
-                                Container (optional) — slot only while this is open in play
-                              </Field.Label>
-                              <NativeSelectRoot>
-                                <NativeSelectField
-                                  value={
-                                    ri.interactable_id != null
-                                      ? String(ri.interactable_id)
-                                      : ""
-                                  }
-                                  onChange={async (e) => {
-                                    const raw = e.target.value;
-                                    const oid =
-                                      raw === "" ? null : parseInt(raw, 10);
-                                    const token = await getTokenRef.current();
-                                    const nx = await dmPatchRoomItem(token, ri.id, {
-                                      interactable_id:
-                                        oid != null && Number.isFinite(oid)
-                                          ? oid
-                                          : null,
-                                    });
-                                    setRoomItems((prev) =>
-                                      prev.map((x) => (x.id === ri.id ? nx : x)),
-                                    );
-                                  }}
-                                  bg="#222"
-                                >
-                                  <option value="">— room only (not in a container) —</option>
-                                  {roomContainerInteractables.map((o) => (
-                                    <option key={o.id} value={String(o.id)}>
-                                      {o.name} ({o.slug})
-                                    </option>
-                                  ))}
-                                </NativeSelectField>
-                              </NativeSelectRoot>
-                            </Field.Root>
-                            <Flex align="center" gap={2} mt={1}>
-                              <Switch.Root
-                                size="sm"
-                                checked={!!ri.allow_repeat_while_carrying}
-                                onCheckedChange={async (d) => {
-                                  const token = await getTokenRef.current();
-                                  const nx = await dmPatchRoomItem(token, ri.id, {
-                                    allow_repeat_while_carrying: d.checked,
-                                  });
-                                  setRoomItems((prev) =>
-                                    prev.map((x) => (x.id === ri.id ? nx : x)),
-                                  );
-                                }}
-                                colorPalette="green"
-                              >
-                                <Switch.HiddenInput />
-                                <Switch.Control>
-                                  <Switch.Thumb />
-                                </Switch.Control>
-                                <Switch.Label fontSize="xs" color="#aaa">
-                                  Allow get again while carrying (farmable / stacks)
-                                </Switch.Label>
-                              </Switch.Root>
-                            </Flex>
-                            <Field.Root flex="1" minW="200px" mt={1}>
-                              <Field.Label fontSize="xs">
-                                Per-hero mint (separate from carrying toggle above)
-                              </Field.Label>
-                              <NativeSelectRoot>
-                                <NativeSelectField
-                                  value={ri.mint_policy ?? "while_instance"}
-                                  onChange={async (e) => {
-                                    const v = e.target.value as
-                                      | "while_instance"
-                                      | "once_ever";
-                                    const token = await getTokenRef.current();
-                                    const nx = await dmPatchRoomItem(token, ri.id, {
-                                      mint_policy: v,
-                                    });
-                                    setRoomItems((prev) =>
-                                      prev.map((x) => (x.id === ri.id ? nx : x)),
-                                    );
-                                  }}
-                                  bg="#222"
-                                >
-                                  <option value="while_instance">
-                                    Once if item no longer exists — hero can get again after their
-                                    minted copy is gone (consumed, etc.)
-                                  </option>
-                                  <option value="once_ever">
-                                    Once per character — first successful get only; drop/consume
-                                    does not reopen
-                                  </option>
-                                </NativeSelectField>
-                              </NativeSelectRoot>
-                              <Text fontSize="xs" color="#666" mt={1}>
-                                Once if item no longer exists: hero can take again after their minted
-                                copy is gone. Once per character: first successful get only — drop
-                                or consume does not reopen.
-                              </Text>
-                            </Field.Root>
-                          </Stack>
-                        );
-                      })
-                    )}
-                    <Text fontSize="xs" fontWeight="bold" color="#aaa" mt={1}>
-                      Add room item
-                    </Text>
-                    <Stack gap={2}>
-                      <Flex gap={2} flexWrap="wrap" align="flex-end">
-                        <Field.Root flex="1" minW="160px">
-                          <Field.Label fontSize="xs">Item template</Field.Label>
-                          <NativeSelectRoot>
-                            <NativeSelectField
-                              value={newRoomItemId}
-                              onChange={(e) => setNewRoomItemId(e.target.value)}
-                              bg="#222"
-                            >
-                              <option value="">— choose —</option>
-                              {itemTemplates.map((it) => (
-                                <option key={it.id} value={String(it.id)}>
-                                  {it.name} ({it.slug})
-                                </option>
-                              ))}
-                            </NativeSelectField>
-                          </NativeSelectRoot>
-                        </Field.Root>
-                        <Field.Root maxW="140px">
-                          <Field.Label fontSize="xs">Nickname (optional)</Field.Label>
-                          <Input
-                            value={newRoomNickname}
-                            onChange={(e) => setNewRoomNickname(e.target.value)}
-                            placeholder="e.g. rusty"
-                            bg="#222"
-                          />
-                        </Field.Root>
-                      </Flex>
-                      <Text fontSize="xs" color="#888">
-                        Show only when player is in:
-                      </Text>
-                      <Flex gap={2} flexWrap="wrap" align="flex-end">
-                        <Field.Root flex="1" minW="140px">
-                          <Field.Label fontSize="xs">Quest</Field.Label>
-                          <NativeSelectRoot>
-                            <NativeSelectField
-                              value={newRoomVisibleQuestId}
-                              onChange={async (e) => {
-                                const v = e.target.value;
-                                setNewRoomVisibleQuestId(v);
-                                setNewRoomVisibleStateId("");
-                                const qid = v === "" ? null : parseInt(v, 10);
-                                if (qid != null && Number.isFinite(qid)) {
-                                  revealQuestFetchedRef.current.add(qid);
-                                  try {
-                                    const token = await getTokenRef.current();
-                                    const d = await dmFetchQuestDetail(
-                                      token,
-                                      qid,
-                                    );
-                                    setQuestDetailById((prev) =>
-                                      new Map(prev).set(qid, d),
-                                    );
-                                  } catch {
-                                    revealQuestFetchedRef.current.delete(qid);
-                                  }
-                                }
-                              }}
-                              bg="#222"
-                            >
-                              <option value="">— any player —</option>
-                              {[...dmQuests]
-                                .sort((a, b) => a.name.localeCompare(b.name))
-                                .map((q) => (
-                                  <option key={q.id} value={String(q.id)}>
-                                    {q.name}
-                                  </option>
-                                ))}
-                            </NativeSelectField>
-                          </NativeSelectRoot>
-                        </Field.Root>
-                        <Field.Root flex="1" minW="140px">
-                          <Field.Label fontSize="xs">Quest state</Field.Label>
-                          <NativeSelectRoot>
-                            <NativeSelectField
-                              value={newRoomVisibleStateId}
-                              onChange={(e) =>
-                                setNewRoomVisibleStateId(e.target.value)
-                              }
-                              pointerEvents={
-                                !newRoomQuestDetailForAdd ? "none" : undefined
-                              }
-                              bg="#222"
-                              opacity={!newRoomQuestDetailForAdd ? 0.55 : undefined}
-                            >
-                              <option value="">
-                                {newRoomQuestDetailForAdd
-                                  ? "— choose state —"
-                                  : "— pick quest first —"}
-                              </option>
-                              {(newRoomQuestDetailForAdd?.states ?? [])
-                                .slice()
-                                .sort(
-                                  (a, b) =>
-                                    a.sort_order - b.sort_order ||
-                                    a.name.localeCompare(b.name),
-                                )
-                                .map((s) => (
-                                  <option key={s.id} value={String(s.id)}>
-                                    {s.name} ({s.slug})
-                                  </option>
-                                ))}
-                            </NativeSelectField>
-                          </NativeSelectRoot>
-                        </Field.Root>
-                      </Flex>
-                      <Field.Root flex="1" minW="200px">
-                        <Field.Label fontSize="xs">
-                          Container (optional) — mint slot only while open in play
-                        </Field.Label>
-                        <NativeSelectRoot>
-                          <NativeSelectField
-                            value={newRoomItemInteractableId}
-                            onChange={(e) =>
-                              setNewRoomItemInteractableId(e.target.value)
-                            }
-                            bg="#222"
-                          >
-                            <option value="">— room only (not in a container) —</option>
-                            {roomContainerInteractables.map((o) => (
-                              <option key={o.id} value={String(o.id)}>
-                                {o.name} ({o.slug})
-                              </option>
-                            ))}
-                          </NativeSelectField>
-                        </NativeSelectRoot>
-                      </Field.Root>
-                      <Field.Root flex="1" minW="200px">
-                        <Field.Label fontSize="xs">Per-hero mint for this new slot</Field.Label>
-                        <NativeSelectRoot>
-                          <NativeSelectField
-                            value={newRoomMintPolicy}
-                            onChange={(e) =>
-                              setNewRoomMintPolicy(
-                                e.target.value as "while_instance" | "once_ever",
-                              )
-                            }
-                            bg="#222"
-                          >
-                            <option value="while_instance">
-                              Once if item no longer exists (per hero)
-                            </option>
-                            <option value="once_ever">
-                              Once per character (never again from this slot)
-                            </option>
-                          </NativeSelectField>
-                        </NativeSelectRoot>
-                        <Text fontSize="xs" color="#666" mt={1}>
-                          Same mint rules as above: &quot;while instance&quot; vs one lifetime claim
-                          per hero.
-                        </Text>
-                      </Field.Root>
-                      <Box>
-                        <QffButton
-                          type="button"
-                          size="sm"
-                          {...DM_PRIMARY_BTN}
-                          onClick={async () => {
-                            const id = parseInt(newRoomItemId, 10);
-                            if (!Number.isFinite(id)) {
-                              setErr("Choose an item template.");
-                              return;
-                            }
-                            const vsRaw = newRoomVisibleStateId.trim();
-                            const vsid =
-                              vsRaw === ""
-                                ? null
-                                : parseInt(vsRaw, 10);
-                            if (
-                              newRoomVisibleQuestId !== "" &&
-                              (!Number.isFinite(vsid as number) || vsRaw === "")
-                            ) {
-                              setErr(
-                                "Pick a quest state, or clear the quest filters.",
-                              );
-                              return;
-                            }
-                            setErr(null);
-                            const token = await getTokenRef.current();
-                            const iRaw = newRoomItemInteractableId.trim();
-                            const iid =
-                              iRaw === "" ? null : parseInt(iRaw, 10);
-                            await dmCreateRoomRoomItem(token, selectedRoom!.id, {
-                              item_id: id,
-                              nickname: newRoomNickname.trim() || undefined,
-                              visible_quest_state_id:
-                                vsid != null && Number.isFinite(vsid)
-                                  ? vsid
-                                  : undefined,
-                              interactable_id:
-                                iid != null && Number.isFinite(iid) ? iid : undefined,
-                              mint_policy: newRoomMintPolicy,
-                            });
-                            setNewRoomNickname("");
-                            setNewRoomVisibleQuestId("");
-                            setNewRoomVisibleStateId("");
-                            setNewRoomItemInteractableId("");
-                            setNewRoomMintPolicy("while_instance");
-                            const next = await dmFetchRoomRoomItems(
-                              token,
-                              selectedRoom!.id,
-                            );
-                            setRoomItems(next);
-                          }}
-                        >
-                          Add room item
-                        </QffButton>
-                      </Box>
                     </Stack>
-
-                    <Field.Root>
-                      <Field.Label>Search text</Field.Label>
-                      <Textarea
-                        value={panelSearch}
-                        onChange={(e) => setPanelSearch(e.target.value)}
-                        rows={2}
-                        bg="#222"
-                      />
-                    </Field.Root>
-                    <Field.Root>
-                      <Field.Label>Search DC (1–100, roll 1d100 + Sense)</Field.Label>
-                      <Input
-                        type="number"
-                        min={1}
-                        max={100}
-                        w="100px"
-                        value={panelSearchChance}
-                        onChange={(e) => setPanelSearchChance(e.target.value)}
-                        bg="#222"
-                      />
-                    </Field.Root>
-                    <Field.Root>
-                      <Field.Label>Search reward item (optional, first success per hero)</Field.Label>
-                      <NativeSelectRoot>
-                        <NativeSelectField
-                          value={panelSearchRewardItemId}
-                          onChange={(e) => setPanelSearchRewardItemId(e.target.value)}
-                          bg="#222"
-                        >
-                          <option value="">(none)</option>
-                          {itemTemplates.map((it) => (
-                            <option key={it.id} value={String(it.id)}>
-                              {it.name}
-                            </option>
-                          ))}
-                        </NativeSelectField>
-                      </NativeSelectRoot>
-                    </Field.Root>
-                    <Field.Root>
-                      <Field.Label>Search reveals exit (optional, this room)</Field.Label>
-                      <NativeSelectRoot>
-                        <NativeSelectField
-                          value={panelSearchRevealsExitId}
-                          onChange={(e) => setPanelSearchRevealsExitId(e.target.value)}
-                          bg="#222"
-                        >
-                          <option value="">(none)</option>
-                          {exits.map((ex) => (
-                            <option key={ex.id} value={String(ex.id)}>
-                              {ex.direction} → {ex.to_room_name}
-                            </option>
-                          ))}
-                        </NativeSelectField>
-                      </NativeSelectRoot>
-                    </Field.Root>
-                    <Field.Root>
-                      <Field.Label>
-                        Search → floor item, once per character ever (optional)
-                      </Field.Label>
-                      <NativeSelectRoot>
-                        <NativeSelectField
-                          value={panelSearchFloorOnceItemId}
-                          onChange={(e) => setPanelSearchFloorOnceItemId(e.target.value)}
-                          bg="#222"
-                        >
-                          <option value="">(none)</option>
-                          {itemTemplates.map((it) => (
-                            <option key={it.id} value={String(it.id)}>
-                              {it.name}
-                            </option>
-                          ))}
-                        </NativeSelectField>
-                      </NativeSelectRoot>
-                      <Text fontSize="xs" color="#666" mt={1}>
-                        On first successful search roll, drops one unowned instance on the floor. That
-                        hero will not get another from this room even if they lose the item.
+                    </Box>
+                    <Box
+                      borderWidth="1px"
+                      borderRadius="md"
+                      borderColor="#404040"
+                      p={3}
+                      bg="#1a1a1a"
+                    >
+                      <Text fontWeight="bold" mt={0} mb={1}>
+                        Exits
                       </Text>
-                    </Field.Root>
-                    <Text fontSize="xs" color="#888">
-                      Quest search floor (optional): on successful search, mint a quest-gated floor
-                      drop if the hero is in the chosen state and does not already hold an unclaimed
-                      copy on the floor (same as &quot;once if item no longer exists&quot;).
-                    </Text>
-                    <Flex gap={2} flexWrap="wrap" align="flex-end">
-                      <Field.Root flex="1" minW="140px">
-                        <Field.Label fontSize="xs">Quest</Field.Label>
-                        <NativeSelectRoot>
-                          <NativeSelectField
-                            value={panelSearchFloorQuestQuestId}
-                            onChange={async (e) => {
-                              const v = e.target.value;
-                              setPanelSearchFloorQuestQuestId(v);
-                              setPanelSearchFloorQuestStateId("");
-                              setPanelSearchFloorQuestItemId("");
-                              const qid = v === "" ? null : parseInt(v, 10);
-                              if (qid != null && Number.isFinite(qid)) {
-                                revealQuestFetchedRef.current.add(qid);
-                                try {
-                                  const token = await getTokenRef.current();
-                                  const d = await dmFetchQuestDetail(token, qid);
-                                  setQuestDetailById((prev) => new Map(prev).set(qid, d));
-                                } catch {
-                                  revealQuestFetchedRef.current.delete(qid);
-                                }
-                              }
-                            }}
-                            bg="#222"
-                          >
-                            <option value="">(none)</option>
-                            {[...dmQuests]
-                              .sort((a, b) => a.name.localeCompare(b.name))
-                              .map((q) => (
-                                <option key={q.id} value={String(q.id)}>
-                                  {q.name}
-                                </option>
-                              ))}
-                          </NativeSelectField>
-                        </NativeSelectRoot>
-                      </Field.Root>
-                      <Field.Root flex="1" minW="140px">
-                        <Field.Label fontSize="xs">Quest state</Field.Label>
-                        <NativeSelectRoot>
-                          <NativeSelectField
-                            value={panelSearchFloorQuestStateId}
-                            onChange={(e) => setPanelSearchFloorQuestStateId(e.target.value)}
-                            pointerEvents={!searchFloorQuestDetail ? "none" : undefined}
-                            bg="#222"
-                            opacity={!searchFloorQuestDetail ? 0.55 : undefined}
-                          >
-                            <option value="">
-                              {searchFloorQuestDetail
-                                ? "— choose state —"
-                                : "— pick quest first —"}
-                            </option>
-                            {(searchFloorQuestDetail?.states ?? [])
-                              .slice()
-                              .sort(
-                                (a, b) =>
-                                  a.sort_order - b.sort_order ||
-                                  a.name.localeCompare(b.name),
-                              )
-                              .map((s) => (
-                                <option key={s.id} value={String(s.id)}>
-                                  {s.name} ({s.slug})
-                                </option>
-                              ))}
-                          </NativeSelectField>
-                        </NativeSelectRoot>
-                      </Field.Root>
-                    </Flex>
-                    <Field.Root>
-                      <Field.Label>Quest search floor item template</Field.Label>
-                      <NativeSelectRoot>
-                        <NativeSelectField
-                          value={panelSearchFloorQuestItemId}
-                          onChange={(e) => setPanelSearchFloorQuestItemId(e.target.value)}
-                          bg="#222"
-                        >
-                          <option value="">(none)</option>
-                          {itemTemplates.map((it) => (
-                            <option key={it.id} value={String(it.id)}>
-                              {it.name}
-                            </option>
-                          ))}
-                        </NativeSelectField>
-                      </NativeSelectRoot>
-                      <Text fontSize="xs" color="#666" mt={1}>
-                        Requires quest + state above. Cleared together in the API if only one is set.
+                      <Text fontSize="xs" color="#888" mb={1}>
+                        Hidden exits stay invisible until reveal conditions are met. A visible exit
+                        can still be <strong>locked</strong> (key, lever/device, or quest state).
                       </Text>
-                    </Field.Root>
-                    <Field.Root>
-                      <Field.Label>Grid cell (0-based)</Field.Label>
-                      <Flex gap={2} flexWrap="wrap" align="center">
-                        <Input
-                          type="number"
-                          min={0}
-                          max={area.grid_width - 1}
-                          w="72px"
-                          value={panelCellX}
-                          onChange={(e) => setPanelCellX(e.target.value)}
-                          bg="#222"
-                        />
-                        <Text fontSize="sm" color="#888">
-                          ×
-                        </Text>
-                        <Input
-                          type="number"
-                          min={0}
-                          max={area.grid_height - 1}
-                          w="72px"
-                          value={panelCellY}
-                          onChange={(e) => setPanelCellY(e.target.value)}
-                          bg="#222"
-                        />
-                        <QffButton
-                          type="button"
-                          size="sm"
-                          {...DM_PRIMARY_BTN}
-                          onClick={() => void applyCellPosition()}
-                        >
-                          Apply position
-                        </QffButton>
-                      </Flex>
-                    </Field.Root>
-
-                    <Text fontWeight="bold" mt={2}>
-                      Exits
-                    </Text>
-                    <Text fontSize="xs" color="#888" mb={1}>
-                      Hidden exits stay invisible until reveal conditions are met. A visible exit
-                      can still be <strong>locked</strong> (key, lever/device, or quest state).
-                    </Text>
                     {exits.map((ex) => {
                       const dest = exitDestRooms.find((r) => r.id === ex.to_room_id);
                       const destLabel = dest
@@ -3004,6 +2166,888 @@ export default function QffDmPage() {
                         Add exit
                       </QffButton>
                     </Flex>
+                    </Box>
+                    <QffDmCollapsibleSection
+                      title="Monster lair"
+                      open={lairOpen}
+                      onOpenChange={setLairOpen}
+                    >
+                    <Field.Root>
+                      <Field.Label>Monster lair template</Field.Label>
+                      <NativeSelectRoot>
+                        <NativeSelectField
+                          value={panelMonsterLairTemplateId}
+                          onChange={(e) => setPanelMonsterLairTemplateId(e.target.value)}
+                          bg="#222"
+                        >
+                          <option value="">None</option>
+                          {monsterTemplates.map((t) => (
+                            <option key={t.id} value={String(t.id)}>
+                              {t.name} ({t.slug})
+                            </option>
+                          ))}
+                        </NativeSelectField>
+                      </NativeSelectRoot>
+                      <Text fontSize="xs" color="#888" mt={1}>
+                        Lazy-spawns an instance when players are active; cooldown after kill.
+                      </Text>
+                    </Field.Root>
+                    {panelMonsterLairTemplateId !== "" ? (
+                      <Box
+                        borderLeftWidth="3px"
+                        borderColor="#6a5a4a"
+                        pl={2}
+                        py={1.5}
+                        mb={1}
+                        bg="rgba(106, 90, 74, 0.12)"
+                        borderRadius="sm"
+                      >
+                        <Text fontSize="xs" fontWeight="bold" color="#d8c8b8" mb={2}>
+                          Lair template — combat, inspect text, and hidden lore
+                        </Text>
+                        <Flex gap={2} wrap="wrap" align="flex-end">
+                          <Field.Root maxW="100px">
+                            <Field.Label fontSize="xs">Armor</Field.Label>
+                            <Input
+                              size="sm"
+                              type="number"
+                              min={0}
+                              value={panelLairTemplateArmor}
+                              onChange={(e) => setPanelLairTemplateArmor(e.target.value)}
+                              bg="#222"
+                            />
+                          </Field.Root>
+                          <Field.Root maxW="100px">
+                            <Field.Label fontSize="xs">Accuracy</Field.Label>
+                            <Input
+                              size="sm"
+                              type="number"
+                              value={panelLairTemplateAccuracy}
+                              onChange={(e) => setPanelLairTemplateAccuracy(e.target.value)}
+                              bg="#222"
+                            />
+                          </Field.Root>
+                          <Button
+                            size="sm"
+                            colorPalette="orange"
+                            loading={panelLairTemplateCombatBusy}
+                            onClick={() => {
+                              void saveLairTemplateCombatStats();
+                            }}
+                          >
+                            Save lair template
+                          </Button>
+                        </Flex>
+                        <Text fontSize="xs" color="#888" mt={1}>
+                          Armor reduces damage when heroes hit this monster; accuracy helps the
+                          monster land hits.
+                        </Text>
+                        <Field.Root mt={2}>
+                          <Field.Label fontSize="xs">Description (look / inspect)</Field.Label>
+                          <Textarea
+                            size="sm"
+                            rows={3}
+                            value={panelLairTemplateDescription}
+                            onChange={(e) => setPanelLairTemplateDescription(e.target.value)}
+                            bg="#222"
+                          />
+                        </Field.Root>
+                        <Field.Root mt={2}>
+                          <Field.Label fontSize="xs">Hidden description (lore)</Field.Label>
+                          <Textarea
+                            size="sm"
+                            rows={3}
+                            value={panelLairTemplateHiddenDescription}
+                            onChange={(e) => setPanelLairTemplateHiddenDescription(e.target.value)}
+                            bg="#222"
+                          />
+                          <Text fontSize="xs" color="#888" mt={1}>
+                            Shown when d100 + Smarts (encumbered) ≥ Lore DC.
+                          </Text>
+                        </Field.Root>
+                        <Field.Root maxW="140px" mt={2}>
+                          <Field.Label fontSize="xs">Lore DC (blank = level)</Field.Label>
+                          <Input
+                            size="sm"
+                            type="number"
+                            min={1}
+                            max={65535}
+                            placeholder="level"
+                            value={panelLairTemplateLoreDc}
+                            onChange={(e) => setPanelLairTemplateLoreDc(e.target.value)}
+                            bg="#222"
+                          />
+                        </Field.Root>
+                        <Field.Root mt={2}>
+                          <Field.Label fontSize="xs">Attack weapon (combat flavor)</Field.Label>
+                          <Input
+                            size="sm"
+                            value={panelLairTemplateWeaponLabel}
+                            onChange={(e) => setPanelLairTemplateWeaponLabel(e.target.value)}
+                            placeholder="e.g. filthy claws"
+                            bg="#222"
+                          />
+                        </Field.Root>
+                        <Field.Root mt={2}>
+                          <Field.Label fontSize="xs">Attack verb (optional)</Field.Label>
+                          <Input
+                            size="sm"
+                            value={panelLairTemplateAttackVerb}
+                            onChange={(e) => setPanelLairTemplateAttackVerb(e.target.value)}
+                            placeholder="e.g. bites, claws, slashes"
+                            bg="#222"
+                          />
+                          <Text fontSize="xs" color="#888" mt={1}>
+                            Used for miss and unarmed hit lines. Leave blank for default swing/strike
+                            phrasing.
+                          </Text>
+                        </Field.Root>
+                      </Box>
+                    ) : null}
+                    </QffDmCollapsibleSection>
+                    <QffDmCollapsibleSection
+                      title="Room items"
+                      open={roomItemsOpen}
+                      onOpenChange={setRoomItemsOpen}
+                    >
+                    <Text fontWeight="bold" mt={3}>
+                      Room items
+                    </Text>
+                    <Text fontSize="xs" color="#888">
+                      Same appearance as floor items in play, but <strong>get</strong> mints a new
+                      instance per player (not a shared pickup). Hidden while a floor copy of the
+                      same template exists in this room.
+                    </Text>
+                    <Box
+                      borderLeftWidth="3px"
+                      borderColor="#5a6a8a"
+                      pl={2}
+                      py={1}
+                      mb={1}
+                      bg="rgba(90, 106, 138, 0.08)"
+                      borderRadius="sm"
+                    >
+                      <Text fontSize="xs" fontWeight="bold" color="#c8d0e8">
+                        Spawn conditions (optional)
+                      </Text>
+                      <Text fontSize="xs" color="#aaa" mb={2}>
+                        Same rules as floor items: quest state, not shown if the player already
+                        carries this template, and not shown if an unowned floor instance of this
+                        template is in the room.                         For a pickup that only appears while a{" "}
+                        <strong>container</strong> is open in play, choose that container in{" "}
+                        <strong>Container (optional)</strong> below (or PATCH{" "}
+                        <code>interactable_id</code> via the API). Heroes use{" "}
+                        <strong>open</strong> or <strong>use</strong> on the container; the server
+                        tracks <code>opened_container</code> (no separate interior-slot model).
+                      </Text>
+                    </Box>
+                    {roomItems.length === 0 ? (
+                      <Text fontSize="sm" color="#666">
+                        No room items yet — add one below.
+                      </Text>
+                    ) : (
+                      roomItems.map((ri) => {
+                        const roomQuestDetail =
+                          ri.visible_quest_id != null
+                            ? questDetailById.get(ri.visible_quest_id)
+                            : undefined;
+                        return (
+                          <Stack
+                            key={ri.id}
+                            gap={1}
+                            py={1.5}
+                            borderBottomWidth="1px"
+                            borderColor="#333"
+                          >
+                            <Flex
+                              justify="space-between"
+                              align="center"
+                              fontSize="sm"
+                              gap={2}
+                            >
+                              <Text>
+                                {ri.nickname
+                                  ? `${ri.nickname} (${ri.item_name})`
+                                  : ri.item_name}
+                                <Text as="span" fontSize="xs" color="#666" ml={1}>
+                                  #{ri.id}
+                                </Text>
+                              </Text>
+                              <QffButton
+                                type="button"
+                                size="sm"
+                                {...DM_PRIMARY_BTN}
+                                onClick={async () => {
+                                  const token = await getTokenRef.current();
+                                  await dmDeleteRoomItem(token, ri.id);
+                                  const next = await dmFetchRoomRoomItems(
+                                    token,
+                                    selectedRoom!.id,
+                                  );
+                                  setRoomItems(next);
+                                }}
+                              >
+                                Remove
+                              </QffButton>
+                            </Flex>
+                            <Text fontSize="xs" color="#888">
+                              Show this slot only when:
+                            </Text>
+                            <Flex gap={2} flexWrap="wrap" align="flex-end">
+                              <Field.Root flex="1" minW="140px">
+                                <Field.Label fontSize="xs">Quest</Field.Label>
+                                <NativeSelectRoot>
+                                  <NativeSelectField
+                                    value={
+                                      ri.visible_quest_id != null
+                                        ? String(ri.visible_quest_id)
+                                        : ""
+                                    }
+                                    onChange={async (e) => {
+                                      const raw = e.target.value;
+                                      const qid =
+                                        raw === ""
+                                          ? null
+                                          : parseInt(raw, 10);
+                                      const token = await getTokenRef.current();
+                                      if (qid != null) {
+                                        revealQuestFetchedRef.current.add(qid);
+                                        const d = await dmFetchQuestDetail(
+                                          token,
+                                          qid,
+                                        );
+                                        setQuestDetailById((prev) =>
+                                          new Map(prev).set(qid, d),
+                                        );
+                                      }
+                                      const nx = await dmPatchRoomItem(token, ri.id, {
+                                        visible_quest_state_id: null,
+                                      });
+                                      setRoomItems((prev) =>
+                                        prev.map((x) =>
+                                          x.id === ri.id
+                                            ? {
+                                                ...nx,
+                                                visible_quest_id: qid,
+                                                visible_quest_slug:
+                                                  qid != null
+                                                    ? dmQuests.find(
+                                                        (q) => q.id === qid,
+                                                      )?.slug ?? null
+                                                    : null,
+                                                visible_quest_state_slug: null,
+                                              }
+                                            : x,
+                                        ),
+                                      );
+                                    }}
+                                    bg="#222"
+                                  >
+                                    <option value="">— any player —</option>
+                                    {[...dmQuests]
+                                      .sort((a, b) =>
+                                        a.name.localeCompare(b.name),
+                                      )
+                                      .map((q) => (
+                                        <option key={q.id} value={String(q.id)}>
+                                          {q.name}
+                                        </option>
+                                      ))}
+                                  </NativeSelectField>
+                                </NativeSelectRoot>
+                              </Field.Root>
+                              <Field.Root flex="1" minW="140px">
+                                <Field.Label fontSize="xs">Quest state</Field.Label>
+                                <NativeSelectRoot>
+                                  <NativeSelectField
+                                    value={
+                                      ri.visible_quest_state_id != null
+                                        ? String(ri.visible_quest_state_id)
+                                        : ""
+                                    }
+                                    pointerEvents={
+                                      !roomQuestDetail ? "none" : undefined
+                                    }
+                                    onChange={async (e) => {
+                                      const raw = e.target.value;
+                                      const sid =
+                                        raw === ""
+                                          ? null
+                                          : parseInt(raw, 10);
+                                      const token = await getTokenRef.current();
+                                      const nx = await dmPatchRoomItem(
+                                        token,
+                                        ri.id,
+                                        {
+                                          visible_quest_state_id:
+                                            sid != null &&
+                                            Number.isFinite(sid)
+                                              ? sid
+                                              : null,
+                                        },
+                                      );
+                                      setRoomItems((prev) =>
+                                        prev.map((x) =>
+                                          x.id === ri.id ? nx : x,
+                                        ),
+                                      );
+                                    }}
+                                    bg="#222"
+                                    opacity={!roomQuestDetail ? 0.55 : undefined}
+                                  >
+                                    <option value="">
+                                      {roomQuestDetail
+                                        ? "— choose state —"
+                                        : "— pick quest first —"}
+                                    </option>
+                                    {(roomQuestDetail?.states ?? [])
+                                      .slice()
+                                      .sort(
+                                        (a, b) =>
+                                          a.sort_order - b.sort_order ||
+                                          a.name.localeCompare(b.name),
+                                      )
+                                      .map((s) => (
+                                        <option key={s.id} value={String(s.id)}>
+                                          {s.name} ({s.slug})
+                                        </option>
+                                      ))}
+                                  </NativeSelectField>
+                                </NativeSelectRoot>
+                              </Field.Root>
+                            </Flex>
+                            <Field.Root flex="1" minW="200px" mt={1}>
+                              <Field.Label fontSize="xs">
+                                Container (optional) — slot only while this is open in play
+                              </Field.Label>
+                              <NativeSelectRoot>
+                                <NativeSelectField
+                                  value={
+                                    ri.interactable_id != null
+                                      ? String(ri.interactable_id)
+                                      : ""
+                                  }
+                                  onChange={async (e) => {
+                                    const raw = e.target.value;
+                                    const oid =
+                                      raw === "" ? null : parseInt(raw, 10);
+                                    const token = await getTokenRef.current();
+                                    const nx = await dmPatchRoomItem(token, ri.id, {
+                                      interactable_id:
+                                        oid != null && Number.isFinite(oid)
+                                          ? oid
+                                          : null,
+                                    });
+                                    setRoomItems((prev) =>
+                                      prev.map((x) => (x.id === ri.id ? nx : x)),
+                                    );
+                                  }}
+                                  bg="#222"
+                                >
+                                  <option value="">— room only (not in a container) —</option>
+                                  {roomContainerInteractables.map((o) => (
+                                    <option key={o.id} value={String(o.id)}>
+                                      {o.name} ({o.slug})
+                                    </option>
+                                  ))}
+                                </NativeSelectField>
+                              </NativeSelectRoot>
+                            </Field.Root>
+                            <Flex align="center" gap={2} mt={1}>
+                              <Switch.Root
+                                size="sm"
+                                checked={!!ri.allow_repeat_while_carrying}
+                                onCheckedChange={async (d) => {
+                                  const token = await getTokenRef.current();
+                                  const nx = await dmPatchRoomItem(token, ri.id, {
+                                    allow_repeat_while_carrying: d.checked,
+                                  });
+                                  setRoomItems((prev) =>
+                                    prev.map((x) => (x.id === ri.id ? nx : x)),
+                                  );
+                                }}
+                                colorPalette="green"
+                              >
+                                <Switch.HiddenInput />
+                                <Switch.Control>
+                                  <Switch.Thumb />
+                                </Switch.Control>
+                                <Switch.Label fontSize="xs" color="#aaa">
+                                  Allow get again while carrying (farmable / stacks)
+                                </Switch.Label>
+                              </Switch.Root>
+                            </Flex>
+                            <Field.Root flex="1" minW="200px" mt={1}>
+                              <Field.Label fontSize="xs">
+                                Per-hero mint (separate from carrying toggle above)
+                              </Field.Label>
+                              <NativeSelectRoot>
+                                <NativeSelectField
+                                  value={ri.mint_policy ?? "while_instance"}
+                                  onChange={async (e) => {
+                                    const v = e.target.value as
+                                      | "while_instance"
+                                      | "once_ever";
+                                    const token = await getTokenRef.current();
+                                    const nx = await dmPatchRoomItem(token, ri.id, {
+                                      mint_policy: v,
+                                    });
+                                    setRoomItems((prev) =>
+                                      prev.map((x) => (x.id === ri.id ? nx : x)),
+                                    );
+                                  }}
+                                  bg="#222"
+                                >
+                                  <option value="while_instance">
+                                    Once if item no longer exists — hero can get again after their
+                                    minted copy is gone (consumed, etc.)
+                                  </option>
+                                  <option value="once_ever">
+                                    Once per character — first successful get only; drop/consume
+                                    does not reopen
+                                  </option>
+                                </NativeSelectField>
+                              </NativeSelectRoot>
+                              <Text fontSize="xs" color="#666" mt={1}>
+                                Once if item no longer exists: hero can take again after their minted
+                                copy is gone. Once per character: first successful get only — drop
+                                or consume does not reopen.
+                              </Text>
+                            </Field.Root>
+                          </Stack>
+                        );
+                      })
+                    )}
+                    <Text fontSize="xs" fontWeight="bold" color="#aaa" mt={1}>
+                      Add room item
+                    </Text>
+                    <Stack gap={2}>
+                      <Flex gap={2} flexWrap="wrap" align="flex-end">
+                        <Field.Root flex="1" minW="160px">
+                          <Field.Label fontSize="xs">Item template</Field.Label>
+                          <NativeSelectRoot>
+                            <NativeSelectField
+                              value={newRoomItemId}
+                              onChange={(e) => setNewRoomItemId(e.target.value)}
+                              bg="#222"
+                            >
+                              <option value="">— choose —</option>
+                              {itemTemplates.map((it) => (
+                                <option key={it.id} value={String(it.id)}>
+                                  {it.name} ({it.slug})
+                                </option>
+                              ))}
+                            </NativeSelectField>
+                          </NativeSelectRoot>
+                        </Field.Root>
+                        <Field.Root maxW="140px">
+                          <Field.Label fontSize="xs">Nickname (optional)</Field.Label>
+                          <Input
+                            value={newRoomNickname}
+                            onChange={(e) => setNewRoomNickname(e.target.value)}
+                            placeholder="e.g. rusty"
+                            bg="#222"
+                          />
+                        </Field.Root>
+                      </Flex>
+                      <Text fontSize="xs" color="#888">
+                        Show only when player is in:
+                      </Text>
+                      <Flex gap={2} flexWrap="wrap" align="flex-end">
+                        <Field.Root flex="1" minW="140px">
+                          <Field.Label fontSize="xs">Quest</Field.Label>
+                          <NativeSelectRoot>
+                            <NativeSelectField
+                              value={newRoomVisibleQuestId}
+                              onChange={async (e) => {
+                                const v = e.target.value;
+                                setNewRoomVisibleQuestId(v);
+                                setNewRoomVisibleStateId("");
+                                const qid = v === "" ? null : parseInt(v, 10);
+                                if (qid != null && Number.isFinite(qid)) {
+                                  revealQuestFetchedRef.current.add(qid);
+                                  try {
+                                    const token = await getTokenRef.current();
+                                    const d = await dmFetchQuestDetail(
+                                      token,
+                                      qid,
+                                    );
+                                    setQuestDetailById((prev) =>
+                                      new Map(prev).set(qid, d),
+                                    );
+                                  } catch {
+                                    revealQuestFetchedRef.current.delete(qid);
+                                  }
+                                }
+                              }}
+                              bg="#222"
+                            >
+                              <option value="">— any player —</option>
+                              {[...dmQuests]
+                                .sort((a, b) => a.name.localeCompare(b.name))
+                                .map((q) => (
+                                  <option key={q.id} value={String(q.id)}>
+                                    {q.name}
+                                  </option>
+                                ))}
+                            </NativeSelectField>
+                          </NativeSelectRoot>
+                        </Field.Root>
+                        <Field.Root flex="1" minW="140px">
+                          <Field.Label fontSize="xs">Quest state</Field.Label>
+                          <NativeSelectRoot>
+                            <NativeSelectField
+                              value={newRoomVisibleStateId}
+                              onChange={(e) =>
+                                setNewRoomVisibleStateId(e.target.value)
+                              }
+                              pointerEvents={
+                                !newRoomQuestDetailForAdd ? "none" : undefined
+                              }
+                              bg="#222"
+                              opacity={!newRoomQuestDetailForAdd ? 0.55 : undefined}
+                            >
+                              <option value="">
+                                {newRoomQuestDetailForAdd
+                                  ? "— choose state —"
+                                  : "— pick quest first —"}
+                              </option>
+                              {(newRoomQuestDetailForAdd?.states ?? [])
+                                .slice()
+                                .sort(
+                                  (a, b) =>
+                                    a.sort_order - b.sort_order ||
+                                    a.name.localeCompare(b.name),
+                                )
+                                .map((s) => (
+                                  <option key={s.id} value={String(s.id)}>
+                                    {s.name} ({s.slug})
+                                  </option>
+                                ))}
+                            </NativeSelectField>
+                          </NativeSelectRoot>
+                        </Field.Root>
+                      </Flex>
+                      <Field.Root flex="1" minW="200px">
+                        <Field.Label fontSize="xs">
+                          Container (optional) — mint slot only while open in play
+                        </Field.Label>
+                        <NativeSelectRoot>
+                          <NativeSelectField
+                            value={newRoomItemInteractableId}
+                            onChange={(e) =>
+                              setNewRoomItemInteractableId(e.target.value)
+                            }
+                            bg="#222"
+                          >
+                            <option value="">— room only (not in a container) —</option>
+                            {roomContainerInteractables.map((o) => (
+                              <option key={o.id} value={String(o.id)}>
+                                {o.name} ({o.slug})
+                              </option>
+                            ))}
+                          </NativeSelectField>
+                        </NativeSelectRoot>
+                      </Field.Root>
+                      <Field.Root flex="1" minW="200px">
+                        <Field.Label fontSize="xs">Per-hero mint for this new slot</Field.Label>
+                        <NativeSelectRoot>
+                          <NativeSelectField
+                            value={newRoomMintPolicy}
+                            onChange={(e) =>
+                              setNewRoomMintPolicy(
+                                e.target.value as "while_instance" | "once_ever",
+                              )
+                            }
+                            bg="#222"
+                          >
+                            <option value="while_instance">
+                              Once if item no longer exists (per hero)
+                            </option>
+                            <option value="once_ever">
+                              Once per character (never again from this slot)
+                            </option>
+                          </NativeSelectField>
+                        </NativeSelectRoot>
+                        <Text fontSize="xs" color="#666" mt={1}>
+                          Same mint rules as above: &quot;while instance&quot; vs one lifetime claim
+                          per hero.
+                        </Text>
+                      </Field.Root>
+                      <Box>
+                        <QffButton
+                          type="button"
+                          size="sm"
+                          {...DM_PRIMARY_BTN}
+                          onClick={async () => {
+                            const id = parseInt(newRoomItemId, 10);
+                            if (!Number.isFinite(id)) {
+                              setErr("Choose an item template.");
+                              return;
+                            }
+                            const vsRaw = newRoomVisibleStateId.trim();
+                            const vsid =
+                              vsRaw === ""
+                                ? null
+                                : parseInt(vsRaw, 10);
+                            if (
+                              newRoomVisibleQuestId !== "" &&
+                              (!Number.isFinite(vsid as number) || vsRaw === "")
+                            ) {
+                              setErr(
+                                "Pick a quest state, or clear the quest filters.",
+                              );
+                              return;
+                            }
+                            setErr(null);
+                            const token = await getTokenRef.current();
+                            const iRaw = newRoomItemInteractableId.trim();
+                            const iid =
+                              iRaw === "" ? null : parseInt(iRaw, 10);
+                            await dmCreateRoomRoomItem(token, selectedRoom!.id, {
+                              item_id: id,
+                              nickname: newRoomNickname.trim() || undefined,
+                              visible_quest_state_id:
+                                vsid != null && Number.isFinite(vsid)
+                                  ? vsid
+                                  : undefined,
+                              interactable_id:
+                                iid != null && Number.isFinite(iid) ? iid : undefined,
+                              mint_policy: newRoomMintPolicy,
+                            });
+                            setNewRoomNickname("");
+                            setNewRoomVisibleQuestId("");
+                            setNewRoomVisibleStateId("");
+                            setNewRoomItemInteractableId("");
+                            setNewRoomMintPolicy("while_instance");
+                            const next = await dmFetchRoomRoomItems(
+                              token,
+                              selectedRoom!.id,
+                            );
+                            setRoomItems(next);
+                          }}
+                        >
+                          Add room item
+                        </QffButton>
+                      </Box>
+                    </Stack>
+                    </QffDmCollapsibleSection>
+                    <QffDmCollapsibleSection
+                      title="Search and discoverables"
+                      open={searchOpen}
+                      onOpenChange={setSearchOpen}
+                    >
+                    <Field.Root>
+                      <Field.Label>Search text</Field.Label>
+                      <Textarea
+                        value={panelSearch}
+                        onChange={(e) => setPanelSearch(e.target.value)}
+                        rows={2}
+                        bg="#222"
+                      />
+                    </Field.Root>
+                    <Field.Root>
+                      <Field.Label>Search DC (1–100, roll 1d100 + Sense)</Field.Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={100}
+                        w="100px"
+                        value={panelSearchChance}
+                        onChange={(e) => setPanelSearchChance(e.target.value)}
+                        bg="#222"
+                      />
+                    </Field.Root>
+                    <Field.Root>
+                      <Field.Label>Search reward item (optional, first success per hero)</Field.Label>
+                      <NativeSelectRoot>
+                        <NativeSelectField
+                          value={panelSearchRewardItemId}
+                          onChange={(e) => setPanelSearchRewardItemId(e.target.value)}
+                          bg="#222"
+                        >
+                          <option value="">(none)</option>
+                          {itemTemplates.map((it) => (
+                            <option key={it.id} value={String(it.id)}>
+                              {it.name}
+                            </option>
+                          ))}
+                        </NativeSelectField>
+                      </NativeSelectRoot>
+                    </Field.Root>
+                    <Field.Root>
+                      <Field.Label>Search reveals exit (optional, this room)</Field.Label>
+                      <NativeSelectRoot>
+                        <NativeSelectField
+                          value={panelSearchRevealsExitId}
+                          onChange={(e) => setPanelSearchRevealsExitId(e.target.value)}
+                          bg="#222"
+                        >
+                          <option value="">(none)</option>
+                          {exits.map((ex) => (
+                            <option key={ex.id} value={String(ex.id)}>
+                              {ex.direction} → {ex.to_room_name}
+                            </option>
+                          ))}
+                        </NativeSelectField>
+                      </NativeSelectRoot>
+                    </Field.Root>
+                    <Field.Root>
+                      <Field.Label>
+                        Search → floor item, once per character ever (optional)
+                      </Field.Label>
+                      <NativeSelectRoot>
+                        <NativeSelectField
+                          value={panelSearchFloorOnceItemId}
+                          onChange={(e) => setPanelSearchFloorOnceItemId(e.target.value)}
+                          bg="#222"
+                        >
+                          <option value="">(none)</option>
+                          {itemTemplates.map((it) => (
+                            <option key={it.id} value={String(it.id)}>
+                              {it.name}
+                            </option>
+                          ))}
+                        </NativeSelectField>
+                      </NativeSelectRoot>
+                      <Text fontSize="xs" color="#666" mt={1}>
+                        On first successful search roll, drops one unowned instance on the floor. That
+                        hero will not get another from this room even if they lose the item.
+                      </Text>
+                    </Field.Root>
+                    <Text fontSize="xs" color="#888">
+                      Quest search floor (optional): on successful search, mint a quest-gated floor
+                      drop if the hero is in the chosen state and does not already hold an unclaimed
+                      copy on the floor (same as &quot;once if item no longer exists&quot;).
+                    </Text>
+                    <Flex gap={2} flexWrap="wrap" align="flex-end">
+                      <Field.Root flex="1" minW="140px">
+                        <Field.Label fontSize="xs">Quest</Field.Label>
+                        <NativeSelectRoot>
+                          <NativeSelectField
+                            value={panelSearchFloorQuestQuestId}
+                            onChange={async (e) => {
+                              const v = e.target.value;
+                              setPanelSearchFloorQuestQuestId(v);
+                              setPanelSearchFloorQuestStateId("");
+                              setPanelSearchFloorQuestItemId("");
+                              const qid = v === "" ? null : parseInt(v, 10);
+                              if (qid != null && Number.isFinite(qid)) {
+                                revealQuestFetchedRef.current.add(qid);
+                                try {
+                                  const token = await getTokenRef.current();
+                                  const d = await dmFetchQuestDetail(token, qid);
+                                  setQuestDetailById((prev) => new Map(prev).set(qid, d));
+                                } catch {
+                                  revealQuestFetchedRef.current.delete(qid);
+                                }
+                              }
+                            }}
+                            bg="#222"
+                          >
+                            <option value="">(none)</option>
+                            {[...dmQuests]
+                              .sort((a, b) => a.name.localeCompare(b.name))
+                              .map((q) => (
+                                <option key={q.id} value={String(q.id)}>
+                                  {q.name}
+                                </option>
+                              ))}
+                          </NativeSelectField>
+                        </NativeSelectRoot>
+                      </Field.Root>
+                      <Field.Root flex="1" minW="140px">
+                        <Field.Label fontSize="xs">Quest state</Field.Label>
+                        <NativeSelectRoot>
+                          <NativeSelectField
+                            value={panelSearchFloorQuestStateId}
+                            onChange={(e) => setPanelSearchFloorQuestStateId(e.target.value)}
+                            pointerEvents={!searchFloorQuestDetail ? "none" : undefined}
+                            bg="#222"
+                            opacity={!searchFloorQuestDetail ? 0.55 : undefined}
+                          >
+                            <option value="">
+                              {searchFloorQuestDetail
+                                ? "— choose state —"
+                                : "— pick quest first —"}
+                            </option>
+                            {(searchFloorQuestDetail?.states ?? [])
+                              .slice()
+                              .sort(
+                                (a, b) =>
+                                  a.sort_order - b.sort_order ||
+                                  a.name.localeCompare(b.name),
+                              )
+                              .map((s) => (
+                                <option key={s.id} value={String(s.id)}>
+                                  {s.name} ({s.slug})
+                                </option>
+                              ))}
+                          </NativeSelectField>
+                        </NativeSelectRoot>
+                      </Field.Root>
+                    </Flex>
+                    <Field.Root>
+                      <Field.Label>Quest search floor item template</Field.Label>
+                      <NativeSelectRoot>
+                        <NativeSelectField
+                          value={panelSearchFloorQuestItemId}
+                          onChange={(e) => setPanelSearchFloorQuestItemId(e.target.value)}
+                          bg="#222"
+                        >
+                          <option value="">(none)</option>
+                          {itemTemplates.map((it) => (
+                            <option key={it.id} value={String(it.id)}>
+                              {it.name}
+                            </option>
+                          ))}
+                        </NativeSelectField>
+                      </NativeSelectRoot>
+                      <Text fontSize="xs" color="#666" mt={1}>
+                        Requires quest + state above. Cleared together in the API if only one is set.
+                      </Text>
+                    </Field.Root>
+                    </QffDmCollapsibleSection>
+                    <QffDmCollapsibleSection
+                      title="Map placement"
+                      open={placementOpen}
+                      onOpenChange={setPlacementOpen}
+                    >
+                    <Field.Root>
+                      <Field.Label>Grid cell (0-based)</Field.Label>
+                      <Flex gap={2} flexWrap="wrap" align="center">
+                        <Input
+                          type="number"
+                          min={0}
+                          max={area.grid_width - 1}
+                          w="72px"
+                          value={panelCellX}
+                          onChange={(e) => setPanelCellX(e.target.value)}
+                          bg="#222"
+                        />
+                        <Text fontSize="sm" color="#888">
+                          ×
+                        </Text>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={area.grid_height - 1}
+                          w="72px"
+                          value={panelCellY}
+                          onChange={(e) => setPanelCellY(e.target.value)}
+                          bg="#222"
+                        />
+                        <QffButton
+                          type="button"
+                          size="sm"
+                          {...DM_PRIMARY_BTN}
+                          onClick={() => void applyCellPosition()}
+                        >
+                          Apply position
+                        </QffButton>
+                      </Flex>
+                    </Field.Root>
+                    </QffDmCollapsibleSection>
                   </Stack>
                 </Box>
                 <Flex

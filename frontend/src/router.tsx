@@ -40,6 +40,7 @@ const WhatIfPlayPage = lazy(() => import("./whatif/WhatIfPlayPage"));
 const WhatIfHandPage = lazy(() => import("./whatif/WhatIfHandPage"));
 const QffLayout = lazy(() => import("./qff/QffLayout"));
 const QffLobbyPage = lazy(() => import("./qff/QffLobbyPage"));
+const QffPlayersHandbookPage = lazy(() => import("./qff/QffPlayersHandbookPage"));
 const QffCreatePage = lazy(() => import("./qff/QffCreatePage"));
 const QffPlayPage = lazy(() => import("./qff/QffPlayPage"));
 const QffDmStaffLayout = lazy(() => import("./qff/QffDmStaffLayout"));
@@ -55,6 +56,7 @@ const QffDmIneffectiveInputsPage = lazy(
   () => import("./qff/QffDmIneffectiveInputsPage"),
 );
 const QffDmShopPage = lazy(() => import("./qff/QffDmShopPage"));
+const QffDmCombatSimPage = lazy(() => import("./qff/QffDmCombatSimPage"));
 const MealLayout = lazy(() => import("./meal/MealLayout"));
 const MealHomePage = lazy(() => import("./meal/MealHomePage"));
 const MealMealsPage = lazy(() => import("./meal/MealMealsPage"));
@@ -266,6 +268,7 @@ export const router = sentryCreateBrowserRouter([
         element: lazyRouteElement(<QffLayout />),
         children: [
           { index: true, element: lazyRouteElement(<QffLobbyPage />) },
+          { path: "handbook", element: lazyRouteElement(<QffPlayersHandbookPage />) },
           { path: "create", element: lazyRouteElement(<QffCreatePage />) },
           { path: "play", element: lazyRouteElement(<QffPlayPage />) },
           {
@@ -291,6 +294,7 @@ export const router = sentryCreateBrowserRouter([
                 element: lazyRouteElement(<QffDmIneffectiveInputsPage />),
               },
               { path: "shops", element: lazyRouteElement(<QffDmShopPage />) },
+              { path: "combat-sim", element: lazyRouteElement(<QffDmCombatSimPage />) },
             ],
           },
         ],

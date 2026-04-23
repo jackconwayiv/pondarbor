@@ -18,7 +18,6 @@ def _strike(outcome: str, damage: int) -> StrikeResult:
         damage_after_mitigation=damage,
         was_crit=outcome == "crit",
         hit_chance=80,
-        effective_dodge_chance=0,
         crit_chance=5.0,
     )
 from qff.command_handlers import execute_command

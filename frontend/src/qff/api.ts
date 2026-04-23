@@ -274,6 +274,29 @@ export async function fetchQffSession(accessToken: string | null): Promise<QffSe
   return (await response.json()) as QffSession;
 }
 
+export type QffLeaderboardEntry = {
+  name: string;
+  level: number;
+  class_name: string;
+  class_slug: string;
+  xp: number;
+};
+
+export async function fetchQffLeaderboard(
+  accessToken: string | null,
+): Promise<QffLeaderboardEntry[]> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/leaderboard/`), {
+    method: "GET",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`QFF leaderboard (${response.status}): ${text}`);
+  }
+  return (await response.json()) as QffLeaderboardEntry[];
+}
+
 /** Bump ``last_activity_at`` so returning from lobby clears AFK kick (GET session does not touch it). */
 export async function postQffSessionActivity(accessToken: string | null): Promise<void> {
   const response = await fetch(qffJoinBase(`/api/v1/qff/session/activity/`), {
@@ -989,6 +1012,52 @@ export async function dmCreateItem(
   });
   if (!response.ok) throw new Error(await response.text());
   return (await response.json()) as DmItem;
+}
+
+export type DmCombatSimMode = "hero_attacks" | "monster_attacks";
+
+/** Request body for `POST /dm/combat-sim/preview/`. Edits stay client-side until export. */
+export type DmCombatSimPreviewRequest = {
+  mode: DmCombatSimMode;
+  hero: {
+    level: number;
+    base_gains?: number;
+    base_moves?: number;
+    base_sense?: number;
+    base_guts?: number;
+    base_smarts?: number;
+    base_rizz?: number;
+    dark_unlit?: boolean;
+  };
+  hero_slots?: Record<string, Partial<DmItem> | null>;
+  monster: Partial<DmMonsterTemplate> & { level: number; damage_min: number; damage_max: number };
+};
+
+export type DmCombatSimPreviewResponse = {
+  mode: DmCombatSimMode;
+  attacker: Record<string, unknown> & { role?: string };
+  defender: Record<string, unknown> & { role?: string };
+  hit: Record<string, unknown>;
+  crit: Record<string, unknown>;
+  mitigation: Record<string, unknown>;
+  damage: Record<string, unknown>;
+  example_final_damage: Record<string, unknown>;
+  monster_paper?: { damage_min: number; damage_max: number };
+  [key: string]: unknown;
+};
+
+export async function dmPostCombatSimPreview(
+  accessToken: string | null,
+  body: DmCombatSimPreviewRequest,
+): Promise<DmCombatSimPreviewResponse> {
+  const response = await fetch(qffJoinBase(`/api/v1/qff/dm/combat-sim/preview/`), {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as DmCombatSimPreviewResponse;
 }
 
 export async function dmPatchItem(

@@ -3,6 +3,7 @@ import {
   Button,
   Field,
   Flex,
+  Grid,
   Heading,
   Input,
   NativeSelectField,
@@ -17,6 +18,7 @@ import { useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
 import QffButton from "./QffButton";
+import QffDmCollapsibleSection from "./QffDmCollapsibleSection";
 import { qffGhostRowButtonProps } from "./qffUi";
 import {
   dmCreateItem,
@@ -128,6 +130,9 @@ export default function QffDmItemsPage() {
   const [err, setErr] = useState<string | null>(null);
   const [form, setForm] = useState<Partial<DmItem>>(emptyForm());
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [consumableOpen, setConsumableOpen] = useState(false);
+  const [combatOpen, setCombatOpen] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
 
   const load = useCallback(async () => {
     const token = await getApiAccessToken();
@@ -288,139 +293,245 @@ export default function QffDmItemsPage() {
           <Text fontSize="sm" color="#889977">
             {editingId == null ? "Creating new item" : `Editing #${editingId}`}
           </Text>
-          <Flex gap={2} flexWrap="wrap">
-            <Field.Root flex="1" minW="120px">
-              <Field.Label>Slug</Field.Label>
-              <Input
-                value={form.slug ?? ""}
-                onChange={(e) => setForm((f) => ({ ...f, slug: e.target.value }))}
-                bg="#222"
-                disabled={editingId != null}
-              />
-            </Field.Root>
-            <Field.Root flex="2" minW="160px">
-              <Field.Label>Name</Field.Label>
-              <Input
-                value={form.name ?? ""}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                bg="#222"
-              />
-            </Field.Root>
-          </Flex>
-          <Flex
-            gap={6}
-            flexWrap="wrap"
-            align="flex-end"
+          <Box
             borderWidth="1px"
             borderRadius="md"
             borderColor="#404040"
             p={3}
             bg="#1a1a1a"
           >
-            <Field.Root flex="0 1 220px" minW="180px">
-              <Field.Label>Equip slot</Field.Label>
-              <Text fontSize="xs" color="#888" mb={1}>
-                None = not equippable (quest items, inventory-only gear, etc.).
-              </Text>
-              <NativeSelectRoot>
-                <NativeSelectField
-                  value={form.slot ?? ""}
-                  onChange={(e) => setForm((f) => ({ ...f, slot: e.target.value }))}
+            <Text fontWeight="semibold" fontSize="sm" color="#c8e6a8" mb={3}>
+              Basic details
+            </Text>
+            <Stack gap={3}>
+              <Flex gap={2} flexWrap="wrap">
+                <Field.Root flex="1" minW="120px">
+                  <Field.Label>Slug</Field.Label>
+                  <Input
+                    value={form.slug ?? ""}
+                    onChange={(e) => setForm((f) => ({ ...f, slug: e.target.value }))}
+                    bg="#222"
+                    disabled={editingId != null}
+                  />
+                </Field.Root>
+                <Field.Root flex="2" minW="160px">
+                  <Field.Label>Name</Field.Label>
+                  <Input
+                    value={form.name ?? ""}
+                    onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                    bg="#222"
+                  />
+                </Field.Root>
+              </Flex>
+              <Flex gap={2} flexWrap="wrap" align="flex-end">
+                <Field.Root minW="120px" flex="1">
+                  <Field.Label>Type</Field.Label>
+                  <Input
+                    value={form.item_type ?? ""}
+                    onChange={(e) => setForm((f) => ({ ...f, item_type: e.target.value }))}
+                    bg="#222"
+                  />
+                </Field.Root>
+                <Field.Root minW="100px">
+                  <Field.Label>Rarity</Field.Label>
+                  <NativeSelectRoot w="100%">
+                    <NativeSelectField
+                      value={form.rarity ?? "common"}
+                      onChange={(e) => setForm((f) => ({ ...f, rarity: e.target.value }))}
+                      bg="#222"
+                      w="100%"
+                    >
+                      {RARITIES.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </NativeSelectField>
+                  </NativeSelectRoot>
+                </Field.Root>
+                <Field.Root flex="1" minW="140px">
+                  <Field.Label>Element</Field.Label>
+                  <Input
+                    value={form.element ?? ""}
+                    onChange={(e) => setForm((f) => ({ ...f, element: e.target.value }))}
+                    bg="#222"
+                  />
+                </Field.Root>
+              </Flex>
+              <Field.Root>
+                <Field.Label>Description</Field.Label>
+                <Textarea
+                  value={form.description ?? ""}
+                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                  rows={3}
                   bg="#222"
-                >
-                  {SLOTS.map((s) => (
-                    <option key={s || "none"} value={s}>
-                      {s === "" ? "None — not equippable" : s}
-                    </option>
-                  ))}
-                </NativeSelectField>
-              </NativeSelectRoot>
-            </Field.Root>
-            <Field.Root flex="1" minW="200px">
-              <Field.Label>Consumable</Field.Label>
-              <Text fontSize="xs" color="#888" mb={1}>
-                When on, eat / drink / use / read from inventory work. With a set consume
-                verb, <Text as="code">/use</Text> is also accepted (e.g. use + eat).
-              </Text>
-              <Switch.Root
-                checked={!!form.consumable}
-                onCheckedChange={(d) => setForm((f) => ({ ...f, consumable: d.checked }))}
-                colorPalette="green"
-              >
-                <Switch.HiddenInput />
-                <Switch.Control>
-                  <Switch.Thumb />
-                </Switch.Control>
-                <Switch.Label fontSize="sm">
-                  {form.consumable ? "Yes — can be consumed" : "No — not consumable"}
-                </Switch.Label>
-              </Switch.Root>
-            </Field.Root>
-            <Field.Root flex="1" minW="200px">
-              <Field.Label>Consume verb</Field.Label>
-              <Text fontSize="xs" color="#888" mb={1}>
-                Required base verb when set; players may still type <Text as="code">/use</Text> for
-                eat / drink / read. Leave &quot;Any&quot; for legacy items.
-              </Text>
-              <NativeSelectRoot
-                opacity={form.consumable ? undefined : 0.45}
-                pointerEvents={form.consumable ? undefined : "none"}
-              >
-                <NativeSelectField
-                  value={form.consume_verb ?? ""}
-                  onChange={(e: ChangeEvent<HTMLSelectElement>) => {
-                    if (!form.consumable) return;
-                    setForm((f) => ({ ...f, consume_verb: e.target.value }));
+                />
+              </Field.Root>
+              <Field.Root>
+                <Field.Label>Lore</Field.Label>
+                <Textarea
+                  value={form.lore ?? ""}
+                  onChange={(e) => setForm((f) => ({ ...f, lore: e.target.value }))}
+                  rows={2}
+                  bg="#222"
+                />
+              </Field.Root>
+              <Field.Root>
+                <Field.Label>Lore chance (1–100, empty = no roll)</Field.Label>
+                <Input
+                  value={form.lore_chance ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value.trim();
+                    setForm((f) => ({
+                      ...f,
+                      lore_chance: v === "" ? null : Number(v),
+                    }));
                   }}
                   bg="#222"
+                  w="120px"
+                />
+              </Field.Root>
+              <Field.Root>
+                <Field.Label>Cost</Field.Label>
+                <Input
+                  type="number"
+                  value={form.cost ?? 0}
+                  onChange={(e) => setForm((f) => ({ ...f, cost: Number(e.target.value) }))}
+                  bg="#222"
+                  w="100px"
+                />
+              </Field.Root>
+              <Flex gap={4} flexWrap="wrap" align="flex-end">
+                <Field.Root>
+                  <Field.Label>Unsellable</Field.Label>
+                  <NativeSelectRoot>
+                    <NativeSelectField
+                      value={form.unsellable ? "1" : "0"}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, unsellable: e.target.value === "1" }))
+                      }
+                      bg="#222"
+                      w="100px"
+                    >
+                      <option value="0">No</option>
+                      <option value="1">Yes</option>
+                    </NativeSelectField>
+                  </NativeSelectRoot>
+                </Field.Root>
+                <Field.Root flex="1" minW="200px">
+                  <Field.Label>Vendor refuses buy (junk)</Field.Label>
+                  <NativeSelectRoot>
+                    <NativeSelectField
+                      value={form.vendor_refuses_buy ? "1" : "0"}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          vendor_refuses_buy: e.target.value === "1",
+                        }))
+                      }
+                      bg="#222"
+                      w="100px"
+                    >
+                      <option value="0">No</option>
+                      <option value="1">Yes</option>
+                    </NativeSelectField>
+                  </NativeSelectRoot>
+                </Field.Root>
+              </Flex>
+            </Stack>
+          </Box>
+
+          <QffDmCollapsibleSection
+            title="Consumable"
+            open={consumableOpen}
+            onOpenChange={setConsumableOpen}
+          >
+            <Flex gap={4} flexWrap="wrap" align="flex-end">
+              <Field.Root flex="1" minW="200px">
+                <Field.Label>Consumable</Field.Label>
+                <Text fontSize="xs" color="#888" mb={1}>
+                  When on, eat / drink / use / read from inventory work. With a set consume
+                  verb, <Text as="code">/use</Text> is also accepted (e.g. use + eat).
+                </Text>
+                <Switch.Root
+                  checked={!!form.consumable}
+                  onCheckedChange={(d) => setForm((f) => ({ ...f, consumable: d.checked }))}
+                  colorPalette="green"
                 >
-                  <option value="">Any (eat / drink / use / read)</option>
-                  <option value="eat">Eat</option>
-                  <option value="drink">Drink</option>
-                  <option value="use">Use</option>
-                  <option value="read">Read</option>
-                </NativeSelectField>
-              </NativeSelectRoot>
-            </Field.Root>
-            <Field.Root flex="1" minW="200px">
-              <Field.Label>Stackable</Field.Label>
+                  <Switch.HiddenInput />
+                  <Switch.Control>
+                    <Switch.Thumb />
+                  </Switch.Control>
+                  <Switch.Label fontSize="sm">
+                    {form.consumable ? "Yes — can be consumed" : "No — not consumable"}
+                  </Switch.Label>
+                </Switch.Root>
+              </Field.Root>
+              <Field.Root flex="1" minW="200px">
+                <Field.Label>Consume verb</Field.Label>
+                <Text fontSize="xs" color="#888" mb={1}>
+                  Required base verb when set; players may still type <Text as="code">/use</Text> for
+                  eat / drink / read. Leave &quot;Any&quot; for legacy items.
+                </Text>
+                <NativeSelectRoot
+                  opacity={form.consumable ? undefined : 0.45}
+                  pointerEvents={form.consumable ? undefined : "none"}
+                >
+                  <NativeSelectField
+                    value={form.consume_verb ?? ""}
+                    onChange={(e: ChangeEvent<HTMLSelectElement>) => {
+                      if (!form.consumable) return;
+                      setForm((f) => ({ ...f, consume_verb: e.target.value }));
+                    }}
+                    bg="#222"
+                  >
+                    <option value="">Any (eat / drink / use / read)</option>
+                    <option value="eat">Eat</option>
+                    <option value="drink">Drink</option>
+                    <option value="use">Use</option>
+                    <option value="read">Read</option>
+                  </NativeSelectField>
+                </NativeSelectRoot>
+              </Field.Root>
+              <Field.Root flex="1" minW="200px">
+                <Field.Label>Stackable</Field.Label>
+                <Text fontSize="xs" color="#888" mb={1}>
+                  Same template merges in inventory up to max stack (one encumbrance slot per inventory row; equipped items don’t count).
+                </Text>
+                <Switch.Root
+                  checked={!!form.stackable}
+                  onCheckedChange={(d) => setForm((f) => ({ ...f, stackable: d.checked }))}
+                  colorPalette="green"
+                >
+                  <Switch.HiddenInput />
+                  <Switch.Control>
+                    <Switch.Thumb />
+                  </Switch.Control>
+                  <Switch.Label fontSize="sm">
+                    {form.stackable ? "Yes — stacks" : "No — one unit per instance"}
+                  </Switch.Label>
+                </Switch.Root>
+              </Field.Root>
+              <Field.Root minW="100px">
+                <Field.Label>Max stack</Field.Label>
+                <Input
+                  type="number"
+                  value={form.max_stack ?? 99}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, max_stack: Math.max(1, Number(e.target.value) || 99) }))
+                  }
+                  bg="#222"
+                  w="100px"
+                />
+              </Field.Root>
+            </Flex>
+            <Field.Root>
+              <Field.Label>Consumable effect preset</Field.Label>
               <Text fontSize="xs" color="#888" mb={1}>
-                Same template merges in inventory up to max stack (one encumbrance slot per inventory row; equipped items don’t count).
+                Quick picks write <Text as="code">consume_effects</Text>. Use JSON below for combos or
+                custom fields.
               </Text>
-              <Switch.Root
-                checked={!!form.stackable}
-                onCheckedChange={(d) => setForm((f) => ({ ...f, stackable: d.checked }))}
-                colorPalette="green"
-              >
-                <Switch.HiddenInput />
-                <Switch.Control>
-                  <Switch.Thumb />
-                </Switch.Control>
-                <Switch.Label fontSize="sm">
-                  {form.stackable ? "Yes — stacks" : "No — one unit per instance"}
-                </Switch.Label>
-              </Switch.Root>
-            </Field.Root>
-            <Field.Root minW="100px">
-              <Field.Label>Max stack</Field.Label>
-              <Input
-                type="number"
-                value={form.max_stack ?? 99}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, max_stack: Math.max(1, Number(e.target.value) || 99) }))
-                }
-                bg="#222"
-                w="100px"
-              />
-            </Field.Root>
-          </Flex>
-          <Field.Root>
-            <Field.Label>Consumable effect preset</Field.Label>
-            <Text fontSize="xs" color="#888" mb={1}>
-              Quick picks write <Text as="code">consume_effects</Text>. Use JSON below for combos or
-              custom fields.
-            </Text>
-            <Flex gap={2} flexWrap="wrap" alignItems="flex-end">
+              <Flex gap={2} flexWrap="wrap" alignItems="flex-end">
               <NativeSelectRoot
                 maxW="280px"
                 opacity={form.consumable ? undefined : 0.45}
@@ -519,367 +630,341 @@ export default function QffDmItemsPage() {
               minH="100px"
             />
           </Field.Root>
-          <Field.Root>
-            <Field.Label>Type</Field.Label>
-            <Input
-              value={form.item_type ?? ""}
-              onChange={(e) => setForm((f) => ({ ...f, item_type: e.target.value }))}
-              bg="#222"
-            />
-          </Field.Root>
-          <Flex gap={2} flexWrap="wrap">
-            <Field.Root>
-              <Field.Label>Cost</Field.Label>
-              <Input
-                type="number"
-                value={form.cost ?? 0}
-                onChange={(e) => setForm((f) => ({ ...f, cost: Number(e.target.value) }))}
-                bg="#222"
-                w="100px"
-              />
-            </Field.Root>
-            <Field.Root>
-              <Field.Label>Damage</Field.Label>
-              <Input
-                type="number"
-                value={form.damage ?? 0}
-                onChange={(e) => setForm((f) => ({ ...f, damage: Number(e.target.value) }))}
-                bg="#222"
-                w="100px"
-              />
-            </Field.Root>
-            <Field.Root>
-              <Field.Label>Dmg type</Field.Label>
-              <NativeSelectRoot>
-                <NativeSelectField
-                  value={form.dmg_type ?? "physical"}
-                  onChange={(e) => setForm((f) => ({ ...f, dmg_type: e.target.value }))}
-                  bg="#222"
-                >
-                  {DMG.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </NativeSelectField>
-              </NativeSelectRoot>
-            </Field.Root>
-            <Field.Root>
-              <Field.Label>Armor</Field.Label>
-              <Input
-                type="number"
-                value={form.armor ?? 0}
-                onChange={(e) => setForm((f) => ({ ...f, armor: Number(e.target.value) }))}
-                bg="#222"
-                w="100px"
-              />
-            </Field.Root>
-            <Field.Root>
-              <Field.Label>Rarity</Field.Label>
-              <NativeSelectRoot>
-                <NativeSelectField
-                  value={form.rarity ?? "common"}
-                  onChange={(e) => setForm((f) => ({ ...f, rarity: e.target.value }))}
-                  bg="#222"
-                >
-                  {RARITIES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </NativeSelectField>
-              </NativeSelectRoot>
-            </Field.Root>
-          </Flex>
-          <Field.Root>
-            <Field.Label>Element</Field.Label>
-            <Input
-              value={form.element ?? ""}
-              onChange={(e) => setForm((f) => ({ ...f, element: e.target.value }))}
-              bg="#222"
-            />
-          </Field.Root>
-          <Text fontWeight="bold" fontSize="sm" color="#889977">
-            Combat (physical formulas)
-          </Text>
-          <Flex gap={2} flexWrap="wrap">
-            <Field.Root minW="100px">
-              <Field.Label>Wpn accuracy</Field.Label>
-              <Input
-                type="number"
-                value={form.weapon_accuracy ?? 0}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, weapon_accuracy: Number(e.target.value) }))
-                }
-                bg="#222"
-                w="100px"
-              />
-            </Field.Root>
-            <Field.Root minW="100px">
-              <Field.Label>Crit % bonus</Field.Label>
-              <Input
-                type="number"
-                value={form.crit_chance_bonus_pct ?? 0}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, crit_chance_bonus_pct: Number(e.target.value) }))
-                }
-                bg="#222"
-                w="100px"
-              />
-            </Field.Root>
-            <Field.Root minW="100px">
-              <Field.Label>Crit dmg +</Field.Label>
-              <Input
-                type="number"
-                step="any"
-                value={form.crit_damage_bonus ?? 0}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    crit_damage_bonus: Number(e.target.value),
-                  }))
-                }
-                bg="#222"
-                w="100px"
-              />
-            </Field.Root>
-            <Field.Root minW="100px">
-              <Field.Label>Penetration</Field.Label>
-              <Input
-                type="number"
-                value={form.penetration ?? 0}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, penetration: Number(e.target.value) }))
-                }
-                bg="#222"
-                w="100px"
-              />
-            </Field.Root>
-            <Field.Root minW="100px">
-              <Field.Label>Dodge bonus</Field.Label>
-              <Input
-                type="number"
-                value={form.dodge_bonus ?? 0}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, dodge_bonus: Number(e.target.value) }))
-                }
-                bg="#222"
-                w="100px"
-              />
-            </Field.Root>
-            <Field.Root minW="100px">
-              <Field.Label>Dodge reduce</Field.Label>
-              <Input
-                type="number"
-                value={form.dodge_reduction ?? 0}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, dodge_reduction: Number(e.target.value) }))
-                }
-                bg="#222"
-                w="100px"
-              />
-            </Field.Root>
-            <Field.Root minW="100px">
-              <Field.Label>Dodge ignore</Field.Label>
-              <Input
-                type="number"
-                value={form.dodge_ignore ?? 0}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, dodge_ignore: Number(e.target.value) }))
-                }
-                bg="#222"
-                w="100px"
-              />
-            </Field.Root>
-          </Flex>
-          <Field.Root>
-            <Field.Label>Hidden special</Field.Label>
-            <NativeSelectRoot>
-              <NativeSelectField
-                value={form.hidden_special_effect ?? "none"}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, hidden_special_effect: e.target.value }))
-                }
-                bg="#222"
-              >
-                {HIDDEN.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </NativeSelectField>
-            </NativeSelectRoot>
-          </Field.Root>
-          <Flex gap={2} flexWrap="wrap">
-            <Field.Root flex="1" minW="140px">
-              <Field.Label>Hidden bonus stat (lore)</Field.Label>
-              <NativeSelectRoot>
-                <NativeSelectField
-                  value={form.hidden_bonus_stat ?? ""}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, hidden_bonus_stat: e.target.value }))
-                  }
-                  bg="#222"
-                >
-                  {HIDDEN_BONUS_STAT.map((s) => (
-                    <option key={s || "none"} value={s}>
-                      {s === "" ? "none" : s}
-                    </option>
-                  ))}
-                </NativeSelectField>
-              </NativeSelectRoot>
-            </Field.Root>
-            <Field.Root minW="100px">
-              <Field.Label>Hidden bonus value</Field.Label>
-              <Input
-                type="number"
-                value={form.hidden_bonus_value ?? 0}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, hidden_bonus_value: Number(e.target.value) }))
-                }
-                bg="#222"
-                w="100px"
-              />
-            </Field.Root>
-          </Flex>
-          <Field.Root>
-            <Field.Label>Description</Field.Label>
-            <Textarea
-              value={form.description ?? ""}
-              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-              rows={3}
-              bg="#222"
-            />
-          </Field.Root>
-          <Field.Root>
-            <Field.Label>Lore</Field.Label>
-            <Textarea
-              value={form.lore ?? ""}
-              onChange={(e) => setForm((f) => ({ ...f, lore: e.target.value }))}
-              rows={2}
-              bg="#222"
-            />
-          </Field.Root>
-          <Field.Root>
-            <Field.Label>Lore chance (1–100, empty = no roll)</Field.Label>
-            <Input
-              value={form.lore_chance ?? ""}
-              onChange={(e) => {
-                const v = e.target.value.trim();
-                setForm((f) => ({
-                  ...f,
-                  lore_chance: v === "" ? null : Number(v),
-                }));
-              }}
-              bg="#222"
-              w="120px"
-            />
-          </Field.Root>
-          <Field.Root>
-            <Field.Label>Two-handed</Field.Label>
-            <NativeSelectRoot>
-              <NativeSelectField
-                value={form.two_handed ? "1" : "0"}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, two_handed: e.target.value === "1" }))
-                }
-                bg="#222"
-                w="100px"
-              >
-                <option value="0">No</option>
-                <option value="1">Yes</option>
-              </NativeSelectField>
-            </NativeSelectRoot>
-          </Field.Root>
-          <Field.Root>
-            <Field.Label>Unsellable</Field.Label>
-            <NativeSelectRoot>
-              <NativeSelectField
-                value={form.unsellable ? "1" : "0"}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, unsellable: e.target.value === "1" }))
-                }
-                bg="#222"
-                w="100px"
-              >
-                <option value="0">No</option>
-                <option value="1">Yes</option>
-              </NativeSelectField>
-            </NativeSelectRoot>
-          </Field.Root>
-          <Field.Root>
-            <Field.Label>Vendor refuses buy (junk)</Field.Label>
-            <NativeSelectRoot>
-              <NativeSelectField
-                value={form.vendor_refuses_buy ? "1" : "0"}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    vendor_refuses_buy: e.target.value === "1",
-                  }))
-                }
-                bg="#222"
-                w="100px"
-              >
-                <option value="0">No</option>
-                <option value="1">Yes</option>
-              </NativeSelectField>
-            </NativeSelectRoot>
-          </Field.Root>
-          <Text fontSize="sm" color="#889977">
-            Requirements (empty = none)
-          </Text>
-          <Flex gap={2} flexWrap="wrap">
-            {(
-              [
-                "req_gains",
-                "req_moves",
-                "req_guts",
-                "req_smarts",
-                "req_sense",
-                "req_rizz",
-              ] as const
-            ).map((k) => (
-              <Field.Root key={k} minW="80px">
-                <Field.Label>{k}</Field.Label>
-                <Input
-                  value={form[k] ?? ""}
-                  onChange={(e) => {
-                    const v = e.target.value.trim();
-                    setForm((f) => ({ ...f, [k]: v === "" ? null : Number(v) }));
-                  }}
-                  bg="#222"
-                />
+          </QffDmCollapsibleSection>
+
+          <QffDmCollapsibleSection
+            title="Combat"
+            open={combatOpen}
+            onOpenChange={setCombatOpen}
+          >
+            <Grid
+              templateColumns={{ base: "1fr", sm: "repeat(2, minmax(0, 1fr))" }}
+              gap={2}
+              alignItems="flex-end"
+              mb={2}
+            >
+              <Field.Root minW={0}>
+                <Field.Label>Equip slot</Field.Label>
+                <Text fontSize="xs" color="#888" mb={1}>
+                  None = not equippable (quest items, inventory-only gear, etc.).
+                </Text>
+                <NativeSelectRoot w="100%">
+                  <NativeSelectField
+                    value={form.slot ?? ""}
+                    onChange={(e) => setForm((f) => ({ ...f, slot: e.target.value }))}
+                    bg="#222"
+                    w="100%"
+                  >
+                    {SLOTS.map((s) => (
+                      <option key={s || "none"} value={s}>
+                        {s === "" ? "None — not equippable" : s}
+                      </option>
+                    ))}
+                  </NativeSelectField>
+                </NativeSelectRoot>
               </Field.Root>
-            ))}
-          </Flex>
-          <Text fontSize="sm" color="#889977">
-            Stat bonuses (equipped)
-          </Text>
-          <Flex gap={2} flexWrap="wrap">
-            {(
-              [
-                "bonus_gains",
-                "bonus_moves",
-                "bonus_guts",
-                "bonus_smarts",
-                "bonus_sense",
-                "bonus_rizz",
-              ] as const
-            ).map((k) => (
-              <Field.Root key={k} minW="80px">
-                <Field.Label>{k}</Field.Label>
+              <Field.Root minW={0}>
+                <Field.Label>Two-handed</Field.Label>
+                <NativeSelectRoot w="100%">
+                  <NativeSelectField
+                    value={form.two_handed ? "1" : "0"}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, two_handed: e.target.value === "1" }))
+                    }
+                    bg="#222"
+                    w="100%"
+                  >
+                    <option value="0">No</option>
+                    <option value="1">Yes</option>
+                  </NativeSelectField>
+                </NativeSelectRoot>
+              </Field.Root>
+            </Grid>
+            <Grid
+              templateColumns={{ base: "1fr", sm: "repeat(2, minmax(0, 1fr))", md: "repeat(3, minmax(0, 1fr))" }}
+              gap={2}
+              alignItems="flex-end"
+            >
+              <Field.Root minW={0}>
+                <Field.Label>Damage</Field.Label>
                 <Input
                   type="number"
-                  value={form[k] ?? 0}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, [k]: Number(e.target.value) }))
-                  }
+                  value={form.damage ?? 0}
+                  onChange={(e) => setForm((f) => ({ ...f, damage: Number(e.target.value) }))}
                   bg="#222"
+                  w="100%"
+                  maxW="100%"
                 />
               </Field.Root>
-            ))}
-          </Flex>
+              <Field.Root minW={0}>
+                <Field.Label>Dmg type</Field.Label>
+                <NativeSelectRoot w="100%">
+                  <NativeSelectField
+                    value={form.dmg_type ?? "physical"}
+                    onChange={(e) => setForm((f) => ({ ...f, dmg_type: e.target.value }))}
+                    bg="#222"
+                    w="100%"
+                  >
+                    {DMG.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </NativeSelectField>
+                </NativeSelectRoot>
+              </Field.Root>
+              <Field.Root minW={0}>
+                <Field.Label>Armor</Field.Label>
+                <Input
+                  type="number"
+                  value={form.armor ?? 0}
+                  onChange={(e) => setForm((f) => ({ ...f, armor: Number(e.target.value) }))}
+                  bg="#222"
+                  w="100%"
+                  maxW="100%"
+                />
+              </Field.Root>
+            </Grid>
+            <Text fontWeight="bold" fontSize="sm" color="#889977" mt={1}>
+              Combat (physical formulas)
+            </Text>
+            <Grid
+              templateColumns={{ base: "1fr", sm: "repeat(2, minmax(0, 1fr))", md: "repeat(3, minmax(0, 1fr))" }}
+              gap={2}
+              alignItems="flex-end"
+            >
+              <Field.Root minW={0}>
+                <Field.Label>Wpn accuracy</Field.Label>
+                <Input
+                  type="number"
+                  value={form.weapon_accuracy ?? 0}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, weapon_accuracy: Number(e.target.value) }))
+                  }
+                  bg="#222"
+                  w="100%"
+                  maxW="100%"
+                />
+              </Field.Root>
+              <Field.Root minW={0}>
+                <Field.Label>Crit % bonus</Field.Label>
+                <Input
+                  type="number"
+                  value={form.crit_chance_bonus_pct ?? 0}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, crit_chance_bonus_pct: Number(e.target.value) }))
+                  }
+                  bg="#222"
+                  w="100%"
+                  maxW="100%"
+                />
+              </Field.Root>
+              <Field.Root minW={0}>
+                <Field.Label>Crit dmg +</Field.Label>
+                <Input
+                  type="number"
+                  step="any"
+                  value={form.crit_damage_bonus ?? 0}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      crit_damage_bonus: Number(e.target.value),
+                    }))
+                  }
+                  bg="#222"
+                  w="100%"
+                  maxW="100%"
+                />
+              </Field.Root>
+              <Field.Root minW={0}>
+                <Field.Label>Penetration</Field.Label>
+                <Input
+                  type="number"
+                  value={form.penetration ?? 0}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, penetration: Number(e.target.value) }))
+                  }
+                  bg="#222"
+                  w="100%"
+                  maxW="100%"
+                />
+              </Field.Root>
+              <Field.Root minW={0}>
+                <Field.Label>Dodge bonus</Field.Label>
+                <Input
+                  type="number"
+                  value={form.dodge_bonus ?? 0}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, dodge_bonus: Number(e.target.value) }))
+                  }
+                  bg="#222"
+                  w="100%"
+                  maxW="100%"
+                />
+              </Field.Root>
+              <Field.Root minW={0}>
+                <Field.Label>Dodge reduce</Field.Label>
+                <Input
+                  type="number"
+                  value={form.dodge_reduction ?? 0}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, dodge_reduction: Number(e.target.value) }))
+                  }
+                  bg="#222"
+                  w="100%"
+                  maxW="100%"
+                />
+              </Field.Root>
+              <Field.Root minW={0}>
+                <Field.Label>Dodge ignore</Field.Label>
+                <Input
+                  type="number"
+                  value={form.dodge_ignore ?? 0}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, dodge_ignore: Number(e.target.value) }))
+                  }
+                  bg="#222"
+                  w="100%"
+                  maxW="100%"
+                />
+              </Field.Root>
+            </Grid>
+            <Field.Root>
+              <Field.Label>Hidden special</Field.Label>
+              <NativeSelectRoot>
+                <NativeSelectField
+                  value={form.hidden_special_effect ?? "none"}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, hidden_special_effect: e.target.value }))
+                  }
+                  bg="#222"
+                >
+                  {HIDDEN.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </NativeSelectField>
+              </NativeSelectRoot>
+            </Field.Root>
+            <Grid
+              templateColumns={{ base: "1fr", sm: "2fr minmax(5rem, 7rem)" }}
+              gap={2}
+              alignItems="flex-end"
+            >
+              <Field.Root minW={0}>
+                <Field.Label>Hidden bonus stat (lore)</Field.Label>
+                <NativeSelectRoot w="100%">
+                  <NativeSelectField
+                    value={form.hidden_bonus_stat ?? ""}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, hidden_bonus_stat: e.target.value }))
+                    }
+                    bg="#222"
+                    w="100%"
+                  >
+                    {HIDDEN_BONUS_STAT.map((s) => (
+                      <option key={s || "none"} value={s}>
+                        {s === "" ? "none" : s}
+                      </option>
+                    ))}
+                  </NativeSelectField>
+                </NativeSelectRoot>
+              </Field.Root>
+              <Field.Root minW={0}>
+                <Field.Label>Hidden bonus value</Field.Label>
+                <Input
+                  type="number"
+                  value={form.hidden_bonus_value ?? 0}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, hidden_bonus_value: Number(e.target.value) }))
+                  }
+                  bg="#222"
+                  w="100%"
+                  maxW="100%"
+                />
+              </Field.Root>
+            </Grid>
+          </QffDmCollapsibleSection>
+
+          <QffDmCollapsibleSection
+            title="Requirements & stat buffs"
+            open={statsOpen}
+            onOpenChange={setStatsOpen}
+          >
+            <Text fontSize="sm" color="#889977">
+              Requirements (empty = none)
+            </Text>
+            <Grid
+              templateColumns={{
+                base: "1fr",
+                sm: "repeat(2, minmax(0, 1fr))",
+                md: "repeat(3, minmax(0, 1fr))",
+              }}
+              gap={2}
+            >
+              {(
+                [
+                  "req_gains",
+                  "req_moves",
+                  "req_guts",
+                  "req_smarts",
+                  "req_sense",
+                  "req_rizz",
+                ] as const
+              ).map((k) => (
+                <Field.Root key={k} minW={0}>
+                  <Field.Label>{k}</Field.Label>
+                  <Input
+                    value={form[k] ?? ""}
+                    onChange={(e) => {
+                      const v = e.target.value.trim();
+                      setForm((f) => ({ ...f, [k]: v === "" ? null : Number(v) }));
+                    }}
+                    bg="#222"
+                    w="100%"
+                    maxW="100%"
+                  />
+                </Field.Root>
+              ))}
+            </Grid>
+            <Text fontSize="sm" color="#889977">
+              Stat bonuses (equipped)
+            </Text>
+            <Grid
+              templateColumns={{
+                base: "1fr",
+                sm: "repeat(2, minmax(0, 1fr))",
+                md: "repeat(3, minmax(0, 1fr))",
+              }}
+              gap={2}
+            >
+              {(
+                [
+                  "bonus_gains",
+                  "bonus_moves",
+                  "bonus_guts",
+                  "bonus_smarts",
+                  "bonus_sense",
+                  "bonus_rizz",
+                ] as const
+              ).map((k) => (
+                <Field.Root key={k} minW={0}>
+                  <Field.Label>{k}</Field.Label>
+                  <Input
+                    type="number"
+                    value={form[k] ?? 0}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, [k]: Number(e.target.value) }))
+                    }
+                    bg="#222"
+                    w="100%"
+                    maxW="100%"
+                  />
+                </Field.Root>
+              ))}
+            </Grid>
+          </QffDmCollapsibleSection>
         </Stack>
       </Flex>
     </Box>

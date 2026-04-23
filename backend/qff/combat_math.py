@@ -1,24 +1,24 @@
-"""Physical combat formulas: hit, dodge, crit, damage, mitigation.
+"""Physical combat formulas: hit, crit, damage, mitigation.
 
 Pipeline (``resolve_physical_strike``), same order as rolls occur:
 
 1. Roll hit: ``roll_d100()`` vs ``HitChance`` — if ``roll > HitChance``, **miss** (stop).
-2. If hit: roll dodge: ``roll_d100()`` vs ``EffectiveDodgeChance`` — if ``roll <= EffectiveDodgeChance``, **dodge** (stop).
-3. If not dodged: roll crit: ``random.random()`` vs ``CritChance`` — if below threshold, use crit damage branch.
+2. If hit: roll crit: ``random.random()`` vs ``CritChance`` — if below threshold, use crit damage branch.
 4. **PaperBase** — heroes with a weapon (main hand ``damage > 0``): ``floor((3×Weapon + 2×Gains) × LevelFactor)`` with ``LevelFactor = 1 + 2×(Level−1)/98``. **Unarmed** heroes (no main-hand item or ``damage <= 0``): ``1 + Level`` (ignores gains and the weapon formula). Monsters: caller rolls ``UniformInteger[damage_min, damage_max]`` inclusive and passes it as ``flat_base_damage`` (that value is the monster’s paper base for the strike).
 5. **RolledBase** = ``max(1, PaperBase + U)`` where ``U ~ Uniform{−L,…,L}`` and ``L = max(1, AttackerLevel)`` (hero level or ``MonsterTemplate.level``). For monsters, ``RolledBase`` can be **above** ``damage_max`` (e.g. paper 3 and ``U = +1`` at level 1 → 4) or below ``damage_min`` only down to the global floor 1.
-6. **CritDamage** = ``floor(RolledBase × CritMultiplier)`` with ``CritMultiplier = 1.5 + 0.002×(Level−1) + ItemCritDamage`` (sum of equipped ``crit_damage_bonus`` or template field).
-7. **DamageReduction** = ``Armor / (Armor + MitigationScale)`` with ``MitigationScale = 100 + 2×Penetration``; if ``Armor <= 0``, reduction is 0.
+6. **CritDamage** = ``floor(RolledBase × CritMultiplier)``.
+7. **DamageReduction** = ``EffectiveArmor / (EffectiveArmor + MitigationScale)`` with ``MitigationScale = 100 + 2×Penetration``; if ``EffectiveArmor <= 0``, reduction is 0.
 8. **Final** = ``max(1, floor(chosen × (1 − DamageReduction)))`` where ``chosen`` is ``RolledBase`` or ``CritDamage``.
 
 Formulas (integer ``//`` where the spec uses floor for moves):
 
-- ``HitChance = clamp(Base + floor(AtkMoves/2) + WeaponAccuracy − floor(DefMoves/2), 5, 95)``
-  where ``Base`` is **75**, or **50** when the hero attacks from an unlit dark area (no torch,
-  sconce area unlock, or permanent room light).
-- ``DodgeChance = max(1, floor(DefMoves/20) + DodgeBonus)``
-- ``EffectiveDodgeChance = max(1, DodgeChance − DodgeReduction − DodgeIgnore)`` (reduction/ignore from attacker)
-- ``CritChance = 0.001×Sense + 0.001×Level + (crit_chance_bonus_pct / 100)`` — item/template ``crit_chance_bonus_pct`` is **percentage points** (5 means +5%, i.e. +0.05), then clamped to ``[0, 0.95]``.
+- ``HitChance = clamp(Base + AccuracyModifier − DodgeModifier, 5, 95)``
+  - ``Base`` is **75**, or **50** when the hero attacks from an unlit dark area (no torch,
+    sconce area unlock, or permanent room light).
+  - ``AccuracyModifier = WeaponAccuracy + 0.25 × AccuracyBudget(Level) × min(1, AtkMoves / MovesScale(Level))``
+  - ``DodgeTotal = DodgeBonus + 0.75 × DodgeBudget(Level) × min(1, DefMoves / MovesScale(Level))``
+  - ``DodgeModifier = 0`` if attacker has dodge-ignore active; else ``DodgeTotal × (1 − DodgeReductionPct/100)``.
+- ``CritChance`` and ``CritMultiplier`` follow the piecewise caps in the combat spec.
 
 **Note:** An unarmed level‑1 hero has **paper** base ``1 + 1 = 2``; with ``L = 1`` each hit uses ``RolledBase`` in ``{1,2,3}`` before armor. Higher levels use a wider ``±L`` band on that same unarmed paper base.
 """
@@ -41,7 +41,7 @@ from qff.models import Character, MonsterInstance, MonsterTemplate
 from qff.narrative_visibility import sconce_lit_area_ids_for_character
 
 
-Outcome = Literal["miss", "dodge", "hit", "crit"]
+Outcome = Literal["miss", "hit", "crit"]
 
 
 @dataclass
@@ -52,13 +52,72 @@ class StrikeResult:
     damage_after_mitigation: int
     was_crit: bool
     hit_chance: int
-    effective_dodge_chance: int
     crit_chance: float
-    rolled_base: int = 0  # after swing, before crit/mitigation; 0 on miss/dodge
+    rolled_base: int = 0  # after swing, before crit/mitigation; 0 on miss
 
 
 def clamp_hit_chance(hit_chance: int) -> int:
     return max(5, min(95, int(hit_chance)))
+
+
+def moves_scale(level: int) -> float:
+    lv = max(1, int(level))
+    if lv <= 25:
+        # 1 + (49/24) * (Level - 1)
+        return 1.0 + (49.0 / 24.0) * (lv - 1)
+    if lv <= 50:
+        # 2 * Level
+        return 2.0 * lv
+    # 4 * Level - 100
+    return 4.0 * lv - 100.0
+
+
+def accuracy_budget(level: int) -> float:
+    lv = max(1, int(level))
+    if lv <= 25:
+        return 5.0 * (lv - 1) / 24.0
+    if lv <= 50:
+        return 5.0 + 5.0 * (lv - 25) / 25.0
+    if lv <= 75:
+        return 10.0 + 5.0 * (lv - 50) / 25.0
+    return 15.0 + 5.0 * (lv - 75) / 25.0
+
+
+def dodge_budget(level: int) -> float:
+    lv = max(1, int(level))
+    if lv <= 25:
+        return 10.0 * (lv - 1) / 24.0
+    if lv <= 50:
+        return 10.0 + 5.0 * (lv - 25) / 25.0
+    if lv <= 75:
+        return 15.0 + 5.0 * (lv - 50) / 25.0
+    return 20.0 + 5.0 * (lv - 75) / 25.0
+
+
+def _moves_ratio(moves: int, level: int) -> float:
+    ms = moves_scale(level)
+    if ms <= 0:
+        return 0.0
+    return min(1.0, max(0.0, float(int(moves)) / ms))
+
+
+def compute_accuracy_modifier(atk_moves: int, weapon_accuracy: int, atk_level: int) -> float:
+    r = _moves_ratio(atk_moves, atk_level)
+    return float(int(weapon_accuracy)) + 0.25 * accuracy_budget(atk_level) * r
+
+
+def compute_dodge_total(def_moves: int, dodge_bonus: int, def_level: int) -> float:
+    r = _moves_ratio(def_moves, def_level)
+    return float(int(dodge_bonus)) + 0.75 * dodge_budget(def_level) * r
+
+
+def compute_dodge_modifier(
+    dodge_total: float, dodge_reduction_pct: int, dodge_ignore_active: bool
+) -> float:
+    if dodge_ignore_active:
+        return 0.0
+    pct = max(0, min(100, int(dodge_reduction_pct)))
+    return max(0.0, float(dodge_total) * (1.0 - pct / 100.0))
 
 
 def compute_hit_chance(
@@ -66,10 +125,22 @@ def compute_hit_chance(
     weapon_accuracy: int,
     def_moves: int,
     *,
+    atk_level: int,
+    def_level: int,
+    dodge_bonus: int,
+    dodge_reduction_pct: int,
+    dodge_ignore_active: bool,
     base: int = 75,
 ) -> int:
-    raw = int(base) + (atk_moves // 2) + int(weapon_accuracy) - (def_moves // 2)
-    return clamp_hit_chance(raw)
+    acc = compute_accuracy_modifier(atk_moves, weapon_accuracy, atk_level)
+    dodge_total = compute_dodge_total(def_moves, dodge_bonus, def_level)
+    dodge = compute_dodge_modifier(dodge_total, dodge_reduction_pct, dodge_ignore_active)
+    raw = float(base) + acc - dodge
+    # d100 to-hit is an integer percent in [5, 95]. Keep internal float math, clamp into the
+    # allowed band, then discretize with floor (not floor-then-clamp) so tiny sub-integer
+    # differences don't get stuck one point below a cap.
+    band = min(95.0, max(5.0, float(raw)))
+    return int(math.floor(band))
 
 
 def hero_unlit_dark_area_for_combat(character: Character) -> bool:
@@ -95,19 +166,20 @@ def hero_hit_chance_base(character: Character) -> int:
     return 50 if hero_unlit_dark_area_for_combat(character) else 75
 
 
-def compute_dodge_chance(def_moves: int, dodge_bonus: int) -> int:
-    return max(1, (int(def_moves) // 20) + int(dodge_bonus))
-
-
-def compute_effective_dodge_chance(
-    dodge_chance: int, dodge_reduction: int, dodge_ignore: int
-) -> int:
-    return max(1, int(dodge_chance) - int(dodge_reduction) - int(dodge_ignore))
-
-
 def compute_crit_chance(sense: int, level: int, total_crit_bonus_pct: int) -> float:
-    """``total_crit_bonus_pct`` is percentage points (e.g. 5 → +0.05 probability)."""
-    return (0.001 * int(sense)) + (0.001 * int(level)) + (int(total_crit_bonus_pct) / 100.0)
+    """Piecewise-capped crit curve vs stat term; bonus is percentage points (5 = +0.05).
+
+    Result is a probability; callers may cap at 1.0 for RNG rolls, but are not
+    hard-limited to 95% (100% crit builds are allowed when bonuses push past the cap)."""
+    lv = max(1, int(level))
+    if lv <= 50:
+        cap = 0.01 + (0.24 / 49.0) * (lv - 1)
+    elif lv <= 75:
+        cap = 0.25 + 0.01 * (lv - 50)
+    else:
+        cap = 0.50 + 0.02 * (lv - 75)
+    stat = (int(sense) / 1200.0) + (lv / 2000.0) + (int(total_crit_bonus_pct) / 100.0)
+    return min(cap, stat)
 
 
 def level_factor(level: int) -> float:
@@ -128,7 +200,14 @@ def compute_unarmed_paper_base(level: int) -> int:
 
 def compute_crit_multiplier(level: int, item_crit_damage: float) -> float:
     lv = max(1, int(level))
-    return 1.5 + 0.002 * (lv - 1) + float(item_crit_damage)
+    if lv <= 50:
+        cap = 1.5 + (0.5 / 49.0) * (lv - 1)
+    elif lv <= 75:
+        cap = 2.0 + 0.02 * (lv - 50)
+    else:
+        cap = 2.5 + 0.02 * (lv - 75)
+    stat = 1.5 + 0.0025 * (lv - 1) + float(item_crit_damage)
+    return min(cap, stat)
 
 
 def compute_crit_damage(base_damage: int, crit_multiplier: float) -> int:
@@ -142,9 +221,9 @@ def apply_damage_swing(paper_base: int, attacker_level: int) -> int:
     return max(1, pb + random.randint(-L, L))
 
 
-def compute_damage_reduction(armor: int, penetration: int) -> float:
-    a, p = int(armor), int(penetration)
-    if a <= 0:
+def compute_damage_reduction(effective_armor: float, penetration: int) -> float:
+    a, p = float(effective_armor), int(penetration)
+    if a <= 0.0:
         return 0.0
     scale = 100 + 2 * p
     return a / (a + scale)
@@ -206,8 +285,9 @@ def hero_attacker_stats(character: Character) -> dict:
         "crit_chance_bonus_pct": b["crit_chance_bonus_pct"],
         "crit_damage_bonus": b["crit_damage_bonus"],
         "penetration": b["penetration"],
-        "dodge_reduction": b["dodge_reduction"],
-        "dodge_ignore": b["dodge_ignore"],
+        # dodge_reduction is a percentage of defender DodgeTotal (clamped in compute); dodge_ignore is boolean-ish.
+        "dodge_reduction_pct": b["dodge_reduction"],
+        "dodge_ignore_active": b["dodge_ignore"] > 0,
         "hit_chance_base": hero_hit_chance_base(character),
     }
 
@@ -218,7 +298,9 @@ def hero_defender_stats(character: Character) -> dict:
     return {
         "def_moves": int(mods["moves"]),
         "dodge_bonus": b["dodge_bonus"],
-        "armor": total_armor_from_equipment(character),
+        "level": int(character.level),
+        # Hero defending uses /5 effective-armor scaling.
+        "effective_armor": float(total_armor_from_equipment(character)) / 5.0,
     }
 
 
@@ -227,7 +309,9 @@ def monster_defender_stats(monster: MonsterInstance) -> dict:
     return {
         "def_moves": int(tpl.moves or 0),
         "dodge_bonus": 0,
-        "armor": int(tpl.armor or 0),
+        "level": int(tpl.level),
+        # Monster defending uses template armor literally (no /5).
+        "effective_armor": float(int(tpl.armor or 0)),
     }
 
 
@@ -242,15 +326,15 @@ def monster_attacker_stats(template: MonsterTemplate) -> dict:
         "crit_chance_bonus_pct": int(template.crit_chance_bonus_pct or 0),
         "crit_damage_bonus": float(template.crit_damage_bonus or 0),
         "penetration": int(template.penetration or 0),
-        "dodge_reduction": int(template.dodge_reduction or 0),
-        "dodge_ignore": int(template.dodge_ignore or 0),
+        "dodge_reduction_pct": int(template.dodge_reduction or 0),
+        "dodge_ignore_active": int(template.dodge_ignore or 0) > 0,
     }
 
 
 def resolve_physical_strike(
     attacker: dict, defender: dict, *, flat_base_damage: int | None = None
 ) -> StrikeResult:
-    """Roll hit → dodge → crit; apply mitigation. Uses global RNG.
+    """Roll hit → crit; apply mitigation. Uses global RNG.
 
     If ``flat_base_damage`` is set (monster strikes), it **is** the paper base for
     this strike: the caller should roll it uniformly on ``[damage_min, damage_max]``
@@ -261,13 +345,12 @@ def resolve_physical_strike(
         attacker["atk_moves"],
         attacker["weapon_accuracy"],
         defender["def_moves"],
+        atk_level=attacker["level"],
+        def_level=defender["level"],
+        dodge_bonus=defender["dodge_bonus"],
+        dodge_reduction_pct=attacker.get("dodge_reduction_pct", 0),
+        dodge_ignore_active=bool(attacker.get("dodge_ignore_active", False)),
         base=hit_base,
-    )
-    dodge_ch = compute_dodge_chance(defender["def_moves"], defender["dodge_bonus"])
-    eff_dodge = compute_effective_dodge_chance(
-        dodge_ch,
-        attacker["dodge_reduction"],
-        attacker["dodge_ignore"],
     )
     if roll_d100() > hit_chance:
         return StrikeResult(
@@ -277,20 +360,6 @@ def resolve_physical_strike(
             damage_after_mitigation=0,
             was_crit=False,
             hit_chance=hit_chance,
-            effective_dodge_chance=eff_dodge,
-            crit_chance=0.0,
-            rolled_base=0,
-        )
-
-    if roll_d100() <= eff_dodge:
-        return StrikeResult(
-            outcome="dodge",
-            damage=0,
-            base_damage=0,
-            damage_after_mitigation=0,
-            was_crit=False,
-            hit_chance=hit_chance,
-            effective_dodge_chance=eff_dodge,
             crit_chance=0.0,
             rolled_base=0,
         )
@@ -300,7 +369,8 @@ def resolve_physical_strike(
         attacker["level"],
         attacker["crit_chance_bonus_pct"],
     )
-    crit_ch = min(0.95, max(0.0, crit_ch))
+    p = max(0.0, float(crit_ch))
+    p_roll = min(1.0, p)
 
     if flat_base_damage is not None:
         base = max(1, int(flat_base_damage))
@@ -316,9 +386,10 @@ def resolve_physical_strike(
     )
     crit_raw = compute_crit_damage(rolled, crit_mult)
 
-    was_crit = random.random() < crit_ch
+    # random.random() is in [0, 1); use < p_roll, but p_roll==1.0 must always crit.
+    was_crit = p_roll >= 1.0 or (p_roll > 0.0 and random.random() < p_roll)
     raw = crit_raw if was_crit else rolled
-    dr = compute_damage_reduction(defender["armor"], attacker["penetration"])
+    dr = compute_damage_reduction(defender["effective_armor"], attacker["penetration"])
     final = compute_final_damage(raw, dr)
     outcome: Outcome = "crit" if was_crit else "hit"
     return StrikeResult(
@@ -328,7 +399,6 @@ def resolve_physical_strike(
         damage_after_mitigation=final,
         was_crit=was_crit,
         hit_chance=hit_chance,
-        effective_dodge_chance=eff_dodge,
-        crit_chance=crit_ch,
+        crit_chance=p,
         rolled_base=rolled,
     )

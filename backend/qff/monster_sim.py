@@ -1108,13 +1108,6 @@ def _resolve_hero_strike(char: Character, now) -> None:
     )
     if not monster:
         return
-    boundary = (
-        char.next_action_at - timedelta(seconds=COMBAT_ROUND_SECONDS)
-        if char.next_action_at
-        else now - timedelta(seconds=COMBAT_ROUND_SECONDS)
-    )
-    if char.last_command_at and char.last_command_at > boundary:
-        return
     char = _character_for_combat(char.pk)
     if not char:
         return

@@ -18,7 +18,8 @@ export function qffSessionWsUrl(accessToken: string): string {
   if (/^https?:\/\//i.test(raw)) {
     const u = new URL(raw);
     const wsProto = u.protocol === "https:" ? "wss:" : "ws:";
-    return `${wsProto}//${u.host}${path}?${tokenParam}`;
+    const prefix = (u.pathname || "").replace(/\/$/, "");
+    return `${wsProto}//${u.host}${prefix}${path}?${tokenParam}`;
   }
   const prefix = raw.startsWith("/") ? raw : `/${raw}`;
   const base = prefix.replace(/\/$/, "");

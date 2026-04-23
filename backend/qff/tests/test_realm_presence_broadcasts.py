@@ -61,7 +61,7 @@ class RealmPresenceBroadcastTests(TestCase):
         )
         c1 = Character.objects.get(pk=c1.pk)
         rooms = broadcast_realm_enter(c1)
-        self.assertIn(self.b, rooms, msg="Peer in other room should get a fanned row")
+        self.assertIn(self.b.pk, rooms, msg="Peer in other room should get a fanned row")
         rb = (
             RoomBroadcast.objects.filter(
                 room_id=self.b, scope=RoomBroadcast.Scope.REALM, speaker_id=c1.pk

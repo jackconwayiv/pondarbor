@@ -276,28 +276,34 @@ def slack_events(request):
     if err or not user:
         create_url = (getattr(settings, "SLACK_CREATE_ACCOUNT_URL", None) or "").strip()
         if create_url:
-            slack_chat_post_ephemeral(
+            resp = slack_chat_post_ephemeral(
                 channel=channel_id,
                 user=slack_user_id,
                 text=err
                 or "To submit Song-a-day from Slack, create a PondArbor account.",
                 blocks=_create_account_blocks(url=create_url),
             )
+            if not resp.get("ok"):
+                logger.warning("Slack postEphemeral failed (unlinked): %s", resp)
             return JsonResponse({"ok": True})
-        slack_chat_post_ephemeral(
+        resp = slack_chat_post_ephemeral(
             channel=channel_id,
             user=slack_user_id,
             text=err
             or "To submit Song-a-day from Slack, sign up or log in to PondArbor (try “Sign up with Slack”).",
         )
+        if not resp.get("ok"):
+            logger.warning("Slack postEphemeral failed (unlinked fallback): %s", resp)
         return JsonResponse({"ok": True})
 
     if user.account_status != User.AccountStatus.APPROVED:
-        slack_chat_post_ephemeral(
+        resp = slack_chat_post_ephemeral(
             channel=channel_id,
             user=slack_user_id,
             text="Your PondArbor account is still pending approval.",
         )
+        if not resp.get("ok"):
+            logger.warning("Slack postEphemeral failed (pending): %s", resp)
         return JsonResponse({"ok": True})
 
     today = _today_for_songaday_slack()
@@ -313,21 +319,27 @@ def slack_events(request):
         )
         data = validate_song_response_payload(payload2)
         create_song_response_from_validated_data(user=user, data=data)
-        slack_chat_post_ephemeral(
+        resp = slack_chat_post_ephemeral(
             channel=channel_id,
             user=slack_user_id,
             text=f"Saved your Song-a-day pick for {today.isoformat()}.",
         )
+        if not resp.get("ok"):
+            logger.warning("Slack postEphemeral failed (saved): %s", resp)
     except SongadaySubmissionError as e:
         # Most commonly: already submitted today.
-        slack_chat_post_ephemeral(channel=channel_id, user=slack_user_id, text=e.message)
+        resp = slack_chat_post_ephemeral(channel=channel_id, user=slack_user_id, text=e.message)
+        if not resp.get("ok"):
+            logger.warning("Slack postEphemeral failed (submission error): %s", resp)
     except Exception:
         logger.exception("Slack message URL parse submit failed")
-        slack_chat_post_ephemeral(
+        resp = slack_chat_post_ephemeral(
             channel=channel_id,
             user=slack_user_id,
             text="Could not save that link as a Song-a-day pick. Try `/song <url>`.",
         )
+        if not resp.get("ok"):
+            logger.warning("Slack postEphemeral failed (exception): %s", resp)
 
     return JsonResponse({"ok": True})
 

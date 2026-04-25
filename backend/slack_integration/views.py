@@ -36,7 +36,7 @@ from users.permissions import IsApprovedUser
 
 logger = logging.getLogger(__name__)
 
-_URL_RE = re.compile(r"https?://\\S+", re.I)
+_URL_RE = re.compile(r"https?://\S+", re.I)
 
 
 def _slack_songaday_channel_id() -> str:
@@ -251,8 +251,10 @@ def slack_events(request):
 
     # Ignore bots / message edits / joins etc.
     if event.get("subtype"):
+        logger.info("slack_events ignored subtype=%s channel=%s", event.get("subtype"), event.get("channel"))
         return JsonResponse({"ok": True})
     if event.get("bot_id"):
+        logger.info("slack_events ignored bot_id channel=%s", event.get("channel"))
         return JsonResponse({"ok": True})
 
     channel_id = (event.get("channel") or "").strip()
@@ -260,6 +262,7 @@ def slack_events(request):
         return JsonResponse({"ok": True})
     allowed_channel = _slack_songaday_channel_id()
     if allowed_channel and channel_id != allowed_channel:
+        logger.info("slack_events ignored channel=%s allowed=%s", channel_id, allowed_channel)
         return JsonResponse({"ok": True})
 
     slack_user_id = (event.get("user") or "").strip()
@@ -269,6 +272,7 @@ def slack_events(request):
     text = (event.get("text") or "").strip()
     url = _extract_first_url(text)
     if not url:
+        logger.info("slack_events no_url channel=%s user=%s text=%r", channel_id, slack_user_id, text[:200])
         return JsonResponse({"ok": True})
 
     team_id = (payload.get("team_id") or "").strip()

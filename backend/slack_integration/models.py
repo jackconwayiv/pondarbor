@@ -41,3 +41,13 @@ class SongadaySlackDailyPromptState(models.Model):
 
     def __str__(self) -> str:
         return f"SongadaySlackDailyPromptState(last_posted_on={self.last_posted_on!r})"
+
+
+class SlackEventReceipt(models.Model):
+    """Deduplicate Slack Events API retries by `event_id`."""
+
+    event_id = models.CharField(max_length=128, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return f"SlackEventReceipt(event_id={self.event_id!r})"

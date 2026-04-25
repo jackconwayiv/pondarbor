@@ -1,4 +1,6 @@
+import json
 import logging
+import re
 from datetime import datetime
 from urllib.parse import parse_qsl
 from zoneinfo import ZoneInfo
@@ -20,8 +22,12 @@ from songaday.submission import (
     create_song_response_from_validated_data,
     validate_song_response_payload,
 )
-from slack_integration.models import SlackIdentity, SongadaySlackDailyPromptState
-from slack_integration.slack_api import slack_chat_post_message, slack_users_info
+from slack_integration.models import SlackEventReceipt, SlackIdentity, SongadaySlackDailyPromptState
+from slack_integration.slack_api import (
+    slack_chat_post_ephemeral,
+    slack_chat_post_message,
+    slack_users_info,
+ )
 from slack_integration.slack_verify import verify_slack_request_signature
 from slack_integration.song_from_text import build_serializer_data_from_slack_text
 from users.auth0_backend import Auth0TokenAuthentication
@@ -29,6 +35,28 @@ from users.models import User
 from users.permissions import IsApprovedUser
 
 logger = logging.getLogger(__name__)
+
+_URL_RE = re.compile(r"https?://\\S+", re.I)
+
+
+def _slack_songaday_channel_id() -> str:
+    return (
+        (getattr(settings, "SLACK_SONGADAY_CHANNEL_ID", None) or "").strip()
+        or (getattr(settings, "SLACK_PROMPTS_CHANNEL_ID", None) or "").strip()
+    )
+
+
+def _extract_first_url(text: str) -> str:
+    if not text:
+        return ""
+    # Slack formats links as <https://...|label>
+    m = re.search(r"<(https?://[^|>\\s]+)(?:\\|[^>]+)?>", text, re.I)
+    if m:
+        return m.group(1).strip()
+    m2 = _URL_RE.search(text)
+    if m2:
+        return m2.group(0).strip().rstrip(").,>]")
+    return ""
 
 
 def _slack_ephemeral(text: str) -> JsonResponse:
@@ -116,7 +144,7 @@ def slack_commands(request):
     today = _today_for_songaday_slack()
     prompt = SongPrompt.objects.filter(month=today.month, day=today.day).first()
     if prompt is None:
-        return _slack_ephemeral("There is no Song-a-day prompt for today’s calendar entry.")
+        return _slack_ephemeral("There is no Song-a-day prompt for today's calendar entry.")
 
     try:
         payload = build_serializer_data_from_slack_text(
@@ -153,6 +181,123 @@ def slack_commands(request):
         f"{raw}"
     )
     return _slack_in_channel(msg)
+
+
+@csrf_exempt
+@require_POST
+def slack_events(request):
+    """
+    Slack Events API receiver. Subscribed to `message.channels` and restricted to the Song-a-day channel.
+    """
+    raw_body = request.body
+    try:
+        payload = json.loads(raw_body.decode("utf-8"))
+    except Exception:
+        return JsonResponse({"ok": False}, status=400)
+
+    # URL verification handshake
+    if payload.get("type") == "url_verification":
+        # Slack expects a plain JSON body containing the exact `challenge` string.
+        # Allow this handshake to succeed even before the signing secret is configured.
+        return JsonResponse({"challenge": payload.get("challenge")})
+
+    # Non-handshake requests must be verified.
+    if not verify_slack_request_signature(
+        body=raw_body,
+        timestamp=request.headers.get("X-Slack-Request-Timestamp"),
+        signature=request.headers.get("X-Slack-Signature"),
+    ):
+        return HttpResponseForbidden("invalid signature")
+
+    if payload.get("type") != "event_callback":
+        return JsonResponse({"ok": True})
+
+    event_id = (payload.get("event_id") or "").strip()
+    if event_id:
+        try:
+            SlackEventReceipt.objects.create(event_id=event_id)
+        except Exception:
+            # Likely duplicate (Slack retry) — ack and stop.
+            return JsonResponse({"ok": True})
+
+    event = payload.get("event") or {}
+    if not isinstance(event, dict):
+        return JsonResponse({"ok": True})
+
+    if (event.get("type") or "") != "message":
+        return JsonResponse({"ok": True})
+
+    # Ignore bots / message edits / joins etc.
+    if event.get("subtype"):
+        return JsonResponse({"ok": True})
+    if event.get("bot_id"):
+        return JsonResponse({"ok": True})
+
+    channel_id = (event.get("channel") or "").strip()
+    if not channel_id:
+        return JsonResponse({"ok": True})
+    allowed_channel = _slack_songaday_channel_id()
+    if allowed_channel and channel_id != allowed_channel:
+        return JsonResponse({"ok": True})
+
+    slack_user_id = (event.get("user") or "").strip()
+    if not slack_user_id:
+        return JsonResponse({"ok": True})
+
+    text = (event.get("text") or "").strip()
+    url = _extract_first_url(text)
+    if not url:
+        return JsonResponse({"ok": True})
+
+    team_id = (payload.get("team_id") or "").strip()
+    user, err = _resolve_user_for_slack(team_id, slack_user_id)
+    if err or not user:
+        slack_chat_post_ephemeral(
+            channel=channel_id,
+            user=slack_user_id,
+            text=err
+            or "To submit Song-a-day from Slack, sign up or log in to PondArbor (try “Sign up with Slack”).",
+        )
+        return JsonResponse({"ok": True})
+
+    if user.account_status != User.AccountStatus.APPROVED:
+        slack_chat_post_ephemeral(
+            channel=channel_id,
+            user=slack_user_id,
+            text="Your PondArbor account is still pending approval.",
+        )
+        return JsonResponse({"ok": True})
+
+    today = _today_for_songaday_slack()
+    prompt = SongPrompt.objects.filter(month=today.month, day=today.day).first()
+    if not prompt:
+        return JsonResponse({"ok": True})
+
+    try:
+        payload2 = build_serializer_data_from_slack_text(
+            text=url,
+            entry_date=today,
+            prompt_snapshot=prompt.prompt,
+        )
+        data = validate_song_response_payload(payload2)
+        create_song_response_from_validated_data(user=user, data=data)
+        slack_chat_post_ephemeral(
+            channel=channel_id,
+            user=slack_user_id,
+            text=f"Saved your Song-a-day pick for {today.isoformat()}.",
+        )
+    except SongadaySubmissionError as e:
+        # Most commonly: already submitted today.
+        slack_chat_post_ephemeral(channel=channel_id, user=slack_user_id, text=e.message)
+    except Exception:
+        logger.exception("Slack message URL parse submit failed")
+        slack_chat_post_ephemeral(
+            channel=channel_id,
+            user=slack_user_id,
+            text="Could not save that link as a Song-a-day pick. Try `/song <url>`.",
+        )
+
+    return JsonResponse({"ok": True})
 
 
 @api_view(["POST"])

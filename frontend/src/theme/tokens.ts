@@ -2,32 +2,70 @@
  * UI Color System — implementation brief (structured roles; do not substitute freely).
  * Primary actions use teal; links/secondary use sky; structure uses navy/deep; success uses forest/lilypad; attention uses orange.
  */
+function clampByte(n: number): number {
+  return Math.max(0, Math.min(255, Math.round(n)));
+}
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const h = hex.trim().replace(/^#/, "");
+  if (h.length !== 6) throw new Error(`Expected 6-digit hex, got: ${hex}`);
+  const r = Number.parseInt(h.slice(0, 2), 16);
+  const g = Number.parseInt(h.slice(2, 4), 16);
+  const b = Number.parseInt(h.slice(4, 6), 16);
+  return { r, g, b };
+}
+
+function rgbToHex(rgb: { r: number; g: number; b: number }): string {
+  const to2 = (n: number) => clampByte(n).toString(16).padStart(2, "0").toUpperCase();
+  return `#${to2(rgb.r)}${to2(rgb.g)}${to2(rgb.b)}`;
+}
+
+/** Linear mix: t=0 => a, t=1 => b */
+function mixHex(a: string, b: string, t: number): string {
+  const A = hexToRgb(a);
+  const B = hexToRgb(b);
+  const tt = Math.max(0, Math.min(1, t));
+  return rgbToHex({
+    r: A.r + (B.r - A.r) * tt,
+    g: A.g + (B.g - A.g) * tt,
+    b: A.b + (B.b - A.b) * tt,
+  });
+}
+
+function lighten(hex: string, t: number): string {
+  return mixHex(hex, "#FFFFFF", t);
+}
+
+function darken(hex: string, t: number): string {
+  return mixHex(hex, "#000000", t);
+}
+
 export const DESIGN = {
   /** Base layers */
-  almond: "#F5F1E8",
+  almond: "#D3CAB6",
   surface: "#FFFFFF",
-  surfaceTint: "#F8F5EE",
-  warmTan: "#D2B48C",
-  borderBrown: "#A68A64",
+  surfaceTint: lighten("#D3CAB6", 0.2),
+  warmTan: darken("#D3CAB6", 0.08),
+  borderBrown: darken("#D3CAB6", 0.22),
 
   /** Structure (global chrome, not ad-hoc components) */
   navy: "#0B1F3A",
   deep: "#123A5A",
 
   /** Interactive */
-  teal: "#1F7A7A",
-  tealHover: "#259494",
-  tealActive: "#1A5F5F",
-  sky: "#82C8E5",
-  skyHover: "#6BBBDD",
-  skyActive: "#4FAACD",
+  teal: "#77B5AD",
+  tealHover: lighten("#77B5AD", 0.14),
+  tealActive: darken("#77B5AD", 0.12),
+  sky: "#94C4EC",
+  skyHover: lighten("#94C4EC", 0.14),
+  skyActive: darken("#94C4EC", 0.12),
 
   /** Semantic */
-  orange: "#C96A2B",
-  orangeHover: "#E3A06E",
-  orangeActive: "#8A4318",
-  forest: "#1B4332",
-  lilypad: "#6FB98F",
+  orange: "#BE744C",
+  orangeHover: lighten("#BE744C", 0.14),
+  orangeActive: darken("#BE744C", 0.12),
+  forest: "#526651",
+  lilypad: "#90A67C",
 
   /** Text on light */
   textPrimary: "#0B1F3A",

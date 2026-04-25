@@ -41,6 +41,14 @@ function pondHex(base: string) {
   };
 }
 
+function rgbaFromHex(hex: string, a: number): string {
+  const h = hex.trim().replace(/^#/, "");
+  const r = Number.parseInt(h.slice(0, 2), 16);
+  const g = Number.parseInt(h.slice(2, 4), 16);
+  const b = Number.parseInt(h.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
 /**
  * Chakra v3: semantic color groups for `colorPalette` and `bg`/`fg` tokens.
  * Designer system: canvas (almond), structure (navy + deep), teal/sky for buttons, warm borders.
@@ -117,9 +125,9 @@ export const system = createSystem(
             inverted: { value: { _light: DESIGN.almond, _dark: DESIGN.almond } },
           },
           border: {
-            DEFAULT: { value: { _light: "rgba(166, 138, 100, 0.4)", _dark: "rgba(166, 138, 100, 0.4)" } },
-            muted: { value: { _light: "rgba(166, 138, 100, 0.25)", _dark: "rgba(166, 138, 100, 0.25)" } },
-            subtle: { value: { _light: "rgba(166, 138, 100, 0.15)", _dark: "rgba(166, 138, 100, 0.15)" } },
+            DEFAULT: { value: { _light: rgbaFromHex(DESIGN.borderBrown, 0.4), _dark: rgbaFromHex(DESIGN.borderBrown, 0.4) } },
+            muted: { value: { _light: rgbaFromHex(DESIGN.borderBrown, 0.25), _dark: rgbaFromHex(DESIGN.borderBrown, 0.25) } },
+            subtle: { value: { _light: rgbaFromHex(DESIGN.borderBrown, 0.15), _dark: rgbaFromHex(DESIGN.borderBrown, 0.15) } },
           },
           gray: {
             fg: { value: { _light: DESIGN.textPrimary, _dark: DESIGN.textPrimary } },

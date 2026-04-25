@@ -699,8 +699,8 @@ export default function SongadayPage() {
     </Box>
   ) : (
     <Box
-      bg="blue.100"
-      color="black"
+      bg="#AFDEE4"
+      color="navy.solid"
       borderRadius="xl"
       p={{ base: "2.5", md: "2.5" }}
       boxShadow="sm"
@@ -1070,7 +1070,7 @@ export default function SongadayPage() {
               >
                 {responsesLoadError}
               </Text>
-            ) : !myEntry && friendsResponsesOrdered.length === 0 ? null : (
+            ) : archiveOpen ? null : !myEntry && friendsResponsesOrdered.length === 0 ? null : (
               <SimpleGrid
                 columns={{ base: 1, md: 2 }}
                 gap="3"

@@ -17,35 +17,31 @@ export default function SongadayHeartButton({
   busy,
   onToggle,
 }: Props) {
+  const selected = viewerHasHearted;
   return (
     <PondButton
       type="button"
       size="sm"
-      variant="outline"
-      colorPalette="teal"
-      bg={viewerHasHearted ? "bg.subtle" : "white"}
-      borderColor={viewerHasHearted ? "teal.solid" : undefined}
-      color="black"
-      borderWidth="1px"
-      _hover={
-        viewerHasHearted
-          ? {
-              bg: "bg.subtle",
-              borderColor: "teal.solid",
-              color: "teal.fg",
-            }
-          : undefined
-      }
+      variant="ghost"
+      colorPalette="navy"
+      bg={selected ? "navy.solid" : "bg.panel"}
+      color={selected ? "navy.contrast" : "navy.solid"}
+      borderWidth="0"
+      _hover={{
+        bg: selected ? "navy.emphasized" : "bg.subtle",
+      }}
       disabled={disabled || busy}
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
         onToggle();
       }}
-      aria-pressed={viewerHasHearted}
+      aria-pressed={selected}
     >
       <HStack gap="1">
-        <Text as="span">❤️</Text>
+        <Text as="span" opacity={selected ? 1 : 0.85}>
+          ❤️
+        </Text>
         {heartCount > 0 ? (
           <Text as="span">{heartCount}</Text>
         ) : null}

@@ -20,14 +20,18 @@ export default function SongadayCommentChatButton({
   expanded,
   hideCount,
 }: Props) {
+  const selected = Boolean(expanded);
   return (
     <PondButton
       type="button"
-      variant="outline"
-      colorPalette="teal"
-      bg="white"
-      color="black"
-      borderWidth="1px"
+      variant="ghost"
+      colorPalette="navy"
+      bg={selected ? "navy.solid" : "bg.panel"}
+      color={selected ? "navy.contrast" : "navy.solid"}
+      borderWidth="0"
+      _hover={{
+        bg: selected ? "navy.emphasized" : "bg.subtle",
+      }}
       disabled={busy}
       aria-expanded={expanded ?? undefined}
       onClick={(e) => {
@@ -37,7 +41,9 @@ export default function SongadayCommentChatButton({
       }}
     >
       <HStack gap="1">
-        <Text as="span">💬</Text>
+        <Text as="span" opacity={selected ? 1 : 0.85}>
+          💬
+        </Text>
         {!hideCount && commentCount > 0 ? <Text as="span">{commentCount}</Text> : null}
       </HStack>
     </PondButton>

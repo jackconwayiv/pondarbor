@@ -349,9 +349,9 @@ def songaday_slack_daily_prompt_sync(request):
     if not prompt:
         return Response({"posted": False, "reason": "no_prompt_today"}, status=status.HTTP_200_OK)
 
-    ddmm = today.strftime("%d/%m")
+    mmdd = today.strftime("%m/%d")
     prompt_text = (prompt.prompt or "").strip()
-    message = f"Song-a-Day Prompt for {ddmm}: '*{prompt_text}*'"
+    message = f"Song-a-Day Prompt for {mmdd}: '*{prompt_text}*'"
 
     with transaction.atomic():
         SongadaySlackDailyPromptState.objects.get_or_create(

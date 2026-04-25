@@ -156,6 +156,9 @@ export default function AppLayout() {
     location.pathname.startsWith("/clicker/");
   const isQffRoute =
     location.pathname === "/qff" || location.pathname.startsWith("/qff/");
+  const isHarborRoute =
+    location.pathname === "/harbor" ||
+    location.pathname.startsWith("/harbor/");
   /** Aligned with `QffLayout` so the app shell is not the default cream. */
   const qffAppShellBg = "#0c0c0c";
   const isHomeIndex = location.pathname === "/";
@@ -577,12 +580,14 @@ export default function AppLayout() {
         maxW="100%"
         {...(isQffRoute
           ? { p: 0, bg: qffAppShellBg }
-          : {
-              pt: "2px",
-              px: "2px",
-              pb: 0,
-              bg: "transparent",
-            })}
+          : isHarborRoute
+            ? { p: 0, bg: "transparent" }
+            : {
+                pt: "2px",
+                px: "2px",
+                pb: 0,
+                bg: "transparent",
+              })}
         display="flex"
         flexDirection="column"
         minH="0"
@@ -594,7 +599,7 @@ export default function AppLayout() {
           w="100%"
           display="flex"
           flexDirection="column"
-          {...(isClickerRoute
+          {...(isClickerRoute || isHarborRoute
             ? { p: 0 }
             : {
                 px: 0,
@@ -606,7 +611,7 @@ export default function AppLayout() {
                 pt: 0,
               })}
         >
-          {!(isQffRoute || isClickerRoute) ? (
+          {!(isQffRoute || isClickerRoute || isHarborRoute) ? (
             <Box {...APP_SHELL_CONTENT_MAX_PROPS} px={{ base: "2", md: "2" }}>
               <BreadcrumbBar />
             </Box>

@@ -1,0 +1,590 @@
+/* Harbormaster gameplay styles. Gameplay surfaces are exempt from Chakra theming
+ * (per UI_STYLE_GUIDE) so we can hand-tune the harbor's mood. Staff editor pages
+ * still use Chakra and live under harbor/staff/.
+ */
+
+:root {
+  --harbor-bg: #0e1a2b;
+  --harbor-bg-alt: #15243a;
+  --harbor-panel: #1c2c47;
+  --harbor-panel-edge: #2a405f;
+  --harbor-text: #f6efe1;
+  --harbor-text-dim: #c4b9a3;
+  --harbor-accent: #e8b358;
+  --harbor-accent-dim: #b88a3f;
+  --harbor-good: #6cb47d;
+  --harbor-bad: #d9645f;
+  --harbor-warn: #d4a14a;
+  --harbor-info: #8ab4d6;
+  --harbor-radius: 10px;
+  --harbor-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.harbor-route {
+  min-height: 100dvh;
+  background: linear-gradient(180deg, #08111e 0%, #0e1a2b 60%, #19243a 100%);
+  color: var(--harbor-text);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+.harbor-route__inner {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0.25rem 0.5rem 1rem;
+  max-width: 960px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* HUD */
+.harbor-hud {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(28, 44, 71, 0.7);
+  border-radius: var(--harbor-radius);
+  border: 1px solid var(--harbor-panel-edge);
+  backdrop-filter: blur(4px);
+  margin-bottom: 0.75rem;
+}
+.harbor-hud__title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+}
+.harbor-hud__title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.harbor-hud__day {
+  font-size: 0.85rem;
+  color: var(--harbor-text-dim);
+}
+.harbor-hud__command {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.65rem;
+  background: var(--harbor-accent);
+  color: #1c1207;
+  font-weight: 700;
+  border-radius: 999px;
+  font-size: 0.95rem;
+}
+.harbor-hud__metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 0.4rem;
+}
+.harbor-hud__metric {
+  background: rgba(15, 25, 41, 0.65);
+  border: 1px solid var(--harbor-panel-edge);
+  border-radius: 8px;
+  padding: 0.35rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+}
+.harbor-hud__metric-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--harbor-text-dim);
+}
+.harbor-hud__metric-value {
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+.harbor-hud__metric--low { color: var(--harbor-bad); }
+.harbor-hud__metric--high { color: var(--harbor-good); }
+
+.harbor-hud__resources {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  gap: 0.35rem;
+}
+.harbor-hud__resource {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  background: rgba(15, 25, 41, 0.45);
+  padding: 0.2rem 0.45rem;
+  border-radius: 6px;
+}
+.harbor-hud__resource-name {
+  color: var(--harbor-text-dim);
+  text-transform: capitalize;
+}
+
+/* End-day button — sticky footer so it's always reachable */
+.harbor-end-day {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  padding: 0.5rem 0 0.75rem;
+  margin-top: 0.5rem;
+  background: linear-gradient(
+    180deg,
+    rgba(8, 17, 30, 0) 0%,
+    rgba(8, 17, 30, 0.85) 40%,
+    rgba(8, 17, 30, 0.95) 100%
+  );
+  z-index: 4;
+}
+.harbor-end-day__button {
+  background: var(--harbor-accent);
+  color: #1c1207;
+  border: none;
+  padding: 0.85rem 2rem;
+  border-radius: 999px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  box-shadow: var(--harbor-shadow);
+  transition: transform 0.1s ease, box-shadow 0.15s ease;
+}
+.harbor-end-day__button:active {
+  transform: translateY(1px);
+}
+.harbor-end-day__button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.harbor-end-day__hint {
+  display: block;
+  color: var(--harbor-text-dim);
+  font-size: 0.75rem;
+  text-align: center;
+  margin-top: 0.35rem;
+  letter-spacing: 0.02em;
+}
+
+/* Panels */
+.harbor-panel {
+  background: var(--harbor-panel);
+  border: 1px solid var(--harbor-panel-edge);
+  border-radius: var(--harbor-radius);
+  padding: 0.65rem 0.75rem 0.85rem;
+  margin-bottom: 0.75rem;
+  box-shadow: var(--harbor-shadow);
+}
+.harbor-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.5rem;
+}
+.harbor-panel__title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.harbor-panel__hint {
+  font-size: 0.75rem;
+  color: var(--harbor-text-dim);
+}
+.harbor-panel__empty {
+  font-size: 0.85rem;
+  color: var(--harbor-text-dim);
+  font-style: italic;
+  padding: 0.5rem 0;
+}
+
+/* Cards */
+.harbor-card {
+  background: rgba(8, 15, 26, 0.55);
+  border: 1px solid var(--harbor-panel-edge);
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 0.45rem;
+}
+.harbor-card__title {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.harbor-card__desc {
+  font-size: 0.85rem;
+  color: var(--harbor-text-dim);
+  line-height: 1.3;
+}
+.harbor-card__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+}
+.harbor-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: rgba(232, 179, 88, 0.15);
+  border: 1px solid var(--harbor-accent-dim);
+  color: var(--harbor-accent);
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+}
+.harbor-chip--good { background: rgba(108, 180, 125, 0.18); border-color: var(--harbor-good); color: var(--harbor-good); }
+.harbor-chip--bad { background: rgba(217, 100, 95, 0.18); border-color: var(--harbor-bad); color: var(--harbor-bad); }
+.harbor-chip--info { background: rgba(138, 180, 214, 0.18); border-color: var(--harbor-info); color: var(--harbor-info); }
+.harbor-chip--warn { background: rgba(212, 161, 74, 0.18); border-color: var(--harbor-warn); color: var(--harbor-warn); }
+
+.harbor-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.25rem;
+}
+.harbor-button {
+  background: var(--harbor-bg-alt);
+  border: 1px solid var(--harbor-panel-edge);
+  color: var(--harbor-text);
+  padding: 0.35rem 0.7rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.12s ease, border 0.12s ease;
+}
+.harbor-button:hover {
+  background: var(--harbor-panel);
+  border-color: var(--harbor-accent-dim);
+}
+.harbor-button--accent { background: var(--harbor-accent); color: #1c1207; border-color: var(--harbor-accent-dim); font-weight: 700; }
+.harbor-button--accent:hover { background: #f0c272; }
+.harbor-button--ghost { background: transparent; }
+.harbor-button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Berth board */
+.harbor-berths {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 0.45rem;
+}
+.harbor-berth {
+  background: rgba(8, 15, 26, 0.6);
+  border: 1px dashed var(--harbor-panel-edge);
+  border-radius: 8px;
+  padding: 0.4rem 0.4rem 0.6rem;
+  min-height: 86px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  position: relative;
+}
+.harbor-berth__label {
+  font-size: 0.7rem;
+  color: var(--harbor-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.harbor-berth--over {
+  border-color: var(--harbor-accent);
+  background: rgba(232, 179, 88, 0.08);
+}
+.harbor-berth--occupied { border-style: solid; }
+
+.harbor-reserve {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  border: 1px dashed var(--harbor-panel-edge);
+  border-radius: 8px;
+  padding: 0.4rem;
+  min-height: 70px;
+}
+.harbor-reserve--over { border-color: var(--harbor-accent); background: rgba(232, 179, 88, 0.08); }
+
+.harbor-ship {
+  background: var(--harbor-panel);
+  border: 1px solid var(--harbor-panel-edge);
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  cursor: grab;
+  user-select: none;
+  font-size: 0.8rem;
+  touch-action: none;
+}
+.harbor-ship:active { cursor: grabbing; }
+.harbor-ship--dragging { opacity: 0.4; }
+.harbor-ship--away { background: rgba(28, 44, 71, 0.4); border-style: dashed; cursor: not-allowed; }
+.harbor-ship__name { font-weight: 600; }
+.harbor-ship__status { font-size: 0.7rem; color: var(--harbor-text-dim); }
+
+/* Log */
+.harbor-log {
+  font-size: 0.8rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.harbor-log__item {
+  padding: 0.2rem 0.3rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.harbor-log__item--good { color: var(--harbor-good); }
+.harbor-log__item--bad { color: var(--harbor-bad); }
+.harbor-log__item--warn { color: var(--harbor-warn); }
+.harbor-log__day { color: var(--harbor-text-dim); margin-right: 0.4rem; font-variant-numeric: tabular-nums; }
+
+/* Cinematic
+ *
+ * The sun and moon ride the tip of a radius anchored at the bottom-center of
+ * the viewport. Rotating that radius from -90° to +90° traces a perfect
+ * half-circle, so the orbs sweep smoothly overhead instead of bouncing along
+ * keyframed top/left stops. The sky is a translucent overlay so the panels
+ * underneath remain vaguely visible through it.
+ */
+.harbor-cinematic {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  overflow: hidden;
+  pointer-events: auto;
+}
+/* Base layer: morning → dusk → night. The final “return to day” is NOT keyframed
+ * here — that cross-fade is handled by `skyDawn` opacity (see below). */
+.harbor-cinematic__skyBase {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  animation:
+    harborSkyBase 1.6s linear forwards,
+    harborSkyBaseOut 1.6s cubic-bezier(0.35, 0, 0.2, 1) forwards;
+}
+.harbor-cinematic__skyDawn {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  /* Same gradient as t=0 on the base — faded in on top for a true blend from night. */
+  background: linear-gradient(
+    180deg,
+    rgba(135, 185, 214, 0.78) 0%,
+    rgba(246, 239, 225, 0.7) 60%,
+    rgba(241, 201, 148, 0.78) 100%
+  );
+  opacity: 0;
+  /* Matched to harborSkyBaseOut: symmetric cross-fade, smooth ends (not linear blast). */
+  animation: harborSkyDawnIn 1.6s cubic-bezier(0.35, 0, 0.2, 1) forwards;
+}
+.harbor-cinematic__arc {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  z-index: 2;
+  width: 0;
+  height: 0;
+  transform-origin: center bottom;
+  will-change: transform, opacity;
+}
+.harbor-cinematic__arc--sun {
+  transform: rotate(-90deg);
+  animation: harborSunSweep 1.6s linear forwards;
+}
+.harbor-cinematic__arc--moon {
+  transform: rotate(-90deg);
+  opacity: 0;
+  animation: harborMoonSweep 1.6s linear forwards;
+}
+/* Orb sits at the tip of the (invisible) radius. The radius length = bottom
+ * offset below. Counter-rotate the orb so it never spins in place. */
+.harbor-cinematic__orb {
+  position: absolute;
+  left: 50%;
+  bottom: 62vmin;
+  border-radius: 50%;
+  transform: translate(-50%, 50%);
+}
+.harbor-cinematic__orb--sun {
+  width: 88px;
+  height: 88px;
+  background: radial-gradient(circle, #fff6c8 0%, #f7c870 60%, #d97a3c 100%);
+  box-shadow:
+    0 0 60px rgba(247, 200, 112, 0.85),
+    0 0 140px rgba(247, 200, 112, 0.45);
+}
+.harbor-cinematic__orb--moon {
+  width: 66px;
+  height: 66px;
+  background: radial-gradient(
+    circle at 35% 35%,
+    #f5eed6 0%,
+    #c9bfa6 70%,
+    #8a8171 100%
+  );
+  box-shadow:
+    0 0 50px rgba(220, 220, 240, 0.55),
+    0 0 110px rgba(200, 210, 240, 0.25);
+}
+.harbor-cinematic__skip {
+  position: absolute;
+  bottom: 1.25rem;
+  right: 1.25rem;
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 999px;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  z-index: 2;
+}
+@keyframes harborSkyBase {
+  0% {
+    background: linear-gradient(
+      180deg,
+      rgba(135, 185, 214, 0.78) 0%,
+      rgba(246, 239, 225, 0.7) 60%,
+      rgba(241, 201, 148, 0.78) 100%
+    );
+  }
+  30% {
+    background: linear-gradient(
+      180deg,
+      rgba(44, 53, 80, 0.82) 0%,
+      rgba(82, 74, 94, 0.75) 60%,
+      rgba(217, 122, 60, 0.78) 100%
+    );
+  }
+  60%,
+  100% {
+    background: linear-gradient(
+      180deg,
+      rgba(13, 19, 37, 0.86) 0%,
+      rgba(26, 34, 58, 0.82) 50%,
+      rgba(50, 44, 72, 0.82) 100%
+    );
+  }
+}
+/* Pull the night base away while the “morning” layer fades in on top —
+ * opacity interpolates smoothly; this avoids a single keyframe that jumps
+   from one giant gradient to another. */
+@keyframes harborSkyBaseOut {
+  0%,
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes harborSkyDawnIn {
+  0%,
+  70% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+/* Sun traces a half-circle during the first half of the cinematic, then
+ * tucks below the horizon (dawn→dusk). Fades out as it dips. */
+@keyframes harborSunSweep {
+  0%   { transform: rotate(-92deg); opacity: 1; }
+  45%  { transform: rotate( 85deg); opacity: 1; }
+  50%  { transform: rotate( 95deg); opacity: 0; }
+  100% { transform: rotate( 95deg); opacity: 0; }
+}
+/* Moon picks up on the other side, traces its own half-circle. */
+@keyframes harborMoonSweep {
+  0%   { transform: rotate(-92deg); opacity: 0; }
+  50%  { transform: rotate(-92deg); opacity: 0; }
+  55%  { transform: rotate(-85deg); opacity: 1; }
+  95%  { transform: rotate( 85deg); opacity: 1; }
+  100% { transform: rotate( 95deg); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .harbor-cinematic__skyBase,
+  .harbor-cinematic__skyDawn,
+  .harbor-cinematic__arc--sun,
+  .harbor-cinematic__arc--moon {
+    animation-duration: 0.4s !important;
+  }
+}
+
+/* Daybreak overlay */
+.harbor-daybreak {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 14, 26, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 45;
+  padding: 1rem;
+}
+.harbor-daybreak__card {
+  background: var(--harbor-panel);
+  border: 1px solid var(--harbor-panel-edge);
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  max-width: 460px;
+  width: 100%;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  text-align: center;
+}
+.harbor-daybreak__day {
+  font-size: 1rem;
+  color: var(--harbor-text-dim);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 0.25rem;
+}
+.harbor-daybreak__title {
+  font-size: 1.6rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+.harbor-daybreak__hint {
+  color: var(--harbor-text-dim);
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}
+.harbor-daybreak__continue {
+  margin-top: 0.75rem;
+}
+
+/* Resource caps inside HUD */
+.harbor-hud__resource-cap {
+  color: var(--harbor-text-dim);
+  font-size: 0.7rem;
+  margin-left: 0.2rem;
+}
+
+/* Stage banner */
+.harbor-stage-banner {
+  font-size: 0.78rem;
+  color: var(--harbor-text-dim);
+  font-style: italic;
+  margin-top: 0.15rem;
+}
+
+/* Layout helpers */
+.harbor-stack { display: flex; flex-direction: column; gap: 0.5rem; }
+.harbor-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.harbor-grow { flex: 1; }
+
+@media (max-width: 540px) {
+  .harbor-route__inner { padding: 0.25rem 0.4rem 0.5rem; }
+  .harbor-panel { padding: 0.55rem 0.5rem 0.7rem; }
+}

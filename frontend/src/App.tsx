@@ -43,10 +43,7 @@ function HomeAppNavList({ isAuthenticated }: { isAuthenticated: boolean }) {
       aria-label="Apps"
     >
       {APP_HOME_APPS.map((item) => {
-        const canOpen =
-          isAuthenticated ||
-          item.to === "/games" ||
-          item.to === "/about";
+        const canOpen = isAuthenticated || item.to === "/about";
         const cardBody = (
           <HStack
             w="100%"

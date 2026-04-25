@@ -101,6 +101,7 @@ INSTALLED_APPS = [
     "meal.apps.MealConfig",
     "contact.apps.ContactConfig",
     "calendars.apps.CalendarsConfig",
+    "harbor.apps.HarborConfig",
     # allauth
     "allauth",
     "allauth.account",

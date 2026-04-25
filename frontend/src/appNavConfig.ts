@@ -1,8 +1,5 @@
 /**
  * App navigation metadata: shared by the home page and the app shell (desktop + hamburger).
- *
- * The Games hub (`/games`) is intentionally not linked here while that area is in progress;
- * the route still works for people who have the URL.
  */
 export type AppNavItem = {
   to: string;
@@ -23,6 +20,14 @@ export const NAV_HEADER_LINK_TEXT = {
   active: "white",
   inactive: "rgba(245, 241, 232, 0.75)",
 } as const;
+
+const GAMES: AppNavItem = {
+  to: "/games",
+  /** Games hub. */
+  emoji: "🕹️",
+  label: "Games",
+  blurb: "PondClicker, WhatIf, and more.",
+};
 
 const ABOUT: AppNavItem = {
   to: "/about",
@@ -78,6 +83,7 @@ export const APP_HOME_APPS: AppNavItem[] = [
     label: "Calendar",
     blurb: "See when friends are out or busy.",
   },
+  GAMES,
   ABOUT,
 ];
 
@@ -85,5 +91,5 @@ export const APP_HOME_APPS: AppNavItem[] = [
 export const APP_DESKTOP_NAV: AppNavItem[] = APP_HOME_APPS;
 
 export function guestHamburgerNavItems(): AppNavItem[] {
-  return [ABOUT];
+  return [GAMES, ABOUT];
 }

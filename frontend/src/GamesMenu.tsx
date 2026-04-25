@@ -18,6 +18,7 @@ import PondButton from "./PondButton";
 import { fullBleedStackProps, viewPortWidthBarProps } from "./responsive";
 import { APP_SHELL_CONTENT_MAX_PROPS } from "./theme/typography";
 
+/** Harbormaster (`/harbor`) is not listed here until the game is public-ready. */
 const GAMES_NAV_ITEMS = [
   { to: "/clicker", label: "PondClicker", emoji: "🪷" },
   { to: "/whatif", label: "WhatIf", emoji: "🤔" },
@@ -26,7 +27,6 @@ const GAMES_NAV_ITEMS = [
     label: "Quest For Fat IV (demo)",
     emoji: "⚔️",
   },
-  { to: "/harbor", label: "Harbormaster", emoji: "⚓" },
 ] as const;
 
 function canOpenGameTile(
@@ -34,7 +34,6 @@ function canOpenGameTile(
   isAuthenticated: boolean,
 ): boolean {
   if (to === "/clicker") return isAuthenticated;
-  if (to === "/harbor") return isAuthenticated;
   return true;
 }
 

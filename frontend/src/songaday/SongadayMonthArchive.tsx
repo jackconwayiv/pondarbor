@@ -172,31 +172,41 @@ export default function SongadayMonthArchive({
           Archive
         </Text>
         <HStack gap="2">
-          <PondButton
-            type="button"
-            size="sm"
-            variant="ghost"
-            colorPalette="navy"
-            color="navy.solid"
-            onClick={goPrevMonth}
-            disabled={!canPrevMonth}
-          >
-            ←
-          </PondButton>
+          <Box w="2.25rem" display="flex" justifyContent="flex-start">
+            <PondButton
+              type="button"
+              size="sm"
+              variant="ghost"
+              colorPalette="navy"
+              color="navy.solid"
+              onClick={goPrevMonth}
+              _hover={{ color: "navy.solid" }}
+              visibility={canPrevMonth ? "visible" : "hidden"}
+              pointerEvents={canPrevMonth ? "auto" : "none"}
+              aria-hidden={!canPrevMonth}
+            >
+              ←
+            </PondButton>
+          </Box>
           <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" minW="10rem" textAlign="center">
             {activeMonthKey ? monthLabel(activeMonthKey) : "—"}
           </Text>
-          <PondButton
-            type="button"
-            size="sm"
-            variant="ghost"
-            colorPalette="navy"
-            color="navy.solid"
-            onClick={() => void goNextMonth()}
-            disabled={!canNextMonth && !hasMore}
-          >
-            →
-          </PondButton>
+          <Box w="2.25rem" display="flex" justifyContent="flex-end">
+            <PondButton
+              type="button"
+              size="sm"
+              variant="ghost"
+              colorPalette="navy"
+              color="navy.solid"
+              onClick={() => void goNextMonth()}
+              _hover={{ color: "navy.solid" }}
+              visibility={canNextMonth || hasMore ? "visible" : "hidden"}
+              pointerEvents={canNextMonth || hasMore ? "auto" : "none"}
+              aria-hidden={!(canNextMonth || hasMore)}
+            >
+              →
+            </PondButton>
+          </Box>
         </HStack>
       </HStack>
 

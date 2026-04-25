@@ -65,6 +65,7 @@ import {
 import { EcologyBlurbText } from "./ecologyUi.tsx";
 import PondStage from "./PondStage";
 import { pondStageEmojiForUpgrade } from "./upgradeEmojis";
+import { CLICKER_SURFACES } from "./clickerTheme";
 import {
   canAffordCosts,
   computeBiodiversity,
@@ -394,7 +395,7 @@ function EcologyHelpMobileButton({
     <IconButton
       variant="plain"
       borderRadius="full"
-      bg="white"
+      bg={CLICKER_SURFACES.active}
       color="black"
       borderWidth="1px"
       borderStyle="solid"
@@ -410,7 +411,7 @@ function EcologyHelpMobileButton({
       flexShrink={0}
       aria-label={`Ecology note: ${upgradeName}`}
       _hover={{ bg: "gray.100" }}
-      _active={{ bg: "gray.200" }}
+      _active={{ bg: CLICKER_SURFACES.inactive }}
     >
       ?
     </IconButton>
@@ -424,7 +425,7 @@ function EcologyHelpMobileButton({
           {...ecologyPopoverContentProps}
           w={{ base: "calc(100vw - 2rem)", md: "auto" }}
         >
-          <PopoverBody bg="white" color="black" p="3" border="none">
+          <PopoverBody bg={CLICKER_SURFACES.active} color="black" p="3" border="none">
             <EcologyBlurbText>{ecologyNote}</EcologyBlurbText>
           </PopoverBody>
         </PopoverContent>
@@ -477,7 +478,7 @@ function ClickerResourceHud({
       borderWidth="1px"
       borderColor="border"
       borderRadius="md"
-      bg="bg"
+      bg={CLICKER_SURFACES.background}
       py="2"
       px={{ base: 2, md: 3 }}
       w="full"
@@ -522,7 +523,7 @@ function ClickerResourceHud({
                   borderWidth="1px"
                   borderColor="border"
                   borderRadius="md"
-                  bg="bg.subtle"
+                  bg={CLICKER_SURFACES.active}
                   px="2"
                   py="1.5"
                   minW={isEnergy ? "12ch" : "0"}
@@ -624,7 +625,7 @@ function ClickerResourceHud({
                   borderWidth="1px"
                   borderColor="border"
                   borderRadius="md"
-                  bg="bg.subtle"
+                  bg={CLICKER_SURFACES.active}
                   px="2"
                   py="1.5"
                   minW="0"
@@ -680,7 +681,7 @@ function ClickerResourceHud({
                   borderWidth="1px"
                   borderColor="border"
                   borderRadius="md"
-                  bg="bg.subtle"
+                  bg={CLICKER_SURFACES.active}
                   px="2"
                   py="1.5"
                   minW="0"
@@ -856,7 +857,11 @@ function UpgradeCard({
       py={{ base: "1", md: "1.5" }}
       px={{ base: "1.5", md: "2" }}
       pr={{ base: "1.625rem", md: "2" }}
-      bg={lockedByRequirements || lockedByCost ? "gray.200" : "bg"}
+      bg={
+        lockedByRequirements || lockedByCost
+          ? CLICKER_SURFACES.inactive
+          : CLICKER_SURFACES.active
+      }
       h="full"
       minH="0"
       w="full"
@@ -1092,7 +1097,7 @@ function OwnedChip({
       px="3"
       py="1.5"
       pr={{ base: "1.625rem", md: "3" }}
-      bg="bg"
+      bg={CLICKER_SURFACES.active}
       flexShrink={0}
       display="flex"
       flexDirection="column"
@@ -2016,7 +2021,11 @@ export default function ClickerGamePage() {
                             borderWidth="1px"
                             borderColor={isSelected ? "black" : "border"}
                             borderRadius="md"
-                            bg={isSelected ? "gray.100" : "bg.subtle"}
+                            bg={
+                              isSelected
+                                ? CLICKER_SURFACES.active
+                                : CLICKER_SURFACES.inactive
+                            }
                             cursor="pointer"
                             userSelect="none"
                             opacity={isDimmed ? 0.35 : 1}
@@ -2120,7 +2129,11 @@ export default function ClickerGamePage() {
                           borderWidth="1px"
                           borderColor={isSelected ? "black" : "border"}
                           borderRadius="md"
-                          bg={isSelected ? "gray.100" : "bg.subtle"}
+                          bg={
+                            isSelected
+                              ? CLICKER_SURFACES.active
+                              : CLICKER_SURFACES.inactive
+                          }
                           cursor="pointer"
                           userSelect="none"
                           opacity={isDimmed ? 0.35 : 1}

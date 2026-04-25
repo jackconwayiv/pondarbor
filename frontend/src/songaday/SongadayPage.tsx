@@ -15,6 +15,7 @@ import { Navigate, Link as RouterLink, useLocation, useNavigate } from "react-ro
 import { useAppSession } from "../auth/AppSessionContext";
 import {
   PanelBlockSkeleton,
+  PanelErrorState,
   PanelListRowSkeleton,
   PanelSessionReconnect,
   SessionLoadingCard,
@@ -590,6 +591,7 @@ export default function SongadayPage() {
     if (!canGoToPrevDay(selectedDate)) return;
     const d = new Date(selectedDate);
     d.setDate(d.getDate() - 1);
+    setArchiveOpen(false);
     setSelectedDate(startOfDay(d));
   }, [selectedDate]);
 
@@ -597,10 +599,12 @@ export default function SongadayPage() {
     if (!canGoToNextDay(selectedDate)) return;
     const d = new Date(selectedDate);
     d.setDate(d.getDate() + 1);
+    setArchiveOpen(false);
     setSelectedDate(startOfDay(d));
   }, [selectedDate]);
 
   const goToToday = useCallback(() => {
+    setArchiveOpen(false);
     setSelectedDate(getTodayStart());
   }, []);
 
@@ -667,14 +671,14 @@ export default function SongadayPage() {
       display="flex"
       alignItems="center"
     >
-      <Text
-        fontSize={APP_TEXT_SIZES.helper}
-        color="nautical.solid"
-        fontWeight="medium"
-        role="alert"
-      >
-        {promptLoadError}
-      </Text>
+      <PanelErrorState
+        title="Could not load prompt."
+        description={promptLoadError}
+        actionLabel="Refresh"
+        onAction={() =>
+          void prefetchDay(isoDateKey(startOfDay(selectedDate)))
+        }
+      />
     </Box>
   ) : !hasPrompt ? (
     <Box
@@ -730,20 +734,22 @@ export default function SongadayPage() {
         {/* Day nav: prompt card centered; stacked controls left/right */}
         <HStack w="100%" gap="0" align="stretch">
           <Stack gap="0" align="stretch" flexShrink={0} w={{ base: "3.25rem", md: "3.5rem" }}>
-            <PondButton
-              type="button"
-              size="sm"
-              p={0}
-              variant="ghost"
-              color="navy"
-              colorPalette="navy"
-              w="full"
-              disabled={!canGoToPrevDay(selectedDate)}
-              onClick={goPrev}
-              aria-label="Previous day"
-            >
-              ←
-            </PondButton>
+            {canGoToPrevDay(selectedDate) ? (
+              <PondButton
+                type="button"
+                size="sm"
+                p={0}
+                variant="ghost"
+                color="navy"
+                colorPalette="navy"
+                w="full"
+                onClick={goPrev}
+                aria-label="Previous day"
+                _hover={{ color: "navy" }}
+              >
+                ←
+              </PondButton>
+            ) : null}
             <PondButton
               type="button"
               size="sm"
@@ -756,6 +762,7 @@ export default function SongadayPage() {
               aria-label={archiveOpen ? "Close archive list" : "Open archive list"}
               visibility={showArchiveToggle ? "visible" : "hidden"}
               pointerEvents={showArchiveToggle ? "auto" : "none"}
+              _hover={{ color: "navy" }}
             >
               ☰
             </PondButton>
@@ -766,20 +773,22 @@ export default function SongadayPage() {
           </Box>
 
           <Stack gap="0" align="stretch" flexShrink={0} w={{ base: "3.25rem", md: "3.5rem" }}>
-            <PondButton
-              type="button"
-              size="sm"
-              p={0}
-              variant="ghost"
-              colorPalette="navy"
-              color="navy"
-              w="full"
-              disabled={!canGoToNextDay(selectedDate)}
-              onClick={goNext}
-              aria-label="Next day"
-            >
-              →
-            </PondButton>
+            {canGoToNextDay(selectedDate) ? (
+              <PondButton
+                type="button"
+                size="sm"
+                p={0}
+                variant="ghost"
+                colorPalette="navy"
+                color="navy"
+                w="full"
+                onClick={goNext}
+                aria-label="Next day"
+                _hover={{ color: "navy" }}
+              >
+                →
+              </PondButton>
+            ) : null}
             <PondButton
               type="button"
               size="sm"
@@ -792,6 +801,7 @@ export default function SongadayPage() {
               aria-label="Fast forward to today"
               visibility={!isViewingToday ? "visible" : "hidden"}
               pointerEvents={!isViewingToday ? "auto" : "none"}
+              _hover={{ color: "navy" }}
             >
               {`>>`}
             </PondButton>

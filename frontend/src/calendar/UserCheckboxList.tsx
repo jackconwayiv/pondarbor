@@ -1,7 +1,11 @@
 import { Box, Checkbox, HStack, Stack, Text } from "@chakra-ui/react";
 
 import { APP_TEXT_SIZES } from "../theme/typography";
-import { PanelEmptyState } from "../components/panelStatus";
+import {
+  PanelEmptyState,
+  PanelErrorState,
+  PanelListRowSkeleton,
+} from "../components/panelStatus";
 import {
   USER_COLOR_HEX,
   type UserColorKey,
@@ -11,6 +15,9 @@ import type { CalendarOwnerRow } from "./types";
 
 type Props = {
   approvedUsers: CalendarOwnerRow[];
+  loading?: boolean;
+  error?: string | null;
+  onRefresh?: () => void;
   /**
    * Currently checked user ids in the order they were checked. Position in
    * the list determines color via {@link colorForCheckedUser}.
@@ -28,6 +35,9 @@ type Props = {
  */
 export default function UserCheckboxList({
   approvedUsers,
+  loading,
+  error,
+  onRefresh,
   orderedCheckedUserIds,
   onChange,
   maxHeight,
@@ -76,16 +86,19 @@ export default function UserCheckboxList({
       <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="semibold" color="fg.muted">
         People
       </Text>
-      <Checkbox.Root
-        checked={allChecked ? true : indeterminate ? "indeterminate" : false}
-        onCheckedChange={handleToggleAll}
-      >
-        <Checkbox.HiddenInput />
-        <Checkbox.Control />
-        <Checkbox.Label fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
-          {allChecked ? "Uncheck all" : "Check all"}
-        </Checkbox.Label>
-      </Checkbox.Root>
+      {!error ? (
+        <Checkbox.Root
+          checked={allChecked ? true : indeterminate ? "indeterminate" : false}
+          onCheckedChange={handleToggleAll}
+          disabled={!!loading || approvedUsers.length === 0}
+        >
+          <Checkbox.HiddenInput />
+          <Checkbox.Control />
+          <Checkbox.Label fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
+            {allChecked ? "Uncheck all" : "Check all"}
+          </Checkbox.Label>
+        </Checkbox.Root>
+      ) : null}
       <Box
         overflowY="auto"
         maxH={maxHeight ?? { base: "320px", md: "560px" }}
@@ -93,6 +106,16 @@ export default function UserCheckboxList({
         mt="1"
       >
         <Stack gap="1">
+          {error ? (
+            <PanelErrorState
+              title="Could not load people."
+              description={error}
+              actionLabel="Refresh"
+              onAction={onRefresh}
+            />
+          ) : loading && approvedUsers.length === 0 ? (
+            <PanelListRowSkeleton rows={6} />
+          ) : null}
           {approvedUsers.map((u) => {
             const color = colorForCheckedUser(u.id, orderedCheckedUserIds);
             const checked = color !== null;
@@ -120,7 +143,7 @@ export default function UserCheckboxList({
               </Checkbox.Root>
             );
           })}
-          {approvedUsers.length === 0 ? (
+          {!loading && !error && approvedUsers.length === 0 ? (
             <PanelEmptyState
               title="No approved users yet."
               description="Once more friends are approved, you’ll be able to add them as sources."

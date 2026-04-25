@@ -78,7 +78,11 @@ export default function CalendarPage() {
   const [sources, setSources] = useState<CalendarSource[]>([]);
   const [approvedUsers, setApprovedUsers] = useState<CalendarOwnerRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [eventsError, setEventsError] = useState<string | null>(null);
+  const [sourcesError, setSourcesError] = useState<string | null>(null);
+  const [approvedUsersError, setApprovedUsersError] = useState<string | null>(
+    null,
+  );
   const [notice, setNotice] = useState<{
     kind: "success" | "error";
     message: string;
@@ -95,7 +99,7 @@ export default function CalendarPage() {
   );
   const hasLoadedOnceRef = useRef(false);
 
-  const { orderedCheckedUserIds, setCheckedUserIds } =
+  const { orderedCheckedUserIds, setCheckedUserIds, isDefaultAll } =
     useCheckedUsers(approvedUsers);
 
   const setActiveTab = useCallback(
@@ -115,51 +119,55 @@ export default function CalendarPage() {
 
   const loadEvents = useCallback(async () => {
     if (!sessionUser) return;
-    const token = await getApiAccessToken();
-    // We always pull every approved user's events for the visible range and
-    // do client-side filtering so flipping a checkbox is instant. The set is
-    // small (max 200 approved users x ~6 weeks of events).
-    const result = await fetchCalendarEvents(token, {
-      start_date: monthRange.start,
-      end_date: monthRange.end,
-      owner: "all",
-    });
-    setEvents(result);
+    setEventsError(null);
+    try {
+      const token = await getApiAccessToken();
+      // We always pull every approved user's events for the visible range and
+      // do client-side filtering so flipping a checkbox is instant. The set is
+      // small (max 200 approved users x ~6 weeks of events).
+      const result = await fetchCalendarEvents(token, {
+        start_date: monthRange.start,
+        end_date: monthRange.end,
+        owner: "all",
+      });
+      setEvents(result);
+    } catch (err: unknown) {
+      setEventsError(err instanceof Error ? err.message : "Failed to load events.");
+      setEvents([]);
+    }
   }, [getApiAccessToken, monthRange.end, monthRange.start, sessionUser]);
 
   const loadSources = useCallback(async () => {
     if (!sessionUser) return;
-    const token = await getApiAccessToken();
-    const result = await fetchCalendarSources(token);
-    setSources(result);
+    setSourcesError(null);
+    try {
+      const token = await getApiAccessToken();
+      const result = await fetchCalendarSources(token);
+      setSources(result);
+    } catch (err: unknown) {
+      setSourcesError(err instanceof Error ? err.message : "Failed to load sources.");
+      setSources([]);
+    }
   }, [getApiAccessToken, sessionUser]);
 
   const loadApprovedUsers = useCallback(async () => {
     if (!sessionUser) return;
-    const token = await getApiAccessToken();
-    const result = await fetchApprovedUsers(token, "");
-    setApprovedUsers(result);
+    setApprovedUsersError(null);
+    try {
+      const token = await getApiAccessToken();
+      const result = await fetchApprovedUsers(token, "");
+      setApprovedUsers(result);
+    } catch (err: unknown) {
+      setApprovedUsersError(
+        err instanceof Error ? err.message : "Failed to load people.",
+      );
+      setApprovedUsers([]);
+    }
   }, [getApiAccessToken, sessionUser]);
 
   const refreshAll = useCallback(async () => {
     setLoading(true);
-    setError(null);
-    const results = await Promise.allSettled([
-      loadEvents(),
-      loadSources(),
-      loadApprovedUsers(),
-    ]);
-    const labels = ["events", "sources", "approved users"] as const;
-    const failures: string[] = [];
-    results.forEach((r, i) => {
-      if (r.status === "rejected") {
-        const message = r.reason instanceof Error ? r.reason.message : String(r.reason);
-        failures.push(`${labels[i]}: ${message}`);
-      }
-    });
-    if (failures.length > 0) {
-      setError(failures.join(" · "));
-    }
+    await Promise.allSettled([loadEvents(), loadSources(), loadApprovedUsers()]);
     hasLoadedOnceRef.current = true;
     setLoading(false);
   }, [loadApprovedUsers, loadEvents, loadSources]);
@@ -433,6 +441,9 @@ export default function CalendarPage() {
                 >
                   <UserCheckboxList
                     approvedUsers={approvedUsers}
+                    loading={loading && !hasLoadedOnceRef.current}
+                    error={approvedUsersError}
+                    onRefresh={() => void loadApprovedUsers()}
                     orderedCheckedUserIds={orderedCheckedUserIds}
                     onChange={setCheckedUserIds}
                   />
@@ -441,9 +452,15 @@ export default function CalendarPage() {
                       anchor={anchor}
                       events={events}
                       orderedCheckedUserIds={orderedCheckedUserIds}
+                      isDefaultAll={isDefaultAll}
                       ownersById={ownersById}
                       onDayClick={handleDayClick}
                     />
+                    {eventsError ? (
+                      <Text pt="2" fontSize={APP_TEXT_SIZES.helper} color="nautical.solid" role="alert">
+                        {eventsError}
+                      </Text>
+                    ) : null}
                   </Box>
                 </Stack>
               </Stack>
@@ -558,9 +575,9 @@ export default function CalendarPage() {
         onSubmit={handleImport}
       />
 
-      {error ? (
-        <Text px="2" pb="2" color="nautical.solid" role="alert">
-          {error}
+      {sourcesError && activeTab === "sources" ? (
+        <Text px="2" pb="2" color="nautical.solid" role="alert" fontSize={APP_TEXT_SIZES.helper}>
+          {sourcesError}
         </Text>
       ) : null}
     </Stack>

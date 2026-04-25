@@ -11,6 +11,12 @@ import { APP_MOTION } from "./theme/motion";
  */
 const PondButton = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ variant, _hover, colorPalette, borderRadius, size, color, ...props }, ref) => {
+    const isSolid = (variant ?? "solid") === "solid";
+    const wantsWhiteText =
+      isSolid &&
+      (colorPalette === "teal" ||
+        colorPalette === "orange" ||
+        colorPalette === "nautical");
     return (
       <ChakraButton
         ref={ref}
@@ -18,7 +24,7 @@ const PondButton = forwardRef<HTMLButtonElement, ButtonProps>(
         size={size ?? "md"}
         borderRadius={borderRadius ?? "xl"}
         colorPalette={colorPalette}
-        color={color}
+        color={color ?? (wantsWhiteText ? "white" : undefined)}
         transition={`background ${APP_MOTION.durations.standard} ${APP_MOTION.easing.standard}, border-color ${APP_MOTION.durations.standard} ${APP_MOTION.easing.standard}, color ${APP_MOTION.durations.standard} ${APP_MOTION.easing.standard}`}
         _hover={{
           // Outline-like hover: white background + colored border.

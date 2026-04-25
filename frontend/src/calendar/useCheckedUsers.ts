@@ -19,11 +19,16 @@ export function useCheckedUsers(approvedUsers: CalendarOwnerRow[]) {
   const [searchParams, setSearchParams] = useSearchParams();
   const raw = searchParams.get(PARAM);
 
-  const orderedCheckedUserIds = useMemo<number[]>(() => {
+  const { orderedCheckedUserIds, isDefaultAll } = useMemo(() => {
     if (raw === null || raw === "all") {
-      return approvedUsers.map((u) => u.id);
+      return {
+        orderedCheckedUserIds: approvedUsers.map((u) => u.id),
+        isDefaultAll: true,
+      };
     }
-    if (raw === "" || raw === "none") return [];
+    if (raw === "" || raw === "none") {
+      return { orderedCheckedUserIds: [], isDefaultAll: false };
+    }
     const ids = raw
       .split(",")
       .map((p) => p.trim())
@@ -33,7 +38,10 @@ export function useCheckedUsers(approvedUsers: CalendarOwnerRow[]) {
     // Drop ids that aren't currently approved so the URL can't pin a
     // permission-revoked user.
     const approvedIds = new Set(approvedUsers.map((u) => u.id));
-    return ids.filter((id) => approvedIds.has(id));
+    return {
+      orderedCheckedUserIds: ids.filter((id) => approvedIds.has(id)),
+      isDefaultAll: false,
+    };
   }, [raw, approvedUsers]);
 
   const setCheckedUserIds = useCallback(
@@ -58,7 +66,7 @@ export function useCheckedUsers(approvedUsers: CalendarOwnerRow[]) {
     [approvedUsers, searchParams, setSearchParams],
   );
 
-  return { orderedCheckedUserIds, setCheckedUserIds };
+  return { orderedCheckedUserIds, setCheckedUserIds, isDefaultAll };
 }
 
 /** Build a `?users=...` suffix for cross-route links. */

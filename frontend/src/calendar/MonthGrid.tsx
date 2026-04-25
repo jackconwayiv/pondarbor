@@ -17,6 +17,8 @@ type Props = {
   events: CalendarEvent[];
   /** Currently checked user ids, in the order they were checked. */
   orderedCheckedUserIds: number[];
+  /** True when URL implies "all" (missing/users=all). */
+  isDefaultAll?: boolean;
   /** Lookup table for displaying owner names on the day bars. */
   ownersById: Map<number, CalendarOwnerRow>;
   onDayClick?: (date: Date) => void;
@@ -26,13 +28,25 @@ export default function MonthGrid({
   anchor,
   events,
   orderedCheckedUserIds,
+  isDefaultAll,
   ownersById,
   onDayClick,
 }: Props) {
   const days = useMemo(() => monthGridDays(anchor), [anchor]);
+  const effectiveOrderedCheckedUserIds = useMemo(() => {
+    // On first visit, approvedUsers may still be loading, so orderedCheckedUserIds can be []
+    // even though the URL implies "all". In that case, treat all event owners as checked.
+    if (isDefaultAll && orderedCheckedUserIds.length === 0 && events.length > 0) {
+      const ids = Array.from(new Set(events.map((e) => e.owner.id)));
+      ids.sort((a, b) => a - b);
+      return ids;
+    }
+    return orderedCheckedUserIds;
+  }, [events, isDefaultAll, orderedCheckedUserIds]);
+
   const checkedSet = useMemo(
-    () => new Set(orderedCheckedUserIds),
-    [orderedCheckedUserIds],
+    () => new Set(effectiveOrderedCheckedUserIds),
+    [effectiveOrderedCheckedUserIds],
   );
 
   /**
@@ -78,7 +92,7 @@ export default function MonthGrid({
           const busyOwnerIds = busyOwnersByDay.get(iso) ?? new Set<number>();
           // Render bars in the same order as the checked-user list so a
           // person occupies the same row across days when they're busy.
-          const orderedBusy = orderedCheckedUserIds.filter((id) =>
+          const orderedBusy = effectiveOrderedCheckedUserIds.filter((id) =>
             busyOwnerIds.has(id),
           );
           return (
@@ -87,7 +101,7 @@ export default function MonthGrid({
               date={cell.date}
               inMonth={cell.inMonth}
               busyOwnerIds={orderedBusy}
-              orderedCheckedUserIds={orderedCheckedUserIds}
+              orderedCheckedUserIds={effectiveOrderedCheckedUserIds}
               ownersById={ownersById}
               onCellClick={onDayClick}
             />

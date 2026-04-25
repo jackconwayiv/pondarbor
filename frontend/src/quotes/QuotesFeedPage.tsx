@@ -31,6 +31,8 @@ import {
   PanelPageShell,
   PanelSessionReconnect,
   PanelTabBarSkeleton,
+  PanelEmptyState,
+  PanelErrorState,
 } from "../components/panelStatus";
 import { fullBleedStackProps, usePrefersCoarsePointer } from "../responsive";
 import {
@@ -1437,10 +1439,17 @@ export default function QuotesFeedPage() {
 
             <Tabs.Content value="my" p={{ base: "2", md: "2" }}>
               <Stack gap={MAPPED_LIST_STACK_GAP} pt="0">
-                {loadingFeed ? (
-                  <Text fontSize={APP_TEXT_SIZES.helper}>Loading…</Text>
+                {loadingFeed && quotes.length === 0 ? (
+                  <PanelListRowSkeleton rows={4} />
                 ) : null}
-                {quotes.length === 0 ? <Text>No quotes yet.</Text> : null}
+                {!loadingFeed && quotes.length === 0 ? (
+                  <PanelEmptyState
+                    title="No quotes yet."
+                    description="Add one on the Add tab."
+                    actionLabel="Go to Add"
+                    onAction={() => setActiveTab("add")}
+                  />
+                ) : null}
                 {editingQuoteId == null &&
                 total > PAGE_SIZE &&
                 visibleQuotes.length === PAGE_SIZE ? (

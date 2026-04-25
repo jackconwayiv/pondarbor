@@ -22,6 +22,7 @@ import { sortAchievementsNewestFirst } from "./achievements/sortAchievements";
 import type { AchievementSummary } from "./achievements/types";
 import { useAppSession } from "./auth/AppSessionContext";
 import { PanelBlockSkeleton } from "./components/panelStatus";
+import { PanelErrorState, PanelPageShell } from "./components/panelStatus";
 import { fetchMyImageInventory } from "./closet/api";
 import { uploadClosetImageViaPresign } from "./closet/imageUpload";
 import type { ClosetImageInventoryRow } from "./closet/types";
@@ -411,87 +412,29 @@ export default function ProfilePage() {
 
   if (!sessionUser) {
     return (
-      <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
-        <Box
-          flex="1"
-          bg="bg"
-          px={0}
-          py={{ base: "2", md: "2" }}
-        >
-          <Box {...APP_SHELL_TRAY_PROPS}>
-            <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
-              <Box {...PROFILE_ENTRY_CARD_PROPS}>
-                <Heading
-                  as="h1"
-                  size={{ base: "lg", md: "xl" }}
-                  fontWeight="bold"
-                  mb="2"
-                >
-                  Profile
-                </Heading>
-                {sessionError ? (
-                  <Stack gap="3" align="flex-start">
-                    <Text
-                      fontSize={APP_TEXT_SIZES.body}
-                      lineHeight="tall"
-                      color="fg"
-                      fontWeight="semibold"
-                    >
-                      Could not load your profile from the API.
-                    </Text>
-                    <Text fontSize={APP_TEXT_SIZES.helper} color="fg">
-                      {sessionError}
-                    </Text>
-                    <Text
-                      fontSize={APP_TEXT_SIZES.helper}
-                      color="fg.muted"
-                      lineHeight="tall"
-                    >
-                      Check that the backend is running,{" "}
-                      <code>VITE_API_BASE_URL</code> points to it (e.g.{" "}
-                      <code>http://127.0.0.1:8000</code>), and CORS allows this
-                      origin.
-                    </Text>
-                  </Stack>
-                ) : (
-                  <Text
-                    fontSize={APP_TEXT_SIZES.body}
-                    lineHeight="tall"
-                    color="fg"
-                  >
-                    No profile loaded yet.
-                  </Text>
-                )}
-              </Box>
-              <Box {...PROFILE_ENTRY_CARD_PROPS}>
-                <HStack gap="3" align="center" flexWrap="wrap">
-                  <PondButton
-                    size="sm"
-                    colorPalette="teal"
-                    onClick={switchUser}
-                  >
-                    Switch user
-                  </PondButton>
-                  <PondButton
-                    size="sm"
-                    colorPalette="nautical"
-                    onClick={logout}
-                  >
-                    Log out
-                  </PondButton>
-                  <PondButton
-                    colorPalette="sky"
-                    size="sm"
-                    onClick={() => void refreshSession()}
-                  >
-                    Retry
-                  </PondButton>
-                </HStack>
-              </Box>
-            </Stack>
+      <PanelPageShell>
+        <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
+          <PanelErrorState
+            title="Could not load your profile."
+            description={
+              sessionError ||
+              "You are authenticated, but the profile payload is not available yet."
+            }
+            actionLabel="Retry"
+            onAction={() => void refreshSession()}
+          />
+          <Box {...PROFILE_ENTRY_CARD_PROPS}>
+            <HStack gap="3" align="center" flexWrap="wrap">
+              <PondButton size="sm" colorPalette="teal" onClick={switchUser}>
+                Switch user
+              </PondButton>
+              <PondButton size="sm" colorPalette="nautical" onClick={logout}>
+                Log out
+              </PondButton>
+            </HStack>
           </Box>
-        </Box>
-      </Stack>
+        </Stack>
+      </PanelPageShell>
     );
   }
 

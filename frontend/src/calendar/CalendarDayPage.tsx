@@ -68,7 +68,7 @@ export default function CalendarDayPage() {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
 
-  const { orderedCheckedUserIds, setCheckedUserIds } =
+  const { orderedCheckedUserIds, setCheckedUserIds, isDefaultAll } =
     useCheckedUsers(approvedUsers);
 
   const ownersById = useMemo(
@@ -114,8 +114,13 @@ export default function CalendarDayPage() {
   /** Owner ids busy this day, restricted to checked users, in checked-order. */
   const busyOwnerIds = useMemo(() => {
     const busySet = new Set(eventsForDay.map((ev) => ev.owner.id));
+    if (isDefaultAll && orderedCheckedUserIds.length === 0 && eventsForDay.length > 0) {
+      const ids = Array.from(busySet);
+      ids.sort((a, b) => a - b);
+      return ids;
+    }
     return orderedCheckedUserIds.filter((id) => busySet.has(id));
-  }, [eventsForDay, orderedCheckedUserIds]);
+  }, [eventsForDay, isDefaultAll, orderedCheckedUserIds]);
 
   const handleSaveEdit = async (payload: EventWritePayload) => {
     if (!editing) return;

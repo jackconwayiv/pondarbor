@@ -26,6 +26,7 @@ import {
 } from "../forms/validation";
 import {
   PanelListRowSkeleton,
+  PanelEmptyState,
   PanelSessionReconnect,
   SessionLoadingCard,
 } from "../components/panelStatus";
@@ -1351,11 +1352,33 @@ export default function ClosetPage() {
                   </Dialog.Root>
                 ) : null}
                 {friendsItems.length === 0 ? (
-                  <Text>
-                    {friendsCategoryFilter.trim() || friendsTagFilter
-                      ? "No items match your filters."
-                      : "No items from friends yet."}
-                  </Text>
+                  <PanelEmptyState
+                    title={
+                      friendsCategoryFilter.trim() || friendsTagFilter
+                        ? "No items match your filters."
+                        : "No items to show yet."
+                    }
+                    description={
+                      friendsCategoryFilter.trim() || friendsTagFilter
+                        ? "Try clearing your filters."
+                        : "When approved users add items, they’ll show up here (depending on your privacy settings)."
+                    }
+                    actionLabel={
+                      friendsCategoryFilter.trim() || friendsTagFilter
+                        ? "Clear filters"
+                        : "Refresh"
+                    }
+                    onAction={() => {
+                      if (friendsCategoryFilter.trim() || friendsTagFilter) {
+                        setFriendsCategoryFilter("");
+                        setFriendsTagFilter("");
+                        setFriendsTagInput("");
+                        setFriendsPage(1);
+                      } else {
+                        void loadFriends();
+                      }
+                    }}
+                  />
                 ) : null}
                 <SimpleGrid
                   columns={{ base: 1, md: 3 }}

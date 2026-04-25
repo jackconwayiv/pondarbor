@@ -28,6 +28,7 @@ from calendars.services import (
     sync_ical_source,
 )
 from users.permissions import IsApprovedUser
+from users.models import Profile
 
 logger = logging.getLogger(__name__)
 
@@ -359,6 +360,16 @@ def approved_users_list(request):
         )
         .order_by("profile__display_name", "email")
     )
+    # Viewer read preference: when friends-only, show only friends (plus self) in the picker.
+    viewer_profile = getattr(request.user, "profile", None)
+    scope = getattr(viewer_profile, "social_read_scope", None) or Profile.SocialReadScope.APPROVED_USERS
+    if scope == Profile.SocialReadScope.FRIENDS_ONLY:
+        from friends.services import friend_ids_for_user
+
+        fids = friend_ids_for_user(user=request.user)
+        allowed = set(fids or set())
+        allowed.add(request.user.pk)
+        qs = qs.filter(pk__in=list(allowed))
     if search:
         qs = qs.filter(
             Q(email__icontains=search) | Q(profile__display_name__icontains=search)

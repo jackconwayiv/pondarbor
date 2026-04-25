@@ -112,7 +112,8 @@ class SongadayApiTests(TestCase):
         self.assertEqual(len(rb.json()), 1)
         rs = self.stranger_client.get("/api/v1/songaday/responses/for-date/?year=2026&month=4&day=12")
         self.assertEqual(rs.status_code, 200)
-        self.assertEqual(len(rs.json()), 0)
+        # Default policy: visible to all approved users unless the owner opts into friends-only.
+        self.assertEqual(len(rs.json()), 1)
 
     def test_cannot_heart_own_submission(self):
         cr = self.alice_client.post(
@@ -188,7 +189,8 @@ class SongadayApiTests(TestCase):
             format="json",
         )
         r = self.alice_client.get(f"/api/v1/songaday/responses/archive/?user_id={self.bob.id}")
-        self.assertEqual(r.status_code, 404)
+        # Default policy: archives are visible to approved users unless owner opts friends-only/private.
+        self.assertEqual(r.status_code, 200)
 
     def test_archive_eligible_friends_omits_friends_with_zero_submissions(self):
         self._accept_pair(self.alice, self.bob)

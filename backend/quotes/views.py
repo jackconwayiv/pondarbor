@@ -13,6 +13,7 @@ from users.auth0_backend import Auth0TokenAuthentication
 from users.permissions import IsApprovedUser
 from users.models import User as SiteUser
 from friends.services import are_friends, friend_ids_for_user
+from users.social_privacy import apply_read_scope_filter, published_owner_visibility_q, viewer_context
 
 from achievements.services import evaluate_quote_achievements_for_user
 from quotes.models import Quote, QuoteLabel
@@ -129,14 +130,22 @@ def quote_feed(request):
     if user.account_status != SiteUser.AccountStatus.APPROVED:
         qs = Quote.objects.filter(owner=user)
     else:
-        friend_ids = friend_ids_for_user(user=user)
+        ctx = viewer_context(viewer=user)
+        friend_ids = ctx.friend_ids
         qs = Quote.objects.filter(
             Q(owner=user)
             | (
-                Q(owner_id__in=friend_ids)
-                & (Q(visibility=Quote.Visibility.PUBLISHED) | Q(labels__linked_user=user))
+                # Published quotes visible per owner's publish visibility preference.
+                published_owner_visibility_q(viewer=user, owner_fk_field="owner_id", ctx=ctx)
+                & Q(visibility=Quote.Visibility.PUBLISHED)
+                & ~Q(owner=user)
+            )
+            | (
+                # Tagging remains friend-scoped (existing behavior).
+                Q(owner_id__in=list(friend_ids)) & Q(labels__linked_user=user)
             )
         ).distinct()
+        qs = apply_read_scope_filter(viewer=user, qs=qs, owner_field="owner_id", ctx=ctx)
     qs = _quote_list_queryset(qs, request=request).order_by("-created_at")
     return Response(QuoteSerializer(qs, many=True, context={"request": request}).data)
 
@@ -146,11 +155,12 @@ def quote_feed(request):
 def quote_published(request):
     """Friends' published quotes plus the viewer's own published quotes."""
     user = request.user
-    friend_ids = friend_ids_for_user(user=user)
+    ctx = viewer_context(viewer=user)
     qs = Quote.objects.filter(
-        Q(owner=user, visibility=Quote.Visibility.PUBLISHED)
-        | (Q(owner_id__in=friend_ids) & Q(visibility=Quote.Visibility.PUBLISHED))
+        published_owner_visibility_q(viewer=user, owner_fk_field="owner_id", ctx=ctx)
+        & Q(visibility=Quote.Visibility.PUBLISHED)
     ).distinct()
+    qs = apply_read_scope_filter(viewer=user, qs=qs, owner_field="owner_id", ctx=ctx)
     qs = _quote_list_queryset(qs, request=request).order_by("-updated_at", "-created_at")
     return Response(QuoteSerializer(qs, many=True, context={"request": request}).data)
 
@@ -164,17 +174,20 @@ def quote_detail(request, quote_id: int):
         if user.account_status != SiteUser.AccountStatus.APPROVED:
             qs = Quote.objects.filter(owner=user).filter(deleted_at__isnull=True)
         else:
-            friend_ids = friend_ids_for_user(user=user)
+            ctx = viewer_context(viewer=user)
+            friend_ids = ctx.friend_ids
             qs = Quote.objects.filter(
                 Q(owner=user)
                 | (
-                    Q(owner_id__in=friend_ids)
+                    # Published quotes visible per owner's preference.
+                    published_owner_visibility_q(viewer=user, owner_fk_field="owner_id", ctx=ctx)
                     & (
                         Q(visibility=Quote.Visibility.PUBLISHED)
                         | Q(labels__linked_user=user)
                     )
                 )
             ).filter(deleted_at__isnull=True)
+            qs = apply_read_scope_filter(viewer=user, qs=qs, owner_field="owner_id", ctx=ctx)
 
         quote = get_object_or_404(qs, id=quote_id)
         qs = _quote_list_queryset(Quote.objects.filter(id=quote.id), request=request)

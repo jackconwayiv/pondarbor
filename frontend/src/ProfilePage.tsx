@@ -107,6 +107,12 @@ export default function ProfilePage() {
   const [avatarUrl, setAvatarUrl] = useState("");
   const [timezone, setTimezone] = useState("UTC");
   const [birthDate, setBirthDate] = useState("");
+  const [socialPublishVisibility, setSocialPublishVisibility] = useState<
+    "all_approved" | "friends_only"
+  >("all_approved");
+  const [socialReadScope, setSocialReadScope] = useState<
+    "approved_users" | "friends_only"
+  >("approved_users");
   const [savingFields, setSavingFields] = useState<SavingState>({});
   const [saveError, setSaveError] = useState<string | null>(null);
   const [profileAchievements, setProfileAchievements] = useState<
@@ -141,7 +147,37 @@ export default function ProfilePage() {
     setAvatarUrl(sessionUser.profile.avatar_url ?? "");
     setTimezone(sessionUser.profile.timezone ?? "UTC");
     setBirthDate(sessionUser.profile.birth_date ?? "");
+    setSocialPublishVisibility(
+      sessionUser.profile.social_publish_visibility ?? "all_approved",
+    );
+    setSocialReadScope(sessionUser.profile.social_read_scope ?? "approved_users");
   }, [sessionUser]);
+
+  const commitPrivacy = useCallback(
+    async (
+      patch: Partial<{
+        social_publish_visibility: "all_approved" | "friends_only";
+        social_read_scope: "approved_users" | "friends_only";
+      }>,
+    ) => {
+      if (!sessionUser) return;
+      setSaveError(null);
+      try {
+        await patchMyProfile(patch);
+      } catch (err: unknown) {
+        setSaveError(
+          err instanceof Error ? err.message : "Privacy setting update failed",
+        );
+        setSocialPublishVisibility(
+          sessionUser.profile.social_publish_visibility ?? "all_approved",
+        );
+        setSocialReadScope(
+          sessionUser.profile.social_read_scope ?? "approved_users",
+        );
+      }
+    },
+    [patchMyProfile, sessionUser],
+  );
 
   useEffect(() => {
     const run = async () => {
@@ -843,6 +879,80 @@ export default function ProfilePage() {
                         )}
                       </Stack>
                     </HStack>
+
+                    <Stack gap="1" pt="2">
+                      <Text {...profileFieldLabelProps}>Privacy</Text>
+                      {isEditing ? (
+                        <HStack gap={{ base: "3", md: "8" }} align="flex-start">
+                          <Stack gap="1" flex="1" minW={0}>
+                            <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                              Show me:
+                            </Text>
+                            <NativeSelectRoot size="md">
+                              <NativeSelectField
+                                value={socialReadScope}
+                                onChange={(e) => {
+                                  const next = e.target.value as
+                                    | "approved_users"
+                                    | "friends_only";
+                                  setSocialReadScope(next);
+                                }}
+                                onBlur={() =>
+                                  void commitPrivacy({
+                                    social_read_scope: socialReadScope,
+                                  })
+                                }
+                                {...PANEL_FIELD_PROPS}
+                              >
+                                <option value="approved_users">approved users</option>
+                                <option value="friends_only">my friends</option>
+                              </NativeSelectField>
+                            </NativeSelectRoot>
+                          </Stack>
+
+                          <Stack gap="1" flex="1" minW={0}>
+                            <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                              Sees me:
+                            </Text>
+                            <NativeSelectRoot size="md">
+                              <NativeSelectField
+                                value={socialPublishVisibility}
+                                onChange={(e) => {
+                                  const next = e.target.value as
+                                    | "all_approved"
+                                    | "friends_only";
+                                  setSocialPublishVisibility(next);
+                                }}
+                                onBlur={() =>
+                                  void commitPrivacy({
+                                    social_publish_visibility: socialPublishVisibility,
+                                  })
+                                }
+                                {...PANEL_FIELD_PROPS}
+                              >
+                                <option value="all_approved">approved users</option>
+                                <option value="friends_only">my friends</option>
+                              </NativeSelectField>
+                            </NativeSelectRoot>
+                          </Stack>
+                        </HStack>
+                      ) : (
+                        <Stack gap="1">
+                          <Text fontSize={APP_TEXT_SIZES.body}>
+                            Sees me:{" "}
+                            {profile.social_publish_visibility === "friends_only"
+                              ? "my friends"
+                              : "approved users"}
+                          </Text>
+                          <Text fontSize={APP_TEXT_SIZES.body}>
+                            Show me:{" "}
+                            {profile.social_read_scope === "friends_only"
+                              ? "my friends"
+                              : "approved users"}
+                          </Text>
+                        </Stack>
+                      )}
+                    </Stack>
 
                     {isEditing ? (
                       <HStack gap="2" pt="2">

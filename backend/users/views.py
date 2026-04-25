@@ -110,6 +110,8 @@ def serialize_me(user):
             "meal_partner_incoming_pending": incoming_meal_partner_pending(user=user),
             "meal_slot_labels": profile.meal_slot_labels,
             "meal_pantry_enabled": profile.meal_pantry_enabled,
+            "social_publish_visibility": profile.social_publish_visibility,
+            "social_read_scope": profile.social_read_scope,
             "songaday_visibility": profile.songaday_visibility,
         },
         "achievements": achievements_payload_for_user(user, public_only=False),
@@ -263,6 +265,17 @@ def _public_user_summary_response(*, request, user):
         viewer.account_status == UserModel.AccountStatus.APPROVED
     )
     is_friend = is_owner or (viewer_approved and are_friends(user_a=viewer, user_b=user))
+    owner_publish = profile.social_publish_visibility or Profile.SocialPublishVisibility.ALL_APPROVED
+    can_view_full_profile = bool(
+        is_owner
+        or (
+            viewer_approved
+            and (
+                owner_publish == Profile.SocialPublishVisibility.ALL_APPROVED
+                or (owner_publish == Profile.SocialPublishVisibility.FRIENDS_ONLY and is_friend)
+            )
+        )
+    )
     friendship_status = "none"
     if is_owner:
         friendship_status = "self"
@@ -294,12 +307,14 @@ def _public_user_summary_response(*, request, user):
         "nickname": nickname,
         "avatar_url": profile.avatar_url or "",
         "is_friend": bool(is_friend),
-        "can_view_full_profile": bool(is_friend),
+        "can_view_full_profile": bool(can_view_full_profile),
         "friendship_status": friendship_status,
     }
+    if can_view_full_profile:
+        payload["display_name"] = (profile.display_name or "").strip()
+    # Email remains friend-only to avoid widening sensitive identifiers.
     if is_friend:
         payload["email"] = user.email
-        payload["display_name"] = (profile.display_name or "").strip()
     if is_friend and not is_owner:
         from closet.models import Item
         from closet.services import owner_eligible_for_closet_publication_q
@@ -411,6 +426,8 @@ def patch_me_profile(request):
         "timezone",
         "birth_date",
         "meal_week_starts_on",
+        "social_publish_visibility",
+        "social_read_scope",
     }
     for field in allowed:
         if field in data:

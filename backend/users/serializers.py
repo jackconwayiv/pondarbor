@@ -75,7 +75,9 @@ class ProfileSerializer(serializers.Serializer):
     meal_partner_incoming_pending = serializers.BooleanField()
     meal_slot_labels = serializers.JSONField(allow_null=True, required=False)
     meal_pantry_enabled = serializers.BooleanField()
-    songaday_visibility = serializers.CharField(required=False, default="friends_only")
+    social_publish_visibility = serializers.CharField(required=False, default="all_approved")
+    social_read_scope = serializers.CharField(required=False, default="approved_users")
+    songaday_visibility = serializers.CharField(required=False, default="all_approved")
 
 
 class AchievementSummarySerializer(serializers.Serializer):
@@ -114,6 +116,14 @@ class ProfileUpdateSerializer(serializers.Serializer):
     meal_crud_partner_id = serializers.IntegerField(allow_null=True, required=False)
     meal_slot_labels = serializers.JSONField(required=False, allow_null=True)
     meal_pantry_enabled = serializers.BooleanField(required=False)
+    social_publish_visibility = serializers.ChoiceField(
+        choices=["all_approved", "friends_only"],
+        required=False,
+    )
+    social_read_scope = serializers.ChoiceField(
+        choices=["approved_users", "friends_only"],
+        required=False,
+    )
     songaday_visibility = serializers.ChoiceField(
         choices=["private", "friends_only", "all_approved"],
         required=False,

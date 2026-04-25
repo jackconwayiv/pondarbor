@@ -19,6 +19,7 @@ from friends.services import friend_ids_for_user
 from songaday.access import can_view_song_response, visible_song_responses_q
 from songaday.models import SongPrompt, SongResponse, SongResponseHeart
 from users.models import Profile
+from users.social_privacy import viewer_context
 from songaday.resolve_link import ResolveError, resolve_from_youtube_video_id, resolve_song_link_metadata
 from songaday.serializers import (
     SongResponseCreateSerializer,
@@ -49,7 +50,16 @@ def _parse_ymd(request):
 def _visible_responses_qs(*, viewer, entry: date):
     friend_ids = friend_ids_for_user(user=viewer)
     q_vis = visible_song_responses_q(viewer=viewer, friend_ids=friend_ids)
-    return SongResponse.objects.filter(entry_date=entry).filter(q_vis)
+    qs = SongResponse.objects.filter(entry_date=entry).filter(q_vis)
+
+    # Apply viewer read preference as a soft filter on the day list.
+    ctx = viewer_context(viewer=viewer)
+    scope = getattr(getattr(viewer, "profile", None), "social_read_scope", None) or Profile.SocialReadScope.APPROVED_USERS
+    if ctx.is_approved and scope == Profile.SocialReadScope.FRIENDS_ONLY:
+        allowed = set(ctx.friend_ids)
+        allowed.add(ctx.viewer_id)
+        qs = qs.filter(user_id__in=list(allowed))
+    return qs
 
 
 def _annotate_hearts(qs, viewer_id: int):
@@ -111,10 +121,17 @@ def responses_archive(request):
             return Response({"detail": "user_id must be an integer."}, status=400)
         if tid == viewer.id:
             target_id = tid
-        elif tid not in friend_ids_for_user(user=viewer):
-            return Response({"detail": "Not found."}, status=404)
         else:
-            get_object_or_404(User, pk=tid)
+            owner = get_object_or_404(User.objects.select_related("profile"), pk=tid)
+            prof = getattr(owner, "profile", None)
+            publish_vis = (
+                getattr(prof, "social_publish_visibility", None)
+                or Profile.SocialPublishVisibility.ALL_APPROVED
+            )
+            if publish_vis == Profile.SocialPublishVisibility.FRIENDS_ONLY and tid not in friend_ids_for_user(
+                user=viewer
+            ):
+                return Response({"detail": "Not found."}, status=404)
             target_id = tid
 
     try:

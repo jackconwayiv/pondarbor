@@ -158,6 +158,8 @@ class UsersApiTests(TestCase):
                 "timezone": "America/New_York",
                 "avatar_url": "https://example.com/p.png",
                 "birth_date": "1990-05-17",
+                "social_publish_visibility": "friends_only",
+                "social_read_scope": "friends_only",
             },
             format="json",
         )
@@ -167,6 +169,8 @@ class UsersApiTests(TestCase):
         self.assertEqual(body["profile"]["timezone"], "America/New_York")
         self.assertEqual(body["profile"]["avatar_url"], "https://example.com/p.png")
         self.assertEqual(body["profile"]["birth_date"], "1990-05-17")
+        self.assertEqual(body["profile"]["social_publish_visibility"], "friends_only")
+        self.assertEqual(body["profile"]["social_read_scope"], "friends_only")
         self.assertIn("meal_partner_incoming_pending", body["profile"])
         self.assertFalse(body["profile"]["meal_partner_incoming_pending"])
         self.assertIn("meal_crud_partner_label", body["profile"])
@@ -175,6 +179,8 @@ class UsersApiTests(TestCase):
         user.profile.refresh_from_db()
         self.assertEqual(user.profile.display_name, "After")
         self.assertEqual(str(user.profile.birth_date), "1990-05-17")
+        self.assertEqual(user.profile.social_publish_visibility, "friends_only")
+        self.assertEqual(user.profile.social_read_scope, "friends_only")
 
     def test_patch_profile_allows_clearing_birth_date(self):
         user = User.objects.create_user(email="clear@example.com", password="secret12345")

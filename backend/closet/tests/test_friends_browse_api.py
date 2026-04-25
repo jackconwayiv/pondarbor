@@ -15,14 +15,15 @@ class ClosetFriendsBrowseApiTests(ClosetTestMixin, TestCase):
     def test_friends_browse_only_includes_friend_owned_items(self):
         owner_item = self.make_item(owner=self.owner, holder=self.owner, name="Owner item")
         friend_two_item = self.make_item(owner=self.friend_two, holder=self.friend_two, name="Friend2 item")
-        _other_item = self.make_item(owner=self.other, holder=self.other, name="Other item")
+        other_item = self.make_item(owner=self.other, holder=self.other, name="Other item")
 
         resp = self.borrower_client.get("/api/v1/closet/items/friends/")
         self.assertEqual(resp.status_code, 200)
         ids = {row["id"] for row in resp.json()["results"]}
         self.assertIn(owner_item.id, ids)
         self.assertIn(friend_two_item.id, ids)
-        self.assertNotIn(_other_item.id, ids)
+        # Default policy: browse shows all approved users' published items.
+        self.assertIn(other_item.id, ids)
 
     def test_friends_browse_hides_items_when_friend_owner_suspended(self):
         hidden = self.make_item(owner=self.owner, holder=self.owner, name="Suspended owner item")
@@ -42,6 +43,21 @@ class ClosetFriendsBrowseApiTests(ClosetTestMixin, TestCase):
         self.assertEqual(resp.status_code, 200)
         ids = {row["id"] for row in resp.json()["results"]}
         self.assertNotIn(mine.id, ids)
+
+    def test_friends_browse_respects_viewer_friends_only_read_scope(self):
+        # When the viewer sets friends-only, browse should return only friends' items (excluding self).
+        prof = self.borrower.profile
+        prof.social_read_scope = "friends_only"
+        prof.save(update_fields=["social_read_scope"])
+
+        owner_item = self.make_item(owner=self.owner, holder=self.owner, name="Owner item")
+        other_item = self.make_item(owner=self.other, holder=self.other, name="Other item")
+
+        resp = self.borrower_client.get("/api/v1/closet/items/friends/")
+        self.assertEqual(resp.status_code, 200)
+        ids = {row["id"] for row in resp.json()["results"]}
+        self.assertIn(owner_item.id, ids)
+        self.assertNotIn(other_item.id, ids)
 
     def test_friends_browse_pagination_shape(self):
         for idx in range(12):

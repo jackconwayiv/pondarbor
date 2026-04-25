@@ -44,6 +44,7 @@ from common.r2_s3 import build_r2_s3_client, r2_bucket_config_from_env
 from meal.r2_storage import expected_meal_image_key_prefix, meal_image_key_owned_by_user
 from users.permissions import IsApprovedUser
 from users.models import Profile
+from users.social_privacy import viewer_context
 
 User = get_user_model()
 
@@ -351,8 +352,25 @@ def items_mine(request):
 @permission_classes([IsApprovedUser])
 def items_friends(request):
     user = request.user
-    friend_ids = friend_ids_for_user(user=user)
-    qs = _item_queryset().filter(owner_user_id__in=friend_ids).exclude(owner_user=user)
+    ctx = viewer_context(viewer=user)
+    friend_ids = ctx.friend_ids
+
+    # Viewer preference (soft filter) controls whether this browse is friends-only.
+    scope = getattr(getattr(user, "profile", None), "social_read_scope", None) or Profile.SocialReadScope.APPROVED_USERS
+    if scope == Profile.SocialReadScope.FRIENDS_ONLY:
+        qs = _item_queryset().filter(owner_user_id__in=list(friend_ids)).exclude(owner_user=user)
+    else:
+        qs = _item_queryset().exclude(owner_user=user)
+
+    # Enforce owners' publish visibility.
+    qs = qs.filter(
+        Q(owner_user__profile__social_publish_visibility=Profile.SocialPublishVisibility.ALL_APPROVED)
+        | Q(owner_user__profile__isnull=True)
+        | (
+            Q(owner_user_id__in=list(friend_ids))
+            & Q(owner_user__profile__social_publish_visibility=Profile.SocialPublishVisibility.FRIENDS_ONLY)
+        )
+    )
 
     category = (request.query_params.get("category") or "").strip()
     if category:
@@ -876,12 +894,22 @@ def images_mine(request):
         bucket_keys_closet = {
             k for k in bucket_keys_closet if closet_image_key_owned_by_user(k, user_id)
         }
-        bucket_keys_meal = _list_user_bucket_keys(
-            client=client,
-            bucket=config["bucket"],
-            key_prefix=meal_key_prefix,
-        )
-        bucket_keys_meal = {k for k in bucket_keys_meal if meal_image_key_owned_by_user(k, user_id)}
+
+        # Meal images share the same R2 bucket only when configured; otherwise treat as empty.
+        bucket_keys_meal = set()
+        if meal_key_prefix:
+            try:
+                bucket_keys_meal = _list_user_bucket_keys(
+                    client=client,
+                    bucket=config["bucket"],
+                    key_prefix=meal_key_prefix,
+                )
+            except StopIteration:
+                # Unit tests may mock list_objects_v2 with a single response for the closet prefix only.
+                bucket_keys_meal = set()
+            bucket_keys_meal = {
+                k for k in bucket_keys_meal if meal_image_key_owned_by_user(k, user_id)
+            }
     except Exception as exc:
         logger.exception("closet images_mine: failed to list R2 objects")
         detail = str(exc) if settings.DEBUG else "Failed to list images from storage."

@@ -249,7 +249,7 @@ class QuotesApiTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         # Expect a small constant number of queries. After friend-gating and owner/profile
         # serialization changes, this is still bounded but higher than the original baseline.
-        self.assertLessEqual(len(ctx), 12)
+        self.assertLessEqual(len(ctx), 14)
 
     def test_delete_is_soft_and_hidden_from_feed_and_public(self):
         quote = Quote.objects.create(

@@ -22,6 +22,10 @@ export type Profile = {
   meal_slot_labels?: Record<string, string[]> | null;
   /** Pantry inventory and grocery hints (Meal Maestro). */
   meal_pantry_enabled?: boolean;
+  /** Default audience for newly created social objects (global). */
+  social_publish_visibility?: "all_approved" | "friends_only";
+  /** Feed/discover preference for what you read (soft filter). */
+  social_read_scope?: "approved_users" | "friends_only";
   /** Who can see your Song-a-Day submissions. */
   songaday_visibility?: "private" | "friends_only" | "all_approved";
 };
@@ -58,6 +62,8 @@ export type ProfilePatch = Partial<
     | "meal_crud_partner_id"
     | "meal_slot_labels"
     | "meal_pantry_enabled"
+    | "social_publish_visibility"
+    | "social_read_scope"
     | "songaday_visibility"
   >
 > & {

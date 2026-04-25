@@ -101,6 +101,29 @@ class Profile(models.Model):
         help_text="When true, show pantry inventory and related grocery hints.",
     )
 
+    class SocialPublishVisibility(models.TextChoices):
+        ALL_APPROVED = "all_approved", "All approved users"
+        FRIENDS_ONLY = "friends_only", "Friends only"
+
+    # Global default for newly-created social objects (quotes, song-a-day, closet sharing, etc.).
+    # Per-object overrides still apply where they exist.
+    social_publish_visibility = models.CharField(
+        max_length=20,
+        choices=SocialPublishVisibility.choices,
+        default=SocialPublishVisibility.ALL_APPROVED,
+    )
+
+    class SocialReadScope(models.TextChoices):
+        APPROVED_USERS = "approved_users", "Approved users"
+        FRIENDS_ONLY = "friends_only", "Friends only"
+
+    # Viewer preference for feed/discover surfaces (soft filter).
+    social_read_scope = models.CharField(
+        max_length=20,
+        choices=SocialReadScope.choices,
+        default=SocialReadScope.APPROVED_USERS,
+    )
+
     class SongadayVisibility(models.TextChoices):
         PRIVATE = "private", "Private (only me)"
         FRIENDS_ONLY = "friends_only", "Friends only"
@@ -109,7 +132,7 @@ class Profile(models.Model):
     songaday_visibility = models.CharField(
         max_length=20,
         choices=SongadayVisibility.choices,
-        default=SongadayVisibility.FRIENDS_ONLY,
+        default=SongadayVisibility.ALL_APPROVED,
     )
 
     created_at = models.DateTimeField(auto_now_add=True)

@@ -18,6 +18,8 @@ import { useAppSession } from "./auth/AppSessionContext";
 import {
   auth0LoginAuthorizationParams,
   auth0SignupAuthorizationParams,
+  auth0SlackLoginAuthorizationParams,
+  auth0SlackSignupAuthorizationParams,
 } from "./auth/auth0LoginParams";
 import {
   APP_DESKTOP_NAV,
@@ -380,6 +382,40 @@ export default function AppLayout() {
                             <Text>Sign up</Text>
                           </HStack>
                         </Menu.Item>
+                        {auth0SlackLoginAuthorizationParams() ? (
+                          <Menu.Item
+                            value="login-slack"
+                            onSelect={() => {
+                              void loginWithRedirect({
+                                authorizationParams:
+                                  auth0SlackLoginAuthorizationParams()!,
+                              });
+                            }}
+                            fontSize="sm"
+                          >
+                            <HStack gap="2" w="100%">
+                              <Text aria-hidden>💬</Text>
+                              <Text>Log in with Slack</Text>
+                            </HStack>
+                          </Menu.Item>
+                        ) : null}
+                        {auth0SlackSignupAuthorizationParams() ? (
+                          <Menu.Item
+                            value="sign-up-slack"
+                            onSelect={() => {
+                              void loginWithRedirect({
+                                authorizationParams:
+                                  auth0SlackSignupAuthorizationParams()!,
+                              });
+                            }}
+                            fontSize="sm"
+                          >
+                            <HStack gap="2" w="100%">
+                              <Text aria-hidden>💬</Text>
+                              <Text>Sign up with Slack</Text>
+                            </HStack>
+                          </Menu.Item>
+                        ) : null}
                         {guestHamburgerNavItems().map((item) => (
                           <Menu.Item
                             key={item.to}

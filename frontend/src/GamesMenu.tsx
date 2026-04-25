@@ -13,6 +13,8 @@ import { useAppSession } from "./auth/AppSessionContext";
 import {
   auth0LoginAuthorizationParams,
   auth0SignupAuthorizationParams,
+  auth0SlackLoginAuthorizationParams,
+  auth0SlackSignupAuthorizationParams,
 } from "./auth/auth0LoginParams";
 import PondButton from "./PondButton";
 import { fullBleedStackProps, viewPortWidthBarProps } from "./responsive";
@@ -27,6 +29,7 @@ const GAMES_NAV_ITEMS = [
     label: "Quest For Fat IV (demo)",
     emoji: "⚔️",
   },
+  { to: "/", label: "Home", emoji: "⬅️" },
 ] as const;
 
 function canOpenGameTile(
@@ -79,6 +82,32 @@ export default function GamesMenu() {
               >
                 Sign up
               </PondButton>
+              {auth0SlackLoginAuthorizationParams() ? (
+                <PondButton
+                  colorPalette="gray"
+                  variant="outline"
+                  onClick={() =>
+                    loginWithRedirect({
+                      authorizationParams: auth0SlackLoginAuthorizationParams()!,
+                    })
+                  }
+                >
+                  Log in with Slack
+                </PondButton>
+              ) : null}
+              {auth0SlackSignupAuthorizationParams() ? (
+                <PondButton
+                  colorPalette="gray"
+                  variant="outline"
+                  onClick={() =>
+                    loginWithRedirect({
+                      authorizationParams: auth0SlackSignupAuthorizationParams()!,
+                    })
+                  }
+                >
+                  Sign up with Slack
+                </PondButton>
+              ) : null}
             </HStack>
           ) : null}
 
@@ -173,10 +202,6 @@ export default function GamesMenu() {
               );
             })}
           </SimpleGrid>
-
-          <PondButton asChild colorPalette="teal" variant="outline" size="md">
-            <RouterLink to="/">← Back</RouterLink>
-          </PondButton>
         </Stack>
       </Box>
 

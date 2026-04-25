@@ -282,3 +282,33 @@ export async function bulkImportPrompts(accessToken: string | null, text: string
     total: number;
   };
 }
+
+export type SongadaySlackDailyPromptSyncResult = {
+  posted: boolean;
+  reason?: string;
+  slack_ts?: string;
+  detail?: string;
+};
+
+/** Idempotent: first approved open of the day may post today’s prompt to Slack (server-side). */
+export async function songadaySlackDailyPromptSync(
+  accessToken: string | null,
+): Promise<SongadaySlackDailyPromptSyncResult> {
+  const response = await fetch(`${apiBase()}/api/v1/songaday/slack/daily-prompt-sync/`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify({}),
+  });
+  const data = (await response.json().catch(() => ({}))) as SongadaySlackDailyPromptSyncResult & {
+    detail?: string;
+  };
+  if (!response.ok) {
+    return {
+      posted: false,
+      reason: data.reason ?? "request_failed",
+      detail: typeof data.detail === "string" ? data.detail : undefined,
+    };
+  }
+  return data;
+}

@@ -18,6 +18,8 @@ import { useAppSession } from "./auth/AppSessionContext";
 import {
   auth0LoginAuthorizationParams,
   auth0SignupAuthorizationParams,
+  auth0SlackLoginAuthorizationParams,
+  auth0SlackSignupAuthorizationParams,
 } from "./auth/auth0LoginParams";
 import PondButton from "./PondButton";
 import { pondarborProfileSrc } from "./publicAsset";
@@ -172,6 +174,32 @@ function App() {
                 >
                   Sign up
                 </PondButton>
+                {auth0SlackLoginAuthorizationParams() ? (
+                  <PondButton
+                    colorPalette="gray"
+                    variant="outline"
+                    onClick={() =>
+                      loginWithRedirect({
+                        authorizationParams: auth0SlackLoginAuthorizationParams()!,
+                      })
+                    }
+                  >
+                    Log in with Slack
+                  </PondButton>
+                ) : null}
+                {auth0SlackSignupAuthorizationParams() ? (
+                  <PondButton
+                    colorPalette="gray"
+                    variant="outline"
+                    onClick={() =>
+                      loginWithRedirect({
+                        authorizationParams: auth0SlackSignupAuthorizationParams()!,
+                      })
+                    }
+                  >
+                    Sign up with Slack
+                  </PondButton>
+                ) : null}
               </HStack>
               <Flex alignItems="center" width="100%" flexWrap="wrap" gap="3">
                 <Image src={pondarborProfileSrc()} width="150px" flexShrink={0} />

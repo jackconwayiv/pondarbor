@@ -1,6 +1,7 @@
 from django.urls import include, path
 
 urlpatterns = [
+    path("slack/", include("slack_integration.urls")),
     path("contact/", include("contact.urls")),
     path("meal/", include("meal.urls")),
     path("users/", include("users.urls")),

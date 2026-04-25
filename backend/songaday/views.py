@@ -26,6 +26,11 @@ from songaday.serializers import (
     SongResponsePatchSerializer,
     SongResponseReadSerializer,
 )
+from songaday.submission import (
+    SongadaySubmissionError,
+    create_song_response_from_validated_data,
+    validate_song_response_payload,
+)
 from users.permissions import IsApprovedUser, IsStaffUser
 
 User = get_user_model()
@@ -239,33 +244,12 @@ def response_detail(request, response_id: int):
 
 @api_view(["POST"])
 @permission_classes([IsApprovedUser])
-@transaction.atomic
 def response_create(request):
-    ser = SongResponseCreateSerializer(data=request.data)
-    ser.is_valid(raise_exception=True)
-    data = ser.validated_data
-    entry: date = data["entry_date"]
-    prompt = SongPrompt.objects.filter(month=entry.month, day=entry.day).first()
-    if prompt is None:
-        return Response({"detail": "There is no prompt for this date."}, status=400)
-
-    if SongResponse.objects.filter(user_id=request.user.id, entry_date=entry).exists():
-        return Response({"detail": "You already submitted for this date."}, status=409)
-
-    row = SongResponse.objects.create(
-        user=request.user,
-        prompt=prompt,
-        entry_date=entry,
-        prompt_snapshot=data["prompt_snapshot"].strip(),
-        notes=(data.get("notes") or "").strip(),
-        artist=(data.get("artist") or "").strip(),
-        title=(data.get("title") or "").strip(),
-        raw_label=(data.get("raw_label") or "").strip(),
-        youtube_video_id=(data.get("youtube_video_id") or "").strip(),
-        spotify_url=(data.get("spotify_url") or "").strip(),
-        apple_music_url=(data.get("apple_music_url") or "").strip(),
-    )
-    evaluate_songaday_month_of_music_for_user(request.user.id)
+    try:
+        data = validate_song_response_payload(request.data)
+        row = create_song_response_from_validated_data(user=request.user, data=data)
+    except SongadaySubmissionError as e:
+        return Response({"detail": e.message}, status=e.status_code)
     qs = SongResponse.objects.filter(pk=row.pk)
     qs = _annotate_hearts(qs, request.user.id)
     obj = qs.select_related("user", "user__profile", "prompt").get()

@@ -39,6 +39,7 @@ import {
   fetchResponsesForDate,
   fetchResponsesArchive,
   resolveSongLinkMetadata,
+  songadaySlackDailyPromptSync,
   toggleHeart,
 } from "./api";
 import { parseSongPasteInput } from "./parseSongInput";
@@ -316,6 +317,18 @@ export default function SongadayPage() {
       await Promise.all(keys.map((k) => prefetchDay(k)));
     })();
   }, [isAuthenticated, sessionUser?.user?.is_approved, prefetchDay]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !sessionUser?.user?.is_approved) return;
+    void (async () => {
+      try {
+        const token = await getApiAccessToken();
+        await songadaySlackDailyPromptSync(token);
+      } catch {
+        /* Slack prompt sync is optional */
+      }
+    })();
+  }, [isAuthenticated, sessionUser?.user?.is_approved, getApiAccessToken]);
 
   // Preload all of *my* entries for the current month to seed the archive view.
   useEffect(() => {

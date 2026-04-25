@@ -97,6 +97,7 @@ INSTALLED_APPS = [
     "qff.apps.QffConfig",
     "closet.apps.ClosetConfig",
     "songaday.apps.SongadayConfig",
+    "slack_integration.apps.SlackIntegrationConfig",
     "friend_comments.apps.FriendCommentsConfig",
     "meal.apps.MealConfig",
     "contact.apps.ContactConfig",
@@ -262,6 +263,14 @@ EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "true").lower() in ("true", "1", "yes")
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@localhost")
 CONTACT_INBOX_EMAIL = os.getenv("CONTACT_INBOX_EMAIL", "pondarbor@gmail.com").strip()
+
+# Slack (Song-a-day bot, /song, daily prompt). Leave unset to disable server-side Slack calls.
+# Web login/signup uses Auth0: configure a Slack social connection in Auth0, then set
+# `VITE_AUTH0_SLACK_CONNECTION` in the frontend env to expose the “Sign up with Slack” button.
+SLACK_SIGNING_SECRET = os.getenv("SLACK_SIGNING_SECRET", "").strip()
+SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "").strip()
+SLACK_PROMPTS_CHANNEL_ID = os.getenv("SLACK_PROMPTS_CHANNEL_ID", "").strip()
+SONGADAY_SLACK_PROMPT_TIMEZONE = os.getenv("SONGADAY_SLACK_PROMPT_TIMEZONE", "UTC").strip()
 
 # QFF: structured INFO logs per command (exec_ms, sim_ms, session_ms, total_ms) for staging/prod profiling.
 QFF_COMMAND_TIMING_LOG = os.getenv("QFF_COMMAND_TIMING_LOG", "").lower() in ("true", "1", "yes")

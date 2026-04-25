@@ -1,5 +1,6 @@
 from django.urls import path
 
+from slack_integration.views import songaday_slack_daily_prompt_sync
 from songaday.views import (
     health,
     prompt_for_date,
@@ -16,6 +17,7 @@ from songaday.views import (
 
 urlpatterns = [
     path("health/", health),
+    path("slack/daily-prompt-sync/", songaday_slack_daily_prompt_sync),
     path("prompts/list/", prompts_list),
     path("prompts/catalog/", prompts_list),
     path("prompts/for-date/", prompt_for_date),

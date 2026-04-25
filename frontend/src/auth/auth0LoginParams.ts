@@ -7,6 +7,28 @@ const base = (): Pick<AuthorizationParams, "audience" | "scope"> => ({
   scope: "openid profile email",
 });
 
+/** Auth0 social connection name for Slack (Authentication → Social → Slack). */
+export function auth0SlackConnectionName(): string | undefined {
+  const raw = import.meta.env.VITE_AUTH0_SLACK_CONNECTION;
+  if (typeof raw !== "string") return undefined;
+  const t = raw.trim();
+  return t || undefined;
+}
+
+/** Log in with Slack via Auth0 (returns null if `VITE_AUTH0_SLACK_CONNECTION` is unset). */
+export function auth0SlackLoginAuthorizationParams(): AuthorizationParams | null {
+  const connection = auth0SlackConnectionName();
+  if (!connection) return null;
+  return { ...base(), connection };
+}
+
+/** Sign up with Slack via Auth0 (returns null if connection is unset). */
+export function auth0SlackSignupAuthorizationParams(): AuthorizationParams | null {
+  const connection = auth0SlackConnectionName();
+  if (!connection) return null;
+  return { ...base(), connection, screen_hint: "signup" };
+}
+
 /**
  * Normal Log in — no `prompt` so SSO can reuse the last session quickly.
  * Do not add `prompt` to Auth0Provider defaults or getAccessTokenSilently.

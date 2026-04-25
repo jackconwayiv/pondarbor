@@ -1,4 +1,6 @@
 export const APP_TEXT_SIZES = {
+  display: { base: "2xl", md: "3xl" },
+  title: { base: "lg", md: "xl" },
   body: { base: "sm", md: "md" },
   label: { base: "sm", md: "md" },
   helper: { base: "xs", md: "sm" },

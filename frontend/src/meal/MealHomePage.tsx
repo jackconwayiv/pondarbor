@@ -69,6 +69,7 @@ export default function MealHomePage() {
     getApiAccessToken,
     patchMyProfile,
     refreshSession,
+    resyncSessionSilently,
   } = useAppSession();
   const [friends, setFriends] = useState<
     Array<{ id: number; label: string; email: string; meal_crud_partner_id: number | null }>
@@ -109,7 +110,7 @@ export default function MealHomePage() {
 
   useEffect(() => {
     if (!sessionUser?.user.is_approved) return;
-    void refreshSession().catch(() => {
+    void resyncSessionSilently().catch(() => {
       /* ignore initial sync failures; local state still renders */
     });
     const tid = window.setTimeout(() => {
@@ -121,7 +122,7 @@ export default function MealHomePage() {
       });
     }, 0);
     return () => window.clearTimeout(tid);
-  }, [sessionUser?.user.is_approved, loadFriends, loadPending, refreshSession]);
+  }, [sessionUser?.user.is_approved, loadFriends, loadPending, resyncSessionSilently]);
 
   const profile = sessionUser?.profile ?? null;
   const partnerId = profile?.meal_crud_partner_id ?? null;
@@ -137,18 +138,18 @@ export default function MealHomePage() {
     async (countKey: string, row: string[]) => {
       try {
         await patchMyProfile({ meal_slot_labels: { [countKey]: row } });
-        await refreshSession();
+        await resyncSessionSilently();
       } catch (err) {
         setNotice({
           tone: "error",
           text: err instanceof Error ? err.message : "Could not save meal time names.",
         });
-        await refreshSession().catch(() => {
+        await resyncSessionSilently().catch(() => {
           /* ignore */
         });
       }
     },
-    [patchMyProfile, refreshSession],
+    [patchMyProfile, resyncSessionSilently],
   );
 
   const mutual = profile?.meal_pair_mutual ?? false;
@@ -395,7 +396,7 @@ export default function MealHomePage() {
                         try {
                           await patchMyProfile({ meal_crud_partner_id: null });
                           await loadFriends();
-                          await refreshSession();
+                          await resyncSessionSilently();
                           setNotice({ tone: "success", text: "Partner request canceled." });
                         } catch (err) {
                           setNotice({
@@ -489,7 +490,7 @@ export default function MealHomePage() {
                       try {
                         await patchMyProfile({ meal_crud_partner_id: requester.id });
                         await loadFriends();
-                        await refreshSession();
+                        await resyncSessionSilently();
                         setNotice({ tone: "success", text: "Meal partner request accepted." });
                       } catch (err) {
                         setNotice({
@@ -516,7 +517,7 @@ export default function MealHomePage() {
                         void loadFriends().catch(() => {
                           /* ignore follow-up refresh errors */
                         });
-                        void refreshSession().catch(() => {
+                        void resyncSessionSilently().catch(() => {
                           /* ignore follow-up refresh errors */
                         });
                       } catch (err) {
@@ -567,7 +568,7 @@ export default function MealHomePage() {
                           const t = await getApiAccessToken();
                           await cancelDisconnect(t);
                           await loadPending();
-                          await refreshSession();
+                            await resyncSessionSilently();
                           setDisconnectConfirmArmed(false);
                           setNotice(null);
                         } catch (e) {
@@ -598,7 +599,7 @@ export default function MealHomePage() {
                             const t = await getApiAccessToken();
                             await confirmDisconnect(t);
                             await loadPending();
-                            await refreshSession();
+                            await resyncSessionSilently();
                             setDisconnectConfirmArmed(false);
                             setAcceptDisconnectConfirmArmed(false);
                             setNotice({ tone: "success", text: "Disconnected." });

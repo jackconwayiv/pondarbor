@@ -56,7 +56,7 @@ export function AppModal({
           data-app-modal=""
           maxW={maxW[size]}
           w="min(100vw - 1.5rem, 100%)"
-          bg="white"
+          bg="bg.panel"
           borderWidth="1px"
           borderColor="border"
           borderRadius="xl"

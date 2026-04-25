@@ -205,7 +205,7 @@ export default function AboutPage() {
                       {...PANEL_FIELD_PROPS}
                     />
                   </Stack>
-                  <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600">
+                  <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
                     {message.length} / {CONTACT_MESSAGE_MAX} characters
                   </Text>
                   <PondButton

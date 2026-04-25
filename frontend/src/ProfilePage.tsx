@@ -408,7 +408,7 @@ export default function ProfilePage() {
                     </Text>
                     <Text
                       fontSize={APP_TEXT_SIZES.helper}
-                      color="gray.600"
+                      color="fg.muted"
                       lineHeight="tall"
                     >
                       Check that the backend is running,{" "}
@@ -471,7 +471,7 @@ export default function ProfilePage() {
         fontWeight: "medium" as const,
         color: "fg" as const,
       }
-    : { fontSize: APP_TEXT_SIZES.label, color: "gray.600" as const };
+    : { fontSize: APP_TEXT_SIZES.label, color: "fg.muted" as const };
 
   return (
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
@@ -728,7 +728,7 @@ export default function ProfilePage() {
                               {uploadedImageRows.length === 0 ? (
                                 <Text
                                   fontSize={APP_TEXT_SIZES.helper}
-                                  color="gray.600"
+                                  color="fg.muted"
                                 >
                                   No uploaded images available
                                 </Text>
@@ -744,7 +744,7 @@ export default function ProfilePage() {
                                         as="button"
                                         borderWidth="2px"
                                         borderColor={
-                                          isSelected ? "black" : "teal.solid"
+                                          isSelected ? "teal.solid" : "border"
                                         }
                                         borderRadius="md"
                                         overflow="hidden"

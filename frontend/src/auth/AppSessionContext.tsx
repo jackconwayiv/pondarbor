@@ -72,7 +72,13 @@ export type AppSessionContextValue = {
   isLoading: boolean;
   error: string | null;
   getApiAccessToken: () => Promise<string>;
+  /** Full re-bootstrap (clears cache; use for recovery / reconnect). */
   refreshSession: () => Promise<void>;
+  /**
+   * POSTs sync-profile and updates `sessionUser` without clearing the session or
+   * toggling the global bootstrapping/loading state (safe during media, games, etc.).
+   */
+  resyncSessionSilently: () => Promise<void>;
   updateProfileLocally: (patch: Partial<Profile>) => void;
   patchMyProfile: (patch: ProfilePatch) => Promise<void>;
   /** `true` = show to friends (server stores null); `false` = hidden from friends. */

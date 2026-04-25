@@ -40,8 +40,14 @@ function slotMealIds(slots: InstanceSlot[], dayIndex: number, slotIndex: number)
 }
 
 export default function MealTodayPage() {
-  const { isAuthenticated, isLoading, sessionUser, getApiAccessToken, refreshSession } =
-    useAppSession();
+  const {
+    isAuthenticated,
+    isLoading,
+    sessionUser,
+    getApiAccessToken,
+    refreshSession,
+    resyncSessionSilently,
+  } = useAppSession();
   const [instances, setInstances] = useState<MealPlanInstance[]>([]);
   const [meals, setMeals] = useState<Meal[]>([]);
   const [templates, setTemplates] = useState<MealPlanTemplate[]>([]);
@@ -221,7 +227,7 @@ export default function MealTodayPage() {
                           ]);
                           mergePatchedInstance(next);
                           setErr(null);
-                          void refreshSession().catch(() => {});
+                          void resyncSessionSilently().catch(() => {});
                           return;
                         }
 
@@ -237,7 +243,7 @@ export default function MealTodayPage() {
                             ]);
                             mergePatchedInstance(next);
                             setErr(null);
-                            void refreshSession().catch(() => {});
+                            void resyncSessionSilently().catch(() => {});
                             return;
                           }
                           setDraftSlots((prev) =>
@@ -260,7 +266,7 @@ export default function MealTodayPage() {
                           ]);
                           mergePatchedInstance(next);
                           setErr(null);
-                          void refreshSession().catch(() => {});
+                          void resyncSessionSilently().catch(() => {});
                           return;
                         }
 
@@ -285,7 +291,7 @@ export default function MealTodayPage() {
                         instancesRef.current = merged;
                         setInstances(merged);
                         setErr(null);
-                        void refreshSession().catch(() => {});
+                        void resyncSessionSilently().catch(() => {});
                       } catch (e) {
                         setErr(
                           e instanceof Error

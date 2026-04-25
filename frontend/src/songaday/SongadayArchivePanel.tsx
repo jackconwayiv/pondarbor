@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link as RouterLink } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
+import { PanelEmptyState } from "../components/panelStatus";
 import type { Profile } from "../auth/AppSessionContext";
 import { fetchFriendsList } from "../friends/api";
 import PondButton from "../PondButton";
@@ -238,9 +239,12 @@ export default function SongadayArchivePanel({
       ) : loadError ? null : (
         <Stack gap="4" w="100%">
           {archiveTotal === 0 ? (
-            <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-              No submissions yet.
-            </Text>
+            <PanelEmptyState
+              title="No submissions yet."
+              description="Your past Song-a-Day entries will appear here once you’ve posted."
+              actionLabel="Go to today"
+              onAction={undefined}
+            />
           ) : (
             <Stack gap="2" w="100%">
               {entries.map((entry) => (
@@ -249,7 +253,7 @@ export default function SongadayArchivePanel({
                   borderRadius="md"
                   borderWidth="1px"
                   borderColor="border"
-                  bg="white"
+                  bg="bg.panel"
                   overflow="hidden"
                 >
                   <Button
@@ -268,8 +272,8 @@ export default function SongadayArchivePanel({
                     fontWeight="normal"
                     textAlign="left"
                     justifyContent="flex-start"
-                    bg="white"
-                    _hover={{ bg: "gray.50" }}
+                    bg="bg.panel"
+                    _hover={{ bg: "bg.subtle" }}
                     cursor={onSelectArchiveEntryDate ? "pointer" : "default"}
                     onClick={() => {
                       onSelectArchiveEntryDate?.(entry.entry_date);

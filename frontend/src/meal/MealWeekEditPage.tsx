@@ -62,8 +62,14 @@ export default function MealWeekEditPage() {
   const [searchParams] = useSearchParams();
   const weekStart = searchParams.get("week") ?? "";
   const navigate = useNavigate();
-  const { isAuthenticated, isLoading, sessionUser, getApiAccessToken, refreshSession } =
-    useAppSession();
+  const {
+    isAuthenticated,
+    isLoading,
+    sessionUser,
+    getApiAccessToken,
+    refreshSession,
+    resyncSessionSilently,
+  } = useAppSession();
   const [instances, setInstances] = useState<MealPlanInstance[]>([]);
   const [templates, setTemplates] = useState<MealPlanTemplate[]>([]);
   const [meals, setMeals] = useState<Meal[]>([]);
@@ -287,7 +293,7 @@ export default function MealWeekEditPage() {
                   setInstances((prev) => [...prev.filter((x) => x.id !== updated.id), updated]);
                   navigate(`/meal/plan/plans/${updated.id}`, { replace: true });
                   setErr(null);
-                  void refreshSession().catch(() => {});
+                  void resyncSessionSilently().catch(() => {});
                 } catch (e) {
                   setErr(e instanceof Error ? e.message : "Save week failed");
                   throw e;
@@ -314,7 +320,7 @@ export default function MealWeekEditPage() {
                   setInstances((prev) => [...prev.filter((x) => x.id !== updated.id), updated]);
                   navigate(`/meal/plan/plans/${updated.id}`, { replace: true });
                   setErr(null);
-                  void refreshSession().catch(() => {});
+                  void resyncSessionSilently().catch(() => {});
                 } catch (e) {
                   setErr(e instanceof Error ? e.message : "Save week failed");
                   throw e;

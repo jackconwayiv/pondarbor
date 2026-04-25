@@ -30,7 +30,8 @@ function UserAvatarBlock({
       <Stack
         boxSize={boxSize}
         borderRadius="full"
-        bg="gray.200"
+        bg="bg.muted"
+        color="fg.muted"
         alignItems="center"
         justifyContent="center"
         fontWeight="bold"
@@ -187,7 +188,7 @@ export default function SongadayListCard({
 
   const card = (
     <Box
-      bg="white"
+      bg="bg.panel"
       borderWidth="1px"
       borderColor={submissionEditOpen && isMine ? "teal.solid" : "border"}
       borderRadius="xl"

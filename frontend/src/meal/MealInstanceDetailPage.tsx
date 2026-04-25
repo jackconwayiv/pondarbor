@@ -25,8 +25,14 @@ export default function MealInstanceDetailPage() {
   const { id } = useParams();
   const iid = id ? Number(id) : Number.NaN;
   const navigate = useNavigate();
-  const { isAuthenticated, isLoading, sessionUser, getApiAccessToken, refreshSession } =
-    useAppSession();
+  const {
+    isAuthenticated,
+    isLoading,
+    sessionUser,
+    getApiAccessToken,
+    refreshSession,
+    resyncSessionSilently,
+  } = useAppSession();
   const [inst, setInst] = useState<MealPlanInstance | null>(null);
   const [meals, setMeals] = useState<Meal[]>([]);
   const [err, setErr] = useState<string | null>(null);
@@ -147,7 +153,7 @@ export default function MealInstanceDetailPage() {
                       const next = await patchInstanceGrid(tok, inst.id, payload);
                       setInst(next);
                       setErr(null);
-                      void refreshSession().catch(() => {});
+                      void resyncSessionSilently().catch(() => {});
                     } catch (e) {
                       setErr(e instanceof Error ? e.message : "Save failed");
                     } finally {
@@ -212,7 +218,7 @@ export default function MealInstanceDetailPage() {
                 setInst(next);
                 setErr(null);
                 setConfirmDelete(false);
-                void refreshSession().catch(() => {});
+                void resyncSessionSilently().catch(() => {});
               } catch (e) {
                 setErr(e instanceof Error ? e.message : "Update failed");
                 throw e;
@@ -229,7 +235,7 @@ export default function MealInstanceDetailPage() {
               setInst(next);
               setErr(null);
               setConfirmDelete(false);
-              void refreshSession().catch(() => {});
+              void resyncSessionSilently().catch(() => {});
             }}
           />
         </Card.Body>

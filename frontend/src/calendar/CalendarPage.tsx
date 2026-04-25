@@ -67,6 +67,7 @@ export default function CalendarPage() {
     sessionUser,
     getApiAccessToken,
     refreshSession,
+    resyncSessionSilently,
     error: sessionError,
   } = useAppSession();
 
@@ -208,7 +209,7 @@ export default function CalendarPage() {
     });
     setImportOpen(false);
     await Promise.all([loadSources(), loadEvents()]);
-    void refreshSession().catch(() => {});
+    void resyncSessionSilently().catch(() => {});
   };
 
   const handleRefreshSource = async (source: CalendarSource) => {
@@ -225,7 +226,7 @@ export default function CalendarPage() {
         message: `Synced ${source.display_name}: ${summary}.`,
       });
       await Promise.all([loadSources(), loadEvents()]);
-      void refreshSession().catch(() => {});
+      void resyncSessionSilently().catch(() => {});
     } catch (err: unknown) {
       setNotice({
         kind: "error",
@@ -483,7 +484,7 @@ export default function CalendarPage() {
                 {iCalSources.map((source) => (
                   <Box
                     key={source.id}
-                    bg="white"
+                    bg="bg.panel"
                     borderWidth="1px"
                     borderColor="border"
                     borderRadius="xl"

@@ -70,13 +70,10 @@ export function HomeInboxPopover() {
   }
 
   const totalInboxItems = homePrompts.length + homeNoticeItems.length;
-  /** No rows to show, after at least one sync — hide bell (chicken/egg: need fetch before we know counts). */
-  const hideBellEntirely =
-    inboxInitialSyncComplete &&
-    inboxStatus === "idle" &&
-    !inboxError &&
-    totalInboxItems === 0;
-  if (hideBellEntirely) {
+  /** Hidden until first sync; only show if there is activity to show or an error to read. */
+  const showBell =
+    inboxInitialSyncComplete && (Boolean(inboxError) || totalInboxItems > 0);
+  if (!showBell) {
     return null;
   }
 

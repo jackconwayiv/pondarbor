@@ -613,7 +613,7 @@ export default function ClosetPage() {
                   visibleDeclinedFiltered.map((item) => (
                     <Box
                       key={`declined-${item.id}`}
-                      bg="white"
+                      bg="bg.panel"
                       borderWidth="1px"
                       borderStyle="dashed"
                       borderColor="border"
@@ -729,7 +729,7 @@ export default function ClosetPage() {
                   visibleCustodyOfferedFiltered.map((item) => (
                     <Box
                       key={`custody-offer-${item.id}`}
-                      bg="white"
+                      bg="bg.panel"
                       borderWidth="1px"
                       borderStyle="dashed"
                       borderColor="border"
@@ -1007,7 +1007,7 @@ export default function ClosetPage() {
                 <>
                   {isAddItemOpen ? (
                     <Box
-                      bg="white"
+                      bg="bg.panel"
                       borderWidth="1px"
                       borderColor="border"
                       borderRadius="xl"
@@ -1058,13 +1058,13 @@ export default function ClosetPage() {
                           </PondButton>
                           <Text
                             fontSize={APP_TEXT_SIZES.helper}
-                            color="gray.600"
+                            color="fg.muted"
                           >
                             JPEG, PNG, or WebP. Resized in the browser before
                             upload.
                           </Text>
                           {newItemImageBusy ? (
-                            <HStack gap="2" align="center" color="gray.700">
+                            <HStack gap="2" align="center" color="fg">
                               <Spinner size="sm" colorPalette="teal" />
                               <Text fontSize={APP_TEXT_SIZES.helper}>
                                 Uploading photo and saving item…
@@ -1459,7 +1459,7 @@ export default function ClosetPage() {
                 {visibleImageRows.map((row) => (
                   <Card.Root
                     key={row.image_key}
-                    bg="white"
+                    bg="bg.panel"
                     borderWidth="1px"
                     borderColor="border"
                     borderRadius="xl"

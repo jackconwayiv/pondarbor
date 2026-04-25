@@ -1,6 +1,7 @@
 import { Box, Checkbox, HStack, Stack, Text } from "@chakra-ui/react";
 
 import { APP_TEXT_SIZES } from "../theme/typography";
+import { PanelEmptyState } from "../components/panelStatus";
 import {
   USER_COLOR_HEX,
   type UserColorKey,
@@ -120,9 +121,10 @@ export default function UserCheckboxList({
             );
           })}
           {approvedUsers.length === 0 ? (
-            <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-              No approved users yet.
-            </Text>
+            <PanelEmptyState
+              title="No approved users yet."
+              description="Once more friends are approved, you’ll be able to add them as sources."
+            />
           ) : null}
         </Stack>
       </Box>

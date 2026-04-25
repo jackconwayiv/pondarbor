@@ -298,6 +298,52 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     await bootstrapSession();
   }, [bootstrapSession]);
 
+  const resyncSessionSilently = useCallback(async () => {
+    if (!isAuthenticated || !auth0User || isLoggingOutRef.current) return;
+    setBootstrapError(null);
+    try {
+      let token: string;
+      try {
+        token = await getAccessTokenSilently({
+          authorizationParams: {
+            audience: import.meta.env.VITE_AUTH0_API_AUDIENCE,
+            scope: "openid profile email",
+          },
+        });
+      } catch (err: unknown) {
+        if (shouldRecoverTokenWithRedirect(err)) {
+          return;
+        }
+        throw err;
+      }
+
+      const response = await fetch(
+        `${apiBase()}/api/v1/users/sync-profile/`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          credentials: "omit",
+          body: JSON.stringify({}),
+        },
+      );
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Sync failed (${response.status}): ${text}`);
+      }
+
+      const data = (await response.json()) as SessionUser;
+      setAccessToken(token);
+      setSessionUser(data);
+      saveCachedSession(data, token);
+    } catch {
+      /* silent: avoid global loading; caller can log if needed */
+    }
+  }, [auth0User, getAccessTokenSilently, isAuthenticated]);
+
   const updateProfileLocally = useCallback(
     (patch: Partial<Profile>) => {
       setSessionUser((current) => {
@@ -429,6 +475,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       error: bootstrapError,
       getApiAccessToken,
       refreshSession,
+      resyncSessionSilently,
       updateProfileLocally,
       patchMyProfile,
       patchAchievementVisibility,
@@ -446,6 +493,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       bootstrapError,
       getApiAccessToken,
       refreshSession,
+      resyncSessionSilently,
       updateProfileLocally,
       patchMyProfile,
       patchAchievementVisibility,

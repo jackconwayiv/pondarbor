@@ -74,7 +74,7 @@ const ENTRY_CARD_PROPS = {
 function FriendProfileQuoteCard({ quote }: { quote: Quote }) {
   return (
     <Box
-      bg="white"
+      bg="bg.panel"
       borderWidth="1px"
       borderColor="border"
       borderRadius="xl"

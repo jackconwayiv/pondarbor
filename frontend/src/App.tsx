@@ -116,29 +116,19 @@ function HomeAppNavList({ isAuthenticated }: { isAuthenticated: boolean }) {
 function App() {
   const { loginWithRedirect } = useAuth0();
 
-  const {
-    isLoading,
-    isAuthenticated,
-    error,
-    sessionUser,
-    refreshSession,
-  } = useAppSession();
+  const { isLoading, isAuthenticated, error, sessionUser, resyncSessionSilently } =
+    useAppSession();
 
   useEffect(() => {
     if (!isAuthenticated || !sessionUser) return;
-    void refreshSession().catch(() => {
-      /* ignore initial refresh failure */
+    void resyncSessionSilently().catch(() => {
+      /* non-fatal; inbox + route bootstrap cover most freshness */
     });
-    const tid = window.setInterval(() => {
-      if (document.visibilityState !== "visible") return;
-      void refreshSession().catch(() => {
-        /* ignore periodic refresh failures */
-      });
-    }, 60000);
-    return () => {
-      window.clearInterval(tid);
-    };
-  }, [isAuthenticated, sessionUser?.user?.id, refreshSession]);
+    // Intention: run when auth or user id changes, not on every `sessionUser` object update (avoids
+    // a loop when resync returns fresh session). eslint wants `sessionUser` in deps; that would retrigger
+    // after every silent resync.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, sessionUser?.user?.id, resyncSessionSilently]);
 
   if (isLoading) {
     return <SessionLoadingCard />;
@@ -154,7 +144,7 @@ function App() {
           px={{ base: "2", md: "2" }}
         >
           <Stack gap="1" w="100%">
-            <Heading as="h1" size={{ base: "lg", md: "xl" }}>
+            <Heading as="h1" fontSize={APP_TEXT_SIZES.display} lineHeight="shorter">
               PondArbor
             </Heading>
           </Stack>

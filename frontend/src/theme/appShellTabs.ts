@@ -3,6 +3,8 @@
  * on the list row, teal fill when selected. Selected labels use a light color on
  * teal (not black / not `teal.contrast`).
  */
+import { APP_TRANSITIONS } from "./motion";
+
 export const APP_SHELL_TAB_SELECTED_FG = "white" as const;
 
 const TAB_ON_TEAL = {
@@ -18,6 +20,7 @@ export const APP_SHELL_TAB_TRIGGER_PROPS = {
   fontWeight: "semibold" as const,
   _selected: TAB_ON_TEAL,
   _hover: { bg: "bg.muted" },
+  transition: APP_TRANSITIONS.backgroundStandard,
 } as const;
 
 /**

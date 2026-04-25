@@ -2,6 +2,7 @@ import { Box, Stack, Text } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
 import { useAppSession } from "../auth/AppSessionContext";
 import {
+  PanelEmptyState,
   PanelListRowSkeleton,
   PanelMessageSlot,
 } from "../components/panelStatus";
@@ -22,7 +23,7 @@ const PAGE_SIZE = 10;
 function PublicQuoteCard({ quote }: { quote: Quote }) {
   return (
     <Box
-      bg="white"
+      bg="bg.panel"
       borderWidth="1px"
       borderColor="border"
       borderRadius="xl"
@@ -92,7 +93,10 @@ export default function PublicQuotesPage() {
         )}
       </Box>
       {!isLoading && !error && quotes.length === 0 ? (
-        <Text>No published quotes yet.</Text>
+        <PanelEmptyState
+          title="No published quotes yet."
+          description="When friends publish quotes, they’ll show up here."
+        />
       ) : null}
       {total > PAGE_SIZE && visibleQuotes.length === PAGE_SIZE ? (
         <Box

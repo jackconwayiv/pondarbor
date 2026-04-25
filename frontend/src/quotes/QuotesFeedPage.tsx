@@ -391,7 +391,7 @@ function QuoteCard({
 
   return (
     <Box
-      bg="white"
+      bg="bg.panel"
       borderWidth="1px"
       borderColor="border"
       borderRadius="xl"
@@ -718,6 +718,7 @@ export default function QuotesFeedPage() {
     sessionUser,
     getApiAccessToken,
     refreshSession,
+    resyncSessionSilently,
     error: sessionError,
   } = useAppSession();
   const [quotes, setQuotes] = useState<Quote[]>([]);
@@ -943,7 +944,7 @@ export default function QuotesFeedPage() {
             new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
         ),
       );
-      void refreshSession();
+      void resyncSessionSilently();
       setCurrentPage(0);
       // Avoid immediate protected follow-up fetches after save; use returned quote labels
       // to update suggestion chips optimistically.
@@ -996,7 +997,7 @@ export default function QuotesFeedPage() {
       }
       setBulkImportText("");
       setCurrentPage(0);
-      void refreshSession();
+      void resyncSessionSilently();
       setSuccess(
         `Imported ${result.created_count} quote${result.created_count === 1 ? "" : "s"}.`,
       );
@@ -1492,7 +1493,7 @@ export default function QuotesFeedPage() {
                     quote={quote}
                     getApiAccessToken={getApiAccessToken}
                     viewerUserId={sessionUser?.user.id ?? null}
-                    onSessionMayNeedRefresh={refreshSession}
+                    onSessionMayNeedRefresh={resyncSessionSilently}
                     onSuggestionsChanged={loadSuggestions}
                     tagSuggestions={tagSuggestions}
                     attributionSuggestions={attributionSuggestions}

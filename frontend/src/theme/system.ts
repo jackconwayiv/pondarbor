@@ -51,8 +51,14 @@ export const system = createSystem(
     theme: {
       tokens: {
         fonts: defineTokens.fonts({
-          body: { value: "Verdana, Geneva, sans-serif" },
-          heading: { value: "Verdana, Geneva, sans-serif" },
+          body: {
+            value:
+              '"Inter Variable", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+          },
+          heading: {
+            value:
+              '"Inter Variable", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+          },
         }),
         colors: defineTokens.colors({
           pond: {

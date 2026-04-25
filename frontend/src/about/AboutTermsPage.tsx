@@ -33,7 +33,7 @@ export default function AboutTermsPage() {
               >
                 Terms of Service
               </Heading>
-              <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600">
+              <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
                 Effective date: 8 April 2026
               </Text>
             </Box>

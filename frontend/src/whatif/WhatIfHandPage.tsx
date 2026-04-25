@@ -52,7 +52,8 @@ export default function WhatIfHandPage() {
   const navigate = useNavigate();
   const roomCode = code.toUpperCase();
   const { loginWithRedirect } = useAuth0();
-  const { sessionUser, isAuthenticated, getApiAccessToken, refreshSession } = useAppSession();
+  const { sessionUser, isAuthenticated, getApiAccessToken, resyncSessionSilently } =
+    useAppSession();
   const [state, setState] = useState<WhatIfSessionState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -72,8 +73,8 @@ export default function WhatIfHandPage() {
     if (!isAuthenticated || state?.status !== "ended") return;
     if (endedProfileRefreshRef.current) return;
     endedProfileRefreshRef.current = true;
-    void refreshSession();
-  }, [isAuthenticated, refreshSession, state?.status]);
+    void resyncSessionSilently();
+  }, [isAuthenticated, resyncSessionSilently, state?.status]);
 
   useEffect(() => {
     if (!isAuthenticated) {

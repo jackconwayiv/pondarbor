@@ -64,8 +64,14 @@ export default function MealMealDetailPage() {
   const { id } = useParams();
   const mid = id ? Number(id) : Number.NaN;
   const navigate = useNavigate();
-  const { isAuthenticated, isLoading, sessionUser, getApiAccessToken, refreshSession } =
-    useAppSession();
+  const {
+    isAuthenticated,
+    isLoading,
+    sessionUser,
+    getApiAccessToken,
+    refreshSession,
+    resyncSessionSilently,
+  } = useAppSession();
   const [addToPlanOpen, setAddToPlanOpen] = useState(false);
   const [addToPlanNotice, setAddToPlanNotice] = useState<string | null>(null);
   const [meal, setMeal] = useState<Meal | null>(null);
@@ -624,7 +630,7 @@ export default function MealMealDetailPage() {
         weekStartsOn={sessionUser.profile.meal_week_starts_on ?? 0}
         mealSlotLabels={sessionUser.profile.meal_slot_labels}
         getApiAccessToken={getApiAccessToken}
-        onPlanUpdated={() => void refreshSession().catch(() => {})}
+        onPlanUpdated={() => void resyncSessionSilently().catch(() => {})}
         onAddSuccess={setAddToPlanNotice}
       />
     </Stack>

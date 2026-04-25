@@ -1,15 +1,15 @@
 import {
   Box,
+  Collapsible,
   Flex,
   HStack,
   Input,
   SimpleGrid,
   Stack,
-  Tabs,
   Text,
   Textarea,
 } from "@chakra-ui/react";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate, Link as RouterLink, useLocation, useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
@@ -21,10 +21,6 @@ import {
 } from "../components/panelStatus";
 import { MealEditorBackdropDismiss } from "../meal/MealEditorBackdropDismiss";
 import PondButton from "../PondButton";
-import {
-  APP_SHELL_TAB_LIST_PROPS,
-  APP_SHELL_TAB_TRIGGER_PROPS,
-} from "../theme/appShellTabs";
 import {
   APP_TEXT_SIZES,
   MAPPED_CLOSET_TAB_STACK_GAP,
@@ -44,10 +40,10 @@ import {
   toggleHeart,
 } from "./api";
 import { parseSongPasteInput } from "./parseSongInput";
-import SongadayArchivePanel from "./SongadayArchivePanel";
 import SongadayCommentChatButton from "./SongadayCommentChatButton";
 import SongadayCommentsPanel from "./SongadayCommentsPanel";
 import SongadayListCard from "./SongadayListCard";
+import SongadayMonthArchive from "./SongadayMonthArchive";
 import SongadaySubmissionEditBlock from "./SongadaySubmissionEditBlock";
 import type {
   ParsedSongFields,
@@ -58,22 +54,14 @@ import type {
 
 const FIELD = { ...PANEL_FIELD_PROPS, ...PANEL_FORM_PLACEHOLDER_PROPS };
 
-const PROMPT_CARD_TEXT_ALIGN = { textAlign: "center" as const };
-
-const PROMPT_BODY_STYLE = {
-  whiteSpace: "pre-wrap" as const,
-  fontSize: "xl",
-  fontWeight: "normal" as const,
-  lineHeight: "short" as const,
-  fontFamily: '"Arial Black", "Arial Black", Arial, sans-serif',
-};
-
 const NO_PROMPT_CARD_PROPS = {
   ...PANEL_ENTRY_CARD_PROPS,
   bg: "nautical.solid",
   borderColor: "nautical.border",
   color: "nautical.contrast",
 };
+
+const PROMPT_CARD_MIN_H = "5.25rem" as const;
 
 function startOfDay(d: Date): Date {
   const x = new Date(d);
@@ -110,87 +98,6 @@ function canGoToNextDay(selected: Date): boolean {
 
 function canGoToPrevDay(selected: Date): boolean {
   return startOfDay(selected) > getMinSelectableDate();
-}
-
-/** Prev / prompt / Next + Today (right column). */
-function PromptDayNavChrome({
-  selectedDate,
-  onPrev,
-  onNext,
-  onJumpToToday,
-  children,
-}: {
-  selectedDate: Date;
-  onPrev: () => void;
-  onNext: () => void;
-  onJumpToToday: () => void;
-  children: ReactNode;
-}) {
-  const isViewingToday =
-    startOfDay(selectedDate).getTime() === getTodayStart().getTime();
-  return (
-    <Box
-      display="grid"
-      w="100%"
-      columnGap="3"
-      rowGap="0"
-      alignItems="stretch"
-      gridTemplateColumns="minmax(0, 1fr) minmax(0, 2.5fr) minmax(0, 1fr)"
-    >
-      <Box
-        display="flex"
-        flexDirection="column"
-        alignItems="flex-end"
-        justifyContent="flex-start"
-        minW={0}
-      >
-        <PondButton
-          type="button"
-          size="sm"
-          variant="outline"
-          colorPalette="nautical"
-          disabled={!canGoToPrevDay(selectedDate)}
-          onClick={onPrev}
-        >
-          ← Prev
-        </PondButton>
-      </Box>
-      <Box minW={0} w="100%">
-        {children}
-      </Box>
-      <Stack
-        h="100%"
-        minH={0}
-        minW={0}
-        w="100%"
-        alignItems="flex-start"
-        justify="space-between"
-        gap="0"
-        py="0.5"
-      >
-        <PondButton
-          type="button"
-          size="sm"
-          variant="outline"
-          colorPalette="nautical"
-          disabled={!canGoToNextDay(selectedDate)}
-          onClick={onNext}
-        >
-          Next →
-        </PondButton>
-        <PondButton
-          type="button"
-          size="sm"
-          variant="ghost"
-          colorPalette="nautical"
-          disabled={isViewingToday}
-          onClick={onJumpToToday}
-        >
-          Today
-        </PondButton>
-      </Stack>
-    </Box>
-  );
 }
 
 const emptyFields = (): ParsedSongFields & { notes: string } => ({
@@ -232,8 +139,6 @@ function hasMinimumSongFields(
   );
 }
 
-type SongadayMainTab = "prompt" | "archive" | "bulk";
-
 export default function SongadayPage() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -246,13 +151,15 @@ export default function SongadayPage() {
     sessionUser,
     getApiAccessToken,
     refreshSession,
+    resyncSessionSilently,
     error: sessionError,
   } = useAppSession();
 
   const [selectedDate, setSelectedDate] = useState(() =>
     startOfDay(new Date()),
   );
-  const [tab, setTab] = useState<SongadayMainTab>("prompt");
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   const [promptPayload, setPromptPayload] =
     useState<SongadayPromptPayload | null>(null);
@@ -297,19 +204,13 @@ export default function SongadayPage() {
   const isApproved = !!sessionUser?.user.is_approved;
 
   useEffect(() => {
-    if (!isStaff && tab === "bulk") {
-      setTab("prompt");
-    }
-  }, [isStaff, tab]);
-
-  useEffect(() => {
     if (!bulkNotice) return;
     const t = window.setTimeout(() => setBulkNotice(null), 7000);
     return () => window.clearTimeout(t);
   }, [bulkNotice]);
 
   useEffect(() => {
-    if (tab !== "bulk" || !isStaff) return;
+    if (!bulkOpen || !isStaff) return;
     let cancelled = false;
     void (async () => {
       setPromptCatalogLoading(true);
@@ -332,7 +233,7 @@ export default function SongadayPage() {
     return () => {
       cancelled = true;
     };
-  }, [tab, isStaff, getApiAccessToken]);
+  }, [bulkOpen, isStaff, getApiAccessToken]);
 
   const loadPrompt = useCallback(async () => {
     setPromptLoading(true);
@@ -490,7 +391,7 @@ export default function SongadayPage() {
       setShowResponseDetails(false);
       setExpandAllSongFields(false);
       await loadResponses();
-      await refreshSession();
+      await resyncSessionSilently();
     } catch (e) {
       setShowResponseDetails(true);
       setSubmitError(e instanceof Error ? e.message : "Could not save.");
@@ -504,7 +405,7 @@ export default function SongadayPage() {
     loadResponses,
     pasteBlob,
     promptPayload?.prompt,
-    refreshSession,
+    resyncSessionSilently,
     selectedDate,
   ]);
 
@@ -549,14 +450,14 @@ export default function SongadayPage() {
               : row,
           ),
         );
-        await refreshSession();
+        void resyncSessionSilently();
       } catch {
         /* ignore */
       } finally {
         setHeartBusyId(null);
       }
     },
-    [getApiAccessToken, refreshSession],
+    [getApiAccessToken, resyncSessionSilently],
   );
 
   const goPrev = useCallback(() => {
@@ -590,7 +491,6 @@ export default function SongadayPage() {
     const dt = startOfDay(new Date(y, m - 1, d));
     const max = getTodayStart();
     setSelectedDate(dt.getTime() > max.getTime() ? max : dt);
-    setTab("prompt");
     navigate("/songaday", { replace: true, state: {} });
   }, [songadayEntryDateFromNav, navigate]);
 
@@ -620,116 +520,109 @@ export default function SongadayPage() {
   const showFullSongFieldForm =
     expandAllSongFields || applicableFieldGroups.showAll;
 
-  return (
-    <>
-      <Tabs.Root
-        value={tab}
-        display="flex"
-        flexDirection="column"
-        flex="1"
-        minH="full"
-        lazyMount
-        unmountOnExit
-        variant="plain"
-        data-pa-tabs="songaday"
-        onValueChange={(details) => {
-          const v = details.value;
-          if (v === "prompt" || v === "archive" || v === "bulk") setTab(v);
-        }}
-      >
-        <Tabs.List {...APP_SHELL_TAB_LIST_PROPS}>
-          <Tabs.Trigger value="prompt" {...APP_SHELL_TAB_TRIGGER_PROPS}>
-            Prompt
-          </Tabs.Trigger>
-          <Tabs.Trigger value="archive" {...APP_SHELL_TAB_TRIGGER_PROPS}>
-            Archive
-          </Tabs.Trigger>
-          {isStaff ? (
-            <Tabs.Trigger value="bulk" {...APP_SHELL_TAB_TRIGGER_PROPS}>
-              Bulk import
-            </Tabs.Trigger>
-          ) : null}
-        </Tabs.List>
+  const isViewingToday =
+    startOfDay(selectedDate).getTime() === getTodayStart().getTime();
 
-        <Tabs.Content value="prompt" p={{ base: "2", md: "2" }}>
-          <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP}>
+  return (
+    <Stack
+      gap={{ base: "4", md: "4" }}
+      px={{ base: "2", md: "2" }}
+      pt={{ base: "2", md: "2" }}
+      pb="2"
+    >
+      <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP}>
+            <HStack w="100%" gap="2" align="center">
+              <PondButton
+                type="button"
+                size="sm"
+                variant="outline"
+                colorPalette="nautical"
+                px="2.5"
+                disabled={!canGoToPrevDay(selectedDate)}
+                onClick={goPrev}
+                aria-label="Previous day"
+              >
+                ←
+              </PondButton>
+              <Box flex="1" textAlign="center">
+                {!isViewingToday ? (
+                  <PondButton
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    colorPalette="nautical"
+                    px="3"
+                    onClick={goToToday}
+                  >
+                    Today
+                  </PondButton>
+                ) : null}
+              </Box>
+              <PondButton
+                type="button"
+                size="sm"
+                variant="outline"
+                colorPalette="nautical"
+                px="2.5"
+                disabled={!canGoToNextDay(selectedDate)}
+                onClick={goNext}
+                aria-label="Next day"
+              >
+                →
+              </PondButton>
+            </HStack>
+
             {promptLoading ? (
-              <PromptDayNavChrome
-                selectedDate={selectedDate}
-                onPrev={goPrev}
-                onNext={goNext}
-                onJumpToToday={goToToday}
-              >
-                <Box {...PANEL_ENTRY_CARD_PROPS} {...PROMPT_CARD_TEXT_ALIGN}>
-                  <PanelBlockSkeleton lines={3} showTitleLine />
-                </Box>
-              </PromptDayNavChrome>
+              <Box {...PANEL_ENTRY_CARD_PROPS} minH={PROMPT_CARD_MIN_H} display="flex" alignItems="center">
+                <PanelBlockSkeleton lines={1} showTitleLine />
+              </Box>
             ) : promptLoadError ? (
-              <PromptDayNavChrome
-                selectedDate={selectedDate}
-                onPrev={goPrev}
-                onNext={goNext}
-                onJumpToToday={goToToday}
-              >
-                <Box {...PANEL_ENTRY_CARD_PROPS} {...PROMPT_CARD_TEXT_ALIGN}>
-                  <Text
-                    fontSize={APP_TEXT_SIZES.helper}
-                    color="nautical.solid"
-                    fontWeight="medium"
-                    role="alert"
-                  >
-                    {promptLoadError}
-                  </Text>
-                </Box>
-              </PromptDayNavChrome>
+              <Box {...PANEL_ENTRY_CARD_PROPS} minH={PROMPT_CARD_MIN_H} display="flex" alignItems="center">
+                <Text
+                  fontSize={APP_TEXT_SIZES.helper}
+                  color="nautical.solid"
+                  fontWeight="medium"
+                  role="alert"
+                >
+                  {promptLoadError}
+                </Text>
+              </Box>
             ) : !hasPrompt ? (
-              <PromptDayNavChrome
-                selectedDate={selectedDate}
-                onPrev={goPrev}
-                onNext={goNext}
-                onJumpToToday={goToToday}
-              >
-                <Box {...NO_PROMPT_CARD_PROPS} {...PROMPT_CARD_TEXT_ALIGN}>
-                  <Text
-                    fontSize={APP_TEXT_SIZES.label}
-                    fontWeight="normal"
-                    mb="2"
-                  >
-                    {formatDateLabel(selectedDate)}
-                  </Text>
-                  <Text fontSize={APP_TEXT_SIZES.body} fontWeight="medium">
-                    There is no prompt for this day.{" "}
-                    <RouterLink to="/about">
-                      <Text
-                        as="span"
-                        color="nautical.contrast"
-                        fontWeight="bold"
-                        textDecoration="underline"
-                      >
-                        Please contact the site administrator.
-                      </Text>
-                    </RouterLink>
-                  </Text>
-                </Box>
-              </PromptDayNavChrome>
+              <Box {...NO_PROMPT_CARD_PROPS} minH={PROMPT_CARD_MIN_H} display="flex" alignItems="center">
+                <Text fontSize={APP_TEXT_SIZES.body} fontWeight="medium">
+                  There is no prompt for this day.{" "}
+                  <RouterLink to="/about">
+                    <Text
+                      as="span"
+                      color="nautical.contrast"
+                      fontWeight="bold"
+                      textDecoration="underline"
+                    >
+                      Please contact the site administrator.
+                    </Text>
+                  </RouterLink>
+                </Text>
+              </Box>
             ) : (
-              <PromptDayNavChrome
-                selectedDate={selectedDate}
-                onPrev={goPrev}
-                onNext={goNext}
-                onJumpToToday={goToToday}
+              <Box
+                bg="teal.solid"
+                color="teal.contrast"
+                borderRadius="xl"
+                p={{ base: "2.5", md: "2.5" }}
+                boxShadow="sm"
+                minH={PROMPT_CARD_MIN_H}
+                display="flex"
+                alignItems="center"
               >
-                <Box {...PANEL_ENTRY_CARD_PROPS} {...PROMPT_CARD_TEXT_ALIGN}>
-                  <Text
-                    fontSize={APP_TEXT_SIZES.label}
-                    fontWeight="normal"
-                    mb="2"
-                  >
+                <Stack gap="2" align="stretch">
+                  <Text fontWeight="bold" fontSize={APP_TEXT_SIZES.label}>
+                    Today’s Prompt: “{promptPayload?.prompt ?? ""}”
+                  </Text>
+                  <Text fontSize={APP_TEXT_SIZES.helper} opacity={0.88}>
                     {formatDateLabel(selectedDate)}
                   </Text>
-                  <Text {...PROMPT_BODY_STYLE}>{promptPayload?.prompt}</Text>
-                </Box>
-              </PromptDayNavChrome>
+                </Stack>
+              </Box>
             )}
 
             {!myEntry && !isApproved ? (
@@ -751,16 +644,12 @@ export default function SongadayPage() {
                     !target.closest('[role="tablist"]')
                   }
                 >
-                  <Stack gap="3">
+                  <Stack gap="2">
                     <Text fontWeight="bold" fontSize={APP_TEXT_SIZES.label}>
-                      Your response
-                    </Text>
-                    <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-                      Enter a song title or YouTube/Spotify URL, then submit. If
-                      anything needs fixing, we'll show the matching fields.
+                      Your Response:
                     </Text>
                     <Flex
-                      gap="3"
+                      gap="2"
                       w="100%"
                       align="flex-start"
                       direction={{ base: "column", md: "row" }}
@@ -771,22 +660,9 @@ export default function SongadayPage() {
                         rows={3}
                         value={pasteBlob}
                         onChange={(e) => setPasteBlob(e.target.value)}
-                        placeholder="Artist - Title or paste song URL"
+                        placeholder="Enter a song title or YouTube/Spotify URL, then submit."
                         {...FIELD}
                       />
-                      <PondButton
-                        type="button"
-                        size="md"
-                        colorPalette="teal"
-                        onClick={() => void onSubmit()}
-                        loading={submitBusy}
-                        disabled={formDisabled}
-                        flexShrink={0}
-                        alignSelf={{ base: "stretch", md: "flex-start" }}
-                        w={{ base: "100%", md: "auto" }}
-                      >
-                        Submit
-                      </PondButton>
                     </Flex>
 
                     <Stack gap="1">
@@ -802,6 +678,19 @@ export default function SongadayPage() {
                         {...FIELD}
                       />
                     </Stack>
+
+                    <PondButton
+                      type="button"
+                      size="md"
+                      colorPalette="teal"
+                      onClick={() => void onSubmit()}
+                      loading={submitBusy}
+                      disabled={formDisabled}
+                      alignSelf={{ base: "stretch", md: "flex-start" }}
+                      w={{ base: "100%", md: "auto" }}
+                    >
+                      Submit
+                    </PondButton>
 
                     {showResponseDetails ? (
                       <>
@@ -977,11 +866,7 @@ export default function SongadayPage() {
               >
                 {responsesLoadError}
               </Text>
-            ) : !myEntry && friendsResponsesOrdered.length === 0 ? (
-              <Text fontSize={APP_TEXT_SIZES.body} color="fg.muted">
-                No other responses for this day yet.
-              </Text>
-            ) : (
+            ) : !myEntry && friendsResponsesOrdered.length === 0 ? null : (
               <SimpleGrid
                 columns={{ base: 1, md: 2 }}
                 gap="3"
@@ -1007,7 +892,7 @@ export default function SongadayPage() {
                             getAccessToken={getApiAccessToken}
                             onSaved={(row) => {
                               setResponses((prev) => prev.map((r) => (r.id === row.id ? row : r)));
-                              void refreshSession();
+                              void resyncSessionSilently();
                             }}
                             onClose={() => setSubmissionEditOpen(false)}
                           />
@@ -1089,30 +974,48 @@ export default function SongadayPage() {
               </SimpleGrid>
             )}
           </Stack>
-        </Tabs.Content>
 
-        <Tabs.Content value="archive" p={{ base: "2", md: "2" }}>
-          <SongadayArchivePanel
-            variant="embedded"
-            onSelectArchiveEntryDate={(iso) => {
-              const parts = iso.split("-");
-              if (parts.length !== 3) return;
-              const y = Number(parts[0]);
-              const m = Number(parts[1]);
-              const d = Number(parts[2]);
-              if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d))
-                return;
-              const dt = startOfDay(new Date(y, m - 1, d));
-              const max = getTodayStart();
-              setSelectedDate(dt.getTime() > max.getTime() ? max : dt);
-              setTab("prompt");
-            }}
-          />
-        </Tabs.Content>
+      {/* Archive (collapsed) */}
+      {myEntry ? (
+        <Collapsible.Root open={archiveOpen} onOpenChange={(d) => setArchiveOpen(d.open)}>
+          <Collapsible.Trigger asChild>
+            <PondButton type="button" variant="outline" colorPalette="sky" w="100%">
+              {archiveOpen ? "Hide archive" : "Show archive"}
+            </PondButton>
+          </Collapsible.Trigger>
+          <Collapsible.Content>
+            <Box mt="3">
+              <SongadayMonthArchive
+                open={archiveOpen}
+                getApiAccessToken={getApiAccessToken}
+                onSelectEntryDate={(iso) => {
+                  const parts = iso.split("-");
+                  if (parts.length !== 3) return;
+                  const y = Number(parts[0]);
+                  const m = Number(parts[1]);
+                  const d = Number(parts[2]);
+                  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return;
+                  const dt = startOfDay(new Date(y, m - 1, d));
+                  const max = getTodayStart();
+                  setSelectedDate(dt.getTime() > max.getTime() ? max : dt);
+                  setArchiveOpen(false);
+                }}
+              />
+            </Box>
+          </Collapsible.Content>
+        </Collapsible.Root>
+      ) : null}
 
-        {isStaff ? (
-          <Tabs.Content value="bulk" p={{ base: "2", md: "2" }}>
-            <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP}>
+      {/* Staff-only bulk importer (collapsed, bottom) */}
+      {isStaff ? (
+        <Collapsible.Root open={bulkOpen} onOpenChange={(d) => setBulkOpen(d.open)}>
+          <Collapsible.Trigger asChild>
+            <PondButton type="button" variant="outline" colorPalette="nautical" w="100%">
+              {bulkOpen ? "Hide bulk importer" : "Staff: Bulk importer"}
+            </PondButton>
+          </Collapsible.Trigger>
+          <Collapsible.Content>
+            <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP} mt="3">
               <Box {...PANEL_ENTRY_CARD_PROPS}>
                 <Text fontWeight="bold" fontSize={APP_TEXT_SIZES.label} mb="2">
                   Bulk import prompts
@@ -1126,7 +1029,7 @@ export default function SongadayPage() {
                   Paste one line per prompt. Each line must start with month and
                   day, then the prompt text.
                 </Text>
-                <Box bg="white" {...PANEL_NESTED_BLOCK_PROPS}>
+                <Box bg="bg.subtle" {...PANEL_NESTED_BLOCK_PROPS}>
                   <Stack gap="2">
                     <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
                       Format: <code>MM DD Prompt text…</code>
@@ -1216,9 +1119,9 @@ export default function SongadayPage() {
                 </Box>
               )}
             </Stack>
-          </Tabs.Content>
-        ) : null}
-      </Tabs.Root>
-    </>
+          </Collapsible.Content>
+        </Collapsible.Root>
+      ) : null}
+    </Stack>
   );
 }

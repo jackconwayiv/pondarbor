@@ -1272,7 +1272,7 @@ export default function ClickerGamePage() {
     isLoading: sessionLoading,
     error: sessionError,
     getApiAccessToken,
-    refreshSession,
+    resyncSessionSilently,
   } = useAppSession();
 
   const [resources, setResources] = useState<ResourceBalances>({ energy: 0 });
@@ -1393,13 +1393,13 @@ export default function ClickerGamePage() {
       stateRef.current = fresh;
       setConfirmFinalReset(false);
       finalCompleteBeforeSaveRef.current = false;
-      void refreshSession();
+      void resyncSessionSilently();
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "Reset failed");
     } finally {
       setFinalResetBusy(false);
     }
-  }, [getApiAccessToken, refreshSession]);
+  }, [getApiAccessToken, resyncSessionSilently]);
 
   useEffect(() => {
     if (!finalTierComplete) {
@@ -1486,12 +1486,12 @@ export default function ClickerGamePage() {
               stateRef.current.owned_upgrades,
             );
             if (saveRes.pondclicker_badges_unlocked) {
-              void refreshSession();
+              void resyncSessionSilently();
             }
             if (nowFinalComplete && !finalCompleteBeforeSaveRef.current) {
               finalCompleteBeforeSaveRef.current = true;
               if (!saveRes.pondclicker_badges_unlocked) {
-                void refreshSession();
+                void resyncSessionSilently();
               }
             }
           } catch (e) {
@@ -1537,7 +1537,7 @@ export default function ClickerGamePage() {
     loadStatus,
     getApiAccessToken,
     saveAuthBlocked,
-    refreshSession,
+    resyncSessionSilently,
   ]);
 
   useEffect(() => {

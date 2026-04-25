@@ -31,7 +31,7 @@ export default function WhatIfPlayPage() {
   const navigate = useNavigate();
   const { code = "" } = useParams();
   const roomCode = code.toUpperCase();
-  const { isAuthenticated, refreshSession } = useAppSession();
+  const { isAuthenticated, resyncSessionSilently } = useAppSession();
   const [state, setState] = useState<WhatIfSessionState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hostBusy, setHostBusy] = useState(false);
@@ -47,8 +47,8 @@ export default function WhatIfPlayPage() {
     if (!isAuthenticated || state?.status !== "ended") return;
     if (endedProfileRefreshRef.current) return;
     endedProfileRefreshRef.current = true;
-    void refreshSession();
-  }, [isAuthenticated, refreshSession, state?.status]);
+    void resyncSessionSilently();
+  }, [isAuthenticated, resyncSessionSilently, state?.status]);
 
   useEffect(() => {
     if (state?.status !== "voting") return;

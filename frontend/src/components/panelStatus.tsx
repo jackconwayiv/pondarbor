@@ -175,6 +175,72 @@ export function PanelMessageSlot({
   );
 }
 
+type PanelStateBaseProps = {
+  title: string;
+  description?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  actionColorPalette?: Parameters<typeof PondButton>[0]["colorPalette"];
+};
+
+/** Standard empty-state block for panel/tray apps. */
+export function PanelEmptyState({
+  title,
+  description,
+  actionLabel,
+  onAction,
+  actionColorPalette = "teal",
+}: PanelStateBaseProps) {
+  return (
+    <Box {...PANEL_ENTRY_CARD_PROPS}>
+      <Stack gap="2" align="flex-start">
+        <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.body} color="fg">
+          {title}
+        </Text>
+        {description ? (
+          <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+            {description}
+          </Text>
+        ) : null}
+        {actionLabel && onAction ? (
+          <PondButton size="sm" colorPalette={actionColorPalette} onClick={onAction}>
+            {actionLabel}
+          </PondButton>
+        ) : null}
+      </Stack>
+    </Box>
+  );
+}
+
+/** Standard error-state block for panel/tray apps (non-fatal; keeps user in the tray). */
+export function PanelErrorState({
+  title,
+  description,
+  actionLabel,
+  onAction,
+  actionColorPalette = "sky",
+}: PanelStateBaseProps) {
+  return (
+    <Box {...PANEL_ENTRY_CARD_PROPS}>
+      <Stack gap="2" align="flex-start">
+        <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.body} color="fg">
+          {title}
+        </Text>
+        {description ? (
+          <Text fontSize={APP_TEXT_SIZES.helper} color="nautical.solid" fontWeight="medium" role="alert">
+            {description}
+          </Text>
+        ) : null}
+        {actionLabel && onAction ? (
+          <PondButton size="sm" colorPalette={actionColorPalette} onClick={onAction}>
+            {actionLabel}
+          </PondButton>
+        ) : null}
+      </Stack>
+    </Box>
+  );
+}
+
 /**
  * API session present in Auth0 but profile not ready — same tray/card as other app pages.
  */

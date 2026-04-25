@@ -193,8 +193,7 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
           <PanelMessageSlot
             error={requestError}
             success={requestSuccess}
-            reserve
-            minH="2.75rem"
+            reserve={Boolean(requestError || requestSuccess)}
           />
         </Stack>
       </Box>
@@ -210,7 +209,7 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
 
       {incoming.length > 0 || outgoing.length > 0 ? (
         <Box
-          bg="white"
+          bg="bg.panel"
           borderRadius="xl"
           borderWidth="1px"
           borderStyle="dashed"

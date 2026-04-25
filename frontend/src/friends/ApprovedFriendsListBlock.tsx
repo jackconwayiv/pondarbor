@@ -2,6 +2,7 @@ import { Avatar, Box, HStack, Stack, Text } from "@chakra-ui/react";
 import { Link } from "react-router";
 
 import PondButton from "../PondButton";
+import { PanelEmptyState } from "../components/panelStatus";
 import { APP_TEXT_SIZES } from "../theme/typography";
 import type { FriendUser } from "./api";
 
@@ -52,7 +53,10 @@ export function ApprovedFriendsListBlock({
     <Stack gap="3">
       <Text fontWeight="bold">{title}</Text>
       {friends.length === 0 ? (
-        <Text>No approved friends yet.</Text>
+        <PanelEmptyState
+          title="No approved friends yet."
+          description="When friends are approved and added, they’ll appear here."
+        />
       ) : null}
       {friends.map((row) => {
         const already =

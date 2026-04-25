@@ -47,7 +47,7 @@ export default function SongadayEntryDetailPage() {
     isLoading,
     sessionUser,
     getApiAccessToken,
-    refreshSession,
+    resyncSessionSilently,
     error: sessionError,
   } = useAppSession();
 
@@ -124,7 +124,7 @@ export default function SongadayEntryDetailPage() {
       const updated = await patchResponse(token, entry.id, patch);
       setEntry(updated);
       serverRef.current = updated;
-      await refreshSession();
+      await resyncSessionSilently();
       return "saved";
     } catch (e) {
       setNotice({
@@ -141,7 +141,7 @@ export default function SongadayEntryDetailPage() {
     isMine,
     notes,
     rawLabel,
-    refreshSession,
+    resyncSessionSilently,
     spotifyUrl,
     title,
     youtubeVideoId,
@@ -174,7 +174,7 @@ export default function SongadayEntryDetailPage() {
     try {
       const token = await getApiAccessToken();
       await deleteResponse(token, entry.id);
-      await refreshSession();
+      await resyncSessionSilently();
       navigate(returnTo);
     } catch (e) {
       setNotice({
@@ -182,7 +182,7 @@ export default function SongadayEntryDetailPage() {
         message: e instanceof Error ? e.message : "Could not delete entry.",
       });
     }
-  }, [entry, getApiAccessToken, navigate, refreshSession, returnTo]);
+  }, [entry, getApiAccessToken, navigate, resyncSessionSilently, returnTo]);
 
   const heartToggle = useCallback(async () => {
     if (!entry || isMine) return;
@@ -190,11 +190,11 @@ export default function SongadayEntryDetailPage() {
       const token = await getApiAccessToken();
       const r = await toggleHeart(token, entry.id);
       setEntry((prev) => (prev ? { ...prev, heart_count: r.heart_count, viewer_has_hearted: r.viewer_has_hearted } : prev));
-      await refreshSession();
+      void resyncSessionSilently();
     } catch {
       /* ignore */
     }
-  }, [entry, getApiAccessToken, isMine, refreshSession]);
+  }, [entry, getApiAccessToken, isMine, resyncSessionSilently]);
 
   const dateLabel = useMemo(() => {
     if (!entry?.entry_date) return "";
@@ -284,7 +284,7 @@ export default function SongadayEntryDetailPage() {
             </Box>
           </HStack>
 
-          <Box bg="gray.100" w="100%" {...PANEL_NESTED_BLOCK_PROPS}>
+          <Box bg="bg.subtle" w="100%" {...PANEL_NESTED_BLOCK_PROPS}>
             <Text fontSize={APP_TEXT_SIZES.meta} fontWeight="bold" mb="1">
               Prompt (snapshot)
             </Text>

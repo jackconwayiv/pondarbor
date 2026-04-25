@@ -90,13 +90,12 @@ export default function EventFormDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={title}
-      description="Mark yourself busy for a single day or a date range. Times aren't tracked — each day is either busy or free."
       size="lg"
     >
       <Stack gap="3">
         <Stack gap="1">
           <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
-            Title (optional, only you can see it)
+            Title
           </Text>
           <Input
             value={titleValue}

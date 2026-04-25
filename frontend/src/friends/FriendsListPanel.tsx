@@ -130,15 +130,6 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
               <Text as="span">Friends</Text>
             </HStack>
           </Heading>
-          <Text
-            fontSize={APP_TEXT_SIZES.body}
-            lineHeight="tall"
-            color="fg"
-            mb="3"
-          >
-            Send requests, manage pending connections, and browse friends
-            you&apos;re connected with.
-          </Text>
         </Box>
       ) : null}
       <Box {...PANEL_ENTRY_CARD_PROPS}>

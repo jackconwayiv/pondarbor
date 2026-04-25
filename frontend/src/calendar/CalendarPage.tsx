@@ -336,38 +336,12 @@ export default function CalendarPage() {
           py={{ base: "2", md: "2" }}
         >
           <Box {...APP_SHELL_TRAY_PROPS}>
-            <Stack
-              gap={{ base: "4", md: "4" }}
-              px={{ base: "2", md: "2" }}
-              pt={{ base: "2", md: "2" }}
-              pb="2"
-            >
-              <Box {...PANEL_ENTRY_CARD_PROPS}>
-                <Heading
-                  as="h1"
-                  size={{ base: "lg", md: "xl" }}
-                  fontWeight="bold"
-                  mb="2"
-                >
-                  <HStack as="span" display="inline-flex" gap="2" alignItems="center">
-                    <Text as="span" aria-hidden="true">
-                      🗓️
-                    </Text>
-                    <Text as="span">Calendar</Text>
-                  </HStack>
-                </Heading>
-                <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
-                  See which days you and others are busy. Tick the calendars you want to see
-                  on the left; click any day for the full list of busy people.
-                </Text>
-              </Box>
-            </Stack>
             <Tabs.List {...APP_SHELL_TAB_LIST_PROPS}>
               <Tabs.Trigger value="month" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                 Month
               </Tabs.Trigger>
               <Tabs.Trigger value="sources" {...APP_SHELL_TAB_TRIGGER_PROPS}>
-                Sources
+                Import
               </Tabs.Trigger>
             </Tabs.List>
 
@@ -470,9 +444,9 @@ export default function CalendarPage() {
               <Stack gap="3">
                 <HStack justify="space-between" align="center" flexWrap="wrap" gap="2">
                   <Text fontSize={APP_TEXT_SIZES.body}>
-                    Calendars you've imported. They refresh automatically every
-                    ~15 minutes. Only dates are pulled — titles and descriptions
-                    are never read or stored.
+                    Your imported calendars auto-refresh every
+                    ~15 minutes. Titles and descriptions
+                    are never read or stored, only dates.
                   </Text>
                   <PondButton
                     size="sm"

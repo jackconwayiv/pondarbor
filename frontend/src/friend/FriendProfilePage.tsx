@@ -423,14 +423,14 @@ export default function FriendProfilePage() {
                     fontWeight="bold"
                     mb="2"
                   >
-                    {summary ? friendProfileHeading(summary) : "Friend profile"}
+                    {summary ? friendProfileHeading(summary) : "Friend Profile"}
                   </Heading>
                   <Text
                     fontSize={APP_TEXT_SIZES.body}
                     lineHeight="tall"
                     color="fg"
                   >
-                    Connect as friends to see this user's profile, or respond to
+                    Connect as friends to see this user's profile or respond to
                     their friend request below.
                   </Text>
                   {summary?.email ? (
@@ -521,13 +521,15 @@ export default function FriendProfilePage() {
               ) : null}
             </Box>
 
-            <Box {...ENTRY_CARD_PROPS}>
-              {isLoading ? (
-                <PanelListRowSkeleton rows={2} />
-              ) : (
-                <PanelMessageSlot error={error} reserve minH="2.75rem" />
-              )}
-            </Box>
+            {isLoading || error ? (
+              <Box {...ENTRY_CARD_PROPS}>
+                {isLoading ? (
+                  <PanelListRowSkeleton rows={2} />
+                ) : (
+                  <PanelMessageSlot error={error} />
+                )}
+              </Box>
+            ) : null}
 
             {!isLoading &&
             !error &&
@@ -661,14 +663,15 @@ export default function FriendProfilePage() {
 
           {!isLoading && !error && summary?.can_view_full_profile ? (
             <>
-              <Box px={{ base: "2", md: "2" }} pb="2" w="100%">
-                <PanelMessageSlot
-                  error={actionError}
-                  success={actionSuccess}
-                  reserve
-                  minH="2.75rem"
-                />
-              </Box>
+              {((actionError && actionError.trim() !== "") ||
+                (actionSuccess && actionSuccess.trim() !== "")) ? (
+                <Box px={{ base: "2", md: "2" }} pb="2" w="100%">
+                  <PanelMessageSlot
+                    error={actionError}
+                    success={actionSuccess}
+                  />
+                </Box>
+              ) : null}
               <Tabs.Root
                 value={profileTab}
                 display="flex"

@@ -75,85 +75,72 @@ export default function AboutPage() {
       >
         <Box {...APP_SHELL_TRAY_PROPS}>
           <Stack
-            gap={{ base: "4", md: "4" }}
+            gap={{ base: "2", md: "2" }}
             px={{ base: "2", md: "2" }}
             pt={{ base: "2", md: "2" }}
             pb="2"
           >
             <Box {...PANEL_ENTRY_CARD_PROPS}>
-              <Heading
-                as="h1"
-                size={{ base: "lg", md: "xl" }}
-                fontWeight="bold"
-                mb="2"
-                letterSpacing="tight"
-              >
-                PondArbor
-              </Heading>
-              <Flex
-                flexDirection={isMobile ? "column" : "row"}
-                alignItems={isMobile ? "stretch" : "flex-start"}
-                gap={isMobile ? "4" : "0"}
-              >
-                <Image
-                  src={pondarborProfileSrc()}
-                  width="150px"
-                  maxW="100%"
-                  flexShrink={0}
-                  borderRadius="md"
-                />
-                <Stack gap="3" flex="1" minW={0}>
-                  <Text
-                    fontSize={APP_TEXT_SIZES.body}
-                    lineHeight="tall"
-                    color="fg"
-                  >
-                    PondArbor is a hobby project developed by Pond Arbor
-                    Workshop to collect various app ideas together in one place.
-                    It is shared with friends and family as an opportunity to
-                    interact through quotes, a community closet, PondClicker,
-                    WhatIf, and other features.
-                  </Text>
-                  <HStack gap="2" flexWrap="wrap" align="center">
-                    <Link
-                      asChild
-                      color="fg.muted"
-                      fontSize={APP_TEXT_SIZES.helper}
-                      fontWeight="medium"
-                      textDecoration="underline"
-                      textUnderlineOffset="0.12em"
-                      _hover={{ color: "sky.solid", textDecoration: "underline" }}
-                    >
-                      <RouterLink to="/about/privacy">Privacy Policy</RouterLink>
-                    </Link>
-                    <Text
-                      as="span"
-                      userSelect="none"
-                      color="fg.muted"
-                      fontSize={APP_TEXT_SIZES.helper}
-                    >
-                      ·
-                    </Text>
-                    <Link
-                      asChild
-                      color="fg.muted"
-                      fontSize={APP_TEXT_SIZES.helper}
-                      fontWeight="medium"
-                      textDecoration="underline"
-                      textUnderlineOffset="0.12em"
-                      _hover={{ color: "sky.solid", textDecoration: "underline" }}
-                    >
-                      <RouterLink to="/about/terms">Terms of Service</RouterLink>
-                    </Link>
-                  </HStack>
-                </Stack>
-              </Flex>
+            <Flex
+  flexDirection={isMobile ? "column" : "row"}
+  alignItems={isMobile ? "stretch" : "flex-start"}
+  gap={isMobile ? "2" : "0"}
+>
+  <HStack align="flex-start" gap="3">
+    <Image
+      src={pondarborProfileSrc()}
+      width="50px"
+      borderRadius="md"
+      flexShrink={0}
+    />
+
+    <Stack minW={0} gap="2">
+      <Text fontSize={APP_TEXT_SIZES.body} color="fg">
+        PondArbor is a hobby project developed by Pond Arbor Workshop (Jack Conway) to collect
+        various app ideas together in one place. I'm sharing it with friends and
+        family as an opportunity to interact through these earth-shattering apps.
+      </Text>
+
+      <HStack gap="2" flexWrap="wrap" align="center">
+        <Link
+          asChild
+          color="fg.muted"
+          fontSize={APP_TEXT_SIZES.helper}
+          fontWeight="medium"
+          textDecoration="underline"
+          textUnderlineOffset="0.12em"
+          _hover={{ color: "sky.solid", textDecoration: "underline" }}
+        >
+          <RouterLink to="/about/privacy">Privacy Policy</RouterLink>
+        </Link>
+
+        <Text
+          as="span"
+          userSelect="none"
+          color="fg.muted"
+          fontSize={APP_TEXT_SIZES.helper}
+        >
+          ·
+        </Text>
+
+        <Link
+          asChild
+          color="fg.muted"
+          fontSize={APP_TEXT_SIZES.helper}
+          fontWeight="medium"
+          textDecoration="underline"
+          textUnderlineOffset="0.12em"
+          _hover={{ color: "sky.solid", textDecoration: "underline" }}
+        >
+          <RouterLink to="/about/terms">Terms of Service</RouterLink>
+        </Link>
+      </HStack>
+    </Stack>
+  </HStack>
+</Flex>
             </Box>
 
             <Box {...PANEL_ENTRY_CARD_PROPS}>
-              <Heading as="h2" size="md" fontWeight="semibold" mb="3">
-                Contact us
-              </Heading>
               {!isAuthenticated ? (
                 <Stack gap="3" align="flex-start">
                   <Text fontSize={APP_TEXT_SIZES.body} color="fg">
@@ -182,7 +169,7 @@ export default function AboutPage() {
                   here.
                 </Text>
               ) : (
-                <Stack gap="3" align="stretch" maxW="lg">
+                <Stack gap="2" align="stretch" maxW="lg">
                   <Box display="none" aria-hidden="true">
                     <input
                       name="website"
@@ -195,7 +182,7 @@ export default function AboutPage() {
                   </Box>
                   <Stack gap="1.5">
                     <Text fontSize={APP_TEXT_SIZES.label} fontWeight="medium">
-                      Message:
+                      Contact Us:
                     </Text>
                     <Textarea
                       value={message}

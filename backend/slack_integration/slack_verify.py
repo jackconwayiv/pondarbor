@@ -19,10 +19,9 @@ def verify_slack_request_signature(*, body: bytes, timestamp: str | None, signat
     # Compute HMAC over the exact raw request body bytes.
     # Slack spec: basestring is "v0:{timestamp}:{raw_body}".
     basestring = b"v0:" + str(timestamp).encode("utf-8") + b":" + body
-    digest = hmac.new(
-        secret.encode("utf-8"),
-        basestring,
-        hashlib.sha256,
-    ).hexdigest()
-    expected = f"v0:{digest}"
-    return hmac.compare_digest(expected, signature)
+    digest = hmac.new(secret.encode("utf-8"), basestring, hashlib.sha256).hexdigest()
+    # Slack sends signatures like "v0=<hex>".
+    expected = f"v0={digest}"
+    sig = str(signature).strip()
+    # Be lenient for any old tokens/logs that used ":" formatting.
+    return hmac.compare_digest(expected, sig) or hmac.compare_digest(f"v0:{digest}", sig)

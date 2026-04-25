@@ -9,12 +9,8 @@ from slack_integration.slack_verify import verify_slack_request_signature
 
 
 def _slack_sig(*, secret: str, timestamp: str, body: bytes) -> str:
-    basestring = f"v0:{timestamp}:{body.decode('utf-8')}"
-    digest = hmac.new(
-        secret.encode("utf-8"),
-        basestring.encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
+    basestring = b"v0:" + timestamp.encode("utf-8") + b":" + body
+    digest = hmac.new(secret.encode("utf-8"), basestring, hashlib.sha256).hexdigest()
     return f"v0:{digest}"
 
 

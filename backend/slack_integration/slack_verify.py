@@ -10,15 +10,18 @@ def verify_slack_request_signature(*, body: bytes, timestamp: str | None, signat
     if not secret or not timestamp or not signature:
         return False
     try:
-        ts = int(timestamp)
+        ts = int(str(timestamp).strip())
     except (TypeError, ValueError):
         return False
-    if abs(int(time.time()) - ts) > 60 * 5:
+    # Slack recommends a 5 minute window; use 10 minutes to be resilient to minor clock skew.
+    if abs(int(time.time()) - ts) > 60 * 10:
         return False
-    basestring = f"v0:{timestamp}:{body.decode('utf-8')}"
+    # Compute HMAC over the exact raw request body bytes.
+    # Slack spec: basestring is "v0:{timestamp}:{raw_body}".
+    basestring = b"v0:" + str(timestamp).encode("utf-8") + b":" + body
     digest = hmac.new(
         secret.encode("utf-8"),
-        basestring.encode("utf-8"),
+        basestring,
         hashlib.sha256,
     ).hexdigest()
     expected = f"v0:{digest}"

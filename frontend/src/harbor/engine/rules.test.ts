@@ -179,7 +179,7 @@ function emptyCatalog(): HarborCatalog {
 
 function freshState(): { state: HarborState; catalog: HarborCatalog } {
   const catalog = emptyCatalog();
-  const state = createDefaultHarborState(1, catalog);
+  const state = createDefaultHarborState(2, catalog);
   return { state, catalog };
 }
 
@@ -191,6 +191,7 @@ describe("Harbormaster engine", () => {
     expect(state.resources.food).toBeGreaterThan(0);
     expect(state.ships.length).toBeGreaterThan(0);
     expect(state.buildings.find((b) => b.slug === "warehouse")).toBeTruthy();
+    expect(Array.isArray(state.queuedDepartures)).toBe(true);
   });
 
   it("spendCommand throws when not enough", () => {
@@ -219,6 +220,8 @@ describe("Harbormaster engine", () => {
     expect(result.state.activeOperations.length).toBe(0);
     expect(result.state.resources.wealth).toBeGreaterThan(state.resources.wealth);
     expect(result.state.command).toBeGreaterThan(0);
+    expect(Array.isArray(result.dailyReportLines)).toBe(true);
+    expect(Array.isArray(result.businessReportLines)).toBe(true);
   });
 
   it("acceptArrival applies offer/request/metrics", () => {
@@ -301,10 +304,10 @@ describe("Harbormaster engine", () => {
     expect(b.activePolicies).toEqual(["open-customs"]);
   });
 
-  it("reassignShipBerth moves a ship and costs 1 command", () => {
-    const { state } = freshState();
+  it("reassignShipBerth moves a ship and costs 1 command (stage 2+)", () => {
+    const { state, catalog } = freshState();
     const ship = state.ships[0]!;
-    const next = reassignShipBerth(state, ship.id, 0);
+    const next = reassignShipBerth(state, catalog, ship.id, 0);
     const moved = next.ships.find((s) => s.id === ship.id)!;
     expect(moved.status).toBe("berthed");
     expect(moved.berthIndex).toBe(0);

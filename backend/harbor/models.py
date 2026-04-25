@@ -1,7 +1,7 @@
 """Models for Harbormaster.
 
 The split is intentional:
-  * `HarborGameSave` is the per-user state blob (one row per player).
+  * `HarborGame` is a named save slot per user (many rows per player).
   * The eight `Harbor*Def` tables are the staff-editable game catalog.
 
 The catalog tables share a common skeleton (slug, name, description,
@@ -16,20 +16,15 @@ from django.conf import settings
 from django.db import models
 
 
-class HarborGameSave(models.Model):
-    """Client-authoritative game blob; server persists and scopes by user.
+class HarborGame(models.Model):
+    """Named harbor save; client-authoritative `state` JSON (frontend normalizer)."""
 
-    Mirrors the PondClicker save model. The `state` is a JSON dict whose shape
-    is owned by the frontend `harbor/api.ts` normalizer. `catalog_version` is
-    the version number observed when the save was last written; the client
-    refetches the catalog when the server's current version is newer.
-    """
-
-    user = models.OneToOneField(
+    user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name="harbor_game_save",
+        related_name="harbor_games",
     )
+    name = models.CharField(max_length=80)
     state = models.JSONField(default=dict)
     schema_version = models.PositiveIntegerField(default=1)
     catalog_version = models.PositiveIntegerField(default=0)
@@ -38,11 +33,12 @@ class HarborGameSave(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = "Harbor game save"
-        verbose_name_plural = "Harbor game saves"
+        verbose_name = "Harbor game"
+        verbose_name_plural = "Harbor games"
+        ordering = ["-updated_at", "id"]
 
     def __str__(self) -> str:
-        return f"HarborSave({self.user_id})"
+        return f"HarborGame({self.user_id}, {self.name!r})"
 
 
 class HarborCatalogVersion(models.Model):

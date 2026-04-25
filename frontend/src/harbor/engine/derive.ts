@@ -40,6 +40,36 @@ export function getBuildingLevel(state: HarborState, slug: string): number {
   return row?.level ?? 0;
 }
 
+/** Command reserved by queued Age 1 departures (spent at end of day). */
+export function deriveCommandReserved(state: HarborState): number {
+  return state.queuedDepartures.reduce((s, q) => s + q.commandCost, 0);
+}
+
+/** Extra berth slots from buildings (e.g. Second Berth). */
+export function deriveBerthCapBonus(
+  state: HarborState,
+  catalog: HarborCatalog,
+): number {
+  let bonus = 0;
+  for (const owned of state.buildings) {
+    const def = catalog.buildings.find((b) => b.slug === owned.slug);
+    if (!def) continue;
+    const effects = def.extra.level_effects ?? [];
+    if (owned.level <= 0) continue;
+    const top = effects[Math.min(owned.level, effects.length) - 1];
+    bonus += top?.berth_cap_delta ?? 0;
+  }
+  return bonus;
+}
+
+/** Effective berth slots (state cap + building bonuses, max 9). */
+export function deriveEffectiveBerthCap(
+  state: HarborState,
+  catalog: HarborCatalog,
+): number {
+  return Math.min(9, state.berthCap + deriveBerthCapBonus(state, catalog));
+}
+
 /** Sum of `level_effects[i].command` across owned levels. */
 export function deriveBuildingCommandBonus(
   state: HarborState,
@@ -226,6 +256,27 @@ export function getShipDef(
   slug: string,
 ): CatalogDef<ShipDefExtra> | null {
   return catalog.ships.find((s) => s.slug === slug) ?? null;
+}
+
+/** Age 1 voyage yield for a ship including attachment bonuses. */
+export function computeAge1VoyagePromisedRewards(
+  state: HarborState,
+  catalog: HarborCatalog,
+  shipId: string,
+): Partial<Record<Resource, number>> {
+  const ship = state.ships.find((s) => s.id === shipId);
+  if (!ship) return {};
+  const def = catalog.ships.find((s) => s.slug === ship.defSlug);
+  const out: Partial<Record<Resource, number>> = { ...(def?.extra.voyage_yield ?? {}) };
+  for (const slug of ship.attachments ?? []) {
+    const up = catalog.ship_upgrades?.find((u) => u.slug === slug);
+    if (!up) continue;
+    for (const [res, val] of Object.entries(up.extra.yield_bonus ?? {})) {
+      const r = res as Resource;
+      out[r] = (out[r] ?? 0) + (val ?? 0);
+    }
+  }
+  return out;
 }
 
 /** Find ship by id. */

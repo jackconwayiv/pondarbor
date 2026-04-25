@@ -24,6 +24,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAppSession } from "../../auth/AppSessionContext";
 import PondButton from "../../PondButton";
 import { fetchHarborCatalog } from "../api";
+import { deriveEffectiveBerthCap } from "../engine/derive";
 import {
   EngineError,
   acceptArrival,
@@ -115,6 +116,9 @@ export default function HarborStaffPlaytestPage() {
       }
       for (const ev of result.newEvents) newLines.push(`event: ${ev.name}`);
       for (const ar of result.newArrivals) newLines.push(`arrival: ${ar.name}`);
+      for (const line of result.dailyReportLines) newLines.push(`report: ${line}`);
+      for (const line of result.businessReportLines)
+        newLines.push(`business: ${line}`);
       setEventLog((prev) => [...newLines, ...prev].slice(0, 200));
       setError(null);
     } catch (e) {
@@ -263,13 +267,15 @@ export default function HarborStaffPlaytestPage() {
                         onClick={() =>
                           run(
                             `reassign ${def?.name ?? ship.defSlug} → reserve`,
-                            (s) => reassignShipBerth(s, ship.id, null),
+                            (s, c) => reassignShipBerth(s, c, ship.id, null),
                           )
                         }
                       >
                         → reserve
                       </PondButton>
-                      {Array.from({ length: stage.berthCap }).map((_, idx) => (
+                      {Array.from({
+                        length: deriveEffectiveBerthCap(state, catalog),
+                      }).map((_, idx) => (
                         <PondButton
                           key={idx}
                           size="xs"
@@ -277,7 +283,7 @@ export default function HarborStaffPlaytestPage() {
                           onClick={() =>
                             run(
                               `reassign ${def?.name ?? ship.defSlug} → berth ${idx + 1}`,
-                              (s) => reassignShipBerth(s, ship.id, idx),
+                              (s, c) => reassignShipBerth(s, c, ship.id, idx),
                             )
                           }
                         >

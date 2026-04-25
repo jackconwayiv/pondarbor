@@ -81,6 +81,7 @@ const MealInstanceDetailPage = lazy(
 );
 const MealGroceryPage = lazy(() => import("./meal/MealGroceryPage"));
 const GamesMenu = lazy(() => import("./GamesMenu"));
+const HarborLobbyPage = lazy(() => import("./harbor/HarborLobbyPage"));
 const HarborRoute = lazy(() => import("./harbor/HarborRoute"));
 const HarborStaffLayout = lazy(
   () => import("./harbor/staff/HarborStaffLayout"),
@@ -120,6 +121,10 @@ export const router = sentryCreateBrowserRouter([
       },
       {
         path: "harbor",
+        element: lazyRouteElement(<HarborLobbyPage />),
+      },
+      {
+        path: "harbor/play/:gameId",
         element: lazyRouteElement(<HarborRoute />),
       },
       {

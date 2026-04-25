@@ -20,6 +20,7 @@ import type {
   Metric,
   OperationDefExtra,
   PolicyDefExtra,
+  QueuedDeparture,
   Resource,
   ShipDefExtra,
   ShipInstance,
@@ -30,6 +31,8 @@ import type {
 export const SCHEMA_VERSION = 1;
 
 export type HarborStateResponse = {
+  id?: number;
+  name?: string;
   state: HarborState | null;
   schema_version: number;
   catalog_version: number;
@@ -37,6 +40,20 @@ export type HarborStateResponse = {
   created_at: string | null;
   updated_at: string | null;
   last_played_at: string | null;
+  server_time: string;
+};
+
+export type HarborGameSummary = {
+  id: number;
+  name: string;
+  created_at: string;
+  updated_at: string;
+  last_played_at: string | null;
+};
+
+export type HarborGamesListResponse = {
+  games: HarborGameSummary[];
+  current_catalog_version: number;
   server_time: string;
 };
 
@@ -223,13 +240,17 @@ export function normalizeHarborState(
       if (catalog && !knownShipSlugs.has(defSlug)) continue;
       const status = (s.status === "berthed" ||
       s.status === "voyage" ||
-      s.status === "repair"
+      s.status === "repair" ||
+      s.status === "in_port"
         ? s.status
         : "reserve") as ShipInstance["status"];
       const berthIndex =
         typeof s.berthIndex === "number" && s.berthIndex >= 0
           ? Math.floor(s.berthIndex)
           : null;
+      const attachments = Array.isArray(s.attachments)
+        ? s.attachments.filter((x): x is string => typeof x === "string")
+        : [];
       ships.push({
         id,
         defSlug,
@@ -237,6 +258,11 @@ export function normalizeHarborState(
         status,
         berthIndex: status === "berthed" ? berthIndex : null,
         activeOpId: typeof s.activeOpId === "string" ? s.activeOpId : null,
+        pendingCargo:
+          s.pendingCargo && typeof s.pendingCargo === "object"
+            ? asPartialResources(s.pendingCargo)
+            : null,
+        attachments,
       });
     }
   }
@@ -263,7 +289,13 @@ export function normalizeHarborState(
       const id = asString(op.id);
       const defSlug = asString(op.defSlug);
       if (!id || !defSlug) continue;
-      if (catalog && !knownOpSlugs.has(defSlug)) continue;
+      if (
+        catalog &&
+        !knownOpSlugs.has(defSlug) &&
+        !defSlug.startsWith("age1-")
+      ) {
+        continue;
+      }
       const kind = asString(op.kind, "voyage") as HarborState["activeOperations"][number]["kind"];
       activeOperations.push({
         id,
@@ -276,6 +308,7 @@ export function normalizeHarborState(
         resolveRisk: Math.max(0, Math.min(1, num(op.resolveRisk, 0))),
         grantsShipSlug: typeof op.grantsShipSlug === "string" ? op.grantsShipSlug : null,
         kind,
+        deferRewardToBerth: op.deferRewardToBerth === true ? true : null,
       });
     }
   }
@@ -382,6 +415,24 @@ export function normalizeHarborState(
 
   const idCounter = Math.max(0, Math.floor(num(o.idCounter, 0)));
 
+  const queuedDepartures: QueuedDeparture[] = [];
+  if (Array.isArray(o.queuedDepartures)) {
+    for (const raw of o.queuedDepartures) {
+      if (!raw || typeof raw !== "object") continue;
+      const q = raw as Record<string, unknown>;
+      const id = asString(q.id);
+      const shipId = asString(q.shipId);
+      if (!id || !shipId) continue;
+      queuedDepartures.push({
+        id,
+        shipId,
+        commandCost: Math.max(0, Math.floor(num(q.commandCost, 1))),
+        promisedRewards: asPartialResources(q.promisedRewards),
+        voyageNights: Math.max(1, Math.floor(num(q.voyageNights, 1))),
+      });
+    }
+  }
+
   return {
     schemaVersion: SCHEMA_VERSION,
     catalogVersion,
@@ -396,6 +447,7 @@ export function normalizeHarborState(
     ships,
     buildings,
     activeOperations,
+    queuedDepartures,
     pendingArrivals,
     activeEvents,
     scheduledConsequences,
@@ -446,6 +498,7 @@ function blankHarborState(stageId: StageId, catalogVersion: number): HarborState
     ships: [],
     buildings: [],
     activeOperations: [],
+    queuedDepartures: [],
     pendingArrivals: [],
     activeEvents: [],
     scheduledConsequences: [],
@@ -471,21 +524,66 @@ export async function fetchHarborCatalog(
   return jsonOrThrow<HarborCatalog>(response, "load catalog");
 }
 
-export async function fetchHarborState(
+export async function listHarborGames(
   accessToken: string | null,
-): Promise<HarborStateResponse> {
-  const response = await fetch(`${apiBase()}/api/v1/harbor/state/`, {
+): Promise<HarborGamesListResponse> {
+  const response = await fetch(`${apiBase()}/api/v1/harbor/games/`, {
     method: "GET",
     headers: authHeaders(accessToken),
     credentials: "omit",
   });
+  return jsonOrThrow<HarborGamesListResponse>(response, "list harbors");
+}
+
+export async function createHarborGame(
+  accessToken: string | null,
+  name: string,
+): Promise<{ id: number; name: string }> {
+  const response = await fetch(`${apiBase()}/api/v1/harbor/games/`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify({ name }),
+  });
+  return jsonOrThrow<{ id: number; name: string }>(response, "create harbor");
+}
+
+export async function deleteHarborGame(
+  accessToken: string | null,
+  gameId: number,
+): Promise<void> {
+  const response = await fetch(`${apiBase()}/api/v1/harbor/games/${gameId}/`, {
+    method: "DELETE",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok && response.status !== 204) {
+    const text = await response.text();
+    throw new Error(`Failed to delete harbor (${response.status}): ${text}`);
+  }
+}
+
+export async function fetchHarborGameState(
+  accessToken: string | null,
+  gameId: number,
+): Promise<HarborStateResponse> {
+  const response = await fetch(
+    `${apiBase()}/api/v1/harbor/games/${gameId}/state/`,
+    {
+      method: "GET",
+      headers: authHeaders(accessToken),
+      credentials: "omit",
+    },
+  );
   const raw = await jsonOrThrow<{
+    id: number;
+    name: string;
     state: unknown;
     schema_version: number;
     catalog_version: number;
     current_catalog_version: number;
-    created_at: string | null;
-    updated_at: string | null;
+    created_at: string;
+    updated_at: string;
     last_played_at: string | null;
     server_time: string;
   }>(response, "load harbor state");
@@ -495,20 +593,24 @@ export async function fetchHarborState(
   };
 }
 
-export async function saveHarborState(
+export async function saveHarborGameState(
   accessToken: string | null,
+  gameId: number,
   state: HarborState,
 ): Promise<HarborStateResponse> {
-  const response = await fetch(`${apiBase()}/api/v1/harbor/state/`, {
-    method: "POST",
-    headers: authHeaders(accessToken),
-    credentials: "omit",
-    body: JSON.stringify({
-      state,
-      schema_version: SCHEMA_VERSION,
-      catalog_version: state.catalogVersion,
-    }),
-  });
+  const response = await fetch(
+    `${apiBase()}/api/v1/harbor/games/${gameId}/state/`,
+    {
+      method: "POST",
+      headers: authHeaders(accessToken),
+      credentials: "omit",
+      body: JSON.stringify({
+        state,
+        schema_version: SCHEMA_VERSION,
+        catalog_version: state.catalogVersion,
+      }),
+    },
+  );
   return jsonOrThrow<HarborStateResponse>(response, "save harbor state");
 }
 

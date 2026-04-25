@@ -39,6 +39,7 @@ const CATALOG: HarborCatalog = {
   consequences: [],
   policies: [],
   doctrines: [],
+  ship_upgrades: [],
 };
 
 describe("normalizeHarborState", () => {
@@ -46,6 +47,7 @@ describe("normalizeHarborState", () => {
     const s = normalizeHarborState(null, CATALOG, 1);
     expect(s.day).toBe(1);
     expect(s.ships).toEqual([]);
+    expect(s.queuedDepartures).toEqual([]);
   });
 
   it("drops ship references whose defSlug is not in catalog", () => {

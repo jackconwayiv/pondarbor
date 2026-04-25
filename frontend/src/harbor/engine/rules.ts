@@ -9,12 +9,17 @@
 
 import { getStageDef } from "../stages";
 import {
-  deriveResourceCaps,
+  computeAge1VoyagePromisedRewards,
   dailyMetricDrift,
   dailyResourceIncome,
+  deriveBuildingCommandBonus,
+  deriveCommandReserved,
+  deriveEffectiveBerthCap,
+  deriveResourceCaps,
   effectiveArrivalWeight,
   eligibleArrivalDefs,
   eligibleEventDefs,
+  getBuildingLevel,
   isOperationAvailable,
   metricPressureBand,
 } from "./derive";
@@ -172,6 +177,7 @@ export function startOperation(
     if (!ship) throw new EngineError("Ship not found.");
     if (ship.status === "voyage") throw new EngineError("Ship is already at sea.");
     if (ship.status === "repair") throw new EngineError("Ship is in the shipyard.");
+    if (ship.status === "in_port") throw new EngineError("Berth returning cargo first.");
     assignedShipId = ship.id;
   }
 
@@ -214,35 +220,39 @@ export function startOperation(
   return pushLog(next, { kind: "info", text: `Started ${def.name}.` });
 }
 
-/** Move a ship between berth slots / reserve. Costs 1 command. */
+/**
+ * Move a ship between berth slots / reserve / in_port.
+ * Age 1+: no command cost. Later ages: costs 1 command per move (legacy).
+ */
 export function reassignShipBerth(
   state: HarborState,
+  catalog: HarborCatalog,
   shipId: string,
-  /** Target berth index (0..berthCap-1) or null for reserve. */
+  /** Target berth index (0..effectiveCap-1) or null for reserve. */
   targetBerthIndex: number | null,
 ): HarborState {
-  const stage = getStageDef(state.stageId);
   const ship = state.ships.find((s) => s.id === shipId);
   if (!ship) throw new EngineError("Ship not found.");
   if (ship.status === "voyage" || ship.status === "repair") {
     throw new EngineError("Cannot reassign a ship that's away.");
   }
 
+  const effCap = deriveEffectiveBerthCap(state, catalog);
   if (targetBerthIndex != null) {
-    if (targetBerthIndex < 0 || targetBerthIndex >= stage.berthCap) {
+    if (targetBerthIndex < 0 || targetBerthIndex >= effCap) {
       throw new EngineError("Invalid berth.");
     }
   }
 
-  // No-op if the ship is already in the target slot.
   const sameSlot =
-    (targetBerthIndex == null && ship.status === "reserve") ||
+    (targetBerthIndex == null &&
+      (ship.status === "reserve" || ship.status === "in_port")) ||
     (targetBerthIndex != null &&
       ship.status === "berthed" &&
       ship.berthIndex === targetBerthIndex);
   if (sameSlot) return state;
 
-  let next = spendCommand(state, 1);
+  let next = state.stageId > 1 ? spendCommand(state, 1) : state;
 
   let occupant: ShipInstance | undefined;
   if (targetBerthIndex != null) {
@@ -263,7 +273,6 @@ export function reassignShipBerth(
       }
       if (occupant && s.id === occupant.id) {
         if (ship.status === "berthed" && ship.berthIndex != null) {
-          // Swap into ship's old berth.
           return { ...s, berthIndex: ship.berthIndex };
         }
         return { ...s, status: "reserve", berthIndex: null };
@@ -278,6 +287,106 @@ export function reassignShipBerth(
         ? `Ship sent to reserve.`
         : `Ship moved to berth ${targetBerthIndex + 1}.`,
   });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Age 1 departures / ship upgrades                                           */
+/* -------------------------------------------------------------------------- */
+
+function tryPromoteToAge2(state: HarborState): HarborState {
+  if (state.stageId !== 1) return state;
+  if (getBuildingLevel(state, "harbormasters-quarters") < 1) return state;
+  if (getBuildingLevel(state, "second-berth") < 1) return state;
+  const stage2 = getStageDef(2);
+  const metrics = { ...state.metrics };
+  for (const m of stage2.metrics) {
+    const v = stage2.starting.metrics[m];
+    if (v != null) metrics[m] = v;
+  }
+  return pushLog({ ...state, stageId: 2, metrics }, {
+    kind: "good",
+    text: "The harbor grows — welcome to Age 2.",
+  });
+}
+
+/** Queue a voyage for end-of-day commit (Age 1 only). */
+export function queueAge1Departure(
+  state: HarborState,
+  catalog: HarborCatalog,
+  shipId: string,
+): HarborState {
+  if (state.stageId !== 1) throw new EngineError("Departures work in Age 1 only.");
+  const ship = state.ships.find((s) => s.id === shipId);
+  if (!ship) throw new EngineError("Ship not found.");
+  if (ship.status !== "reserve" && ship.status !== "berthed") {
+    throw new EngineError("Ship must be in reserve or a berth.");
+  }
+  if (state.queuedDepartures.some((q) => q.shipId === shipId)) {
+    throw new EngineError("That ship is already queued to depart.");
+  }
+  const def = catalog.ships.find((s) => s.slug === ship.defSlug);
+  if (!def?.extra.voyage_yield || Object.keys(def.extra.voyage_yield).length === 0) {
+    throw new EngineError("This ship cannot run an Age 1 voyage.");
+  }
+  const cmdCost = 1;
+  if (deriveCommandReserved(state) + cmdCost > state.command) {
+    throw new EngineError("Not enough command to queue another departure.");
+  }
+  const promisedRewards = computeAge1VoyagePromisedRewards(state, catalog, shipId);
+  const voyageNights = Math.max(1, Math.floor(def.extra.voyage_nights ?? 1));
+  const idResult = nextId(state, "qd");
+  return {
+    ...idResult.nextState,
+    queuedDepartures: [
+      ...state.queuedDepartures,
+      {
+        id: idResult.id,
+        shipId,
+        commandCost: cmdCost,
+        promisedRewards,
+        voyageNights,
+      },
+    ],
+  };
+}
+
+export function cancelQueuedAge1Departure(
+  state: HarborState,
+  shipId: string,
+): HarborState {
+  if (!state.queuedDepartures.some((q) => q.shipId === shipId)) return state;
+  return {
+    ...state,
+    queuedDepartures: state.queuedDepartures.filter((q) => q.shipId !== shipId),
+  };
+}
+
+export function attachShipUpgrade(
+  state: HarborState,
+  catalog: HarborCatalog,
+  shipId: string,
+  upgradeSlug: string,
+): HarborState {
+  if (state.stageId !== 1) throw new EngineError("Upgrades unlock in Age 1.");
+  const ship = state.ships.find((s) => s.id === shipId);
+  if (!ship) throw new EngineError("Ship not found.");
+  if (ship.status !== "reserve" && ship.status !== "berthed") {
+    throw new EngineError("Ship must be in reserve or berthed.");
+  }
+  const up = catalog.ship_upgrades?.find((u) => u.slug === upgradeSlug);
+  if (!up) throw new EngineError("Unknown upgrade.");
+  if ((ship.attachments ?? []).includes(upgradeSlug)) {
+    throw new EngineError("Already installed.");
+  }
+  let next = applyCost(state, up.extra.cost);
+  const attachments = [...(ship.attachments ?? []), upgradeSlug];
+  next = {
+    ...next,
+    ships: next.ships.map((s) =>
+      s.id === shipId ? { ...s, attachments } : s,
+    ),
+  };
+  return pushLog(next, { kind: "good", text: `Installed ${up.name}.` });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -399,7 +508,7 @@ export function upgradeBuilding(
     }
   }
   const cost = def.extra.level_costs?.[currentLevel];
-  let next = spendCommand(state, 1);
+  let next = state.stageId > 1 ? spendCommand(state, 1) : state;
   next = applyCost(next, cost);
   const nextLevel = currentLevel + 1;
   const buildings = owned
@@ -407,6 +516,7 @@ export function upgradeBuilding(
     : [...next.buildings, { slug, level: nextLevel }];
   next = { ...next, buildings };
   next = clampResources(next, catalog);
+  next = tryPromoteToAge2(next);
   return pushLog(next, {
     kind: "good",
     text: `${def.name} upgraded to L${nextLevel}.`,
@@ -481,6 +591,10 @@ export type DayResult = {
   newArrivals: ArrivalSnapshot[];
   /** Resolved operations (for the cinematic readout). */
   resolvedOperations: Array<{ op: ActiveOperation; success: boolean }>;
+  /** Age 1 morning summary lines (counts). */
+  dailyReportLines: string[];
+  /** Resources banked from berthed cargo this end-day (before cinematic). */
+  businessReportLines: string[];
 };
 
 /**
@@ -496,13 +610,102 @@ export function advanceDay(
 ): DayResult {
   let next = clone(state);
   const resolvedOps: Array<{ op: ActiveOperation; success: boolean }> = [];
+  const businessReportLines: string[] = [];
+  const dailyReportLines: string[] = [];
+  const newEvents: EventSnapshot[] = [];
+  const newArrivals: ArrivalSnapshot[] = [];
+  const age1 = next.stageId === 1;
 
-  // 1. Resolve operations whose remaining days hit zero.
+  if (age1) {
+    for (const s of next.ships) {
+      if (s.status !== "berthed" || !s.pendingCargo) continue;
+      const cargo = s.pendingCargo;
+      const parts: string[] = [];
+      for (const [res, val] of Object.entries(cargo)) {
+        if (!val) continue;
+        const r = res as Resource;
+        next = applyRewards(next, { [r]: val });
+        parts.push(`+${val} ${r}`);
+      }
+      if (parts.length > 0) {
+        const def = catalog.ships.find((x) => x.slug === s.defSlug);
+        businessReportLines.push(`${def?.name ?? s.defSlug}: ${parts.join(", ")}`);
+      }
+      next = {
+        ...next,
+        ships: next.ships.map((x) =>
+          x.id === s.id ? { ...x, pendingCargo: null } : x,
+        ),
+      };
+    }
+  }
+
+  if (age1 && next.queuedDepartures.length > 0) {
+    const reserved = deriveCommandReserved(next);
+    if (next.command < reserved) {
+      throw new EngineError("Not enough command to end the day (queued departures).");
+    }
+    next = { ...next, command: next.command - reserved };
+    for (const q of next.queuedDepartures) {
+      const opR = nextId(next, "op");
+      next = opR.nextState;
+      const op: ActiveOperation = {
+        id: opR.id,
+        defSlug: "age1-voyage",
+        startedDay: next.day,
+        remainingDays: q.voyageNights,
+        shipId: q.shipId,
+        resolveRewards: q.promisedRewards,
+        resolveMetricEffects: {},
+        resolveRisk: 0,
+        grantsShipSlug: null,
+        kind: "voyage",
+        deferRewardToBerth: true,
+      };
+      next = {
+        ...next,
+        activeOperations: [...next.activeOperations, op],
+        ships: next.ships.map((s) =>
+          s.id === q.shipId
+            ? { ...s, status: "voyage", berthIndex: null, activeOpId: op.id }
+            : s,
+        ),
+      };
+    }
+    next = { ...next, queuedDepartures: [] };
+  }
+
   const stillRunning: ActiveOperation[] = [];
   for (const op of next.activeOperations) {
+    if (op.startedDay === next.day && op.deferRewardToBerth) {
+      stillRunning.push(op);
+      continue;
+    }
     const ticked: ActiveOperation = { ...op, remainingDays: op.remainingDays - 1 };
     if (ticked.remainingDays > 0) {
       stillRunning.push(ticked);
+      continue;
+    }
+    if (ticked.deferRewardToBerth && ticked.shipId) {
+      next = {
+        ...next,
+        ships: next.ships.map((s) =>
+          s.id === ticked.shipId
+            ? {
+                ...s,
+                status: "in_port",
+                activeOpId: null,
+                berthIndex: null,
+                pendingCargo: { ...(ticked.resolveRewards ?? {}) },
+              }
+            : s,
+        ),
+      };
+      next = pushLog(next, {
+        kind: "good",
+        text: `A ship returned to the arrivals basin.`,
+      });
+      resolvedOps.push({ op: ticked, success: true });
       continue;
     }
     const success = Math.random() >= ticked.resolveRisk;
@@ -517,7 +720,6 @@ export function advanceDay(
         text: `Operation completed (${ticked.defSlug}).`,
       });
     } else {
-      // Failed voyage: ship takes a hull point and returns to reserve.
       if (ticked.shipId) {
         next = {
           ...next,
@@ -534,7 +736,6 @@ export function advanceDay(
       });
     }
 
-    // Free assigned ship.
     if (ticked.shipId) {
       next = {
         ...next,
@@ -555,6 +756,7 @@ export function advanceDay(
     activeEvents: next.activeEvents.map((e) => ({ ...e, daysActive: e.daysActive + 1 })),
   };
 
+  if (!age1) {
   // 3. Apply per-day building income and metric drift.
   const income = dailyResourceIncome(next, catalog);
   next = applyRewards(next, income);
@@ -569,7 +771,6 @@ export function advanceDay(
     else remaining.push(sc);
   }
   next = { ...next, scheduledConsequences: remaining };
-  const newEvents: EventSnapshot[] = [];
   for (const sc of fired) {
     const def = catalog.events.find((e) => e.slug === sc.firesEventSlug);
     if (!def) continue;
@@ -614,9 +815,8 @@ export function advanceDay(
   }
 
   // 6. Roll arrivals (1-2 weighted picks per day).
-  const newArrivals: ArrivalSnapshot[] = [];
-  const stage = getStageDef(next.stageId);
-  const slotsBase = stage.id <= 2 ? 1 : 2;
+  const stageMid = getStageDef(next.stageId);
+  const slotsBase = stageMid.id <= 2 ? 1 : 2;
   for (let i = 0; i < slotsBase; i += 1) {
     const eligible = eligibleArrivalDefs(next, catalog);
     if (eligible.length === 0) break;
@@ -647,7 +847,7 @@ export function advanceDay(
   // 7. Schedule consequences from arrivals/policies whose source kicked in.
   for (const cdef of catalog.consequences) {
     if (!cdef.enabled) continue;
-    if (cdef.stage_min > stage.id) continue;
+    if (cdef.stage_min > stageMid.id) continue;
     const sourceKind = cdef.extra.source_kind;
     const sourceSlug = cdef.extra.source_slug;
     const fires = cdef.extra.fires_event_slug;
@@ -672,8 +872,10 @@ export function advanceDay(
       },
     ];
   }
+  }
 
   // 8. Refill command for the new day.
+  const stage = getStageDef(next.stageId);
   const buildBonus = next.buildings.reduce((acc, owned) => {
     const def = catalog.buildings.find((b) => b.slug === owned.slug);
     if (!def) return acc;
@@ -693,7 +895,25 @@ export function advanceDay(
 
   next = clampResources(next, catalog);
   next = clampMetrics(next);
-  return { state: next, newEvents, newArrivals, resolvedOperations: resolvedOps };
+  next = tryPromoteToAge2(next);
+
+  if (age1) {
+    const unassigned = next.ships.filter((s) => s.status === "reserve").length;
+    const atSea = next.ships.filter((s) => s.status === "voyage").length;
+    const arrivals = next.ships.filter((s) => s.status === "in_port").length;
+    dailyReportLines.push(`Unassigned ships: ${unassigned}`);
+    dailyReportLines.push(`Ships on voyage: ${atSea}`);
+    dailyReportLines.push(`Ships in arrivals: ${arrivals}`);
+  }
+
+  return {
+    state: next,
+    newEvents,
+    newArrivals,
+    resolvedOperations: resolvedOps,
+    dailyReportLines,
+    businessReportLines,
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -779,7 +999,7 @@ export function createDefaultHarborState(
     catalogVersion: catalog.catalog_version,
     stageId,
     day: 1,
-    command: stage.baseCommandPerDay + stage.starting.command,
+    command: 0,
     commandPerDay: stage.baseCommandPerDay,
     resources: startResources,
     resourceCaps: startCaps,
@@ -788,6 +1008,7 @@ export function createDefaultHarborState(
     ships: [],
     buildings: [],
     activeOperations: [],
+    queuedDepartures: [],
     pendingArrivals: [],
     activeEvents: [],
     scheduledConsequences: [],
@@ -807,7 +1028,13 @@ export function createDefaultHarborState(
     next = { ...next, buildings: [...next.buildings, { slug, level }] };
   }
   next = clampResources(next, catalog);
-  return next;
+  const cmdBonus = deriveBuildingCommandBonus(next, catalog);
+  const extraStart = stage.starting.command ?? 0;
+  return {
+    ...next,
+    commandPerDay: stage.baseCommandPerDay + cmdBonus,
+    command: stage.baseCommandPerDay + cmdBonus + extraStart,
+  };
 }
 
 /* re-export helpers for tests */

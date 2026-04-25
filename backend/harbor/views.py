@@ -1,8 +1,10 @@
 """Player-facing harbor endpoints.
 
-GET/POST /api/v1/harbor/state/   - per-user save blob
-GET      /api/v1/harbor/catalog/ - all enabled catalog rows for runtime use
-GET      /api/v1/harbor/staff/schema/ - canonical enum lists for the editor
+GET/POST /api/v1/harbor/games/           - list + create named harbor
+DELETE   /api/v1/harbor/games/<id>/      - delete harbor (owner)
+GET/POST /api/v1/harbor/games/<id>/state/ - load/save state blob
+GET      /api/v1/harbor/catalog/         - all enabled catalog rows
+GET      /api/v1/harbor/staff/schema/   - canonical enum lists for the editor
 
 Staff CRUD endpoints live in `staff_content.py`.
 """
@@ -20,21 +22,25 @@ from rest_framework.response import Response
 from users.permissions import IsStaffUser
 
 from . import schema_constants
+from .age1_content import SHIP_UPGRADE_DEFS
 from .models import (
     HARBOR_DEF_MODELS,
     HarborCatalogVersion,
-    HarborGameSave,
+    HarborGame,
 )
 
 MAX_STATE_BYTES = 256 * 1024
+MAX_HARBOR_NAME_LEN = 80
 
 
 def _server_time_payload():
     return {"server_time": timezone.now().isoformat()}
 
 
-def _serialize_save(row: HarborGameSave):
+def _serialize_game_row(row: HarborGame):
     return {
+        "id": row.id,
+        "name": row.name,
         "state": row.state,
         "schema_version": row.schema_version,
         "catalog_version": row.catalog_version,
@@ -51,29 +57,100 @@ def _current_catalog_version() -> int:
     return int(row.version)
 
 
+def _game_for_user(request, game_id: int) -> HarborGame | None:
+    try:
+        gid = int(game_id)
+    except (TypeError, ValueError):
+        return None
+    return HarborGame.objects.filter(id=gid, user=request.user).first()
+
+
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
-def game_state(request):
+def harbor_games(request):
     if request.method == "GET":
-        try:
-            row = HarborGameSave.objects.get(user=request.user)
-        except HarborGameSave.DoesNotExist:
-            return Response(
-                {
-                    "state": None,
-                    "schema_version": 1,
-                    "catalog_version": 0,
-                    "created_at": None,
-                    "updated_at": None,
-                    "last_played_at": None,
-                    "current_catalog_version": _current_catalog_version(),
-                    **_server_time_payload(),
-                },
-                status=status.HTTP_200_OK,
-            )
+        rows = HarborGame.objects.filter(user=request.user)
         return Response(
             {
-                **_serialize_save(row),
+                "games": [
+                    {
+                        "id": r.id,
+                        "name": r.name,
+                        "created_at": r.created_at.isoformat(),
+                        "updated_at": r.updated_at.isoformat(),
+                        "last_played_at": r.last_played_at.isoformat()
+                        if r.last_played_at
+                        else None,
+                    }
+                    for r in rows
+                ],
+                "current_catalog_version": _current_catalog_version(),
+                **_server_time_payload(),
+            }
+        )
+
+    try:
+        body = json.loads(request.body.decode("utf-8")) if request.body else {}
+    except json.JSONDecodeError:
+        return Response({"detail": "Invalid JSON."}, status=status.HTTP_400_BAD_REQUEST)
+
+    name = body.get("name")
+    if not isinstance(name, str):
+        return Response({"detail": '"name" is required.'}, status=status.HTTP_400_BAD_REQUEST)
+    name = name.strip()
+    if not name or len(name) > MAX_HARBOR_NAME_LEN:
+        return Response(
+            {"detail": f"Name must be 1–{MAX_HARBOR_NAME_LEN} characters."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    row = HarborGame.objects.create(user=request.user, name=name, state={})
+    row.refresh_from_db()
+    return Response(
+        {
+            "id": row.id,
+            "name": row.name,
+            "created_at": row.created_at.isoformat(),
+            "updated_at": row.updated_at.isoformat(),
+            "last_played_at": None,
+            "current_catalog_version": _current_catalog_version(),
+            **_server_time_payload(),
+        },
+        status=status.HTTP_201_CREATED,
+    )
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def harbor_game_delete(request, game_id: int):
+    row = _game_for_user(request, game_id)
+    if row is None:
+        return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+    row.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def harbor_game_state(request, game_id: int):
+    row = _game_for_user(request, game_id)
+    if row is None:
+        return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == "GET":
+        has_state = bool(row.state)
+        return Response(
+            {
+                "id": row.id,
+                "name": row.name,
+                "state": row.state if has_state else None,
+                "schema_version": row.schema_version,
+                "catalog_version": row.catalog_version,
+                "created_at": row.created_at.isoformat(),
+                "updated_at": row.updated_at.isoformat(),
+                "last_played_at": row.last_played_at.isoformat()
+                if row.last_played_at
+                else None,
                 "current_catalog_version": _current_catalog_version(),
                 **_server_time_payload(),
             }
@@ -128,19 +205,23 @@ def game_state(request):
         catalog_version = 0
 
     now = timezone.now()
-    row, _created = HarborGameSave.objects.update_or_create(
-        user=request.user,
-        defaults={
-            "state": state,
-            "schema_version": schema_version,
-            "catalog_version": catalog_version,
-            "last_played_at": now,
-        },
+    row.state = state
+    row.schema_version = schema_version
+    row.catalog_version = catalog_version
+    row.last_played_at = now
+    row.save(
+        update_fields=[
+            "state",
+            "schema_version",
+            "catalog_version",
+            "last_played_at",
+            "updated_at",
+        ]
     )
     row.refresh_from_db()
     return Response(
         {
-            **_serialize_save(row),
+            **_serialize_game_row(row),
             "current_catalog_version": _current_catalog_version(),
             **_server_time_payload(),
         }
@@ -185,6 +266,7 @@ def catalog(request):
     for url_slug, model_cls in DEF_MODEL_BY_SLUG.items():
         rows = model_cls.objects.filter(enabled=True).order_by("sort_order", "slug")
         payload[url_slug] = [_def_dict(r) for r in rows]
+    payload["ship_upgrades"] = list(SHIP_UPGRADE_DEFS)
     return Response(payload)
 
 

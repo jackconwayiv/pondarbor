@@ -8,7 +8,7 @@ from rest_framework.test import APIClient
 
 from harbor.models import (
     HarborCatalogVersion,
-    HarborGameSave,
+    HarborGame,
     HarborShipDef,
 )
 
@@ -21,76 +21,74 @@ def _mk_user(email: str, is_staff: bool = False):
     )
 
 
-class HarborPlayerStateTests(TestCase):
+class HarborGameApiTests(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.user = _mk_user("player@example.com")
 
-    def test_requires_auth(self):
-        r = self.client.get("/api/v1/harbor/state/")
+    def test_games_requires_auth(self):
+        r = self.client.get("/api/v1/harbor/games/")
         self.assertIn(r.status_code, (401, 403))
 
-    def test_get_returns_blank_when_no_save_exists(self):
+    def test_list_games_empty(self):
         self.client.force_authenticate(self.user)
-        r = self.client.get("/api/v1/harbor/state/")
+        r = self.client.get("/api/v1/harbor/games/")
         self.assertEqual(r.status_code, 200)
-        body = r.json()
-        self.assertIsNone(body["state"])
-        self.assertEqual(body["schema_version"], 1)
-        self.assertIn("current_catalog_version", body)
-        self.assertIn("server_time", body)
+        self.assertEqual(r.json()["games"], [])
 
-    def test_post_persists_and_is_idempotent(self):
+    def test_create_get_post_state_delete(self):
         self.client.force_authenticate(self.user)
+        created = self.client.post(
+            "/api/v1/harbor/games/", {"name": "North Cove"}, format="json"
+        )
+        self.assertEqual(created.status_code, 201)
+        gid = created.json()["id"]
+
+        st = self.client.get(f"/api/v1/harbor/games/{gid}/state/")
+        self.assertEqual(st.status_code, 200)
+        self.assertIsNone(st.json()["state"])
+        self.assertEqual(st.json()["name"], "North Cove")
+
         payload = {
             "state": {"day": 5, "stageId": 2},
             "schema_version": 1,
             "catalog_version": 3,
         }
-        first = self.client.post(
-            "/api/v1/harbor/state/", payload, format="json"
+        saved = self.client.post(
+            f"/api/v1/harbor/games/{gid}/state/", payload, format="json"
         )
-        self.assertEqual(first.status_code, 200)
-        self.assertEqual(first.json()["state"], {"day": 5, "stageId": 2})
-        self.assertEqual(first.json()["catalog_version"], 3)
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(saved.json()["state"], {"day": 5, "stageId": 2})
 
-        # POST again — upsert, not duplicate.
         again = self.client.post(
-            "/api/v1/harbor/state/",
+            f"/api/v1/harbor/games/{gid}/state/",
             {**payload, "state": {"day": 6, "stageId": 2}},
             format="json",
         )
         self.assertEqual(again.status_code, 200)
-        self.assertEqual(HarborGameSave.objects.filter(user=self.user).count(), 1)
-        self.assertEqual(again.json()["state"], {"day": 6, "stageId": 2})
+        self.assertEqual(HarborGame.objects.filter(user=self.user).count(), 1)
 
-    def test_post_rejects_non_object_state(self):
+        deleted = self.client.delete(f"/api/v1/harbor/games/{gid}/")
+        self.assertEqual(deleted.status_code, 204)
+        self.assertEqual(HarborGame.objects.filter(user=self.user).count(), 0)
+
+    def test_post_state_rejects_bad_body(self):
         self.client.force_authenticate(self.user)
+        g = HarborGame.objects.create(user=self.user, name="X", state={})
         r = self.client.post(
-            "/api/v1/harbor/state/",
+            f"/api/v1/harbor/games/{g.id}/state/",
             {"state": [1, 2, 3]},
             format="json",
         )
         self.assertEqual(r.status_code, 400)
 
-    def test_post_rejects_missing_state(self):
-        self.client.force_authenticate(self.user)
-        r = self.client.post(
-            "/api/v1/harbor/state/",
-            {"schema_version": 1},
-            format="json",
-        )
-        self.assertEqual(r.status_code, 400)
-
-    def test_saves_are_per_user(self):
+    def test_other_user_cannot_read_state(self):
+        owner = self.user
         other = _mk_user("other@example.com")
-        HarborGameSave.objects.create(
-            user=other, state={"day": 99}, schema_version=1, catalog_version=1
-        )
-        self.client.force_authenticate(self.user)
-        r = self.client.get("/api/v1/harbor/state/")
-        # Our user has no save; the other user's save is not leaked.
-        self.assertIsNone(r.json()["state"])
+        game = HarborGame.objects.create(user=owner, name="Mine", state={"a": 1})
+        self.client.force_authenticate(other)
+        r = self.client.get(f"/api/v1/harbor/games/{game.id}/state/")
+        self.assertEqual(r.status_code, 404)
 
 
 class HarborCatalogTests(TestCase):

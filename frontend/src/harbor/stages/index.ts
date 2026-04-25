@@ -47,15 +47,14 @@ const UNLOCKS: StageUnlock[] = [
     id: 1,
     title: "Dock",
     era: "Hand-built harbor",
-    ageQuestion: "Can you keep one boat fed?",
-    coreTension: "Every coin matters; every voyage is small.",
+    ageQuestion: "",
+    coreTension: "",
     mainLesson: "Limited attention is the real resource.",
     resources: ["food", "timber", "wealth"],
-    metrics: ["population", "morale"],
     voyageTypes: ["trade"],
-    panels: ["harbor", "operations"],
+    panels: ["harbor", "buildings"],
     contentTags: ["starter"],
-    baseCommandPerDay: 3,
+    baseCommandPerDay: 1,
   },
   {
     id: 2,
@@ -65,7 +64,7 @@ const UNLOCKS: StageUnlock[] = [
     coreTension: "Buildings vs. ships vs. arrivals.",
     mainLesson: "Choose what to skip.",
     resources: ["stone"],
-    metrics: ["prestige"],
+    metrics: ["population", "morale", "prestige"],
     panels: ["arrivals", "buildings"],
     baseCommandPerDay: 4,
   },
@@ -191,6 +190,15 @@ function dedupe<T>(values: T[]): T[] {
   return out;
 }
 
+const STAGE1_STARTING = {
+  command: 0,
+  resources: { food: 5, timber: 5, wealth: 10 } as Partial<Record<Resource, number>>,
+  resourceCaps: { food: 25, timber: 25, wealth: 50 } as Partial<Record<Resource, number>>,
+  metrics: {} as Partial<Record<Metric, number>>,
+  ships: { "fishing-boat": 1, "timber-skiff": 1, "merchant-sloop": 1 },
+  buildings: {} as Record<string, number>,
+};
+
 const DEFAULT_STARTING = {
   command: 3,
   resources: { food: 8, timber: 6, wealth: 6 } as Partial<Record<Resource, number>>,
@@ -252,7 +260,7 @@ export function buildStageDef(stageId: StageId): StageDef {
     berthCap: Math.min(stageId, 9),
     doctrineUnlocked,
     baseCommandPerDay,
-    starting: DEFAULT_STARTING,
+    starting: head.id === 1 ? STAGE1_STARTING : DEFAULT_STARTING,
   };
 }
 

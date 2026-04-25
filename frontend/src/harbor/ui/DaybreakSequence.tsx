@@ -19,6 +19,8 @@ type Props = {
   stage: StageDef;
   newEvents: EventSnapshot[];
   newArrivals: ArrivalSnapshot[];
+  dailyReportLines?: string[];
+  businessReportLines?: string[];
   onDone: () => void;
 };
 
@@ -51,6 +53,8 @@ export default function DaybreakSequence({
   stage,
   newEvents,
   newArrivals,
+  dailyReportLines = [],
+  businessReportLines = [],
   onDone,
 }: Props) {
   const [stepIdx, setStepIdx] = useState(0);
@@ -74,8 +78,8 @@ export default function DaybreakSequence({
   let hint = "";
   if (step.kind === "newDay") {
     title = `Day ${day} dawns over the ${stage.title}.`;
-    body = stage.coreTension;
-    hint = stage.ageQuestion;
+    body = (stage.coreTension ?? "").trim();
+    hint = (stage.ageQuestion ?? "").trim() || "Tap to continue";
   } else if (step.kind === "event") {
     title = step.event.name;
     body = step.event.description;
@@ -96,6 +100,32 @@ export default function DaybreakSequence({
         <div className="harbor-daybreak__day">{hint}</div>
         <div className="harbor-daybreak__title">{title}</div>
         {body && <div className="harbor-daybreak__hint">{body}</div>}
+        {step.kind === "newDay" && dailyReportLines.length > 0 && (
+          <div
+            className="harbor-daybreak__hint"
+            style={{ textAlign: "left", marginTop: "0.5rem" }}
+          >
+            <strong>Daily report</strong>
+            <ul style={{ margin: "0.35rem 0 0 1rem", padding: 0 }}>
+              {dailyReportLines.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {step.kind === "newDay" && businessReportLines.length > 0 && (
+          <div
+            className="harbor-daybreak__hint"
+            style={{ textAlign: "left", marginTop: "0.5rem" }}
+          >
+            <strong>Business report</strong>
+            <ul style={{ margin: "0.35rem 0 0 1rem", padding: 0 }}>
+              {businessReportLines.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        )}
         <button
           type="button"
           className="harbor-button harbor-button--accent harbor-daybreak__continue"

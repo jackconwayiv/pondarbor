@@ -65,7 +65,7 @@ export type PanelKind =
 
 export type StageId = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 
-export type ShipStatus = "berthed" | "reserve" | "voyage" | "repair";
+export type ShipStatus = "berthed" | "reserve" | "voyage" | "repair" | "in_port";
 
 export type ShipInstance = {
   id: string;
@@ -76,6 +76,10 @@ export type ShipInstance = {
   berthIndex: number | null;
   /** Active operation id when `status === "voyage" | "repair"`. */
   activeOpId?: string | null;
+  /** Age 1: cargo not yet banked (applied on End Day after berthing). */
+  pendingCargo?: Partial<Record<Resource, number>> | null;
+  /** Installed ship upgrade slugs (Age 1+). */
+  attachments?: string[];
 };
 
 export type ActiveOperation = {
@@ -93,6 +97,17 @@ export type ActiveOperation = {
   /** For `recruit` ops, the ship slug to spawn on resolution. */
   grantsShipSlug?: string | null;
   kind: OperationKind;
+  /** Age 1 voyages: bank rewards onto the ship as pendingCargo instead of wallet. */
+  deferRewardToBerth?: boolean | null;
+};
+
+/** Queued departure (command spent at end of day). */
+export type QueuedDeparture = {
+  id: string;
+  shipId: string;
+  commandCost: number;
+  promisedRewards: Partial<Record<Resource, number>>;
+  voyageNights: number;
 };
 
 export type OperationKind =
@@ -172,6 +187,8 @@ export type HarborState = {
   ships: ShipInstance[];
   buildings: BuildingInstance[];
   activeOperations: ActiveOperation[];
+  /** Age 1: voyages queued this day; command deducted when the day ends. */
+  queuedDepartures: QueuedDeparture[];
   pendingArrivals: ArrivalSnapshot[];
   activeEvents: EventSnapshot[];
   scheduledConsequences: ScheduledConsequence[];
@@ -250,6 +267,10 @@ export type ShipDefExtra = {
   capacity?: number;
   base_cost?: number;
   hull?: number;
+  /** Age 1 per-voyage resource yield (banked after return + berth). */
+  voyage_yield?: Partial<Record<Resource, number>>;
+  /** Nights at sea before return (1 = arrive after next end-day). */
+  voyage_nights?: number;
 };
 
 export type BuildingDefExtra = {
@@ -262,8 +283,14 @@ export type BuildingDefExtra = {
     metric_effects?: Partial<Record<Metric, number>>;
     per_day_resource_effects?: Partial<Record<Resource, number>>;
     unlocks_operation_slugs?: string[];
+    berth_cap_delta?: number;
   }>;
   prerequisites?: string[];
+};
+
+export type ShipUpgradeDefExtra = {
+  cost?: Partial<Record<Resource, number>>;
+  yield_bonus?: Partial<Record<Resource, number>>;
 };
 
 export type OperationDefExtra = {
@@ -338,4 +365,6 @@ export type HarborCatalog = {
   consequences: CatalogDef<ConsequenceDefExtra>[];
   policies: CatalogDef<PolicyDefExtra>[];
   doctrines: CatalogDef<DoctrineDefExtra>[];
+  /** Static Age 1 upgrades (from API; may be empty). */
+  ship_upgrades?: CatalogDef<ShipUpgradeDefExtra>[];
 };

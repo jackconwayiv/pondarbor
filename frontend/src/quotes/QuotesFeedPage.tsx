@@ -32,7 +32,6 @@ import {
   PanelSessionReconnect,
   PanelTabBarSkeleton,
   PanelEmptyState,
-  PanelErrorState,
 } from "../components/panelStatus";
 import { fullBleedStackProps, usePrefersCoarsePointer } from "../responsive";
 import {

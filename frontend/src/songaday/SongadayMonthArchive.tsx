@@ -5,15 +5,32 @@ import PondButton from "../PondButton";
 import { PanelEmptyState, PanelListRowSkeleton } from "../components/panelStatus";
 import { APP_TEXT_SIZES, PANEL_ENTRY_CARD_PROPS } from "../theme/typography";
 import { fetchResponsesArchive } from "./api";
+import { songadayEntryTitleLine } from "./cleanSongLabel";
 import type { SongadayResponse } from "./types";
 
 type Props = {
   open: boolean;
   getApiAccessToken: () => Promise<string>;
   onSelectEntryDate: (entryDateIso: string) => void;
+  /** Optional: seed initial rows (e.g. current month preload). */
+  seed?: {
+    rows: SongadayResponse[];
+    /** Next page to fetch when paging the archive endpoint. */
+    nextPage: number;
+    total: number;
+  } | null;
   /** Limit total rows fetched to keep it snappy. */
   maxRows?: number;
 };
+
+function formatEntryMd(entryDate: string): string {
+  const parts = entryDate.split("-");
+  if (parts.length !== 3) return entryDate;
+  const m = Number(parts[1]);
+  const d = Number(parts[2]);
+  if (!Number.isFinite(m) || !Number.isFinite(d)) return entryDate;
+  return `${m}/${d}`;
+}
 
 function monthKeyFromIso(iso: string): string | null {
   const [y, m] = iso.split("-");
@@ -34,6 +51,7 @@ export default function SongadayMonthArchive({
   open,
   getApiAccessToken,
   onSelectEntryDate,
+  seed,
   maxRows = 200,
 }: Props) {
   const [rows, setRows] = useState<SongadayResponse[]>([]);
@@ -60,6 +78,16 @@ export default function SongadayMonthArchive({
   }, [rows]);
 
   const [activeMonthKey, setActiveMonthKey] = useState<string | null>(null);
+
+  // Seed rows (once) when opening, if provided.
+  useEffect(() => {
+    if (!open) return;
+    if (!seed) return;
+    if (rows.length > 0) return;
+    setRows(seed.rows);
+    setTotal(seed.total);
+    setPage(seed.nextPage);
+  }, [open, seed, rows.length]);
 
   useEffect(() => {
     if (!open) return;
@@ -147,8 +175,9 @@ export default function SongadayMonthArchive({
           <PondButton
             type="button"
             size="sm"
-            variant="outline"
-            colorPalette="sky"
+            variant="ghost"
+            colorPalette="navy"
+            color="navy.solid"
             onClick={goPrevMonth}
             disabled={!canPrevMonth}
           >
@@ -160,8 +189,9 @@ export default function SongadayMonthArchive({
           <PondButton
             type="button"
             size="sm"
-            variant="outline"
-            colorPalette="sky"
+            variant="ghost"
+            colorPalette="navy"
+            color="navy.solid"
             onClick={() => void goNextMonth()}
             disabled={!canNextMonth && !hasMore}
           >
@@ -192,8 +222,10 @@ export default function SongadayMonthArchive({
           {visibleRows.map((entry) => (
             <Box
               key={entry.id}
-              {...PANEL_ENTRY_CARD_PROPS}
-              p="0"
+              borderRadius="md"
+              borderWidth="1px"
+              borderColor="border"
+              bg="bg.panel"
               overflow="hidden"
             >
               <Button
@@ -214,14 +246,67 @@ export default function SongadayMonthArchive({
                 justifyContent="flex-start"
                 bg="bg.panel"
                 _hover={{ bg: "bg.subtle" }}
+                cursor="pointer"
                 onClick={() => onSelectEntryDate(entry.entry_date)}
               >
-                <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted">
-                  {entry.entry_date}
+                <HStack gap="2" align="flex-start" w="full" justify="space-between">
+                  <HStack gap="2" align="flex-start" minW={0} flex="1">
+                    <Text
+                      fontSize={APP_TEXT_SIZES.meta}
+                      color="fg.muted"
+                      flexShrink={0}
+                      w="2.5rem"
+                    >
+                      {formatEntryMd(entry.entry_date)}
+                    </Text>
+                    <Text
+                      fontSize={APP_TEXT_SIZES.helper}
+                      fontWeight="medium"
+                      flex="1"
+                      minW={0}
+                      lineClamp={2}
+                      title={entry.prompt_snapshot}
+                    >
+                      {entry.prompt_snapshot}
+                    </Text>
+                  </HStack>
+                  <HStack
+                    gap="3"
+                    flexShrink={0}
+                    fontSize={APP_TEXT_SIZES.meta}
+                    color="fg.muted"
+                    aria-label={`${entry.heart_count} hearts, ${entry.comment_count ?? 0} comments`}
+                  >
+                    <Text as="span" whiteSpace="nowrap">
+                      ❤️ {entry.heart_count}
+                    </Text>
+                    <Text as="span" whiteSpace="nowrap">
+                      💬 {entry.comment_count ?? 0}
+                    </Text>
+                  </HStack>
+                </HStack>
+                <Text
+                  fontSize={APP_TEXT_SIZES.helper}
+                  fontWeight="semibold"
+                  w="full"
+                  minW={0}
+                  lineClamp={2}
+                  title={songadayEntryTitleLine(entry)}
+                >
+                  {songadayEntryTitleLine(entry)}
                 </Text>
-                <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium" lineClamp={2}>
-                  {entry.prompt_snapshot}
-                </Text>
+                {entry.notes.trim() ? (
+                  <Text
+                    fontSize={APP_TEXT_SIZES.helper}
+                    color="fg.muted"
+                    w="full"
+                    whiteSpace="pre-wrap"
+                    lineClamp={4}
+                    title={entry.notes}
+                  >
+                    {entry.notes.trim()}
+                  </Text>
+                ) : null}
               </Button>
             </Box>
           ))}

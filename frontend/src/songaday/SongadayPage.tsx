@@ -36,6 +36,7 @@ import {
   fetchAllSongPrompts,
   fetchPromptForDate,
   fetchResponsesForDate,
+  fetchResponsesArchive,
   resolveSongLinkMetadata,
   toggleHeart,
 } from "./api";
@@ -76,6 +77,32 @@ function formatDateLabel(d: Date): string {
     month: "long",
     day: "numeric",
   });
+}
+
+function isoDateKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function dateFromIsoKey(iso: string): Date | null {
+  const parts = iso.split("-").map(Number);
+  if (parts.length !== 3) return null;
+  const [y, m, d] = parts;
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+  return startOfDay(new Date(y, m - 1, d));
+}
+
+function dateRangeKeysForInitialLoad(): string[] {
+  const out: string[] = [];
+  const t = getTodayStart();
+  for (let i = 0; i <= MAX_DAYS_BACK; i++) {
+    const d = new Date(t);
+    d.setDate(d.getDate() - i);
+    out.push(isoDateKey(startOfDay(d)));
+  }
+  return out;
 }
 
 /** Earliest day the user can pick: today minus this many calendar days (inclusive). */
@@ -172,6 +199,17 @@ export default function SongadayPage() {
   );
   const [responsesLoading, setResponsesLoading] = useState(true);
 
+  const [promptByDay, setPromptByDay] = useState<Record<string, SongadayPromptPayload | null>>({});
+  const [promptErrorByDay, setPromptErrorByDay] = useState<Record<string, string | null>>({});
+  const [responsesByDay, setResponsesByDay] = useState<Record<string, SongadayResponse[]>>({});
+  const [responsesErrorByDay, setResponsesErrorByDay] = useState<Record<string, string | null>>({});
+
+  const [archiveSeed, setArchiveSeed] = useState<{
+    rows: SongadayResponse[];
+    nextPage: number;
+    total: number;
+  } | null>(null);
+
   const [pasteBlob, setPasteBlob] = useState("");
   const [fields, setFields] = useState(emptyFields);
   const [showResponseDetails, setShowResponseDetails] = useState(false);
@@ -235,44 +273,126 @@ export default function SongadayPage() {
     };
   }, [bulkOpen, isStaff, getApiAccessToken]);
 
-  const loadPrompt = useCallback(async () => {
-    setPromptLoading(true);
-    setPromptLoadError(null);
-    try {
+  const prefetchDay = useCallback(
+    async (iso: string) => {
+      const d = dateFromIsoKey(iso);
+      if (!d) return;
       const token = await getApiAccessToken();
-      const p = await fetchPromptForDate(token, selectedDate);
-      setPromptPayload(p);
-    } catch (e) {
-      setPromptLoadError(
-        e instanceof Error ? e.message : "Failed to load prompt.",
-      );
-      setPromptPayload(null);
-    } finally {
-      setPromptLoading(false);
-    }
-  }, [getApiAccessToken, selectedDate]);
-
-  const loadResponses = useCallback(async () => {
-    setResponsesLoading(true);
-    setResponsesLoadError(null);
-    try {
-      const token = await getApiAccessToken();
-      const list = await fetchResponsesForDate(token, selectedDate);
-      setResponses(list);
-    } catch (e) {
-      setResponsesLoadError(
-        e instanceof Error ? e.message : "Failed to load responses.",
-      );
-      setResponses([]);
-    } finally {
-      setResponsesLoading(false);
-    }
-  }, [getApiAccessToken, selectedDate]);
+      const [pRes, rRes] = await Promise.allSettled([
+        fetchPromptForDate(token, d),
+        fetchResponsesForDate(token, d),
+      ]);
+      if (pRes.status === "fulfilled") {
+        setPromptByDay((prev) => ({ ...prev, [iso]: pRes.value }));
+        setPromptErrorByDay((prev) => ({ ...prev, [iso]: null }));
+      } else {
+        setPromptByDay((prev) => ({ ...prev, [iso]: null }));
+        setPromptErrorByDay((prev) => ({
+          ...prev,
+          [iso]:
+            pRes.reason instanceof Error ? pRes.reason.message : "Failed to load prompt.",
+        }));
+      }
+      if (rRes.status === "fulfilled") {
+        setResponsesByDay((prev) => ({ ...prev, [iso]: rRes.value }));
+        setResponsesErrorByDay((prev) => ({ ...prev, [iso]: null }));
+      } else {
+        setResponsesByDay((prev) => ({ ...prev, [iso]: [] }));
+        setResponsesErrorByDay((prev) => ({
+          ...prev,
+          [iso]:
+            rRes.reason instanceof Error ? rRes.reason.message : "Failed to load responses.",
+        }));
+      }
+    },
+    [getApiAccessToken],
+  );
 
   useEffect(() => {
-    void loadPrompt();
-    void loadResponses();
-  }, [loadPrompt, loadResponses]);
+    if (!isAuthenticated || !sessionUser?.user?.is_approved) return;
+    const keys = dateRangeKeysForInitialLoad();
+    void (async () => {
+      await Promise.all(keys.map((k) => prefetchDay(k)));
+    })();
+  }, [isAuthenticated, sessionUser?.user?.is_approved, prefetchDay]);
+
+  // Preload all of *my* entries for the current month to seed the archive view.
+  useEffect(() => {
+    if (!isAuthenticated || !sessionUser?.user?.is_approved) return;
+    if (archiveSeed) return;
+    let cancelled = false;
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    void (async () => {
+      try {
+        const token = await getApiAccessToken();
+        const PAGE_SIZE = 50;
+        const merged: SongadayResponse[] = [];
+        let page = 1;
+        let total = 0;
+        // Fetch until we’ve fully traversed the current month (archive is newest-first).
+        for (let guard = 0; guard < 10; guard++) {
+          const payload = await fetchResponsesArchive(token, null, page, PAGE_SIZE);
+          if (page === 1) total = payload.total;
+          const current = payload.results.filter((r) => r.entry_date.slice(0, 7) === currentMonthKey);
+          merged.push(...current);
+          const sawOlderThanCurrentMonth = payload.results.some(
+            (r) => r.entry_date.slice(0, 7) < currentMonthKey,
+          );
+          page += 1;
+          if (!payload.has_next || sawOlderThanCurrentMonth) break;
+        }
+        if (!cancelled) {
+          setArchiveSeed({ rows: merged, nextPage: page, total });
+        }
+      } catch {
+        // If archive preload fails, we’ll just load on open like before.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [archiveSeed, getApiAccessToken, isAuthenticated, sessionUser?.user?.is_approved]);
+
+  // Keep selected day view in sync with cache (instant when prefetched).
+  useEffect(() => {
+    const iso = isoDateKey(startOfDay(selectedDate));
+    const p = Object.prototype.hasOwnProperty.call(promptByDay, iso)
+      ? (promptByDay[iso] ?? null)
+      : undefined;
+    const r = Object.prototype.hasOwnProperty.call(responsesByDay, iso)
+      ? responsesByDay[iso]
+      : undefined;
+
+    if (p !== undefined) {
+      setPromptPayload(p);
+      setPromptLoadError(promptErrorByDay[iso] ?? null);
+      setPromptLoading(false);
+    } else {
+      setPromptPayload(null);
+      setPromptLoadError(null);
+      setPromptLoading(true);
+      void prefetchDay(iso);
+    }
+
+    if (r !== undefined) {
+      setResponses(r);
+      setResponsesLoadError(responsesErrorByDay[iso] ?? null);
+      setResponsesLoading(false);
+    } else {
+      setResponses([]);
+      setResponsesLoadError(null);
+      setResponsesLoading(true);
+      void prefetchDay(iso);
+    }
+  }, [
+    selectedDate,
+    prefetchDay,
+    promptByDay,
+    promptErrorByDay,
+    responsesByDay,
+    responsesErrorByDay,
+  ]);
 
   useEffect(() => {
     setShowResponseDetails(false);
@@ -390,7 +510,7 @@ export default function SongadayPage() {
       setFields(emptyFields());
       setShowResponseDetails(false);
       setExpandAllSongFields(false);
-      await loadResponses();
+      await prefetchDay(isoDateKey(startOfDay(selectedDate)));
       await resyncSessionSilently();
     } catch (e) {
       setShowResponseDetails(true);
@@ -402,9 +522,9 @@ export default function SongadayPage() {
     fields,
     getApiAccessToken,
     hasPrompt,
-    loadResponses,
     pasteBlob,
     promptPayload?.prompt,
+    prefetchDay,
     resyncSessionSilently,
     selectedDate,
   ]);
@@ -420,7 +540,7 @@ export default function SongadayPage() {
         message: `Imported ${r.total} line(s): ${r.created_count} new, ${r.updated_count} updated.`,
       });
       setBulkText("");
-      await loadPrompt();
+      await prefetchDay(isoDateKey(startOfDay(selectedDate)));
       const rows = await fetchAllSongPrompts(token);
       setPromptCatalog(rows);
     } catch (e) {
@@ -431,7 +551,7 @@ export default function SongadayPage() {
     } finally {
       setBulkBusy(false);
     }
-  }, [bulkText, getApiAccessToken, loadPrompt]);
+  }, [bulkText, getApiAccessToken, prefetchDay, selectedDate]);
 
   const onHeartToggle = useCallback(
     async (entryId: number) => {
@@ -439,7 +559,8 @@ export default function SongadayPage() {
       try {
         const token = await getApiAccessToken();
         const r = await toggleHeart(token, entryId);
-        setResponses((prev) =>
+        const iso = isoDateKey(startOfDay(selectedDate));
+        const apply = (prev: SongadayResponse[]) =>
           prev.map((row) =>
             row.id === entryId
               ? {
@@ -448,8 +569,13 @@ export default function SongadayPage() {
                   viewer_has_hearted: r.viewer_has_hearted,
                 }
               : row,
-          ),
-        );
+          );
+        setResponses(apply);
+        setResponsesByDay((prev) => {
+          const existing = prev[iso];
+          if (!existing) return prev;
+          return { ...prev, [iso]: apply(existing) };
+        });
         void resyncSessionSilently();
       } catch {
         /* ignore */
@@ -457,7 +583,7 @@ export default function SongadayPage() {
         setHeartBusyId(null);
       }
     },
-    [getApiAccessToken, resyncSessionSilently],
+    [getApiAccessToken, resyncSessionSilently, selectedDate],
   );
 
   const goPrev = useCallback(() => {
@@ -523,6 +649,76 @@ export default function SongadayPage() {
   const isViewingToday =
     startOfDay(selectedDate).getTime() === getTodayStart().getTime();
 
+  const showArchiveToggle = Boolean(myEntry);
+
+  const promptCard = promptLoading ? (
+    <Box
+      {...PANEL_ENTRY_CARD_PROPS}
+      minH={PROMPT_CARD_MIN_H}
+      display="flex"
+      alignItems="center"
+    >
+      <PanelBlockSkeleton lines={1} showTitleLine />
+    </Box>
+  ) : promptLoadError ? (
+    <Box
+      {...PANEL_ENTRY_CARD_PROPS}
+      minH={PROMPT_CARD_MIN_H}
+      display="flex"
+      alignItems="center"
+    >
+      <Text
+        fontSize={APP_TEXT_SIZES.helper}
+        color="nautical.solid"
+        fontWeight="medium"
+        role="alert"
+      >
+        {promptLoadError}
+      </Text>
+    </Box>
+  ) : !hasPrompt ? (
+    <Box
+      {...NO_PROMPT_CARD_PROPS}
+      minH={PROMPT_CARD_MIN_H}
+      display="flex"
+      alignItems="center"
+    >
+      <Text fontSize={APP_TEXT_SIZES.body} fontWeight="medium">
+        There is no prompt for this day.{" "}
+        <RouterLink to="/about">
+          <Text
+            as="span"
+            color="nautical.contrast"
+            fontWeight="bold"
+            textDecoration="underline"
+          >
+            Please contact the site administrator.
+          </Text>
+        </RouterLink>
+      </Text>
+    </Box>
+  ) : (
+    <Box
+      bg="blue.100"
+      color="black"
+      borderRadius="xl"
+      p={{ base: "2.5", md: "2.5" }}
+      boxShadow="sm"
+      minH={PROMPT_CARD_MIN_H}
+      display="flex"
+      justifyContent="center"
+    >
+      <Stack gap="0" alignItems="center" justifyContent="space-evenly">
+        <Text fontSize={APP_TEXT_SIZES.helper} opacity={0.88}>
+          {formatDateLabel(selectedDate)}
+        </Text>
+        <Text fontWeight="bold" fontSize={APP_TEXT_SIZES.label}>
+          Today’s Prompt: “{promptPayload?.prompt ?? ""}”
+        </Text>
+      </Stack>
+    </Box>
+  );
+
   return (
     <Stack
       gap={{ base: "4", md: "4" }}
@@ -531,99 +727,107 @@ export default function SongadayPage() {
       pb="2"
     >
       <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP}>
-            <HStack w="100%" gap="2" align="center">
-              <PondButton
-                type="button"
-                size="sm"
-                variant="outline"
-                colorPalette="nautical"
-                px="2.5"
-                disabled={!canGoToPrevDay(selectedDate)}
-                onClick={goPrev}
-                aria-label="Previous day"
-              >
-                ←
-              </PondButton>
-              <Box flex="1" textAlign="center">
-                {!isViewingToday ? (
-                  <PondButton
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    colorPalette="nautical"
-                    px="3"
-                    onClick={goToToday}
-                  >
-                    Today
-                  </PondButton>
-                ) : null}
-              </Box>
-              <PondButton
-                type="button"
-                size="sm"
-                variant="outline"
-                colorPalette="nautical"
-                px="2.5"
-                disabled={!canGoToNextDay(selectedDate)}
-                onClick={goNext}
-                aria-label="Next day"
-              >
-                →
-              </PondButton>
-            </HStack>
+        {/* Day nav: prompt card centered; stacked controls left/right */}
+        <HStack w="100%" gap="0" align="stretch">
+          <Stack gap="0" align="stretch" flexShrink={0} w={{ base: "3.25rem", md: "3.5rem" }}>
+            <PondButton
+              type="button"
+              size="sm"
+              p={0}
+              variant="ghost"
+              color="navy"
+              colorPalette="navy"
+              w="full"
+              disabled={!canGoToPrevDay(selectedDate)}
+              onClick={goPrev}
+              aria-label="Previous day"
+            >
+              ←
+            </PondButton>
+            <PondButton
+              type="button"
+              size="sm"
+              p={0}
+              variant="ghost"
+              colorPalette="navy"
+              color="navy"
+              w="full"
+              onClick={() => setArchiveOpen((o) => !o)}
+              aria-label={archiveOpen ? "Close archive list" : "Open archive list"}
+              visibility={showArchiveToggle ? "visible" : "hidden"}
+              pointerEvents={showArchiveToggle ? "auto" : "none"}
+            >
+              ☰
+            </PondButton>
+          </Stack>
 
-            {promptLoading ? (
-              <Box {...PANEL_ENTRY_CARD_PROPS} minH={PROMPT_CARD_MIN_H} display="flex" alignItems="center">
-                <PanelBlockSkeleton lines={1} showTitleLine />
+          <Box flex="1" minW={0} display="flex" alignItems="stretch">
+            <Box w="full">{promptCard}</Box>
+          </Box>
+
+          <Stack gap="0" align="stretch" flexShrink={0} w={{ base: "3.25rem", md: "3.5rem" }}>
+            <PondButton
+              type="button"
+              size="sm"
+              p={0}
+              variant="ghost"
+              colorPalette="navy"
+              color="navy"
+              w="full"
+              disabled={!canGoToNextDay(selectedDate)}
+              onClick={goNext}
+              aria-label="Next day"
+            >
+              →
+            </PondButton>
+            <PondButton
+              type="button"
+              size="sm"
+              p={0}
+              variant="ghost"
+              colorPalette="navy"
+              color="navy"
+              w="full"
+              onClick={goToToday}
+              aria-label="Fast forward to today"
+              visibility={!isViewingToday ? "visible" : "hidden"}
+              pointerEvents={!isViewingToday ? "auto" : "none"}
+            >
+              {`>>`}
+            </PondButton>
+          </Stack>
+        </HStack>
+
+        {/* Archive (collapsed) - above song entry cards */}
+        {showArchiveToggle ? (
+          <Collapsible.Root
+            open={archiveOpen}
+            onOpenChange={(d) => setArchiveOpen(d.open)}
+          >
+            <Collapsible.Content>
+              <Box mt="1">
+                <SongadayMonthArchive
+                  open={archiveOpen}
+                  getApiAccessToken={getApiAccessToken}
+                  seed={archiveSeed}
+                  onSelectEntryDate={(iso) => {
+                    const parts = iso.split("-");
+                    if (parts.length !== 3) return;
+                    const y = Number(parts[0]);
+                    const m = Number(parts[1]);
+                    const d = Number(parts[2]);
+                    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d))
+                      return;
+                    const dt = startOfDay(new Date(y, m - 1, d));
+                    const max = getTodayStart();
+                    setSelectedDate(dt.getTime() > max.getTime() ? max : dt);
+                    setArchiveOpen(false);
+                  }}
+                />
               </Box>
-            ) : promptLoadError ? (
-              <Box {...PANEL_ENTRY_CARD_PROPS} minH={PROMPT_CARD_MIN_H} display="flex" alignItems="center">
-                <Text
-                  fontSize={APP_TEXT_SIZES.helper}
-                  color="nautical.solid"
-                  fontWeight="medium"
-                  role="alert"
-                >
-                  {promptLoadError}
-                </Text>
-              </Box>
-            ) : !hasPrompt ? (
-              <Box {...NO_PROMPT_CARD_PROPS} minH={PROMPT_CARD_MIN_H} display="flex" alignItems="center">
-                <Text fontSize={APP_TEXT_SIZES.body} fontWeight="medium">
-                  There is no prompt for this day.{" "}
-                  <RouterLink to="/about">
-                    <Text
-                      as="span"
-                      color="nautical.contrast"
-                      fontWeight="bold"
-                      textDecoration="underline"
-                    >
-                      Please contact the site administrator.
-                    </Text>
-                  </RouterLink>
-                </Text>
-              </Box>
-            ) : (
-              <Box
-                bg="teal.solid"
-                color="teal.contrast"
-                borderRadius="xl"
-                p={{ base: "2.5", md: "2.5" }}
-                boxShadow="sm"
-                minH={PROMPT_CARD_MIN_H}
-                display="flex"
-                alignItems="center"
-              >
-                <Stack gap="2" align="stretch">
-                  <Text fontWeight="bold" fontSize={APP_TEXT_SIZES.label}>
-                    Today’s Prompt: “{promptPayload?.prompt ?? ""}”
-                  </Text>
-                  <Text fontSize={APP_TEXT_SIZES.helper} opacity={0.88}>
-                    {formatDateLabel(selectedDate)}
-                  </Text>
-                </Stack>
-              </Box>
-            )}
+            </Collapsible.Content>
+          </Collapsible.Root>
+        ) : null}
 
             {!myEntry && !isApproved ? (
               <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
@@ -974,37 +1178,6 @@ export default function SongadayPage() {
               </SimpleGrid>
             )}
           </Stack>
-
-      {/* Archive (collapsed) */}
-      {myEntry ? (
-        <Collapsible.Root open={archiveOpen} onOpenChange={(d) => setArchiveOpen(d.open)}>
-          <Collapsible.Trigger asChild>
-            <PondButton type="button" variant="outline" colorPalette="sky" w="100%">
-              {archiveOpen ? "Hide archive" : "Show archive"}
-            </PondButton>
-          </Collapsible.Trigger>
-          <Collapsible.Content>
-            <Box mt="3">
-              <SongadayMonthArchive
-                open={archiveOpen}
-                getApiAccessToken={getApiAccessToken}
-                onSelectEntryDate={(iso) => {
-                  const parts = iso.split("-");
-                  if (parts.length !== 3) return;
-                  const y = Number(parts[0]);
-                  const m = Number(parts[1]);
-                  const d = Number(parts[2]);
-                  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return;
-                  const dt = startOfDay(new Date(y, m - 1, d));
-                  const max = getTodayStart();
-                  setSelectedDate(dt.getTime() > max.getTime() ? max : dt);
-                  setArchiveOpen(false);
-                }}
-              />
-            </Box>
-          </Collapsible.Content>
-        </Collapsible.Root>
-      ) : null}
 
       {/* Staff-only bulk importer (collapsed, bottom) */}
       {isStaff ? (

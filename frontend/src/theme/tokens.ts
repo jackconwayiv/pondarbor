@@ -18,9 +18,9 @@ export const DESIGN = {
   teal: "#1F7A7A",
   tealHover: "#259494",
   tealActive: "#1A5F5F",
-  sky: "#4DA8DA",
-  skyHover: "#6FBBE2",
-  skyActive: "#3A8FC0",
+  sky: "#82C8E5",
+  skyHover: "#6BBBDD",
+  skyActive: "#4FAACD",
 
   /** Semantic */
   orange: "#C96A2B",

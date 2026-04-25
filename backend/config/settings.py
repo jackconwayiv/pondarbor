@@ -272,6 +272,8 @@ SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "").strip()
 SLACK_PROMPTS_CHANNEL_ID = os.getenv("SLACK_PROMPTS_CHANNEL_ID", "").strip()
 # If set, Events API message parsing will only run in this channel. Defaults to SLACK_PROMPTS_CHANNEL_ID.
 SLACK_SONGADAY_CHANNEL_ID = os.getenv("SLACK_SONGADAY_CHANNEL_ID", "").strip()
+# Used for Slack “Create account” button. Should point at a page that offers “Sign up with Slack”.
+SLACK_CREATE_ACCOUNT_URL = os.getenv("SLACK_CREATE_ACCOUNT_URL", "https://www.pondarbor.com/").strip()
 SONGADAY_SLACK_PROMPT_TIMEZONE = os.getenv("SONGADAY_SLACK_PROMPT_TIMEZONE", "UTC").strip()
 
 # QFF: structured INFO logs per command (exec_ms, sim_ms, session_ms, total_ms) for staging/prod profiling.

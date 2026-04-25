@@ -43,14 +43,23 @@ def slack_users_info(*, slack_user_id: str) -> dict[str, Any]:
         return {"ok": False, "error": "invalid_json"}
 
 
-def slack_chat_post_ephemeral(*, channel: str, user: str, text: str) -> dict[str, Any]:
+def slack_chat_post_ephemeral(
+    *,
+    channel: str,
+    user: str,
+    text: str,
+    blocks: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     token = (getattr(settings, "SLACK_BOT_TOKEN", None) or "").strip()
     if not token:
         return {"ok": False, "error": "missing_bot_token"}
+    body: dict[str, Any] = {"channel": channel, "user": user, "text": text}
+    if blocks:
+        body["blocks"] = blocks
     r = requests.post(
         f"{_SLACK_API}/chat.postEphemeral",
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"},
-        json={"channel": channel, "user": user, "text": text},
+        json=body,
         timeout=12,
     )
     try:

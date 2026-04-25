@@ -58,6 +58,28 @@ def _extract_first_url(text: str) -> str:
         return m2.group(0).strip().rstrip(").,>]")
     return ""
 
+def _create_account_blocks(*, url: str) -> list[dict]:
+    return [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "Want to save Song-a-day picks from Slack? Create a PondArbor account (you can sign up with Slack).",
+            },
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Create account"},
+                    "style": "primary",
+                    "url": url,
+                }
+            ],
+        },
+    ]
+
 
 def _slack_ephemeral(text: str) -> JsonResponse:
     return JsonResponse({"response_type": "ephemeral", "text": text})
@@ -252,6 +274,16 @@ def slack_events(request):
     team_id = (payload.get("team_id") or "").strip()
     user, err = _resolve_user_for_slack(team_id, slack_user_id)
     if err or not user:
+        create_url = (getattr(settings, "SLACK_CREATE_ACCOUNT_URL", None) or "").strip()
+        if create_url:
+            slack_chat_post_ephemeral(
+                channel=channel_id,
+                user=slack_user_id,
+                text=err
+                or "To submit Song-a-day from Slack, create a PondArbor account.",
+                blocks=_create_account_blocks(url=create_url),
+            )
+            return JsonResponse({"ok": True})
         slack_chat_post_ephemeral(
             channel=channel_id,
             user=slack_user_id,

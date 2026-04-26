@@ -18,8 +18,6 @@ import { useAppSession } from "./auth/AppSessionContext";
 import {
   auth0LoginAuthorizationParams,
   auth0SignupAuthorizationParams,
-  auth0SlackLoginAuthorizationParams,
-  auth0SlackSignupAuthorizationParams,
 } from "./auth/auth0LoginParams";
 import PondButton from "./PondButton";
 import { pondarborProfileSrc } from "./publicAsset";

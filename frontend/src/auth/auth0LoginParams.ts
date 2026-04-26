@@ -15,18 +15,29 @@ export function auth0SlackConnectionName(): string | undefined {
   return t || undefined;
 }
 
+function slackOnlyAuthorizationParams(extra: Partial<AuthorizationParams>): AuthorizationParams {
+  const audienceRaw = import.meta.env.VITE_AUTH0_API_AUDIENCE;
+  const audience =
+    typeof audienceRaw === "string" && audienceRaw.trim() ? audienceRaw.trim() : undefined;
+  // Do not pass `scope: "openid profile email"` with `connection: slack` — Auth0 + legacy
+  // Slack identity scopes treat OIDC scopes differently and Slack may reject the authorize URL.
+  const params: AuthorizationParams = { ...extra };
+  if (audience) params.audience = audience;
+  return params;
+}
+
 /** Log in with Slack via Auth0 (returns null if `VITE_AUTH0_SLACK_CONNECTION` is unset). */
 export function auth0SlackLoginAuthorizationParams(): AuthorizationParams | null {
   const connection = auth0SlackConnectionName();
   if (!connection) return null;
-  return { ...base(), connection };
+  return slackOnlyAuthorizationParams({ connection });
 }
 
 /** Sign up with Slack via Auth0 (returns null if connection is unset). */
 export function auth0SlackSignupAuthorizationParams(): AuthorizationParams | null {
   const connection = auth0SlackConnectionName();
   if (!connection) return null;
-  return { ...base(), connection, screen_hint: "signup" };
+  return slackOnlyAuthorizationParams({ connection, screen_hint: "signup" });
 }
 
 /**

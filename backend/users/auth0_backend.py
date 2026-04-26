@@ -10,6 +10,7 @@ from rest_framework import exceptions
 from rest_framework.authentication import BaseAuthentication, get_authorization_header
 
 from common.jwks import get_auth0_jwks
+from slack_integration.auth0_identity import sync_slack_identity_from_auth0_userinfo
 
 from .models import Profile
 
@@ -29,6 +30,16 @@ def _clip(value: str, max_len: int) -> str:
     if not value or max_len <= 0:
         return value
     return value if len(value) <= max_len else value[:max_len]
+
+
+def _sub_may_be_slack(sub: str) -> bool:
+    """True when Auth0 `sub` likely belongs to Slack — used to fetch /userinfo for `identities`."""
+    s = (sub or "").strip().lower()
+    if not s:
+        return False
+    if s.startswith("slack|"):
+        return True
+    return "oauth2|slack" in s
 
 
 def authenticate_bearer_token(token: str):
@@ -98,6 +109,7 @@ def authenticate_bearer_token(token: str):
 
     email = payload.get("email")
     auth0_sub = payload.get("sub")
+    token_sub = (auth0_sub or "").strip() if isinstance(auth0_sub, str) else ""
     given_name = payload.get("given_name") or ""
     family_name = payload.get("family_name") or ""
     full_name = payload.get("name") or ""
@@ -108,9 +120,11 @@ def authenticate_bearer_token(token: str):
     # Access tokens for a custom API audience typically omit OIDC profile claims
     # (picture, name). ID token and /userinfo include them for Google etc.
     need_profile = not picture or not (full_name or given_name or family_name)
+    # Slack (legacy or OIDC) often encodes workspace linkage only in /userinfo `identities`.
+    need_slack_identities = _sub_may_be_slack(token_sub)
     userinfo_lookup_failed = False
 
-    if need_email or need_profile:
+    if need_email or need_profile or need_slack_identities:
         try:
             userinfo_response = requests.get(
                 f"https://{settings.AUTH0_DOMAIN}/userinfo",
@@ -218,6 +232,8 @@ def authenticate_bearer_token(token: str):
         except (IntegrityError, OperationalError):
             logger.exception("Auth0 profile save failed for %s", email)
             raise
+
+    sync_slack_identity_from_auth0_userinfo(user, userinfo)
 
     auth_payload = {"token": token, "payload": payload}
     return (user, auth_payload)

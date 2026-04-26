@@ -264,9 +264,9 @@ EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "true").lower() in ("true", "1", "yes
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@localhost")
 CONTACT_INBOX_EMAIL = os.getenv("CONTACT_INBOX_EMAIL", "pondarbor@gmail.com").strip()
 
-# Slack (Song-a-day bot, /song, daily prompt). Leave unset to disable server-side Slack calls.
-# Web login/signup uses Auth0: configure a Slack social connection in Auth0, then set
-# `VITE_AUTH0_SLACK_CONNECTION` in the frontend env to expose the “Sign up with Slack” button.
+# Slack (Song-a-day): ArborBot credentials only — signing secret + bot token for `/song`, Events, posts.
+# Auth0 “Sign in with Slack” uses a separate Slack app (e.g. pondarbor.com login); those OAuth
+# credentials belong in Auth0, not here. Frontend: set VITE_AUTH0_SLACK_CONNECTION for the login button.
 SLACK_SIGNING_SECRET = os.getenv("SLACK_SIGNING_SECRET", "").strip()
 SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "").strip()
 SLACK_PROMPTS_CHANNEL_ID = os.getenv("SLACK_PROMPTS_CHANNEL_ID", "").strip()

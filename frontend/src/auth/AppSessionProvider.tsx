@@ -142,7 +142,6 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
         token = await getAccessTokenSilently({
           authorizationParams: {
             audience: import.meta.env.VITE_AUTH0_API_AUDIENCE,
-            scope: "openid profile email",
           },
         });
       } catch (err: unknown) {
@@ -205,7 +204,6 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       return await getAccessTokenSilently({
         authorizationParams: {
           audience: import.meta.env.VITE_AUTH0_API_AUDIENCE,
-          scope: "openid profile email",
         },
       });
     } catch (err: unknown) {
@@ -307,7 +305,6 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
         token = await getAccessTokenSilently({
           authorizationParams: {
             audience: import.meta.env.VITE_AUTH0_API_AUDIENCE,
-            scope: "openid profile email",
           },
         });
       } catch (err: unknown) {

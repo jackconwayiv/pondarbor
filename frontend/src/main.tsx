@@ -21,6 +21,8 @@ createRoot(document.getElementById("root")!).render(
       authorizationParams={{
         redirect_uri: window.location.origin,
         audience: import.meta.env.VITE_AUTH0_API_AUDIENCE,
+        // Required for OIDC: without `openid`, sessions after redirect are incomplete.
+        scope: "openid profile email",
       }}
       cacheLocation="localstorage"
       onRedirectCallback={(appState) => {

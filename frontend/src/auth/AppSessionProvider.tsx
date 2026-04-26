@@ -129,6 +129,11 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
   const pickAccountHandledRef = useRef(false);
   /** True while local logout runs — Auth0 can still report authenticated until the client clears, which would otherwise retrigger bootstrap and consent redirects. */
   const isLoggingOutRef = useRef(false);
+  /**
+   * After social / OIDC login, `getAccessTokenSilently` can fail with consent_required while
+   * we still trigger one full `loginWithRedirect` recovery. Without a cap, that can loop forever.
+   */
+  const tokenRecoveryRedirectCountRef = useRef(0);
 
   const bootstrapSession = useCallback(async () => {
     if (!isAuthenticated || !auth0User || isLoggingOutRef.current) return;
@@ -146,6 +151,14 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
         });
       } catch (err: unknown) {
         if (shouldRecoverTokenWithRedirect(err)) {
+          if (tokenRecoveryRedirectCountRef.current >= 1) {
+            setIsBootstrapping(false);
+            setBootstrapError(
+              "Could not get an API access token after sign-in. In Auth0, open your SPA application and authorize the custom API (audience) for this app, or add the required scopes. Then try logging in again.",
+            );
+            return;
+          }
+          tokenRecoveryRedirectCountRef.current += 1;
           setIsBootstrapping(false);
           const returnPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
           void loginWithRedirect(
@@ -184,6 +197,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       saveCachedSession(data, token);
       hasInitialized.current = true;
       lastAuth0Sub.current = auth0User.sub ?? null;
+      tokenRecoveryRedirectCountRef.current = 0;
     } catch (err: unknown) {
       setBootstrapError(getErrorMessage(err));
       hasInitialized.current = false;
@@ -208,6 +222,12 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       });
     } catch (err: unknown) {
       if (shouldRecoverTokenWithRedirect(err)) {
+        if (tokenRecoveryRedirectCountRef.current >= 1) {
+          throw new Error(
+            "Could not refresh API access token. Check Auth0: SPA application has the custom API audience authorized, and any required API scopes are granted for this app.",
+          );
+        }
+        tokenRecoveryRedirectCountRef.current += 1;
         const returnPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
         await loginWithRedirect(
           auth0LoginWithReturnTo(returnPath, {
@@ -430,6 +450,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     hasInitialized.current = false;
     lastAuth0Sub.current = null;
     clearCachedSession();
+    tokenRecoveryRedirectCountRef.current = 0;
   }, []);
 
   const logout = useCallback(async () => {

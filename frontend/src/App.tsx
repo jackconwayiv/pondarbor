@@ -174,7 +174,7 @@ function App() {
                 >
                   Sign up
                 </PondButton>
-                {auth0SlackLoginAuthorizationParams() ? (
+                {/* {auth0SlackLoginAuthorizationParams() ? (
                   <PondButton
                     colorPalette="gray"
                     variant="outline"
@@ -199,7 +199,7 @@ function App() {
                   >
                     Sign up with Slack
                   </PondButton>
-                ) : null}
+                ) : null} */}
               </HStack>
               <Flex alignItems="center" width="100%" flexWrap="wrap" gap="3">
                 <Image src={pondarborProfileSrc()} width="150px" flexShrink={0} />

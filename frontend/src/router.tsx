@@ -97,6 +97,7 @@ const HarborStaffPlaytestPage = lazy(
 );
 const CalendarPage = lazy(() => import("./calendar/CalendarPage"));
 const CalendarDayPage = lazy(() => import("./calendar/CalendarDayPage"));
+const PondsteadMapPage = lazy(() => import("./pondstead/PondsteadMapPage"));
 
 function lazyRouteElement(element: ReactNode): ReactNode {
   return <Suspense fallback={<RouteLoadingFallback />}>{element}</Suspense>;
@@ -227,6 +228,10 @@ export const router = sentryCreateBrowserRouter([
             element: lazyRouteElement(<CalendarDayPage />),
           },
         ],
+      },
+      {
+        path: "pondstead",
+        element: lazyRouteElement(<PondsteadMapPage />),
       },
       {
         path: "closet/items/:itemId",

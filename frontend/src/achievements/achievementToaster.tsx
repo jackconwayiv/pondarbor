@@ -20,7 +20,10 @@ export function AchievementToaster() {
     <Portal>
       <Toaster toaster={achievementToaster}>
         {(toast) => (
-          <Toast.Root width={{ md: "sm" }} maxW="calc(100vw - 2rem)">
+          <Toast.Root
+            w={{ base: "calc(100vw - 2rem)", md: "sm" }}
+            maxW="calc(100vw - 2rem)"
+          >
             {toast.type === "loading" ? (
               <Spinner size="sm" colorPalette="teal" />
             ) : (

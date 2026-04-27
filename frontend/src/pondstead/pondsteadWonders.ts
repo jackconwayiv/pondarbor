@@ -119,6 +119,7 @@ export function countCompletedOwnedPyramids(map: ParsedMap, ownerId: number): nu
   return countCompletedOwnedWonderOfKind(map, ownerId, "pyramid");
 }
 
+/** Count only; Academy is not a build target while disabled in `pondsteadBuild`. */
 export function countCompletedOwnedAcademies(map: ParsedMap, ownerId: number): number {
   return countCompletedOwnedWonderOfKind(map, ownerId, "academy");
 }

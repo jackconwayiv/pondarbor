@@ -21,7 +21,7 @@ function mapWithCells(cells: MapCell[][]): ParsedMap {
 describe("constructionNightsForTarget", () => {
   it("uses 3 nights for world wonders", () => {
     expect(constructionNightsForTarget("lighthouse")).toBe(3);
-    expect(constructionNightsForTarget("academy")).toBe(3);
+    expect(constructionNightsForTarget("pyramid")).toBe(3);
   });
 });
 

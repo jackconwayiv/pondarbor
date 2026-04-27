@@ -98,12 +98,14 @@ export function getBuildCostForTarget(map: ParsedMap, target: BuildingKind): Res
     case "lighthouse":
     case "colossus":
     case "mausoleum":
-    case "pyramid":
-    case "academy": {
+    case "pyramid": {
       const k = wonderMarginalCostIndex(map);
       const x = 100 + 100 * k;
       return { food: x, wood: x, stone: x };
     }
+    // Academy temporarily disabled as a build target.
+    case "academy":
+      return null;
     default:
       return null;
   }
@@ -139,7 +141,7 @@ export const PONDSTEAD_STARTING_RESOURCES: ResourcePurse = { food: 200, wood: 20
 
 export type PlaceBuildResult =
   | { ok: true }
-  | { ok: false; reason: "insufficient" | "invalid" | "no_actions" | "prerequisites" };
+  | { ok: false; reason: "insufficient" | "invalid" | "prerequisites" };
 
 /**
  * Marginal cost to recruit the next unit of this kind.

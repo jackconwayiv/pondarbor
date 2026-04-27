@@ -20,7 +20,6 @@ export type PondsteadUndoSnapshot = {
   currentFood: number;
   currentWood: number;
   currentStone: number;
-  actionsRemaining: number;
   day: number;
   /** Chebyshev squares this stack has marched today (id → used, max 3 per id). */
   stackMovementUsed?: Record<string, number>;
@@ -37,7 +36,6 @@ export function capturePondsteadUndoSnapshot(args: {
   currentFood: number;
   currentWood: number;
   currentStone: number;
-  actionsRemaining: number;
   day: number;
   stackMovementUsed: Readonly<Record<string, number>>;
   recruitUsedThisDayKeys: ReadonlySet<string>;
@@ -51,7 +49,6 @@ export function capturePondsteadUndoSnapshot(args: {
     currentFood: args.currentFood,
     currentWood: args.currentWood,
     currentStone: args.currentStone,
-    actionsRemaining: args.actionsRemaining,
     day: args.day,
     stackMovementUsed: { ...args.stackMovementUsed },
     recruitUsedThisDayKeys: Array.from(args.recruitUsedThisDayKeys).sort(),
@@ -72,7 +69,6 @@ export function rehydratePondsteadUndoSnapshot(s: PondsteadUndoSnapshot) {
     currentFood: s.currentFood,
     currentWood: s.currentWood,
     currentStone: s.currentStone,
-    actionsRemaining: s.actionsRemaining,
     day: s.day,
     stackMovementUsed: { ...(s.stackMovementUsed ?? {}) },
     recruitUsedThisDayKeys: new Set(s.recruitUsedThisDayKeys ?? []),

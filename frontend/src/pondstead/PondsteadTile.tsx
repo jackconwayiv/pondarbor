@@ -1,21 +1,15 @@
 import type { ReactNode } from "react";
-import { useState } from "react";
-import { useDroppable } from "@dnd-kit/core";
+import { useEffect, useState } from "react";
 import { Box, Button, Text, VStack } from "@chakra-ui/react";
 
 import { AppModal } from "../components/AppModal";
 import DraggablePondStack from "./DraggablePondStack";
+import PondsteadUnitActionsModal from "./PondsteadUnitActionsModal";
+import { kingMarchCapFromMap, recruitPopulationCapMessage } from "./pondsteadHudMetrics";
 import {
-  canAffordOneFullAction,
-  kingMarchCapFromMap,
-  noActionsRemainingMessage,
-  outOfActionsTodayNotice,
-  recruitPopulationCapMessage,
-} from "./pondsteadHudMetrics";
-import {
-  PONDSTEAD_DND_TILE,
   recruitBlockedMessage,
   sortStacksForDisplay,
+  stackCanStartAdjacentMarchToday,
   stacksOnCell,
   type PondsteadUnitKind,
   type RecruitAttemptResult,
@@ -41,7 +35,7 @@ import {
   type PlaceBuildResult,
   type ResourcePurse,
 } from "./pondsteadBuildingCosts";
-import { pondsteadCornerUnitGlyphPx, pondsteadResourceLayerGlyphPx } from "./sizes";
+import { pondsteadResourceLayerGlyphPx, pondsteadUnitStackGlyphPx } from "./sizes";
 import { buildingLabel, buildingModalTitle, groundStyle, RESOURCE_EMOJI } from "./terrain";
 import type { BuildingKind, MapCell, ParsedMap } from "./types";
 import {
@@ -134,7 +128,6 @@ function BuildingWithCommand({
   stacks,
   recruitQueues,
   playerResources,
-  actionsRemaining,
   queuedRecruitKind,
   onRecruit,
   interactionLocked,
@@ -151,7 +144,6 @@ function BuildingWithCommand({
   stacks: UnitStack[];
   recruitQueues: PendingRecruits;
   playerResources: ResourcePurse;
-  actionsRemaining: number;
   queuedRecruitKind: PondsteadUnitKind | undefined;
   onRecruit: (row: number, col: number, kind: PondsteadUnitKind) => RecruitAttemptResult;
   interactionLocked: boolean;
@@ -166,7 +158,7 @@ function BuildingWithCommand({
     | { type: "insufficient" }
     | { type: "recruit_pending" }
     | { type: "already_recruited_today" }
-    | { type: "no_actions" }
+    | { type: "locked" }
   >(null);
   const onModalOpenChange = (next: boolean) => {
     setOpen(next);
@@ -185,8 +177,8 @@ function BuildingWithCommand({
       setRecruitError({ type: "recruit_pending" });
     } else if (r === "already_recruited_today") {
       setRecruitError({ type: "already_recruited_today" });
-    } else if (r === "no_actions") {
-      setRecruitError({ type: "no_actions" });
+    } else if (r === "locked") {
+      setRecruitError({ type: "locked" });
     } else {
       setRecruitError({ type: "tile", kind: "worker" });
     }
@@ -204,8 +196,8 @@ function BuildingWithCommand({
       setRecruitError({ type: "recruit_pending" });
     } else if (r === "already_recruited_today") {
       setRecruitError({ type: "already_recruited_today" });
-    } else if (r === "no_actions") {
-      setRecruitError({ type: "no_actions" });
+    } else if (r === "locked") {
+      setRecruitError({ type: "locked" });
     } else {
       setRecruitError({ type: "tile", kind: "soldier" });
     }
@@ -232,8 +224,8 @@ function BuildingWithCommand({
             ? recruitPendingInQueueMessage()
             : recruitError.type === "already_recruited_today"
               ? "This building already recruited a worker today."
-              : recruitError.type === "no_actions"
-                ? noActionsRemainingMessage()
+              : recruitError.type === "locked"
+                ? "The map is locked (end of day or game over)."
                 : recruitBlockedMessage(recruitError.kind);
   const recruitBlockedByQueue = queuedRecruitKind !== undefined;
 
@@ -255,6 +247,7 @@ function BuildingWithCommand({
         color="fg"
         bg="bg"
         borderWidth="1px"
+        borderStyle={recruitBlockedByQueue ? "dashed" : "solid"}
         borderColor="border"
         borderRadius="md"
         boxShadow="sm"
@@ -267,11 +260,6 @@ function BuildingWithCommand({
       </Button>
       <AppModal open={open} onOpenChange={onModalOpenChange} title={modalTitle} size="sm">
         <VStack align="stretch" gap="3" pt="1">
-          {!canAffordOneFullAction(actionsRemaining) ? (
-            <Text fontSize="xs" color="fg.muted" textAlign="center" fontStyle="italic">
-              {outOfActionsTodayNotice()}
-            </Text>
-          ) : null}
           {recruitBlockedByQueue ? (
             <Text fontSize="sm" color="fg.muted" fontStyle="italic" textAlign="center">
               Queued: {unitKindLabel(queuedRecruitKind!)} {unitEmoji(queuedRecruitKind!)} — spawns at
@@ -310,12 +298,7 @@ function BuildingWithCommand({
               size="sm"
               variant="outline"
               colorPalette="lilypad"
-              disabled={
-                !canPayWorker ||
-                recruitBlockedByQueue ||
-                workerRecruitSpentToday ||
-                !canAffordOneFullAction(actionsRemaining)
-              }
+              disabled={!canPayWorker || recruitBlockedByQueue || workerRecruitSpentToday}
               onClick={recruitWorker}
             >
               Recruit {unitKindLabel("worker")} {unitEmoji("worker")} —{" "}
@@ -328,7 +311,7 @@ function BuildingWithCommand({
               size="sm"
               variant="outline"
               colorPalette="lilypad"
-              disabled={!canPaySoldier || recruitBlockedByQueue || !canAffordOneFullAction(actionsRemaining)}
+              disabled={!canPaySoldier || recruitBlockedByQueue}
               onClick={recruitSoldier}
             >
               Recruit {unitKindLabel("soldier")} {unitEmoji("soldier")} —{" "}
@@ -369,7 +352,6 @@ export default function PondsteadTile({
   col,
   stacks,
   recruitQueues,
-  actionsRemaining,
   playerResources,
   recruitUsedWorkerSlotKeys,
   tileVision,
@@ -378,6 +360,8 @@ export default function PondsteadTile({
   onSplit,
   onRecruit,
   onPlaceBuilding,
+  onMarch,
+  revealedCellKeys,
 }: {
   cell: MapCell;
   map: ParsedMap;
@@ -386,7 +370,6 @@ export default function PondsteadTile({
   col: number;
   stacks: UnitStack[];
   recruitQueues: PendingRecruits;
-  actionsRemaining: number;
   playerResources: ResourcePurse;
   recruitUsedWorkerSlotKeys: ReadonlySet<string>;
   tileVision: TileVisionMode;
@@ -400,14 +383,18 @@ export default function PondsteadTile({
     unitKind: PondsteadUnitKind,
     target: BuildingKind,
   ) => PlaceBuildResult;
+  onMarch: (stackId: string, toRow: number, toCol: number) => void;
+  revealedCellKeys: ReadonlySet<string>;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: PONDSTEAD_DND_TILE(row, col) });
   const localPlayerId = PONDSTEAD_LOCAL_PLAYER_ID;
   const groundBg = groundStyle(cell.ground).bg;
   const pos = `r${row} c${col}`;
   const t = `${cellSizePx}px`;
-  const glyph = pondsteadCornerUnitGlyphPx(cellSizePx);
+  const unitStackFontPx = pondsteadUnitStackGlyphPx(cellSizePx);
   const labelPx = Math.max(7, Math.min(14, cellSizePx * 0.09));
+  /** Must match flex `gap` on the unit row: `calc((100% - 2 * gap) / 3)` is three slots per line. */
+  const unitRowGap = "0.12rem";
+  const unitStackSlotMaxW = `calc((100% - 2 * ${unitRowGap}) / 3)`;
 
   const showEnemyIntel = tileVision === "full";
   const unitsHere = sortStacksForDisplay(
@@ -417,6 +404,17 @@ export default function PondsteadTile({
       return (s.ownerId ?? localPlayerId) === localPlayerId;
     }),
   );
+  const [unitModalStackId, setUnitModalStackId] = useState<string | null>(null);
+  const unitModalStack = unitModalStackId
+    ? unitsHere.find((s) => s.id === unitModalStackId)
+    : undefined;
+
+  useEffect(() => {
+    if (unitModalStackId != null && unitModalStack === undefined) {
+      setUnitModalStackId(null);
+    }
+  }, [unitModalStackId, unitModalStack]);
+
   const queuedRecruitKind = recruitQueues[pondsteadCellKey(row, col)];
 
   const showBuilding =
@@ -471,7 +469,6 @@ export default function PondsteadTile({
         stacks={stacks}
         recruitQueues={recruitQueues}
         playerResources={playerResources}
-        actionsRemaining={actionsRemaining}
         queuedRecruitKind={queuedRecruitKind}
         onRecruit={onRecruit}
         interactionLocked={interactionLocked}
@@ -491,7 +488,6 @@ export default function PondsteadTile({
 
   return (
     <Box
-      ref={setNodeRef}
       position="relative"
       minW={t}
       minH={t}
@@ -502,7 +498,6 @@ export default function PondsteadTile({
       borderRight={GRID_LINE}
       borderBottom={GRID_LINE}
       bg={tileBg}
-      boxShadow={isOver ? "inset 0 0 0 2px rgba(0,0,0,0.22)" : undefined}
       role="img"
       aria-label={tileAria}
       display="flex"
@@ -523,23 +518,20 @@ export default function PondsteadTile({
         alignContent="flex-start"
         alignItems="flex-start"
         justifyContent="flex-start"
-        gap="0.12rem"
+        gap={unitRowGap}
       >
         {resourceLayer}
         {unitsHere.map((st) => (
           <DraggablePondStack
             key={st.id}
-            cell={cell}
-            map={map}
             stack={st}
-            fontPx={glyph}
-            playerResources={playerResources}
-            actionsRemaining={actionsRemaining}
-            marchSpent={stackMovementUsed[st.id] ?? 0}
-            kingMarchCap={kingMarchCapFromMap(map, st.ownerId ?? PONDSTEAD_LOCAL_PLAYER_ID)}
+            fontPx={unitStackFontPx}
+            slotMaxW={unitStackSlotMaxW}
             interactionLocked={interactionLocked}
-            onSplit={onSplit}
-            onPlaceBuilding={(unitKind, target) => onPlaceBuilding(row, col, unitKind, target)}
+            noAdjacentMovesRemaining={
+              !stackCanStartAdjacentMarchToday(stackMovementUsed, st.id, kingMarchCapFromMap(map, st.ownerId ?? localPlayerId))
+            }
+            onOpenUnitActions={() => setUnitModalStackId(st.id)}
           />
         ))}
       </Box>
@@ -547,6 +539,26 @@ export default function PondsteadTile({
         {constructionBlock}
         {buildingBlock}
       </Box>
+      {unitModalStack != null ? (
+        <PondsteadUnitActionsModal
+          key={unitModalStack.id}
+          stack={unitModalStack}
+          cell={cell}
+          map={map}
+          gameStacks={stacks}
+          stackMovementUsed={stackMovementUsed}
+          playerResources={playerResources}
+          kingMarchCap={kingMarchCapFromMap(map, unitModalStack.ownerId ?? PONDSTEAD_LOCAL_PLAYER_ID)}
+          open
+          onOpenChange={(next) => {
+            if (!next) setUnitModalStackId(null);
+          }}
+          onSplit={onSplit}
+          onPlaceBuilding={(unitKind, target) => onPlaceBuilding(row, col, unitKind, target)}
+          onMarch={onMarch}
+          revealedCellKeys={revealedCellKeys}
+        />
+      ) : null}
     </Box>
   );
 }

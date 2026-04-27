@@ -151,6 +151,8 @@ export function militaryBuildOptionsOnCell(map: ParsedMap, cell: MapCell, ownerI
 export function workerWonderBuildOptionsOnCell(map: ParsedMap, cell: MapCell, ownerId: number): WonderKind[] {
   const out: WonderKind[] = [];
   for (const w of WONDER_KINDS) {
+    // Academy temporarily disabled as a build target.
+    if (w === "academy") continue;
     if (canStartWonderConstruction(map, cell, ownerId, w)) out.push(w);
   }
   return out;
@@ -161,6 +163,7 @@ export const WORKER_WONDER_BUILD_ACTION_LABEL: Record<WonderKind, string> = {
   colossus: "Build Colossus",
   mausoleum: "Build Mausoleum",
   pyramid: "Build Pyramid",
+  // Academy build disabled for now; label kept for type / future restore.
   academy: "Build Academy",
 };
 
@@ -209,6 +212,8 @@ export function tryStartConstruction(
   const cell = map.cells[row]![col]!;
 
   if (unitKind === "worker") {
+    // Academy temporarily disabled as a build target.
+    if (target === "academy") return null;
     if (target === "orchard" && cellAllowsNewBuilding(cell) && cell.resource === "food") {
       return withCellConstructionTarget(map, row, col, "orchard", constructionOwnerId, unitKind);
     }

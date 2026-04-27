@@ -13,12 +13,12 @@ export default function PondsteadMapGrid({
   cellSizePx,
   stacks,
   recruitQueues,
-  actionsRemaining,
   playerResources,
   recruitUsedWorkerSlotKeys,
   onSplit,
   onRecruit,
   onPlaceBuilding,
+  onMarch,
   stackMovementUsed,
   revealedCellKeys,
   visibleCellKeys,
@@ -28,7 +28,6 @@ export default function PondsteadMapGrid({
   cellSizePx: number;
   stacks: UnitStack[];
   recruitQueues: PendingRecruits;
-  actionsRemaining: number;
   playerResources: ResourcePurse;
   recruitUsedWorkerSlotKeys: ReadonlySet<string>;
   stackMovementUsed: Readonly<Record<string, number>>;
@@ -44,6 +43,7 @@ export default function PondsteadMapGrid({
     unitKind: PondsteadUnitKind,
     target: BuildingKind,
   ) => PlaceBuildResult;
+  onMarch: (stackId: string, toRow: number, toCol: number) => void;
 }) {
   const { width, height, cells } = map;
   const c = `${cellSizePx}px`;
@@ -63,7 +63,6 @@ export default function PondsteadMapGrid({
           col={cIdx}
           stacks={stacks}
           recruitQueues={recruitQueues}
-          actionsRemaining={actionsRemaining}
           playerResources={playerResources}
           recruitUsedWorkerSlotKeys={recruitUsedWorkerSlotKeys}
           tileVision={tileVision}
@@ -72,6 +71,8 @@ export default function PondsteadMapGrid({
           onSplit={onSplit}
           onRecruit={onRecruit}
           onPlaceBuilding={onPlaceBuilding}
+          onMarch={onMarch}
+          revealedCellKeys={revealedCellKeys}
         />,
       );
     }

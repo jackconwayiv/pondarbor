@@ -1,14 +1,3 @@
-import {
-  DndContext,
-  DragOverlay,
-  type DragEndEvent,
-  type DragStartEvent,
-  pointerWithin,
-  PointerSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
 import { Box, Stack, Text } from "@chakra-ui/react";
 
 import { AppModal } from "../components/AppModal";
@@ -19,12 +8,8 @@ import PondsteadCommandBar from "./PondsteadCommandBar";
 import PondsteadDailyReportModal, { type PondsteadDailyReport } from "./PondsteadDailyReportModal";
 import { PONDSTEAD_DEFAULT_MAP_TEMPLATE } from "./defaultMapTemplate";
 import {
-  canAffordActionCost,
-  canAffordOneFullAction,
   foodPerDayFromOrchards,
   kingMarchCapFromMap,
-  maxActionsPerTurnFromMap,
-  outOfActionsTodayNotice,
   pointsFromMap,
   PONDSTEAD_VICTORY_POINTS,
   populationCapFromMap,
@@ -67,29 +52,25 @@ import {
   findHeadquartersCell,
   parseMapTemplate,
 } from "./parseMapTemplate";
-import { chebyshevDistance, chebyshevMoveActionCost } from "./adjacency";
 import {
   applyRecruit,
   applyStackDragEnd,
   applyStackSplit,
   classifyStackDragEnd,
+  marchAdjacentStepCostOrNull,
   createInitialStacks,
   mergeSurvivorStackId,
   PONDSTEAD_MAX_PER_KIND_ON_TILE,
-  parseDndStackId,
-  parseDndTileId,
   removeOneUnitOfKindFromCell,
   stacksOnCell,
   totalKindCountOnCell,
   type PondsteadUnitKind,
   type RecruitAttemptResult,
   type UnitStack,
-  unitEmoji,
   unitKindLabel,
 } from "./pondsteadUnits";
 import { buildingLabel } from "./terrain";
 import type { BuildingKind, ParsedMap } from "./types";
-import { pondsteadCornerUnitGlyphPx } from "./sizes";
 import {
   capturePondsteadUndoSnapshot,
   type PondsteadUndoSnapshot,
@@ -149,9 +130,6 @@ export default function PondsteadMapPage() {
   const [stacks, setStacks] = useState<UnitStack[]>(() => createDefaultPondsteadStacks(parseDefaultPondsteadMap()));
   const hq = useMemo(() => findHeadquartersCell(map), [map]);
   const [viewMode, setViewMode] = useState<PondsteadViewMode>("medium");
-  const [actionsRemaining, setActionsRemaining] = useState(() =>
-    maxActionsPerTurnFromMap(parseDefaultPondsteadMap()),
-  );
   const [recruitUsedThisDay, setRecruitUsedThisDay] = useState<Set<string>>(() => new Set());
   const [currentFood, setCurrentFood] = useState(PONDSTEAD_STARTING_RESOURCES.food);
   const [currentWood, setCurrentWood] = useState(PONDSTEAD_STARTING_RESOURCES.wood);
@@ -164,8 +142,7 @@ export default function PondsteadMapPage() {
   const [revealedCellKeys, setRevealedCellKeys] = useState(initialPondsteadRevealedCells);
   /** LOS cells seen this day; merged into `revealedCellKeys` only when the day ends. */
   const [scoutedTodayCellKeys, setScoutedTodayCellKeys] = useState(() => new Set<string>());
-  const [activeDragStackId, setActiveDragStackId] = useState<string | null>(null);
-  const [mapPointerHint, setMapPointerHint] = useState<"actions" | "march" | null>(null);
+  const [mapPointerHint, setMapPointerHint] = useState<"march" | null>(null);
   const mapPointerHintTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [stackMovementUsed, setStackMovementUsed] = useState<Record<string, number>>({});
   const undoStackRef = useRef<PondsteadUndoSnapshot[]>([]);
@@ -179,7 +156,7 @@ export default function PondsteadMapPage() {
   const [dailyReport, setDailyReport] = useState<PondsteadDailyReport | null>(null);
   const [victoryModalDismissed, setVictoryModalDismissed] = useState(false);
 
-  const flashMapPointerHint = useCallback((kind: "actions" | "march") => {
+  const flashMapPointerHint = useCallback((kind: "march") => {
     if (mapPointerHintTimeoutRef.current) {
       clearTimeout(mapPointerHintTimeoutRef.current);
     }
@@ -198,8 +175,6 @@ export default function PondsteadMapPage() {
     };
   }, []);
 
-  const activeDragStack = activeDragStackId ? stacks.find((s) => s.id === activeDragStackId) : undefined;
-
   const foodPerDay = useMemo(() => foodPerDayFromOrchards(stacks, map), [map, stacks]);
   const woodPerDay = useMemo(() => woodPerDayFromCamps(stacks, map), [map, stacks]);
   const stonePerDay = useMemo(() => stonePerDayFromQuarries(stacks, map), [map, stacks]);
@@ -209,7 +184,6 @@ export default function PondsteadMapPage() {
   );
   const populationCap = useMemo(() => populationCapFromMap(map), [map]);
   const points = useMemo(() => pointsFromMap(map), [map]);
-  const actionCapPerTurn = useMemo(() => maxActionsPerTurnFromMap(map), [map]);
   const gameWon = points >= PONDSTEAD_VICTORY_POINTS;
 
   useEffect(() => {
@@ -238,7 +212,6 @@ export default function PondsteadMapPage() {
       currentFood,
       currentWood,
       currentStone,
-      actionsRemaining,
       day,
       stackMovementUsed,
       recruitUsedThisDayKeys: recruitUsedThisDay,
@@ -254,7 +227,6 @@ export default function PondsteadMapPage() {
     currentFood,
     currentWood,
     currentStone,
-    actionsRemaining,
     day,
     stackMovementUsed,
     recruitUsedThisDay,
@@ -266,7 +238,6 @@ export default function PondsteadMapPage() {
     const snap = st[st.length - 1]!;
     undoStackRef.current = st.slice(0, -1);
     setUndoCount(undoStackRef.current.length);
-    setActiveDragStackId(null);
     const a = rehydratePondsteadUndoSnapshot(snap);
     setMap(a.map);
     setStacks(a.stacks);
@@ -276,7 +247,6 @@ export default function PondsteadMapPage() {
     setCurrentFood(a.currentFood);
     setCurrentWood(a.currentWood);
     setCurrentStone(a.currentStone);
-    setActionsRemaining(a.actionsRemaining);
     setDay(a.day);
     setStackMovementUsed(a.stackMovementUsed);
     setRecruitUsedThisDay(a.recruitUsedThisDayKeys);
@@ -366,7 +336,6 @@ export default function PondsteadMapPage() {
     setCurrentFood((f) => f + foodGained);
     setCurrentWood((w) => w + woodGained);
     setCurrentStone((s) => s + stoneGained);
-    setActionsRemaining(maxActionsPerTurnFromMap(m1));
     setStackMovementUsed({});
     setRecruitUsedThisDay(new Set());
     setRevealedCellKeys(nextRevealed);
@@ -377,9 +346,8 @@ export default function PondsteadMapPage() {
 
   const onPlaceBuilding = useCallback(
     (row: number, col: number, unitKind: PondsteadUnitKind, target: BuildingKind): PlaceBuildResult => {
-      if (gameWon) return { ok: false, reason: "no_actions" };
-      if (awaitingNewDayConfirm) return { ok: false, reason: "no_actions" };
-      if (!canAffordOneFullAction(actionsRemaining)) return { ok: false, reason: "no_actions" };
+      if (gameWon) return { ok: false, reason: "invalid" };
+      if (awaitingNewDayConfirm) return { ok: false, reason: "invalid" };
       const cost = getBuildCostForTarget(map, target);
       if (!cost) return { ok: false, reason: "invalid" };
       const purse = { food: currentFood, wood: currentWood, stone: currentStone };
@@ -407,42 +375,25 @@ export default function PondsteadMapPage() {
       setCurrentFood(after.food);
       setCurrentWood(after.wood);
       setCurrentStone(after.stone);
-      setActionsRemaining((a) => Math.max(0, a - 1));
       return { ok: true };
     },
-    [actionsRemaining, awaitingNewDayConfirm, gameWon, map, pushUndoSnapshot, stacks, currentFood, currentWood, currentStone],
+    [awaitingNewDayConfirm, gameWon, map, pushUndoSnapshot, stacks, currentFood, currentWood, currentStone],
   );
 
-  const onDragStart = useCallback((event: DragStartEvent) => {
-    setActiveDragStackId(parseDndStackId(event.active.id));
-  }, []);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
-  );
-
-  const onDragEnd = useCallback(
-    (event: DragEndEvent) => {
+  const handleMarch = useCallback(
+    (stackId: string, toRow: number, toCol: number) => {
       if (gameWon) return;
       if (awaitingNewDayConfirm) return;
-      const { active, over } = event;
-      setActiveDragStackId(null);
-      if (!over) return;
-      const stackId = parseDndStackId(active.id);
-      if (!stackId) return;
-      const to = parseDndTileId(over.id);
-      if (!to) return;
       const dragged = stacks.find((s) => s.id === stackId);
       if (!dragged) return;
       const marchCap = kingMarchCapFromMap(map, dragged.ownerId ?? PONDSTEAD_LOCAL_PLAYER_ID);
       const outcome = classifyStackDragEnd(
         stacks,
         stackId,
-        to.row,
-        to.col,
-        map.width,
-        map.height,
+        toRow,
+        toCol,
+        map,
+        revealedCellKeys,
         stackMovementUsed,
         marchCap,
       );
@@ -451,26 +402,24 @@ export default function PondsteadMapPage() {
         flashMapPointerHint("march");
         return;
       }
-      const d = chebyshevDistance(dragged, { row: to.row, col: to.col });
-      const moveActionCost = chebyshevMoveActionCost(dragged, { row: to.row, col: to.col });
-      if (outcome === "move") {
-        if (!canAffordActionCost(actionsRemaining, moveActionCost)) {
-          flashMapPointerHint("actions");
-          return;
-        }
-      } else if (outcome === "merge") {
-        if (!canAffordOneFullAction(actionsRemaining)) {
-          flashMapPointerHint("actions");
-          return;
-        }
-      }
+      const moverOwnerId = dragged.ownerId ?? PONDSTEAD_LOCAL_PLAYER_ID;
+      const stepCost =
+        marchAdjacentStepCostOrNull(
+          map,
+          dragged.row,
+          dragged.col,
+          toRow,
+          toCol,
+          revealedCellKeys,
+          moverOwnerId,
+        ) ?? 0;
       const next = applyStackDragEnd(
         stacks,
         stackId,
-        to.row,
-        to.col,
-        map.width,
-        map.height,
+        toRow,
+        toCol,
+        map,
+        revealedCellKeys,
         stackMovementUsed,
         marchCap,
       );
@@ -478,26 +427,24 @@ export default function PondsteadMapPage() {
       pushUndoSnapshot();
       setStacks(next);
       if (outcome === "move") {
-        setActionsRemaining((a) => Math.max(0, a - moveActionCost));
         setStackMovementUsed((prev) => ({
           ...prev,
-          [stackId]: (prev[stackId] ?? 0) + d,
+          [stackId]: (prev[stackId] ?? 0) + stepCost,
         }));
       } else if (outcome === "merge") {
-        setActionsRemaining((a) => Math.max(0, a - 1));
-        const keepId = mergeSurvivorStackId(stacks, stackId, to.row, to.col);
+        const keepId = mergeSurvivorStackId(stacks, stackId, toRow, toCol);
         if (keepId != null) {
           setStackMovementUsed((prev) => {
             const uKeep = prev[keepId] ?? 0;
             const uDrag = prev[stackId] ?? 0;
             const nextUsed = { ...prev };
             delete nextUsed[stackId];
-            nextUsed[keepId] = Math.max(uKeep, uDrag + 1);
+            nextUsed[keepId] = Math.max(uKeep, uDrag + stepCost);
             return nextUsed;
           });
         }
       } else if (outcome === "merge_same_cell") {
-        const keepId = mergeSurvivorStackId(stacks, stackId, to.row, to.col);
+        const keepId = mergeSurvivorStackId(stacks, stackId, toRow, toCol);
         if (keepId != null) {
           setStackMovementUsed((prev) => {
             const uKeep = prev[keepId] ?? 0;
@@ -510,23 +457,8 @@ export default function PondsteadMapPage() {
         }
       }
     },
-    [
-      actionsRemaining,
-      awaitingNewDayConfirm,
-      gameWon,
-      flashMapPointerHint,
-      map,
-      map.height,
-      map.width,
-      pushUndoSnapshot,
-      stackMovementUsed,
-      stacks,
-    ],
+    [awaitingNewDayConfirm, gameWon, flashMapPointerHint, map, pushUndoSnapshot, revealedCellKeys, stackMovementUsed, stacks],
   );
-
-  const onDragCancel = useCallback(() => {
-    setActiveDragStackId(null);
-  }, []);
 
   const onSplit = useCallback(
     (stackId: string, splitCount: number) => {
@@ -551,9 +483,8 @@ export default function PondsteadMapPage() {
 
   const onRecruit = useCallback(
     (row: number, col: number, kind: PondsteadUnitKind): RecruitAttemptResult => {
-      if (gameWon) return "no_actions";
-      if (awaitingNewDayConfirm) return "no_actions";
-      if (!canAffordOneFullAction(actionsRemaining)) return "no_actions";
+      if (gameWon) return "locked";
+      if (awaitingNewDayConfirm) return "locked";
       const key = pondsteadCellKey(row, col);
       if (recruitQueues[key] !== undefined) return "recruit_pending";
       const workerDailyKey = `${key}:worker`;
@@ -585,7 +516,6 @@ export default function PondsteadMapPage() {
         setCurrentFood(after.food);
         setCurrentWood(after.wood);
         setCurrentStone(after.stone);
-        setActionsRemaining((a) => Math.max(0, a - 1));
         setRecruitUsedThisDay((prev) => {
           const next = new Set(prev);
           next.add(workerDailyKey);
@@ -600,11 +530,9 @@ export default function PondsteadMapPage() {
       setCurrentFood(after.food);
       setCurrentWood(after.wood);
       setCurrentStone(after.stone);
-      setActionsRemaining((a) => Math.max(0, a - 1));
       return "ok";
     },
     [
-      actionsRemaining,
       awaitingNewDayConfirm,
       gameWon,
       stacks,
@@ -618,9 +546,6 @@ export default function PondsteadMapPage() {
       recruitUsedThisDay,
     ],
   );
-
-  const dragOverlayGlyphPx = cellSizePx > 0 ? pondsteadCornerUnitGlyphPx(cellSizePx) : 12;
-  const dragOverlayLabelPx = Math.max(8, Math.floor(dragOverlayGlyphPx * 0.45));
 
   useEffect(() => {
     setPinchScale(1);
@@ -677,8 +602,6 @@ export default function PondsteadMapPage() {
         onStartNewDay={handleCommitNewDay}
         onUndo={handleUndo}
         canUndo={canUndo}
-        actionsRemaining={actionsRemaining}
-        actionCap={actionCapPerTurn}
         points={points}
         pointsToWin={PONDSTEAD_VICTORY_POINTS}
         gameWon={gameWon}
@@ -736,7 +659,7 @@ export default function PondsteadMapPage() {
             pointerEvents="none"
           >
             <Text fontSize="xs" color="fg.muted" textAlign="center" lineHeight="snug">
-              {mapPointerHint === "actions" ? outOfActionsTodayNotice() : stackOutOfMarchMessage()}
+              {stackOutOfMarchMessage()}
             </Text>
           </Box>
         ) : null}
@@ -753,59 +676,22 @@ export default function PondsteadMapPage() {
             touchAction="manipulation"
           >
             {cellSizePx > 0 ? (
-              <DndContext
-                sensors={sensors}
-                collisionDetection={pointerWithin}
-                onDragStart={onDragStart}
-                onDragEnd={onDragEnd}
-                onDragCancel={onDragCancel}
-              >
-                <PondsteadMapGrid
-                  map={map}
-                  cellSizePx={cellSizePx}
-                  stacks={stacks}
-                  recruitQueues={recruitQueues}
-                  actionsRemaining={actionsRemaining}
-                  playerResources={playerResources}
-                  recruitUsedWorkerSlotKeys={recruitUsedThisDay}
-                  stackMovementUsed={stackMovementUsed}
-                  revealedCellKeys={revealedCellKeys}
-                  visibleCellKeys={liveVisibleCellKeys}
-                  interactionLocked={awaitingNewDayConfirm || gameWon}
-                  onSplit={onSplit}
-                  onRecruit={onRecruit}
-                  onPlaceBuilding={onPlaceBuilding}
-                />
-                <DragOverlay zIndex={2000} dropAnimation={null} style={{ cursor: "grabbing" }}>
-                  {activeDragStack ? (
-                    <Box
-                      display="inline-flex"
-                      flexDirection="column"
-                      alignItems="center"
-                      p="0.15rem"
-                      minW="1rem"
-                      borderRadius="sm"
-                      bg="white/90"
-                      borderWidth="1px"
-                      borderColor="black/20"
-                      boxShadow="md"
-                    >
-                      <Text as="span" fontSize={`${dragOverlayGlyphPx}px`} lineHeight="1">
-                        {unitEmoji(activeDragStack.kind)}
-                      </Text>
-                      <Text
-                        as="span"
-                        fontSize={`${dragOverlayLabelPx}px`}
-                        fontWeight="semibold"
-                        lineHeight="1.1"
-                        textAlign="center"
-                      >
-                        {activeDragStack.count}
-                      </Text>
-                    </Box>
-                  ) : null}
-                </DragOverlay>
-              </DndContext>
+              <PondsteadMapGrid
+                map={map}
+                cellSizePx={cellSizePx}
+                stacks={stacks}
+                recruitQueues={recruitQueues}
+                playerResources={playerResources}
+                recruitUsedWorkerSlotKeys={recruitUsedThisDay}
+                stackMovementUsed={stackMovementUsed}
+                revealedCellKeys={revealedCellKeys}
+                visibleCellKeys={liveVisibleCellKeys}
+                interactionLocked={awaitingNewDayConfirm || gameWon}
+                onSplit={onSplit}
+                onRecruit={onRecruit}
+                onPlaceBuilding={onPlaceBuilding}
+                onMarch={handleMarch}
+              />
             ) : null}
           </Box>
         </Box>

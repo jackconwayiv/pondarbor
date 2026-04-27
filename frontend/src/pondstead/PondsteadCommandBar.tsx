@@ -1,9 +1,6 @@
 import { Box, Button, Grid, HStack, Text, VStack, Wrap, WrapItem } from "@chakra-ui/react";
 import { FaMagnifyingGlassMinus, FaMagnifyingGlassPlus } from "react-icons/fa6";
 
-import {
-  formatPondsteadActionPoints,
-} from "./pondsteadHudMetrics";
 import type { LocalConstructionHud, QueuedRecruitHud } from "./pondsteadHudQueue";
 import { RESOURCE_EMOJI } from "./terrain";
 import type { PondsteadViewMode } from "./viewModes";
@@ -21,8 +18,6 @@ type Props = {
   onStartNewDay: () => void;
   onUndo: () => void;
   canUndo: boolean;
-  actionsRemaining: number;
-  actionCap: number;
   /** Scoring: Granary, Sawmill, and Mason’s Yard each +1. */
   points: number;
   pointsToWin: number;
@@ -56,8 +51,6 @@ export default function PondsteadCommandBar({
   onStartNewDay,
   onUndo,
   canUndo,
-  actionsRemaining,
-  actionCap,
   points,
   pointsToWin,
   gameWon,
@@ -85,7 +78,7 @@ export default function PondsteadCommandBar({
     onViewModeChange(ZOOM_SPECTRUM[zi - 1]!);
   };
 
-  const statusHeadline = `Day ${day}, ${formatPondsteadActionPoints(actionsRemaining)} of ${formatPondsteadActionPoints(actionCap)} actions, ${points} of ${pointsToWin} points to win`;
+  const statusHeadline = `Day ${day}, ${points} / ${pointsToWin} points`;
 
   return (
     <VStack
@@ -111,11 +104,7 @@ export default function PondsteadCommandBar({
         >
           <Text as="span">Day {day}</Text>
           <Text as="span">
-            {formatPondsteadActionPoints(actionsRemaining)} /{" "}
-            {formatPondsteadActionPoints(actionCap)} Actions
-          </Text>
-          <Text as="span">
-            {points} Points
+            {points} / {pointsToWin} points
           </Text>
         </VStack>
         <VStack

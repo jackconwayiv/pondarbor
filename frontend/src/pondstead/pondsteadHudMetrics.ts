@@ -1,5 +1,4 @@
 import {
-  countCompletedOwnedAcademies,
   countCompletedOwnedColossi,
   countCompletedOwnedPyramids,
   isWonderBuildingKind,
@@ -152,16 +151,6 @@ export function stonePerDayFromQuarries(stacks: UnitStack[], map: ParsedMap): nu
   return Math.max(0, Math.floor(base * stoneBonusMultiplierFromMap(map)));
 }
 
-export const PONDSTEAD_MAX_ACTIONS_PER_TURN = 6;
-
-/** Max actions at start of day (Academy: +3 each, local player). */
-export function maxActionsPerTurnFromMap(
-  map: ParsedMap,
-  playerId: number = PONDSTEAD_LOCAL_PLAYER_ID,
-): number {
-  return PONDSTEAD_MAX_ACTIONS_PER_TURN + 3 * countCompletedOwnedAcademies(map, playerId);
-}
-
 /** Chebyshev squares a stack may march per day (Colossus: +1 each for that stack’s owner). */
 export function kingMarchCapFromMap(
   map: ParsedMap,
@@ -170,41 +159,20 @@ export function kingMarchCapFromMap(
   return PONDSTEAD_KING_MOVES_PER_STACK_PER_DAY + countCompletedOwnedColossi(map, ownerId);
 }
 
-/**
- * One-off actions (recruit, build, merge, etc.) need a full 1.0; 0.5 left is not enough.
- * Movement may spend half points (1.5 per diagonal step).
- */
-export function canAffordOneFullAction(actionsRemaining: number): boolean {
-  return actionsRemaining >= 1;
-}
-
-/** Compare in half-increments so 4.5 − 1.5 and similar stays exact in the UI. */
-export function canAffordActionCost(actionsRemaining: number, cost: number): boolean {
-  return Math.round(actionsRemaining * 2) >= Math.round(cost * 2);
-}
-
 /** HUD display: whole numbers without decimals; otherwise one decimal (e.g. 3.5). */
 export function formatPondsteadActionPoints(n: number): string {
   const r = Math.round(n * 2) / 2;
   return Number.isInteger(r) ? String(r) : r.toFixed(1);
 }
 
-export function noActionsRemainingMessage(): string {
-  return "No actions left this day. End the day to refresh your action pool.";
-}
-
-/** Passive copy in building/unit modals when the player cannot spend more actions today. */
-export function outOfActionsTodayNotice(): string {
-  return "You are out of actions for today.";
-}
-
 export function stackOutOfMarchMessage(): string {
   return "That stack has no march distance left today.";
 }
 
-/** One line for the unit modal: moves remaining vs daily Chebyshev march cap. */
+/** Two lines for the unit modal center: "Moves:" then " X / cap" (move points remaining vs daily cap). */
 export function stackMarchStatusLine(marchSpent: number, marchCap: number): string {
-  const spent = Math.max(0, Math.min(marchCap, Math.floor(marchSpent)));
-  const left = Math.max(0, marchCap - spent);
-  return `Moves Remaining: ${left} / ${marchCap}`;
+  const spent = Math.max(0, marchSpent);
+  const leftRaw = marchCap - spent;
+  const left = Math.max(0, Math.round(leftRaw * 2) / 2);
+  return `Moves:\n${formatPondsteadActionPoints(left)} / ${formatPondsteadActionPoints(marchCap)}`;
 }

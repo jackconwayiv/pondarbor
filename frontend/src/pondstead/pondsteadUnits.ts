@@ -1,9 +1,11 @@
-import { chebyshevDistance, inBounds } from "./adjacency";
+import { chebyshevDistance, inBounds, kingMarchStepCost } from "./adjacency";
+import { mapCellBuildingOwner, PONDSTEAD_LOCAL_PLAYER_ID } from "./pondsteadVision";
+import type { ParsedMap } from "./types";
 export type PondsteadUnitKind = "worker" | "soldier";
 
 /**
  * At most one stack per kind is typical; two+ stacks of the same kind on one cell are allowed
- * after a same-tile split. Dragging a stack onto a cell with matching units merges all into one.
+ * after a same-tile split. Marching onto a cell with matching units merges all into one.
  */
 export type UnitStack = {
   id: string;
@@ -20,30 +22,27 @@ export const PONDSTEAD_UNIT_KINDS: readonly PondsteadUnitKind[] = ["worker", "so
 /** Max total units of one kind on a single tile (all stacks of that kind sum to this cap). */
 export const PONDSTEAD_MAX_PER_KIND_ON_TILE = 6;
 
-/** How far a stack can march in one day (8 directions including diagonal; distance = Chebyshev). */
+/** Daily march budget per stack (points: orthogonal 1, diagonal 1.5, +1 water, +0.5 marsh). */
 export const PONDSTEAD_KING_MOVES_PER_STACK_PER_DAY = 3;
+
+/**
+ * Same rule as {@link classifyStackDragEnd} for paid adjacent steps: starts a tile-to-tile march
+ * only if at least one full move point remains (e.g. 0.5 left cannot move).
+ */
+export function stackCanStartAdjacentMarchToday(
+  movesUsedThisDay: Readonly<Record<string, number>>,
+  stackId: string,
+  kingMarchCapPerDay: number,
+): boolean {
+  const used = movesUsedThisDay[stackId] ?? 0;
+  const remaining = kingMarchCapPerDay - used;
+  return remaining >= 1 - 1e-9;
+}
 
 export function recruitBlockedMessage(kind: PondsteadUnitKind): string {
   return kind === "worker"
     ? "There's no room for more Workers here!"
     : "There's no room for more Soldiers here!";
-}
-
-export const PONDSTEAD_DND_STACK = (stackId: string) => `pondstead-stack-${stackId}`;
-
-export const PONDSTEAD_DND_TILE = (row: number, col: number) => `pondstead-tile-${row}-${col}`;
-
-export function parseDndTileId(id: string | number | null | undefined): { row: number; col: number } | null {
-  const s = String(id ?? "");
-  const m = s.match(/^pondstead-tile-(\d+)-(\d+)$/);
-  if (!m) return null;
-  return { row: Number(m[1]), col: Number(m[2]) };
-}
-
-export function parseDndStackId(id: string | number | null | undefined): string | null {
-  const s = String(id ?? "");
-  const m = s.match(/^pondstead-stack-(.+)$/);
-  return m ? m[1]! : null;
 }
 
 const UNIT_EMOJI: Record<PondsteadUnitKind, string> = {
@@ -183,19 +182,37 @@ export function applyStackSplit(
   return stacks.map((x) => (x.id === stackId ? { ...x, count: x.count - splitCount } : x)).concat(newStack);
 }
 
+/** Cell keys are `row-col` (same as {@link pondsteadCellKey} in `pondsteadDay`). */
+export function marchAdjacentStepCostOrNull(
+  map: ParsedMap,
+  fromRow: number,
+  fromCol: number,
+  toRow: number,
+  toCol: number,
+  revealedCellKeys: ReadonlySet<string>,
+  moverOwnerId: number,
+): number | null {
+  if (!inBounds(toRow, toCol, map.width, map.height)) return null;
+  if (chebyshevDistance({ row: fromRow, col: fromCol }, { row: toRow, col: toCol }) !== 1) return null;
+  if (!revealedCellKeys.has(`${toRow}-${toCol}`)) return null;
+  const cell = map.cells[toRow]![toCol]!;
+  if (cell.building === "wall" && mapCellBuildingOwner(cell) !== moverOwnerId) return null;
+  return kingMarchStepCost({ row: fromRow, col: fromCol }, { row: toRow, col: toCol }, cell.ground);
+}
+
 export function applyStackDragEnd(
   stacks: UnitStack[],
   stackId: string,
   toRow: number,
   toCol: number,
-  mapWidth: number,
-  mapHeight: number,
+  map: ParsedMap,
+  revealedCellKeys: ReadonlySet<string>,
   movesUsedThisDay: Readonly<Record<string, number>> = {},
   kingMarchCapPerDay: number = PONDSTEAD_KING_MOVES_PER_STACK_PER_DAY,
 ): UnitStack[] | null {
   const dragged = stacks.find((s) => s.id === stackId);
   if (!dragged) return null;
-  if (!inBounds(toRow, toCol, mapWidth, mapHeight)) return null;
+  if (!inBounds(toRow, toCol, map.width, map.height)) return null;
 
   const sameCell = dragged.row === toRow && dragged.col === toCol;
   if (sameCell) {
@@ -218,19 +235,31 @@ export function applyStackDragEnd(
     { row: dragged.row, col: dragged.col },
     { row: toRow, col: toCol },
   );
-  if (d < 1) return null;
+  if (d !== 1) return null;
+
+  const moverOwnerId = dragged.ownerId ?? PONDSTEAD_LOCAL_PLAYER_ID;
+  const stepCost = marchAdjacentStepCostOrNull(
+    map,
+    dragged.row,
+    dragged.col,
+    toRow,
+    toCol,
+    revealedCellKeys,
+    moverOwnerId,
+  );
+  if (stepCost == null) return null;
 
   const used = movesUsedThisDay[stackId] ?? 0;
   const remaining = kingMarchCapPerDay - used;
+  const canStartAdjacentStep = remaining >= 1 - 1e-9;
 
   const others = stacks.filter((s) => s.id !== stackId);
   const onDest = others.filter((s) => s.row === toRow && s.col === toCol);
   const sameKindOnDest = onDest.filter((s) => s.kind === dragged.kind);
 
   if (sameKindOnDest.length > 0) {
-    if (d !== 1) return null;
-    const mergeMoveCost = 1;
-    if (mergeMoveCost > remaining) return null;
+    if (!canStartAdjacentStep) return null;
+    if (stepCost > remaining) return null;
     const keepId = sameKindOnDest[0]!.id;
     const total = dragged.count + sameKindOnDest.reduce((sum, s) => sum + s.count, 0);
     if (total > PONDSTEAD_MAX_PER_KIND_ON_TILE) return null;
@@ -240,7 +269,8 @@ export function applyStackDragEnd(
       .concat({ id: keepId, kind: dragged.kind, count: total, row: toRow, col: toCol });
   }
 
-  if (d > remaining) return null;
+  if (!canStartAdjacentStep) return null;
+  if (stepCost > remaining) return null;
   if (dragged.count > PONDSTEAD_MAX_PER_KIND_ON_TILE) return null;
   return others.concat({ ...dragged, row: toRow, col: toCol });
 }
@@ -257,13 +287,15 @@ export type RecruitAttemptResult =
   | "insufficient"
   | "recruit_pending"
   | "already_recruited_today"
-  | "no_actions";
+  | "locked";
 
 /**
- * How a stack drag onto a tile resolves. `merge` = different tile, same-kind, king-adjacent (d = 1):
- * 1 march + 1 action, then combine. `merge_same_cell` = more than one same-kind pile on this tile:
- * free, survivor keeps the higher march-spent. `move` = Chebyshev 1..remaining march; action cost
- * follows diagonal 1.5 and orthogonal 1 per step (see `chebyshevMoveActionCost`). Split is separate UI, not a drag.
+ * How an adjacent march onto a tile resolves. `merge` = different tile, same-kind, king-adjacent:
+ * pays step move cost only, then combine. `merge_same_cell` = more than one same-kind pile on this
+ * tile: free, survivor keeps the higher march-spent. `move` = one king step onto an empty or
+ * different-kind tile; cost uses {@link marchAdjacentStepCostOrNull} (water, marsh, fog, enemy
+ * walls). A stack with less than 1 move point remaining cannot start any adjacent tile-to-tile step
+ * (e.g. 0.5 left is not enough).
  */
 export type StackDragOutcome =
   | "noop"
@@ -274,22 +306,22 @@ export type StackDragOutcome =
   | "out_of_march";
 
 /**
- * Classify a drag. Adjacent same-kind merges need 1 free march. Same-cell merges are free.
- * {@link movesUsedThisDay} is for the dragged stack (adjacent merge only).
+ * Classify an adjacent march (Chebyshev distance 1 only). Same-cell merges are free.
+ * {@link movesUsedThisDay} is fractional march points spent today for that stack id.
  */
 export function classifyStackDragEnd(
   stacks: UnitStack[],
   stackId: string,
   toRow: number,
   toCol: number,
-  mapWidth: number,
-  mapHeight: number,
+  map: ParsedMap,
+  revealedCellKeys: ReadonlySet<string>,
   movesUsedThisDay: Readonly<Record<string, number>> = {},
   kingMarchCapPerDay: number = PONDSTEAD_KING_MOVES_PER_STACK_PER_DAY,
 ): StackDragOutcome {
   const dragged = stacks.find((s) => s.id === stackId);
   if (!dragged) return "invalid";
-  if (!inBounds(toRow, toCol, mapWidth, mapHeight)) return "invalid";
+  if (!inBounds(toRow, toCol, map.width, map.height)) return "invalid";
 
   const sameCell = dragged.row === toRow && dragged.col === toCol;
   if (sameCell) {
@@ -311,25 +343,39 @@ export function classifyStackDragEnd(
     { row: dragged.row, col: dragged.col },
     { row: toRow, col: toCol },
   );
-  if (d < 1) return "invalid";
+  if (d !== 1) return "invalid";
+
+  const moverOwnerId = dragged.ownerId ?? PONDSTEAD_LOCAL_PLAYER_ID;
+  const stepCost = marchAdjacentStepCostOrNull(
+    map,
+    dragged.row,
+    dragged.col,
+    toRow,
+    toCol,
+    revealedCellKeys,
+    moverOwnerId,
+  );
+  if (stepCost == null) return "invalid";
 
   const used = movesUsedThisDay[stackId] ?? 0;
   const remaining = kingMarchCapPerDay - used;
+  /** Less than one full move point left: cannot begin any adjacent step (covers “0.5 left” case). */
+  const canStartAdjacentStep = remaining >= 1 - 1e-9;
 
   const others = stacks.filter((s) => s.id !== stackId);
   const onDest = others.filter((s) => s.row === toRow && s.col === toCol);
   const sameKindOnDest = onDest.filter((s) => s.kind === dragged.kind);
 
   if (sameKindOnDest.length > 0) {
-    if (d > 1) return "invalid";
     const total = dragged.count + sameKindOnDest.reduce((sum, s) => sum + s.count, 0);
     if (total > PONDSTEAD_MAX_PER_KIND_ON_TILE) return "invalid";
-    const mergeMoveCost = 1;
-    if (mergeMoveCost > remaining) return "out_of_march";
+    if (!canStartAdjacentStep) return "out_of_march";
+    if (stepCost > remaining) return "out_of_march";
     return "merge";
   }
 
-  if (d > remaining) return "out_of_march";
+  if (!canStartAdjacentStep) return "out_of_march";
+  if (stepCost > remaining) return "out_of_march";
   if (dragged.count > PONDSTEAD_MAX_PER_KIND_ON_TILE) return "invalid";
   return "move";
 }

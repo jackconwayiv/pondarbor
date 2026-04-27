@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, SyntheticEvent } from "react";
 import { useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
@@ -153,40 +153,54 @@ export default function DraggablePondStack({
     }
   };
 
+  const stopDndFromSeeingUnitTap = (e: SyntheticEvent) => {
+    e.stopPropagation();
+  };
+
+  const handlePx = Math.max(10, Math.floor(fontPx * 0.38));
+
   return (
     <Box
       ref={setNodeRef}
-      {...listeners}
-      {...attributes}
       position="relative"
       zIndex={2}
       flex="0 0 auto"
       maxW="min(48%, calc(50% - 0.1rem))"
-      cursor={interactionLocked ? "not-allowed" : isDragging ? "grabbing" : "grab"}
-      touchAction="none"
+      display="flex"
+      flexDirection="row"
+      alignItems="stretch"
+      gap="0"
       style={style}
     >
       <Button
         type="button"
         variant="ghost"
+        flex="1"
+        minW="0"
         p="0.1rem"
-        minW="1rem"
-        w="100%"
+        minH="1rem"
         h="auto"
         fontSize={`${fontPx}px`}
         lineHeight="1.15"
         borderRadius="sm"
+        borderTopRightRadius="0"
+        borderBottomRightRadius="0"
         bg="white/25"
         borderWidth="1px"
         borderColor="black/12"
+        borderRightWidth="0"
         _hover={{ bg: "white/40" }}
         disabled={interactionLocked}
+        cursor={interactionLocked ? "not-allowed" : "pointer"}
         aria-label={stackAriaLabel(stack.kind, stack.count)}
         aria-haspopup="dialog"
         display="flex"
         flexDirection="column"
         alignItems="center"
+        justifyContent="center"
         gap="0.05rem"
+        onPointerDown={stopDndFromSeeingUnitTap}
+        onTouchStart={stopDndFromSeeingUnitTap}
         onClick={() => setOpen(true)}
       >
         <Text as="span" fontSize={`${fontPx}px`} lineHeight="1">
@@ -196,6 +210,34 @@ export default function DraggablePondStack({
           {stack.count}
         </Text>
       </Button>
+      <Box
+        {...listeners}
+        {...attributes}
+        aria-label="Drag unit to another tile"
+        title="Drag to move"
+        flexShrink={0}
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+        w="0.65rem"
+        alignSelf="stretch"
+        borderTopRightRadius="sm"
+        borderBottomRightRadius="sm"
+        bg="white/18"
+        borderWidth="1px"
+        borderColor="black/12"
+        borderLeftWidth="1px"
+        cursor={interactionLocked ? "not-allowed" : isDragging ? "grabbing" : "grab"}
+        touchAction="none"
+        opacity={interactionLocked ? 0.45 : 1}
+        pointerEvents={interactionLocked ? "none" : "auto"}
+        _hover={interactionLocked ? {} : { bg: "white/32" }}
+        userSelect="none"
+      >
+        <Text as="span" aria-hidden fontSize={`${handlePx}px`} lineHeight="1" color="fg.muted">
+          ⋮
+        </Text>
+      </Box>
       <AppModal open={open} onOpenChange={onModalOpenChange} title={actionsTitle} size="md">
         <VStack align="stretch" gap="3" pt="1">
           <Text fontSize="xs" color="fg.muted" textAlign="center">

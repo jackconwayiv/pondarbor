@@ -50,8 +50,13 @@ export function AppModal({
       unmountOnExit
       onOpenChange={(d: { open: boolean }) => onOpenChange(d.open)}
     >
-      <Dialog.Backdrop {...backdropProps} />
-      <Dialog.Positioner px={{ base: "3", md: "6" }} py={{ base: "8", md: "12" }} {...positionerProps}>
+      <Dialog.Backdrop zIndex={2100} {...backdropProps} />
+      <Dialog.Positioner
+        px={{ base: "3", md: "6" }}
+        py={{ base: "8", md: "12" }}
+        zIndex={2101}
+        {...positionerProps}
+      >
         <Dialog.Content
           data-app-modal=""
           maxW={maxW[size]}

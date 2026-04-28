@@ -18,6 +18,8 @@ function jsonAuthHeaders(accessToken: string): HeadersInit {
 
 export type PondsteadLobbyRow = {
   id: number;
+  /** Display name set at campaign creation (empty for legacy rows) */
+  name?: string;
   status: string;
   max_players: number;
   current_day: number;
@@ -46,14 +48,37 @@ export async function fetchPondsteadCampaignsMine(accessToken: string): Promise<
   return (await res.json()) as PondsteadLobbyRow[];
 }
 
-export async function createPondsteadCampaign(accessToken: string, maxPlayers = 2): Promise<PondsteadLobbyRow> {
+export type CreatePondsteadCampaignInput = {
+  name: string;
+  faction_color: string;
+  max_players?: number;
+};
+
+export async function createPondsteadCampaign(
+  accessToken: string,
+  input: CreatePondsteadCampaignInput,
+): Promise<PondsteadLobbyRow> {
+  const max_players = Math.max(2, Math.min(6, input.max_players ?? 2));
   const res = await fetch(`${pondBase()}/campaigns/`, {
     method: "POST",
     credentials: "omit",
     headers: jsonAuthHeaders(accessToken),
-    body: JSON.stringify({ max_players: maxPlayers }),
+    body: JSON.stringify({
+      name: input.name.trim(),
+      faction_color: input.faction_color.trim().toLowerCase(),
+      max_players,
+    }),
   });
-  if (!res.ok) throw new Error(`create campaign ${res.status}`);
+  if (!res.ok) {
+    let msg = `create campaign ${res.status}`;
+    try {
+      const j = (await res.json()) as { detail?: string };
+      if (typeof j.detail === "string") msg = j.detail;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(msg);
+  }
   return (await res.json()) as PondsteadLobbyRow;
 }
 
@@ -87,7 +112,16 @@ export async function acceptCampaignInvite(
     headers: jsonAuthHeaders(accessToken),
     body: JSON.stringify({ faction_color: factionColor }),
   });
-  if (!res.ok) throw new Error(`accept ${res.status}`);
+  if (!res.ok) {
+    let msg = `accept ${res.status}`;
+    try {
+      const j = (await res.json()) as { detail?: string };
+      if (typeof j.detail === "string") msg = j.detail;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(msg);
+  }
 }
 
 export async function declineCampaignInvite(accessToken: string, campaignId: number): Promise<void> {
@@ -127,6 +161,8 @@ export type GameBootstrapResponse = {
   world: PondsteadServerWorldSnapshot;
   undo_stacks_by_seat: Record<string, unknown[]>;
   players: PondsteadLobbyRow["players"];
+  /** Authoritative viewer seat when logged in as a seated player */
+  my_seat_index?: number;
   calendar_auto_new_day?: boolean;
   calendar_daily_reports_by_seat?: Record<string, PondsteadDailyReport> | null;
 };

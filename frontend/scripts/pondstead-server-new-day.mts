@@ -19,6 +19,14 @@ type JsonSync = {
   scoutedTodayBySeat: Record<string, string[]>;
 };
 
+function sortedSeatKeysFromRecord(record: Record<string, unknown>): string[] {
+  return Object.keys(record)
+    .map((k) => Number(k))
+    .filter((n) => Number.isFinite(n) && n >= 0)
+    .sort((a, b) => a - b)
+    .map(String);
+}
+
 function toNumRecord<T>(o: Record<string, T>): Record<number, T> {
   const out: Record<number, T> = {};
   for (const [k, v] of Object.entries(o)) {
@@ -28,37 +36,80 @@ function toNumRecord<T>(o: Record<string, T>): Record<number, T> {
 }
 
 function setsFromJson(o: Record<string, string[] | undefined>): Record<number, Set<string>> {
-  return {
-    0: new Set(o["0"] ?? []),
-    1: new Set(o["1"] ?? []),
-  };
+  const out: Record<number, Set<string>> = {};
+  for (const k of sortedSeatKeysFromRecord(o as Record<string, unknown>)) {
+    const n = Number(k);
+    out[n] = new Set(o[k] ?? []);
+  }
+  if (Object.keys(out).length === 0) {
+    out[0] = new Set();
+    out[1] = new Set();
+  }
+  return out;
 }
 
 function syncFromJson(raw: JsonSync): PondsteadNewDaySync {
+  const bonus = raw.bonusPointsBySeat ?? {};
+  const bk = sortedSeatKeysFromRecord(bonus as Record<string, unknown>);
+  const bonusNum: Record<number, number> = {};
+  for (const k of bk) {
+    bonusNum[Number(k)] = bonus[k as keyof typeof bonus] ?? 0;
+  }
   return {
     map: raw.map,
     stacks: raw.stacks,
     recruitQueues: raw.recruitQueues as PondsteadNewDaySync["recruitQueues"],
     pursesBySeat: toNumRecord(raw.pursesBySeat) as Record<number, ResourcePurse>,
-    bonusPointsBySeat: toNumRecord(raw.bonusPointsBySeat) as Record<number, number>,
+    bonusPointsBySeat: bonusNum,
     revealedBySeat: setsFromJson(raw.revealedBySeat ?? {}),
     scoutedTodayBySeat: setsFromJson(raw.scoutedTodayBySeat ?? {}),
   };
 }
 
 function setsToJson(s: Record<number, Set<string>>): Record<string, string[]> {
-  return {
-    "0": Array.from(s[0] ?? []),
-    "1": Array.from(s[1] ?? []),
-  };
+  const out: Record<string, string[]> = {};
+  for (const k of Object.keys(s)) {
+    const n = Number(k);
+    if (!Number.isFinite(n)) continue;
+    out[String(n)] = Array.from(s[n] ?? []);
+  }
+  return out;
 }
 
 function pursesToJson(p: Record<number, ResourcePurse>): Record<string, ResourcePurse> {
-  return { "0": p[0]!, "1": p[1]! };
+  const out: Record<string, ResourcePurse> = {};
+  for (const k of Object.keys(p)) {
+    const n = Number(k);
+    if (!Number.isFinite(n)) continue;
+    out[String(n)] = p[n]!;
+  }
+  return out;
 }
 
 function bonusToJson(b: Record<number, number>): Record<string, number> {
-  return { "0": b[0] ?? 0, "1": b[1] ?? 0 };
+  const out: Record<string, number> = {};
+  for (const k of Object.keys(b)) {
+    const n = Number(k);
+    if (!Number.isFinite(n)) continue;
+    out[String(n)] = b[n] ?? 0;
+  }
+  return out;
+}
+
+function emptyScouted(keys: number[]): Record<string, string[]> {
+  const o: Record<string, string[]> = {};
+  for (const s of keys) {
+    o[String(s)] = [];
+  }
+  return o;
+}
+
+function emptyMovement(keys: number[]): Record<string, Record<string, unknown>> {
+  const o: Record<string, Record<string, unknown>> = {};
+  for (const s of keys) {
+    o[String(s)] = {};
+  }
+  return o;
 }
 
 async function main() {
@@ -79,19 +130,23 @@ async function main() {
   };
   const sync = syncFromJson(body.sync);
   const names = body.playerNamesBySeat;
-  const playerNamesBySeat =
-    names != null
-      ? { 0: names["0"] ?? "West", 1: names["1"] ?? "East" }
-      : undefined;
+  let playerNamesBySeat: Record<number, string> | undefined;
+  if (names != null) {
+    playerNamesBySeat = {};
+    for (const [k, v] of Object.entries(names)) {
+      playerNamesBySeat[Number(k)] = v as string;
+    }
+  }
   const incomeReportSeat = body.incomeReportSeat ?? 0;
   const out = runPondsteadCommitNewDayPipeline({
     sync,
     currentDay: body.currentDay,
     incomeReportSeat,
-    playerName: playerNamesBySeat?.[incomeReportSeat] ?? "Player",
+    playerName: playerNamesBySeat?.[incomeReportSeat] ?? `Seat ${incomeReportSeat}`,
     playerNamesBySeat,
     rng: Math.random,
   });
+  const seatNums = sortedSeatKeysFromRecord(out.pursesBySeat as Record<string, unknown>).map(Number);
   const serializable = {
     map: out.map,
     stacks: out.stacks,
@@ -99,8 +154,8 @@ async function main() {
     pursesBySeat: pursesToJson(out.pursesBySeat),
     bonusPointsBySeat: bonusToJson(out.bonusPointsBySeat),
     revealedBySeat: setsToJson(out.revealedBySeat),
-    scoutedTodayBySeat: { "0": [], "1": [] },
-    stackMovementBySeat: { "0": {}, "1": {} },
+    scoutedTodayBySeat: emptyScouted(seatNums.length ? seatNums : [0, 1]),
+    stackMovementBySeat: emptyMovement(seatNums.length ? seatNums : [0, 1]),
     recruitUsedThisDayKeys: [],
     day: out.nextDay,
     nextDay: out.nextDay,

@@ -17,6 +17,7 @@ class PondsteadGame(models.Model):
     ]
 
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_LOBBY)
+    name = models.CharField(max_length=120, blank=True, default="")
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -58,6 +59,19 @@ class PondsteadPlayer(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["game", "seat_index"], name="pondstead_player_game_seat_uniq"),
         ]
+
+
+class PondsteadPlayerPrivateState(models.Model):
+    """Per-seat authoritative mirror row (future split from monolithic world_json)."""
+
+    player = models.OneToOneField(
+        PondsteadPlayer,
+        on_delete=models.CASCADE,
+        related_name="private_state_row",
+        primary_key=True,
+    )
+    data = models.JSONField(default=dict)
+    updated_at = models.DateTimeField(auto_now=True)
 
 
 class PondsteadCampaignInvite(models.Model):

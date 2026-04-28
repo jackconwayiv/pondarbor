@@ -38,6 +38,13 @@ function resolvedGameId(campaignIdFromRoute?: string | null): string | undefined
   return (campaignIdFromRoute && campaignIdFromRoute.trim()) || envGameId();
 }
 
+function sortedSeatNumbers(o: Record<number, unknown>): number[] {
+  return Object.keys(o)
+    .map((k) => Number(k))
+    .filter((n) => Number.isFinite(n) && n >= 0)
+    .sort((a, b) => a - b);
+}
+
 export function serializeWorldForServer(args: {
   map: ParsedMap;
   stacks: UnitStack[];
@@ -50,33 +57,54 @@ export function serializeWorldForServer(args: {
   recruitUsedThisDay?: ReadonlySet<string>;
   day?: number;
 }): PondsteadServerWorldSnapshot {
-  const purseKeys = (o: Record<number, ResourcePurse>): Record<string, ResourcePurse> => ({
-    "0": o[0]!,
-    "1": o[1]!,
-  });
-  const numKeys = (o: Record<number, number>): Record<string, number> => ({
-    "0": o[0] ?? 0,
-    "1": o[1] ?? 0,
-  });
-  const setKeys = (o: Record<number, Set<string>>): Record<string, string[]> => ({
-    "0": Array.from(o[0] ?? []),
-    "1": Array.from(o[1] ?? []),
-  });
-  const movementKeys = (o: Record<number, Record<string, number>> | undefined): Record<string, Record<string, number>> => ({
-    "0": { ...(o?.[0] ?? {}) },
-    "1": { ...(o?.[1] ?? {}) },
-  });
+  let seats = sortedSeatNumbers(args.pursesBySeat);
+  if (seats.length === 0) {
+    seats = [0];
+  }
+
+  const purseKeys = (o: Record<number, ResourcePurse>, seatList: number[]): Record<string, ResourcePurse> => {
+    const out: Record<string, ResourcePurse> = {};
+    for (const s of seatList) {
+      const p = o[s];
+      if (p) out[String(s)] = p;
+    }
+    return out;
+  };
+  const numKeys = (o: Record<number, number>, seatList: number[]): Record<string, number> => {
+    const out: Record<string, number> = {};
+    for (const s of seatList) {
+      out[String(s)] = o[s] ?? 0;
+    }
+    return out;
+  };
+  const setKeys = (o: Record<number, Set<string>>, seatList: number[]): Record<string, string[]> => {
+    const out: Record<string, string[]> = {};
+    for (const s of seatList) {
+      out[String(s)] = Array.from(o[s] ?? []);
+    }
+    return out;
+  };
+  const movementKeys = (
+    o: Record<number, Record<string, number>> | undefined,
+    seatList: number[],
+  ): Record<string, Record<string, number>> => {
+    const out: Record<string, Record<string, number>> = {};
+    for (const s of seatList) {
+      out[String(s)] = { ...(o?.[s] ?? {}) };
+    }
+    return out;
+  };
   const out: PondsteadServerWorldSnapshot = {
     map: args.map,
     stacks: args.stacks,
     recruitQueues: args.recruitQueues,
-    pursesBySeat: purseKeys(args.pursesBySeat),
-    bonusPointsBySeat: numKeys(args.bonusPointsBySeat),
-    revealedBySeat: setKeys(args.revealedBySeat),
-    scoutedTodayBySeat: setKeys(args.scoutedTodayBySeat),
+    pursesBySeat: purseKeys(args.pursesBySeat, seats),
+    bonusPointsBySeat: numKeys(args.bonusPointsBySeat, seats),
+    revealedBySeat: setKeys(args.revealedBySeat, seats),
+    scoutedTodayBySeat: setKeys(args.scoutedTodayBySeat, seats),
   };
   if (args.stackMovementBySeat) {
-    out.stackMovementBySeat = movementKeys(args.stackMovementBySeat);
+    out.stackMovementBySeat = movementKeys(args.stackMovementBySeat, seats);
   }
   if (args.recruitUsedThisDay) {
     out.recruitUsedThisDayKeys = Array.from(args.recruitUsedThisDay);

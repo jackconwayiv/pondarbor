@@ -11,6 +11,8 @@ type Props = {
   viewMode: PondsteadViewMode;
   onViewModeChange: (vm: PondsteadViewMode) => void;
   day: number;
+  /** When false, hide End day / Start new day (calendar-driven server campaigns). */
+  showLegacyDayControls?: boolean;
   /** True after “End day” until “Start new day” or “Resume day”. */
   awaitingNewDayConfirm: boolean;
   onEndDayOrResume: () => void;
@@ -47,6 +49,7 @@ export default function PondsteadCommandBar({
   viewMode,
   onViewModeChange,
   day,
+  showLegacyDayControls = true,
   awaitingNewDayConfirm,
   onEndDayOrResume,
   onStartNewDay,
@@ -93,7 +96,7 @@ export default function PondsteadCommandBar({
       bg="bg.subtle"
       w="100%"
     >
-      <Grid w="100%" templateColumns="2fr 3fr" gap="3" alignItems="start">
+      <Grid w="100%" templateColumns={showLegacyDayControls ? "2fr 3fr" : "1fr"} gap="3" alignItems="start">
         <VStack
           align="start"
           gap="0"
@@ -115,7 +118,7 @@ export default function PondsteadCommandBar({
           minW="0"
           w="100%"
           role="group"
-          aria-label="Zoom, end day, and undo"
+          aria-label={showLegacyDayControls ? "Zoom, end day, and undo" : "Zoom and undo"}
         >
           <HStack gap="2" justify="flex-end">
             <Button
@@ -149,59 +152,78 @@ export default function PondsteadCommandBar({
               </Box>
             </Button>
           </HStack>
-          <HStack gap="2" w="100%" flexWrap="nowrap" align="stretch">
-            <Button
-              type="button"
-              size="sm"
-              variant="solid"
-              colorPalette="lilypad"
-              flex="1"
-              minW="0"
-              whiteSpace="nowrap"
-              onClick={onEndDayOrResume}
-              disabled={gameWon}
-              title={
-                gameWon
-                  ? "You have won the game"
-                  : awaitingNewDayConfirm
-                    ? "Return to editing this day (new day not started yet)"
-                    : "Lock in end of day; then use Start new day to advance the calendar"
-              }
-              aria-label={awaitingNewDayConfirm ? "Resume day" : "End day"}
-            >
-              {awaitingNewDayConfirm ? "Resume day" : "End day"}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              colorPalette="gray"
-              flex="1"
-              minW="0"
-              whiteSpace="nowrap"
-              onClick={onUndo}
-              disabled={!canUndo}
-              title="Rewind the last action on this day (fog and resources rewind with it)"
-              aria-label={`Undo last action, ${undoCount} available`}
-            >
-              Undo [{undoCount}]
-            </Button>
-          </HStack>
-          {awaitingNewDayConfirm ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              colorPalette="orange"
-              w="100%"
-              onClick={onStartNewDay}
-              disabled={gameWon}
-              title="Testing: run the new-calendar-day pass (builds finish, recruits spawn, day increments)"
-              aria-label="Start new day (testing)"
-            >
-              Start new day
-            </Button>
-          ) : null}
+          {showLegacyDayControls ? (
+            <>
+              <HStack gap="2" w="100%" flexWrap="nowrap" align="stretch">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="solid"
+                  colorPalette="lilypad"
+                  flex="1"
+                  minW="0"
+                  whiteSpace="nowrap"
+                  onClick={onEndDayOrResume}
+                  disabled={gameWon}
+                  title={
+                    gameWon
+                      ? "You have won the game"
+                      : awaitingNewDayConfirm
+                        ? "Return to editing this day (new day not started yet)"
+                        : "Lock in end of day; then use Start new day to advance the calendar"
+                  }
+                  aria-label={awaitingNewDayConfirm ? "Resume day" : "End day"}
+                >
+                  {awaitingNewDayConfirm ? "Resume day" : "End day"}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  colorPalette="gray"
+                  flex="1"
+                  minW="0"
+                  whiteSpace="nowrap"
+                  onClick={onUndo}
+                  disabled={!canUndo}
+                  title="Rewind the last action on this day (fog and resources rewind with it)"
+                  aria-label={`Undo last action, ${undoCount} available`}
+                >
+                  Undo [{undoCount}]
+                </Button>
+              </HStack>
+              {awaitingNewDayConfirm ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  colorPalette="orange"
+                  w="100%"
+                  onClick={onStartNewDay}
+                  disabled={gameWon}
+                  title="Testing: run the new-calendar-day pass (builds finish, recruits spawn, day increments)"
+                  aria-label="Start new day (testing)"
+                >
+                  Start new day
+                </Button>
+              ) : null}
+            </>
+          ) : (
+            <HStack gap="2" w="100%" justify="flex-end">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                colorPalette="gray"
+                onClick={onUndo}
+                disabled={!canUndo}
+                title="Rewind the last action on this day (fog and resources rewind with it)"
+                aria-label={`Undo last action, ${undoCount} available`}
+              >
+                Undo [{undoCount}]
+              </Button>
+            </HStack>
+          )}
         </VStack>
       </Grid>
 

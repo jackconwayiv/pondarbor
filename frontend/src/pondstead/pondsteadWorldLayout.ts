@@ -53,29 +53,59 @@ export function stitchMapsHorizontally(left: ParsedMap, right: ParsedMap): Parse
   return { width: W, height: H, cells };
 }
 
+/** Stitch any number of maps of equal height left-to-right (seat 0 west → higher east). */
+export function stitchMapsHorizontallyMany(parts: ParsedMap[]): ParsedMap {
+  if (parts.length === 0) throw new Error("stitchMapsHorizontallyMany: empty");
+  let acc = parts[0]!;
+  for (let i = 1; i < parts.length; i++) {
+    acc = stitchMapsHorizontally(acc, parts[i]!);
+  }
+  return acc;
+}
+
 /**
  * Default 2P map: P0 region columns 0..8 (identity template), P1 columns 9..17 (same template rotated 180°).
  * Shared vertical seam between global columns 8 and 9.
  */
 export function buildDefaultTwoPlayerHorizontalMap(templateText: string = PONDSTEAD_DEFAULT_MAP_TEMPLATE): ParsedMap {
-  const base = parseMapTemplate(templateText);
-  const left = withUniformBuildingOwners(base, 0);
-  const rotated = rotateParsedMap180(base);
-  const right = withUniformBuildingOwners(rotated, 1);
-  return stitchMapsHorizontally(left, right);
+  return buildNHPlayerHorizontalMap(2, templateText);
 }
 
-/** Initial stacks for both seats on a stitched 2P map (HQ / camp / orchard per owner). */
-export function createTwoPlayerInitialStacks(map: ParsedMap): UnitStack[] {
+/**
+ * Stitch N adjacent 9-column segments: even seats identity template, odd seats rotated 180°
+ * (mirrors legacy 2P layout when n=2).
+ */
+export function buildNHPlayerHorizontalMap(
+  seatCount: number,
+  templateText: string = PONDSTEAD_DEFAULT_MAP_TEMPLATE,
+): ParsedMap {
+  const n = Math.max(2, Math.min(6, Math.floor(seatCount)));
+  const baseTemplate = parseMapTemplate(templateText);
+  const segments: ParsedMap[] = [];
+  for (let seat = 0; seat < n; seat++) {
+    const piece = seat % 2 === 0 ? baseTemplate : rotateParsedMap180(baseTemplate);
+    segments.push(withUniformBuildingOwners(piece, seat));
+  }
+  return stitchMapsHorizontallyMany(segments);
+}
+
+/** Initial stacks for every seat on an N-seat stitched map (HQ / camp / orchard per owner). */
+export function createInitialStacksForMap(map: ParsedMap, seatCount: number): UnitStack[] {
   const stacks: UnitStack[] = [];
-  for (const seat of [0, 1] as const) {
+  const n = Math.max(2, Math.min(6, Math.floor(seatCount)));
+  for (let seat = 0; seat < n; seat++) {
     const hq = findFirstBuildingCellForOwner(map, "hq", seat);
-    if (!hq) throw new Error(`Pondstead 2P map: missing HQ for seat ${seat}`);
+    if (!hq) throw new Error(`Pondstead map: missing HQ for seat ${seat}`);
     const camp = findFirstBuildingCellForOwner(map, "camp", seat);
     const orchard = findFirstBuildingCellForOwner(map, "orchard", seat);
     stacks.push(...createInitialStacks(hq, camp, orchard, seat));
   }
   return stacks;
+}
+
+/** @deprecated Prefer {@link createInitialStacksForMap}. */
+export function createTwoPlayerInitialStacks(map: ParsedMap): UnitStack[] {
+  return createInitialStacksForMap(map, 2);
 }
 
 export type TwoPlayerFreshState = {
@@ -85,17 +115,23 @@ export type TwoPlayerFreshState = {
   revealedBySeat: Record<number, Set<string>>;
 };
 
-/** Map, stacks, starting purses, and per-seat fog after initial vision pass. */
+/** Map, stacks, starting purses, and per-seat fog after initial vision pass. Default n=2. */
 export function createFreshTwoPlayerPondsteadState(): TwoPlayerFreshState {
-  const map = buildDefaultTwoPlayerHorizontalMap();
-  const stacks = createTwoPlayerInitialStacks(map);
-  const pursesBySeat: Record<number, ResourcePurse> = {
-    0: { ...PONDSTEAD_STARTING_RESOURCES },
-    1: { ...PONDSTEAD_STARTING_RESOURCES },
-  };
-  const revealedBySeat: Record<number, Set<string>> = {
-    0: mergeVisibleIntoRevealed(computeVisibleCellKeys(map, stacks, 0), new Set()),
-    1: mergeVisibleIntoRevealed(computeVisibleCellKeys(map, stacks, 1), new Set()),
-  };
+  return createFreshPondsteadStateForSeatCount(2);
+}
+
+export function createFreshPondsteadStateForSeatCount(seatCount: number): TwoPlayerFreshState {
+  const n = Math.max(2, Math.min(6, Math.floor(seatCount)));
+  const map = buildNHPlayerHorizontalMap(n);
+  const stacks = createInitialStacksForMap(map, n);
+  const pursesBySeat: Record<number, ResourcePurse> = {};
+  const revealedBySeat: Record<number, Set<string>> = {};
+  for (let seat = 0; seat < n; seat++) {
+    pursesBySeat[seat] = { ...PONDSTEAD_STARTING_RESOURCES };
+    revealedBySeat[seat] = mergeVisibleIntoRevealed(
+      computeVisibleCellKeys(map, stacks, seat),
+      new Set(),
+    );
+  }
   return { map, stacks, pursesBySeat, revealedBySeat };
 }

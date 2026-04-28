@@ -2,6 +2,7 @@ import type { ResourcePurse } from "./pondsteadBuildingCosts";
 import type { PendingRecruits } from "./pondsteadDay";
 import type { ParsedMap } from "./types";
 import type { UnitStack } from "./pondsteadUnits";
+import { seatIndicesFromOptionalRecord } from "./pondsteadSeatKeyed";
 import type { PondsteadServerWorldSnapshot } from "./pondsteadServerSync";
 
 export type HydratedWorldState = {
@@ -17,33 +18,41 @@ export type HydratedWorldState = {
   day?: number;
 };
 
-export function hydrateWorldFromServerSnapshot(w: PondsteadServerWorldSnapshot): HydratedWorldState {
-  const purse = (k: 0 | 1): ResourcePurse => ({
-    ...(w.pursesBySeat[String(k)] ?? { food: 0, wood: 0, stone: 0 }),
-  });
+export function hydrateWorldFromServerSnapshot(
+  w: PondsteadServerWorldSnapshot,
+  options?: { maxSeats?: number },
+): HydratedWorldState {
+  const seats = seatIndicesFromOptionalRecord(w.pursesBySeat ?? w.bonusPointsBySeat, options?.maxSeats);
+
+  const pursesBySeat: Record<number, ResourcePurse> = {};
+  const bonusPointsBySeat: Record<number, number> = {};
+  const revealedBySeat: Record<number, Set<string>> = {};
+  const scoutedTodayBySeat: Record<number, Set<string>> = {};
+
+  for (const s of seats) {
+    const ks = String(s);
+    pursesBySeat[s] = {
+      ...(w.pursesBySeat[ks] ?? { food: 0, wood: 0, stone: 0 }),
+    };
+    bonusPointsBySeat[s] = w.bonusPointsBySeat?.[ks] ?? 0;
+    revealedBySeat[s] = new Set(w.revealedBySeat?.[ks] ?? []);
+    scoutedTodayBySeat[s] = new Set(w.scoutedTodayBySeat?.[ks] ?? []);
+  }
+
   const base: HydratedWorldState = {
     map: w.map,
     stacks: w.stacks,
     recruitQueues: (w.recruitQueues ?? {}) as PendingRecruits,
-    pursesBySeat: { 0: purse(0), 1: purse(1) },
-    bonusPointsBySeat: {
-      0: w.bonusPointsBySeat?.["0"] ?? 0,
-      1: w.bonusPointsBySeat?.["1"] ?? 0,
-    },
-    revealedBySeat: {
-      0: new Set(w.revealedBySeat?.["0"] ?? []),
-      1: new Set(w.revealedBySeat?.["1"] ?? []),
-    },
-    scoutedTodayBySeat: {
-      0: new Set(w.scoutedTodayBySeat?.["0"] ?? []),
-      1: new Set(w.scoutedTodayBySeat?.["1"] ?? []),
-    },
+    pursesBySeat,
+    bonusPointsBySeat,
+    revealedBySeat,
+    scoutedTodayBySeat,
   };
   if (w.stackMovementBySeat) {
-    base.stackMovementBySeat = {
-      0: { ...(w.stackMovementBySeat["0"] ?? {}) },
-      1: { ...(w.stackMovementBySeat["1"] ?? {}) },
-    };
+    base.stackMovementBySeat = {};
+    for (const s of seats) {
+      base.stackMovementBySeat[s] = { ...(w.stackMovementBySeat[String(s)] ?? {}) };
+    }
   }
   if (w.recruitUsedThisDayKeys != null) {
     base.recruitUsedThisDay = new Set(w.recruitUsedThisDayKeys);

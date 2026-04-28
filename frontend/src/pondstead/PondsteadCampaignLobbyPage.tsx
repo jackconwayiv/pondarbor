@@ -1,13 +1,4 @@
-import {
-  Box,
-  Grid,
-  Heading,
-  HStack,
-  Input,
-  Link,
-  Stack,
-  Text,
-} from "@chakra-ui/react";
+import { Box, Heading, HStack, Input, Link, Stack, Text } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link as RouterLink, Navigate, useNavigate, useParams } from "react-router";
 
@@ -32,10 +23,13 @@ import {
   type FriendSearchRow,
   type PondsteadLobbyRow,
 } from "./pondsteadApi";
+import {
+  factionSwatchHex,
+  PondsteadFactionColorPicker,
+  PONDSTEAD_FACTION_COLORS,
+} from "./pondsteadFactionPicker";
 
 const FIELD = { ...PANEL_FIELD_PROPS, ...PANEL_FORM_PLACEHOLDER_PROPS };
-
-const FACTIONS = ["blue", "red", "green", "yellow", "purple", "orange"] as const;
 
 export default function PondsteadCampaignLobbyPage() {
   const { campaignId } = useParams<{ campaignId: string }>();
@@ -53,6 +47,15 @@ export default function PondsteadCampaignLobbyPage() {
   const [hits, setHits] = useState<FriendSearchRow[]>([]);
   const [faction, setFaction] = useState<string>("blue");
   const [busy, setBusy] = useState(false);
+
+  const takenFactionColors = useMemo(() => {
+    const s = new Set<string>();
+    for (const p of row?.players ?? []) {
+      const c = p.faction_color?.trim().toLowerCase();
+      if (c) s.add(c);
+    }
+    return s;
+  }, [row?.players]);
 
   const load = useCallback(async () => {
     if (!Number.isFinite(id)) return;
@@ -97,6 +100,14 @@ export default function PondsteadCampaignLobbyPage() {
     [row?.players, sessionUser?.user.id],
   );
 
+  useEffect(() => {
+    if (myInvite?.status !== "pending") return;
+    if (takenFactionColors.has(faction.trim().toLowerCase())) {
+      const next = PONDSTEAD_FACTION_COLORS.find((c) => !takenFactionColors.has(c));
+      if (next) setFaction(next);
+    }
+  }, [myInvite, takenFactionColors, faction]);
+
   if (!isAuthenticated) {
     return <Navigate to="/" replace />;
   }
@@ -132,7 +143,7 @@ export default function PondsteadCampaignLobbyPage() {
           fontWeight="bold"
           mb="2"
         >
-          Campaign #{id}
+          {(row?.name ?? "").trim() || `Campaign #${id}`}
         </Heading>
         {!row ? (
           <PanelBlockSkeleton lines={2} showTitleLine={false} />
@@ -176,10 +187,25 @@ export default function PondsteadCampaignLobbyPage() {
                   py={{ base: "2", md: "3" }}
                   bg="bg"
                 >
-                  <Text fontSize={APP_TEXT_SIZES.body}>
-                    Seat {p.seat_index}: {p.display_name || "—"}
-                    {p.faction_color ? ` · ${p.faction_color}` : ""}
-                  </Text>
+                  <HStack gap="2" align="center">
+                    {p.faction_color ? (
+                      <Box
+                        w="3.5"
+                        h="3.5"
+                        borderRadius="sm"
+                        flexShrink={0}
+                        bg={factionSwatchHex(p.faction_color)}
+                        borderWidth="1px"
+                        borderColor="border"
+                        title={p.faction_color}
+                        aria-hidden
+                      />
+                    ) : null}
+                    <Text fontSize={APP_TEXT_SIZES.body}>
+                      Seat {p.seat_index}: {p.display_name || "—"}
+                      {p.faction_color ? ` · ${p.faction_color}` : ""}
+                    </Text>
+                  </HStack>
                   <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" fontWeight="medium">
                     {p.user_id ? `User ${p.user_id}` : "Open"}
                   </Text>
@@ -304,20 +330,18 @@ export default function PondsteadCampaignLobbyPage() {
               <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.label} mb="2">
                 You are invited — pick a faction color
               </Text>
-              <Grid templateColumns="repeat(3, 1fr)" gap="2" mb="4">
-                {FACTIONS.map((c) => (
-                  <PondButton
-                    key={c}
-                    type="button"
-                    size="sm"
-                    variant={faction === c ? "solid" : "outline"}
-                    colorPalette={faction === c ? "teal" : "nautical"}
-                    onClick={() => setFaction(c)}
-                  >
-                    {c}
-                  </PondButton>
-                ))}
-              </Grid>
+              <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" lineHeight="tall" mb="3">
+                Squares marked “taken” are already chosen by someone in this lobby. Only free colors can be
+                selected.
+              </Text>
+              <Box mb="4">
+                <PondsteadFactionColorPicker
+                  value={faction}
+                  onChange={setFaction}
+                  taken={takenFactionColors}
+                  aria-label="Choose a faction color"
+                />
+              </Box>
               <HStack gap="2" flexWrap="wrap">
                 <PondButton
                   type="button"

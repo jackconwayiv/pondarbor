@@ -21,7 +21,17 @@ import type { ResourcePurse } from "./pondsteadBuildingCosts";
 import type { BuildingKind, ParsedMap } from "./types";
 import type { UnitStack } from "./pondsteadUnits";
 
-const SEATS = [0, 1] as const;
+function seatsFromNewDaySync(sync: PondsteadNewDaySync): readonly number[] {
+  const ids = new Set<number>();
+  for (const k of Object.keys(sync.pursesBySeat)) ids.add(Number(k));
+  for (const k of Object.keys(sync.revealedBySeat ?? {})) ids.add(Number(k));
+  for (const k of Object.keys(sync.scoutedTodayBySeat ?? {})) ids.add(Number(k));
+  for (const k of Object.keys(sync.bonusPointsBySeat ?? {})) ids.add(Number(k));
+  const arr = Array.from(ids)
+    .filter((n) => Number.isFinite(n) && n >= 0)
+    .sort((a, b) => a - b);
+  return arr.length > 0 ? arr : [0, 1];
+}
 
 export type PondsteadNewDaySync = {
   map: ParsedMap;
@@ -43,7 +53,7 @@ export type PondsteadNewDayPipelineResult = {
   nextDay: number;
   /** @deprecated Prefer dailyReportsBySeat; same as entry for incomeReportSeat. */
   dailyReport: PondsteadDailyReport;
-  /** JSON-friendly keys "0","1" for server logs. */
+  /** JSON-friendly keys "0","1",… for server logs. */
   dailyReportsBySeat: Record<string, PondsteadDailyReport>;
 };
 
@@ -62,17 +72,21 @@ export function runPondsteadCommitNewDayPipeline(args: {
   rng: CombatRng;
 }): PondsteadNewDayPipelineResult {
   const { sync, currentDay, incomeReportSeat, playerName, playerNamesBySeat, rng } = args;
-  const names: Record<number, string> = {
-    0: playerNamesBySeat?.[0] ?? "West",
-    1: playerNamesBySeat?.[1] ?? "East",
-  };
+  const seats = seatsFromNewDaySync(sync);
+
+  const names: Record<number, string> = {};
+  const defaultLabel = (s: number) => (s % 2 === 0 ? "West" : "East");
+  for (const s of seats) {
+    names[s] = playerNamesBySeat?.[s] ?? defaultLabel(s);
+  }
+
   const combat = resolveDayStartCombat(sync.map, sync.stacks, rng);
   const m0 = combat.map;
   const s0 = combat.stacks;
   const q0 = sync.recruitQueues;
 
-  const nextRevealed: Record<number, Set<string>> = { 0: new Set(), 1: new Set() };
-  for (const seat of SEATS) {
+  const nextRevealed: Record<number, Set<string>> = {};
+  for (const seat of seats) {
     const liveAtEnd = computeVisibleCellKeys(m0, s0, seat);
     const scoutUnion = mergeVisibleIntoRevealed(liveAtEnd, sync.scoutedTodayBySeat[seat] ?? new Set());
     nextRevealed[seat] = mergeVisibleIntoRevealed(scoutUnion, sync.revealedBySeat[seat] ?? new Set());
@@ -108,11 +122,12 @@ export function runPondsteadCommitNewDayPipeline(args: {
     nextBonus[id] = (nextBonus[id] ?? 0) + v;
   }
 
-  const nextPurses: Record<number, ResourcePurse> = {
-    0: { ...sync.pursesBySeat[0]! },
-    1: { ...sync.pursesBySeat[1]! },
-  };
-  for (const seat of SEATS) {
+  const nextPurses: Record<number, ResourcePurse> = {};
+  for (const seat of seats) {
+    nextPurses[seat] = { ...(sync.pursesBySeat[seat] ?? { food: 0, wood: 0, stone: 0 }) };
+  }
+
+  for (const seat of seats) {
     const f = foodPerDayFromOrchardsForOwner(s1, m1, seat);
     const w = woodPerDayFromCampsForOwner(s1, m1, seat);
     const st = stonePerDayFromQuarriesForOwner(s1, m1, seat);
@@ -124,11 +139,15 @@ export function runPondsteadCommitNewDayPipeline(args: {
   }
 
   const dailyReportsBySeat: Record<string, PondsteadDailyReport> = {};
-  for (const seat of SEATS) {
+  for (const seat of seats) {
     const fg = foodPerDayFromOrchardsForOwner(s1, m1, seat);
     const wg = woodPerDayFromCampsForOwner(s1, m1, seat);
     const sg = stonePerDayFromQuarriesForOwner(s1, m1, seat);
-    const pts = pointsFromMapForOwner(m1, seat) + (nextBonus[seat] ?? 0);
+    const scoreboard = seats.map((ssi) => ({
+      seatIndex: ssi,
+      displayName: names[ssi] ?? `Seat ${ssi}`,
+      points: pointsFromMapForOwner(m1, ssi) + (nextBonus[ssi] ?? 0),
+    }));
     dailyReportsBySeat[String(seat)] = {
       welcomeDay: nextDay,
       playerName: names[seat] ?? `Seat ${seat}`,
@@ -141,7 +160,7 @@ export function runPondsteadCommitNewDayPipeline(args: {
       stillBuilding: stillBuilding.map((s) => ({ label: s.label, nightsLeft: s.nightsLeft })),
       combatLines: combat.combatLines,
       globalHeadlines: combat.combatLines,
-      scoreboard: [{ seatIndex: seat, displayName: "You", points: pts }],
+      scoreboard,
     };
   }
 

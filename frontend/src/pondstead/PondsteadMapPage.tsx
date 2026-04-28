@@ -62,13 +62,17 @@ import {
 import type { BuildingKind, ParsedMap } from "./types";
 import { fetchPondsteadGameBootstrap } from "./pondsteadApi";
 import {
-  persistPondsteadEndDay,
   persistPondsteadPatchWorld,
   persistPondsteadServerUndo,
   pondsteadServerSyncEnabled,
   serializeWorldForServer,
 } from "./pondsteadServerSync";
-import { createFreshTwoPlayerPondsteadState } from "./pondsteadWorldLayout";
+import {
+  clonePursesLoose,
+  cloneSeatKeyedMovement,
+  cloneSeatKeyedSets,
+} from "./pondsteadSeatKeyed";
+import { createFreshPondsteadStateForSeatCount } from "./pondsteadWorldLayout";
 import { usePondsteadMapZoom } from "./usePondsteadMapZoom";
 import type { PondsteadViewMode } from "./viewModes";
 import {
@@ -79,27 +83,29 @@ import {
 } from "./pondsteadUndoSnapshot";
 import { hydrateWorldFromServerSnapshot } from "./pondsteadWorldHydrate";
 
-function readMySeatFromEnv(): 0 | 1 {
-  const v = String(import.meta.env.VITE_PONDSTEAD_MY_SEAT ?? "0").trim();
-  return v === "1" ? 1 : 0;
+function readMySeatFromEnv(): number {
+  const v = parseInt(String(import.meta.env.VITE_PONDSTEAD_MY_SEAT ?? "0").trim(), 10);
+  return Number.isFinite(v) && v >= 0 ? v : 0;
 }
 
-function cloneStackMovement(m: Record<number, Record<string, number>>): Record<number, Record<string, number>> {
-  return {
-    0: { ...(m[0] ?? {}) },
-    1: { ...(m[1] ?? {}) },
-  };
+function emptyStackMovementForSeatRecord(
+  purses: Record<number, ResourcePurse>,
+): Record<number, Record<string, number>> {
+  const o: Record<number, Record<string, number>> = {};
+  for (const k of Object.keys(purses).map(Number)) {
+    if (!Number.isFinite(k)) continue;
+    o[k] = {};
+  }
+  return o;
 }
 
-function clonePurses(p: Record<number, ResourcePurse>): Record<number, ResourcePurse> {
-  return {
-    0: { ...p[0]! },
-    1: { ...p[1]! },
-  };
-}
-
-function cloneSeatSets(s: Record<number, Set<string>>): Record<number, Set<string>> {
-  return { 0: new Set(s[0]), 1: new Set(s[1]) };
+function emptyScoutedForSeatRecord(purses: Record<number, ResourcePurse>): Record<number, Set<string>> {
+  const o: Record<number, Set<string>> = {};
+  for (const k of Object.keys(purses).map(Number)) {
+    if (!Number.isFinite(k)) continue;
+    o[k] = new Set();
+  }
+  return o;
 }
 
 function centerScrollOnHq(
@@ -125,8 +131,8 @@ export default function PondsteadMapPage() {
     (import.meta.env.VITE_PONDSTEAD_GAME_ID as string | undefined)?.trim() ||
     null;
 
-  const fresh = useMemo(() => createFreshTwoPlayerPondsteadState(), []);
-  const [mySeat, setMySeat] = useState<0 | 1>(() => readMySeatFromEnv());
+  const fresh = useMemo(() => createFreshPondsteadStateForSeatCount(2), []);
+  const [mySeat, setMySeat] = useState<number>(() => readMySeatFromEnv());
 
   const [map, setMap] = useState<ParsedMap>(() => fresh.map);
   const [recruitQueues, setRecruitQueues] = useState<PendingRecruits>({});
@@ -135,10 +141,12 @@ export default function PondsteadMapPage() {
     map: fresh.map,
     stacks: fresh.stacks,
     recruitQueues: {} as PendingRecruits,
-    revealedBySeat: cloneSeatSets(fresh.revealedBySeat),
-    scoutedTodayBySeat: { 0: new Set<string>(), 1: new Set<string>() } as Record<number, Set<string>>,
-    pursesBySeat: clonePurses(fresh.pursesBySeat),
-    bonusPointsBySeat: { 0: 0, 1: 0 } as Record<number, number>,
+    revealedBySeat: cloneSeatKeyedSets(fresh.revealedBySeat),
+    scoutedTodayBySeat: emptyScoutedForSeatRecord(fresh.pursesBySeat),
+    pursesBySeat: clonePursesLoose(fresh.pursesBySeat),
+    bonusPointsBySeat: Object.fromEntries(
+      Object.keys(fresh.pursesBySeat).map((k) => [Number(k), 0]),
+    ) as Record<number, number>,
   });
   const [stacks, setStacks] = useState<UnitStack[]>(() => fresh.stacks);
   const hq = useMemo(
@@ -147,30 +155,31 @@ export default function PondsteadMapPage() {
   );
   const [viewMode, setViewMode] = useState<PondsteadViewMode>("medium");
   const [recruitUsedThisDay, setRecruitUsedThisDay] = useState<Set<string>>(() => new Set());
-  const [playerPurses, setPlayerPurses] = useState<Record<number, ResourcePurse>>(() => clonePurses(fresh.pursesBySeat));
+  const [playerPurses, setPlayerPurses] = useState<Record<number, ResourcePurse>>(() =>
+    clonePursesLoose(fresh.pursesBySeat),
+  );
   const [pinchScale, setPinchScale] = useState(1);
   const [awaitingNewDayConfirm, setAwaitingNewDayConfirm] = useState(false);
   const { viewportRef, cellSizePx } = usePondsteadMapZoom(viewMode, pinchScale, setPinchScale);
   const didInitialHqScroll = useRef(false);
   const [revealedBySeat, setRevealedBySeat] = useState<Record<number, Set<string>>>(() =>
-    cloneSeatSets(fresh.revealedBySeat),
+    cloneSeatKeyedSets(fresh.revealedBySeat),
   );
-  const [scoutedTodayBySeat, setScoutedTodayBySeat] = useState<Record<number, Set<string>>>(() => ({
-    0: new Set(),
-    1: new Set(),
-  }));
+  const [scoutedTodayBySeat, setScoutedTodayBySeat] = useState<Record<number, Set<string>>>(() =>
+    emptyScoutedForSeatRecord(fresh.pursesBySeat),
+  );
   const [mapPointerHint, setMapPointerHint] = useState<"march" | null>(null);
   const mapPointerHintTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [stackMovementBySeat, setStackMovementBySeat] = useState<Record<number, Record<string, number>>>(() => ({
-    0: {},
-    1: {},
-  }));
-  const [bonusPointsBySeat, setBonusPointsBySeat] = useState<Record<number, number>>({ 0: 0, 1: 0 });
+  const [stackMovementBySeat, setStackMovementBySeat] = useState<Record<number, Record<string, number>>>(() =>
+    emptyStackMovementForSeatRecord(fresh.pursesBySeat),
+  );
+  const [bonusPointsBySeat, setBonusPointsBySeat] = useState<Record<number, number>>(() =>
+    Object.fromEntries(Object.keys(fresh.pursesBySeat).map((k) => [Number(k), 0])) as Record<number, number>,
+  );
   const { sessionUser, getApiAccessToken } = useAppSession();
   const dayRef = useRef(day);
   const mySeatRef = useRef(mySeat);
   const serverRevisionRef = useRef(0);
-  const serverOtherUndoRef = useRef<Record<string, unknown[]>>({ "0": [], "1": [] });
   const pendingServerPatchRef = useRef(false);
   const undoStackRef = useRef<PondsteadUndoSnapshot[]>([]);
   const [undoStackLen, setUndoStackLen] = useState(0);
@@ -182,12 +191,14 @@ export default function PondsteadMapPage() {
     map: fresh.map,
     stacks: fresh.stacks,
     recruitQueues: {} as PendingRecruits,
-    revealedBySeat: cloneSeatSets(fresh.revealedBySeat),
-    scoutedTodayBySeat: { 0: new Set<string>(), 1: new Set<string>() } as Record<number, Set<string>>,
-    pursesBySeat: clonePurses(fresh.pursesBySeat),
-    bonusPointsBySeat: { 0: 0, 1: 0 } as Record<number, number>,
+    revealedBySeat: cloneSeatKeyedSets(fresh.revealedBySeat),
+    scoutedTodayBySeat: emptyScoutedForSeatRecord(fresh.pursesBySeat),
+    pursesBySeat: clonePursesLoose(fresh.pursesBySeat),
+    bonusPointsBySeat: Object.fromEntries(
+      Object.keys(fresh.pursesBySeat).map((k) => [Number(k), 0]),
+    ) as Record<number, number>,
     day: 1,
-    stackMovementBySeat: { 0: {}, 1: {} } as Record<number, Record<string, number>>,
+    stackMovementBySeat: emptyStackMovementForSeatRecord(fresh.pursesBySeat),
     recruitUsedThisDay: new Set<string>(),
   });
   useEffect(() => {
@@ -202,12 +213,12 @@ export default function PondsteadMapPage() {
       map,
       stacks,
       recruitQueues,
-      revealedBySeat: cloneSeatSets(revealedBySeat),
-      scoutedTodayBySeat: cloneSeatSets(scoutedTodayBySeat),
-      pursesBySeat: clonePurses(playerPurses),
+      revealedBySeat: cloneSeatKeyedSets(revealedBySeat),
+      scoutedTodayBySeat: cloneSeatKeyedSets(scoutedTodayBySeat),
+      pursesBySeat: clonePursesLoose(playerPurses),
       bonusPointsBySeat: { ...bonusPointsBySeat },
       day,
-      stackMovementBySeat: cloneStackMovement(stackMovementBySeat),
+      stackMovementBySeat: cloneSeatKeyedMovement(stackMovementBySeat),
       recruitUsedThisDay: new Set(recruitUsedThisDay),
     };
   }, [
@@ -273,10 +284,6 @@ export default function PondsteadMapPage() {
           if (hw.recruitUsedThisDay) setRecruitUsedThisDay(hw.recruitUsedThisDay);
           if (typeof hw.day === "number") setDay(hw.day);
           else if (typeof out.current_day === "number") setDay(out.current_day);
-          serverOtherUndoRef.current = {
-            "0": [...(out.undo_stacks_by_seat["0"] ?? [])],
-            "1": [...(out.undo_stacks_by_seat["1"] ?? [])],
-          };
           const seat = mySeatRef.current;
           undoStackRef.current = (out.undo_stacks_by_seat[String(seat)] ?? []) as PondsteadUndoSnapshot[];
           bumpUndoUi();
@@ -317,7 +324,9 @@ export default function PondsteadMapPage() {
         const j = await fetchPondsteadGameBootstrap(token, Number(gid));
         if (cancelled) return;
         serverRevisionRef.current = j.revision;
-        const hw = hydrateWorldFromServerSnapshot(j.world);
+        const hw = hydrateWorldFromServerSnapshot(j.world, {
+          maxSeats: Math.max(2, j.players?.length ?? 2),
+        });
         setMap(hw.map);
         setStacks(hw.stacks);
         setRecruitQueues(hw.recruitQueues);
@@ -328,12 +337,13 @@ export default function PondsteadMapPage() {
         if (hw.stackMovementBySeat) setStackMovementBySeat(hw.stackMovementBySeat);
         if (hw.recruitUsedThisDay) setRecruitUsedThisDay(hw.recruitUsedThisDay);
         setDay(hw.day ?? j.current_day);
-        serverOtherUndoRef.current = {
-          "0": [...(j.undo_stacks_by_seat["0"] ?? [])],
-          "1": [...(j.undo_stacks_by_seat["1"] ?? [])],
-        };
         const mine = j.players.find((p) => p.user_id === uid);
-        const seat: 0 | 1 = mine != null && mine.seat_index === 1 ? 1 : 0;
+        const seat =
+          typeof j.my_seat_index === "number"
+            ? j.my_seat_index
+            : mine != null
+              ? mine.seat_index
+              : 0;
         setMySeat(seat);
         undoStackRef.current = (j.undo_stacks_by_seat[String(seat)] ?? []) as PondsteadUndoSnapshot[];
         bumpUndoUi();
@@ -367,12 +377,7 @@ export default function PondsteadMapPage() {
       day: c.day,
     });
     const mine = undoStackRef.current.map((s) => structuredClone(s));
-    const o0 = serverOtherUndoRef.current["0"] ?? [];
-    const o1 = serverOtherUndoRef.current["1"] ?? [];
-    const undoStacksBySeat =
-      mySeat === 0
-        ? { "0": mine as unknown[], "1": [...o1] }
-        : { "0": [...o0], "1": mine as unknown[] };
+    const undoStacksBySeat: Record<string, unknown[]> = { [String(mySeat)]: mine as unknown[] };
     void (async () => {
       try {
         const token = await getApiAccessToken();
@@ -468,30 +473,43 @@ export default function PondsteadMapPage() {
     [currentFood, currentWood, currentStone],
   );
 
+  const seatKeysForPurses = useMemo(
+    () =>
+      Object.keys(playerPurses)
+        .map(Number)
+        .filter((n) => Number.isFinite(n))
+        .sort((a, b) => a - b),
+    [playerPurses],
+  );
+
   const liveVisibleBySeat = useMemo(() => {
-    return {
-      0: computeVisibleCellKeys(map, stacks, 0),
-      1: computeVisibleCellKeys(map, stacks, 1),
-    } as Record<number, Set<string>>;
-  }, [map, stacks]);
+    const out: Record<number, Set<string>> = {};
+    for (const s of seatKeysForPurses) {
+      out[s] = computeVisibleCellKeys(map, stacks, s);
+    }
+    return out;
+  }, [map, stacks, seatKeysForPurses]);
 
   const liveVisibleCellKeys = liveVisibleBySeat[mySeat] ?? new Set();
 
   useEffect(() => {
-    setScoutedTodayBySeat((prev) => ({
-      0: mergeVisibleIntoRevealed(liveVisibleBySeat[0]!, prev[0] ?? new Set()),
-      1: mergeVisibleIntoRevealed(liveVisibleBySeat[1]!, prev[1] ?? new Set()),
-    }));
-  }, [liveVisibleBySeat]);
+    setScoutedTodayBySeat((prev) => {
+      const next: Record<number, Set<string>> = {};
+      for (const s of seatKeysForPurses) {
+        next[s] = mergeVisibleIntoRevealed(liveVisibleBySeat[s]!, prev[s] ?? new Set());
+      }
+      return next;
+    });
+  }, [liveVisibleBySeat, seatKeysForPurses]);
 
   useLayoutEffect(() => {
     endDaySyncRef.current = {
       map,
       stacks,
       recruitQueues,
-      revealedBySeat: cloneSeatSets(revealedBySeat),
-      scoutedTodayBySeat: cloneSeatSets(scoutedTodayBySeat),
-      pursesBySeat: clonePurses(playerPurses),
+      revealedBySeat: cloneSeatKeyedSets(revealedBySeat),
+      scoutedTodayBySeat: cloneSeatKeyedSets(scoutedTodayBySeat),
+      pursesBySeat: clonePursesLoose(playerPurses),
       bonusPointsBySeat: { ...bonusPointsBySeat },
     };
   }, [map, stacks, recruitQueues, revealedBySeat, scoutedTodayBySeat, playerPurses, bonusPointsBySeat]);
@@ -503,6 +521,7 @@ export default function PondsteadMapPage() {
 
   const handleCommitNewDay = useCallback(() => {
     if (gameWon) return;
+    if (pondsteadServerSyncEnabled(resolvedCampaignId)) return;
     undoStackRef.current = [];
     bumpUndoUi();
     const sync = endDaySyncRef.current;
@@ -529,46 +548,18 @@ export default function PondsteadMapPage() {
     setPlayerPurses(out.pursesBySeat);
     setBonusPointsBySeat(out.bonusPointsBySeat);
     setDailyReport(out.dailyReport);
-    setStackMovementBySeat({ 0: {}, 1: {} });
+    const sk = Object.keys(out.pursesBySeat)
+      .map(Number)
+      .filter((n) => Number.isFinite(n));
+    setStackMovementBySeat(Object.fromEntries(sk.map((s) => [s, {}])) as Record<number, Record<string, number>>);
     setRecruitUsedThisDay(new Set());
     setRevealedBySeat(out.revealedBySeat);
-    setScoutedTodayBySeat({ 0: new Set(), 1: new Set() });
+    setScoutedTodayBySeat(
+      Object.fromEntries(sk.map((s) => [s, new Set<string>()])) as Record<number, Set<string>>,
+    );
     setDay(out.nextDay);
     setAwaitingNewDayConfirm(false);
-
-    if (pondsteadServerSyncEnabled(resolvedCampaignId)) {
-      void (async () => {
-        try {
-          const token = await getApiAccessToken();
-          const world = serializeWorldForServer({
-            map: out.map,
-            stacks: out.stacks,
-            recruitQueues: out.recruitQueues,
-            pursesBySeat: out.pursesBySeat,
-            bonusPointsBySeat: out.bonusPointsBySeat,
-            revealedBySeat: out.revealedBySeat,
-            scoutedTodayBySeat: { 0: new Set(), 1: new Set() },
-            stackMovementBySeat: { 0: {}, 1: {} },
-            recruitUsedThisDay: new Set(),
-            day: out.nextDay,
-          });
-          const rev = await persistPondsteadEndDay({
-            accessToken: token,
-            world,
-            expectedRevision: serverRevisionRef.current,
-            nextDay: out.nextDay,
-            dailyReport: out.dailyReport,
-            undoStacksBySeat: { "0": [], "1": [] },
-            campaignId: resolvedCampaignId,
-          });
-          if (rev != null) serverRevisionRef.current = rev;
-          serverOtherUndoRef.current = { "0": [], "1": [] };
-        } catch (e) {
-          console.error(e);
-        }
-      })();
-    }
-  }, [sessionUser, gameWon, bumpUndoUi, resolvedCampaignId, getApiAccessToken]);
+  }, [sessionUser, gameWon, bumpUndoUi, resolvedCampaignId]);
 
   const onPlaceBuilding = useCallback(
     (row: number, col: number, unitKind: PondsteadUnitKind, target: BuildingKind): PlaceBuildResult => {
@@ -861,6 +852,9 @@ export default function PondsteadMapPage() {
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         day={day}
+        showLegacyDayControls={
+          !(resolvedCampaignId != null && pondsteadServerSyncEnabled(resolvedCampaignId))
+        }
         awaitingNewDayConfirm={awaitingNewDayConfirm}
         onEndDayOrResume={handleEndDayOrResume}
         onStartNewDay={handleCommitNewDay}

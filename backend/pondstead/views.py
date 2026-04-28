@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 from django.contrib.auth import get_user_model
@@ -14,9 +15,21 @@ from rest_framework.response import Response
 
 from users.permissions import IsApprovedUser
 
-from .models import PondsteadCampaignInvite, PondsteadDayLog, PondsteadGame, PondsteadGameState, PondsteadPlayer
+from .models import (
+    PondsteadCampaignInvite,
+    PondsteadDayLog,
+    PondsteadGame,
+    PondsteadGameState,
+    PondsteadPlayer,
+)
+from .private_state_sync import sync_player_private_states_from_world
 from .phoenix_calendar import phoenix_campaign_calendar_date
-from .subprocess_new_day import load_initial_world_envelope, run_pondstead_new_day_subprocess
+from .pondstead_victory import victor_seat_index_or_none
+from .subprocess_new_day import (
+    filter_world_snapshot_for_viewer,
+    load_initial_world_envelope,
+    run_pondstead_new_day_subprocess,
+)
 from .world_envelope import unwrap_world_json, wrap_world_json
 
 User = get_user_model()
@@ -49,6 +62,71 @@ def _player_row(p: PondsteadPlayer) -> dict[str, Any]:
     }
 
 
+def _fallback_seat_strings(game: PondsteadGame) -> tuple[str, ...]:
+    tup = tuple(str(p.seat_index) for p in game.players.all().order_by("seat_index"))
+    return tup if tup else ("0", "1")
+
+
+def _seat_undo_empty_template(game: PondsteadGame) -> dict[str, list[Any]]:
+    return {str(p.seat_index): [] for p in game.players.all().order_by("seat_index")} or {"0": [], "1": []}
+
+
+def _merge_world_seat_safe(
+    client_world: dict[str, Any],
+    server_world: dict[str, Any],
+    requester_seat: int,
+    seat_strings: tuple[str, ...],
+) -> dict[str, Any]:
+    merged = copy.deepcopy(client_world)
+    rs = str(requester_seat)
+    for key in ("pursesBySeat", "revealedBySeat", "scoutedTodayBySeat", "stackMovementBySeat", "bonusPointsBySeat"):
+        cw = merged.get(key) if isinstance(merged.get(key), dict) else {}
+        sw = server_world.get(key) if isinstance(server_world.get(key), dict) else {}
+        out: dict[str, Any] = {}
+        for sk in seat_strings:
+            if sk == rs:
+                if sk in cw:
+                    out[sk] = cw[sk]
+                elif sk in sw:
+                    out[sk] = sw[sk]
+            else:
+                out[sk] = sw.get(sk, cw.get(sk))
+        merged[key] = out
+    return merged
+
+
+def _merge_undo_for_patch(
+    client_undo: dict[str, Any],
+    server_undo: dict[str, list[Any]],
+    requester_seat: int,
+    seat_strings: tuple[str, ...],
+) -> dict[str, list[Any]]:
+    rs = str(requester_seat)
+    cu = client_undo if isinstance(client_undo, dict) else {}
+    su = server_undo if isinstance(server_undo, dict) else {}
+    merged: dict[str, list[Any]] = {}
+    for sk in seat_strings:
+        if sk == rs:
+            cv = cu.get(sk)
+            merged[sk] = list(cv) if isinstance(cv, list) else []
+        else:
+            merged[sk] = list(su.get(sk) or [])
+    return merged
+
+
+def _try_finish_campaign_if_victory(game_pk: int, world: dict[str, Any]) -> None:
+    win_seat = victor_seat_index_or_none(world)
+    if win_seat is None:
+        return
+    row = PondsteadPlayer.objects.filter(game_id=game_pk, seat_index=win_seat).first()
+    if row is None:
+        return
+    PondsteadGame.objects.filter(pk=game_pk).update(
+        status=PondsteadGame.STATUS_FINISHED,
+        winner_player_id=row.pk,
+    )
+
+
 def _invite_row(inv: PondsteadCampaignInvite) -> dict[str, Any]:
     u = inv.invitee
     nick = ""
@@ -67,6 +145,7 @@ def _invite_row(inv: PondsteadCampaignInvite) -> dict[str, Any]:
 def _serialize_game_lobby(game: PondsteadGame) -> dict[str, Any]:
     return {
         "id": game.id,
+        "name": game.name or "",
         "status": game.status,
         "max_players": game.max_players,
         "current_day": game.current_day,
@@ -84,7 +163,7 @@ def _serialize_game_lobby(game: PondsteadGame) -> dict[str, Any]:
 @permission_classes([IsAuthenticated, IsApprovedUser])
 def games_collection(request):
     """Legacy POST games/: immediate 2P active session (dev / old clients)."""
-    initial = load_initial_world_envelope()
+    initial = load_initial_world_envelope(2)
     today = phoenix_campaign_calendar_date()
     with transaction.atomic():
         game = PondsteadGame.objects.create(
@@ -113,6 +192,8 @@ def games_collection(request):
             display_name="Opponent",
         )
         PondsteadGameState.objects.create(game=game, revision=0, world_json=initial)
+    w0, u0 = unwrap_world_json(initial, fallback_seats=("0", "1"))
+    sync_player_private_states_from_world(game.pk, w0, u0)
     return Response({"id": game.id, "revision": 0, "current_day": game.current_day}, status=status.HTTP_201_CREATED)
 
 
@@ -125,9 +206,17 @@ def campaigns_create(request):
     body = request.data if isinstance(request.data, dict) else {}
     max_players = int(body.get("max_players") or 2)
     max_players = max(2, min(6, max_players))
+    name = (body.get("name") or "").strip()
+    if not name:
+        return Response({"detail": "name is required."}, status=status.HTTP_400_BAD_REQUEST)
+    name = name[:120]
+    color = (body.get("faction_color") or "").strip().lower()
+    if color not in FACTION_COLORS:
+        return Response({"detail": "Invalid faction_color."}, status=status.HTTP_400_BAD_REQUEST)
     with transaction.atomic():
         game = PondsteadGame.objects.create(
             owner=request.user,
+            name=name,
             max_players=max_players,
             config={"player_count": max_players, "layout": "twoPlayerHorizontal"},
             current_day=1,
@@ -142,12 +231,20 @@ def campaigns_create(request):
             user=request.user,
             seat_index=0,
             display_name=str(dn)[:120],
+            faction_color=color,
         )
-        PondsteadGameState.objects.create(
-            game=game,
-            revision=0,
-            world_json=wrap_world_json({}, {"0": [], "1": []}),
+        seat_undo = {str(i): [] for i in range(max_players)}
+        wrapped = wrap_world_json(
+            {},
+            seat_undo,
+            seat_keys_to_retain=list(seat_undo.keys()),
         )
+        PondsteadGameState.objects.create(game=game, revision=0, world_json=wrapped)
+    w0, u0 = unwrap_world_json(
+        wrapped,
+        fallback_seats=tuple(str(i) for i in range(max_players)),
+    )
+    sync_player_private_states_from_world(game.pk, w0, u0)
     return Response(_serialize_game_lobby(game), status=status.HTTP_201_CREATED)
 
 
@@ -214,9 +311,12 @@ def campaigns_invite_accept(request, game_id: int):
     color = (body.get("faction_color") or "").strip().lower()
     if color not in FACTION_COLORS:
         return Response({"detail": "Invalid faction_color."}, status=status.HTTP_400_BAD_REQUEST)
-    taken = set(
-        PondsteadPlayer.objects.filter(game=game).exclude(faction_color="").values_list("faction_color", flat=True)
-    )
+    taken = {
+        str(c).strip().lower()
+        for c in PondsteadPlayer.objects.filter(game=game)
+        .exclude(faction_color="")
+        .values_list("faction_color", flat=True)
+    }
     if color in taken:
         return Response({"detail": "Color taken."}, status=status.HTTP_400_BAD_REQUEST)
     with transaction.atomic():
@@ -287,7 +387,7 @@ def campaigns_start(request, game_id: int):
     n_players = game.players.count()
     if n_players < game.max_players:
         return Response({"detail": f"Need {game.max_players} players to start."}, status=status.HTTP_400_BAD_REQUEST)
-    initial = load_initial_world_envelope()
+    initial = load_initial_world_envelope(game.max_players)
     today = phoenix_campaign_calendar_date()
     with transaction.atomic():
         g = PondsteadGame.objects.select_for_update().get(pk=game.pk)
@@ -300,6 +400,9 @@ def campaigns_start(request, game_id: int):
         g.last_calendar_new_day_phx_date = today
         g.current_day = 1
         g.save(update_fields=["status", "started_at", "last_calendar_new_day_phx_date", "current_day", "updated_at"])
+    fb = _fallback_seat_strings(g)
+    w0, u0 = unwrap_world_json(initial, fallback_seats=fb)
+    sync_player_private_states_from_world(g.pk, w0, u0)
     return Response(_game_play_payload(g))
 
 
@@ -307,7 +410,8 @@ def _game_play_payload(game: PondsteadGame) -> dict[str, Any]:
     latest = PondsteadGameState.objects.filter(game=game).order_by("-revision").first()
     if not latest:
         return {"detail": "No state."}
-    world, undo = unwrap_world_json(latest.world_json)
+    fb = _fallback_seat_strings(game)
+    world, undo = unwrap_world_json(latest.world_json, fallback_seats=fb)
     return {
         "id": game.id,
         "status": game.status,
@@ -322,7 +426,7 @@ def _game_play_payload(game: PondsteadGame) -> dict[str, Any]:
 def _maybe_advance_calendar_new_day(game_id: int) -> tuple[bool, dict[str, Any] | None]:
     """
     At most one in-game new day per Phoenix calendar day per campaign.
-    Subprocess runs outside the row lock to avoid holding DB during Node.
+    Uses revision compare-after-subprocess so concurrent opens cannot double-write state.
     """
     today = phoenix_campaign_calendar_date()
     with transaction.atomic():
@@ -334,7 +438,9 @@ def _maybe_advance_calendar_new_day(game_id: int) -> tuple[bool, dict[str, Any] 
         latest = PondsteadGameState.objects.filter(game=g).order_by("-revision").first()
         if not latest:
             return False, None
-        world, _ = unwrap_world_json(latest.world_json)
+        start_revision = latest.revision
+        fb = _fallback_seat_strings(g)
+        world, _ = unwrap_world_json(latest.world_json, fallback_seats=fb)
         names = {}
         for p in g.players.all().order_by("seat_index"):
             uname = ""
@@ -352,6 +458,10 @@ def _maybe_advance_calendar_new_day(game_id: int) -> tuple[bool, dict[str, Any] 
     except Exception:
         return False, None
 
+    purse_keys = list((out.get("pursesBySeat") or {}).keys())
+    empty_scouted = out.get("scoutedTodayBySeat") or {k: [] for k in purse_keys}
+    empty_mov = out.get("stackMovementBySeat") or {k: {} for k in purse_keys}
+
     new_world = {
         "map": out["map"],
         "stacks": out["stacks"],
@@ -359,12 +469,11 @@ def _maybe_advance_calendar_new_day(game_id: int) -> tuple[bool, dict[str, Any] 
         "pursesBySeat": out.get("pursesBySeat") or {},
         "bonusPointsBySeat": out.get("bonusPointsBySeat") or {},
         "revealedBySeat": out.get("revealedBySeat") or {},
-        "scoutedTodayBySeat": out.get("scoutedTodayBySeat") or {"0": [], "1": []},
-        "stackMovementBySeat": out.get("stackMovementBySeat") or {"0": {}, "1": {}},
+        "scoutedTodayBySeat": empty_scouted,
+        "stackMovementBySeat": empty_mov,
         "recruitUsedThisDayKeys": out.get("recruitUsedThisDayKeys") or [],
-        "day": int(out.get("nextDay") or game.current_day + 1),
+        "day": int(out.get("nextDay") or current_day + 1),
     }
-    wrapped = wrap_world_json(new_world, {"0": [], "1": []})
     reports = out.get("dailyReportsBySeat")
 
     with transaction.atomic():
@@ -373,8 +482,15 @@ def _maybe_advance_calendar_new_day(game_id: int) -> tuple[bool, dict[str, Any] 
         if g.last_calendar_new_day_phx_date is not None and g.last_calendar_new_day_phx_date >= today2:
             return False, None
         latest2 = PondsteadGameState.objects.filter(game=g).order_by("-revision").first()
-        if not latest2:
+        if not latest2 or latest2.revision != start_revision:
             return False, None
+        sk_list = [str(p.seat_index) for p in g.players.all().order_by("seat_index")] or purse_keys
+        empty_undo = {k: [] for k in sk_list}
+        wrapped = wrap_world_json(
+            new_world,
+            empty_undo,
+            seat_keys_to_retain=sk_list,
+        )
         new_rev = latest2.revision + 1
         PondsteadGameState.objects.create(game=g, revision=new_rev, world_json=wrapped)
         PondsteadDayLog.objects.create(
@@ -385,6 +501,8 @@ def _maybe_advance_calendar_new_day(game_id: int) -> tuple[bool, dict[str, Any] 
         g.current_day = int(out["nextDay"])
         g.last_calendar_new_day_phx_date = today2
         g.save(update_fields=["current_day", "last_calendar_new_day_phx_date", "updated_at"])
+        _try_finish_campaign_if_victory(g.pk, new_world)
+        sync_player_private_states_from_world(g.pk, new_world, empty_undo)
 
     return True, reports if isinstance(reports, dict) else None
 
@@ -404,22 +522,51 @@ def game_detail(request, game_id: int):
     did, reports = _maybe_advance_calendar_new_day(game_id)
     game = PondsteadGame.objects.get(pk=game_id)
 
+    player_row = game.players.filter(user_id=uid).first()
+    if not player_row:
+        return Response(
+            {"detail": "Campaign play requires an accepted seat."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
     latest = PondsteadGameState.objects.filter(game=game).order_by("-revision").first()
     if not latest:
         return Response({"detail": "No state."}, status=status.HTTP_404_NOT_FOUND)
-    world, undo = unwrap_world_json(latest.world_json)
-    payload = {
+    fb = _fallback_seat_strings(game)
+    server_world, undo = unwrap_world_json(latest.world_json, fallback_seats=fb)
+    viewer_seat = int(player_row.seat_index)
+    try:
+        world_view = filter_world_snapshot_for_viewer(copy.deepcopy(server_world), viewer_seat)
+    except Exception:
+        world_view = server_world
+
+    rp = reports if isinstance(reports, dict) else None
+    if did and isinstance(rp, dict):
+        sk = str(viewer_seat)
+        lone = rp.get(sk)
+        rp = {sk: lone} if lone is not None else {}
+
+    winner_payload = None
+    if game.status == PondsteadGame.STATUS_FINISHED and game.winner_player_id:
+        wp = PondsteadPlayer.objects.filter(pk=game.winner_player_id).first()
+        if wp:
+            winner_payload = {"seat_index": wp.seat_index, "pondstead_player_id": wp.pk, "user_id": wp.user_id}
+
+    payload: dict[str, Any] = {
         "id": game.id,
         "status": game.status,
         "current_day": game.current_day,
         "revision": latest.revision,
-        "world": world,
-        "world_json": world,
+        "world": world_view,
+        "world_json": world_view,
         "undo_stacks_by_seat": undo,
+        "my_seat_index": viewer_seat,
         "players": [_player_row(p) for p in game.players.all().order_by("seat_index")],
         "calendar_auto_new_day": did,
-        "calendar_daily_reports_by_seat": reports,
+        "calendar_daily_reports_by_seat": rp,
     }
+    if winner_payload:
+        payload["winner"] = winner_payload
     return Response(payload, status=status.HTTP_200_OK)
 
 
@@ -427,47 +574,15 @@ def game_detail(request, game_id: int):
 @permission_classes([IsAuthenticated, IsApprovedUser])
 def game_end_day(request, game_id: int):
     game = get_object_or_404(PondsteadGame, pk=game_id)
-    latest = PondsteadGameState.objects.filter(game=game).order_by("-revision").first()
-    if not latest:
-        return Response({"detail": "No state."}, status=status.HTTP_404_NOT_FOUND)
-
-    body = request.data
-    expected_revision = body.get("expected_revision")
-    if expected_revision is None or int(expected_revision) != latest.revision:
-        return Response(
-            {"detail": "Revision mismatch.", "current_revision": latest.revision},
-            status=status.HTTP_409_CONFLICT,
-        )
-
-    world_in = body.get("world_json")
-    if not isinstance(world_in, dict):
-        return Response({"detail": "world_json object required."}, status=status.HTTP_400_BAD_REQUEST)
-
-    undo_in = body.get("undo_stacks_by_seat")
-    if isinstance(undo_in, dict):
-        wrapped = wrap_world_json(world_in, undo_in)
-    elif "world" in world_in:
-        wrapped = world_in
-    else:
-        _, old_undo = unwrap_world_json(latest.world_json)
-        wrapped = wrap_world_json(world_in, old_undo)
-
-    log_json = body.get("log_json") if isinstance(body.get("log_json"), dict) else {}
-    next_day = body.get("next_day")
-    try:
-        next_day_int = int(next_day) if next_day is not None else game.current_day + 1
-    except (TypeError, ValueError):
-        return Response({"detail": "next_day invalid."}, status=status.HTTP_400_BAD_REQUEST)
-
-    with transaction.atomic():
-        new_rev = latest.revision + 1
-        PondsteadGameState.objects.create(game=game, revision=new_rev, world_json=wrapped)
-        PondsteadDayLog.objects.create(game=game, day=next_day_int, log_json=log_json)
-        game.current_day = next_day_int
-        game.last_activity_at = timezone.now()
-        game.save(update_fields=["current_day", "last_activity_at", "updated_at"])
-
-    return Response({"revision": new_rev, "current_day": game.current_day}, status=status.HTTP_200_OK)
+    player_row = game.players.filter(user_id=request.user.id).first()
+    if not player_row:
+        return Response({"detail": "Not a campaign player."}, status=403)
+    return Response(
+        {
+            "detail": "Manual end day has been retired — the campaign advances when you open the map on a new calendar day.",
+        },
+        status=status.HTTP_410_GONE,
+    )
 
 
 @api_view(["POST"])
@@ -475,6 +590,9 @@ def game_end_day(request, game_id: int):
 def game_patch_world(request, game_id: int):
     """Mid-turn authoritative world + undo stacks (expects full world dict + undo_stacks_by_seat)."""
     game = get_object_or_404(PondsteadGame, pk=game_id)
+    player_row = game.players.filter(user_id=request.user.id).first()
+    if not player_row:
+        return Response({"detail": "Not a campaign player."}, status=403)
     if game.status != PondsteadGame.STATUS_ACTIVE:
         return Response({"detail": "Game not active."}, status=status.HTTP_400_BAD_REQUEST)
     latest = PondsteadGameState.objects.filter(game=game).order_by("-revision").first()
@@ -488,12 +606,18 @@ def game_patch_world(request, game_id: int):
     undo = body.get("undo_stacks_by_seat")
     if not isinstance(world, dict) or not isinstance(undo, dict):
         return Response({"detail": "world and undo_stacks_by_seat required."}, status=400)
-    wrapped = wrap_world_json(world, undo)
+    fb = _fallback_seat_strings(game)
+    server_world, server_undo = unwrap_world_json(latest.world_json, fallback_seats=fb)
+    merged_w = _merge_world_seat_safe(world, server_world, player_row.seat_index, fb)
+    merged_u = _merge_undo_for_patch(undo, server_undo, player_row.seat_index, fb)
+    wrapped = wrap_world_json(merged_w, merged_u, seat_keys_to_retain=list(fb))
     with transaction.atomic():
         new_rev = latest.revision + 1
         PondsteadGameState.objects.create(game=game, revision=new_rev, world_json=wrapped)
         game.last_activity_at = timezone.now()
         game.save(update_fields=["last_activity_at", "updated_at"])
+        _try_finish_campaign_if_victory(game.pk, merged_w)
+        sync_player_private_states_from_world(game.pk, merged_w, merged_u)
     return Response({"revision": new_rev}, status=200)
 
 
@@ -531,23 +655,29 @@ def game_undo(request, game_id: int):
     body = request.data if isinstance(request.data, dict) else {}
     if body.get("expected_revision") is None or int(body["expected_revision"]) != latest.revision:
         return Response({"detail": "Revision mismatch.", "current_revision": latest.revision}, status=409)
-    world, undo = unwrap_world_json(latest.world_json)
+    fb = _fallback_seat_strings(game)
+    world, undo = unwrap_world_json(latest.world_json, fallback_seats=fb)
     stack = list(undo.get(seat) or [])
     if not stack:
         return Response({"detail": "Nothing to undo."}, status=400)
     snap = stack.pop()
     undo[seat] = stack
     new_world = _snapshot_to_world(snap)
-    wrapped = wrap_world_json(new_world, undo)
+    wrapped = wrap_world_json(new_world, undo, seat_keys_to_retain=list(fb))
     with transaction.atomic():
         new_rev = latest.revision + 1
         PondsteadGameState.objects.create(game=game, revision=new_rev, world_json=wrapped)
         game.last_activity_at = timezone.now()
         game.save(update_fields=["last_activity_at", "updated_at"])
+        sync_player_private_states_from_world(game.pk, new_world, undo)
+    try:
+        world_out = filter_world_snapshot_for_viewer(copy.deepcopy(new_world), int(player.seat_index))
+    except Exception:
+        world_out = new_world
     return Response(
         {
             "revision": new_rev,
-            "world": new_world,
+            "world": world_out,
             "undo_stacks_by_seat": undo,
             "current_day": game.current_day,
         },

@@ -22,6 +22,7 @@ export default function PondsteadMapGrid({
   stackMovementUsed,
   revealedCellKeys,
   visibleCellKeys,
+  viewerPlayerId,
   interactionLocked,
 }: {
   map: ParsedMap;
@@ -33,6 +34,8 @@ export default function PondsteadMapGrid({
   stackMovementUsed: Readonly<Record<string, number>>;
   revealedCellKeys: ReadonlySet<string>;
   visibleCellKeys: ReadonlySet<string>;
+  /** Human controlling the UI (hotseat / client seat). */
+  viewerPlayerId: number;
   /** When true (e.g. end-of-day pending), tile stacks/buildings are non-interactive. */
   interactionLocked: boolean;
   onSplit: (stackId: string, splitCount: number) => void;
@@ -67,6 +70,7 @@ export default function PondsteadMapGrid({
           recruitUsedWorkerSlotKeys={recruitUsedWorkerSlotKeys}
           tileVision={tileVision}
           stackMovementUsed={stackMovementUsed}
+          viewerPlayerId={viewerPlayerId}
           interactionLocked={interactionLocked}
           onSplit={onSplit}
           onRecruit={onRecruit}

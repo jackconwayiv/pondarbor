@@ -18,6 +18,7 @@ type Props = {
   onStartNewDay: () => void;
   onUndo: () => void;
   canUndo: boolean;
+  undoCount: number;
   /** Scoring: Granary, Sawmill, and Mason’s Yard each +1. */
   points: number;
   pointsToWin: number;
@@ -51,6 +52,7 @@ export default function PondsteadCommandBar({
   onStartNewDay,
   onUndo,
   canUndo,
+  undoCount,
   points,
   pointsToWin,
   gameWon,
@@ -180,9 +182,9 @@ export default function PondsteadCommandBar({
               onClick={onUndo}
               disabled={!canUndo}
               title="Rewind the last action on this day (fog and resources rewind with it)"
-              aria-label="Undo last action"
+              aria-label={`Undo last action, ${undoCount} available`}
             >
-              Undo
+              Undo [{undoCount}]
             </Button>
           </HStack>
           {awaitingNewDayConfirm ? (

@@ -69,35 +69,37 @@ export function stackAriaLabel(kind: PondsteadUnitKind, count: number): string {
 }
 
 /**
- * HQ: two workers and one soldier; first Camp and first Orchard in the template: two workers each.
+ * HQ: one worker and one soldier; first Camp and first Orchard (for this owner): two workers each.
  */
 export function createInitialStacks(
   hq: { row: number; col: number },
   camp: { row: number; col: number } | null,
   orchard: { row: number; col: number } | null,
+  ownerId: number = PONDSTEAD_LOCAL_PLAYER_ID,
 ): UnitStack[] {
+  const p = `p${ownerId}`;
   const stacks: UnitStack[] = [
-    { id: "hq-workers", kind: "worker", count: 2, row: hq.row, col: hq.col, ownerId: 0 },
-    { id: "hq-soldier", kind: "soldier", count: 1, row: hq.row, col: hq.col, ownerId: 0 },
+    { id: `${p}-hq-workers`, kind: "worker", count: 1, row: hq.row, col: hq.col, ownerId },
+    { id: `${p}-hq-soldier`, kind: "soldier", count: 1, row: hq.row, col: hq.col, ownerId },
   ];
   if (camp) {
     stacks.push({
-      id: "camp-workers",
+      id: `${p}-camp-workers`,
       kind: "worker",
       count: 2,
       row: camp.row,
       col: camp.col,
-      ownerId: 0,
+      ownerId,
     });
   }
   if (orchard) {
     stacks.push({
-      id: "orchard-workers",
+      id: `${p}-orchard-workers`,
       kind: "worker",
       count: 2,
       row: orchard.row,
       col: orchard.col,
-      ownerId: 0,
+      ownerId,
     });
   }
   return stacks;

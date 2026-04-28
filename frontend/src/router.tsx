@@ -1,7 +1,7 @@
 import * as Sentry from "@sentry/react";
 import type { ReactNode } from "react";
 import { lazy, Suspense } from "react";
-import { createBrowserRouter, Navigate } from "react-router";
+import { createBrowserRouter, Navigate, Outlet } from "react-router";
 import AboutPage from "./AboutPage";
 import App from "./App";
 import NotFoundPage from "./NotFoundPage";
@@ -97,6 +97,14 @@ const HarborStaffPlaytestPage = lazy(
 );
 const CalendarPage = lazy(() => import("./calendar/CalendarPage"));
 const CalendarDayPage = lazy(() => import("./calendar/CalendarDayPage"));
+const PondsteadHubLayout = lazy(() => import("./pondstead/PondsteadHubLayout"));
+const PondsteadWelcomePage = lazy(() => import("./pondstead/PondsteadWelcomePage"));
+const PondsteadCampaignsListPage = lazy(
+  () => import("./pondstead/PondsteadCampaignsListPage"),
+);
+const PondsteadCampaignLobbyPage = lazy(
+  () => import("./pondstead/PondsteadCampaignLobbyPage"),
+);
 const PondsteadMapPage = lazy(() => import("./pondstead/PondsteadMapPage"));
 
 function lazyRouteElement(element: ReactNode): ReactNode {
@@ -231,7 +239,27 @@ export const router = sentryCreateBrowserRouter([
       },
       {
         path: "pondstead",
-        element: lazyRouteElement(<PondsteadMapPage />),
+        element: <Outlet />,
+        children: [
+          {
+            element: lazyRouteElement(<PondsteadHubLayout />),
+            children: [
+              { index: true, element: lazyRouteElement(<PondsteadWelcomePage />) },
+              {
+                path: "campaigns",
+                element: lazyRouteElement(<PondsteadCampaignsListPage />),
+              },
+              {
+                path: "campaign/:campaignId",
+                element: lazyRouteElement(<PondsteadCampaignLobbyPage />),
+              },
+            ],
+          },
+          {
+            path: "play/:campaignId?",
+            element: lazyRouteElement(<PondsteadMapPage />),
+          },
+        ],
       },
       {
         path: "closet/items/:itemId",

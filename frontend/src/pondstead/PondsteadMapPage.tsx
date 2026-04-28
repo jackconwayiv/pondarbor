@@ -1,21 +1,23 @@
-import { Box, Stack, Text } from "@chakra-ui/react";
+import { Box, Link, Stack, Text } from "@chakra-ui/react";
 
 import { AppModal } from "../components/AppModal";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Link as RouterLink, useParams } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
 import PondsteadCommandBar from "./PondsteadCommandBar";
 import PondsteadDailyReportModal, { type PondsteadDailyReport } from "./PondsteadDailyReportModal";
-import { PONDSTEAD_DEFAULT_MAP_TEMPLATE } from "./defaultMapTemplate";
+import { runPondsteadCommitNewDayPipeline } from "./pondsteadCommitNewDayPipeline";
 import {
-  foodPerDayFromOrchards,
+  foodPerDayFromOrchardsForOwner,
   kingMarchCapFromMap,
-  pointsFromMap,
+  pointsFromMapForOwner,
   PONDSTEAD_VICTORY_POINTS,
-  populationCapFromMap,
+  populationCapForOwner,
   stackOutOfMarchMessage,
-  stonePerDayFromQuarries,
-  woodPerDayFromCamps,
+  stonePerDayFromQuarriesForOwner,
+  totalPopulationTowardCapForOwner,
+  woodPerDayFromCampsForOwner,
 } from "./pondsteadHudMetrics";
 import { listLocalConstructionsForHud, listQueuedRecruitsForHud } from "./pondsteadHudQueue";
 import {
@@ -31,13 +33,7 @@ import {
   tryStartConstruction,
 } from "./pondsteadBuild";
 import { canStartWonderConstruction, hasCompletedMausoleumForOwner, isWonderBuildingKind } from "./pondsteadWonders";
-import {
-  advanceConstructionsAndReleaseBorrowedUnits,
-  pondsteadCellKey,
-  processPendingRecruitsAtDayStart,
-  totalPopulationTowardCap,
-  type PendingRecruits,
-} from "./pondsteadDay";
+import { pondsteadCellKey, type PendingRecruits } from "./pondsteadDay";
 import {
   applyCost,
   canAfford,
@@ -47,18 +43,13 @@ import {
   type PlaceBuildResult,
   type ResourcePurse,
 } from "./pondsteadBuildingCosts";
-import {
-  findFirstBuildingCell,
-  findHeadquartersCell,
-  parseMapTemplate,
-} from "./parseMapTemplate";
+import { findFirstBuildingCellForOwner } from "./parseMapTemplate";
 import {
   applyRecruit,
   applyStackDragEnd,
   applyStackSplit,
   classifyStackDragEnd,
   marchAdjacentStepCostOrNull,
-  createInitialStacks,
   mergeSurvivorStackId,
   PONDSTEAD_MAX_PER_KIND_ON_TILE,
   removeOneUnitOfKindFromCell,
@@ -67,37 +58,48 @@ import {
   type PondsteadUnitKind,
   type RecruitAttemptResult,
   type UnitStack,
-  unitKindLabel,
 } from "./pondsteadUnits";
-import { buildingLabel } from "./terrain";
 import type { BuildingKind, ParsedMap } from "./types";
+import { fetchPondsteadGameBootstrap } from "./pondsteadApi";
+import {
+  persistPondsteadEndDay,
+  persistPondsteadPatchWorld,
+  persistPondsteadServerUndo,
+  pondsteadServerSyncEnabled,
+  serializeWorldForServer,
+} from "./pondsteadServerSync";
+import { createFreshTwoPlayerPondsteadState } from "./pondsteadWorldLayout";
+import { usePondsteadMapZoom } from "./usePondsteadMapZoom";
+import type { PondsteadViewMode } from "./viewModes";
 import {
   capturePondsteadUndoSnapshot,
   type PondsteadUndoSnapshot,
   PONDSTEAD_UNDO_MAX_DEPTH,
   rehydratePondsteadUndoSnapshot,
 } from "./pondsteadUndoSnapshot";
-import { usePondsteadMapZoom } from "./usePondsteadMapZoom";
-import type { PondsteadViewMode } from "./viewModes";
+import { hydrateWorldFromServerSnapshot } from "./pondsteadWorldHydrate";
 
-function parseDefaultPondsteadMap(): ParsedMap {
-  return parseMapTemplate(PONDSTEAD_DEFAULT_MAP_TEMPLATE);
+function readMySeatFromEnv(): 0 | 1 {
+  const v = String(import.meta.env.VITE_PONDSTEAD_MY_SEAT ?? "0").trim();
+  return v === "1" ? 1 : 0;
 }
 
-function createDefaultPondsteadStacks(m: ParsedMap): UnitStack[] {
-  const h = findHeadquartersCell(m) ?? { row: 4, col: 4 };
-  const camp = findFirstBuildingCell(m, "camp");
-  const orchard = findFirstBuildingCell(m, "orchard");
-  return createInitialStacks(h, camp, orchard);
+function cloneStackMovement(m: Record<number, Record<string, number>>): Record<number, Record<string, number>> {
+  return {
+    0: { ...(m[0] ?? {}) },
+    1: { ...(m[1] ?? {}) },
+  };
 }
 
-function initialPondsteadRevealedCells(): Set<string> {
-  const m = parseDefaultPondsteadMap();
-  const s = createDefaultPondsteadStacks(m);
-  return mergeVisibleIntoRevealed(
-    computeVisibleCellKeys(m, s, PONDSTEAD_LOCAL_PLAYER_ID),
-    new Set(),
-  );
+function clonePurses(p: Record<number, ResourcePurse>): Record<number, ResourcePurse> {
+  return {
+    0: { ...p[0]! },
+    1: { ...p[1]! },
+  };
+}
+
+function cloneSeatSets(s: Record<number, Set<string>>): Record<number, Set<string>> {
+  return { 0: new Set(s[0]), 1: new Set(s[1]) };
 }
 
 function centerScrollOnHq(
@@ -117,44 +119,293 @@ function centerScrollOnHq(
 }
 
 export default function PondsteadMapPage() {
-  const [map, setMap] = useState(parseDefaultPondsteadMap);
+  const { campaignId: campaignIdParam } = useParams<{ campaignId?: string }>();
+  const resolvedCampaignId =
+    (campaignIdParam && campaignIdParam.trim()) ||
+    (import.meta.env.VITE_PONDSTEAD_GAME_ID as string | undefined)?.trim() ||
+    null;
+
+  const fresh = useMemo(() => createFreshTwoPlayerPondsteadState(), []);
+  const [mySeat, setMySeat] = useState<0 | 1>(() => readMySeatFromEnv());
+
+  const [map, setMap] = useState<ParsedMap>(() => fresh.map);
   const [recruitQueues, setRecruitQueues] = useState<PendingRecruits>({});
   const [day, setDay] = useState(1);
   const endDaySyncRef = useRef({
-    map: parseDefaultPondsteadMap(),
-    stacks: [] as UnitStack[],
+    map: fresh.map,
+    stacks: fresh.stacks,
     recruitQueues: {} as PendingRecruits,
-    revealedCellKeys: new Set<string>(),
-    scoutedTodayCellKeys: new Set<string>(),
+    revealedBySeat: cloneSeatSets(fresh.revealedBySeat),
+    scoutedTodayBySeat: { 0: new Set<string>(), 1: new Set<string>() } as Record<number, Set<string>>,
+    pursesBySeat: clonePurses(fresh.pursesBySeat),
+    bonusPointsBySeat: { 0: 0, 1: 0 } as Record<number, number>,
   });
-  const [stacks, setStacks] = useState<UnitStack[]>(() => createDefaultPondsteadStacks(parseDefaultPondsteadMap()));
-  const hq = useMemo(() => findHeadquartersCell(map), [map]);
+  const [stacks, setStacks] = useState<UnitStack[]>(() => fresh.stacks);
+  const hq = useMemo(
+    () => findFirstBuildingCellForOwner(map, "hq", mySeat),
+    [map, mySeat],
+  );
   const [viewMode, setViewMode] = useState<PondsteadViewMode>("medium");
   const [recruitUsedThisDay, setRecruitUsedThisDay] = useState<Set<string>>(() => new Set());
-  const [currentFood, setCurrentFood] = useState(PONDSTEAD_STARTING_RESOURCES.food);
-  const [currentWood, setCurrentWood] = useState(PONDSTEAD_STARTING_RESOURCES.wood);
-  const [currentStone, setCurrentStone] = useState(PONDSTEAD_STARTING_RESOURCES.stone);
+  const [playerPurses, setPlayerPurses] = useState<Record<number, ResourcePurse>>(() => clonePurses(fresh.pursesBySeat));
   const [pinchScale, setPinchScale] = useState(1);
-  /** After “End day”, map actions are locked until “Resume day” or “Start new day”. */
   const [awaitingNewDayConfirm, setAwaitingNewDayConfirm] = useState(false);
   const { viewportRef, cellSizePx } = usePondsteadMapZoom(viewMode, pinchScale, setPinchScale);
   const didInitialHqScroll = useRef(false);
-  const [revealedCellKeys, setRevealedCellKeys] = useState(initialPondsteadRevealedCells);
-  /** LOS cells seen this day; merged into `revealedCellKeys` only when the day ends. */
-  const [scoutedTodayCellKeys, setScoutedTodayCellKeys] = useState(() => new Set<string>());
+  const [revealedBySeat, setRevealedBySeat] = useState<Record<number, Set<string>>>(() =>
+    cloneSeatSets(fresh.revealedBySeat),
+  );
+  const [scoutedTodayBySeat, setScoutedTodayBySeat] = useState<Record<number, Set<string>>>(() => ({
+    0: new Set(),
+    1: new Set(),
+  }));
   const [mapPointerHint, setMapPointerHint] = useState<"march" | null>(null);
   const mapPointerHintTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [stackMovementUsed, setStackMovementUsed] = useState<Record<string, number>>({});
-  const undoStackRef = useRef<PondsteadUndoSnapshot[]>([]);
-  const [undoCount, setUndoCount] = useState(0);
-  const canUndo = undoCount > 0;
-  const { sessionUser } = useAppSession();
+  const [stackMovementBySeat, setStackMovementBySeat] = useState<Record<number, Record<string, number>>>(() => ({
+    0: {},
+    1: {},
+  }));
+  const [bonusPointsBySeat, setBonusPointsBySeat] = useState<Record<number, number>>({ 0: 0, 1: 0 });
+  const { sessionUser, getApiAccessToken } = useAppSession();
   const dayRef = useRef(day);
+  const mySeatRef = useRef(mySeat);
+  const serverRevisionRef = useRef(0);
+  const serverOtherUndoRef = useRef<Record<string, unknown[]>>({ "0": [], "1": [] });
+  const pendingServerPatchRef = useRef(false);
+  const undoStackRef = useRef<PondsteadUndoSnapshot[]>([]);
+  const [undoStackLen, setUndoStackLen] = useState(0);
+  const bumpUndoUi = useCallback(() => {
+    setUndoStackLen(undoStackRef.current.length);
+  }, []);
+  const canUndo = undoStackLen > 0;
+  const undoCaptureRef = useRef({
+    map: fresh.map,
+    stacks: fresh.stacks,
+    recruitQueues: {} as PendingRecruits,
+    revealedBySeat: cloneSeatSets(fresh.revealedBySeat),
+    scoutedTodayBySeat: { 0: new Set<string>(), 1: new Set<string>() } as Record<number, Set<string>>,
+    pursesBySeat: clonePurses(fresh.pursesBySeat),
+    bonusPointsBySeat: { 0: 0, 1: 0 } as Record<number, number>,
+    day: 1,
+    stackMovementBySeat: { 0: {}, 1: {} } as Record<number, Record<string, number>>,
+    recruitUsedThisDay: new Set<string>(),
+  });
   useEffect(() => {
     dayRef.current = day;
   }, [day]);
+  useEffect(() => {
+    mySeatRef.current = mySeat;
+  }, [mySeat]);
+
+  useLayoutEffect(() => {
+    undoCaptureRef.current = {
+      map,
+      stacks,
+      recruitQueues,
+      revealedBySeat: cloneSeatSets(revealedBySeat),
+      scoutedTodayBySeat: cloneSeatSets(scoutedTodayBySeat),
+      pursesBySeat: clonePurses(playerPurses),
+      bonusPointsBySeat: { ...bonusPointsBySeat },
+      day,
+      stackMovementBySeat: cloneStackMovement(stackMovementBySeat),
+      recruitUsedThisDay: new Set(recruitUsedThisDay),
+    };
+  }, [
+    map,
+    stacks,
+    recruitQueues,
+    revealedBySeat,
+    scoutedTodayBySeat,
+    playerPurses,
+    bonusPointsBySeat,
+    day,
+    stackMovementBySeat,
+    recruitUsedThisDay,
+  ]);
+
   const [dailyReport, setDailyReport] = useState<PondsteadDailyReport | null>(null);
   const [victoryModalDismissed, setVictoryModalDismissed] = useState(false);
+
+  const pushUndoSnapshot = useCallback(() => {
+    const c = undoCaptureRef.current;
+    const snap = capturePondsteadUndoSnapshot({
+      map: c.map,
+      stacks: c.stacks,
+      recruitQueues: c.recruitQueues,
+      revealedBySeat: c.revealedBySeat,
+      scoutedTodayBySeat: c.scoutedTodayBySeat,
+      pursesBySeat: c.pursesBySeat,
+      bonusPointsBySeat: c.bonusPointsBySeat,
+      day: c.day,
+      stackMovementBySeat: c.stackMovementBySeat,
+      recruitUsedThisDayKeys: c.recruitUsedThisDay,
+    });
+    const next = [...undoStackRef.current, snap];
+    if (next.length > PONDSTEAD_UNDO_MAX_DEPTH) next.splice(0, next.length - PONDSTEAD_UNDO_MAX_DEPTH);
+    undoStackRef.current = next;
+    bumpUndoUi();
+    if (pondsteadServerSyncEnabled(resolvedCampaignId)) {
+      pendingServerPatchRef.current = true;
+    }
+  }, [bumpUndoUi, resolvedCampaignId]);
+
+  const handleUndo = useCallback(() => {
+    if (pondsteadServerSyncEnabled(resolvedCampaignId)) {
+      void (async () => {
+        try {
+          const token = await getApiAccessToken();
+          const out = await persistPondsteadServerUndo({
+            accessToken: token,
+            expectedRevision: serverRevisionRef.current,
+            campaignId: resolvedCampaignId,
+          });
+          if (!out) return;
+          serverRevisionRef.current = out.revision;
+          const hw = hydrateWorldFromServerSnapshot(out.world);
+          setMap(hw.map);
+          setStacks(hw.stacks);
+          setRecruitQueues(hw.recruitQueues);
+          setPlayerPurses(hw.pursesBySeat);
+          setBonusPointsBySeat(hw.bonusPointsBySeat);
+          setRevealedBySeat(hw.revealedBySeat);
+          setScoutedTodayBySeat(hw.scoutedTodayBySeat);
+          if (hw.stackMovementBySeat) setStackMovementBySeat(hw.stackMovementBySeat);
+          if (hw.recruitUsedThisDay) setRecruitUsedThisDay(hw.recruitUsedThisDay);
+          if (typeof hw.day === "number") setDay(hw.day);
+          else if (typeof out.current_day === "number") setDay(out.current_day);
+          serverOtherUndoRef.current = {
+            "0": [...(out.undo_stacks_by_seat["0"] ?? [])],
+            "1": [...(out.undo_stacks_by_seat["1"] ?? [])],
+          };
+          const seat = mySeatRef.current;
+          undoStackRef.current = (out.undo_stacks_by_seat[String(seat)] ?? []) as PondsteadUndoSnapshot[];
+          bumpUndoUi();
+        } catch (e) {
+          console.error(e);
+        }
+      })();
+      return;
+    }
+    const stack = undoStackRef.current;
+    if (stack.length === 0) return;
+    const snap = stack[stack.length - 1]!;
+    undoStackRef.current = stack.slice(0, -1);
+    const r = rehydratePondsteadUndoSnapshot(snap);
+    setMap(r.map);
+    setStacks(r.stacks);
+    setRecruitQueues(r.recruitQueues);
+    setRevealedBySeat(r.revealedBySeat);
+    setScoutedTodayBySeat(r.scoutedTodayBySeat);
+    setPlayerPurses(r.pursesBySeat);
+    setBonusPointsBySeat(r.bonusPointsBySeat);
+    setDay(r.day);
+    setStackMovementBySeat(r.stackMovementBySeat);
+    setRecruitUsedThisDay(r.recruitUsedThisDayKeys);
+    bumpUndoUi();
+  }, [bumpUndoUi, resolvedCampaignId, getApiAccessToken]);
+
+  useEffect(() => {
+    if (!pondsteadServerSyncEnabled(resolvedCampaignId)) return;
+    const gid = resolvedCampaignId;
+    if (!gid) return;
+    const uid = sessionUser?.user.id;
+    if (uid == null) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const token = await getApiAccessToken();
+        const j = await fetchPondsteadGameBootstrap(token, Number(gid));
+        if (cancelled) return;
+        serverRevisionRef.current = j.revision;
+        const hw = hydrateWorldFromServerSnapshot(j.world);
+        setMap(hw.map);
+        setStacks(hw.stacks);
+        setRecruitQueues(hw.recruitQueues);
+        setPlayerPurses(hw.pursesBySeat);
+        setBonusPointsBySeat(hw.bonusPointsBySeat);
+        setRevealedBySeat(hw.revealedBySeat);
+        setScoutedTodayBySeat(hw.scoutedTodayBySeat);
+        if (hw.stackMovementBySeat) setStackMovementBySeat(hw.stackMovementBySeat);
+        if (hw.recruitUsedThisDay) setRecruitUsedThisDay(hw.recruitUsedThisDay);
+        setDay(hw.day ?? j.current_day);
+        serverOtherUndoRef.current = {
+          "0": [...(j.undo_stacks_by_seat["0"] ?? [])],
+          "1": [...(j.undo_stacks_by_seat["1"] ?? [])],
+        };
+        const mine = j.players.find((p) => p.user_id === uid);
+        const seat: 0 | 1 = mine != null && mine.seat_index === 1 ? 1 : 0;
+        setMySeat(seat);
+        undoStackRef.current = (j.undo_stacks_by_seat[String(seat)] ?? []) as PondsteadUndoSnapshot[];
+        bumpUndoUi();
+        if (j.calendar_auto_new_day) {
+          const rep = j.calendar_daily_reports_by_seat?.[String(seat)];
+          if (rep) setDailyReport(rep);
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionUser, resolvedCampaignId, bumpUndoUi, getApiAccessToken]);
+
+  useLayoutEffect(() => {
+    if (!pendingServerPatchRef.current || !pondsteadServerSyncEnabled(resolvedCampaignId)) return;
+    pendingServerPatchRef.current = false;
+    const c = undoCaptureRef.current;
+    const world = serializeWorldForServer({
+      map: c.map,
+      stacks: c.stacks,
+      recruitQueues: c.recruitQueues,
+      pursesBySeat: c.pursesBySeat,
+      bonusPointsBySeat: c.bonusPointsBySeat,
+      revealedBySeat: c.revealedBySeat,
+      scoutedTodayBySeat: c.scoutedTodayBySeat,
+      stackMovementBySeat: c.stackMovementBySeat,
+      recruitUsedThisDay: c.recruitUsedThisDay,
+      day: c.day,
+    });
+    const mine = undoStackRef.current.map((s) => structuredClone(s));
+    const o0 = serverOtherUndoRef.current["0"] ?? [];
+    const o1 = serverOtherUndoRef.current["1"] ?? [];
+    const undoStacksBySeat =
+      mySeat === 0
+        ? { "0": mine as unknown[], "1": [...o1] }
+        : { "0": [...o0], "1": mine as unknown[] };
+    void (async () => {
+      try {
+        const token = await getApiAccessToken();
+        const rev = await persistPondsteadPatchWorld({
+          accessToken: token,
+          world,
+          undoStacksBySeat,
+          expectedRevision: serverRevisionRef.current,
+          campaignId: resolvedCampaignId,
+        });
+        if (rev != null) serverRevisionRef.current = rev;
+      } catch (e) {
+        console.error(e);
+      }
+    })();
+  }, [
+    getApiAccessToken,
+    map,
+    stacks,
+    recruitQueues,
+    revealedBySeat,
+    scoutedTodayBySeat,
+    playerPurses,
+    bonusPointsBySeat,
+    day,
+    stackMovementBySeat,
+    recruitUsedThisDay,
+    resolvedCampaignId,
+    mySeat,
+  ]);
+
+  const revealedCellKeys = revealedBySeat[mySeat] ?? new Set();
+  const stackMovementUsed = stackMovementBySeat[mySeat] ?? {};
 
   const flashMapPointerHint = useCallback((kind: "march") => {
     if (mapPointerHintTimeoutRef.current) {
@@ -175,106 +426,75 @@ export default function PondsteadMapPage() {
     };
   }, []);
 
-  const foodPerDay = useMemo(() => foodPerDayFromOrchards(stacks, map), [map, stacks]);
-  const woodPerDay = useMemo(() => woodPerDayFromCamps(stacks, map), [map, stacks]);
-  const stonePerDay = useMemo(() => stonePerDayFromQuarries(stacks, map), [map, stacks]);
-  const totalPopulation = useMemo(
-    () => totalPopulationTowardCap(stacks, map, recruitQueues),
-    [stacks, map, recruitQueues],
+  const foodPerDay = useMemo(
+    () => foodPerDayFromOrchardsForOwner(stacks, map, mySeat),
+    [map, stacks, mySeat],
   );
-  const populationCap = useMemo(() => populationCapFromMap(map), [map]);
-  const points = useMemo(() => pointsFromMap(map), [map]);
+  const woodPerDay = useMemo(
+    () => woodPerDayFromCampsForOwner(stacks, map, mySeat),
+    [map, stacks, mySeat],
+  );
+  const stonePerDay = useMemo(
+    () => stonePerDayFromQuarriesForOwner(stacks, map, mySeat),
+    [map, stacks, mySeat],
+  );
+  const totalPopulation = useMemo(
+    () => totalPopulationTowardCapForOwner(stacks, map, recruitQueues, mySeat),
+    [stacks, map, recruitQueues, mySeat],
+  );
+  const populationCap = useMemo(() => populationCapForOwner(map, mySeat), [map, mySeat]);
+  const points = useMemo(
+    () => pointsFromMapForOwner(map, mySeat) + (bonusPointsBySeat[mySeat] ?? 0),
+    [map, mySeat, bonusPointsBySeat],
+  );
   const gameWon = points >= PONDSTEAD_VICTORY_POINTS;
 
   useEffect(() => {
     if (points < PONDSTEAD_VICTORY_POINTS) setVictoryModalDismissed(false);
   }, [points]);
   const hudQueuedRecruits = useMemo(
-    () => listQueuedRecruitsForHud(map, recruitQueues, PONDSTEAD_LOCAL_PLAYER_ID),
-    [map, recruitQueues],
+    () => listQueuedRecruitsForHud(map, recruitQueues, mySeat),
+    [map, recruitQueues, mySeat],
   );
   const hudLocalConstructions = useMemo(
-    () => listLocalConstructionsForHud(map, PONDSTEAD_LOCAL_PLAYER_ID),
-    [map],
+    () => listLocalConstructionsForHud(map, mySeat),
+    [map, mySeat],
   );
+  const currentFood = playerPurses[mySeat]?.food ?? PONDSTEAD_STARTING_RESOURCES.food;
+  const currentWood = playerPurses[mySeat]?.wood ?? PONDSTEAD_STARTING_RESOURCES.wood;
+  const currentStone = playerPurses[mySeat]?.stone ?? PONDSTEAD_STARTING_RESOURCES.stone;
   const playerResources: ResourcePurse = useMemo(
     () => ({ food: currentFood, wood: currentWood, stone: currentStone }),
     [currentFood, currentWood, currentStone],
   );
 
-  const pushUndoSnapshot = useCallback(() => {
-    const snap = capturePondsteadUndoSnapshot({
-      map,
-      stacks,
-      recruitQueues,
-      revealedCellKeys,
-      scoutedTodayCellKeys,
-      currentFood,
-      currentWood,
-      currentStone,
-      day,
-      stackMovementUsed,
-      recruitUsedThisDayKeys: recruitUsedThisDay,
-    });
-    undoStackRef.current = [...undoStackRef.current, snap].slice(-PONDSTEAD_UNDO_MAX_DEPTH);
-    setUndoCount(undoStackRef.current.length);
-  }, [
-    map,
-    stacks,
-    recruitQueues,
-    revealedCellKeys,
-    scoutedTodayCellKeys,
-    currentFood,
-    currentWood,
-    currentStone,
-    day,
-    stackMovementUsed,
-    recruitUsedThisDay,
-  ]);
+  const liveVisibleBySeat = useMemo(() => {
+    return {
+      0: computeVisibleCellKeys(map, stacks, 0),
+      1: computeVisibleCellKeys(map, stacks, 1),
+    } as Record<number, Set<string>>;
+  }, [map, stacks]);
 
-  const handleUndo = useCallback(() => {
-    const st = undoStackRef.current;
-    if (st.length === 0) return;
-    const snap = st[st.length - 1]!;
-    undoStackRef.current = st.slice(0, -1);
-    setUndoCount(undoStackRef.current.length);
-    const a = rehydratePondsteadUndoSnapshot(snap);
-    setMap(a.map);
-    setStacks(a.stacks);
-    setRecruitQueues(a.recruitQueues);
-    setRevealedCellKeys(a.revealedCellKeys);
-    setScoutedTodayCellKeys(a.scoutedTodayCellKeys);
-    setCurrentFood(a.currentFood);
-    setCurrentWood(a.currentWood);
-    setCurrentStone(a.currentStone);
-    setDay(a.day);
-    setStackMovementUsed(a.stackMovementUsed);
-    setRecruitUsedThisDay(a.recruitUsedThisDayKeys);
-  }, []);
+  const liveVisibleCellKeys = liveVisibleBySeat[mySeat] ?? new Set();
 
-  /** Current LOS from units/buildings; only drives “full” vs terrain during the turn (not hidden↔revealed). */
-  const liveVisibleCellKeys = useMemo(
-    () => computeVisibleCellKeys(map, stacks, PONDSTEAD_LOCAL_PLAYER_ID),
-    [map, stacks],
-  );
-
-  /**
-   * Bookkeeping only: union of live LOS over the day. Merged into `revealedCellKeys` at end of day;
-   * not used for rendering (so fog does not clear mid-turn).
-   */
   useEffect(() => {
-    setScoutedTodayCellKeys((prev) => mergeVisibleIntoRevealed(liveVisibleCellKeys, prev));
-  }, [liveVisibleCellKeys]);
+    setScoutedTodayBySeat((prev) => ({
+      0: mergeVisibleIntoRevealed(liveVisibleBySeat[0]!, prev[0] ?? new Set()),
+      1: mergeVisibleIntoRevealed(liveVisibleBySeat[1]!, prev[1] ?? new Set()),
+    }));
+  }, [liveVisibleBySeat]);
 
   useLayoutEffect(() => {
     endDaySyncRef.current = {
       map,
       stacks,
       recruitQueues,
-      revealedCellKeys,
-      scoutedTodayCellKeys,
+      revealedBySeat: cloneSeatSets(revealedBySeat),
+      scoutedTodayBySeat: cloneSeatSets(scoutedTodayBySeat),
+      pursesBySeat: clonePurses(playerPurses),
+      bonusPointsBySeat: { ...bonusPointsBySeat },
     };
-  }, [map, stacks, recruitQueues, revealedCellKeys, scoutedTodayCellKeys]);
+  }, [map, stacks, recruitQueues, revealedBySeat, scoutedTodayBySeat, playerPurses, bonusPointsBySeat]);
 
   const handleEndDayOrResume = useCallback(() => {
     if (gameWon) return;
@@ -283,66 +503,72 @@ export default function PondsteadMapPage() {
 
   const handleCommitNewDay = useCallback(() => {
     if (gameWon) return;
-    const sync = endDaySyncRef.current;
-    const { map: m0, stacks: s0, recruitQueues: q0 } = sync;
-    const foodGained = foodPerDayFromOrchards(s0, m0);
-    const woodGained = woodPerDayFromCamps(s0, m0);
-    const stoneGained = stonePerDayFromQuarries(s0, m0);
-    const liveAtEndOfDay = computeVisibleCellKeys(m0, s0, PONDSTEAD_LOCAL_PLAYER_ID);
-    const scoutUnion = mergeVisibleIntoRevealed(liveAtEndOfDay, sync.scoutedTodayCellKeys);
-    const nextRevealed = mergeVisibleIntoRevealed(scoutUnion, sync.revealedCellKeys);
     undoStackRef.current = [];
-    setUndoCount(0);
-    const {
-      map: m1,
-      stacks: sAfterConstruction,
-      completed,
-      stillBuilding,
-    } = advanceConstructionsAndReleaseBorrowedUnits(m0, s0);
-    const { stacks: s1, queues: q1 } = processPendingRecruitsAtDayStart(m1, sAfterConstruction, q0);
-
-    const recruits: PondsteadDailyReport["recruits"] = [];
-    for (const key of Object.keys(q0)) {
-      if (q1[key] !== undefined) continue;
-      const kind = q0[key];
-      if (kind === undefined) continue;
-      const [row, col] = key.split("-").map(Number);
-      const cell = m1.cells[row]?.[col];
-      if (!cell || cell.building === "none") continue;
-      recruits.push({
-        kindLabel: unitKindLabel(kind),
-        buildingLabel: buildingLabel(cell.building as Exclude<BuildingKind, "none">),
-      });
-    }
-
-    const nextDay = dayRef.current + 1;
+    bumpUndoUi();
+    const sync = endDaySyncRef.current;
     const playerName =
       sessionUser?.profile.display_name?.trim() || sessionUser?.user.username || "Player";
-
-    setDailyReport({
-      welcomeDay: nextDay,
+    const out = runPondsteadCommitNewDayPipeline({
+      sync: {
+        map: sync.map,
+        stacks: sync.stacks,
+        recruitQueues: sync.recruitQueues,
+        pursesBySeat: sync.pursesBySeat,
+        revealedBySeat: sync.revealedBySeat,
+        scoutedTodayBySeat: sync.scoutedTodayBySeat,
+        bonusPointsBySeat: sync.bonusPointsBySeat,
+      },
+      currentDay: dayRef.current,
+      incomeReportSeat: mySeatRef.current,
       playerName,
-      foodGained,
-      woodGained,
-      stoneGained,
-      recruits,
-      completedBuildings: completed.map((c) => ({ label: c.label })),
-      stillBuilding: stillBuilding.map((s) => ({ label: s.label, nightsLeft: s.nightsLeft })),
+      rng: Math.random,
     });
-
-    setMap(m1);
-    setStacks(s1);
-    setRecruitQueues(q1);
-    setCurrentFood((f) => f + foodGained);
-    setCurrentWood((w) => w + woodGained);
-    setCurrentStone((s) => s + stoneGained);
-    setStackMovementUsed({});
+    setMap(out.map);
+    setStacks(out.stacks);
+    setRecruitQueues(out.recruitQueues);
+    setPlayerPurses(out.pursesBySeat);
+    setBonusPointsBySeat(out.bonusPointsBySeat);
+    setDailyReport(out.dailyReport);
+    setStackMovementBySeat({ 0: {}, 1: {} });
     setRecruitUsedThisDay(new Set());
-    setRevealedCellKeys(nextRevealed);
-    setScoutedTodayCellKeys(new Set());
-    setDay(nextDay);
+    setRevealedBySeat(out.revealedBySeat);
+    setScoutedTodayBySeat({ 0: new Set(), 1: new Set() });
+    setDay(out.nextDay);
     setAwaitingNewDayConfirm(false);
-  }, [sessionUser, gameWon]);
+
+    if (pondsteadServerSyncEnabled(resolvedCampaignId)) {
+      void (async () => {
+        try {
+          const token = await getApiAccessToken();
+          const world = serializeWorldForServer({
+            map: out.map,
+            stacks: out.stacks,
+            recruitQueues: out.recruitQueues,
+            pursesBySeat: out.pursesBySeat,
+            bonusPointsBySeat: out.bonusPointsBySeat,
+            revealedBySeat: out.revealedBySeat,
+            scoutedTodayBySeat: { 0: new Set(), 1: new Set() },
+            stackMovementBySeat: { 0: {}, 1: {} },
+            recruitUsedThisDay: new Set(),
+            day: out.nextDay,
+          });
+          const rev = await persistPondsteadEndDay({
+            accessToken: token,
+            world,
+            expectedRevision: serverRevisionRef.current,
+            nextDay: out.nextDay,
+            dailyReport: out.dailyReport,
+            undoStacksBySeat: { "0": [], "1": [] },
+            campaignId: resolvedCampaignId,
+          });
+          if (rev != null) serverRevisionRef.current = rev;
+          serverOtherUndoRef.current = { "0": [], "1": [] };
+        } catch (e) {
+          console.error(e);
+        }
+      })();
+    }
+  }, [sessionUser, gameWon, bumpUndoUi, resolvedCampaignId, getApiAccessToken]);
 
   const onPlaceBuilding = useCallback(
     (row: number, col: number, unitKind: PondsteadUnitKind, target: BuildingKind): PlaceBuildResult => {
@@ -350,12 +576,13 @@ export default function PondsteadMapPage() {
       if (awaitingNewDayConfirm) return { ok: false, reason: "invalid" };
       const cost = getBuildCostForTarget(map, target);
       if (!cost) return { ok: false, reason: "invalid" };
-      const purse = { food: currentFood, wood: currentWood, stone: currentStone };
-      if (!canAfford(purse, cost)) return { ok: false, reason: "insufficient" };
       const builders = stacksOnCell(stacks, row, col)
         .filter((s) => s.kind === unitKind)
         .sort((a, b) => a.id.localeCompare(b.id));
       const constructionOwnerId = builders[0]?.ownerId ?? PONDSTEAD_LOCAL_PLAYER_ID;
+      if (constructionOwnerId !== mySeat) return { ok: false, reason: "invalid" };
+      const purse = playerPurses[constructionOwnerId] ?? PONDSTEAD_STARTING_RESOURCES;
+      if (!canAfford(purse, cost)) return { ok: false, reason: "insufficient" };
       if (isWonderBuildingKind(target)) {
         const cell = map.cells[row]![col]!;
         if (!canStartWonderConstruction(map, cell, constructionOwnerId, target)) {
@@ -368,16 +595,14 @@ export default function PondsteadMapPage() {
       if (!nextStacks) return { ok: false, reason: "invalid" };
       const nextMap = tryStartConstruction(map, row, col, unitKind, target, constructionOwnerId);
       if (!nextMap) return { ok: false, reason: "invalid" };
-      pushUndoSnapshot();
       const after = applyCost(purse, cost);
+      pushUndoSnapshot();
       setMap(nextMap);
       setStacks(nextStacks);
-      setCurrentFood(after.food);
-      setCurrentWood(after.wood);
-      setCurrentStone(after.stone);
+      setPlayerPurses((prev) => ({ ...prev, [constructionOwnerId]: after }));
       return { ok: true };
     },
-    [awaitingNewDayConfirm, gameWon, map, pushUndoSnapshot, stacks, currentFood, currentWood, currentStone],
+    [awaitingNewDayConfirm, gameWon, map, stacks, mySeat, playerPurses, pushUndoSnapshot],
   );
 
   const handleMarch = useCallback(
@@ -386,15 +611,18 @@ export default function PondsteadMapPage() {
       if (awaitingNewDayConfirm) return;
       const dragged = stacks.find((s) => s.id === stackId);
       if (!dragged) return;
-      const marchCap = kingMarchCapFromMap(map, dragged.ownerId ?? PONDSTEAD_LOCAL_PLAYER_ID);
+      const moverOwnerId = dragged.ownerId ?? PONDSTEAD_LOCAL_PLAYER_ID;
+      if (moverOwnerId !== mySeat) return;
+      const moverRevealed = revealedBySeat[moverOwnerId] ?? new Set<string>();
+      const marchCap = kingMarchCapFromMap(map, moverOwnerId);
       const outcome = classifyStackDragEnd(
         stacks,
         stackId,
         toRow,
         toCol,
         map,
-        revealedCellKeys,
-        stackMovementUsed,
+        moverRevealed,
+        stackMovementBySeat[moverOwnerId] ?? {},
         marchCap,
       );
       if (outcome === "invalid" || outcome === "noop") return;
@@ -402,7 +630,6 @@ export default function PondsteadMapPage() {
         flashMapPointerHint("march");
         return;
       }
-      const moverOwnerId = dragged.ownerId ?? PONDSTEAD_LOCAL_PLAYER_ID;
       const stepCost =
         marchAdjacentStepCostOrNull(
           map,
@@ -410,7 +637,7 @@ export default function PondsteadMapPage() {
           dragged.col,
           toRow,
           toCol,
-          revealedCellKeys,
+          moverRevealed,
           moverOwnerId,
         ) ?? 0;
       const next = applyStackDragEnd(
@@ -419,22 +646,28 @@ export default function PondsteadMapPage() {
         toRow,
         toCol,
         map,
-        revealedCellKeys,
-        stackMovementUsed,
+        moverRevealed,
+        stackMovementBySeat[moverOwnerId] ?? {},
         marchCap,
       );
       if (!next) return;
       pushUndoSnapshot();
       setStacks(next);
+      const updateUsed = (fn: (prev: Record<string, number>) => Record<string, number>) => {
+        setStackMovementBySeat((all) => ({
+          ...all,
+          [moverOwnerId]: fn(all[moverOwnerId] ?? {}),
+        }));
+      };
       if (outcome === "move") {
-        setStackMovementUsed((prev) => ({
+        updateUsed((prev) => ({
           ...prev,
           [stackId]: (prev[stackId] ?? 0) + stepCost,
         }));
       } else if (outcome === "merge") {
         const keepId = mergeSurvivorStackId(stacks, stackId, toRow, toCol);
         if (keepId != null) {
-          setStackMovementUsed((prev) => {
+          updateUsed((prev) => {
             const uKeep = prev[keepId] ?? 0;
             const uDrag = prev[stackId] ?? 0;
             const nextUsed = { ...prev };
@@ -446,7 +679,7 @@ export default function PondsteadMapPage() {
       } else if (outcome === "merge_same_cell") {
         const keepId = mergeSurvivorStackId(stacks, stackId, toRow, toCol);
         if (keepId != null) {
-          setStackMovementUsed((prev) => {
+          updateUsed((prev) => {
             const uKeep = prev[keepId] ?? 0;
             const uDrag = prev[stackId] ?? 0;
             const nextUsed = { ...prev };
@@ -457,13 +690,25 @@ export default function PondsteadMapPage() {
         }
       }
     },
-    [awaitingNewDayConfirm, gameWon, flashMapPointerHint, map, pushUndoSnapshot, revealedCellKeys, stackMovementUsed, stacks],
+    [
+      awaitingNewDayConfirm,
+      gameWon,
+      flashMapPointerHint,
+      map,
+      mySeat,
+      pushUndoSnapshot,
+      revealedBySeat,
+      stackMovementBySeat,
+      stacks,
+    ],
   );
 
   const onSplit = useCallback(
     (stackId: string, splitCount: number) => {
       if (gameWon) return;
       if (awaitingNewDayConfirm) return;
+      const splitOwner = stacks.find((s) => s.id === stackId)?.ownerId ?? PONDSTEAD_LOCAL_PLAYER_ID;
+      if (splitOwner !== mySeat) return;
       const beforeIds = new Set(stacks.map((s) => s.id));
       const next = applyStackSplit(stacks, stackId, splitCount);
       if (!next) return;
@@ -471,14 +716,16 @@ export default function PondsteadMapPage() {
       pushUndoSnapshot();
       setStacks(next);
       if (newStack) {
-        setStackMovementUsed((prev) => {
+        const owner = splitOwner;
+        setStackMovementBySeat((all) => {
+          const prev = all[owner] ?? {};
           const u = prev[stackId] ?? 0;
-          if (prev[newStack.id] === u) return prev;
-          return { ...prev, [newStack.id]: u };
+          if (prev[newStack.id] === u) return all;
+          return { ...all, [owner]: { ...prev, [newStack.id]: u } };
         });
       }
     },
-    [awaitingNewDayConfirm, gameWon, stacks, pushUndoSnapshot],
+    [awaitingNewDayConfirm, gameWon, mySeat, pushUndoSnapshot, stacks],
   );
 
   const onRecruit = useCallback(
@@ -489,17 +736,23 @@ export default function PondsteadMapPage() {
       if (recruitQueues[key] !== undefined) return "recruit_pending";
       const workerDailyKey = `${key}:worker`;
       if (kind === "worker" && recruitUsedThisDay.has(workerDailyKey)) return "already_recruited_today";
-      if (totalPopulationTowardCap(stacks, map, recruitQueues) >= populationCap) return "population";
+
+      const cellAt = map.cells[row]![col]!;
+      const buildingOwner = mapCellBuildingOwner(cellAt);
+      if (buildingOwner !== mySeat) return "locked";
+      const purse = playerPurses[buildingOwner] ?? PONDSTEAD_STARTING_RESOURCES;
+      const popCap = populationCapForOwner(map, buildingOwner);
+
+      if (totalPopulationTowardCapForOwner(stacks, map, recruitQueues, buildingOwner) >= popCap) {
+        return "population";
+      }
       if (totalKindCountOnCell(stacks, row, col, kind) >= PONDSTEAD_MAX_PER_KIND_ON_TILE) {
         return "tile";
       }
       const cost = getRecruitCostForNextUnit(stacks, kind, recruitQueues, map);
-      const purse = { food: currentFood, wood: currentWood, stone: currentStone };
       if (!canAfford(purse, cost)) return "insufficient";
 
-      const cellAt = map.cells[row]![col]!;
       const bk = cellAt.building;
-      const buildingOwner = mapCellBuildingOwner(cellAt);
       const instantWorker =
         kind === "worker" &&
         bk !== "none" &&
@@ -508,14 +761,12 @@ export default function PondsteadMapPage() {
         !recruitUsedThisDay.has(workerDailyKey);
 
       if (instantWorker) {
-        pushUndoSnapshot();
         const after = applyCost(purse, cost);
-        const applied = applyRecruit(stacks, row, col, kind, populationCap, buildingOwner);
+        const applied = applyRecruit(stacks, row, col, kind, popCap, buildingOwner);
         if (!applied) return "population";
+        pushUndoSnapshot();
         setStacks(applied);
-        setCurrentFood(after.food);
-        setCurrentWood(after.wood);
-        setCurrentStone(after.stone);
+        setPlayerPurses((prev) => ({ ...prev, [buildingOwner]: after }));
         setRecruitUsedThisDay((prev) => {
           const next = new Set(prev);
           next.add(workerDailyKey);
@@ -524,32 +775,32 @@ export default function PondsteadMapPage() {
         return "ok";
       }
 
-      pushUndoSnapshot();
       const after = applyCost(purse, cost);
+      pushUndoSnapshot();
       setRecruitQueues((q) => ({ ...q, [key]: kind }));
-      setCurrentFood(after.food);
-      setCurrentWood(after.wood);
-      setCurrentStone(after.stone);
+      setPlayerPurses((prev) => ({ ...prev, [buildingOwner]: after }));
       return "ok";
     },
     [
       awaitingNewDayConfirm,
       gameWon,
-      stacks,
-      recruitQueues,
       map,
-      currentFood,
-      currentWood,
-      currentStone,
-      populationCap,
+      mySeat,
+      playerPurses,
       pushUndoSnapshot,
+      recruitQueues,
       recruitUsedThisDay,
+      stacks,
     ],
   );
 
   useEffect(() => {
     setPinchScale(1);
   }, [viewMode]);
+
+  useLayoutEffect(() => {
+    didInitialHqScroll.current = false;
+  }, [mySeat]);
 
   useLayoutEffect(() => {
     if (didInitialHqScroll.current) return;
@@ -571,10 +822,23 @@ export default function PondsteadMapPage() {
     requestAnimationFrame(() => {
       requestAnimationFrame(tryScroll);
     });
-  }, [cellSizePx, hq, map.height, map.width, viewportRef]);
+  }, [cellSizePx, hq, map.height, map.width, viewportRef, mySeat]);
 
   return (
     <Stack flex="1" minH="0" minW={0} w="100%" gap="0" align="stretch" position="relative">
+      {resolvedCampaignId ? (
+        <Box px={{ base: "2", md: "3" }} py="1" borderBottomWidth="1px" borderColor="border" bg="bg.subtle">
+          <Text fontSize="xs" color="fg.muted">
+            <Link asChild variant="underline" color="fg.muted">
+              <RouterLink to={`/pondstead/campaign/${resolvedCampaignId}`}>Campaign lobby</RouterLink>
+            </Link>
+            {" · "}
+            <Link asChild variant="underline" color="fg.muted">
+              <RouterLink to="/pondstead/campaigns">All campaigns</RouterLink>
+            </Link>
+          </Text>
+        </Box>
+      ) : null}
       <PondsteadDailyReportModal
         report={dailyReport}
         onOpenChange={(open) => {
@@ -602,6 +866,7 @@ export default function PondsteadMapPage() {
         onStartNewDay={handleCommitNewDay}
         onUndo={handleUndo}
         canUndo={canUndo}
+        undoCount={undoStackLen}
         points={points}
         pointsToWin={PONDSTEAD_VICTORY_POINTS}
         gameWon={gameWon}
@@ -641,28 +906,28 @@ export default function PondsteadMapPage() {
           overflow="hidden"
           boxShadow="sm"
         >
-        {mapPointerHint != null ? (
-          <Box
-            position="absolute"
-            bottom="0.35rem"
-            left="50%"
-            transform="translateX(-50%)"
-            zIndex={90}
-            px="2.5"
-            py="1"
-            maxW="min(22rem, calc(100% - 1.5rem))"
-            borderRadius="md"
-            bg="bg.subtle"
-            borderWidth="1px"
-            borderColor="border"
-            boxShadow="sm"
-            pointerEvents="none"
-          >
-            <Text fontSize="xs" color="fg.muted" textAlign="center" lineHeight="snug">
-              {stackOutOfMarchMessage()}
-            </Text>
-          </Box>
-        ) : null}
+          {mapPointerHint != null ? (
+            <Box
+              position="absolute"
+              bottom="0.35rem"
+              left="50%"
+              transform="translateX(-50%)"
+              zIndex={90}
+              px="2.5"
+              py="1"
+              maxW="min(22rem, calc(100% - 1.5rem))"
+              borderRadius="md"
+              bg="bg.subtle"
+              borderWidth="1px"
+              borderColor="border"
+              boxShadow="sm"
+              pointerEvents="none"
+            >
+              <Text fontSize="xs" color="fg.muted" textAlign="center" lineHeight="snug">
+                {stackOutOfMarchMessage()}
+              </Text>
+            </Box>
+          ) : null}
           <Box
             ref={viewportRef}
             flex="1"
@@ -686,6 +951,7 @@ export default function PondsteadMapPage() {
                 stackMovementUsed={stackMovementUsed}
                 revealedCellKeys={revealedCellKeys}
                 visibleCellKeys={liveVisibleCellKeys}
+                viewerPlayerId={mySeat}
                 interactionLocked={awaitingNewDayConfirm || gameWon}
                 onSplit={onSplit}
                 onRecruit={onRecruit}

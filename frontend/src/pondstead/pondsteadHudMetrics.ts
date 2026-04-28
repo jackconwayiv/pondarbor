@@ -1,3 +1,4 @@
+import type { PendingRecruits } from "./pondsteadDay";
 import {
   countCompletedOwnedColossi,
   countCompletedOwnedPyramids,
@@ -6,6 +7,10 @@ import {
 import { mapCellBuildingOwner, PONDSTEAD_LOCAL_PLAYER_ID } from "./pondsteadVision";
 import type { MapCell, ParsedMap } from "./types";
 import { PONDSTEAD_KING_MOVES_PER_STACK_PER_DAY, type UnitStack } from "./pondsteadUnits";
+
+function stackOwnerId(s: UnitStack): number {
+  return s.ownerId ?? PONDSTEAD_LOCAL_PLAYER_ID;
+}
 
 /** Each completed building (HQ, camp, orchard, …) adds this many unit slots. */
 export const PONDSTEAD_POPULATION_PER_BUILDING = 5;
@@ -29,32 +34,38 @@ export function completedBuildingsOnMapCount(map: ParsedMap): number {
 /** Win when points reach or exceed this (Granary, Sawmill, Mason’s Yard = 1 each). */
 export const PONDSTEAD_VICTORY_POINTS = 10;
 
-function countScoringBuildingPlacedOrUnderConstruction(
+function countCivicTiersOwnedBy(
   map: ParsedMap,
   kind: "granary" | "sawmill" | "masonYard",
+  ownerId: number,
 ): number {
   let n = 0;
   for (const row of map.cells) {
     for (const c of row) {
-      if (c.building === kind || c.constructionTarget === kind) n += 1;
+      if (c.building === kind && mapCellBuildingOwner(c) === ownerId) n += 1;
+      const t = c.constructionTarget;
+      if (t === kind && (c.constructionOwnerId ?? mapCellBuildingOwner(c)) === ownerId) n += 1;
     }
   }
   return n;
 }
 
 /**
- * +1 per completed Granary / Sawmill / Mason’s Yard; +3 per completed World Wonder (local player).
- * Win at {@link PONDSTEAD_VICTORY_POINTS}.
+ * +1 per completed Granary / Sawmill / Mason’s Yard owned by this seat; +3 per completed World Wonder
+ * they own. Win at {@link PONDSTEAD_VICTORY_POINTS}.
  */
-export function pointsFromMap(map: ParsedMap): number {
+export function pointsFromMapForOwner(map: ParsedMap, ownerId: number): number {
   let p = 0;
   for (const row of map.cells) {
     for (const c of row) {
-      if (c.building === "granary" || c.building === "sawmill" || c.building === "masonYard") p += 1;
+      const b = c.building;
       if (
-        isWonderBuildingKind(c.building) &&
-        mapCellBuildingOwner(c) === PONDSTEAD_LOCAL_PLAYER_ID
+        (b === "granary" || b === "sawmill" || b === "masonYard") &&
+        mapCellBuildingOwner(c) === ownerId
       ) {
+        p += 1;
+      }
+      if (isWonderBuildingKind(b) && mapCellBuildingOwner(c) === ownerId) {
         p += 3;
       }
     }
@@ -62,32 +73,95 @@ export function pointsFromMap(map: ParsedMap): number {
   return p;
 }
 
-function countCivicTiersOnMap(
+/**
+ * @deprecated Prefer {@link pointsFromMapForOwner} with an explicit seat. Kept as seat 0 for call sites
+ * that have not been migrated.
+ */
+export function pointsFromMap(map: ParsedMap): number {
+  return pointsFromMapForOwner(map, PONDSTEAD_LOCAL_PLAYER_ID);
+}
+
+function foodBonusMultiplierForOwner(map: ParsedMap, ownerId: number): number {
+  const n = countCivicTiersOwnedBy(map, "granary", ownerId);
+  const pyr = countCompletedOwnedPyramids(map, ownerId);
+  return 1 + 0.2 * n + 0.1 * pyr;
+}
+
+function woodBonusMultiplierForOwner(map: ParsedMap, ownerId: number): number {
+  const n = countCivicTiersOwnedBy(map, "sawmill", ownerId);
+  const pyr = countCompletedOwnedPyramids(map, ownerId);
+  return 1 + 0.2 * n + 0.1 * pyr;
+}
+
+function stoneBonusMultiplierForOwner(map: ParsedMap, ownerId: number): number {
+  const n = countCivicTiersOwnedBy(map, "masonYard", ownerId);
+  const pyr = countCompletedOwnedPyramids(map, ownerId);
+  return 1 + 0.2 * n + 0.1 * pyr;
+}
+
+/** Completed buildings that count toward population cap for this seat (excludes `wall`). */
+export function completedBuildingsOwnerCount(map: ParsedMap, ownerId: number): number {
+  let n = 0;
+  for (let r = 0; r < map.height; r++) {
+    for (let c = 0; c < map.width; c++) {
+      const b = map.cells[r]![c]!.building;
+      if (b === "none" || b === "wall") continue;
+      if (mapCellBuildingOwner(map.cells[r]![c]!) !== ownerId) continue;
+      n += 1;
+    }
+  }
+  return n;
+}
+
+/** Max units for one seat = {@link PONDSTEAD_POPULATION_PER_BUILDING} × their completed buildings. */
+export function populationCapForOwner(map: ParsedMap, ownerId: number): number {
+  return completedBuildingsOwnerCount(map, ownerId) * PONDSTEAD_POPULATION_PER_BUILDING;
+}
+
+function countConstructionBorrowedForOwner(map: ParsedMap, ownerId: number): number {
+  let n = 0;
+  for (const row of map.cells) {
+    for (const c of row) {
+      const t = c.constructionTarget;
+      if (t == null || t === "none") continue;
+      const co = c.constructionOwnerId ?? mapCellBuildingOwner(c);
+      if (co === ownerId) n += 1;
+    }
+  }
+  return n;
+}
+
+function countQueuedRecruitsForOwner(queues: PendingRecruits, map: ParsedMap, ownerId: number): number {
+  let n = 0;
+  for (const key of Object.keys(queues)) {
+    const kind = queues[key];
+    if (kind === undefined) continue;
+    const [row, col] = key.split("-").map(Number);
+    const cell = map.cells[row]?.[col];
+    if (!cell) continue;
+    if (mapCellBuildingOwner(cell) === ownerId) n += 1;
+  }
+  return n;
+}
+
+export function totalUnitsOwnedBy(stacks: UnitStack[], ownerId: number): number {
+  return stacks.reduce((sum, s) => sum + (stackOwnerId(s) === ownerId ? s.count : 0), 0);
+}
+
+export function totalPopulationTowardCapForOwner(
+  stacks: UnitStack[],
   map: ParsedMap,
-  kind: "granary" | "sawmill" | "masonYard",
+  queues: PendingRecruits,
+  ownerId: number,
 ): number {
-  return countScoringBuildingPlacedOrUnderConstruction(map, kind);
+  return (
+    totalUnitsOwnedBy(stacks, ownerId) +
+    countQueuedRecruitsForOwner(queues, map, ownerId) +
+    countConstructionBorrowedForOwner(map, ownerId)
+  );
 }
 
-function foodBonusMultiplierFromMap(map: ParsedMap): number {
-  const n = countCivicTiersOnMap(map, "granary");
-  const p = countCompletedOwnedPyramids(map, PONDSTEAD_LOCAL_PLAYER_ID);
-  return 1 + 0.2 * n + 0.1 * p;
-}
-
-function woodBonusMultiplierFromMap(map: ParsedMap): number {
-  const n = countCivicTiersOnMap(map, "sawmill");
-  const p = countCompletedOwnedPyramids(map, PONDSTEAD_LOCAL_PLAYER_ID);
-  return 1 + 0.2 * n + 0.1 * p;
-}
-
-function stoneBonusMultiplierFromMap(map: ParsedMap): number {
-  const n = countCivicTiersOnMap(map, "masonYard");
-  const p = countCompletedOwnedPyramids(map, PONDSTEAD_LOCAL_PLAYER_ID);
-  return 1 + 0.2 * n + 0.1 * p;
-}
-
-/** Max units = {@link PONDSTEAD_POPULATION_PER_BUILDING} × completed buildings. */
+/** Max units = {@link PONDSTEAD_POPULATION_PER_BUILDING} × completed buildings (all seats). */
 export function populationCapFromMap(map: ParsedMap): number {
   return completedBuildingsOnMapCount(map) * PONDSTEAD_POPULATION_PER_BUILDING;
 }
@@ -100,17 +174,21 @@ export function totalOwnedUnits(stacks: UnitStack[]): number {
   return stacks.reduce((sum, s) => sum + s.count, 0);
 }
 
-function sumWorkerCountWhere(
+function sumWorkerIncomeForOwner(
   stacks: UnitStack[],
   map: ParsedMap,
-  pred: (cell: MapCell) => boolean,
+  incomeOwnerId: number,
+  cellPred: (cell: MapCell) => boolean,
 ): number {
   let n = 0;
   for (const s of stacks) {
     if (s.kind !== "worker") continue;
+    if (stackOwnerId(s) !== incomeOwnerId) continue;
     if (!inMap(map, s.row, s.col)) continue;
     const cell = map.cells[s.row]![s.col]!;
-    if (pred(cell)) n += s.count;
+    if (!cellPred(cell)) continue;
+    if (mapCellBuildingOwner(cell) !== incomeOwnerId) continue;
+    n += s.count;
   }
   return n;
 }
@@ -132,23 +210,53 @@ function isQuarryForStone(c: MapCell): boolean {
 }
 
 /** Base workers on orchards, then +20% per Granary (stacking, integer floor). */
+export function foodPerDayFromOrchardsForOwner(
+  stacks: UnitStack[],
+  map: ParsedMap,
+  ownerId: number,
+): number {
+  const base =
+    sumWorkerIncomeForOwner(stacks, map, ownerId, isOrchardForFood) * PONDSTEAD_RESOURCE_PER_WORKER_PER_DAY;
+  return Math.max(0, Math.floor(base * foodBonusMultiplierForOwner(map, ownerId)));
+}
+
+/** @deprecated Prefer {@link foodPerDayFromOrchardsForOwner}; uses seat 0 only. */
 export function foodPerDayFromOrchards(stacks: UnitStack[], map: ParsedMap): number {
-  const base = sumWorkerCountWhere(stacks, map, isOrchardForFood) * PONDSTEAD_RESOURCE_PER_WORKER_PER_DAY;
-  return Math.max(0, Math.floor(base * foodBonusMultiplierFromMap(map)));
+  return foodPerDayFromOrchardsForOwner(stacks, map, PONDSTEAD_LOCAL_PLAYER_ID);
 }
 
 /** Base workers on camps, then +20% per Sawmill (stacking, integer floor). */
+export function woodPerDayFromCampsForOwner(
+  stacks: UnitStack[],
+  map: ParsedMap,
+  ownerId: number,
+): number {
+  const base =
+    sumWorkerIncomeForOwner(stacks, map, ownerId, isCampForWood) * PONDSTEAD_RESOURCE_PER_WORKER_PER_DAY;
+  return Math.max(0, Math.floor(base * woodBonusMultiplierForOwner(map, ownerId)));
+}
+
+/** @deprecated Prefer {@link woodPerDayFromCampsForOwner}; uses seat 0 only. */
 export function woodPerDayFromCamps(stacks: UnitStack[], map: ParsedMap): number {
-  const base = sumWorkerCountWhere(stacks, map, isCampForWood) * PONDSTEAD_RESOURCE_PER_WORKER_PER_DAY;
-  return Math.max(0, Math.floor(base * woodBonusMultiplierFromMap(map)));
+  return woodPerDayFromCampsForOwner(stacks, map, PONDSTEAD_LOCAL_PLAYER_ID);
 }
 
 /**
  * Base workers on quarries or stone nodes; +20% per Mason’s Yard (stacking, integer floor).
  */
+export function stonePerDayFromQuarriesForOwner(
+  stacks: UnitStack[],
+  map: ParsedMap,
+  ownerId: number,
+): number {
+  const base =
+    sumWorkerIncomeForOwner(stacks, map, ownerId, isQuarryForStone) * PONDSTEAD_RESOURCE_PER_WORKER_PER_DAY;
+  return Math.max(0, Math.floor(base * stoneBonusMultiplierForOwner(map, ownerId)));
+}
+
+/** @deprecated Prefer {@link stonePerDayFromQuarriesForOwner}; uses seat 0 only. */
 export function stonePerDayFromQuarries(stacks: UnitStack[], map: ParsedMap): number {
-  const base = sumWorkerCountWhere(stacks, map, isQuarryForStone) * PONDSTEAD_RESOURCE_PER_WORKER_PER_DAY;
-  return Math.max(0, Math.floor(base * stoneBonusMultiplierFromMap(map)));
+  return stonePerDayFromQuarriesForOwner(stacks, map, PONDSTEAD_LOCAL_PLAYER_ID);
 }
 
 /** Chebyshev squares a stack may march per day (Colossus: +1 each for that stack’s owner). */

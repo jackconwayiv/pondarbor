@@ -30,7 +30,9 @@ function stripConstructionCellToBuilding(c: MapCell, t: BuildingKind): MapCell {
     ...rest
   } = c;
   const buildingOwnerId = co ?? mapCellBuildingOwner(c);
-  return { ...rest, building: t, buildingOwnerId };
+  const buildingCondition: MapCell["buildingCondition"] =
+    t === "none" || t === "wall" ? undefined : "intact";
+  return { ...rest, building: t, buildingOwnerId, buildingCondition };
 }
 
 /** Map-only: apply one “new day” pass to in-progress sites (decrement or complete). */

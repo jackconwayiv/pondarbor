@@ -27,13 +27,13 @@ export function pondsteadCornerUnitGlyphPx(cellSizePx: number): number {
 }
 
 /**
- * Emoji / label font (px) for unit stack buttons when up to three share one tile row.
+ * Emoji / label font (px) for unit stack buttons when two or three share one tile row.
  * Tighter than {@link pondsteadCornerUnitGlyphPx} on small tiles so glyphs stay inside the slot.
  */
-export function pondsteadUnitStackGlyphPx(cellSizePx: number): number {
+export function pondsteadUnitStackGlyphPx(cellSizePx: number, slotCount: 2 | 3 = 3): number {
   const corner = pondsteadCornerUnitGlyphPx(cellSizePx);
-  // Tile horizontal padding (~0.2rem × 2) + two flex gaps between three slots (~0.12rem × 2), in px-ish margin.
-  const slotPx = Math.max(0, (cellSizePx - 12) / 3 - 1);
+  const div = slotCount;
+  const slotPx = Math.max(0, (cellSizePx - 12) / div - 1);
   const capped = Math.floor(slotPx * 0.95);
   return Math.min(corner, Math.max(8, capped));
 }

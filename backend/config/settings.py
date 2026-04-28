@@ -103,6 +103,7 @@ INSTALLED_APPS = [
     "contact.apps.ContactConfig",
     "calendars.apps.CalendarsConfig",
     "harbor.apps.HarborConfig",
+    "pondstead.apps.PondsteadConfig",
     # allauth
     "allauth",
     "allauth.account",

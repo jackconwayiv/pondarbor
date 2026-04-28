@@ -26,8 +26,10 @@ export type BuildingKind =
   | "mausoleum"
   /** World Wonder: +10% food/wood/stone income each (additive; 3 pts). */
   | "pyramid"
-  /** World Wonder: +3 max action points per day (3 pts). */
   | "academy";
+
+/** Structure state for completed buildings (not `none`). Omitted means intact. */
+export type BuildingCondition = "intact" | "damaged" | "badly_damaged";
 
 export type MapCell = {
   /** Source template character. */
@@ -37,6 +39,8 @@ export type MapCell = {
   building: BuildingKind;
   /** Who owns the built structure on this tile (default 0 = local player in solo). */
   buildingOwnerId?: number;
+  /** Enemy siege damage; omitted = intact. */
+  buildingCondition?: BuildingCondition;
   /**
    * When set, a unit is building this structure here; it finishes at the start of the next day.
    * `building` stays `none` until then.

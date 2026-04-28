@@ -134,6 +134,7 @@ const HIDE_DOCUMENT_SCROLLBAR_PREFIXES = [
   "/closet",
   "/calendar",
   "/meal",
+  "/pondstead",
 ] as const;
 /** Exact paths only (e.g. WhatIf entry at `/whatif`, not lobby/play/hand). */
 const HIDE_DOCUMENT_SCROLLBAR_EXACT = ["/whatif"] as const;
@@ -161,7 +162,8 @@ export default function AppLayout() {
   const isHarborRoute =
     location.pathname === "/harbor" ||
     location.pathname.startsWith("/harbor/");
-  const isPondsteadRoute = location.pathname === "/pondstead";
+  const isPondsteadRoute =
+    location.pathname === "/pondstead" || location.pathname.startsWith("/pondstead/");
   /** Aligned with `QffLayout` so the app shell is not the default cream. */
   const qffAppShellBg = "#0c0c0c";
   const isHomeIndex = location.pathname === "/";

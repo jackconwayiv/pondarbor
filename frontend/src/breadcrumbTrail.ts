@@ -169,8 +169,8 @@ export function getBreadcrumbItems(
     ];
   }
 
-  if (p === "/pondstead") {
-    return [HOME, { label: "Pondstead" }];
+  if (p === "/pondstead" || p.startsWith("/pondstead/")) {
+    return [HOME, { label: "Pondstead", to: "/pondstead" }];
   }
 
   return [HOME, { label: "Not found" }];

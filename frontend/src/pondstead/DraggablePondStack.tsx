@@ -13,7 +13,7 @@ export default function DraggablePondStack({
 }: {
   stack: UnitStack;
   fontPx: number;
-  /** Max width for one stack so three fit per row with the tile unit-row `gap` (e.g. `calc((100% - 2 * gap) / 3)`). */
+  /** Max width for one stack so two or three fit per row with the tile unit-row `gap`. */
   slotMaxW: string;
   interactionLocked: boolean;
   /** When true (march budget prevents any adjacent tile step today), draws a dashed border. */

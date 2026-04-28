@@ -1,76 +1,126 @@
 import type { PendingRecruits } from "./pondsteadDay";
+import type { ResourcePurse } from "./pondsteadBuildingCosts";
 import type { UnitStack } from "./pondsteadUnits";
 import type { ParsedMap } from "./types";
 
 export const PONDSTEAD_UNDO_MAX_DEPTH = 32;
 
+function sortRecordKeys<T>(obj: Record<string, T>): Record<string, T> {
+  const out: Record<string, T> = {};
+  for (const k of Object.keys(obj).sort()) {
+    out[k] = obj[k]!;
+  }
+  return out;
+}
+
 /**
  * A single point in time the player can return to. Every field is required so undo cannot
  * partially rewind (which would re-open fog-of-war exploits around {@link mergeVisibleIntoRevealed}).
- * Older snapshots may omit `scoutedTodayCellKeys`; treat as empty.
  */
 export type PondsteadUndoSnapshot = {
   map: ParsedMap;
   stacks: UnitStack[];
   recruitQueues: PendingRecruits;
-  /** Serialized set for cloning */
-  revealedCellKeys: string[];
-  /** Cells unioned from LOS during the current day (before end-day commit into `revealedCellKeys`). */
-  scoutedTodayCellKeys?: string[];
-  currentFood: number;
-  currentWood: number;
-  currentStone: number;
+  /** Per-seat revealed keys (`"0"`, `"1"`, …). */
+  revealedBySeat: Record<string, string[]>;
+  /** Per-seat LOS union for the current day (before end-day merge). */
+  scoutedTodayBySeat: Record<string, string[]>;
+  pursesBySeat: Record<string, ResourcePurse>;
+  bonusPointsBySeat: Record<string, number>;
   day: number;
-  /** Chebyshev squares this stack has marched today (id → used, max 3 per id). */
-  stackMovementUsed?: Record<string, number>;
-  /** Building tiles that already used their one instant worker recruit today (Mausoleum). */
-  recruitUsedThisDayKeys?: string[];
+  /** Per-seat march usage (stack id → points used). */
+  stackMovementBySeat: Record<string, Record<string, number>>;
+  recruitUsedThisDayKeys: string[];
 };
 
 export function capturePondsteadUndoSnapshot(args: {
   map: ParsedMap;
   stacks: UnitStack[];
   recruitQueues: PendingRecruits;
-  revealedCellKeys: Set<string>;
-  scoutedTodayCellKeys: Set<string>;
-  currentFood: number;
-  currentWood: number;
-  currentStone: number;
+  revealedBySeat: Record<number, Set<string>>;
+  scoutedTodayBySeat: Record<number, Set<string>>;
+  pursesBySeat: Record<number, ResourcePurse>;
+  bonusPointsBySeat: Record<number, number>;
   day: number;
-  stackMovementUsed: Readonly<Record<string, number>>;
+  stackMovementBySeat: Record<number, Record<string, number>>;
   recruitUsedThisDayKeys: ReadonlySet<string>;
 }): PondsteadUndoSnapshot {
+  const seatKeys = (sets: Record<number, Set<string>>): Record<string, string[]> => {
+    const out: Record<string, string[]> = {};
+    for (const [k, v] of Object.entries(sets)) {
+      out[String(k)] = Array.from(v).sort();
+    }
+    return sortRecordKeys(out);
+  };
+  const purses: Record<string, ResourcePurse> = {};
+  for (const [k, v] of Object.entries(args.pursesBySeat)) {
+    purses[String(k)] = { ...v };
+  }
+  const bonus: Record<string, number> = {};
+  for (const [k, v] of Object.entries(args.bonusPointsBySeat)) {
+    bonus[String(k)] = v;
+  }
+  const movement: Record<string, Record<string, number>> = {};
+  for (const [seat, used] of Object.entries(args.stackMovementBySeat)) {
+    movement[String(seat)] = { ...used };
+  }
   return {
     map: structuredClone(args.map),
     stacks: structuredClone(args.stacks),
     recruitQueues: { ...args.recruitQueues },
-    revealedCellKeys: Array.from(args.revealedCellKeys).sort(),
-    scoutedTodayCellKeys: Array.from(args.scoutedTodayCellKeys).sort(),
-    currentFood: args.currentFood,
-    currentWood: args.currentWood,
-    currentStone: args.currentStone,
+    revealedBySeat: seatKeys(args.revealedBySeat),
+    scoutedTodayBySeat: seatKeys(args.scoutedTodayBySeat),
+    pursesBySeat: sortRecordKeys(purses),
+    bonusPointsBySeat: sortRecordKeys(bonus),
     day: args.day,
-    stackMovementUsed: { ...args.stackMovementUsed },
+    stackMovementBySeat: sortRecordKeys(movement),
     recruitUsedThisDayKeys: Array.from(args.recruitUsedThisDayKeys).sort(),
   };
 }
 
-/**
- * Rehydrate snapshot for React state. Returns a new `Set` for revealed keys; map/stacks are
- * the cloned copies from the snapshot (already deep-cloned in {@link capturePondsteadUndoSnapshot}).
- */
+function setsFromSeatRecord(r: Record<string, string[]>): Record<number, Set<string>> {
+  const out: Record<number, Set<string>> = {};
+  for (const [k, arr] of Object.entries(r)) {
+    out[Number(k)] = new Set(arr);
+  }
+  return out;
+}
+
+function numRecordFromString(r: Record<string, number>): Record<number, number> {
+  const out: Record<number, number> = {};
+  for (const [k, v] of Object.entries(r)) {
+    out[Number(k)] = v;
+  }
+  return out;
+}
+
+function pursesFromString(r: Record<string, ResourcePurse>): Record<number, ResourcePurse> {
+  const out: Record<number, ResourcePurse> = {};
+  for (const [k, v] of Object.entries(r)) {
+    out[Number(k)] = { ...v };
+  }
+  return out;
+}
+
+function movementFromString(r: Record<string, Record<string, number>>): Record<number, Record<string, number>> {
+  const out: Record<number, Record<string, number>> = {};
+  for (const [k, v] of Object.entries(r)) {
+    out[Number(k)] = { ...v };
+  }
+  return out;
+}
+
 export function rehydratePondsteadUndoSnapshot(s: PondsteadUndoSnapshot) {
   return {
     map: s.map,
     stacks: s.stacks,
     recruitQueues: { ...s.recruitQueues },
-    revealedCellKeys: new Set(s.revealedCellKeys),
-    scoutedTodayCellKeys: new Set(s.scoutedTodayCellKeys ?? []),
-    currentFood: s.currentFood,
-    currentWood: s.currentWood,
-    currentStone: s.currentStone,
+    revealedBySeat: setsFromSeatRecord(s.revealedBySeat),
+    scoutedTodayBySeat: setsFromSeatRecord(s.scoutedTodayBySeat),
+    pursesBySeat: pursesFromString(s.pursesBySeat),
+    bonusPointsBySeat: numRecordFromString(s.bonusPointsBySeat),
     day: s.day,
-    stackMovementUsed: { ...(s.stackMovementUsed ?? {}) },
-    recruitUsedThisDayKeys: new Set(s.recruitUsedThisDayKeys ?? []),
+    stackMovementBySeat: movementFromString(s.stackMovementBySeat),
+    recruitUsedThisDayKeys: new Set(s.recruitUsedThisDayKeys),
   };
 }

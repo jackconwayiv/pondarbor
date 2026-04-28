@@ -37,13 +37,15 @@ import {
 } from "./pondsteadBuildingCosts";
 import { pondsteadResourceLayerGlyphPx, pondsteadUnitStackGlyphPx } from "./sizes";
 import { buildingLabel, buildingModalTitle, groundStyle, RESOURCE_EMOJI } from "./terrain";
-import type { BuildingKind, MapCell, ParsedMap } from "./types";
+import type { BuildingCondition, BuildingKind, MapCell, ParsedMap } from "./types";
 import {
   mapCellBuildingOwner,
   mapCellConstructionOwner,
   PONDSTEAD_LOCAL_PLAYER_ID,
   type TileVisionMode,
 } from "./pondsteadVision";
+
+const DEFAULT_VIEWER = PONDSTEAD_LOCAL_PLAYER_ID;
 
 const GRID_LINE = "1px solid #000";
 
@@ -133,6 +135,7 @@ function BuildingWithCommand({
   interactionLocked,
   map,
   recruitUsedWorkerSlotKeys,
+  structureWear,
 }: {
   label: string;
   "aria-label": string;
@@ -149,6 +152,8 @@ function BuildingWithCommand({
   interactionLocked: boolean;
   map: ParsedMap;
   recruitUsedWorkerSlotKeys: ReadonlySet<string>;
+  /** Siege / wear (non-intact completed buildings). */
+  structureWear?: BuildingCondition;
 }) {
   const [open, setOpen] = useState(false);
   const [recruitError, setRecruitError] = useState<
@@ -228,6 +233,13 @@ function BuildingWithCommand({
                 ? "The map is locked (end of day or game over)."
                 : recruitBlockedMessage(recruitError.kind);
   const recruitBlockedByQueue = queuedRecruitKind !== undefined;
+  const wearBorder =
+    structureWear === "damaged"
+      ? "#c05621"
+      : structureWear === "badly_damaged"
+        ? "#b91c1c"
+        : "border";
+  const wearWidth = structureWear != null && structureWear !== "intact" ? "2px" : "1px";
 
   return (
     <Box flex="1" minH="0" minW="0" w="100%" h="100%" display="flex" flexDir="column">
@@ -246,9 +258,9 @@ function BuildingWithCommand({
         whiteSpace="normal"
         color="fg"
         bg="bg"
-        borderWidth="1px"
+        borderWidth={wearWidth}
         borderStyle={recruitBlockedByQueue ? "dashed" : "solid"}
-        borderColor="border"
+        borderColor={wearBorder}
         borderRadius="md"
         boxShadow="sm"
         aria-label={aria}
@@ -356,6 +368,7 @@ export default function PondsteadTile({
   recruitUsedWorkerSlotKeys,
   tileVision,
   stackMovementUsed,
+  viewerPlayerId,
   interactionLocked,
   onSplit,
   onRecruit,
@@ -374,6 +387,7 @@ export default function PondsteadTile({
   recruitUsedWorkerSlotKeys: ReadonlySet<string>;
   tileVision: TileVisionMode;
   stackMovementUsed: Readonly<Record<string, number>>;
+  viewerPlayerId?: number;
   interactionLocked: boolean;
   onSplit: (stackId: string, splitCount: number) => void;
   onRecruit: (row: number, col: number, kind: PondsteadUnitKind) => RecruitAttemptResult;
@@ -386,15 +400,12 @@ export default function PondsteadTile({
   onMarch: (stackId: string, toRow: number, toCol: number) => void;
   revealedCellKeys: ReadonlySet<string>;
 }) {
-  const localPlayerId = PONDSTEAD_LOCAL_PLAYER_ID;
+  const localPlayerId = viewerPlayerId ?? DEFAULT_VIEWER;
   const groundBg = groundStyle(cell.ground).bg;
   const pos = `r${row} c${col}`;
   const t = `${cellSizePx}px`;
-  const unitStackFontPx = pondsteadUnitStackGlyphPx(cellSizePx);
   const labelPx = Math.max(7, Math.min(14, cellSizePx * 0.09));
-  /** Must match flex `gap` on the unit row: `calc((100% - 2 * gap) / 3)` is three slots per line. */
   const unitRowGap = "0.12rem";
-  const unitStackSlotMaxW = `calc((100% - 2 * ${unitRowGap}) / 3)`;
 
   const showEnemyIntel = tileVision === "full";
   const unitsHere = sortStacksForDisplay(
@@ -404,6 +415,15 @@ export default function PondsteadTile({
       return (s.ownerId ?? localPlayerId) === localPlayerId;
     }),
   );
+  const slotCount = Math.min(3, Math.max(1, unitsHere.length)) as 1 | 2 | 3;
+  const unitStackFontPx = pondsteadUnitStackGlyphPx(cellSizePx, slotCount === 2 ? 2 : 3);
+  const unitStackSlotMaxW =
+    slotCount === 2
+      ? `calc((100% - 1 * ${unitRowGap}) / 2)`
+      : slotCount === 1
+        ? "100%"
+        : `calc((100% - 2 * ${unitRowGap}) / 3)`;
+
   const [unitModalStackId, setUnitModalStackId] = useState<string | null>(null);
   const unitModalStack = unitModalStackId
     ? unitsHere.find((s) => s.id === unitModalStackId)
@@ -459,23 +479,28 @@ export default function PondsteadTile({
 
   const buildingBlock =
     showBuilding && buildingPlaced != null ? (
-      <BuildingWithCommand
-        label={buildingButtonLabel}
-        labelPx={labelPx}
-        modalTitle={buildingModalTitle(buildingPlaced)}
-        building={buildingPlaced}
-        recruitRow={row}
-        recruitCol={col}
-        stacks={stacks}
-        recruitQueues={recruitQueues}
-        playerResources={playerResources}
-        queuedRecruitKind={queuedRecruitKind}
-        onRecruit={onRecruit}
-        interactionLocked={interactionLocked}
-        map={map}
+        <BuildingWithCommand
+          label={buildingButtonLabel}
+          labelPx={labelPx}
+          modalTitle={buildingModalTitle(buildingPlaced)}
+          building={buildingPlaced}
+          recruitRow={row}
+          recruitCol={col}
+          stacks={stacks}
+          recruitQueues={recruitQueues}
+          playerResources={playerResources}
+          queuedRecruitKind={queuedRecruitKind}
+          onRecruit={onRecruit}
+          interactionLocked={interactionLocked || mapCellBuildingOwner(cell) !== localPlayerId}
+          map={map}
         recruitUsedWorkerSlotKeys={recruitUsedWorkerSlotKeys}
+        structureWear={
+          buildingPlaced != null && cell.buildingCondition && cell.buildingCondition !== "intact"
+            ? cell.buildingCondition
+            : undefined
+        }
         aria-label={buildingButtonAria}
-      />
+        />
     ) : null;
 
   const tileBg = tileVision === "hidden" ? HIDDEN_TILE_BG : groundBg;
@@ -527,7 +552,9 @@ export default function PondsteadTile({
             stack={st}
             fontPx={unitStackFontPx}
             slotMaxW={unitStackSlotMaxW}
-            interactionLocked={interactionLocked}
+            interactionLocked={
+              interactionLocked || (st.ownerId ?? localPlayerId) !== localPlayerId
+            }
             noAdjacentMovesRemaining={
               !stackCanStartAdjacentMarchToday(stackMovementUsed, st.id, kingMarchCapFromMap(map, st.ownerId ?? localPlayerId))
             }

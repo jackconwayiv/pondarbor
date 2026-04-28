@@ -137,7 +137,8 @@ export function formatBuildCostPill(cost: ResourcePurse): string {
 }
 
 /** Reasonable stockpile so early builds are playable before economy accrual is wired. */
-export const PONDSTEAD_STARTING_RESOURCES: ResourcePurse = { food: 200, wood: 200, stone: 200 };
+/** Canonical v1 starting purse for each player (multiplayer Pondstead). */
+export const PONDSTEAD_STARTING_RESOURCES: ResourcePurse = { food: 10, wood: 10, stone: 0 };
 
 export type PlaceBuildResult =
   | { ok: true }

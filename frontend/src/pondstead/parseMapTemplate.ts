@@ -67,6 +67,7 @@ function cellFromChar(ch: string, row: number, col: number): MapCell {
   const cell: MapCell = { symbol: ch, ground, resource, building };
   if (building !== "none") {
     cell.buildingOwnerId = 0;
+    cell.buildingCondition = "intact";
   }
   return cell;
 }
@@ -106,4 +107,21 @@ export function parseMapTemplate(text: string): ParsedMap {
 /** First cell with an HQ building, or null. */
 export function findHeadquartersCell(map: ParsedMap): { row: number; col: number } | null {
   return findFirstBuildingCell(map, "hq");
+}
+
+/** First cell with the given building owned by {@link ownerId} (row-major). */
+export function findFirstBuildingCellForOwner(
+  map: ParsedMap,
+  building: BuildingKind,
+  ownerId: number,
+): { row: number; col: number } | null {
+  for (let r = 0; r < map.height; r++) {
+    for (let c = 0; c < map.width; c++) {
+      const cell = map.cells[r]![c]!;
+      if (cell.building === building && (cell.buildingOwnerId ?? 0) === ownerId) {
+        return { row: r, col: c };
+      }
+    }
+  }
+  return null;
 }

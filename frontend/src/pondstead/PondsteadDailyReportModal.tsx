@@ -5,6 +5,8 @@ import { AppModal } from "../components/AppModal";
 export type PondsteadDailyReport = {
   welcomeDay: number;
   playerName: string;
+  /** Seat whose private income block is shown (hotseat). */
+  viewerSeat?: number;
   foodGained: number;
   woodGained: number;
   stoneGained: number;
@@ -13,6 +15,12 @@ export type PondsteadDailyReport = {
   completedBuildings: { label: string }[];
   /** In-progress sites after this morning’s tick. */
   stillBuilding: { label: string; nightsLeft: number }[];
+  /** Day-start combat log lines (private + echoed in global). */
+  combatLines?: string[];
+  /** Public headlines (e.g. other seats’ combat). */
+  globalHeadlines?: string[];
+  /** End-of-report standings. */
+  scoreboard?: Array<{ seatIndex: number; displayName: string; points: number }>;
 };
 
 type Props = {
@@ -73,6 +81,42 @@ export default function PondsteadDailyReportModal({ report, onOpenChange }: Prop
                 {moreDaysOfConstructionLine(s.label, s.nightsLeft)}
               </Text>
             ))}
+            {report.combatLines != null && report.combatLines.length > 0 ? (
+              <>
+                <Text fontSize="sm" fontWeight="semibold" color="fg.muted" pt="1">
+                  Combat
+                </Text>
+                {report.combatLines.map((line, i) => (
+                  <Text key={`x-${i}`} fontSize="sm" color="fg">
+                    {line}
+                  </Text>
+                ))}
+              </>
+            ) : null}
+            {report.globalHeadlines != null && report.globalHeadlines.length > 0 ? (
+              <>
+                <Text fontSize="sm" fontWeight="semibold" color="fg.muted" pt="1">
+                  World news
+                </Text>
+                {report.globalHeadlines.map((line, i) => (
+                  <Text key={`g-${i}`} fontSize="sm" color="fg">
+                    {line}
+                  </Text>
+                ))}
+              </>
+            ) : null}
+            {report.scoreboard != null && report.scoreboard.length > 0 ? (
+              <>
+                <Text fontSize="sm" fontWeight="semibold" color="fg.muted" pt="1">
+                  Scoreboard
+                </Text>
+                {report.scoreboard.map((row) => (
+                  <Text key={`sb-${row.seatIndex}`} fontSize="sm" color="fg">
+                    {row.displayName} (seat {row.seatIndex}): {row.points} pts
+                  </Text>
+                ))}
+              </>
+            ) : null}
           </>
         ) : null}
       </VStack>

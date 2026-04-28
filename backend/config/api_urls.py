@@ -16,4 +16,5 @@ urlpatterns = [
     path("friend-comments/", include("friend_comments.urls")),
     path("calendars/", include("calendars.urls")),
     path("harbor/", include("harbor.urls")),
+    path("pondstead/", include("pondstead.urls")),
 ]

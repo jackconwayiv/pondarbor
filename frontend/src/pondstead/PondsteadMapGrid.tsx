@@ -14,6 +14,7 @@ export default function PondsteadMapGrid({
   stacks,
   recruitQueues,
   playerResources,
+  factionColorBySeat,
   recruitUsedWorkerSlotKeys,
   onSplit,
   onRecruit,
@@ -30,6 +31,7 @@ export default function PondsteadMapGrid({
   stacks: UnitStack[];
   recruitQueues: PendingRecruits;
   playerResources: ResourcePurse;
+  factionColorBySeat: Readonly<Record<number, string>>;
   recruitUsedWorkerSlotKeys: ReadonlySet<string>;
   stackMovementUsed: Readonly<Record<string, number>>;
   revealedCellKeys: ReadonlySet<string>;
@@ -67,6 +69,7 @@ export default function PondsteadMapGrid({
           stacks={stacks}
           recruitQueues={recruitQueues}
           playerResources={playerResources}
+          factionColorBySeat={factionColorBySeat}
           recruitUsedWorkerSlotKeys={recruitUsedWorkerSlotKeys}
           tileVision={tileVision}
           stackMovementUsed={stackMovementUsed}

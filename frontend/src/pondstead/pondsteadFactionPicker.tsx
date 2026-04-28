@@ -4,18 +4,30 @@ import { Box, Button, HStack, Text } from "@chakra-ui/react";
 export const PONDSTEAD_FACTION_COLORS = ["blue", "red", "green", "yellow", "purple", "orange"] as const;
 export type PondsteadFactionColorKey = (typeof PONDSTEAD_FACTION_COLORS)[number];
 
-const SWATCH_HEX: Record<PondsteadFactionColorKey, string> = {
-  blue: "#2B6CB0",
-  red: "#C53030",
-  green: "#276749",
-  yellow: "#B7791F",
-  purple: "#6B46C1",
-  orange: "#C05621",
+export type FactionColorTokens = { fill: string; border: string; text: string };
+
+// Light fills intended to work as ownership backgrounds under emoji/icons.
+const SWATCH_TOKENS: Record<PondsteadFactionColorKey, FactionColorTokens> = {
+  blue: { fill: "#CFE7FF", border: "#6AA9E9", text: "#0B2A4A" },
+  red: { fill: "#FFD6D6", border: "#E98A8A", text: "#4A0B0B" },
+  green: { fill: "#D7F5E1", border: "#78C996", text: "#0B3B1E" },
+  yellow: { fill: "#FFF3C4", border: "#E6C86B", text: "#3B2B00" },
+  purple: { fill: "#EAD9FF", border: "#B38AE9", text: "#2B0B4A" },
+  orange: { fill: "#FFE2C7", border: "#E9A56A", text: "#4A250B" },
 };
+
+const SWATCH_HEX: Record<PondsteadFactionColorKey, string> = Object.fromEntries(
+  Object.entries(SWATCH_TOKENS).map(([k, v]) => [k, v.fill]),
+) as Record<PondsteadFactionColorKey, string>;
 
 export function factionSwatchHex(key: string): string {
   const k = key as PondsteadFactionColorKey;
   return SWATCH_HEX[k] ?? "#718096";
+}
+
+export function factionColorTokens(key: string): FactionColorTokens {
+  const k = key as PondsteadFactionColorKey;
+  return SWATCH_TOKENS[k] ?? { fill: "#E2E8F0", border: "#A0AEC0", text: "#1A202C" };
 }
 
 type PickerProps = {

@@ -176,6 +176,7 @@ export default function PondsteadMapPage() {
   const [bonusPointsBySeat, setBonusPointsBySeat] = useState<Record<number, number>>(() =>
     Object.fromEntries(Object.keys(fresh.pursesBySeat).map((k) => [Number(k), 0])) as Record<number, number>,
   );
+  const [factionColorBySeat, setFactionColorBySeat] = useState<Record<number, string>>({});
   const { sessionUser, getApiAccessToken } = useAppSession();
   const dayRef = useRef(day);
   const mySeatRef = useRef(mySeat);
@@ -338,6 +339,13 @@ export default function PondsteadMapPage() {
         if (hw.recruitUsedThisDay) setRecruitUsedThisDay(hw.recruitUsedThisDay);
         setDay(hw.day ?? j.current_day);
         const mine = j.players.find((p) => p.user_id === uid);
+        setFactionColorBySeat(
+          Object.fromEntries(
+            (j.players ?? [])
+              .map((p) => [p.seat_index, (p.faction_color ?? "").trim().toLowerCase()])
+              .filter(([, c]) => c),
+          ) as Record<number, string>,
+        );
         const seat =
           typeof j.my_seat_index === "number"
             ? j.my_seat_index
@@ -473,6 +481,8 @@ export default function PondsteadMapPage() {
     [currentFood, currentWood, currentStone],
   );
 
+  // Reserved: faction tokens will also be used in HUD badges.
+
   const seatKeysForPurses = useMemo(
     () =>
       Object.keys(playerPurses)
@@ -565,7 +575,7 @@ export default function PondsteadMapPage() {
     (row: number, col: number, unitKind: PondsteadUnitKind, target: BuildingKind): PlaceBuildResult => {
       if (gameWon) return { ok: false, reason: "invalid" };
       if (awaitingNewDayConfirm) return { ok: false, reason: "invalid" };
-      const cost = getBuildCostForTarget(map, target);
+      const cost = getBuildCostForTarget(map, target, mySeat);
       if (!cost) return { ok: false, reason: "invalid" };
       const builders = stacksOnCell(stacks, row, col)
         .filter((s) => s.kind === unitKind)
@@ -740,7 +750,7 @@ export default function PondsteadMapPage() {
       if (totalKindCountOnCell(stacks, row, col, kind) >= PONDSTEAD_MAX_PER_KIND_ON_TILE) {
         return "tile";
       }
-      const cost = getRecruitCostForNextUnit(stacks, kind, recruitQueues, map);
+      const cost = getRecruitCostForNextUnit(stacks, kind, recruitQueues, buildingOwner, map);
       if (!canAfford(purse, cost)) return "insufficient";
 
       const bk = cellAt.building;
@@ -941,6 +951,7 @@ export default function PondsteadMapPage() {
                 stacks={stacks}
                 recruitQueues={recruitQueues}
                 playerResources={playerResources}
+                factionColorBySeat={factionColorBySeat}
                 recruitUsedWorkerSlotKeys={recruitUsedThisDay}
                 stackMovementUsed={stackMovementUsed}
                 revealedCellKeys={revealedCellKeys}

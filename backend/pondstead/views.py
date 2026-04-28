@@ -22,7 +22,7 @@ from .models import (
     PondsteadGameState,
     PondsteadPlayer,
 )
-from .private_state_sync import sync_player_private_states_from_world
+from .private_state_sync import sync_player_private_states_from_world, sync_shared_world_from_world_blob
 from .phoenix_calendar import phoenix_campaign_calendar_date
 from .pondstead_victory import victor_seat_index_or_none
 from .subprocess_new_day import (
@@ -194,6 +194,7 @@ def games_collection(request):
         PondsteadGameState.objects.create(game=game, revision=0, world_json=initial)
     w0, u0 = unwrap_world_json(initial, fallback_seats=("0", "1"))
     sync_player_private_states_from_world(game.pk, w0, u0)
+    sync_shared_world_from_world_blob(game.pk, w0, 0)
     return Response({"id": game.id, "revision": 0, "current_day": game.current_day}, status=status.HTTP_201_CREATED)
 
 
@@ -245,6 +246,7 @@ def campaigns_create(request):
         fallback_seats=tuple(str(i) for i in range(max_players)),
     )
     sync_player_private_states_from_world(game.pk, w0, u0)
+    sync_shared_world_from_world_blob(game.pk, w0, 0)
     return Response(_serialize_game_lobby(game), status=status.HTTP_201_CREATED)
 
 
@@ -307,6 +309,8 @@ def campaigns_invite_accept(request, game_id: int):
     ).first()
     if not inv:
         return Response({"detail": "No pending invite."}, status=status.HTTP_400_BAD_REQUEST)
+    if game.players.filter(user_id=request.user.id).exists():
+        return Response({"detail": "Already a player."}, status=status.HTTP_400_BAD_REQUEST)
     body = request.data if isinstance(request.data, dict) else {}
     color = (body.get("faction_color") or "").strip().lower()
     if color not in FACTION_COLORS:
@@ -403,6 +407,7 @@ def campaigns_start(request, game_id: int):
     fb = _fallback_seat_strings(g)
     w0, u0 = unwrap_world_json(initial, fallback_seats=fb)
     sync_player_private_states_from_world(g.pk, w0, u0)
+    sync_shared_world_from_world_blob(g.pk, w0, 0)
     return Response(_game_play_payload(g))
 
 
@@ -503,6 +508,7 @@ def _maybe_advance_calendar_new_day(game_id: int) -> tuple[bool, dict[str, Any] 
         g.save(update_fields=["current_day", "last_calendar_new_day_phx_date", "updated_at"])
         _try_finish_campaign_if_victory(g.pk, new_world)
         sync_player_private_states_from_world(g.pk, new_world, empty_undo)
+        sync_shared_world_from_world_blob(g.pk, new_world, new_rev)
 
     return True, reports if isinstance(reports, dict) else None
 
@@ -618,6 +624,7 @@ def game_patch_world(request, game_id: int):
         game.save(update_fields=["last_activity_at", "updated_at"])
         _try_finish_campaign_if_victory(game.pk, merged_w)
         sync_player_private_states_from_world(game.pk, merged_w, merged_u)
+        sync_shared_world_from_world_blob(game.pk, merged_w, new_rev)
     return Response({"revision": new_rev}, status=200)
 
 
@@ -670,6 +677,7 @@ def game_undo(request, game_id: int):
         game.last_activity_at = timezone.now()
         game.save(update_fields=["last_activity_at", "updated_at"])
         sync_player_private_states_from_world(game.pk, new_world, undo)
+        sync_shared_world_from_world_blob(game.pk, new_world, new_rev)
     try:
         world_out = filter_world_snapshot_for_viewer(copy.deepcopy(new_world), int(player.seat_index))
     except Exception:

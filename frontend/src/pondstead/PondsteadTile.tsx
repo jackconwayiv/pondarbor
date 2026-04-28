@@ -38,6 +38,7 @@ import {
 import { pondsteadResourceLayerGlyphPx, pondsteadUnitStackGlyphPx } from "./sizes";
 import { buildingLabel, buildingModalTitle, groundStyle, RESOURCE_EMOJI } from "./terrain";
 import type { BuildingCondition, BuildingKind, MapCell, ParsedMap } from "./types";
+import { factionSwatchHex } from "./pondsteadFactionPicker";
 import {
   mapCellBuildingOwner,
   mapCellConstructionOwner,
@@ -207,14 +208,14 @@ function BuildingWithCommand({
       setRecruitError({ type: "tile", kind: "soldier" });
     }
   };
-  const workerRecruitCost = getRecruitCostForNextUnit(stacks, "worker", recruitQueues, map);
-  const soldierRecruitCost = getRecruitCostForNextUnit(stacks, "soldier", recruitQueues, map);
-  const canPayWorker = canAfford(playerResources, workerRecruitCost);
-  const canPaySoldier = canAfford(playerResources, soldierRecruitCost);
   const canRecruitWorker = buildingAllowsRecruitWorker(building);
   const canRecruitSoldier = buildingAllowsRecruitSoldier(building);
   const recruitTile = map.cells[recruitRow]![recruitCol]!;
   const recruitBuildingOwner = mapCellBuildingOwner(recruitTile);
+  const workerRecruitCost = getRecruitCostForNextUnit(stacks, "worker", recruitQueues, recruitBuildingOwner, map);
+  const soldierRecruitCost = getRecruitCostForNextUnit(stacks, "soldier", recruitQueues, recruitBuildingOwner, map);
+  const canPayWorker = canAfford(playerResources, workerRecruitCost);
+  const canPaySoldier = canAfford(playerResources, soldierRecruitCost);
   const mausoleumInstantWorkers = hasCompletedMausoleumForOwner(map, recruitBuildingOwner);
   const workerDailyRecruitKey = `${pondsteadCellKey(recruitRow, recruitCol)}:worker`;
   const workerRecruitSpentToday = recruitUsedWorkerSlotKeys.has(workerDailyRecruitKey);
@@ -365,6 +366,7 @@ export default function PondsteadTile({
   stacks,
   recruitQueues,
   playerResources,
+  factionColorBySeat,
   recruitUsedWorkerSlotKeys,
   tileVision,
   stackMovementUsed,
@@ -384,6 +386,7 @@ export default function PondsteadTile({
   stacks: UnitStack[];
   recruitQueues: PendingRecruits;
   playerResources: ResourcePurse;
+  factionColorBySeat: Readonly<Record<number, string>>;
   recruitUsedWorkerSlotKeys: ReadonlySet<string>;
   tileVision: TileVisionMode;
   stackMovementUsed: Readonly<Record<string, number>>;
@@ -415,6 +418,19 @@ export default function PondsteadTile({
       return (s.ownerId ?? localPlayerId) === localPlayerId;
     }),
   );
+
+  const ownerTint = (() => {
+    if (tileVision === "hidden") return null;
+    const owner =
+      cell.building !== "none"
+        ? mapCellBuildingOwner(cell)
+        : cell.constructionTarget != null && cell.constructionTarget !== "none"
+          ? mapCellConstructionOwner(cell)
+          : null;
+    if (owner == null) return null;
+    const c = factionColorBySeat[owner];
+    return c ? factionSwatchHex(c) : null;
+  })();
   const slotCount = Math.min(3, Math.max(1, unitsHere.length)) as 1 | 2 | 3;
   const unitStackFontPx = pondsteadUnitStackGlyphPx(cellSizePx, slotCount === 2 ? 2 : 3);
   const unitStackSlotMaxW =
@@ -529,6 +545,17 @@ export default function PondsteadTile({
       flexDirection="column"
       gap="0.1rem"
     >
+      {ownerTint ? (
+        <Box
+          position="absolute"
+          inset="0"
+          bg={ownerTint}
+          opacity={0.22}
+          pointerEvents="none"
+          zIndex={0}
+          aria-hidden
+        />
+      ) : null}
       <Box
         position="relative"
         zIndex={1}

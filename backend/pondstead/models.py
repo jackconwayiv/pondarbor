@@ -58,6 +58,11 @@ class PondsteadPlayer(models.Model):
         ordering = ["seat_index"]
         constraints = [
             models.UniqueConstraint(fields=["game", "seat_index"], name="pondstead_player_game_seat_uniq"),
+            models.UniqueConstraint(
+                fields=["game", "user"],
+                name="pondstead_player_game_user_uniq",
+                condition=models.Q(user__isnull=False),
+            ),
         ]
 
 
@@ -70,6 +75,20 @@ class PondsteadPlayerPrivateState(models.Model):
         related_name="private_state_row",
         primary_key=True,
     )
+    data = models.JSONField(default=dict)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class PondsteadSharedWorldState(models.Model):
+    """Shared authoritative placement layer (map terrain + placements)."""
+
+    game = models.OneToOneField(
+        PondsteadGame,
+        on_delete=models.CASCADE,
+        related_name="shared_world_row",
+        primary_key=True,
+    )
+    revision = models.PositiveIntegerField(default=0)
     data = models.JSONField(default=dict)
     updated_at = models.DateTimeField(auto_now=True)
 

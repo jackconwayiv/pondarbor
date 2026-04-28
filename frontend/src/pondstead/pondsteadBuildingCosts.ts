@@ -1,17 +1,21 @@
 import type { PendingRecruits } from "./pondsteadDay";
 import { wonderMarginalCostIndex } from "./pondsteadWonders";
-import { countQueuedRecruitsOfKind } from "./pondsteadDay";
 import type { UnitStack, PondsteadUnitKind } from "./pondsteadUnits";
-import { totalKindCountInArmy } from "./pondsteadUnits";
 import type { BuildingKind, ParsedMap } from "./types";
+import { mapCellBuildingOwner } from "./pondsteadVision";
 
-function countBorrowedKindInConstruction(map: ParsedMap | undefined, kind: PondsteadUnitKind): number {
+function countBorrowedKindInConstructionForOwner(
+  map: ParsedMap | undefined,
+  kind: PondsteadUnitKind,
+  ownerId: number,
+): number {
   if (!map) return 0;
   let n = 0;
   for (const row of map.cells) {
     for (const c of row) {
       const t = c.constructionTarget;
       if (t == null || t === "none") continue;
+      if ((c.constructionOwnerId ?? 0) !== ownerId) continue;
       const k = c.constructionBorrowedUnitKind ?? (t === "wall" ? "soldier" : "worker");
       if (k === kind) n += 1;
     }
@@ -27,31 +31,31 @@ export type ResourcePurse = {
 };
 
 /** Count completed buildings and in-progress sites of this kind (for marginal build cost). */
-export function countBuildingsOrPendingConstruction(map: ParsedMap, kind: BuildingKind): number {
+export function countBuildingsOrPendingConstruction(map: ParsedMap, kind: BuildingKind, ownerId: number): number {
   let n = 0;
   for (const row of map.cells) {
     for (const c of row) {
-      if (c.building === kind) n += 1;
-      if (c.constructionTarget === kind) n += 1;
+      if (c.building === kind && mapCellBuildingOwner(c) === ownerId) n += 1;
+      if (c.constructionTarget === kind && (c.constructionOwnerId ?? 0) === ownerId) n += 1;
     }
   }
   return n;
 }
 
 export function countOrchardsOnMap(map: ParsedMap): number {
-  return countBuildingsOrPendingConstruction(map, "orchard");
+  return countBuildingsOrPendingConstruction(map, "orchard", 0);
 }
 
 export function countCampsOnMap(map: ParsedMap): number {
-  return countBuildingsOrPendingConstruction(map, "camp");
+  return countBuildingsOrPendingConstruction(map, "camp", 0);
 }
 
 export function countQuarriesOnMap(map: ParsedMap): number {
-  return countBuildingsOrPendingConstruction(map, "quarry");
+  return countBuildingsOrPendingConstruction(map, "quarry", 0);
 }
 
 export function countWallsOnMap(map: ParsedMap): number {
-  return countBuildingsOrPendingConstruction(map, "wall");
+  return countBuildingsOrPendingConstruction(map, "wall", 0);
 }
 
 /**
@@ -61,38 +65,38 @@ export function countWallsOnMap(map: ParsedMap): number {
  * matching in-progress construction for that type.
  * Wall: 10+10 wood+stone, +5+5 of each per existing wall. Barracks, Granary, etc.: marginal from priors.
  */
-export function getBuildCostForTarget(map: ParsedMap, target: BuildingKind): ResourcePurse | null {
+export function getBuildCostForTarget(map: ParsedMap, target: BuildingKind, ownerId: number): ResourcePurse | null {
   switch (target) {
     case "orchard": {
-      const k = countBuildingsOrPendingConstruction(map, "orchard");
+      const k = countBuildingsOrPendingConstruction(map, "orchard", ownerId);
       return { food: 5 + 5 * k, wood: 5 + 5 * k, stone: 0 };
     }
     case "camp": {
-      const k = countBuildingsOrPendingConstruction(map, "camp");
+      const k = countBuildingsOrPendingConstruction(map, "camp", ownerId);
       return { food: 5 + 5 * k, wood: 5 + 5 * k, stone: 0 };
     }
     case "quarry": {
-      const k = countBuildingsOrPendingConstruction(map, "quarry");
+      const k = countBuildingsOrPendingConstruction(map, "quarry", ownerId);
       return { food: 10 + 5 * k, wood: 10 + 5 * k, stone: 0 };
     }
     case "wall": {
-      const k = countWallsOnMap(map);
+      const k = countBuildingsOrPendingConstruction(map, "wall", ownerId);
       return { food: 0, wood: 10 + 5 * k, stone: 10 + 5 * k };
     }
     case "barracks": {
-      const k = countBuildingsOrPendingConstruction(map, "barracks");
+      const k = countBuildingsOrPendingConstruction(map, "barracks", ownerId);
       return { food: 0, wood: 20 + 20 * k, stone: 20 + 20 * k };
     }
     case "granary": {
-      const k = countBuildingsOrPendingConstruction(map, "granary");
+      const k = countBuildingsOrPendingConstruction(map, "granary", ownerId);
       return { food: 0, wood: 50 + 50 * k, stone: 50 + 50 * k };
     }
     case "sawmill": {
-      const k = countBuildingsOrPendingConstruction(map, "sawmill");
+      const k = countBuildingsOrPendingConstruction(map, "sawmill", ownerId);
       return { food: 50 + 50 * k, wood: 0, stone: 50 + 50 * k };
     }
     case "masonYard": {
-      const k = countBuildingsOrPendingConstruction(map, "masonYard");
+      const k = countBuildingsOrPendingConstruction(map, "masonYard", ownerId);
       return { food: 25 + 25 * k, wood: 25 + 25 * k, stone: 50 + 50 * k };
     }
     case "lighthouse":
@@ -153,11 +157,23 @@ export function getRecruitCostForNextUnit(
   stacks: UnitStack[],
   kind: PondsteadUnitKind,
   recruitQueues: PendingRecruits,
+  ownerId: number,
   map?: ParsedMap,
 ): ResourcePurse {
-  const owned = totalKindCountInArmy(stacks, kind);
-  const queued = countQueuedRecruitsOfKind(recruitQueues, kind);
-  const borrowedInConstruction = countBorrowedKindInConstruction(map, kind);
+  const owned = stacks
+    .filter((s) => (s.ownerId ?? 0) === ownerId && s.kind === kind)
+    .reduce((sum, s) => sum + s.count, 0);
+  const queued =
+    map == null
+      ? 0
+      : Object.entries(recruitQueues).reduce((n, [key, v]) => {
+          if (v !== kind) return n;
+          const [r, c] = key.split("-").map(Number);
+          const cell = map.cells[r]?.[c];
+          if (!cell) return n;
+          return mapCellBuildingOwner(cell) === ownerId ? n + 1 : n;
+        }, 0);
+  const borrowedInConstruction = countBorrowedKindInConstructionForOwner(map, kind, ownerId);
   const k = owned + queued + borrowedInConstruction;
   if (kind === "worker") {
     return { food: 1 + k, wood: 1 + k, stone: 0 };

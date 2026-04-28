@@ -43,9 +43,10 @@ function buildKindsPlayerCanPayFor<T extends BuildingKind>(
   kinds: readonly T[],
   map: ParsedMap,
   playerResources: ResourcePurse,
+  ownerId: number,
 ): T[] {
   return kinds.filter((b) => {
-    const cost = getBuildCostForTarget(map, b) ?? { food: 0, wood: 0, stone: 0 };
+    const cost = getBuildCostForTarget(map, b, ownerId) ?? { food: 0, wood: 0, stone: 0 };
     return canAfford(playerResources, cost);
   });
 }
@@ -116,9 +117,9 @@ export default function PondsteadUnitActionsModal({
   const workerWonderOnCell =
     stack.kind === "worker" ? workerWonderBuildOptionsOnCell(map, cell, stackOwnerId) : [];
   const militaryOnCell = militaryBuildOptionsOnCell(map, cell, stackOwnerId);
-  const workerCivicAffordable = buildKindsPlayerCanPayFor(workerCivicOnCell, map, playerResources);
-  const wonderAffordable = buildKindsPlayerCanPayFor(workerWonderOnCell, map, playerResources);
-  const militaryAffordable = buildKindsPlayerCanPayFor(militaryOnCell, map, playerResources);
+  const workerCivicAffordable = buildKindsPlayerCanPayFor(workerCivicOnCell, map, playerResources, stackOwnerId);
+  const wonderAffordable = buildKindsPlayerCanPayFor(workerWonderOnCell, map, playerResources, stackOwnerId);
+  const militaryAffordable = buildKindsPlayerCanPayFor(militaryOnCell, map, playerResources, stackOwnerId);
   const hasBuild =
     stack.kind === "worker"
       ? workerCivicAffordable.length + wonderAffordable.length + militaryAffordable.length > 0
@@ -297,7 +298,7 @@ export default function PondsteadUnitActionsModal({
             </Heading>
             {stack.kind === "worker"
               ? workerCivicAffordable.map((b) => {
-                  const cost = getBuildCostForTarget(map, b) ?? { food: 0, wood: 0, stone: 0 };
+                  const cost = getBuildCostForTarget(map, b, stackOwnerId) ?? { food: 0, wood: 0, stone: 0 };
                   return (
                     <Button
                       key={b}
@@ -315,7 +316,7 @@ export default function PondsteadUnitActionsModal({
               : null}
             {stack.kind === "worker"
               ? wonderAffordable.map((b) => {
-                  const cost = getBuildCostForTarget(map, b) ?? { food: 0, wood: 0, stone: 0 };
+                  const cost = getBuildCostForTarget(map, b, stackOwnerId) ?? { food: 0, wood: 0, stone: 0 };
                   return (
                     <Button
                       key={`wonder-${b}`}
@@ -333,7 +334,7 @@ export default function PondsteadUnitActionsModal({
               : null}
             {stack.kind === "worker"
               ? militaryAffordable.map((b) => {
-                  const cost = getBuildCostForTarget(map, b) ?? { food: 0, wood: 0, stone: 0 };
+                  const cost = getBuildCostForTarget(map, b, stackOwnerId) ?? { food: 0, wood: 0, stone: 0 };
                   return (
                     <Button
                       key={`w-${b}`}
@@ -351,7 +352,7 @@ export default function PondsteadUnitActionsModal({
               : null}
             {stack.kind === "soldier"
               ? militaryAffordable.map((b) => {
-                  const cost = getBuildCostForTarget(map, b) ?? { food: 0, wood: 0, stone: 0 };
+                  const cost = getBuildCostForTarget(map, b, stackOwnerId) ?? { food: 0, wood: 0, stone: 0 };
                   return (
                     <Button
                       key={`s-${b}`}

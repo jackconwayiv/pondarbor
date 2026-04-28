@@ -5,12 +5,12 @@
 
 import type { PondsteadServerWorldSnapshot } from "./pondsteadServerSync";
 import { computeVisibleCellKeys, mapCellBuildingOwner, mapCellConstructionOwner, pondsteadVisionCellKey } from "./pondsteadVision";
-import type { ParsedMap } from "./types";
+import type { MapCell, ParsedMap } from "./types";
 import type { UnitStack } from "./pondsteadUnits";
 
 function scrubMapForViewer(map: ParsedMap, viewerSeat: number, visible: Set<string>, revealed: Set<string>): ParsedMap {
-  const cells = map.cells.map((row, r) =>
-    row.map((cell, c) => {
+  const cells: MapCell[][] = map.cells.map((row, r) =>
+    row.map((cell, c): MapCell => {
       const key = pondsteadVisionCellKey(r, c);
       const ownerB = cell.building === "none" ? null : mapCellBuildingOwner(cell);
       const constrOwner = cell.constructionTarget != null ? mapCellConstructionOwner(cell) : null;

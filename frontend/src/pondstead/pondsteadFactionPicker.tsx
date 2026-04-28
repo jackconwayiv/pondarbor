@@ -1,4 +1,4 @@
-import { Box, HStack, Text } from "@chakra-ui/react";
+import { Box, Button, HStack, Text } from "@chakra-ui/react";
 
 /** Must match backend `FACTION_COLORS` in `backend/pondstead/views.py`. */
 export const PONDSTEAD_FACTION_COLORS = ["blue", "red", "green", "yellow", "purple", "orange"] as const;
@@ -49,15 +49,17 @@ export function PondsteadFactionColorPicker({
         const selected = v === c;
         return (
           <Box key={c} position="relative" display="inline-flex" flexDirection="column" alignItems="center" gap="1">
-            <Box
-              as="button"
+            <Button
               type="button"
+              variant="plain"
               disabled={disabled || isTaken}
               onClick={() => {
                 if (!isTaken && !disabled) onChange(c);
               }}
               w="11"
               h="11"
+              minW="11"
+              p="0"
               borderRadius="md"
               bg={SWATCH_HEX[c]}
               flexShrink={0}

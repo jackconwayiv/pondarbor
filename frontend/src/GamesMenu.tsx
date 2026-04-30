@@ -13,8 +13,8 @@ import { useAppSession } from "./auth/AppSessionContext";
 import {
   auth0LoginAuthorizationParams,
   auth0SignupAuthorizationParams,
-  auth0SlackLoginAuthorizationParams,
-  auth0SlackSignupAuthorizationParams,
+  // auth0SlackLoginAuthorizationParams,
+  // auth0SlackSignupAuthorizationParams,
 } from "./auth/auth0LoginParams";
 import PondButton from "./PondButton";
 import { fullBleedStackProps, viewPortWidthBarProps } from "./responsive";
@@ -82,7 +82,7 @@ export default function GamesMenu() {
               >
                 Sign up
               </PondButton>
-              {auth0SlackLoginAuthorizationParams() ? (
+              {/* {auth0SlackLoginAuthorizationParams() ? (
                 <PondButton
                   colorPalette="gray"
                   variant="outline"
@@ -107,7 +107,7 @@ export default function GamesMenu() {
                 >
                   Sign up with Slack
                 </PondButton>
-              ) : null}
+              ) : null} */}
             </HStack>
           ) : null}
 

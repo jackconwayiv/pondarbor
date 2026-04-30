@@ -18,8 +18,8 @@ import { useAppSession } from "./auth/AppSessionContext";
 import {
   auth0LoginAuthorizationParams,
   auth0SignupAuthorizationParams,
-  auth0SlackLoginAuthorizationParams,
-  auth0SlackSignupAuthorizationParams,
+  // auth0SlackLoginAuthorizationParams,
+  // auth0SlackSignupAuthorizationParams,
 } from "./auth/auth0LoginParams";
 import {
   APP_DESKTOP_NAV,
@@ -385,7 +385,7 @@ export default function AppLayout() {
                             <Text>Sign up</Text>
                           </HStack>
                         </Menu.Item>
-                        {auth0SlackLoginAuthorizationParams() ? (
+                        {/* {auth0SlackLoginAuthorizationParams() ? (
                           <Menu.Item
                             value="login-slack"
                             onSelect={() => {
@@ -418,7 +418,7 @@ export default function AppLayout() {
                               <Text>Sign up with Slack</Text>
                             </HStack>
                           </Menu.Item>
-                        ) : null}
+                        ) : null} */}
                         {guestHamburgerNavItems().map((item) => (
                           <Menu.Item
                             key={item.to}

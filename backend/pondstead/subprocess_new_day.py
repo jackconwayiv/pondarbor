@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,45 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SCRIPT = _REPO_ROOT / "frontend" / "scripts" / "pondstead-server-new-day.mts"
 _INITIAL_SCRIPT = _REPO_ROOT / "frontend" / "scripts" / "pondstead-gen-initial.mts"
 _FILTER_SCRIPT = _REPO_ROOT / "frontend" / "scripts" / "pondstead-filter-world.mts"
+
+
+@dataclass
+class _RunResult:
+    returncode: int
+    stdout: str
+    stderr: str
+
+
+def _run_npx_tsx(
+    args: list[str],
+    *,
+    stdin: str | None = None,
+    timeout: int,
+) -> _RunResult:
+    """Run `npx tsx <args>` from the frontend dir, never raising for launch failures.
+
+    Treats FileNotFoundError (e.g. `npx` not on PATH for the Django process) and other
+    OSError-class failures as a non-zero returncode so callers can fall back gracefully
+    instead of bubbling a 500 to the client.
+    """
+    cmd = ["npx", "tsx", *args]
+    try:
+        proc = subprocess.run(
+            cmd,
+            input=stdin,
+            text=True,
+            capture_output=True,
+            cwd=str(_REPO_ROOT / "frontend"),
+            timeout=timeout,
+            check=False,
+        )
+        return _RunResult(proc.returncode, proc.stdout or "", proc.stderr or "")
+    except FileNotFoundError as exc:
+        return _RunResult(127, "", f"`npx` not found on PATH: {exc}")
+    except subprocess.TimeoutExpired as exc:
+        return _RunResult(124, "", f"timeout after {timeout}s: {exc}")
+    except OSError as exc:
+        return _RunResult(126, "", f"failed to launch npx tsx: {exc}")
 
 
 def run_pondstead_new_day_subprocess(
@@ -29,15 +69,7 @@ def run_pondstead_new_day_subprocess(
     }
     if player_names_by_seat:
         payload["playerNamesBySeat"] = player_names_by_seat
-    proc = subprocess.run(
-        ["npx", "tsx", str(_SCRIPT)],
-        input=json.dumps(payload),
-        text=True,
-        capture_output=True,
-        cwd=str(_REPO_ROOT / "frontend"),
-        timeout=120,
-        check=False,
-    )
+    proc = _run_npx_tsx([str(_SCRIPT)], stdin=json.dumps(payload), timeout=120)
     if proc.returncode != 0:
         raise RuntimeError(
             f"pondstead new-day script failed ({proc.returncode}): {proc.stderr[:2000]!r}"
@@ -54,28 +86,20 @@ def load_initial_world_envelope_legacy() -> dict[str, Any]:
 def load_initial_world_envelope(player_count: int = 2) -> dict[str, Any]:
     """Stitched N-seat map envelope via the same TS layout as the client."""
     pc = max(2, min(6, int(player_count)))
-    proc = subprocess.run(
-        ["npx", "tsx", str(_INITIAL_SCRIPT), str(pc)],
-        text=True,
-        capture_output=True,
-        cwd=str(_REPO_ROOT / "frontend"),
-        timeout=120,
-        check=False,
-    )
+    proc = _run_npx_tsx([str(_INITIAL_SCRIPT), str(pc)], timeout=120)
     if proc.returncode != 0:
         return load_initial_world_envelope_legacy()
-    return json.loads(proc.stdout)
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return load_initial_world_envelope_legacy()
 
 
 def filter_world_snapshot_for_viewer(snapshot: dict[str, Any], viewer_seat: int) -> dict[str, Any]:
-    proc = subprocess.run(
-        ["npx", "tsx", str(_FILTER_SCRIPT)],
-        input=json.dumps({"world": snapshot, "viewerSeat": viewer_seat}),
-        text=True,
-        capture_output=True,
-        cwd=str(_REPO_ROOT / "frontend"),
+    proc = _run_npx_tsx(
+        [str(_FILTER_SCRIPT)],
+        stdin=json.dumps({"world": snapshot, "viewerSeat": viewer_seat}),
         timeout=60,
-        check=False,
     )
     if proc.returncode != 0:
         # Fail closed: do not leak enemy intel if the TS filter subprocess fails.

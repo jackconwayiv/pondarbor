@@ -16,6 +16,7 @@ export const APPROVED_FRIENDS_ENTRY_CARD_PROPS = {
 
 type ApprovedFriendsListBlockProps = {
   friends: FriendUser[];
+  title?: string;
   /** When true, heading is "Friends (N)"; when false, "Friends" only. */
   showCountInTitle?: boolean;
   /** When true (default), wrap in the same card shell as Friends page. Set false when already inside a card (e.g. friend profile tabs). */
@@ -36,6 +37,7 @@ type ApprovedFriendsListBlockProps = {
 
 export function ApprovedFriendsListBlock({
   friends,
+  title,
   showCountInTitle = false,
   withCardShell = true,
   showRequestFriendActions = false,
@@ -47,11 +49,11 @@ export function ApprovedFriendsListBlock({
   onAcceptFriendRequest,
   acceptFriendBusyUserId = null,
 }: ApprovedFriendsListBlockProps) {
-  const title = showCountInTitle ? `Friends (${friends.length})` : "Friends";
+  const resolvedTitle = title ?? (showCountInTitle ? `Friends (${friends.length})` : "Friends");
 
   const inner = (
     <Stack gap="3">
-      <Text fontWeight="bold">{title}</Text>
+      <Text fontWeight="bold">{resolvedTitle}</Text>
       {friends.length === 0 ? (
         <PanelEmptyState
           title="No approved friends yet."

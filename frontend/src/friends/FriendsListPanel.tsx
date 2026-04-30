@@ -13,8 +13,10 @@ import {
 import { ApprovedFriendsListBlock } from "./ApprovedFriendsListBlock";
 import {
   acceptFriend,
+  fetchApprovedUsersList,
   fetchFriendsList,
   ignoreFriend,
+  requestFriendByUserId,
   requestFriendByEmail,
   searchApprovedUsers,
   type FriendUser,
@@ -32,6 +34,7 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
   const [incoming, setIncoming] = useState<FriendUser[]>([]);
   const [outgoing, setOutgoing] = useState<FriendUser[]>([]);
   const [approved, setApproved] = useState<FriendUser[]>([]);
+  const [approvedUsers, setApprovedUsers] = useState<FriendUser[]>([]);
   const [requestEmail, setRequestEmail] = useState("");
   const [searchResults, setSearchResults] = useState<FriendUser[]>([]);
   const [loading, setLoading] = useState(false);
@@ -46,10 +49,14 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
     setPageError(null);
     try {
       const token = await getApiAccessToken();
-      const payload = await fetchFriendsList(token);
+      const [payload, approvedUsersRows] = await Promise.all([
+        fetchFriendsList(token),
+        fetchApprovedUsersList(token),
+      ]);
       setIncoming(payload.incoming_pending);
       setOutgoing(payload.outgoing_pending);
       setApproved(payload.approved_friends);
+      setApprovedUsers(approvedUsersRows);
     } catch (err: unknown) {
       setPageError(
         err instanceof Error ? err.message : "Failed to load friends list.",
@@ -318,6 +325,31 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
           </Stack>
         </Box>
       ) : null}
+
+      <ApprovedFriendsListBlock
+        title="Approved Users"
+        friends={approvedUsers}
+        showRequestFriendActions
+        viewerId={sessionUser.user.id}
+        viewerApprovedFriendIds={new Set(approved.map((row) => row.id))}
+        viewerOutgoingPendingIds={new Set(outgoing.map((row) => row.id))}
+        viewerIncomingPendingIds={new Set(incoming.map((row) => row.id))}
+        onRequestFriend={async (userId) => {
+          setPageError(null);
+          try {
+            const token = await getApiAccessToken();
+            await requestFriendByUserId(token, userId);
+            setRequestSuccess("Friend request sent.");
+            await loadList();
+          } catch (err: unknown) {
+            setPageError(
+              err instanceof Error
+                ? err.message
+                : "Could not send friend request.",
+            );
+          }
+        }}
+      />
     </Stack>
   );
 }

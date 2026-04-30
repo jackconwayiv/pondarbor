@@ -1,10 +1,10 @@
 import { useAuth0 } from "@auth0/auth0-react";
 import {
   Box,
+  Link as ChakraLink,
   Flex,
   HStack,
   Image,
-  Link,
   Stack,
   Text,
   Textarea,
@@ -17,7 +17,7 @@ import { useAppSession } from "./auth/AppSessionContext";
 import { auth0LoginAuthorizationParams } from "./auth/auth0LoginParams";
 import PondButton from "./PondButton";
 import { pondarborProfileSrc } from "./publicAsset";
-import { fullBleedStackProps, useIsMobile } from "./responsive";
+import { fullBleedStackProps, useIsMobile, viewPortWidthBarProps } from "./responsive";
 import {
   APP_SHELL_TRAY_PROPS,
   APP_TEXT_SIZES,
@@ -66,12 +66,7 @@ export default function AboutPage() {
 
   return (
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
-      <Box
-        flex="1"
-        bg="bg"
-        px={0}
-        py={{ base: "2", md: "2" }}
-      >
+      <Box flex="1" bg="bg" px={0} py={{ base: "2", md: "2" }}>
         <Box {...APP_SHELL_TRAY_PROPS}>
           <Stack
             gap={{ base: "2", md: "2" }}
@@ -100,40 +95,6 @@ export default function AboutPage() {
         family as an opportunity to interact through these earth-shattering apps.
       </Text>
 
-      <HStack gap="2" flexWrap="wrap" align="center">
-        <Link
-          asChild
-          color="fg.muted"
-          fontSize={APP_TEXT_SIZES.helper}
-          fontWeight="medium"
-          textDecoration="underline"
-          textUnderlineOffset="0.12em"
-          _hover={{ color: "sky.solid", textDecoration: "underline" }}
-        >
-          <RouterLink to="/about/privacy">Privacy Policy</RouterLink>
-        </Link>
-
-        <Text
-          as="span"
-          userSelect="none"
-          color="fg.muted"
-          fontSize={APP_TEXT_SIZES.helper}
-        >
-          ·
-        </Text>
-
-        <Link
-          asChild
-          color="fg.muted"
-          fontSize={APP_TEXT_SIZES.helper}
-          fontWeight="medium"
-          textDecoration="underline"
-          textUnderlineOffset="0.12em"
-          _hover={{ color: "sky.solid", textDecoration: "underline" }}
-        >
-          <RouterLink to="/about/terms">Terms of Service</RouterLink>
-        </Link>
-      </HStack>
     </Stack>
   </HStack>
 </Flex>
@@ -228,6 +189,58 @@ export default function AboutPage() {
               )}
             </Box>
           </Stack>
+        </Box>
+      </Box>
+      <Box
+        as="footer"
+        flexShrink={0}
+        bg="navy.solid"
+        mt="auto"
+        color="navy.fg"
+        {...viewPortWidthBarProps}
+      >
+        <Box py="2" px={{ base: "2", md: "2" }}>
+          <Box
+            display="flex"
+            flexDirection={{ base: "column", md: "row" }}
+            alignItems={{ base: "flex-end", md: "center" }}
+            justifyContent="flex-end"
+            flexWrap="wrap"
+            columnGap={{ md: "3" }}
+            rowGap="1"
+          >
+            <Text textAlign="right" fontSize="xs" color="inherit">
+              © 2026{" "}
+              <ChakraLink
+                asChild
+                color="inherit"
+                textDecoration="none"
+                _hover={{ color: "sky.solid", textDecoration: "none" }}
+              >
+                <RouterLink to="/about">Pond Arbor Workshop</RouterLink>
+              </ChakraLink>
+              . All rights reserved.
+            </Text>
+            <Text textAlign="right" fontSize="xs" color="inherit">
+              <ChakraLink
+                asChild
+                color="inherit"
+                textDecoration="none"
+                _hover={{ color: "sky.solid", textDecoration: "none" }}
+              >
+                <RouterLink to="/about/terms">Terms of Service</RouterLink>
+              </ChakraLink>{" "}
+              |{" "}
+              <ChakraLink
+                asChild
+                color="inherit"
+                textDecoration="none"
+                _hover={{ color: "sky.solid", textDecoration: "none" }}
+              >
+                <RouterLink to="/about/privacy">Privacy Policy</RouterLink>
+              </ChakraLink>
+            </Text>
+          </Box>
         </Box>
       </Box>
     </Stack>

@@ -217,3 +217,35 @@ def approved_users_search(request):
     )
     return Response([friend_user_row_dict(row) for row in qs])
 
+
+@api_view(["GET"])
+@permission_classes([IsApprovedUser])
+def approved_users_list(request):
+    user = request.user
+    approved_friend_ids = set(
+        friends_queryset_for_user(user=user).values_list("id", flat=True)
+    )
+    pending_user_ids = set(
+        FriendRequest.objects.filter(
+            Q(requester=user, is_accepted=False, ignored_by_requester=False, ignored_by_requested=False)
+            | Q(requested=user, is_accepted=False, ignored_by_requester=False, ignored_by_requested=False)
+        ).values_list("requester_id", "requested_id")
+    )
+    excluded_ids = {user.id, *approved_friend_ids}
+    for requester_id, requested_id in pending_user_ids:
+        if requester_id != user.id:
+            excluded_ids.add(requester_id)
+        if requested_id != user.id:
+            excluded_ids.add(requested_id)
+
+    qs = (
+        UserModel.objects.select_related("profile")
+        .filter(
+            account_status=UserModel.AccountStatus.APPROVED,
+            deleted_at__isnull=True,
+        )
+        .exclude(pk__in=excluded_ids)
+        .order_by("profile__display_name", "email")
+    )
+    return Response([friend_user_row_dict(row) for row in qs])
+

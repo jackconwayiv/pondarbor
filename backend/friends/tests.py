@@ -63,6 +63,7 @@ class FriendsApiTests(TestCase):
     def test_permissions_require_approved_user(self):
         endpoints = [
             ("get", "/api/v1/friends/"),
+            ("get", "/api/v1/friends/approved-users/"),
             ("post", "/api/v1/friends/request/"),
             ("post", f"/api/v1/friends/{self.bob.id}/request/"),
             ("post", f"/api/v1/friends/{self.bob.id}/accept/"),
@@ -253,6 +254,20 @@ class FriendsApiTests(TestCase):
         self.assertIn(self.bob.email, emails)
         self.assertIn(self.charlie.email, emails)
         self.assertNotIn(self.alice.email, emails)
+        self.assertNotIn(self.pending_user.email, emails)
+
+    def test_approved_users_list_excludes_self_friends_and_pending(self):
+        self._accept_pair(self.alice, self.bob)
+        FriendRequest.objects.create(requester=self.alice, requested=self.charlie)
+        dave = self._make_user("dave@example.com", approved=True, display_name="Dave")
+
+        resp = self.alice_client.get("/api/v1/friends/approved-users/")
+        self.assertEqual(resp.status_code, 200)
+        emails = {row["email"] for row in resp.json()}
+        self.assertIn(dave.email, emails)
+        self.assertNotIn(self.alice.email, emails)
+        self.assertNotIn(self.bob.email, emails)
+        self.assertNotIn(self.charlie.email, emails)
         self.assertNotIn(self.pending_user.email, emails)
 
     def test_ignore_then_rerequest_does_not_create_false_reverse_incoming(self):

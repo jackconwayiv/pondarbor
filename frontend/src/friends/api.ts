@@ -154,3 +154,17 @@ export async function searchApprovedUsers(
   return (await response.json()) as FriendUser[];
 }
 
+export async function fetchApprovedUsersList(
+  accessToken: string | null,
+): Promise<FriendUser[]> {
+  const response = await fetch(`${apiBase()}/api/v1/friends/approved-users/`, {
+    method: "GET",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) {
+    throw new Error(`Approved users list fetch failed: ${response.status}`);
+  }
+  return (await response.json()) as FriendUser[];
+}
+

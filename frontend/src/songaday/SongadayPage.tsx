@@ -1121,6 +1121,19 @@ export default function SongadayPage() {
                               setResponses((prev) => prev.map((r) => (r.id === row.id ? row : r)));
                               void resyncSessionSilently();
                             }}
+                            onDeleted={(entryId) => {
+                              const iso = isoDateKey(startOfDay(selectedDate));
+                              const remove = (rows: SongadayResponse[]) =>
+                                rows.filter((r) => r.id !== entryId);
+                              setResponses((prev) => remove(prev));
+                              setResponsesByDay((prev) => {
+                                const existing = prev[iso];
+                                if (!existing) return prev;
+                                return { ...prev, [iso]: remove(existing) };
+                              });
+                              setSubmissionEditOpen(false);
+                              void resyncSessionSilently();
+                            }}
                             onClose={() => setSubmissionEditOpen(false)}
                           />
                         </Box>

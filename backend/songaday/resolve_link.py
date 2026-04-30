@@ -50,8 +50,41 @@ def _resolve_youtube_watch_url(page_url: str) -> tuple[str, str]:
     except (requests.RequestException, json.JSONDecodeError, ValueError) as e:
         raise ResolveError("Could not load YouTube metadata.") from e
     title = (data.get("title") or "").strip()
-    author = (data.get("author_name") or "").strip()
-    return author, title
+    return _youtube_artist_title_from_oembed_title(title)
+
+
+_YOUTUBE_TRAILING_NOISE_RE = re.compile(
+    r"""
+    (?:
+        \s*[\(\[]\s*
+        (?:
+            official(?:\s+(?:music\s+)?video)?|
+            official\s+audio|
+            lyric(?:s| video)?|
+            visualizer|
+            audio|
+            hd|
+            4k
+        )
+        [^\)\]]*
+        [\)\]]
+    )+\s*$
+    """,
+    re.I | re.X,
+)
+
+
+def _youtube_artist_title_from_oembed_title(raw: str) -> tuple[str, str]:
+    cleaned = _YOUTUBE_TRAILING_NOISE_RE.sub("", (raw or "").strip()).strip(" -–—|:")
+    if not cleaned:
+        return "", ""
+    parts = re.split(r"\s+[-–—|:]\s+|\s+by\s+", cleaned, maxsplit=1, flags=re.I)
+    if len(parts) == 2:
+        artist = parts[0].strip()
+        title = parts[1].strip()
+        if artist and title:
+            return artist, title
+    return "", cleaned
 
 
 def _normalize_spotify_oembed_title(s: str) -> str:

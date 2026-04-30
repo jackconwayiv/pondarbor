@@ -13,8 +13,8 @@ def verify_slack_request_signature(*, body: bytes, timestamp: str | None, signat
         ts = int(str(timestamp).strip())
     except (TypeError, ValueError):
         return False
-    # Slack recommends a 5 minute window; use 10 minutes to be resilient to minor clock skew.
-    if abs(int(time.time()) - ts) > 60 * 10:
+    # Slack recommends a 5-minute replay window.
+    if abs(int(time.time()) - ts) > 60 * 5:
         return False
     # Compute HMAC over the exact raw request body bytes.
     # Slack spec: basestring is "v0:{timestamp}:{raw_body}".

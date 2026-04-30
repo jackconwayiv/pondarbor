@@ -165,19 +165,19 @@ export default function SongadayListCard({
     readOnly && isMine ? (
       <Stack flex="1" display="flex" flexDirection="column" gap="2">
         {headerRow}
-        {notesBlock}
         <Box onClick={stopCardNav}>
           <SongadayMediaBlock entry={entry} compact />
         </Box>
+        {notesBlock}
         {footer ? <Box onClick={stopCardNav}>{footer}</Box> : null}
       </Stack>
     ) : (
       <Stack flex="1" display="flex" flexDirection="column" gap="2">
         {headerRow}
-        {notesBlock}
         <Box onClick={footer ? stopCardNav : undefined}>
           <SongadayMediaBlock entry={entry} compact />
         </Box>
+        {notesBlock}
         {footer ? (
           <Box onClick={stopCardNav}>
             {footer}

@@ -21,11 +21,11 @@ class ResolveLinkUnitTests(TestCase):
         self.assertEqual(_clean_apple_og_title_noise(raw), "Yes — Owner of a Lonely Heart")
 
     @mock.patch("songaday.resolve_link._SESSION.get")
-    def test_youtube_oembed_returns_author_and_title(self, mock_get):
+    def test_youtube_oembed_parses_artist_and_title_from_title_text(self, mock_get):
         mock_resp = mock.Mock()
         mock_resp.json.return_value = {
-            "title": "Never Gonna Give You Up",
-            "author_name": "Rick Astley",
+            "title": "Rick Astley - Never Gonna Give You Up (Official Music Video)",
+            "author_name": "SomeChannelName",
         }
         mock_resp.raise_for_status.return_value = None
         mock_get.return_value = mock_resp
@@ -33,6 +33,21 @@ class ResolveLinkUnitTests(TestCase):
         a, t, src = resolve_song_link_metadata("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
         self.assertEqual(src, "youtube")
         self.assertEqual(a, "Rick Astley")
+        self.assertEqual(t, "Never Gonna Give You Up")
+
+    @mock.patch("songaday.resolve_link._SESSION.get")
+    def test_youtube_oembed_without_separator_returns_title_only(self, mock_get):
+        mock_resp = mock.Mock()
+        mock_resp.json.return_value = {
+            "title": "Never Gonna Give You Up (Official Video)",
+            "author_name": "Rick Astley",
+        }
+        mock_resp.raise_for_status.return_value = None
+        mock_get.return_value = mock_resp
+
+        a, t, src = resolve_song_link_metadata("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        self.assertEqual(src, "youtube")
+        self.assertEqual(a, "")
         self.assertEqual(t, "Never Gonna Give You Up")
 
     @mock.patch("songaday.resolve_link._SESSION.get")

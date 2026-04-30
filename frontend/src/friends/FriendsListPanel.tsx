@@ -326,30 +326,32 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
         </Box>
       ) : null}
 
-      <ApprovedFriendsListBlock
-        title="Approved Users"
-        friends={approvedUsers}
-        showRequestFriendActions
-        viewerId={sessionUser.user.id}
-        viewerApprovedFriendIds={new Set(approved.map((row) => row.id))}
-        viewerOutgoingPendingIds={new Set(outgoing.map((row) => row.id))}
-        viewerIncomingPendingIds={new Set(incoming.map((row) => row.id))}
-        onRequestFriend={async (userId) => {
-          setPageError(null);
-          try {
-            const token = await getApiAccessToken();
-            await requestFriendByUserId(token, userId);
-            setRequestSuccess("Friend request sent.");
-            await loadList();
-          } catch (err: unknown) {
-            setPageError(
-              err instanceof Error
-                ? err.message
-                : "Could not send friend request.",
-            );
-          }
-        }}
-      />
+      {approvedUsers.length > 0 ? (
+        <ApprovedFriendsListBlock
+          title="Approved Users"
+          friends={approvedUsers}
+          showRequestFriendActions
+          viewerId={sessionUser.user.id}
+          viewerApprovedFriendIds={new Set(approved.map((row) => row.id))}
+          viewerOutgoingPendingIds={new Set(outgoing.map((row) => row.id))}
+          viewerIncomingPendingIds={new Set(incoming.map((row) => row.id))}
+          onRequestFriend={async (userId) => {
+            setPageError(null);
+            try {
+              const token = await getApiAccessToken();
+              await requestFriendByUserId(token, userId);
+              setRequestSuccess("Friend request sent.");
+              await loadList();
+            } catch (err: unknown) {
+              setPageError(
+                err instanceof Error
+                  ? err.message
+                  : "Could not send friend request.",
+              );
+            }
+          }}
+        />
+      ) : null}
     </Stack>
   );
 }

@@ -84,59 +84,44 @@ export default function WhatIfLobbyPage() {
             pb="2"
           >
             <Box {...PANEL_ENTRY_CARD_PROPS}>
-              <Heading
-                as="h1"
-                size={{ base: "lg", md: "xl" }}
-                fontWeight="bold"
-                mb="2"
-              >
-                <HStack
-                  as="span"
-                  display="inline-flex"
-                  gap="2"
-                  alignItems="center"
-                >
-                  <Text as="span" aria-hidden="true">
-                    🎭
+              <HStack align="flex-start" justify="space-between" gap="4" w="100%" flexWrap="wrap">
+                <Stack flex="1" minW={0} gap="2">
+                  <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold">
+                    <HStack
+                      as="span"
+                      display="inline-flex"
+                      gap="2"
+                      alignItems="center"
+                    >
+                      <Text as="span" aria-hidden="true">
+                        🎭
+                      </Text>
+                      <Text as="span">Whatif Lobby</Text>
+                    </HStack>
+                  </Heading>
+                  <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
+                    Host the TV; players join on their phones with the room code. When at least two
+                    players have joined, start the game.
                   </Text>
-                  <Text as="span">Whatif Lobby</Text>
-                </HStack>
-              </Heading>
-              <Text
-                fontSize={APP_TEXT_SIZES.body}
-                lineHeight="tall"
-                color="fg"
-              >
-                Host the TV; players join on their phones with the room code. When
-                everyone is ready, start the game.
-              </Text>
-            </Box>
-
-            <Box {...PANEL_ENTRY_CARD_PROPS}>
-              <HStack
-                justify="space-between"
-                align="center"
-                w="100%"
-                flexWrap="wrap"
-                gap="3"
-                mb="3"
-              >
-                <Text
-                  fontSize={APP_TEXT_SIZES.label}
-                  fontWeight="semibold"
-                  color="fg.muted"
-                >
-                  Room code
-                </Text>
+                </Stack>
                 <Code
-                  fontSize={{ base: "md", md: "lg" }}
-                  px="2"
-                  py="1"
+                  flexShrink={0}
+                  alignSelf="flex-start"
+                  fontSize="clamp(1.75rem, 5vw, 3.25rem)"
+                  lineHeight="1"
+                  fontWeight="bold"
+                  letterSpacing="0.08em"
+                  px={{ base: "2", md: "3" }}
+                  py={{ base: "1.5", md: "2" }}
                   borderRadius="md"
+                  aria-label={`Room code ${roomCode}`}
                 >
                   {roomCode}
                 </Code>
               </HStack>
+            </Box>
+
+            <Box {...PANEL_ENTRY_CARD_PROPS}>
               <Text
                 fontSize={APP_TEXT_SIZES.body}
                 color="fg"
@@ -149,7 +134,6 @@ export default function WhatIfLobbyPage() {
                 {(state?.players ?? []).map((p) => (
                   <HStack
                     key={p.id}
-                    justify="space-between"
                     borderWidth="1px"
                     borderColor="border"
                     borderRadius="md"
@@ -160,30 +144,9 @@ export default function WhatIfLobbyPage() {
                     <Text fontSize={APP_TEXT_SIZES.body}>
                       {p.avatar_emoji} {p.display_name}
                     </Text>
-                    <Text
-                      fontSize={APP_TEXT_SIZES.helper}
-                      fontWeight="medium"
-                      color={p.ready_to_start ? "lilypad.fg" : "fg.muted"}
-                    >
-                      {p.ready_to_start ? "Ready" : "Not ready"}
-                    </Text>
                   </HStack>
                 ))}
               </Stack>
-
-              {hostToken &&
-              state &&
-              (state.players?.length ?? 0) >= 2 &&
-              !(state.players ?? []).every((p) => p.ready_to_start) ? (
-                <Text
-                  fontSize={APP_TEXT_SIZES.helper}
-                  color="fg.muted"
-                  mt="3"
-                >
-                  Waiting for every player to mark &quot;Ready to start&quot; on
-                  their phone.
-                </Text>
-              ) : null}
 
               <PondButton
                 type="button"
@@ -196,8 +159,7 @@ export default function WhatIfLobbyPage() {
                   return (
                     !state ||
                     !hostToken ||
-                    players.length < 2 ||
-                    !players.every((p) => p.ready_to_start)
+                    players.length < 2
                   );
                 })()}
                 loading={busy}

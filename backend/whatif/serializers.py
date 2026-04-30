@@ -5,6 +5,25 @@ from whatif.models import WhatIfPlayer, WhatIfQuestion, WhatIfSession
 from whatif.validators import validate_display_name, validate_question_text_field
 
 
+def whatif_players_avatar_url_by_user_id(players) -> dict[int, str]:
+    """Bulk-load profile avatar URLs for WhatIfPlayer rows (avoids N+1 in list serializers)."""
+    from users.models import Profile
+
+    user_ids = sorted({p.user_id for p in players if getattr(p, "user_id", None)})
+    if not user_ids:
+        return {}
+    out: dict[int, str] = {}
+    for row in Profile.objects.filter(user_id__in=user_ids).values("user_id", "avatar_url"):
+        url = (row.get("avatar_url") or "").strip()
+        if url:
+            out[int(row["user_id"])] = url
+    return out
+
+
+def whatif_players_serializer_context(players) -> dict:
+    return {"whatif_player_avatar_urls": whatif_players_avatar_url_by_user_id(players)}
+
+
 class SessionCreateSerializer(serializers.Serializer):
     pass
 
@@ -23,16 +42,17 @@ class SessionActionSerializer(serializers.Serializer):
     type = serializers.ChoiceField(
         choices=[
             "start_game",
-            "toggle_ready",
             "pick_subject",
             "pick_duel_opponent",
             "vote",
+            "unvote",
             "reveal",
             "next_turn",
             "skip",
             "request_question_skip",
             "resolve_question_skip",
             "set_player_paused",
+            "toggle_voting_pause",
         ]
     )
     option_index = serializers.IntegerField(required=False)
@@ -43,17 +63,34 @@ class SessionActionSerializer(serializers.Serializer):
 
 
 class WhatIfPlayerSerializer(serializers.ModelSerializer):
+    avatar_url = serializers.SerializerMethodField()
+
     class Meta:
         model = WhatIfPlayer
         fields = [
             "id",
             "display_name",
             "avatar_emoji",
+            "avatar_url",
             "score",
             "skips_remaining",
             "ready_to_start",
             "paused",
         ]
+
+    def get_avatar_url(self, obj: WhatIfPlayer) -> str:
+        uid = getattr(obj, "user_id", None)
+        if not uid:
+            return ""
+        urls = self.context.get("whatif_player_avatar_urls")
+        if isinstance(urls, dict):
+            return urls.get(int(uid), "") or ""
+        from users.models import Profile
+
+        prof = Profile.objects.filter(user_id=uid).only("avatar_url").first()
+        if prof is None or not prof.avatar_url:
+            return ""
+        return prof.avatar_url.strip()
 
 
 class WhatIfQuestionPublicSerializer(serializers.ModelSerializer):
@@ -207,6 +244,11 @@ class WhatIfSessionPublicSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def to_representation(self, instance: WhatIfSession):
+        players = list(instance.players.order_by("created_at", "id"))
+        self.context.update(whatif_players_serializer_context(players))
+        return super().to_representation(instance)
 
     def get_win_score(self, _obj: WhatIfSession) -> int:
         return rules.WIN_SCORE

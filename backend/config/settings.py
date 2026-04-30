@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 import dj_database_url
+from corsheaders.defaults import default_headers
 from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -68,6 +69,12 @@ if DEBUG:
     CORS_ALLOW_CREDENTIALS = False
 else:
     CORS_ALLOW_CREDENTIALS = True
+
+# WhatIf hand / host actions send custom headers; browsers preflight and require them here.
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    "x-whatif-player-token",
+    "x-whatif-host-token",
+]
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 # Lets embedded players (e.g. YouTube) receive a non-empty referrer; overly strict policies break embeds.

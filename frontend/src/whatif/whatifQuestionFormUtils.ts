@@ -14,10 +14,11 @@ export function promptSuffixFromStored(full: string): string {
 
 /** Builds the full prompt for the API from the suffix field, or preserves a pasted full prompt. */
 export function storedPromptFromSuffix(suffix: string): string {
+  if (suffix.length === 0) return "";
   const trimmed = suffix.trim();
   if (trimmed.startsWith("What if ") && trimmed.includes("{subject}")) {
     return suffix;
   }
   if (!trimmed) return "";
-  return WHATIF_QUESTION_PROMPT_PREFIX + trimmed;
+  return WHATIF_QUESTION_PROMPT_PREFIX + suffix;
 }

@@ -2,6 +2,8 @@ export type WhatIfPlayer = {
   id: number;
   display_name: string;
   avatar_emoji: string;
+  /** Set when the player joined while logged in (profile photo). */
+  avatar_url?: string;
   score: number;
   skips_remaining: number;
   ready_to_start?: boolean;
@@ -35,6 +37,10 @@ export type WhatIfRoundState = {
   subject_options?: WhatIfSubjectOption[];
   duel?: { step: string; challenged_player_id?: number | null } | null;
   voting_deadline_at?: string | null;
+  /** True while the active player has paused the voting round (no votes accepted, timer frozen). */
+  voting_paused?: boolean;
+  /** Seconds remaining on the deadline at the moment of pause; restored on resume. */
+  voting_pause_remaining_seconds?: number | null;
   reveal_flairs?: string[];
   pending_question_skip_by_player_id?: number | null;
   skip_ui_suppressed_for_question_id?: number | null;
@@ -45,6 +51,7 @@ export type WhatIfRoundState = {
     player_id: number;
     display_name: string;
     avatar_emoji: string;
+    avatar_url?: string;
     score: number;
     rank: number;
   }>;

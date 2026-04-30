@@ -14,7 +14,8 @@ from whatif.views import AVATAR_EMOJIS, _draw_question
 
 
 def _mark_all_players_ready(code: str) -> None:
-    WhatIfPlayer.objects.filter(session__short_code=code).update(ready_to_start=True)
+    # Ready-gating was removed; helper remains for compatibility in older tests.
+    _ = code
 
 
 User = get_user_model()
@@ -190,7 +191,7 @@ class WhatIfApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], "turn")
 
-    def test_start_game_blocked_until_all_ready(self):
+    def test_start_game_allows_start_without_ready_toggle(self):
         code, host_secret, _user = self._create_session()
         self._join(code, "John")
         self._join(code, "Maya")
@@ -200,7 +201,7 @@ class WhatIfApiTests(TestCase):
             format="json",
             HTTP_X_WHATIF_HOST_TOKEN=host_secret,
         )
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 200)
 
     def test_player_cannot_start_game(self):
         code, _host_secret, _user = self._create_session()
@@ -876,7 +877,7 @@ class WhatIfApiTests(TestCase):
         sess = WhatIfSession.objects.get(short_code=code)
         self.assertEqual(sess.status, WhatIfSession.Status.VOTING)
         st = dict(sess.state or {})
-        st["voting_deadline_at"] = (timezone.now() - timedelta(seconds=5)).isoformat()
+        st["voting_deadline_at"] = (timezone.now() - timedelta(seconds=15)).isoformat()
         sess.state = st
         sess.save(update_fields=["state", "updated_at"])
         polled = self.client.get(f"/api/v1/whatif/sessions/{code}/")
@@ -1003,6 +1004,244 @@ class WhatIfApiTests(TestCase):
         self.assertEqual(after["state"]["duel"]["step"], "voting")
         self.assertEqual(int(after["state"]["duel"]["challenged_player_id"]), maya_id)
         self.assertEqual(after["state"]["votes"], {})
+
+    def _start_voting_round(self) -> tuple[str, str, str, str]:
+        """Helper: create a 2-player session and advance to voting status. Returns (code, host, p1, p2)."""
+        code, host, _owner = self._create_session()
+        p1 = self._join(code, "John")
+        p2 = self._join(code, "Maya")
+        _mark_all_players_ready(code)
+        start = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "start_game"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host,
+        )
+        self.assertEqual(start.status_code, 200)
+        cids = start.json()["state"]["subject_candidate_ids"]
+        pick = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "pick_subject", "target_player_id": cids[0]},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.assertEqual(pick.status_code, 200)
+        self.assertEqual(pick.json()["status"], "voting")
+        return code, host, p1, p2
+
+    def test_voting_deadline_unset_until_first_vote(self):
+        code, _host, _p1, _p2 = self._start_voting_round()
+        body = self.client.get(f"/api/v1/whatif/sessions/{code}/").json()
+        self.assertIsNone(body["state"].get("voting_deadline_at"))
+        self.assertFalse(body["state"].get("voting_paused"))
+
+    def test_first_vote_starts_deadline_subsequent_votes_do_not_reset(self):
+        code, _host, p1, p2 = self._start_voting_round()
+        before = timezone.now()
+        v1 = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 1},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.assertEqual(v1.status_code, 200, v1.json())
+        deadline_after_first = v1.json()["state"]["voting_deadline_at"]
+        self.assertIsNotNone(deadline_after_first)
+        from datetime import datetime as _dt
+
+        d1 = _dt.fromisoformat(deadline_after_first)
+        if timezone.is_naive(d1):
+            d1 = timezone.make_aware(d1)
+        self.assertGreater(d1, before)
+
+        v2 = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 2},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p2,
+        )
+        self.assertEqual(v2.status_code, 200, v2.json())
+        self.assertEqual(v2.json()["state"]["voting_deadline_at"], deadline_after_first)
+
+    def test_unvote_clears_vote_and_decrements_response_count_without_resetting_timer(self):
+        code, _host, p1, _p2 = self._start_voting_round()
+        v1 = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 4},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        deadline = v1.json()["state"]["voting_deadline_at"]
+        question_id = v1.json()["state"]["question_id"]
+        responses_before = WhatIfQuestion.objects.get(id=question_id).total_responses
+
+        uv = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "unvote"},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.assertEqual(uv.status_code, 200, uv.json())
+        body = uv.json()
+        self.assertEqual(body["state"]["votes"], {})
+        self.assertEqual(body["state"]["voted_player_ids"], [])
+        # Timer never resets, even if every voter has unvoted.
+        self.assertEqual(body["state"]["voting_deadline_at"], deadline)
+        self.assertEqual(
+            WhatIfQuestion.objects.get(id=question_id).total_responses,
+            responses_before - 1,
+        )
+
+    def test_unvote_then_revote_does_not_double_count_responses(self):
+        code, _host, p1, _p2 = self._start_voting_round()
+        question_id = self.client.get(f"/api/v1/whatif/sessions/{code}/").json()["state"]["question_id"]
+        responses_before = WhatIfQuestion.objects.get(id=question_id).total_responses
+        for _ in range(3):
+            self.client.post(
+                f"/api/v1/whatif/sessions/{code}/action/",
+                {"type": "vote", "option_index": 1},
+                format="json",
+                HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+            )
+            self.client.post(
+                f"/api/v1/whatif/sessions/{code}/action/",
+                {"type": "unvote"},
+                format="json",
+                HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+            )
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 2},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.assertEqual(
+            WhatIfQuestion.objects.get(id=question_id).total_responses,
+            responses_before + 1,
+        )
+
+    def test_unvote_without_existing_vote_rejected(self):
+        code, _host, p1, _p2 = self._start_voting_round()
+        resp = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "unvote"},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_active_player_can_pause_and_resume_voting_preserving_remaining(self):
+        code, _host, p1, p2 = self._start_voting_round()
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 1},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+
+        pause = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "toggle_voting_pause"},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.assertEqual(pause.status_code, 200, pause.json())
+        body = pause.json()
+        self.assertTrue(body["state"]["voting_paused"])
+        self.assertIsNone(body["state"]["voting_deadline_at"])
+        remaining = body["state"]["voting_pause_remaining_seconds"]
+        self.assertIsInstance(remaining, (int, float))
+        self.assertGreater(remaining, 0)
+
+        # Vote rejected while paused.
+        rejected = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 2},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p2,
+        )
+        self.assertEqual(rejected.status_code, 400)
+
+        resume = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "toggle_voting_pause"},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.assertEqual(resume.status_code, 200, resume.json())
+        body2 = resume.json()
+        self.assertFalse(body2["state"]["voting_paused"])
+        self.assertIsNone(body2["state"]["voting_pause_remaining_seconds"])
+        self.assertIsNotNone(body2["state"]["voting_deadline_at"])
+
+    def test_only_active_player_can_pause_voting(self):
+        code, _host, _p1, p2 = self._start_voting_round()
+        resp = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "toggle_voting_pause"},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p2,
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_auto_reveal_honors_grace_period(self):
+        from whatif import constants
+
+        code, _host, p1, p2 = self._start_voting_round()
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 1},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        # Push deadline into the past, but inside the grace window — should NOT auto-reveal yet.
+        sess = WhatIfSession.objects.get(short_code=code)
+        st = dict(sess.state or {})
+        st["voting_deadline_at"] = (
+            timezone.now() - timedelta(seconds=max(0, constants.VOTING_TIME_UP_GRACE_SECONDS - 2))
+        ).isoformat()
+        sess.state = st
+        sess.save(update_fields=["state", "updated_at"])
+        polled = self.client.get(f"/api/v1/whatif/sessions/{code}/")
+        self.assertEqual(polled.json()["status"], "voting")
+
+        # Push it past the grace period — auto-reveal should fire.
+        sess.refresh_from_db()
+        st = dict(sess.state or {})
+        st["voting_deadline_at"] = (
+            timezone.now() - timedelta(seconds=constants.VOTING_TIME_UP_GRACE_SECONDS + 5)
+        ).isoformat()
+        # Need at least one more vote so reveal can produce a meaningful result; but auto-reveal works
+        # regardless of who has voted, so we'll let it fire with just p1's vote.
+        _ = p2
+        sess.state = st
+        sess.save(update_fields=["state", "updated_at"])
+        polled2 = self.client.get(f"/api/v1/whatif/sessions/{code}/")
+        self.assertEqual(polled2.json()["status"], "post_results")
+
+    def test_paused_round_does_not_auto_reveal(self):
+        code, _host, p1, _p2 = self._start_voting_round()
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 1},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "toggle_voting_pause"},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        # Even if we somehow had a deadline in the past, paused state must block auto-reveal.
+        sess = WhatIfSession.objects.get(short_code=code)
+        st = dict(sess.state or {})
+        st["voting_deadline_at"] = (timezone.now() - timedelta(seconds=120)).isoformat()
+        sess.state = st
+        sess.save(update_fields=["state", "updated_at"])
+        polled = self.client.get(f"/api/v1/whatif/sessions/{code}/")
+        self.assertEqual(polled.json()["status"], "voting")
+        self.assertTrue(polled.json()["state"]["voting_paused"])
 
 
 class WhatIfAdminApiTests(TestCase):

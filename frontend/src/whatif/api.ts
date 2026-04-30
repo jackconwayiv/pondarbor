@@ -191,16 +191,17 @@ export async function postWhatIfAction(
   payload: {
     type:
       | "start_game"
-      | "toggle_ready"
       | "pick_subject"
       | "pick_duel_opponent"
       | "vote"
+      | "unvote"
       | "reveal"
       | "next_turn"
       | "skip"
       | "request_question_skip"
       | "resolve_question_skip"
-      | "set_player_paused";
+      | "set_player_paused"
+      | "toggle_voting_pause";
     option_index?: number;
     target_player_id?: number;
     paused?: boolean;

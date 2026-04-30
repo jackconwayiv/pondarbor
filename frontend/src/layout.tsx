@@ -164,6 +164,9 @@ export default function AppLayout() {
     location.pathname.startsWith("/harbor/");
   const isPondsteadRoute =
     location.pathname === "/pondstead" || location.pathname.startsWith("/pondstead/");
+  const isWhatIfPlayOrHandRoute =
+    location.pathname.startsWith("/whatif/play/") ||
+    location.pathname.startsWith("/whatif/hand/");
   /** Aligned with `QffLayout` so the app shell is not the default cream. */
   const qffAppShellBg = "#0c0c0c";
   const isHomeIndex = location.pathname === "/";
@@ -650,7 +653,13 @@ export default function AppLayout() {
                 pt: 0,
               })}
         >
-          {!(isQffRoute || isClickerRoute || isHarborRoute || isPondsteadRoute) ? (
+          {!(
+            isQffRoute ||
+            isClickerRoute ||
+            isHarborRoute ||
+            isPondsteadRoute ||
+            isWhatIfPlayOrHandRoute
+          ) ? (
             <Box {...APP_SHELL_CONTENT_MAX_PROPS} px={{ base: "2", md: "2" }}>
               <BreadcrumbBar />
             </Box>

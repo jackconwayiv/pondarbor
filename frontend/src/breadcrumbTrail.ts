@@ -59,22 +59,6 @@ export function getBreadcrumbItems(
         { label: "Lobby" },
       ];
     }
-    if (p.match(/^\/whatif\/play\//)) {
-      return [
-        HOME,
-        { ...GAMES },
-        { label: "WhatIf", to: "/whatif" },
-        { label: "Play" },
-      ];
-    }
-    if (p.match(/^\/whatif\/hand\//)) {
-      return [
-        HOME,
-        { ...GAMES },
-        { label: "WhatIf", to: "/whatif" },
-        { label: "Hand" },
-      ];
-    }
     return [HOME, { ...GAMES }, { label: "WhatIf" }];
   }
 

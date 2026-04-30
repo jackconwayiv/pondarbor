@@ -1,31 +1,26 @@
-import { Avatar, Code, Grid, GridItem, Heading, HStack, IconButton, Stack, Text } from "@chakra-ui/react";
+import {
+  Avatar,
+  Box,
+  Code,
+  Flex,
+  Grid,
+  GridItem,
+  Heading,
+  HStack,
+  Stack,
+  Text,
+} from "@chakra-ui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
-import { fetchWhatIfTvState, loadHostToken, postWhatIfAction } from "./api";
+import { fetchWhatIfTvState } from "./api";
 import WhatIfShell from "./WhatIfShell";
 import type { WhatIfPlayer, WhatIfSessionState } from "./types";
+import { WhatIfPlayerFace } from "./whatifPlayerFace";
 
 const POLL_MS = 2000;
-
-function PauseIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="1.35em" height="1.35em" fill="currentColor" aria-hidden>
-      <rect x="5" y="4" width="5" height="16" rx="1" />
-      <rect x="14" y="4" width="5" height="16" rx="1" />
-    </svg>
-  );
-}
-
-function PlayIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="1.35em" height="1.35em" fill="currentColor" aria-hidden>
-      <path d="M8 5v14l11-7L8 5z" />
-    </svg>
-  );
-}
 
 export default function WhatIfPlayPage() {
   const navigate = useNavigate();
@@ -34,9 +29,7 @@ export default function WhatIfPlayPage() {
   const { isAuthenticated, resyncSessionSilently } = useAppSession();
   const [state, setState] = useState<WhatIfSessionState | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [hostBusy, setHostBusy] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const hostToken = useMemo(() => loadHostToken(roomCode), [roomCode]);
   const endedProfileRefreshRef = useRef(false);
 
   useEffect(() => {
@@ -126,7 +119,7 @@ export default function WhatIfPlayPage() {
             return label && label !== "" ? label : "(unknown)";
           })
       : [];
-  const roundScoreRows = Object.entries(state?.state?.round_scores ?? {})
+  const roundScoreEntries = Object.entries(state?.state?.round_scores ?? {})
     .filter(([, points]) => Number(points) !== 0)
     .map(([id, points]) => {
       const playerId = Number(id);
@@ -134,22 +127,20 @@ export default function WhatIfPlayPage() {
       const n = Number(points);
       const sign = n > 0 ? "+" : "";
       const bonusLabel = playerId === activeId && n > 1 ? " (active player)" : "";
-      return p
-        ? `${p.avatar_emoji} ${p.display_name}: ${sign}${n}${bonusLabel}`
-        : `Player ${id}: ${sign}${n}${bonusLabel}`;
+      return { key: `${id}-${n}`, player: p, playerId, n, sign, bonusLabel };
     });
   const flairPrefix =
-    state?.status === "post_results" || state?.status === "ended"
+    (state?.status === "post_results" || state?.status === "ended") && !duelPostResults
       ? (state?.state?.reveal_flairs ?? []).join(" ")
       : "";
   const winnerId = state?.state?.winner_player_id;
   const winnerPlayer = winnerId != null ? (state?.players ?? []).find((p) => p.id === winnerId) : undefined;
 
-  const voterEmojisByOption = useMemo(() => {
+  const voterPlayersByOption = useMemo(() => {
     const st = state?.status;
-    if (st !== "post_results" && st !== "ended") return {} as Record<number, string[]>;
+    if (st !== "post_results" && st !== "ended") return {} as Record<number, WhatIfPlayer[]>;
     const raw = state?.state?.votes ?? {};
-    const byOpt: Record<number, string[]> = {};
+    const byOpt: Record<number, WhatIfPlayer[]> = {};
     const players = state?.players ?? [];
     for (const [pidStr, choice] of Object.entries(raw)) {
       const opt = Number(choice);
@@ -157,10 +148,10 @@ export default function WhatIfPlayPage() {
       const player = players.find((p) => p.id === Number(pidStr));
       if (!player) continue;
       if (!byOpt[opt]) byOpt[opt] = [];
-      byOpt[opt].push(player.avatar_emoji);
+      byOpt[opt].push(player);
     }
     for (const opt of Object.keys(byOpt)) {
-      byOpt[Number(opt)].sort();
+      byOpt[Number(opt)].sort((a, b) => a.display_name.localeCompare(b.display_name));
     }
     return byOpt;
   }, [state?.status, state?.state?.votes, state?.players]);
@@ -168,47 +159,6 @@ export default function WhatIfPlayPage() {
   const scoreboardRows = [...((state?.players ?? []).slice())].sort(
     (a, b) => b.score - a.score || a.display_name.localeCompare(b.display_name),
   );
-
-  const canHostManagePause =
-    !!hostToken &&
-    state != null &&
-    (state.status === "turn" || state.status === "voting" || state.status === "post_results");
-
-  function hostCannotPausePlayer(p: WhatIfPlayer): boolean {
-    if (p.paused) return false;
-    const ap = state?.state?.active_player_id;
-    const duel = state?.state?.duel;
-    const st = state?.status;
-    const ch = duel?.challenged_player_id;
-    if (ch != null && (duel?.step === "voting" || duel?.step === "pick_subject")) {
-      if (p.id === ap || p.id === ch) {
-        return st === "turn" || st === "voting" || st === "post_results";
-      }
-    }
-    if (ch != null && duel?.step === "voting" && st === "post_results") {
-      if (p.id === ap || p.id === ch) return true;
-    }
-    if (p.id !== ap) return false;
-    return st === "turn" || st === "voting" || st === "post_results";
-  }
-
-  async function handleSetPlayerPaused(p: WhatIfPlayer, paused: boolean) {
-    if (!hostToken) return;
-    setHostBusy(true);
-    setError(null);
-    try {
-      const next = await postWhatIfAction(
-        roomCode,
-        { type: "set_player_paused", target_player_id: p.id, paused },
-        { hostToken },
-      );
-      setState(next);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Host action failed");
-    } finally {
-      setHostBusy(false);
-    }
-  }
 
   return (
     <WhatIfShell maxW="min(100%, 90rem)" withPanel={false}>
@@ -227,44 +177,95 @@ export default function WhatIfPlayPage() {
                 borderWidth="1px"
                 borderColor="border"
                 borderRadius="xl"
-                bg={state?.status === "ended" ? "orange.100" : "bg"}
+                bg={state?.status === "ended" ? "orange.100" : "bg.panel"}
               >
-                <HStack justify="space-between" align="center" w="100%" flexWrap="wrap" gap="3">
+                <Grid
+                  templateColumns="1fr auto 1fr"
+                  alignItems="center"
+                  columnGap="3"
+                  rowGap="3"
+                  w="100%"
+                  minW={0}
+                >
                   <Heading
                     as="h1"
                     fontSize="clamp(1.35rem, 3.5vh, 2.75rem)"
                     lineHeight="1.15"
                     fontWeight="bold"
+                    justifySelf="start"
+                    minW={0}
                   >
-                    Whatif TV{" "}
-                    <Code fontSize="clamp(1.75rem, 5vh, 3.25rem)" verticalAlign="middle">
-                      {roomCode}
-                    </Code>
+                    Whatif TV
                   </Heading>
+                  <Code
+                    display="inline-block"
+                    fontSize="clamp(1.75rem, 5vh, 3.25rem)"
+                    lineHeight="1.1"
+                    textAlign="center"
+                    justifySelf="center"
+                  >
+                    {roomCode}
+                  </Code>
                   <PondButton
                     type="button"
                     colorPalette="teal"
+                    justifySelf="end"
                     onClick={() => navigate("/whatif?tab=new")}
                   >
                     Return to lobby
                   </PondButton>
-                </HStack>
-                <Text fontSize="clamp(1.2rem, 3vh, 2.25rem)" fontWeight="bold" lineHeight="1.2">
-                  {state?.status === "ended"
-                    ? winnerPlayer
-                      ? `${flairPrefix ? `${flairPrefix} ` : ""}Game over! ${winnerPlayer.display_name} wins!`
-                      : "Game over!"
-                    : state?.status === "voting"
-                      ? allVotesIn
+                </Grid>
+                {state?.status === "voting" ? (
+                  <Flex
+                    flexWrap="wrap"
+                    alignItems="center"
+                    columnGap="3"
+                    rowGap="2"
+                    fontSize="clamp(1.2rem, 3vh, 2.25rem)"
+                    fontWeight="bold"
+                    lineHeight="1.2"
+                    w="100%"
+                  >
+                    <Text as="span">
+                      {allVotesIn
                         ? "All votes are in!"
                         : duelVoting && activePlayer && challengedPlayer
                           ? `${activePlayer.display_name} and ${challengedPlayer.display_name} are in a challenge round!`
-                          : "Everybody vote!"
+                          : "Votes cast:"}
+                    </Text>
+                    {votedPlayers.length > 0 ? (
+                      votedPlayers.map((p) => (
+                        <Box
+                          key={p.id}
+                          display="inline-flex"
+                          alignItems="center"
+                          flexShrink={0}
+                          lineHeight="1"
+                        >
+                          <WhatIfPlayerFace
+                            player={p}
+                            avatarSize="lg"
+                            emojiFontSize="clamp(1.15rem, 3vh, 2.1rem)"
+                          />
+                        </Box>
+                      ))
+                    ) : !allVotesIn ? (
+                      <Text as="span" color="fg.muted" fontWeight="medium">
+                        No votes yet.
+                      </Text>
+                    ) : null}
+                  </Flex>
+                ) : (
+                  <Text fontSize="clamp(1.2rem, 3vh, 2.25rem)" fontWeight="bold" lineHeight="1.2">
+                    {state?.status === "ended"
+                      ? winnerPlayer
+                        ? `${flairPrefix ? `${flairPrefix} ` : ""}Game over! ${winnerPlayer.display_name} wins!`
+                        : "Game over!"
                       : state?.status === "post_results"
                         ? `${flairPrefix ? `${flairPrefix} ` : ""}${
                             challengeRevealHeadline != null
                               ? challengeRevealHeadline
-                              : roundScoreRows.length === 0
+                              : roundScoreEntries.length === 0
                                 ? "No top votes."
                                 : winningOptions.length > 1
                                   ? `Top votes: ${winningOptions.join(" & ")}`
@@ -279,14 +280,34 @@ export default function WhatIfPlayPage() {
                               ? `${activePlayer.display_name} is choosing who this challenge is about!`
                               : `${activePlayer.display_name} is choosing this round's subject!`
                           : "Waiting for game start"}
-                </Text>
+                  </Text>
+                )}
                 {state?.status === "post_results" ? (
                   <Stack gap="1">
-                    {roundScoreRows.length > 0 ? (
-                      roundScoreRows.map((row) => (
-                        <Text key={row} fontSize="clamp(1rem, 2.2vh, 1.35rem)">
-                          {row}
-                        </Text>
+                    {roundScoreEntries.length > 0 ? (
+                      roundScoreEntries.map(({ key, player, playerId, n, sign, bonusLabel }) => (
+                        <HStack key={key} gap="2" align="center" fontSize="clamp(1rem, 2.2vh, 1.35rem)">
+                          {player ? (
+                            <>
+                              <WhatIfPlayerFace
+                                player={player}
+                                avatarSize="sm"
+                                emojiFontSize="clamp(1rem, 2.2vh, 1.35rem)"
+                              />
+                              <Text>
+                                {player.display_name}: {sign}
+                                {n}
+                                {bonusLabel}
+                              </Text>
+                            </>
+                          ) : (
+                            <Text>
+                              Player {playerId}: {sign}
+                              {n}
+                              {bonusLabel}
+                            </Text>
+                          )}
+                        </HStack>
                       ))
                     ) : (
                       <Text fontSize="clamp(1rem, 2.2vh, 1.35rem)">No points awarded this round.</Text>
@@ -296,7 +317,14 @@ export default function WhatIfPlayPage() {
               </Stack>
 
               {state?.state?.question ? (
-                <Stack gap="3" p={{ base: "4", md: "6" }} borderWidth="1px" borderColor="border" borderRadius="xl" bg="bg">
+                <Stack
+                  gap="3"
+                  p={{ base: "4", md: "6" }}
+                  borderWidth="1px"
+                  borderColor="border"
+                  borderRadius="xl"
+                  bg="bg.panel"
+                >
                   <Text fontSize="clamp(1.1rem, 2.6vh, 1.75rem)" fontWeight="semibold" lineHeight="1.25">
                     {state.state.question.prompt}
                   </Text>
@@ -308,88 +336,139 @@ export default function WhatIfPlayPage() {
                           <Avatar.Fallback name={state.state.question.proposed_by.display_name} />
                         </Avatar.Root>
                       ) : null}
-                      <Text fontSize="sm" color="gray.700">
+                      <Text fontSize="sm" color="fg.muted">
                         Question submitted by {state.state.question.proposed_by.display_name}
                       </Text>
                     </HStack>
                   ) : null}
-                  <Stack gap="2">
-                    {Object.entries(state.state.question.answers).map(([k, answer]) => {
+                  <Stack gap="0" w="100%">
+                    {Object.entries(state.state.question.answers).map(([k, answer], optIndex) => {
                       const idx = Number(k);
-                      const voterEmojis = voterEmojisByOption[idx] ?? [];
+                      const voterPlayers = voterPlayersByOption[idx] ?? [];
                       return (
-                        <HStack key={k} align="baseline" gap="2" flexWrap="wrap" justify="flex-start">
-                          <Text fontSize="clamp(1rem, 2.3vh, 1.4rem)" lineHeight="1.3">
-                            {k}. {answer}
-                          </Text>
-                          {voterEmojis.length > 0 ? (
-                            <HStack gap="1" flexShrink={0}>
-                              {voterEmojis.map((emoji, i) => (
-                                <Text
-                                  key={`${k}-${i}`}
-                                  fontSize="clamp(1.35rem, 4vh, 2.5rem)"
-                                  lineHeight="1"
-                                >
-                                  {emoji}
-                                </Text>
-                              ))}
-                            </HStack>
-                          ) : null}
-                        </HStack>
+                        <Box
+                          key={k}
+                          w="100%"
+                          py="3"
+                          borderTopWidth={optIndex > 0 ? "1px" : "0"}
+                          borderColor="border"
+                        >
+                          <Flex
+                            w="100%"
+                            minW={0}
+                            flexWrap="wrap"
+                            alignItems="center"
+                            columnGap="2"
+                            rowGap="2"
+                          >
+                            <Text
+                              as="span"
+                              fontSize="clamp(1rem, 2.3vh, 1.4rem)"
+                              lineHeight="1.5"
+                            >
+                              {k}. {answer}
+                            </Text>
+                            {voterPlayers.map((pl) => (
+                              <Box
+                                key={`${k}-${pl.id}`}
+                                display="inline-flex"
+                                alignItems="center"
+                                flexShrink={0}
+                                lineHeight="1"
+                              >
+                                <WhatIfPlayerFace
+                                  player={pl}
+                                  avatarSize="sm"
+                                  emojiFontSize="clamp(1.05rem, 2.8vh, 1.35rem)"
+                                />
+                              </Box>
+                            ))}
+                          </Flex>
+                        </Box>
                       );
                     })}
                   </Stack>
                 </Stack>
               ) : null}
 
-              {state?.status === "voting" && state.state.voting_deadline_at ? (
-                <Text fontSize="clamp(0.9rem, 1.8vh, 1.1rem)" color="gray.700">
-                  {(() => {
-                    const left = Math.max(
-                      0,
-                      Math.floor(
-                        (new Date(state.state.voting_deadline_at!).getTime() - nowMs) / 1000,
-                      ),
-                    );
-                    return left <= 10 && left > 0
-                      ? `Auto-reveal in ~${Math.min(10, Math.ceil(left / 2) * 2)}s`
-                      : null;
-                  })()}
-                </Text>
-              ) : null}
               {state?.status === "voting" ? (
-                <Stack gap="2" p={{ base: "4", md: "6" }} borderWidth="1px" borderColor="border" borderRadius="xl" bg="bg">
-                  <Text fontWeight="medium" fontSize="clamp(1rem, 2vh, 1.25rem)">
-                    Votes cast:
-                  </Text>
-                  <HStack gap="2" flexWrap="wrap" justify="center">
-                    {votedPlayers.map((p) => (
+                (() => {
+                  const paused = !!state.state.voting_paused;
+                  const deadlineIso = state.state.voting_deadline_at ?? null;
+                  const secsLeft = deadlineIso
+                    ? Math.floor((new Date(deadlineIso).getTime() - nowMs) / 1000)
+                    : null;
+
+                  let label: string;
+                  let tone: "muted" | "active" | "urgent" | "expired" = "muted";
+
+                  if (paused) {
+                    label = "Game paused";
+                    tone = "muted";
+                  } else if (deadlineIso == null) {
+                    label = "Voting open";
+                    tone = "muted";
+                  } else if (secsLeft != null && secsLeft <= 0) {
+                    label = "Time's up!";
+                    tone = "expired";
+                  } else if (secsLeft != null && secsLeft <= 14) {
+                    const bucket = Math.max(2, Math.ceil(secsLeft / 2) * 2);
+                    label = `${bucket}s`;
+                    tone = bucket <= 4 ? "urgent" : "active";
+                  } else {
+                    label = "Voting open";
+                    tone = "muted";
+                  }
+
+                  const color =
+                    tone === "expired" || tone === "urgent"
+                      ? "orange.solid"
+                      : tone === "active"
+                        ? "fg"
+                        : "fg.muted";
+                  const fontSize =
+                    tone === "muted"
+                      ? "clamp(1rem, 2.2vh, 1.4rem)"
+                      : "clamp(2rem, 6vh, 4rem)";
+                  const fontWeight = tone === "muted" ? "medium" : "bold";
+
+                  return (
+                    <Stack
+                      gap="0"
+                      p={{ base: "3", md: "4" }}
+                      borderWidth="1px"
+                      borderColor="border"
+                      borderRadius="xl"
+                      bg="bg.panel"
+                      align="center"
+                      w="100%"
+                    >
                       <Text
-                        key={p.id}
-                        fontSize="clamp(2.25rem, 9vh, 4.5rem)"
+                        fontSize={fontSize}
+                        fontWeight={fontWeight}
+                        color={color}
                         lineHeight="1"
                       >
-                        {p.avatar_emoji}
+                        {label}
                       </Text>
-                    ))}
-                    {votedPlayers.length === 0 ? <Text color="gray.700">No votes yet.</Text> : null}
-                  </HStack>
-                </Stack>
+                    </Stack>
+                  );
+                })()
               ) : null}
             </Stack>
           </GridItem>
 
           <GridItem minW={0} w="100%">
-            <Stack gap="2" w="100%">
-              <Stack
-                gap="2"
-                p={{ base: "4", md: "6" }}
-                borderWidth="1px"
-                borderColor="border"
-                borderRadius="xl"
-                bg="bg"
-                w="100%"
-              >
+            <Stack
+              gap="3"
+              p={{ base: "4", md: "6" }}
+              borderWidth="1px"
+              borderColor="border"
+              borderRadius="xl"
+              bg="bg.panel"
+              w="100%"
+            >
+              <Stack gap="2" w="100%">
                 <Text
                   fontSize="clamp(1.25rem, 3.2vh, 2rem)"
                   fontWeight="bold"
@@ -400,72 +479,42 @@ export default function WhatIfPlayPage() {
                 >
                   SCOREBOARD
                 </Text>
-                <Text textAlign="center" color="gray.700" fontSize="clamp(0.9rem, 2vh, 1.1rem)">
+                <Text textAlign="center" color="fg.muted" fontSize="clamp(0.9rem, 2vh, 1.1rem)">
                   The first player to {state?.win_score ?? 25} points wins!
                 </Text>
               </Stack>
               {scoreboardRows.length > 0 ? (
-                scoreboardRows.map((p) => (
-                  <HStack
-                    key={p.id}
-                    borderWidth="1px"
-                    borderColor="black"
-                    borderRadius="md"
-                    px={{ base: "3", md: "5" }}
-                    py={{ base: "3", md: "5" }}
-                    bg="bg"
-                    justify="space-between"
-                    align="center"
-                    gap="3"
-                    w="100%"
-                  >
-                    <HStack flex="1" minW={0} gap="2" align="baseline">
-                      <Text fontSize="clamp(1rem, 2.4vh, 1.35rem)" lineHeight="1.25">
-                        {p.avatar_emoji} {p.display_name} - {p.score} pts
-                      </Text>
-                      {p.paused ? (
-                        <Text color="gray.600" fontSize="sm" fontWeight="medium">
-                          (paused)
+                <Stack gap="2" w="100%" pt="1">
+                  {scoreboardRows.map((p) => (
+                    <HStack key={p.id} align="center" gap="3" w="100%" minW={0}>
+                      <HStack flex="1" minW={0} gap="2" align="center">
+                        <WhatIfPlayerFace
+                          player={p}
+                          avatarSize="lg"
+                          emojiFontSize="clamp(1.35rem, 3.5vh, 2rem)"
+                        />
+                        <Text
+                          fontSize="clamp(1.35rem, 3.5vh, 2rem)"
+                          fontWeight="semibold"
+                          lineHeight="1.25"
+                        >
+                          {p.display_name} - {p.score} pts
                         </Text>
-                      ) : null}
+                        {p.paused ? (
+                          <Text
+                            color="fg.muted"
+                            fontSize="clamp(0.95rem, 2.2vh, 1.15rem)"
+                            fontWeight="medium"
+                          >
+                            (paused)
+                          </Text>
+                        ) : null}
+                      </HStack>
                     </HStack>
-                    {canHostManagePause ? (
-                      <IconButton
-                        type="button"
-                        aria-label={p.paused ? `Resume ${p.display_name}` : `Pause ${p.display_name}`}
-                        title={
-                          p.paused
-                            ? "Resume — they can vote and take other actions in this round if the game has not moved on yet."
-                            : hostCannotPausePlayer(p)
-                              ? "Cannot pause the active player during their turn, voting reveal, or score transition."
-                              : `Pause ${p.display_name} (their vote is not required until you resume them)`
-                        }
-                        size="md"
-                        variant="outline"
-                        colorPalette={p.paused ? "lilypad" : "orange"}
-                        flexShrink={0}
-                        minW="12"
-                        minH="12"
-                        loading={hostBusy}
-                        disabled={hostBusy || (!p.paused && hostCannotPausePlayer(p))}
-                        onClick={() => void handleSetPlayerPaused(p, !p.paused)}
-                      >
-                        {p.paused ? <PlayIcon /> : <PauseIcon />}
-                      </IconButton>
-                    ) : null}
-                  </HStack>
-                ))
+                  ))}
+                </Stack>
               ) : (
-                <Text
-                  borderWidth="1px"
-                  borderColor="black"
-                  borderRadius="md"
-                  px="4"
-                  py="4"
-                  bg="bg"
-                  color="gray.500"
-                  fontSize="sm"
-                >
+                <Text color="fg.muted" fontSize="clamp(1rem, 2.2vh, 1.2rem)" textAlign="center" py="2">
                   —
                 </Text>
               )}

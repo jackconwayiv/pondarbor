@@ -31,10 +31,17 @@ def parse_iso_datetime(raw: str | None):
 
 
 def is_voting_deadline_passed(state: dict) -> bool:
+    """True only after the deadline + the configured "Time's up!" grace period.
+
+    Returns False while the round is paused or while no deadline has been set yet
+    (the deadline is only stamped once the first vote is cast).
+    """
+    if state.get("voting_paused"):
+        return False
     dt = parse_iso_datetime(state.get("voting_deadline_at"))
     if dt is None:
         return False
-    return timezone.now() >= dt
+    return timezone.now() >= dt + timedelta(seconds=constants.VOTING_TIME_UP_GRACE_SECONDS)
 
 
 def votes_complete_for_round(session: WhatIfSession, state: dict) -> bool:
@@ -86,14 +93,24 @@ def pause_blocked_for_duel(session: WhatIfSession, state: dict, target_id: int) 
 
 
 def final_scores(session: WhatIfSession) -> list[dict]:
+    from users.models import Profile
+
     players = list(
         WhatIfPlayer.objects.filter(session_id=session.id).order_by("-score", "created_at", "id")
     )
+    user_ids = sorted({p.user_id for p in players if p.user_id})
+    avatar_by_uid: dict[int, str] = {}
+    if user_ids:
+        for row in Profile.objects.filter(user_id__in=user_ids).values("user_id", "avatar_url"):
+            url = (row.get("avatar_url") or "").strip()
+            if url:
+                avatar_by_uid[int(row["user_id"])] = url
     return [
         {
             "player_id": p.id,
             "display_name": p.display_name,
             "avatar_emoji": p.avatar_emoji,
+            "avatar_url": avatar_by_uid.get(int(p.user_id), "") if p.user_id else "",
             "score": p.score,
             "rank": i + 1,
         }

@@ -1074,7 +1074,8 @@ export default function SongadayPage() {
               >
                 {responsesLoadError}
               </Text>
-            ) : !myEntry && friendsResponsesOrdered.length === 0 ? null : (
+            ) : archiveOpen ? null : !myEntry &&
+              friendsResponsesOrdered.length === 0 ? null : (
               <SimpleGrid
                 columns={{ base: 1, md: 2 }}
                 gap="3"

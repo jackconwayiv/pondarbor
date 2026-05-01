@@ -105,17 +105,26 @@ def final_scores(session: WhatIfSession) -> list[dict]:
             url = (row.get("avatar_url") or "").strip()
             if url:
                 avatar_by_uid[int(row["user_id"])] = url
-    return [
-        {
-            "player_id": p.id,
-            "display_name": p.display_name,
-            "avatar_emoji": p.avatar_emoji,
-            "avatar_url": avatar_by_uid.get(int(p.user_id), "") if p.user_id else "",
-            "score": p.score,
-            "rank": i + 1,
-        }
-        for i, p in enumerate(players)
-    ]
+    # Competition ranking: tied scores share the same rank; next rank skips (e.g. 1,2,2,4,4,6).
+    rows: list[dict] = []
+    for i, p in enumerate(players):
+        if i == 0:
+            rank = 1
+        elif p.score == players[i - 1].score:
+            rank = rows[-1]["rank"]
+        else:
+            rank = i + 1
+        rows.append(
+            {
+                "player_id": p.id,
+                "display_name": p.display_name,
+                "avatar_emoji": p.avatar_emoji,
+                "avatar_url": avatar_by_uid.get(int(p.user_id), "") if p.user_id else "",
+                "score": p.score,
+                "rank": rank,
+            }
+        )
+    return rows
 
 
 def mark_whatif_completion_for_session_users(session_id: int) -> None:

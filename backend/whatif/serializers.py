@@ -43,6 +43,7 @@ class SessionActionSerializer(serializers.Serializer):
         choices=[
             "start_game",
             "pick_subject",
+            "pick_subject_die_choice",
             "pick_duel_opponent",
             "vote",
             "unvote",
@@ -60,6 +61,7 @@ class SessionActionSerializer(serializers.Serializer):
     paused = serializers.BooleanField(required=False)
     challenge = serializers.BooleanField(required=False)
     approve = serializers.BooleanField(required=False)
+    choice = serializers.ChoiceField(choices=["a", "b"], required=False)
 
 
 class WhatIfPlayerSerializer(serializers.ModelSerializer):

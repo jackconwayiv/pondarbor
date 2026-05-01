@@ -1,4 +1,4 @@
-import type { WhatIfSessionState } from "./types";
+import type { WhatIfMySessionsResponse, WhatIfSessionState } from "./types";
 
 /** Query param for GET /whatif/questions/ — server filters non-deleted rows. */
 export const WHATIF_QUESTION_LIST_FILTERS = ["all", "active", "inactive", "rejected"] as const;
@@ -72,6 +72,31 @@ export function loadHostToken(code: string): string | null {
 }
 
 /** Requires a logged-in user (Bearer); does not create a player row. */
+export async function fetchMyWhatIfSessions(
+  accessToken: string,
+): Promise<WhatIfMySessionsResponse> {
+  const response = await fetch(`${apiBase()}/api/v1/whatif/sessions/mine/`, {
+    method: "GET",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (response.status === 401 || response.status === 403) {
+    const text = await response.text();
+    let detail = "Could not load your games.";
+    try {
+      const j = JSON.parse(text) as { detail?: string };
+      if (typeof j.detail === "string" && j.detail.trim()) detail = j.detail;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail);
+  }
+  if (!response.ok) {
+    throw new Error(`Failed to load your games (${response.status})`);
+  }
+  return (await response.json()) as WhatIfMySessionsResponse;
+}
+
 export async function createWhatIfSession(accessToken: string): Promise<{
   short_code: string;
   host_secret: string;
@@ -143,7 +168,18 @@ export async function joinWhatIfSession(
   });
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Failed to join game (${response.status}): ${text}`);
+    let detail = "";
+    try {
+      const j = JSON.parse(text) as { detail?: string };
+      if (typeof j.detail === "string" && j.detail.trim()) detail = j.detail.trim();
+    } catch {
+      /* ignore non-JSON errors */
+    }
+    if (response.status === 404) {
+      throw new Error("Room code not found. Check the 4-letter code and try again.");
+    }
+    if (detail) throw new Error(detail);
+    throw new Error(`Failed to join game (${response.status})`);
   }
   return (await response.json()) as { player_secret: string };
 }
@@ -192,6 +228,7 @@ export async function postWhatIfAction(
     type:
       | "start_game"
       | "pick_subject"
+      | "pick_subject_die_choice"
       | "pick_duel_opponent"
       | "vote"
       | "unvote"
@@ -207,6 +244,7 @@ export async function postWhatIfAction(
     paused?: boolean;
     challenge?: boolean;
     approve?: boolean;
+    choice?: "a" | "b";
   },
   opts: { playerToken?: string | null; hostToken?: string | null },
 ): Promise<WhatIfSessionState> {

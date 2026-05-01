@@ -1,7 +1,9 @@
 import {
+  Badge,
   Box,
   Code,
   Collapsible,
+  Flex,
   Heading,
   HStack,
   Input,
@@ -36,6 +38,7 @@ import {
   createWhatIfSession,
   deleteWhatIfQuestion,
   fetchWhatIfPendingCount,
+  fetchMyWhatIfSessions,
   fetchWhatIfTvState,
   joinWhatIfSession,
   listWhatIfQuestions,
@@ -49,6 +52,7 @@ import {
   type WhatIfQuestionAdmin,
   type WhatIfQuestionListFilter,
 } from "./api";
+import type { WhatIfMySessionRow, WhatIfMySessionsResponse } from "./types";
 import { WhatIfQuestionAdminListItem } from "./WhatIfQuestionAdminListItem";
 import { WhatIfQuestionFields } from "./WhatIfQuestionFields";
 
@@ -115,6 +119,16 @@ function sanitizeDisplayNameInput(raw: string): string {
     .slice(0, 12);
 }
 
+function formatWhatIfMySessionCreated(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 export default function WhatIfEntryPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -153,6 +167,11 @@ export default function WhatIfEntryPage() {
   const [proposeError, setProposeError] = useState<string | null>(null);
   const [proposeSuccess, setProposeSuccess] = useState<string | null>(null);
   const [proposeOpen, setProposeOpen] = useState(false);
+  const [mySessions, setMySessions] = useState<WhatIfMySessionsResponse | null>(
+    null,
+  );
+  const [mySessionsLoading, setMySessionsLoading] = useState(false);
+  const [mySessionsError, setMySessionsError] = useState<string | null>(null);
   const [enrolledPlayerNames, setEnrolledPlayerNames] = useState<string[]>([]);
   const lastPlayerTabRef = useRef<PlayerTab>(isMobile ? "join" : "new");
   const lastAdminTabRef = useRef<AdminTab>("admin-list");
@@ -259,6 +278,36 @@ export default function WhatIfEntryPage() {
       lastAdminTabRef.current = activeTab;
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    if (showJoinOnly) return;
+    if (!isAuthenticated || !isApprovedUser) return;
+    if (activeTab !== "continue") return;
+    let cancelled = false;
+    setMySessionsLoading(true);
+    setMySessionsError(null);
+    void (async () => {
+      try {
+        const token = await getApiAccessToken();
+        const data = await fetchMyWhatIfSessions(token);
+        if (!cancelled) {
+          setMySessions(data);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setMySessionsError(
+            e instanceof Error ? e.message : "Failed to load your games",
+          );
+          setMySessions(null);
+        }
+      } finally {
+        if (!cancelled) setMySessionsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, isAuthenticated, isApprovedUser, showJoinOnly, getApiAccessToken]);
 
   async function loadQuestions() {
     if (!isAuthenticated || !isStaff) return;
@@ -422,13 +471,13 @@ export default function WhatIfEntryPage() {
     }
   }
 
-  async function handleResumeHosting() {
-    const codeErr = validateWhatIfRoomCode4(resumeCode);
+  async function resumeHostingWithCode(rawCode: string) {
+    const codeErr = validateWhatIfRoomCode4(rawCode);
     if (codeErr) {
       setError(codeErr);
       return;
     }
-    const code = resumeCode.trim().toUpperCase();
+    const code = rawCode.trim().toUpperCase();
     setBusy(true);
     setError(null);
     try {
@@ -446,6 +495,10 @@ export default function WhatIfEntryPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleResumeHosting() {
+    await resumeHostingWithCode(resumeCode);
   }
 
   async function handleJoin() {
@@ -681,6 +734,85 @@ export default function WhatIfEntryPage() {
     </>
   );
 
+  function renderMySessionRow(row: WhatIfMySessionRow) {
+    const showResume = row.is_owner && row.status !== "ended";
+    const showOpenHand = !row.is_owner && row.status !== "ended";
+    const showStatusTag = row.status === "ended";
+    return (
+      <Flex
+        key={row.short_code}
+        flexWrap="wrap"
+        alignItems="center"
+        gap="3"
+        py="3"
+        borderBottomWidth="1px"
+        borderColor="border"
+        rowGap="2"
+      >
+        <Text minW="7rem" fontSize="sm" color="fg.muted" flexShrink={0}>
+          {formatWhatIfMySessionCreated(row.created_at)}
+        </Text>
+        <Code fontSize="md" fontWeight="bold" flexShrink={0}>
+          {row.short_code}
+        </Code>
+        <Text flex="1" minW="8rem" fontSize="sm">
+          {row.player_names.length > 0 ? row.player_names.join(", ") : "—"}
+        </Text>
+        {showStatusTag ? (
+          <Badge
+            bg="yellow.200"
+            color="black"
+            borderWidth="1px"
+            borderColor="yellow.400"
+            flexShrink={0}
+            fontWeight="semibold"
+          >
+            {row.winner_display_name ? `Winner: ${row.winner_display_name}` : "Completed"}
+          </Badge>
+        ) : null}
+        <HStack gap="2" flexShrink={0} flexWrap="wrap">
+          {showResume ? (
+            <PondButton
+              type="button"
+              size="sm"
+              colorPalette="teal"
+              loading={busy}
+              disabled={!isAuthenticated}
+              onClick={() => void resumeHostingWithCode(row.short_code)}
+            >
+              Resume Hosting
+            </PondButton>
+          ) : null}
+          {showOpenHand ? (
+            <PondButton
+              type="button"
+              size="sm"
+              variant="outline"
+              colorPalette="teal"
+              onClick={() => navigate(`/whatif/hand/${row.short_code}`)}
+            >
+              Open hand
+            </PondButton>
+          ) : null}
+        </HStack>
+      </Flex>
+    );
+  }
+
+  function renderMySessionsSection(title: string, rows: WhatIfMySessionRow[]) {
+    if (rows.length === 0) return null;
+    return (
+      <Stack key={title} gap="2" align="stretch">
+        <Text fontWeight="bold" fontSize={APP_TEXT_SIZES.body}>
+          {title}
+        </Text>
+        <Stack gap="0" align="stretch">
+          {rows.map((row) => renderMySessionRow(row))}
+        </Stack>
+      </Stack>
+    );
+  }
+
   const playerTabPanels = (
     <>
       <Tabs.Content value="join" pt="2">
@@ -710,16 +842,25 @@ export default function WhatIfEntryPage() {
       <Tabs.Content value="continue" pt="2">
         <Stack gap="4">
           <Text fontSize={APP_TEXT_SIZES.body} color="fg">
-            Reconnect the host lobby controls after a crash or new browser
-            window. Sign in as the host and enter your four-letter room code.
+            Reconnect hosting with one tap from the list, or enter a room code
+            below if you do not see your room (for example, games created before
+            you signed in).
           </Text>
-          <Stack gap="1.5">
+          <HStack
+            gap="3"
+            align="center"
+            flexWrap="nowrap"
+            w="100%"
+            overflowX="auto"
+          >
             <Text
               fontSize={APP_TEXT_SIZES.label}
-              fontWeight="medium"
+              fontWeight="semibold"
               color="fg"
+              whiteSpace="nowrap"
+              flexShrink={0}
             >
-              Room code
+              Enter a room code:
             </Text>
             <Input
               placeholder="4-letter room code"
@@ -732,19 +873,51 @@ export default function WhatIfEntryPage() {
                     .slice(0, 4),
                 )
               }
+              maxW="14rem"
+              flexShrink={0}
               {...PANEL_FIELD_PROPS}
             />
-          </Stack>
-          <PondButton
-            type="button"
-            colorPalette="teal"
-            alignSelf="flex-start"
-            onClick={() => void handleResumeHosting()}
-            loading={busy}
-            disabled={!isAuthenticated}
-          >
-            Continue hosting
-          </PondButton>
+            <PondButton
+              type="button"
+              colorPalette="teal"
+              onClick={() => void handleResumeHosting()}
+              loading={busy}
+              disabled={!isAuthenticated}
+              flexShrink={0}
+            >
+              Continue hosting
+            </PondButton>
+          </HStack>
+          {mySessionsLoading ? (
+            <Text fontSize={APP_TEXT_SIZES.body} color="fg.muted">
+              Loading your games…
+            </Text>
+          ) : null}
+          {mySessionsError ? (
+            <Text
+              fontSize={APP_TEXT_SIZES.body}
+              color="nautical.solid"
+              role="alert"
+            >
+              {mySessionsError}
+            </Text>
+          ) : null}
+          {mySessions &&
+          !mySessionsLoading &&
+          mySessions.open_lobby.length === 0 &&
+          mySessions.in_progress.length === 0 &&
+          mySessions.completed.length === 0 ? (
+            <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+              No games linked to this account yet.
+            </Text>
+          ) : null}
+          {mySessions && !mySessionsLoading ? (
+            <Stack gap="6" align="stretch">
+              {renderMySessionsSection("Open lobby", mySessions.open_lobby)}
+              {renderMySessionsSection("In progress", mySessions.in_progress)}
+              {renderMySessionsSection("Completed", mySessions.completed)}
+            </Stack>
+          ) : null}
         </Stack>
       </Tabs.Content>
     </>

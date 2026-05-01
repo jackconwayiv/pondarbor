@@ -19,8 +19,68 @@ import { fetchWhatIfTvState } from "./api";
 import WhatIfShell from "./WhatIfShell";
 import type { WhatIfPlayer, WhatIfSessionState } from "./types";
 import { WhatIfPlayerFace } from "./whatifPlayerFace";
+import { subjectBoardSeatCount, subjectBoardSeatLabel } from "./whatifSubjectBoardUi";
 
 const POLL_MS = 2000;
+
+function WhatIfTvSeatStrip({
+  players,
+  markerIndex,
+  candidateSeatA,
+  candidateSeatB,
+  activeTurnSubjectPhase,
+  activeChallengeRound,
+}: {
+  players: WhatIfPlayer[];
+  markerIndex?: number | null;
+  candidateSeatA?: number | null;
+  candidateSeatB?: number | null;
+  activeTurnSubjectPhase: boolean;
+  activeChallengeRound: boolean;
+}) {
+  const P = players.length;
+  if (P < 2) return null;
+  const L = subjectBoardSeatCount(P);
+  const cand =
+    activeTurnSubjectPhase &&
+    typeof candidateSeatA === "number" &&
+    typeof candidateSeatB === "number"
+      ? new Set<number>([candidateSeatA, candidateSeatB])
+      : null;
+  return (
+    <Box w="100%" overflowX="auto" overflowY="visible" pt="1" pb="1">
+      <HStack gap="2" minW="min-content" justify="center" flexWrap="wrap">
+        {Array.from({ length: L }, (_, i) => i).map((i) => {
+          const isMarker = markerIndex != null && Number(markerIndex) === i;
+          const isCand = cand?.has(i) ?? false;
+          const label = subjectBoardSeatLabel(players, i);
+          return (
+            <Box
+              key={i}
+              px="3"
+              py="2"
+              borderRadius="lg"
+              borderWidth="2px"
+              borderColor={isCand ? "teal.solid" : "border"}
+              bg={isCand ? "teal.50" : "bg.panel"}
+              boxShadow={
+                isMarker
+                  ? `0 0 0 3px var(--chakra-colors-${activeChallengeRound ? "bg-canvas" : "orange-solid"})`
+                  : undefined
+              }
+              minW="5rem"
+              textAlign="center"
+            >
+              <Text color="black" fontSize="clamp(0.85rem, 2vh, 1.1rem)" fontWeight="semibold" lineHeight="1.2">
+                {label}
+              </Text>
+            </Box>
+          );
+        })}
+      </HStack>
+    </Box>
+  );
+}
 
 export default function WhatIfPlayPage() {
   const navigate = useNavigate();
@@ -160,6 +220,30 @@ export default function WhatIfPlayPage() {
     (a, b) => b.score - a.score || a.display_name.localeCompare(b.display_name),
   );
 
+  const joinOrderPlayers = useMemo(() => [...(state?.players ?? [])], [state?.players]);
+  const showSeatStrip =
+    !!state?.challenge_mode &&
+    joinOrderPlayers.length >= 2 &&
+    state?.status !== "ended" &&
+    state?.status !== "pre_lobby" &&
+    state?.status !== "open";
+  const seatStripSubjectPhase =
+    state?.status === "turn" &&
+    !state?.state?.challenge_target_player_id &&
+    duel?.step !== "pick_opponent" &&
+    typeof state?.state?.subject_die_value === "number";
+  const activeChallengeRound =
+    state?.status !== "ended" &&
+    (duel?.step === "pick_opponent" || duel?.step === "pick_subject" || duel?.step === "voting");
+  const tvCardBg =
+    state?.status === "ended"
+      ? "orange.100"
+      : activeChallengeRound
+        ? "nautical.solid"
+        : "bg.panel";
+  const tvCardColor = activeChallengeRound ? "white" : undefined;
+  const tvMutedColor = activeChallengeRound ? "whiteAlpha.800" : "fg.muted";
+
   return (
     <WhatIfShell maxW="min(100%, 90rem)" withPanel={false}>
       <Stack gap={{ base: "4", md: "6" }}>
@@ -177,7 +261,8 @@ export default function WhatIfPlayPage() {
                 borderWidth="1px"
                 borderColor="border"
                 borderRadius="xl"
-                bg={state?.status === "ended" ? "orange.100" : "bg.panel"}
+                bg={tvCardBg}
+                color={tvCardColor}
               >
                 <Grid
                   templateColumns="1fr auto 1fr"
@@ -250,11 +335,22 @@ export default function WhatIfPlayPage() {
                         </Box>
                       ))
                     ) : !allVotesIn ? (
-                      <Text as="span" color="fg.muted" fontWeight="medium">
+                      <Text as="span" color={tvMutedColor} fontWeight="medium">
                         No votes yet.
                       </Text>
                     ) : null}
                   </Flex>
+                ) : needChallengeSubjectPick && activePlayer && challengedPlayer ? (
+                  <Stack gap="1">
+                    <Text fontSize="clamp(1.2rem, 3vh, 2.25rem)" fontWeight="bold" lineHeight="1.2">
+                      {activePlayer.display_name} challenged {challengedPlayer.display_name}!
+                    </Text>
+                    <Text fontSize="clamp(1.2rem, 3vh, 2.25rem)" fontWeight="bold" lineHeight="1.2">
+                      {typeof state?.state?.subject_die_value === "number"
+                        ? `${activePlayer.display_name} rolled a ${state.state.subject_die_value} and is choosing who this challenge is about!`
+                        : `${activePlayer.display_name} is choosing who this challenge is about!`}
+                    </Text>
+                  </Stack>
                 ) : (
                   <Text fontSize="clamp(1.2rem, 3vh, 2.25rem)" fontWeight="bold" lineHeight="1.2">
                     {state?.status === "ended"
@@ -276,8 +372,8 @@ export default function WhatIfPlayPage() {
                         : activePlayer
                           ? needPickChallengeTarget
                             ? `${activePlayer.display_name} is choosing who to challenge!`
-                            : needChallengeSubjectPick
-                              ? `${activePlayer.display_name} is choosing who this challenge is about!`
+                            : typeof state?.state?.subject_die_value === "number"
+                              ? `${activePlayer.display_name} rolled a ${state.state.subject_die_value} and is choosing this round's subject!`
                               : `${activePlayer.display_name} is choosing this round's subject!`
                           : "Waiting for game start"}
                   </Text>
@@ -323,7 +419,8 @@ export default function WhatIfPlayPage() {
                   borderWidth="1px"
                   borderColor="border"
                   borderRadius="xl"
-                  bg="bg.panel"
+                  bg={tvCardBg}
+                  color={tvCardColor}
                 >
                   <Text fontSize="clamp(1.1rem, 2.6vh, 1.75rem)" fontWeight="semibold" lineHeight="1.25">
                     {state.state.question.prompt}
@@ -336,7 +433,7 @@ export default function WhatIfPlayPage() {
                           <Avatar.Fallback name={state.state.question.proposed_by.display_name} />
                         </Avatar.Root>
                       ) : null}
-                      <Text fontSize="sm" color="fg.muted">
+                      <Text fontSize="sm" color={tvMutedColor}>
                         Question submitted by {state.state.question.proposed_by.display_name}
                       </Text>
                     </HStack>
@@ -420,8 +517,11 @@ export default function WhatIfPlayPage() {
                     tone = "muted";
                   }
 
-                  const color =
-                    tone === "expired" || tone === "urgent"
+                  const color = activeChallengeRound
+                    ? tone === "muted"
+                      ? "whiteAlpha.800"
+                      : "white"
+                    : tone === "expired" || tone === "urgent"
                       ? "orange.solid"
                       : tone === "active"
                         ? "fg"
@@ -439,7 +539,8 @@ export default function WhatIfPlayPage() {
                       borderWidth="1px"
                       borderColor="border"
                       borderRadius="xl"
-                      bg="bg.panel"
+                      bg={tvCardBg}
+                      color={tvCardColor}
                       align="center"
                       w="100%"
                     >
@@ -465,21 +566,32 @@ export default function WhatIfPlayPage() {
               borderWidth="1px"
               borderColor="border"
               borderRadius="xl"
-              bg="bg.panel"
+              bg={tvCardBg}
+              color={tvCardColor}
               w="100%"
             >
               <Stack gap="2" w="100%">
+                {showSeatStrip ? (
+                  <WhatIfTvSeatStrip
+                    players={joinOrderPlayers}
+                    markerIndex={state?.state?.marker_index}
+                    candidateSeatA={state?.state?.subject_candidate_seat_a}
+                    candidateSeatB={state?.state?.subject_candidate_seat_b}
+                    activeTurnSubjectPhase={seatStripSubjectPhase}
+                    activeChallengeRound={activeChallengeRound}
+                  />
+                ) : null}
                 <Text
                   fontSize="clamp(1.25rem, 3.2vh, 2rem)"
                   fontWeight="bold"
                   letterSpacing="0.2em"
                   textAlign="center"
-                  color="fg"
+                  color={activeChallengeRound ? "white" : "fg"}
                   lineHeight="1.1"
                 >
                   SCOREBOARD
                 </Text>
-                <Text textAlign="center" color="fg.muted" fontSize="clamp(0.9rem, 2vh, 1.1rem)">
+                <Text textAlign="center" color={tvMutedColor} fontSize="clamp(0.9rem, 2vh, 1.1rem)">
                   The first player to {state?.win_score ?? 25} points wins!
                 </Text>
               </Stack>
@@ -498,11 +610,11 @@ export default function WhatIfPlayPage() {
                           fontWeight="semibold"
                           lineHeight="1.25"
                         >
-                          {p.display_name} - {p.score} pts
+                          {p.display_name} · {p.score} pts
                         </Text>
                         {p.paused ? (
                           <Text
-                            color="fg.muted"
+                            color={tvMutedColor}
                             fontSize="clamp(0.95rem, 2.2vh, 1.15rem)"
                             fontWeight="medium"
                           >
@@ -514,7 +626,7 @@ export default function WhatIfPlayPage() {
                   ))}
                 </Stack>
               ) : (
-                <Text color="fg.muted" fontSize="clamp(1rem, 2.2vh, 1.2rem)" textAlign="center" py="2">
+                <Text color={tvMutedColor} fontSize="clamp(1rem, 2.2vh, 1.2rem)" textAlign="center" py="2">
                   —
                 </Text>
               )}

@@ -32,9 +32,16 @@ export type WhatIfRoundState = {
   voted_player_ids?: number[];
   round_scores?: Record<string, number>;
   challenge_target_player_id?: number | null;
-  /** Two non-active players chosen for the active player to pick between as round subject (3+ players). */
+  /** Legacy duel tiles only; normal challenge rounds use the subject die. */
   subject_candidate_ids?: number[];
   subject_options?: WhatIfSubjectOption[];
+  /** Step rolled on the subject die (1..min(P, 6)); present until the active player picks A/B. */
+  subject_die_value?: number | null;
+  subject_candidate_seat_a?: number | null;
+  subject_candidate_seat_b?: number | null;
+  subject_pick_degenerate?: boolean;
+  marker_index?: number | null;
+  last_subject_seat_index?: number | null;
   duel?: { step: string; challenged_player_id?: number | null } | null;
   voting_deadline_at?: string | null;
   /** True while the active player has paused the voting round (no votes accepted, timer frozen). */
@@ -78,4 +85,21 @@ export type WhatIfSessionState = {
   players?: WhatIfPlayer[];
   created_at?: string;
   updated_at?: string;
+};
+
+/** One row from GET /api/v1/whatif/sessions/mine/ */
+export type WhatIfMySessionRow = {
+  short_code: string;
+  status: WhatIfSessionState["status"];
+  created_at: string;
+  updated_at: string;
+  is_owner: boolean;
+  player_names: string[];
+  winner_display_name?: string | null;
+};
+
+export type WhatIfMySessionsResponse = {
+  open_lobby: WhatIfMySessionRow[];
+  in_progress: WhatIfMySessionRow[];
+  completed: WhatIfMySessionRow[];
 };

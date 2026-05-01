@@ -36,7 +36,7 @@ function UserAvatarBlock({
         justifyContent="center"
         fontWeight="bold"
         flexShrink={0}
-        fontSize={boxSize === "40px" ? "sm" : "md"}
+        fontSize={boxSize === "40px" || boxSize === "32px" ? "sm" : "md"}
       >
         {initial}
       </Stack>
@@ -99,9 +99,19 @@ export default function SongadayListCard({
   const notesText = entry.notes.trim();
   const notesBlock =
     notesText.length > 0 ? (
-      <Text whiteSpace="pre-wrap" fontSize={APP_TEXT_SIZES.helper} lineHeight="tall" color="fg">
-        {notesText}
-      </Text>
+      <HStack align="flex-start" gap="2" w="full">
+        <UserAvatarBlock avatar={avatar} label={label} boxSize="32px" />
+        <Text
+          whiteSpace="pre-wrap"
+          fontSize={APP_TEXT_SIZES.body}
+          lineHeight="tall"
+          color="fg"
+          flex="1"
+          minW={0}
+        >
+          {notesText}
+        </Text>
+      </HStack>
     ) : null;
 
   const stopCardNav = (e: MouseEvent) => {

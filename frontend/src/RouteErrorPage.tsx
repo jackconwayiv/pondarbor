@@ -1,5 +1,8 @@
 import { Box, Button, Text, VStack } from "@chakra-ui/react";
+import { useEffect } from "react";
 import { Link as RouterLink, useRouteError } from "react-router";
+
+export const STALE_CHUNK_RELOAD_KEY = "pondarbor:stale-chunk-reloaded";
 
 function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -14,6 +17,8 @@ function errorMessage(err: unknown): string {
 function isStaleChunkError(message: string): boolean {
   const m = message.toLowerCase();
   return (
+    m.includes("is not a valid javascript mime type") ||
+    m.includes("expected a javascript-or-wasm module") ||
     m.includes("failed to fetch dynamically imported module") ||
     m.includes("loading chunk") ||
     m.includes("loading css chunk") ||
@@ -30,6 +35,13 @@ export default function RouteErrorPage() {
   const err = useRouteError();
   const message = errorMessage(err);
   const staleChunk = isStaleChunkError(message);
+
+  useEffect(() => {
+    if (!staleChunk) return;
+    if (sessionStorage.getItem(STALE_CHUNK_RELOAD_KEY)) return;
+    sessionStorage.setItem(STALE_CHUNK_RELOAD_KEY, "1");
+    window.location.reload();
+  }, [staleChunk]);
 
   return (
     <VStack

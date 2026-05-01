@@ -134,12 +134,13 @@ export default function SongadayMonthArchive({
     }
   }, [open, loading, hasMore, total, getApiAccessToken, page, maxRows]);
 
-  // Initial load when opened.
+  // Initial load when opened (skip if seed will populate rows in the effect above).
   useEffect(() => {
     if (!open) return;
     if (rows.length > 0 || loading) return;
+    if (seed && seed.rows.length > 0) return;
     void loadNext();
-  }, [open, rows.length, loading, loadNext]);
+  }, [open, rows.length, loading, loadNext, seed]);
 
   const activeIdx = activeMonthKey ? months.indexOf(activeMonthKey) : -1;
   const canPrevMonth = activeIdx > 0;

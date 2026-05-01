@@ -352,6 +352,12 @@ def slack_events(request):
 @authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
 @permission_classes([IsApprovedUser])
 def songaday_slack_daily_prompt_sync(request):
+    if settings.DEBUG:
+        return Response(
+            {"posted": False, "reason": "disabled_in_dev"},
+            status=status.HTTP_200_OK,
+        )
+
     channel = (getattr(settings, "SLACK_PROMPTS_CHANNEL_ID", None) or "").strip()
     token = (getattr(settings, "SLACK_BOT_TOKEN", None) or "").strip()
     if not channel or not token:

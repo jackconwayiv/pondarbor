@@ -171,6 +171,7 @@ export default function AppLayout() {
   const qffAppShellBg = "#0c0c0c";
   const isHomeIndex = location.pathname === "/";
   const isGamesHubIndex = location.pathname === "/games";
+  const isAboutIndex = location.pathname === "/about";
 
   useEffect(() => {
     const { pathname } = location;
@@ -645,9 +646,9 @@ export default function AppLayout() {
             ? { p: 0 }
             : {
                 px: 0,
-                // Home / games: full-bleed footer; avoid padding below the outlet column.
+                // Home / games / about: full-bleed footer; avoid padding below the outlet column.
                 pb:
-                  isHomeIndex || isGamesHubIndex
+                  isHomeIndex || isGamesHubIndex || isAboutIndex
                     ? 0
                     : { base: "2", md: "2" },
                 pt: 0,

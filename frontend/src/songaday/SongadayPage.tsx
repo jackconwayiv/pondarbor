@@ -319,6 +319,7 @@ export default function SongadayPage() {
   }, [isAuthenticated, sessionUser?.user?.is_approved, prefetchDay]);
 
   useEffect(() => {
+    if (import.meta.env.DEV) return;
     if (!isAuthenticated || !sessionUser?.user?.is_approved) return;
     void (async () => {
       try {
@@ -1219,7 +1220,12 @@ export default function SongadayPage() {
       {isStaff ? (
         <Collapsible.Root open={bulkOpen} onOpenChange={(d) => setBulkOpen(d.open)}>
           <Collapsible.Trigger asChild>
-            <PondButton type="button" variant="outline" colorPalette="nautical" w="100%">
+            <PondButton
+              type="button"
+              variant={bulkOpen ? "solid" : "outline"}
+              colorPalette="nautical"
+              w="100%"
+            >
               {bulkOpen ? "Hide bulk importer" : "Staff: Bulk importer"}
             </PondButton>
           </Collapsible.Trigger>

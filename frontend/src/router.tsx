@@ -1,12 +1,12 @@
 import * as Sentry from "@sentry/react";
 import type { ReactNode } from "react";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { createBrowserRouter, Navigate, Outlet } from "react-router";
 import AboutPage from "./AboutPage";
 import App from "./App";
 import NotFoundPage from "./NotFoundPage";
 import ProfilePage from "./ProfilePage";
-import RouteErrorPage from "./RouteErrorPage";
+import RouteErrorPage, { STALE_CHUNK_RELOAD_KEY } from "./RouteErrorPage";
 import RouteLoadingFallback from "./RouteLoadingFallback";
 import AboutPrivacyPage from "./about/AboutPrivacyPage";
 import AboutTermsPage from "./about/AboutTermsPage";
@@ -107,8 +107,27 @@ const PondsteadCampaignLobbyPage = lazy(
 );
 const PondsteadMapPage = lazy(() => import("./pondstead/PondsteadMapPage"));
 
+/** Runs only after Suspense resolves — lazy chunk loaded successfully; reset stale-deploy reload guard. */
+function LazyRouteLoadedProbe() {
+  useEffect(() => {
+    try {
+      sessionStorage.removeItem(STALE_CHUNK_RELOAD_KEY);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  return null;
+}
+
 function lazyRouteElement(element: ReactNode): ReactNode {
-  return <Suspense fallback={<RouteLoadingFallback />}>{element}</Suspense>;
+  return (
+    <Suspense fallback={<RouteLoadingFallback />}>
+      <>
+        <LazyRouteLoadedProbe />
+        {element}
+      </>
+    </Suspense>
+  );
 }
 
 const sentryCreateBrowserRouter =

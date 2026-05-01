@@ -47,6 +47,19 @@ function monthLabel(monthKey: string): string {
   return d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
 }
 
+/** Month keys in first-seen order (matches archive API: newest rows first). */
+function monthKeysInRowOrder(rows: SongadayResponse[]): string[] {
+  const keys: string[] = [];
+  const seen = new Set<string>();
+  for (const r of rows) {
+    const k = monthKeyFromIso(r.entry_date);
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    keys.push(k);
+  }
+  return keys;
+}
+
 export default function SongadayMonthArchive({
   open,
   getApiAccessToken,
@@ -65,17 +78,7 @@ export default function SongadayMonthArchive({
 
   const hasMore = rows.length < total && rows.length < maxRows;
 
-  const months = useMemo(() => {
-    const keys: string[] = [];
-    const seen = new Set<string>();
-    for (const r of rows) {
-      const k = monthKeyFromIso(r.entry_date);
-      if (!k || seen.has(k)) continue;
-      seen.add(k);
-      keys.push(k);
-    }
-    return keys;
-  }, [rows]);
+  const months = useMemo(() => monthKeysInRowOrder(rows), [rows]);
 
   const [activeMonthKey, setActiveMonthKey] = useState<string | null>(null);
 
@@ -101,26 +104,29 @@ export default function SongadayMonthArchive({
     return rows.filter((r) => monthKeyFromIso(r.entry_date) === activeMonthKey);
   }, [rows, activeMonthKey]);
 
-  const loadNext = useCallback(async () => {
-    if (!open) return;
-    if (loading) return;
-    if (!hasMore && total !== 0) return;
-    if (inflight.current) return;
+  const loadNext = useCallback(async (): Promise<SongadayResponse[] | null> => {
+    if (!open) return null;
+    if (loading) return null;
+    if (!hasMore && total !== 0) return null;
+    if (inflight.current) return null;
 
-    const run = (async () => {
+    const run = (async (): Promise<SongadayResponse[] | null> => {
       setLoading(true);
       setLoadError(null);
       try {
         const token = await getApiAccessToken();
         const payload = await fetchResponsesArchive(token, null, page, PAGE_SIZE);
+        let merged: SongadayResponse[] = [];
         setTotal(payload.total);
         setRows((prev) => {
-          const merged = [...prev, ...payload.results];
-          return merged.slice(0, maxRows);
+          merged = [...prev, ...payload.results].slice(0, maxRows);
+          return merged;
         });
         setPage((p) => p + 1);
+        return merged;
       } catch (e) {
         setLoadError(e instanceof Error ? e.message : "Failed to load archive.");
+        return null;
       } finally {
         setLoading(false);
       }
@@ -128,7 +134,7 @@ export default function SongadayMonthArchive({
 
     inflight.current = run;
     try {
-      await run;
+      return await run;
     } finally {
       inflight.current = null;
     }
@@ -143,24 +149,28 @@ export default function SongadayMonthArchive({
   }, [open, rows.length, loading, loadNext, seed]);
 
   const activeIdx = activeMonthKey ? months.indexOf(activeMonthKey) : -1;
-  const canPrevMonth = activeIdx > 0;
-  const canNextMonth = activeIdx >= 0 && activeIdx < months.length - 1;
+  /** Rows are newest-first, so `months` is e.g. [May, April, March]. Lower index = newer month. */
+  const canGoToOlderMonth =
+    activeIdx >= 0 && activeIdx < months.length - 1;
+  const canGoToNewerMonth = activeIdx > 0;
 
-  const goPrevMonth = () => {
-    if (!canPrevMonth) return;
+  const goToNewerMonth = () => {
+    if (!canGoToNewerMonth) return;
     setActiveMonthKey(months[activeIdx - 1] ?? null);
   };
 
-  const goNextMonth = async () => {
-    if (canNextMonth) {
+  const goToOlderMonth = async () => {
+    if (canGoToOlderMonth) {
       setActiveMonthKey(months[activeIdx + 1] ?? null);
       return;
     }
-    if (hasMore) {
-      await loadNext();
-      // After loading more, if a new month appeared, select it.
-      const nextKey = months[activeIdx + 1];
-      if (nextKey) setActiveMonthKey(nextKey);
+    if (!hasMore || activeMonthKey == null) return;
+    const merged = await loadNext();
+    if (!merged?.length) return;
+    const keys = monthKeysInRowOrder(merged);
+    const i = keys.indexOf(activeMonthKey);
+    if (i >= 0 && i < keys.length - 1) {
+      setActiveMonthKey(keys[i + 1] ?? null);
     }
   };
 
@@ -180,11 +190,12 @@ export default function SongadayMonthArchive({
               variant="ghost"
               colorPalette="navy"
               color="navy.solid"
-              onClick={goPrevMonth}
+              onClick={() => void goToOlderMonth()}
               _hover={{ color: "navy.solid" }}
-              visibility={canPrevMonth ? "visible" : "hidden"}
-              pointerEvents={canPrevMonth ? "auto" : "none"}
-              aria-hidden={!canPrevMonth}
+              visibility={canGoToOlderMonth || hasMore ? "visible" : "hidden"}
+              pointerEvents={canGoToOlderMonth || hasMore ? "auto" : "none"}
+              aria-label="Older month"
+              aria-hidden={!(canGoToOlderMonth || hasMore)}
             >
               ←
             </PondButton>
@@ -199,11 +210,12 @@ export default function SongadayMonthArchive({
               variant="ghost"
               colorPalette="navy"
               color="navy.solid"
-              onClick={() => void goNextMonth()}
+              onClick={goToNewerMonth}
               _hover={{ color: "navy.solid" }}
-              visibility={canNextMonth || hasMore ? "visible" : "hidden"}
-              pointerEvents={canNextMonth || hasMore ? "auto" : "none"}
-              aria-hidden={!(canNextMonth || hasMore)}
+              visibility={canGoToNewerMonth ? "visible" : "hidden"}
+              pointerEvents={canGoToNewerMonth ? "auto" : "none"}
+              aria-label="Newer month"
+              aria-hidden={!canGoToNewerMonth}
             >
               →
             </PondButton>

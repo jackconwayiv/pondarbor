@@ -1,3 +1,4 @@
+import logging
 import time
 
 from django.conf import settings
@@ -9,6 +10,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from users.permissions import IsApprovedUser
+
+logger = logging.getLogger(__name__)
 
 CONTACT_MESSAGE_MAX_LEN = 4000
 CONTACT_RATE_PER_HOUR = 3
@@ -61,12 +64,35 @@ def contact_submit(request):
 
     subject = f"PondArbor contact from {user.email}"
     body = f"From: {user.email} (user id {user.id})\n\n{message}"
-    send_mail(
-        subject,
-        body,
-        settings.DEFAULT_FROM_EMAIL,
-        [inbox],
-        fail_silently=False,
-    )
+
+    backend = (getattr(settings, "EMAIL_BACKEND", "") or "").lower()
+    if "console" in backend:
+        logger.warning(
+            "Contact form: EMAIL_BACKEND is console — message is not sent over SMTP; "
+            "it appears only in server logs. Configure SMTP (or switch EMAIL_BACKEND) in production.",
+        )
+
+    try:
+        send_mail(
+            subject,
+            body,
+            settings.DEFAULT_FROM_EMAIL,
+            [inbox],
+            fail_silently=False,
+        )
+    except Exception:
+        logger.exception(
+            "Contact form: send_mail failed (user_id=%s to inbox=%s)",
+            user.id,
+            inbox,
+        )
+        return Response(
+            {
+                "detail": "The message could not be delivered by email. Please try again later.",
+            },
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+    logger.info("Contact form: email handed off successfully (user_id=%s)", user.id)
 
     return Response({"ok": True}, status=status.HTTP_200_OK)

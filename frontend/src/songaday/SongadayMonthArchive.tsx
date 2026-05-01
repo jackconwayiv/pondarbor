@@ -73,7 +73,7 @@ export default function SongadayMonthArchive({
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const inflight = useRef<Promise<void> | null>(null);
+  const inflight = useRef<Promise<SongadayResponse[] | null> | null>(null);
   const PAGE_SIZE = 50;
 
   const hasMore = rows.length < total && rows.length < maxRows;

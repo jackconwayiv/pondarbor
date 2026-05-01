@@ -105,30 +105,40 @@ function deriveHomeInbox(
     notices.push({ id: "account-status", text: statusMsg });
   }
 
-  if (
-    sessionUser.user?.is_staff &&
-    d.staffPendingSummary &&
-    (d.staffPendingSummary.pending_members > 0 ||
-      d.staffPendingSummary.pending_whatif_questions > 0)
-  ) {
-    if (d.staffPendingSummary.pending_members > 0) {
+  if (sessionUser.user?.is_staff && d.staffPendingSummary) {
+    const s = d.staffPendingSummary;
+    if (s.pending_members > 0) {
       prompts.push({
         id: "staff-pending-members",
         to: "/staff",
         text:
-          d.staffPendingSummary.pending_members === 1
+          s.pending_members === 1
             ? "1 member is awaiting approval."
-            : `${d.staffPendingSummary.pending_members} members are awaiting approval.`,
+            : `${s.pending_members} members are awaiting approval.`,
       });
     }
-    if (d.staffPendingSummary.pending_whatif_questions > 0) {
+    if (s.pending_whatif_questions > 0) {
       prompts.push({
         id: "staff-pending-whatif",
         to: "/staff",
         text:
-          d.staffPendingSummary.pending_whatif_questions === 1
+          s.pending_whatif_questions === 1
             ? "1 WhatIf question is awaiting review."
-            : `${d.staffPendingSummary.pending_whatif_questions} WhatIf questions are awaiting review.`,
+            : `${s.pending_whatif_questions} WhatIf questions are awaiting review.`,
+      });
+    }
+    if (
+      s.contact_messages_count > 0 &&
+      s.latest_contact_message_id != null
+    ) {
+      const n = s.contact_messages_count;
+      prompts.push({
+        id: `staff-contact-${s.latest_contact_message_id}`,
+        to: "/staff?tab=contact",
+        text:
+          n === 1
+            ? "You have 1 new contact message."
+            : `You have ${n} new contact messages.`,
       });
     }
   }

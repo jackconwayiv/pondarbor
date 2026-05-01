@@ -3,6 +3,7 @@ from datetime import timedelta
 
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.db import IntegrityError
+from django.db.models import Count, Max
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
@@ -11,6 +12,8 @@ from rest_framework.authentication import SessionAuthentication
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+
+from contact.models import ContactMessage
 
 from .auth0_backend import Auth0TokenAuthentication
 from .models import PROFILE_TIMEZONE_DEFAULT, Profile
@@ -497,10 +500,16 @@ def staff_pending_summary(request):
         review_status=WhatIfQuestion.ReviewStatus.PENDING,
         deleted_at__isnull=True,
     ).count()
+    contact_agg = ContactMessage.objects.aggregate(
+        contact_messages_count=Count("id"),
+        latest_contact_message_id=Max("id"),
+    )
     return Response(
         {
             "pending_members": pending_members,
             "pending_whatif_questions": pending_whatif,
+            "contact_messages_count": contact_agg["contact_messages_count"] or 0,
+            "latest_contact_message_id": contact_agg["latest_contact_message_id"],
         }
     )
 

@@ -9,6 +9,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from users.frontend_views import spa_index
 from closet.models import Item
+from contact.models import ContactMessage
 from friends.models import FriendRequest
 from whatif.models import WhatIfQuestion
 
@@ -510,6 +511,7 @@ class StaffApiTests(TestCase):
         for method, path, data in (
             ("get", "/api/v1/users/staff/pending-summary/", None),
             ("get", "/api/v1/users/staff/users/", None),
+            ("get", "/api/v1/contact/staff/messages/", None),
             ("patch", "/api/v1/users/staff/users/999/", {"account_status": "approved"}),
         ):
             if method == "get":
@@ -543,6 +545,17 @@ class StaffApiTests(TestCase):
         body = response.json()
         self.assertEqual(body["pending_members"], 2)
         self.assertEqual(body["pending_whatif_questions"], 1)
+        self.assertEqual(body["contact_messages_count"], 0)
+        self.assertIsNone(body["latest_contact_message_id"])
+
+        sender = User.objects.create_user(email="cm@example.com", password="secret12345")
+        sender.account_status = User.AccountStatus.APPROVED
+        sender.save()
+        cm = ContactMessage.objects.create(from_user=sender, message="Hi")
+        response2 = self.client.get("/api/v1/users/staff/pending-summary/")
+        body2 = response2.json()
+        self.assertEqual(body2["contact_messages_count"], 1)
+        self.assertEqual(body2["latest_contact_message_id"], cm.id)
 
     def test_staff_users_list_and_patch(self):
         staff = User.objects.create_user(

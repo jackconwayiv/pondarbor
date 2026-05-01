@@ -23,12 +23,15 @@ function borrowedKindForConstruction(
 
 function stripConstructionCellToBuilding(c: MapCell, t: BuildingKind): MapCell {
   const {
-    constructionTarget: _ct,
+    constructionTarget,
     constructionOwnerId: co,
-    constructionBorrowedUnitKind: _bk,
-    constructionNightsLeft: _nl,
+    constructionBorrowedUnitKind,
+    constructionNightsLeft,
     ...rest
   } = c;
+  void constructionTarget;
+  void constructionBorrowedUnitKind;
+  void constructionNightsLeft;
   const buildingOwnerId = co ?? mapCellBuildingOwner(c);
   const buildingCondition: MapCell["buildingCondition"] =
     t === "none" || t === "wall" ? undefined : "intact";

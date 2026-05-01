@@ -12,6 +12,8 @@ type Props = {
   open: boolean;
   getApiAccessToken: () => Promise<string>;
   onSelectEntryDate: (entryDateIso: string) => void;
+  /** Omit or null = logged-in user’s archive; set to a friend id for their archive. */
+  archiveUserId?: number | null;
   /** Optional: seed initial rows (e.g. current month preload). */
   seed?: {
     rows: SongadayResponse[];
@@ -32,12 +34,22 @@ function formatEntryMd(entryDate: string): string {
   return `${m}/${d}`;
 }
 
-function monthKeyFromIso(iso: string): string | null {
-  const [y, m] = iso.split("-");
-  if (!y || !m) return null;
-  if (!/^\d{4}$/.test(y)) return null;
-  if (!/^\d{2}$/.test(m)) return null;
-  return `${y}-${m}`;
+/**
+ * Normalize entry_date to `YYYY-MM` for grouping. Accepts `YYYY-MM-DD` and ISO datetimes;
+ * month/day may be unpadded (API / serializers sometimes emit `2026-5-3`).
+ */
+function monthKeyFromIso(raw: string | undefined | null): string | null {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s);
+  if (!m) return null;
+  const y = m[1];
+  const mo = Number(m[2]);
+  const day = Number(m[3]);
+  if (!Number.isFinite(mo) || mo < 1 || mo > 12) return null;
+  if (!Number.isFinite(day) || day < 1 || day > 31) return null;
+  return `${y}-${String(mo).padStart(2, "0")}`;
 }
 
 function monthLabel(monthKey: string): string {
@@ -64,6 +76,7 @@ export default function SongadayMonthArchive({
   open,
   getApiAccessToken,
   onSelectEntryDate,
+  archiveUserId = null,
   seed,
   maxRows = 200,
 }: Props) {
@@ -92,16 +105,28 @@ export default function SongadayMonthArchive({
     setPage(seed.nextPage);
   }, [open, seed, rows.length]);
 
+  /** Pick default month when opening / when data loads; reset if the selected month is not in `rows`. */
   useEffect(() => {
-    if (!open) return;
-    if (activeMonthKey != null) return;
-    const first = months[0] ?? null;
-    if (first) setActiveMonthKey(first);
+    if (!open || months.length === 0) return;
+    if (activeMonthKey != null && months.includes(activeMonthKey)) return;
+    setActiveMonthKey(months[0] ?? null);
   }, [open, months, activeMonthKey]);
 
   const visibleRows = useMemo(() => {
     if (!activeMonthKey) return [] as SongadayResponse[];
-    return rows.filter((r) => monthKeyFromIso(r.entry_date) === activeMonthKey);
+    const filtered = rows.filter(
+      (r) => monthKeyFromIso(r.entry_date) === activeMonthKey,
+    );
+    const seen = new Set<number>();
+    const deduped: SongadayResponse[] = [];
+    for (const r of filtered) {
+      if (seen.has(r.id)) continue;
+      seen.add(r.id);
+      deduped.push(r);
+    }
+    return deduped.sort((a, b) =>
+      String(b.entry_date).localeCompare(String(a.entry_date)),
+    );
   }, [rows, activeMonthKey]);
 
   const loadNext = useCallback(async (): Promise<SongadayResponse[] | null> => {
@@ -115,7 +140,12 @@ export default function SongadayMonthArchive({
       setLoadError(null);
       try {
         const token = await getApiAccessToken();
-        const payload = await fetchResponsesArchive(token, null, page, PAGE_SIZE);
+        const payload = await fetchResponsesArchive(
+          token,
+          archiveUserId,
+          page,
+          PAGE_SIZE,
+        );
         let merged: SongadayResponse[] = [];
         setTotal(payload.total);
         setRows((prev) => {
@@ -138,7 +168,16 @@ export default function SongadayMonthArchive({
     } finally {
       inflight.current = null;
     }
-  }, [open, loading, hasMore, total, getApiAccessToken, page, maxRows]);
+  }, [
+    open,
+    loading,
+    hasMore,
+    total,
+    getApiAccessToken,
+    page,
+    maxRows,
+    archiveUserId,
+  ]);
 
   // Initial load when opened (skip if seed will populate rows in the effect above).
   useEffect(() => {

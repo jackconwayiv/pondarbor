@@ -34,7 +34,6 @@ export default function SongadayArchivePage() {
 
   return (
     <SongadayArchivePanel
-      variant="page"
       onSelectArchiveEntryDate={(iso) => {
         navigate("/songaday", { state: { songadayEntryDate: iso } });
       }}

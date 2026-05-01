@@ -1,15 +1,16 @@
 import logging
 import time
 
-from django.conf import settings
 from django.core.cache import cache
-from django.core.mail import send_mail
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.authentication import SessionAuthentication
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from users.permissions import IsApprovedUser
+from contact.models import ContactMessage
+from users.auth0_backend import Auth0TokenAuthentication
+from users.permissions import IsApprovedUser, IsStaffUser
 
 logger = logging.getLogger(__name__)
 
@@ -55,44 +56,32 @@ def contact_submit(request):
             status=status.HTTP_429_TOO_MANY_REQUESTS,
         )
 
-    inbox = getattr(settings, "CONTACT_INBOX_EMAIL", "") or ""
-    if not inbox:
-        return Response(
-            {"detail": "Contact is not configured on the server."},
-            status=status.HTTP_503_SERVICE_UNAVAILABLE,
-        )
-
-    subject = f"PondArbor contact from {user.email}"
-    body = f"From: {user.email} (user id {user.id})\n\n{message}"
-
-    backend = (getattr(settings, "EMAIL_BACKEND", "") or "").lower()
-    if "console" in backend:
-        logger.warning(
-            "Contact form: EMAIL_BACKEND is console — message is not sent over SMTP; "
-            "it appears only in server logs. Configure SMTP (or switch EMAIL_BACKEND) in production.",
-        )
-
-    try:
-        send_mail(
-            subject,
-            body,
-            settings.DEFAULT_FROM_EMAIL,
-            [inbox],
-            fail_silently=False,
-        )
-    except Exception:
-        logger.exception(
-            "Contact form: send_mail failed (user_id=%s to inbox=%s)",
-            user.id,
-            inbox,
-        )
-        return Response(
-            {
-                "detail": "The message could not be delivered by email. Please try again later.",
-            },
-            status=status.HTTP_503_SERVICE_UNAVAILABLE,
-        )
-
-    logger.info("Contact form: email handed off successfully (user_id=%s)", user.id)
+    ContactMessage.objects.create(from_user=user, message=message)
+    logger.info("Contact form: stored message (user_id=%s)", user.id)
 
     return Response({"ok": True}, status=status.HTTP_200_OK)
+
+
+def _serialize_contact_message_row(cm: ContactMessage) -> dict:
+    profile = getattr(cm.from_user, "profile", None)
+    display_name = getattr(profile, "display_name", None) or ""
+    return {
+        "id": cm.id,
+        "message": cm.message,
+        "created_at": cm.created_at,
+        "from_user": {
+            "id": cm.from_user_id,
+            "email": cm.from_user.email,
+            "display_name": display_name,
+        },
+    }
+
+
+@api_view(["GET"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsAuthenticated, IsStaffUser])
+def contact_staff_messages(request):
+    qs = ContactMessage.objects.select_related("from_user", "from_user__profile").order_by(
+        "-created_at"
+    )
+    return Response([_serialize_contact_message_row(cm) for cm in qs])

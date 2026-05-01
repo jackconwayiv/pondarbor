@@ -7,6 +7,19 @@ export type UpcomingBirthday = {
 export type StaffPendingSummary = {
   pending_members: number;
   pending_whatif_questions: number;
+  contact_messages_count: number;
+  latest_contact_message_id: number | null;
+};
+
+export type StaffContactMessageRow = {
+  id: number;
+  message: string;
+  created_at: string;
+  from_user: {
+    id: number;
+    email: string;
+    display_name: string;
+  };
 };
 
 export type StaffUserRow = {
@@ -65,6 +78,23 @@ export async function fetchStaffPendingSummary(accessToken: string): Promise<Sta
     throw new Error(`Staff pending summary failed: ${response.status}`);
   }
   return (await response.json()) as StaffPendingSummary;
+}
+
+export async function fetchStaffContactMessages(
+  accessToken: string,
+): Promise<StaffContactMessageRow[]> {
+  const response = await fetch(`${apiBase()}/api/v1/contact/staff/messages/`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    credentials: "omit",
+  });
+  if (!response.ok) {
+    throw new Error(`Staff contact messages failed: ${response.status}`);
+  }
+  return (await response.json()) as StaffContactMessageRow[];
 }
 
 export async function fetchStaffUsers(accessToken: string): Promise<StaffUserRow[]> {

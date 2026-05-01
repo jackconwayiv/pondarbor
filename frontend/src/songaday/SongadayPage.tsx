@@ -9,7 +9,7 @@ import {
   Text,
   Textarea,
 } from "@chakra-ui/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, Link as RouterLink, useLocation, useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
@@ -36,8 +36,8 @@ import {
   createResponse,
   fetchAllSongPrompts,
   fetchPromptForDate,
-  fetchResponsesForDate,
   fetchResponsesArchive,
+  fetchResponsesForDate,
   resolveSongLinkMetadata,
   songadaySlackDailyPromptSync,
   toggleHeart,
@@ -187,8 +187,14 @@ export default function SongadayPage() {
   const [selectedDate, setSelectedDate] = useState(() =>
     startOfDay(new Date()),
   );
-  const [archiveOpen, setArchiveOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archiveSeed, setArchiveSeed] = useState<{
+    rows: SongadayResponse[];
+    nextPage: number;
+    total: number;
+  } | null>(null);
+  const archiveSeedFetched = useRef(false);
 
   const [promptPayload, setPromptPayload] =
     useState<SongadayPromptPayload | null>(null);
@@ -205,12 +211,6 @@ export default function SongadayPage() {
   const [promptErrorByDay, setPromptErrorByDay] = useState<Record<string, string | null>>({});
   const [responsesByDay, setResponsesByDay] = useState<Record<string, SongadayResponse[]>>({});
   const [responsesErrorByDay, setResponsesErrorByDay] = useState<Record<string, string | null>>({});
-
-  const [archiveSeed, setArchiveSeed] = useState<{
-    rows: SongadayResponse[];
-    nextPage: number;
-    total: number;
-  } | null>(null);
 
   const [pasteBlob, setPasteBlob] = useState("");
   const [fields, setFields] = useState(emptyFields);
@@ -248,6 +248,30 @@ export default function SongadayPage() {
     const t = window.setTimeout(() => setBulkNotice(null), 7000);
     return () => window.clearTimeout(t);
   }, [bulkNotice]);
+
+  useEffect(() => {
+    if (!isApproved || archiveSeedFetched.current) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const token = await getApiAccessToken();
+        const payload = await fetchResponsesArchive(token, null, 1, 50);
+        if (!cancelled) {
+          archiveSeedFetched.current = true;
+          setArchiveSeed({
+            rows: payload.results,
+            nextPage: 2,
+            total: payload.total,
+          });
+        }
+      } catch {
+        archiveSeedFetched.current = true;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isApproved, getApiAccessToken]);
 
   useEffect(() => {
     if (!bulkOpen || !isStaff) return;
@@ -330,44 +354,6 @@ export default function SongadayPage() {
       }
     })();
   }, [isAuthenticated, sessionUser?.user?.is_approved, getApiAccessToken]);
-
-  // Preload all of *my* entries for the current month to seed the archive view.
-  useEffect(() => {
-    if (!isAuthenticated || !sessionUser?.user?.is_approved) return;
-    if (archiveSeed) return;
-    let cancelled = false;
-    const now = new Date();
-    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    void (async () => {
-      try {
-        const token = await getApiAccessToken();
-        const PAGE_SIZE = 50;
-        const merged: SongadayResponse[] = [];
-        let page = 1;
-        let total = 0;
-        // Fetch until we’ve fully traversed the current month (archive is newest-first).
-        for (let guard = 0; guard < 10; guard++) {
-          const payload = await fetchResponsesArchive(token, null, page, PAGE_SIZE);
-          if (page === 1) total = payload.total;
-          const current = payload.results.filter((r) => r.entry_date.slice(0, 7) === currentMonthKey);
-          merged.push(...current);
-          const sawOlderThanCurrentMonth = payload.results.some(
-            (r) => r.entry_date.slice(0, 7) < currentMonthKey,
-          );
-          page += 1;
-          if (!payload.has_next || sawOlderThanCurrentMonth) break;
-        }
-        if (!cancelled) {
-          setArchiveSeed({ rows: merged, nextPage: page, total });
-        }
-      } catch {
-        // If archive preload fails, we’ll just load on open like before.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [archiveSeed, getApiAccessToken, isAuthenticated, sessionUser?.user?.is_approved]);
 
   // Keep selected day view in sync with cache (instant when prefetched).
   useEffect(() => {
@@ -772,11 +758,11 @@ export default function SongadayPage() {
               colorPalette="navy"
               color="navy"
               w="full"
-              onClick={() => setArchiveOpen((o) => !o)}
-              aria-label={archiveOpen ? "Close archive list" : "Open archive list"}
+              aria-label="Song archive"
               visibility={showArchiveToggle ? "visible" : "hidden"}
               pointerEvents={showArchiveToggle ? "auto" : "none"}
               _hover={{ color: "navy" }}
+              onClick={() => setArchiveOpen((o) => !o)}
             >
               ☰
             </PondButton>
@@ -822,29 +808,23 @@ export default function SongadayPage() {
           </Stack>
         </HStack>
 
-        {/* Archive (collapsed) - above song entry cards */}
         {showArchiveToggle ? (
-          <Collapsible.Root
-            open={archiveOpen}
-            onOpenChange={(d) => setArchiveOpen(d.open)}
-          >
+          <Collapsible.Root open={archiveOpen} onOpenChange={(d) => setArchiveOpen(d.open)}>
             <Collapsible.Content>
-              <Box mt="1">
+              <Box mt="3">
                 <SongadayMonthArchive
                   open={archiveOpen}
                   getApiAccessToken={getApiAccessToken}
+                  archiveUserId={null}
                   seed={archiveSeed}
                   onSelectEntryDate={(iso) => {
-                    const parts = iso.split("-");
-                    if (parts.length !== 3) return;
-                    const y = Number(parts[0]);
-                    const m = Number(parts[1]);
-                    const d = Number(parts[2]);
-                    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d))
-                      return;
-                    const dt = startOfDay(new Date(y, m - 1, d));
-                    const max = getTodayStart();
-                    setSelectedDate(dt.getTime() > max.getTime() ? max : dt);
+                    const dt = dateFromIsoKey(iso);
+                    if (dt) {
+                      const max = getTodayStart();
+                      setSelectedDate(
+                        dt.getTime() > max.getTime() ? max : startOfDay(dt),
+                      );
+                    }
                     setArchiveOpen(false);
                   }}
                 />
@@ -1094,7 +1074,7 @@ export default function SongadayPage() {
               >
                 {responsesLoadError}
               </Text>
-            ) : archiveOpen ? null : !myEntry && friendsResponsesOrdered.length === 0 ? null : (
+            ) : !myEntry && friendsResponsesOrdered.length === 0 ? null : (
               <SimpleGrid
                 columns={{ base: 1, md: 2 }}
                 gap="3"

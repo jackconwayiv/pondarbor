@@ -546,6 +546,7 @@ export default function WhatIfEntryPage() {
       await proposeWhatIfQuestion(token, proposeDraft);
       setProposeDraft(EMPTY_PROPOSE);
       setProposeSuccess("Submitted for review. Thanks!");
+      setProposeOpen(false);
     } catch (e) {
       setProposeError(e instanceof Error ? e.message : "Could not submit");
     } finally {
@@ -1326,9 +1327,25 @@ export default function WhatIfEntryPage() {
 
             {canProposeQuestions ? (
               <Box {...PANEL_ENTRY_CARD_PROPS}>
+                {proposeSuccess ? (
+                  <Text
+                    role="status"
+                    mb="2"
+                    fontSize={APP_TEXT_SIZES.helper}
+                    color="teal.solid"
+                    fontWeight="medium"
+                  >
+                    {proposeSuccess}
+                  </Text>
+                ) : null}
                 <Collapsible.Root
                   open={proposeOpen}
-                  onOpenChange={(details) => setProposeOpen(details.open)}
+                  onOpenChange={(details) => {
+                    setProposeOpen(details.open);
+                    if (details.open) {
+                      setProposeSuccess(null);
+                    }
+                  }}
                 >
                   <Collapsible.Trigger asChild>
                     <button
@@ -1373,16 +1390,6 @@ export default function WhatIfEntryPage() {
                         &quot;What if {"{subject}"}&quot;; only answer text is
                         stored for each option.
                       </Text>
-                      {proposeSuccess ? (
-                        <Text
-                          role="status"
-                          fontSize={APP_TEXT_SIZES.helper}
-                          color="teal.solid"
-                          fontWeight="medium"
-                        >
-                          {proposeSuccess}
-                        </Text>
-                      ) : null}
                       {proposeError ? (
                         <Text
                           role="alert"

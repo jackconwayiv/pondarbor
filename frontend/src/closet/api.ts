@@ -1,5 +1,4 @@
 import type {
-  BorrowRequest,
   ClosetActionSummary,
   ClosetImageInventoryResponse,
   ClosetItem,
@@ -83,7 +82,12 @@ export async function fetchFriendsItems(
   accessToken: string | null,
   page: number,
   pageSize: number,
-  options?: { category?: string; tag?: string; sort?: FriendsItemsSort },
+  options?: {
+    category?: string;
+    tag?: string;
+    sort?: FriendsItemsSort;
+    includeSelf?: boolean;
+  },
 ): Promise<FriendsItemsResponse> {
   const params = new URLSearchParams({
     page: String(page),
@@ -94,6 +98,7 @@ export async function fetchFriendsItems(
   const tag = (options?.tag ?? "").trim();
   if (tag) params.set("tag", tag);
   if (options?.sort) params.set("sort", options.sort);
+  if (options?.includeSelf) params.set("include_self", "true");
 
   const response = await fetch(`${apiBase()}/api/v1/closet/items/friends/?${params.toString()}`, {
     method: "GET",
@@ -229,6 +234,36 @@ export async function deleteItem(accessToken: string | null, itemId: number): Pr
   }
 }
 
+export async function hideClosetItem(
+  accessToken: string | null,
+  itemId: number,
+): Promise<ClosetItem> {
+  const response = await fetch(`${apiBase()}/api/v1/closet/items/${itemId}/hide/`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
+  }
+  return (await response.json()) as ClosetItem;
+}
+
+export async function unhideClosetItem(
+  accessToken: string | null,
+  itemId: number,
+): Promise<ClosetItem> {
+  const response = await fetch(`${apiBase()}/api/v1/closet/items/${itemId}/unhide/`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
+  }
+  return (await response.json()) as ClosetItem;
+}
+
 export async function fetchMyImageInventory(
   accessToken: string | null,
 ): Promise<ClosetImageInventoryResponse> {
@@ -269,21 +304,6 @@ export async function createBorrowRequest(
   if (!response.ok) {
     throw new Error(await parseApiError(response));
   }
-}
-
-export async function fetchBorrowRequests(
-  accessToken: string | null,
-  itemId: number,
-): Promise<BorrowRequest[]> {
-  const response = await fetch(`${apiBase()}/api/v1/closet/items/${itemId}/borrow-requests/list/`, {
-    method: "GET",
-    headers: authHeaders(accessToken),
-    credentials: "omit",
-  });
-  if (!response.ok) {
-    throw new Error(await parseApiError(response));
-  }
-  return (await response.json()) as BorrowRequest[];
 }
 
 export async function approveBorrowRequest(

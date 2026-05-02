@@ -212,3 +212,43 @@ class ClosetFriendsBrowseApiTests(ClosetTestMixin, TestCase):
         ids = {row["id"] for row in resp.json()}
         self.assertNotIn(hidden.id, ids)
 
+    def test_friends_browse_include_self_returns_my_items(self):
+        mine = self.make_item(owner=self.borrower, holder=self.borrower, name="Mine")
+        friend_item = self.make_item(owner=self.owner, holder=self.owner, name="Friend's")
+        resp = self.borrower_client.get("/api/v1/closet/items/friends/?include_self=true")
+        self.assertEqual(resp.status_code, 200)
+        ids = {row["id"] for row in resp.json()["results"]}
+        self.assertIn(mine.id, ids)
+        self.assertIn(friend_item.id, ids)
+
+    def test_friends_browse_include_self_in_friends_only_scope(self):
+        prof = self.borrower.profile
+        prof.social_read_scope = "friends_only"
+        prof.save(update_fields=["social_read_scope"])
+        mine = self.make_item(owner=self.borrower, holder=self.borrower, name="Mine")
+        friend_item = self.make_item(owner=self.owner, holder=self.owner, name="Friend's")
+        other_item = self.make_item(owner=self.other, holder=self.other, name="Other's")
+        resp = self.borrower_client.get("/api/v1/closet/items/friends/?include_self=true")
+        self.assertEqual(resp.status_code, 200)
+        ids = {row["id"] for row in resp.json()["results"]}
+        self.assertIn(mine.id, ids)
+        self.assertIn(friend_item.id, ids)
+        self.assertNotIn(other_item.id, ids)
+
+    def test_friends_browse_include_self_loaned_my_item_still_included(self):
+        mine = self.make_item(owner=self.borrower, holder=self.borrower, name="Mine loaned")
+        # Simulate a loan-out (current holder is someone else)
+        mine.current_holder_user = self.owner
+        mine.save(update_fields=["current_holder_user", "updated_at"])
+        resp = self.borrower_client.get("/api/v1/closet/items/friends/?include_self=true")
+        self.assertEqual(resp.status_code, 200)
+        ids = {row["id"] for row in resp.json()["results"]}
+        self.assertIn(mine.id, ids)
+
+    def test_friends_browse_default_still_excludes_my_items(self):
+        mine = self.make_item(owner=self.borrower, holder=self.borrower, name="Mine")
+        resp = self.borrower_client.get("/api/v1/closet/items/friends/")
+        self.assertEqual(resp.status_code, 200)
+        ids = {row["id"] for row in resp.json()["results"]}
+        self.assertNotIn(mine.id, ids)
+

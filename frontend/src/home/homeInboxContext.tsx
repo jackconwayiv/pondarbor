@@ -157,7 +157,7 @@ function deriveHomeInbox(
   if (sessionUser.user?.is_approved && d.closetOutstandingActions > 0) {
     prompts.push({
       id: "closet-actions",
-      to: "/closet?tab=my",
+      to: "/closet?tab=items",
       text:
         d.closetOutstandingActions === 1
           ? "You have 1 outstanding action for items in your community closet."

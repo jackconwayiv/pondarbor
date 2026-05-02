@@ -19,7 +19,7 @@ from rest_framework import status
 from rest_framework.status import HTTP_201_CREATED, HTTP_204_NO_CONTENT
 
 from closet.constants import CANONICAL_CLOSET_CATEGORIES, FRIENDS_ITEMS_CATEGORY_OTHER
-from closet.models import BorrowRequest, Item, Loan
+from closet.models import BorrowRequest, Item, ItemHidden, Loan
 from closet.serializers import (
     BorrowRequestCreateSerializer,
     BorrowRequestSerializer,
@@ -32,6 +32,8 @@ from closet.serializers import (
     expected_closet_image_key_prefix,
 )
 from closet.services import (
+    can_hide_item_for_user,
+    hidden_item_ids_for_user,
     item_fk_owner_publication_eligible_q,
     owner_eligible_for_closet_publication_q,
 )
@@ -145,6 +147,43 @@ def _visible_borrow_requests():
 
 def _visible_loans():
     return Loan.objects.filter(deleted_at__isnull=True)
+
+
+def _item_serializer_context(request, items):
+    """Build a serializer context that batches the per-viewer hidden lookup.
+
+    Pass ``items`` as a list/iterable of Item or item ids (or any mix). For
+    single-item serialization just pass ``[item]``.
+    """
+    user = getattr(request, "user", None)
+    ids: list[int] = []
+    for item in items or []:
+        if isinstance(item, Item):
+            ids.append(item.id)
+        elif isinstance(item, int):
+            ids.append(item)
+    hidden_ids = hidden_item_ids_for_user(user, ids)
+    return {"request": request, "viewer_hidden_item_ids": hidden_ids}
+
+
+def _prefetch_pending_borrow_requests(items: list[Item]) -> None:
+    """Attach _prefetched_pending_borrow_requests on each Item for ItemSerializer (owner-only field)."""
+    if not items:
+        return
+    by_item: dict[int, list[BorrowRequest]] = {i.id: [] for i in items}
+    rows = (
+        BorrowRequest.objects.filter(
+            item_id__in=by_item.keys(),
+            status=BorrowRequest.Status.PENDING,
+            deleted_at__isnull=True,
+        )
+        .select_related("requester_user__profile")
+        .order_by("date_needed_by", "-created_at")
+    )
+    for r in rows:
+        by_item[r.item_id].append(r)
+    for item in items:
+        item._prefetched_pending_borrow_requests = by_item[item.id]
 
 
 FRIENDS_ITEMS_SORT_FIELDS = {
@@ -269,7 +308,10 @@ def items_mine(request):
         serializer.is_valid(raise_exception=True)
         item = serializer.save()
         evaluate_closet_sharing_is_caring_for_user(item.owner_user_id)
-        return Response(ItemSerializer(item, context={"request": request}).data, status=HTTP_201_CREATED)
+        return Response(
+            ItemSerializer(item, context=_item_serializer_context(request, [item])).data,
+            status=HTTP_201_CREATED,
+        )
 
     user = request.user
     base_qs = _item_queryset()
@@ -337,13 +379,21 @@ def items_mine(request):
         .exclude(id__in=seen_declined)
         .order_by("-updated_at")
     )
+    borrowed_list = list(borrowed_by_me_qs)
+    custody_offered_list = list(custody_offered_qs)
+    owned_list = list(owned_qs)
+    all_items = (
+        declined_items + borrowed_list + custody_offered_list + requested_items + owned_list
+    )
+    _prefetch_pending_borrow_requests(all_items)
+    ctx = _item_serializer_context(request, all_items)
     return Response(
         {
-            "declined_by_me": ItemSerializer(declined_items, many=True, context={"request": request}).data,
-            "borrowed_by_me": ItemSerializer(borrowed_by_me_qs, many=True, context={"request": request}).data,
-            "custody_offered_to_me": ItemSerializer(custody_offered_qs, many=True, context={"request": request}).data,
-            "requested_by_me": ItemSerializer(requested_items, many=True, context={"request": request}).data,
-            "owned_by_me": ItemSerializer(owned_qs, many=True, context={"request": request}).data,
+            "declined_by_me": ItemSerializer(declined_items, many=True, context=ctx).data,
+            "borrowed_by_me": ItemSerializer(borrowed_list, many=True, context=ctx).data,
+            "custody_offered_to_me": ItemSerializer(custody_offered_list, many=True, context=ctx).data,
+            "requested_by_me": ItemSerializer(requested_items, many=True, context=ctx).data,
+            "owned_by_me": ItemSerializer(owned_list, many=True, context=ctx).data,
         }
     )
 
@@ -354,16 +404,24 @@ def items_friends(request):
     user = request.user
     ctx = viewer_context(viewer=user)
     friend_ids = ctx.friend_ids
+    include_self = (request.query_params.get("include_self") or "").strip().lower() == "true"
 
     # Viewer preference (soft filter) controls whether this browse is friends-only.
     scope = getattr(getattr(user, "profile", None), "social_read_scope", None) or Profile.SocialReadScope.APPROVED_USERS
     if scope == Profile.SocialReadScope.FRIENDS_ONLY:
-        qs = _item_queryset().filter(owner_user_id__in=list(friend_ids)).exclude(owner_user=user)
+        owner_ids = list(friend_ids)
+        if include_self:
+            owner_ids = list({*owner_ids, user.id})
+        qs = _item_queryset().filter(owner_user_id__in=owner_ids)
+        if not include_self:
+            qs = qs.exclude(owner_user=user)
     else:
-        qs = _item_queryset().exclude(owner_user=user)
+        qs = _item_queryset()
+        if not include_self:
+            qs = qs.exclude(owner_user=user)
 
-    # Enforce owners' publish visibility.
-    qs = qs.filter(
+    # Enforce owners' publish visibility (self always passes when included).
+    visibility_q = (
         Q(owner_user__profile__social_publish_visibility=Profile.SocialPublishVisibility.ALL_APPROVED)
         | Q(owner_user__profile__isnull=True)
         | (
@@ -371,6 +429,9 @@ def items_friends(request):
             & Q(owner_user__profile__social_publish_visibility=Profile.SocialPublishVisibility.FRIENDS_ONLY)
         )
     )
+    if include_self:
+        visibility_q = visibility_q | Q(owner_user_id=user.id)
+    qs = qs.filter(visibility_q)
 
     category = (request.query_params.get("category") or "").strip()
     if category:
@@ -395,9 +456,12 @@ def items_friends(request):
     end = start + page_size
     total = qs.count()
     rows = list(qs[start:end])
+    _prefetch_pending_borrow_requests(rows)
     return Response(
         {
-            "results": ItemSerializer(rows, many=True, context={"request": request}).data,
+            "results": ItemSerializer(
+                rows, many=True, context=_item_serializer_context(request, rows)
+            ).data,
             "page": page,
             "page_size": page_size,
             "total": total,
@@ -421,13 +485,15 @@ def items_friend_owner(request, owner_user_id: int):
             {"detail": "You can only browse closet items owned by approved friends."},
             status=status.HTTP_403_FORBIDDEN,
         )
-    rows = (
+    rows = list(
         _item_queryset()
         .filter(owner_user_id=owner_user_id)
         .exclude(owner_user_id=user.id)
         .order_by("-updated_at", "-id")
     )
-    return Response(ItemSerializer(rows, many=True, context={"request": request}).data)
+    return Response(
+        ItemSerializer(rows, many=True, context=_item_serializer_context(request, rows)).data
+    )
 
 
 @api_view(["GET", "PATCH", "DELETE"])
@@ -443,7 +509,9 @@ def item_detail(request, item_id: int):
     item = get_object_or_404(qs, id=item_id)
 
     if request.method == "GET":
-        return Response(ItemSerializer(item, context={"request": request}).data)
+        return Response(
+            ItemSerializer(item, context=_item_serializer_context(request, [item])).data
+        )
 
     if item.owner_user_id != user.id:
         return Response({"detail": "Only the owner can modify this item."}, status=403)
@@ -457,12 +525,53 @@ def item_detail(request, item_id: int):
         )
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(ItemSerializer(item, context={"request": request}).data)
+        return Response(
+            ItemSerializer(item, context=_item_serializer_context(request, [item])).data
+        )
 
     item.deleted_at = timezone.now()
     item.save(update_fields=["deleted_at", "updated_at"])
     evaluate_closet_sharing_is_caring_for_user(item.owner_user_id)
     return Response(status=HTTP_204_NO_CONTENT)
+
+
+@api_view(["POST"])
+@permission_classes([IsApprovedUser])
+def item_hide(request, item_id: int):
+    user = request.user
+    qs = _item_queryset().filter(
+        Q(owner_user=user)
+        | Q(current_holder_user=user)
+        | Q(custody_pending_acceptance_user=user)
+        | Q(owner_user_id__in=friend_ids_for_user(user=user))
+    )
+    item = get_object_or_404(qs, id=item_id)
+    if not can_hide_item_for_user(item, user):
+        return Response(
+            {"detail": "This item cannot be hidden because you have an active relationship with it."},
+            status=400,
+        )
+    ItemHidden.objects.get_or_create(user=user, item=item)
+    return Response(
+        ItemSerializer(item, context=_item_serializer_context(request, [item])).data
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsApprovedUser])
+def item_unhide(request, item_id: int):
+    user = request.user
+    qs = _item_queryset().filter(
+        Q(owner_user=user)
+        | Q(current_holder_user=user)
+        | Q(custody_pending_acceptance_user=user)
+        | Q(owner_user_id__in=friend_ids_for_user(user=user))
+    )
+    item = get_object_or_404(qs, id=item_id)
+    ItemHidden.objects.filter(user=user, item=item).delete()
+    return Response(
+        ItemSerializer(item, context=_item_serializer_context(request, [item])).data
+    )
 
 
 @api_view(["POST"])

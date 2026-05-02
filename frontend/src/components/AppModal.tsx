@@ -4,15 +4,22 @@ import type { ComponentProps, ReactNode } from "react";
 export type AppModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  title: ReactNode;
+  /** Shown in the header when `showHeader` is true. */
+  title?: ReactNode;
   description?: ReactNode;
   children: ReactNode;
+  /** When false, no header row (title + close). Dismiss with backdrop click or Escape (default dialog behavior). */
+  showHeader?: boolean;
+  /** When false, no X button. Only applies if `showHeader` is true. */
+  showCloseButton?: boolean;
   /** Max width token-ish: sm ~22rem, md ~28rem, lg ~36rem, xl ~42rem */
   size?: "sm" | "md" | "lg" | "xl";
   /** Optional Chakra `Dialog` part props for layout and chrome. */
   backdropProps?: ComponentProps<typeof Dialog.Backdrop>;
   positionerProps?: ComponentProps<typeof Dialog.Positioner>;
   contentProps?: ComponentProps<typeof Dialog.Content>;
+  /** Forwarded to `Dialog.Root` (e.g. `preventScroll={false}` so the page can scroll). */
+  rootProps?: Omit<ComponentProps<typeof Dialog.Root>, "children">;
   headerProps?: ComponentProps<typeof Dialog.Header>;
   descriptionProps?: ComponentProps<typeof Dialog.Description>;
   bodyProps?: ComponentProps<typeof Dialog.Body>;
@@ -36,15 +43,19 @@ export function AppModal({
   description,
   children,
   size = "md",
+  showHeader = true,
+  showCloseButton = true,
   backdropProps,
   positionerProps,
   contentProps,
+  rootProps,
   headerProps,
   descriptionProps,
   bodyProps,
 }: AppModalProps) {
   return (
     <Dialog.Root
+      {...rootProps}
       open={open}
       lazyMount
       unmountOnExit
@@ -72,14 +83,18 @@ export function AppModal({
           p="2"
           {...contentProps}
         >
-          <Dialog.Header gap="2" p="0" {...headerProps}>
-            <Dialog.Title fontWeight="semibold" fontSize="lg" lineHeight="short">
-              {title}
-            </Dialog.Title>
-            <Dialog.CloseTrigger asChild>
-              <CloseButton size="sm" />
-            </Dialog.CloseTrigger>
-          </Dialog.Header>
+          {showHeader ? (
+            <Dialog.Header gap="2" p="0" {...headerProps}>
+              <Dialog.Title fontWeight="semibold" fontSize="lg" lineHeight="short">
+                {title}
+              </Dialog.Title>
+              {showCloseButton ? (
+                <Dialog.CloseTrigger asChild>
+                  <CloseButton size="sm" />
+                </Dialog.CloseTrigger>
+              ) : null}
+            </Dialog.Header>
+          ) : null}
           {description ? (
             <Dialog.Description
               fontSize="sm"

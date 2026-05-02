@@ -5,7 +5,7 @@ import { APP_TEXT_SIZES, MAPPED_LIST_CARD_OUTER_PROPS } from "../theme/typograph
 import type { ClosetItem } from "./types";
 
 /**
- * Compact list row linking to `/closet/items/:id` (Meal-style list → detail).
+ * Compact list row linking to Community Closet Items inline detail (`?item=`).
  */
 export function ClosetItemLinkCard({
   item,
@@ -24,7 +24,7 @@ export function ClosetItemLinkCard({
 
   return (
     <RouterLink
-      to={`/closet/items/${item.id}`}
+      to={`/closet?tab=items&item=${item.id}`}
       state={{ closetReturnTo }}
       style={{ textDecoration: "none", color: "inherit", display: "block" }}
     >

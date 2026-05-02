@@ -65,6 +65,29 @@ class BorrowRequest(models.Model):
         ordering = ["status", "date_needed_by", "-created_at"]
 
 
+class ItemHidden(models.Model):
+    """Per-user 'hide this item from my browse grid' marker.
+
+    Hidden items are still returned by browse APIs (so the client can toggle
+    'Show Hidden' without a refetch). The frontend filters them out by default.
+    Hiding is restricted server-side to items with no active relationship to
+    the user (not owner, not borrower, not pending custody recipient, no
+    pending/declined borrow request).
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="closet_hidden_items",
+    )
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name="hidden_by_users")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("user", "item")]
+        indexes = [models.Index(fields=["user", "item"])]
+
+
 class Loan(models.Model):
     class Status(models.TextChoices):
         ACTIVE = "active", "Active"

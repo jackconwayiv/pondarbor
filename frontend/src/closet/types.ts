@@ -31,12 +31,16 @@ export type ClosetItem = {
   image_url?: string;
   custody_disputed: boolean;
   pending_request_count: number;
+  /** Owner-only: pending borrow requests (included on list/detail payloads). */
+  pending_borrow_requests: BorrowRequest[];
   my_pending_request: BorrowRequest | null;
   my_declined_request: BorrowRequest | null;
   active_loan_id: number | null;
   active_loan_marked_returned_by_borrower: boolean;
   custody_marked_returned_by_holder: boolean;
   pending_custody_user?: ClosetUser | null;
+  /** True when the viewer has marked this item as hidden in their browse grid. */
+  hidden_by_me: boolean;
   created_at: string;
   updated_at: string;
 };

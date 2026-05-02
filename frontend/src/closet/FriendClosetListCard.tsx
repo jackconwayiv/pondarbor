@@ -18,7 +18,7 @@ export function FriendClosetListCard({ item, closetReturnTo }: FriendClosetListC
 
   return (
     <RouterLink
-      to={`/closet/items/${item.id}`}
+      to={`/closet?tab=items&item=${item.id}`}
       state={{ closetReturnTo }}
       aria-label={`Open item: ${item.name}`}
       style={{

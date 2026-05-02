@@ -1,11 +1,11 @@
 import {
   Box,
-  Card,
+  Checkbox,
   CloseButton,
+  Collapsible,
   Dialog,
   HStack,
   Heading,
-  Image,
   Input,
   NativeSelectField,
   NativeSelectRoot,
@@ -24,12 +24,15 @@ import {
   validateClosetFreeText,
   validateClosetItemName,
 } from "../forms/validation";
+import { AppModal } from "../components/AppModal";
 import {
+  PanelBlockSkeleton,
   PanelListRowSkeleton,
   PanelEmptyState,
   PanelSessionReconnect,
   SessionLoadingCard,
 } from "../components/panelStatus";
+import { fetchFriendsList } from "../friends/api";
 import PondButton from "../PondButton";
 import { fullBleedStackProps, useIsMobile } from "../responsive";
 import {
@@ -49,6 +52,7 @@ import {
   deleteBorrowRequest,
   deleteMyImage,
   fetchFriendsItems,
+  fetchItem,
   fetchMyImageInventory,
   fetchMyItems,
   rejectPendingCustody,
@@ -60,7 +64,11 @@ import {
   isAllowedClosetCategory,
 } from "./categories";
 import { ClosetCategoryFields } from "./ClosetCategoryFields";
+import { ClosetImageInventoryCard } from "./ClosetImageInventoryCard";
+import { ClosetItemDetailContent } from "./ClosetItemDetailContent";
+import type { ClosetItemModalNav } from "./ClosetItemModalFooter";
 import { ClosetItemLinkCard } from "./ClosetItemLinkCard";
+import { ClosetOwnerManagePanel } from "./ClosetOwnerManagePanel";
 import {
   closetPendingCount,
   coerceClosetUserId,
@@ -69,22 +77,58 @@ import {
 } from "./closetUtils";
 import { FriendClosetListCard } from "./FriendClosetListCard";
 import { uploadClosetImageViaPresign } from "./imageUpload";
-import type { ClosetImageInventoryRow, ClosetItem } from "./types";
+import type {
+  ClosetImageInventoryRow,
+  ClosetItem,
+  FriendsItemsResponse,
+  MyItemsResponse,
+} from "./types";
 
-type ClosetTab = "my" | "friends" | "images";
-const FRIENDS_PAGE_SIZE = 10;
-const MY_ITEMS_PAGE_SIZE = 10;
+type ClosetTab = "items" | "images";
+type PendingNeighborNav = "first" | "last" | null;
+const ITEMS_PAGE_SIZE = 15;
+const ACTIONS_PAGE_SIZE = 15;
 const CLOSET_PLACEHOLDER_PROPS = PANEL_FORM_PLACEHOLDER_PROPS;
+const ITEMS_RETURN_TO = "/closet?tab=items";
+
+/** Resolve an item for the modal from data already loaded with the page (no extra GET). */
+function findClosetItemInLoadedData(
+  id: number,
+  gridItems: ClosetItem[],
+  myItems: MyItemsResponse,
+): ClosetItem | undefined {
+  const inGrid = gridItems.find((i) => i.id === id);
+  if (inGrid) return inGrid;
+  const buckets: ClosetItem[] = [
+    ...myItems.declined_by_me,
+    ...myItems.borrowed_by_me,
+    ...myItems.custody_offered_to_me,
+    ...myItems.requested_by_me,
+    ...myItems.owned_by_me,
+  ];
+  return buckets.find((i) => i.id === id);
+}
 
 function parseTab(value: string | null): ClosetTab {
-  if (value === "friends") return "friends";
   if (value === "images") return "images";
-  return "my";
+  // Legacy ?tab=my and ?tab=friends both fold into the new merged Items tab.
+  return "items";
 }
 
 export default function ClosetPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = parseTab(searchParams.get("tab"));
+  const itemParam = searchParams.get("item");
+  const selectedItemIdParsed =
+    itemParam != null && itemParam !== ""
+      ? Number.parseInt(itemParam, 10)
+      : Number.NaN;
+  const selectedItemIdValid =
+    Number.isFinite(selectedItemIdParsed) && selectedItemIdParsed >= 1
+      ? selectedItemIdParsed
+      : null;
+  const itemQueryInvalid =
+    Boolean(itemParam && itemParam !== "") && selectedItemIdValid == null;
   const isMobile = useIsMobile();
   const {
     isAuthenticated,
@@ -94,34 +138,31 @@ export default function ClosetPage() {
     refreshSession,
     error: sessionError,
   } = useAppSession();
-  const [myItems, setMyItems] = useState<{
-    declined_by_me: ClosetItem[];
-    borrowed_by_me: ClosetItem[];
-    custody_offered_to_me: ClosetItem[];
-    requested_by_me: ClosetItem[];
-    owned_by_me: ClosetItem[];
-  }>({
+  const [myItems, setMyItems] = useState<MyItemsResponse>({
     declined_by_me: [],
     borrowed_by_me: [],
     custody_offered_to_me: [],
     requested_by_me: [],
     owned_by_me: [],
   });
-  const [friendsItems, setFriendsItems] = useState<ClosetItem[]>([]);
-  const [friendsPage, setFriendsPage] = useState(1);
-  const [friendsCategoryFilter, setFriendsCategoryFilter] = useState("");
-  const [friendsTagInput, setFriendsTagInput] = useState("");
-  const [friendsTagFilter, setFriendsTagFilter] = useState("");
-  const [friendsSort, setFriendsSort] =
-    useState<FriendsItemsSort>("updated_desc");
-  const [friendsFilterToolsOpen, setFriendsFilterToolsOpen] = useState(false);
-  const [declinedPage, setDeclinedPage] = useState(1);
-  const [borrowedPage, setBorrowedPage] = useState(1);
-  const [custodyOfferedPage, setCustodyOfferedPage] = useState(1);
-  const [requestedPage, setRequestedPage] = useState(1);
-  const [ownedPage, setOwnedPage] = useState(1);
-  const [loanedPage, setLoanedPage] = useState(1);
-  const [friendsTotal, setFriendsTotal] = useState(0);
+  const [gridItems, setGridItems] = useState<ClosetItem[]>([]);
+  const [gridPage, setGridPage] = useState(1);
+  const [gridTotal, setGridTotal] = useState(0);
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [tagInput, setTagInput] = useState("");
+  const [tagFilter, setTagFilter] = useState("");
+  const [sortKey, setSortKey] = useState<FriendsItemsSort>("updated_desc");
+  const [showMyItems, setShowMyItems] = useState(true);
+  const [showHidden, setShowHidden] = useState(false);
+  const [filterToolsOpen, setFilterToolsOpen] = useState(false);
+  const [actionsPage, setActionsPage] = useState({
+    declined: 1,
+    borrowed: 1,
+    custodyOffered: 1,
+    requested: 1,
+    loaned: 1,
+    pending: 1,
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
@@ -136,11 +177,7 @@ export default function ClosetPage() {
   ] = useState<number | null>(null);
   const confirmDeleteDeclinedRequestButtonRef =
     useRef<HTMLButtonElement | null>(null);
-  const [ownedNotice, setOwnedNotice] = useState<{
-    kind: "success" | "error";
-    message: string;
-  } | null>(null);
-  const [friendsNotice, setFriendsNotice] = useState<{
+  const [notice, setNotice] = useState<{
     kind: "success" | "error";
     message: string;
   } | null>(null);
@@ -157,28 +194,54 @@ export default function ClosetPage() {
     Record<string, HTMLButtonElement | null>
   >({});
   const [imagesFilter, setImagesFilter] = useState<"unused" | "all">("unused");
+  /** Set when the open id is not in gridItems or myItems (e.g. another page, deep link). */
+  const [itemFetchFallback, setItemFetchFallback] = useState<ClosetItem | null>(null);
+  const [selectedItemError, setSelectedItemError] = useState<string | null>(null);
+  const [expandedNotice, setExpandedNotice] = useState<{
+    kind: "success" | "error";
+    message: string;
+  } | null>(null);
+  const [friendsForCustody, setFriendsForCustody] = useState<
+    Array<{ id: number; label: string }>
+  >([]);
+  const [pendingNeighborNav, setPendingNeighborNav] =
+    useState<PendingNeighborNav>(null);
 
   const meId = coerceClosetUserId(sessionUser?.user.id);
-  const totalFriendsPages = Math.max(
-    1,
-    Math.ceil(friendsTotal / FRIENDS_PAGE_SIZE),
+  const totalGridPages = Math.max(1, Math.ceil(gridTotal / ITEMS_PAGE_SIZE));
+  const visibleGridItems = useMemo(
+    () =>
+      gridItems.filter((item) => {
+        if (!showMyItems && sameClosetUserId(item.owner_user.id, meId)) {
+          return false;
+        }
+        if (!showHidden && item.hidden_by_me) {
+          return false;
+        }
+        return true;
+      }),
+    [gridItems, showMyItems, showHidden, meId],
   );
-  const totalDeclinedPages = Math.max(
-    1,
-    Math.ceil(myItems.declined_by_me.length / MY_ITEMS_PAGE_SIZE),
+  const displayItem = useMemo(() => {
+    if (selectedItemIdValid == null) return null;
+    const fromLoaded = findClosetItemInLoadedData(
+      selectedItemIdValid,
+      gridItems,
+      myItems,
+    );
+    return fromLoaded ?? itemFetchFallback;
+  }, [selectedItemIdValid, gridItems, myItems, itemFetchFallback]);
+  const currentIndex = useMemo(
+    () =>
+      selectedItemIdValid == null
+        ? -1
+        : visibleGridItems.findIndex((i) => i.id === selectedItemIdValid),
+    [visibleGridItems, selectedItemIdValid],
   );
-  const totalBorrowedPages = Math.max(
-    1,
-    Math.ceil(myItems.borrowed_by_me.length / MY_ITEMS_PAGE_SIZE),
-  );
-  const totalCustodyOfferedPages = Math.max(
-    1,
-    Math.ceil(myItems.custody_offered_to_me.length / MY_ITEMS_PAGE_SIZE),
-  );
-  const totalRequestedPages = Math.max(
-    1,
-    Math.ceil(myItems.requested_by_me.length / MY_ITEMS_PAGE_SIZE),
-  );
+  const hasPrev = currentIndex > 0 || gridPage > 1;
+  const hasNext =
+    (currentIndex >= 0 && currentIndex < visibleGridItems.length - 1) ||
+    gridPage < totalGridPages;
   const loanedItems = useMemo(
     () =>
       myItems.owned_by_me.filter(
@@ -195,62 +258,59 @@ export default function ClosetPage() {
       ),
     [myItems.owned_by_me, meId],
   );
-  const ownedWithoutPendingRequests = useMemo(
-    () =>
-      myItems.owned_by_me.filter(
-        (item) =>
-          closetPendingCount(item) === 0 &&
-          sameClosetUserId(item.current_holder_user.id, meId),
-      ),
-    [myItems.owned_by_me, meId],
-  );
-  const totalLoanedPages = Math.max(
-    1,
-    Math.ceil(loanedItems.length / MY_ITEMS_PAGE_SIZE),
-  );
-  const totalOwnedPages = Math.max(
-    1,
-    Math.ceil(ownedWithoutPendingRequests.length / MY_ITEMS_PAGE_SIZE),
-  );
-  const safeDeclinedPage = Math.min(declinedPage, totalDeclinedPages);
-  const safeBorrowedPage = Math.min(borrowedPage, totalBorrowedPages);
-  const safeCustodyOfferedPage = Math.min(
-    custodyOfferedPage,
+
+  const actionCounts = {
+    declined: myItems.declined_by_me.length,
+    custodyOffered: myItems.custody_offered_to_me.length,
+    pending: ownedWithPendingRequests.length,
+    borrowed: myItems.borrowed_by_me.length,
+    requested: myItems.requested_by_me.length,
+    loaned: loanedItems.length,
+  };
+  const totalActionItems =
+    actionCounts.declined +
+    actionCounts.custodyOffered +
+    actionCounts.pending +
+    actionCounts.borrowed +
+    actionCounts.requested +
+    actionCounts.loaned;
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const lastActionsAutoOpenRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    const shouldOpen = totalActionItems > 0;
+    if (lastActionsAutoOpenRef.current === shouldOpen) return;
+    lastActionsAutoOpenRef.current = shouldOpen;
+    setActionsOpen(shouldOpen);
+  }, [totalActionItems]);
+
+  const totalPagesFor = (count: number) =>
+    Math.max(1, Math.ceil(count / ACTIONS_PAGE_SIZE));
+  const totalDeclinedPages = totalPagesFor(actionCounts.declined);
+  const totalBorrowedPages = totalPagesFor(actionCounts.borrowed);
+  const totalCustodyOfferedPages = totalPagesFor(actionCounts.custodyOffered);
+  const totalRequestedPages = totalPagesFor(actionCounts.requested);
+  const totalLoanedPages = totalPagesFor(actionCounts.loaned);
+  const safe = (page: number, total: number) => Math.min(page, total);
+  const safeDeclinedPage = safe(actionsPage.declined, totalDeclinedPages);
+  const safeBorrowedPage = safe(actionsPage.borrowed, totalBorrowedPages);
+  const safeCustodyOfferedPage = safe(
+    actionsPage.custodyOffered,
     totalCustodyOfferedPages,
   );
-  const safeRequestedPage = Math.min(requestedPage, totalRequestedPages);
-  const safeOwnedPage = Math.min(ownedPage, totalOwnedPages);
-  const safeLoanedPage = Math.min(loanedPage, totalLoanedPages);
-  const declinedStart = (safeDeclinedPage - 1) * MY_ITEMS_PAGE_SIZE;
-  const borrowedStart = (safeBorrowedPage - 1) * MY_ITEMS_PAGE_SIZE;
-  const custodyOfferedStart = (safeCustodyOfferedPage - 1) * MY_ITEMS_PAGE_SIZE;
-  const requestedStart = (safeRequestedPage - 1) * MY_ITEMS_PAGE_SIZE;
-  const ownedStart = (safeOwnedPage - 1) * MY_ITEMS_PAGE_SIZE;
-  const loanedStart = (safeLoanedPage - 1) * MY_ITEMS_PAGE_SIZE;
-  const visibleDeclined = myItems.declined_by_me.slice(
-    declinedStart,
-    declinedStart + MY_ITEMS_PAGE_SIZE,
+  const safeRequestedPage = safe(actionsPage.requested, totalRequestedPages);
+  const safeLoanedPage = safe(actionsPage.loaned, totalLoanedPages);
+  const slice = (rows: ClosetItem[], page: number) => {
+    const start = (page - 1) * ACTIONS_PAGE_SIZE;
+    return rows.slice(start, start + ACTIONS_PAGE_SIZE);
+  };
+  const visibleDeclined = slice(myItems.declined_by_me, safeDeclinedPage);
+  const visibleBorrowed = slice(myItems.borrowed_by_me, safeBorrowedPage);
+  const visibleCustodyOffered = slice(
+    myItems.custody_offered_to_me,
+    safeCustodyOfferedPage,
   );
-  const visibleBorrowed = myItems.borrowed_by_me.slice(
-    borrowedStart,
-    borrowedStart + MY_ITEMS_PAGE_SIZE,
-  );
-  const visibleCustodyOffered = myItems.custody_offered_to_me.slice(
-    custodyOfferedStart,
-    custodyOfferedStart + MY_ITEMS_PAGE_SIZE,
-  );
-  const visibleRequested = myItems.requested_by_me.slice(
-    requestedStart,
-    requestedStart + MY_ITEMS_PAGE_SIZE,
-  );
-  const visibleOwned = ownedWithoutPendingRequests.slice(
-    ownedStart,
-    ownedStart + MY_ITEMS_PAGE_SIZE,
-  );
-  const visibleLoaned = loanedItems.slice(
-    loanedStart,
-    loanedStart + MY_ITEMS_PAGE_SIZE,
-  );
+  const visibleRequested = slice(myItems.requested_by_me, safeRequestedPage);
+  const visibleLoaned = slice(loanedItems, safeLoanedPage);
 
   const setActiveTab = (tab: ClosetTab) => {
     const next = new URLSearchParams(searchParams);
@@ -258,33 +318,25 @@ export default function ClosetPage() {
     setSearchParams(next, { replace: true });
   };
 
-  const loadMine = useCallback(async () => {
+  const loadMine = useCallback(async (): Promise<MyItemsResponse> => {
     const token = await getApiAccessToken();
     const payload = await fetchMyItems(token);
     setMyItems(payload);
+    return payload;
   }, [getApiAccessToken]);
 
-  const loadFriends = useCallback(async () => {
+  const loadGrid = useCallback(async (): Promise<FriendsItemsResponse> => {
     const token = await getApiAccessToken();
-    const payload = await fetchFriendsItems(
-      token,
-      friendsPage,
-      FRIENDS_PAGE_SIZE,
-      {
-        category: friendsCategoryFilter.trim(),
-        tag: friendsTagFilter,
-        sort: friendsSort,
-      },
-    );
-    setFriendsItems(payload.results);
-    setFriendsTotal(payload.total);
-  }, [
-    friendsCategoryFilter,
-    friendsPage,
-    friendsSort,
-    friendsTagFilter,
-    getApiAccessToken,
-  ]);
+    const payload = await fetchFriendsItems(token, gridPage, ITEMS_PAGE_SIZE, {
+      category: categoryFilter.trim(),
+      tag: tagFilter,
+      sort: sortKey,
+      includeSelf: true,
+    });
+    setGridItems(payload.results);
+    setGridTotal(payload.total);
+    return payload;
+  }, [categoryFilter, gridPage, sortKey, tagFilter, getApiAccessToken]);
 
   const loadImages = useCallback(async () => {
     const token = await getApiAccessToken();
@@ -297,11 +349,11 @@ export default function ClosetPage() {
     setError(null);
     const parts = await Promise.allSettled([
       loadMine(),
-      loadFriends(),
+      loadGrid(),
       loadImages(),
     ]);
     const failures: string[] = [];
-    const labels = ["your items", "friends' items", "image library"] as const;
+    const labels = ["your items", "items grid", "image library"] as const;
     parts.forEach((result, i) => {
       if (result.status === "rejected") {
         const msg =
@@ -315,16 +367,217 @@ export default function ClosetPage() {
       setError(failures.join(" · "));
     }
     setLoading(false);
-  }, [loadFriends, loadImages, loadMine]);
+    const myItemsPayload =
+      parts[0].status === "fulfilled" ? parts[0].value : null;
+    const gridPayload =
+      parts[1].status === "fulfilled" ? parts[1].value : null;
+    return {
+      myItems: myItemsPayload,
+      gridResults: gridPayload?.results ?? null,
+    };
+  }, [loadGrid, loadImages, loadMine]);
+
+  const reloadSelectedItem = useCallback(async () => {
+    const { myItems: freshMy, gridResults } = await refreshAll();
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get("item");
+    const id = raw ? Number.parseInt(raw, 10) : Number.NaN;
+    if (!Number.isFinite(id) || id < 1) {
+      setItemFetchFallback(null);
+      setSelectedItemError(null);
+      return;
+    }
+    if (freshMy && gridResults) {
+      const fromRefresh = findClosetItemInLoadedData(
+        id,
+        gridResults,
+        freshMy,
+      );
+      if (fromRefresh) {
+        setItemFetchFallback(null);
+        setSelectedItemError(null);
+        return;
+      }
+    }
+    try {
+      const t = await getApiAccessToken();
+      const row = await fetchItem(t, id);
+      setItemFetchFallback(row);
+      setSelectedItemError(null);
+    } catch (e) {
+      setSelectedItemError(
+        e instanceof Error ? e.message : "Failed to load item",
+      );
+    }
+  }, [getApiAccessToken, refreshAll]);
+
+  const closeExpanded = useCallback(() => {
+    setPendingNeighborNav(null);
+    const next = new URLSearchParams(searchParams);
+    next.delete("item");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const setSelectedItemId = useCallback(
+    (id: number) => {
+      const next = new URLSearchParams(searchParams);
+      next.set("item", String(id));
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  const goPrev = useCallback(() => {
+    if (currentIndex > 0) {
+      setSelectedItemId(visibleGridItems[currentIndex - 1].id);
+      return;
+    }
+    if (gridPage > 1) {
+      setPendingNeighborNav("last");
+      setGridPage((p) => Math.max(1, p - 1));
+    }
+  }, [currentIndex, visibleGridItems, gridPage, setSelectedItemId]);
+
+  const goNext = useCallback(() => {
+    if (
+      currentIndex >= 0 &&
+      currentIndex < visibleGridItems.length - 1
+    ) {
+      setSelectedItemId(visibleGridItems[currentIndex + 1].id);
+      return;
+    }
+    if (gridPage < totalGridPages) {
+      setPendingNeighborNav("first");
+      setGridPage((p) => p + 1);
+    }
+  }, [
+    currentIndex,
+    visibleGridItems,
+    gridPage,
+    totalGridPages,
+    setSelectedItemId,
+  ]);
+
+  const itemModalNav: ClosetItemModalNav = useMemo(
+    () => ({
+      hasPrev,
+      hasNext,
+      onPrev: goPrev,
+      onNext: goNext,
+    }),
+    [hasPrev, hasNext, goPrev, goNext],
+  );
+
+  useEffect(() => {
+    if (selectedItemIdValid == null && !itemQueryInvalid) return;
+    if (activeTab !== "items") {
+      const next = new URLSearchParams(searchParams);
+      next.set("tab", "items");
+      setSearchParams(next, { replace: true });
+    }
+  }, [
+    selectedItemIdValid,
+    itemQueryInvalid,
+    activeTab,
+    searchParams,
+    setSearchParams,
+  ]);
+
+  useEffect(() => {
+    if (!sessionUser?.user?.is_approved) return;
+    void (async () => {
+      try {
+        const token = await getApiAccessToken();
+        const payload = await fetchFriendsList(token);
+        setFriendsForCustody(
+          payload.approved_friends.map((f) => ({
+            id: f.id,
+            label: f.nickname || f.email,
+          })),
+        );
+      } catch {
+        // optional for custody dropdown
+      }
+    })();
+  }, [sessionUser?.user?.is_approved, getApiAccessToken]);
+
+  useEffect(() => {
+    if (selectedItemIdValid == null) {
+      setItemFetchFallback(null);
+      setSelectedItemError(null);
+      return;
+    }
+    const cached = findClosetItemInLoadedData(
+      selectedItemIdValid,
+      gridItems,
+      myItems,
+    );
+    if (cached) {
+      setItemFetchFallback(null);
+      setSelectedItemError(null);
+      return;
+    }
+    let cancelled = false;
+    setSelectedItemError(null);
+    void (async () => {
+      try {
+        const t = await getApiAccessToken();
+        const row = await fetchItem(t, selectedItemIdValid);
+        if (!cancelled) {
+          setItemFetchFallback(row);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setSelectedItemError(
+            e instanceof Error ? e.message : "Failed to load item",
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedItemIdValid, gridItems, myItems, getApiAccessToken]);
+
+  useEffect(() => {
+    setExpandedNotice(null);
+  }, [selectedItemIdValid]);
+
+  useEffect(() => {
+    if (selectedItemIdValid == null) {
+      setPendingNeighborNav(null);
+    }
+  }, [selectedItemIdValid]);
+
+  useEffect(() => {
+    if (pendingNeighborNav == null) return;
+    if (loading) return;
+    if (visibleGridItems.length === 0) {
+      setPendingNeighborNav(null);
+      return;
+    }
+    const target =
+      pendingNeighborNav === "first"
+        ? visibleGridItems[0]
+        : visibleGridItems[visibleGridItems.length - 1];
+    setSelectedItemId(target.id);
+    setPendingNeighborNav(null);
+  }, [pendingNeighborNav, loading, visibleGridItems, setSelectedItemId]);
+
+  useEffect(() => {
+    if (!expandedNotice) return;
+    const timer = window.setTimeout(() => setExpandedNotice(null), 7000);
+    return () => window.clearTimeout(timer);
+  }, [expandedNotice]);
 
   useEffect(() => {
     if (!isAuthenticated || !sessionUser) return;
     void refreshAll();
   }, [
-    friendsCategoryFilter,
-    friendsPage,
-    friendsSort,
-    friendsTagFilter,
+    categoryFilter,
+    gridPage,
+    sortKey,
+    tagFilter,
     isAuthenticated,
     refreshAll,
     sessionUser,
@@ -344,42 +597,27 @@ export default function ClosetPage() {
   }, [confirmDeleteImageKey]);
 
   useEffect(() => {
-    if (declinedPage > totalDeclinedPages) setDeclinedPage(totalDeclinedPages);
-  }, [declinedPage, totalDeclinedPages]);
+    setActionsPage((prev) => ({
+      declined: Math.min(prev.declined, totalDeclinedPages),
+      borrowed: Math.min(prev.borrowed, totalBorrowedPages),
+      custodyOffered: Math.min(prev.custodyOffered, totalCustodyOfferedPages),
+      requested: Math.min(prev.requested, totalRequestedPages),
+      loaned: Math.min(prev.loaned, totalLoanedPages),
+      pending: prev.pending,
+    }));
+  }, [
+    totalDeclinedPages,
+    totalBorrowedPages,
+    totalCustodyOfferedPages,
+    totalRequestedPages,
+    totalLoanedPages,
+  ]);
 
   useEffect(() => {
-    if (borrowedPage > totalBorrowedPages) setBorrowedPage(totalBorrowedPages);
-  }, [borrowedPage, totalBorrowedPages]);
-
-  useEffect(() => {
-    if (custodyOfferedPage > totalCustodyOfferedPages)
-      setCustodyOfferedPage(totalCustodyOfferedPages);
-  }, [custodyOfferedPage, totalCustodyOfferedPages]);
-
-  useEffect(() => {
-    if (requestedPage > totalRequestedPages)
-      setRequestedPage(totalRequestedPages);
-  }, [requestedPage, totalRequestedPages]);
-
-  useEffect(() => {
-    if (ownedPage > totalOwnedPages) setOwnedPage(totalOwnedPages);
-  }, [ownedPage, totalOwnedPages]);
-
-  useEffect(() => {
-    if (loanedPage > totalLoanedPages) setLoanedPage(totalLoanedPages);
-  }, [loanedPage, totalLoanedPages]);
-
-  useEffect(() => {
-    if (!ownedNotice) return;
-    const timer = window.setTimeout(() => setOwnedNotice(null), 7000);
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), 7000);
     return () => window.clearTimeout(timer);
-  }, [ownedNotice]);
-
-  useEffect(() => {
-    if (!friendsNotice) return;
-    const timer = window.setTimeout(() => setFriendsNotice(null), 7000);
-    return () => window.clearTimeout(timer);
-  }, [friendsNotice]);
+  }, [notice]);
 
   useEffect(() => {
     if (confirmDeleteDeclinedRequestItemId == null) return;
@@ -401,17 +639,17 @@ export default function ClosetPage() {
     };
   }, [confirmDeleteDeclinedRequestItemId]);
 
-  const friendsTagFilterPrevRef = useRef("");
+  const tagFilterPrevRef = useRef("");
   useEffect(() => {
     const id = window.setTimeout(() => {
-      const next = friendsTagInput.trim();
-      if (friendsTagFilterPrevRef.current === next) return;
-      friendsTagFilterPrevRef.current = next;
-      setFriendsTagFilter(next);
-      setFriendsPage(1);
+      const next = tagInput.trim();
+      if (tagFilterPrevRef.current === next) return;
+      tagFilterPrevRef.current = next;
+      setTagFilter(next);
+      setGridPage(1);
     }, 350);
     return () => window.clearTimeout(id);
-  }, [friendsTagInput]);
+  }, [tagInput]);
 
   if (isLoading) {
     return <SessionLoadingCard />;
@@ -441,20 +679,12 @@ export default function ClosetPage() {
     );
   }
 
-  const visibleDeclinedFiltered = visibleDeclined;
-  const visibleBorrowedFiltered = visibleBorrowed;
-  const visibleCustodyOfferedFiltered = visibleCustodyOffered;
-  const visibleOwnedFiltered = visibleOwned;
-  const visibleRequestedOwnedFiltered = ownedWithPendingRequests;
-  const visibleLoanedFiltered = visibleLoaned;
   const visibleImageRows =
     imagesFilter === "unused"
       ? imageRows.filter((row) => row.status === "stranded")
       : imageRows;
 
-  const showFriendsFilterPanel = !isMobile || friendsFilterToolsOpen;
-
-  const friendsFilterControls = (
+  const filterControls = (
     <Stack
       align="stretch"
       gap="3"
@@ -466,10 +696,10 @@ export default function ClosetPage() {
         <Text fontSize={APP_TEXT_SIZES.helper}>Category</Text>
         <NativeSelectRoot maxW="280px" w="100%">
           <NativeSelectField
-            value={friendsCategoryFilter}
+            value={categoryFilter}
             onChange={(e) => {
-              setFriendsCategoryFilter(e.target.value);
-              setFriendsPage(1);
+              setCategoryFilter(e.target.value);
+              setGridPage(1);
             }}
           >
             <option value="">Any category</option>
@@ -485,8 +715,8 @@ export default function ClosetPage() {
       <Stack gap="1" minW="140px" flex="1">
         <Text fontSize={APP_TEXT_SIZES.helper}>Tag</Text>
         <Input
-          value={friendsTagInput}
-          onChange={(e) => setFriendsTagInput(e.target.value)}
+          value={tagInput}
+          onChange={(e) => setTagInput(e.target.value)}
           placeholder="Substring match"
           maxW="100%"
           width="100%"
@@ -497,10 +727,10 @@ export default function ClosetPage() {
         <Text fontSize={APP_TEXT_SIZES.helper}>Sort</Text>
         <NativeSelectRoot maxW="100%" w="100%">
           <NativeSelectField
-            value={friendsSort}
+            value={sortKey}
             onChange={(e) => {
-              setFriendsSort(e.target.value as FriendsItemsSort);
-              setFriendsPage(1);
+              setSortKey(e.target.value as FriendsItemsSort);
+              setGridPage(1);
             }}
           >
             <option value="updated_desc">Recently updated</option>
@@ -511,6 +741,32 @@ export default function ClosetPage() {
             <option value="name_desc">Name (Z–A)</option>
           </NativeSelectField>
         </NativeSelectRoot>
+      </Stack>
+      <Stack gap="2" minW="180px" flex="1" justify="flex-end" pb="1">
+        <Checkbox.Root
+          checked={showMyItems}
+          onCheckedChange={(d: { checked: boolean | "indeterminate" }) =>
+            setShowMyItems(Boolean(d.checked))
+          }
+        >
+          <Checkbox.HiddenInput />
+          <Checkbox.Control />
+          <Checkbox.Label fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
+            Show My Items
+          </Checkbox.Label>
+        </Checkbox.Root>
+        <Checkbox.Root
+          checked={showHidden}
+          onCheckedChange={(d: { checked: boolean | "indeterminate" }) =>
+            setShowHidden(Boolean(d.checked))
+          }
+        >
+          <Checkbox.HiddenInput />
+          <Checkbox.Control />
+          <Checkbox.Label fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
+            Show Hidden
+          </Checkbox.Label>
+        </Checkbox.Root>
       </Stack>
     </Stack>
   );
@@ -528,12 +784,7 @@ export default function ClosetPage() {
         onValueChange={(details) => setActiveTab(parseTab(details.value))}
         variant="plain"
       >
-        <Box
-          flex="1"
-          bg="bg"
-          px={0}
-          py={{ base: "2", md: "2" }}
-        >
+        <Box flex="1" bg="bg" px={0} py={{ base: "2", md: "2" }}>
           <Box {...APP_SHELL_TRAY_PROPS}>
             <Stack
               gap={{ base: "4", md: "4" }}
@@ -566,446 +817,45 @@ export default function ClosetPage() {
                   lineHeight="tall"
                   color="fg"
                 >
-                  Share items you're willing to lend, browse your friends'
-                  listings, and manage borrow requests and returns.
+                  Browse items you and your friends have shared, and manage
+                  borrow requests, custody handoffs, and returns in one place.
                 </Text>
               </Box>
             </Stack>
             <Tabs.List {...APP_SHELL_TAB_LIST_PROPS}>
-              <Tabs.Trigger value="my" {...APP_SHELL_TAB_TRIGGER_PROPS}>
-                My Items
-              </Tabs.Trigger>
-              <Tabs.Trigger value="friends" {...APP_SHELL_TAB_TRIGGER_PROPS}>
-                Friends&apos; Items
+              <Tabs.Trigger value="items" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                Items
               </Tabs.Trigger>
               <Tabs.Trigger value="images" {...APP_SHELL_TAB_TRIGGER_PROPS}>
-                My Images
+                Image Manager
               </Tabs.Trigger>
             </Tabs.List>
 
-            <Tabs.Content value="my" p={{ base: "2", md: "2" }}>
+            <Tabs.Content value="items" p={{ base: "2", md: "2" }}>
               {loading ? (
                 <Box {...PANEL_ENTRY_CARD_PROPS}>
                   <PanelListRowSkeleton rows={4} />
                 </Box>
               ) : (
-              <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP}>
-                <Text>Manage your own inventory.</Text>
-
-                {ownedNotice ? (
-                  <HStack justify="flex-end">
-                    <Text
-                      fontSize={APP_TEXT_SIZES.helper}
-                      color={
-                        ownedNotice.kind === "success"
-                          ? "forest.solid"
-                          : "nautical.solid"
-                      }
-                      fontWeight="medium"
-                      textAlign="right"
-                    >
-                      {ownedNotice.message}
-                    </Text>
-                  </HStack>
-                ) : null}
-
-                {!isAddItemOpen &&
-                  myItems.declined_by_me.length > 0 &&
-                  visibleDeclinedFiltered.map((item) => (
-                    <Box
-                      key={`declined-${item.id}`}
-                      bg="bg.panel"
-                      borderWidth="1px"
-                      borderStyle="dashed"
-                      borderColor="border"
-                      borderRadius="xl"
-                      p="2"
-                    >
-                      <Stack gap="2">
-                        <HStack gap="1">
-                          <Text fontWeight="bold" color="orange.solid">
-                            DECLINED REQUEST:
-                          </Text>
-                          <Text fontWeight="bold">{item.name}</Text>
-                        </HStack>
-                        <Text fontSize={APP_TEXT_SIZES.helper}>
-                          Owner: {displayName(item.owner_user)} | Need by:{" "}
-                          {item.my_declined_request?.date_needed_by ?? "—"}
-                        </Text>
-                        {item.my_declined_request?.message ? (
-                          <Text fontSize={APP_TEXT_SIZES.helper}>
-                            Your request: {item.my_declined_request.message}
-                          </Text>
-                        ) : null}
-                        {item.my_declined_request?.decline_message ? (
-                          <Text fontSize={APP_TEXT_SIZES.helper}>
-                            Decline message:{" "}
-                            {item.my_declined_request.decline_message}
-                          </Text>
-                        ) : null}
-                        {item.my_declined_request ? (
-                          <HStack>
-                            <PondButton
-                              ref={
-                                confirmDeleteDeclinedRequestItemId === item.id
-                                  ? confirmDeleteDeclinedRequestButtonRef
-                                  : undefined
-                              }
-                              size="sm"
-                              colorPalette="nautical"
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                const declinedRequest =
-                                  item.my_declined_request;
-                                if (!declinedRequest) return;
-                                if (
-                                  confirmDeleteDeclinedRequestItemId !== item.id
-                                ) {
-                                  setConfirmDeleteDeclinedRequestItemId(
-                                    item.id,
-                                  );
-                                  return;
-                                }
-                                try {
-                                  const token = await getApiAccessToken();
-                                  await deleteBorrowRequest(
-                                    token,
-                                    declinedRequest.id,
-                                  );
-                                  setConfirmDeleteDeclinedRequestItemId(null);
-                                  await refreshAll();
-                                } catch (err: unknown) {
-                                  setError(
-                                    err instanceof Error
-                                      ? err.message
-                                      : "Failed to delete request",
-                                  );
-                                }
-                              }}
-                            >
-                              {confirmDeleteDeclinedRequestItemId === item.id
-                                ? "Confirm delete"
-                                : "Delete request"}
-                            </PondButton>
-                          </HStack>
-                        ) : null}
-                      </Stack>
-                    </Box>
-                  ))}
-                {!isAddItemOpen &&
-                myItems.declined_by_me.length > MY_ITEMS_PAGE_SIZE ? (
-                  <HStack justify="space-between">
-                    <Text fontSize={APP_TEXT_SIZES.helper}>
-                      Page {safeDeclinedPage} / {totalDeclinedPages}
-                    </Text>
-                    <HStack>
-                      <PondButton
-                        size="sm"
-                        colorPalette="nautical"
-                        disabled={safeDeclinedPage <= 1}
-                        onClick={() =>
-                          setDeclinedPage((p) => Math.max(1, p - 1))
+                <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP}>
+                  {notice ? (
+                    <HStack justify="flex-end">
+                      <Text
+                        color={
+                          notice.kind === "success"
+                            ? "forest.solid"
+                            : "nautical.solid"
                         }
+                        fontSize={APP_TEXT_SIZES.helper}
+                        fontWeight="medium"
+                        textAlign="right"
                       >
-                        ←
-                      </PondButton>
-                      <PondButton
-                        size="sm"
-                        colorPalette="nautical"
-                        disabled={safeDeclinedPage >= totalDeclinedPages}
-                        onClick={() =>
-                          setDeclinedPage((p) =>
-                            Math.min(totalDeclinedPages, p + 1),
-                          )
-                        }
-                      >
-                        →
-                      </PondButton>
+                        {notice.message}
+                      </Text>
                     </HStack>
-                  </HStack>
-                ) : null}
+                  ) : null}
 
-                {!isAddItemOpen &&
-                  myItems.custody_offered_to_me.length > 0 &&
-                  visibleCustodyOfferedFiltered.map((item) => (
-                    <Box
-                      key={`custody-offer-${item.id}`}
-                      bg="bg.panel"
-                      borderWidth="1px"
-                      borderStyle="dashed"
-                      borderColor="border"
-                      borderRadius="xl"
-                      p="2"
-                    >
-                      <Stack gap="2">
-                        <HStack gap="1">
-                          <Text fontWeight="bold" color="sky.solid">
-                            CUSTODY OFFERED:
-                          </Text>
-                          <Text fontWeight="bold">{item.name}</Text>
-                        </HStack>
-                        <Text fontSize={APP_TEXT_SIZES.helper}>
-                          Owner: {displayName(item.owner_user)} wants you to
-                          hold this item.
-                        </Text>
-                        {item.description ? (
-                          <Text fontSize={APP_TEXT_SIZES.helper}>
-                            {item.description}
-                          </Text>
-                        ) : null}
-                        <HStack flexWrap="wrap">
-                          <PondButton
-                            size="sm"
-                            colorPalette="teal"
-                            onClick={async () => {
-                              try {
-                                const token = await getApiAccessToken();
-                                await acceptCustody(token, item.id);
-                                setOwnedNotice({
-                                  kind: "success",
-                                  message: "Custody accepted.",
-                                });
-                                await refreshAll();
-                              } catch (err: unknown) {
-                                setError(
-                                  err instanceof Error
-                                    ? err.message
-                                    : "Failed to accept custody",
-                                );
-                              }
-                            }}
-                          >
-                            Accept custody
-                          </PondButton>
-                          <PondButton
-                            size="sm"
-                            colorPalette="nautical"
-                            onClick={async () => {
-                              try {
-                                const token = await getApiAccessToken();
-                                await rejectPendingCustody(token, item.id);
-                                setOwnedNotice({
-                                  kind: "success",
-                                  message: "Custody offer declined.",
-                                });
-                                await refreshAll();
-                              } catch (err: unknown) {
-                                setError(
-                                  err instanceof Error
-                                    ? err.message
-                                    : "Failed to decline custody",
-                                );
-                              }
-                            }}
-                          >
-                            Decline
-                          </PondButton>
-                        </HStack>
-                      </Stack>
-                    </Box>
-                  ))}
-                {!isAddItemOpen &&
-                myItems.custody_offered_to_me.length > MY_ITEMS_PAGE_SIZE ? (
-                  <HStack justify="space-between">
-                    <Text fontSize={APP_TEXT_SIZES.helper}>
-                      Page {safeCustodyOfferedPage} / {totalCustodyOfferedPages}
-                    </Text>
-                    <HStack>
-                      <PondButton
-                        size="sm"
-                        colorPalette="nautical"
-                        disabled={safeCustodyOfferedPage <= 1}
-                        onClick={() =>
-                          setCustodyOfferedPage((p) => Math.max(1, p - 1))
-                        }
-                      >
-                        ←
-                      </PondButton>
-                      <PondButton
-                        size="sm"
-                        colorPalette="nautical"
-                        disabled={
-                          safeCustodyOfferedPage >= totalCustodyOfferedPages
-                        }
-                        onClick={() =>
-                          setCustodyOfferedPage((p) =>
-                            Math.min(totalCustodyOfferedPages, p + 1),
-                          )
-                        }
-                      >
-                        →
-                      </PondButton>
-                    </HStack>
-                  </HStack>
-                ) : null}
-
-                {!isAddItemOpen && ownedWithPendingRequests.length > 0
-                  ? visibleRequestedOwnedFiltered.map((item) => (
-                      <ClosetItemLinkCard
-                        key={`requested-owned-${item.id}`}
-                        item={item}
-                        closetReturnTo="/closet?tab=my"
-                        dashedBorder
-                        titlePrefix={
-                          <Text fontWeight="bold" color="orange.solid">
-                            {`${item.pending_request_count} ${
-                              item.pending_request_count === 1
-                                ? "REQUEST"
-                                : "REQUESTS"
-                            }:`}
-                          </Text>
-                        }
-                      />
-                    ))
-                  : null}
-
-                {!isAddItemOpen && myItems.borrowed_by_me.length > 0 ? (
-                  <>
-                    {visibleBorrowedFiltered.map((item) => (
-                      <ClosetItemLinkCard
-                        key={`borrowed-${item.id}`}
-                        item={item}
-                        closetReturnTo="/closet?tab=my"
-                        dashedBorder
-                        titlePrefix={
-                          <Text fontWeight="bold" color="orange.solid">
-                            {`BORROWED FROM ${displayName(item.owner_user).toUpperCase()}:`}
-                          </Text>
-                        }
-                      />
-                    ))}
-                    {myItems.borrowed_by_me.length > MY_ITEMS_PAGE_SIZE ? (
-                      <HStack justify="space-between">
-                        <Text fontSize={APP_TEXT_SIZES.helper}>
-                          Page {safeBorrowedPage} / {totalBorrowedPages}
-                        </Text>
-                        <HStack>
-                          <PondButton
-                            size="sm"
-                            colorPalette="nautical"
-                            disabled={safeBorrowedPage <= 1}
-                            onClick={() =>
-                              setBorrowedPage((p) => Math.max(1, p - 1))
-                            }
-                          >
-                            ←
-                          </PondButton>
-                          <PondButton
-                            size="sm"
-                            colorPalette="nautical"
-                            disabled={safeBorrowedPage >= totalBorrowedPages}
-                            onClick={() =>
-                              setBorrowedPage((p) =>
-                                Math.min(totalBorrowedPages, p + 1),
-                              )
-                            }
-                          >
-                            →
-                          </PondButton>
-                        </HStack>
-                      </HStack>
-                    ) : null}
-                  </>
-                ) : null}
-
-                {!isAddItemOpen && myItems.requested_by_me.length > 0
-                  ? visibleRequested.map((item) => (
-                      <ClosetItemLinkCard
-                        key={`requested-${item.id}`}
-                        item={item}
-                        closetReturnTo="/closet?tab=my"
-                        dashedBorder
-                        titlePrefix={
-                          <Text fontWeight="bold" color="forest.solid">
-                            PENDING APPROVAL:
-                          </Text>
-                        }
-                        subtitle={`Owner: ${displayName(item.owner_user)} | Need by: ${item.my_pending_request?.date_needed_by ?? "—"}`}
-                      />
-                    ))
-                  : null}
-                {!isAddItemOpen &&
-                myItems.requested_by_me.length > MY_ITEMS_PAGE_SIZE ? (
-                  <HStack justify="space-between">
-                    <Text fontSize={APP_TEXT_SIZES.helper}>
-                      Page {safeRequestedPage} / {totalRequestedPages}
-                    </Text>
-                    <HStack>
-                      <PondButton
-                        size="sm"
-                        colorPalette="nautical"
-                        disabled={safeRequestedPage <= 1}
-                        onClick={() =>
-                          setRequestedPage((p) => Math.max(1, p - 1))
-                        }
-                      >
-                        ←
-                      </PondButton>
-                      <PondButton
-                        size="sm"
-                        colorPalette="nautical"
-                        disabled={safeRequestedPage >= totalRequestedPages}
-                        onClick={() =>
-                          setRequestedPage((p) =>
-                            Math.min(totalRequestedPages, p + 1),
-                          )
-                        }
-                      >
-                        →
-                      </PondButton>
-                    </HStack>
-                  </HStack>
-                ) : null}
-
-                {!isAddItemOpen && loanedItems.length > 0 ? (
-                  <>
-                    {visibleLoanedFiltered.map((item) => (
-                      <ClosetItemLinkCard
-                        key={`loaned-${item.id}`}
-                        item={item}
-                        closetReturnTo="/closet?tab=my"
-                        titlePrefix={
-                          <Text fontWeight="bold" color="sky.solid">
-                            {`LOANED TO ${displayName(item.current_holder_user).toUpperCase()}:`}
-                          </Text>
-                        }
-                      />
-                    ))}
-                    {loanedItems.length > MY_ITEMS_PAGE_SIZE ? (
-                      <HStack justify="space-between">
-                        <Text fontSize={APP_TEXT_SIZES.helper}>
-                          Page {safeLoanedPage} / {totalLoanedPages}
-                        </Text>
-                        <HStack>
-                          <PondButton
-                            size="sm"
-                            colorPalette="nautical"
-                            disabled={safeLoanedPage <= 1}
-                            onClick={() =>
-                              setLoanedPage((p) => Math.max(1, p - 1))
-                            }
-                          >
-                            ←
-                          </PondButton>
-                          <PondButton
-                            size="sm"
-                            colorPalette="nautical"
-                            disabled={safeLoanedPage >= totalLoanedPages}
-                            onClick={() =>
-                              setLoanedPage((p) =>
-                                Math.min(totalLoanedPages, p + 1),
-                              )
-                            }
-                          >
-                            →
-                          </PondButton>
-                        </HStack>
-                      </HStack>
-                    ) : null}
-                  </>
-                ) : null}
-
-                <>
+                  {/* Add Item button / form */}
                   {isAddItemOpen ? (
                     <Box
                       bg="bg.panel"
@@ -1080,7 +930,7 @@ export default function ClosetPage() {
                             onClick={async () => {
                               setError(null);
                               if (!isAllowedClosetCategory(newCategory)) {
-                                setOwnedNotice({
+                                setNotice({
                                   kind: "error",
                                   message:
                                     "Category must use only letters and /, or pick a suggested option.",
@@ -1090,10 +940,7 @@ export default function ClosetPage() {
                               const nn = newName.trim();
                               const nameErr = validateClosetItemName(nn);
                               if (nameErr) {
-                                setOwnedNotice({
-                                  kind: "error",
-                                  message: nameErr,
-                                });
+                                setNotice({ kind: "error", message: nameErr });
                                 return;
                               }
                               const descErr = validateClosetFreeText(
@@ -1101,19 +948,13 @@ export default function ClosetPage() {
                                 "Description",
                               );
                               if (descErr) {
-                                setOwnedNotice({
-                                  kind: "error",
-                                  message: descErr,
-                                });
+                                setNotice({ kind: "error", message: descErr });
                                 return;
                               }
                               const cat = newCategory.trim();
                               const catErr = validateClosetCategory(cat);
                               if (catErr) {
-                                setOwnedNotice({
-                                  kind: "error",
-                                  message: catErr,
-                                });
+                                setNotice({ kind: "error", message: catErr });
                                 return;
                               }
                               try {
@@ -1141,9 +982,9 @@ export default function ClosetPage() {
                                   newItemPhotoInputRef.current.value = "";
                                 }
                                 setIsAddItemOpen(false);
-                                setOwnedPage(1);
+                                setGridPage(1);
                                 await refreshAll();
-                                setOwnedNotice({
+                                setNotice({
                                   kind: "success",
                                   message: "Item added.",
                                 });
@@ -1152,7 +993,7 @@ export default function ClosetPage() {
                                   err instanceof Error
                                     ? err.message
                                     : "Failed to create item";
-                                setOwnedNotice({ kind: "error", message });
+                                setNotice({ kind: "error", message });
                               } finally {
                                 setNewItemImageBusy(false);
                               }
@@ -1180,442 +1021,903 @@ export default function ClosetPage() {
                       </Stack>
                     </Box>
                   ) : (
-                    <HStack justify="flex-start">
+                    <HStack
+                      justify={isMobile ? "space-between" : "flex-start"}
+                      align="center"
+                      w="100%"
+                      gap="3"
+                      flexWrap="nowrap"
+                    >
                       <PondButton
-                        colorPalette="teal"
+                        colorPalette="forest"
+                        color="white"
                         onClick={() => setIsAddItemOpen(true)}
                       >
                         Add Item
                       </PondButton>
+                      {isMobile ? (
+                        <PondButton
+                          type="button"
+                          size="sm"
+                          colorPalette="teal"
+                          onClick={() => setFilterToolsOpen(true)}
+                        >
+                          Filter &amp; sort
+                        </PondButton>
+                      ) : null}
                     </HStack>
                   )}
-                  <HStack align="center" gap="3" justify="space-between">
-                    <Text fontWeight="semibold">Owned by me</Text>
-                  </HStack>
-                  {ownedWithoutPendingRequests.length === 0 ? (
-                    <Text fontSize={APP_TEXT_SIZES.helper}>None.</Text>
-                  ) : null}
-                  {visibleOwnedFiltered.map((item) => (
-                    <ClosetItemLinkCard
-                      key={`owned-wrap-${item.id}`}
-                      item={item}
-                      closetReturnTo="/closet?tab=my"
-                    />
-                  ))}
-                  {ownedWithoutPendingRequests.length > MY_ITEMS_PAGE_SIZE ? (
-                    <HStack justify="space-between">
-                      <Text fontSize={APP_TEXT_SIZES.helper}>
-                        Page {safeOwnedPage} / {totalOwnedPages}
-                      </Text>
-                      <HStack>
-                        <PondButton
-                          size="sm"
-                          colorPalette="nautical"
-                          disabled={safeOwnedPage <= 1}
-                          onClick={() =>
-                            setOwnedPage((p) => Math.max(1, p - 1))
-                          }
-                        >
-                          ←
-                        </PondButton>
-                        <PondButton
-                          size="sm"
-                          colorPalette="nautical"
-                          disabled={safeOwnedPage >= totalOwnedPages}
-                          onClick={() =>
-                            setOwnedPage((p) =>
-                              Math.min(totalOwnedPages, p + 1),
-                            )
-                          }
-                        >
-                          →
-                        </PondButton>
-                      </HStack>
-                    </HStack>
-                  ) : null}
-                </>
-              </Stack>
-              )}
-            </Tabs.Content>
 
-            <Tabs.Content value="friends" p={{ base: "2", md: "2" }}>
-              {loading ? (
-                <Box {...PANEL_ENTRY_CARD_PROPS}>
-                  <PanelListRowSkeleton rows={4} />
-                </Box>
-              ) : (
-              <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP}>
-                <HStack
-                  justify="space-between"
-                  align="center"
-                  gap="3"
-                  flexWrap="wrap"
-                >
-                  <Text>Open an item for details, borrowing, and returns.</Text>
-                  {friendsNotice ? (
-                    <Text
-                      color={
-                        friendsNotice.kind === "success"
-                          ? "forest.solid"
-                          : "nautical.solid"
-                      }
-                      fontSize={APP_TEXT_SIZES.helper}
-                      fontWeight="medium"
-                      textAlign="right"
+                  {/* Action Items collapsible */}
+                  {!isAddItemOpen && totalActionItems > 0 ? (
+                    <Box
+                      bg="bg.panel"
+                      borderWidth="1px"
+                      borderColor="border"
+                      borderRadius="xl"
+                      p="2"
                     >
-                      {friendsNotice.message}
-                    </Text>
-                  ) : null}
-                </HStack>
-                <Stack gap="2">
-                  {isMobile ? (
-                    <HStack justify="space-between" align="center" w="100%">
-                      <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" flex="1" minW={0}>
-                        Sort:{" "}
-                        {friendsSort === "updated_desc"
-                          ? "Recent"
-                          : friendsSort === "updated_asc"
-                            ? "Oldest activity"
-                            : friendsSort === "created_desc"
-                              ? "Newest"
-                              : friendsSort === "created_asc"
-                                ? "Oldest"
-                                : friendsSort === "name_asc"
-                                  ? "A–Z"
-                                  : "Z–A"}
-                      </Text>
-                      <PondButton
-                        type="button"
-                        size="sm"
-                        colorPalette="teal"
-                        onClick={() => setFriendsFilterToolsOpen(true)}
+                      <Collapsible.Root
+                        open={actionsOpen}
+                        onOpenChange={(d: { open: boolean }) =>
+                          setActionsOpen(d.open)
+                        }
                       >
-                        Filter &amp; sort
+                        <Collapsible.Trigger asChild>
+                          <button
+                            type="button"
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "0.5rem",
+                              width: "100%",
+                              textAlign: "left",
+                              fontSize: "1rem",
+                              fontWeight: 600,
+                              color: "inherit",
+                              cursor: "pointer",
+                              background: "transparent",
+                              border: "none",
+                              padding: 0,
+                              margin: 0,
+                            }}
+                          >
+                            <Text
+                              as="span"
+                              transform={
+                                actionsOpen ? "rotate(90deg)" : "rotate(0deg)"
+                              }
+                              transition="transform 0.15s ease"
+                              lineHeight="1"
+                              flexShrink={0}
+                            >
+                              ›
+                            </Text>
+                            <Text as="span" flex="1">
+                              Action items ({totalActionItems})
+                            </Text>
+                          </button>
+                        </Collapsible.Trigger>
+                        <Collapsible.Content>
+                          <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP} pt="3">
+                            {/* DECLINED REQUEST */}
+                            {visibleDeclined.map((item) => (
+                              <Box
+                                key={`declined-${item.id}`}
+                                bg="bg.panel"
+                                borderWidth="1px"
+                                borderStyle="dashed"
+                                borderColor="border"
+                                borderRadius="xl"
+                                p="2"
+                              >
+                                <Stack gap="2">
+                                  <HStack gap="1">
+                                    <Text fontWeight="bold" color="orange.solid">
+                                      DECLINED REQUEST:
+                                    </Text>
+                                    <Text fontWeight="bold">{item.name}</Text>
+                                  </HStack>
+                                  <Text fontSize={APP_TEXT_SIZES.helper}>
+                                    Owner: {displayName(item.owner_user)} | Need
+                                    by:{" "}
+                                    {item.my_declined_request?.date_needed_by ??
+                                      "—"}
+                                  </Text>
+                                  {item.my_declined_request?.message ? (
+                                    <Text fontSize={APP_TEXT_SIZES.helper}>
+                                      Your request:{" "}
+                                      {item.my_declined_request.message}
+                                    </Text>
+                                  ) : null}
+                                  {item.my_declined_request?.decline_message ? (
+                                    <Text fontSize={APP_TEXT_SIZES.helper}>
+                                      Decline message:{" "}
+                                      {item.my_declined_request.decline_message}
+                                    </Text>
+                                  ) : null}
+                                  {item.my_declined_request ? (
+                                    <HStack>
+                                      <PondButton
+                                        ref={
+                                          confirmDeleteDeclinedRequestItemId ===
+                                          item.id
+                                            ? confirmDeleteDeclinedRequestButtonRef
+                                            : undefined
+                                        }
+                                        size="sm"
+                                        colorPalette="nautical"
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          const declinedRequest =
+                                            item.my_declined_request;
+                                          if (!declinedRequest) return;
+                                          if (
+                                            confirmDeleteDeclinedRequestItemId !==
+                                            item.id
+                                          ) {
+                                            setConfirmDeleteDeclinedRequestItemId(
+                                              item.id,
+                                            );
+                                            return;
+                                          }
+                                          try {
+                                            const token =
+                                              await getApiAccessToken();
+                                            await deleteBorrowRequest(
+                                              token,
+                                              declinedRequest.id,
+                                            );
+                                            setConfirmDeleteDeclinedRequestItemId(
+                                              null,
+                                            );
+                                            await refreshAll();
+                                          } catch (err: unknown) {
+                                            setError(
+                                              err instanceof Error
+                                                ? err.message
+                                                : "Failed to delete request",
+                                            );
+                                          }
+                                        }}
+                                      >
+                                        {confirmDeleteDeclinedRequestItemId ===
+                                        item.id
+                                          ? "Confirm delete"
+                                          : "Delete request"}
+                                      </PondButton>
+                                    </HStack>
+                                  ) : null}
+                                </Stack>
+                              </Box>
+                            ))}
+                            {actionCounts.declined > ACTIONS_PAGE_SIZE ? (
+                              <HStack justify="space-between">
+                                <Text fontSize={APP_TEXT_SIZES.helper}>
+                                  Page {safeDeclinedPage} / {totalDeclinedPages}
+                                </Text>
+                                <HStack>
+                                  <PondButton
+                                    size="sm"
+                                    colorPalette="nautical"
+                                    disabled={safeDeclinedPage <= 1}
+                                    onClick={() =>
+                                      setActionsPage((p) => ({
+                                        ...p,
+                                        declined: Math.max(1, p.declined - 1),
+                                      }))
+                                    }
+                                  >
+                                    ←
+                                  </PondButton>
+                                  <PondButton
+                                    size="sm"
+                                    colorPalette="nautical"
+                                    disabled={
+                                      safeDeclinedPage >= totalDeclinedPages
+                                    }
+                                    onClick={() =>
+                                      setActionsPage((p) => ({
+                                        ...p,
+                                        declined: Math.min(
+                                          totalDeclinedPages,
+                                          p.declined + 1,
+                                        ),
+                                      }))
+                                    }
+                                  >
+                                    →
+                                  </PondButton>
+                                </HStack>
+                              </HStack>
+                            ) : null}
+
+                            {/* CUSTODY OFFERED */}
+                            {visibleCustodyOffered.map((item) => (
+                              <Box
+                                key={`custody-offer-${item.id}`}
+                                bg="bg.panel"
+                                borderWidth="1px"
+                                borderStyle="dashed"
+                                borderColor="border"
+                                borderRadius="xl"
+                                p="2"
+                              >
+                                <Stack gap="2">
+                                  <HStack gap="1">
+                                    <Text fontWeight="bold" color="sky.solid">
+                                      CUSTODY OFFERED:
+                                    </Text>
+                                    <Text fontWeight="bold">{item.name}</Text>
+                                  </HStack>
+                                  <Text fontSize={APP_TEXT_SIZES.helper}>
+                                    Owner: {displayName(item.owner_user)} wants
+                                    you to hold this item.
+                                  </Text>
+                                  {item.description ? (
+                                    <Text fontSize={APP_TEXT_SIZES.helper}>
+                                      {item.description}
+                                    </Text>
+                                  ) : null}
+                                  <HStack flexWrap="wrap">
+                                    <PondButton
+                                      size="sm"
+                                      colorPalette="teal"
+                                      onClick={async () => {
+                                        try {
+                                          const token =
+                                            await getApiAccessToken();
+                                          await acceptCustody(token, item.id);
+                                          setNotice({
+                                            kind: "success",
+                                            message: "Custody accepted.",
+                                          });
+                                          await refreshAll();
+                                        } catch (err: unknown) {
+                                          setError(
+                                            err instanceof Error
+                                              ? err.message
+                                              : "Failed to accept custody",
+                                          );
+                                        }
+                                      }}
+                                    >
+                                      Accept custody
+                                    </PondButton>
+                                    <PondButton
+                                      size="sm"
+                                      colorPalette="nautical"
+                                      onClick={async () => {
+                                        try {
+                                          const token =
+                                            await getApiAccessToken();
+                                          await rejectPendingCustody(
+                                            token,
+                                            item.id,
+                                          );
+                                          setNotice({
+                                            kind: "success",
+                                            message:
+                                              "Custody offer declined.",
+                                          });
+                                          await refreshAll();
+                                        } catch (err: unknown) {
+                                          setError(
+                                            err instanceof Error
+                                              ? err.message
+                                              : "Failed to decline custody",
+                                          );
+                                        }
+                                      }}
+                                    >
+                                      Decline
+                                    </PondButton>
+                                  </HStack>
+                                </Stack>
+                              </Box>
+                            ))}
+                            {actionCounts.custodyOffered > ACTIONS_PAGE_SIZE ? (
+                              <HStack justify="space-between">
+                                <Text fontSize={APP_TEXT_SIZES.helper}>
+                                  Page {safeCustodyOfferedPage} /{" "}
+                                  {totalCustodyOfferedPages}
+                                </Text>
+                                <HStack>
+                                  <PondButton
+                                    size="sm"
+                                    colorPalette="nautical"
+                                    disabled={safeCustodyOfferedPage <= 1}
+                                    onClick={() =>
+                                      setActionsPage((p) => ({
+                                        ...p,
+                                        custodyOffered: Math.max(
+                                          1,
+                                          p.custodyOffered - 1,
+                                        ),
+                                      }))
+                                    }
+                                  >
+                                    ←
+                                  </PondButton>
+                                  <PondButton
+                                    size="sm"
+                                    colorPalette="nautical"
+                                    disabled={
+                                      safeCustodyOfferedPage >=
+                                      totalCustodyOfferedPages
+                                    }
+                                    onClick={() =>
+                                      setActionsPage((p) => ({
+                                        ...p,
+                                        custodyOffered: Math.min(
+                                          totalCustodyOfferedPages,
+                                          p.custodyOffered + 1,
+                                        ),
+                                      }))
+                                    }
+                                  >
+                                    →
+                                  </PondButton>
+                                </HStack>
+                              </HStack>
+                            ) : null}
+
+                            {/* PENDING REQUESTS on items I own */}
+                            {ownedWithPendingRequests.map((item) => (
+                              <ClosetItemLinkCard
+                                key={`requested-owned-${item.id}`}
+                                item={item}
+                                closetReturnTo={ITEMS_RETURN_TO}
+                                dashedBorder
+                                titlePrefix={
+                                  <Text fontWeight="bold" color="orange.solid">
+                                    {`${item.pending_request_count} ${
+                                      item.pending_request_count === 1
+                                        ? "REQUEST"
+                                        : "REQUESTS"
+                                    }:`}
+                                  </Text>
+                                }
+                              />
+                            ))}
+
+                            {/* BORROWED FROM owner */}
+                            {visibleBorrowed.map((item) => (
+                              <ClosetItemLinkCard
+                                key={`borrowed-${item.id}`}
+                                item={item}
+                                closetReturnTo={ITEMS_RETURN_TO}
+                                dashedBorder
+                                titlePrefix={
+                                  <Text fontWeight="bold" color="orange.solid">
+                                    {`BORROWED FROM ${displayName(
+                                      item.owner_user,
+                                    ).toUpperCase()}:`}
+                                  </Text>
+                                }
+                              />
+                            ))}
+                            {actionCounts.borrowed > ACTIONS_PAGE_SIZE ? (
+                              <HStack justify="space-between">
+                                <Text fontSize={APP_TEXT_SIZES.helper}>
+                                  Page {safeBorrowedPage} / {totalBorrowedPages}
+                                </Text>
+                                <HStack>
+                                  <PondButton
+                                    size="sm"
+                                    colorPalette="nautical"
+                                    disabled={safeBorrowedPage <= 1}
+                                    onClick={() =>
+                                      setActionsPage((p) => ({
+                                        ...p,
+                                        borrowed: Math.max(1, p.borrowed - 1),
+                                      }))
+                                    }
+                                  >
+                                    ←
+                                  </PondButton>
+                                  <PondButton
+                                    size="sm"
+                                    colorPalette="nautical"
+                                    disabled={
+                                      safeBorrowedPage >= totalBorrowedPages
+                                    }
+                                    onClick={() =>
+                                      setActionsPage((p) => ({
+                                        ...p,
+                                        borrowed: Math.min(
+                                          totalBorrowedPages,
+                                          p.borrowed + 1,
+                                        ),
+                                      }))
+                                    }
+                                  >
+                                    →
+                                  </PondButton>
+                                </HStack>
+                              </HStack>
+                            ) : null}
+
+                            {/* PENDING APPROVAL (I requested) */}
+                            {visibleRequested.map((item) => (
+                              <ClosetItemLinkCard
+                                key={`requested-${item.id}`}
+                                item={item}
+                                closetReturnTo={ITEMS_RETURN_TO}
+                                dashedBorder
+                                titlePrefix={
+                                  <Text fontWeight="bold" color="forest.solid">
+                                    PENDING APPROVAL:
+                                  </Text>
+                                }
+                                subtitle={`Owner: ${displayName(item.owner_user)} | Need by: ${item.my_pending_request?.date_needed_by ?? "—"}`}
+                              />
+                            ))}
+                            {actionCounts.requested > ACTIONS_PAGE_SIZE ? (
+                              <HStack justify="space-between">
+                                <Text fontSize={APP_TEXT_SIZES.helper}>
+                                  Page {safeRequestedPage} /{" "}
+                                  {totalRequestedPages}
+                                </Text>
+                                <HStack>
+                                  <PondButton
+                                    size="sm"
+                                    colorPalette="nautical"
+                                    disabled={safeRequestedPage <= 1}
+                                    onClick={() =>
+                                      setActionsPage((p) => ({
+                                        ...p,
+                                        requested: Math.max(1, p.requested - 1),
+                                      }))
+                                    }
+                                  >
+                                    ←
+                                  </PondButton>
+                                  <PondButton
+                                    size="sm"
+                                    colorPalette="nautical"
+                                    disabled={
+                                      safeRequestedPage >= totalRequestedPages
+                                    }
+                                    onClick={() =>
+                                      setActionsPage((p) => ({
+                                        ...p,
+                                        requested: Math.min(
+                                          totalRequestedPages,
+                                          p.requested + 1,
+                                        ),
+                                      }))
+                                    }
+                                  >
+                                    →
+                                  </PondButton>
+                                </HStack>
+                              </HStack>
+                            ) : null}
+
+                            {/* LOANED TO holder */}
+                            {visibleLoaned.map((item) => (
+                              <ClosetItemLinkCard
+                                key={`loaned-${item.id}`}
+                                item={item}
+                                closetReturnTo={ITEMS_RETURN_TO}
+                                titlePrefix={
+                                  <Text fontWeight="bold" color="sky.solid">
+                                    {`LOANED TO ${displayName(
+                                      item.current_holder_user,
+                                    ).toUpperCase()}:`}
+                                  </Text>
+                                }
+                              />
+                            ))}
+                            {actionCounts.loaned > ACTIONS_PAGE_SIZE ? (
+                              <HStack justify="space-between">
+                                <Text fontSize={APP_TEXT_SIZES.helper}>
+                                  Page {safeLoanedPage} / {totalLoanedPages}
+                                </Text>
+                                <HStack>
+                                  <PondButton
+                                    size="sm"
+                                    colorPalette="nautical"
+                                    disabled={safeLoanedPage <= 1}
+                                    onClick={() =>
+                                      setActionsPage((p) => ({
+                                        ...p,
+                                        loaned: Math.max(1, p.loaned - 1),
+                                      }))
+                                    }
+                                  >
+                                    ←
+                                  </PondButton>
+                                  <PondButton
+                                    size="sm"
+                                    colorPalette="nautical"
+                                    disabled={safeLoanedPage >= totalLoanedPages}
+                                    onClick={() =>
+                                      setActionsPage((p) => ({
+                                        ...p,
+                                        loaned: Math.min(
+                                          totalLoanedPages,
+                                          p.loaned + 1,
+                                        ),
+                                      }))
+                                    }
+                                  >
+                                    →
+                                  </PondButton>
+                                </HStack>
+                              </HStack>
+                            ) : null}
+                          </Stack>
+                        </Collapsible.Content>
+                      </Collapsible.Root>
+                    </Box>
+                  ) : null}
+
+                  {/* Filters: desktop inline; mobile opens Filter dialog from row with Add Item */}
+                  {!isMobile ? <Stack gap="2">{filterControls}</Stack> : null}
+                  {isMobile ? (
+                    <Dialog.Root
+                      open={filterToolsOpen}
+                      lazyMount
+                      unmountOnExit
+                      onOpenChange={(d: { open: boolean }) =>
+                        setFilterToolsOpen(d.open)
+                      }
+                    >
+                      <Dialog.Backdrop />
+                      <Dialog.Positioner
+                        display="flex"
+                        alignItems="flex-end"
+                        justifyContent="center"
+                        p="0"
+                      >
+                        <Dialog.Content
+                          maxW="100vw"
+                          w="100vw"
+                          borderTopRadius="xl"
+                          borderBottomRadius="0"
+                          bg="bg.panel"
+                          borderWidth="0"
+                          p="3"
+                          pb="6"
+                          boxShadow="lg"
+                          maxH="85vh"
+                          overflowY="auto"
+                          gap="0"
+                        >
+                          <HStack
+                            justify="space-between"
+                            align="start"
+                            w="100%"
+                            mb="2"
+                          >
+                            <Text fontSize="md" fontWeight="semibold">
+                              Filter &amp; sort
+                            </Text>
+                            <Dialog.CloseTrigger asChild>
+                              <CloseButton
+                                type="button"
+                                size="sm"
+                                aria-label="Close filters"
+                              />
+                            </Dialog.CloseTrigger>
+                          </HStack>
+                          <Stack gap="2">{filterControls}</Stack>
+                          <HStack justify="flex-end" pt="3">
+                            <PondButton
+                              colorPalette="teal"
+                              onClick={() => setFilterToolsOpen(false)}
+                            >
+                              Done
+                            </PondButton>
+                          </HStack>
+                        </Dialog.Content>
+                      </Dialog.Positioner>
+                    </Dialog.Root>
+                  ) : null}
+
+                  {/* Grid */}
+                  {visibleGridItems.length === 0 ? (
+                    <PanelEmptyState
+                      title={
+                        gridItems.length === 0
+                          ? categoryFilter.trim() || tagFilter
+                            ? "No items match your filters."
+                            : "No items to show yet."
+                          : "All items on this page are filtered out."
+                      }
+                      description={
+                        gridItems.length === 0
+                          ? categoryFilter.trim() || tagFilter
+                            ? "Try clearing your filters."
+                            : "When you or your friends add items, they'll show up here."
+                          : "Try toggling Show My Items or Show Hidden."
+                      }
+                      actionLabel={
+                        categoryFilter.trim() || tagFilter
+                          ? "Clear filters"
+                          : "Refresh"
+                      }
+                      onAction={() => {
+                        if (categoryFilter.trim() || tagFilter) {
+                          setCategoryFilter("");
+                          setTagFilter("");
+                          setTagInput("");
+                          setGridPage(1);
+                        } else {
+                          void loadGrid();
+                        }
+                      }}
+                    />
+                  ) : null}
+                  <SimpleGrid
+                    columns={{ base: 2, md: 4 }}
+                    gap={MAPPED_CLOSET_TAB_STACK_GAP}
+                    w="100%"
+                  >
+                    {visibleGridItems.map((item) => (
+                      <FriendClosetListCard
+                        key={`grid-${item.id}`}
+                        item={item}
+                        closetReturnTo={ITEMS_RETURN_TO}
+                      />
+                    ))}
+                  </SimpleGrid>
+                  <HStack justify="space-between">
+                    <Text fontSize={APP_TEXT_SIZES.helper}>
+                      Page {gridPage} / {totalGridPages}
+                    </Text>
+                    <HStack>
+                      <PondButton
+                        size="sm"
+                        colorPalette="nautical"
+                        disabled={gridPage <= 1}
+                        onClick={() => setGridPage((p) => Math.max(1, p - 1))}
+                      >
+                        ←
+                      </PondButton>
+                      <PondButton
+                        size="sm"
+                        colorPalette="nautical"
+                        disabled={gridPage >= totalGridPages}
+                        onClick={() =>
+                          setGridPage((p) => Math.min(totalGridPages, p + 1))
+                        }
+                      >
+                        →
                       </PondButton>
                     </HStack>
-                  ) : null}
-                  {showFriendsFilterPanel && !isMobile ? friendsFilterControls : null}
-                </Stack>
-                {isMobile ? (
-                  <Dialog.Root
-                    open={friendsFilterToolsOpen}
-                    lazyMount
-                    unmountOnExit
-                    onOpenChange={(d: { open: boolean }) =>
-                      setFriendsFilterToolsOpen(d.open)
-                    }
-                  >
-                    <Dialog.Backdrop />
-                    <Dialog.Positioner
-                      display="flex"
-                      alignItems="flex-end"
-                      justifyContent="center"
-                      p="0"
-                    >
-                      <Dialog.Content
-                        maxW="100vw"
-                        w="100vw"
-                        borderTopRadius="xl"
-                        borderBottomRadius="0"
-                        bg="bg.panel"
-                        borderWidth="0"
-                        p="3"
-                        pb="6"
-                        boxShadow="lg"
-                        maxH="85vh"
-                        overflowY="auto"
-                        gap="0"
-                      >
-                        <HStack justify="space-between" align="start" w="100%" mb="2">
-                          <Text fontSize="md" fontWeight="semibold">
-                            Filter &amp; sort
-                          </Text>
-                          <Dialog.CloseTrigger asChild>
-                            <CloseButton
-                              type="button"
-                              size="sm"
-                              aria-label="Close filters"
-                            />
-                          </Dialog.CloseTrigger>
-                        </HStack>
-                        <Stack gap="2">{friendsFilterControls}</Stack>
-                        <HStack justify="flex-end" pt="3">
-                          <PondButton
-                            colorPalette="teal"
-                            onClick={() => setFriendsFilterToolsOpen(false)}
-                          >
-                            Done
-                          </PondButton>
-                        </HStack>
-                      </Dialog.Content>
-                    </Dialog.Positioner>
-                  </Dialog.Root>
-                ) : null}
-                {friendsItems.length === 0 ? (
-                  <PanelEmptyState
-                    title={
-                      friendsCategoryFilter.trim() || friendsTagFilter
-                        ? "No items match your filters."
-                        : "No items to show yet."
-                    }
-                    description={
-                      friendsCategoryFilter.trim() || friendsTagFilter
-                        ? "Try clearing your filters."
-                        : "When approved users add items, they’ll show up here (depending on your privacy settings)."
-                    }
-                    actionLabel={
-                      friendsCategoryFilter.trim() || friendsTagFilter
-                        ? "Clear filters"
-                        : "Refresh"
-                    }
-                    onAction={() => {
-                      if (friendsCategoryFilter.trim() || friendsTagFilter) {
-                        setFriendsCategoryFilter("");
-                        setFriendsTagFilter("");
-                        setFriendsTagInput("");
-                        setFriendsPage(1);
-                      } else {
-                        void loadFriends();
-                      }
-                    }}
-                  />
-                ) : null}
-                <SimpleGrid
-                  columns={{ base: 1, md: 3 }}
-                  gap={MAPPED_CLOSET_TAB_STACK_GAP}
-                  w="100%"
-                >
-                  {friendsItems.map((item) => (
-                    <FriendClosetListCard
-                      key={`friend-${item.id}`}
-                      item={item}
-                      closetReturnTo="/closet?tab=friends"
-                    />
-                  ))}
-                </SimpleGrid>
-                <HStack justify="space-between">
-                  <Text fontSize={APP_TEXT_SIZES.helper}>
-                    Page {friendsPage} / {totalFriendsPages}
-                  </Text>
-                  <HStack>
-                    <PondButton
-                      size="sm"
-                      colorPalette="nautical"
-                      disabled={friendsPage <= 1}
-                      onClick={() => setFriendsPage((p) => Math.max(1, p - 1))}
-                    >
-                      ←
-                    </PondButton>
-                    <PondButton
-                      size="sm"
-                      colorPalette="nautical"
-                      disabled={friendsPage >= totalFriendsPages}
-                      onClick={() =>
-                        setFriendsPage((p) =>
-                          Math.min(totalFriendsPages, p + 1),
-                        )
-                      }
-                    >
-                      →
-                    </PondButton>
                   </HStack>
-                </HStack>
-              </Stack>
+                </Stack>
               )}
+              <AppModal
+                open={selectedItemIdValid != null || itemQueryInvalid}
+                onOpenChange={(open) => {
+                  if (!open) closeExpanded();
+                }}
+                showHeader={false}
+                size="xl"
+                positionerProps={
+                  isMobile
+                    ? {
+                        px: "0",
+                        py: "0",
+                        alignItems: "stretch",
+                        justifyContent: "flex-start",
+                      }
+                    : undefined
+                }
+                contentProps={
+                  isMobile
+                    ? {
+                        maxW: "100vw",
+                        w: "100vw",
+                        maxH: "100dvh",
+                        h: "fit-content",
+                        my: "0",
+                        borderRadius: "0",
+                        borderWidth: "0",
+                        "aria-label": "Item details",
+                        overflow: "hidden",
+                        pt: "2",
+                        px: "2",
+                        pb: "max(0.5rem, env(safe-area-inset-bottom, 0px))",
+                      }
+                    : {
+                        maxW: "min(48rem, 100vw - 1.5rem)",
+                        "aria-label": "Item details",
+                        display: "flex",
+                        flexDirection: "column",
+                        overflow: "hidden",
+                        maxH: "min(90vh, 760px)",
+                        my: "0",
+                        h: "fit-content",
+                      }
+                }
+                bodyProps={
+                  isMobile
+                    ? {
+                        flex: "0 1 auto",
+                        minH: 0,
+                        overflowY: "auto",
+                        maxH:
+                          "calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 2rem)",
+                      }
+                    : {
+                        flex: "0 1 auto",
+                        minH: 0,
+                        overflowY: "auto",
+                        maxH: "min(85vh, 720px)",
+                      }
+                }
+              >
+                <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP} w="100%">
+                  {expandedNotice ? (
+                    <Text
+                      fontSize={APP_TEXT_SIZES.helper}
+                      fontWeight="medium"
+                      color={
+                        expandedNotice.kind === "error"
+                          ? "nautical.solid"
+                          : "forest.solid"
+                      }
+                      role={
+                        expandedNotice.kind === "error" ? "alert" : "status"
+                      }
+                    >
+                      {expandedNotice.message}
+                    </Text>
+                  ) : null}
+                  {itemQueryInvalid ? (
+                    <Text
+                      fontSize={APP_TEXT_SIZES.helper}
+                      color="nautical.solid"
+                      role="alert"
+                    >
+                      Invalid item.
+                    </Text>
+                  ) : selectedItemError && !displayItem ? (
+                    <Text
+                      fontSize={APP_TEXT_SIZES.helper}
+                      color="nautical.solid"
+                      role="alert"
+                    >
+                      {selectedItemError}
+                    </Text>
+                  ) : !displayItem ? (
+                    <PanelBlockSkeleton lines={2} showTitleLine />
+                  ) : sameClosetUserId(displayItem.owner_user.id, meId) ? (
+                    <ClosetOwnerManagePanel
+                      open
+                      onClose={closeExpanded}
+                      item={displayItem}
+                      custodyFriends={friendsForCustody}
+                      getToken={getApiAccessToken}
+                      meId={meId}
+                      onRefreshed={reloadSelectedItem}
+                      onNotice={setExpandedNotice}
+                      itemNav={itemModalNav}
+                    />
+                  ) : (
+                    <ClosetItemDetailContent
+                      item={displayItem}
+                      meId={meId}
+                      getApiAccessToken={getApiAccessToken}
+                      onReload={reloadSelectedItem}
+                      itemNav={itemModalNav}
+                    />
+                  )}
+                </Stack>
+              </AppModal>
             </Tabs.Content>
+
             <Tabs.Content value="images" p={{ base: "2", md: "2" }}>
               {loading ? (
                 <Box {...PANEL_ENTRY_CARD_PROPS}>
                   <PanelListRowSkeleton rows={4} />
                 </Box>
               ) : (
-              <Stack gap="4">
-                <HStack
-                  justify="space-between"
-                  align="center"
-                  gap="3"
-                  flexWrap="wrap"
-                >
-                  <Text>
-                    Browse your uploaded images and delete your unneeded files.
-                  </Text>
-                  {imagesNotice ? (
-                    <Text
-                      color={
-                        imagesNotice.kind === "success"
-                          ? "forest.solid"
-                          : "nautical.solid"
-                      }
-                      fontSize={APP_TEXT_SIZES.helper}
-                      fontWeight="medium"
-                      textAlign="right"
-                    >
-                      {imagesNotice.message}
+                <Stack gap="4">
+                  <HStack
+                    justify="space-between"
+                    align="center"
+                    gap="3"
+                    flexWrap="wrap"
+                  >
+                    <Text>
+                      Browse your uploaded images and delete your unneeded
+                      files.
+                    </Text>
+                    {imagesNotice ? (
+                      <Text
+                        color={
+                          imagesNotice.kind === "success"
+                            ? "forest.solid"
+                            : "nautical.solid"
+                        }
+                        fontSize={APP_TEXT_SIZES.helper}
+                        fontWeight="medium"
+                        textAlign="right"
+                      >
+                        {imagesNotice.message}
+                      </Text>
+                    ) : null}
+                  </HStack>
+                  <HStack align="end" gap="3" flexWrap="wrap">
+                    <Stack gap="1" minW="200px">
+                      <Text fontSize={APP_TEXT_SIZES.helper}>Show</Text>
+                      <NativeSelectRoot maxW="280px">
+                        <NativeSelectField
+                          value={imagesFilter}
+                          onChange={(e) =>
+                            setImagesFilter(
+                              e.target.value === "all" ? "all" : "unused",
+                            )
+                          }
+                        >
+                          <option value="unused">Unused Images</option>
+                          <option value="all">All Images</option>
+                        </NativeSelectField>
+                      </NativeSelectRoot>
+                    </Stack>
+                  </HStack>
+                  {visibleImageRows.length === 0 ? (
+                    <Text>
+                      {imagesFilter === "unused"
+                        ? "No unused images found."
+                        : "No uploaded images found."}
                     </Text>
                   ) : null}
-                </HStack>
-                <HStack align="end" gap="3" flexWrap="wrap">
-                  <Stack gap="1" minW="200px">
-                    <Text fontSize={APP_TEXT_SIZES.helper}>Show</Text>
-                    <NativeSelectRoot maxW="280px">
-                      <NativeSelectField
-                        value={imagesFilter}
-                        onChange={(e) =>
-                          setImagesFilter(
-                            e.target.value === "all" ? "all" : "unused",
-                          )
-                        }
-                      >
-                        <option value="unused">Unused Images</option>
-                        <option value="all">All Images</option>
-                      </NativeSelectField>
-                    </NativeSelectRoot>
-                  </Stack>
-                </HStack>
-                {visibleImageRows.length === 0 ? (
-                  <Text>
-                    {imagesFilter === "unused"
-                      ? "No unused images found."
-                      : "No uploaded images found."}
-                  </Text>
-                ) : null}
-                {visibleImageRows.map((row) => (
-                  <Card.Root
-                    key={row.image_key}
-                    bg="bg.panel"
-                    borderWidth="1px"
-                    borderColor="border"
-                    borderRadius="xl"
-                  >
-                    <Card.Body>
-                      <Stack gap="3">
-                        <HStack
-                          justify="space-between"
-                          align="start"
-                          gap="3"
-                          flexWrap="wrap"
-                        >
-                          <Stack gap="1">
-                            <Text fontWeight="bold">
-                              {row.status === "attached"
-                                ? "Attached"
-                                : "Stranded"}
-                            </Text>
-                            <Text
-                              fontSize={APP_TEXT_SIZES.helper}
-                              color="fg.muted"
-                            >
-                              {(() => {
-                                const nItems = row.attached_live_item_count;
-                                const nMeals = row.attached_meal_count ?? 0;
-                                const parts: string[] = [];
-                                if (nItems > 0) {
-                                  parts.push(
-                                    `${nItems} live item${nItems === 1 ? "" : "s"}`,
-                                  );
-                                }
-                                if (nMeals > 0) {
-                                  parts.push(
-                                    `${nMeals} recipe${nMeals === 1 ? "" : "s"}`,
-                                  );
-                                }
-                                if (row.attached_as_avatar) {
-                                  parts.push("your avatar");
-                                }
-                                if (parts.length === 0) {
-                                  return "Not used by items, recipes, or avatar";
-                                }
-                                return `Used by: ${parts.join(", ")}`;
-                              })()}
-                            </Text>
-                            {!row.present_in_bucket ? (
-                              <Text
-                                fontSize={APP_TEXT_SIZES.helper}
-                                color="orange.solid"
-                              >
-                                Missing from bucket
-                              </Text>
-                            ) : null}
-                          </Stack>
-                          <PondButton
-                            ref={(node: HTMLButtonElement | null) => {
-                              confirmDeleteImageButtonRefs.current[
-                                row.image_key
-                              ] = node;
-                            }}
-                            size="sm"
-                            colorPalette="nautical"
-                            loading={deletingImageKey === row.image_key}
-                            disabled={deletingImageKey !== null}
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              if (confirmDeleteImageKey !== row.image_key) {
-                                setConfirmDeleteImageKey(row.image_key);
-                                return;
-                              }
-                              try {
-                                setDeletingImageKey(row.image_key);
-                                setConfirmDeleteImageKey(null);
-                                const token = await getApiAccessToken();
-                                await deleteMyImage(token, row.image_key);
-                                setImagesNotice({
-                                  kind: "success",
-                                  message:
-                                    "Image deleted from storage and detached from items, recipes, or avatar.",
-                                });
-                                await refreshAll();
-                              } catch (err: unknown) {
-                                setImagesNotice({
-                                  kind: "error",
-                                  message:
-                                    err instanceof Error
-                                      ? err.message
-                                      : "Failed to delete image",
-                                });
-                              } finally {
-                                setDeletingImageKey(null);
-                              }
-                            }}
-                          >
-                            {confirmDeleteImageKey === row.image_key
-                              ? "Confirm delete"
-                              : "Delete image"}
-                          </PondButton>
-                        </HStack>
-                        {row.image_url ? (
-                          <Image
-                            src={row.image_url}
-                            alt=""
-                            aria-hidden
-                            maxH="180px"
-                            objectFit="cover"
-                            borderRadius="md"
-                          />
-                        ) : null}
-                        <Text
-                          fontSize={APP_TEXT_SIZES.helper}
-                          color="fg.muted"
-                          wordBreak="break-all"
-                        >
-                          {row.image_key}
-                        </Text>
-                        {row.attached_live_item_names.length > 0 ? (
-                          <Text fontSize={APP_TEXT_SIZES.helper}>
-                            Closet items:{" "}
-                            {row.attached_live_item_names.join(", ")}
-                          </Text>
-                        ) : null}
-                        {(row.attached_meal_titles?.length ?? 0) > 0 ? (
-                          <Text fontSize={APP_TEXT_SIZES.helper}>
-                            Recipes:{" "}
-                            {(row.attached_meal_titles ?? []).join(", ")}
-                          </Text>
-                        ) : null}
-                      </Stack>
-                    </Card.Body>
-                  </Card.Root>
-                ))}
-              </Stack>
+                  {visibleImageRows.length > 0 ? (
+                    <SimpleGrid
+                      columns={{ base: 2, md: 4 }}
+                      gap={MAPPED_CLOSET_TAB_STACK_GAP}
+                      w="100%"
+                    >
+                      {visibleImageRows.map((row) => (
+                        <ClosetImageInventoryCard
+                          key={row.image_key}
+                          row={row}
+                          deletingImageKey={deletingImageKey}
+                          confirmDeleteImageKey={confirmDeleteImageKey}
+                          deleteButtonRef={(node: HTMLButtonElement | null) => {
+                            confirmDeleteImageButtonRefs.current[row.image_key] = node;
+                          }}
+                          onDeleteClick={async (e) => {
+                            e.stopPropagation();
+                            if (confirmDeleteImageKey !== row.image_key) {
+                              setConfirmDeleteImageKey(row.image_key);
+                              return;
+                            }
+                            try {
+                              setDeletingImageKey(row.image_key);
+                              setConfirmDeleteImageKey(null);
+                              const token = await getApiAccessToken();
+                              await deleteMyImage(token, row.image_key);
+                              setImagesNotice({
+                                kind: "success",
+                                message:
+                                  "Image deleted from storage and detached from items, recipes, or avatar.",
+                              });
+                              await refreshAll();
+                            } catch (err: unknown) {
+                              setImagesNotice({
+                                kind: "error",
+                                message:
+                                  err instanceof Error
+                                    ? err.message
+                                    : "Failed to delete image",
+                              });
+                            } finally {
+                              setDeletingImageKey(null);
+                            }
+                          }}
+                        />
+                      ))}
+                    </SimpleGrid>
+                  ) : null}
+                </Stack>
               )}
             </Tabs.Content>
             {error ? (

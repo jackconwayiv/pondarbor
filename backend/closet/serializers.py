@@ -102,6 +102,8 @@ class ItemSerializer(serializers.ModelSerializer):
     custody_marked_returned_by_holder = serializers.SerializerMethodField()
     pending_custody_user = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()
+    hidden_by_me = serializers.SerializerMethodField()
+    pending_borrow_requests = serializers.SerializerMethodField()
 
     class Meta:
         model = Item
@@ -118,11 +120,13 @@ class ItemSerializer(serializers.ModelSerializer):
             "image_url",
             "custody_disputed",
             "pending_request_count",
+            "pending_borrow_requests",
             "my_pending_request",
             "my_declined_request",
             "active_loan_id",
             "active_loan_marked_returned_by_borrower",
             "custody_marked_returned_by_holder",
+            "hidden_by_me",
             "created_at",
             "updated_at",
         ]
@@ -182,6 +186,25 @@ class ItemSerializer(serializers.ModelSerializer):
             return None
         return BorrowRequestSerializer(row).data
 
+    def get_pending_borrow_requests(self, obj: Item):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not user.is_authenticated:
+            return []
+        if obj.owner_user_id != user.id:
+            return []
+        rows = getattr(obj, "_prefetched_pending_borrow_requests", None)
+        if rows is None:
+            rows = list(
+                obj.borrow_requests.filter(
+                    status=BorrowRequest.Status.PENDING,
+                    deleted_at__isnull=True,
+                )
+                .select_related("requester_user__profile")
+                .order_by("date_needed_by", "-created_at")
+            )
+        return BorrowRequestSerializer(rows, many=True).data
+
     def get_active_loan_id(self, obj: Item):
         row = (
             obj.loans.filter(status=Loan.Status.ACTIVE, deleted_at__isnull=True).only("id").first()
@@ -203,6 +226,19 @@ class ItemSerializer(serializers.ModelSerializer):
             obj.custody_marked_returned_by_holder_at
             and obj.current_holder_user_id != obj.owner_user_id
         )
+
+    def get_hidden_by_me(self, obj: Item) -> bool:
+        # Prefer a precomputed set placed on the serializer context to avoid N queries.
+        ids = self.context.get("viewer_hidden_item_ids")
+        if ids is not None:
+            return obj.id in ids
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not user.is_authenticated:
+            return False
+        from closet.models import ItemHidden  # avoid cycles at import time
+
+        return ItemHidden.objects.filter(user=user, item=obj).exists()
 
 
 class ItemCreateSerializer(serializers.Serializer):

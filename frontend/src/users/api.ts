@@ -15,6 +15,8 @@ export type StaffContactMessageRow = {
   id: number;
   message: string;
   created_at: string;
+  read_at: string | null;
+  read_by: { id: number; email: string } | null;
   from_user: {
     id: number;
     email: string;
@@ -80,6 +82,23 @@ export async function fetchStaffPendingSummary(accessToken: string): Promise<Sta
   return (await response.json()) as StaffPendingSummary;
 }
 
+export async function acknowledgeStaffContactMessages(accessToken: string): Promise<number> {
+  const response = await fetch(`${apiBase()}/api/v1/contact/staff/messages/acknowledge/`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    credentials: "omit",
+    body: "{}",
+  });
+  if (!response.ok) {
+    throw new Error(`Staff contact acknowledge failed: ${response.status}`);
+  }
+  const body = (await response.json()) as { updated?: unknown };
+  return typeof body.updated === "number" ? body.updated : 0;
+}
+
 export async function fetchStaffContactMessages(
   accessToken: string,
 ): Promise<StaffContactMessageRow[]> {
@@ -95,6 +114,23 @@ export async function fetchStaffContactMessages(
     throw new Error(`Staff contact messages failed: ${response.status}`);
   }
   return (await response.json()) as StaffContactMessageRow[];
+}
+
+export async function deleteStaffContactMessage(
+  accessToken: string,
+  messageId: number,
+): Promise<void> {
+  const response = await fetch(`${apiBase()}/api/v1/contact/staff/messages/${messageId}/`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    credentials: "omit",
+  });
+  if (!response.ok) {
+    throw new Error(`Delete contact message failed: ${response.status}`);
+  }
 }
 
 export async function fetchStaffUsers(accessToken: string): Promise<StaffUserRow[]> {

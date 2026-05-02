@@ -500,7 +500,8 @@ def staff_pending_summary(request):
         review_status=WhatIfQuestion.ReviewStatus.PENDING,
         deleted_at__isnull=True,
     ).count()
-    contact_agg = ContactMessage.objects.aggregate(
+    unread_messages = ContactMessage.objects.filter(read_at__isnull=True)
+    contact_agg = unread_messages.aggregate(
         contact_messages_count=Count("id"),
         latest_contact_message_id=Max("id"),
     )

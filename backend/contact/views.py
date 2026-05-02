@@ -2,6 +2,8 @@ import logging
 import time
 
 from django.core.cache import cache
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
@@ -65,23 +67,57 @@ def contact_submit(request):
 def _serialize_contact_message_row(cm: ContactMessage) -> dict:
     profile = getattr(cm.from_user, "profile", None)
     display_name = getattr(profile, "display_name", None) or ""
-    return {
+    read_by = None
+    if cm.read_by_id is not None and getattr(cm, "read_by", None) is not None:
+        ru = cm.read_by
+        read_by = {"id": ru.id, "email": ru.email}
+    row = {
         "id": cm.id,
         "message": cm.message,
         "created_at": cm.created_at,
+        "read_at": cm.read_at,
+        "read_by": read_by,
         "from_user": {
             "id": cm.from_user_id,
             "email": cm.from_user.email,
             "display_name": display_name,
         },
     }
+    return row
 
 
 @api_view(["GET"])
 @authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
 @permission_classes([IsAuthenticated, IsStaffUser])
 def contact_staff_messages(request):
-    qs = ContactMessage.objects.select_related("from_user", "from_user__profile").order_by(
-        "-created_at"
+    qs = (
+        ContactMessage.objects.select_related(
+            "from_user",
+            "from_user__profile",
+            "read_by",
+        )
+        .order_by("-created_at")
     )
     return Response([_serialize_contact_message_row(cm) for cm in qs])
+
+
+@api_view(["POST"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsAuthenticated, IsStaffUser])
+def contact_staff_messages_acknowledge(request):
+    """Mark all unread contact messages as read (first writer wins for read_by)."""
+    now = timezone.now()
+    updated = ContactMessage.objects.filter(read_at__isnull=True).update(
+        read_at=now,
+        read_by_id=request.user.id,
+    )
+    return Response({"updated": updated})
+
+
+@api_view(["DELETE"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsAuthenticated, IsStaffUser])
+def contact_staff_message_delete(request, pk: int):
+    cm = get_object_or_404(ContactMessage.objects.all(), pk=pk)
+    cm.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)

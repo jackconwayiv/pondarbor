@@ -512,10 +512,16 @@ class StaffApiTests(TestCase):
             ("get", "/api/v1/users/staff/pending-summary/", None),
             ("get", "/api/v1/users/staff/users/", None),
             ("get", "/api/v1/contact/staff/messages/", None),
+            ("post", "/api/v1/contact/staff/messages/acknowledge/", {}),
+            ("delete", "/api/v1/contact/staff/messages/1/", None),
             ("patch", "/api/v1/users/staff/users/999/", {"account_status": "approved"}),
         ):
             if method == "get":
                 response = self.client.get(path)
+            elif method == "post":
+                response = self.client.post(path, data or {}, format="json")
+            elif method == "delete":
+                response = self.client.delete(path)
             else:
                 response = self.client.patch(path, data, format="json")
             self.assertEqual(response.status_code, 403, msg=f"{method.upper()} {path}")
@@ -556,6 +562,14 @@ class StaffApiTests(TestCase):
         body2 = response2.json()
         self.assertEqual(body2["contact_messages_count"], 1)
         self.assertEqual(body2["latest_contact_message_id"], cm.id)
+
+        ack = self.client.post("/api/v1/contact/staff/messages/acknowledge/", {}, format="json")
+        self.assertEqual(ack.status_code, 200)
+        self.assertEqual(ack.json()["updated"], 1)
+        response3 = self.client.get("/api/v1/users/staff/pending-summary/")
+        body3 = response3.json()
+        self.assertEqual(body3["contact_messages_count"], 0)
+        self.assertIsNone(body3["latest_contact_message_id"])
 
     def test_staff_users_list_and_patch(self):
         staff = User.objects.create_user(

@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link as RouterLink, useSearchParams } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
+import { useHomeInbox } from "../home/homeInboxContext";
 import PondButton from "../PondButton";
 import { fullBleedStackProps } from "../responsive";
 import {
@@ -25,6 +26,8 @@ import {
   PANEL_ENTRY_CARD_PROPS,
 } from "../theme/typography";
 import {
+  acknowledgeStaffContactMessages,
+  deleteStaffContactMessage,
   fetchStaffContactMessages,
   fetchStaffUsers,
   patchStaffUserAccountStatus,
@@ -80,8 +83,15 @@ function formatContactTime(iso: string): string {
   });
 }
 
+function contactReadCaption(row: StaffContactMessageRow): string {
+  if (!row.read_at) return "Unread";
+  const who = row.read_by?.email ?? "staff";
+  return `Read by ${who} · ${formatContactTime(row.read_at)}`;
+}
+
 export default function StaffPage() {
   const { sessionUser, isAuthenticated, getApiAccessToken } = useAppSession();
+  const { refreshInbox } = useHomeInbox();
   const [searchParams] = useSearchParams();
 
   const [users, setUsers] = useState<StaffUserRow[]>([]);
@@ -94,6 +104,9 @@ export default function StaffPage() {
   );
   const [contactBusy, setContactBusy] = useState(false);
   const [contactError, setContactError] = useState<string | null>(null);
+  const [contactDeleteBusyId, setContactDeleteBusyId] = useState<number | null>(
+    null,
+  );
   const [staffTab, setStaffTab] = useState<"users" | "contact">("users");
 
   useEffect(() => {
@@ -136,8 +149,10 @@ export default function StaffPage() {
     setContactError(null);
     try {
       const token = await getApiAccessToken();
+      await acknowledgeStaffContactMessages(token);
       const rows = await fetchStaffContactMessages(token);
       setContactMessages(rows);
+      void refreshInbox();
     } catch (e) {
       setContactError(
         e instanceof Error ? e.message : "Failed to load contact messages",
@@ -146,7 +161,34 @@ export default function StaffPage() {
     } finally {
       setContactBusy(false);
     }
-  }, [isAuthenticated, isStaff, getApiAccessToken]);
+  }, [isAuthenticated, isStaff, getApiAccessToken, refreshInbox]);
+
+  const onDeleteContactMessage = useCallback(
+    async (row: StaffContactMessageRow) => {
+      if (!isStaff) return;
+      if (
+        !window.confirm(
+          "Delete this contact message permanently? This cannot be undone.",
+        )
+      ) {
+        return;
+      }
+      setContactDeleteBusyId(row.id);
+      setContactError(null);
+      try {
+        const token = await getApiAccessToken();
+        await deleteStaffContactMessage(token, row.id);
+        await loadContactMessages();
+      } catch (e) {
+        setContactError(
+          e instanceof Error ? e.message : "Failed to delete message",
+        );
+      } finally {
+        setContactDeleteBusyId(null);
+      }
+    },
+    [isStaff, getApiAccessToken, loadContactMessages],
+  );
 
   useEffect(() => {
     void loadContactMessages();
@@ -515,7 +557,7 @@ export default function StaffPage() {
                     >
                       <Box
                         display={{ base: "none", md: "grid" }}
-                        gridTemplateColumns="minmax(0,7rem) minmax(0,1fr) minmax(0,2fr)"
+                        gridTemplateColumns="minmax(0,8rem) minmax(0,1fr) minmax(0,2fr) auto"
                         gap="3"
                         px="2"
                         py="2"
@@ -544,6 +586,7 @@ export default function StaffPage() {
                         >
                           Message
                         </Text>
+                        <Box aria-hidden minW="4rem" />
                       </Box>
                       {contactMessages.map((row) => (
                         <Box
@@ -558,6 +601,13 @@ export default function StaffPage() {
                           <Stack gap="2" display={{ base: "flex", md: "none" }}>
                             <Text fontSize="xs" color="fg.muted">
                               {formatContactTime(row.created_at)}
+                            </Text>
+                            <Text
+                              fontSize="2xs"
+                              color={row.read_at ? "fg.muted" : "nautical.solid"}
+                              fontWeight={row.read_at ? "normal" : "medium"}
+                            >
+                              {contactReadCaption(row)}
                             </Text>
                             <Stack gap="0">
                               <Text
@@ -578,16 +628,37 @@ export default function StaffPage() {
                             >
                               {row.message}
                             </Text>
+                            <HStack justify="flex-end" w="100%">
+                              <PondButton
+                                type="button"
+                                size="xs"
+                                colorPalette="orange"
+                                loading={contactDeleteBusyId === row.id}
+                                disabled={contactBusy && contactDeleteBusyId !== row.id}
+                                onClick={() => void onDeleteContactMessage(row)}
+                              >
+                                Delete
+                              </PondButton>
+                            </HStack>
                           </Stack>
                           <Box
                             display={{ base: "none", md: "grid" }}
-                            gridTemplateColumns="minmax(0,7rem) minmax(0,1fr) minmax(0,2fr)"
+                            gridTemplateColumns="minmax(0,8rem) minmax(0,1fr) minmax(0,2fr) auto"
                             gap="3"
                             alignItems="start"
                           >
-                            <Text fontSize="sm" color="fg.muted">
-                              {formatContactTime(row.created_at)}
-                            </Text>
+                            <Stack gap="0">
+                              <Text fontSize="sm" color="fg.muted">
+                                {formatContactTime(row.created_at)}
+                              </Text>
+                              <Text
+                                fontSize="2xs"
+                                color={row.read_at ? "fg.muted" : "nautical.solid"}
+                                fontWeight={row.read_at ? "normal" : "medium"}
+                              >
+                                {contactReadCaption(row)}
+                              </Text>
+                            </Stack>
                             <Stack gap="0" minW="0">
                               <Text
                                 fontSize="sm"
@@ -608,6 +679,16 @@ export default function StaffPage() {
                             >
                               {row.message}
                             </Text>
+                            <PondButton
+                              type="button"
+                              size="xs"
+                              colorPalette="orange"
+                              loading={contactDeleteBusyId === row.id}
+                              disabled={contactBusy && contactDeleteBusyId !== row.id}
+                              onClick={() => void onDeleteContactMessage(row)}
+                            >
+                              Delete
+                            </PondButton>
                           </Box>
                         </Box>
                       ))}

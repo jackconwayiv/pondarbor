@@ -24,7 +24,7 @@
   min-height: 100dvh;
   background: linear-gradient(180deg, #08111e 0%, #0e1a2b 60%, #19243a 100%);
   color: var(--harbor-text);
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: Verdana, Geneva, "DejaVu Sans", sans-serif;
   display: flex;
   flex-direction: column;
   position: relative;

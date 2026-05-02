@@ -60,12 +60,10 @@ export const system = createSystem(
       tokens: {
         fonts: defineTokens.fonts({
           body: {
-            value:
-              '"Inter Variable", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+            value: 'Verdana, Geneva, "DejaVu Sans", sans-serif',
           },
           heading: {
-            value:
-              '"Inter Variable", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+            value: 'Verdana, Geneva, "DejaVu Sans", sans-serif',
           },
         }),
         colors: defineTokens.colors({

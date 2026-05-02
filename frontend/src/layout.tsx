@@ -464,7 +464,7 @@ export default function AppLayout() {
                 fontSize={NAV_WORDMARK_FONT_SIZE}
                 lineHeight={NAV_WORDMARK_LINE_HEIGHT}
               >
-                <Link to="/">PondArbor</Link>
+                <Link to="/">Pond Arbor</Link>
               </ChakraLink>
             </Box>
             <Box flex="1" display="flex" justifyContent="flex-end" minW={0}>

@@ -90,7 +90,7 @@ export default function AboutPage() {
 
     <Stack minW={0} gap="2">
       <Text fontSize={APP_TEXT_SIZES.body} color="fg">
-        PondArbor is a hobby project developed by Pond Arbor Workshop (Jack Conway) to collect
+        Pond Arbor is a hobby project developed by Pond Arbor Workshop (Jack Conway) to collect
         various app ideas together in one place. I'm sharing it with friends and
         family as an opportunity to interact through these earth-shattering apps.
       </Text>

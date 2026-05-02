@@ -26,7 +26,7 @@ import { fullBleedStackProps, viewPortWidthBarProps } from "./responsive";
 import { APP_SHELL_CONTENT_MAX_PROPS, APP_TEXT_SIZES } from "./theme/typography";
 
 const HOME_PURPOSE_BLURB =
-  "Welcome to PondArbor! This is a hobby project by Pond Arbor Workshop (Jack Conway) for friends and family to enjoy a variety of social and lifestyle apps and games.";
+  "Welcome to Pond Arbor! This is a hobby project by Pond Arbor Workshop (Jack Conway) for friends and family to enjoy a variety of social and lifestyle apps and games.";
 
 function HomeAppNavList({ isAuthenticated }: { isAuthenticated: boolean }) {
   return (
@@ -145,7 +145,7 @@ function App() {
         >
           <Stack gap="1" w="100%">
             <Heading as="h1" fontSize={APP_TEXT_SIZES.display} lineHeight="shorter">
-              PondArbor
+              Welcome to Pond Arbor!
             </Heading>
           </Stack>
 

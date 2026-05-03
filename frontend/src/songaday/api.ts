@@ -123,6 +123,46 @@ export async function fetchResponsesForDate(
   return raw.map(normalizeSongResponse);
 }
 
+/** Single GET: prompts + responses per ISO date for [start_date, end_date], plus archive seed (page 1, size 50). */
+export async function fetchSongadayDayWindow(
+  accessToken: string | null,
+  startDateIso: string,
+  endDateIso: string,
+): Promise<{
+  prompts: Record<string, SongadayPromptPayload>;
+  responses: Record<string, SongadayResponse[]>;
+  archive_seed: SongadayArchiveListResponse;
+}> {
+  const q = new URLSearchParams();
+  q.set("start_date", startDateIso);
+  q.set("end_date", endDateIso);
+  const response = await fetch(
+    `${apiBase()}/api/v1/songaday/day-window/?${q.toString()}`,
+    { method: "GET", headers: authHeaders(accessToken), credentials: "omit" },
+  );
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
+  }
+  const raw = (await response.json()) as {
+    prompts: Record<string, SongadayPromptPayload>;
+    responses: Record<string, SongadayResponse[]>;
+    archive_seed: SongadayArchiveListResponse;
+  };
+  const responses: Record<string, SongadayResponse[]> = {};
+  for (const [iso, rows] of Object.entries(raw.responses ?? {})) {
+    responses[iso] = (rows ?? []).map(normalizeSongResponse);
+  }
+  const arch = raw.archive_seed;
+  return {
+    prompts: raw.prompts ?? {},
+    responses,
+    archive_seed: {
+      ...arch,
+      results: (arch?.results ?? []).map(normalizeSongResponse),
+    },
+  };
+}
+
 /** Newest first; optional `userId` loads a friend's archive (must be an approved friend). */
 export async function fetchResponsesArchive(
   accessToken: string | null,

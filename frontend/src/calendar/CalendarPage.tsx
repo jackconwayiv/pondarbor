@@ -24,6 +24,7 @@ import {
   deleteCalendarEvent,
   deleteCalendarSource,
   fetchApprovedUsers,
+  fetchCalendarBootstrap,
   fetchCalendarEvents,
   fetchCalendarSources,
   syncCalendarSource,
@@ -166,11 +167,35 @@ export default function CalendarPage() {
   }, [getApiAccessToken, sessionUser]);
 
   const refreshAll = useCallback(async () => {
+    if (!sessionUser) return;
     setLoading(true);
-    await Promise.allSettled([loadEvents(), loadSources(), loadApprovedUsers()]);
+    setEventsError(null);
+    setSourcesError(null);
+    setApprovedUsersError(null);
+    try {
+      const token = await getApiAccessToken();
+      const data = await fetchCalendarBootstrap(token, {
+        start_date: monthRange.start,
+        end_date: monthRange.end,
+        owner: "all",
+        approvedUsersQuery: "",
+      });
+      setEvents(data.events);
+      setSources(data.sources);
+      setApprovedUsers(data.approved_users);
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error ? err.message : "Failed to load calendar.";
+      setEventsError(msg);
+      setSourcesError(msg);
+      setApprovedUsersError(msg);
+      setEvents([]);
+      setSources([]);
+      setApprovedUsers([]);
+    }
     hasLoadedOnceRef.current = true;
     setLoading(false);
-  }, [loadApprovedUsers, loadEvents, loadSources]);
+  }, [getApiAccessToken, monthRange.end, monthRange.start, sessionUser]);
 
   useEffect(() => {
     if (!isAuthenticated || !sessionUser) return;

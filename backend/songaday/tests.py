@@ -272,3 +272,43 @@ class SongadayApiTests(TestCase):
         rb = self.bob_client.get("/api/v1/songaday/responses/for-date/?year=2026&month=4&day=12")
         self.assertEqual(rb.status_code, 200)
         self.assertEqual(len(rb.json()), 0)
+
+    def test_day_window_returns_prompts_responses_and_archive_seed(self):
+        self.alice_client.post(
+            "/api/v1/songaday/responses/",
+            {
+                "entry_date": "2026-04-12",
+                "prompt_snapshot": "Spring song",
+                "youtube_video_id": "dQw4w9WgXcQ",
+            },
+            format="json",
+        )
+        r = self.alice_client.get(
+            "/api/v1/songaday/day-window/?start_date=2026-04-11&end_date=2026-04-12"
+        )
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        prompts = body["prompts"]
+        self.assertIn("2026-04-11", prompts)
+        self.assertEqual(prompts["2026-04-11"]["prompt"], None)
+        self.assertEqual(prompts["2026-04-12"]["prompt"], "Spring song")
+        responses_by_day = body["responses"]
+        self.assertEqual(responses_by_day["2026-04-11"], [])
+        self.assertEqual(len(responses_by_day["2026-04-12"]), 1)
+        self.assertEqual(responses_by_day["2026-04-12"][0]["youtube_video_id"], "dQw4w9WgXcQ")
+
+        seed = body["archive_seed"]
+        direct = self.alice_client.get(
+            "/api/v1/songaday/responses/archive/?page=1&page_size=50"
+        ).json()
+        self.assertEqual(seed["page"], direct["page"])
+        self.assertEqual(seed["page_size"], direct["page_size"])
+        self.assertEqual(seed["total"], direct["total"])
+        self.assertEqual(len(seed["results"]), len(direct["results"]))
+        self.assertEqual(seed["results"][0]["id"], direct["results"][0]["id"])
+
+    def test_day_window_rejects_huge_range(self):
+        r = self.alice_client.get(
+            "/api/v1/songaday/day-window/?start_date=2026-01-01&end_date=2026-03-01"
+        )
+        self.assertEqual(r.status_code, 400)

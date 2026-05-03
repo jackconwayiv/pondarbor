@@ -56,6 +56,16 @@ class EventsApiTests(CalendarTestMixin, TestCase):
         owners = sorted(row["owner"]["display_name"] for row in resp.json()["results"])
         self.assertEqual(owners, ["Alice", "Bob"])
 
+    def test_bootstrap_matches_individual_endpoints(self):
+        q = "start_date=2026-05-01&end_date=2026-06-01&owner=all"
+        ev = self.alice_client.get(f"/api/v1/calendars/events/?{q}").json()
+        src = self.alice_client.get("/api/v1/calendars/sources/").json()
+        appr = self.alice_client.get("/api/v1/calendars/approved-users/").json()
+        boot = self.alice_client.get(f"/api/v1/calendars/bootstrap/?{q}").json()
+        self.assertEqual(boot["events"], ev["results"])
+        self.assertEqual(boot["sources"], src["results"])
+        self.assertEqual(boot["approved_users"], appr["results"])
+
     def test_owner_filter_me(self):
         resp = self.alice_client.get(
             "/api/v1/calendars/events/"

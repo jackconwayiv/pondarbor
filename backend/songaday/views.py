@@ -1,9 +1,12 @@
+import operator
 import re
-from datetime import date
+from collections import defaultdict
+from datetime import date, timedelta
+from functools import reduce
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Count, Exists, OuterRef
+from django.db.models import Count, Exists, OuterRef, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -37,6 +40,8 @@ User = get_user_model()
 
 MAX_BULK_IMPORT_CHARS = 500_000
 _MAX_BULK_LINES = 400
+# Max inclusive span for GET day-window (matches frontend prefetch guardrails).
+DAY_WINDOW_MAX_SPAN_DAYS = 31
 
 
 def _parse_ymd(request):
@@ -79,6 +84,48 @@ def _annotate_hearts(qs, viewer_id: int):
     )
 
 
+def _parse_iso_date_param(raw: str | None) -> date | None:
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw.strip())
+    except ValueError:
+        return None
+
+
+def _visible_responses_qs_range(*, viewer, start: date, end: date):
+    friend_ids = friend_ids_for_user(user=viewer)
+    q_vis = visible_song_responses_q(viewer=viewer, friend_ids=friend_ids)
+    qs = SongResponse.objects.filter(entry_date__gte=start, entry_date__lte=end).filter(q_vis)
+
+    ctx = viewer_context(viewer=viewer)
+    scope = getattr(getattr(viewer, "profile", None), "social_read_scope", None) or Profile.SocialReadScope.APPROVED_USERS
+    if ctx.is_approved and scope == Profile.SocialReadScope.FRIENDS_ONLY:
+        allowed = set(ctx.friend_ids)
+        allowed.add(ctx.viewer_id)
+        qs = qs.filter(user_id__in=list(allowed))
+    return qs
+
+
+def _archive_seed_payload(*, viewer, page: int = 1, page_size: int = 50) -> dict:
+    """Same JSON shape as GET responses_archive for the viewer's own archive."""
+    base = SongResponse.objects.filter(user_id=viewer.id).order_by("-entry_date", "-id")
+    qs = _annotate_hearts(base, viewer.id).select_related("user", "user__profile", "prompt")
+    total = qs.count()
+    start_idx = (page - 1) * page_size
+    end_idx = start_idx + page_size
+    rows = list(qs[start_idx:end_idx])
+    data = SongResponseReadSerializer(rows, many=True).data
+    return {
+        "results": data,
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "has_next": end_idx < total,
+        "has_prev": page > 1,
+    }
+
+
 def _can_view_response(*, viewer, response: SongResponse) -> bool:
     return can_view_song_response(viewer=viewer, response=response)
 
@@ -105,6 +152,79 @@ def prompt_for_date(request):
             "prompt": prompt.prompt,
             "month": entry.month,
             "day": entry.day,
+        }
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def day_window(request):
+    """
+    Prompts + responses per ISO date for [start_date, end_date], plus first archive page.
+    Matches separate calls to prompts/for-date, responses/for-date (per day), and archive page 1.
+    """
+    start_d = _parse_iso_date_param(request.query_params.get("start_date"))
+    end_d = _parse_iso_date_param(request.query_params.get("end_date"))
+    if start_d is None or end_d is None:
+        return Response(
+            {"detail": "start_date and end_date query params (YYYY-MM-DD) are required."},
+            status=400,
+        )
+    if end_d < start_d:
+        return Response({"detail": "end_date must be on or after start_date."}, status=400)
+    if (end_d - start_d).days > DAY_WINDOW_MAX_SPAN_DAYS:
+        return Response(
+            {"detail": f"Range cannot exceed {DAY_WINDOW_MAX_SPAN_DAYS} days."},
+            status=400,
+        )
+
+    viewer = request.user
+    dates: list[date] = []
+    cur = start_d
+    while cur <= end_d:
+        dates.append(cur)
+        cur += timedelta(days=1)
+
+    pairs = {(dt.month, dt.day) for dt in dates}
+    prompt_by_pair: dict[tuple[int, int], SongPrompt] = {}
+    if pairs:
+        q_or = reduce(operator.or_, (Q(month=m, day=dy) for m, dy in pairs))
+        prompt_by_pair = {(p.month, p.day): p for p in SongPrompt.objects.filter(q_or)}
+
+    prompts_out: dict[str, dict] = {}
+    for dt in dates:
+        iso = dt.isoformat()
+        pr = prompt_by_pair.get((dt.month, dt.day))
+        if pr is None:
+            prompts_out[iso] = {"prompt": None, "month": dt.month, "day": dt.day}
+        else:
+            prompts_out[iso] = {
+                "id": pr.id,
+                "prompt": pr.prompt,
+                "month": dt.month,
+                "day": dt.day,
+            }
+
+    qs = _visible_responses_qs_range(viewer=viewer, start=start_d, end=end_d)
+    qs = _annotate_hearts(qs, viewer.id).select_related("user", "user__profile", "prompt")
+    rows = list(qs.order_by("entry_date", "-created_at"))
+    by_iso: dict[str, list] = defaultdict(list)
+    for row in rows:
+        by_iso[row.entry_date.isoformat()].append(row)
+
+    responses_out: dict[str, list] = {}
+    for dt in dates:
+        iso = dt.isoformat()
+        lst = by_iso.get(iso, [])
+        responses_out[iso] = SongResponseReadSerializer(lst, many=True).data
+
+    archive_seed = _archive_seed_payload(viewer=viewer, page=1, page_size=50)
+
+    return Response(
+        {
+            "prompts": prompts_out,
+            "responses": responses_out,
+            "archive_seed": archive_seed,
         }
     )
 

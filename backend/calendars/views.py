@@ -73,12 +73,7 @@ def _parse_owner_ids(raw: str | None) -> list[int] | None:
     return out
 
 
-@api_view(["GET", "POST"])
-@permission_classes([IsApprovedUser])
-def events_list(request):
-    if request.method == "POST":
-        return _create_event(request)
-
+def _events_list_get(request):
     start_date = _parse_date_param(request.query_params.get("start_date"))
     end_date = _parse_date_param(request.query_params.get("end_date"))
     if start_date is None or end_date is None:
@@ -184,6 +179,15 @@ def events_list(request):
     )
 
 
+@api_view(["GET", "POST"])
+@permission_classes([IsApprovedUser])
+def events_list(request):
+    if request.method == "POST":
+        return _create_event(request)
+
+    return _events_list_get(request)
+
+
 def _create_event(request):
     serializer = EventWriteSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
@@ -229,18 +233,22 @@ def event_detail(request, event_id: int):
     return Response(EventSerializer(event, context={"request": request}).data)
 
 
-@api_view(["GET", "POST"])
-@permission_classes([IsApprovedUser])
-def sources_list(request):
-    if request.method == "POST":
-        return _create_source(request)
-
+def _sources_list_get(request):
     qs = (
         CalendarSource.objects.select_related("owner", "owner__profile")
         .filter(owner=request.user)
         .order_by("source_type", "display_name")
     )
     return Response({"results": CalendarSourceSerializer(qs, many=True).data})
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsApprovedUser])
+def sources_list(request):
+    if request.method == "POST":
+        return _create_source(request)
+
+    return _sources_list_get(request)
 
 
 def _create_source(request):
@@ -329,9 +337,7 @@ def source_detail(request, source_id: int):
     )
 
 
-@api_view(["GET"])
-@permission_classes([IsApprovedUser])
-def approved_users_list(request):
+def _approved_users_list_get(request):
     """Approved users visible in the calendar people filter (see filter below)."""
     search = (request.query_params.get("q") or "").strip()
     today = timezone.localdate()
@@ -376,3 +382,30 @@ def approved_users_list(request):
         )
     qs = qs[:200]
     return Response({"results": [_owner_row(u) for u in qs]})
+
+
+@api_view(["GET"])
+@permission_classes([IsApprovedUser])
+def approved_users_list(request):
+    return _approved_users_list_get(request)
+
+
+@api_view(["GET"])
+@permission_classes([IsApprovedUser])
+def calendar_bootstrap(request):
+    """
+    Single round-trip for calendar month view: events (same query params as GET /events/)
+    plus sources and approved users (same as GET /sources/ and GET /approved-users/).
+    """
+    ev = _events_list_get(request)
+    if ev.status_code >= 400:
+        return ev
+    src = _sources_list_get(request)
+    appr = _approved_users_list_get(request)
+    return Response(
+        {
+            "events": ev.data.get("results", []),
+            "sources": src.data.get("results", []),
+            "approved_users": appr.data.get("results", []),
+        }
+    )

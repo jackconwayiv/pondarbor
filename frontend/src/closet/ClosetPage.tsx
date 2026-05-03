@@ -206,6 +206,7 @@ export default function ClosetPage() {
   >([]);
   const [pendingNeighborNav, setPendingNeighborNav] =
     useState<PendingNeighborNav>(null);
+  const hasLoadedOnceRef = useRef(false);
 
   const meId = coerceClosetUserId(sessionUser?.user.id);
   const totalGridPages = Math.max(1, Math.ceil(gridTotal / ITEMS_PAGE_SIZE));
@@ -366,6 +367,7 @@ export default function ClosetPage() {
     if (failures.length > 0) {
       setError(failures.join(" · "));
     }
+    hasLoadedOnceRef.current = true;
     setLoading(false);
     const myItemsPayload =
       parts[0].status === "fulfilled" ? parts[0].value : null;
@@ -804,11 +806,23 @@ export default function ClosetPage() {
                     display="inline-flex"
                     gap="2"
                     alignItems="center"
+                    flexWrap="wrap"
                   >
                     <Text as="span" aria-hidden="true">
                       👒
                     </Text>
                     <Text as="span">Community Closet</Text>
+                    {loading && !hasLoadedOnceRef.current ? (
+                      <Text
+                        as="span"
+                        fontSize={APP_TEXT_SIZES.helper}
+                        color="fg.muted"
+                        fontWeight="medium"
+                        aria-live="polite"
+                      >
+                        Loading…
+                      </Text>
+                    ) : null}
                   </HStack>
                 </Heading>
 

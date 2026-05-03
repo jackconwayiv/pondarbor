@@ -38,6 +38,7 @@ import {
   fetchPromptForDate,
   fetchResponsesArchive,
   fetchResponsesForDate,
+  fetchSongadayDayWindow,
   resolveSongLinkMetadata,
   songadaySlackDailyPromptSync,
   toggleHeart,
@@ -195,6 +196,7 @@ export default function SongadayPage() {
     total: number;
   } | null>(null);
   const archiveSeedFetched = useRef(false);
+  const [songadayReady, setSongadayReady] = useState(false);
 
   const [promptPayload, setPromptPayload] =
     useState<SongadayPromptPayload | null>(null);
@@ -248,30 +250,6 @@ export default function SongadayPage() {
     const t = window.setTimeout(() => setBulkNotice(null), 7000);
     return () => window.clearTimeout(t);
   }, [bulkNotice]);
-
-  useEffect(() => {
-    if (!isApproved || archiveSeedFetched.current) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const token = await getApiAccessToken();
-        const payload = await fetchResponsesArchive(token, null, 1, 50);
-        if (!cancelled) {
-          archiveSeedFetched.current = true;
-          setArchiveSeed({
-            rows: payload.results,
-            nextPage: 2,
-            total: payload.total,
-          });
-        }
-      } catch {
-        archiveSeedFetched.current = true;
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [isApproved, getApiAccessToken]);
 
   useEffect(() => {
     if (!bulkOpen || !isStaff) return;
@@ -335,12 +313,64 @@ export default function SongadayPage() {
   );
 
   useEffect(() => {
-    if (!isAuthenticated || !sessionUser?.user?.is_approved) return;
-    const keys = dateRangeKeysForInitialLoad();
+    if (!isAuthenticated || !sessionUser) return;
+    if (!sessionUser.user.is_approved) {
+      setSongadayReady(true);
+      return;
+    }
+    let cancelled = false;
     void (async () => {
-      await Promise.all(keys.map((k) => prefetchDay(k)));
+      try {
+        const token = await getApiAccessToken();
+        const keys = dateRangeKeysForInitialLoad();
+        const sorted = [...keys].sort();
+        const startIso = sorted[0];
+        const endIso = sorted[sorted.length - 1];
+        if (!startIso || !endIso) {
+          setSongadayReady(true);
+          return;
+        }
+        const payload = await fetchSongadayDayWindow(token, startIso, endIso);
+        if (cancelled) return;
+        setPromptByDay((prev) => ({ ...prev, ...payload.prompts }));
+        setResponsesByDay((prev) => ({ ...prev, ...payload.responses }));
+        const cleared: Record<string, null> = {};
+        for (const k of keys) {
+          cleared[k] = null;
+        }
+        setPromptErrorByDay((prev) => ({ ...prev, ...cleared }));
+        setResponsesErrorByDay((prev) => ({ ...prev, ...cleared }));
+        archiveSeedFetched.current = true;
+        setArchiveSeed({
+          rows: payload.archive_seed.results,
+          nextPage: 2,
+          total: payload.archive_seed.total,
+        });
+      } catch {
+        const keys = dateRangeKeysForInitialLoad();
+        await Promise.all(keys.map((k) => prefetchDay(k)));
+        try {
+          const token = await getApiAccessToken();
+          const payload = await fetchResponsesArchive(token, null, 1, 50);
+          if (!cancelled) {
+            setArchiveSeed({
+              rows: payload.results,
+              nextPage: 2,
+              total: payload.total,
+            });
+          }
+        } catch {
+          /* ignore */
+        }
+        archiveSeedFetched.current = true;
+      } finally {
+        if (!cancelled) setSongadayReady(true);
+      }
     })();
-  }, [isAuthenticated, sessionUser?.user?.is_approved, prefetchDay]);
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, sessionUser, getApiAccessToken, prefetchDay]);
 
   useEffect(() => {
     if (import.meta.env.DEV) return;
@@ -731,6 +761,16 @@ export default function SongadayPage() {
       pb="2"
     >
       <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP}>
+        {isApproved && !songadayReady ? (
+          <Text
+            fontSize={APP_TEXT_SIZES.helper}
+            color="fg.muted"
+            fontWeight="medium"
+            aria-live="polite"
+          >
+            Loading…
+          </Text>
+        ) : null}
         {/* Day nav: prompt card centered; stacked controls left/right */}
         <HStack w="100%" gap="0" align="stretch">
           <Stack gap="0" align="stretch" flexShrink={0} w={{ base: "3.25rem", md: "3.5rem" }}>

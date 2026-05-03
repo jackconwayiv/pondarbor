@@ -241,3 +241,50 @@ export async function fetchApprovedUsers(
   const data = (await response.json()) as { results?: CalendarOwnerRow[] };
   return data.results ?? [];
 }
+
+/** Same data as GET events + sources + approved-users in one request (`approvedUsersQuery` maps to `q`). */
+export type FetchCalendarBootstrapParams = FetchEventsParams & {
+  approvedUsersQuery?: string;
+};
+
+export async function fetchCalendarBootstrap(
+  accessToken: string | null,
+  params: FetchCalendarBootstrapParams,
+): Promise<{
+  events: CalendarEvent[];
+  sources: CalendarSource[];
+  approved_users: CalendarOwnerRow[];
+}> {
+  const query = new URLSearchParams({
+    start_date: params.start_date,
+    end_date: params.end_date,
+    owner: ownerParam(params.owner ?? "all"),
+  });
+  if (params.ownerIds !== undefined) {
+    query.set("owner_ids", params.ownerIds.join(","));
+  }
+  if (params.approvedUsersQuery?.trim()) {
+    query.set("q", params.approvedUsersQuery.trim());
+  }
+  const response = await fetch(
+    `${apiBase()}/api/v1/calendars/bootstrap/?${query.toString()}`,
+    {
+      method: "GET",
+      headers: authHeaders(accessToken),
+      credentials: "omit",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
+  }
+  const data = (await response.json()) as {
+    events?: CalendarEvent[];
+    sources?: CalendarSource[];
+    approved_users?: CalendarOwnerRow[];
+  };
+  return {
+    events: data.events ?? [],
+    sources: data.sources ?? [],
+    approved_users: data.approved_users ?? [],
+  };
+}

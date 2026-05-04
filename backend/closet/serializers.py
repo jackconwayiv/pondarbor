@@ -145,6 +145,12 @@ class ItemSerializer(serializers.ModelSerializer):
         return closet_item_image_url(obj.image_key)
 
     def get_pending_request_count(self, obj: Item) -> int:
+        annotated = getattr(obj, "pending_request_count_annotated", None)
+        if annotated is not None:
+            return int(annotated)
+        pending_counts = self.context.get("pending_request_count_by_item_id")
+        if pending_counts is not None:
+            return int(pending_counts.get(obj.id, 0))
         return obj.borrow_requests.filter(
             status=BorrowRequest.Status.PENDING,
             deleted_at__isnull=True,
@@ -155,6 +161,10 @@ class ItemSerializer(serializers.ModelSerializer):
         user = getattr(request, "user", None)
         if not user or not user.is_authenticated:
             return None
+        by_item = self.context.get("my_pending_request_by_item_id")
+        if by_item is not None:
+            row = by_item.get(obj.id)
+            return BorrowRequestSerializer(row).data if row else None
         row = (
             obj.borrow_requests.filter(
                 requester_user=user,
@@ -173,6 +183,10 @@ class ItemSerializer(serializers.ModelSerializer):
         user = getattr(request, "user", None)
         if not user or not user.is_authenticated:
             return None
+        by_item = self.context.get("my_declined_request_by_item_id")
+        if by_item is not None:
+            row = by_item.get(obj.id)
+            return BorrowRequestSerializer(row).data if row else None
         row = (
             obj.borrow_requests.filter(
                 requester_user=user,
@@ -206,12 +220,18 @@ class ItemSerializer(serializers.ModelSerializer):
         return BorrowRequestSerializer(rows, many=True).data
 
     def get_active_loan_id(self, obj: Item):
+        active_loan_ids = self.context.get("active_loan_id_by_item_id")
+        if active_loan_ids is not None:
+            return active_loan_ids.get(obj.id)
         row = (
             obj.loans.filter(status=Loan.Status.ACTIVE, deleted_at__isnull=True).only("id").first()
         )
         return row.id if row else None
 
     def get_active_loan_marked_returned_by_borrower(self, obj: Item):
+        marked_map = self.context.get("active_loan_marked_returned_by_borrower_by_item_id")
+        if marked_map is not None:
+            return bool(marked_map.get(obj.id, False))
         row = (
             obj.loans.filter(status=Loan.Status.ACTIVE, deleted_at__isnull=True)
             .only("marked_returned_by_borrower_at")
@@ -220,7 +240,10 @@ class ItemSerializer(serializers.ModelSerializer):
         return bool(row and row.marked_returned_by_borrower_at)
 
     def get_custody_marked_returned_by_holder(self, obj: Item) -> bool:
-        if obj.loans.filter(status=Loan.Status.ACTIVE, deleted_at__isnull=True).exists():
+        active_loan_ids = self.context.get("active_loan_id_by_item_id")
+        if active_loan_ids is not None and active_loan_ids.get(obj.id):
+            return False
+        if active_loan_ids is None and obj.loans.filter(status=Loan.Status.ACTIVE, deleted_at__isnull=True).exists():
             return False
         return bool(
             obj.custody_marked_returned_by_holder_at

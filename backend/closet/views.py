@@ -3,12 +3,13 @@ import logging
 import os
 import uuid
 from collections import defaultdict
+from contextlib import contextmanager
 from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db import transaction
-from django.db.models import Exists, OuterRef, Prefetch, Q
+from django.db import connection, transaction
+from django.db.models import Count, Exists, OuterRef, Prefetch, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.cache import cache_control
@@ -51,6 +52,20 @@ from users.social_privacy import viewer_context
 User = get_user_model()
 
 logger = logging.getLogger(__name__)
+@contextmanager
+def _endpoint_metrics(name: str):
+    start_queries = len(getattr(connection, "queries", [])) if settings.DEBUG else 0
+    started = timezone.now()
+    try:
+        yield
+    finally:
+        elapsed_ms = int((timezone.now() - started).total_seconds() * 1000)
+        if settings.DEBUG:
+            query_count = len(getattr(connection, "queries", [])) - start_queries
+            logger.info("closet.%s duration_ms=%s query_count=%s", name, elapsed_ms, query_count)
+        else:
+            logger.info("closet.%s duration_ms=%s", name, elapsed_ms)
+
 
 
 def _env_int(name: str, default: int) -> int:
@@ -163,7 +178,68 @@ def _item_serializer_context(request, items):
         elif isinstance(item, int):
             ids.append(item)
     hidden_ids = hidden_item_ids_for_user(user, ids)
-    return {"request": request, "viewer_hidden_item_ids": hidden_ids}
+    ctx = {"request": request, "viewer_hidden_item_ids": hidden_ids}
+    if not ids:
+        return ctx
+    pending_counts = dict(
+        BorrowRequest.objects.filter(
+            item_id__in=ids,
+            status=BorrowRequest.Status.PENDING,
+            deleted_at__isnull=True,
+        )
+        .values("item_id")
+        .annotate(c=Count("id"))
+        .values_list("item_id", "c")
+    )
+    active_loans = list(
+        Loan.objects.filter(
+            item_id__in=ids,
+            status=Loan.Status.ACTIVE,
+            deleted_at__isnull=True,
+        ).values("item_id", "id", "marked_returned_by_borrower_at")
+    )
+    ctx["pending_request_count_by_item_id"] = pending_counts
+    ctx["active_loan_id_by_item_id"] = {int(r["item_id"]): int(r["id"]) for r in active_loans}
+    ctx["active_loan_marked_returned_by_borrower_by_item_id"] = {
+        int(r["item_id"]): bool(r["marked_returned_by_borrower_at"]) for r in active_loans
+    }
+    if user and getattr(user, "is_authenticated", False):
+        my_pending_rows = (
+            BorrowRequest.objects.filter(
+                item_id__in=ids,
+                requester_user=user,
+                status=BorrowRequest.Status.PENDING,
+                deleted_at__isnull=True,
+            )
+            .order_by("item_id", "date_needed_by", "-created_at")
+            .select_related("requester_user__profile")
+        )
+        my_declined_rows = (
+            BorrowRequest.objects.filter(
+                item_id__in=ids,
+                requester_user=user,
+                status=BorrowRequest.Status.DECLINED,
+                deleted_at__isnull=True,
+            )
+            .order_by("item_id", "-responded_at", "-updated_at", "-created_at")
+            .select_related("requester_user__profile")
+        )
+        pending_by_item = {}
+        for row in my_pending_rows:
+            pending_by_item.setdefault(row.item_id, row)
+        declined_by_item = {}
+        for row in my_declined_rows:
+            declined_by_item.setdefault(row.item_id, row)
+        ctx["my_pending_request_by_item_id"] = pending_by_item
+        ctx["my_declined_request_by_item_id"] = declined_by_item
+    return ctx
+
+
+def _parse_include_set(request):
+    raw = (request.query_params.get("include") or "").strip()
+    if not raw:
+        return None
+    return {part.strip() for part in raw.split(",") if part.strip()}
 
 
 def _prefetch_pending_borrow_requests(items: list[Item]) -> None:
@@ -211,14 +287,8 @@ def _coerce_tags_list(raw) -> list:
 
 
 def _friends_items_filter_by_tag(qs, tag_needle: str):
-    """Filter queryset to items with any tag containing tag_needle (case-insensitive substring)."""
-    tag_cf = tag_needle.casefold()
-    matching_ids = []
-    for pk, tgs in qs.values_list("id", "tags"):
-        tags_list = _coerce_tags_list(tgs)
-        if any(isinstance(t, str) and tag_cf in t.casefold() for t in tags_list):
-            matching_ids.append(pk)
-    return qs.filter(id__in=matching_ids)
+    """DB-native tag substring filter over JSON text payload."""
+    return qs.filter(tags__icontains=tag_needle.strip())
 
 
 def _friends_items_filter_by_preset_category(qs, category: str):
@@ -229,16 +299,8 @@ def _friends_items_filter_by_preset_category(qs, category: str):
     needle = category.strip().casefold()
     if not needle:
         return qs
-    matching_ids: set[int] = set()
-    for pk, cat_val, tgs in qs.values_list("id", "category", "tags"):
-        if isinstance(cat_val, str) and cat_val.strip().casefold() == needle:
-            matching_ids.add(pk)
-            continue
-        for t in _coerce_tags_list(tgs):
-            if isinstance(t, str) and t.strip().casefold() == needle:
-                matching_ids.add(pk)
-                break
-    return qs.filter(id__in=matching_ids)
+    # Tags fallback keeps compatibility with older rows that stored preset category in tags.
+    return qs.filter(Q(category__iexact=category.strip()) | Q(tags__icontains=needle))
 
 
 @api_view(["GET"])
@@ -247,10 +309,7 @@ def health(request):
     return Response({"app": "closet", "ok": True})
 
 
-@api_view(["GET"])
-@permission_classes([IsApprovedUser])
-def closet_action_summary(request):
-    user = request.user
+def _closet_action_summary_payload(user):
     incoming_borrows = _visible_borrow_requests().filter(
         status=BorrowRequest.Status.PENDING,
         item__owner_user_id=user.id,
@@ -297,22 +356,10 @@ def closet_action_summary(request):
         + custody_handoff_waiting
         + custody_invites
     )
-    return Response({"outstanding_actions_count": total})
+    return {"outstanding_actions_count": total}
 
 
-@api_view(["GET", "POST"])
-@permission_classes([IsApprovedUser])
-def items_mine(request):
-    if request.method == "POST":
-        serializer = ItemCreateSerializer(data=request.data, context={"request": request})
-        serializer.is_valid(raise_exception=True)
-        item = serializer.save()
-        evaluate_closet_sharing_is_caring_for_user(item.owner_user_id)
-        return Response(
-            ItemSerializer(item, context=_item_serializer_context(request, [item])).data,
-            status=HTTP_201_CREATED,
-        )
-
+def _items_mine_payload(request):
     user = request.user
     base_qs = _item_queryset()
     borrowed_by_me_qs = base_qs.filter(current_holder_user=user).exclude(owner_user=user).order_by("-updated_at")
@@ -382,31 +429,28 @@ def items_mine(request):
     borrowed_list = list(borrowed_by_me_qs)
     custody_offered_list = list(custody_offered_qs)
     owned_list = list(owned_qs)
-    all_items = (
-        declined_items + borrowed_list + custody_offered_list + requested_items + owned_list
-    )
+    all_items = declined_items + borrowed_list + custody_offered_list + requested_items + owned_list
     _prefetch_pending_borrow_requests(all_items)
     ctx = _item_serializer_context(request, all_items)
-    return Response(
-        {
-            "declined_by_me": ItemSerializer(declined_items, many=True, context=ctx).data,
-            "borrowed_by_me": ItemSerializer(borrowed_list, many=True, context=ctx).data,
-            "custody_offered_to_me": ItemSerializer(custody_offered_list, many=True, context=ctx).data,
-            "requested_by_me": ItemSerializer(requested_items, many=True, context=ctx).data,
-            "owned_by_me": ItemSerializer(owned_list, many=True, context=ctx).data,
-        }
-    )
+    include = _parse_include_set(request)
+    payload = {
+        "declined_by_me": ItemSerializer(declined_items, many=True, context=ctx).data,
+        "borrowed_by_me": ItemSerializer(borrowed_list, many=True, context=ctx).data,
+        "custody_offered_to_me": ItemSerializer(custody_offered_list, many=True, context=ctx).data,
+        "requested_by_me": ItemSerializer(requested_items, many=True, context=ctx).data,
+        "owned_by_me": ItemSerializer(owned_list, many=True, context=ctx).data,
+    }
+    if include is not None:
+        payload = {k: v for k, v in payload.items() if k in include}
+    return payload
 
 
-@api_view(["GET"])
-@permission_classes([IsApprovedUser])
-def items_friends(request):
+def _items_friends_payload(request):
     user = request.user
     ctx = viewer_context(viewer=user)
     friend_ids = ctx.friend_ids
     include_self = (request.query_params.get("include_self") or "").strip().lower() == "true"
 
-    # Viewer preference (soft filter) controls whether this browse is friends-only.
     scope = getattr(getattr(user, "profile", None), "social_read_scope", None) or Profile.SocialReadScope.APPROVED_USERS
     if scope == Profile.SocialReadScope.FRIENDS_ONLY:
         owner_ids = list(friend_ids)
@@ -420,7 +464,6 @@ def items_friends(request):
         if not include_self:
             qs = qs.exclude(owner_user=user)
 
-    # Enforce owners' publish visibility (self always passes when included).
     visibility_q = (
         Q(owner_user__profile__social_publish_visibility=Profile.SocialPublishVisibility.ALL_APPROVED)
         | Q(owner_user__profile__isnull=True)
@@ -457,18 +500,58 @@ def items_friends(request):
     total = qs.count()
     rows = list(qs[start:end])
     _prefetch_pending_borrow_requests(rows)
-    return Response(
-        {
-            "results": ItemSerializer(
-                rows, many=True, context=_item_serializer_context(request, rows)
-            ).data,
-            "page": page,
-            "page_size": page_size,
-            "total": total,
-            "has_next": end < total,
-            "has_prev": page > 1,
-        }
-    )
+    return {
+        "results": ItemSerializer(rows, many=True, context=_item_serializer_context(request, rows)).data,
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "has_next": end < total,
+        "has_prev": page > 1,
+    }
+
+
+@api_view(["GET"])
+@permission_classes([IsApprovedUser])
+def closet_action_summary(request):
+    return Response(_closet_action_summary_payload(request.user))
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsApprovedUser])
+def items_mine(request):
+    with _endpoint_metrics("items_mine"):
+        if request.method == "POST":
+            serializer = ItemCreateSerializer(data=request.data, context={"request": request})
+            serializer.is_valid(raise_exception=True)
+            item = serializer.save()
+            evaluate_closet_sharing_is_caring_for_user(item.owner_user_id)
+            return Response(
+                ItemSerializer(item, context=_item_serializer_context(request, [item])).data,
+                status=HTTP_201_CREATED,
+            )
+
+        return Response(_items_mine_payload(request))
+
+
+@api_view(["GET"])
+@permission_classes([IsApprovedUser])
+def items_friends(request):
+    with _endpoint_metrics("items_friends"):
+        return Response(_items_friends_payload(request))
+
+
+@api_view(["GET"])
+@permission_classes([IsApprovedUser])
+def closet_bootstrap(request):
+    """Initial Closet payload for first render: mine + current grid + action summary."""
+    with _endpoint_metrics("closet_bootstrap"):
+        return Response(
+            {
+                "my_items": _items_mine_payload(request),
+                "friends_grid": _items_friends_payload(request),
+                "action_summary": _closet_action_summary_payload(request.user),
+            }
+        )
 
 
 @api_view(["GET"])

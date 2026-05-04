@@ -1,10 +1,25 @@
 import type {
   ClosetActionSummary,
+  ClosetBootstrapResponse,
   ClosetImageInventoryResponse,
   ClosetItem,
   FriendsItemsResponse,
   MyItemsResponse,
 } from "./types";
+
+type ClosetApiMetric = {
+  path: string;
+  method: string;
+  status: number;
+  duration_ms: number;
+  response_bytes: number;
+};
+
+declare global {
+  interface Window {
+    __closetApiMetrics?: ClosetApiMetric[];
+  }
+}
 
 function apiBase(): string {
   return import.meta.env.VITE_API_BASE_URL ?? "";
@@ -51,11 +66,43 @@ async function parseApiError(response: Response): Promise<string> {
   return text || `Request failed (${response.status})`;
 }
 
-export async function fetchMyItems(accessToken: string | null): Promise<MyItemsResponse> {
-  const response = await fetch(`${apiBase()}/api/v1/closet/items/`, {
-    method: "GET",
-    headers: authHeaders(accessToken),
+async function closetFetch(
+  accessToken: string | null,
+  path: string,
+  init: RequestInit,
+): Promise<Response> {
+  const started = performance.now();
+  const response = await fetch(`${apiBase()}${path}`, {
+    ...init,
+    headers: {
+      ...authHeaders(accessToken),
+      ...(init.headers ?? {}),
+    },
     credentials: "omit",
+  });
+  const durationMs = performance.now() - started;
+  const contentLengthHeader = response.headers.get("content-length");
+  const responseBytes = Number.parseInt(contentLengthHeader ?? "", 10);
+  if (typeof window !== "undefined") {
+    const bucket = window.__closetApiMetrics ?? [];
+    bucket.push({
+      path,
+      method: (init.method ?? "GET").toUpperCase(),
+      status: response.status,
+      duration_ms: Math.round(durationMs),
+      response_bytes: Number.isFinite(responseBytes) ? responseBytes : 0,
+    });
+    if (bucket.length > 500) {
+      bucket.splice(0, bucket.length - 500);
+    }
+    window.__closetApiMetrics = bucket;
+  }
+  return response;
+}
+
+export async function fetchMyItems(accessToken: string | null): Promise<MyItemsResponse> {
+  const response = await closetFetch(accessToken, "/api/v1/closet/items/", {
+    method: "GET",
   });
   if (!response.ok) {
     throw new Error(`Failed to load your items (${response.status})`);
@@ -100,11 +147,11 @@ export async function fetchFriendsItems(
   if (options?.sort) params.set("sort", options.sort);
   if (options?.includeSelf) params.set("include_self", "true");
 
-  const response = await fetch(`${apiBase()}/api/v1/closet/items/friends/?${params.toString()}`, {
-    method: "GET",
-    headers: authHeaders(accessToken),
-    credentials: "omit",
-  });
+  const response = await closetFetch(
+    accessToken,
+    `/api/v1/closet/items/friends/?${params.toString()}`,
+    { method: "GET" },
+  );
   if (!response.ok) {
     throw new Error(`Failed to load friends' items (${response.status})`);
   }
@@ -115,11 +162,11 @@ export async function fetchFriendItemsByOwner(
   accessToken: string | null,
   ownerUserId: number,
 ): Promise<FriendsItemsResponse["results"]> {
-  const response = await fetch(`${apiBase()}/api/v1/closet/items/friends/${ownerUserId}/`, {
-    method: "GET",
-    headers: authHeaders(accessToken),
-    credentials: "omit",
-  });
+  const response = await closetFetch(
+    accessToken,
+    `/api/v1/closet/items/friends/${ownerUserId}/`,
+    { method: "GET" },
+  );
   if (!response.ok) {
     throw new Error(`Failed to load friend closet items (${response.status})`);
   }
@@ -130,10 +177,8 @@ export async function fetchItem(
   accessToken: string | null,
   itemId: number,
 ): Promise<ClosetItem> {
-  const response = await fetch(`${apiBase()}/api/v1/closet/items/${itemId}/`, {
+  const response = await closetFetch(accessToken, `/api/v1/closet/items/${itemId}/`, {
     method: "GET",
-    headers: authHeaders(accessToken),
-    credentials: "omit",
   });
   if (!response.ok) {
     throw new Error(`Failed to load item (${response.status})`);
@@ -142,10 +187,8 @@ export async function fetchItem(
 }
 
 export async function fetchClosetActionSummary(accessToken: string | null): Promise<ClosetActionSummary> {
-  const response = await fetch(`${apiBase()}/api/v1/closet/action-summary/`, {
+  const response = await closetFetch(accessToken, "/api/v1/closet/action-summary/", {
     method: "GET",
-    headers: authHeaders(accessToken),
-    credentials: "omit",
   });
   if (!response.ok) {
     throw new Error(`Failed to load closet action summary (${response.status})`);
@@ -154,6 +197,38 @@ export async function fetchClosetActionSummary(accessToken: string | null): Prom
   return {
     outstanding_actions_count: Number(raw.outstanding_actions_count ?? 0),
   };
+}
+
+export async function fetchClosetBootstrap(
+  accessToken: string | null,
+  options: {
+    page: number;
+    pageSize: number;
+    category?: string;
+    tag?: string;
+    sort?: FriendsItemsSort;
+    includeSelf?: boolean;
+  },
+): Promise<ClosetBootstrapResponse> {
+  const params = new URLSearchParams({
+    page: String(options.page),
+    page_size: String(options.pageSize),
+  });
+  const category = (options.category ?? "").trim();
+  if (category) params.set("category", category);
+  const tag = (options.tag ?? "").trim();
+  if (tag) params.set("tag", tag);
+  if (options.sort) params.set("sort", options.sort);
+  if (options.includeSelf) params.set("include_self", "true");
+  const response = await closetFetch(
+    accessToken,
+    `/api/v1/closet/bootstrap/?${params.toString()}`,
+    { method: "GET" },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to load closet bootstrap (${response.status})`);
+  }
+  return (await response.json()) as ClosetBootstrapResponse;
 }
 
 export async function createItem(
@@ -165,16 +240,15 @@ export async function createItem(
     tags?: string[];
     image_key?: string;
   },
-): Promise<void> {
-  const response = await fetch(`${apiBase()}/api/v1/closet/items/`, {
+): Promise<ClosetItem> {
+  const response = await closetFetch(accessToken, "/api/v1/closet/items/", {
     method: "POST",
-    headers: authHeaders(accessToken),
-    credentials: "omit",
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
     throw new Error(await parseApiError(response));
   }
+  return (await response.json()) as ClosetItem;
 }
 
 export async function patchItem(
@@ -187,16 +261,15 @@ export async function patchItem(
     tags?: string[];
     image_key?: string;
   },
-): Promise<void> {
-  const response = await fetch(`${apiBase()}/api/v1/closet/items/${itemId}/`, {
+): Promise<ClosetItem> {
+  const response = await closetFetch(accessToken, `/api/v1/closet/items/${itemId}/`, {
     method: "PATCH",
-    headers: authHeaders(accessToken),
-    credentials: "omit",
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
     throw new Error(await parseApiError(response));
   }
+  return (await response.json()) as ClosetItem;
 }
 
 export type ClosetImagePresignResponse = {
@@ -238,10 +311,8 @@ export async function hideClosetItem(
   accessToken: string | null,
   itemId: number,
 ): Promise<ClosetItem> {
-  const response = await fetch(`${apiBase()}/api/v1/closet/items/${itemId}/hide/`, {
+  const response = await closetFetch(accessToken, `/api/v1/closet/items/${itemId}/hide/`, {
     method: "POST",
-    headers: authHeaders(accessToken),
-    credentials: "omit",
   });
   if (!response.ok) {
     throw new Error(await parseApiError(response));
@@ -253,10 +324,8 @@ export async function unhideClosetItem(
   accessToken: string | null,
   itemId: number,
 ): Promise<ClosetItem> {
-  const response = await fetch(`${apiBase()}/api/v1/closet/items/${itemId}/unhide/`, {
+  const response = await closetFetch(accessToken, `/api/v1/closet/items/${itemId}/unhide/`, {
     method: "POST",
-    headers: authHeaders(accessToken),
-    credentials: "omit",
   });
   if (!response.ok) {
     throw new Error(await parseApiError(response));
@@ -368,91 +437,94 @@ export async function setCustody(
   accessToken: string | null,
   itemId: number,
   holderUserId: number,
-): Promise<void> {
-  const response = await fetch(`${apiBase()}/api/v1/closet/items/${itemId}/set-custody/`, {
+): Promise<ClosetItem> {
+  const response = await closetFetch(accessToken, `/api/v1/closet/items/${itemId}/set-custody/`, {
     method: "POST",
-    headers: authHeaders(accessToken),
-    credentials: "omit",
     body: JSON.stringify({ holder_user_id: holderUserId }),
   });
   if (!response.ok) {
     throw new Error(await parseApiError(response));
   }
+  return (await response.json()) as ClosetItem;
 }
 
-export async function acceptCustody(accessToken: string | null, itemId: number): Promise<void> {
-  const response = await fetch(`${apiBase()}/api/v1/closet/items/${itemId}/accept-custody/`, {
+export async function acceptCustody(accessToken: string | null, itemId: number): Promise<ClosetItem> {
+  const response = await closetFetch(accessToken, `/api/v1/closet/items/${itemId}/accept-custody/`, {
     method: "POST",
-    headers: authHeaders(accessToken),
-    credentials: "omit",
   });
   if (!response.ok) {
     throw new Error(await parseApiError(response));
   }
+  return (await response.json()) as ClosetItem;
 }
 
-export async function rejectPendingCustody(accessToken: string | null, itemId: number): Promise<void> {
-  const response = await fetch(`${apiBase()}/api/v1/closet/items/${itemId}/reject-pending-custody/`, {
+export async function rejectPendingCustody(accessToken: string | null, itemId: number): Promise<ClosetItem> {
+  const response = await closetFetch(
+    accessToken,
+    `/api/v1/closet/items/${itemId}/reject-pending-custody/`,
+    {
+      method: "POST",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
+  }
+  return (await response.json()) as ClosetItem;
+}
+
+export async function cancelPendingCustody(accessToken: string | null, itemId: number): Promise<ClosetItem> {
+  const response = await closetFetch(
+    accessToken,
+    `/api/v1/closet/items/${itemId}/cancel-pending-custody/`,
+    {
+      method: "POST",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
+  }
+  return (await response.json()) as ClosetItem;
+}
+
+export async function denyCustody(accessToken: string | null, itemId: number): Promise<ClosetItem> {
+  const response = await closetFetch(accessToken, `/api/v1/closet/items/${itemId}/deny-custody/`, {
     method: "POST",
-    headers: authHeaders(accessToken),
-    credentials: "omit",
   });
   if (!response.ok) {
     throw new Error(await parseApiError(response));
   }
-}
-
-export async function cancelPendingCustody(accessToken: string | null, itemId: number): Promise<void> {
-  const response = await fetch(`${apiBase()}/api/v1/closet/items/${itemId}/cancel-pending-custody/`, {
-    method: "POST",
-    headers: authHeaders(accessToken),
-    credentials: "omit",
-  });
-  if (!response.ok) {
-    throw new Error(await parseApiError(response));
-  }
-}
-
-export async function denyCustody(accessToken: string | null, itemId: number): Promise<void> {
-  const response = await fetch(`${apiBase()}/api/v1/closet/items/${itemId}/deny-custody/`, {
-    method: "POST",
-    headers: authHeaders(accessToken),
-    credentials: "omit",
-  });
-  if (!response.ok) {
-    throw new Error(await parseApiError(response));
-  }
+  return (await response.json()) as ClosetItem;
 }
 
 export async function markCustodyReturnedByHolder(
   accessToken: string | null,
   itemId: number,
-): Promise<void> {
-  const response = await fetch(
-    `${apiBase()}/api/v1/closet/items/${itemId}/mark-custody-returned-by-holder/`,
+): Promise<ClosetItem> {
+  const response = await closetFetch(
+    accessToken,
+    `/api/v1/closet/items/${itemId}/mark-custody-returned-by-holder/`,
     {
       method: "POST",
-      headers: authHeaders(accessToken),
-      credentials: "omit",
     },
   );
   if (!response.ok) {
     throw new Error(await parseApiError(response));
   }
+  return (await response.json()) as ClosetItem;
 }
 
-export async function completeCustodyReturn(accessToken: string | null, itemId: number): Promise<void> {
-  const response = await fetch(
-    `${apiBase()}/api/v1/closet/items/${itemId}/complete-custody-return/`,
+export async function completeCustodyReturn(accessToken: string | null, itemId: number): Promise<ClosetItem> {
+  const response = await closetFetch(
+    accessToken,
+    `/api/v1/closet/items/${itemId}/complete-custody-return/`,
     {
       method: "POST",
-      headers: authHeaders(accessToken),
-      credentials: "omit",
     },
   );
   if (!response.ok) {
     throw new Error(await parseApiError(response));
   }
+  return (await response.json()) as ClosetItem;
 }
 
 export async function markReturnedByBorrower(

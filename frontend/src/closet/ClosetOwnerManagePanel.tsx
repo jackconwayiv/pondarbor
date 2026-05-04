@@ -78,7 +78,7 @@ export function ClosetOwnerManagePanel({
   custodyFriends: CustodyFriendOption[];
   getToken: () => Promise<string>;
   meId: number;
-  onRefreshed: () => Promise<void>;
+  onRefreshed: (nextItem?: ClosetItem) => Promise<void>;
   onNotice?: (n: Notice) => void;
   itemNav?: ClosetItemModalNav | null;
 }) {
@@ -240,13 +240,13 @@ export function ClosetOwnerManagePanel({
     if (unchanged) return;
     try {
       const token = await getToken();
-      await patchItem(token, item.id, {
+      const updated = await patchItem(token, item.id, {
         name: nameTrim,
         description: description.trim(),
         category: catTrim,
         tags: tagParts,
       });
-      await onRefreshed();
+      await onRefreshed(updated);
       onNotice?.({ kind: "success", message: "Item saved." });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to update item";
@@ -291,8 +291,8 @@ export function ClosetOwnerManagePanel({
       if (catTrim === item.category.trim()) return;
       try {
         const token = await getToken();
-        await patchItem(token, item.id, { category: catTrim });
-        await onRefreshed();
+        const updated = await patchItem(token, item.id, { category: catTrim });
+        await onRefreshed(updated);
         onNotice?.({ kind: "success", message: "Item saved." });
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Failed to update item";
@@ -310,8 +310,8 @@ export function ClosetOwnerManagePanel({
       if (!Number.isFinite(nextHolderId)) return;
       try {
         const token = await getToken();
-        await setCustody(token, item.id, nextHolderId);
-        await onRefreshed();
+        const updated = await setCustody(token, item.id, nextHolderId);
+        await onRefreshed(updated);
         if (nextHolderId === item.owner_user.id) {
           onNotice?.({ kind: "success", message: "Custody updated." });
         } else {
@@ -340,12 +340,12 @@ export function ClosetOwnerManagePanel({
         await onRefreshed();
         onNotice?.({ kind: "success", message: "Loan completed. You have custody." });
       } else if (item.custody_marked_returned_by_holder) {
-        await completeCustodyReturn(token, item.id);
-        await onRefreshed();
+        const updated = await completeCustodyReturn(token, item.id);
+        await onRefreshed(updated);
         onNotice?.({ kind: "success", message: "Handoff confirmed. You have custody." });
       } else {
-        await setCustody(token, item.id, item.owner_user.id);
-        await onRefreshed();
+        const updated = await setCustody(token, item.id, item.owner_user.id);
+        await onRefreshed(updated);
         onNotice?.({ kind: "success", message: "Custody updated." });
       }
     } catch (err: unknown) {
@@ -361,8 +361,8 @@ export function ClosetOwnerManagePanel({
     setError(null);
     try {
       const token = await getToken();
-      await cancelPendingCustody(token, item.id);
-      await onRefreshed();
+      const updated = await cancelPendingCustody(token, item.id);
+      await onRefreshed(updated);
       onNotice?.({ kind: "success", message: "Custody offer canceled." });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to cancel offer");
@@ -578,8 +578,8 @@ export function ClosetOwnerManagePanel({
                       });
                       const key = await uploadClosetImageBlobViaPresign(getToken, blob);
                       const token = await getToken();
-                      await patchItem(token, item.id, { image_key: key });
-                      await onRefreshed();
+                      const updated = await patchItem(token, item.id, { image_key: key });
+                      await onRefreshed(updated);
                       onNotice?.({ kind: "success", message: "Photo updated." });
                     } catch (err: unknown) {
                       if (previewUrl) {
@@ -628,12 +628,12 @@ export function ClosetOwnerManagePanel({
                         setImageUploadBusy(true);
                         try {
                           const token = await getToken();
-                          await patchItem(token, item.id, { image_key: "" });
+                          const updated = await patchItem(token, item.id, { image_key: "" });
                           setLocalImagePreviewUrl((prev) => {
                             if (prev) URL.revokeObjectURL(prev);
                             return null;
                           });
-                          await onRefreshed();
+                          await onRefreshed(updated);
                           onNotice?.({ kind: "success", message: "Photo removed." });
                         } catch (err: unknown) {
                           setError(err instanceof Error ? err.message : "Failed to remove photo");
@@ -672,8 +672,8 @@ export function ClosetOwnerManagePanel({
                               setImageUploadBusy(true);
                               try {
                                 const token = await getToken();
-                                await patchItem(token, item.id, { image_key: row.image_key });
-                                await onRefreshed();
+                                const updated = await patchItem(token, item.id, { image_key: row.image_key });
+                                await onRefreshed(updated);
                                 setImagePickerOpen(false);
                                 onNotice?.({ kind: "success", message: "Photo updated." });
                               } catch (err: unknown) {

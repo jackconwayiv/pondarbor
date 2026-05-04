@@ -66,6 +66,12 @@ export type ClosetActionSummary = {
   outstanding_actions_count: number;
 };
 
+export type ClosetBootstrapResponse = {
+  my_items: MyItemsResponse;
+  friends_grid: FriendsItemsResponse;
+  action_summary: ClosetActionSummary;
+};
+
 export type ClosetImageInventoryRow = {
   image_key: string;
   image_url: string;

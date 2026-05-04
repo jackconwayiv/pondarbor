@@ -6,6 +6,7 @@ from closet.views import (
     borrow_request_create,
     borrow_request_delete,
     borrow_request_decline,
+    closet_bootstrap,
     closet_action_summary,
     health,
     item_accept_custody,
@@ -32,6 +33,7 @@ from closet.views import (
 urlpatterns = [
     path("health/", health),
     path("action-summary/", closet_action_summary),
+    path("bootstrap/", closet_bootstrap),
     path("items/", items_mine),
     path("items/friends/", items_friends),
     path("items/friends/<int:owner_user_id>/", items_friend_owner),

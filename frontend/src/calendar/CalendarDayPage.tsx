@@ -26,14 +26,14 @@ import {
 } from "../theme/typography";
 import {
   deleteCalendarEvent,
-  fetchApprovedUsers,
-  fetchCalendarEvents,
+  fetchCalendarBootstrap,
   updateCalendarEvent,
 } from "./api";
 import EventFormDialog from "./EventFormDialog";
 import { eventCoversDay, parseIsoDate } from "./monthMath";
 import type {
   CalendarEvent,
+  CalendarBirthdayRow,
   CalendarOwnerRow,
   EventWritePayload,
 } from "./types";
@@ -63,6 +63,7 @@ export default function CalendarDayPage() {
   const dateValid = ISO_DATE_RE.test(dayIso);
 
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [birthdays, setBirthdays] = useState<CalendarBirthdayRow[]>([]);
   const [approvedUsers, setApprovedUsers] = useState<CalendarOwnerRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -83,16 +84,14 @@ export default function CalendarDayPage() {
     setError(null);
     try {
       const token = await getApiAccessToken();
-      const [eventResults, userResults] = await Promise.all([
-        fetchCalendarEvents(token, {
-          start_date: dayIso,
-          end_date: dayIso,
-          owner: "all",
-        }),
-        fetchApprovedUsers(token, ""),
-      ]);
-      setEvents(eventResults);
-      setApprovedUsers(userResults);
+      const data = await fetchCalendarBootstrap(token, {
+        start_date: dayIso,
+        end_date: dayIso,
+        owner: "all",
+      });
+      setEvents(data.events);
+      setApprovedUsers(data.approved_users);
+      setBirthdays(data.birthdays);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load day.");
     } finally {
@@ -110,6 +109,14 @@ export default function CalendarDayPage() {
       events.filter((ev) => eventCoversDay(ev.start_date, ev.end_date, dayIso)),
     [events, dayIso],
   );
+  const birthdayLabelsForDay = useMemo(() => {
+    const day = parseIsoDate(dayIso);
+    const month = day.getMonth() + 1;
+    const dayOfMonth = day.getDate();
+    return birthdays
+      .filter((row) => row.birth_month === month && row.birth_day === dayOfMonth)
+      .map((row) => `🎂 ${row.display_name}'s Birthday`);
+  }, [birthdays, dayIso]);
 
   /** Owner ids busy this day, restricted to checked users, in checked-order. */
   const busyOwnerIds = useMemo(() => {
@@ -268,6 +275,21 @@ export default function CalendarDayPage() {
                     expand the view, or pick another day from the month grid.
                   </Text>
                 ) : null}
+                {birthdayLabelsForDay.map((label) => (
+                  <Box
+                    key={label}
+                    borderWidth="1px"
+                    borderColor="border"
+                    borderRadius="md"
+                    bg="white"
+                    px="2"
+                    py="1.5"
+                  >
+                    <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
+                      {label}
+                    </Text>
+                  </Box>
+                ))}
                 {busyOwnerIds.map((ownerId) => {
                   const color = colorForCheckedUser(
                     ownerId,

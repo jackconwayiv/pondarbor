@@ -124,9 +124,6 @@ export default function CalendarPage() {
     () => new Map(approvedUsers.map((u) => [u.id, u])),
     [approvedUsers],
   );
-  const checkedPeopleCount = orderedCheckedUserIds.length;
-  const peopleToggleLabel = `People (${checkedPeopleCount}/${approvedUsers.length} selected)`;
-
   useEffect(() => {
     setPeopleOpen(!isMobile);
   }, [isMobile]);
@@ -476,7 +473,7 @@ export default function CalendarPage() {
                     >
                       Today
                     </PondButton>
-                    {loading && !hasLoadedOnceRef.current ? (
+                    {loading ? (
                       <Text
                         fontSize={APP_TEXT_SIZES.helper}
                         color="fg.muted"
@@ -529,14 +526,13 @@ export default function CalendarPage() {
                         <Collapsible.Trigger asChild>
                           <PondButton
                             size="sm"
-                            variant="outline"
+                            variant={peopleOpen ? "solid" : "outline"}
                             colorPalette="sky"
                             alignSelf="stretch"
                             justifyContent="space-between"
+                            color={peopleOpen ? "white" : undefined}
                           >
-                            {peopleOpen
-                              ? `Hide ${peopleToggleLabel}`
-                              : `Show ${peopleToggleLabel}`}
+                            Filter People
                           </PondButton>
                         </Collapsible.Trigger>
                         <Collapsible.Content>

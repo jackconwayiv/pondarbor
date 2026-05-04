@@ -83,6 +83,28 @@ class ClosetItemsApiTests(ClosetTestMixin, TestCase):
         self.assertEqual(item.category, "Tools")
         self.assertEqual(item.tags, ["drill"])
 
+    def test_items_mine_include_filters_sections(self):
+        self.make_item(owner=self.owner, holder=self.owner, name="Mine")
+        resp = self.owner_client.get("/api/v1/closet/items/?include=owned_by_me")
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        self.assertIn("owned_by_me", payload)
+        self.assertNotIn("borrowed_by_me", payload)
+        self.assertNotIn("requested_by_me", payload)
+
+    def test_bootstrap_returns_mine_grid_and_action_summary(self):
+        self.make_item(owner=self.owner, holder=self.owner, name="Bootstrap Mine")
+        self.make_item(owner=self.borrower, holder=self.borrower, name="Bootstrap Friend")
+        resp = self.owner_client.get("/api/v1/closet/bootstrap/?include_self=true")
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        self.assertIn("my_items", payload)
+        self.assertIn("friends_grid", payload)
+        self.assertIn("action_summary", payload)
+        self.assertIn("owned_by_me", payload["my_items"])
+        self.assertIn("results", payload["friends_grid"])
+        self.assertIn("outstanding_actions_count", payload["action_summary"])
+
     def test_create_item_accepts_custom_category_letters_and_slash(self):
         resp = self.owner_client.post(
             "/api/v1/closet/items/",

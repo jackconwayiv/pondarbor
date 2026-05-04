@@ -33,6 +33,12 @@ class Item(models.Model):
 
     class Meta:
         ordering = ["-updated_at", "-created_at"]
+        indexes = [
+            models.Index(fields=["owner_user", "-updated_at"]),
+            models.Index(fields=["owner_user", "-created_at"]),
+            models.Index(fields=["current_holder_user", "-updated_at"]),
+            models.Index(fields=["custody_pending_acceptance_user", "-updated_at"]),
+        ]
 
     def __str__(self) -> str:
         return self.name
@@ -63,6 +69,10 @@ class BorrowRequest(models.Model):
 
     class Meta:
         ordering = ["status", "date_needed_by", "-created_at"]
+        indexes = [
+            models.Index(fields=["item", "status", "deleted_at"]),
+            models.Index(fields=["requester_user", "status", "deleted_at"]),
+        ]
 
 
 class ItemHidden(models.Model):
@@ -122,4 +132,9 @@ class Loan(models.Model):
 
     class Meta:
         ordering = ["-checkout_at"]
+        indexes = [
+            models.Index(fields=["item", "status", "deleted_at"]),
+            models.Index(fields=["owner_user", "status", "deleted_at"]),
+            models.Index(fields=["borrower_user", "status", "deleted_at"]),
+        ]
 

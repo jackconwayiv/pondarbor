@@ -196,7 +196,6 @@ export default function SongadayPage() {
     total: number;
   } | null>(null);
   const archiveSeedFetched = useRef(false);
-  const [songadayReady, setSongadayReady] = useState(false);
 
   const [promptPayload, setPromptPayload] =
     useState<SongadayPromptPayload | null>(null);
@@ -315,7 +314,6 @@ export default function SongadayPage() {
   useEffect(() => {
     if (!isAuthenticated || !sessionUser) return;
     if (!sessionUser.user.is_approved) {
-      setSongadayReady(true);
       return;
     }
     let cancelled = false;
@@ -327,7 +325,6 @@ export default function SongadayPage() {
         const startIso = sorted[0];
         const endIso = sorted[sorted.length - 1];
         if (!startIso || !endIso) {
-          setSongadayReady(true);
           return;
         }
         const payload = await fetchSongadayDayWindow(token, startIso, endIso);
@@ -363,8 +360,6 @@ export default function SongadayPage() {
           /* ignore */
         }
         archiveSeedFetched.current = true;
-      } finally {
-        if (!cancelled) setSongadayReady(true);
       }
     })();
     return () => {
@@ -761,16 +756,6 @@ export default function SongadayPage() {
       pb="2"
     >
       <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP}>
-        {isApproved && !songadayReady ? (
-          <Text
-            fontSize={APP_TEXT_SIZES.helper}
-            color="fg.muted"
-            fontWeight="medium"
-            aria-live="polite"
-          >
-            Loading…
-          </Text>
-        ) : null}
         {/* Day nav: prompt card centered; stacked controls left/right */}
         <HStack w="100%" gap="0" align="stretch">
           <Stack gap="0" align="stretch" flexShrink={0} w={{ base: "3.25rem", md: "3.5rem" }}>

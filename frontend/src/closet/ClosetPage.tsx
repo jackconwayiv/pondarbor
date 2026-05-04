@@ -52,6 +52,7 @@ import {
   deleteBorrowRequest,
   deleteMyImage,
   fetchFriendsItems,
+  fetchClosetBootstrap,
   fetchItem,
   fetchMyImageInventory,
   fetchMyItems,
@@ -90,6 +91,11 @@ const ITEMS_PAGE_SIZE = 15;
 const ACTIONS_PAGE_SIZE = 15;
 const CLOSET_PLACEHOLDER_PROPS = PANEL_FORM_PLACEHOLDER_PROPS;
 const ITEMS_RETURN_TO = "/closet?tab=items";
+const USE_CLOSET_BOOTSTRAP =
+  (import.meta.env.VITE_CLOSET_USE_BOOTSTRAP ?? "true").toLowerCase() !== "false";
+const USE_TARGETED_RECONCILE =
+  (import.meta.env.VITE_CLOSET_USE_TARGETED_RECONCILE ?? "true").toLowerCase() !==
+  "false";
 
 /** Resolve an item for the modal from data already loaded with the page (no extra GET). */
 function findClosetItemInLoadedData(
@@ -343,18 +349,38 @@ export default function ClosetPage() {
     const token = await getApiAccessToken();
     const payload = await fetchMyImageInventory(token);
     setImageRows(payload.results);
+    return payload;
   }, [getApiAccessToken]);
 
-  const refreshAll = useCallback(async () => {
+  const refreshCore = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const parts = await Promise.allSettled([
-      loadMine(),
-      loadGrid(),
-      loadImages(),
-    ]);
+    const token = await getApiAccessToken();
+    try {
+      if (!USE_CLOSET_BOOTSTRAP) throw new Error("bootstrap disabled");
+      const boot = await fetchClosetBootstrap(token, {
+        page: gridPage,
+        pageSize: ITEMS_PAGE_SIZE,
+        category: categoryFilter.trim(),
+        tag: tagFilter,
+        sort: sortKey,
+        includeSelf: true,
+      });
+      setMyItems(boot.my_items);
+      setGridItems(boot.friends_grid.results);
+      setGridTotal(boot.friends_grid.total);
+      hasLoadedOnceRef.current = true;
+      setLoading(false);
+      return {
+        myItems: boot.my_items,
+        gridResults: boot.friends_grid.results,
+      };
+    } catch {
+      // fallback to existing fan-out endpoints for compatibility
+    }
+    const parts = await Promise.allSettled([loadMine(), loadGrid()]);
     const failures: string[] = [];
-    const labels = ["your items", "items grid", "image library"] as const;
+    const labels = ["your items", "items grid"] as const;
     parts.forEach((result, i) => {
       if (result.status === "rejected") {
         const msg =
@@ -377,10 +403,58 @@ export default function ClosetPage() {
       myItems: myItemsPayload,
       gridResults: gridPayload?.results ?? null,
     };
-  }, [loadGrid, loadImages, loadMine]);
+  }, [categoryFilter, getApiAccessToken, gridPage, loadGrid, loadMine, sortKey, tagFilter]);
 
-  const reloadSelectedItem = useCallback(async () => {
-    const { myItems: freshMy, gridResults } = await refreshAll();
+  const refreshAll = useCallback(async () => {
+    const core = await refreshCore();
+    try {
+      await loadImages();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError((prev) => (prev ? `${prev} · image library: ${msg}` : `image library: ${msg}`));
+    }
+    return core;
+  }, [loadImages, refreshCore]);
+
+  const patchItemInLocalState = useCallback(
+    (nextItem: ClosetItem) => {
+      setGridItems((prev) =>
+        prev.map((row) => (row.id === nextItem.id ? nextItem : row)),
+      );
+      setMyItems((prev) => ({
+        declined_by_me: prev.declined_by_me.map((row) =>
+          row.id === nextItem.id ? nextItem : row,
+        ),
+        borrowed_by_me: prev.borrowed_by_me.map((row) =>
+          row.id === nextItem.id ? nextItem : row,
+        ),
+        custody_offered_to_me: prev.custody_offered_to_me.map((row) =>
+          row.id === nextItem.id ? nextItem : row,
+        ),
+        requested_by_me: prev.requested_by_me.map((row) =>
+          row.id === nextItem.id ? nextItem : row,
+        ),
+        owned_by_me: prev.owned_by_me.map((row) =>
+          row.id === nextItem.id ? nextItem : row,
+        ),
+      }));
+      if (selectedItemIdValid === nextItem.id) {
+        setItemFetchFallback(nextItem);
+      }
+    },
+    [selectedItemIdValid],
+  );
+
+  const reloadSelectedItem = useCallback(async (nextItem?: ClosetItem) => {
+    if (nextItem) {
+      patchItemInLocalState(nextItem);
+      setSelectedItemError(null);
+      if (USE_TARGETED_RECONCILE) {
+        void refreshCore();
+      }
+      return;
+    }
+    const { myItems: freshMy, gridResults } = await refreshCore();
     const params = new URLSearchParams(window.location.search);
     const raw = params.get("item");
     const id = raw ? Number.parseInt(raw, 10) : Number.NaN;
@@ -411,7 +485,7 @@ export default function ClosetPage() {
         e instanceof Error ? e.message : "Failed to load item",
       );
     }
-  }, [getApiAccessToken, refreshAll]);
+  }, [getApiAccessToken, patchItemInLocalState, refreshCore]);
 
   const closeExpanded = useCallback(() => {
     setPendingNeighborNav(null);
@@ -574,16 +648,22 @@ export default function ClosetPage() {
 
   useEffect(() => {
     if (!isAuthenticated || !sessionUser) return;
-    void refreshAll();
+    void refreshCore();
   }, [
     categoryFilter,
     gridPage,
     sortKey,
     tagFilter,
     isAuthenticated,
-    refreshAll,
+    refreshCore,
     sessionUser,
   ]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !sessionUser) return;
+    if (activeTab !== "images") return;
+    void loadImages();
+  }, [activeTab, isAuthenticated, sessionUser, loadImages]);
 
   useEffect(() => {
     if (!confirmDeleteImageKey) return;
@@ -983,12 +1063,18 @@ export default function ClosetPage() {
                                     file,
                                   );
                                 }
-                                await createItem(token, {
+                                const created = await createItem(token, {
                                   name: nn,
                                   description: newDescription,
                                   ...(cat ? { category: cat } : {}),
                                   ...(imageKey ? { image_key: imageKey } : {}),
                                 });
+                                setMyItems((prev) => ({
+                                  ...prev,
+                                  owned_by_me: [created, ...prev.owned_by_me],
+                                }));
+                                setGridItems((prev) => [created, ...prev]);
+                                setGridTotal((prev) => prev + 1);
                                 setNewName("");
                                 setNewDescription("");
                                 setNewCategory("");
@@ -997,11 +1083,11 @@ export default function ClosetPage() {
                                 }
                                 setIsAddItemOpen(false);
                                 setGridPage(1);
-                                await refreshAll();
                                 setNotice({
                                   kind: "success",
                                   message: "Item added.",
                                 });
+                                void refreshCore();
                               } catch (err: unknown) {
                                 const message =
                                   err instanceof Error
@@ -1185,7 +1271,7 @@ export default function ClosetPage() {
                                             setConfirmDeleteDeclinedRequestItemId(
                                               null,
                                             );
-                                            await refreshAll();
+                                            await refreshCore();
                                           } catch (err: unknown) {
                                             setError(
                                               err instanceof Error
@@ -1286,7 +1372,7 @@ export default function ClosetPage() {
                                             kind: "success",
                                             message: "Custody accepted.",
                                           });
-                                          await refreshAll();
+                                          await refreshCore();
                                         } catch (err: unknown) {
                                           setError(
                                             err instanceof Error
@@ -1314,7 +1400,7 @@ export default function ClosetPage() {
                                             message:
                                               "Custody offer declined.",
                                           });
-                                          await refreshAll();
+                                          await refreshCore();
                                         } catch (err: unknown) {
                                           setError(
                                             err instanceof Error

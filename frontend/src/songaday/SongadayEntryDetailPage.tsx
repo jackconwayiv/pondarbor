@@ -12,6 +12,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink, Navigate, useLocation, useNavigate, useParams } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
+import {
+  PanelBlockSkeleton,
+  PanelSessionReconnect,
+  SessionLoadingCard,
+} from "../components/panelStatus";
 import PondButton from "../PondButton";
 import {
   APP_TEXT_SIZES,
@@ -48,6 +53,7 @@ export default function SongadayEntryDetailPage() {
     sessionUser,
     getApiAccessToken,
     resyncSessionSilently,
+    refreshSession,
     error: sessionError,
   } = useAppSession();
 
@@ -206,21 +212,21 @@ export default function SongadayEntryDetailPage() {
   if (!isAuthenticated) {
     return <Navigate to="/" replace />;
   }
-  if (isLoading || !sessionUser) {
+  if (isLoading) {
     return (
-      <Stack gap="2" maxW="5xl">
-        <Text fontWeight="semibold">Loading…</Text>
-        {sessionError ? (
-          <Text
-            fontSize={APP_TEXT_SIZES.helper}
-            color="nautical.solid"
-            fontWeight="medium"
-            role="alert"
-          >
-            {sessionError}
-          </Text>
-        ) : null}
-      </Stack>
+      <SessionLoadingCard>
+        <Box {...PANEL_ENTRY_CARD_PROPS}>
+          <PanelBlockSkeleton lines={4} showTitleLine />
+        </Box>
+      </SessionLoadingCard>
+    );
+  }
+  if (!sessionUser) {
+    return (
+      <PanelSessionReconnect
+        sessionError={sessionError}
+        onRetry={() => void refreshSession()}
+      />
     );
   }
 
@@ -251,9 +257,9 @@ export default function SongadayEntryDetailPage() {
   if (!entry) {
     return (
       <Stack gap="2" px={{ base: "2", md: "2" }} pb={{ base: "2", md: "2" }}>
-        <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
-          Loading entry…
-        </Text>
+        <Box {...PANEL_ENTRY_CARD_PROPS}>
+          <PanelBlockSkeleton lines={4} showTitleLine />
+        </Box>
       </Stack>
     );
   }

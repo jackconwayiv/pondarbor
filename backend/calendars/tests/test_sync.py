@@ -97,6 +97,37 @@ class ParseIcsTests(TestCase):
         self.assertEqual(ev.start_date, date(2025, 1, 13))
         self.assertEqual(ev.end_date, date(2025, 1, 13))
 
+    def test_utc_z_uses_fallback_timezone_for_civil_day(self):
+        ics = (
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\n"
+            "UID:z-evening@example.com\r\n"
+            "DTSTART:20250114T000000Z\r\n"
+            "DTEND:20250114T010000Z\r\n"
+            "END:VEVENT\r\nEND:VCALENDAR\r\n"
+        )
+        parsed = parse_ics(ics, fallback_tzid="America/Chicago")
+        self.assertEqual(len(parsed), 1)
+        ev = parsed[0]
+        self.assertEqual(ev.start_date, date(2025, 1, 13))
+        self.assertEqual(ev.end_date, date(2025, 1, 13))
+
+    def test_calendar_timezone_takes_precedence_over_fallback(self):
+        # 06:30Z is Jan 14 in Chicago but Jan 13 in Phoenix.
+        ics = (
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"
+            "X-WR-TIMEZONE:America/Chicago\r\n"
+            "BEGIN:VEVENT\r\n"
+            "UID:calendar-tz-priority@example.com\r\n"
+            "DTSTART:20250114T063000Z\r\n"
+            "DTEND:20250114T073000Z\r\n"
+            "END:VEVENT\r\nEND:VCALENDAR\r\n"
+        )
+        parsed = parse_ics(ics, fallback_tzid="America/Phoenix")
+        self.assertEqual(len(parsed), 1)
+        ev = parsed[0]
+        self.assertEqual(ev.start_date, date(2025, 1, 14))
+        self.assertEqual(ev.end_date, date(2025, 1, 14))
+
 
 class SyncIcalSourceTests(CalendarTestMixin, TestCase):
     def setUp(self):
@@ -204,3 +235,23 @@ class SyncIcalSourceTests(CalendarTestMixin, TestCase):
         )
         result = sync_ical_source(manual)
         self.assertFalse(result.ok)
+
+    def test_sync_uses_owner_profile_timezone_fallback_for_z_times(self):
+        self.alice.profile.timezone = "America/Chicago"
+        self.alice.profile.save(update_fields=["timezone"])
+        ics = (
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\n"
+            "UID:owner-tz-fallback@example.com\r\n"
+            "DTSTART:20250114T000000Z\r\n"
+            "DTEND:20250114T010000Z\r\n"
+            "END:VEVENT\r\nEND:VCALENDAR\r\n"
+        )
+        with patch(
+            "calendars.services._fetch_ical",
+            side_effect=self._mock_fetch(body=ics),
+        ):
+            result = sync_ical_source(self.source)
+        self.assertTrue(result.ok)
+        ev = Event.objects.get(source=self.source, external_uid="owner-tz-fallback@example.com")
+        self.assertEqual(ev.start_date, date(2025, 1, 13))
+        self.assertEqual(ev.end_date, date(2025, 1, 13))

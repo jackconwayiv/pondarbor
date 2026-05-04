@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone as dt_timezone
 from typing import Iterable
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
 from django.db import transaction
@@ -83,7 +84,45 @@ def _split_prop(raw_line: str) -> tuple[str, dict[str, str], str]:
     return name, params, value
 
 
-def _parse_ics_datetime(raw: str, params: dict[str, str]) -> tuple[datetime, bool, date | None]:
+def _safe_zoneinfo(name: str | None) -> ZoneInfo | None:
+    if not name:
+        return None
+    cleaned = str(name).strip()
+    if not cleaned:
+        return None
+    try:
+        return ZoneInfo(cleaned)
+    except ZoneInfoNotFoundError:
+        return None
+
+
+def _calendar_default_tzid(lines: list[str]) -> str | None:
+    in_vtimezone = False
+    for raw in lines:
+        stripped = raw.strip()
+        if not stripped:
+            continue
+        upper = stripped.upper()
+        if upper == "BEGIN:VTIMEZONE":
+            in_vtimezone = True
+            continue
+        if upper == "END:VTIMEZONE":
+            in_vtimezone = False
+            continue
+        name, _params, value = _split_prop(stripped)
+        if name == "X-WR-TIMEZONE" and value.strip():
+            return value.strip()
+        if in_vtimezone and name == "TZID" and value.strip():
+            return value.strip()
+    return None
+
+
+def _parse_ics_datetime(
+    raw: str,
+    params: dict[str, str],
+    *,
+    effective_tzid: str | None = None,
+) -> tuple[datetime, bool, date | None]:
     """Parse an ICS DTSTART/DTEND value into an aware UTC datetime.
 
     Returns ``(dt, is_date_only, civil_date)``.
@@ -100,6 +139,7 @@ def _parse_ics_datetime(raw: str, params: dict[str, str]) -> tuple[datetime, boo
         len(value) == 8 and value.isdigit()
     )
     tzid = params.get("TZID", "")
+    effective_tz = _safe_zoneinfo(effective_tzid)
 
     if is_date_only:
         if len(value) != 8 or not value.isdigit():
@@ -119,22 +159,26 @@ def _parse_ics_datetime(raw: str, params: dict[str, str]) -> tuple[datetime, boo
     naive = datetime(int(year), int(month), int(day), int(hh), int(mm), int(ss))
     if z == "Z":
         aware = naive.replace(tzinfo=dt_timezone.utc)
-        civil = aware.date()
+        civil = aware.astimezone(effective_tz).date() if effective_tz else aware.date()
     elif tzid:
-        try:
-            import zoneinfo
-
-            tz = zoneinfo.ZoneInfo(tzid)
+        tz = _safe_zoneinfo(tzid) or effective_tz
+        if tz is not None:
             local = naive.replace(tzinfo=tz)
             civil = local.date()
             aware = local.astimezone(dt_timezone.utc)
-        except Exception:
+        else:
+            aware = naive.replace(tzinfo=dt_timezone.utc)
+            civil = aware.astimezone(effective_tz).date() if effective_tz else aware.date()
+    else:
+        # Floating time is interpreted in the effective civil timezone when one
+        # is available; otherwise we fall back to UTC.
+        if effective_tz:
+            local = naive.replace(tzinfo=effective_tz)
+            aware = local.astimezone(dt_timezone.utc)
+            civil = local.date()
+        else:
             aware = naive.replace(tzinfo=dt_timezone.utc)
             civil = aware.date()
-    else:
-        # Floating time: treat as UTC. Better than guessing the server TZ.
-        aware = naive.replace(tzinfo=dt_timezone.utc)
-        civil = aware.date()
     return aware, False, civil
 
 
@@ -145,9 +189,10 @@ class ParsedEvent:
     end_date: date
 
 
-def parse_ics(text: str) -> list[ParsedEvent]:
+def parse_ics(text: str, *, fallback_tzid: str | None = None) -> list[ParsedEvent]:
     unfolded = _unfold(text)
     lines = unfolded.splitlines()
+    calendar_tzid = _calendar_default_tzid(lines)
     events: list[ParsedEvent] = []
     in_event = False
     current: dict = {}
@@ -177,7 +222,13 @@ def parse_ics(text: str) -> list[ParsedEvent]:
         # (SUMMARY, DESCRIPTION, LOCATION, ORGANIZER, etc.) is intentionally
         # ignored — see module-level comment.
         if name in ("DTSTART", "DTEND"):
-            dt, all_day, civil = _parse_ics_datetime(value, params)
+            dt, all_day, civil = _parse_ics_datetime(
+                value,
+                params,
+                effective_tzid=(params.get("TZID") or "").strip()
+                or calendar_tzid
+                or fallback_tzid,
+            )
             current[name] = dt
             current[f"{name}__ALL_DAY"] = all_day
             if civil is not None:
@@ -348,7 +399,8 @@ def sync_ical_source(source: CalendarSource) -> SyncResult:
         return SyncResult(ok=True, not_modified=True)
 
     try:
-        parsed = parse_ics(body)
+        fallback_tzid = getattr(getattr(source.owner, "profile", None), "timezone", None)
+        parsed = parse_ics(body, fallback_tzid=fallback_tzid)
     except IcalParseError as exc:
         source.last_error = f"Parse error: {exc}"[:500]
         source.save(update_fields=["last_error", "updated_at"])

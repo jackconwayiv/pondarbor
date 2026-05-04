@@ -207,8 +207,7 @@ export default function FriendProfilePage() {
         return;
       }
 
-      const cacheKey =
-        lookup.kind !== "invalid" ? friendProfileCacheKey(lookup) : null;
+      const cacheKey = friendProfileCacheKey(lookup);
       if (cacheKey && reloadKey === 0) {
         const hit = friendProfileBundleCache.get(cacheKey);
         if (

@@ -9,7 +9,7 @@ import {
   Tabs,
   Text,
 } from "@chakra-ui/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink, useSearchParams } from "react-router";
 
 import { AchievementSummaryCard } from "../achievements/AchievementSummaryCard";
@@ -122,6 +122,13 @@ export default function StaffPage() {
   const [achievementsError, setAchievementsError] = useState<string | null>(
     null,
   );
+  const achievementDefsLoadedRef = useRef(false);
+
+  useEffect(() => {
+    if (!isAuthenticated || !sessionUser?.user?.is_staff) {
+      achievementDefsLoadedRef.current = false;
+    }
+  }, [isAuthenticated, sessionUser?.user?.is_staff]);
 
   useEffect(() => {
     const raw = searchParams.get("tab");
@@ -217,6 +224,7 @@ export default function StaffPage() {
       const token = await getApiAccessToken();
       const rows = await fetchStaffAchievementDefinitions(token);
       setAchievementDefs(rows);
+      achievementDefsLoadedRef.current = true;
     } catch (e) {
       setAchievementsError(
         e instanceof Error ? e.message : "Failed to load achievements",
@@ -229,6 +237,7 @@ export default function StaffPage() {
 
   useEffect(() => {
     if (staffTab !== "achievements" || !isStaff) return;
+    if (achievementDefsLoadedRef.current) return;
     void loadAchievementDefinitions();
   }, [staffTab, isStaff, loadAchievementDefinitions]);
 

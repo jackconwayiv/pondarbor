@@ -66,6 +66,31 @@ import {
 
 const PAGE_SIZE = 10;
 
+/** Re-use bundled profile data when revisiting the same friend within a tab session. */
+const FRIEND_PROFILE_CACHE_TTL_MS = 5 * 60 * 1000;
+
+type FriendProfileBundleCache = {
+  quotes: Quote[];
+  achievements: AchievementSummary[];
+  theirFriends: FriendUser[];
+  closetItems: ClosetItem[];
+  summary: PublicUserSummary;
+  fetchedAt: number;
+};
+
+const friendProfileBundleCache = new Map<string, FriendProfileBundleCache>();
+
+function friendProfileCacheKey(
+  lookup:
+    | { kind: "id"; id: number }
+    | { kind: "email"; email: string }
+    | { kind: "invalid" },
+): string | null {
+  if (lookup.kind === "id") return `id:${lookup.id}`;
+  if (lookup.kind === "email") return `email:${lookup.email.toLowerCase()}`;
+  return null;
+}
+
 const ENTRY_CARD_PROPS = {
   ...PANEL_ENTRY_CARD_PROPS,
 } as const;
@@ -181,6 +206,27 @@ export default function FriendProfilePage() {
         setIsLoading(false);
         return;
       }
+
+      const cacheKey =
+        lookup.kind !== "invalid" ? friendProfileCacheKey(lookup) : null;
+      if (cacheKey && reloadKey === 0) {
+        const hit = friendProfileBundleCache.get(cacheKey);
+        if (
+          hit &&
+          Date.now() - hit.fetchedAt < FRIEND_PROFILE_CACHE_TTL_MS
+        ) {
+          setQuotes(hit.quotes);
+          setAchievements(hit.achievements);
+          setTheirFriends(hit.theirFriends);
+          setClosetItems(hit.closetItems);
+          setSummary(hit.summary);
+          setError(null);
+          setNotFound(false);
+          setIsLoading(false);
+          return;
+        }
+      }
+
       setIsLoading(true);
       setError(null);
       setNotFound(false);
@@ -231,11 +277,22 @@ export default function FriendProfilePage() {
           (a, b) =>
             new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
         );
+        const achSorted = sortAchievementsNewestFirst(achData);
         setQuotes(sorted);
-        setAchievements(sortAchievementsNewestFirst(achData));
+        setAchievements(achSorted);
         setTheirFriends(friendsRows);
         setClosetItems(closetRows);
         setSummary(summaryData);
+        if (cacheKey) {
+          friendProfileBundleCache.set(cacheKey, {
+            quotes: sorted,
+            achievements: achSorted,
+            theirFriends: friendsRows,
+            closetItems: closetRows,
+            summary: summaryData,
+            fetchedAt: Date.now(),
+          });
+        }
       } catch (err: unknown) {
         const message =
           err instanceof Error ? err.message : "Failed to load friend profile";
@@ -524,7 +581,12 @@ export default function FriendProfilePage() {
             {isLoading || error ? (
               <Box {...ENTRY_CARD_PROPS}>
                 {isLoading ? (
-                  <PanelListRowSkeleton rows={2} />
+                  <Stack gap="2">
+                    <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                      Loading...
+                    </Text>
+                    <PanelListRowSkeleton rows={2} />
+                  </Stack>
                 ) : (
                   <PanelMessageSlot error={error} />
                 )}
@@ -737,7 +799,11 @@ export default function FriendProfilePage() {
                         const t = await getApiAccessToken();
                         await requestFriendByUserId(t, uid);
                         setActionSuccess("Friend request sent.");
-                        await syncViewerFriendsListFromApi();
+                        setMyOutgoingPendingIds((prev) => {
+                          const next = new Set(prev);
+                          next.add(uid);
+                          return next;
+                        });
                       }}
                       onAcceptFriendRequest={async (uid) => {
                         setAcceptFriendBusyUserId(uid);
@@ -746,7 +812,16 @@ export default function FriendProfilePage() {
                           const t = await getApiAccessToken();
                           await acceptFriend(t, uid);
                           setActionSuccess("Friend request accepted.");
-                          await syncViewerFriendsListFromApi();
+                          setMyIncomingPendingIds((prev) => {
+                            const next = new Set(prev);
+                            next.delete(uid);
+                            return next;
+                          });
+                          setMyApprovedFriendIds((prev) => {
+                            const next = new Set(prev);
+                            next.add(uid);
+                            return next;
+                          });
                         } catch (err: unknown) {
                           setActionError(
                             err instanceof Error

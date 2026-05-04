@@ -110,6 +110,12 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
     () => EMAIL_SHAPE.test(requestEmail.trim()),
     [requestEmail],
   );
+  const addOutgoingPendingLocally = (target: FriendUser) => {
+    setOutgoing((prev) => {
+      if (prev.some((x) => x.id === target.id)) return prev;
+      return [...prev, target];
+    });
+  };
 
   if (!isAuthenticated || !sessionUser?.user?.is_approved) {
     return null;
@@ -172,9 +178,15 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
                       token,
                       requestEmail.trim().toLowerCase(),
                     );
+                    const targetEmail = requestEmail.trim().toLowerCase();
+                    const target = approvedUsers.find(
+                      (row) => row.email.toLowerCase() === targetEmail,
+                    );
+                    if (target) {
+                      addOutgoingPendingLocally(target);
+                    }
                     setRequestEmail("");
                     setRequestSuccess("Friend request sent.");
-                    await loadList();
                   } catch (err: unknown) {
                     setRequestError(
                       err instanceof Error
@@ -199,6 +211,9 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
       <PanelMessageSlot error={pageError} />
       {loading ? (
         <Box {...PANEL_ENTRY_CARD_PROPS}>
+          <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" mb="2">
+            Loading...
+          </Text>
           <PanelListRowSkeleton rows={2} />
         </Box>
       ) : null}
@@ -252,7 +267,18 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
                         try {
                           const token = await getApiAccessToken();
                           await acceptFriend(token, row.id);
-                          await loadList();
+                          setIncoming((prev) =>
+                            prev.filter((x) => x.id !== row.id),
+                          );
+                          setApproved((prev) => {
+                            const next = [...prev, row];
+                            next.sort((a, b) =>
+                              a.nickname.localeCompare(b.nickname, undefined, {
+                                sensitivity: "base",
+                              }),
+                            );
+                            return next;
+                          });
                         } catch (err: unknown) {
                           setPageError(
                             err instanceof Error
@@ -278,7 +304,9 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
                         try {
                           const token = await getApiAccessToken();
                           await ignoreFriend(token, row.id);
-                          await loadList();
+                          setIncoming((prev) =>
+                            prev.filter((x) => x.id !== row.id),
+                          );
                         } catch (err: unknown) {
                           setPageError(
                             err instanceof Error
@@ -340,8 +368,11 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
             try {
               const token = await getApiAccessToken();
               await requestFriendByUserId(token, userId);
+              const target = approvedUsers.find((row) => row.id === userId);
+              if (target) {
+                addOutgoingPendingLocally(target);
+              }
               setRequestSuccess("Friend request sent.");
-              await loadList();
             } catch (err: unknown) {
               setPageError(
                 err instanceof Error

@@ -8,6 +8,11 @@ import {
   type SessionUser,
   type ProfilePatch,
 } from "./AppSessionContext";
+import {
+  fetchBootstrapSession,
+  mapApiBootstrapInbox,
+  type BootstrapInboxSnapshot,
+} from "../users/api";
 
 import {
   auth0AccountPickerLoginParams,
@@ -74,17 +79,25 @@ function authorizationParamsForTokenRecovery(err: unknown) {
   );
 }
 
-function loadCachedSession(): {
+type StoredAppSession = {
   sessionUser: SessionUser;
   accessToken: string | null;
-} | null {
+  bootstrapInbox?: BootstrapInboxSnapshot;
+  bootstrapInboxFetchedAt?: number;
+};
+
+function loadCachedSession(): StoredAppSession | null {
   const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
   if (!raw) return null;
 
   try {
-    return JSON.parse(raw) as {
-      sessionUser: SessionUser;
-      accessToken: string | null;
+    const parsed = JSON.parse(raw) as Partial<StoredAppSession>;
+    if (!parsed.sessionUser) return null;
+    return {
+      sessionUser: parsed.sessionUser,
+      accessToken: parsed.accessToken ?? null,
+      bootstrapInbox: parsed.bootstrapInbox,
+      bootstrapInboxFetchedAt: parsed.bootstrapInboxFetchedAt,
     };
   } catch {
     sessionStorage.removeItem(SESSION_STORAGE_KEY);
@@ -92,17 +105,8 @@ function loadCachedSession(): {
   }
 }
 
-function saveCachedSession(
-  sessionUser: SessionUser,
-  accessToken: string | null,
-) {
-  sessionStorage.setItem(
-    SESSION_STORAGE_KEY,
-    JSON.stringify({
-      sessionUser,
-      accessToken,
-    }),
-  );
+function saveCachedSession(data: StoredAppSession) {
+  sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(data));
 }
 
 function clearCachedSession() {
@@ -121,6 +125,11 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
 
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [bootstrapInboxSnapshot, setBootstrapInboxSnapshot] =
+    useState<BootstrapInboxSnapshot | null>(null);
+  const [bootstrapInboxFetchedAt, setBootstrapInboxFetchedAt] = useState<
+    number | null
+  >(null);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [isBootstrapping, setIsBootstrapping] = useState(false);
 
@@ -171,30 +180,21 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
         throw err;
       }
 
-      const response = await fetch(
-        `${apiBase()}/api/v1/users/sync-profile/`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          // Avoid sending Django session cookies: SessionAuthentication + POST can trigger CSRF 403.
-          credentials: "omit",
-          body: JSON.stringify({}),
-        },
-      );
-
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Sync failed (${response.status}): ${text}`);
-      }
-
-      const data = (await response.json()) as SessionUser;
+      const body = await fetchBootstrapSession(token);
+      const data = body.session as SessionUser;
+      const inboxMapped = mapApiBootstrapInbox(body.inbox);
+      const fetchedAt = Date.now();
 
       setAccessToken(token);
       setSessionUser(data);
-      saveCachedSession(data, token);
+      setBootstrapInboxSnapshot(inboxMapped);
+      setBootstrapInboxFetchedAt(fetchedAt);
+      saveCachedSession({
+        sessionUser: data,
+        accessToken: token,
+        bootstrapInbox: inboxMapped,
+        bootstrapInboxFetchedAt: fetchedAt,
+      });
       hasInitialized.current = true;
       lastAuth0Sub.current = auth0User.sub ?? null;
       tokenRecoveryRedirectCountRef.current = 0;
@@ -265,6 +265,8 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     if (!isAuthenticated) {
       setSessionUser(null);
       setAccessToken(null);
+      setBootstrapInboxSnapshot(null);
+      setBootstrapInboxFetchedAt(null);
       setBootstrapError(null);
       hasInitialized.current = false;
       lastAuth0Sub.current = null;
@@ -280,6 +282,8 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     ) {
       setSessionUser(null);
       setAccessToken(null);
+      setBootstrapInboxSnapshot(null);
+      setBootstrapInboxFetchedAt(null);
       setBootstrapError(null);
       hasInitialized.current = false;
       clearCachedSession();
@@ -297,6 +301,8 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     if (cached) {
       setSessionUser(cached.sessionUser);
       setAccessToken(cached.accessToken);
+      setBootstrapInboxSnapshot(cached.bootstrapInbox ?? null);
+      setBootstrapInboxFetchedAt(cached.bootstrapInboxFetchedAt ?? null);
       hasInitialized.current = true;
       lastAuth0Sub.current = currentSub;
       return;
@@ -353,9 +359,15 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       }
 
       const data = (await response.json()) as SessionUser;
+      const prev = loadCachedSession();
       setAccessToken(token);
       setSessionUser(data);
-      saveCachedSession(data, token);
+      saveCachedSession({
+        sessionUser: data,
+        accessToken: token,
+        bootstrapInbox: prev?.bootstrapInbox,
+        bootstrapInboxFetchedAt: prev?.bootstrapInboxFetchedAt,
+      });
     } catch {
       /* silent: avoid global loading; caller can log if needed */
     }
@@ -374,7 +386,13 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
           },
         };
 
-        saveCachedSession(next, accessToken);
+        const prev = loadCachedSession();
+        saveCachedSession({
+          sessionUser: next,
+          accessToken,
+          bootstrapInbox: prev?.bootstrapInbox,
+          bootstrapInboxFetchedAt: prev?.bootstrapInboxFetchedAt,
+        });
         return next;
       });
     },
@@ -406,8 +424,14 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       }
 
       const data = (await response.json()) as SessionUser;
+      const prev = loadCachedSession();
       setSessionUser(data);
-      saveCachedSession(data, token);
+      saveCachedSession({
+        sessionUser: data,
+        accessToken: token,
+        bootstrapInbox: prev?.bootstrapInbox,
+        bootstrapInboxFetchedAt: prev?.bootstrapInboxFetchedAt,
+      });
     },
     [getApiAccessToken],
   );
@@ -437,8 +461,14 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       }
 
       const data = (await response.json()) as SessionUser;
+      const prev = loadCachedSession();
       setSessionUser(data);
-      saveCachedSession(data, token);
+      saveCachedSession({
+        sessionUser: data,
+        accessToken: token,
+        bootstrapInbox: prev?.bootstrapInbox,
+        bootstrapInboxFetchedAt: prev?.bootstrapInboxFetchedAt,
+      });
     },
     [getApiAccessToken],
   );
@@ -446,6 +476,8 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
   const clearLocalSession = useCallback(() => {
     setSessionUser(null);
     setAccessToken(null);
+    setBootstrapInboxSnapshot(null);
+    setBootstrapInboxFetchedAt(null);
     setBootstrapError(null);
     hasInitialized.current = false;
     lastAuth0Sub.current = null;
@@ -488,6 +520,8 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       sessionUser,
       auth0User: auth0User ?? null,
       accessToken,
+      bootstrapInboxSnapshot,
+      bootstrapInboxFetchedAt,
       isAuthenticated,
       isLoading: auth0Loading || isBootstrapping || sessionPending,
       error: bootstrapError,
@@ -504,6 +538,8 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       sessionUser,
       auth0User,
       accessToken,
+      bootstrapInboxSnapshot,
+      bootstrapInboxFetchedAt,
       isAuthenticated,
       auth0Loading,
       isBootstrapping,

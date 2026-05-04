@@ -121,35 +121,15 @@ def serialize_me(user):
     }
 
 
-@api_view(["GET"])
-@permission_classes([AllowAny])
-def health(request):
-    return Response({"ok": True})
-
-
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def me(request):
-    return Response(MeSerializer(serialize_me(request.user)).data)
-
-
-@api_view(["GET"])
-@permission_classes([IsApprovedUser])
-def approved_check(request):
-    return Response({"ok": True, "message": "You are approved."})
-
-
-@api_view(["GET"])
-@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
-@permission_classes([IsApprovedUser])
-def upcoming_birthdays(request):
+def _upcoming_birthdays_raw_rows(user):
+    """Same friend birthday window as upcoming_birthdays; returns rows for UpcomingBirthdaySerializer."""
     today = timezone.localdate()
     window_offsets_by_month_day = {}
     for offset in range(-2, 8):
         day = today + timedelta(days=offset)
         window_offsets_by_month_day[(day.month, day.day)] = offset
 
-    friend_ids = friend_ids_for_user(user=request.user)
+    friend_ids = friend_ids_for_user(user=user)
     profiles = Profile.objects.select_related("user").filter(
         user_id__in=friend_ids,
         user__account_status=UserModel.AccountStatus.APPROVED,
@@ -174,7 +154,7 @@ def upcoming_birthdays(request):
         )
 
     rows.sort(key=lambda row: (row["offset"], row["display_name"].lower()))
-    payload = [
+    return [
         {
             "display_name": row["display_name"],
             "birth_month": row["birth_month"],
@@ -182,6 +162,97 @@ def upcoming_birthdays(request):
         }
         for row in rows
     ]
+
+
+def _pending_incoming_friend_request_count(user):
+    """Count only — avoids loading full friends graph for shell inbox."""
+    return FriendRequest.objects.filter(
+        requested=user,
+        is_accepted=False,
+        ignored_by_requester=False,
+        ignored_by_requested=False,
+    ).count()
+
+
+def _staff_pending_summary_payload():
+    """Same JSON object as GET staff/pending-summary/."""
+    from whatif.models import WhatIfQuestion
+
+    pending_members = UserModel.objects.filter(
+        account_status=UserModel.AccountStatus.PENDING
+    ).count()
+    pending_whatif = WhatIfQuestion.objects.filter(
+        review_status=WhatIfQuestion.ReviewStatus.PENDING,
+        deleted_at__isnull=True,
+    ).count()
+    unread_messages = ContactMessage.objects.filter(read_at__isnull=True)
+    contact_agg = unread_messages.aggregate(
+        contact_messages_count=Count("id"),
+        latest_contact_message_id=Max("id"),
+    )
+    return {
+        "pending_members": pending_members,
+        "pending_whatif_questions": pending_whatif,
+        "contact_messages_count": contact_agg["contact_messages_count"] or 0,
+        "latest_contact_message_id": contact_agg["latest_contact_message_id"],
+    }
+
+
+def inbox_bootstrap_payload(request):
+    """
+    Shell inbox summary for notification bell / home prompts.
+    Mirrors permission gates of the separate inbox endpoints (approved-only slices).
+    """
+    user = request.user
+    approved = user.account_status == UserModel.AccountStatus.APPROVED
+    if approved:
+        raw_birthdays = _upcoming_birthdays_raw_rows(user)
+        upcoming = UpcomingBirthdaySerializer(raw_birthdays, many=True).data
+        # Deferred import: closet views pull many models; keep users.views import graph light.
+        from closet.views import _closet_action_summary_payload
+
+        return {
+            "upcoming_birthdays": upcoming,
+            "pending_friend_count": _pending_incoming_friend_request_count(user),
+            "closet": _closet_action_summary_payload(user),
+            "staff_pending_summary": _staff_pending_summary_payload()
+            if user.is_staff
+            else None,
+        }
+
+    return {
+        "upcoming_birthdays": [],
+        "pending_friend_count": 0,
+        "closet": {"outstanding_actions_count": 0},
+        "staff_pending_summary": _staff_pending_summary_payload()
+        if user.is_staff
+        else None,
+    }
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def health(request):
+    return Response({"ok": True})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def me(request):
+    return Response(MeSerializer(serialize_me(request.user)).data)
+
+
+@api_view(["GET"])
+@permission_classes([IsApprovedUser])
+def approved_check(request):
+    return Response({"ok": True, "message": "You are approved."})
+
+
+@api_view(["GET"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsApprovedUser])
+def upcoming_birthdays(request):
+    payload = _upcoming_birthdays_raw_rows(request.user)
     return Response(UpcomingBirthdaySerializer(payload, many=True).data)
 
 
@@ -383,6 +454,26 @@ def sync_profile(request):
         raise
 
 
+@api_view(["POST"])
+@authentication_classes([Auth0TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def bootstrap_session(request):
+    """
+    Single round-trip: session (MeSerializer) + shell inbox summary for bell/home prompts.
+    Same authentication contract as sync_profile.
+    """
+    try:
+        session_data = MeSerializer(serialize_me(request.user)).data
+        inbox_data = inbox_bootstrap_payload(request)
+        return Response({"session": session_data, "inbox": inbox_data})
+    except Exception:
+        logger.exception(
+            "bootstrap_session failed user_pk=%s",
+            getattr(request.user, "pk", None),
+        )
+        raise
+
+
 @api_view(["PATCH"])
 @authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
 @permission_classes([IsAuthenticated])
@@ -491,28 +582,7 @@ def _serialize_staff_user_row(user):
 @authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
 @permission_classes([IsAuthenticated, IsStaffUser])
 def staff_pending_summary(request):
-    from whatif.models import WhatIfQuestion
-
-    pending_members = UserModel.objects.filter(
-        account_status=UserModel.AccountStatus.PENDING
-    ).count()
-    pending_whatif = WhatIfQuestion.objects.filter(
-        review_status=WhatIfQuestion.ReviewStatus.PENDING,
-        deleted_at__isnull=True,
-    ).count()
-    unread_messages = ContactMessage.objects.filter(read_at__isnull=True)
-    contact_agg = unread_messages.aggregate(
-        contact_messages_count=Count("id"),
-        latest_contact_message_id=Max("id"),
-    )
-    return Response(
-        {
-            "pending_members": pending_members,
-            "pending_whatif_questions": pending_whatif,
-            "contact_messages_count": contact_agg["contact_messages_count"] or 0,
-            "latest_contact_message_id": contact_agg["latest_contact_message_id"],
-        }
-    )
+    return Response(_staff_pending_summary_payload())
 
 
 @api_view(["GET"])

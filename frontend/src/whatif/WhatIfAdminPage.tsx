@@ -39,6 +39,10 @@ import {
   type WhatIfQuestionAdmin,
   type WhatIfQuestionListFilter,
 } from "./api";
+import {
+  mergeBulkQuestionsIntoList,
+  mergeQuestionAfterMutation,
+} from "./questionListMerge";
 import { whatifInputProps } from "./whatifFieldProps";
 import { WhatIfQuestionAdminListItem } from "./WhatIfQuestionAdminListItem";
 import { WhatIfQuestionFields } from "./WhatIfQuestionFields";
@@ -165,11 +169,18 @@ export default function WhatIfAdminPage() {
     try {
       const token = await getApiAccessToken();
       if (editingId == null) {
-        await createWhatIfQuestion(token, draft);
+        const created = await createWhatIfQuestion(token, draft);
+        setQuestions((prev) =>
+          mergeQuestionAfterMutation(prev, created, questionListFilter),
+        );
       } else {
-        await patchWhatIfQuestion(token, editingId, draft);
+        const updated = await patchWhatIfQuestion(token, editingId, draft);
+        setQuestions((prev) =>
+          mergeQuestionAfterMutation(prev, updated, questionListFilter),
+        );
       }
-      await load();
+      const p = await fetchWhatIfPendingCount(token);
+      setPendingCount(p);
       beginCreate();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
@@ -185,7 +196,9 @@ export default function WhatIfAdminPage() {
     try {
       const token = await getApiAccessToken();
       await deleteWhatIfQuestion(token, id);
-      await load();
+      setQuestions((prev) => prev.filter((q) => q.id !== id));
+      const p = await fetchWhatIfPendingCount(token);
+      setPendingCount(p);
       if (editingId === id) beginCreate();
       if (confirmDeleteId === id) setConfirmDeleteId(null);
     } catch (e) {
@@ -204,11 +217,15 @@ export default function WhatIfAdminPage() {
     setError(null);
     try {
       const token = await getApiAccessToken();
-      await patchWhatIfQuestion(token, id, {
+      const updated = await patchWhatIfQuestion(token, id, {
         review_status,
         is_active: review_status === "approved",
       });
-      await load();
+      setQuestions((prev) =>
+        mergeQuestionAfterMutation(prev, updated, questionListFilter),
+      );
+      const p = await fetchWhatIfPendingCount(token);
+      setPendingCount(p);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Update failed");
     } finally {
@@ -222,8 +239,10 @@ export default function WhatIfAdminPage() {
     setError(null);
     try {
       const token = await getApiAccessToken();
-      await patchWhatIfQuestion(token, id, { is_active });
-      await load();
+      const updated = await patchWhatIfQuestion(token, id, { is_active });
+      setQuestions((prev) =>
+        mergeQuestionAfterMutation(prev, updated, questionListFilter),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Update failed");
     } finally {
@@ -242,9 +261,16 @@ export default function WhatIfAdminPage() {
     setError(null);
     try {
       const token = await getApiAccessToken();
-      await bulkImportWhatIfQuestions(token, bulkText);
+      const { questions: created } = await bulkImportWhatIfQuestions(
+        token,
+        bulkText,
+      );
       setBulkText("");
-      await load();
+      setQuestions((prev) =>
+        mergeBulkQuestionsIntoList(prev, created, questionListFilter),
+      );
+      const p = await fetchWhatIfPendingCount(token);
+      setPendingCount(p);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Bulk import failed");
     } finally {

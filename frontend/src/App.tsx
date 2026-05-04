@@ -1,5 +1,4 @@
 import { useAuth0 } from "@auth0/auth0-react";
-import { useEffect } from "react";
 
 import {
   Box,
@@ -116,19 +115,7 @@ function HomeAppNavList({ isAuthenticated }: { isAuthenticated: boolean }) {
 function App() {
   const { loginWithRedirect } = useAuth0();
 
-  const { isLoading, isAuthenticated, error, sessionUser, resyncSessionSilently } =
-    useAppSession();
-
-  useEffect(() => {
-    if (!isAuthenticated || !sessionUser) return;
-    void resyncSessionSilently().catch(() => {
-      /* non-fatal; inbox + route bootstrap cover most freshness */
-    });
-    // Intention: run when auth or user id changes, not on every `sessionUser` object update (avoids
-    // a loop when resync returns fresh session). eslint wants `sessionUser` in deps; that would retrigger
-    // after every silent resync.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, sessionUser?.user?.id, resyncSessionSilently]);
+  const { isLoading, isAuthenticated, error } = useAppSession();
 
   if (isLoading) {
     return <SessionLoadingCard />;

@@ -2,6 +2,7 @@ import type { User } from "@auth0/auth0-react";
 import { createContext, useContext } from "react";
 
 import type { AchievementSummary } from "../achievements/types";
+import type { BootstrapInboxSnapshot } from "../users/api";
 
 export type Profile = {
   display_name: string;
@@ -74,6 +75,10 @@ export type AppSessionContextValue = {
   sessionUser: SessionUser | null;
   auth0User: User | null;
   accessToken: string | null;
+  /** Inbox/bell preloaded with POST /users/bootstrap/ or restored from sessionStorage. */
+  bootstrapInboxSnapshot: BootstrapInboxSnapshot | null;
+  /** When `bootstrapInboxSnapshot` was obtained (ms since epoch). */
+  bootstrapInboxFetchedAt: number | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;

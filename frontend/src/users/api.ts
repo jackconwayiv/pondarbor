@@ -176,3 +176,54 @@ export async function patchStaffUserAccountStatus(
   }
   return (await response.json()) as StaffUserRow;
 }
+
+/** Inbox summary from POST /api/v1/users/bootstrap/ (snake_case from API). */
+export type ApiBootstrapInboxResponse = {
+  upcoming_birthdays: UpcomingBirthday[];
+  staff_pending_summary: StaffPendingSummary | null;
+  pending_friend_count: number;
+  closet: { outstanding_actions_count: number };
+};
+
+/** Normalized for HomeInboxProvider / React state. */
+export type BootstrapInboxSnapshot = {
+  upcomingBirthdays: UpcomingBirthday[];
+  staffPendingSummary: StaffPendingSummary | null;
+  pendingFriendCount: number;
+  closetOutstandingActions: number;
+};
+
+export function mapApiBootstrapInbox(
+  inbox: ApiBootstrapInboxResponse,
+): BootstrapInboxSnapshot {
+  return {
+    upcomingBirthdays: inbox.upcoming_birthdays ?? [],
+    staffPendingSummary: inbox.staff_pending_summary ?? null,
+    pendingFriendCount: inbox.pending_friend_count ?? 0,
+    closetOutstandingActions: inbox.closet?.outstanding_actions_count ?? 0,
+  };
+}
+
+export async function fetchBootstrapSession(accessToken: string): Promise<{
+  session: unknown;
+  inbox: ApiBootstrapInboxResponse;
+}> {
+  const base = apiBase();
+  const response = await fetch(`${base}/api/v1/users/bootstrap/`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    credentials: "omit",
+    body: JSON.stringify({}),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Bootstrap failed (${response.status}): ${text}`);
+  }
+  return (await response.json()) as {
+    session: unknown;
+    inbox: ApiBootstrapInboxResponse;
+  };
+}

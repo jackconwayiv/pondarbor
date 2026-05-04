@@ -2,6 +2,7 @@ from django.urls import path
 
 from users.views import (
     approved_check,
+    bootstrap_session,
     csrf,
     health,
     login_view,
@@ -33,6 +34,7 @@ urlpatterns = [
     path("signup/", signup),
     path("login/", login_view),
     path("logout/", logout_view),
+    path("bootstrap/", bootstrap_session),
     path("sync-profile/", sync_profile),
     path("staff/pending-summary/", staff_pending_summary),
     path("staff/users/<int:user_id>/", staff_user_patch),

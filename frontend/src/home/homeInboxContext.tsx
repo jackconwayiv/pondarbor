@@ -10,8 +10,8 @@ import {
 } from "react";
 import { useLocation } from "react-router";
 
-import { useAppSession } from "../auth/AppSessionContext";
 import type { SessionUser } from "../auth/AppSessionContext";
+import { useAppSession } from "../auth/AppSessionContext";
 import { fetchClosetActionSummary } from "../closet/api";
 import { fetchFriendsList } from "../friends/api";
 import {
@@ -20,6 +20,11 @@ import {
   type StaffPendingSummary,
   type UpcomingBirthday,
 } from "../users/api";
+
+/** Trust shelled inbox snapshot from POST /users/bootstrap/ or sessionStorage within this window. */
+const INBOX_SNAPSHOT_MAX_AGE_MS = 5 * 60 * 1000;
+/** Minimum gap between full inbox network refreshes when revisiting home. */
+const HOME_INDEX_REFRESH_MIN_INTERVAL_MS = 45_000;
 
 const MONTH_NAMES = [
   "January",
@@ -211,6 +216,8 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
     isAuthenticated,
     sessionUser,
     getApiAccessToken,
+    bootstrapInboxSnapshot,
+    bootstrapInboxFetchedAt,
   } = useAppSession();
   const location = useLocation();
 
@@ -229,7 +236,8 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
     useState(false);
   const [readIds, setReadIds] = useState<Set<string>>(() => new Set());
 
-  const lastIndexRefreshAt = useRef(0);
+  /** Updated when inbox data is loaded from network or fresh bootstrap snapshot. */
+  const lastSuccessfulInboxRefreshAt = useRef(0);
   const inFlight = useRef<Promise<string[] | null> | null>(null);
   /** One initial fetch per logged-in user so API-backed prompts exist before 90s poll / home visit. */
   const initialInboxRefreshUserId = useRef<number | null>(null);
@@ -261,11 +269,20 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
       const approved = su.user?.is_approved;
       const isStaff = su.user?.is_staff;
 
+      let token: string;
+      try {
+        token = await getApiAccessToken();
+      } catch {
+        setInboxError("Could not load activity.");
+        setInboxStatus("error");
+        setInboxInitialSyncComplete(true);
+        return null;
+      }
+
       const loadBirthdays =
         approved &&
         (async () => {
           try {
-            const token = await getApiAccessToken();
             return await fetchUpcomingBirthdays(token);
           } catch {
             return [] as UpcomingBirthday[];
@@ -276,7 +293,6 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
         isStaff &&
         (async () => {
           try {
-            const token = await getApiAccessToken();
             return await fetchStaffPendingSummary(token);
           } catch {
             return null;
@@ -287,7 +303,6 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
         approved &&
         (async () => {
           try {
-            const token = await getApiAccessToken();
             const payload = await fetchFriendsList(token);
             return payload.pending_count;
           } catch {
@@ -299,7 +314,6 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
         approved &&
         (async () => {
           try {
-            const token = await getApiAccessToken();
             const summary = await fetchClosetActionSummary(token);
             return summary.outstanding_actions_count;
           } catch {
@@ -321,6 +335,7 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
         setClosetOutstandingActions(c);
         setInboxStatus("idle");
         setInboxInitialSyncComplete(true);
+        lastSuccessfulInboxRefreshAt.current = Date.now();
         const snap: InboxDataSnapshot = {
           upcomingBirthdays: b,
           staffPendingSummary: s,
@@ -359,18 +374,53 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
     if (initialInboxRefreshUserId.current === id) {
       return;
     }
+
+    const snapshotFresh =
+      bootstrapInboxSnapshot &&
+      bootstrapInboxFetchedAt != null &&
+      Date.now() - bootstrapInboxFetchedAt < INBOX_SNAPSHOT_MAX_AGE_MS;
+
+    if (snapshotFresh && bootstrapInboxSnapshot) {
+      setUpcomingBirthdays(bootstrapInboxSnapshot.upcomingBirthdays);
+      setStaffPendingSummary(bootstrapInboxSnapshot.staffPendingSummary);
+      setPendingFriendCount(bootstrapInboxSnapshot.pendingFriendCount);
+      setClosetOutstandingActions(
+        bootstrapInboxSnapshot.closetOutstandingActions,
+      );
+      setInboxStatus("idle");
+      setInboxInitialSyncComplete(true);
+      lastSuccessfulInboxRefreshAt.current = bootstrapInboxFetchedAt;
+      initialInboxRefreshUserId.current = id;
+      return;
+    }
+
     initialInboxRefreshUserId.current = id;
     void refreshInbox();
-  }, [isAuthenticated, sessionUser, refreshInbox]);
+  }, [
+    isAuthenticated,
+    sessionUser,
+    refreshInbox,
+    bootstrapInboxSnapshot,
+    bootstrapInboxFetchedAt,
+  ]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
+    if (!inboxInitialSyncComplete) return;
     if (location.pathname !== "/") return;
     const now = Date.now();
-    if (now - lastIndexRefreshAt.current < 45_000) return;
-    lastIndexRefreshAt.current = now;
+    if (
+      now - lastSuccessfulInboxRefreshAt.current <
+      HOME_INDEX_REFRESH_MIN_INTERVAL_MS
+    )
+      return;
     void refreshInbox();
-  }, [isAuthenticated, location.pathname, refreshInbox]);
+  }, [
+    isAuthenticated,
+    inboxInitialSyncComplete,
+    location.pathname,
+    refreshInbox,
+  ]);
 
   useEffect(() => {
     if (!isAuthenticated) return;

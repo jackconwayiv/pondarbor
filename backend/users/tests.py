@@ -624,6 +624,39 @@ class UserVisibilityTests(TestCase):
         self.assertNotIn("bob@example.com", str(body))
 
 
+class InboxBootstrapPayloadTests(TestCase):
+    """Shape tests for shell inbox bundled into POST /api/v1/users/bootstrap/."""
+
+    def test_inbox_bootstrap_payload_approved_shape(self):
+        from users.views import inbox_bootstrap_payload
+
+        user = User.objects.create_user(email="ibp@example.com", password="secret12345")
+        user.account_status = User.AccountStatus.APPROVED
+        user.save()
+        req = RequestFactory().post("/api/v1/users/bootstrap/")
+        req.user = user
+        payload = inbox_bootstrap_payload(req)
+        self.assertIsInstance(payload["upcoming_birthdays"], list)
+        self.assertEqual(payload["pending_friend_count"], 0)
+        self.assertEqual(payload["closet"]["outstanding_actions_count"], 0)
+        self.assertIsNone(payload["staff_pending_summary"])
+
+    def test_inbox_bootstrap_payload_staff_includes_summary(self):
+        from users.views import inbox_bootstrap_payload
+
+        user = User.objects.create_user(email="ibp2@example.com", password="secret12345")
+        user.account_status = User.AccountStatus.APPROVED
+        user.is_staff = True
+        user.save()
+        req = RequestFactory().post("/")
+        req.user = user
+        payload = inbox_bootstrap_payload(req)
+        summary = payload["staff_pending_summary"]
+        self.assertIsNotNone(summary)
+        self.assertIn("pending_members", summary)
+        self.assertIn("contact_messages_count", summary)
+
+
 class SpaRoutingTests(TestCase):
     def test_spa_index_accepts_catch_all_route_kwarg(self):
         request = RequestFactory().get("/quotes")

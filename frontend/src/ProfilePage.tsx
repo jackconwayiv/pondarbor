@@ -181,8 +181,14 @@ export default function ProfilePage() {
   );
 
   useEffect(() => {
+    if (!sessionUser?.user?.id || !isAuthenticated) return;
+    if (sessionUser.achievements !== undefined) {
+      setProfileAchievements(
+        sortAchievementsNewestFirst(sessionUser.achievements),
+      );
+      return;
+    }
     const run = async () => {
-      if (!sessionUser?.user?.id || !isAuthenticated) return;
       try {
         const token = await getApiAccessToken();
         const rows = await fetchPublicAchievementsByUserId(
@@ -195,7 +201,12 @@ export default function ProfilePage() {
       }
     };
     void run();
-  }, [getApiAccessToken, isAuthenticated, sessionUser?.user?.id]);
+  }, [
+    getApiAccessToken,
+    isAuthenticated,
+    sessionUser?.user?.id,
+    sessionUser?.achievements,
+  ]);
 
   const onAchievementVisibilityChange = useCallback(
     async (slug: string, visibleToFriends: boolean) => {
@@ -212,12 +223,6 @@ export default function ProfilePage() {
       });
       try {
         await patchAchievementVisibility(slug, visibleToFriends);
-        const token = await getApiAccessToken();
-        const rows = await fetchPublicAchievementsByUserId(
-          sessionUser.user.id,
-          token,
-        );
-        setProfileAchievements(sortAchievementsNewestFirst(rows));
       } catch (err: unknown) {
         setProfileAchievements(snapshot);
         setSaveError(
@@ -227,7 +232,7 @@ export default function ProfilePage() {
         );
       }
     },
-    [sessionUser, patchAchievementVisibility, getApiAccessToken],
+    [sessionUser, patchAchievementVisibility],
   );
 
   const commitField = useCallback(
@@ -397,7 +402,12 @@ export default function ProfilePage() {
           <Box {...APP_SHELL_TRAY_PROPS}>
             <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
               <Box {...PROFILE_ENTRY_CARD_PROPS}>
-                <PanelBlockSkeleton lines={2} showTitleLine />
+                <Stack gap="2">
+                  <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                    Loading...
+                  </Text>
+                  <PanelBlockSkeleton lines={2} showTitleLine />
+                </Stack>
               </Box>
             </Stack>
           </Box>

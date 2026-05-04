@@ -55,6 +55,10 @@ import {
 import type { WhatIfMySessionRow, WhatIfMySessionsResponse } from "./types";
 import { WhatIfQuestionAdminListItem } from "./WhatIfQuestionAdminListItem";
 import { WhatIfQuestionFields } from "./WhatIfQuestionFields";
+import {
+  mergeBulkQuestionsIntoList,
+  mergeQuestionAfterMutation,
+} from "./questionListMerge";
 
 type EntryTab =
   | "new"
@@ -345,11 +349,15 @@ export default function WhatIfEntryPage() {
     setAdminError(null);
     try {
       const token = await getApiAccessToken();
-      await patchWhatIfQuestion(token, id, {
+      const updated = await patchWhatIfQuestion(token, id, {
         review_status,
         is_active: review_status === "approved",
       });
-      await loadQuestions();
+      setQuestions((prev) =>
+        mergeQuestionAfterMutation(prev, updated, questionListFilter),
+      );
+      const p = await fetchWhatIfPendingCount(token);
+      setPendingCount(p);
     } catch (e) {
       setAdminError(e instanceof Error ? e.message : "Update failed");
     } finally {
@@ -363,8 +371,10 @@ export default function WhatIfEntryPage() {
     setAdminError(null);
     try {
       const token = await getApiAccessToken();
-      await patchWhatIfQuestion(token, id, { is_active });
-      await loadQuestions();
+      const updated = await patchWhatIfQuestion(token, id, { is_active });
+      setQuestions((prev) =>
+        mergeQuestionAfterMutation(prev, updated, questionListFilter),
+      );
     } catch (e) {
       setAdminError(e instanceof Error ? e.message : "Update failed");
     } finally {
@@ -403,11 +413,18 @@ export default function WhatIfEntryPage() {
     try {
       const token = await getApiAccessToken();
       if (editingId == null) {
-        await createWhatIfQuestion(token, draft);
+        const created = await createWhatIfQuestion(token, draft);
+        setQuestions((prev) =>
+          mergeQuestionAfterMutation(prev, created, questionListFilter),
+        );
       } else {
-        await patchWhatIfQuestion(token, editingId, draft);
+        const updated = await patchWhatIfQuestion(token, editingId, draft);
+        setQuestions((prev) =>
+          mergeQuestionAfterMutation(prev, updated, questionListFilter),
+        );
       }
-      await loadQuestions();
+      const p = await fetchWhatIfPendingCount(token);
+      setPendingCount(p);
       beginCreateQuestion();
       setActiveTab("admin-list");
     } catch (e) {
@@ -424,7 +441,9 @@ export default function WhatIfEntryPage() {
     try {
       const token = await getApiAccessToken();
       await deleteWhatIfQuestion(token, id);
-      await loadQuestions();
+      setQuestions((prev) => prev.filter((q) => q.id !== id));
+      const p = await fetchWhatIfPendingCount(token);
+      setPendingCount(p);
       if (editingId === id) beginCreateQuestion();
       if (confirmDeleteId === id) setConfirmDeleteId(null);
     } catch (e) {
@@ -445,9 +464,16 @@ export default function WhatIfEntryPage() {
     setAdminError(null);
     try {
       const token = await getApiAccessToken();
-      await bulkImportWhatIfQuestions(token, bulkText);
+      const { questions: created } = await bulkImportWhatIfQuestions(
+        token,
+        bulkText,
+      );
       setBulkText("");
-      await loadQuestions();
+      setQuestions((prev) =>
+        mergeBulkQuestionsIntoList(prev, created, questionListFilter),
+      );
+      const p = await fetchWhatIfPendingCount(token);
+      setPendingCount(p);
       setActiveTab("admin-list");
     } catch (e) {
       setAdminError(e instanceof Error ? e.message : "Bulk import failed");

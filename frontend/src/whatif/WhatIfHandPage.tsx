@@ -101,11 +101,19 @@ export default function WhatIfHandPage() {
   const [enrolledPlayerNames, setEnrolledPlayerNames] = useState<string[]>([]);
   const [confirmSkip, setConfirmSkip] = useState(false);
   const confirmSkipRef = useRef<HTMLButtonElement | null>(null);
-  const playerToken = useMemo(() => loadPlayerToken(roomCode), [roomCode]);
+  const storedPlayerToken = useMemo(
+    () => loadPlayerToken(roomCode),
+    [roomCode],
+  );
+  const [sessionPlayerSecret, setSessionPlayerSecret] = useState<string | null>(
+    null,
+  );
+  const playerToken = sessionPlayerSecret ?? storedPlayerToken;
   const endedProfileRefreshRef = useRef(false);
 
   useEffect(() => {
     endedProfileRefreshRef.current = false;
+    setSessionPlayerSecret(null);
   }, [roomCode]);
 
   useEffect(() => {
@@ -225,7 +233,7 @@ export default function WhatIfHandPage() {
       const token = isAuthenticated ? await getApiAccessToken() : null;
       const joined = await joinWhatIfSession(roomCode, displayName, token);
       savePlayerToken(roomCode, joined.player_secret);
-      window.location.reload();
+      setSessionPlayerSecret(joined.player_secret);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to join");
     } finally {

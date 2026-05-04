@@ -91,7 +91,7 @@ class QuotesApiTests(TestCase):
         self.assertEqual(labels[0]["name"], self.bob.email)
         self.assertEqual(labels[0]["linked_user_id"], self.bob.id)
 
-    def test_private_quote_tagged_in_is_visible_in_feed(self):
+    def test_private_quote_tagged_in_is_not_visible_in_feed(self):
         # Alice saves a private quote and attributes it to Bob.
         self._accept_pair(self.alice, self.bob)
         create_resp = self.alice_client.post(
@@ -109,7 +109,34 @@ class QuotesApiTests(TestCase):
         feed_resp = self.bob_client.get("/api/v1/quotes/feed/")
         self.assertEqual(feed_resp.status_code, 200)
         feed_ids = {q["id"] for q in feed_resp.json()}
-        self.assertIn(quote_id, feed_ids)
+        self.assertNotIn(quote_id, feed_ids)
+
+    def test_feed_quotes_sorted_by_updated_desc(self):
+        self._accept_pair(self.alice, self.bob)
+        older = Quote.objects.create(
+            owner=self.alice,
+            body="Older",
+            visibility=Quote.Visibility.PUBLISHED,
+        )
+        Quote.objects.filter(pk=older.pk).update(updated_at=timezone.now() - timedelta(days=2))
+        newest = Quote.objects.create(
+            owner=self.alice,
+            body="Newest",
+            visibility=Quote.Visibility.PUBLISHED,
+        )
+        mid = Quote.objects.create(
+            owner=self.bob,
+            body="Middle",
+            visibility=Quote.Visibility.PUBLISHED,
+        )
+        Quote.objects.filter(pk=mid.pk).update(updated_at=timezone.now() - timedelta(days=1))
+
+        resp = self.bob_client.get("/api/v1/quotes/feed/")
+        self.assertEqual(resp.status_code, 200)
+        ordered_ids = [q["id"] for q in resp.json()]
+        self.assertGreaterEqual(len(ordered_ids), 3)
+        self.assertEqual(ordered_ids[0], newest.id)
+        self.assertSetEqual(set(ordered_ids[:3]), {older.id, newest.id, mid.id})
 
     def test_anonymous_cannot_view_private_quote_detail(self):
         create_resp = self.alice_client.post(
@@ -194,7 +221,7 @@ class QuotesApiTests(TestCase):
         self.assertEqual(by_id.status_code, 200)
         self.assertEqual({q["id"] for q in by_id.json()}, ids)
 
-    def test_public_quotes_by_user_includes_tagged_private_when_viewer_authenticated(self):
+    def test_public_quotes_by_user_excludes_tagged_private_when_viewer_authenticated(self):
         tagged_private = Quote.objects.create(
             owner=self.alice,
             body="Private but Bob is tagged",
@@ -228,7 +255,7 @@ class QuotesApiTests(TestCase):
                 f"/api/v1/users/{self.alice.id}/public-quotes/",
             ).json()
         }
-        self.assertIn(tagged_private.id, bob_ids)
+        self.assertNotIn(tagged_private.id, bob_ids)
 
     def test_feed_query_count_is_bounded(self):
         # Ensure we don't accidentally do per-quote label lookups.

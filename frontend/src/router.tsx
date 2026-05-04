@@ -496,7 +496,7 @@ export const router = sentryCreateBrowserRouter([
       },
       {
         path: "quotes/public",
-        element: <Navigate to="/quotes?tab=published" replace />,
+        element: <Navigate to="/quotes" replace />,
       },
       {
         path: "friend/:userId",

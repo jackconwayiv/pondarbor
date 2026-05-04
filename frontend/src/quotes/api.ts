@@ -100,18 +100,6 @@ export async function deleteQuote(
   }
 }
 
-export async function fetchPublishedQuotes(accessToken: string | null): Promise<Quote[]> {
-  const response = await fetch(`${apiBase()}/api/v1/quotes/published/`, {
-    method: "GET",
-    headers: authHeaders(accessToken),
-    credentials: "omit",
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to load published quotes (${response.status})`);
-  }
-  return (await response.json()) as Quote[];
-}
-
 function optionalBearerHeaders(accessToken: string | null | undefined): HeadersInit {
   if (!accessToken) {
     return {};
@@ -119,7 +107,7 @@ function optionalBearerHeaders(accessToken: string | null | undefined): HeadersI
   return { Authorization: `Bearer ${accessToken}` };
 }
 
-/** When `accessToken` is set (logged-in viewer), includes that friend's quotes that tag you, including private. */
+/** Public quotes for a specific user, scoped by standard profile visibility rules. */
 export async function fetchPublicQuotesByUser(
   email: string,
   accessToken?: string | null,

@@ -36,7 +36,6 @@ export default function QuoteCardBase({
   footerSlot,
   showOwnerAvatar = true,
 }: QuoteCardBaseProps) {
-  const attributionLabels = quote.labels.filter((label) => label.kind === "attribution");
   const tagLabels = quote.labels.filter((label) => label.kind === "tag");
 
   const displayDate = formatDateForCard(quote.date_of_quote);
@@ -72,31 +71,8 @@ export default function QuoteCardBase({
             </HStack>
           ) : null}
 
-          {!suppressReadOnlyQuote &&
-          (attributionLabels.length > 0 || tagLabels.length > 0) ? (
+          {!suppressReadOnlyQuote && tagLabels.length > 0 ? (
             <HStack align="start" gap="2">
-              <HStack flexWrap="wrap" gap="1" alignItems="center">
-                {attributionLabels.map((label) =>
-                  label.linked_user_id != null ? (
-                    <FriendProfileLink key={`base-attribution-${quote.id}-${label.id}`} userId={label.linked_user_id}>
-                      <Tag.Root size="sm" bg="gray.100" color="gray.600" borderWidth="0">
-                        <Tag.Label>{label.name}</Tag.Label>
-                      </Tag.Root>
-                    </FriendProfileLink>
-                  ) : (
-                    <Tag.Root
-                      key={`base-attribution-${quote.id}-${label.id}`}
-                      size="sm"
-                      bg="gray.100"
-                      color="gray.600"
-                      borderWidth="0"
-                    >
-                      <Tag.Label>{label.name}</Tag.Label>
-                    </Tag.Root>
-                  ),
-                )}
-              </HStack>
-              <Spacer />
               <HStack justify="flex-end" flexWrap="wrap" gap="1" alignItems="center">
                 {tagLabels.map((label) => (
                   <Tag.Root
@@ -110,6 +86,7 @@ export default function QuoteCardBase({
                   </Tag.Root>
                 ))}
               </HStack>
+              <Spacer />
             </HStack>
           ) : null}
 

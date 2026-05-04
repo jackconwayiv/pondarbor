@@ -70,7 +70,7 @@ const ENTRY_CARD_PROPS = {
   ...PANEL_ENTRY_CARD_PROPS,
 } as const;
 
-/** Match [`PublicQuotesPage`](../quotes/PublicQuotesPage.tsx) / read-only quote rows in Quotes. */
+/** Match read-only quote card rows in Quotes. */
 function FriendProfileQuoteCard({ quote }: { quote: Quote }) {
   return (
     <Box

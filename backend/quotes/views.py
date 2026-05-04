@@ -12,7 +12,6 @@ from rest_framework.status import HTTP_200_OK, HTTP_201_CREATED, HTTP_204_NO_CON
 from users.auth0_backend import Auth0TokenAuthentication
 from users.permissions import IsApprovedUser
 from users.models import User as SiteUser
-from friends.services import are_friends, friend_ids_for_user
 from users.social_privacy import apply_read_scope_filter, published_owner_visibility_q, viewer_context
 
 from achievements.services import evaluate_quote_achievements_for_user
@@ -131,7 +130,6 @@ def quote_feed(request):
         qs = Quote.objects.filter(owner=user)
     else:
         ctx = viewer_context(viewer=user)
-        friend_ids = ctx.friend_ids
         qs = Quote.objects.filter(
             Q(owner=user)
             | (
@@ -140,13 +138,9 @@ def quote_feed(request):
                 & Q(visibility=Quote.Visibility.PUBLISHED)
                 & ~Q(owner=user)
             )
-            | (
-                # Tagging remains friend-scoped (existing behavior).
-                Q(owner_id__in=list(friend_ids)) & Q(labels__linked_user=user)
-            )
         ).distinct()
         qs = apply_read_scope_filter(viewer=user, qs=qs, owner_field="owner_id", ctx=ctx)
-    qs = _quote_list_queryset(qs, request=request).order_by("-created_at")
+    qs = _quote_list_queryset(qs, request=request).order_by("-updated_at", "-created_at")
     return Response(QuoteSerializer(qs, many=True, context={"request": request}).data)
 
 
@@ -175,16 +169,12 @@ def quote_detail(request, quote_id: int):
             qs = Quote.objects.filter(owner=user).filter(deleted_at__isnull=True)
         else:
             ctx = viewer_context(viewer=user)
-            friend_ids = ctx.friend_ids
             qs = Quote.objects.filter(
                 Q(owner=user)
                 | (
                     # Published quotes visible per owner's preference.
                     published_owner_visibility_q(viewer=user, owner_fk_field="owner_id", ctx=ctx)
-                    & (
-                        Q(visibility=Quote.Visibility.PUBLISHED)
-                        | Q(labels__linked_user=user)
-                    )
+                    & Q(visibility=Quote.Visibility.PUBLISHED)
                 )
             ).filter(deleted_at__isnull=True)
             qs = apply_read_scope_filter(viewer=user, qs=qs, owner_field="owner_id", ctx=ctx)
@@ -243,24 +233,28 @@ def quote_labels_autocomplete(request):
 
 
 def _friend_profile_quotes_queryset(*, owner, request):
-    """
-    Owner's published quotes; if the viewer is authenticated, also include any visibility
-    quote by that owner that tags the viewer (labels__linked_user), matching feed semantics.
-    """
-    base = Quote.objects.filter(owner=owner)
+    """Owner's published quotes subject to normal publish/read visibility rules."""
     viewer = getattr(request, "user", None)
     if viewer is not None and getattr(viewer, "is_authenticated", False):
-        if viewer.id != owner.id and (
-            viewer.account_status != SiteUser.AccountStatus.APPROVED
-            or not are_friends(user_a=viewer, user_b=owner)
-        ):
-            return Quote.objects.none()
-        qs = base.filter(
-            Q(visibility=Quote.Visibility.PUBLISHED) | Q(labels__linked_user=viewer)
-        ).distinct()
+        if viewer.account_status != SiteUser.AccountStatus.APPROVED:
+            if viewer.id != owner.id:
+                return Quote.objects.none()
+            return Quote.objects.filter(owner=owner, visibility=Quote.Visibility.PUBLISHED)
+        ctx = viewer_context(viewer=viewer)
+        qs = Quote.objects.filter(
+            owner=owner,
+            visibility=Quote.Visibility.PUBLISHED,
+        ).filter(
+            published_owner_visibility_q(
+                viewer=viewer,
+                owner_fk_field="owner_id",
+                ctx=ctx,
+            )
+        )
+        qs = apply_read_scope_filter(viewer=viewer, qs=qs, owner_field="owner_id", ctx=ctx)
     else:
         qs = Quote.objects.none()
-    return qs
+    return qs.distinct()
 
 
 def _user_public_quotes_response(request, *, user):

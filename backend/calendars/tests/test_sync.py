@@ -82,6 +82,21 @@ class ParseIcsTests(TestCase):
         self.assertEqual(parsed[0].uid, "x")
         self.assertEqual(parsed[0].start_date, date(2026, 1, 1))
 
+    def test_tzid_evening_uses_local_calendar_day_not_utc(self):
+        """Monday 6pm Chicago must not become Tuesday when stored as busy dates."""
+        ics = (
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\n"
+            "UID:mon-evening@example.com\r\n"
+            "DTSTART;TZID=America/Chicago:20250113T180000\r\n"
+            "DTEND;TZID=America/Chicago:20250113T190000\r\n"
+            "END:VEVENT\r\nEND:VCALENDAR\r\n"
+        )
+        parsed = parse_ics(ics)
+        self.assertEqual(len(parsed), 1)
+        ev = parsed[0]
+        self.assertEqual(ev.start_date, date(2025, 1, 13))
+        self.assertEqual(ev.end_date, date(2025, 1, 13))
+
 
 class SyncIcalSourceTests(CalendarTestMixin, TestCase):
     def setUp(self):

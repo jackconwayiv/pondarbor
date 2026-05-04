@@ -196,6 +196,7 @@ export default function SongadayPage() {
     total: number;
   } | null>(null);
   const archiveSeedFetched = useRef(false);
+  const hasLoadedSongadayShellOnceRef = useRef(false);
 
   const [promptPayload, setPromptPayload] =
     useState<SongadayPromptPayload | null>(null);
@@ -366,6 +367,12 @@ export default function SongadayPage() {
       cancelled = true;
     };
   }, [isAuthenticated, sessionUser, getApiAccessToken, prefetchDay]);
+
+  useEffect(() => {
+    if (!promptLoading && !responsesLoading) {
+      hasLoadedSongadayShellOnceRef.current = true;
+    }
+  }, [promptLoading, responsesLoading]);
 
   useEffect(() => {
     if (import.meta.env.DEV) return;
@@ -756,6 +763,16 @@ export default function SongadayPage() {
       pb="2"
     >
       <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP}>
+        {(promptLoading || responsesLoading) && !hasLoadedSongadayShellOnceRef.current ? (
+          <Text
+            fontSize={APP_TEXT_SIZES.helper}
+            color="fg.muted"
+            fontWeight="medium"
+            aria-live="polite"
+          >
+            Loading…
+          </Text>
+        ) : null}
         {/* Day nav: prompt card centered; stacked controls left/right */}
         <HStack w="100%" gap="0" align="stretch">
           <Stack gap="0" align="stretch" flexShrink={0} w={{ base: "3.25rem", md: "3.5rem" }}>

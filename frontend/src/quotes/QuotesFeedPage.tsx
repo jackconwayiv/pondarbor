@@ -16,14 +16,13 @@ import { Navigate } from "react-router";
 import PondButton from "../PondButton";
 import { useAppSession } from "../auth/AppSessionContext";
 import {
-  PanelBlockSkeleton,
   PanelEmptyState,
   PanelListRowSkeleton,
-  PanelPageShell,
   PanelSessionReconnect,
+  SessionLoadingCard,
 } from "../components/panelStatus";
 import { validateQuoteBody, validateQuoteLabelNames } from "../forms/validation";
-import { fullBleedStackProps, usePrefersCoarsePointer } from "../responsive";
+import { fullBleedStackProps } from "../responsive";
 import {
   APP_SHELL_TRAY_PROPS,
   APP_TEXT_SIZES,
@@ -144,7 +143,6 @@ function QuoteCard({
   onRefreshQuotes,
 }: QuoteCardProps) {
   const canEdit = viewerUserId != null && quote.owner.id === viewerUserId;
-  const prefersCoarsePointer = usePrefersCoarsePointer();
   const editorRef = useRef<HTMLDivElement | null>(null);
   const [editBody, setEditBody] = useState(quote.body);
   const [editDateOfQuote, setEditDateOfQuote] = useState(quote.date_of_quote ?? "");
@@ -222,21 +220,24 @@ function QuoteCard({
     quote.id,
   ]);
 
-  const closeWithFlush = useCallback(async () => {
-    const ok = await flushEdits();
-    if (ok) {
-      onEndEditing();
-      setConfirmDelete(false);
-    }
-  }, [flushEdits, onEndEditing]);
+  const closeDiscarding = useCallback(() => {
+    setEditBody(quote.body);
+    setEditDateOfQuote(quote.date_of_quote ?? "");
+    setEditTagsCsv(labelsToTagsCsv(quote));
+    setSaveAsDraft(quote.visibility === "private");
+    setError(null);
+    setConfirmDelete(false);
+    setCardSuccess(null);
+    onEndEditing();
+  }, [quote, onEndEditing]);
 
   useEffect(() => {
-    if (!isEditing || prefersCoarsePointer) return;
+    if (!isEditing) return;
     const handlePointerDown = (event: MouseEvent | TouchEvent) => {
       const target = event.target as Node | null;
       if (!target) return;
       if (editorRef.current?.contains(target)) return;
-      void closeWithFlush();
+      closeDiscarding();
     };
     document.addEventListener("mousedown", handlePointerDown);
     document.addEventListener("touchstart", handlePointerDown);
@@ -244,7 +245,7 @@ function QuoteCard({
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("touchstart", handlePointerDown);
     };
-  }, [closeWithFlush, isEditing, prefersCoarsePointer]);
+  }, [closeDiscarding, isEditing]);
 
   useEffect(() => {
     if (!cardSuccess) return;
@@ -283,6 +284,7 @@ function QuoteCard({
     <Box
       bg="bg.panel"
       borderWidth="1px"
+      borderStyle={quote.visibility === "private" ? "dashed" : "solid"}
       borderColor="border"
       borderRadius="xl"
       {...MAPPED_LIST_CARD_OUTER_PROPS}
@@ -291,27 +293,13 @@ function QuoteCard({
         quote={quote}
         ownerText={quoteOwnerDisplayLabel(quote.owner)}
         ownerProfileUserId={quote.owner.id}
-        showOwnerAvatar={!canEdit}
+        showOwnerAvatar
         isClickable={canEdit}
         onClick={() => {
           if (!canEdit || isEditing) return;
           onBeginEditing();
         }}
         suppressReadOnlyQuote={isEditing}
-        rightMetaSlot={
-          canEdit && !isEditing ? (
-            <PondButton
-              size="sm"
-              colorPalette="teal"
-              onClick={(e) => {
-                e.stopPropagation();
-                onBeginEditing();
-              }}
-            >
-              Edit
-            </PondButton>
-          ) : null
-        }
         footerSlot={
           canEdit ? (
             <>
@@ -338,7 +326,6 @@ function QuoteCard({
                       <Textarea
                         value={editBody}
                         onChange={(e) => setEditBody(e.target.value)}
-                        onBlur={() => void flushEdits()}
                         minH="100px"
                         placeholder={PLACEHOLDER_QUICK_BODY}
                         {...PANEL_FIELD_PROPS}
@@ -350,7 +337,6 @@ function QuoteCard({
                         type="date"
                         value={editDateOfQuote}
                         onChange={(e) => setEditDateOfQuote(e.target.value)}
-                        onBlur={() => void flushEdits()}
                         {...PANEL_FIELD_PROPS}
                       />
                     </Stack>
@@ -379,7 +365,6 @@ function QuoteCard({
                       <Input
                         value={editTagsCsv}
                         onChange={(e) => setEditTagsCsv(e.target.value)}
-                        onBlur={() => void flushEdits()}
                         placeholder={PLACEHOLDER_TAGS}
                         {...PANEL_FIELD_PROPS}
                       />
@@ -388,11 +373,10 @@ function QuoteCard({
                       style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}
                     >
                       <input
-                        type="checkbox"
-                        checked={saveAsDraft}
-                        onChange={(e) => setSaveAsDraft(e.target.checked)}
-                        onBlur={() => void flushEdits()}
-                      />
+                          type="checkbox"
+                          checked={saveAsDraft}
+                          onChange={(e) => setSaveAsDraft(e.target.checked)}
+                        />
                       <Text fontSize={APP_TEXT_SIZES.body}>Save as draft</Text>
                     </label>
                     <HStack>
@@ -414,7 +398,7 @@ function QuoteCard({
                         disabled={saving || deleteBusy}
                         onClick={(e) => {
                           e.stopPropagation();
-                          void closeWithFlush();
+                          closeDiscarding();
                         }}
                       >
                         Close
@@ -472,6 +456,7 @@ export default function QuotesFeedPage() {
   const [editingQuoteId, setEditingQuoteId] = useState<number | null>(null);
   const [orderedCheckedOwnerIds, setOrderedCheckedOwnerIds] = useState<number[]>([]);
   const prevOwnerIdsRef = useRef<number[]>([]);
+  const hasLoadedQuoteFeedOnceRef = useRef(false);
 
   const [body, setBody] = useState("");
   const [dateOfQuote, setDateOfQuote] = useState("");
@@ -497,6 +482,7 @@ export default function QuotesFeedPage() {
       }
       setError(err instanceof Error ? err.message : "Failed to load quote feed");
     } finally {
+      hasLoadedQuoteFeedOnceRef.current = true;
       setLoadingQuotes(false);
     }
   }, [authBlocked, getApiAccessToken]);
@@ -521,6 +507,7 @@ export default function QuotesFeedPage() {
       }
       setError(err instanceof Error ? err.message : "Failed to load quotes.");
     } finally {
+      hasLoadedQuoteFeedOnceRef.current = true;
       setLoadingQuotes(false);
     }
   }, [authBlocked, getApiAccessToken]);
@@ -647,23 +634,7 @@ export default function QuotesFeedPage() {
   }, [isApprovedUser, bulkImportText, getApiAccessToken, refreshQuotes]);
 
   if (isLoading) {
-    return (
-      <PanelPageShell>
-        <Stack
-          gap={{ base: "4", md: "4" }}
-          px={{ base: "2", md: "2" }}
-          pt={{ base: "2", md: "2" }}
-          pb="2"
-        >
-          <Box {...PANEL_ENTRY_CARD_PROPS}>
-            <PanelBlockSkeleton lines={2} showTitleLine />
-          </Box>
-          <Box {...PANEL_ENTRY_CARD_PROPS}>
-            <PanelListRowSkeleton rows={3} />
-          </Box>
-        </Stack>
-      </PanelPageShell>
-    );
+    return <SessionLoadingCard />;
   }
 
   if (!isAuthenticated) {
@@ -691,11 +662,22 @@ export default function QuotesFeedPage() {
           >
             <Box {...PANEL_ENTRY_CARD_PROPS}>
               <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold" mb="2">
-                <HStack as="span" display="inline-flex" gap="2" alignItems="center">
+                <HStack as="span" display="inline-flex" gap="2" alignItems="center" flexWrap="wrap">
                   <Text as="span" aria-hidden="true">
                     📜
                   </Text>
                   <Text as="span">Quotes Archive</Text>
+                  {loadingQuotes && !hasLoadedQuoteFeedOnceRef.current ? (
+                    <Text
+                      as="span"
+                      fontSize={APP_TEXT_SIZES.helper}
+                      color="fg.muted"
+                      fontWeight="medium"
+                      aria-live="polite"
+                    >
+                      Loading…
+                    </Text>
+                  ) : null}
                 </HStack>
               </Heading>
               <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">

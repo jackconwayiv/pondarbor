@@ -83,11 +83,17 @@ def _split_prop(raw_line: str) -> tuple[str, dict[str, str], str]:
     return name, params, value
 
 
-def _parse_ics_datetime(raw: str, params: dict[str, str]) -> tuple[datetime, bool]:
+def _parse_ics_datetime(raw: str, params: dict[str, str]) -> tuple[datetime, bool, date | None]:
     """Parse an ICS DTSTART/DTEND value into an aware UTC datetime.
 
-    Returns ``(dt, is_date_only)``. For ``VALUE=DATE``, the returned datetime
-    is midnight UTC of that day.
+    Returns ``(dt, is_date_only, civil_date)``.
+
+    For ``VALUE=DATE``, the returned datetime is midnight UTC of that day and
+    ``civil_date`` is ``None`` (callers use the UTC instant's calendar date).
+
+    For DATE-TIME, ``civil_date`` is the calendar day in the event's stated
+    zone (``TZID`` wall time, or UTC for ``Z`` / floating-as-UTC). Storing busy
+    days from ``aware.date()`` alone shifts evening events across UTC midnight.
     """
     value = (raw or "").strip()
     is_date_only = params.get("VALUE", "").upper() == "DATE" or (
@@ -102,7 +108,7 @@ def _parse_ics_datetime(raw: str, params: dict[str, str]) -> tuple[datetime, boo
         month = int(value[4:6])
         day = int(value[6:8])
         dt = datetime(year, month, day, tzinfo=dt_timezone.utc)
-        return dt, True
+        return dt, True, None
 
     match = re.fullmatch(
         r"(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)", value
@@ -113,18 +119,23 @@ def _parse_ics_datetime(raw: str, params: dict[str, str]) -> tuple[datetime, boo
     naive = datetime(int(year), int(month), int(day), int(hh), int(mm), int(ss))
     if z == "Z":
         aware = naive.replace(tzinfo=dt_timezone.utc)
+        civil = aware.date()
     elif tzid:
         try:
             import zoneinfo
 
             tz = zoneinfo.ZoneInfo(tzid)
-            aware = naive.replace(tzinfo=tz).astimezone(dt_timezone.utc)
+            local = naive.replace(tzinfo=tz)
+            civil = local.date()
+            aware = local.astimezone(dt_timezone.utc)
         except Exception:
             aware = naive.replace(tzinfo=dt_timezone.utc)
+            civil = aware.date()
     else:
         # Floating time: treat as UTC. Better than guessing the server TZ.
         aware = naive.replace(tzinfo=dt_timezone.utc)
-    return aware, False
+        civil = aware.date()
+    return aware, False, civil
 
 
 @dataclass
@@ -166,9 +177,11 @@ def parse_ics(text: str) -> list[ParsedEvent]:
         # (SUMMARY, DESCRIPTION, LOCATION, ORGANIZER, etc.) is intentionally
         # ignored — see module-level comment.
         if name in ("DTSTART", "DTEND"):
-            dt, all_day = _parse_ics_datetime(value, params)
+            dt, all_day, civil = _parse_ics_datetime(value, params)
             current[name] = dt
             current[f"{name}__ALL_DAY"] = all_day
+            if civil is not None:
+                current[f"{name}_CIVIL"] = civil
         elif name == "UID":
             current["UID"] = value.strip()
 
@@ -183,7 +196,11 @@ def _finalize_event(current: dict) -> ParsedEvent | None:
     start_all_day = bool(current.get("DTSTART__ALL_DAY"))
     end_all_day = bool(current.get("DTEND__ALL_DAY"))
 
-    start_date = dtstart.date()
+    if start_all_day:
+        start_date = dtstart.date()
+    else:
+        start_civil = current.get("DTSTART_CIVIL")
+        start_date = start_civil if isinstance(start_civil, date) else dtstart.date()
 
     if dtend is None:
         # No DTEND: a single-day event.
@@ -196,7 +213,8 @@ def _finalize_event(current: dict) -> ParsedEvent | None:
     else:
         # Timed DTEND is inclusive in our binary model: any day the event
         # touches counts as busy.
-        end_date = dtend.date()
+        end_civil = current.get("DTEND_CIVIL")
+        end_date = end_civil if isinstance(end_civil, date) else dtend.date()
         # Guard against a zero-length midnight event accidentally bleeding
         # into the previous day.
         if end_date < start_date:

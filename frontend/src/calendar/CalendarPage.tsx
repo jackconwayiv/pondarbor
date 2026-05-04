@@ -1,5 +1,6 @@
 import {
   Box,
+  Collapsible,
   HStack,
   Heading,
   Stack,
@@ -27,6 +28,7 @@ import {
   fetchCalendarBootstrap,
   fetchCalendarEvents,
   fetchCalendarSources,
+  syncCalendarRefresh,
   syncCalendarSource,
   updateCalendarEvent,
 } from "./api";
@@ -43,6 +45,7 @@ import {
 } from "./monthMath";
 import type {
   CalendarEvent,
+  CalendarBirthdayRow,
   CalendarOwnerRow,
   CalendarSource,
   EventWritePayload,
@@ -76,9 +79,11 @@ export default function CalendarPage() {
     monthAnchorFromDate(new Date()),
   );
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [birthdays, setBirthdays] = useState<CalendarBirthdayRow[]>([]);
   const [sources, setSources] = useState<CalendarSource[]>([]);
   const [approvedUsers, setApprovedUsers] = useState<CalendarOwnerRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [eventsError, setEventsError] = useState<string | null>(null);
   const [sourcesError, setSourcesError] = useState<string | null>(null);
   const [approvedUsersError, setApprovedUsersError] = useState<string | null>(
@@ -98,7 +103,9 @@ export default function CalendarPage() {
   const [confirmDeleteSourceId, setConfirmDeleteSourceId] = useState<number | null>(
     null,
   );
+  const [peopleOpen, setPeopleOpen] = useState(false);
   const hasLoadedOnceRef = useRef(false);
+  const syncRunRef = useRef(0);
 
   const { orderedCheckedUserIds, setCheckedUserIds, isDefaultAll } =
     useCheckedUsers(approvedUsers);
@@ -117,6 +124,12 @@ export default function CalendarPage() {
     () => new Map(approvedUsers.map((u) => [u.id, u])),
     [approvedUsers],
   );
+  const checkedPeopleCount = orderedCheckedUserIds.length;
+  const peopleToggleLabel = `People (${checkedPeopleCount}/${approvedUsers.length} selected)`;
+
+  useEffect(() => {
+    setPeopleOpen(!isMobile);
+  }, [isMobile]);
 
   const loadEvents = useCallback(async () => {
     if (!sessionUser) return;
@@ -166,9 +179,37 @@ export default function CalendarPage() {
     }
   }, [getApiAccessToken, sessionUser]);
 
+  const eventOverlapsVisibleRange = useCallback(
+    (event: CalendarEvent) =>
+      !(event.end_date < monthRange.start || event.start_date > monthRange.end),
+    [monthRange.end, monthRange.start],
+  );
+
+  const applySavedEvent = useCallback(
+    (savedEvent: CalendarEvent) => {
+      setEvents((prev) => {
+        const withoutCurrent = prev.filter((ev) => ev.id !== savedEvent.id);
+        if (!eventOverlapsVisibleRange(savedEvent)) {
+          return withoutCurrent;
+        }
+        const next = [...withoutCurrent, savedEvent];
+        next.sort((a, b) =>
+          a.start_date === b.start_date
+            ? a.id - b.id
+            : a.start_date.localeCompare(b.start_date),
+        );
+        return next;
+      });
+    },
+    [eventOverlapsVisibleRange],
+  );
+
   const refreshAll = useCallback(async () => {
     if (!sessionUser) return;
+    const runId = Date.now();
+    syncRunRef.current = runId;
     setLoading(true);
+    setIsSyncing(false);
     setEventsError(null);
     setSourcesError(null);
     setApprovedUsersError(null);
@@ -183,6 +224,36 @@ export default function CalendarPage() {
       setEvents(data.events);
       setSources(data.sources);
       setApprovedUsers(data.approved_users);
+      setBirthdays(data.birthdays);
+
+      hasLoadedOnceRef.current = true;
+      setLoading(false);
+
+      if (data.sync_pending_sources <= 0) {
+        setIsSyncing(false);
+        return;
+      }
+
+      setIsSyncing(true);
+      void (async () => {
+        try {
+          const refreshed = await syncCalendarRefresh(token, {
+            start_date: monthRange.start,
+            end_date: monthRange.end,
+            owner: "all",
+          });
+          if (syncRunRef.current !== runId) return;
+          setEvents(refreshed.events);
+          setBirthdays(refreshed.birthdays);
+        } catch {
+          // Keep current data rendered; syncing is best-effort.
+        } finally {
+          if (syncRunRef.current === runId) {
+            setIsSyncing(false);
+          }
+        }
+      })();
+      return;
     } catch (err: unknown) {
       const msg =
         err instanceof Error ? err.message : "Failed to load calendar.";
@@ -190,6 +261,7 @@ export default function CalendarPage() {
       setSourcesError(msg);
       setApprovedUsersError(msg);
       setEvents([]);
+      setBirthdays([]);
       setSources([]);
       setApprovedUsers([]);
     }
@@ -211,14 +283,15 @@ export default function CalendarPage() {
   const handleSubmitEvent = async (payload: EventWritePayload) => {
     const token = await getApiAccessToken();
     if (eventDialog?.mode === "edit") {
-      await updateCalendarEvent(token, eventDialog.event.id, payload);
+      const updated = await updateCalendarEvent(token, eventDialog.event.id, payload);
+      applySavedEvent(updated);
       setNotice({ kind: "success", message: "Event updated." });
     } else {
-      await createCalendarEvent(token, payload);
+      const created = await createCalendarEvent(token, payload);
+      applySavedEvent(created);
       setNotice({ kind: "success", message: "Event added." });
     }
     setEventDialog(null);
-    await loadEvents();
   };
 
   const handleDeleteEvent = async () => {
@@ -226,8 +299,8 @@ export default function CalendarPage() {
     const token = await getApiAccessToken();
     await deleteCalendarEvent(token, eventDialog.event.id);
     setNotice({ kind: "success", message: "Event deleted." });
+    setEvents((prev) => prev.filter((ev) => ev.id !== eventDialog.event.id));
     setEventDialog(null);
-    await loadEvents();
   };
 
   const handleImport = async (payload: SourceCreatePayload) => {
@@ -412,6 +485,15 @@ export default function CalendarPage() {
                       >
                         Loading…
                       </Text>
+                    ) : isSyncing ? (
+                      <Text
+                        fontSize={APP_TEXT_SIZES.helper}
+                        color="fg.muted"
+                        fontWeight="medium"
+                        aria-live="polite"
+                      >
+                        Syncing…
+                      </Text>
                     ) : null}
                   </HStack>
                   <PondButton
@@ -438,18 +520,52 @@ export default function CalendarPage() {
                   gap="2"
                   align="stretch"
                 >
-                  <UserCheckboxList
-                    approvedUsers={approvedUsers}
-                    loading={loading && !hasLoadedOnceRef.current}
-                    error={approvedUsersError}
-                    onRefresh={() => void loadApprovedUsers()}
-                    orderedCheckedUserIds={orderedCheckedUserIds}
-                    onChange={setCheckedUserIds}
-                  />
+                  {isMobile ? (
+                    <Collapsible.Root
+                      open={peopleOpen}
+                      onOpenChange={(details) => setPeopleOpen(details.open)}
+                    >
+                      <Stack gap="2">
+                        <Collapsible.Trigger asChild>
+                          <PondButton
+                            size="sm"
+                            variant="outline"
+                            colorPalette="sky"
+                            alignSelf="stretch"
+                            justifyContent="space-between"
+                          >
+                            {peopleOpen
+                              ? `Hide ${peopleToggleLabel}`
+                              : `Show ${peopleToggleLabel}`}
+                          </PondButton>
+                        </Collapsible.Trigger>
+                        <Collapsible.Content>
+                          <UserCheckboxList
+                            approvedUsers={approvedUsers}
+                            loading={loading && !hasLoadedOnceRef.current}
+                            error={approvedUsersError}
+                            onRefresh={() => void loadApprovedUsers()}
+                            orderedCheckedUserIds={orderedCheckedUserIds}
+                            onChange={setCheckedUserIds}
+                          />
+                        </Collapsible.Content>
+                      </Stack>
+                    </Collapsible.Root>
+                  ) : (
+                    <UserCheckboxList
+                      approvedUsers={approvedUsers}
+                      loading={loading && !hasLoadedOnceRef.current}
+                      error={approvedUsersError}
+                      onRefresh={() => void loadApprovedUsers()}
+                      orderedCheckedUserIds={orderedCheckedUserIds}
+                      onChange={setCheckedUserIds}
+                    />
+                  )}
                   <Box flex="1" minW="0">
                     <MonthGrid
                       anchor={anchor}
                       events={events}
+                      birthdays={birthdays}
                       orderedCheckedUserIds={orderedCheckedUserIds}
                       isDefaultAll={isDefaultAll}
                       ownersById={ownersById}

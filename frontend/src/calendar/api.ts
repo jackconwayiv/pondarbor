@@ -1,7 +1,9 @@
 import type {
+  CalendarBirthdayRow,
   CalendarEvent,
   CalendarOwnerRow,
   CalendarSource,
+  CalendarSyncSummary,
   EventWritePayload,
   SourceCreatePayload,
   SourceSyncSummary,
@@ -254,6 +256,8 @@ export async function fetchCalendarBootstrap(
   events: CalendarEvent[];
   sources: CalendarSource[];
   approved_users: CalendarOwnerRow[];
+  birthdays: CalendarBirthdayRow[];
+  sync_pending_sources: number;
 }> {
   const query = new URLSearchParams({
     start_date: params.start_date,
@@ -281,10 +285,60 @@ export async function fetchCalendarBootstrap(
     events?: CalendarEvent[];
     sources?: CalendarSource[];
     approved_users?: CalendarOwnerRow[];
+    birthdays?: CalendarBirthdayRow[];
+    sync_pending_sources?: number;
   };
   return {
     events: data.events ?? [],
     sources: data.sources ?? [],
     approved_users: data.approved_users ?? [],
+    birthdays: data.birthdays ?? [],
+    sync_pending_sources: data.sync_pending_sources ?? 0,
+  };
+}
+
+export async function syncCalendarRefresh(
+  accessToken: string | null,
+  params: FetchEventsParams,
+): Promise<{
+  events: CalendarEvent[];
+  birthdays: CalendarBirthdayRow[];
+  synced: CalendarSyncSummary;
+}> {
+  const query = new URLSearchParams({
+    start_date: params.start_date,
+    end_date: params.end_date,
+    owner: ownerParam(params.owner ?? "all"),
+  });
+  if (params.ownerIds !== undefined) {
+    query.set("owner_ids", params.ownerIds.join(","));
+  }
+  const response = await fetch(
+    `${apiBase()}/api/v1/calendars/sync-refresh/?${query.toString()}`,
+    {
+      method: "POST",
+      headers: authHeaders(accessToken),
+      credentials: "omit",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
+  }
+  const data = (await response.json()) as {
+    events?: CalendarEvent[];
+    birthdays?: CalendarBirthdayRow[];
+    synced?: CalendarSyncSummary;
+  };
+  return {
+    events: data.events ?? [],
+    birthdays: data.birthdays ?? [],
+    synced: data.synced ?? {
+      sources_processed: 0,
+      sources_ok: 0,
+      sources_failed: 0,
+      created: 0,
+      updated: 0,
+      deleted: 0,
+    },
   };
 }

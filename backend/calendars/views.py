@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from datetime import date, timedelta
 
 from achievements.services import evaluate_schedule_coordinator_for_user
@@ -30,8 +29,6 @@ from calendars.services import (
 from users.permissions import IsApprovedUser
 from users.models import Profile
 
-logger = logging.getLogger(__name__)
-
 User = get_user_model()
 
 # How far in either direction we'll accept in a single `GET /events/` query.
@@ -46,6 +43,48 @@ def _approved_users_qs():
             deleted_at__isnull=True,
         )
     )
+
+
+def _visible_calendar_users_qs(request, *, search: str = ""):
+    today = timezone.localdate()
+    linked_sources = CalendarSource.objects.filter(
+        owner_id=OuterRef("pk"),
+        is_active=True,
+        source_type__in=(
+            CalendarSource.SourceType.ICAL,
+            CalendarSource.SourceType.GOOGLE_OAUTH,
+        ),
+    )
+    upcoming_events = Event.objects.filter(
+        owner_id=OuterRef("pk"),
+        end_date__gte=today,
+    )
+    qs = (
+        _approved_users_qs()
+        .annotate(
+            _has_linked=Exists(linked_sources),
+            _has_upcoming=Exists(upcoming_events),
+        )
+        .filter(
+            Q(pk=request.user.pk)
+            | Q(_has_linked=True)
+            | Q(_has_upcoming=True),
+        )
+    )
+    viewer_profile = getattr(request.user, "profile", None)
+    scope = getattr(viewer_profile, "social_read_scope", None) or Profile.SocialReadScope.APPROVED_USERS
+    if scope == Profile.SocialReadScope.FRIENDS_ONLY:
+        from friends.services import friend_ids_for_user
+
+        fids = friend_ids_for_user(user=request.user)
+        allowed = set(fids or set())
+        allowed.add(request.user.pk)
+        qs = qs.filter(pk__in=list(allowed))
+    if search:
+        qs = qs.filter(
+            Q(email__icontains=search) | Q(profile__display_name__icontains=search)
+        )
+    return qs
 
 
 def _parse_date_param(raw: str | None) -> date | None:
@@ -137,38 +176,6 @@ def _events_list_get(request):
         .filter(start_date__lte=end_date, end_date__gte=start_date)
         .order_by("start_date", "id")[:2_000]
     )
-
-    # Opportunistic lazy refresh: if any iCal source contributing to this view is
-    # stale, kick off a sync inline. For v1 we cap to a handful of sources per
-    # request so a single pageview never pays for dozens of HTTP round-trips.
-    threshold = timezone.now() - LAZY_REFRESH_MAX_AGE
-    owner_ids_for_refresh = set(events_qs.values_list("owner_id", flat=True))
-    owner_ids_for_refresh.add(user.id)
-    stale_sources = list(
-        CalendarSource.objects.filter(
-            owner_id__in=owner_ids_for_refresh,
-            is_active=True,
-            source_type=CalendarSource.SourceType.ICAL,
-        )
-        .filter(Q(last_synced_at__isnull=True) | Q(last_synced_at__lt=threshold))
-        .order_by("last_synced_at")[:5]
-    )
-    refreshed_any = False
-    for src in stale_sources:
-        try:
-            sync_ical_source(src)
-            refreshed_any = True
-        except Exception:
-            logger.exception("Lazy iCal refresh failed for source=%s", src.id)
-
-    if refreshed_any:
-        events_qs = (
-            Event.objects.select_related("owner", "owner__profile", "source")
-            .filter(owner_filter)
-            .filter(owner_id_filter)
-            .filter(start_date__lte=end_date, end_date__gte=start_date)
-            .order_by("start_date", "id")[:2_000]
-        )
 
     return Response(
         {
@@ -340,46 +347,9 @@ def source_detail(request, source_id: int):
 def _approved_users_list_get(request):
     """Approved users visible in the calendar people filter (see filter below)."""
     search = (request.query_params.get("q") or "").strip()
-    today = timezone.localdate()
-    linked_sources = CalendarSource.objects.filter(
-        owner_id=OuterRef("pk"),
-        is_active=True,
-        source_type__in=(
-            CalendarSource.SourceType.ICAL,
-            CalendarSource.SourceType.GOOGLE_OAUTH,
-        ),
+    qs = _visible_calendar_users_qs(request, search=search).order_by(
+        "profile__display_name", "email"
     )
-    upcoming_events = Event.objects.filter(
-        owner_id=OuterRef("pk"),
-        end_date__gte=today,
-    )
-    qs = (
-        _approved_users_qs()
-        .annotate(
-            _has_linked=Exists(linked_sources),
-            _has_upcoming=Exists(upcoming_events),
-        )
-        .filter(
-            Q(pk=request.user.pk)
-            | Q(_has_linked=True)
-            | Q(_has_upcoming=True),
-        )
-        .order_by("profile__display_name", "email")
-    )
-    # Viewer read preference: when friends-only, show only friends (plus self) in the picker.
-    viewer_profile = getattr(request.user, "profile", None)
-    scope = getattr(viewer_profile, "social_read_scope", None) or Profile.SocialReadScope.APPROVED_USERS
-    if scope == Profile.SocialReadScope.FRIENDS_ONLY:
-        from friends.services import friend_ids_for_user
-
-        fids = friend_ids_for_user(user=request.user)
-        allowed = set(fids or set())
-        allowed.add(request.user.pk)
-        qs = qs.filter(pk__in=list(allowed))
-    if search:
-        qs = qs.filter(
-            Q(email__icontains=search) | Q(profile__display_name__icontains=search)
-        )
     qs = qs[:200]
     return Response({"results": [_owner_row(u) for u in qs]})
 
@@ -388,6 +358,48 @@ def _approved_users_list_get(request):
 @permission_classes([IsApprovedUser])
 def approved_users_list(request):
     return _approved_users_list_get(request)
+
+
+def _birthday_rows_get(request):
+    rows = (
+        _visible_calendar_users_qs(request)
+        .filter(profile__birth_date__isnull=False)
+        .order_by(
+            "profile__birth_date__month",
+            "profile__birth_date__day",
+            "profile__display_name",
+            "email",
+        )[:200]
+    )
+    return Response(
+        {
+            "results": [
+                {
+                    "user_id": u.id,
+                    "display_name": (u.profile.display_name or u.email),
+                    "birth_month": u.profile.birth_date.month,
+                    "birth_day": u.profile.birth_date.day,
+                }
+                for u in rows
+            ]
+        }
+    )
+
+
+def _stale_sync_sources_qs(request):
+    threshold = timezone.now() - LAZY_REFRESH_MAX_AGE
+    visible_user_ids = list(_visible_calendar_users_qs(request).values_list("id", flat=True))
+    relevant_owner_ids = set(visible_user_ids)
+    relevant_owner_ids.add(request.user.id)
+    return (
+        CalendarSource.objects.filter(
+            owner_id__in=relevant_owner_ids,
+            is_active=True,
+            source_type=CalendarSource.SourceType.ICAL,
+        )
+        .filter(Q(last_synced_at__isnull=True) | Q(last_synced_at__lt=threshold))
+        .order_by("last_synced_at")
+    )
 
 
 @api_view(["GET"])
@@ -402,10 +414,56 @@ def calendar_bootstrap(request):
         return ev
     src = _sources_list_get(request)
     appr = _approved_users_list_get(request)
+    birthdays = _birthday_rows_get(request)
+    sync_pending_sources = _stale_sync_sources_qs(request).count()
     return Response(
         {
             "events": ev.data.get("results", []),
             "sources": src.data.get("results", []),
             "approved_users": appr.data.get("results", []),
+            "birthdays": birthdays.data.get("results", []),
+            "sync_pending_sources": sync_pending_sources,
+        }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsApprovedUser])
+def calendar_sync_refresh(request):
+    stale_sources = list(_stale_sync_sources_qs(request)[:5])
+
+    processed = 0
+    ok = 0
+    failed = 0
+    created = 0
+    updated = 0
+    deleted = 0
+    for source in stale_sources:
+        processed += 1
+        result = sync_ical_source(source)
+        if result.ok:
+            ok += 1
+            created += result.created
+            updated += result.updated
+            deleted += result.deleted
+        else:
+            failed += 1
+
+    ev = _events_list_get(request)
+    if ev.status_code >= 400:
+        return ev
+    birthdays = _birthday_rows_get(request)
+    return Response(
+        {
+            "events": ev.data.get("results", []),
+            "birthdays": birthdays.data.get("results", []),
+            "synced": {
+                "sources_processed": processed,
+                "sources_ok": ok,
+                "sources_failed": failed,
+                "created": created,
+                "updated": updated,
+                "deleted": deleted,
+            },
         }
     )

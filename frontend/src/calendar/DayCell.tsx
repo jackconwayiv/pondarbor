@@ -12,6 +12,7 @@ import {
 type Props = {
   date: Date;
   inMonth: boolean;
+  birthdayLabels: string[];
   /** Owner ids busy on this day, in display order (matches checked order). */
   busyOwnerIds: number[];
   orderedCheckedUserIds: number[];
@@ -25,6 +26,7 @@ const BAR_HEIGHT_PX = 12;
 export default function DayCell({
   date,
   inMonth,
+  birthdayLabels,
   busyOwnerIds,
   orderedCheckedUserIds,
   ownersById,
@@ -89,6 +91,21 @@ export default function DayCell({
         ) : null}
       </HStack>
       <Stack gap="0.5" align="stretch">
+        {birthdayLabels.map((label) => (
+          <Text
+            key={label}
+            fontSize="10px"
+            lineHeight="1.2"
+            fontWeight="medium"
+            color="fg"
+            whiteSpace="nowrap"
+            textOverflow="ellipsis"
+            overflow="hidden"
+            title={label}
+          >
+            {label}
+          </Text>
+        ))}
         {busyOwnerIds.map((ownerId) => {
           const color = colorForCheckedUser(ownerId, orderedCheckedUserIds);
           if (color === null) return null;

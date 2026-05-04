@@ -37,6 +37,13 @@ export type CalendarEvent = {
   end_date: string; // YYYY-MM-DD, inclusive
 };
 
+export type CalendarBirthdayRow = {
+  user_id: number;
+  display_name: string;
+  birth_month: number;
+  birth_day: number;
+};
+
 export type EventWritePayload = {
   title?: string;
   start_date: string;
@@ -54,4 +61,13 @@ export type SourceSyncSummary = {
   updated: number;
   deleted: number;
   not_modified: boolean;
+};
+
+export type CalendarSyncSummary = {
+  sources_processed: number;
+  sources_ok: number;
+  sources_failed: number;
+  created: number;
+  updated: number;
+  deleted: number;
 };

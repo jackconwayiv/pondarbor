@@ -5,16 +5,17 @@ import { APP_TEXT_SIZES } from "../theme/typography";
 import DayCell from "./DayCell";
 import {
   SHORT_WEEKDAY_LABELS,
-  eventCoversDay,
   isoDateForLocalDay,
   monthGridDays,
+  parseIsoDate,
   type MonthAnchor,
 } from "./monthMath";
-import type { CalendarEvent, CalendarOwnerRow } from "./types";
+import type { CalendarBirthdayRow, CalendarEvent, CalendarOwnerRow } from "./types";
 
 type Props = {
   anchor: MonthAnchor;
   events: CalendarEvent[];
+  birthdays: CalendarBirthdayRow[];
   /** Currently checked user ids, in the order they were checked. */
   orderedCheckedUserIds: number[];
   /** True when URL implies "all" (missing/users=all). */
@@ -27,6 +28,7 @@ type Props = {
 export default function MonthGrid({
   anchor,
   events,
+  birthdays,
   orderedCheckedUserIds,
   isDefaultAll,
   ownersById,
@@ -48,6 +50,24 @@ export default function MonthGrid({
     () => new Set(effectiveOrderedCheckedUserIds),
     [effectiveOrderedCheckedUserIds],
   );
+  const birthdayLabelsByDay = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const row of birthdays) {
+      const d = new Date(anchor.year, row.birth_month - 1, row.birth_day);
+      if (
+        d.getFullYear() !== anchor.year ||
+        d.getMonth() !== row.birth_month - 1 ||
+        d.getDate() !== row.birth_day
+      ) {
+        continue;
+      }
+      const iso = isoDateForLocalDay(d);
+      const existing = map.get(iso) ?? [];
+      existing.push(`🎂 ${row.display_name}`);
+      map.set(iso, existing);
+    }
+    return map;
+  }, [anchor.year, birthdays]);
 
   /**
    * For each day cell ISO, the *unique* set of owner ids who are busy that
@@ -56,16 +76,33 @@ export default function MonthGrid({
    */
   const busyOwnersByDay = useMemo(() => {
     const map = new Map<string, Set<number>>();
-    for (const cell of days) {
-      map.set(isoDateForLocalDay(cell.date), new Set<number>());
-    }
+    const dayIsos = days.map((cell) => isoDateForLocalDay(cell.date));
+    const firstIso = dayIsos[0];
+    const lastIso = dayIsos[dayIsos.length - 1];
+    if (!firstIso || !lastIso) return map;
+    for (const iso of dayIsos) map.set(iso, new Set<number>());
+
+    const rangeStart = parseIsoDate(firstIso);
+    const rangeEnd = parseIsoDate(lastIso);
+    rangeStart.setHours(0, 0, 0, 0);
+    rangeEnd.setHours(0, 0, 0, 0);
+
     for (const ev of events) {
       if (!checkedSet.has(ev.owner.id)) continue;
-      for (const cell of days) {
-        const iso = isoDateForLocalDay(cell.date);
-        if (eventCoversDay(ev.start_date, ev.end_date, iso)) {
-          map.get(iso)?.add(ev.owner.id);
-        }
+      const eventStart = parseIsoDate(ev.start_date);
+      const eventEnd = parseIsoDate(ev.end_date);
+      eventStart.setHours(0, 0, 0, 0);
+      eventEnd.setHours(0, 0, 0, 0);
+
+      const spanStart = eventStart > rangeStart ? eventStart : rangeStart;
+      const spanEnd = eventEnd < rangeEnd ? eventEnd : rangeEnd;
+      if (spanEnd < spanStart) continue;
+
+      const cursor = new Date(spanStart);
+      while (cursor <= spanEnd) {
+        const iso = isoDateForLocalDay(cursor);
+        map.get(iso)?.add(ev.owner.id);
+        cursor.setDate(cursor.getDate() + 1);
       }
     }
     return map;
@@ -100,6 +137,7 @@ export default function MonthGrid({
               key={iso}
               date={cell.date}
               inMonth={cell.inMonth}
+              birthdayLabels={birthdayLabelsByDay.get(iso) ?? []}
               busyOwnerIds={orderedBusy}
               orderedCheckedUserIds={effectiveOrderedCheckedUserIds}
               ownersById={ownersById}

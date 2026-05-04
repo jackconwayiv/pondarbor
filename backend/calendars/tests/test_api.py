@@ -1,7 +1,8 @@
-from datetime import date
+from datetime import date, timedelta
 from unittest.mock import patch
 
 from django.test import TestCase
+from django.utils import timezone
 
 from calendars.models import CalendarSource, Event
 from calendars.services import SyncResult
@@ -35,6 +36,10 @@ class EventsApiTests(CalendarTestMixin, TestCase):
             start_date=date(2026, 5, 2),
             end_date=date(2026, 5, 3),
         )
+        self.alice.profile.birth_date = date(1990, 5, 17)
+        self.alice.profile.save(update_fields=["birth_date"])
+        self.bob.profile.birth_date = date(1991, 5, 2)
+        self.bob.profile.save(update_fields=["birth_date"])
 
     def test_anonymous_cannot_list_events(self):
         resp = self.anon_client.get(
@@ -65,6 +70,70 @@ class EventsApiTests(CalendarTestMixin, TestCase):
         self.assertEqual(boot["events"], ev["results"])
         self.assertEqual(boot["sources"], src["results"])
         self.assertEqual(boot["approved_users"], appr["results"])
+
+    def test_bootstrap_includes_birthdays(self):
+        q = "start_date=2026-05-01&end_date=2026-06-01&owner=all"
+        with patch("calendars.views.timezone.localdate", return_value=date(2026, 5, 1)):
+            boot = self.alice_client.get(f"/api/v1/calendars/bootstrap/?{q}")
+        self.assertEqual(boot.status_code, 200)
+        body = boot.json()
+        birthday_rows = body.get("birthdays", [])
+        self.assertEqual(len(birthday_rows), 2)
+        self.assertIn("sync_pending_sources", body)
+        self.assertIsInstance(body["sync_pending_sources"], int)
+        self.assertIn(
+            {
+                "user_id": self.alice.id,
+                "display_name": "Alice",
+                "birth_month": 5,
+                "birth_day": 17,
+            },
+            birthday_rows,
+        )
+
+    def test_sync_refresh_returns_events_birthdays_and_summary(self):
+        CalendarSource.objects.create(
+            owner=self.alice,
+            source_type=CalendarSource.SourceType.ICAL,
+            display_name="Alice iCal",
+            ical_url="https://calendar.google.com/calendar/ical/x/basic.ics",
+            is_active=True,
+            last_synced_at=timezone.now() - timedelta(hours=2),
+        )
+        with patch(
+            "calendars.views.sync_ical_source",
+            return_value=SyncResult(ok=True, created=2, updated=1, deleted=0),
+        ) as mock_sync:
+            resp = self.alice_client.post(
+                "/api/v1/calendars/sync-refresh/"
+                "?start_date=2026-05-01&end_date=2026-06-01&owner=all"
+            )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertIn("events", body)
+        self.assertIn("birthdays", body)
+        self.assertIn("synced", body)
+        self.assertEqual(body["synced"]["sources_processed"], 1)
+        self.assertEqual(body["synced"]["created"], 2)
+        self.assertEqual(body["synced"]["updated"], 1)
+        mock_sync.assert_called_once()
+
+    def test_events_list_does_not_trigger_inline_ical_sync(self):
+        with patch("calendars.views.sync_ical_source") as mock_sync:
+            resp = self.alice_client.get(
+                "/api/v1/calendars/events/?start_date=2026-05-01&end_date=2026-06-01"
+            )
+        self.assertEqual(resp.status_code, 200)
+        mock_sync.assert_not_called()
+
+    def test_bootstrap_does_not_trigger_inline_ical_sync(self):
+        with patch("calendars.views.sync_ical_source") as mock_sync:
+            resp = self.alice_client.get(
+                "/api/v1/calendars/bootstrap/"
+                "?start_date=2026-05-01&end_date=2026-06-01&owner=all"
+            )
+        self.assertEqual(resp.status_code, 200)
+        mock_sync.assert_not_called()
 
     def test_owner_filter_me(self):
         resp = self.alice_client.get(

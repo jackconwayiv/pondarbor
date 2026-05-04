@@ -8,7 +8,10 @@ from django.db.models import F, Prefetch, Q
 from django.core.exceptions import ObjectDoesNotExist
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from achievements.services import evaluate_after_whatif_session_ended
+from achievements.services import (
+    evaluate_after_whatif_session_ended,
+    evaluate_whatif_dece_proposer_for_user,
+)
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -1455,7 +1458,14 @@ def admin_question_detail(request, question_id: int):
 
     serializer = WhatIfQuestionAdminSerializer(question, data=request.data, partial=True)
     serializer.is_valid(raise_exception=True)
+    prev_status = question.review_status
     updated = serializer.save()
+    if (
+        updated.review_status == WhatIfQuestion.ReviewStatus.APPROVED
+        and prev_status != WhatIfQuestion.ReviewStatus.APPROVED
+        and updated.proposed_by_id is not None
+    ):
+        evaluate_whatif_dece_proposer_for_user(int(updated.proposed_by_id))
     return Response(WhatIfQuestionAdminSerializer(updated).data, status=200)
 
 

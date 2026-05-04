@@ -9,6 +9,8 @@ Policy (aligned with planning doc):
   account achievements.
 - **WhatIf Wiz**: session ended with a winner (WhatIfGameResult), winner has non-null `winner_user`,
   room had >= 3 WhatIfPlayer rows (seats, including paused). Unlock once for that user.
+- **WhatIf Dece Proposer**: user proposed questions that staff approved; count approved non-deleted rows with
+  `proposed_by_id`; unlock at >= 5. Evaluated when a proposal transitions to approved (no bulk backfill).
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ SLUG_ARCHIVIST = "archivist"
 SLUG_TOWN_CRIER = "town_crier"
 SLUG_WHATIF_WIZ = "whatif_wiz"
 SLUG_WHATIF_WARRIOR = "whatif_warrior"
+SLUG_WHATIF_DECE_PROPOSER = "whatif_dece_proposer"
 SLUG_PONDCLICKER_TIER_1 = "pondclicker_tier_1_pond"
 SLUG_PONDCLICKER_TIER_2 = "pondclicker_tier_2_pond"
 SLUG_PONDCLICKER_TIER_3 = "pondclicker_tier_3_pond"
@@ -115,6 +118,7 @@ ARCHIVIST_MIN_QUOTES = 10
 TOWN_CRIER_MIN_PUBLIC = 10
 WHATIF_WIZ_MIN_PLAYERS = 3
 WHATIF_WARRIOR_MIN_SESSIONS = 5
+WHATIF_DECE_PROPOSER_MIN_APPROVED = 5
 SHARING_IS_CARING_MIN_ITEMS = 5
 TASTY_PLANS_MIN_FILLED_SLOTS = 14
 SMORGASBORD_MIN_MEALS = 20
@@ -345,6 +349,19 @@ def evaluate_whatif_warrior_for_user(user_id: int) -> None:
         _try_unlock(user_id, SLUG_WHATIF_WARRIOR)
 
 
+def evaluate_whatif_dece_proposer_for_user(user_id: int) -> None:
+    """Unlock when the user has enough community proposals approved (non-deleted)."""
+    from whatif.models import WhatIfQuestion
+
+    n = WhatIfQuestion.objects.filter(
+        proposed_by_id=user_id,
+        review_status=WhatIfQuestion.ReviewStatus.APPROVED,
+        deleted_at__isnull=True,
+    ).count()
+    if n >= WHATIF_DECE_PROPOSER_MIN_APPROVED:
+        _try_unlock(user_id, SLUG_WHATIF_DECE_PROPOSER)
+
+
 def evaluate_after_whatif_session_ended(session_id: int) -> None:
     """
     Call whenever a session transitions to ENDED (winner path or no_more_questions).
@@ -461,6 +478,31 @@ def backfill_all_achievements() -> None:
         .distinct()
     ):
         evaluate_schedule_coordinator_for_user(uid)
+
+
+def achievement_definitions_catalog_payload() -> list[dict]:
+    """All active achievement definitions, ordered like the catalog (for staff reference).
+
+    Shape matches :func:`achievements_payload_for_user` items except `unlocked_at` is a placeholder
+    and `visible_to_friends` is omitted; clients that render friend-style cards should hide the
+    earned date for this payload.
+    """
+    from achievements.models import AchievementDefinition
+
+    rows: list[dict] = []
+    for d in AchievementDefinition.objects.filter(is_active=True).order_by("order", "slug"):
+        rows.append(
+            {
+                "slug": d.slug,
+                "title": d.title,
+                "description": d.description or "",
+                "category": d.category or "",
+                "unlocked_at": "1970-01-01T00:00:00Z",
+                "display_group": d.display_group or "",
+                "display_group_order": d.display_group_order,
+            }
+        )
+    return rows
 
 
 def achievements_payload_for_user(

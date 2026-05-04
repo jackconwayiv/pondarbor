@@ -39,3 +39,18 @@ export async function fetchPublicAchievementsByUserId(
   }
   return (await response.json()) as AchievementSummary[];
 }
+
+/** Staff-only: all active achievement definitions as friend-profile-shaped rows (no real unlock date). */
+export async function fetchStaffAchievementDefinitions(
+  accessToken: string | null,
+): Promise<AchievementSummary[]> {
+  const response = await fetch(`${apiBase()}/api/v1/achievements/definitions/`, {
+    method: "GET",
+    headers: optionalBearerHeaders(accessToken),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Achievement definitions request failed (${response.status}): ${text}`);
+  }
+  return (await response.json()) as AchievementSummary[];
+}

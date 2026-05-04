@@ -4,6 +4,7 @@ const SLUG_TO_EMOJI: Record<string, string> = {
   town_crier: "📣",
   whatif_wiz: "🧙",
   whatif_warrior: "⚔️",
+  whatif_dece_proposer: "🤔",
   pondclicker_tier_1_pond: "🐌",
   pondclicker_tier_2_pond: "🦐",
   pondclicker_tier_3_pond: "🐟",

@@ -22,6 +22,7 @@ from achievements.services import (
     SLUG_TASTY_PLANS,
     SLUG_THATS_AMORE,
     SLUG_TOWN_CRIER,
+    SLUG_WHATIF_DECE_PROPOSER,
     SLUG_WHATIF_WARRIOR,
     SLUG_WHATIF_WIZ,
     evaluate_closet_return_achievements_for_users,
@@ -33,6 +34,7 @@ from achievements.services import (
     evaluate_pondclicker_achievements_for_user,
     evaluate_quote_achievements_for_user,
     evaluate_schedule_coordinator_for_user,
+    evaluate_whatif_dece_proposer_for_user,
     evaluate_whatif_warrior_for_user,
 )
 from datetime import date
@@ -41,7 +43,7 @@ from calendars.models import CalendarSource
 from calendars.services import SyncResult
 from calendars.tests.helpers import CalendarTestMixin
 from quotes.models import Quote
-from whatif.models import WhatIfGameResult, WhatIfPlayer, WhatIfSession
+from whatif.models import WhatIfGameResult, WhatIfPlayer, WhatIfQuestion, WhatIfSession
 from closet.models import Item
 from meal.models import Meal, MealPlanInstance, MealPlanInstanceSlot, MealPlanInstanceSlotMeal
 
@@ -153,6 +155,81 @@ class AchievementWhatIfTests(TestCase):
         evaluate_after_whatif_session_ended(s.id)
         self.assertTrue(
             UserAchievement.objects.filter(user=u1, achievement__slug=SLUG_WHATIF_WIZ).exists()
+        )
+
+
+class AchievementWhatIfDeceProposerTests(TestCase):
+    def setUp(self):
+        AchievementDefinition.objects.get_or_create(
+            slug=SLUG_WHATIF_DECE_PROPOSER,
+            defaults={
+                "title": "Dece Proposer",
+                "description": "",
+                "category": "whatif",
+                "order": 45,
+            },
+        )
+
+    def test_unlocks_at_five_approved_non_deleted(self):
+        u = User.objects.create_user(email="dece@example.com", password="secret12345")
+        base = {
+            "answer_1": "1",
+            "answer_2": "2",
+            "answer_3": "3",
+            "answer_4": "4",
+            "answer_5": "5",
+            "answer_6": "6",
+        }
+        for i in range(4):
+            WhatIfQuestion.objects.create(
+                prompt=f"What if {{subject}} q{i}?",
+                review_status=WhatIfQuestion.ReviewStatus.APPROVED,
+                proposed_by=u,
+                **base,
+            )
+        evaluate_whatif_dece_proposer_for_user(u.id)
+        self.assertFalse(
+            UserAchievement.objects.filter(user=u, achievement__slug=SLUG_WHATIF_DECE_PROPOSER).exists()
+        )
+        WhatIfQuestion.objects.create(
+            prompt="What if {subject} fifth?",
+            review_status=WhatIfQuestion.ReviewStatus.APPROVED,
+            proposed_by=u,
+            **base,
+        )
+        evaluate_whatif_dece_proposer_for_user(u.id)
+        self.assertTrue(
+            UserAchievement.objects.filter(user=u, achievement__slug=SLUG_WHATIF_DECE_PROPOSER).exists()
+        )
+
+    def test_soft_deleted_approved_does_not_count(self):
+        u = User.objects.create_user(email="dece-del@example.com", password="secret12345")
+        base = {
+            "answer_1": "1",
+            "answer_2": "2",
+            "answer_3": "3",
+            "answer_4": "4",
+            "answer_5": "5",
+            "answer_6": "6",
+        }
+        for i in range(4):
+            WhatIfQuestion.objects.create(
+                prompt=f"What if {{subject}} ok{i}?",
+                review_status=WhatIfQuestion.ReviewStatus.APPROVED,
+                proposed_by=u,
+                **base,
+            )
+        deleted = WhatIfQuestion.objects.create(
+            prompt="What if {subject} deleted?",
+            review_status=WhatIfQuestion.ReviewStatus.APPROVED,
+            proposed_by=u,
+            deleted_at=timezone.now(),
+            **base,
+        )
+        assert deleted.id is not None
+        evaluate_whatif_dece_proposer_for_user(u.id)
+        self.assertFalse(
+            UserAchievement.objects.filter(user=u, achievement__slug=SLUG_WHATIF_DECE_PROPOSER).exists()
         )
 
 
@@ -551,6 +628,47 @@ class AchievementPublicApiTests(TestCase):
         self.assertEqual(resp_show.status_code, 200)
         ua.refresh_from_db()
         self.assertIsNone(ua.visible_to_friends)
+
+
+class StaffAchievementDefinitionsApiTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.staff = User.objects.create_user(
+            email="staff-defs@example.com", password="secret12345", is_staff=True
+        )
+        self.member = User.objects.create_user(
+            email="member-defs@example.com", password="secret12345", is_staff=False
+        )
+        AchievementDefinition.objects.get_or_create(
+            slug=SLUG_ARCHIVIST,
+            defaults={
+                "title": "Archivist",
+                "description": "Test",
+                "category": "quotes",
+                "order": 10,
+            },
+        )
+
+    def test_anonymous_forbidden(self):
+        r = self.client.get("/api/v1/achievements/definitions/")
+        self.assertIn(r.status_code, (401, 403))
+
+    def test_non_staff_forbidden(self):
+        self.client.force_login(self.member)
+        r = self.client.get("/api/v1/achievements/definitions/")
+        self.assertEqual(r.status_code, 403)
+
+    def test_staff_receives_catalog_payload(self):
+        self.client.force_login(self.staff)
+        r = self.client.get("/api/v1/achievements/definitions/")
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertIsInstance(data, list)
+        self.assertTrue(any(row.get("slug") == SLUG_ARCHIVIST for row in data))
+        sample = next(row for row in data if row.get("slug") == SLUG_ARCHIVIST)
+        self.assertIn("title", sample)
+        self.assertIn("description", sample)
+        self.assertIn("category", sample)
 
 
 class ScheduleCoordinatorAchievementTests(CalendarTestMixin, TestCase):

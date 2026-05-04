@@ -1400,6 +1400,55 @@ class WhatIfAdminApiTests(TestCase):
         self.assertEqual(r.status_code, 400)
         self.assertIn("errors", r.json())
 
+    def test_patch_approve_pending_triggers_dece_proposer_at_threshold(self):
+        from achievements.models import AchievementDefinition, UserAchievement
+        from achievements.services import SLUG_WHATIF_DECE_PROPOSER
+
+        AchievementDefinition.objects.get_or_create(
+            slug=SLUG_WHATIF_DECE_PROPOSER,
+            defaults={
+                "title": "Dece Proposer",
+                "description": "",
+                "category": "whatif",
+                "order": 45,
+            },
+        )
+        proposer = User.objects.create_user(email="proposer-dece@example.com", password="secret12345")
+        base = {
+            "answer_1": "1",
+            "answer_2": "2",
+            "answer_3": "3",
+            "answer_4": "4",
+            "answer_5": "5",
+            "answer_6": "6",
+        }
+        for i in range(4):
+            WhatIfQuestion.objects.create(
+                prompt=f"What if {{subject}} prior{i}?",
+                review_status=WhatIfQuestion.ReviewStatus.APPROVED,
+                proposed_by=proposer,
+                **base,
+            )
+        pending = WhatIfQuestion.objects.create(
+            prompt="What if {subject} fifth pending?",
+            review_status=WhatIfQuestion.ReviewStatus.PENDING,
+            is_active=False,
+            proposed_by=proposer,
+            **base,
+        )
+        self.client.force_login(self.staff)
+        r = self.client.patch(
+            f"/api/v1/whatif/questions/{pending.id}/",
+            {"review_status": "approved", "is_active": True},
+            format="json",
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(
+            UserAchievement.objects.filter(
+                user=proposer, achievement__slug=SLUG_WHATIF_DECE_PROPOSER
+            ).exists()
+        )
+
 
 class WhatIfMySessionsTests(TestCase):
     def setUp(self):

@@ -1,10 +1,14 @@
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.authentication import SessionAuthentication
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from achievements.services import achievements_payload_for_user
+from users.auth0_backend import Auth0TokenAuthentication
+from users.permissions import IsStaffUser
+
+from achievements.services import achievement_definitions_catalog_payload, achievements_payload_for_user
 from friends.services import are_friends
 from users.models import User as SiteUser
 from users.models import Profile
@@ -16,6 +20,13 @@ User = get_user_model()
 @permission_classes([AllowAny])
 def health(request):
     return Response({"app": "achievements", "ok": True})
+
+
+@api_view(["GET"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsAuthenticated, IsStaffUser])
+def staff_achievement_definitions(request):
+    return Response(achievement_definitions_catalog_payload())
 
 
 def _achievements_for_viewer(*, profile_user, viewer):

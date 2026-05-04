@@ -37,9 +37,12 @@ export type AchievementVisibilityToggle = {
 export function AchievementSummaryCard({
   achievement: a,
   visibilityToggle,
+  showEarnedDate = true,
 }: {
   achievement: AchievementSummary;
   visibilityToggle?: AchievementVisibilityToggle;
+  /** When false, hide the "Earned …" line (e.g. staff catalog of all definitions). */
+  showEarnedDate?: boolean;
 }) {
   const isMobile = useIsMobile();
   const emoji = emojiForAchievementSlug(a.slug);
@@ -97,7 +100,7 @@ export function AchievementSummaryCard({
               >
                 {a.title}
               </Text>
-              {earnedLine}
+              {showEarnedDate ? earnedLine : null}
             </>
           ) : (
             <HStack align="flex-start" gap="2" w="100%" minW={0}>
@@ -110,7 +113,7 @@ export function AchievementSummaryCard({
               >
                 {a.title}
               </Text>
-              {earnedLine}
+              {showEarnedDate ? earnedLine : null}
             </HStack>
           )}
           {a.description ? (

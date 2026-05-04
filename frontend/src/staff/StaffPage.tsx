@@ -12,6 +12,9 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link as RouterLink, useSearchParams } from "react-router";
 
+import { AchievementSummaryCard } from "../achievements/AchievementSummaryCard";
+import { fetchStaffAchievementDefinitions } from "../achievements/api";
+import type { AchievementSummary } from "../achievements/types";
 import { useAppSession } from "../auth/AppSessionContext";
 import { useHomeInbox } from "../home/homeInboxContext";
 import PondButton from "../PondButton";
@@ -23,6 +26,7 @@ import {
 import {
   APP_SHELL_TRAY_PROPS,
   APP_TEXT_SIZES,
+  MAPPED_LIST_STACK_GAP,
   PANEL_ENTRY_CARD_PROPS,
 } from "../theme/typography";
 import {
@@ -107,12 +111,23 @@ export default function StaffPage() {
   const [contactDeleteBusyId, setContactDeleteBusyId] = useState<number | null>(
     null,
   );
-  const [staffTab, setStaffTab] = useState<"users" | "contact">("users");
+  const [staffTab, setStaffTab] = useState<"users" | "contact" | "achievements">(
+    "users",
+  );
+
+  const [achievementDefs, setAchievementDefs] = useState<AchievementSummary[]>(
+    [],
+  );
+  const [achievementsBusy, setAchievementsBusy] = useState(false);
+  const [achievementsError, setAchievementsError] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     const raw = searchParams.get("tab");
     if (raw === "contact") setStaffTab("contact");
-    if (raw === "users") setStaffTab("users");
+    else if (raw === "users") setStaffTab("users");
+    else if (raw === "achievements") setStaffTab("achievements");
   }, [searchParams]);
 
   const isStaff = !!sessionUser?.user?.is_staff;
@@ -194,6 +209,29 @@ export default function StaffPage() {
     void loadContactMessages();
   }, [loadContactMessages]);
 
+  const loadAchievementDefinitions = useCallback(async () => {
+    if (!isAuthenticated || !isStaff) return;
+    setAchievementsBusy(true);
+    setAchievementsError(null);
+    try {
+      const token = await getApiAccessToken();
+      const rows = await fetchStaffAchievementDefinitions(token);
+      setAchievementDefs(rows);
+    } catch (e) {
+      setAchievementsError(
+        e instanceof Error ? e.message : "Failed to load achievements",
+      );
+      setAchievementDefs([]);
+    } finally {
+      setAchievementsBusy(false);
+    }
+  }, [isAuthenticated, isStaff, getApiAccessToken]);
+
+  useEffect(() => {
+    if (staffTab !== "achievements" || !isStaff) return;
+    void loadAchievementDefinitions();
+  }, [staffTab, isStaff, loadAchievementDefinitions]);
+
   async function onStatusChange(
     row: StaffUserRow,
     next: StaffAccountStatusValue,
@@ -221,7 +259,7 @@ export default function StaffPage() {
       <Tabs.Root
         value={staffTab}
         onValueChange={(d) =>
-          setStaffTab(d.value as "users" | "contact")
+          setStaffTab(d.value as "users" | "contact" | "achievements")
         }
         variant="plain"
         display="flex"
@@ -283,6 +321,12 @@ export default function StaffPage() {
               </Tabs.Trigger>
               <Tabs.Trigger value="contact" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                 Contact messages
+              </Tabs.Trigger>
+              <Tabs.Trigger
+                value="achievements"
+                {...APP_SHELL_TAB_TRIGGER_PROPS}
+              >
+                Achievements
               </Tabs.Trigger>
             </Tabs.List>
           </Box>
@@ -691,6 +735,63 @@ export default function StaffPage() {
                             </PondButton>
                           </Box>
                         </Box>
+                      ))}
+                    </Stack>
+                  )}
+                </Stack>
+              </Tabs.Content>
+
+              <Tabs.Content value="achievements">
+                <Stack gap="3" w="100%">
+                  <HStack
+                    justify="space-between"
+                    align="center"
+                    flexWrap="wrap"
+                    gap="2"
+                  >
+                    <Heading as="h2" size="md">
+                      Achievements (catalog)
+                    </Heading>
+                    <PondButton
+                      type="button"
+                      size="sm"
+                      colorPalette="teal"
+                      loading={achievementsBusy}
+                      onClick={() => void loadAchievementDefinitions()}
+                    >
+                      Refresh
+                    </PondButton>
+                  </HStack>
+                  <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted">
+                    How each badge appears on a friend&apos;s profile (titles,
+                    descriptions, and medals). Unlock dates are omitted here.
+                  </Text>
+                  {achievementsError ? (
+                    <Text
+                      role="alert"
+                      fontSize="sm"
+                      color="nautical.solid"
+                      fontWeight="medium"
+                    >
+                      {achievementsError}
+                    </Text>
+                  ) : null}
+                  {achievementsBusy && achievementDefs.length === 0 ? (
+                    <Text fontSize="sm" color="fg.muted">
+                      Loading achievements…
+                    </Text>
+                  ) : achievementDefs.length === 0 ? (
+                    <Text fontSize="sm" color="fg.muted">
+                      No achievement definitions found.
+                    </Text>
+                  ) : (
+                    <Stack gap={MAPPED_LIST_STACK_GAP}>
+                      {achievementDefs.map((a) => (
+                        <AchievementSummaryCard
+                          key={a.slug}
+                          achievement={a}
+                          showEarnedDate={false}
+                        />
                       ))}
                     </Stack>
                   )}

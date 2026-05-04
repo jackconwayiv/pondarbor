@@ -589,7 +589,24 @@ export default function WhatIfHandPage() {
               when you&apos;re back.
             </Text>
           ) : null}
-          {state?.state?.question ? <Text fontWeight="bold">{state.state.question.prompt}</Text> : null}
+          {state?.state?.question ? (
+            <>
+              <Text fontWeight="bold">{state.state.question.prompt}</Text>
+              {state.state.question.proposed_by?.display_name ? (
+                <HStack gap="2" align="center">
+                  {state.state.question.proposed_by.avatar_url ? (
+                    <Avatar.Root size="sm">
+                      <Avatar.Image src={state.state.question.proposed_by.avatar_url} />
+                      <Avatar.Fallback name={state.state.question.proposed_by.display_name} />
+                    </Avatar.Root>
+                  ) : null}
+                  <Text fontSize="sm" color={headerMutedColor}>
+                    Question submitted by {state.state.question.proposed_by.display_name}
+                  </Text>
+                </HStack>
+              ) : null}
+            </>
+          ) : null}
           {needPickOpponent && !isActive ? (
             <Text color={headerMutedColor}>Waiting for {activeName} to challenge someone…</Text>
           ) : null}

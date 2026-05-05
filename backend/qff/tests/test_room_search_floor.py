@@ -126,7 +126,7 @@ class RoomSearchFloorTests(TestCase):
         )
         c = self._char("Hero")
         execute_command(c, parse_command("search"))
-        session = build_session_for_character(c, world_sync=False)
+        session = build_session_for_character(c)
         desc = session["room"]["description"]
         self.assertIn("A plain room.", desc)
         self.assertIn("You sift through dust.", desc)

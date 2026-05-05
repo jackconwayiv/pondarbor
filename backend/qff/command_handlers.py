@@ -65,6 +65,7 @@ from qff.game_helpers import (
     format_item_inspect_parenthetical,
     inventory_stack_label,
     item_meets_requirements,
+    load_inventory_instance_map,
     modified_stats,
     peer_arrival_line,
     presence_threshold,
@@ -92,6 +93,7 @@ from qff.models import (
     RoomItemSpawn,
 )
 from qff.quest_engine import (
+    build_room_item_visibility_batch,
     can_spawn_search_quest_floor_item,
     ensure_quests_started_from_npc,
     find_interactable_in_room,
@@ -318,18 +320,20 @@ def _room_item_matches_query(ri: RoomItem, q: str) -> bool:
     return dn.startswith(q) or q in dn
 
 
-def _find_room_item(
-    actor: CharacterType, query: str, floor_template_ids: set[int]
-) -> RoomItem | None:
+def _find_room_item(actor: CharacterType, query: str) -> RoomItem | None:
     q = (query or "").strip().lower()
     if not q:
         return None
-    for ri in (
+    room_items = list(
         RoomItem.objects.filter(room_id=actor.current_room_id)
         .select_related("item", "visible_quest_state")
         .order_by("id")
-    ):
-        if not room_item_visible_to_character(actor, ri, floor_template_ids):
+    )
+    visibility_batch = build_room_item_visibility_batch(
+        actor, actor.current_room_id, room_items
+    )
+    for ri in room_items:
+        if not room_item_visible_to_character(actor, ri, visibility_batch):
             continue
         if _room_item_matches_query(ri, q):
             return ri
@@ -369,12 +373,9 @@ def _find_item_instance_floor_first(actor: CharacterType, query: str) -> ItemIns
             continue
         if _instance_matches_query(inst, q):
             return inst
+    inv_map = load_inventory_instance_map(actor)
     for iid in actor.inventory or []:
-        inst = (
-            II.objects.filter(pk=iid, owner_character_id=actor.pk)
-            .select_related("item")
-            .first()
-        )
+        inst = inv_map.get(iid)
         if inst and _instance_matches_query(inst, q):
             return inst
     for attr in SLOT_ATTRS:
@@ -386,17 +387,12 @@ def _find_item_instance_floor_first(actor: CharacterType, query: str) -> ItemIns
 
 def _find_item_instance_inventory_first(actor: CharacterType, query: str) -> ItemInstance | None:
     """Prefer backpack order, then equipped (drop / equip / consume from inv)."""
-    from qff.models import ItemInstance as II
-
     q = (query or "").strip().lower()
     if not q:
         return None
+    inv_map = load_inventory_instance_map(actor)
     for iid in actor.inventory or []:
-        inst = (
-            II.objects.filter(pk=iid, owner_character_id=actor.pk)
-            .select_related("item")
-            .first()
-        )
+        inst = inv_map.get(iid)
         if inst and _instance_matches_query(inst, q):
             return inst
     for attr in SLOT_ATTRS:
@@ -410,18 +406,13 @@ def _inventory_consumable_candidates(
     char: CharacterType, query: str
 ) -> list[ItemInstance]:
     """Inventory then equipped, all consumables matching ``query`` (same walk order as inventory-first)."""
-    from qff.models import ItemInstance as II
-
     q = (query or "").strip().lower()
     if not q:
         return []
     out: list[ItemInstance] = []
+    inv_map = load_inventory_instance_map(char)
     for iid in char.inventory or []:
-        inst = (
-            II.objects.filter(pk=iid, owner_character_id=char.pk)
-            .select_related("item")
-            .first()
-        )
+        inst = inv_map.get(iid)
         if inst and inst.item.consumable and _instance_matches_query(inst, q):
             out.append(inst)
     for attr in SLOT_ATTRS:
@@ -592,10 +583,29 @@ def execute_command(
 
     When ``world_sync`` is False, the caller has already run
     :func:`~qff.quest_engine.sync_character_world_before_session` for this request
-    (e.g. :func:`~qff.views.command_view`) to avoid duplicate DB work.
+    (e.g. :func:`~qff.views.command_view`) to avoid duplicate DB work. With
+    ``world_sync`` True the row is re-fetched (with the same select_related shape
+    as ``views._get_character``) so callers passing a long-lived in-memory row
+    (e.g. tests) see fresh DB state.
     """
     if world_sync:
-        char = sync_character_world_before_session(char)
+        char = (
+            Character.objects.select_related(
+                "character_class",
+                "current_room",
+                "current_room__area",
+                "spawn_room",
+                "head_item__item",
+                "main_hand_item__item",
+                "off_hand_item__item",
+                "chest_item__item",
+                "feet_item__item",
+                "ring_item__item",
+                "amulet_item__item",
+            )
+            .get(pk=char.pk)
+        )
+        sync_character_world_before_session(char)
 
     if char.is_dead:
         return ["You are dead and cannot act."]
@@ -1363,8 +1373,7 @@ def _handle_get(
             return [f"You pick up the {pickup_label}."]
         return [f"You pick up {take_qty} {pickup_label}."]
 
-    floor_ids = unowned_floor_item_template_ids_in_room(char.current_room_id)
-    ri = _find_room_item(char, target, floor_ids)
+    ri = _find_room_item(char, target)
     if not ri:
         char.save(update_fields=["last_activity_at", "updated_at"])
         return ["You don't see that here."]
@@ -2105,7 +2114,6 @@ def _handle_look_inspect(char: CharacterType, parsed: ParsedLookInspect) -> list
         t = (interactable.inspect_text or "").strip() or f"You see {interactable.name}."
         out = [t]
         if interactable.kind == Interactable.Kind.CONTAINER:
-            floor_ids = unowned_floor_item_template_ids_in_room(char.current_room_id)
             inside: list[str] = []
             for inst in ItemInstance.objects.filter(
                 room_id=char.current_room_id,
@@ -2114,11 +2122,17 @@ def _handle_look_inspect(char: CharacterType, parsed: ParsedLookInspect) -> list
             ).select_related("item", "visible_quest_state"):
                 if floor_item_visible_to_character(char, inst):
                     inside.append(display_name_for_instance(inst))
-            for ri in RoomItem.objects.filter(
-                room_id=char.current_room_id,
-                interactable_id=interactable.pk,
-            ).select_related("item", "visible_quest_state"):
-                if room_item_visible_to_character(char, ri, floor_ids):
+            container_room_items = list(
+                RoomItem.objects.filter(
+                    room_id=char.current_room_id,
+                    interactable_id=interactable.pk,
+                ).select_related("item", "visible_quest_state")
+            )
+            ri_batch = build_room_item_visibility_batch(
+                char, char.current_room_id, container_room_items
+            )
+            for ri in container_room_items:
+                if room_item_visible_to_character(char, ri, ri_batch):
                     inside.append(_room_item_display_label(ri))
             if inside:
                 out.append(f"Inside: {_natural_join_phrases(inside)}.")
@@ -2150,8 +2164,7 @@ def _handle_look_inspect(char: CharacterType, parsed: ParsedLookInspect) -> list
         _look_focus_peers(char, parsed, f"the {display_name_for_instance(inst)}")
         return _lines_for_item_inspect(char, inst)
 
-    floor_ids = unowned_floor_item_template_ids_in_room(char.current_room_id)
-    ri = _find_room_item(char, target, floor_ids)
+    ri = _find_room_item(char, target)
     if ri:
         _look_focus_peers(char, parsed, f"the {_room_item_display_label(ri)}")
         return _lines_for_item_inspect_core(char, ri.item, None)

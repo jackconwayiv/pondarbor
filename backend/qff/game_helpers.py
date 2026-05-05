@@ -11,6 +11,27 @@ if TYPE_CHECKING:
     from qff.models import Character, Item, ItemInstance  # noqa: F401 used in annotations
 
 
+def load_inventory_instance_map(character: "Character") -> dict[int, "ItemInstance"]:
+    """Single-query map of pk -> ItemInstance for the actor's owned inventory rows.
+
+    Replaces per-id ``ItemInstance.objects.filter(pk=iid).first()`` loops in inventory
+    walks (``_find_key_instance``, ``character_carries_item_template``, ``_find_item_instance_*``).
+    Equipment slots are not included here; callers iterate ``SLOT_ATTRS`` against the
+    already-hydrated Character instance.
+    """
+    from qff.models import ItemInstance
+
+    ids = list(character.inventory or [])
+    if not ids:
+        return {}
+    return {
+        i.pk: i
+        for i in ItemInstance.objects.filter(
+            pk__in=ids, owner_character_id=character.pk
+        ).select_related("item")
+    }
+
+
 def presence_threshold():
     from datetime import timedelta
 

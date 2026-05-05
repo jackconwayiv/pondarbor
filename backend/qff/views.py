@@ -6,7 +6,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, transaction
 from django.db.utils import OperationalError
 from django.db.models import Max
 from django.db.models.deletion import ProtectedError
@@ -441,6 +441,19 @@ def command_view(request):
     old_room_id = char.current_room_id
     wall_start = time.perf_counter()
 
+    # Local query counter so qff_command_timing can emit queries=N alongside the
+    # timing breakdown. Independent from RequestTimingMiddleware, which counts
+    # queries for the entire WSGI hop including auth + response serialization.
+    cmd_query_count = 0
+
+    def _qff_count_query(execute, sql, params, many, context):
+        nonlocal cmd_query_count
+        cmd_query_count += 1
+        return execute(sql, params, many, context)
+
+    cmd_wrapper_cm = connection.execute_wrapper(_qff_count_query)
+    cmd_wrapper_cm.__enter__()
+
     try:
         parsed = None
         messages: list[str] = []
@@ -482,20 +495,13 @@ def command_view(request):
         def _sim_session_and_response():
             """Post-commit path only; safe to retry on deadlock without re-running the command."""
             sim_ms = session_ms = 0.0
-            affected: list[int] = []
             msgs_out = list(messages)
+            t1 = time.perf_counter()
+            affected = run_lazy_simulation(notify_rooms=False)
+            sim_ms = (time.perf_counter() - t1) * 1000
             char_after = _get_character(request.user)
             if char_after is None:
                 char_after = _get_character_by_pk(character_pk)
-            if char_after:
-                t1 = time.perf_counter()
-                affected = run_lazy_simulation(notify_rooms=False)
-                sim_ms = (time.perf_counter() - t1) * 1000
-                char_after = _get_character(request.user)
-                if char_after is None:
-                    char_after = _get_character_by_pk(character_pk)
-            else:
-                sim_ms = 0.0
 
             enc_lines: list[str] = []
             if char_after is None:
@@ -515,7 +521,7 @@ def command_view(request):
                     status=status.HTTP_410_GONE,
                 )
             t2 = time.perf_counter()
-            session = build_session_for_character(char_after, world_sync=False)
+            session = build_session_for_character(char_after)
             session_ms = (time.perf_counter() - t2) * 1000
             # Chronological narrative: move/teleport put first-person lines before engagement broadcasts.
             raw_log = session.get("action_log") or []
@@ -560,7 +566,7 @@ def command_view(request):
             gap_ms = max(0.0, total_ms - sync_ms - exec_ms - sim_ms - session_ms)
             parsed_kind = type(parsed).__name__
             logger.debug(
-                "qff.command user_id=%s parsed=%s sync_ms=%.1f exec_ms=%.1f sim_ms=%.1f session_ms=%.1f gap_ms=%.1f total_ms=%.1f session_pct=%.1f",
+                "qff.command user_id=%s parsed=%s sync_ms=%.1f exec_ms=%.1f sim_ms=%.1f session_ms=%.1f gap_ms=%.1f total_ms=%.1f session_pct=%.1f queries=%d",
                 uid,
                 parsed_kind,
                 sync_ms,
@@ -570,10 +576,11 @@ def command_view(request):
                 gap_ms,
                 total_ms,
                 session_pct,
+                cmd_query_count,
             )
             if getattr(settings, "QFF_COMMAND_TIMING_LOG", False):
                 logger.info(
-                    "qff_command_timing user_id=%s parsed=%s sync_ms=%.2f exec_ms=%.2f sim_ms=%.2f session_ms=%.2f gap_ms=%.2f total_ms=%.2f session_pct=%.2f",
+                    "qff_command_timing user_id=%s parsed=%s sync_ms=%.2f exec_ms=%.2f sim_ms=%.2f session_ms=%.2f gap_ms=%.2f total_ms=%.2f session_pct=%.2f queries=%d",
                     uid,
                     parsed_kind,
                     sync_ms,
@@ -583,6 +590,7 @@ def command_view(request):
                     gap_ms,
                     total_ms,
                     session_pct,
+                    cmd_query_count,
                 )
 
             body: dict = {
@@ -623,6 +631,8 @@ def command_view(request):
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+    finally:
+        cmd_wrapper_cm.__exit__(None, None, None)
 
 
 # --- DM (staff) ---

@@ -20,10 +20,11 @@ from qff.exits import (
     exit_is_visible_to_character,
 )
 from qff.quest_engine import (
+    RoomItemVisibilityBatch,
+    build_room_item_visibility_batch,
     floor_item_visible_to_character,
     room_item_visible_to_character,
     sync_character_world_before_session,
-    unowned_floor_item_template_ids_in_room,
 )
 from qff.game_helpers import (
     display_name_for_instance,
@@ -55,7 +56,13 @@ from qff.realm_presence import realm_presence_hero_qs
 from qff.shop_engine import get_enabled_shops_in_room
 
 
-def _opened_container_session_dict(character: Character, room: Room) -> dict | None:
+def _opened_container_session_dict(
+    character: Character,
+    room: Room,
+    *,
+    visibility_batch: RoomItemVisibilityBatch,
+    container_room_items: list[RoomItem],
+) -> dict | None:
     cid = getattr(character, "opened_container_interactable_id", None)
     if not cid:
         return None
@@ -81,16 +88,10 @@ def _opened_container_session_dict(character: Character, room: Room) -> dict | N
                 "quantity": max(1, int(inst.quantity or 1)),
             }
         )
-    floor_ids = unowned_floor_item_template_ids_in_room(room.id)
-    for ri in (
-        RoomItem.objects.filter(room_id=room.id, interactable_id=cid)
-        .select_related("item", "visible_quest_state")
-        .order_by("id")
-    ):
-        if not room_item_visible_to_character(character, ri, floor_ids):
+    for ri in container_room_items:
+        if not room_item_visible_to_character(character, ri, visibility_batch):
             continue
         label = ri.nickname if ri.nickname else ri.item.name
-        # Negative id namespaces RoomItem slots vs ItemInstance pks in the same JSON list.
         items.append({"id": -ri.id, "name": label, "quantity": 1})
     return {"id": obj.id, "slug": obj.slug, "name": obj.name, "items": items}
 
@@ -419,33 +420,29 @@ def _room_floor_labels(room_id: int, character) -> list[str]:
 
 
 def _room_item_labels(
-    room_id: int, character, floor_template_ids: set[int]
+    character,
+    *,
+    visibility_batch: RoomItemVisibilityBatch,
+    floor_room_items: list[RoomItem],
 ) -> list[str]:
     """Room slots (mint-on-get); labels after floor items, same display pattern as floor."""
     out: list[str] = []
-    for ri in (
-        RoomItem.objects.filter(room_id=room_id, interactable__isnull=True)
-        .select_related("item", "visible_quest_state")
-        .order_by("id")
-    ):
-        if not room_item_visible_to_character(character, ri, floor_template_ids):
+    for ri in floor_room_items:
+        if not room_item_visible_to_character(character, ri, visibility_batch):
             continue
         out.append(ri.nickname if ri.nickname else ri.item.name)
     return out
 
 
-def _room_gold_pile_labels(room_id: int) -> list[str]:
+def _room_gold_pile_labels(piles: list[RoomGoldPile]) -> list[str]:
     """Unpicked gold on the floor (aggregated; no source labels)."""
-    total = 0
-    for p in RoomGoldPile.objects.filter(room_id=room_id, amount_remaining__gt=0):
-        total += int(p.amount_remaining)
+    total = sum(int(p.amount_remaining) for p in piles if int(p.amount_remaining) > 0)
     if total <= 0:
         return []
     return [f"{total} gold"]
 
 
-def _room_gold_piles_json(room_id: int) -> list[dict]:
-    piles = list(RoomGoldPile.objects.filter(room_id=room_id).order_by("id"))
+def _room_gold_piles_json(piles: list[RoomGoldPile]) -> list[dict]:
     if not piles:
         return []
     total = sum(int(p.amount_remaining) for p in piles if int(p.amount_remaining) > 0)
@@ -454,13 +451,23 @@ def _room_gold_piles_json(room_id: int) -> list[dict]:
     return [{"id": piles[0].id, "amount": total, "label": ""}]
 
 
-def _room_you_see_tail_labels(room_id: int, character) -> list[str]:
+def _room_you_see_tail_labels(
+    room_id: int,
+    character,
+    *,
+    visibility_batch: RoomItemVisibilityBatch,
+    floor_room_items: list[RoomItem],
+    gold_piles: list[RoomGoldPile],
+) -> list[str]:
     """Gold piles, floor instances, and room item slots (after interactable names in the HUD)."""
-    floor_template_ids = unowned_floor_item_template_ids_in_room(room_id)
     return (
-        _room_gold_pile_labels(room_id)
+        _room_gold_pile_labels(gold_piles)
         + _room_floor_labels(room_id, character)
-        + _room_item_labels(room_id, character, floor_template_ids)
+        + _room_item_labels(
+            character,
+            visibility_batch=visibility_batch,
+            floor_room_items=floor_room_items,
+        )
     )
 
 
@@ -578,10 +585,14 @@ def _active_quests_json(character: Character) -> list[dict]:
     return out
 
 
-def build_session_for_character(character, *, world_sync: bool = True) -> dict:
-    # Costly: minimap, exits, inventory. ``qff.views.command_view`` logs ``session_ms`` for profiling.
-    if world_sync:
-        character = sync_character_world_before_session(character)
+def build_session_for_character(character) -> dict:
+    """Build /qff/session/ JSON for the supplied character.
+
+    The character is expected to be already-hydrated (equipment slots,
+    current_room, area). ``sync_character_world_before_session`` runs in-place
+    so callers may safely keep their reference to the same row.
+    """
+    character = sync_character_world_before_session(character)
     room = character.current_room
     area = room.area
     exits = []
@@ -613,8 +624,27 @@ def build_session_for_character(character, *, world_sync: bool = True) -> dict:
     room_interactables = list(
         Interactable.objects.filter(room_id=room.id).order_by("name")
     )
+
+    all_room_items = list(
+        RoomItem.objects.filter(room_id=room.id)
+        .select_related("item", "visible_quest_state")
+        .order_by("id")
+    )
+    visibility_batch = build_room_item_visibility_batch(
+        character, room.id, all_room_items
+    )
+    cid = getattr(character, "opened_container_interactable_id", None)
+    container_room_items = (
+        [ri for ri in all_room_items if ri.interactable_id == cid] if cid else []
+    )
+    floor_room_items = [ri for ri in all_room_items if ri.interactable_id is None]
+    gold_piles = list(RoomGoldPile.objects.filter(room_id=room.id).order_by("id"))
     you_see = [o.name for o in room_interactables] + _room_you_see_tail_labels(
-        room.id, character
+        room.id,
+        character,
+        visibility_batch=visibility_batch,
+        floor_room_items=floor_room_items,
+        gold_piles=gold_piles,
     )
     details_visible = room_is_narratively_visible(character, room)
     room_description = room.description
@@ -654,7 +684,12 @@ def build_session_for_character(character, *, world_sync: bool = True) -> dict:
             "name": room.name,
             "description": room_description,
             "details_visible": details_visible,
-            "opened_container": _opened_container_session_dict(character, room),
+            "opened_container": _opened_container_session_dict(
+                character,
+                room,
+                visibility_batch=visibility_batch,
+                container_room_items=container_room_items,
+            ),
             "is_safe": room.is_safe,
             "is_spawn_point": room.is_spawn_point,
             "monsters": [
@@ -669,7 +704,7 @@ def build_session_for_character(character, *, world_sync: bool = True) -> dict:
                 .select_related("template")
                 .order_by("id")
             ],
-            "gold_piles": _room_gold_piles_json(room.id),
+            "gold_piles": _room_gold_piles_json(gold_piles),
             "youSee": you_see,
             "npcs": [
                 {"slug": n.slug, "name": n.name}

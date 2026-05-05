@@ -5,7 +5,11 @@ from __future__ import annotations
 from django.db import transaction
 from django.db.models import Max
 
-from qff.game_helpers import display_name_for_instance, format_item_inspect_parenthetical
+from qff.game_helpers import (
+    display_name_for_instance,
+    format_item_inspect_parenthetical,
+    load_inventory_instance_map,
+)
 from qff.inventory_absorb import absorb_item_quantity
 from qff.quest_engine import name_token_prefix_match
 from qff.models import Character, ItemInstance, Npc, NpcShop, NpcShopStockLine
@@ -316,12 +320,9 @@ def find_inventory_instance(char: Character, query: str) -> ItemInstance | None:
     q = (query or "").strip().lower()
     if not q:
         return None
+    inv_map = load_inventory_instance_map(char)
     for iid in char.inventory or []:
-        inst = (
-            ItemInstance.objects.filter(pk=iid, owner_character_id=char.pk)
-            .select_related("item")
-            .first()
-        )
+        inst = inv_map.get(iid)
         if not inst:
             continue
         dn = display_name_for_instance(inst).lower()
@@ -330,11 +331,7 @@ def find_inventory_instance(char: Character, query: str) -> ItemInstance | None:
         if dn == q or slug == q or name == q:
             return inst
     for iid in char.inventory or []:
-        inst = (
-            ItemInstance.objects.filter(pk=iid, owner_character_id=char.pk)
-            .select_related("item")
-            .first()
-        )
+        inst = inv_map.get(iid)
         if not inst:
             continue
         dn = display_name_for_instance(inst).lower()

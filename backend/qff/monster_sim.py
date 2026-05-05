@@ -7,7 +7,7 @@ import random
 from datetime import timedelta
 
 from django.db import connection, transaction
-from django.db.models import Q
+from django.db.models import Exists, Min, OuterRef, Q
 from django.utils import timezone
 
 from qff.combat_math import (
@@ -1461,6 +1461,95 @@ def flush_afk_boots(now) -> set[int]:
     return affected
 
 
+def _earliest_time_based_lazy_sim_event(now) -> "timezone.datetime | None":
+    """Real-time MIN aggregate over every time-gated lazy-sim trigger.
+
+    Returns the earliest scheduled event timestamp across:
+
+    * combat rounds (``MonsterInstance.next_action_at`` / ``Character.next_action_at``)
+    * pursuit steps (``MonsterInstance.next_pursuit_at``)
+    * pending leaves (``Character.pending_leave_at``)
+    * AFK kicks (derived from ``Character.last_activity_at`` + ``AFK_LOBBY_KICK_MINUTES``)
+    * lair respawns (``Room.lair_next_spawn_at`` when non-null), plus any lair room
+      that is spawn-eligible with ``lair_next_spawn_at=NULL`` (dead/missing last
+      instance — matches ``maybe_spawn_lairs`` instant-eligibility)
+    * revive (derived from ``Character.died_at`` + ``COMBAT_ROUND_SECONDS``)
+
+    ``flush_bind_monsters_with_room_heroes`` is event-driven (hero+monster sharing
+    a room) and is intentionally excluded; it's checked separately and cheap when
+    nothing is due. Each call hits the live tables (no caching) so freshness is
+    strict.
+    """
+    from qff.constants import AFK_LOBBY_KICK_MINUTES
+
+    candidates: list = []
+    m_action = MonsterInstance.objects.filter(next_action_at__isnull=False).aggregate(
+        m=Min("next_action_at")
+    )["m"]
+    if m_action:
+        candidates.append(m_action)
+    h_action = Character.objects.filter(
+        is_dead=False, next_action_at__isnull=False
+    ).aggregate(m=Min("next_action_at"))["m"]
+    if h_action:
+        candidates.append(h_action)
+    m_pursuit = MonsterInstance.objects.filter(next_pursuit_at__isnull=False).aggregate(
+        m=Min("next_pursuit_at")
+    )["m"]
+    if m_pursuit:
+        candidates.append(m_pursuit)
+    h_leave = Character.objects.filter(
+        is_dead=False, is_in_realm=True, pending_leave_at__isnull=False
+    ).aggregate(m=Min("pending_leave_at"))["m"]
+    if h_leave:
+        candidates.append(h_leave)
+    h_afk = Character.objects.filter(
+        is_dead=False, is_in_realm=True, last_activity_at__isnull=False
+    ).aggregate(m=Min("last_activity_at"))["m"]
+    if h_afk:
+        candidates.append(h_afk + timedelta(minutes=AFK_LOBBY_KICK_MINUTES))
+    lair_next = Room.objects.filter(
+        monster_lair_template_id__isnull=False, lair_next_spawn_at__isnull=False
+    ).aggregate(m=Min("lair_next_spawn_at"))["m"]
+    if lair_next:
+        candidates.append(lair_next)
+    # Lairs can be spawn-eligible with ``lair_next_spawn_at=NULL`` (no delayed respawn
+    # scheduled). MIN ignores those rows, so without this guard we'd skip
+    # ``maybe_spawn_lairs`` forever when no other timed work exists.
+    live_last_instance = Exists(
+        MonsterInstance.objects.filter(pk=OuterRef("lair_last_instance_id"))
+    )
+    if Room.objects.filter(monster_lair_template_id__isnull=False).filter(
+        Q(lair_last_instance_id__isnull=True) | ~live_last_instance
+    ).filter(Q(lair_next_spawn_at__isnull=True) | Q(lair_next_spawn_at__lte=now)).exists():
+        candidates.append(now)
+    h_revive = Character.objects.filter(
+        is_dead=True, died_at__isnull=False
+    ).aggregate(m=Min("died_at"))["m"]
+    if h_revive:
+        candidates.append(h_revive + timedelta(seconds=COMBAT_ROUND_SECONDS))
+    if not candidates:
+        return None
+    return min(candidates)
+
+
+def _bind_monsters_has_work() -> bool:
+    """Cheap event-driven check used to skip ``flush_bind_monsters_with_room_heroes``.
+
+    Returns True when at least one active hero shares a room with a monster.
+    Single SQL: ``EXISTS(...)`` on the join, no Python loop.
+    """
+    th = presence_threshold()
+    return (
+        Character.objects.filter(
+            last_activity_at__gte=th,
+            is_dead=False,
+            current_room_id__in=MonsterInstance.objects.values("current_room_id"),
+        )
+        .exists()
+    )
+
+
 def run_lazy_simulation(now=None, *, notify_rooms: bool = True) -> list[int]:
     now = now or timezone.now()
     rooms: set[int] = set()
@@ -1472,13 +1561,17 @@ def run_lazy_simulation(now=None, *, notify_rooms: bool = True) -> list[int]:
             if not got:
                 logger.debug("run_lazy_simulation skipped: advisory lock not acquired")
                 return []
-        rooms |= maybe_spawn_lairs(now)
-        rooms |= flush_pursuit_steps(now)
-        rooms |= flush_pending_leaves(now)
-        rooms |= flush_afk_boots(now)
-        rooms |= flush_combat_rounds(now)
-        rooms |= flush_bind_monsters_with_room_heroes(now)
-        _revive_heroes(now)
+        next_event_at = _earliest_time_based_lazy_sim_event(now)
+        time_work_due = next_event_at is not None and next_event_at <= now
+        if time_work_due:
+            rooms |= maybe_spawn_lairs(now)
+            rooms |= flush_pursuit_steps(now)
+            rooms |= flush_pending_leaves(now)
+            rooms |= flush_afk_boots(now)
+            rooms |= flush_combat_rounds(now)
+            _revive_heroes(now)
+        if _bind_monsters_has_work():
+            rooms |= flush_bind_monsters_with_room_heroes(now)
     if rooms and notify_rooms:
         notify_qff_rooms(rooms)
     return list(rooms)

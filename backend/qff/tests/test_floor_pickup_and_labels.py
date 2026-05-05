@@ -46,7 +46,7 @@ class FloorPickupAndLabelsTests(TestCase):
         self.assertEqual(floor.quantity, 2)
 
         self.hero.refresh_from_db()
-        session = build_session_for_character(self.hero, world_sync=False)
+        session = build_session_for_character(self.hero)
         inv_qtys = session["character_profile"]["inventoryQuantities"]
         self.assertIn(1, inv_qtys)
 
@@ -55,7 +55,7 @@ class FloorPickupAndLabelsTests(TestCase):
         ItemInstance.objects.create(item=it, owner_character=None, room=self.room, quantity=1)
         ItemInstance.objects.create(item=it, owner_character=None, room=self.room, quantity=1)
 
-        session = build_session_for_character(self.hero, world_sync=False)
+        session = build_session_for_character(self.hero)
         you_see = session["room"]["youSee"]
         self.assertTrue(any(lbl == "Tail (2)" for lbl in you_see), you_see)
 

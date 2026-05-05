@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import timedelta
+from typing import Iterable
 
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
@@ -10,7 +12,7 @@ from django.utils import timezone
 
 from qff.constants import XP_PER_LEVEL
 from qff.exits import _set_character_unlock, _set_realm_unlock
-from qff.game_helpers import display_name_for_instance
+from qff.game_helpers import display_name_for_instance, load_inventory_instance_map
 from qff.models import (
     Character,
     CharacterQuestProgress,
@@ -45,8 +47,9 @@ def character_item_template_quantity(character: Character, item_id: int) -> int:
     - Equipped: counts 1 per equipped instance (equipped items are non-stackable).
     """
     total = 0
+    inv_map = load_inventory_instance_map(character)
     for iid in character.inventory or []:
-        inst = ItemInstance.objects.filter(pk=iid, owner_character_id=character.pk).first()
+        inst = inv_map.get(iid)
         if not inst or inst.item_id != item_id:
             continue
         total += max(1, int(inst.quantity or 1))
@@ -105,49 +108,133 @@ def unowned_floor_item_template_ids_in_room(room_id: int) -> set[int]:
     )
 
 
+@dataclass(frozen=True)
+class RoomItemVisibilityBatch:
+    """Pre-fetched per-character lookups so per-room-item visibility is O(1).
+
+    Fields are set-of-int snapshots so calling code does not retain ORM cursors.
+    """
+
+    floor_template_ids: frozenset[int]
+    once_ever_claim_room_item_ids: frozenset[int]
+    progressive_spawn_room_item_ids: frozenset[int]
+    active_quest_state_ids: frozenset[int]
+
+
+def build_room_item_visibility_batch(
+    character: Character,
+    room_id: int,
+    room_items: Iterable[RoomItem],
+) -> RoomItemVisibilityBatch:
+    """Bundle the four DB lookups room_item_visible_to_character needs into one
+    pass per room. Reduces a previously-O(N_room_items) query plan to O(1)."""
+    ri_list = list(room_items)
+    once_ever_ids = [
+        ri.id for ri in ri_list if ri.mint_policy == RoomItem.MintPolicy.ONCE_EVER
+    ]
+    progressive_ids = [
+        ri.id
+        for ri in ri_list
+        if ri.mint_policy != RoomItem.MintPolicy.ONCE_EVER
+        and not ri.allow_repeat_while_carrying
+    ]
+    once_claims: set[int] = set()
+    if once_ever_ids:
+        once_claims = set(
+            RoomItemCharacterClaim.objects.filter(
+                character_id=character.id, room_item_id__in=once_ever_ids
+            ).values_list("room_item_id", flat=True)
+        )
+    progressive_spawns: set[int] = set()
+    if progressive_ids:
+        progressive_spawns = set(
+            RoomItemSpawn.objects.filter(
+                character_id=character.id, room_item_id__in=progressive_ids
+            ).values_list("room_item_id", flat=True)
+        )
+    has_quest_gate = any(ri.visible_quest_state_id for ri in ri_list)
+    quest_state_ids: set[int] = set()
+    if has_quest_gate:
+        quest_state_ids = set(
+            CharacterQuestProgress.objects.filter(character_id=character.id)
+            .values_list("current_state_id", flat=True)
+        )
+    return RoomItemVisibilityBatch(
+        floor_template_ids=frozenset(unowned_floor_item_template_ids_in_room(room_id)),
+        once_ever_claim_room_item_ids=frozenset(once_claims),
+        progressive_spawn_room_item_ids=frozenset(progressive_spawns),
+        active_quest_state_ids=frozenset(quest_state_ids),
+    )
+
+
 def room_item_visible_to_character(
     character: Character,
     room_item: RoomItem,
-    floor_template_ids_in_room: set[int],
+    floor_template_ids_in_room: "set[int] | frozenset[int] | RoomItemVisibilityBatch",
 ) -> bool:
-    """Room slot: quest gate (if set), not carrying template, no unowned floor instance of template."""
+    """Room slot: quest gate (if set), not carrying template, no unowned floor instance of template.
+
+    Accepts either a plain ``set`` of floor template ids (legacy) or a
+    ``RoomItemVisibilityBatch`` produced by ``build_room_item_visibility_batch``.
+    The batch path is required for hot loops; the legacy path is fine for
+    single-room-item callers.
+    """
+    batch: RoomItemVisibilityBatch | None
+    if isinstance(floor_template_ids_in_room, RoomItemVisibilityBatch):
+        batch = floor_template_ids_in_room
+        floor_ids: set[int] | frozenset[int] = batch.floor_template_ids
+    else:
+        batch = None
+        floor_ids = floor_template_ids_in_room
     if room_item.interactable_id:
         if not container_interactable_active_for_character(
             character, room_item.interactable_id
         ):
             return False
     if room_item.visible_quest_state_id:
-        try:
-            st = room_item.visible_quest_state
-        except ObjectDoesNotExist:
-            return False
-        if not CharacterQuestProgress.objects.filter(
-            character=character,
-            quest_id=st.quest_id,
-            current_state_id=st.id,
-        ).exists():
-            return False
+        if batch is not None:
+            if room_item.visible_quest_state_id not in batch.active_quest_state_ids:
+                return False
+        else:
+            try:
+                st = room_item.visible_quest_state
+            except ObjectDoesNotExist:
+                return False
+            if not CharacterQuestProgress.objects.filter(
+                character=character,
+                quest_id=st.quest_id,
+                current_state_id=st.id,
+            ).exists():
+                return False
     if not room_item.allow_repeat_while_carrying and character_carries_item_template(
         character, room_item.item_id
     ):
         return False
     if room_item.mint_policy == RoomItem.MintPolicy.ONCE_EVER:
-        if RoomItemCharacterClaim.objects.filter(
+        if batch is not None:
+            if room_item.id in batch.once_ever_claim_room_item_ids:
+                return False
+        elif RoomItemCharacterClaim.objects.filter(
             room_item_id=room_item.id, character_id=character.id
         ).exists():
             return False
-    elif not room_item.allow_repeat_while_carrying and RoomItemSpawn.objects.filter(
-        room_item_id=room_item.id, character_id=character.id
-    ).exists():
-        return False
-    if room_item.item_id in floor_template_ids_in_room:
+    elif not room_item.allow_repeat_while_carrying:
+        if batch is not None:
+            if room_item.id in batch.progressive_spawn_room_item_ids:
+                return False
+        elif RoomItemSpawn.objects.filter(
+            room_item_id=room_item.id, character_id=character.id
+        ).exists():
+            return False
+    if room_item.item_id in floor_ids:
         return False
     return True
 
 
 def character_carries_item_template(character: Character, item_id: int) -> bool:
+    inv_map = load_inventory_instance_map(character)
     for iid in character.inventory or []:
-        inst = ItemInstance.objects.filter(pk=iid, owner_character_id=character.pk).first()
+        inst = inv_map.get(iid)
         if inst and inst.item_id == item_id:
             return True
     for attr in SLOT_ATTRS:
@@ -365,26 +452,29 @@ def apply_due_quest_reverts(character: Character) -> None:
 
 
 def sync_character_world_before_session(character: Character) -> Character:
-    """Apply due quest reverts and clear expired container focus; return a fresh Character row."""
+    """Apply due quest reverts and clear expired container focus.
+
+    Mutates the passed ``character`` in place when possible so that callers retain
+    their fully-hydrated row (equipment slots, current_room__area, etc.) instead
+    of dropping back to a partially loaded re-fetch.
+    """
     apply_due_quest_reverts(character)
-    ch = Character.objects.select_related(
-        "spawn_room", "character_class", "current_room", "current_room__area"
-    ).get(pk=character.pk)
     if (
-        ch.container_focus_interactable_id
-        and ch.container_focus_expires_at
-        and timezone.now() >= ch.container_focus_expires_at
+        character.container_focus_interactable_id
+        and character.container_focus_expires_at
+        and timezone.now() >= character.container_focus_expires_at
     ):
-        ch.container_focus_interactable_id = None
-        ch.container_focus_expires_at = None
-        ch.save(
+        character.container_focus_interactable_id = None
+        character.container_focus_interactable = None
+        character.container_focus_expires_at = None
+        character.save(
             update_fields=[
                 "container_focus_interactable",
                 "container_focus_expires_at",
                 "updated_at",
             ]
         )
-    return ch
+    return character
 
 
 def _apply_effect(character: Character, eff: QuestEffect) -> list[str]:
@@ -434,8 +524,9 @@ def _apply_effect(character: Character, eff: QuestEffect) -> list[str]:
 
 
 def _remove_one_instance_of_template(character: Character, item_template_id: int) -> str | None:
+    inv_map = load_inventory_instance_map(character)
     for iid in character.inventory or []:
-        inst = ItemInstance.objects.filter(pk=iid, owner_character_id=character.pk).first()
+        inst = inv_map.get(iid)
         if inst and inst.item_id == item_template_id:
             return _delete_instance_from_character(character, inst)
     for attr in SLOT_ATTRS:
@@ -641,7 +732,6 @@ def handle_interactable_use(character: Character, obj: Interactable) -> list[str
             ]
         )
         out.append(f"You open the {obj.name}.")
-        floor_ids = unowned_floor_item_template_ids_in_room(char.current_room_id)
         inside: list[str] = []
         for inst in ItemInstance.objects.filter(
             room_id=char.current_room_id,
@@ -650,11 +740,17 @@ def handle_interactable_use(character: Character, obj: Interactable) -> list[str
         ).select_related("item", "visible_quest_state"):
             if floor_item_visible_to_character(char, inst):
                 inside.append(display_name_for_instance(inst))
-        for ri in RoomItem.objects.filter(
-            room_id=char.current_room_id,
-            interactable_id=obj.pk,
-        ).select_related("item", "visible_quest_state"):
-            if room_item_visible_to_character(char, ri, floor_ids):
+        container_room_items = list(
+            RoomItem.objects.filter(
+                room_id=char.current_room_id,
+                interactable_id=obj.pk,
+            ).select_related("item", "visible_quest_state")
+        )
+        ri_batch = build_room_item_visibility_batch(
+            char, char.current_room_id, container_room_items
+        )
+        for ri in container_room_items:
+            if room_item_visible_to_character(char, ri, ri_batch):
                 inside.append(ri.nickname if ri.nickname else ri.item.name)
         if inside:
             out.append(f"Inside: {_natural_join_phrases(inside)}.")

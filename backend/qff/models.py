@@ -120,6 +120,9 @@ class Room(models.Model):
 
     class Meta:
         ordering = ["area_id", "name"]
+        indexes = [
+            models.Index(fields=["lair_next_spawn_at"]),
+        ]
 
     def __str__(self) -> str:
         return f"{self.name} ({self.area_id})"
@@ -646,8 +649,14 @@ class RoomItemCharacterClaim(models.Model):
                 name="qff_roomitemcharacterclaim_unique_slot_hero",
             ),
         ]
+        # Index names pinned to what migration 0044 created; without explicit
+        # ``name=`` Django re-derives a hash that drifts across versions and
+        # triggers spurious ``RenameIndex`` migrations.
         indexes = [
-            models.Index(fields=["room_item", "character"]),
+            models.Index(
+                fields=["room_item", "character"],
+                name="qff_roomitemclaim_room_ch_idx",
+            ),
         ]
 
 
@@ -668,9 +677,16 @@ class RoomItemSpawn(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        # Index names pinned to what migration 0037 created (see RoomItemCharacterClaim above).
         indexes = [
-            models.Index(fields=["room_item", "character"]),
-            models.Index(fields=["character", "room_item"]),
+            models.Index(
+                fields=["room_item", "character"],
+                name="qff_roomite_room_it_7f2a91_idx",
+            ),
+            models.Index(
+                fields=["character", "room_item"],
+                name="qff_roomite_charact_b3c4d5_idx",
+            ),
         ]
 
 
@@ -878,6 +894,9 @@ class Character(models.Model):
     class Meta:
         indexes = [
             models.Index(fields=["current_room", "last_activity_at"]),
+            models.Index(fields=["next_action_at"]),
+            models.Index(fields=["pending_leave_at"]),
+            models.Index(fields=["died_at"]),
         ]
 
     def save(self, *args, **kwargs):

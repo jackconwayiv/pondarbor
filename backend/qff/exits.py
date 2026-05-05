@@ -7,6 +7,7 @@ from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
 
+from qff.game_helpers import load_inventory_instance_map
 from qff.models import (
     Character,
     CharacterExitSeen,
@@ -69,22 +70,14 @@ def _set_character_unlock(character: Character, room_exit: RoomExit) -> None:
 
 def _find_key_instance(character: Character, key_item_id: int) -> ItemInstance | None:
     """First matching key in inventory order, then equipment."""
-    seen: set[int] = set()
+    inv_map = load_inventory_instance_map(character)
     for iid in character.inventory or []:
-        if iid in seen:
-            continue
-        inst = (
-            ItemInstance.objects.filter(pk=iid, owner_character_id=character.pk)
-            .select_related("item")
-            .first()
-        )
+        inst = inv_map.get(iid)
         if inst and inst.item_id == key_item_id:
             return inst
-        if inst:
-            seen.add(inst.pk)
     for attr in SLOT_ATTRS:
         inst = getattr(character, attr, None)
-        if inst and inst.item_id == key_item_id and inst.pk not in seen:
+        if inst and inst.item_id == key_item_id and inst.pk not in inv_map:
             return inst
     return None
 

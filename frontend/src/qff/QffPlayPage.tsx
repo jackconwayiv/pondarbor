@@ -543,6 +543,24 @@ export default function QffPlayPage() {
       setLine("");
       return;
     }
+    const moveDir = tryParseQffMoveDirection(raw);
+    if (
+      moveDir &&
+      sessionRef.current?.has_character &&
+      !sessionRef.current.exits.some((ex) => ex.direction === moveDir)
+    ) {
+      setLogLines((prev) => {
+        const nextId = () => logLineIdRef.current++;
+        return [
+          ...prev.map((p) => ({ ...p, recent: false })),
+          { id: nextId(), text: `> ${raw}`, recent: true },
+          { id: nextId(), text: "You can't go that way.", recent: true },
+        ];
+      });
+      setLine("");
+      queueMicrotask(() => inputRef.current?.focus());
+      return;
+    }
     if (commandInFlightRef.current) {
       queuedLineRef.current = raw;
       setLine("");
@@ -552,7 +570,6 @@ export default function QffPlayPage() {
     setCommandPending(true);
     commandActionLogBroadcastIdsRef.current.clear();
     setLine("");
-    const moveDir = tryParseQffMoveDirection(raw);
     const cur = sessionRef.current;
     const optimisticSecond =
       cur?.has_character && moveDir ? optimisticMoveHeadLine(cur.exits, moveDir) : null;

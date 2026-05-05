@@ -1077,6 +1077,51 @@ class MonsterCombatTests(TestCase):
         ).first()
         self.assertIsNotNone(b)
 
+    def test_flush_combat_rounds_no_crash_when_hero_kills_monster_before_monster_turn(self):
+        """Stale monster pk still in due list after hero kills it same initiative tick."""
+        now = timezone.now()
+        na = now - timedelta(seconds=1)
+        self.hero.current_room_id = self.room_danger.id
+        self.hero.last_activity_at = now
+        self.hero.combat_target_monster_id = self.monster.pk
+        self.hero.next_action_at = na
+        self.hero.save(
+            update_fields=[
+                "current_room",
+                "last_activity_at",
+                "combat_target_monster",
+                "next_action_at",
+                "updated_at",
+            ]
+        )
+        self.monster.cur_hp = 1
+        self.monster.next_action_at = na
+        self.monster.engaged_character_id = self.hero.pk
+        self.monster.monster_strike_pending = False
+        self.monster.save(
+            update_fields=[
+                "cur_hp",
+                "next_action_at",
+                "engaged_character",
+                "monster_strike_pending",
+                "updated_at",
+            ]
+        )
+        lethal = StrikeResult(
+            outcome="hit",
+            damage=999,
+            base_damage=999,
+            damage_after_mitigation=999,
+            was_crit=False,
+            hit_chance=99,
+            crit_chance=0,
+        )
+        with patch("qff.monster_sim._initiative_roll_hero", return_value=50):
+            with patch("qff.monster_sim._initiative_roll_monster", return_value=50):
+                with patch("qff.monster_sim.resolve_physical_strike", return_value=lethal):
+                    flush_combat_rounds(now)
+        self.assertFalse(MonsterInstance.objects.filter(pk=self.monster.pk).exists())
+
     def test_flush_does_not_advance_monster_when_engaged_target_wrong_room(self):
         """Invalid strike target must not bump next_action_at."""
         now = timezone.now()

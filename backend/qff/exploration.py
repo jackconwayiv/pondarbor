@@ -30,17 +30,17 @@ def mark_room_visited(character: Character, room_id: int) -> None:
     )
 
 
-def sync_seen_exits_for_character(character: Character) -> None:
-    """Mark exits the character can currently see (including conditionally revealed)."""
-    visited = list(
-        CharacterRoomVisit.objects.filter(character=character).values_list(
-            "room_id", flat=True
-        )
-    )
-    if not visited:
+def _sync_seen_exits_for_room_ids(character: Character, room_ids: list[int]) -> None:
+    """Mark exits the character can see from ``room_ids`` (subset or full visited set).
+
+    Visibility depends on inventory and quest state, not current room — incremental
+    updates on room enter remain correct because ``exit_is_visible_to_character``
+    does not use ``character.current_room``.
+    """
+    if not room_ids:
         return
     visible_ids: list[int] = []
-    for ex in get_room_exits_from_rooms(visited):
+    for ex in get_room_exits_from_rooms(room_ids):
         if exit_is_visible_to_character(character, ex):
             visible_ids.append(ex.pk)
     if not visible_ids:
@@ -61,6 +61,16 @@ def sync_seen_exits_for_character(character: Character) -> None:
         ],
         ignore_conflicts=True,
     )
+
+
+def sync_seen_exits_for_character(character: Character) -> None:
+    """Mark exits the character can currently see (including conditionally revealed)."""
+    visited = list(
+        CharacterRoomVisit.objects.filter(character=character).values_list(
+            "room_id", flat=True
+        )
+    )
+    _sync_seen_exits_for_room_ids(character, visited)
 
 
 @transaction.atomic
@@ -86,7 +96,7 @@ def on_leave_room(room_id: int) -> None:
 @transaction.atomic
 def on_enter_room(character: Character, room_id: int) -> None:
     mark_room_visited(character, room_id)
-    sync_seen_exits_for_character(character)
+    _sync_seen_exits_for_room_ids(character, [room_id])
     # Keep one line of room context on entry so arrivals do not miss a just-emitted
     # combat/action broadcast that raced slightly ahead of their move request.
     recent_ids = list(

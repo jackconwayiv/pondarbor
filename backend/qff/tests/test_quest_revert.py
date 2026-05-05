@@ -1,7 +1,9 @@
 """Timed quest state revert (silent rewind)."""
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from qff.models import (
@@ -77,3 +79,13 @@ class QuestRevertTests(TestCase):
         self.assertEqual(self.cqp.current_state_id, self.st_a.id)
         self.assertIsNone(self.cqp.quest_revert_at)
         self.assertIsNone(self.cqp.quest_revert_to_state_id)
+
+    def test_apply_due_quest_reverts_fast_path_when_none_due(self):
+        """No scheduled revert → cheap EXISTS only (no atomic revert loop)."""
+        with CaptureQueriesContext(connection) as ctx:
+            apply_due_quest_reverts(self.character)
+        self.assertLessEqual(
+            len(ctx.captured_queries),
+            2,
+            "Expected EXISTS fast-path without opening revert transaction",
+        )

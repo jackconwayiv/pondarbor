@@ -254,14 +254,20 @@ def _reevaluate_monster_engagement_in_room(monster: MonsterInstance, room_id: in
 
 def _finish_monster_strike_turn(monster_pk: int, room_id: int, now) -> None:
     """Re-pick engagement after resolving a strike; arm if cadence still needs it."""
-    m = MonsterInstance.objects.select_related("template").get(pk=monster_pk)
+    m = MonsterInstance.objects.select_related("template").filter(pk=monster_pk).first()
+    if not m:
+        return
     _reevaluate_monster_engagement_in_room(m, room_id)
-    m2 = MonsterInstance.objects.select_related("template").get(pk=monster_pk)
-    try_bind_monster_to_room_heroes(m2, room_id, now)
+    m = MonsterInstance.objects.select_related("template").filter(pk=monster_pk).first()
+    if not m:
+        return
+    try_bind_monster_to_room_heroes(m, room_id, now)
 
 
 def _arm_monster_try_bind(monster_pk: int, room_id: int, now) -> None:
-    m = MonsterInstance.objects.select_related("template").get(pk=monster_pk)
+    m = MonsterInstance.objects.select_related("template").filter(pk=monster_pk).first()
+    if not m:
+        return
     try_bind_monster_to_room_heroes(m, room_id, now)
 
 
@@ -650,8 +656,13 @@ def ensure_monster_engaged_by_attacker(
 
 
 def engage_monsters_for_new_arrivals(hero: Character, room_id: int) -> None:
+    monsters = list(
+        MonsterInstance.objects.filter(current_room_id=room_id).select_related("template")
+    )
+    if not monsters:
+        return
     now = timezone.now()
-    for m in MonsterInstance.objects.filter(current_room_id=room_id).select_related("template"):
+    for m in monsters:
         armed = m.next_action_at is not None or m.monster_strike_pending
         if m.engaged_character_id and armed:
             continue
@@ -1003,6 +1014,8 @@ def award_kill(
 def _resolve_monster_strike(monster: MonsterInstance, now) -> bool:
     """Resolve monster damage turn if due. Returns True if monster combat schedule should advance."""
     room_id = monster.current_room_id
+    if not MonsterInstance.objects.filter(pk=monster.pk).exists():
+        return False
     tgt_id = monster.engaged_character_id
     if not tgt_id:
         m2 = MonsterInstance.objects.select_related("template").get(pk=monster.pk)

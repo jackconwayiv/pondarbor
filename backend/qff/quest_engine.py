@@ -428,6 +428,12 @@ def apply_transition(character: Character, transition: QuestTransition) -> list[
 def apply_due_quest_reverts(character: Character) -> None:
     """Silent rewind of quest state when scheduled revert time has passed."""
     now = timezone.now()
+    if not CharacterQuestProgress.objects.filter(
+        character_id=character.pk,
+        quest_revert_at__isnull=False,
+        quest_revert_at__lte=now,
+    ).exists():
+        return
     with transaction.atomic():
         for cqp in CharacterQuestProgress.objects.select_for_update().filter(
             character_id=character.pk,

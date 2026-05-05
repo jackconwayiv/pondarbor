@@ -173,6 +173,14 @@ export default function QffPlayPage() {
 
   const load = useCallback(async () => {
     const token = await getTokenRef.current();
+    // POST activity must run before GET /session/: build_session uses force_lobby when
+    // is_in_realm is false (e.g. after Leave). Touching activity re-enters the realm so
+    // the session payload does not immediately redirect back to /qff.
+    try {
+      await postQffSessionActivity(token);
+    } catch {
+      /* ignore — still fetch session */
+    }
     const s = await fetchQffSession(token);
     commandTokenRef.current = token;
     if (!s.has_character) {

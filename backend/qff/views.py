@@ -550,7 +550,9 @@ def command_view(request):
                     status=status.HTTP_410_GONE,
                 )
             t2 = time.perf_counter()
-            session = build_session_for_character(char_after, already_synced=True)
+            session = build_session_for_character(
+                char_after, already_synced=True, for_command_response=True
+            )
             session_ms = (time.perf_counter() - t2) * 1000
             # Chronological narrative: move/teleport put first-person lines before engagement broadcasts.
             raw_log = session.get("action_log") or []

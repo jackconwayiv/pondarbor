@@ -103,7 +103,9 @@ class CommandQueryBudgetTests(TestCase):
         execute_command(char, parse_command(line), world_sync=False)
         run_lazy_simulation(notify_rooms=False)
         char_after = self._fresh_hero()
-        build_session_for_character(char_after)
+        build_session_for_character(
+            char_after, already_synced=True, for_command_response=True
+        )
 
     def test_emote_command_query_budget(self):
         """Emote on a fresh hero: no inventory / monsters / quests in scope.

@@ -36,6 +36,8 @@ import { QFF_PLAY_PAGE_CONTENT_PROPS } from "./qffUi";
 const WS_PING_MS = 6_000;
 const WS_RECONNECT_BASE_MS = 2000;
 const WS_WHO_TIMEOUT_MS = 800;
+/** After initial GET /session/, HTTP activity touch only if WS did not connect in time. */
+const WS_ACTIVITY_FALLBACK_MS = 1_200;
 
 /** Charcoal + light gray (same family as action log). */
 const HUD_PANEL_BG = "#141414";
@@ -163,6 +165,7 @@ export default function QffPlayPage() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const logScrollRef = useRef<HTMLDivElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const activityFallbackTimerRef = useRef<number | null>(null);
   const whoRequestSeqRef = useRef(0);
   const whoResponseWaitersRef = useRef(new Map<number, (rows: QffSessionWithCharacter["active_heroes"]) => void>());
   const [commandPending, setCommandPending] = useState(false);
@@ -170,11 +173,6 @@ export default function QffPlayPage() {
 
   const load = useCallback(async () => {
     const token = await getTokenRef.current();
-    try {
-      await postQffSessionActivity(token);
-    } catch {
-      /* ignore — session GET still works */
-    }
     const s = await fetchQffSession(token);
     commandTokenRef.current = token;
     if (!s.has_character) {
@@ -182,6 +180,20 @@ export default function QffPlayPage() {
       return;
     }
     setSession(s);
+    if (activityFallbackTimerRef.current != null) {
+      window.clearTimeout(activityFallbackTimerRef.current);
+      activityFallbackTimerRef.current = null;
+    }
+    activityFallbackTimerRef.current = window.setTimeout(async () => {
+      activityFallbackTimerRef.current = null;
+      const ws = wsRef.current;
+      if (ws && ws.readyState === WebSocket.OPEN) return;
+      try {
+        await postQffSessionActivity(await getTokenRef.current());
+      } catch {
+        /* ignore — WS may connect later */
+      }
+    }, WS_ACTIVITY_FALLBACK_MS);
   }, []);
 
   const handleLeaveClick = useCallback(async () => {
@@ -250,6 +262,10 @@ export default function QffPlayPage() {
     })();
     return () => {
       cancelled = true;
+      if (activityFallbackTimerRef.current != null) {
+        window.clearTimeout(activityFallbackTimerRef.current);
+        activityFallbackTimerRef.current = null;
+      }
     };
   }, [isAuthenticated, sessionUser?.user?.is_approved, load]);
 
@@ -653,7 +669,23 @@ export default function QffPlayPage() {
           setContainerPanelOpen(false);
           setActiveUsersPanelOpen(false);
         }
-        setSession(sessionSnapshot);
+        setSession((prev) => {
+          if (!sessionSnapshot.has_character) return sessionSnapshot;
+          if (!sessionSnapshot.session_partial || !prev?.has_character) {
+            return sessionSnapshot;
+          }
+          const snapshotMapStub =
+            sessionSnapshot.area_map.minimal === true &&
+            sessionSnapshot.area_map.grids.length === 0;
+          const usePrevAreaMap =
+            snapshotMapStub &&
+            (prev.area_map.grids.length > 0 || prev.area_map.minimal !== true);
+          return {
+            ...sessionSnapshot,
+            active_heroes: sessionSnapshot.active_heroes ?? prev.active_heroes,
+            area_map: usePrevAreaMap ? prev.area_map : sessionSnapshot.area_map,
+          };
+        });
       } catch (e) {
         setLogLines((prev) => {
           const pending = optimisticCommandLogIdsRef.current;

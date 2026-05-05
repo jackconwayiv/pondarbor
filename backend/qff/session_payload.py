@@ -617,12 +617,21 @@ def _active_quests_json(character: Character) -> list[dict]:
     return out
 
 
-def build_session_for_character(character, *, already_synced: bool = False) -> dict:
+def build_session_for_character(
+    character,
+    *,
+    already_synced: bool = False,
+    for_command_response: bool = False,
+) -> dict:
     """Build /qff/session/ JSON for the supplied character.
 
     The character is expected to be already-hydrated (equipment slots,
     current_room, area). ``sync_character_world_before_session`` runs in-place
     so callers may safely keep their reference to the same row.
+
+    When ``for_command_response`` is True (POST /command return payload), omit
+    realm-wide ``active_heroes`` and ship a minimal ``area_map`` stub so the
+    client can merge from its prior full GET /session/ snapshot.
     """
     if not already_synced:
         character = sync_character_world_before_session(character)
@@ -738,7 +747,7 @@ def build_session_for_character(character, *, already_synced: bool = False) -> d
         },
         "exits": exits,
         "others_here": others_here_detailed(character),
-        "active_heroes": active_heroes_in_realm(),
+        **({} if for_command_response else {"active_heroes": active_heroes_in_realm()}),
         "force_lobby": _force_lobby_for_inactivity(character),
         "area_map": (
             {
@@ -746,7 +755,8 @@ def build_session_for_character(character, *, already_synced: bool = False) -> d
                 "grids": [],
                 "minimal": True,
             }
-            if getattr(settings, "QFF_SESSION_MINIMAL_AREA_MAP", False)
+            if for_command_response
+            or getattr(settings, "QFF_SESSION_MINIMAL_AREA_MAP", False)
             else build_area_map(character)
         ),
         "character_profile": build_character_profile(character),
@@ -754,4 +764,5 @@ def build_session_for_character(character, *, already_synced: bool = False) -> d
         "shops": _shops_in_room_json(room.id),
         "active_quests": _active_quests_json(character),
         "pending_prompt": getattr(character, "pending_prompt", None) or None,
+        **({"session_partial": True} if for_command_response else {}),
     }

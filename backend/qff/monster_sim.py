@@ -1014,6 +1014,7 @@ def _resolve_monster_strike(monster: MonsterInstance, now) -> bool:
     hero = _character_for_combat(tgt_id)
     if not hero or hero.current_room_id != room_id:
         return False
+    heroes_here = _heroes_in_room(room_id)
     tpl = monster.template
     lo, hi = int(tpl.damage_min), int(tpl.damage_max)
     if hi < lo:
@@ -1041,7 +1042,7 @@ def _resolve_monster_strike(monster: MonsterInstance, now) -> bool:
             target_character_id=hero.pk,
             log_tone="miss",
         )
-        for h in _heroes_in_room(room_id):
+        for h in heroes_here:
             if h.pk != hero.pk:
                 _narrate(
                     room_id,
@@ -1078,7 +1079,7 @@ def _resolve_monster_strike(monster: MonsterInstance, now) -> bool:
             hit_you = f"{mname} strikes you for {dmg} damage!"
             hit_peer = f"{mname} strikes {hero.name} for {dmg} damage!"
     _narrate(room_id, hit_you, target_character_id=hero.pk, log_tone="enemy_hit")
-    for h in _heroes_in_room(room_id):
+    for h in heroes_here:
         if h.pk != hero.pk:
             _narrate(
                 room_id, hit_peer, target_character_id=h.pk, log_tone="enemy_hit"
@@ -1103,11 +1104,12 @@ def _resolve_hero_strike(char: Character, now) -> None:
     char = _character_for_combat(char.pk)
     if not char:
         return
+    rid = char.current_room_id
+    heroes_here = _heroes_in_room(rid)
     atk = hero_attacker_stats(char)
     dfn = monster_defender_stats(monster)
     res = resolve_physical_strike(atk, dfn)
     mname = monster.template.name
-    rid = char.current_room_id
     mh = char.main_hand_item
     mh_item = mh.item if mh else None
     weapon_name = mh_item.name if mh_item else "fists"
@@ -1127,7 +1129,7 @@ def _resolve_hero_strike(char: Character, now) -> None:
             you_miss = f"Your attack misses the {mname}."
             peer_miss = f"{char.name}'s attack misses the {mname}."
         _narrate(rid, you_miss, target_character_id=char.pk, log_tone="miss")
-        for h in _heroes_in_room(rid):
+        for h in heroes_here:
             if h.pk != char.pk:
                 _narrate(rid, peer_miss, target_character_id=h.pk, log_tone="miss")
         return
@@ -1135,15 +1137,14 @@ def _resolve_hero_strike(char: Character, now) -> None:
     dmg = res.damage
     nm = max(0, int(monster.cur_hp) - dmg)
     MonsterInstance.objects.filter(pk=monster.pk).update(cur_hp=nm, updated_at=timezone.now())
+    monster = MonsterInstance.objects.select_related("template").get(pk=monster.pk)
     if dmg > 0:
-        m2 = MonsterInstance.objects.get(pk=monster.pk)
-        cdict = dict(m2.xp_contribution or {})
+        cdict = dict(monster.xp_contribution or {})
         # Damage drives XP weights today; party heal/shield/buff-on-ally hooks can add
         # contribution here when those actions exist (see monster plan: support XP).
         cdict[str(char.pk)] = int(cdict.get(str(char.pk), 0)) + dmg
-        m2.xp_contribution = cdict
-        m2.save(update_fields=["xp_contribution", "updated_at"])
-    monster = MonsterInstance.objects.get(pk=monster.pk)
+        monster.xp_contribution = cdict
+        monster.save(update_fields=["xp_contribution", "updated_at"])
     if res.outcome == "crit":
         you = f"You critically {verb} the {mname} with your {weapon_name} for {dmg} damage!"
         peer = f"{char.name} critically {verbs} the {mname} with their {weapon_name} for {dmg} damage!"
@@ -1151,7 +1152,7 @@ def _resolve_hero_strike(char: Character, now) -> None:
         you = f"You {verb} the {mname} with your {weapon_name} for {dmg} damage!"
         peer = f"{char.name} {verbs} the {mname} with their {weapon_name} for {dmg} damage!"
     _narrate(rid, you, target_character_id=char.pk, log_tone="hero_hit")
-    for h in _heroes_in_room(rid):
+    for h in heroes_here:
         if h.pk != char.pk:
             _narrate(rid, peer, target_character_id=h.pk, log_tone="hero_hit")
     if nm <= 0:

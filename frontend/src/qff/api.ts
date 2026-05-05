@@ -140,6 +140,8 @@ export type QffSessionWithCharacter = {
     class_name: string;
     area_name: string;
   }>;
+  /** POST /command slim payload: merge active_heroes + area_map from prior full session. */
+  session_partial?: boolean;
   /** When true, client should leave play (e.g. AFK kick to lobby). */
   force_lobby?: boolean;
   /** One minimap grid per visited area; current_area_id marks where the player is. */

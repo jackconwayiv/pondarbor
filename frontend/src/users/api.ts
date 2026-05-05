@@ -227,3 +227,33 @@ export async function fetchBootstrapSession(accessToken: string): Promise<{
     inbox: ApiBootstrapInboxResponse;
   };
 }
+
+/**
+ * Probe approval status without fetching full session/inbox.
+ *
+ * Returns:
+ * - `true` when backend returns 200
+ * - `false` when backend returns 403 (pending/rejected/suspended)
+ * - throws on other non-OK statuses
+ */
+export async function fetchApprovedCheck(
+  accessToken: string,
+): Promise<boolean> {
+  const response = await fetch(`${apiBase()}/api/v1/users/approved-check/`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    credentials: "omit",
+  });
+
+  if (response.status === 403) return false;
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`approved-check failed (${response.status}): ${text}`);
+  }
+
+  return true;
+}

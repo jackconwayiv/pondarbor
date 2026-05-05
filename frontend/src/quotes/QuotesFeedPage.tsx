@@ -130,6 +130,7 @@ type QuoteCardProps = {
   getApiAccessToken: () => Promise<string>;
   tagSuggestions: QuoteLabel[];
   onRefreshQuotes: () => Promise<void>;
+  onAfterQuoteMutation: () => void;
 };
 
 function QuoteCard({
@@ -141,6 +142,7 @@ function QuoteCard({
   getApiAccessToken,
   tagSuggestions,
   onRefreshQuotes,
+  onAfterQuoteMutation,
 }: QuoteCardProps) {
   const canEdit = viewerUserId != null && quote.owner.id === viewerUserId;
   const editorRef = useRef<HTMLDivElement | null>(null);
@@ -198,6 +200,7 @@ function QuoteCard({
       const token = await getApiAccessToken();
       await patchQuote(quote.id, payload, token);
       await onRefreshQuotes();
+      onAfterQuoteMutation();
       setCardSuccess("Saved.");
       return true;
     } catch (err: unknown) {
@@ -217,6 +220,7 @@ function QuoteCard({
     saveAsDraft,
     getApiAccessToken,
     onRefreshQuotes,
+    onAfterQuoteMutation,
     quote.id,
   ]);
 
@@ -265,6 +269,7 @@ function QuoteCard({
       const token = await getApiAccessToken();
       await deleteQuote(quote.id, token);
       await onRefreshQuotes();
+      onAfterQuoteMutation();
       onEndEditing();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to delete quote");
@@ -277,6 +282,7 @@ function QuoteCard({
     getApiAccessToken,
     onEndEditing,
     onRefreshQuotes,
+    onAfterQuoteMutation,
     quote.id,
   ]);
 
@@ -440,6 +446,7 @@ export default function QuotesFeedPage() {
     sessionUser,
     getApiAccessToken,
     refreshSession,
+    resyncSessionSilently,
     error: sessionError,
   } = useAppSession();
 
@@ -465,6 +472,10 @@ export default function QuotesFeedPage() {
   const [bulkImportText, setBulkImportText] = useState("");
 
   const isApprovedUser = !!sessionUser?.user?.is_approved;
+  const onAfterQuoteMutation = useCallback(() => {
+    // Non-blocking session sync so achievement unlocks surface without full-page refresh.
+    void resyncSessionSilently().catch(() => {});
+  }, [resyncSessionSilently]);
 
   const refreshQuotes = useCallback(async () => {
     if (authBlocked) return;
@@ -592,6 +603,7 @@ export default function QuotesFeedPage() {
       const token = await getApiAccessToken();
       await createQuote(payload, token);
       await refreshQuotes();
+      onAfterQuoteMutation();
       setBody("");
       setDateOfQuote("");
       setTagsCsv("");
@@ -603,7 +615,15 @@ export default function QuotesFeedPage() {
     } finally {
       setSaving(false);
     }
-  }, [body, tagsCsv, saveAsDraft, dateOfQuote, getApiAccessToken, refreshQuotes]);
+  }, [
+    body,
+    tagsCsv,
+    saveAsDraft,
+    dateOfQuote,
+    getApiAccessToken,
+    refreshQuotes,
+    onAfterQuoteMutation,
+  ]);
 
   const onBulkImport = useCallback(async () => {
     if (!isApprovedUser) {
@@ -622,6 +642,7 @@ export default function QuotesFeedPage() {
       const payload: QuoteBulkImportPayload = { text: bulkImportText };
       const result = await bulkImportQuotes(payload, token);
       await refreshQuotes();
+      onAfterQuoteMutation();
       setBulkImportText("");
       setSuccess(
         `Imported ${result.created_count} quote${result.created_count === 1 ? "" : "s"}.`,
@@ -631,7 +652,13 @@ export default function QuotesFeedPage() {
     } finally {
       setSaving(false);
     }
-  }, [isApprovedUser, bulkImportText, getApiAccessToken, refreshQuotes]);
+  }, [
+    isApprovedUser,
+    bulkImportText,
+    getApiAccessToken,
+    refreshQuotes,
+    onAfterQuoteMutation,
+  ]);
 
   if (isLoading) {
     return <SessionLoadingCard />;
@@ -910,6 +937,7 @@ export default function QuotesFeedPage() {
                   getApiAccessToken={getApiAccessToken}
                   tagSuggestions={tagSuggestions}
                   onRefreshQuotes={refreshQuotes}
+                  onAfterQuoteMutation={onAfterQuoteMutation}
                 />
               ))}
             </Stack>

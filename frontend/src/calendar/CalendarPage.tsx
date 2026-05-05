@@ -497,6 +497,7 @@ export default function CalendarPage() {
                     size="sm"
                     colorPalette="teal"
                     onClick={() => setEventDialog({ mode: "create" })}
+                    display={{ base: "none", md: "inline-flex" }}
                   >
                     Add event
                   </PondButton>
@@ -523,18 +524,28 @@ export default function CalendarPage() {
                       onOpenChange={(details) => setPeopleOpen(details.open)}
                     >
                       <Stack gap="2">
-                        <Collapsible.Trigger asChild>
+                        <HStack gap="2" align="stretch">
                           <PondButton
                             size="sm"
-                            variant={peopleOpen ? "solid" : "outline"}
-                            colorPalette="sky"
-                            alignSelf="stretch"
-                            justifyContent="space-between"
-                            color={peopleOpen ? "white" : undefined}
+                            colorPalette="teal"
+                            onClick={() => setEventDialog({ mode: "create" })}
+                            flex="1"
                           >
-                            Filter People
+                            Add event
                           </PondButton>
-                        </Collapsible.Trigger>
+                          <Collapsible.Trigger asChild>
+                            <PondButton
+                              size="sm"
+                              variant={peopleOpen ? "solid" : "outline"}
+                              colorPalette="sky"
+                              justifyContent="space-between"
+                              color={peopleOpen ? "white" : undefined}
+                              flex="1"
+                            >
+                              Filter People
+                            </PondButton>
+                          </Collapsible.Trigger>
+                        </HStack>
                         <Collapsible.Content>
                           <UserCheckboxList
                             approvedUsers={approvedUsers}

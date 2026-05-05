@@ -87,6 +87,8 @@ import {
 } from "./simulation";
 const SAVE_INTERVAL_MS = 2000;
 const PASSIVE_TICK_MS = 1000;
+const LOAD_ERROR_GRACE_MS = 60_000;
+const LOAD_RETRY_INTERVAL_MS = 3_000;
 
 function formatPassiveRate(n: number): string {
   const r = Math.round(n * 100) / 100;
@@ -1306,6 +1308,10 @@ export default function ClickerGamePage() {
   const [saveAuthBlocked, setSaveAuthBlocked] = useState(false);
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("loading");
   const [loadAttempt, setLoadAttempt] = useState(0);
+  const [reconnectingSinceMs, setReconnectingSinceMs] = useState<number | null>(
+    null,
+  );
+  const firstLoadFailureAtMsRef = useRef<number | null>(null);
   const [canHoverEcologyTooltips] = useMediaQuery(
     ["(hover: hover) and (pointer: fine)"],
     { ssr: false, fallback: [false] },
@@ -1417,6 +1423,7 @@ export default function ClickerGamePage() {
       return;
     }
     let cancelled = false;
+    let retryTimeoutId: number | null = null;
     void (async () => {
       setLoadStatus("loading");
       setLoadError(null);
@@ -1439,6 +1446,8 @@ export default function ClickerGamePage() {
         ownedRef.current = normalized.owned_upgrades;
         stateRef.current = normalized;
         saveDirtyRef.current = false;
+        firstLoadFailureAtMsRef.current = null;
+        setReconnectingSinceMs(null);
         setLoadStatus("ready");
         setSaveAuthBlocked(false);
         setSaveError(null);
@@ -1447,13 +1456,41 @@ export default function ClickerGamePage() {
         );
       } catch (e) {
         if (!cancelled) {
-          setLoadError(e instanceof Error ? e.message : "Failed to load");
-          setLoadStatus("error");
+          const msg = e instanceof Error ? e.message : "Failed to load";
+          const isAuthError = msg.includes("403");
+          if (isAuthError) {
+            firstLoadFailureAtMsRef.current = null;
+            setReconnectingSinceMs(null);
+            setLoadError(msg);
+            setLoadStatus("error");
+            return;
+          }
+
+          const now = Date.now();
+          if (firstLoadFailureAtMsRef.current == null) {
+            firstLoadFailureAtMsRef.current = now;
+          }
+          const elapsed = now - firstLoadFailureAtMsRef.current;
+          if (elapsed >= LOAD_ERROR_GRACE_MS) {
+            setLoadError(msg);
+            setLoadStatus("error");
+            return;
+          }
+
+          // During short deploy/restart windows, keep the skeleton visible and retry.
+          setLoadStatus("loading");
+          setReconnectingSinceMs((prev) => prev ?? firstLoadFailureAtMsRef.current);
+          retryTimeoutId = window.setTimeout(() => {
+            setLoadAttempt((n) => n + 1);
+          }, LOAD_RETRY_INTERVAL_MS);
         }
       }
     })();
     return () => {
       cancelled = true;
+      if (retryTimeoutId !== null) {
+        window.clearTimeout(retryTimeoutId);
+      }
     };
   }, [isAuthenticated, sessionUser, loadAttempt, getApiAccessToken]);
 
@@ -1835,6 +1872,11 @@ export default function ClickerGamePage() {
       <ClickerPageShell>
         <Box maxW="7xl" mx="auto" w="100%">
           <PanelBlockSkeleton lines={2} showTitleLine />
+          {reconnectingSinceMs != null ? (
+            <Text mt="3" fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+              Reconnecting to server...
+            </Text>
+          ) : null}
         </Box>
       </ClickerPageShell>
     );

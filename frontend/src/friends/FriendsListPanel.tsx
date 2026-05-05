@@ -110,11 +110,13 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
     () => EMAIL_SHAPE.test(requestEmail.trim()),
     [requestEmail],
   );
-  const addOutgoingPendingLocally = (target: FriendUser) => {
+  const moveToOutgoingPendingLocally = (target: FriendUser) => {
     setOutgoing((prev) => {
       if (prev.some((x) => x.id === target.id)) return prev;
       return [...prev, target];
     });
+    setApprovedUsers((prev) => prev.filter((x) => x.id !== target.id));
+    setSearchResults((prev) => prev.filter((x) => x.id !== target.id));
   };
 
   if (!isAuthenticated || !sessionUser?.user?.is_approved) {
@@ -183,7 +185,7 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
                       (row) => row.email.toLowerCase() === targetEmail,
                     );
                     if (target) {
-                      addOutgoingPendingLocally(target);
+                      moveToOutgoingPendingLocally(target);
                     }
                     setRequestEmail("");
                     setRequestSuccess("Friend request sent.");
@@ -370,7 +372,7 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
               await requestFriendByUserId(token, userId);
               const target = approvedUsers.find((row) => row.id === userId);
               if (target) {
-                addOutgoingPendingLocally(target);
+                moveToOutgoingPendingLocally(target);
               }
               setRequestSuccess("Friend request sent.");
             } catch (err: unknown) {

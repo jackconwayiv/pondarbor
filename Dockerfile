@@ -32,4 +32,7 @@ RUN chmod +x /app/run.sh /app/release.sh
 
 EXPOSE 8000
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD python -c "import os, sys, urllib.request; port = os.environ.get('PORT', '8000'); url = f'http://127.0.0.1:{port}/api/v1/users/health/'; sys.exit(0 if urllib.request.urlopen(url, timeout=3).getcode() == 200 else 1)"
+
 CMD ["bash", "/app/run.sh"]

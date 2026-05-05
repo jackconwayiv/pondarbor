@@ -10,6 +10,7 @@ import {
 } from "./AppSessionContext";
 import {
   fetchBootstrapSession,
+  fetchApprovedCheck,
   mapApiBootstrapInbox,
   type BootstrapInboxSnapshot,
 } from "../users/api";
@@ -372,6 +373,72 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       /* silent: avoid global loading; caller can log if needed */
     }
   }, [auth0User, getAccessTokenSilently, isAuthenticated]);
+
+  const sessionUserRef = useRef<SessionUser | null>(null);
+  useEffect(() => {
+    sessionUserRef.current = sessionUser;
+  }, [sessionUser]);
+
+  const approvalCheckInFlightRef = useRef(false);
+
+  const isPendingApproval =
+    isAuthenticated && !!sessionUser && sessionUser.user.account_status === "pending";
+
+  useEffect(() => {
+    if (!isPendingApproval) return;
+
+    const runApprovalCheck = async (): Promise<void> => {
+      if (approvalCheckInFlightRef.current) return;
+      approvalCheckInFlightRef.current = true;
+
+      try {
+        if (document.visibilityState !== "visible") return;
+        const current = sessionUserRef.current;
+        if (!current) return;
+        if (current.user.account_status !== "pending") return;
+
+        const token = await getApiAccessToken();
+        const approved = await fetchApprovedCheck(token);
+        if (!approved) return;
+
+        // First try to refresh without global loading. If the session
+        // still looks pending, fall back to full re-bootstrap.
+        await resyncSessionSilently();
+        const cached = loadCachedSession();
+        if (!cached?.sessionUser.user.is_approved) {
+          await refreshSession();
+        }
+      } catch {
+        /* silent: pending users should not see errors while waiting */
+      } finally {
+        approvalCheckInFlightRef.current = false;
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      void runApprovalCheck();
+    };
+
+    // Run once on load/focus so the user doesn't need a manual reload.
+    void runApprovalCheck();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    // Poll periodically while pending (captures approvals that happen while the tab is open).
+    const intervalId = window.setInterval(() => {
+      void runApprovalCheck();
+    }, 45_000);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [
+    isPendingApproval,
+    getApiAccessToken,
+    refreshSession,
+    resyncSessionSilently,
+  ]);
 
   const updateProfileLocally = useCallback(
     (patch: Partial<Profile>) => {

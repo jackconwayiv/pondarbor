@@ -35,6 +35,7 @@ import { QFF_PLAY_PAGE_CONTENT_PROPS } from "./qffUi";
 /** WebSocket keepalive; must be ≤ combat round length so lazy sim runs on time (~6s). */
 const WS_PING_MS = 6_000;
 const WS_RECONNECT_BASE_MS = 2000;
+const WS_WHO_TIMEOUT_MS = 800;
 
 /** Charcoal + light gray (same family as action log). */
 const HUD_PANEL_BG = "#141414";
@@ -161,6 +162,9 @@ export default function QffPlayPage() {
   const queuedLineRef = useRef<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const logScrollRef = useRef<HTMLDivElement | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const whoRequestSeqRef = useRef(0);
+  const whoResponseWaitersRef = useRef(new Map<number, (rows: QffSessionWithCharacter["active_heroes"]) => void>());
   const [commandPending, setCommandPending] = useState(false);
   const [leavePending, setLeavePending] = useState<false | { waitSeconds: number }>(false);
 
@@ -283,7 +287,9 @@ export default function QffPlayPage() {
       }
       ws = socket;
       socket.onopen = () => {
+        wsRef.current = socket;
         attempt = 0;
+        socket.send(JSON.stringify({ type: "activity" }));
         if (pingId != null) window.clearInterval(pingId);
         pingId = window.setInterval(() => {
           if (socket.readyState === WebSocket.OPEN) {
@@ -293,9 +299,20 @@ export default function QffPlayPage() {
       };
       socket.onmessage = (ev) => {
         try {
-          const data = JSON.parse(ev.data) as { type?: string; session?: QffSessionWithCharacter };
+          const data = JSON.parse(ev.data) as {
+            type?: string;
+            request_id?: number;
+            rows?: QffSessionWithCharacter["active_heroes"];
+            session?: QffSessionWithCharacter;
+          };
           if (data.type === "session" && data.session?.has_character) {
             setSession(data.session);
+          } else if (data.type === "active_heroes" && typeof data.request_id === "number") {
+            const waiter = whoResponseWaitersRef.current.get(data.request_id);
+            if (waiter) {
+              whoResponseWaitersRef.current.delete(data.request_id);
+              waiter(data.rows ?? []);
+            }
           }
         } catch {
           /* ignore */
@@ -306,6 +323,7 @@ export default function QffPlayPage() {
           window.clearInterval(pingId);
           pingId = null;
         }
+        if (wsRef.current === socket) wsRef.current = null;
         if (!cancelled) scheduleReconnect();
       };
       socket.onerror = () => {
@@ -323,6 +341,8 @@ export default function QffPlayPage() {
         ws.onclose = null;
         ws.close();
       }
+      if (wsRef.current === ws) wsRef.current = null;
+      whoResponseWaitersRef.current.clear();
     };
   }, [isAuthenticated, sessionUser?.user?.is_approved, characterId]);
 
@@ -439,6 +459,32 @@ export default function QffPlayPage() {
       setMapVisible(true);
       setLine("");
       void (async () => {
+        const socket = wsRef.current;
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          const requestId = ++whoRequestSeqRef.current;
+          const wsRows = await new Promise<QffSessionWithCharacter["active_heroes"] | null>(
+            (resolve) => {
+              const timer = window.setTimeout(() => {
+                whoResponseWaitersRef.current.delete(requestId);
+                resolve(null);
+              }, WS_WHO_TIMEOUT_MS);
+              whoResponseWaitersRef.current.set(requestId, (rows) => {
+                window.clearTimeout(timer);
+                resolve(rows);
+              });
+              socket.send(JSON.stringify({ type: "who", request_id: requestId }));
+            },
+          );
+          if (wsRows) {
+            const current = sessionRef.current;
+            if (current?.has_character) {
+              setSession({ ...current, active_heroes: wsRows });
+            }
+            setActiveUsersPanelOpen(true);
+            queueMicrotask(() => inputRef.current?.focus());
+            return;
+          }
+        }
         let token = commandTokenRef.current;
         if (!token) {
           token = await getTokenRef.current();

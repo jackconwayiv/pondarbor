@@ -151,6 +151,29 @@ def _get_character_by_pk(pk: int):
         return None
 
 
+def _touch_session_activity_for_user(user):
+    """Refresh ``last_activity_at`` and ensure in-realm status for an approved user."""
+    char = _get_character(user)
+    if not char:
+        return None
+    now = timezone.now()
+    became_in_realm = (
+        Character.objects.filter(pk=char.pk, is_in_realm=False).update(
+            last_activity_at=now,
+            is_in_realm=True,
+            updated_at=now,
+        )
+        > 0
+    )
+    if not became_in_realm:
+        Character.objects.filter(pk=char.pk).update(last_activity_at=now, updated_at=now)
+    else:
+        char.is_in_realm = True
+        char.last_activity_at = now
+        broadcast_realm_enter(char)
+    return char
+
+
 def _action_log_entry_id(entry) -> int:
     if not isinstance(entry, dict):
         return 0
@@ -201,24 +224,9 @@ def leaderboard_view(request):
 @permission_classes([IsAuthenticated, IsApprovedUser])
 def session_activity_view(request):
     """Refresh ``last_activity_at`` (GET /session/ does not). Used when entering play after lobby."""
-    char = _get_character(request.user)
+    char = _touch_session_activity_for_user(request.user)
     if not char:
         return Response({"ok": False}, status=status.HTTP_404_NOT_FOUND)
-    now = timezone.now()
-    became_in_realm = (
-        Character.objects.filter(pk=char.pk, is_in_realm=False).update(
-            last_activity_at=now,
-            is_in_realm=True,
-            updated_at=now,
-        )
-        > 0
-    )
-    if not became_in_realm:
-        Character.objects.filter(pk=char.pk).update(last_activity_at=now, updated_at=now)
-    else:
-        char.is_in_realm = True
-        char.last_activity_at = now
-        broadcast_realm_enter(char)
     return Response({"ok": True})
 
 

@@ -15,8 +15,8 @@ from users.models import User
 
 from qff.monster_sim import run_lazy_simulation
 from qff.realtime import async_notify_qff_rooms
-from qff.session_payload import build_session_for_character
-from qff.views import _get_character
+from qff.session_payload import active_heroes_in_realm, build_session_for_character
+from qff.views import _get_character, _touch_session_activity_for_user
 
 
 def _authenticate_ws_token(token: str):
@@ -69,16 +69,38 @@ class QffSessionConsumer(AsyncWebsocketConsumer):
             data = json.loads(text_data)
         except json.JSONDecodeError:
             return
-        if data.get("type") != "ping":
+        msg_type = data.get("type")
+        if msg_type == "ping":
+            char = await database_sync_to_async(_touch_session_activity_for_user)(self.user)
+            if not char:
+                return
+            await database_sync_to_async(run_lazy_simulation)()
+            char = await database_sync_to_async(_get_character)(self.user)
+            if not char:
+                return
+            await async_notify_qff_rooms([char.current_room_id])
             return
-        char = await database_sync_to_async(_get_character)(self.user)
-        if not char:
+        if msg_type == "activity":
+            char = await database_sync_to_async(_touch_session_activity_for_user)(self.user)
+            await self.send(
+                text_data=json.dumps(
+                    {"type": "activity_ack", "ok": bool(char)},
+                ),
+            )
             return
-        await database_sync_to_async(run_lazy_simulation)()
-        char = await database_sync_to_async(_get_character)(self.user)
-        if not char:
+        if msg_type == "who":
+            request_id = data.get("request_id")
+            rows = await database_sync_to_async(active_heroes_in_realm)()
+            await self.send(
+                text_data=json.dumps(
+                    {
+                        "type": "active_heroes",
+                        "request_id": request_id,
+                        "rows": rows,
+                    }
+                ),
+            )
             return
-        await async_notify_qff_rooms([char.current_room_id])
 
     async def room_update(self, event):
         del event  # event payload unused

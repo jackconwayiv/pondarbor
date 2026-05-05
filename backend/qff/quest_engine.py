@@ -614,14 +614,14 @@ def find_npc_in_room(character: Character, query: str) -> Npc | None:
     q = (query or "").strip().lower()
     if not q:
         return None
-    npcs = Npc.objects.filter(room_id=character.current_room_id)
-    for n in npcs.order_by("id"):
+    npcs = list(Npc.objects.filter(room_id=character.current_room_id).order_by("id"))
+    for n in npcs:
         if n.name.lower() == q or n.slug.lower() == q:
             return n
-    for n in npcs.order_by("id"):
+    for n in npcs:
         if n.name.lower().startswith(q) or n.slug.lower().startswith(q):
             return n
-    for n in npcs.order_by("id"):
+    for n in npcs:
         if name_token_prefix_match(n.name.lower(), q):
             return n
     return None
@@ -632,17 +632,20 @@ def find_other_hero_in_room(actor: Character, query: str) -> Character | None:
     q = (query or "").strip().lower()
     if not q:
         return None
-    others = Character.objects.filter(current_room_id=actor.current_room_id).exclude(
-        pk=actor.pk
+    others = list(
+        Character.objects.filter(current_room_id=actor.current_room_id)
+        .exclude(pk=actor.pk)
+        .select_related("character_class")
+        .order_by("id")
     )
-    for ch in others.select_related("character_class").order_by("id"):
+    for ch in others:
         nn = (ch.name_normalized or "").strip().lower()
         if ch.name.lower() == q or nn == q:
             return ch
-    for ch in others.order_by("id"):
+    for ch in others:
         if ch.name.lower().startswith(q):
             return ch
-    for ch in others.order_by("id"):
+    for ch in others:
         if name_token_prefix_match(ch.name.lower(), q):
             return ch
     return None
@@ -652,14 +655,16 @@ def find_interactable_in_room(character: Character, query: str) -> Interactable 
     q = (query or "").strip().lower()
     if not q:
         return None
-    objs = Interactable.objects.filter(room_id=character.current_room_id)
-    for o in objs.order_by("id"):
+    objs = list(
+        Interactable.objects.filter(room_id=character.current_room_id).order_by("id")
+    )
+    for o in objs:
         if o.name.lower() == q or o.slug.lower() == q:
             return o
-    for o in objs.order_by("id"):
+    for o in objs:
         if o.name.lower().startswith(q) or o.slug.lower().startswith(q):
             return o
-    for o in objs.order_by("id"):
+    for o in objs:
         if name_token_prefix_match(o.name.lower(), q):
             return o
     return None

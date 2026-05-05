@@ -277,22 +277,26 @@ def flush_bind_monsters_with_room_heroes(now) -> set[int]:
         .values_list("current_room_id", flat=True)
         .distinct()
     )
+    monsters_by_room: dict[int, list[MonsterInstance]] = {}
+    for monster in MonsterInstance.objects.filter(current_room_id__in=room_ids).select_related(
+        "template"
+    ):
+        monsters_by_room.setdefault(monster.current_room_id, []).append(monster)
     for room_id in room_ids:
         if not room_id:
             continue
-        if not MonsterInstance.objects.filter(current_room_id=room_id).exists():
+        monsters = monsters_by_room.get(room_id, [])
+        if not monsters:
             continue
         heroes = _heroes_in_room(room_id)
         if not heroes:
             continue
-        for m in MonsterInstance.objects.filter(current_room_id=room_id).select_related(
-            "template"
-        ):
+        for m in monsters:
             # Bind + wind-up narration before single-hero normalization. Otherwise a lair spawn
             # (armed timer, no engagement) gets silent engagement from normalize, and try_bind
             # treats engaged+armed as a no-op — skipping "prepares to strike!".
             _arm_monster_try_bind(m.pk, room_id, now)
-            m.refresh_from_db()
+            m = MonsterInstance.objects.select_related("template").get(pk=m.pk)
             _normalize_monster_engagement_to_room_heroes(m, room_id, heroes)
         affected.add(room_id)
     return affected
@@ -694,15 +698,29 @@ def sense_adjacent_monster_lines(hero: Character, room_id: int) -> list[str]:
 
 def maybe_spawn_lairs(now) -> set[int]:
     affected: set[int] = set()
-    rooms = Room.objects.filter(monster_lair_template_id__isnull=False).select_related(
-        "monster_lair_template",
+    rooms = list(
+        Room.objects.filter(monster_lair_template_id__isnull=False).select_related(
+            "monster_lair_template",
+        )
     )
+    last_instance_ids = {
+        int(room.lair_last_instance_id)
+        for room in rooms
+        if room.lair_last_instance_id
+    }
+    alive_lair_instance_ids: set[int] = set()
+    if last_instance_ids:
+        alive_lair_instance_ids = set(
+            MonsterInstance.objects.filter(pk__in=last_instance_ids).values_list(
+                "pk", flat=True
+            )
+        )
     for room in rooms:
         tpl = room.monster_lair_template
         if not tpl:
             continue
         if room.lair_last_instance_id:
-            if MonsterInstance.objects.filter(pk=room.lair_last_instance_id).exists():
+            if int(room.lair_last_instance_id) in alive_lair_instance_ids:
                 continue
         if room.lair_next_spawn_at is not None and now < room.lair_next_spawn_at:
             continue
@@ -1374,7 +1392,7 @@ def flush_combat_rounds(now) -> set[int]:
             if kind == "m":
                 if pk in seen_m:
                     continue
-                m = MonsterInstance.objects.select_related("template").filter(pk=pk).first()
+                m = m_by_pk.get(pk)
                 if not m or not m.next_action_at or m.next_action_at > now:
                     continue
                 seen_m.add(pk)
@@ -1388,7 +1406,7 @@ def flush_combat_rounds(now) -> set[int]:
             else:
                 if pk in seen_h:
                     continue
-                h = Character.objects.filter(pk=pk, is_dead=False).first()
+                h = h_by_pk.get(pk)
                 if not h or not h.next_action_at or h.next_action_at > now:
                     continue
                 seen_h.add(pk)

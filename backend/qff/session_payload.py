@@ -554,13 +554,20 @@ def build_character_profile(character) -> dict:
 def _shops_in_room_json(room_id: int) -> list[dict]:
     """Current-room shops for the play UI's shop panel. Mirrors `browse_shop` data, in structured form."""
     out: list[dict] = []
-    for shop in get_enabled_shops_in_room(room_id):
+    shops = list(get_enabled_shops_in_room(room_id))
+    if not shops:
+        return out
+    shop_ids = [s.id for s in shops]
+    stock_by_shop_id: dict[int, list[NpcShopStockLine]] = defaultdict(list)
+    for line in (
+        NpcShopStockLine.objects.filter(shop_id__in=shop_ids)
+        .select_related("item", "consignment_item_instance")
+        .order_by("shop_id", "sort_order", "id")
+    ):
+        stock_by_shop_id[line.shop_id].append(line)
+    for shop in shops:
         lines_out: list[dict] = []
-        for sl in (
-            NpcShopStockLine.objects.filter(shop=shop)
-            .select_related("item", "consignment_item_instance")
-            .order_by("sort_order", "id")
-        ):
+        for sl in stock_by_shop_id.get(shop.id, []):
             inst = sl.consignment_item_instance
             if sl.kind == NpcShopStockLine.Kind.CONSIGNMENT and inst is not None:
                 name = display_name_for_instance(inst)
@@ -610,14 +617,15 @@ def _active_quests_json(character: Character) -> list[dict]:
     return out
 
 
-def build_session_for_character(character) -> dict:
+def build_session_for_character(character, *, already_synced: bool = False) -> dict:
     """Build /qff/session/ JSON for the supplied character.
 
     The character is expected to be already-hydrated (equipment slots,
     current_room, area). ``sync_character_world_before_session`` runs in-place
     so callers may safely keep their reference to the same row.
     """
-    character = sync_character_world_before_session(character)
+    if not already_synced:
+        character = sync_character_world_before_session(character)
     room = character.current_room
     area = room.area
     exits = []

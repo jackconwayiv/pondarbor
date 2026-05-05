@@ -1,10 +1,12 @@
 import json
 import logging
 import time
+from hashlib import sha256
 
 import requests
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.db import IntegrityError, OperationalError
 from jose import jwt
 from rest_framework import exceptions
@@ -18,6 +20,13 @@ from .models import Profile
 User = get_user_model()
 
 logger = logging.getLogger(__name__)
+
+AUTH0_RESULT_CACHE_KEY_PREFIX = "auth0:result:v1:"
+
+
+def _auth_cache_key(token: str) -> str:
+    token_digest = sha256(token.encode("utf-8")).hexdigest()
+    return f"{AUTH0_RESULT_CACHE_KEY_PREFIX}{token_digest}"
 
 
 def _auth0_issuer() -> str:
@@ -57,10 +66,41 @@ def authenticate_bearer_token(token: str):
         raise exceptions.AuthenticationFailed("Missing token.")
 
     t_auth_start = time.perf_counter()
+    now_ts = int(time.time())
     timing_enabled = bool(getattr(settings, "AUTH0_AUTH_TIMING_LOG", False))
+    cache_enabled = bool(getattr(settings, "AUTH0_AUTH_RESULT_CACHE_ENABLED", False))
+    cache_max_seconds = max(0, int(getattr(settings, "AUTH0_AUTH_RESULT_CACHE_SECONDS", 60)))
+    cache_hit = False
     userinfo_ms = 0.0
     save_user_ms = 0.0
     save_profile_ms = 0.0
+    cache_key = _auth_cache_key(token) if cache_enabled else ""
+
+    if cache_enabled:
+        cached = cache.get(cache_key)
+        if isinstance(cached, dict):
+            payload = cached.get("payload")
+            user_id = cached.get("user_id")
+            exp = int(cached.get("exp") or 0)
+            if isinstance(payload, dict) and user_id and exp > now_ts:
+                user = User.objects.filter(pk=user_id).first()
+                if user is not None:
+                    cache_hit = True
+                    auth_payload = {"token": token, "payload": payload}
+                    if timing_enabled:
+                        total_ms = (time.perf_counter() - t_auth_start) * 1000
+                        logger.info(
+                            "auth0_auth_timing email=%s total_ms=%.2f userinfo_ms=%.2f save_user_ms=%.2f save_profile_ms=%.2f used_userinfo=%s user_changed=%s cache_hit=%s",
+                            user.email,
+                            total_ms,
+                            userinfo_ms,
+                            save_user_ms,
+                            save_profile_ms,
+                            False,
+                            False,
+                            cache_hit,
+                        )
+                    return (user, auth_payload)
 
     try:
         jwks = get_auth0_jwks()
@@ -263,7 +303,7 @@ def authenticate_bearer_token(token: str):
     if timing_enabled:
         total_ms = (time.perf_counter() - t_auth_start) * 1000
         logger.info(
-            "auth0_auth_timing email=%s total_ms=%.2f userinfo_ms=%.2f save_user_ms=%.2f save_profile_ms=%.2f used_userinfo=%s user_changed=%s",
+            "auth0_auth_timing email=%s total_ms=%.2f userinfo_ms=%.2f save_user_ms=%.2f save_profile_ms=%.2f used_userinfo=%s user_changed=%s cache_hit=%s",
             email,
             total_ms,
             userinfo_ms,
@@ -271,7 +311,21 @@ def authenticate_bearer_token(token: str):
             save_profile_ms,
             bool(userinfo),
             user_changed,
+            cache_hit,
         )
+    if cache_enabled and cache_max_seconds > 0:
+        exp = int(payload.get("exp") or 0)
+        ttl_seconds = min(cache_max_seconds, exp - now_ts)
+        if ttl_seconds > 0:
+            cache.set(
+                cache_key,
+                {
+                    "user_id": user.pk,
+                    "exp": exp,
+                    "payload": payload,
+                },
+                timeout=ttl_seconds,
+            )
     return (user, auth_payload)
 
 

@@ -33,14 +33,14 @@ def find_npc_in_room_by_query(room_id: int, query: str) -> Npc | None:
     q = (query or "").strip().lower()
     if not q:
         return None
-    npcs = Npc.objects.filter(room_id=room_id)
-    for n in npcs.order_by("id"):
+    npcs = list(Npc.objects.filter(room_id=room_id).order_by("id"))
+    for n in npcs:
         if n.name.lower() == q or n.slug.lower() == q:
             return n
-    for n in npcs.order_by("id"):
+    for n in npcs:
         if n.name.lower().startswith(q) or n.slug.lower().startswith(q):
             return n
-    for n in npcs.order_by("id"):
+    for n in npcs:
         if name_token_prefix_match(n.name.lower(), q):
             return n
     return None

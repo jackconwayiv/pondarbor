@@ -73,7 +73,7 @@ logger = logging.getLogger(__name__)
 
 
 def _retry_on_deadlock(fn, *, attempts: int = 3, base_sleep: float = 0.02):
-    """Run ``fn``; on Postgres deadlock, sleep briefly with jitter and retry."""
+    """Run ``fn``; on transient DB lock/deadlock, sleep briefly and retry."""
     last_exc: OperationalError | None = None
     for attempt in range(attempts):
         try:
@@ -84,15 +84,28 @@ def _retry_on_deadlock(fn, *, attempts: int = 3, base_sleep: float = 0.02):
                 raise
             cause = getattr(e, "__cause__", None)
             msg = str(e).lower()
-            is_deadlock = "deadlock" in msg
+            is_deadlock = "deadlock" in msg or "database is locked" in msg
+            is_retryable_pg = (
+                "could not serialize access due to" in msg
+                or "serialization failure" in msg
+                or "lock timeout" in msg
+                or "canceling statement due to lock timeout" in msg
+            )
             try:
-                from psycopg.errors import DeadlockDetected
+                from psycopg.errors import (
+                    DeadlockDetected,
+                    LockNotAvailable,
+                    LockTimeout,
+                    SerializationFailure,
+                )
 
                 if isinstance(cause, DeadlockDetected):
                     is_deadlock = True
+                if isinstance(cause, (SerializationFailure, LockTimeout, LockNotAvailable)):
+                    is_retryable_pg = True
             except ImportError:
                 pass
-            if not is_deadlock:
+            if not (is_deadlock or is_retryable_pg):
                 raise
             time.sleep(base_sleep * (1.0 + random.random()))
     assert last_exc is not None
@@ -465,34 +478,38 @@ def command_view(request):
         sync_ms = exec_ms = 0.0
         max_after_exec = 0
 
-        with transaction.atomic():
-            t_sync = time.perf_counter()
-            char_work = sync_character_world_before_session(char)
-            sync_ms = (time.perf_counter() - t_sync) * 1000
-            # Service-NPC y/n prompt (healer_pay / innkeeper_stay) consumes the next
-            # command when set; non-y/n clears the prompt and falls through to parse.
-            prompt_messages = maybe_handle_pending_prompt(char_work, line)
-            if prompt_messages is not None:
-                parsed = None
-                messages = list(prompt_messages)
-                exec_ms = 0.0
-            else:
-                parsed = parse_command(line)
-                t0 = time.perf_counter()
-                messages = list(execute_command(char_work, parsed, world_sync=False))
-                exec_ms = (time.perf_counter() - t0) * 1000
-            echo_command = should_echo_command(parsed, messages)
-            if messages and messages[0] == "You try that, but nothing happens.":
-                email = (request.user.email or "").strip()
-                QffIneffectiveInput.objects.create(
-                    user=request.user,
-                    user_email=email[:254] if email else "",
-                    raw_line=line,
-                    room=command_room,
-                    room_name=command_room_name,
-                )
-            # Max broadcast id after execute_command, before lazy sim — splits ambient/exec vs combat sim.
-            max_after_exec = RoomBroadcast.objects.aggregate(m=Max("id"))["m"] or 0
+        def _execute_phase_once():
+            nonlocal parsed, messages, echo_command, sync_ms, exec_ms, max_after_exec
+            with transaction.atomic():
+                t_sync = time.perf_counter()
+                char_work = sync_character_world_before_session(char)
+                sync_ms = (time.perf_counter() - t_sync) * 1000
+                # Service-NPC y/n prompt (healer_pay / innkeeper_stay) consumes the next
+                # command when set; non-y/n clears the prompt and falls through to parse.
+                prompt_messages = maybe_handle_pending_prompt(char_work, line)
+                if prompt_messages is not None:
+                    parsed = None
+                    messages = list(prompt_messages)
+                    exec_ms = 0.0
+                else:
+                    parsed = parse_command(line)
+                    t0 = time.perf_counter()
+                    messages = list(execute_command(char_work, parsed, world_sync=False))
+                    exec_ms = (time.perf_counter() - t0) * 1000
+                echo_command = should_echo_command(parsed, messages)
+                if messages and messages[0] == "You try that, but nothing happens.":
+                    email = (request.user.email or "").strip()
+                    QffIneffectiveInput.objects.create(
+                        user=request.user,
+                        user_email=email[:254] if email else "",
+                        raw_line=line,
+                        room=command_room,
+                        room_name=command_room_name,
+                    )
+                # Max broadcast id after execute_command, before lazy sim — splits ambient/exec vs combat sim.
+                max_after_exec = RoomBroadcast.objects.aggregate(m=Max("id"))["m"] or 0
+
+        _retry_on_deadlock(_execute_phase_once)
 
         action_log_pre_engagement_cutover = consume_action_log_pre_engagement_cutover()
 
@@ -525,7 +542,7 @@ def command_view(request):
                     status=status.HTTP_410_GONE,
                 )
             t2 = time.perf_counter()
-            session = build_session_for_character(char_after)
+            session = build_session_for_character(char_after, already_synced=True)
             session_ms = (time.perf_counter() - t2) * 1000
             # Chronological narrative: move/teleport put first-person lines before engagement broadcasts.
             raw_log = session.get("action_log") or []

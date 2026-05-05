@@ -299,6 +299,15 @@ AUTH0_AUTH_TIMING_LOG = os.getenv("AUTH0_AUTH_TIMING_LOG", "").lower() in (
     "1",
     "yes",
 )
+# Auth: bounded cache for validated Auth0 token->(user,payload) lookups.
+AUTH0_AUTH_RESULT_CACHE_ENABLED = os.getenv("AUTH0_AUTH_RESULT_CACHE_ENABLED", "true").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+AUTH0_AUTH_RESULT_CACHE_SECONDS = int(
+    os.getenv("AUTH0_AUTH_RESULT_CACHE_SECONDS", "60")
+)
 
 # QFF: omit expensive minimap from session payload (empty grids + minimal flag). Default off; enable after data justifies it.
 QFF_SESSION_MINIMAL_AREA_MAP = os.getenv("QFF_SESSION_MINIMAL_AREA_MAP", "").lower() in (

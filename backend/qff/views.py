@@ -596,6 +596,9 @@ def command_view(request):
                     session_pct,
                     cmd_query_count,
                 )
+            # Expose command-view wall time to RequestTimingMiddleware so it can
+            # log request-level overhead outside command execution.
+            request._qff_command_total_ms = total_ms
 
             body: dict = {
                 "messages": msgs_out,

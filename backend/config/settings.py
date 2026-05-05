@@ -287,12 +287,30 @@ SONGADAY_SLACK_PROMPT_TIMEZONE = os.getenv("SONGADAY_SLACK_PROMPT_TIMEZONE", "UT
 
 # QFF: structured INFO logs per command (exec_ms, sim_ms, session_ms, total_ms) for staging/prod profiling.
 QFF_COMMAND_TIMING_LOG = os.getenv("QFF_COMMAND_TIMING_LOG", "").lower() in ("true", "1", "yes")
+# QFF: per-flusher timing/counted rows in run_lazy_simulation (can be noisy; enable temporarily in prod).
+QFF_LAZY_SIM_TIMING_LOG = os.getenv("QFF_LAZY_SIM_TIMING_LOG", "").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+# Auth: per-request auth timing (userinfo/save costs). Use for diagnosing app_ms overhead.
+AUTH0_AUTH_TIMING_LOG = os.getenv("AUTH0_AUTH_TIMING_LOG", "").lower() in (
+    "true",
+    "1",
+    "yes",
+)
 
 # QFF: omit expensive minimap from session payload (empty grids + minimal flag). Default off; enable after data justifies it.
 QFF_SESSION_MINIMAL_AREA_MAP = os.getenv("QFF_SESSION_MINIMAL_AREA_MAP", "").lower() in (
     "true",
     "1",
     "yes",
+)
+
+# RoomBroadcast retention (seconds). Broadcasts are ephemeral and pruned once
+# active room listeners have advanced past them, with this grace window.
+QFF_ROOM_BROADCAST_RETENTION_SECONDS = int(
+    os.getenv("QFF_ROOM_BROADCAST_RETENTION_SECONDS", "5")
 )
 
 # Logs go to stderr so Gunicorn / Appliku "App Logs" shows tracebacks for 500s.

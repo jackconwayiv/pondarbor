@@ -27,14 +27,30 @@ class RequestTimingMiddleware:
             response = self.get_response(request)
 
         total_ms = (time.perf_counter() - start) * 1000
-        logger.info(
-            "request_timing method=%s path=%s status=%s total_ms=%.1f db_ms=%.1f queries=%s app_ms=%.1f",
-            request.method,
-            request.path,
-            response.status_code,
-            total_ms,
-            query_ms,
-            query_count,
-            total_ms - query_ms,
-        )
+        qff_total_ms = getattr(request, "_qff_command_total_ms", None)
+        if qff_total_ms is not None:
+            outside_ms = max(0.0, total_ms - float(qff_total_ms))
+            logger.info(
+                "request_timing method=%s path=%s status=%s total_ms=%.1f db_ms=%.1f queries=%s app_ms=%.1f qff_total_ms=%.1f outside_ms=%.1f",
+                request.method,
+                request.path,
+                response.status_code,
+                total_ms,
+                query_ms,
+                query_count,
+                total_ms - query_ms,
+                float(qff_total_ms),
+                outside_ms,
+            )
+        else:
+            logger.info(
+                "request_timing method=%s path=%s status=%s total_ms=%.1f db_ms=%.1f queries=%s app_ms=%.1f",
+                request.method,
+                request.path,
+                response.status_code,
+                total_ms,
+                query_ms,
+                query_count,
+                total_ms - query_ms,
+            )
         return response

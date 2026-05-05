@@ -5,7 +5,7 @@ from collections import defaultdict
 from datetime import timedelta
 
 from django.conf import settings
-from django.db.models import Q
+from django.db.models import Min, Q
 from django.utils import timezone
 
 from qff.constants import AFK_LOBBY_KICK_MINUTES, PRESENCE_MINUTES
@@ -202,9 +202,10 @@ def _force_lobby_for_inactivity(character) -> bool:
 
 def consume_room_broadcast_entries(character) -> list[dict]:
     """Return new room broadcasts as ``{id, text}`` and advance ``last_room_broadcast_id``."""
+    room_id = character.current_room_id
     qs = (
         RoomBroadcast.objects.filter(
-            room_id=character.current_room_id,
+            room_id=room_id,
             id__gt=character.last_room_broadcast_id,
         )
         .filter(Q(target_character_id__isnull=True) | Q(target_character_id=character.pk))
@@ -224,7 +225,24 @@ def consume_room_broadcast_entries(character) -> list[dict]:
     if rows:
         character.last_room_broadcast_id = rows[-1].id
         character.save(update_fields=["last_room_broadcast_id", "updated_at"])
+    _prune_room_broadcasts(room_id)
     return out
+
+
+def _prune_room_broadcasts(room_id: int) -> None:
+    """Delete stale RoomBroadcast rows for a room after active listeners have passed them."""
+    retention_s = max(0, int(getattr(settings, "QFF_ROOM_BROADCAST_RETENTION_SECONDS", 5)))
+    cutoff = timezone.now() - timedelta(seconds=retention_s)
+    active_qs = Character.objects.filter(
+        current_room_id=room_id,
+        is_in_realm=True,
+        last_activity_at__gte=timezone.now() - timedelta(minutes=AFK_LOBBY_KICK_MINUTES),
+    )
+    min_seen = active_qs.aggregate(m=Min("last_room_broadcast_id"))["m"]
+    prune_qs = RoomBroadcast.objects.filter(room_id=room_id, created_at__lte=cutoff)
+    if min_seen is not None:
+        prune_qs = prune_qs.filter(id__lte=int(min_seen))
+    prune_qs.delete()
 
 
 def consume_room_broadcasts(character) -> list[str]:

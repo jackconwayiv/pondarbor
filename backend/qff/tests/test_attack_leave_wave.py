@@ -369,6 +369,19 @@ class LeaveCommandTests(TestCase):
         names = [o["name"] for o in sess["others_here"]]
         self.assertNotIn("Ari", names)
 
+    def test_out_of_realm_cannot_move_or_emit_peer_room_lines(self):
+        actor = self._hero("Ghost", self.safe_room)
+        self._hero("Witness", self.safe_room)
+        execute_command(actor, ParsedLeave())
+        actor.refresh_from_db()
+        self.assertFalse(actor.is_in_realm)
+        before = RoomBroadcast.objects.count()
+        out = execute_command(actor, parse_command("go south"))
+        actor.refresh_from_db()
+        self.assertTrue(any("not currently in the realm" in m.lower() for m in out), out)
+        self.assertEqual(actor.current_room_id, self.safe_room.id)
+        self.assertEqual(RoomBroadcast.objects.count(), before)
+
     def test_parser_treats_leave_exit_quit_as_leave(self):
         for verb in ("leave", "exit", "quit", "/leave", "/exit", "/quit"):
             self.assertIsInstance(parse_command(verb), ParsedLeave, msg=verb)

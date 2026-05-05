@@ -612,6 +612,11 @@ def execute_command(
     if char.is_dead:
         return ["You are dead and cannot act."]
 
+    if not char.is_in_realm:
+        if isinstance(parsed, ParsedLeave):
+            return ["You are already out of the realm."]
+        return ["You are not currently in the realm. Enter play to act."]
+
     if isinstance(parsed, ParsedUnknown):
         return ["You try that, but nothing happens."]
 

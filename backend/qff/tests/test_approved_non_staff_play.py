@@ -3,7 +3,7 @@
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -20,6 +20,7 @@ from qff.models import (
     Npc,
     Quest,
     QuestState,
+    RoomBroadcast,
     Room,
     RoomExit,
 )
@@ -112,6 +113,22 @@ class ApprovedNonStaffPlayTests(TestCase):
         self.assertEqual(len(lines), 1)
         self.assertIn("Alice", lines[0])
         self.assertIn("hello", lines[0])
+
+    @override_settings(QFF_ROOM_BROADCAST_RETENTION_SECONDS=0)
+    def test_room_broadcasts_are_ephemeral_after_consumed(self):
+        u1 = _approved_user("ephem-a@example.com")
+        u2 = _approved_user("ephem-b@example.com")
+        c1 = self._character("EchoA", u1)
+        c2 = self._character("EchoB", u2)
+        execute_command(c1, parse_command("say hello"))
+        c2 = Character.objects.get(pk=c2.pk)
+        lines = consume_room_broadcasts(c2)
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(
+            RoomBroadcast.objects.filter(room_id=self.room.id).count(),
+            0,
+            "Consumed broadcasts should be pruned when retention is zero.",
+        )
 
     def test_session_api_includes_npcs_for_approved_non_staff(self):
         Npc.objects.create(room=self.room, slug="vil", name="Villager")

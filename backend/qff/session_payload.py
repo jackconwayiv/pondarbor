@@ -617,11 +617,20 @@ def _active_quests_json(character: Character) -> list[dict]:
     return out
 
 
+# Parser kinds that need shop rows in a partial command session (client merges the rest).
+_COMMAND_SESSION_SHOP_KINDS = frozenset(
+    {"ParsedShopBrowse", "ParsedShopBuy", "ParsedSell"}
+)
+# Parser kinds that need the full active_quests list in a partial command session.
+_COMMAND_SESSION_QUEST_KINDS = frozenset({"ParsedActiveQuests"})
+
+
 def build_session_for_character(
     character,
     *,
     already_synced: bool = False,
     for_command_response: bool = False,
+    command_parser_kind: str | None = None,
 ) -> dict:
     """Build /qff/session/ JSON for the supplied character.
 
@@ -632,6 +641,11 @@ def build_session_for_character(
     When ``for_command_response`` is True (POST /command return payload), omit
     realm-wide ``active_heroes`` and ship a minimal ``area_map`` stub so the
     client can merge from its prior full GET /session/ snapshot.
+
+    When ``QFF_COMMAND_SESSION_SLIM_SHOPS_QUESTS`` is enabled and
+    ``command_parser_kind`` is set, expensive ``shops`` / ``active_quests`` blocks
+    may be omitted for verbs that do not need them; the client should merge from
+    its prior session (see QffPlayPage).
     """
     if not already_synced:
         character = sync_character_world_before_session(character)
@@ -694,7 +708,18 @@ def build_session_for_character(
                     room_description += "\n"
                 room_description += unlocked_text
 
-    return {
+    slim_shops_quests = (
+        for_command_response
+        and getattr(settings, "QFF_COMMAND_SESSION_SLIM_SHOPS_QUESTS", True)
+    )
+    if slim_shops_quests and command_parser_kind is not None:
+        include_shops = command_parser_kind in _COMMAND_SESSION_SHOP_KINDS
+        include_quests = command_parser_kind in _COMMAND_SESSION_QUEST_KINDS
+    else:
+        include_shops = True
+        include_quests = True
+
+    out: dict = {
         "has_character": True,
         "character": {
             "id": character.id,
@@ -761,8 +786,12 @@ def build_session_for_character(
         ),
         "character_profile": build_character_profile(character),
         "action_log": action_log,
-        "shops": _shops_in_room_json(room.id),
-        "active_quests": _active_quests_json(character),
         "pending_prompt": getattr(character, "pending_prompt", None) or None,
-        **({"session_partial": True} if for_command_response else {}),
     }
+    if include_shops:
+        out["shops"] = _shops_in_room_json(room.id)
+    if include_quests:
+        out["active_quests"] = _active_quests_json(character)
+    if for_command_response:
+        out["session_partial"] = True
+    return out

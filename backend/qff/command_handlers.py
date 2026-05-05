@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
+import time
 from contextvars import ContextVar
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
@@ -151,6 +154,7 @@ from qff.static_cache import get_room_exits_from_room
 if TYPE_CHECKING:
     from qff.models import Character as CharacterType
 
+logger = logging.getLogger(__name__)
 
 SLOT_ATTRS = (
     "head_item",
@@ -1062,6 +1066,9 @@ def _handle_train(char: CharacterType) -> list[str]:
 
 
 def _handle_move(char: CharacterType, parsed: ParsedMove) -> list[str]:
+    move_phase_log = getattr(settings, "QFF_COMMAND_TIMING_LOG", False)
+    t_wall = time.perf_counter()
+
     ex = next(
         (
             row
@@ -1081,6 +1088,7 @@ def _handle_move(char: CharacterType, parsed: ParsedMove) -> list[str]:
     if not exit_is_passable(char, ex, context=ex_ctx):
         char.save(update_fields=["last_activity_at", "updated_at"])
         return ["You can't go that way — not yet."]
+    t_after_resolve = time.perf_counter()
     key_consumed, key_name = (False, None)
     if ex.lock_kind == RoomExit.LockKind.KEY:
         key_consumed, key_name = consume_key_if_entering_locked(char, ex, context=ex_ctx)
@@ -1100,9 +1108,10 @@ def _handle_move(char: CharacterType, parsed: ParsedMove) -> list[str]:
     char.current_room = dest
     char.save(update_fields=["current_room", "last_activity_at", "updated_at"])
     on_leave_room(left_room_id)
-    on_enter_room(char, dest.id)
+    on_enter_room(char, dest.id, entered_room=dest)
     refresh_torch_lit_from_hero_position(char.pk)
     _notify_peers_third_person(char, dest.id, peer_arrival_line(char.name, ex.direction))
+    t_after_transit = time.perf_counter()
 
     from qff.monster_sim import (
         monsters_follow_hero_move,
@@ -1125,10 +1134,27 @@ def _handle_move(char: CharacterType, parsed: ParsedMove) -> list[str]:
     elif not dest_room.is_safe and char.next_action_at:
         char.next_action_at = timezone.now() + timedelta(seconds=COMBAT_ROUND_SECONDS)
         char.save(update_fields=["next_action_at", "updated_at"])
+    t_after_room_hooks = time.perf_counter()
 
     monsters_follow_hero_move(char, left_room_id, dest.id)
+    t_after_follow = time.perf_counter()
     messages.extend(sense_adjacent_monster_lines(char, dest.id))
+    t_after_sense = time.perf_counter()
     _engage_monsters_after_arrival(char, dest.id)
+    t_end = time.perf_counter()
+
+    if move_phase_log:
+        logger.info(
+            "qff_move_phase_timing resolve_ms=%.2f key_transit_ms=%.2f room_hooks_ms=%.2f "
+            "follow_ms=%.2f sense_ms=%.2f engage_ms=%.2f total_move_ms=%.2f",
+            (t_after_resolve - t_wall) * 1000,
+            (t_after_transit - t_after_resolve) * 1000,
+            (t_after_room_hooks - t_after_transit) * 1000,
+            (t_after_follow - t_after_room_hooks) * 1000,
+            (t_after_sense - t_after_follow) * 1000,
+            (t_end - t_after_sense) * 1000,
+            (t_end - t_wall) * 1000,
+        )
 
     return messages
 
@@ -1603,7 +1629,7 @@ def _apply_teleport_spawn_scroll(actor_pk: int, left_room_id: int) -> list[str]:
     ch.current_room = dest
     ch.save(update_fields=["current_room", "updated_at"])
     on_leave_room(left_room_id)
-    on_enter_room(ch, dest_id)
+    on_enter_room(ch, dest_id, entered_room=dest)
     refresh_torch_lit_from_hero_position(actor_pk)
     _notify_peers_third_person(ch, dest_id, f"{actor_name} appears in a swirl of light.")
     on_spawn_room_enter(ch, dest)

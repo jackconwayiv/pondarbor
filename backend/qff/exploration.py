@@ -1,5 +1,7 @@
 """Fog-of-war: visits and seen exits when entering a room."""
 
+from __future__ import annotations
+
 from datetime import timedelta
 
 from django.db import transaction
@@ -94,7 +96,10 @@ def on_leave_room(room_id: int) -> None:
 
 
 @transaction.atomic
-def on_enter_room(character: Character, room_id: int) -> None:
+def on_enter_room(
+    character: Character, room_id: int, *, entered_room: Room | None = None
+) -> None:
+    """Enter ``room_id``. Pass ``entered_room`` when the caller already loaded the row to skip an extra Room lookup."""
     mark_room_visited(character, room_id)
     _sync_seen_exits_for_room_ids(character, [room_id])
     # Keep one line of room context on entry so arrivals do not miss a just-emitted
@@ -109,11 +114,14 @@ def on_enter_room(character: Character, room_id: int) -> None:
     else:
         character.last_room_broadcast_id = 0
     update_fields = ["last_room_broadcast_id", "updated_at"]
-    reset_dark = (
-        Room.objects.filter(pk=room_id)
-        .values_list("reset_dark_lighting_on_enter", flat=True)
-        .first()
-    )
+    if entered_room is not None and int(entered_room.pk) == int(room_id):
+        reset_dark = bool(entered_room.reset_dark_lighting_on_enter)
+    else:
+        reset_dark = (
+            Room.objects.filter(pk=room_id)
+            .values_list("reset_dark_lighting_on_enter", flat=True)
+            .first()
+        )
     if reset_dark:
         character.dark_minimap_lit_room_ids = []
         character.dark_minimap_torch_radius = None

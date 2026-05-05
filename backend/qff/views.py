@@ -467,8 +467,11 @@ def command_view(request):
     wall_start = time.perf_counter()
 
     # Local query counter so qff_command_timing can emit queries=N alongside the
-    # timing breakdown. Independent from RequestTimingMiddleware, which counts
-    # queries for the entire WSGI hop including auth + response serialization.
+    # timing breakdown. Counts only DB work inside command_view's inner
+    # execute_wrapper (sync + exec + lazy sim + session build). It does not include the
+    # initial ``_get_character`` at the top of this view (those queries appear in
+    # ``request_timing queries`` only). When middleware logs ``outside_queries``, that
+    # includes auth plus any DB before this wrapper (notably that character fetch).
     cmd_query_count = 0
 
     def _qff_count_query(execute, sql, params, many, context):
@@ -551,7 +554,12 @@ def command_view(request):
                 )
             t2 = time.perf_counter()
             session = build_session_for_character(
-                char_after, already_synced=True, for_command_response=True
+                char_after,
+                already_synced=True,
+                for_command_response=True,
+                command_parser_kind=(
+                    type(parsed).__name__ if parsed is not None else None
+                ),
             )
             session_ms = (time.perf_counter() - t2) * 1000
             # Chronological narrative: move/teleport put first-person lines before engagement broadcasts.
@@ -595,7 +603,7 @@ def command_view(request):
             session_pct = (100.0 * session_ms / total_ms) if total_ms > 0 else 0.0
             # Work outside exec/sim/session: _get_character (×2), ineffective-input insert, encumbrance, etc.
             gap_ms = max(0.0, total_ms - sync_ms - exec_ms - sim_ms - session_ms)
-            parsed_kind = type(parsed).__name__
+            parsed_kind = type(parsed).__name__ if parsed is not None else "None"
             logger.debug(
                 "qff.command user_id=%s parsed=%s sync_ms=%.1f exec_ms=%.1f sim_ms=%.1f session_ms=%.1f gap_ms=%.1f total_ms=%.1f session_pct=%.1f queries=%d",
                 uid,
@@ -623,9 +631,9 @@ def command_view(request):
                     session_pct,
                     cmd_query_count,
                 )
-            # Expose command-view wall time to RequestTimingMiddleware so it can
-            # log request-level overhead outside command execution.
+            # Expose command-view wall time and handler SQL count to RequestTimingMiddleware.
             request._qff_command_total_ms = total_ms
+            request._qff_cmd_handler_queries = cmd_query_count
 
             body: dict = {
                 "messages": msgs_out,

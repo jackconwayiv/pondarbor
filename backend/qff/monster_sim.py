@@ -34,6 +34,7 @@ from qff.game_helpers import (
     presence_threshold,
     roll_d100,
 )
+from qff.static_cache import get_room_exits_from_room
 from qff.models import (
     Character,
     CharacterQuestProgress,
@@ -674,9 +675,8 @@ def engage_monsters_for_new_arrivals(hero: Character, room_id: int) -> None:
 
 def sense_adjacent_monster_lines(hero: Character, room_id: int) -> list[str]:
     """Hero-only sense lines; returned in command ``messages`` so they stay after the move line."""
-    exits = list(
-        RoomExit.objects.filter(from_room_id=room_id).select_related("to_room"),
-    )
+    # Same RoomExit rows as ``get_room_exits_from_room`` (cached loader); avoids a duplicate SQL round-trip per move.
+    exits = list(get_room_exits_from_room(room_id))
     if not exits:
         return []
     to_ids = [ex.to_room_id for ex in exits]
@@ -1366,6 +1366,13 @@ def flush_pursuit_steps(now) -> set[int]:
 
 
 def flush_combat_rounds(now) -> set[int]:
+    """Resolve combat rounds for rooms with due heroes/monsters.
+
+    Optional ``settings.QFF_FLUSH_COMBAT_MAX_ROOMS_PER_TICK`` (positive int) limits
+    how many distinct rooms are processed per call, in ascending room id order.
+    Unprocessed rooms keep due timestamps and run on a later tick — use only as a
+    deliberate ops tradeoff (can delay distant combat).
+    """
     affected: set[int] = set()
     due_m = list(
         MonsterInstance.objects.filter(next_action_at__lte=now)
@@ -1376,10 +1383,19 @@ def flush_combat_rounds(now) -> set[int]:
         Character.objects.filter(next_action_at__lte=now, is_dead=False).order_by("id")
     )
     room_ids = {m.current_room_id for m in due_m} | {h.current_room_id for h in due_h}
+    ordered_rooms = sorted(room_ids)
+    cap = getattr(settings, "QFF_FLUSH_COMBAT_MAX_ROOMS_PER_TICK", None)
+    if cap is not None:
+        try:
+            cap_n = int(cap)
+        except (TypeError, ValueError):
+            cap_n = 0
+        if cap_n > 0:
+            ordered_rooms = ordered_rooms[:cap_n]
     m_by_pk = {m.pk: m for m in due_m}
     h_by_pk = {h.pk: h for h in due_h}
 
-    for room_id in sorted(room_ids):
+    for room_id in ordered_rooms:
         entries: list[tuple[str, int]] = []
         for m in due_m:
             if m.current_room_id == room_id:
@@ -1502,6 +1518,12 @@ def _earliest_time_based_lazy_sim_event(now) -> "timezone.datetime | None":
     a room) and is intentionally excluded; it's checked separately and cheap when
     nothing is due. Each call hits the live tables (no caching) so freshness is
     strict.
+
+    Index alignment: migration ``0053_lazy_sim_indexes`` plus ``Character.Meta`` /
+    ``MonsterInstance.Meta`` indexes on ``next_action_at``, ``pending_leave_at``,
+    ``died_at``, ``current_room`` + ``last_activity_at``. After changing filters,
+    run ``manage.py qff_explain_hot_queries`` and confirm Postgres still uses those
+    indexes (no surprise sequential scans on large tables).
     """
     from qff.constants import AFK_LOBBY_KICK_MINUTES
 

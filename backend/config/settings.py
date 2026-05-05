@@ -316,6 +316,17 @@ QFF_SESSION_MINIMAL_AREA_MAP = os.getenv("QFF_SESSION_MINIMAL_AREA_MAP", "").low
     "yes",
 )
 
+# QFF: POST /command partial session omits shops/active_quests when the verb does not need them (client merges prior GET /session/).
+QFF_COMMAND_SESSION_SLIM_SHOPS_QUESTS = os.getenv(
+    "QFF_COMMAND_SESSION_SLIM_SHOPS_QUESTS", "true"
+).lower() in ("true", "1", "yes")
+
+# QFF: optional cap on combat rooms processed per lazy-sim tick (unset = all). Delays combat in skipped rooms until a later tick — ops-only tradeoff.
+_QFF_FLUSH_CAP = os.getenv("QFF_FLUSH_COMBAT_MAX_ROOMS_PER_TICK", "").strip()
+QFF_FLUSH_COMBAT_MAX_ROOMS_PER_TICK = (
+    int(_QFF_FLUSH_CAP) if _QFF_FLUSH_CAP.isdigit() else None
+)
+
 # RoomBroadcast retention (seconds). Broadcasts are ephemeral and pruned once
 # active room listeners have advanced past them, with this grace window.
 QFF_ROOM_BROADCAST_RETENTION_SECONDS = int(

@@ -16,6 +16,7 @@ from qff.models import (
     MonsterInstance,
     MonsterTemplate,
     Room,
+    RoomBroadcast,
     RoomExit,
 )
 
@@ -172,4 +173,36 @@ class ActionLogMoveBeforeEngagementTests(TestCase):
             move_idx,
             sense_idx,
             f"expected move before adjacent sense, got order={texts}",
+        )
+
+    def test_move_includes_latest_preexisting_room_line(self):
+        """Entering a room should retain one line of immediate context."""
+        RoomBroadcast.objects.create(
+            room=self.room_danger,
+            speaker=None,
+            text="The Log Rat claws at Walker.",
+            scope=RoomBroadcast.Scope.ROOM,
+        )
+        u = _approved_user("logorder-context@example.com")
+        Character.objects.create(
+            user=u,
+            name="Watcher",
+            character_class=self.cc,
+            current_room=self.room_safe,
+            spawn_room=self.room_safe,
+            last_activity_at=timezone.now(),
+            cur_health=50,
+            max_health=50,
+            xp=XP_PER_LEVEL,
+            level=1,
+        )
+        client = APIClient()
+        client.force_login(u)
+        res = client.post("/api/v1/qff/command/", {"line": "south"}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        log = res.json()["session"].get("action_log") or []
+        texts = [e.get("text", "") for e in log if isinstance(e, dict)]
+        self.assertTrue(
+            any("claws at walker" in t.lower() for t in texts),
+            f"expected latest preexisting room line to be preserved, got={texts}",
         )

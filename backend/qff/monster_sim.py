@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import logging
 import random
+import time
 from datetime import timedelta
 
+from django.conf import settings
 from django.db import connection, transaction
 from django.db.models import Exists, Min, OuterRef, Q
 from django.utils import timezone
@@ -712,6 +714,9 @@ def maybe_spawn_lairs(now) -> set[int]:
             max_hp=tpl.max_hp,
             next_action_at=now + timedelta(seconds=COMBAT_ROUND_SECONDS),
         )
+        # If heroes are already present in the lair room, engage immediately on spawn
+        # so arrivals don't miss the first combat cadence while waiting for a later flusher.
+        try_bind_monster_to_room_heroes(inst, room.pk, now)
         room.lair_last_instance_id = inst.pk
         room.lair_next_spawn_at = None
         room.save(update_fields=["lair_last_instance", "lair_next_spawn_at", "updated_at"])
@@ -891,25 +896,11 @@ def award_kill(
 
     xp_alloc: list[tuple[Character, int]] = []
     if heroes and xp_val > 0:
-        contrib = {str(k): int(v) for k, v in (monster.xp_contribution or {}).items()}
-        weights = [max(0, contrib.get(str(h.pk), 0)) for h in heroes]
-        total_w = sum(weights)
-        if total_w <= 0:
-            share = xp_val // len(heroes)
-            rem = xp_val - share * len(heroes)
-            for i, h in enumerate(heroes):
-                add = share + (1 if i < rem else 0)
-                xp_alloc.append((h, add))
-        else:
-            amounts = []
-            for w in weights:
-                amt = (xp_val * w) // total_w
-                amounts.append(amt)
-            rem = xp_val - sum(amounts)
-            for i in range(rem):
-                amounts[i % len(heroes)] += 1
-            for h, add in zip(heroes, amounts, strict=True):
-                xp_alloc.append((h, add))
+        # Product rule: split XP evenly among all heroes in the room, rounded up.
+        # Examples: 11 XP => 2 heroes -> 6 each; 3 heroes -> 4 each.
+        share = (xp_val + len(heroes) - 1) // len(heroes)
+        for h in heroes:
+            xp_alloc.append((h, share))
     elif heroes:
         xp_alloc = [(h, 0) for h in heroes]
 
@@ -1553,6 +1544,8 @@ def _bind_monsters_has_work() -> bool:
 def run_lazy_simulation(now=None, *, notify_rooms: bool = True) -> list[int]:
     now = now or timezone.now()
     rooms: set[int] = set()
+    profile_enabled = bool(getattr(settings, "QFF_LAZY_SIM_TIMING_LOG", False))
+    profiler_rows: list[tuple[str, int, float]] = []
     with transaction.atomic():
         if connection.vendor == "postgresql":
             with connection.cursor() as cur:
@@ -1564,14 +1557,46 @@ def run_lazy_simulation(now=None, *, notify_rooms: bool = True) -> list[int]:
         next_event_at = _earliest_time_based_lazy_sim_event(now)
         time_work_due = next_event_at is not None and next_event_at <= now
         if time_work_due:
-            rooms |= maybe_spawn_lairs(now)
-            rooms |= flush_pursuit_steps(now)
-            rooms |= flush_pending_leaves(now)
-            rooms |= flush_afk_boots(now)
-            rooms |= flush_combat_rounds(now)
+            for label, fn in (
+                ("spawn_lairs", maybe_spawn_lairs),
+                ("pursuit_steps", flush_pursuit_steps),
+                ("pending_leaves", flush_pending_leaves),
+                ("afk_boots", flush_afk_boots),
+                ("combat_rounds", flush_combat_rounds),
+            ):
+                t0 = time.perf_counter()
+                touched = fn(now)
+                elapsed = (time.perf_counter() - t0) * 1000
+                rooms |= touched
+                if profile_enabled:
+                    profiler_rows.append((label, len(touched), elapsed))
+            t0 = time.perf_counter()
             _revive_heroes(now)
+            if profile_enabled:
+                profiler_rows.append(("revive_heroes", 0, (time.perf_counter() - t0) * 1000))
         if _bind_monsters_has_work():
-            rooms |= flush_bind_monsters_with_room_heroes(now)
+            t0 = time.perf_counter()
+            touched = flush_bind_monsters_with_room_heroes(now)
+            rooms |= touched
+            if profile_enabled:
+                profiler_rows.append(
+                    (
+                        "bind_monsters_with_room_heroes",
+                        len(touched),
+                        (time.perf_counter() - t0) * 1000,
+                    )
+                )
+        elif profile_enabled:
+            profiler_rows.append(("bind_monsters_with_room_heroes", 0, 0.0))
+    if profile_enabled:
+        row_str = " ".join(f"{n}=rooms:{cnt},ms:{ms:.2f}" for n, cnt, ms in profiler_rows)
+        logger.info(
+            "qff_lazy_sim_timing time_work_due=%s next_event_at=%s total_rooms=%s %s",
+            time_work_due,
+            next_event_at.isoformat() if next_event_at else None,
+            len(rooms),
+            row_str,
+        )
     if rooms and notify_rooms:
         notify_qff_rooms(rooms)
     return list(rooms)

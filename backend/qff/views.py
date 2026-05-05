@@ -191,17 +191,21 @@ def session_activity_view(request):
     char = _get_character(request.user)
     if not char:
         return Response({"ok": False}, status=status.HTTP_404_NOT_FOUND)
-    was_in_realm = char.is_in_realm
     now = timezone.now()
-    Character.objects.filter(pk=char.pk).update(
-        last_activity_at=now,
-        is_in_realm=True,
-        updated_at=now,
+    became_in_realm = (
+        Character.objects.filter(pk=char.pk, is_in_realm=False).update(
+            last_activity_at=now,
+            is_in_realm=True,
+            updated_at=now,
+        )
+        > 0
     )
-    if not was_in_realm:
-        fresh = _get_character(request.user)
-        if fresh:
-            broadcast_realm_enter(fresh)
+    if not became_in_realm:
+        Character.objects.filter(pk=char.pk).update(last_activity_at=now, updated_at=now)
+    else:
+        char.is_in_realm = True
+        char.last_activity_at = now
+        broadcast_realm_enter(char)
     return Response({"ok": True})
 
 

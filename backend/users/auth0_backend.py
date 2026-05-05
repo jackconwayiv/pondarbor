@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 
 import requests
 from django.conf import settings
@@ -54,6 +55,12 @@ def authenticate_bearer_token(token: str):
     token = (token or "").strip()
     if not token:
         raise exceptions.AuthenticationFailed("Missing token.")
+
+    t_auth_start = time.perf_counter()
+    timing_enabled = bool(getattr(settings, "AUTH0_AUTH_TIMING_LOG", False))
+    userinfo_ms = 0.0
+    save_user_ms = 0.0
+    save_profile_ms = 0.0
 
     try:
         jwks = get_auth0_jwks()
@@ -116,15 +123,19 @@ def authenticate_bearer_token(token: str):
     picture = payload.get("picture") or ""
 
     userinfo: dict = {}
-    need_email = not email
-    # Access tokens for a custom API audience typically omit OIDC profile claims
-    # (picture, name). ID token and /userinfo include them for Google etc.
-    need_profile = not picture or not (full_name or given_name or family_name)
-    # Slack (legacy or OIDC) often encodes workspace linkage only in /userinfo `identities`.
-    need_slack_identities = _sub_may_be_slack(token_sub)
     userinfo_lookup_failed = False
 
-    if need_email or need_profile or need_slack_identities:
+    # Fast-path auth: do not call /userinfo unless strictly required for login.
+    # We only need an email when creating/updating the local account; known users
+    # (resolved by stable auth0_sub) can authenticate with stored email.
+    existing_user = None
+    if auth0_sub:
+        existing_user = User.objects.filter(auth0_sub=auth0_sub).first()
+        if not email and existing_user and existing_user.email:
+            email = existing_user.email
+
+    if not email:
+        t0_userinfo = time.perf_counter()
         try:
             userinfo_response = requests.get(
                 f"https://{settings.AUTH0_DOMAIN}/userinfo",
@@ -139,30 +150,21 @@ def authenticate_bearer_token(token: str):
             if not isinstance(userinfo, dict):
                 userinfo = {}
         except requests.RequestException:
-            # Do not hard-fail yet. We may still resolve a known user by `sub`
-            # and reuse stored email/profile data.
             userinfo_lookup_failed = True
             userinfo = {}
-
-    if userinfo:
-        email = email or userinfo.get("email")
-        auth0_sub = auth0_sub or userinfo.get("sub")
-        if not given_name:
-            given_name = userinfo.get("given_name") or ""
-        if not family_name:
-            family_name = userinfo.get("family_name") or ""
-        if not full_name:
-            full_name = userinfo.get("name") or ""
-        if not picture:
-            picture = userinfo.get("picture") or ""
-
-    # Resiliency: Access tokens for custom API audiences can omit `email`.
-    # If /userinfo is unavailable but we can resolve a previously-synced user by sub,
-    # reuse that user's stored email rather than failing auth for known accounts.
-    if not email and auth0_sub:
-        existing_user = User.objects.filter(auth0_sub=auth0_sub).first()
-        if existing_user and existing_user.email:
-            email = existing_user.email
+        finally:
+            userinfo_ms = (time.perf_counter() - t0_userinfo) * 1000
+        if userinfo:
+            email = email or userinfo.get("email")
+            auth0_sub = auth0_sub or userinfo.get("sub")
+            if not given_name:
+                given_name = userinfo.get("given_name") or ""
+            if not family_name:
+                family_name = userinfo.get("family_name") or ""
+            if not full_name:
+                full_name = userinfo.get("name") or ""
+            if not picture:
+                picture = userinfo.get("picture") or ""
 
     if not email:
         if userinfo_lookup_failed:
@@ -185,7 +187,9 @@ def authenticate_bearer_token(token: str):
         auth0_sub = _clip(auth0_sub, sub_max)
 
     user = None
-    if auth0_sub:
+    if existing_user is not None:
+        user = existing_user
+    elif auth0_sub:
         user = User.objects.filter(auth0_sub=auth0_sub).first()
 
     if user is None:
@@ -200,21 +204,34 @@ def authenticate_bearer_token(token: str):
             if user is None:
                 raise
 
-    user.email = email
-    user.first_name = given_name
-    user.last_name = family_name
+    user_changed = False
+    if user.email != email:
+        user.email = email
+        user_changed = True
+    if user.first_name != given_name:
+        user.first_name = given_name
+        user_changed = True
+    if user.last_name != family_name:
+        user.last_name = family_name
+        user_changed = True
     if auth0_sub:
-        user.auth0_sub = auth0_sub
-    try:
-        user.save()
-    except IntegrityError as exc:
-        logger.warning("Auth0 user save integrity error for %s", email, exc_info=True)
-        raise exceptions.AuthenticationFailed(
-            "Could not sync account (identity conflict). Try again or contact support."
-        ) from exc
-    except OperationalError:
-        logger.exception("Auth0 user save database error for %s", email)
-        raise
+        if user.auth0_sub != auth0_sub:
+            user.auth0_sub = auth0_sub
+            user_changed = True
+    if user_changed:
+        t0_save_user = time.perf_counter()
+        try:
+            user.save()
+        except IntegrityError as exc:
+            logger.warning("Auth0 user save integrity error for %s", email, exc_info=True)
+            raise exceptions.AuthenticationFailed(
+                "Could not sync account (identity conflict). Try again or contact support."
+            ) from exc
+        except OperationalError:
+            logger.exception("Auth0 user save database error for %s", email)
+            raise
+        finally:
+            save_user_ms = (time.perf_counter() - t0_save_user) * 1000
 
     try:
         profile = user.profile
@@ -223,19 +240,38 @@ def authenticate_bearer_token(token: str):
     if profile is not None:
         # Do not clobber profile fields the user may have edited via PATCH;
         # only seed from Auth0/IdP when the field is still empty.
+        profile_changed = False
         if full_name and not (profile.display_name or "").strip():
             profile.display_name = full_name
+            profile_changed = True
         if picture and not (profile.avatar_url or "").strip():
             profile.avatar_url = picture
-        try:
-            profile.save()
-        except (IntegrityError, OperationalError):
-            logger.exception("Auth0 profile save failed for %s", email)
-            raise
+            profile_changed = True
+        if profile_changed:
+            t0_save_profile = time.perf_counter()
+            try:
+                profile.save()
+            except (IntegrityError, OperationalError):
+                logger.exception("Auth0 profile save failed for %s", email)
+                raise
+            finally:
+                save_profile_ms = (time.perf_counter() - t0_save_profile) * 1000
 
     sync_slack_identity_from_auth0_userinfo(user, userinfo)
 
     auth_payload = {"token": token, "payload": payload}
+    if timing_enabled:
+        total_ms = (time.perf_counter() - t_auth_start) * 1000
+        logger.info(
+            "auth0_auth_timing email=%s total_ms=%.2f userinfo_ms=%.2f save_user_ms=%.2f save_profile_ms=%.2f used_userinfo=%s user_changed=%s",
+            email,
+            total_ms,
+            userinfo_ms,
+            save_user_ms,
+            save_profile_ms,
+            bool(userinfo),
+            user_changed,
+        )
     return (user, auth_payload)
 
 

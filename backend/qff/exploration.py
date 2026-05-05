@@ -3,7 +3,7 @@
 from datetime import timedelta
 
 from django.db import transaction
-from django.db.models import F, Max
+from django.db.models import F
 from django.utils import timezone
 
 from qff.constants import FLOOR_ITEM_MIN_AGE_BEFORE_DELETE_MINUTES
@@ -17,6 +17,7 @@ from qff.models import (
     RoomBroadcast,
     RoomExit,
 )
+from qff.static_cache import get_room_exits_from_rooms
 
 # Unowned floor items are deleted after this many departures from the room.
 FLOOR_ITEM_NEGLECT_DELETE_AT = 4
@@ -39,10 +40,7 @@ def sync_seen_exits_for_character(character: Character) -> None:
     if not visited:
         return
     visible_ids: list[int] = []
-    for ex in RoomExit.objects.filter(from_room_id__in=visited).select_related(
-        "reveal_item",
-        "reveal_quest_state",
-    ):
+    for ex in get_room_exits_from_rooms(visited):
         if exit_is_visible_to_character(character, ex):
             visible_ids.append(ex.pk)
     if not visible_ids:
@@ -89,8 +87,17 @@ def on_leave_room(room_id: int) -> None:
 def on_enter_room(character: Character, room_id: int) -> None:
     mark_room_visited(character, room_id)
     sync_seen_exits_for_character(character)
-    max_bid = RoomBroadcast.objects.filter(room_id=room_id).aggregate(m=Max("id"))["m"]
-    character.last_room_broadcast_id = int(max_bid or 0)
+    # Keep one line of room context on entry so arrivals do not miss a just-emitted
+    # combat/action broadcast that raced slightly ahead of their move request.
+    recent_ids = list(
+        RoomBroadcast.objects.filter(room_id=room_id)
+        .order_by("-id")
+        .values_list("id", flat=True)[:2]
+    )
+    if len(recent_ids) >= 2:
+        character.last_room_broadcast_id = int(recent_ids[1])
+    else:
+        character.last_room_broadcast_id = 0
     update_fields = ["last_room_broadcast_id", "updated_at"]
     reset_dark = (
         Room.objects.filter(pk=room_id)

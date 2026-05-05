@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import timedelta
+from typing import Iterable
 
 from django.db import transaction
 from django.utils import timezone
 
 from qff.game_helpers import load_inventory_instance_map
+from qff.static_cache import get_item_by_id
 from qff.models import (
     Character,
     CharacterExitSeen,
     CharacterExitUnlock,
+    CharacterQuestProgress,
     ItemInstance,
     RealmExitUnlock,
     RoomExit,
@@ -26,6 +30,47 @@ SLOT_ATTRS = (
     "ring_item",
     "amulet_item",
 )
+
+
+@dataclass(frozen=True)
+class ExitEvaluationContext:
+    """Per-request snapshots used by exit visibility/passability checks."""
+
+    inventory_instance_map: dict[int, ItemInstance]
+    active_quest_state_ids: frozenset[int]
+    seen_exit_ids: frozenset[int] | None = None
+
+
+def build_exit_evaluation_context(
+    character: Character, room_exits: Iterable[RoomExit] | None = None
+) -> ExitEvaluationContext:
+    """Build one context for all exit checks in a request.
+
+    `room_exits` is optional; when provided we prefetch CharacterExitSeen for those
+    exit ids to avoid per-exit `.exists()` calls in hidden/no-reveal paths.
+    """
+    inv_map = load_inventory_instance_map(character)
+    quest_state_ids = frozenset(
+        CharacterQuestProgress.objects.filter(character_id=character.pk).values_list(
+            "current_state_id", flat=True
+        )
+    )
+    seen_exit_ids: frozenset[int] | None = None
+    if room_exits is not None:
+        exit_ids = [ex.pk for ex in room_exits]
+        if exit_ids:
+            seen_exit_ids = frozenset(
+                CharacterExitSeen.objects.filter(
+                    character_id=character.pk, room_exit_id__in=exit_ids
+                ).values_list("room_exit_id", flat=True)
+            )
+        else:
+            seen_exit_ids = frozenset()
+    return ExitEvaluationContext(
+        inventory_instance_map=inv_map,
+        active_quest_state_ids=quest_state_ids,
+        seen_exit_ids=seen_exit_ids,
+    )
 
 
 def realm_unlock_active(room_exit: RoomExit) -> bool:
@@ -68,9 +113,18 @@ def _set_character_unlock(character: Character, room_exit: RoomExit) -> None:
     )
 
 
-def _find_key_instance(character: Character, key_item_id: int) -> ItemInstance | None:
+def _find_key_instance(
+    character: Character,
+    key_item_id: int,
+    *,
+    inventory_instance_map: dict[int, ItemInstance] | None = None,
+) -> ItemInstance | None:
     """First matching key in inventory order, then equipment."""
-    inv_map = load_inventory_instance_map(character)
+    inv_map = (
+        inventory_instance_map
+        if inventory_instance_map is not None
+        else load_inventory_instance_map(character)
+    )
     for iid in character.inventory or []:
         inst = inv_map.get(iid)
         if inst and inst.item_id == key_item_id:
@@ -86,11 +140,17 @@ def _find_key_instance(character: Character, key_item_id: int) -> ItemInstance |
 def consume_key_and_unlock(
     character: Character,
     room_exit: RoomExit,
+    *,
+    context: ExitEvaluationContext | None = None,
 ) -> bool:
     """Return True if a key was consumed and unlock recorded."""
     if not room_exit.key_item_id:
         return False
-    inst = _find_key_instance(character, room_exit.key_item_id)
+    inst = _find_key_instance(
+        character,
+        room_exit.key_item_id,
+        inventory_instance_map=(context.inventory_instance_map if context else None),
+    )
     if not inst:
         return False
     char = Character.objects.select_for_update().get(pk=character.pk)
@@ -134,7 +194,12 @@ def exit_appears_locked_for_display(character: Character, room_exit: RoomExit) -
     return not passable_unlock_state(character, room_exit)
 
 
-def exit_is_visible_to_character(character: Character, room_exit: RoomExit) -> bool:
+def exit_is_visible_to_character(
+    character: Character,
+    room_exit: RoomExit,
+    *,
+    context: ExitEvaluationContext | None = None,
+) -> bool:
     """Whether this exit appears in play (HUD, map, movement) for the character."""
     if not room_exit.is_hidden:
         return True
@@ -144,26 +209,40 @@ def exit_is_visible_to_character(character: Character, room_exit: RoomExit) -> b
         ok_item = True
         ok_quest = True
         if need_item:
-            ok_item = bool(_find_key_instance(character, need_item))
+            ok_item = bool(
+                _find_key_instance(
+                    character,
+                    need_item,
+                    inventory_instance_map=(
+                        context.inventory_instance_map if context else None
+                    ),
+                )
+            )
         if need_quest:
-            from qff.models import CharacterQuestProgress
-
-            qs = room_exit.reveal_quest_state
-            ok_quest = CharacterQuestProgress.objects.filter(
-                character=character,
-                quest_id=qs.quest_id,
-                current_state_id=qs.id,
-            ).exists()
+            if context is not None:
+                ok_quest = room_exit.reveal_quest_state_id in context.active_quest_state_ids
+            else:
+                qs = room_exit.reveal_quest_state
+                ok_quest = CharacterQuestProgress.objects.filter(
+                    character=character,
+                    quest_id=qs.quest_id,
+                    current_state_id=qs.id,
+                ).exists()
         return ok_item and ok_quest
+    if context is not None and context.seen_exit_ids is not None:
+        return room_exit.pk in context.seen_exit_ids
     return CharacterExitSeen.objects.filter(
         character_id=character.pk, room_exit_id=room_exit.pk
     ).exists()
 
 
-def exit_is_passable(character: Character, room_exit: RoomExit) -> bool:
+def exit_is_passable(
+    character: Character,
+    room_exit: RoomExit,
+    *,
+    context: ExitEvaluationContext | None = None,
+) -> bool:
     """Whether the character may move through this exit (before consuming a key)."""
-    from qff.models import CharacterQuestProgress
-
     lk = room_exit.lock_kind
     if lk == RoomExit.LockKind.NONE:
         return True
@@ -172,13 +251,21 @@ def exit_is_passable(character: Character, room_exit: RoomExit) -> bool:
     if lk == RoomExit.LockKind.KEY:
         return bool(
             room_exit.key_item_id
-            and _find_key_instance(character, room_exit.key_item_id)
+            and _find_key_instance(
+                character,
+                room_exit.key_item_id,
+                inventory_instance_map=(
+                    context.inventory_instance_map if context else None
+                ),
+            )
         )
     if lk == RoomExit.LockKind.DEVICE:
         return False
     if lk == RoomExit.LockKind.QUEST:
         if not room_exit.quest_required_state_id:
             return False
+        if context is not None:
+            return room_exit.quest_required_state_id in context.active_quest_state_ids
         qs = room_exit.quest_required_state
         return CharacterQuestProgress.objects.filter(
             character=character,
@@ -190,7 +277,10 @@ def exit_is_passable(character: Character, room_exit: RoomExit) -> bool:
 
 @transaction.atomic
 def consume_key_if_entering_locked(
-    character: Character, room_exit: RoomExit
+    character: Character,
+    room_exit: RoomExit,
+    *,
+    context: ExitEvaluationContext | None = None,
 ) -> tuple[bool, str | None]:
     """If KEY exit and not yet unlocked, consume key when ``consume_key_on_pass``.
 
@@ -206,13 +296,9 @@ def consume_key_if_entering_locked(
     if room_exit.key_item_id and room_exit.key_item:
         key_name = (room_exit.key_item.name or "").strip() or "key"
     elif room_exit.key_item_id:
-        from qff.models import Item
-
-        key_name = (
-            Item.objects.filter(pk=room_exit.key_item_id).values_list("name", flat=True).first()
-        )
-        key_name = (str(key_name).strip() if key_name else None) or "key"
-    consumed = consume_key_and_unlock(character, room_exit)
+        key_obj = get_item_by_id(room_exit.key_item_id)
+        key_name = ((key_obj.name if key_obj else "") or "").strip() or "key"
+    consumed = consume_key_and_unlock(character, room_exit, context=context)
     if consumed and not key_name:
         key_name = "key"
     return (consumed, key_name if consumed else None)

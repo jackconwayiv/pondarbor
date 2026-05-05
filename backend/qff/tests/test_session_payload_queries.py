@@ -13,6 +13,8 @@ from qff.models import (
     CharacterClass,
     CharacterExitSeen,
     CharacterRoomVisit,
+    Item,
+    ItemInstance,
     Room,
     RoomExit,
 )
@@ -24,6 +26,10 @@ User = get_user_model()
 
 def _roomexit_sql_hits(captured: list) -> int:
     return sum(1 for q in captured if "qff_roomexit" in q["sql"].lower())
+
+
+def _iteminstance_sql_hits(captured: list) -> int:
+    return sum(1 for q in captured if "qff_iteminstance" in q["sql"].lower())
 
 
 class BuildAreaMapQueryTests(TestCase):
@@ -222,3 +228,78 @@ class SyncSeenExitsQueryTests(TestCase):
         with CaptureQueriesContext(connection) as ctx:
             sync_seen_exits_for_character(char)
         self.assertLessEqual(len(ctx.captured_queries), 8)
+
+
+class SessionExitEvaluationQueryTests(TestCase):
+    """Session exit checks should batch inventory/seen checks across exits."""
+
+    def setUp(self):
+        self.area = Area.objects.create(name="ExitBatch", slug="exit-batch", grid_width=3, grid_height=3)
+        self.cc = CharacterClass.objects.create(slug="exit-war", name="Warrior", sort_order=0)
+        self.origin = Room.objects.create(area=self.area, name="Origin", slug="exit-origin")
+        self.dest_rooms: list[Room] = []
+        for i in range(6):
+            self.dest_rooms.append(
+                Room.objects.create(area=self.area, name=f"D{i}", slug=f"exit-d{i}")
+            )
+        dirs = [
+            RoomExit.Direction.N,
+            RoomExit.Direction.S,
+            RoomExit.Direction.E,
+            RoomExit.Direction.W,
+            RoomExit.Direction.UP,
+            RoomExit.Direction.OUT,
+        ]
+        self.reveal_item = Item.objects.create(slug="exit-key", name="Exit Key", slot=None)
+        for d, dest in zip(dirs, self.dest_rooms):
+            RoomExit.objects.create(
+                from_room=self.origin,
+                to_room=dest,
+                direction=d,
+                is_hidden=True,
+                reveal_item=self.reveal_item,
+            )
+
+        user = User.objects.create_user(email="exitbatch@example.com", password="test-pass-12345")
+        self.character = Character.objects.create(
+            user=user,
+            name="Batcher",
+            name_normalized="batcher",
+            character_class=self.cc,
+            current_room=self.origin,
+            spawn_room=self.origin,
+            last_activity_at=timezone.now(),
+        )
+        inst = ItemInstance.objects.create(
+            item=self.reveal_item,
+            owner_character=self.character,
+            quantity=1,
+        )
+        self.character.inventory = [inst.pk]
+        self.character.save(update_fields=["inventory", "updated_at"])
+
+    def _fresh_character(self) -> Character:
+        return Character.objects.select_related(
+            "character_class",
+            "current_room",
+            "current_room__area",
+            "spawn_room",
+            "head_item__item",
+            "main_hand_item__item",
+            "off_hand_item__item",
+            "chest_item__item",
+            "feet_item__item",
+            "ring_item__item",
+            "amulet_item__item",
+        ).get(pk=self.character.pk)
+
+    def test_build_session_batches_iteminstance_checks_across_exits(self):
+        char = self._fresh_character()
+        with CaptureQueriesContext(connection) as ctx:
+            session = build_session_for_character(char)
+        self.assertEqual(len(session["exits"]), 6)
+        self.assertLessEqual(
+            _iteminstance_sql_hits(ctx.captured_queries),
+            4,
+            "Expected one inventory map load shared across all exits, not one per-exit ItemInstance query.",
+        )

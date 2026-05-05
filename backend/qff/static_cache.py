@@ -93,3 +93,85 @@ def cached_loader(name: str) -> Callable[[Callable[[], _T]], Callable[[], _T]]:
 def reset_for_test() -> None:
     """Test hook: drop process-local caches so changes between tests are visible."""
     _loader_cache.clear()
+
+
+@cached_loader("item_by_id")
+def _load_item_by_id_map() -> dict[int, Any]:
+    from qff.models import Item
+
+    return {i.pk: i for i in Item.objects.order_by("id")}
+
+
+def get_item_by_id(item_id: int | None):
+    if not item_id:
+        return None
+    return _load_item_by_id_map().get(int(item_id))
+
+
+@cached_loader("room_exit_rows")
+def _load_room_exit_rows() -> tuple[Any, ...]:
+    from qff.models import RoomExit
+
+    return tuple(
+        RoomExit.objects.select_related(
+            "to_room",
+            "quest_required_state",
+            "key_item",
+            "reveal_item",
+            "reveal_quest_state",
+        ).order_by("id")
+    )
+
+
+def get_room_exits_from_room(room_id: int) -> list[Any]:
+    rid = int(room_id)
+    return [ex for ex in _load_room_exit_rows() if ex.from_room_id == rid]
+
+
+def get_room_exits_from_rooms(room_ids: list[int]) -> list[Any]:
+    wanted = {int(rid) for rid in room_ids}
+    if not wanted:
+        return []
+    return [ex for ex in _load_room_exit_rows() if ex.from_room_id in wanted]
+
+
+@cached_loader("room_item_rows")
+def _load_room_item_rows() -> tuple[Any, ...]:
+    from qff.models import RoomItem
+
+    return tuple(
+        RoomItem.objects.select_related("item", "visible_quest_state").order_by("id")
+    )
+
+
+def get_room_items(room_id: int) -> list[Any]:
+    rid = int(room_id)
+    return [ri for ri in _load_room_item_rows() if ri.room_id == rid]
+
+
+@cached_loader("interactable_rows")
+def _load_interactable_rows() -> tuple[Any, ...]:
+    from qff.models import Interactable
+
+    return tuple(Interactable.objects.order_by("id"))
+
+
+def get_room_interactables(room_id: int) -> list[Any]:
+    rid = int(room_id)
+    rows = [obj for obj in _load_interactable_rows() if obj.room_id == rid]
+    rows.sort(key=lambda o: (o.name or "", o.pk))
+    return rows
+
+
+@cached_loader("npc_rows")
+def _load_npc_rows() -> tuple[Any, ...]:
+    from qff.models import Npc
+
+    return tuple(Npc.objects.order_by("id"))
+
+
+def get_room_npcs(room_id: int) -> list[Any]:
+    rid = int(room_id)
+    rows = [n for n in _load_npc_rows() if n.room_id == rid]
+    rows.sort(key=lambda n: (n.name or "", n.pk))
+    return rows

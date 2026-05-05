@@ -47,6 +47,7 @@ from qff.constants import (
 from qff.exploration import mark_exit_used, on_enter_room, on_leave_room
 from qff.glyph_class_map import normalize_glyph
 from qff.exits import (
+    build_exit_evaluation_context,
     consume_key_if_entering_locked,
     exit_is_passable,
     exit_is_visible_to_character,
@@ -145,6 +146,7 @@ from qff.shop_engine import (
     resolve_shop,
     sell_to_shop,
 )
+from qff.static_cache import get_room_exits_from_room
 
 if TYPE_CHECKING:
     from qff.models import Character as CharacterType
@@ -1055,33 +1057,28 @@ def _handle_train(char: CharacterType) -> list[str]:
 
 
 def _handle_move(char: CharacterType, parsed: ParsedMove) -> list[str]:
-    ex = (
-        RoomExit.objects.select_related(
-            "to_room",
-            "quest_required_state",
-            "key_item",
-            "reveal_item",
-            "reveal_quest_state",
-        )
-        .filter(
-            from_room=char.current_room,
-            direction=parsed.direction,
-        )
-        .first()
+    ex = next(
+        (
+            row
+            for row in get_room_exits_from_room(char.current_room_id)
+            if row.direction == parsed.direction
+        ),
+        None,
     )
     _touch_activity(char)
     if not ex:
         char.save(update_fields=["last_activity_at", "updated_at"])
         return ["You can't go that way."]
-    if not exit_is_visible_to_character(char, ex):
+    ex_ctx = build_exit_evaluation_context(char, room_exits=[ex])
+    if not exit_is_visible_to_character(char, ex, context=ex_ctx):
         char.save(update_fields=["last_activity_at", "updated_at"])
         return ["You can't go that way."]
-    if not exit_is_passable(char, ex):
+    if not exit_is_passable(char, ex, context=ex_ctx):
         char.save(update_fields=["last_activity_at", "updated_at"])
         return ["You can't go that way — not yet."]
     key_consumed, key_name = (False, None)
     if ex.lock_kind == RoomExit.LockKind.KEY:
-        key_consumed, key_name = consume_key_if_entering_locked(char, ex)
+        key_consumed, key_name = consume_key_if_entering_locked(char, ex, context=ex_ctx)
         char = Character.objects.get(pk=char.pk)
     mark_exit_used(char, ex)
     left_room_id = char.current_room_id

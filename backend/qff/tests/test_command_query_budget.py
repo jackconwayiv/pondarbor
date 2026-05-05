@@ -22,7 +22,10 @@ from qff.models import (
     Area,
     Character,
     CharacterClass,
+    Item,
+    ItemInstance,
     Room,
+    RoomExit,
 )
 from qff.monster_sim import run_lazy_simulation
 from qff.session_payload import build_session_for_character
@@ -33,9 +36,10 @@ User = get_user_model()
 class CommandQueryBudgetTests(TestCase):
     def setUp(self):
         self.area = Area.objects.create(
-            name="Budget", slug="budget", grid_width=1, grid_height=1
+            name="Budget", slug="budget", grid_width=2, grid_height=1
         )
         self.room = Room.objects.create(area=self.area, name="Hub", slug="budget-hub")
+        self.room_east = Room.objects.create(area=self.area, name="East", slug="budget-east")
         self.cc = CharacterClass.objects.create(
             slug="bgt-war", name="Warrior", sort_order=0
         )
@@ -53,6 +57,24 @@ class CommandQueryBudgetTests(TestCase):
             cur_health=10,
             max_health=10,
             is_in_realm=True,
+        )
+        self.move_key = Item.objects.create(slug="move-key", name="Move Key", slot=None)
+        move_key_inst = ItemInstance.objects.create(
+            item=self.move_key,
+            owner_character=self.hero,
+            quantity=1,
+        )
+        self.hero.inventory = [move_key_inst.pk]
+        self.hero.save(update_fields=["inventory", "updated_at"])
+        RoomExit.objects.create(
+            from_room=self.room,
+            to_room=self.room_east,
+            direction=RoomExit.Direction.E,
+            is_hidden=True,
+            reveal_item=self.move_key,
+            lock_kind=RoomExit.LockKind.KEY,
+            key_item=self.move_key,
+            consume_key_on_pass=False,
         )
 
     def _fresh_hero(self) -> Character:
@@ -126,4 +148,13 @@ class CommandQueryBudgetTests(TestCase):
             len(ctx.captured_queries),
             12,
             f"idle lazy sim exceeded query budget: {len(ctx.captured_queries)}",
+        )
+
+    def test_move_command_query_budget(self):
+        """Move through a hidden key-gated exit with a reveal-item requirement."""
+        with CaptureQueriesContext(connection) as ctx:
+            self._run_command_path("go east")
+        actual = len(ctx.captured_queries)
+        self.assertLessEqual(
+            actual, 75, f"move command exceeded query budget: {actual}"
         )

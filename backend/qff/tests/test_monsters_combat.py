@@ -424,7 +424,7 @@ class MonsterCombatTests(TestCase):
         self.assertIsNotNone(left)
         self.assertEqual(int(left.amount_remaining), 7)
 
-    def test_award_kill_xp_by_contribution(self):
+    def test_award_kill_xp_split_evenly_rounded_up(self):
         u2 = _test_user("h2@example.com")
         h2 = Character.objects.create(
             user=u2,
@@ -435,8 +435,6 @@ class MonsterCombatTests(TestCase):
             last_activity_at=timezone.now(),
             xp=0,
         )
-        self.monster.xp_contribution = {str(self.hero.pk): 9, str(h2.pk): 1}
-        self.monster.save(update_fields=["xp_contribution", "updated_at"])
         self.tpl.xp_value = 100
         self.tpl.save(update_fields=["xp_value", "updated_at"])
         hero_xp_before = int(self.hero.xp)
@@ -444,8 +442,41 @@ class MonsterCombatTests(TestCase):
         award_kill(self.monster, self.room_danger.id, now, killer=self.hero)
         self.hero.refresh_from_db()
         h2.refresh_from_db()
-        self.assertEqual(self.hero.xp, hero_xp_before + 90)
-        self.assertEqual(h2.xp, 10)
+        self.assertEqual(self.hero.xp, hero_xp_before + 50)
+        self.assertEqual(h2.xp, 50)
+
+    def test_award_kill_xp_split_three_heroes_rounds_up(self):
+        u2 = _test_user("h2-round@example.com")
+        h2 = Character.objects.create(
+            user=u2,
+            name="H2R",
+            character_class=self.cc,
+            current_room=self.room_danger,
+            spawn_room=self.room_danger,
+            last_activity_at=timezone.now(),
+            xp=0,
+        )
+        u3 = _test_user("h3-round@example.com")
+        h3 = Character.objects.create(
+            user=u3,
+            name="H3R",
+            character_class=self.cc,
+            current_room=self.room_danger,
+            spawn_room=self.room_danger,
+            last_activity_at=timezone.now(),
+            xp=0,
+        )
+        self.tpl.xp_value = 11
+        self.tpl.save(update_fields=["xp_value", "updated_at"])
+        now = timezone.now()
+        hero_xp_before = int(self.hero.xp)
+        award_kill(self.monster, self.room_danger.id, now, killer=self.hero)
+        self.hero.refresh_from_db()
+        h2.refresh_from_db()
+        h3.refresh_from_db()
+        self.assertEqual(self.hero.xp, hero_xp_before + 4)
+        self.assertEqual(h2.xp, 4)
+        self.assertEqual(h3.xp, 4)
 
     def test_award_kill_loot_first_success(self):
         slug_item = Item.objects.create(slug="loot_a", name="Loot A", slot=None)
@@ -733,14 +764,15 @@ class MonsterCombatTests(TestCase):
         self.hero.current_room = lair
         self.hero.save(update_fields=["current_room", "updated_at"])
         now = timezone.now()
+        max_id = RoomBroadcast.objects.aggregate(m=Max("id"))["m"] or 0
         maybe_spawn_lairs(now)
-        run_lazy_simulation(now, notify_rooms=False)
         m = MonsterInstance.objects.filter(current_room=lair).first()
         self.assertIsNotNone(m)
         self.assertEqual(m.engaged_character_id, self.hero.pk)
         self.assertFalse(m.monster_strike_pending)
         prep = RoomBroadcast.objects.filter(
             room_id=lair.pk,
+            id__gt=max_id,
             target_character_id=self.hero.pk,
             text__icontains="prepares to strike",
         ).exists()

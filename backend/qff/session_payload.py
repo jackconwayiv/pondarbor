@@ -15,6 +15,7 @@ from qff.narrative_visibility import (
     sconce_lit_area_ids_for_character,
 )
 from qff.exits import (
+    build_exit_evaluation_context,
     exit_appears_locked_for_display,
     exit_is_passable,
     exit_is_visible_to_character,
@@ -54,6 +55,12 @@ from qff.models import (
 )
 from qff.realm_presence import realm_presence_hero_qs
 from qff.shop_engine import get_enabled_shops_in_room
+from qff.static_cache import (
+    get_room_exits_from_room,
+    get_room_interactables,
+    get_room_items,
+    get_room_npcs,
+)
 
 
 def _opened_container_session_dict(
@@ -596,40 +603,26 @@ def build_session_for_character(character) -> dict:
     room = character.current_room
     area = room.area
     exits = []
-    for ex in (
-        RoomExit.objects.filter(from_room=room)
-        .select_related(
-            "to_room",
-            "quest_required_state",
-            "key_item",
-            "reveal_item",
-            "reveal_quest_state",
-        )
-        .order_by("direction")
-    ):
-        if not exit_is_visible_to_character(character, ex):
+    room_exits = sorted(get_room_exits_from_room(room.id), key=lambda ex: ex.direction)
+    exit_context = build_exit_evaluation_context(character, room_exits=room_exits)
+    for ex in room_exits:
+        if not exit_is_visible_to_character(character, ex, context=exit_context):
             continue
         exits.append(
             {
                 "direction": ex.direction,
                 "label": ex.get_direction_display(),
                 "to_room_id": ex.to_room_id,
-                "is_blocked": not exit_is_passable(character, ex),
+                "is_blocked": not exit_is_passable(character, ex, context=exit_context),
                 "is_locked": exit_appears_locked_for_display(character, ex),
             }
         )
 
     action_log = consume_room_broadcast_entries(character)
 
-    room_interactables = list(
-        Interactable.objects.filter(room_id=room.id).order_by("name")
-    )
+    room_interactables = get_room_interactables(room.id)
 
-    all_room_items = list(
-        RoomItem.objects.filter(room_id=room.id)
-        .select_related("item", "visible_quest_state")
-        .order_by("id")
-    )
+    all_room_items = get_room_items(room.id)
     visibility_batch = build_room_item_visibility_batch(
         character, room.id, all_room_items
     )
@@ -706,10 +699,7 @@ def build_session_for_character(character) -> dict:
             ],
             "gold_piles": _room_gold_piles_json(gold_piles),
             "youSee": you_see,
-            "npcs": [
-                {"slug": n.slug, "name": n.name}
-                for n in Npc.objects.filter(room_id=room.id).order_by("name")
-            ],
+            "npcs": [{"slug": n.slug, "name": n.name} for n in get_room_npcs(room.id)],
             "interactables": [
                 {"slug": o.slug, "name": o.name, "kind": o.kind}
                 for o in room_interactables

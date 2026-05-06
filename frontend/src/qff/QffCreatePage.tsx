@@ -21,10 +21,8 @@ import { PanelBlockSkeleton } from "../components/panelStatus";
 import QffButton from "./QffButton";
 import { createQffCharacter, fetchQffSession } from "./api";
 import {
-  CLASS_SUMMARY_BY_SLUG,
   GLYPH_DISPLAY,
   GLYPH_IDS,
-  classSlugForGlyph,
   type GlyphId,
 } from "./glyphCreation";
 
@@ -202,9 +200,6 @@ export default function QffCreatePage() {
       setSaving(false);
     }
   }, [name, glyph1, navigate]);
-
-  const summarySlug = glyph1 != null ? classSlugForGlyph(glyph1) : undefined;
-  const summary = summarySlug ? CLASS_SUMMARY_BY_SLUG[summarySlug] : undefined;
 
   if (!isAuthenticated) {
     return (

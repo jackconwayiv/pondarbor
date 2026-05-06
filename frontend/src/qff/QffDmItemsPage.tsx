@@ -983,12 +983,16 @@ export default function QffDmItemsPage() {
               <Field.Root
                 minW={0}
                 opacity={((form.required_glyphs as string[] | undefined)?.length ?? 0) < 2 ? 0.5 : 1}
+                pointerEvents={
+                  ((form.required_glyphs as string[] | undefined)?.length ?? 0) < 2
+                    ? "none"
+                    : undefined
+                }
               >
                 <Field.Label>required_glyphs_mode</Field.Label>
                 <NativeSelectRoot>
                   <NativeSelectField
                     value={(form.required_glyphs_mode ?? "and") as string}
-                    disabled={((form.required_glyphs as string[] | undefined)?.length ?? 0) < 2}
                     onChange={(e) =>
                       setForm((f) => ({
                         ...f,

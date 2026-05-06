@@ -535,6 +535,7 @@ def build_character_profile(character) -> dict:
             "name": character.character_class.name,
         },
         "glyphs": list(character.glyphs or []),
+        "glyphLevels": list(character.glyph_levels or []),
         "equipment_slots": {
             "head": _slot_label(character, character.head_item),
             "mainHand": _slot_label(character, character.main_hand_item),
@@ -760,6 +761,7 @@ def build_session_for_character(
             "class_slug": character.character_class.slug,
             "class_name": character.character_class.name,
             "glyphs": list(character.glyphs or []),
+            "glyph_levels": list(character.glyph_levels or []),
             "spawn_room": {
                 "id": character.spawn_room_id,
                 "name": character.spawn_room.name,

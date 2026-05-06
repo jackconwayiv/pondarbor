@@ -28,9 +28,13 @@ def should_echo_command(parsed, messages: list[str]) -> bool:
     first = messages[0]
     if first == "You are dead and cannot act.":
         return True
+    if first == "Staff only.":
+        return True
     if first in _ECHO_FIRST_MESSAGES:
         return True
     if first.startswith("You need at least"):
+        return True
+    if first.startswith("You're ") and "XP shy of Level" in first:
         return True
     if first.startswith("You try that, but nothing happens."):
         return True

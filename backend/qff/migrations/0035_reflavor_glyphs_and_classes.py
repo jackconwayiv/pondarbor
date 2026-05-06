@@ -35,6 +35,16 @@ OLD_ITEM_SLUGS = (
     "dull-scepter",
     "denim-jacket",
     "wooden-stick",
+    "soiled-suitcoat",
+    "oil-stained-smock",
+    "hospital-gown",
+    "space-blanket",
+    "wet-rags",
+    "chipped-gavel",
+    "greasy-wrench",
+    "rusty-hacksaw",
+    "stolen-blaster",
+    "dessicated-branch",
 )
 
 
@@ -54,62 +64,51 @@ def reflavor_data(apps, schema_editor):
 
     armors = [
         {
-            "slug": "soiled-suitcoat",
-            "name": "Soiled Suitcoat",
-            "description": "A grimy coat that still counts as armor.",
+            "slug": "soiled-leathers",
+            "name": "Soiled Leathers",
+            "description": "Toughened scraps held together with stubborn thread.",
         },
         {
-            "slug": "oil-stained-smock",
-            "name": "Oil-Stained Smock",
-            "description": "Workshop grease never quite washes out.",
+            "slug": "fleabitten-cloak",
+            "name": "Fleabitten Cloak",
+            "description": "Threadbare but still useful when the wind turns sharp.",
         },
         {
-            "slug": "hospital-gown",
-            "name": "Hospital Gown",
-            "description": "Thin fabric; better than nothing.",
+            "slug": "unwashed-robe",
+            "name": "Unwashed Robe",
+            "description": "Stained cloth that has survived too many long nights.",
         },
         {
-            "slug": "space-blanket",
-            "name": "Space Blanket",
-            "description": "Crinkly foil that might deflect a glancing blow.",
-        },
-        {
-            "slug": "wet-rags",
-            "name": "Wet Rags",
-            "description": "Layers of soaked cloth, heavy and clinging.",
+            "slug": "bloodstained-jacket",
+            "name": "Bloodstained Jacket",
+            "description": "A medic's old shell, patched and repatched.",
         },
     ]
 
     weapons = [
         {
-            "slug": "chipped-gavel",
-            "name": "Chipped Gavel",
-            "element": "bludgeoning",
-            "description": "Authority you can swing.",
+            "slug": "rusty-sword",
+            "name": "Rusty Sword",
+            "element": "physical",
+            "description": "Corroded steel with a stubborn edge.",
         },
         {
-            "slug": "greasy-wrench",
-            "name": "Greasy Wrench",
-            "element": "bludgeoning",
-            "description": "Adjusts nuts, skulls, and morale.",
+            "slug": "dented-knife",
+            "name": "Dented Knife",
+            "element": "physical",
+            "description": "A nicked blade for close work.",
         },
         {
-            "slug": "rusty-hacksaw",
-            "name": "Rusty Hacksaw",
-            "element": "slashing",
-            "description": "Teeth meant for softer things than armor.",
+            "slug": "broken-wand",
+            "name": "Broken Wand",
+            "element": "physical",
+            "description": "Snapped focus, still useful as a striker.",
         },
         {
-            "slug": "stolen-blaster",
-            "name": "Stolen Blaster",
-            "element": "piercing",
-            "description": "Low charge; still points the right way.",
-        },
-        {
-            "slug": "dessicated-branch",
-            "name": "Dessicated Branch",
-            "element": "bludgeoning",
-            "description": "Dry wood, heavy enough to sting.",
+            "slug": "wooden-spoon",
+            "name": "Wooden Spoon",
+            "element": "physical",
+            "description": "A kitchen tool turned survival weapon.",
         },
     ]
 

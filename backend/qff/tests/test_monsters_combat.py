@@ -17,7 +17,7 @@ def _test_user(email: str) -> User:
     u.save(update_fields=["account_status"])
     return u
 
-from qff.command_handlers import execute_command
+from qff.command_handlers import execute_command, maybe_handle_pending_prompt
 from qff.command_parser import ParsedAttack, ParsedTrain, parse_command
 from qff.combat_math import (
     StrikeResult,
@@ -25,7 +25,7 @@ from qff.combat_math import (
     hero_attacker_stats,
     hero_defender_stats,
 )
-from qff.constants import COMBAT_ROUND_SECONDS, XP_PER_LEVEL
+from qff.constants import COMBAT_ROUND_SECONDS
 from qff.models import (
     Area,
     Character,
@@ -59,6 +59,7 @@ from qff.monster_sim import (
     sense_adjacent_monster_lines,
     try_bind_monster_to_room_heroes,
 )
+from qff.xp_progression import xp_to_next
 from qff.session_payload import build_session_for_character, consume_room_broadcasts
 
 
@@ -102,7 +103,7 @@ class MonsterCombatTests(TestCase):
             last_activity_at=timezone.now(),
             cur_health=50,
             max_health=50,
-            xp=XP_PER_LEVEL,
+            xp=xp_to_next(1),
             level=1,
         )
         self.tpl = MonsterTemplate.objects.create(
@@ -242,6 +243,61 @@ class MonsterCombatTests(TestCase):
         self.hero.refresh_from_db()
         self.assertEqual(self.hero.level, 2)
         self.assertGreaterEqual(self.hero.unspent_stat_points, 3)
+
+    def test_train_insufficient_xp_reports_shortage(self):
+        Npc.objects.create(
+            room=self.room_danger,
+            slug="coach-low",
+            name="Coach",
+            is_trainer=True,
+        )
+        self.hero.xp = xp_to_next(1) - 5
+        self.hero.save(update_fields=["xp", "updated_at"])
+        lines = execute_command(self.hero, parse_command("train"))
+        self.assertEqual(
+            lines[0],
+            "You're 5 XP shy of Level 2. Come see me when you're more experienced.",
+        )
+
+    def test_buy_gains_opens_panel_then_commit_spends_point(self):
+        Npc.objects.create(
+            room=self.room_danger,
+            slug="coach-gains",
+            name="Coach",
+            is_trainer=True,
+        )
+        self.hero.unspent_stat_points = 1
+        self.hero.gains = 1
+        self.hero.level = 2
+        self.hero.save(update_fields=["unspent_stat_points", "gains", "level", "updated_at"])
+        lines = execute_command(self.hero, parse_command("buy gains"))
+        self.assertIn("Opened stat allocation panel", lines[0])
+        self.hero.refresh_from_db()
+        lines = maybe_handle_pending_prompt(self.hero, "commit") or []
+        self.hero.refresh_from_db()
+        self.assertEqual(self.hero.gains, 2)
+        self.assertEqual(self.hero.unspent_stat_points, 0)
+        self.assertTrue(any("Spent 1 point(s)." in ln for ln in lines), lines)
+
+    def test_buy_gains_overcap_does_not_spend(self):
+        Npc.objects.create(
+            room=self.room_danger,
+            slug="coach-cap",
+            name="Coach",
+            is_trainer=True,
+        )
+        self.hero.unspent_stat_points = 2
+        self.hero.gains = 2
+        self.hero.level = 2
+        self.hero.save(update_fields=["unspent_stat_points", "gains", "level", "updated_at"])
+        lines = execute_command(self.hero, parse_command("buy gains"))
+        self.assertIn("Opened stat allocation panel", lines[0])
+        self.hero.refresh_from_db()
+        lines = maybe_handle_pending_prompt(self.hero, "commit") or []
+        self.hero.refresh_from_db()
+        self.assertEqual(self.hero.gains, 2)
+        self.assertEqual(self.hero.unspent_stat_points, 2)
+        self.assertTrue(any("You're maxed on Gains for this level." in ln for ln in lines), lines)
 
     def test_dead_blocks_action(self):
         self.hero.is_dead = True
@@ -820,6 +876,35 @@ class MonsterCombatTests(TestCase):
         )
         self.assertTrue(
             any("bites" in m and "at you but misses" in m for m in msgs), msgs
+        )
+
+    def test_monster_strike_attack_verb_hit_uses_verb_phrase(self):
+        self.tpl.attack_verb = "bites"
+        self.tpl.attack_weapon_label = ""
+        self.tpl.save(update_fields=["attack_verb", "attack_weapon_label", "updated_at"])
+        self.monster.next_action_at = timezone.now()
+        self.monster.save(update_fields=["next_action_at", "updated_at"])
+        max_id = RoomBroadcast.objects.aggregate(m=Max("id"))["m"] or 0
+        with patch(
+            "qff.monster_sim.resolve_physical_strike",
+            return_value=StrikeResult(
+                outcome="hit",
+                damage=2,
+                base_damage=2,
+                damage_after_mitigation=2,
+                was_crit=False,
+                hit_chance=95,
+                crit_chance=0.1,
+            ),
+        ):
+            _resolve_monster_strike(self.monster, timezone.now())
+        msgs = list(
+            RoomBroadcast.objects.filter(
+                room_id=self.room_danger.id, id__gt=max_id
+            ).values_list("text", flat=True)
+        )
+        self.assertTrue(
+            any("bites you for 2 damage" in m.lower() for m in msgs), msgs
         )
 
     def test_monster_look_hidden_uses_smarts_vs_lore_dc(self):

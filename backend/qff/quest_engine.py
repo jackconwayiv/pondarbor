@@ -10,7 +10,6 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.utils import timezone
 
-from qff.constants import XP_PER_LEVEL
 from qff.exits import _set_character_unlock, _set_realm_unlock
 from qff.game_helpers import display_name_for_instance, load_inventory_instance_map
 from qff.models import (
@@ -28,6 +27,7 @@ from qff.models import (
     RoomItemCharacterClaim,
     RoomItemSpawn,
 )
+from qff.xp_progression import xp_to_next
 
 SLOT_ATTRS = (
     "head_item",
@@ -317,7 +317,7 @@ def _npc_says_line(npc: Npc, utterance: str) -> str:
 def _with_trainer_xp_hint(character: Character, npc: Npc, line: str) -> str:
     if not npc.is_trainer:
         return line
-    need = int(character.level) * XP_PER_LEVEL
+    need = xp_to_next(int(character.level))
     trimmed = (line or "").rstrip()
     if trimmed.endswith("."):
         trimmed = trimmed[:-1]

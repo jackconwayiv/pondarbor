@@ -352,6 +352,10 @@ class Item(models.Model):
         USE = "use", "Use"
         READ = "read", "Read"
 
+    class RequiredGlyphsMode(models.TextChoices):
+        AND = "and", "All required (AND)"
+        OR = "or", "Any required (OR)"
+
     slug = models.SlugField(max_length=80, unique=True)
     name = models.CharField(max_length=200)
     item_type = models.CharField(max_length=64, blank=True)
@@ -413,6 +417,17 @@ class Item(models.Model):
     req_smarts = models.PositiveSmallIntegerField(null=True, blank=True)
     req_sense = models.PositiveSmallIntegerField(null=True, blank=True)
     req_rizz = models.PositiveSmallIntegerField(null=True, blank=True)
+    required_glyphs = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Up to two required glyphs for equip/use; empty means no glyph gate.",
+    )
+    required_glyphs_mode = models.CharField(
+        max_length=8,
+        choices=RequiredGlyphsMode.choices,
+        default=RequiredGlyphsMode.AND,
+        help_text="How to evaluate two required glyphs: AND (both) or OR (either).",
+    )
     bonus_gains = models.SmallIntegerField(default=0)
     bonus_moves = models.SmallIntegerField(default=0)
     bonus_guts = models.SmallIntegerField(default=0)
@@ -776,8 +791,15 @@ class Character(models.Model):
         default=list,
         blank=True,
         help_text=(
-            "Ordered glyph ids from character creation (emoji strings, e.g. 👽, 🤖). "
-            "Class is determined by the unordered pair; starting gear uses this order."
+            "Ordered glyph ids from character creation/evolution (emoji strings)."
+        ),
+    )
+    glyph_levels = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Per-glyph level values aligned with glyphs order. Invariant: "
+            "sum(glyph_levels) == character.level for characters with glyphs."
         ),
     )
     head_item = models.ForeignKey(

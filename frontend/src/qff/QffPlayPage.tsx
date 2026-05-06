@@ -732,6 +732,12 @@ export default function QffPlayPage() {
           setContainerPanelOpen(false);
           setActiveUsersPanelOpen(false);
         }
+        if (verb === "train" || (verb === "buy" && /\b(stat|stats|gains|moves|guts|smarts|sense|rizz)\b/.test(raw.toLowerCase()))) {
+          setShopPanelOpen(false);
+          setContainerPanelOpen(false);
+          setQuestPanelOpen(false);
+          setActiveUsersPanelOpen(false);
+        }
         setSession((prev) => mergeSessionSnapshot(prev, sessionSnapshot));
       } catch (e) {
         setLogLines((prev) => {
@@ -1119,6 +1125,11 @@ export default function QffPlayPage() {
   );
 
   const activeHeroRows = session.active_heroes ?? [];
+  const pendingPrompt = session.pending_prompt ?? null;
+  const trainerPromptKind = pendingPrompt?.kind ?? "";
+  const trainerGlyphPickOpen =
+    trainerPromptKind === "trainer_second_glyph" || trainerPromptKind === "trainer_level_glyph_pick";
+  const trainerStatOpen = trainerPromptKind === "trainer_stat_spend";
   const activeUsersPanel = (
     <Box
       position="relative"
@@ -1166,6 +1177,83 @@ export default function QffPlayPage() {
       </Text>
     </Box>
   );
+
+  const trainerGlyphPanel = trainerGlyphPickOpen ? (
+    <Box
+      borderWidth="1px"
+      borderColor={HUD_PANEL_BORDER}
+      borderRadius="md"
+      p={2}
+      bg={HUD_PANEL_BG}
+      fontSize="xs"
+      display="flex"
+      flexDirection="column"
+      gap={2}
+    >
+      <Text color={HUD_PANEL_TEXT} fontWeight="semibold">
+        {trainerPromptKind === "trainer_second_glyph" ? "Choose your second glyph" : "Choose glyph to level"}
+      </Text>
+      <Flex gap={2} flexWrap="wrap">
+        {(pendingPrompt?.options ?? []).map((glyph) => (
+          <QffButton
+            key={glyph}
+            type="button"
+            onClick={() => void runCommand(glyph)}
+            disabled={commandPending}
+            minW="54px"
+          >
+            {glyph}
+          </QffButton>
+        ))}
+      </Flex>
+      <Text color={HUD_PANEL_TEXT_MUTED} fontSize="2xs">
+        Triggered from <strong>train</strong>.
+      </Text>
+    </Box>
+  ) : null;
+
+  const draft = pendingPrompt?.draft ?? {};
+  const trainerStatPanel = trainerStatOpen ? (
+    <Box
+      borderWidth="1px"
+      borderColor={HUD_PANEL_BORDER}
+      borderRadius="md"
+      p={2}
+      bg={HUD_PANEL_BG}
+      fontSize="xs"
+      display="flex"
+      flexDirection="column"
+      gap={2}
+    >
+      <Text color={HUD_PANEL_TEXT} fontWeight="semibold">
+        Spend Stat Points
+      </Text>
+      {(["gains", "moves", "guts", "smarts", "sense", "rizz"] as const).map((stat) => (
+        <Flex key={stat} align="center" justify="space-between">
+          <Text color={HUD_PANEL_TEXT}>{stat.toUpperCase()}</Text>
+          <Flex gap={1} align="center">
+            <QffButton type="button" size="xs" onClick={() => void runCommand(`- ${stat}`)} disabled={commandPending}>
+              -
+            </QffButton>
+            <Text minW="18px" textAlign="center" color={HUD_PANEL_TEXT}>
+              {Number(draft[stat] ?? 0)}
+            </Text>
+            <QffButton type="button" size="xs" onClick={() => void runCommand(`+ ${stat}`)} disabled={commandPending}>
+              +
+            </QffButton>
+          </Flex>
+        </Flex>
+      ))}
+      <Flex gap={2}>
+        <QffButton type="button" onClick={() => void runCommand("commit")} disabled={commandPending}>
+          Commit
+        </QffButton>
+        <QffButton type="button" onClick={() => void runCommand("cancel")} disabled={commandPending}>
+          Cancel
+        </QffButton>
+      </Flex>
+    </Box>
+  ) : null;
 
   const characterPanel = (
     <Box
@@ -1414,14 +1502,20 @@ export default function QffPlayPage() {
           shopPanelOpen ||
           containerPanelOpen ||
           questPanelOpen ||
-          activeUsersPanelOpen ? (
+          activeUsersPanelOpen ||
+          trainerGlyphPickOpen ||
+          trainerStatOpen ? (
             <Box
               gridColumn={{ base: "1", lg: "2" }}
               gridRow={{ base: "auto", lg: "1 / span 2" }}
               minH={0}
               minW={0}
             >
-              {shopPanelOpen
+              {trainerGlyphPickOpen && trainerGlyphPanel
+                ? trainerGlyphPanel
+                : trainerStatOpen && trainerStatPanel
+                  ? trainerStatPanel
+                  : shopPanelOpen
                 ? shopPanel
                 : containerPanelOpen && containerPanel
                   ? containerPanel

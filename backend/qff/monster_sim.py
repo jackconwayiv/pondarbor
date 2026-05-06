@@ -52,6 +52,7 @@ from qff.models import (
 from qff.quest_engine import character_carries_item_template, character_item_template_quantity
 from qff.realtime import notify_qff_rooms
 from qff.realm_presence import broadcast_realm_depart
+from qff.xp_progression import actual_xp
 
 logger = logging.getLogger(__name__)
 
@@ -959,7 +960,7 @@ def award_kill(
         # Examples: 11 XP => 2 heroes -> 6 each; 3 heroes -> 4 each.
         share = (xp_val + len(heroes) - 1) // len(heroes)
         for h in heroes:
-            xp_alloc.append((h, share))
+            xp_alloc.append((h, actual_xp(int(h.level), int(tpl.level), share)))
     elif heroes:
         xp_alloc = [(h, 0) for h in heroes]
 
@@ -1100,7 +1101,27 @@ def _resolve_monster_strike(monster: MonsterInstance, now) -> bool:
     nh = max(0, int(hero.cur_health) - dmg)
     Character.objects.filter(pk=hero.pk).update(cur_health=nh, updated_at=timezone.now())
     hero = Character.objects.get(pk=hero.pk)
-    if wpn:
+    if vrb:
+        if wpn:
+            if res.outcome == "crit":
+                hit_you = (
+                    f"The {mname} critically {vrb} you with its {wpn} for {dmg} damage!"
+                )
+                hit_peer = (
+                    f"The {mname} critically {vrb} {hero.name} with its {wpn} for {dmg} damage!"
+                )
+            else:
+                hit_you = f"The {mname} {vrb} you with its {wpn} for {dmg} damage!"
+                hit_peer = (
+                    f"The {mname} {vrb} {hero.name} with its {wpn} for {dmg} damage!"
+                )
+        elif res.outcome == "crit":
+            hit_you = f"{mname} critically {vrb} you for {dmg} damage!"
+            hit_peer = f"{mname} critically {vrb} {hero.name} for {dmg} damage!"
+        else:
+            hit_you = f"{mname} {vrb} you for {dmg} damage!"
+            hit_peer = f"{mname} {vrb} {hero.name} for {dmg} damage!"
+    elif wpn:
         if res.outcome == "crit":
             hit_you = f"The {mname} attacks you with its {wpn} for a critical hit — {dmg} damage!"
             hit_peer = f"The {mname} attacks {hero.name} with its {wpn} for a critical hit — {dmg} damage!"
@@ -1108,19 +1129,11 @@ def _resolve_monster_strike(monster: MonsterInstance, now) -> bool:
             hit_you = f"The {mname} attacks you with its {wpn} for {dmg} damage!"
             hit_peer = f"The {mname} attacks {hero.name} with its {wpn} for {dmg} damage!"
     elif res.outcome == "crit":
-        if vrb:
-            hit_you = f"{mname} critically {vrb} you for {dmg} damage!"
-            hit_peer = f"{mname} critically {vrb} {hero.name} for {dmg} damage!"
-        else:
-            hit_you = f"{mname} critically strikes you for {dmg} damage!"
-            hit_peer = f"{mname} critically strikes {hero.name} for {dmg} damage!"
+        hit_you = f"{mname} critically strikes you for {dmg} damage!"
+        hit_peer = f"{mname} critically strikes {hero.name} for {dmg} damage!"
     else:
-        if vrb:
-            hit_you = f"{mname} {vrb} you for {dmg} damage!"
-            hit_peer = f"{mname} {vrb} {hero.name} for {dmg} damage!"
-        else:
-            hit_you = f"{mname} strikes you for {dmg} damage!"
-            hit_peer = f"{mname} strikes {hero.name} for {dmg} damage!"
+        hit_you = f"{mname} strikes you for {dmg} damage!"
+        hit_peer = f"{mname} strikes {hero.name} for {dmg} damage!"
     _narrate(room_id, hit_you, target_character_id=hero.pk, log_tone="enemy_hit")
     for h in heroes_here:
         if h.pk != hero.pk:

@@ -45,10 +45,14 @@ from qff.constants import (
     COMBAT_ROUND_SECONDS,
     NARRATIVE_TOO_DARK_MESSAGE,
     SAY_MAX_LEN,
-    XP_PER_LEVEL,
 )
 from qff.exploration import mark_exit_used, on_enter_room, on_leave_room
-from qff.glyph_class_map import normalize_glyph
+from qff.ensure_glyph_character_class import ensure_glyph_character_class
+from qff.glyph_class_map import (
+    GLYPHS,
+    class_meta_for_glyphs,
+    normalize_glyph,
+)
 from qff.exits import (
     build_exit_evaluation_context,
     consume_key_if_entering_locked,
@@ -150,6 +154,7 @@ from qff.shop_engine import (
     sell_to_shop,
 )
 from qff.static_cache import get_room_exits_from_room
+from qff.xp_progression import xp_to_next
 
 if TYPE_CHECKING:
     from qff.models import Character as CharacterType
@@ -667,6 +672,10 @@ def _dispatch_non_leave(char: CharacterType, parsed) -> list[str]:
         return _handle_shop_browse(char, parsed)
 
     if isinstance(parsed, ParsedShopBuy):
+        if not (parsed.npc_query or "").strip():
+            trainer_buy = _handle_trainer_buy_stat(char, parsed.item_query)
+            if trainer_buy is not None:
+                return trainer_buy
         return _handle_shop_buy(char, parsed)
 
     if isinstance(parsed, ParsedSell):
@@ -1043,18 +1052,45 @@ def _handle_train(char: CharacterType) -> list[str]:
     if not trainer:
         char.save(update_fields=["last_activity_at", "updated_at"])
         return ["There is no trainer here."]
-    need = int(char.level) * XP_PER_LEVEL
+    need = xp_to_next(int(char.level))
     if int(char.xp) < need:
         char.save(update_fields=["last_activity_at", "updated_at"])
+        short = need - int(char.xp)
         return [
-            f"You need at least {need} XP to train further. (You have {char.xp}.)"
+            f"You're {short} XP shy of Level {int(char.level) + 1}. "
+            "Come see me when you're more experienced."
         ]
+    glyphs = list(char.glyphs or [])
+    if int(char.level) == 9 and len(glyphs) == 1:
+        char.pending_prompt = {
+            "kind": "trainer_second_glyph",
+            "options": list(GLYPHS),
+            "base_glyph": glyphs[0],
+        }
+        char.save(update_fields=["pending_prompt", "last_activity_at", "updated_at"])
+        return ["Choose your second glyph to complete your level 10 training."]
+
+    if len(glyphs) >= 2:
+        char.pending_prompt = {
+            "kind": "trainer_level_glyph_pick",
+            "options": glyphs[:2],
+        }
+        char.save(update_fields=["pending_prompt", "last_activity_at", "updated_at"])
+        return ["Choose which glyph to level with this training."]
+
     char.level = int(char.level) + 1
     char.unspent_stat_points = int(char.unspent_stat_points or 0) + 3
+    glyph_levels = _normalized_glyph_levels(char)
+    if glyph_levels:
+        glyph_levels[0] = int(glyph_levels[0]) + 1
+    char.glyph_levels = glyph_levels
+    char.pending_prompt = None
     char.save(
         update_fields=[
             "level",
+            "glyph_levels",
             "unspent_stat_points",
+            "pending_prompt",
             "last_activity_at",
             "updated_at",
         ]
@@ -1063,6 +1099,71 @@ def _handle_train(char: CharacterType) -> list[str]:
         f"You train with {trainer.name} and advance to level {char.level}! "
         f"You have {char.unspent_stat_points} unspent stat points."
     ]
+
+
+_TRAINER_STAT_FIELDS: dict[str, tuple[str, str]] = {
+    "gains": ("gains", "Gains"),
+    "moves": ("moves", "Moves"),
+    "guts": ("guts", "Guts"),
+    "smarts": ("smarts", "Smarts"),
+    "sense": ("sense", "Sense"),
+    "rizz": ("rizz", "Rizz"),
+}
+
+
+def _normalized_glyph_levels(char: CharacterType) -> list[int]:
+    glyphs = list(char.glyphs or [])
+    if not glyphs:
+        return []
+    raw = list(getattr(char, "glyph_levels", []) or [])
+    out: list[int] = []
+    for idx in range(len(glyphs)):
+        if idx < len(raw):
+            try:
+                out.append(max(0, int(raw[idx])))
+            except (TypeError, ValueError):
+                out.append(0)
+        else:
+            out.append(0)
+    total = sum(out)
+    level = int(char.level or 1)
+    if total != level:
+        if len(out) == 1:
+            out[0] = level
+        else:
+            out = [level] + [0] * (len(out) - 1)
+    return out
+
+
+def _trainer_clear_prompt(char: CharacterType) -> None:
+    char.pending_prompt = None
+    char.save(update_fields=["pending_prompt", "updated_at"])
+
+
+def _handle_trainer_buy_stat(char: CharacterType, stat_query: str) -> list[str] | None:
+    key = (stat_query or "").strip().lower()
+    if key in ("stat", "stats", "points", "point"):
+        _touch_activity(char)
+        char.pending_prompt = {
+            "kind": "trainer_stat_spend",
+            "draft": {},
+        }
+        char.save(update_fields=["pending_prompt", "last_activity_at", "updated_at"])
+        return ["Allocate your stat points, then commit."]
+    row = _TRAINER_STAT_FIELDS.get(key)
+    if not row:
+        return None
+    _touch_activity(char)
+    trainer = Npc.objects.filter(room_id=char.current_room_id, is_trainer=True).first()
+    if not trainer:
+        char.save(update_fields=["last_activity_at", "updated_at"])
+        return ["There is no trainer here."]
+    char.pending_prompt = {
+        "kind": "trainer_stat_spend",
+        "draft": {key: 1},
+    }
+    char.save(update_fields=["pending_prompt", "last_activity_at", "updated_at"])
+    return [f"Opened stat allocation panel with {row[1]} selected."]
 
 
 def _handle_move(char: CharacterType, parsed: ParsedMove) -> list[str]:
@@ -1756,6 +1857,43 @@ def _prompt_decline(char: CharacterType) -> list[str]:
     return ["You decline."]
 
 
+def _apply_trainer_levelup(char: CharacterType, glyph_index: int | None = None) -> list[str]:
+    trainer = Npc.objects.filter(room_id=char.current_room_id, is_trainer=True).first()
+    if not trainer:
+        _trainer_clear_prompt(char)
+        return ["There is no trainer here."]
+    need = xp_to_next(int(char.level))
+    if int(char.xp) < need:
+        _trainer_clear_prompt(char)
+        short = need - int(char.xp)
+        return [
+            f"You're {short} XP shy of Level {int(char.level) + 1}. "
+            "Come see me when you're more experienced."
+        ]
+    char.level = int(char.level) + 1
+    char.unspent_stat_points = int(char.unspent_stat_points or 0) + 3
+    glyph_levels = _normalized_glyph_levels(char)
+    if glyph_levels and glyph_index is not None and 0 <= glyph_index < len(glyph_levels):
+        glyph_levels[glyph_index] = int(glyph_levels[glyph_index]) + 1
+    elif glyph_levels:
+        glyph_levels[0] = int(glyph_levels[0]) + 1
+    char.glyph_levels = glyph_levels
+    char.pending_prompt = None
+    char.save(
+        update_fields=[
+            "level",
+            "glyph_levels",
+            "unspent_stat_points",
+            "pending_prompt",
+            "updated_at",
+        ]
+    )
+    return [
+        f"You train with {trainer.name} and advance to level {char.level}! "
+        f"You have {char.unspent_stat_points} unspent stat points."
+    ]
+
+
 def maybe_handle_pending_prompt(char: CharacterType, line: str) -> list[str] | None:
     """Intercept y/n answers to a pending service-NPC prompt.
 
@@ -1767,11 +1905,92 @@ def maybe_handle_pending_prompt(char: CharacterType, line: str) -> list[str] | N
     if not isinstance(pending, dict):
         return None
     kind = pending.get("kind")
-    if kind not in ("healer_pay", "innkeeper_stay"):
-        return None
     raw = (line or "").strip().lower().lstrip(">").strip()
+    raw_original = (line or "").strip().lstrip(">").strip()
     if raw.startswith("/"):
         raw = raw[1:].strip()
+    if raw_original.startswith("/"):
+        raw_original = raw_original[1:].strip()
+    if kind == "trainer_second_glyph":
+        chosen = normalize_glyph(raw_original)
+        base = normalize_glyph(str(pending.get("base_glyph") or ""))
+        if chosen not in GLYPHS:
+            return ["Choose one of the displayed glyphs."]
+        pair_meta = class_meta_for_glyphs(base, chosen)
+        if not pair_meta:
+            _trainer_clear_prompt(char)
+            return ["Invalid glyph choice."]
+        cc = ensure_glyph_character_class(pair_meta["slug"])
+        if not cc:
+            _trainer_clear_prompt(char)
+            return ["Could not resolve evolved class."]
+        glyphs = list(char.glyphs or [])
+        if len(glyphs) != 1:
+            _trainer_clear_prompt(char)
+            return ["You are not eligible for this evolution."]
+        char.glyphs = [glyphs[0], chosen]
+        glyph_levels = _normalized_glyph_levels(char)
+        char.glyph_levels = [int(glyph_levels[0] if glyph_levels else char.level), 0]
+        char.character_class = cc
+        char.save(update_fields=["glyphs", "glyph_levels", "character_class", "updated_at"])
+        return _apply_trainer_levelup(char, glyph_index=0)
+    if kind == "trainer_level_glyph_pick":
+        glyphs = list(char.glyphs or [])
+        chosen = normalize_glyph(raw_original)
+        if chosen not in glyphs:
+            return ["Choose one of your glyphs."]
+        return _apply_trainer_levelup(char, glyph_index=glyphs.index(chosen))
+    if kind == "trainer_stat_spend":
+        if raw in ("cancel", "close", "x"):
+            _trainer_clear_prompt(char)
+            return ["Stat allocation cancelled."]
+        if raw == "commit":
+            draft = pending.get("draft") if isinstance(pending.get("draft"), dict) else {}
+            points_left = int(char.unspent_stat_points or 0)
+            updates: list[str] = []
+            for key, amount in draft.items():
+                if key not in _TRAINER_STAT_FIELDS:
+                    continue
+                try:
+                    n = max(0, int(amount))
+                except (TypeError, ValueError):
+                    continue
+                field_name, label = _TRAINER_STAT_FIELDS[key]
+                while n > 0 and points_left > 0:
+                    cur_base = int(getattr(char, field_name) or 0)
+                    if cur_base >= int(char.level):
+                        break
+                    setattr(char, field_name, cur_base + 1)
+                    points_left -= 1
+                    n -= 1
+                if int(getattr(char, field_name) or 0) >= int(char.level) and int(amount) > 0:
+                    updates.append(f"You're maxed on {label} for this level.")
+            spent = int(char.unspent_stat_points or 0) - points_left
+            char.unspent_stat_points = points_left
+            char.pending_prompt = None
+            update_fields = [
+                "unspent_stat_points",
+                "pending_prompt",
+                "updated_at",
+            ] + [v[0] for v in _TRAINER_STAT_FIELDS.values()]
+            char.save(update_fields=update_fields)
+            msg = f"Spent {spent} point(s). {char.unspent_stat_points} unspent remaining."
+            return [msg, *updates] if updates else [msg]
+        # panel commands: trainer + gains | trainer - gains
+        parts = raw.split()
+        if len(parts) == 2 and parts[0] in ("+", "-") and parts[1] in _TRAINER_STAT_FIELDS:
+            draft = pending.get("draft") if isinstance(pending.get("draft"), dict) else {}
+            cur = int(draft.get(parts[1]) or 0)
+            if parts[0] == "+":
+                draft[parts[1]] = cur + 1
+            else:
+                draft[parts[1]] = max(0, cur - 1)
+            char.pending_prompt = {**pending, "draft": draft}
+            char.save(update_fields=["pending_prompt", "updated_at"])
+            return [f"Draft {parts[1].title()}: {draft.get(parts[1], 0)}"]
+        return ["Use + <stat>, - <stat>, commit, or cancel."]
+    if kind not in ("healer_pay", "innkeeper_stay"):
+        return None
     if raw in ("y", "yes", "aye"):
         _touch_activity(char)
         if kind == "healer_pay":
@@ -1968,6 +2187,9 @@ def _consume_inventory_instance(
         if rej:
             char.save(update_fields=["last_activity_at", "updated_at"])
             return [rej]
+        if not item_meets_requirements(char, inst.item):
+            char.save(update_fields=["last_activity_at", "updated_at"])
+            return ["You aren't skilled enough to use that yet."]
         had_teleport = consume_effects_contain_teleport_spawn(inst.item)
         err = validate_consume_effects(char, inst.item)
         if err:

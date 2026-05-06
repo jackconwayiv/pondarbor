@@ -41,10 +41,10 @@ def _room(slug: str) -> Room:
     return Room.objects.create(area=area, name="Room", slug=slug)
 
 
-def _approved_user(email: str) -> User:
+def _approved_user(email: str, *, staff: bool = False) -> User:
     u = User.objects.create_user(email=email, password="test-pass-12345")
     u.account_status = User.AccountStatus.APPROVED
-    u.is_staff = False
+    u.is_staff = bool(staff)
     u.save(update_fields=["account_status", "is_staff"])
     return u
 
@@ -198,6 +198,36 @@ class ApprovedNonStaffPlayTests(TestCase):
         self.assertTrue(body["session"]["has_character"])
         self.assertIn("echo_command", body)
         self.assertFalse(body["echo_command"])
+
+    def test_non_staff_cannot_use_grant_xp_command(self):
+        u = _approved_user("no-staff-grant@example.com")
+        c = self._character("HeroGrantNo", u)
+        base_xp = int(c.xp)
+        client = APIClient()
+        client.force_login(u)
+        res = client.post("/api/v1/qff/command/", {"line": "/grant xp"}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.json()["messages"], ["Staff only."])
+        c.refresh_from_db()
+        self.assertEqual(int(c.xp), base_xp)
+
+    def test_staff_grant_xp_command_requires_exact_literal(self):
+        u = _approved_user("yes-staff-grant@example.com", staff=True)
+        c = self._character("HeroGrantYes", u)
+        base_xp = int(c.xp)
+        client = APIClient()
+        client.force_login(u)
+
+        not_exact = client.post("/api/v1/qff/command/", {"line": "grant xp"}, format="json")
+        self.assertEqual(not_exact.status_code, status.HTTP_200_OK)
+        c.refresh_from_db()
+        self.assertEqual(int(c.xp), base_xp)
+
+        exact = client.post("/api/v1/qff/command/", {"line": "/grant xp"}, format="json")
+        self.assertEqual(exact.status_code, status.HTTP_200_OK)
+        self.assertEqual(exact.json()["messages"], ["You grant yourself 100 XP."])
+        c.refresh_from_db()
+        self.assertEqual(int(c.xp), base_xp + 100)
 
     def test_command_echo_true_for_unknown_line(self):
         u = _approved_user("unk@example.com")

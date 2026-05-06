@@ -109,6 +109,7 @@ export type QffSessionWithCharacter = {
     class_slug: string;
     class_name: string;
     glyphs: string[];
+    glyph_levels?: number[];
     spawn_room: { id: number; name: string };
   };
   room: {
@@ -195,10 +196,13 @@ export type QffShopPanelData = {
 };
 
 export type QffPendingPrompt = {
-  /** "healer_pay" | "innkeeper_stay" */
+  /** service and trainer prompt variants */
   kind: string;
-  npc_id: number;
-  cost: number;
+  npc_id?: number;
+  cost?: number;
+  options?: string[];
+  base_glyph?: string;
+  draft?: Partial<Record<keyof QffStatBlock, number>>;
 };
 
 export type QffStatBlock = {
@@ -229,6 +233,7 @@ export type QffCharacterProfile = {
   armorTotal: number;
   class: { slug: string; name: string };
   glyphs: string[];
+  glyphLevels?: number[];
   equipment_slots: {
     head: string | null;
     mainHand: string | null;
@@ -976,6 +981,8 @@ export type DmItem = {
   req_smarts: number | null;
   req_sense: number | null;
   req_rizz: number | null;
+  required_glyphs: string[];
+  required_glyphs_mode: "and" | "or";
   bonus_gains: number;
   bonus_moves: number;
   bonus_guts: number;

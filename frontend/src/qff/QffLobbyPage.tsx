@@ -4,7 +4,6 @@ import { useNavigate } from "react-router";
 
 import { AppModal } from "../components/AppModal";
 import { useAppSession } from "../auth/AppSessionContext";
-import { PanelBlockSkeleton } from "../components/panelStatus";
 import QffButton from "./QffButton";
 import { QFF_MAIN_CONTENT_PROPS } from "./qffUi";
 import {
@@ -120,7 +119,9 @@ export default function QffLobbyPage() {
   if (isLoading || !sessionUser || sessionBusy) {
     return (
       <Box {...QFF_MAIN_CONTENT_PROPS} py={4}>
-        <PanelBlockSkeleton lines={3} showTitleLine />
+        <Text fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace">
+          Loading...
+        </Text>
       </Box>
     );
   }
@@ -399,8 +400,12 @@ export default function QffLobbyPage() {
                     try {
                       const token = await getTokenRef.current();
                       await deleteQffCharacter(token);
+                      const deletedName = characterName;
                       setHasCharacter(false);
                       setCharacterName(null);
+                      setLeaderboard((prev) =>
+                        prev ? prev.filter((row) => row.name !== deletedName) : prev,
+                      );
                       setDeleteModalOpen(false);
                       setDeleteNameInput("");
                     } catch {

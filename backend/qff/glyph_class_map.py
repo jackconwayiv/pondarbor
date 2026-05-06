@@ -1,26 +1,48 @@
-"""Map unordered glyph pairs to CharacterClass slug. Glyph ids are emoji (NFC-normalized)."""
+"""Glyph/class mapping.
+
+New creation flow uses one glyph (4 options). Legacy pair mappings remain for compatibility.
+"""
 
 from __future__ import annotations
 
 import unicodedata
 from typing import Any
 
-# Canonical display order (also used in character creation UI).
-GLYPHS: tuple[str, ...] = ("👽", "🤖", "🌡️", "🏛️", "🦠")
+# New canonical creation glyphs.
+GLYPHS: tuple[str, ...] = ("⚔️", "🔑", "📖", "❤️‍🩹")
 GLYPH_IDS = frozenset(GLYPHS)
+
+# Legacy glyphs kept for old characters/mappings.
+LEGACY_GLYPHS: tuple[str, ...] = ("👽", "🤖", "🌡️", "🏛️", "🦠")
+LEGACY_GLYPH_IDS = frozenset(LEGACY_GLYPHS)
+ALL_GLYPH_IDS = frozenset((*GLYPHS, *LEGACY_GLYPHS))
 
 
 def normalize_glyph(s: str) -> str:
     return unicodedata.normalize("NFC", str(s).strip())
 
 
-def normalize_glyphs(raw: list | None) -> tuple[str, str] | None:
-    """Return (g1, g2) in request order if valid, else None."""
+def normalize_glyphs(raw: list | None) -> tuple[str, ...] | None:
+    """Return validated glyph tuple in request order for create payload."""
+    if not raw or len(raw) not in (1, 2):
+        return None
+    norm = tuple(normalize_glyph(g) for g in raw)
+    if len(norm) == 1:
+        if norm[0] not in GLYPH_IDS:
+            return None
+        return norm
+    if norm[0] not in ALL_GLYPH_IDS or norm[1] not in ALL_GLYPH_IDS:
+        return None
+    return norm
+
+
+def normalize_two_glyphs(raw: list | None) -> tuple[str, str] | None:
+    """Compatibility parser for legacy 2-glyph records."""
     if not raw or len(raw) != 2:
         return None
     g1 = normalize_glyph(raw[0])
     g2 = normalize_glyph(raw[1])
-    if g1 not in GLYPH_IDS or g2 not in GLYPH_IDS:
+    if g1 not in ALL_GLYPH_IDS or g2 not in ALL_GLYPH_IDS:
         return None
     return (g1, g2)
 
@@ -30,7 +52,127 @@ def _p(a: str, b: str) -> frozenset[str]:
     return frozenset({normalize_glyph(a), normalize_glyph(b)})
 
 
-# Unordered pair -> metadata (slug is the CharacterClass slug).
+# New one-glyph base classes.
+CLASSES_BY_SINGLE: dict[str, dict[str, Any]] = {
+    normalize_glyph("⚔️"): {
+        "slug": "brawler",
+        "name": "Brawler",
+        "description": "A fighter of alien invaders and rebellious robots.",
+        "stat_1": "gains",
+        "stat_2": "guts",
+        "sort_order": 1,
+    },
+    normalize_glyph("🔑"): {
+        "slug": "scavenger",
+        "name": "Scavenger",
+        "description": "A rogue with stealthy skills to fend for yourself.",
+        "stat_1": "moves",
+        "stat_2": "sense",
+        "sort_order": 2,
+    },
+    normalize_glyph("📖"): {
+        "slug": "occultist",
+        "name": "Occultist",
+        "description": "A scholar of lost knowledge and magical power.",
+        "stat_1": "smarts",
+        "stat_2": "sense",
+        "sort_order": 3,
+    },
+    normalize_glyph("❤️‍🩹"): {
+        "slug": "mender",
+        "name": "Mender",
+        "description": "A caretaker, steward, and fixer of the broken world.",
+        "stat_1": "guts",
+        "stat_2": "rizz",
+        "sort_order": 4,
+    },
+}
+
+# New evolved classes (unordered pair from base+second glyph choice).
+CLASSES_BY_PAIR_NEW: dict[frozenset[str], dict[str, Any]] = {
+    _p("⚔️", "⚔️"): {
+        "slug": "brawler_master",
+        "name": "Brawler",
+        "description": "A master fighter of alien invaders and rebellious robots.",
+        "stat_1": "gains",
+        "stat_2": "guts",
+        "sort_order": 11,
+    },
+    _p("🔑", "🔑"): {
+        "slug": "scavenger_expert",
+        "name": "Scavenger",
+        "description": "An expert rogue with stealthy skills to fend for yourself.",
+        "stat_1": "moves",
+        "stat_2": "sense",
+        "sort_order": 12,
+    },
+    _p("📖", "📖"): {
+        "slug": "occultist_brilliant",
+        "name": "Occultist",
+        "description": "A brilliant scholar of lost knowledge and magical power.",
+        "stat_1": "smarts",
+        "stat_2": "sense",
+        "sort_order": 13,
+    },
+    _p("❤️‍🩹", "❤️‍🩹"): {
+        "slug": "mender_potent",
+        "name": "Mender",
+        "description": "A potent caretaker, steward, and fixer of the broken world.",
+        "stat_1": "guts",
+        "stat_2": "rizz",
+        "sort_order": 14,
+    },
+    _p("⚔️", "🔑"): {
+        "slug": "tracker",
+        "name": "Tracker",
+        "description": "You take the fight to the enemy with precision and force.",
+        "stat_1": "moves",
+        "stat_2": "gains",
+        "sort_order": 15,
+    },
+    _p("⚔️", "📖"): {
+        "slug": "incarnate",
+        "name": "Incarnate",
+        "description": "You embody arcane power as a destructive force.",
+        "stat_1": "gains",
+        "stat_2": "smarts",
+        "sort_order": 16,
+    },
+    _p("⚔️", "❤️‍🩹"): {
+        "slug": "defender",
+        "name": "Defender",
+        "description": "You use your might to protect those who need it.",
+        "stat_1": "gains",
+        "stat_2": "rizz",
+        "sort_order": 17,
+    },
+    _p("🔑", "📖"): {
+        "slug": "hacker",
+        "name": "Hacker",
+        "description": "You know just enough to make yourself dangerous.",
+        "stat_1": "moves",
+        "stat_2": "smarts",
+        "sort_order": 18,
+    },
+    _p("🔑", "❤️‍🩹"): {
+        "slug": "runner",
+        "name": "Runner",
+        "description": "You run vital supplies through dangerous lands.",
+        "stat_1": "moves",
+        "stat_2": "guts",
+        "sort_order": 19,
+    },
+    _p("📖", "❤️‍🩹"): {
+        "slug": "witness",
+        "name": "Witness",
+        "description": "You have seen power beyond mortal reckoning.",
+        "stat_1": "smarts",
+        "stat_2": "rizz",
+        "sort_order": 20,
+    },
+}
+
+# Legacy unordered pair -> metadata (slug is the CharacterClass slug).
 CLASSES_BY_PAIR: dict[frozenset[str], dict[str, Any]] = {
     _p("🏛️", "🏛️"): {
         "slug": "warlord",
@@ -184,19 +326,27 @@ CLASSES_BY_PAIR: dict[frozenset[str], dict[str, Any]] = {
     },
 }
 
-# Slug -> row metadata (for DB sync when migration 0035 has not been applied).
-SLUG_TO_META: dict[str, dict[str, Any]] = {
-    meta["slug"]: meta for meta in CLASSES_BY_PAIR.values()
-}
+# Slug -> row metadata (for DB sync/ensure).
+SLUG_TO_META: dict[str, dict[str, Any]] = {}
+for _meta in CLASSES_BY_SINGLE.values():
+    SLUG_TO_META[_meta["slug"]] = _meta
+for _meta in CLASSES_BY_PAIR_NEW.values():
+    SLUG_TO_META[_meta["slug"]] = _meta
+for _meta in CLASSES_BY_PAIR.values():
+    SLUG_TO_META[_meta["slug"]] = _meta
 
 
-def slug_for_glyphs(g1: str, g2: str) -> str | None:
-    """Resolve class slug from two glyphs (order-independent)."""
+def slug_for_single_glyph(g1: str) -> str | None:
+    meta = CLASSES_BY_SINGLE.get(normalize_glyph(g1))
+    return meta["slug"] if meta else None
+
+
+def slug_for_pair_glyphs(g1: str, g2: str) -> str | None:
     key = frozenset({normalize_glyph(g1), normalize_glyph(g2)})
-    meta = CLASSES_BY_PAIR.get(key)
+    meta = CLASSES_BY_PAIR_NEW.get(key) or CLASSES_BY_PAIR.get(key)
     return meta["slug"] if meta else None
 
 
 def class_meta_for_glyphs(g1: str, g2: str) -> dict[str, Any] | None:
     key = frozenset({normalize_glyph(g1), normalize_glyph(g2)})
-    return CLASSES_BY_PAIR.get(key)
+    return CLASSES_BY_PAIR_NEW.get(key) or CLASSES_BY_PAIR.get(key)

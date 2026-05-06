@@ -20,6 +20,7 @@ import { useAppSession } from "../auth/AppSessionContext";
 import { PanelBlockSkeleton } from "../components/panelStatus";
 import QffButton from "./QffButton";
 import QffDmCollapsibleSection from "./QffDmCollapsibleSection";
+import { GLYPH_IDS } from "./glyphCreation";
 import { qffGhostRowButtonProps } from "./qffUi";
 import {
   dmCreateItem,
@@ -107,6 +108,8 @@ function emptyForm(): Partial<DmItem> {
     req_smarts: null,
     req_sense: null,
     req_rizz: null,
+    required_glyphs: [],
+    required_glyphs_mode: "and",
     bonus_gains: 0,
     bonus_moves: 0,
     bonus_guts: 0,
@@ -121,6 +124,17 @@ function emptyForm(): Partial<DmItem> {
     dodge_reduction: 0,
     dodge_ignore: 0,
   };
+}
+
+function normalizeRequiredGlyphsForSubmit(raw: string[] | undefined): string[] {
+  const out: string[] = [];
+  for (const g of raw ?? []) {
+    if (!GLYPH_IDS.includes(g as (typeof GLYPH_IDS)[number])) continue;
+    if (out.includes(g)) continue;
+    out.push(g);
+    if (out.length >= 2) break;
+  }
+  return out;
 }
 
 export default function QffDmItemsPage() {
@@ -156,6 +170,8 @@ export default function QffDmItemsPage() {
       stackable: it.stackable ?? false,
       max_stack: it.max_stack ?? 99,
       extra_data: (it.extra_data ?? {}) as Record<string, unknown>,
+      required_glyphs: normalizeRequiredGlyphsForSubmit(it.required_glyphs),
+      required_glyphs_mode: it.required_glyphs_mode === "or" ? "or" : "and",
     });
   };
 
@@ -173,6 +189,9 @@ export default function QffDmItemsPage() {
           setErr("slug and name are required.");
           return;
         }
+        const requiredGlyphs = normalizeRequiredGlyphsForSubmit(
+          (form.required_glyphs as string[] | undefined) ?? [],
+        );
         await dmCreateItem(token, {
           ...form,
           slug: form.slug!.trim(),
@@ -182,8 +201,18 @@ export default function QffDmItemsPage() {
           stackable: !!form.stackable,
           max_stack: form.max_stack ?? 99,
           extra_data: form.extra_data ?? {},
+          required_glyphs: requiredGlyphs,
+          required_glyphs_mode:
+            requiredGlyphs.length < 2
+              ? "and"
+              : form.required_glyphs_mode === "or"
+                ? "or"
+                : "and",
         });
       } else {
+        const requiredGlyphs = normalizeRequiredGlyphsForSubmit(
+          (form.required_glyphs as string[] | undefined) ?? [],
+        );
         await dmPatchItem(token, editingId, {
           ...form,
           slot: form.slot?.trim() ? form.slot : null,
@@ -191,6 +220,13 @@ export default function QffDmItemsPage() {
           stackable: !!form.stackable,
           max_stack: form.max_stack ?? 99,
           extra_data: form.extra_data ?? {},
+          required_glyphs: requiredGlyphs,
+          required_glyphs_mode:
+            requiredGlyphs.length < 2
+              ? "and"
+              : form.required_glyphs_mode === "or"
+                ? "or"
+                : "and",
         });
       }
       await load();
@@ -896,6 +932,76 @@ export default function QffDmItemsPage() {
             <Text fontSize="sm" color="#889977">
               Requirements (empty = none)
             </Text>
+            <Grid
+              templateColumns={{
+                base: "1fr",
+                sm: "repeat(2, minmax(0, 1fr))",
+                md: "repeat(3, minmax(0, 1fr))",
+              }}
+              gap={2}
+            >
+              <Field.Root minW={0}>
+                <Field.Label>required_glyph_1</Field.Label>
+                <NativeSelectRoot>
+                  <NativeSelectField
+                    value={((form.required_glyphs as string[] | undefined)?.[0] ?? "") as string}
+                    onChange={(e) => {
+                      const second = (form.required_glyphs as string[] | undefined)?.[1] ?? "";
+                      const next = [e.currentTarget.value, second].filter(Boolean);
+                      setForm((f) => ({ ...f, required_glyphs: normalizeRequiredGlyphsForSubmit(next) }));
+                    }}
+                  >
+                    <option value="">—</option>
+                    {GLYPH_IDS.map((g) => (
+                      <option key={`req-g1-${g}`} value={g}>
+                        {g}
+                      </option>
+                    ))}
+                  </NativeSelectField>
+                </NativeSelectRoot>
+              </Field.Root>
+              <Field.Root minW={0}>
+                <Field.Label>required_glyph_2</Field.Label>
+                <NativeSelectRoot>
+                  <NativeSelectField
+                    value={((form.required_glyphs as string[] | undefined)?.[1] ?? "") as string}
+                    onChange={(e) => {
+                      const first = (form.required_glyphs as string[] | undefined)?.[0] ?? "";
+                      const next = [first, e.currentTarget.value].filter(Boolean);
+                      setForm((f) => ({ ...f, required_glyphs: normalizeRequiredGlyphsForSubmit(next) }));
+                    }}
+                  >
+                    <option value="">—</option>
+                    {GLYPH_IDS.map((g) => (
+                      <option key={`req-g2-${g}`} value={g}>
+                        {g}
+                      </option>
+                    ))}
+                  </NativeSelectField>
+                </NativeSelectRoot>
+              </Field.Root>
+              <Field.Root
+                minW={0}
+                opacity={((form.required_glyphs as string[] | undefined)?.length ?? 0) < 2 ? 0.5 : 1}
+              >
+                <Field.Label>required_glyphs_mode</Field.Label>
+                <NativeSelectRoot>
+                  <NativeSelectField
+                    value={(form.required_glyphs_mode ?? "and") as string}
+                    disabled={((form.required_glyphs as string[] | undefined)?.length ?? 0) < 2}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        required_glyphs_mode: e.currentTarget.value === "or" ? "or" : "and",
+                      }))
+                    }
+                  >
+                    <option value="and">AND (both)</option>
+                    <option value="or">OR (either)</option>
+                  </NativeSelectField>
+                </NativeSelectRoot>
+              </Field.Root>
+            </Grid>
             <Grid
               templateColumns={{
                 base: "1fr",

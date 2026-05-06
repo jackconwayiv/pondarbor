@@ -58,7 +58,8 @@ from qff.constants import (
     LEGACY_START_ROOM_SLUG,
 )
 from qff.ensure_glyph_character_class import ensure_glyph_character_class
-from qff.glyph_class_map import normalize_glyphs, slug_for_glyphs
+from qff.glyph_class_map import normalize_glyphs, slug_for_pair_glyphs, slug_for_single_glyph
+from qff.item_requirements import normalize_required_glyphs, normalize_required_glyphs_mode
 from qff.monster_sim import run_lazy_simulation
 from qff.quest_engine import find_npc_in_room, sync_character_world_before_session
 from qff.realtime import schedule_notify_qff_rooms
@@ -374,14 +375,17 @@ def character_create(request):
                 {"detail": "Invalid glyphs."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        resolved_slug = slug_for_glyphs(norm[0], norm[1])
+        if len(norm) == 1:
+            resolved_slug = slug_for_single_glyph(norm[0])
+        else:
+            resolved_slug = slug_for_pair_glyphs(norm[0], norm[1])
         if not resolved_slug:
             return Response(
-                {"detail": "Invalid glyph combination."},
+                {"detail": "Invalid glyph selection."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         class_slug = resolved_slug
-        glyphs_to_store = [norm[0], norm[1]]
+        glyphs_to_store = list(norm)
     else:
         class_slug = (body.get("character_class") or body.get("class") or "").strip()
         if not class_slug:
@@ -426,6 +430,11 @@ def character_create(request):
                 spawn_room=room,
                 last_activity_at=now,
                 glyphs=glyphs_to_store,
+                glyph_levels=(
+                    [1]
+                    if len(glyphs_to_store) == 1
+                    else ([1, 0] if len(glyphs_to_store) == 2 else [])
+                ),
             )
             char.save()
             on_enter_room(char, room.id)
@@ -450,7 +459,8 @@ def command_view(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    line = (request.data.get("line") or "").strip()
+    raw_line = request.data.get("line") or ""
+    line = raw_line.strip()
     if not line:
         return Response(
             {
@@ -507,18 +517,32 @@ def command_view(request):
                 # Service-NPC y/n prompt (healer_pay / innkeeper_stay) consumes the next
                 # command when set; non-y/n clears the prompt and falls through to parse.
                 with connection.execute_wrapper(_phase_wrap("exec")):
-                    prompt_messages = maybe_handle_pending_prompt(char_work, line)
-                    if prompt_messages is not None:
-                        parsed = None
-                        messages = list(prompt_messages)
-                        exec_ms = 0.0
+                    if raw_line == "/grant xp":
+                        if bool(getattr(request.user, "is_staff", False)):
+                            char_work.xp = int(char_work.xp) + 100
+                            char_work.save(update_fields=["xp", "updated_at"])
+                            parsed = None
+                            messages = ["You grant yourself 100 XP."]
+                            exec_ms = 0.0
+                        else:
+                            parsed = None
+                            messages = ["Staff only."]
+                            exec_ms = 0.0
                     else:
-                        parsed = parse_command(line)
-                        t0 = time.perf_counter()
-                        messages = list(
-                            execute_command(char_work, parsed, world_sync=False)
-                        )
-                        exec_ms = (time.perf_counter() - t0) * 1000
+                        prompt_messages = maybe_handle_pending_prompt(char_work, line)
+                        if prompt_messages is not None:
+                            parsed = None
+                            messages = list(prompt_messages)
+                            exec_ms = 0.0
+                        else:
+                            parsed = parse_command(line)
+                            t0 = time.perf_counter()
+                            messages = list(
+                                execute_command(char_work, parsed, world_sync=False)
+                            )
+                            exec_ms = (time.perf_counter() - t0) * 1000
+                    if raw_line == "/grant xp":
+                        parsed = None
                     echo_command = should_echo_command(parsed, messages)
                     if messages and messages[0] == "You try that, but nothing happens.":
                         email = (request.user.email or "").strip()
@@ -2184,6 +2208,8 @@ def _dm_item_dict(item: Item) -> dict:
         "req_smarts": item.req_smarts,
         "req_sense": item.req_sense,
         "req_rizz": item.req_rizz,
+        "required_glyphs": normalize_required_glyphs(item.required_glyphs),
+        "required_glyphs_mode": normalize_required_glyphs_mode(item.required_glyphs_mode),
         "bonus_gains": item.bonus_gains,
         "bonus_moves": item.bonus_moves,
         "bonus_guts": item.bonus_guts,
@@ -2210,6 +2236,21 @@ def _parse_optional_positive_int(val):
         return v if v > 0 else None
     except (TypeError, ValueError):
         return None
+
+
+def _parse_required_glyphs(val):
+    if val is None or val == "":
+        return []
+    if not isinstance(val, list):
+        return None
+    return normalize_required_glyphs(val)
+
+
+def _parse_required_glyphs_mode(val):
+    if val is None or (isinstance(val, str) and not val.strip()):
+        return Item.RequiredGlyphsMode.AND
+    mode = normalize_required_glyphs_mode(val, default="__invalid__")
+    return None if mode == "__invalid__" else mode
 
 
 def _coerce_consume_verb(val):
@@ -2275,6 +2316,20 @@ def dm_item_list_create(request):
             {"detail": "extra_data must be a JSON object."},
             status=status.HTTP_400_BAD_REQUEST,
         )
+    required_glyphs = _parse_required_glyphs(request.data.get("required_glyphs"))
+    if required_glyphs is None:
+        return Response(
+            {"detail": "required_glyphs must be a list."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    required_glyphs_mode = _parse_required_glyphs_mode(
+        request.data.get("required_glyphs_mode")
+    )
+    if required_glyphs_mode is None:
+        return Response(
+            {"detail": "required_glyphs_mode must be 'and' or 'or'."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     item = Item.objects.create(
         slug=slug[:80],
         name=name[:200],
@@ -2306,6 +2361,8 @@ def dm_item_list_create(request):
         req_smarts=_parse_optional_positive_int(request.data.get("req_smarts")),
         req_sense=_parse_optional_positive_int(request.data.get("req_sense")),
         req_rizz=_parse_optional_positive_int(request.data.get("req_rizz")),
+        required_glyphs=required_glyphs,
+        required_glyphs_mode=required_glyphs_mode,
         bonus_gains=int(request.data.get("bonus_gains") or 0),
         bonus_moves=int(request.data.get("bonus_moves") or 0),
         bonus_guts=int(request.data.get("bonus_guts") or 0),
@@ -2417,6 +2474,24 @@ def dm_item_detail(request, pk):
     ):
         if rf in request.data:
             setattr(item, rf, _parse_optional_positive_int(request.data.get(rf)))
+    if "required_glyphs" in request.data:
+        required_glyphs = _parse_required_glyphs(request.data.get("required_glyphs"))
+        if required_glyphs is None:
+            return Response(
+                {"detail": "required_glyphs must be a list."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        item.required_glyphs = required_glyphs
+    if "required_glyphs_mode" in request.data:
+        required_glyphs_mode = _parse_required_glyphs_mode(
+            request.data.get("required_glyphs_mode")
+        )
+        if required_glyphs_mode is None:
+            return Response(
+                {"detail": "required_glyphs_mode must be 'and' or 'or'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        item.required_glyphs_mode = required_glyphs_mode
     for bf in (
         "bonus_gains",
         "bonus_moves",

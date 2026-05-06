@@ -6,6 +6,7 @@ import random
 from typing import TYPE_CHECKING
 
 from qff.constants import PRESENCE_MINUTES
+from qff.item_requirements import character_meets_glyph_requirements
 
 if TYPE_CHECKING:
     from qff.models import Character, Item, ItemInstance  # noqa: F401 used in annotations
@@ -170,6 +171,12 @@ def item_meets_requirements(character: "Character", item: "Item") -> bool:
     for req, base in pairs:
         if req is not None and int(req) > 0 and base < int(req):
             return False
+    if not character_meets_glyph_requirements(
+        list(getattr(character, "glyphs", []) or []),
+        list(getattr(item, "required_glyphs", []) or []),
+        str(getattr(item, "required_glyphs_mode", "and") or "and"),
+    ):
+        return False
     return True
 
 

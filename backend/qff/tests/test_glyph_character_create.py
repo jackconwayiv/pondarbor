@@ -42,57 +42,47 @@ class GlyphCharacterCreateTests(TestCase):
             },
         )
 
-    def test_create_with_glyphs_sets_class_and_stores_glyphs(self):
+    def test_create_with_single_glyph_sets_class_and_levels(self):
         u = _approved_user("glyph1@example.com")
         client = APIClient()
         client.force_login(u)
         res = client.post(
             "/api/v1/qff/character/",
-            {"name": "Skirm", "glyphs": ["🦠", "👽"]},
+            {"name": "Skirm", "glyphs": ["📖"]},
             format="json",
         )
         self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.content)
         body = res.json()
         self.assertTrue(body["has_character"])
-        self.assertEqual(body["character"]["class_slug"], "witness")
-        self.assertEqual(body["character"]["glyphs"], ["🦠", "👽"])
-        self.assertEqual(body["character_profile"]["glyphs"], ["🦠", "👽"])
+        self.assertEqual(body["character"]["class_slug"], "occultist")
+        self.assertEqual(body["character"]["glyphs"], ["📖"])
+        self.assertEqual(body["character_profile"]["glyphs"], ["📖"])
+        self.assertEqual(body["character_profile"]["glyphLevels"], [1])
 
         char = Character.objects.select_related(
             "chest_item__item",
             "main_hand_item__item",
         ).get(user=u)
-        self.assertEqual(char.character_class.slug, "witness")
-        self.assertEqual(char.glyphs, ["🦠", "👽"])
-        self.assertEqual(char.chest_item.item.slug, "hospital-gown")
-        self.assertEqual(char.main_hand_item.item.slug, "stolen-blaster")
-
-    def test_unordered_glyphs_same_class(self):
-        u = _approved_user("glyph-unord@example.com")
-        client = APIClient()
-        client.force_login(u)
-        res = client.post(
-            "/api/v1/qff/character/",
-            {"name": "Unord", "glyphs": ["👽", "🦠"]},
-            format="json",
-        )
-        self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.content)
-        self.assertEqual(res.json()["character"]["class_slug"], "witness")
+        self.assertEqual(char.character_class.slug, "occultist")
+        self.assertEqual(char.glyphs, ["📖"])
+        self.assertEqual(char.glyph_levels, [1])
+        self.assertEqual(char.chest_item.item.slug, "unwashed-robe")
+        self.assertEqual(char.main_hand_item.item.slug, "broken-wand")
 
     def test_create_recreates_glyph_class_if_missing_from_db(self):
         """Unmigrated or manually cleared DB: canon metadata repopulates the row."""
-        CharacterClass.objects.filter(slug="witness").delete()
+        CharacterClass.objects.filter(slug="occultist").delete()
         u = _approved_user("glyph-recreate@example.com")
         client = APIClient()
         client.force_login(u)
         res = client.post(
             "/api/v1/qff/character/",
-            {"name": "Recreate", "glyphs": ["🦠", "👽"]},
+            {"name": "Recreate", "glyphs": ["📖"]},
             format="json",
         )
         self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.content)
         self.assertTrue(
-            CharacterClass.objects.filter(slug="witness", name="Witness").exists()
+            CharacterClass.objects.filter(slug="occultist", name="Occultist").exists()
         )
 
     def test_create_with_character_class_legacy_path_empty_glyphs(self):
@@ -109,13 +99,25 @@ class GlyphCharacterCreateTests(TestCase):
         self.assertEqual(char.character_class.slug, "legacy-war")
         self.assertEqual(char.glyphs, [])
 
+    def test_create_with_legacy_two_glyph_payload_still_works(self):
+        u = _approved_user("glyph-legacy-pair@example.com")
+        client = APIClient()
+        client.force_login(u)
+        res = client.post(
+            "/api/v1/qff/character/",
+            {"name": "LegacyPair", "glyphs": ["🦠", "👽"]},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.content)
+        self.assertEqual(res.json()["character"]["class_slug"], "witness")
+
     def test_invalid_glyphs_rejected(self):
         u = _approved_user("glyph3@example.com")
         client = APIClient()
         client.force_login(u)
         res = client.post(
             "/api/v1/qff/character/",
-            {"name": "Bad", "glyphs": ["🦠", "⭐"]},
+            {"name": "Bad", "glyphs": ["⭐"]},
             format="json",
         )
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)

@@ -75,6 +75,28 @@ function actionLogEntryTone(e: { log_tone?: string; logTone?: string }): string 
   const raw = (e.log_tone ?? e.logTone ?? "").trim();
   return raw || undefined;
 }
+
+function mergeSessionSnapshot(
+  prev: QffSessionWithCharacter | null,
+  next: QffSessionWithCharacter,
+): QffSessionWithCharacter {
+  if (!next.has_character) return next;
+  if (!next.session_partial || !prev?.has_character) return next;
+  const snapshotMapStub =
+    next.area_map.minimal === true &&
+    next.area_map.grids.length === 0;
+  const usePrevAreaMap =
+    snapshotMapStub &&
+    (prev.area_map.grids.length > 0 || prev.area_map.minimal !== true);
+  return {
+    ...next,
+    active_heroes: next.active_heroes ?? prev.active_heroes,
+    area_map: usePrevAreaMap ? prev.area_map : next.area_map,
+    shops: next.shops ?? prev.shops,
+    active_quests: next.active_quests ?? prev.active_quests,
+    character_profile: next.character_profile ?? prev.character_profile,
+  };
+}
 /** Stat total (modified) */
 const HUD_STAT_TOTAL = "#f0f0f0";
 /** (base + modifiers) — darker than label + total */
@@ -330,7 +352,7 @@ export default function QffPlayPage() {
             session?: QffSessionWithCharacter;
           };
           if (data.type === "session" && data.session?.has_character) {
-            setSession(data.session);
+            setSession((prev) => mergeSessionSnapshot(prev, data.session!));
           } else if (data.type === "active_heroes" && typeof data.request_id === "number") {
             const waiter = whoResponseWaitersRef.current.get(data.request_id);
             if (waiter) {
@@ -698,27 +720,7 @@ export default function QffPlayPage() {
           setContainerPanelOpen(false);
           setActiveUsersPanelOpen(false);
         }
-        setSession((prev) => {
-          if (!sessionSnapshot.has_character) return sessionSnapshot;
-          if (!sessionSnapshot.session_partial || !prev?.has_character) {
-            return sessionSnapshot;
-          }
-          const snapshotMapStub =
-            sessionSnapshot.area_map.minimal === true &&
-            sessionSnapshot.area_map.grids.length === 0;
-          const usePrevAreaMap =
-            snapshotMapStub &&
-            (prev.area_map.grids.length > 0 || prev.area_map.minimal !== true);
-          return {
-            ...sessionSnapshot,
-            active_heroes: sessionSnapshot.active_heroes ?? prev.active_heroes,
-            area_map: usePrevAreaMap ? prev.area_map : sessionSnapshot.area_map,
-            shops: sessionSnapshot.shops ?? prev.shops,
-            active_quests: sessionSnapshot.active_quests ?? prev.active_quests,
-            character_profile:
-              sessionSnapshot.character_profile ?? prev.character_profile,
-          };
-        });
+        setSession((prev) => mergeSessionSnapshot(prev, sessionSnapshot));
       } catch (e) {
         setLogLines((prev) => {
           const pending = optimisticCommandLogIdsRef.current;

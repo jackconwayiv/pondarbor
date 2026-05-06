@@ -632,8 +632,11 @@ def command_view(request):
                     cmd_query_count,
                 )
             # Expose command-view wall time and handler SQL count to RequestTimingMiddleware.
-            request._qff_command_total_ms = total_ms
-            request._qff_cmd_handler_queries = cmd_query_count
+            # @api_view wraps Django's HttpRequest on ``request._request``; middleware sees the
+            # underlying HttpRequest only, so timing must be stored there.
+            _http_request = getattr(request, "_request", request)
+            _http_request._qff_command_total_ms = total_ms
+            _http_request._qff_cmd_handler_queries = cmd_query_count
 
             body: dict = {
                 "messages": msgs_out,

@@ -4,7 +4,8 @@
 For POST /qff/command/, ``queries`` counts every SQL execution during the full WSGI
 hop (Auth0/session lookup before the view, the command handler, response build).
 
-When the command view sets ``request._qff_cmd_handler_queries``, that value counts
+When the command view sets ``_qff_cmd_handler_queries`` on the underlying
+``HttpRequest`` (required for DRF ``@api_view`` wrappers), that value counts
 only queries executed while ``command_view`` holds its inner
 ``connection.execute_wrapper`` — i.e. handler work after routing (sync + exec +
 lazy sim + session payload). The difference ``queries - handler_queries`` is work

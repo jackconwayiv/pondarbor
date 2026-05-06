@@ -175,7 +175,7 @@ function combatSimPreviewReadout(p: DmCombatSimPreviewResponse): string {
       ["is_unarmed", "Unarmed (hero)"],
       ["sense", "Sense (for crit, hero)"],
       ["crit_chance_bonus_pct", "Crit % bonus (item, percentage points)"],
-      ["crit_damage_bonus", "Crit damage bonus (item)"],
+      ["crit_damage_bonus", "Crit damage bonus (percentage points)"],
       ["penetration", "Penetration"],
       ["dodge_reduction_pct", "Dodge reduction % (attacker)"],
       ["dodge_ignore_active", "Dodge ignore active (attacker)"],

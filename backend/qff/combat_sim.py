@@ -186,9 +186,9 @@ def _crit_mult_cap_value(level: int) -> float:
     return 2.5 + 0.02 * (lv - 75)
 
 
-def _crit_mult_stat_term(level: int, item_crit_damage: float) -> float:
+def _crit_mult_stat_term(level: int, item_crit_damage_bonus_pct: float) -> float:
     lv = max(1, int(level))
-    return 1.5 + 0.0025 * (lv - 1) + float(item_crit_damage)
+    return 1.5 + 0.0025 * (lv - 1) + (float(item_crit_damage_bonus_pct) / 100.0)
 
 
 def build_hero_attacker_dict(
@@ -352,6 +352,7 @@ def preview_payload(body: dict[str, Any]) -> dict[str, Any]:
             "paper_base": paper,
             "swing_L": max(1, lv),
             "swing_note": f"RolledBase = max(1, paper + U) with U uniform on [-L, L], L = {max(1, lv)}",
+            "crit_swing_note": "On crit: roll swing twice and use the higher RolledBase.",
             "level_factor": level_factor(lv),
         }
     else:
@@ -372,6 +373,7 @@ def preview_payload(body: dict[str, Any]) -> dict[str, Any]:
             "paper_uniform_max": dmax,
             "paper_example_mid": paper_mid,
             "swing_L": max(1, int(atk["level"])),
+            "crit_swing_note": "On crit: roll swing twice and use the higher RolledBase.",
         }
 
     # Crit + mitigation (shared: attacker crit vs defender armor)

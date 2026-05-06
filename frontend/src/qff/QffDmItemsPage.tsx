@@ -761,7 +761,7 @@ export default function QffDmItemsPage() {
                 />
               </Field.Root>
               <Field.Root minW={0}>
-                <Field.Label>Crit dmg +</Field.Label>
+                <Field.Label>Crit dmg % pts</Field.Label>
                 <Input
                   type="number"
                   step="any"

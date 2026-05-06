@@ -436,7 +436,7 @@ export default function QffDmMonstersPage() {
                     ["accuracy", "Accuracy"],
                     ["penetration", "Penetration"],
                     ["crit_chance_bonus_pct", "Crit % pts"],
-                    ["crit_damage_bonus", "Crit dmg+"],
+                    ["crit_damage_bonus", "Crit dmg % pts"],
                     ["dodge_reduction", "Dodge red."],
                     ["dodge_ignore", "Dodge ign."],
                   ] as const

@@ -169,6 +169,8 @@ class CombatMathFormulaTests(TestCase):
 
     def test_crit_multiplier_and_damage(self):
         self.assertAlmostEqual(compute_crit_multiplier(1, 0.0), 1.5)
+        # Level 1 is hard-capped at 1.5, so validate +10pp behavior at a level with headroom.
+        self.assertAlmostEqual(compute_crit_multiplier(20, 10.0), 1.6475)
         self.assertEqual(compute_crit_damage(10, 1.5), 15)
         self.assertEqual(compute_crit_damage(10, 1.25), 12)
 
@@ -241,6 +243,28 @@ class ResolvePhysicalStrikeTests(TestCase):
         self.assertEqual(r.outcome, "crit")
         self.assertTrue(r.was_crit)
         self.assertGreaterEqual(r.damage, r.rolled_base)
+
+    def test_crit_uses_higher_of_two_damage_swings(self):
+        atk = self._sample_attacker()
+        dfn = self._sample_defender()
+        with patch("qff.combat_math.roll_d100", return_value=50), patch(
+            "qff.combat_math.random.random", return_value=0.0
+        ), patch("qff.combat_math.random.randint", side_effect=[-1, 1]):
+            r = resolve_physical_strike(atk, dfn)
+        self.assertEqual(r.outcome, "crit")
+        self.assertEqual(r.base_damage, 40)
+        self.assertEqual(r.rolled_base, 41)
+
+    def test_monster_style_crit_uses_higher_of_two_damage_swings(self):
+        atk = {**self._sample_attacker(), "level": 1}
+        dfn = self._sample_defender()
+        with patch("qff.combat_math.roll_d100", return_value=50), patch(
+            "qff.combat_math.random.random", return_value=0.0
+        ), patch("qff.combat_math.random.randint", side_effect=[-1, 1]):
+            r = resolve_physical_strike(atk, dfn, flat_base_damage=3)
+        self.assertEqual(r.outcome, "crit")
+        self.assertEqual(r.base_damage, 3)
+        self.assertEqual(r.rolled_base, 4)
 
     def test_guaranteed_crit_when_crit_chance_reaches_one(self):
         """random.random() never returns 1.0; p==1.0 must still always crit."""

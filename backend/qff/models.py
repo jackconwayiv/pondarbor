@@ -426,7 +426,7 @@ class Item(models.Model):
     )
     crit_damage_bonus = models.FloatField(
         default=0.0,
-        help_text="Added to crit multiplier (ItemCritDamage term).",
+        help_text="Added as percentage points to crit multiplier (10 = +0.10x).",
     )
     penetration = models.PositiveSmallIntegerField(default=0)
     dodge_bonus = models.SmallIntegerField(default=0)
@@ -1391,7 +1391,10 @@ class MonsterTemplate(models.Model):
         default=0,
         help_text="Percentage points added to crit chance (same semantics as Item).",
     )
-    crit_damage_bonus = models.FloatField(default=0.0)
+    crit_damage_bonus = models.FloatField(
+        default=0.0,
+        help_text="Added as percentage points to crit multiplier (10 = +0.10x).",
+    )
     dodge_reduction = models.SmallIntegerField(default=0)
     dodge_ignore = models.SmallIntegerField(default=0)
     description = models.TextField(blank=True)

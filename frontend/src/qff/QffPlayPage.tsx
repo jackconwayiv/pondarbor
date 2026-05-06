@@ -97,6 +97,16 @@ function mergeSessionSnapshot(
     character_profile: next.character_profile ?? prev.character_profile,
   };
 }
+
+function areaMapHasRoom(
+  areaMap: QffSessionWithCharacter["area_map"],
+  roomId: number,
+): boolean {
+  for (const grid of areaMap.grids) {
+    if (grid.cells.some((cell) => cell.room_id === roomId)) return true;
+  }
+  return false;
+}
 /** Stat total (modified) */
 const HUD_STAT_TOTAL = "#f0f0f0";
 /** (base + modifiers) — darker than label + total */
@@ -192,6 +202,8 @@ export default function QffPlayPage() {
   const whoResponseWaitersRef = useRef(new Map<number, (rows: QffSessionWithCharacter["active_heroes"]) => void>());
   const [commandPending, setCommandPending] = useState(false);
   const [leavePending, setLeavePending] = useState<false | { waitSeconds: number }>(false);
+  /** Last room id known to exist inside current minimap data; prevents transient blank map on partial updates. */
+  const lastRenderableMinimapRoomIdRef = useRef<number | null>(null);
 
   const load = useCallback(async () => {
     const token = await getTokenRef.current();
@@ -800,6 +812,13 @@ export default function QffPlayPage() {
   }
 
   const { room, area, exits, others_here, area_map } = session;
+  const roomInMap = areaMapHasRoom(area_map, room.id);
+  if (roomInMap) {
+    lastRenderableMinimapRoomIdRef.current = room.id;
+  }
+  const minimapRoomId = roomInMap
+    ? room.id
+    : (lastRenderableMinimapRoomIdRef.current ?? room.id);
   const mapMinimal = area_map.minimal === true;
   const t = area.theme;
   // When absent (older API), treat as visible until backend with `room.details_visible` is deployed.
@@ -938,7 +957,7 @@ export default function QffPlayPage() {
         pointerEvents={mapVisible ? "auto" : "none"}
         aria-hidden={!mapVisible}
       >
-        <QffMiniMap areaMap={area_map} currentRoomId={room.id} />
+        <QffMiniMap areaMap={area_map} currentRoomId={minimapRoomId} />
       </Flex>
     </Box>
   );

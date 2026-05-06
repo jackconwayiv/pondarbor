@@ -6,9 +6,12 @@ Pipeline (``resolve_physical_strike``), same order as rolls occur:
 2. If hit: roll crit: ``random.random()`` vs ``CritChance`` — if below threshold, use crit damage branch.
 4. **PaperBase** — heroes with a weapon (main hand ``damage > 0``): ``floor((3×Weapon + 2×Gains) × LevelFactor)`` with ``LevelFactor = 1 + 2×(Level−1)/98``. **Unarmed** heroes (no main-hand item or ``damage <= 0``): ``1 + Level`` (ignores gains and the weapon formula). Monsters: caller rolls ``UniformInteger[damage_min, damage_max]`` inclusive and passes it as ``flat_base_damage`` (that value is the monster’s paper base for the strike).
 5. **RolledBase** = ``max(1, PaperBase + U)`` where ``U ~ Uniform{−L,…,L}`` and ``L = max(1, AttackerLevel)`` (hero level or ``MonsterTemplate.level``). For monsters, ``RolledBase`` can be **above** ``damage_max`` (e.g. paper 3 and ``U = +1`` at level 1 → 4) or below ``damage_min`` only down to the global floor 1.
-6. **CritDamage** = ``floor(RolledBase × CritMultiplier)``.
+6. **CritDamage** = ``floor(CritRolledBase × CritMultiplier)``.
 7. **DamageReduction** = ``EffectiveArmor / (EffectiveArmor + MitigationScale)`` with ``MitigationScale = 100 + 2×Penetration``; if ``EffectiveArmor <= 0``, reduction is 0.
 8. **Final** = ``max(1, floor(chosen × (1 − DamageReduction)))`` where ``chosen`` is ``RolledBase`` or ``CritDamage``.
+
+On a critical hit, base swing damage is rolled twice and the higher roll is used as
+``CritRolledBase`` before applying crit multiplier and mitigation.
 
 Formulas (integer ``//`` where the spec uses floor for moves):
 
@@ -33,6 +36,7 @@ from typing import Literal
 from qff.constants import UNARMED_WEAPON_RATING
 from qff.game_helpers import (
     _equipped_items,
+    encumbrance_excess,
     modified_stats,
     roll_d100,
     total_armor_from_equipment,
@@ -198,7 +202,7 @@ def compute_unarmed_paper_base(level: int) -> int:
     return 1 + lv
 
 
-def compute_crit_multiplier(level: int, item_crit_damage: float) -> float:
+def compute_crit_multiplier(level: int, item_crit_damage_bonus_pct: float) -> float:
     lv = max(1, int(level))
     if lv <= 50:
         cap = 1.5 + (0.5 / 49.0) * (lv - 1)
@@ -206,7 +210,8 @@ def compute_crit_multiplier(level: int, item_crit_damage: float) -> float:
         cap = 2.0 + 0.02 * (lv - 50)
     else:
         cap = 2.5 + 0.02 * (lv - 75)
-    stat = 1.5 + 0.0025 * (lv - 1) + float(item_crit_damage)
+    # item_crit_damage_bonus_pct is stored in percentage points (10 => +0.10 multiplier).
+    stat = 1.5 + 0.0025 * (lv - 1) + (float(item_crit_damage_bonus_pct) / 100.0)
     return min(cap, stat)
 
 
@@ -274,8 +279,9 @@ def hero_is_unarmed_for_paper_damage(character: Character) -> bool:
 def hero_attacker_stats(character: Character) -> dict:
     mods = modified_stats(character)
     b = sum_equipped_combat_bonuses(character)
+    enc = max(0, int(encumbrance_excess(character)))
     return {
-        "atk_moves": int(mods["moves"]),
+        "atk_moves": max(1, int(mods["moves"]) - enc),
         "weapon_accuracy": b["weapon_accuracy"],
         "weapon": main_hand_weapon_damage(character),
         "gains": int(mods["gains"]),
@@ -295,8 +301,9 @@ def hero_attacker_stats(character: Character) -> dict:
 def hero_defender_stats(character: Character) -> dict:
     mods = modified_stats(character)
     b = sum_equipped_combat_bonuses(character)
+    enc = max(0, int(encumbrance_excess(character)))
     return {
-        "def_moves": int(mods["moves"]),
+        "def_moves": max(1, int(mods["moves"]) - enc),
         "dodge_bonus": b["dodge_bonus"],
         "level": int(character.level),
         # Hero defending uses /5 effective-armor scaling.
@@ -380,14 +387,19 @@ def resolve_physical_strike(
         base = compute_base_damage(
             attacker["weapon"], attacker["gains"], attacker["level"]
         )
-    rolled = apply_damage_swing(base, int(attacker["level"]))
+    # random.random() is in [0, 1); use < p_roll, but p_roll==1.0 must always crit.
+    was_crit = p_roll >= 1.0 or (p_roll > 0.0 and random.random() < p_roll)
+    if was_crit:
+        rolled = max(
+            apply_damage_swing(base, int(attacker["level"])),
+            apply_damage_swing(base, int(attacker["level"])),
+        )
+    else:
+        rolled = apply_damage_swing(base, int(attacker["level"]))
     crit_mult = compute_crit_multiplier(
         attacker["level"], attacker["crit_damage_bonus"]
     )
     crit_raw = compute_crit_damage(rolled, crit_mult)
-
-    # random.random() is in [0, 1); use < p_roll, but p_roll==1.0 must always crit.
-    was_crit = p_roll >= 1.0 or (p_roll > 0.0 and random.random() < p_roll)
     raw = crit_raw if was_crit else rolled
     dr = compute_damage_reduction(defender["effective_armor"], attacker["penetration"])
     final = compute_final_damage(raw, dr)

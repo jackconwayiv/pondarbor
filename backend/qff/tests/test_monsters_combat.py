@@ -19,7 +19,12 @@ def _test_user(email: str) -> User:
 
 from qff.command_handlers import execute_command
 from qff.command_parser import ParsedAttack, ParsedTrain, parse_command
-from qff.combat_math import StrikeResult, hero_attacker_stats
+from qff.combat_math import (
+    StrikeResult,
+    compute_hit_chance,
+    hero_attacker_stats,
+    hero_defender_stats,
+)
 from qff.constants import COMBAT_ROUND_SECONDS, XP_PER_LEVEL
 from qff.models import (
     Area,
@@ -120,6 +125,25 @@ class MonsterCombatTests(TestCase):
             pursuit_target_character=self.hero,
             monster_strike_pending=False,
         )
+
+    def _set_encumbrance_excess(self, excess: int) -> None:
+        cap = 5 + int(self.hero.gains) // 10
+        target_count = max(0, cap + int(excess))
+        items = [
+            Item.objects.create(slug=f"enc-mc-{i}", name=f"EncMC{i}", slot=None)
+            for i in range(target_count)
+        ]
+        inv_instances = [
+            ItemInstance.objects.create(
+                item=item,
+                owner_character=self.hero,
+                room=None,
+                quantity=1,
+            )
+            for item in items
+        ]
+        self.hero.inventory = [inst.pk for inst in inv_instances]
+        self.hero.save(update_fields=["inventory", "updated_at"])
 
     def test_attack_sets_timer_and_target(self):
         lines = execute_command(self.hero, parse_command("attack test rat"))
@@ -333,6 +357,63 @@ class MonsterCombatTests(TestCase):
             pk=self.hero.pk
         )
         self.assertEqual(hero_attacker_stats(h)["hit_chance_base"], 75)
+
+    def test_encumbrance_reduces_attacker_hit_input(self):
+        self.hero.moves = 20
+        self.hero.level = 25
+        self.hero.save(update_fields=["moves", "level", "updated_at"])
+        self._set_encumbrance_excess(30)
+        h = Character.objects.get(pk=self.hero.pk)
+        stats = hero_attacker_stats(h)
+        self.assertEqual(stats["atk_moves"], 1)
+
+    def test_encumbrance_reduces_defender_dodge_input(self):
+        self.hero.moves = 20
+        self.hero.save(update_fields=["moves", "updated_at"])
+        self._set_encumbrance_excess(4)
+        h = Character.objects.get(pk=self.hero.pk)
+        stats = hero_defender_stats(h)
+        self.assertEqual(stats["def_moves"], 16)
+
+    def test_encumbrance_on_defender_increases_attacker_hit_chance(self):
+        self.hero.moves = 20
+        self.hero.level = 25
+        self.hero.save(update_fields=["moves", "level", "updated_at"])
+        self._set_encumbrance_excess(5)
+        defender = Character.objects.get(pk=self.hero.pk)
+        base_def = {"def_moves": 20, "dodge_bonus": 0, "level": int(defender.level)}
+        penalized_def = hero_defender_stats(defender)
+        attacker = {
+            "atk_moves": 20,
+            "weapon_accuracy": 0,
+            "level": 25,
+            "dodge_reduction_pct": 0,
+            "dodge_ignore_active": False,
+            "hit_chance_base": 75,
+        }
+        base_hit = compute_hit_chance(
+            attacker["atk_moves"],
+            attacker["weapon_accuracy"],
+            base_def["def_moves"],
+            atk_level=attacker["level"],
+            def_level=base_def["level"],
+            dodge_bonus=base_def["dodge_bonus"],
+            dodge_reduction_pct=attacker["dodge_reduction_pct"],
+            dodge_ignore_active=attacker["dodge_ignore_active"],
+            base=attacker["hit_chance_base"],
+        )
+        penalized_hit = compute_hit_chance(
+            attacker["atk_moves"],
+            attacker["weapon_accuracy"],
+            penalized_def["def_moves"],
+            atk_level=attacker["level"],
+            def_level=penalized_def["level"],
+            dodge_bonus=penalized_def["dodge_bonus"],
+            dodge_reduction_pct=attacker["dodge_reduction_pct"],
+            dodge_ignore_active=attacker["dodge_ignore_active"],
+            base=attacker["hit_chance_base"],
+        )
+        self.assertGreater(penalized_hit, base_hit)
 
     def test_hero_miss_in_dark_unlit_narrates_visibility(self):
         self.area.is_dark_minimap = True

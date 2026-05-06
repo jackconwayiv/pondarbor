@@ -645,6 +645,9 @@ def build_session_for_character(
     current_room, area). ``sync_character_world_before_session`` runs in-place
     so callers may safely keep their reference to the same row.
 
+    Profiling: use ``django.test.utils.CaptureQueriesContext`` around this function
+    (and callers that sync first) to chase N+1 regressions on GET ``/qff/session/``.
+
     When ``for_command_response`` is True (POST /command return payload), omit
     realm-wide ``active_heroes`` and ship a minimal ``area_map`` stub so the
     client can merge from its prior full GET /session/ snapshot.

@@ -38,6 +38,19 @@ and Postgres is the bottleneck.
 **Cons:** Replica lag must stay below perceptible thresholds for gameplay
 fairness; does not shrink CPU spent in Python.
 
+## Combat flush cap (Level 1–2 ops knob)
+
+**Setting:** `QFF_FLUSH_COMBAT_MAX_ROOMS_PER_TICK` (env → ``django.conf.settings``),
+positive integer = max distinct rooms processed per `flush_combat_rounds` call
+(room ids ascending). Default unset = process every due combat room each lazy-sim tick.
+
+**Pros:** Bounds worst-case `sim_ms` / DB when many rooms have heroes/monsters
+with `next_action_at <= now`.
+
+**Cons:** Rooms beyond the cap keep due timestamps until a later
+`run_lazy_simulation` — off-screen or higher-id combat resolves slightly later.
+Trial in staging before prod; pair with `qff_lazy_sim_timing` logs.
+
 Use Level 3 only after structured logs show **which** bucket (`exec_ms`,
 `sim_ms`, `session_ms`, auth/overhead queries) remains unacceptable once Level 1–2
 is exhausted.

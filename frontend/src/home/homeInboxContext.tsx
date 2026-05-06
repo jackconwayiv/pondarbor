@@ -26,6 +26,11 @@ const INBOX_SNAPSHOT_MAX_AGE_MS = 5 * 60 * 1000;
 /** Minimum gap between full inbox network refreshes when revisiting home. */
 const HOME_INDEX_REFRESH_MIN_INTERVAL_MS = 45_000;
 
+/** QFF shell routes (`QffLayout`) — skip inbox network refresh/polling during immersive play. */
+function isQffShellPath(pathname: string): boolean {
+  return pathname === "/qff" || pathname.startsWith("/qff/");
+}
+
 const MONTH_NAMES = [
   "January",
   "February",
@@ -371,14 +376,41 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
       return;
     }
     const id = sessionUser.user.id;
-    if (initialInboxRefreshUserId.current === id) {
-      return;
-    }
-
     const snapshotFresh =
       bootstrapInboxSnapshot &&
       bootstrapInboxFetchedAt != null &&
       Date.now() - bootstrapInboxFetchedAt < INBOX_SNAPSHOT_MAX_AGE_MS;
+
+    if (isQffShellPath(location.pathname)) {
+      if (snapshotFresh && bootstrapInboxSnapshot) {
+        setUpcomingBirthdays(bootstrapInboxSnapshot.upcomingBirthdays);
+        setStaffPendingSummary(bootstrapInboxSnapshot.staffPendingSummary);
+        setPendingFriendCount(bootstrapInboxSnapshot.pendingFriendCount);
+        setClosetOutstandingActions(
+          bootstrapInboxSnapshot.closetOutstandingActions,
+        );
+        setInboxStatus("idle");
+        setInboxError(null);
+        setInboxInitialSyncComplete(true);
+        lastSuccessfulInboxRefreshAt.current = bootstrapInboxFetchedAt;
+        initialInboxRefreshUserId.current = id;
+        return;
+      }
+      if (initialInboxRefreshUserId.current !== id) {
+        setUpcomingBirthdays([]);
+        setStaffPendingSummary(null);
+        setPendingFriendCount(0);
+        setClosetOutstandingActions(0);
+        setInboxStatus("idle");
+        setInboxError(null);
+        setInboxInitialSyncComplete(true);
+      }
+      return;
+    }
+
+    if (initialInboxRefreshUserId.current === id) {
+      return;
+    }
 
     if (snapshotFresh && bootstrapInboxSnapshot) {
       setUpcomingBirthdays(bootstrapInboxSnapshot.upcomingBirthdays);
@@ -402,6 +434,7 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
     refreshInbox,
     bootstrapInboxSnapshot,
     bootstrapInboxFetchedAt,
+    location.pathname,
   ]);
 
   useEffect(() => {
@@ -424,13 +457,14 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!isAuthenticated) return;
+    if (isQffShellPath(location.pathname)) return;
     const tick = () => {
       if (document.visibilityState !== "visible") return;
       void refreshInbox();
     };
     const id = window.setInterval(tick, 90_000);
     return () => window.clearInterval(id);
-  }, [isAuthenticated, refreshInbox]);
+  }, [isAuthenticated, refreshInbox, location.pathname]);
 
   const { homePrompts, homeNoticeItems } = useMemo(() => {
     if (!isAuthenticated || !sessionUser) {

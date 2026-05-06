@@ -750,31 +750,20 @@ def sense_adjacent_monster_lines(hero: Character, room_id: int) -> list[str]:
 
 def maybe_spawn_lairs(now) -> set[int]:
     affected: set[int] = set()
-    rooms = list(
-        Room.objects.filter(monster_lair_template_id__isnull=False).select_related(
-            "monster_lair_template",
-        )
+    alive_last_instance = MonsterInstance.objects.filter(
+        pk=OuterRef("lair_last_instance_id")
     )
-    last_instance_ids = {
-        int(room.lair_last_instance_id)
-        for room in rooms
-        if room.lair_last_instance_id
-    }
-    alive_lair_instance_ids: set[int] = set()
-    if last_instance_ids:
-        alive_lair_instance_ids = set(
-            MonsterInstance.objects.filter(pk__in=last_instance_ids).values_list(
-                "pk", flat=True
-            )
+    rooms = list(
+        Room.objects.filter(monster_lair_template_id__isnull=False)
+        .filter(
+            Q(lair_last_instance_id__isnull=True) | ~Exists(alive_last_instance),
         )
+        .filter(Q(lair_next_spawn_at__isnull=True) | Q(lair_next_spawn_at__lte=now))
+        .select_related("monster_lair_template")
+    )
     for room in rooms:
         tpl = room.monster_lair_template
         if not tpl:
-            continue
-        if room.lair_last_instance_id:
-            if int(room.lair_last_instance_id) in alive_lair_instance_ids:
-                continue
-        if room.lair_next_spawn_at is not None and now < room.lair_next_spawn_at:
             continue
         inst = MonsterInstance.objects.create(
             template_id=tpl.pk,

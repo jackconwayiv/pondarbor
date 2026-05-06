@@ -27,7 +27,17 @@ import { APP_SHELL_CONTENT_MAX_PROPS, APP_TEXT_SIZES } from "./theme/typography"
 const HOME_PURPOSE_BLURB =
   "Welcome to Pond Arbor! This is a hobby project by Pond Arbor Workshop (Jack Conway) for friends and family to enjoy a variety of social and lifestyle apps and games.";
 
-function HomeAppNavList({ isAuthenticated }: { isAuthenticated: boolean }) {
+function HomeAppNavList({
+  isAuthenticated,
+  isStaff,
+}: {
+  isAuthenticated: boolean;
+  isStaff: boolean;
+}) {
+  // Hide Meal Maestro from non-staff while the app is being refactored.
+  const items = APP_HOME_APPS.filter(
+    (item) => item.to !== "/meal" || isStaff,
+  );
   return (
     <SimpleGrid
       as="ul"
@@ -41,7 +51,7 @@ function HomeAppNavList({ isAuthenticated }: { isAuthenticated: boolean }) {
       role="list"
       aria-label="Apps"
     >
-      {APP_HOME_APPS.map((item) => {
+      {items.map((item) => {
         const canOpen =
           isAuthenticated ||
           item.to === "/games" ||
@@ -115,7 +125,7 @@ function HomeAppNavList({ isAuthenticated }: { isAuthenticated: boolean }) {
 function App() {
   const { loginWithRedirect } = useAuth0();
 
-  const { isLoading, isAuthenticated, error } = useAppSession();
+  const { isLoading, isAuthenticated, error, sessionUser } = useAppSession();
 
   if (isLoading) {
     return <SessionLoadingCard />;
@@ -214,7 +224,10 @@ function App() {
             >
               Apps
             </Text>
-            <HomeAppNavList isAuthenticated={isAuthenticated} />
+            <HomeAppNavList
+              isAuthenticated={isAuthenticated}
+              isStaff={!!sessionUser?.user.is_staff}
+            />
           </Stack>
         </Stack>
       </Box>

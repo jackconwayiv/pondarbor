@@ -149,9 +149,16 @@ export default function AppLayout() {
 
   // `auth0User` is cleared when the Auth0 client logs out; rely on it so nav stays in sync.
   const showProfileNav = isAuthenticated && !!auth0User;
+  // Meal Maestro is hidden from non-staff (in nav + hamburger) until the app is refactored.
+  // `guestHamburgerNavItems()` already excludes it, so only the authed list needs filtering.
+  const isStaff = !!sessionUser?.user?.is_staff;
+  const authedNavEntries = useMemo(
+    () => APP_DESKTOP_NAV.filter((item) => item.to !== "/meal" || isStaff),
+    [isStaff],
+  );
   const desktopNavEntries = useMemo(
-    () => (showProfileNav ? APP_DESKTOP_NAV : guestHamburgerNavItems()),
-    [showProfileNav],
+    () => (showProfileNav ? authedNavEntries : guestHamburgerNavItems()),
+    [showProfileNav, authedNavEntries],
   );
 
   const isClickerRoute =
@@ -341,7 +348,7 @@ export default function AppLayout() {
                     </Menu.Item>
                     {showProfileNav ? (
                       <>
-                        {APP_DESKTOP_NAV.map((item) => (
+                        {authedNavEntries.map((item) => (
                           <Menu.Item
                             key={item.to}
                             value={item.to.slice(1) || "home"}

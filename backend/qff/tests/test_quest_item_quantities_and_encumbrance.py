@@ -82,7 +82,7 @@ class QuestItemQuantitiesAndEncumbranceTests(TestCase):
         st_a = QuestState.objects.create(quest=quest, slug="a", name="A", is_initial=True, sort_order=0)
         st_b = QuestState.objects.create(quest=quest, slug="b", name="B", sort_order=1)
         req_item = Item.objects.create(
-            slug="req-qty", name="Req", slot=None, stackable=True, max_stack=99
+            slug="xenorat-tail", name="Xenorat Tail", slot=None, stackable=True, max_stack=99
         )
         tr = QuestTransition.objects.create(
             quest=quest,
@@ -97,8 +97,9 @@ class QuestItemQuantitiesAndEncumbranceTests(TestCase):
         self.hero.inventory = [inst.pk]
         self.hero.save(update_fields=["inventory"])
 
-        apply_transition(self.hero, tr)
+        out = apply_transition(self.hero, tr)
         self.hero.refresh_from_db()
         inst.refresh_from_db()
+        self.assertIn("You give up 3 Xenorat Tails.", out)
         self.assertEqual(inst.quantity, 1)
 

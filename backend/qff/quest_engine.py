@@ -417,8 +417,16 @@ def apply_transition(character: Character, transition: QuestTransition) -> list[
         if not has_remove_effect:
             qty = max(1, int(getattr(transition, "requires_item_quantity", 1) or 1))
             removed_labels = _remove_item_template_quantity(character, req_id, qty)
-            for label in removed_labels:
-                out.append(f"You give up the {label}.")
+            if qty > 1:
+                template_name = (
+                    transition.requires_item.name
+                    if transition.requires_item_id
+                    else (removed_labels[0] if removed_labels else "item")
+                )
+                out.append(_quest_turn_in_line(template_name, qty))
+            else:
+                for label in removed_labels:
+                    out.append(_quest_turn_in_line(label, 1))
             character = Character.objects.select_for_update().get(pk=character.pk)
     for eff in transition.effects.order_by("sort_order", "id"):
         out.extend(_apply_effect(character, eff))
@@ -540,6 +548,31 @@ def _remove_one_instance_of_template(character: Character, item_template_id: int
         if inst and inst.item_id == item_template_id:
             return _delete_instance_from_character(character, inst)
     return None
+
+
+def _quest_turn_in_line(label: str, qty: int) -> str:
+    count = max(1, int(qty or 1))
+    if count == 1:
+        return f"You give up the {label}."
+    return f"You give up {count} {_pluralize_noun_phrase(label)}."
+
+
+def _pluralize_noun_phrase(label: str) -> str:
+    parts = [p for p in (label or "").strip().split(" ") if p]
+    if not parts:
+        return "items"
+    noun = parts[-1]
+    parts[-1] = _pluralize_english_noun(noun)
+    return " ".join(parts)
+
+
+def _pluralize_english_noun(noun: str) -> str:
+    low = noun.lower()
+    if low.endswith(("s", "x", "z", "ch", "sh")):
+        return f"{noun}es"
+    if low.endswith("y") and len(noun) > 1 and low[-2] not in "aeiou":
+        return f"{noun[:-1]}ies"
+    return f"{noun}s"
 
 
 def _remove_item_template_quantity(

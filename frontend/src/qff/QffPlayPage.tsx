@@ -551,9 +551,13 @@ export default function QffPlayPage() {
       setLine("");
       return;
     }
+    const normalized = raw.replace(/^>+\s*/, "").replace(/^\//, "").trim().toLowerCase();
+    const firstWord = normalized.split(/\s+/, 1)[0] ?? "";
+    const isLeaveAlias = firstWord === "leave" || firstWord === "exit" || firstWord === "quit";
     const moveDir = tryParseQffMoveDirection(raw);
     if (
       moveDir &&
+      !isLeaveAlias &&
       sessionRef.current?.has_character &&
       !sessionRef.current.exits.some((ex) => ex.direction === moveDir)
     ) {

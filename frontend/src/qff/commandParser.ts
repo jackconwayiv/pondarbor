@@ -49,8 +49,6 @@ const DIRECTION_SYNONYMS: [string, string][] = [
   ["down", Direction.DOWN],
   ["up", Direction.UP],
   ["enter", Direction.IN],
-  ["leave", Direction.OUT],
-  ["exit", Direction.OUT],
 ];
 
 const SINGLE_LETTER: Record<string, string> = {

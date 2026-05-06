@@ -34,6 +34,10 @@ describe("parseQffCommandLine (parity with backend/qff/tests/test_command_parser
     assertKnown("d");
     assertKnown("enter");
     assertKnown("leave");
+    assertKnown("/leave");
+    assertKnown("exit");
+    assertKnown("/exit");
+    assertKnown("quit");
   });
 
   it("search", () => {
@@ -49,6 +53,12 @@ describe("parseQffCommandLine (parity with backend/qff/tests/test_command_parser
     expect(tryParseQffMoveDirection("n")).toBe("n");
     expect(tryParseQffMoveDirection("north")).toBe("n");
     expect(tryParseQffMoveDirection("/go NW")).toBe("nw");
+    expect(tryParseQffMoveDirection("out")).toBe("out");
+    expect(tryParseQffMoveDirection("/out")).toBe("out");
+    expect(tryParseQffMoveDirection("leave")).toBe(null);
+    expect(tryParseQffMoveDirection("/leave")).toBe(null);
+    expect(tryParseQffMoveDirection("exit")).toBe(null);
+    expect(tryParseQffMoveDirection("/exit")).toBe(null);
     expect(tryParseQffMoveDirection("search")).toBe(null);
     expect(tryParseQffMoveDirection("eat bread")).toBe(null);
   });

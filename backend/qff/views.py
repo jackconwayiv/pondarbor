@@ -460,6 +460,7 @@ def command_view(request):
         )
 
     raw_line = request.data.get("line") or ""
+    trainer_stat_draft_payload = request.data.get("trainer_stat_draft")
     line = raw_line.strip()
     if not line:
         return Response(
@@ -529,7 +530,11 @@ def command_view(request):
                             messages = ["Staff only."]
                             exec_ms = 0.0
                     else:
-                        prompt_messages = maybe_handle_pending_prompt(char_work, line)
+                        prompt_messages = maybe_handle_pending_prompt(
+                            char_work,
+                            line,
+                            trainer_stat_draft=trainer_stat_draft_payload,
+                        )
                         if prompt_messages is not None:
                             parsed = None
                             messages = list(prompt_messages)

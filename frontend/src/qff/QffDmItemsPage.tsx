@@ -17,7 +17,6 @@ import { type ChangeEvent, useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
-import { PanelBlockSkeleton } from "../components/panelStatus";
 import QffButton from "./QffButton";
 import QffDmCollapsibleSection from "./QffDmCollapsibleSection";
 import { GLYPH_IDS } from "./glyphCreation";
@@ -259,7 +258,9 @@ export default function QffDmItemsPage() {
   if (isLoading) {
     return (
       <Box maxW="6xl" mx="auto" px={4} py={8} color="#c8e6a8">
-        <PanelBlockSkeleton lines={2} showTitleLine />
+        <Text fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace">
+          Loading...
+        </Text>
       </Box>
     );
   }

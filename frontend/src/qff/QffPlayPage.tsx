@@ -14,7 +14,6 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
-import { PanelBlockSkeleton } from "../components/panelStatus";
 import QffButton from "./QffButton";
 import {
   fetchQffSession,
@@ -23,6 +22,7 @@ import {
   qffSessionWsUrl,
   sendQffCommand,
   type QffAreaMapCell,
+  type QffCommandOptions,
   type QffCommandResponse,
   type QffSession,
   type QffSessionWithCharacter,
@@ -50,6 +50,36 @@ const HUD_LOG_RECENT = "#f5f5f5";
 const HUD_LOG_HERO_HIT = "#dff7e8";
 const HUD_LOG_ENEMY_HIT = "#fce8f0";
 const HUD_LOG_MISS = "#faf6e0";
+
+/** Trainer spend-allocation keys (must match backend `_TRAINER_STAT_FIELDS`). */
+const TRAINER_STAT_KEYS = ["gains", "moves", "guts", "smarts", "sense", "rizz"] as const;
+
+function seedTrainerStatDraft(
+  raw: unknown,
+): Partial<Record<(typeof TRAINER_STAT_KEYS)[number], number>> {
+  const out: Partial<Record<(typeof TRAINER_STAT_KEYS)[number], number>> = {};
+  if (!raw || typeof raw !== "object") return out;
+  const o = raw as Record<string, unknown>;
+  for (const k of TRAINER_STAT_KEYS) {
+    if (o[k] == null) continue;
+    const n = Math.floor(Number(o[k]));
+    if (!Number.isFinite(n) || n < 1) continue;
+    out[k] = n;
+  }
+  return out;
+}
+
+function compactTrainerStatDraft(
+  d: Partial<Record<(typeof TRAINER_STAT_KEYS)[number], number>>,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const k of TRAINER_STAT_KEYS) {
+    const n = Math.floor(Number(d[k] ?? 0));
+    if (!Number.isFinite(n) || n < 1) continue;
+    out[k] = n;
+  }
+  return out;
+}
 
 function sortShopStockForDisplay(lines: QffShopPanelLine[]): QffShopPanelLine[] {
   return [...lines].sort((a, b) => {
@@ -204,6 +234,11 @@ export default function QffPlayPage() {
   const [leavePending, setLeavePending] = useState<false | { waitSeconds: number }>(false);
   /** Last room id known to exist inside current minimap data; prevents transient blank map on partial updates. */
   const lastRenderableMinimapRoomIdRef = useRef<number | null>(null);
+  /** Local trainer stat draft — +/- update only this until Commit POSTs `trainer_stat_draft`. */
+  const trainerStatPanelWasOpenRef = useRef(false);
+  const [trainerStatDraftLocal, setTrainerStatDraftLocal] = useState<
+    Partial<Record<(typeof TRAINER_STAT_KEYS)[number], number>>
+  >({});
 
   const load = useCallback(async () => {
     const token = await getTokenRef.current();
@@ -485,6 +520,8 @@ export default function QffPlayPage() {
       setContainerPanelOpen(false);
       setQuestPanelOpen(false);
       setActiveUsersPanelOpen(false);
+      // Stat-allocation draft is cleared server-side on move; show map again if it was hidden.
+      setMapVisible(true);
     }
   }, [session]);
 
@@ -495,7 +532,20 @@ export default function QffPlayPage() {
     }
   }, [session?.has_character, session?.room?.opened_container]);
 
-  const runCommand = useCallback(async (rawLine: string) => {
+  const trainerStatSpendOpen =
+    session?.has_character === true && session.pending_prompt?.kind === "trainer_stat_spend";
+
+  useEffect(() => {
+    if (trainerStatSpendOpen && !trainerStatPanelWasOpenRef.current) {
+      setTrainerStatDraftLocal(seedTrainerStatDraft(session!.pending_prompt?.draft));
+    }
+    if (!trainerStatSpendOpen) {
+      setTrainerStatDraftLocal({});
+    }
+    trainerStatPanelWasOpenRef.current = trainerStatSpendOpen;
+  }, [trainerStatSpendOpen, session]);
+
+  const runCommand = useCallback(async (rawLine: string, cmdOpts?: QffCommandOptions) => {
     const raw = rawLine.trim();
     if (!raw) return;
     // Client-only "map" command: restore the minimap to its grid slot. No HTTP, no log echo.
@@ -647,12 +697,12 @@ export default function QffPlayPage() {
         }
         let res: QffCommandResponse;
         try {
-          res = await sendQffCommand(token, raw);
+          res = await sendQffCommand(token, raw, cmdOpts);
         } catch (firstErr) {
           const msg = firstErr instanceof Error ? firstErr.message : "";
           if (/\(401\)|\(403\)/.test(msg)) {
             token = await getTokenRef.current();
-            res = await sendQffCommand(token, raw);
+            res = await sendQffCommand(token, raw, cmdOpts);
           } else {
             throw firstErr;
           }
@@ -777,8 +827,10 @@ export default function QffPlayPage() {
 
   if (isLoading) {
     return (
-      <Box px={4} py={8} maxW="md">
-        <PanelBlockSkeleton lines={2} showTitleLine />
+      <Box px={4} py={8}>
+        <Text fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace">
+          Loading...
+        </Text>
       </Box>
     );
   }
@@ -803,8 +855,10 @@ export default function QffPlayPage() {
 
   if (!initialSessionLoadDone) {
     return (
-      <Box px={4} py={8} maxW="md">
-        <PanelBlockSkeleton lines={2} showTitleLine />
+      <Box px={4} py={8}>
+        <Text fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace">
+          Loading...
+        </Text>
       </Box>
     );
   }
@@ -840,6 +894,31 @@ export default function QffPlayPage() {
     cp.inventoryItems.length > 0
       ? cp.inventoryItems.join(", ") + (cp.isEncumbered ? " (encumbered)" : "")
       : "—";
+
+  const bumpTrainerStatDraft = (stat: (typeof TRAINER_STAT_KEYS)[number], delta: 1 | -1) => {
+    setTrainerStatDraftLocal((prev) => {
+      const level = cp.level;
+      const base = stBase[stat];
+      const maxInc = Math.max(0, level - base);
+      const cur = Math.max(0, Math.floor(Number(prev[stat] ?? 0)));
+      const pool = Math.max(0, Number(cp.unspentStatPoints ?? 0));
+      const totalAlloc = TRAINER_STAT_KEYS.reduce(
+        (n, k) => n + Math.max(0, Math.floor(Number(prev[k] ?? 0))),
+        0,
+      );
+      const remaining = pool - totalAlloc;
+      if (delta === -1) {
+        if (cur <= 0) return prev;
+        const next: Partial<Record<(typeof TRAINER_STAT_KEYS)[number], number>> = { ...prev };
+        next[stat] = cur - 1;
+        if (next[stat] === 0) delete next[stat];
+        return next;
+      }
+      if (remaining <= 0) return prev;
+      if (cur >= maxInc) return prev;
+      return { ...prev, [stat]: cur + 1 };
+    });
+  };
 
   const exitsBlock = (
     <>
@@ -1212,7 +1291,13 @@ export default function QffPlayPage() {
     </Box>
   ) : null;
 
-  const draft = pendingPrompt?.draft ?? {};
+  const draft = trainerStatDraftLocal;
+  const trainerStatDraftTotal = TRAINER_STAT_KEYS.reduce(
+    (n, k) => n + Math.max(0, Number(draft[k] ?? 0)),
+    0,
+  );
+  const trainerUnspentPool = Math.max(0, Number(cp.unspentStatPoints ?? 0));
+  const trainerRemainingUnspent = Math.max(0, trainerUnspentPool - trainerStatDraftTotal);
   const trainerStatPanel = trainerStatOpen ? (
     <Box
       borderWidth="1px"
@@ -1225,27 +1310,58 @@ export default function QffPlayPage() {
       flexDirection="column"
       gap={2}
     >
-      <Text color={HUD_PANEL_TEXT} fontWeight="semibold">
-        Spend Stat Points
-      </Text>
-      {(["gains", "moves", "guts", "smarts", "sense", "rizz"] as const).map((stat) => (
-        <Flex key={stat} align="center" justify="space-between">
-          <Text color={HUD_PANEL_TEXT}>{stat.toUpperCase()}</Text>
-          <Flex gap={1} align="center">
-            <QffButton type="button" size="xs" onClick={() => void runCommand(`- ${stat}`)} disabled={commandPending}>
-              -
-            </QffButton>
-            <Text minW="18px" textAlign="center" color={HUD_PANEL_TEXT}>
-              {Number(draft[stat] ?? 0)}
-            </Text>
-            <QffButton type="button" size="xs" onClick={() => void runCommand(`+ ${stat}`)} disabled={commandPending}>
-              +
-            </QffButton>
+      <Flex align="center" justify="space-between" gap={3} w="100%" wrap="wrap">
+        <Text color={HUD_PANEL_TEXT} fontWeight="semibold">
+          Spend Stat Points
+        </Text>
+        <Text color={HUD_PANEL_TEXT} flexShrink={0} fontSize="xs">
+          Unspent: {trainerRemainingUnspent}
+        </Text>
+      </Flex>
+      {TRAINER_STAT_KEYS.map((stat) => {
+        const allocated = Math.max(0, Number(draft[stat] ?? 0));
+        const maxIncForStat = Math.max(0, cp.level - stBase[stat]);
+        return (
+          <Flex key={stat} align="center" justify="space-between">
+            <Text color={HUD_PANEL_TEXT}>{stat.toUpperCase()}</Text>
+            <Flex gap={1} align="center">
+              <QffButton
+                type="button"
+                size="xs"
+                onClick={() => bumpTrainerStatDraft(stat, -1)}
+                disabled={commandPending || allocated <= 0}
+              >
+                -
+              </QffButton>
+              <Text minW="18px" textAlign="center" color={HUD_PANEL_TEXT}>
+                {allocated}
+              </Text>
+              <QffButton
+                type="button"
+                size="xs"
+                onClick={() => bumpTrainerStatDraft(stat, 1)}
+                disabled={
+                  commandPending ||
+                  trainerRemainingUnspent <= 0 ||
+                  allocated >= maxIncForStat
+                }
+              >
+                +
+              </QffButton>
+            </Flex>
           </Flex>
-        </Flex>
-      ))}
-      <Flex gap={2}>
-        <QffButton type="button" onClick={() => void runCommand("commit")} disabled={commandPending}>
+        );
+      })}
+      <Flex justify="space-between" align="center" w="100%" gap={2}>
+        <QffButton
+          type="button"
+          onClick={() =>
+            void runCommand("commit", {
+              trainer_stat_draft: compactTrainerStatDraft(trainerStatDraftLocal),
+            })
+          }
+          disabled={commandPending}
+        >
           Commit
         </QffButton>
         <QffButton type="button" onClick={() => void runCommand("cancel")} disabled={commandPending}>
@@ -1465,7 +1581,8 @@ export default function QffPlayPage() {
         <Grid
           templateColumns={{
             base: "1fr",
-            lg: "minmax(0, 1fr) minmax(360px, min(480px, 42vw))",
+            // Right column ~85% of original minmax(360px, min(480px, 42vw)); rest goes to the left column.
+            lg: "minmax(0, 1fr) minmax(306px, min(408px, 35.7vw))",
           }}
           templateRows={{
             base: "none",

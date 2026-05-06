@@ -219,6 +219,8 @@ export type QffCharacterProfile = {
   level: number;
   xp: number;
   gold: number;
+  /** Points not yet committed at the trainer (character sheet pool). */
+  unspentStatPoints?: number;
   /** When true, the hero cannot act until revive. */
   isDead?: boolean;
   /** ISO timestamp for next combat round action, if armed. */
@@ -266,6 +268,12 @@ export type QffCommandResponse = {
   /** When true, the client should show the user's raw command line with the messages. */
   echo_command?: boolean;
   ui?: { openShop?: boolean };
+};
+
+/** Optional fields for POST /api/v1/qff/command/ alongside `line`. */
+export type QffCommandOptions = {
+  /** Sent with `commit` while trainer stat spend is open; backend validates and applies. */
+  trainer_stat_draft?: Partial<QffStatBlock> | Record<string, number>;
 };
 
 export async function fetchQffSession(accessToken: string | null): Promise<QffSession> {
@@ -372,14 +380,19 @@ export async function deleteQffCharacter(accessToken: string | null): Promise<vo
 export async function sendQffCommand(
   accessToken: string | null,
   line: string,
+  options?: QffCommandOptions,
 ): Promise<QffCommandResponse> {
   const t0 =
     typeof performance !== "undefined" && performance.now ? performance.now() : null;
+  const body: Record<string, unknown> = { line };
+  if (options?.trainer_stat_draft !== undefined) {
+    body.trainer_stat_draft = options.trainer_stat_draft;
+  }
   const response = await fetch(qffJoinBase(`/api/v1/qff/command/`), {
     method: "POST",
     headers: authHeaders(accessToken),
     credentials: "omit",
-    body: JSON.stringify({ line }),
+    body: JSON.stringify(body),
   });
   if (!response.ok) {
     const text = await response.text();

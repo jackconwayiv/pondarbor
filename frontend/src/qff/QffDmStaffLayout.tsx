@@ -2,7 +2,6 @@ import { Box, Text } from "@chakra-ui/react";
 import { Outlet } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
-import { PanelBlockSkeleton } from "../components/panelStatus";
 
 /**
  * All `/qff/dm/*` tools require staff. This layout gates before child routes render.
@@ -16,7 +15,9 @@ export default function QffDmStaffLayout() {
   if (isLoading) {
     return (
       <Box maxW="3xl" mx="auto" px={4} py={8} color="#c8e6a8">
-        <PanelBlockSkeleton lines={2} showTitleLine />
+        <Text fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace">
+          Loading...
+        </Text>
       </Box>
     );
   }

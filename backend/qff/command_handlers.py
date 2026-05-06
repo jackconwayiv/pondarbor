@@ -1111,6 +1111,39 @@ _TRAINER_STAT_FIELDS: dict[str, tuple[str, str]] = {
 }
 
 
+def _validate_trainer_stat_commit_draft(
+    char: CharacterType, raw: object
+) -> tuple[dict[str, int], list[str]]:
+    """Normalize and validate a stat allocation plan before applying it."""
+    if raw is None:
+        return {}, []
+    if not isinstance(raw, dict):
+        return {}, ["Invalid stat allocation."]
+    level = int(char.level or 1)
+    unspent = int(char.unspent_stat_points or 0)
+    normalized: dict[str, int] = {}
+    for key in _TRAINER_STAT_FIELDS:
+        if key not in raw:
+            continue
+        try:
+            v = int(raw[key])
+        except (TypeError, ValueError):
+            return {}, ["Invalid stat allocation."]
+        if v < 0:
+            return {}, ["Invalid stat allocation."]
+        field_name, label = _TRAINER_STAT_FIELDS[key]
+        cur_base = int(getattr(char, field_name) or 0)
+        max_inc = max(0, level - cur_base)
+        if v > max_inc:
+            return {}, [f"You're maxed on {label} for this level."]
+        if v > 0:
+            normalized[key] = v
+    total = sum(normalized.values())
+    if total > unspent:
+        return {}, ["That allocates more points than you have unspent."]
+    return normalized, []
+
+
 def _normalized_glyph_levels(char: CharacterType) -> list[int]:
     glyphs = list(char.glyphs or [])
     if not glyphs:
@@ -1138,6 +1171,15 @@ def _normalized_glyph_levels(char: CharacterType) -> list[int]:
 def _trainer_clear_prompt(char: CharacterType) -> None:
     char.pending_prompt = None
     char.save(update_fields=["pending_prompt", "updated_at"])
+
+
+def _discard_trainer_stat_draft_if_pending(char: CharacterType) -> bool:
+    """Clear unsaved trainer stat allocation when the hero changes rooms."""
+    pending = getattr(char, "pending_prompt", None)
+    if isinstance(pending, dict) and pending.get("kind") == "trainer_stat_spend":
+        char.pending_prompt = None
+        return True
+    return False
 
 
 def _handle_trainer_buy_stat(char: CharacterType, stat_query: str) -> list[str] | None:
@@ -1206,8 +1248,12 @@ def _handle_move(char: CharacterType, parsed: ParsedMove) -> list[str]:
             f"{char.name} uses the {key_name} to unlock the way to the {dir_label_title}.",
         )
     _notify_peers_third_person(char, left_room_id, f"{char.name} heads {dir_label}.")
+    stat_draft_cleared = _discard_trainer_stat_draft_if_pending(char)
     char.current_room = dest
-    char.save(update_fields=["current_room", "last_activity_at", "updated_at"])
+    move_update_fields = ["current_room", "last_activity_at", "updated_at"]
+    if stat_draft_cleared:
+        move_update_fields.append("pending_prompt")
+    char.save(update_fields=move_update_fields)
     on_leave_room(left_room_id)
     on_enter_room(char, dest.id, entered_room=dest)
     refresh_torch_lit_from_hero_position(char.pk)
@@ -1727,8 +1773,12 @@ def _apply_teleport_spawn_scroll(actor_pk: int, left_room_id: int) -> list[str]:
     actor_name = ch.name
     _notify_peers_third_person(ch, left_room_id, f"{actor_name} vanishes in a swirl of light.")
     dest = Room.objects.get(pk=dest_id)
+    stat_draft_cleared = _discard_trainer_stat_draft_if_pending(ch)
     ch.current_room = dest
-    ch.save(update_fields=["current_room", "updated_at"])
+    teleport_fields = ["current_room", "updated_at"]
+    if stat_draft_cleared:
+        teleport_fields.append("pending_prompt")
+    ch.save(update_fields=teleport_fields)
     on_leave_room(left_room_id)
     on_enter_room(ch, dest_id, entered_room=dest)
     refresh_torch_lit_from_hero_position(actor_pk)
@@ -1894,7 +1944,12 @@ def _apply_trainer_levelup(char: CharacterType, glyph_index: int | None = None) 
     ]
 
 
-def maybe_handle_pending_prompt(char: CharacterType, line: str) -> list[str] | None:
+def maybe_handle_pending_prompt(
+    char: CharacterType,
+    line: str,
+    *,
+    trainer_stat_draft: object | None = None,
+) -> list[str] | None:
     """Intercept y/n answers to a pending service-NPC prompt.
 
     Returns message lines if the line was consumed by the prompt, else None. A
@@ -1945,7 +2000,14 @@ def maybe_handle_pending_prompt(char: CharacterType, line: str) -> list[str] | N
             _trainer_clear_prompt(char)
             return ["Stat allocation cancelled."]
         if raw == "commit":
-            draft = pending.get("draft") if isinstance(pending.get("draft"), dict) else {}
+            raw_draft: object
+            if trainer_stat_draft is not None:
+                raw_draft = trainer_stat_draft
+            else:
+                raw_draft = pending.get("draft") if isinstance(pending.get("draft"), dict) else {}
+            draft, verrors = _validate_trainer_stat_commit_draft(char, raw_draft)
+            if verrors:
+                return verrors
             points_left = int(char.unspent_stat_points or 0)
             updates: list[str] = []
             for key, amount in draft.items():

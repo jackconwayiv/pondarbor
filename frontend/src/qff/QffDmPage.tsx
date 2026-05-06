@@ -18,7 +18,6 @@ import type { ChangeEvent } from "react";
 import { useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
-import { PanelBlockSkeleton } from "../components/panelStatus";
 import QffButton from "./QffButton";
 import QffDmCollapsibleSection from "./QffDmCollapsibleSection";
 import { qffGridCellButtonProps } from "./qffUi";
@@ -1034,7 +1033,9 @@ export default function QffDmPage() {
   if (!isAuthenticated || isLoading) {
     return (
       <Box p={8} maxW="md">
-        <PanelBlockSkeleton lines={2} showTitleLine />
+        <Text fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace">
+          Loading...
+        </Text>
       </Box>
     );
   }

@@ -17,7 +17,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router";
 
 import { useAppSession, type SessionUser } from "../auth/AppSessionContext";
-import { PanelBlockSkeleton } from "../components/panelStatus";
 import QffButton from "./QffButton";
 import { createQffCharacter, fetchQffSession } from "./api";
 import {
@@ -215,8 +214,10 @@ export default function QffCreatePage() {
 
   if (isLoading || loading) {
     return (
-      <Box px={4} py={8} maxW="md">
-        <PanelBlockSkeleton lines={2} showTitleLine />
+      <Box px={4} py={8}>
+        <Text fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace">
+          Loading...
+        </Text>
       </Box>
     );
   }

@@ -299,6 +299,38 @@ class MonsterCombatTests(TestCase):
         self.assertEqual(self.hero.unspent_stat_points, 2)
         self.assertTrue(any("You're maxed on Gains for this level." in ln for ln in lines), lines)
 
+    def test_trainer_commit_rejects_client_draft_over_unspent_pool(self):
+        self.hero.pending_prompt = {"kind": "trainer_stat_spend", "draft": {}}
+        self.hero.unspent_stat_points = 1
+        self.hero.level = 5
+        self.hero.gains = 1
+        self.hero.save(
+            update_fields=["pending_prompt", "unspent_stat_points", "level", "gains", "updated_at"],
+        )
+        lines = maybe_handle_pending_prompt(
+            self.hero,
+            "commit",
+            trainer_stat_draft={"gains": 2},
+        )
+        self.assertIsNotNone(lines)
+        self.assertTrue(
+            any("more points than you have unspent" in ln for ln in lines),
+            lines,
+        )
+        self.hero.refresh_from_db()
+        self.assertEqual(self.hero.unspent_stat_points, 1)
+        self.assertIsNotNone(self.hero.pending_prompt)
+
+    def test_trainer_stat_draft_cleared_when_leaving_room(self):
+        self.hero.pending_prompt = {"kind": "trainer_stat_spend", "draft": {"gains": 2}}
+        self.hero.unspent_stat_points = 5
+        self.hero.save(update_fields=["pending_prompt", "unspent_stat_points", "updated_at"])
+        execute_command(self.hero, parse_command("north"))
+        self.hero.refresh_from_db()
+        self.assertIsNone(self.hero.pending_prompt)
+        self.assertEqual(self.hero.current_room_id, self.room_safe.id)
+        self.assertEqual(self.hero.unspent_stat_points, 5)
+
     def test_dead_blocks_action(self):
         self.hero.is_dead = True
         self.hero.save(update_fields=["is_dead", "updated_at"])

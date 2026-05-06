@@ -711,6 +711,8 @@ export default function QffPlayPage() {
             area_map: usePrevAreaMap ? prev.area_map : sessionSnapshot.area_map,
             shops: sessionSnapshot.shops ?? prev.shops,
             active_quests: sessionSnapshot.active_quests ?? prev.active_quests,
+            character_profile:
+              sessionSnapshot.character_profile ?? prev.character_profile,
           };
         });
       } catch (e) {

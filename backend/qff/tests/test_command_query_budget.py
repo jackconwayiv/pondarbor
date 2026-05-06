@@ -12,7 +12,7 @@ regressions (e.g. a new N+1) without flapping on every benign refactor.
 
 from django.contrib.auth import get_user_model
 from django.db import connection
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
@@ -160,3 +160,31 @@ class CommandQueryBudgetTests(TestCase):
         self.assertLessEqual(
             actual, 75, f"move command exceeded query budget: {actual}"
         )
+
+    def test_full_session_includes_character_profile(self):
+        char = self._fresh_hero()
+        session = build_session_for_character(char)
+        self.assertIn("character_profile", session)
+
+    @override_settings(QFF_COMMAND_SESSION_SLIM_CHARACTER_PROFILE=True)
+    def test_partial_move_omits_character_profile_when_slim_enabled(self):
+        char = self._fresh_hero()
+        session = build_session_for_character(
+            char,
+            already_synced=True,
+            for_command_response=True,
+            command_parser_kind="ParsedMove",
+        )
+        self.assertTrue(session.get("session_partial"))
+        self.assertNotIn("character_profile", session)
+
+    @override_settings(QFF_COMMAND_SESSION_SLIM_CHARACTER_PROFILE=True)
+    def test_partial_attack_omits_character_profile_when_slim_enabled(self):
+        char = self._fresh_hero()
+        session = build_session_for_character(
+            char,
+            already_synced=True,
+            for_command_response=True,
+            command_parser_kind="ParsedAttack",
+        )
+        self.assertNotIn("character_profile", session)

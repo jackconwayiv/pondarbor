@@ -320,6 +320,14 @@ QFF_SESSION_MINIMAL_AREA_MAP = os.getenv("QFF_SESSION_MINIMAL_AREA_MAP", "").low
 QFF_COMMAND_SESSION_SLIM_SHOPS_QUESTS = os.getenv(
     "QFF_COMMAND_SESSION_SLIM_SHOPS_QUESTS", "true"
 ).lower() in ("true", "1", "yes")
+# QFF: POST /command may omit character_profile for move/attack (client merges from prior full session).
+QFF_COMMAND_SESSION_SLIM_CHARACTER_PROFILE = os.getenv(
+    "QFF_COMMAND_SESSION_SLIM_CHARACTER_PROFILE", "true"
+).lower() in ("true", "1", "yes")
+# QFF: WebSocket ping — minimum seconds between run_lazy_simulation calls per user (0 = every ping, as before).
+QFF_WS_LAZY_SIM_MIN_INTERVAL_SECONDS = int(
+    os.getenv("QFF_WS_LAZY_SIM_MIN_INTERVAL_SECONDS", "0")
+)
 
 # QFF: optional cap on combat rooms processed per lazy-sim tick (unset = all). Delays combat in skipped rooms until a later tick — ops-only tradeoff.
 _QFF_FLUSH_CAP = os.getenv("QFF_FLUSH_COMBAT_MAX_ROOMS_PER_TICK", "").strip()

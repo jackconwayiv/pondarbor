@@ -5,12 +5,13 @@ from __future__ import annotations
 import logging
 import random
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from django.conf import settings
 from django.db import connection, transaction
-from django.db.models import Exists, Min, OuterRef, Q
+from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from qff.combat_math import (
     hero_attacker_stats,
@@ -53,6 +54,46 @@ from qff.realtime import notify_qff_rooms
 from qff.realm_presence import broadcast_realm_depart
 
 logger = logging.getLogger(__name__)
+
+
+def _datetime_from_db_scalar(val):
+    """Normalize raw SQL MIN(timestamp) values for timedelta math.
+
+    SQLite often returns timestamps as strings that :func:`parse_datetime` does not
+    accept; some drivers return ``bytes``. Unknown scalars are parsed or dropped.
+    """
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        return timezone.make_aware(val) if timezone.is_naive(val) else val
+    if isinstance(val, (bytes, bytearray)):
+        val = val.decode(errors="replace")
+    elif isinstance(val, (int, float)):
+        try:
+            dt = datetime.utcfromtimestamp(float(val))
+        except (OverflowError, OSError, ValueError):
+            return None
+        return timezone.make_aware(dt)
+    elif not isinstance(val, str):
+        val = str(val)
+    s = val.strip()
+    parsed = parse_datetime(s)
+    if parsed is None:
+        try:
+            parsed = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        except ValueError:
+            parsed = None
+    if parsed is None:
+        for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+            try:
+                parsed = datetime.strptime(s, fmt)
+                break
+            except ValueError:
+                continue
+    if parsed is None:
+        return None
+    return timezone.make_aware(parsed) if timezone.is_naive(parsed) else parsed
+
 
 # Serialize lazy sim across concurrent requests (Postgres advisory lock).
 QFF_LAZY_SIM_LOCK_KEY = 0x5146465F53494D00
@@ -1527,37 +1568,47 @@ def _earliest_time_based_lazy_sim_event(now) -> "timezone.datetime | None":
     """
     from qff.constants import AFK_LOBBY_KICK_MINUTES
 
+    # Single round-trip for the scalar MIN() candidates (was ~7 separate aggregates).
+    m_tbl = MonsterInstance._meta.db_table
+    c_tbl = Character._meta.db_table
+    r_tbl = Room._meta.db_table
     candidates: list = []
-    m_action = MonsterInstance.objects.filter(next_action_at__isnull=False).aggregate(
-        m=Min("next_action_at")
-    )["m"]
-    if m_action:
-        candidates.append(m_action)
-    h_action = Character.objects.filter(
-        is_dead=False, next_action_at__isnull=False
-    ).aggregate(m=Min("next_action_at"))["m"]
-    if h_action:
-        candidates.append(h_action)
-    m_pursuit = MonsterInstance.objects.filter(next_pursuit_at__isnull=False).aggregate(
-        m=Min("next_pursuit_at")
-    )["m"]
-    if m_pursuit:
-        candidates.append(m_pursuit)
-    h_leave = Character.objects.filter(
-        is_dead=False, is_in_realm=True, pending_leave_at__isnull=False
-    ).aggregate(m=Min("pending_leave_at"))["m"]
-    if h_leave:
-        candidates.append(h_leave)
-    h_afk = Character.objects.filter(
-        is_dead=False, is_in_realm=True, last_activity_at__isnull=False
-    ).aggregate(m=Min("last_activity_at"))["m"]
-    if h_afk:
-        candidates.append(h_afk + timedelta(minutes=AFK_LOBBY_KICK_MINUTES))
-    lair_next = Room.objects.filter(
-        monster_lair_template_id__isnull=False, lair_next_spawn_at__isnull=False
-    ).aggregate(m=Min("lair_next_spawn_at"))["m"]
-    if lair_next:
-        candidates.append(lair_next)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT
+              (SELECT MIN(next_action_at) FROM {m_tbl} WHERE next_action_at IS NOT NULL),
+              (SELECT MIN(next_action_at) FROM {c_tbl} WHERE NOT is_dead AND next_action_at IS NOT NULL),
+              (SELECT MIN(next_pursuit_at) FROM {m_tbl} WHERE next_pursuit_at IS NOT NULL),
+              (SELECT MIN(pending_leave_at) FROM {c_tbl} WHERE NOT is_dead AND is_in_realm AND pending_leave_at IS NOT NULL),
+              (SELECT MIN(last_activity_at) FROM {c_tbl} WHERE NOT is_dead AND is_in_realm AND last_activity_at IS NOT NULL),
+              (SELECT MIN(lair_next_spawn_at) FROM {r_tbl} WHERE monster_lair_template_id IS NOT NULL AND lair_next_spawn_at IS NOT NULL),
+              (SELECT MIN(died_at) FROM {c_tbl} WHERE is_dead AND died_at IS NOT NULL)
+            """
+        )
+        row = cursor.fetchone()
+    if row:
+        m_action = _datetime_from_db_scalar(row[0])
+        h_action = _datetime_from_db_scalar(row[1])
+        m_pursuit = _datetime_from_db_scalar(row[2])
+        h_leave = _datetime_from_db_scalar(row[3])
+        h_afk_min = _datetime_from_db_scalar(row[4])
+        lair_next = _datetime_from_db_scalar(row[5])
+        h_died_min = _datetime_from_db_scalar(row[6])
+        if m_action:
+            candidates.append(m_action)
+        if h_action:
+            candidates.append(h_action)
+        if m_pursuit:
+            candidates.append(m_pursuit)
+        if h_leave:
+            candidates.append(h_leave)
+        if h_afk_min:
+            candidates.append(h_afk_min + timedelta(minutes=AFK_LOBBY_KICK_MINUTES))
+        if lair_next:
+            candidates.append(lair_next)
+        if h_died_min:
+            candidates.append(h_died_min + timedelta(seconds=COMBAT_ROUND_SECONDS))
     # Lairs can be spawn-eligible with ``lair_next_spawn_at=NULL`` (no delayed respawn
     # scheduled). MIN ignores those rows, so without this guard we'd skip
     # ``maybe_spawn_lairs`` forever when no other timed work exists.
@@ -1568,11 +1619,6 @@ def _earliest_time_based_lazy_sim_event(now) -> "timezone.datetime | None":
         Q(lair_last_instance_id__isnull=True) | ~live_last_instance
     ).filter(Q(lair_next_spawn_at__isnull=True) | Q(lair_next_spawn_at__lte=now)).exists():
         candidates.append(now)
-    h_revive = Character.objects.filter(
-        is_dead=True, died_at__isnull=False
-    ).aggregate(m=Min("died_at"))["m"]
-    if h_revive:
-        candidates.append(h_revive + timedelta(seconds=COMBAT_ROUND_SECONDS))
     if not candidates:
         return None
     return min(candidates)

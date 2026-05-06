@@ -8,6 +8,8 @@ from urllib.parse import parse_qs
 from asgiref.sync import sync_to_async
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
+from django.conf import settings
+from django.core.cache import cache
 from rest_framework import exceptions
 
 from users.auth0_backend import authenticate_bearer_token
@@ -21,6 +23,19 @@ from qff.views import _get_character, _touch_session_activity_for_user
 
 def _authenticate_ws_token(token: str):
     return authenticate_bearer_token(token)
+
+
+def _ws_ping_lazy_sim_throttled(user_id: int) -> None:
+    """Run lazy sim unless ``QFF_WS_LAZY_SIM_MIN_INTERVAL_SECONDS`` suppresses (cache throttle)."""
+    interval = int(getattr(settings, "QFF_WS_LAZY_SIM_MIN_INTERVAL_SECONDS", 0) or 0)
+    if interval <= 0:
+        run_lazy_simulation()
+        return
+    key = f"qff:ws_lazy_sim:{user_id}"
+    if cache.get(key):
+        return
+    run_lazy_simulation()
+    cache.set(key, 1, timeout=interval)
 
 
 class QffSessionConsumer(AsyncWebsocketConsumer):
@@ -74,7 +89,7 @@ class QffSessionConsumer(AsyncWebsocketConsumer):
             char = await database_sync_to_async(_touch_session_activity_for_user)(self.user)
             if not char:
                 return
-            await database_sync_to_async(run_lazy_simulation)()
+            await database_sync_to_async(_ws_ping_lazy_sim_throttled)(self.user.pk)
             char = await database_sync_to_async(_get_character)(self.user)
             if not char:
                 return

@@ -5,7 +5,7 @@ from collections import defaultdict
 from datetime import timedelta
 
 from django.conf import settings
-from django.db.models import Min, Q
+from django.db.models import Min, Prefetch, Q
 from django.utils import timezone
 
 from qff.constants import AFK_LOBBY_KICK_MINUTES, PRESENCE_MINUTES
@@ -200,8 +200,12 @@ def _force_lobby_for_inactivity(character) -> bool:
     return True
 
 
-def consume_room_broadcast_entries(character) -> list[dict]:
-    """Return new room broadcasts as ``{id, text}`` and advance ``last_room_broadcast_id``."""
+def consume_room_broadcast_entries(character, *, prune: bool = True) -> list[dict]:
+    """Return new room broadcasts as ``{id, text}`` and advance ``last_room_broadcast_id``.
+
+    When ``prune`` is False (e.g. POST /command partial session), skip deleting stale
+    rows — saves aggregate + delete queries; full GET /session/ still prunes.
+    """
     room_id = character.current_room_id
     qs = (
         RoomBroadcast.objects.filter(
@@ -225,7 +229,8 @@ def consume_room_broadcast_entries(character) -> list[dict]:
     if rows:
         character.last_room_broadcast_id = rows[-1].id
         character.save(update_fields=["last_room_broadcast_id", "updated_at"])
-    _prune_room_broadcasts(room_id)
+    if prune:
+        _prune_room_broadcasts(room_id)
     return out
 
 
@@ -623,6 +628,8 @@ _COMMAND_SESSION_SHOP_KINDS = frozenset(
 )
 # Parser kinds that need the full active_quests list in a partial command session.
 _COMMAND_SESSION_QUEST_KINDS = frozenset({"ParsedActiveQuests"})
+# Verbs that rarely change equipment/stats in one tick — client may keep prior character_profile.
+_COMMAND_SESSION_SKIP_PROFILE_KINDS = frozenset({"ParsedMove", "ParsedAttack"})
 
 
 def build_session_for_character(
@@ -646,10 +653,25 @@ def build_session_for_character(
     ``command_parser_kind`` is set, expensive ``shops`` / ``active_quests`` blocks
     may be omitted for verbs that do not need them; the client should merge from
     its prior session (see QffPlayPage).
+
+    When ``QFF_COMMAND_SESSION_SLIM_CHARACTER_PROFILE`` is on, ``character_profile``
+    may be omitted for ``ParsedMove`` / ``ParsedAttack`` partial responses; merge from
+    the prior full GET /session/ snapshot.
     """
     if not already_synced:
         character = sync_character_world_before_session(character)
-    room = character.current_room
+    # One round-trip for room + area + monsters + gold piles (avoids separate monster/gold queries).
+    room = (
+        Room.objects.select_related("area")
+        .prefetch_related(
+            Prefetch(
+                "monster_instances",
+                queryset=MonsterInstance.objects.select_related("template").order_by("id"),
+            ),
+            Prefetch("gold_piles", queryset=RoomGoldPile.objects.order_by("id")),
+        )
+        .get(pk=character.current_room_id)
+    )
     area = room.area
     exits = []
     room_exits = sorted(get_room_exits_from_room(room.id), key=lambda ex: ex.direction)
@@ -667,7 +689,9 @@ def build_session_for_character(
             }
         )
 
-    action_log = consume_room_broadcast_entries(character)
+    action_log = consume_room_broadcast_entries(
+        character, prune=not for_command_response
+    )
 
     room_interactables = get_room_interactables(room.id)
 
@@ -680,7 +704,7 @@ def build_session_for_character(
         [ri for ri in all_room_items if ri.interactable_id == cid] if cid else []
     )
     floor_room_items = [ri for ri in all_room_items if ri.interactable_id is None]
-    gold_piles = list(RoomGoldPile.objects.filter(room_id=room.id).order_by("id"))
+    gold_piles = list(room.gold_piles.all())
     you_see = [o.name for o in room_interactables] + _room_you_see_tail_labels(
         room.id,
         character,
@@ -719,6 +743,12 @@ def build_session_for_character(
         include_shops = True
         include_quests = True
 
+    slim_profile = (
+        for_command_response
+        and getattr(settings, "QFF_COMMAND_SESSION_SLIM_CHARACTER_PROFILE", True)
+        and command_parser_kind in _COMMAND_SESSION_SKIP_PROFILE_KINDS
+    )
+
     out: dict = {
         "has_character": True,
         "character": {
@@ -753,9 +783,7 @@ def build_session_for_character(
                     "cur_hp": m.cur_hp,
                     "max_hp": m.max_hp,
                 }
-                for m in MonsterInstance.objects.filter(current_room_id=room.id)
-                .select_related("template")
-                .order_by("id")
+                for m in room.monster_instances.all()
             ],
             "gold_piles": _room_gold_piles_json(gold_piles),
             "youSee": you_see,
@@ -784,7 +812,6 @@ def build_session_for_character(
             or getattr(settings, "QFF_SESSION_MINIMAL_AREA_MAP", False)
             else build_area_map(character)
         ),
-        "character_profile": build_character_profile(character),
         "action_log": action_log,
         "pending_prompt": getattr(character, "pending_prompt", None) or None,
     }
@@ -792,6 +819,8 @@ def build_session_for_character(
         out["shops"] = _shops_in_room_json(room.id)
     if include_quests:
         out["active_quests"] = _active_quests_json(character)
+    if not slim_profile:
+        out["character_profile"] = build_character_profile(character)
     if for_command_response:
         out["session_partial"] = True
     return out

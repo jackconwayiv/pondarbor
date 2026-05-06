@@ -473,11 +473,19 @@ def command_view(request):
     # ``request_timing queries`` only). When middleware logs ``outside_queries``, that
     # includes auth plus any DB before this wrapper (notably that character fetch).
     cmd_query_count = 0
+    phase_queries = {"sync": 0, "exec": 0, "sim": 0, "refresh": 0, "session": 0}
 
     def _qff_count_query(execute, sql, params, many, context):
         nonlocal cmd_query_count
         cmd_query_count += 1
         return execute(sql, params, many, context)
+
+    def _phase_wrap(name: str):
+        def _inner(execute, sql, params, many, context):
+            phase_queries[name] += 1
+            return execute(sql, params, many, context)
+
+        return _inner
 
     cmd_wrapper_cm = connection.execute_wrapper(_qff_count_query)
     cmd_wrapper_cm.__enter__()
@@ -492,33 +500,37 @@ def command_view(request):
         def _execute_phase_once():
             nonlocal parsed, messages, echo_command, sync_ms, exec_ms, max_after_exec
             with transaction.atomic():
-                t_sync = time.perf_counter()
-                char_work = sync_character_world_before_session(char)
-                sync_ms = (time.perf_counter() - t_sync) * 1000
+                with connection.execute_wrapper(_phase_wrap("sync")):
+                    t_sync = time.perf_counter()
+                    char_work = sync_character_world_before_session(char)
+                    sync_ms = (time.perf_counter() - t_sync) * 1000
                 # Service-NPC y/n prompt (healer_pay / innkeeper_stay) consumes the next
                 # command when set; non-y/n clears the prompt and falls through to parse.
-                prompt_messages = maybe_handle_pending_prompt(char_work, line)
-                if prompt_messages is not None:
-                    parsed = None
-                    messages = list(prompt_messages)
-                    exec_ms = 0.0
-                else:
-                    parsed = parse_command(line)
-                    t0 = time.perf_counter()
-                    messages = list(execute_command(char_work, parsed, world_sync=False))
-                    exec_ms = (time.perf_counter() - t0) * 1000
-                echo_command = should_echo_command(parsed, messages)
-                if messages and messages[0] == "You try that, but nothing happens.":
-                    email = (request.user.email or "").strip()
-                    QffIneffectiveInput.objects.create(
-                        user=request.user,
-                        user_email=email[:254] if email else "",
-                        raw_line=line,
-                        room=command_room,
-                        room_name=command_room_name,
-                    )
-                # Max broadcast id after execute_command, before lazy sim — splits ambient/exec vs combat sim.
-                max_after_exec = RoomBroadcast.objects.aggregate(m=Max("id"))["m"] or 0
+                with connection.execute_wrapper(_phase_wrap("exec")):
+                    prompt_messages = maybe_handle_pending_prompt(char_work, line)
+                    if prompt_messages is not None:
+                        parsed = None
+                        messages = list(prompt_messages)
+                        exec_ms = 0.0
+                    else:
+                        parsed = parse_command(line)
+                        t0 = time.perf_counter()
+                        messages = list(
+                            execute_command(char_work, parsed, world_sync=False)
+                        )
+                        exec_ms = (time.perf_counter() - t0) * 1000
+                    echo_command = should_echo_command(parsed, messages)
+                    if messages and messages[0] == "You try that, but nothing happens.":
+                        email = (request.user.email or "").strip()
+                        QffIneffectiveInput.objects.create(
+                            user=request.user,
+                            user_email=email[:254] if email else "",
+                            raw_line=line,
+                            room=command_room,
+                            room_name=command_room_name,
+                        )
+                    # Max broadcast id after execute_command, before lazy sim — splits ambient/exec vs combat sim.
+                    max_after_exec = RoomBroadcast.objects.aggregate(m=Max("id"))["m"] or 0
 
         _retry_on_deadlock(_execute_phase_once)
 
@@ -528,12 +540,14 @@ def command_view(request):
             """Post-commit path only; safe to retry on deadlock without re-running the command."""
             sim_ms = session_ms = 0.0
             msgs_out = list(messages)
-            t1 = time.perf_counter()
-            affected = run_lazy_simulation(notify_rooms=False)
-            sim_ms = (time.perf_counter() - t1) * 1000
-            char_after = _get_character(request.user)
-            if char_after is None:
-                char_after = _get_character_by_pk(character_pk)
+            with connection.execute_wrapper(_phase_wrap("sim")):
+                t1 = time.perf_counter()
+                affected = run_lazy_simulation(notify_rooms=False)
+                sim_ms = (time.perf_counter() - t1) * 1000
+            with connection.execute_wrapper(_phase_wrap("refresh")):
+                char_after = _get_character(request.user)
+                if char_after is None:
+                    char_after = _get_character_by_pk(character_pk)
 
             enc_lines: list[str] = []
             if char_after is None:
@@ -552,49 +566,88 @@ def command_view(request):
                     },
                     status=status.HTTP_410_GONE,
                 )
-            t2 = time.perf_counter()
-            session = build_session_for_character(
-                char_after,
-                already_synced=True,
-                for_command_response=True,
-                command_parser_kind=(
-                    type(parsed).__name__ if parsed is not None else None
-                ),
-            )
-            session_ms = (time.perf_counter() - t2) * 1000
-            # Chronological narrative: move/teleport put first-person lines before engagement broadcasts.
-            raw_log = session.get("action_log") or []
-            cmd_only = (
-                msgs_out[: -len(enc_lines)] if enc_lines else list(msgs_out)
-            )
-            synth_cmd = [{"id": -(i + 1), "text": m} for i, m in enumerate(cmd_only)]
-            synth_enc = [{"id": -(200 + i), "text": m} for i, m in enumerate(enc_lines)]
-            if raw_log and char_after:
-                if action_log_pre_engagement_cutover is not None:
-                    cut = action_log_pre_engagement_cutover
-                    exec_pre = [e for e in raw_log if _action_log_entry_id(e) <= cut]
-                    exec_engagement = [
-                        e
-                        for e in raw_log
-                        if cut < _action_log_entry_id(e) <= max_after_exec
-                    ]
-                    sim_part = [
-                        e for e in raw_log if _action_log_entry_id(e) > max_after_exec
-                    ]
-                    session["action_log"] = (
-                        exec_pre + synth_cmd + exec_engagement + sim_part + synth_enc
-                    )
-                else:
-                    exec_part = [
-                        e for e in raw_log if _action_log_entry_id(e) <= max_after_exec
-                    ]
-                    sim_part = [
-                        e for e in raw_log if _action_log_entry_id(e) > max_after_exec
-                    ]
-                    session["action_log"] = exec_part + synth_cmd + sim_part + synth_enc
-            elif char_after and (cmd_only or enc_lines):
-                # No new RoomBroadcasts (e.g. move into empty room with sense lines only in ``messages``).
-                session["action_log"] = synth_cmd + synth_enc
+            with connection.execute_wrapper(_phase_wrap("session")):
+                t2 = time.perf_counter()
+                session = build_session_for_character(
+                    char_after,
+                    already_synced=True,
+                    for_command_response=True,
+                    command_parser_kind=(
+                        type(parsed).__name__ if parsed is not None else None
+                    ),
+                )
+                session_ms = (time.perf_counter() - t2) * 1000
+                # Chronological narrative: move/teleport put first-person lines before engagement broadcasts.
+                raw_log = session.get("action_log") or []
+                cmd_only = (
+                    msgs_out[: -len(enc_lines)] if enc_lines else list(msgs_out)
+                )
+                synth_cmd = [
+                    {"id": -(i + 1), "text": m} for i, m in enumerate(cmd_only)
+                ]
+                synth_enc = [
+                    {"id": -(200 + i), "text": m} for i, m in enumerate(enc_lines)
+                ]
+                if raw_log and char_after:
+                    if action_log_pre_engagement_cutover is not None:
+                        cut = action_log_pre_engagement_cutover
+                        exec_pre = [
+                            e for e in raw_log if _action_log_entry_id(e) <= cut
+                        ]
+                        exec_engagement = [
+                            e
+                            for e in raw_log
+                            if cut < _action_log_entry_id(e) <= max_after_exec
+                        ]
+                        sim_part = [
+                            e
+                            for e in raw_log
+                            if _action_log_entry_id(e) > max_after_exec
+                        ]
+                        session["action_log"] = (
+                            exec_pre
+                            + synth_cmd
+                            + exec_engagement
+                            + sim_part
+                            + synth_enc
+                        )
+                    else:
+                        exec_part = [
+                            e
+                            for e in raw_log
+                            if _action_log_entry_id(e) <= max_after_exec
+                        ]
+                        sim_part = [
+                            e
+                            for e in raw_log
+                            if _action_log_entry_id(e) > max_after_exec
+                        ]
+                        session["action_log"] = (
+                            exec_part + synth_cmd + sim_part + synth_enc
+                        )
+                elif char_after and (cmd_only or enc_lines):
+                    # No new RoomBroadcasts (e.g. move into empty room with sense lines only in ``messages``).
+                    session["action_log"] = synth_cmd + synth_enc
+                body: dict = {
+                    "messages": msgs_out,
+                    "session": session,
+                    "echo_command": echo_command,
+                }
+                if (
+                    isinstance(parsed, ParsedTalk)
+                    and msgs_out
+                    and msgs_out[0]
+                    not in ("Talk to whom?", "You don't see them here.")
+                ):
+                    tq = (parsed.target or "").strip()
+                    if tq and char_after:
+                        npc = find_npc_in_room(char_after, tq)
+                        if npc:
+                            try:
+                                if npc.shop.enabled:
+                                    body["ui"] = {"openShop": True}
+                            except NpcShop.DoesNotExist:
+                                pass
             room_ids = frozenset(affected) | {old_room_id, char_after.current_room_id}
             schedule_notify_qff_rooms(room_ids)
 
@@ -631,6 +684,27 @@ def command_view(request):
                     session_pct,
                     cmd_query_count,
                 )
+                pq = phase_queries
+                ph_total = (
+                    pq["sync"]
+                    + pq["exec"]
+                    + pq["sim"]
+                    + pq["refresh"]
+                    + pq["session"]
+                )
+                logger.info(
+                    "qff_command_phase_queries user_id=%s parsed=%s sync=%d exec=%d "
+                    "sim=%d refresh=%d session=%d total_queries=%d unallocated=%d",
+                    uid,
+                    parsed_kind,
+                    pq["sync"],
+                    pq["exec"],
+                    pq["sim"],
+                    pq["refresh"],
+                    pq["session"],
+                    cmd_query_count,
+                    cmd_query_count - ph_total,
+                )
             # Expose command-view wall time and handler SQL count to RequestTimingMiddleware.
             # @api_view wraps Django's HttpRequest on ``request._request``; middleware sees the
             # underlying HttpRequest only, so timing must be stored there.
@@ -638,25 +712,6 @@ def command_view(request):
             _http_request._qff_command_total_ms = total_ms
             _http_request._qff_cmd_handler_queries = cmd_query_count
 
-            body: dict = {
-                "messages": msgs_out,
-                "session": session,
-                "echo_command": echo_command,
-            }
-            if (
-                isinstance(parsed, ParsedTalk)
-                and msgs_out
-                and msgs_out[0] not in ("Talk to whom?", "You don't see them here.")
-            ):
-                tq = (parsed.target or "").strip()
-                if tq and char_after:
-                    npc = find_npc_in_room(char_after, tq)
-                    if npc:
-                        try:
-                            if npc.shop.enabled:
-                                body["ui"] = {"openShop": True}
-                        except NpcShop.DoesNotExist:
-                            pass
             return Response(body)
 
         return _retry_on_deadlock(_sim_session_and_response)

@@ -22,7 +22,7 @@ export function MealSessionReconnect({
         <Text fontSize={APP_TEXT_SIZES.body} fontWeight="semibold">
           Reconnecting your API session…
         </Text>
-        <PondButton colorPalette="teal" onClick={() => void onRetry()}>
+        <PondButton colorPalette="lilypad" onClick={() => void onRetry()}>
           Retry session sync
         </PondButton>
       </Stack>

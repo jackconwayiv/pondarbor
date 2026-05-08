@@ -17,6 +17,7 @@ import {
   LegacyRedirectPlansWeekDetail,
 } from "./meal/mealLegacyRedirects";
 import StaffRoute from "./staff/StaffRoute";
+import { useAppSession } from "./auth/AppSessionContext";
 
 const QuotesFeedPage = lazy(() => import("./quotes/QuotesFeedPage"));
 const ClosetPage = lazy(() => import("./closet/ClosetPage"));
@@ -130,6 +131,21 @@ function lazyRouteElement(element: ReactNode): ReactNode {
   );
 }
 
+function RequireAuthenticatedRoute({ children }: { children: ReactNode }) {
+  const { isAuthenticated, isLoading } = useAppSession();
+  if (isLoading) {
+    return <RouteLoadingFallback />;
+  }
+  if (!isAuthenticated) {
+    return <Navigate to="/" replace />;
+  }
+  return <>{children}</>;
+}
+
+function authedRouteElement(element: ReactNode): ReactNode {
+  return <RequireAuthenticatedRoute>{element}</RequireAuthenticatedRoute>;
+}
+
 const sentryCreateBrowserRouter =
   Sentry.wrapCreateBrowserRouterV7(createBrowserRouter);
 
@@ -145,15 +161,15 @@ export const router = sentryCreateBrowserRouter([
       },
       {
         path: "games",
-        element: lazyRouteElement(<GamesMenu />),
+        element: authedRouteElement(lazyRouteElement(<GamesMenu />)),
       },
       {
         path: "harbor",
-        element: lazyRouteElement(<HarborLobbyPage />),
+        element: authedRouteElement(lazyRouteElement(<HarborLobbyPage />)),
       },
       {
         path: "harbor/play/:gameId",
-        element: lazyRouteElement(<HarborRoute />),
+        element: authedRouteElement(lazyRouteElement(<HarborRoute />)),
       },
       {
         path: "harbor/age10",
@@ -161,7 +177,7 @@ export const router = sentryCreateBrowserRouter([
       },
       {
         path: "harbor/staff",
-        element: lazyRouteElement(<HarborStaffLayout />),
+        element: authedRouteElement(lazyRouteElement(<HarborStaffLayout />)),
         children: [
           { index: true, element: lazyRouteElement(<HarborStaffLobbyPage />) },
           {
@@ -232,22 +248,23 @@ export const router = sentryCreateBrowserRouter([
       },
       {
         path: "profile",
-        element: <ProfilePage />,
+        element: authedRouteElement(<ProfilePage />),
       },
       {
         path: "staff",
-        element: <StaffRoute />,
+        element: authedRouteElement(<StaffRoute />),
       },
       {
         path: "quotes",
-        element: lazyRouteElement(<QuotesFeedPage />),
+        element: authedRouteElement(lazyRouteElement(<QuotesFeedPage />)),
       },
       {
         path: "closet",
-        element: lazyRouteElement(<ClosetPage />),
+        element: authedRouteElement(lazyRouteElement(<ClosetPage />)),
       },
       {
         path: "calendar",
+        element: authedRouteElement(<Outlet />),
         children: [
           { index: true, element: lazyRouteElement(<CalendarPage />) },
           {
@@ -258,7 +275,7 @@ export const router = sentryCreateBrowserRouter([
       },
       {
         path: "pondstead",
-        element: <Outlet />,
+        element: authedRouteElement(<Outlet />),
         children: [
           {
             element: lazyRouteElement(<PondsteadHubLayout />),
@@ -282,11 +299,11 @@ export const router = sentryCreateBrowserRouter([
       },
       {
         path: "closet/items/:itemId",
-        element: lazyRouteElement(<ClosetItemDetailPage />),
+        element: authedRouteElement(lazyRouteElement(<ClosetItemDetailPage />)),
       },
       {
         path: "songaday",
-        element: lazyRouteElement(<SongadayLayout />),
+        element: authedRouteElement(lazyRouteElement(<SongadayLayout />)),
         children: [
           {
             index: true,
@@ -304,7 +321,7 @@ export const router = sentryCreateBrowserRouter([
       },
       {
         path: "meal",
-        element: lazyRouteElement(<MealLayout />),
+        element: authedRouteElement(lazyRouteElement(<MealLayout />)),
         children: [
           {
             index: true,
@@ -418,7 +435,7 @@ export const router = sentryCreateBrowserRouter([
       },
       {
         path: "clicker",
-        element: lazyRouteElement(<ClickerLayout />),
+        element: authedRouteElement(lazyRouteElement(<ClickerLayout />)),
         children: [
           { index: true, element: lazyRouteElement(<ClickerLobbyPage />) },
           { path: "play", element: lazyRouteElement(<ClickerGamePage />) },
@@ -444,11 +461,11 @@ export const router = sentryCreateBrowserRouter([
       },
       {
         path: "create",
-        element: <Navigate to="/qff/create" replace />,
+        element: authedRouteElement(<Navigate to="/qff/create" replace />),
       },
       {
         path: "qff",
-        element: lazyRouteElement(<QffLayout />),
+        element: authedRouteElement(lazyRouteElement(<QffLayout />)),
         children: [
           { index: true, element: lazyRouteElement(<QffLobbyPage />) },
           {
@@ -504,7 +521,7 @@ export const router = sentryCreateBrowserRouter([
       },
       {
         path: "friends",
-        element: <Navigate to="/profile?tab=friends" replace />,
+        element: authedRouteElement(<Navigate to="/profile?tab=friends" replace />),
       },
       {
         path: "users/:email/public-quotes",

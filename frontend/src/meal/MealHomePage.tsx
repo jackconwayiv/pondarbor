@@ -430,7 +430,7 @@ export default function MealHomePage() {
                     />
                     <PondButton
                       size="sm"
-                      colorPalette="teal"
+                      colorPalette="lilypad"
                       onClick={() => void submitPartnerSelection()}
                     >
                       Submit
@@ -671,7 +671,7 @@ export default function MealHomePage() {
         <Text
           fontSize={APP_TEXT_SIZES.helper}
           fontWeight="medium"
-          color={notice.tone === "success" ? "forest.solid" : "nautical.solid"}
+          color={notice.tone === "success" ? "lilypad.solid" : "nautical.solid"}
           role={notice.tone === "success" ? "status" : "alert"}
         >
           {notice.text}

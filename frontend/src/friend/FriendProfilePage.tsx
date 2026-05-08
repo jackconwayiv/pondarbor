@@ -341,6 +341,8 @@ export default function FriendProfilePage() {
   const hasQuotes = quotes.length > 0;
   const hasClosetTab =
     Boolean(summary?.can_view_full_profile) && closetItems.length > 0;
+  const friendshipStatus = summary?.friendship_status ?? "none";
+  const canManageFriendshipById = lookup.kind === "id";
   const leftmostVisibleTab = useMemo<
     "friends" | "achievements" | "quotes" | "closet" | null
   >(() => {
@@ -518,7 +520,7 @@ export default function FriendProfilePage() {
                         Friend Profile
                       </Heading>
                     </Stack>
-                    {lookup.kind === "id" ? (
+                    {canManageFriendshipById && friendshipStatus === "friends" ? (
                       <Box ref={unfriendBoxRef} flexShrink={0}>
                         <PondButton
                           colorPalette="nautical"
@@ -552,6 +554,106 @@ export default function FriendProfilePage() {
                           {confirmUnfriend ? "Confirm" : "Unfriend"}
                         </PondButton>
                       </Box>
+                    ) : canManageFriendshipById &&
+                      friendshipStatus === "incoming_pending" ? (
+                      <HStack flexWrap="wrap" gap="2" flexShrink={0}>
+                        <PondButton
+                          colorPalette="lilypad"
+                          loading={actionBusy}
+                          disabled={actionBusy}
+                          onClick={() => {
+                            if (lookup.kind !== "id") return;
+                            void (async () => {
+                              setActionBusy(true);
+                              setActionError(null);
+                              try {
+                                const token = await getApiAccessToken();
+                                await acceptFriend(token, lookup.id);
+                                setActionSuccess("Friend request accepted.");
+                                setReloadKey((value) => value + 1);
+                              } catch (err: unknown) {
+                                setActionError(
+                                  err instanceof Error
+                                    ? err.message
+                                    : "Failed to accept friend request.",
+                                );
+                              } finally {
+                                setActionBusy(false);
+                              }
+                            })();
+                          }}
+                        >
+                          Accept Friend Request
+                        </PondButton>
+                        <PondButton
+                          colorPalette="nautical"
+                          loading={actionBusy}
+                          disabled={actionBusy}
+                          onClick={() => {
+                            if (lookup.kind !== "id") return;
+                            void (async () => {
+                              setActionBusy(true);
+                              setActionError(null);
+                              try {
+                                const token = await getApiAccessToken();
+                                await ignoreFriend(token, lookup.id);
+                                setActionSuccess("Friend request rejected.");
+                                setReloadKey((value) => value + 1);
+                              } catch (err: unknown) {
+                                setActionError(
+                                  err instanceof Error
+                                    ? err.message
+                                    : "Failed to reject friend request.",
+                                );
+                              } finally {
+                                setActionBusy(false);
+                              }
+                            })();
+                          }}
+                        >
+                          Reject Friend Request
+                        </PondButton>
+                      </HStack>
+                    ) : canManageFriendshipById &&
+                      friendshipStatus === "none" ? (
+                      <PondButton
+                        colorPalette="lilypad"
+                        loading={actionBusy}
+                        disabled={actionBusy}
+                        onClick={() => {
+                          if (lookup.kind !== "id") return;
+                          void (async () => {
+                            setActionBusy(true);
+                            setActionError(null);
+                            try {
+                              const token = await getApiAccessToken();
+                              await requestFriendByUserId(token, lookup.id);
+                              setActionSuccess("Friend request sent.");
+                              setReloadKey((value) => value + 1);
+                            } catch (err: unknown) {
+                              setActionError(
+                                err instanceof Error
+                                  ? err.message
+                                  : "Failed to send friend request.",
+                              );
+                            } finally {
+                              setActionBusy(false);
+                            }
+                          })();
+                        }}
+                      >
+                        Request Friend
+                      </PondButton>
+                    ) : canManageFriendshipById &&
+                      friendshipStatus === "outgoing_pending" ? (
+                      <Text
+                        fontSize={APP_TEXT_SIZES.body}
+                        fontWeight="medium"
+                        color="fg"
+                        flexShrink={0}
+                      >
+                        Friend request pending.
+                      </Text>
                     ) : null}
                   </HStack>
                   <HStack gap="4" align="flex-start">

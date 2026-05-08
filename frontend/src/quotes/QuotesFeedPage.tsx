@@ -312,7 +312,7 @@ function QuoteCard({
               {cardSuccess ? (
                 <Text
                   fontSize={APP_TEXT_SIZES.helper}
-                  color="teal.solid"
+                  color="lilypad.solid"
                   fontWeight="medium"
                 >
                   {cardSuccess}
@@ -355,7 +355,7 @@ function QuoteCard({
                             <Tag.Root
                               key={`edit-tag-${quote.id}-${label.id}`}
                               size="sm"
-                              colorPalette="teal"
+                              colorPalette="lilypad"
                               variant={isActive ? "solid" : "outline"}
                               bg={isActive ? undefined : "bg"}
                               cursor="pointer"
@@ -388,7 +388,7 @@ function QuoteCard({
                     <HStack>
                       <PondButton
                         size="sm"
-                        colorPalette="teal"
+                        colorPalette="lilypad"
                         loading={saving}
                         disabled={saving || deleteBusy}
                         onClick={(e) => {
@@ -726,7 +726,7 @@ export default function QuotesFeedPage() {
                   >
                     <PondButton
                       type="button"
-                      colorPalette="sky"
+                      colorPalette="lilypad"
                       w="100%"
                       aria-expanded={isAddOpen}
                       onClick={() => setIsAddOpen((o) => !o)}
@@ -741,11 +741,10 @@ export default function QuotesFeedPage() {
                   >
                     <PondButton
                       type="button"
-                      variant={filterPeopleOpen ? "solid" : "outline"}
-                      colorPalette="sky"
+                      uiClass="filter"
+                      uiActive={filterPeopleOpen}
                       w="100%"
                       justifyContent="center"
-                      color={filterPeopleOpen ? "white" : undefined}
                       aria-expanded={filterPeopleOpen}
                       onClick={() => setFilterPeopleOpen((o) => !o)}
                     >
@@ -797,7 +796,7 @@ export default function QuotesFeedPage() {
                               <Tag.Root
                                 key={`new-tag-${label.id}`}
                                 size="sm"
-                                colorPalette="teal"
+                                colorPalette="lilypad"
                                 variant={isActive ? "solid" : "outline"}
                                 bg={isActive ? undefined : "bg"}
                                 cursor="pointer"
@@ -835,7 +834,7 @@ export default function QuotesFeedPage() {
                       <HStack justify="flex-end">
                         <PondButton
                           type="button"
-                          colorPalette="teal"
+                          colorPalette="lilypad"
                           loading={saving}
                           disabled={saving || body.trim().length === 0}
                           onClick={() => void onSaveQuote()}
@@ -878,7 +877,7 @@ export default function QuotesFeedPage() {
                       <HStack justify="flex-end">
                         <PondButton
                           type="button"
-                          colorPalette="teal"
+                          colorPalette="lilypad"
                           loading={saving}
                           disabled={
                             saving || !isApprovedUser || bulkImportText.trim().length === 0
@@ -900,7 +899,7 @@ export default function QuotesFeedPage() {
               </Text>
             ) : null}
             {success ? (
-              <Text fontSize={APP_TEXT_SIZES.helper} color="teal.solid" fontWeight="medium">
+              <Text fontSize={APP_TEXT_SIZES.helper} color="lilypad.solid" fontWeight="medium">
                 {success}
               </Text>
             ) : null}

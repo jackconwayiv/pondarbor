@@ -107,7 +107,13 @@ export default function SongadaySubmissionEditBlock({
   return (
     <MealEditorBackdropDismiss onDismiss={clearConfirmDelete} disabled={busy || !confirmDelete}>
       <Stack gap="3" w="full" pt="2" borderTopWidth="1px" borderColor="border">
-        <Text fontWeight="bold" fontSize={APP_TEXT_SIZES.label}>
+        <Text
+          fontWeight="semibold"
+          fontSize={APP_TEXT_SIZES.helper}
+          color="sky.emphasized"
+          textTransform="uppercase"
+          letterSpacing="0.08em"
+        >
           Edit your submission
         </Text>
         {error ? (
@@ -198,7 +204,7 @@ export default function SongadaySubmissionEditBlock({
         <HStack gap="2" flexWrap="wrap">
           <PondButton
             type="button"
-            colorPalette="teal"
+            colorPalette="lilypad"
             loading={busy}
             disabled={busy}
             onClick={() => void onSave()}
@@ -231,7 +237,7 @@ export default function SongadaySubmissionEditBlock({
           <PondButton
             type="button"
             variant="outline"
-            colorPalette="nautical"
+            colorPalette="sky"
             disabled={busy}
             onClick={onClose}
           >

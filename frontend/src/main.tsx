@@ -8,6 +8,8 @@ import { AchievementUnlockListener } from "./achievements/AchievementUnlockListe
 import { AchievementToaster } from "./achievements/achievementToaster";
 import { AppSessionProvider } from "./auth/AppSessionProvider";
 import { safeAuthReturnTo } from "./auth/safeAuthReturnTo";
+import "@fontsource/caprasimo/400.css";
+import "@fontsource/spinnaker/400.css";
 import "./index.css";
 import { router } from "./router";
 

@@ -1,18 +1,10 @@
 import {
   Box,
   Card,
-  CloseButton,
-  Dialog,
   HStack,
   Image,
   Input,
-  PopoverBody,
-  PopoverContent,
-  PopoverPositioner,
-  PopoverRoot,
-  PopoverTrigger,
   Stack,
-  Tag,
   Text,
   Textarea,
 } from "@chakra-ui/react";
@@ -22,7 +14,6 @@ import {
   validateIsoDateRequired,
 } from "../forms/validation";
 import PondButton from "../PondButton";
-import { useIsMobile } from "../responsive";
 import {
   APP_TEXT_SIZES,
   PANEL_ENTRY_CARD_BODY_PROPS,
@@ -44,7 +35,6 @@ import {
 import {
   coerceClosetUserId,
   displayName,
-  formatCategoryTagsSummaryLine,
   sameClosetUserId,
 } from "./closetUtils";
 import type { ClosetItem } from "./types";
@@ -72,12 +62,11 @@ export function ClosetItemDetailContent({
   onReload,
   itemNav,
 }: ClosetItemDetailContentProps) {
-  const isMobile = useIsMobile();
   const meIdNum = coerceClosetUserId(meId);
   const [notice, setNotice] = useState<{ kind: "success" | "error"; message: string } | null>(
     null,
   );
-  const [borrowPopoverOpen, setBorrowPopoverOpen] = useState(false);
+  const [borrowInlineOpen, setBorrowInlineOpen] = useState(false);
   const [borrowMessage, setBorrowMessage] = useState("");
   const [confirmCancelRequest, setConfirmCancelRequest] = useState(false);
   const [confirmDeleteDeclined, setConfirmDeleteDeclined] = useState(false);
@@ -92,9 +81,9 @@ export function ClosetItemDetailContent({
   }, [notice]);
 
   useEffect(() => {
-    if (!borrowPopoverOpen) return;
+    if (!borrowInlineOpen) return;
     setBorrowMessage(item.my_pending_request?.message ?? "");
-  }, [borrowPopoverOpen, item]);
+  }, [borrowInlineOpen, item]);
 
   const reload = useCallback(async () => {
     await onReload();
@@ -132,7 +121,7 @@ export function ClosetItemDetailContent({
           date_needed_by: dateIso.trim(),
           message: borrowMessage.trim(),
         });
-        setBorrowPopoverOpen(false);
+        setBorrowInlineOpen(false);
         setBorrowMessage("");
         setNotice({
           kind: "success",
@@ -151,8 +140,9 @@ export function ClosetItemDetailContent({
 
   const imageUrl = (item.image_url ?? "").trim();
   const hasHeroImage = Boolean(imageUrl);
-  const categoryLine = formatCategoryTagsSummaryLine(item);
-  const tagParts = item.tags.map((t) => t.trim()).filter(Boolean);
+  const categoryText = (item.category ?? "").trim();
+  const tagParts = (item.tags ?? []).map((t) => t.trim()).filter(Boolean);
+  const tagsText = tagParts.length > 0 ? `Tags: ${tagParts.join(", ")}` : null;
 
   const canRequestBorrow =
     !isOwner &&
@@ -192,31 +182,24 @@ export function ClosetItemDetailContent({
         minH="4rem"
         {...PLACEHOLDER}
       />
-      {isMobile ? (
-        <Text fontSize="xs" color="fg.muted">
-          Pick a date to send. Tap Done to close, or add a message and pick a date.
-        </Text>
-      ) : (
-        <Text fontSize="xs" color="fg.muted">
-          Pick a date to send the request. Click away to cancel.
-        </Text>
-      )}
+      <Text fontSize="xs" color="fg.muted">
+        Pick a date to send the request. Use Cancel to close this form.
+      </Text>
+      <HStack justify="flex-end">
+        <PondButton
+          size="sm"
+          variant="outline"
+          colorPalette="sky"
+          onClick={() => setBorrowInlineOpen(false)}
+        >
+          Cancel
+        </PondButton>
+      </HStack>
     </Stack>
   );
 
   return (
     <Stack gap="2" w="100%">
-      {notice ? (
-        <Text
-          fontSize={APP_TEXT_SIZES.helper}
-          fontWeight="medium"
-          color={notice.kind === "error" ? "nautical.solid" : "forest.solid"}
-          role={notice.kind === "error" ? "alert" : "status"}
-        >
-          {notice.message}
-        </Text>
-      ) : null}
-
       <Card.Root {...PANEL_ENTRY_CARD_PROPS} p="0">
         <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
           <Stack gap="4" w="100%">
@@ -255,82 +238,108 @@ export function ClosetItemDetailContent({
 
             <HStack w="100%" align="flex-start" justify="space-between" gap="3" flexWrap="wrap">
               <Stack gap="2" flex="1" minW="0">
-                <HStack flexWrap="wrap" gap="2" align="flex-start">
-                  {item.my_pending_request ? (
-                    <Tag.Root size="sm" bg="lilypad.solid" color="fg" borderWidth="0">
-                      <Tag.Label fontWeight="bold">REQUESTED</Tag.Label>
-                    </Tag.Root>
-                  ) : null}
-                  <Text fontWeight="semibold" fontSize="lg">
-                    {item.name}
-                  </Text>
-                </HStack>
-                <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted">
-                  Owner: {displayName(item.owner_user)}
-                </Text>
-                {item.current_holder_user.id !== item.owner_user.id ? (
-                  <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-                    Holding: {displayName(item.current_holder_user)}
-                  </Text>
-                ) : null}
-                {item.description ? (
-                  <Text fontSize={APP_TEXT_SIZES.body} whiteSpace="pre-wrap">
-                    {item.description}
-                  </Text>
-                ) : null}
-                {categoryLine ? (
-                  <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-                    {categoryLine}
-                  </Text>
-                ) : null}
-                {tagParts.length > 0 ? (
-                  <HStack flexWrap="wrap" gap="2">
-                    {tagParts.map((tag) => (
-                      <Tag.Root key={tag} size="sm" bg="bg.muted" color="fg.muted" borderWidth="0">
-                        <Tag.Label>{tag}</Tag.Label>
-                      </Tag.Root>
-                    ))}
-                  </HStack>
-                ) : null}
+                {borrowInlineOpen && canRequestBorrow ? (
+                  <Box borderWidth="1px" borderColor="border" borderRadius="md" p="2" bg="bg.subtle">
+                    {borrowRequestForm}
+                  </Box>
+                ) : (
+                  <>
+                    <Text fontWeight="semibold" fontSize="lg">
+                      {item.name}
+                    </Text>
+                    {notice ? (
+                      <Text
+                        fontSize={APP_TEXT_SIZES.helper}
+                        fontWeight="medium"
+                        color={notice.kind === "error" ? "nautical.solid" : "lilypad.solid"}
+                        role={notice.kind === "error" ? "alert" : "status"}
+                      >
+                        {notice.message}
+                      </Text>
+                    ) : null}
+                    <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted">
+                      Owner: {displayName(item.owner_user)}
+                    </Text>
+                    {item.current_holder_user.id !== item.owner_user.id ? (
+                      <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                        Holding: {displayName(item.current_holder_user)}
+                      </Text>
+                    ) : null}
+                    {item.description ? (
+                      <Text fontSize={APP_TEXT_SIZES.body} whiteSpace="pre-wrap">
+                        {item.description}
+                      </Text>
+                    ) : null}
+                    {categoryText || tagsText ? (
+                      <Stack gap="1">
+                        <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" flex="1" minW="0">
+                          {categoryText ? `Category: ${categoryText}` : "\u00A0"}
+                        </Text>
+                        {tagsText ? (
+                          <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                            {tagsText}
+                          </Text>
+                        ) : null}
+                      </Stack>
+                    ) : null}
+                  </>
+                )}
               </Stack>
-              {canHideItem ? (
-                <Box flexShrink={0}>
-                  <PondButton
-                    size="sm"
-                    variant="outline"
-                    colorPalette="sky"
-                    loading={hideBusy}
-                    disabled={hideBusy}
-                    onClick={() =>
-                      void (async () => {
-                        setHideBusy(true);
-                        try {
-                          const token = await getApiAccessToken();
-                          await (item.hidden_by_me
-                            ? unhideClosetItem(token, item.id)
-                            : hideClosetItem(token, item.id));
-                          setNotice({
-                            kind: "success",
-                            message: item.hidden_by_me
-                              ? "Item unhidden."
-                              : "Item hidden from your Items list.",
-                          });
-                          await reload();
-                        } catch (e) {
-                          setNotice({
-                            kind: "error",
-                            message:
-                              e instanceof Error ? e.message : "Failed to update hidden state",
-                          });
-                        } finally {
-                          setHideBusy(false);
-                        }
-                      })()
-                    }
-                  >
-                    {item.hidden_by_me ? "Unhide this item" : "Hide this item"}
-                  </PondButton>
-                </Box>
+              {canRequestBorrow || canHideItem ? (
+                <Stack align="flex-end" gap="2" flexShrink={0} ms="auto">
+                  {canRequestBorrow ? (
+                    <PondButton
+                      size="sm"
+                      colorPalette="lilypad"
+                      onClick={() => setBorrowInlineOpen((open) => !open)}
+                    >
+                      {borrowInlineOpen
+                        ? "Close request form"
+                        : item.my_pending_request
+                          ? "Update borrow request"
+                          : "Request to borrow"}
+                    </PondButton>
+                  ) : null}
+                  {canHideItem ? (
+                    <PondButton
+                      size="sm"
+                      variant="outline"
+                      colorPalette="sky"
+                      loading={hideBusy}
+                      disabled={hideBusy}
+                      onClick={() =>
+                        void (async () => {
+                          setHideBusy(true);
+                          try {
+                            const token = await getApiAccessToken();
+                            await (item.hidden_by_me
+                              ? unhideClosetItem(token, item.id)
+                              : hideClosetItem(token, item.id));
+                            setNotice({
+                              kind: "success",
+                              message: item.hidden_by_me
+                                ? "Item unhidden."
+                                : "Item hidden from your Items list.",
+                            });
+                            await reload();
+                          } catch (e) {
+                            setNotice({
+                              kind: "error",
+                              message:
+                                e instanceof Error
+                                  ? e.message
+                                  : "Failed to update hidden state",
+                            });
+                          } finally {
+                            setHideBusy(false);
+                          }
+                        })()
+                      }
+                    >
+                      {item.hidden_by_me ? "Unhide this item" : "Hide this item"}
+                    </PondButton>
+                  ) : null}
+                </Stack>
               ) : null}
             </HStack>
 
@@ -347,7 +356,7 @@ export function ClosetItemDetailContent({
                   <HStack flexWrap="wrap">
                     <PondButton
                       size="sm"
-                      colorPalette="teal"
+                      colorPalette="lilypad"
                       loading={custodyActionBusy}
                       onClick={() =>
                         void (async () => {
@@ -401,7 +410,7 @@ export function ClosetItemDetailContent({
 
               {borrowedByMe ? (
                 <Stack gap="2">
-                  <Text fontSize={APP_TEXT_SIZES.helper} color="orange.solid">
+                  <Text fontSize={APP_TEXT_SIZES.helper} color="nautical.solid">
                     You are borrowing this item.
                   </Text>
                   {item.active_loan_marked_returned_by_borrower ||
@@ -417,7 +426,7 @@ export function ClosetItemDetailContent({
                   <HStack flexWrap="wrap">
                     <PondButton
                       size="sm"
-                      colorPalette="teal"
+                      colorPalette="lilypad"
                       loading={returnBusy}
                       disabled={
                         returnBusy ||
@@ -554,88 +563,7 @@ export function ClosetItemDetailContent({
       </Card.Root>
 
       <Stack gap="1" w="100%" align="stretch">
-        <ClosetItemModalFooter
-          borrowSlot={
-            canRequestBorrow ? (
-              <>
-                {!isMobile ? (
-                  <PopoverRoot
-                    open={borrowPopoverOpen}
-                    onOpenChange={(d: { open: boolean }) => setBorrowPopoverOpen(d.open)}
-                    positioning={{ placement: "bottom-end" }}
-                  >
-                    <PopoverTrigger asChild>
-                      <PondButton colorPalette="teal">
-                        {item.my_pending_request
-                          ? "Update borrow request"
-                          : "Request to borrow"}
-                      </PondButton>
-                    </PopoverTrigger>
-                    <PopoverPositioner>
-                      <PopoverContent
-                        bg="bg.panel"
-                        borderWidth="1px"
-                        borderColor="border"
-                        borderRadius="md"
-                        boxShadow="md"
-                        p="0"
-                        minW="280px"
-                      >
-                        <PopoverBody p="3">{borrowRequestForm}</PopoverBody>
-                      </PopoverContent>
-                    </PopoverPositioner>
-                  </PopoverRoot>
-                ) : null}
-                {isMobile ? (
-                  <Box flexShrink={0}>
-                    <PondButton colorPalette="teal" onClick={() => setBorrowPopoverOpen(true)}>
-                      {item.my_pending_request
-                        ? "Update borrow request"
-                        : "Request to borrow"}
-                    </PondButton>
-                    <Dialog.Root
-                      open={borrowPopoverOpen}
-                      lazyMount
-                      unmountOnExit
-                      onOpenChange={(d: { open: boolean }) => setBorrowPopoverOpen(d.open)}
-                    >
-                      <Dialog.Backdrop />
-                      <Dialog.Positioner
-                        px="0"
-                        py="0"
-                        display="flex"
-                        alignItems="flex-end"
-                        justifyContent="center"
-                      >
-                        <Dialog.Content
-                          maxW="100vw"
-                          w="100vw"
-                          maxH="90vh"
-                          overflowY="auto"
-                          borderTopRadius="xl"
-                          borderWidth="0"
-                          p="3"
-                          pb="5"
-                          bg="bg.panel"
-                        >
-                          <HStack justify="space-between" align="start" mb="2" gap="2">
-                            <Text fontSize="md" fontWeight="semibold">
-                              Borrow request
-                            </Text>
-                            <Dialog.CloseTrigger asChild>
-                              <CloseButton type="button" size="sm" aria-label="Close" />
-                            </Dialog.CloseTrigger>
-                          </HStack>
-                          {borrowRequestForm}
-                        </Dialog.Content>
-                      </Dialog.Positioner>
-                    </Dialog.Root>
-                  </Box>
-                ) : null}
-              </>
-            ) : null
-          }
-        />
+        <ClosetItemModalFooter borrowSlot={null} />
         {item.hidden_by_me && canHideItem ? (
           <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" textAlign="center">
             Hidden from your Items list. Use &lsquo;Show Hidden&rsquo; on the Items page to see it.

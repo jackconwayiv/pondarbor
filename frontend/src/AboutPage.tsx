@@ -1,7 +1,6 @@
 import { useAuth0 } from "@auth0/auth0-react";
 import {
   Box,
-  Link as ChakraLink,
   Flex,
   HStack,
   Image,
@@ -10,14 +9,14 @@ import {
   Textarea,
 } from "@chakra-ui/react";
 import { useCallback, useState } from "react";
-import { Link as RouterLink } from "react-router";
 
 import { submitContactMessage } from "./about/contactApi";
 import { useAppSession } from "./auth/AppSessionContext";
 import { auth0LoginAuthorizationParams } from "./auth/auth0LoginParams";
+import SiteFooter from "./components/SiteFooter";
 import PondButton from "./PondButton";
 import { pondarborProfileSrc } from "./publicAsset";
-import { fullBleedStackProps, useIsMobile, viewPortWidthBarProps } from "./responsive";
+import { fullBleedStackProps, useIsMobile } from "./responsive";
 import {
   APP_SHELL_TRAY_PROPS,
   APP_TEXT_SIZES,
@@ -157,7 +156,7 @@ export default function AboutPage() {
                   </Text>
                   <PondButton
                     type="button"
-                    colorPalette="teal"
+                    colorPalette="lilypad"
                     loading={busy}
                     disabled={busy || message.trim().length === 0}
                     alignSelf="flex-start"
@@ -191,58 +190,7 @@ export default function AboutPage() {
           </Stack>
         </Box>
       </Box>
-      <Box
-        as="footer"
-        flexShrink={0}
-        bg="navy.solid"
-        mt="auto"
-        color="navy.fg"
-        {...viewPortWidthBarProps}
-      >
-        <Box py="2" px={{ base: "2", md: "2" }}>
-          <Box
-            display="flex"
-            flexDirection={{ base: "column", md: "row" }}
-            alignItems={{ base: "flex-end", md: "center" }}
-            justifyContent="flex-end"
-            flexWrap="wrap"
-            columnGap={{ md: "3" }}
-            rowGap="1"
-          >
-            <Text textAlign="right" fontSize="xs" color="inherit">
-              © 2026{" "}
-              <ChakraLink
-                asChild
-                color="inherit"
-                textDecoration="none"
-                _hover={{ color: "sky.solid", textDecoration: "none" }}
-              >
-                <RouterLink to="/about">Pond Arbor Workshop</RouterLink>
-              </ChakraLink>
-              . All rights reserved.
-            </Text>
-            <Text textAlign="right" fontSize="xs" color="inherit">
-              <ChakraLink
-                asChild
-                color="inherit"
-                textDecoration="none"
-                _hover={{ color: "sky.solid", textDecoration: "none" }}
-              >
-                <RouterLink to="/about/terms">Terms of Service</RouterLink>
-              </ChakraLink>{" "}
-              |{" "}
-              <ChakraLink
-                asChild
-                color="inherit"
-                textDecoration="none"
-                _hover={{ color: "sky.solid", textDecoration: "none" }}
-              >
-                <RouterLink to="/about/privacy">Privacy Policy</RouterLink>
-              </ChakraLink>
-            </Text>
-          </Box>
-        </Box>
-      </Box>
+      <SiteFooter />
     </Stack>
   );
 }

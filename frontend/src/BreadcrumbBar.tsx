@@ -4,9 +4,8 @@ import { Link as RouterLink, useLocation } from "react-router";
 import { getBreadcrumbItems } from "./breadcrumbTrail";
 
 /**
- * Renders a single-line breadcrumb under the app header. Hidden on the home
- * index. `AppLayout` wraps this in a `5xl` centered column; clicker/QFF skip the
- * bar.
+ * Renders a single-line breadcrumb under the app header.
+ * `AppLayout` wraps this in a `5xl` centered column; clicker/QFF skip the bar.
  */
 export default function BreadcrumbBar() {
   const { pathname, search } = useLocation();

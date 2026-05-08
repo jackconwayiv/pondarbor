@@ -135,7 +135,7 @@ export default function MealInstanceDetailPage() {
             </Heading>
             <HStack gap="2" flexShrink={0}>
               <PondButton
-                colorPalette="teal"
+                colorPalette="lilypad"
                 loading={saveBusy}
                 disabled={saveBusy || deleteBusy}
                 onClick={(e) => {

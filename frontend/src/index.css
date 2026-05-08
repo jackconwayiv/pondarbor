@@ -1,12 +1,12 @@
 /* Minimal shell; layout and typography live in Chakra theme (src/theme/system.ts). */
-/* Page canvas: almond (DESIGN.almond in src/theme/tokens.ts). */
+/* Page canvas: cloud white (DESIGN.cloudWhite in src/theme/tokens.ts). */
 html,
 body {
   overflow-x: hidden;
-  font-family: Verdana, Geneva, "DejaVu Sans", sans-serif;
+  font-family: "Spinnaker", Verdana, Geneva, "DejaVu Sans", sans-serif;
   /* Prefer Chakra semantic tokens (falls back during initial paint). */
-  background-color: var(--chakra-colors-bg, #f5f1e8);
-  color: var(--chakra-colors-fg, #0b1f3a);
+  background-color: var(--chakra-colors-bg, #f6f7f8);
+  color: var(--chakra-colors-fg, #3f4650);
 }
 
 html,

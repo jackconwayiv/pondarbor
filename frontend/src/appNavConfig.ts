@@ -29,6 +29,13 @@ const GAMES: AppNavItem = {
   blurb: "PondClicker, WhatIf, and more.",
 };
 
+const WHATIF: AppNavItem = {
+  to: "/whatif",
+  emoji: "🎲",
+  label: "WhatIf",
+  blurb: "Party game you can try without an account.",
+};
+
 const ABOUT: AppNavItem = {
   to: "/about",
   /** Matches `AboutPage` h1. */
@@ -37,59 +44,71 @@ const ABOUT: AppNavItem = {
   blurb: "Project info, terms, and privacy.",
 };
 
-/** Apps shown on the home page app grid and in the main nav. */
-export const APP_HOME_APPS: AppNavItem[] = [
-  {
-    to: "/profile?tab=friends",
-    /** Friends tab on Profile. */
-    emoji: "👥",
-    label: "Friends",
-    blurb: "Find and browse your friends.",
-  },
-  {
-    to: "/songaday",
-    /** Matches `SongadayLayout` h1 (“Song-a-Day Challenge”). */
-    emoji: "🎶",
-    label: "Song-a-Day",
-    blurb: "Daily music prompts and friends' picks.",
-  },
-  {
-    to: "/closet",
-    /** Matches `ClosetPage` h1. */
-    emoji: "👒",
-    label: "Community Closet",
-    navLabel: "Closet",
-    blurb: "Lend and borrow items with friends.",
-  },
-  {
-    to: "/quotes",
-    /** Matches `QuotesFeedPage` h1 (“Quotes Archive”). */
-    emoji: "📜",
-    label: "Quotes",
-    blurb: "Archive of user-recorded quotes.",
-  },
-  {
-    to: "/meal",
-    /** Matches `MealLayout` h1. */
-    emoji: "🧑‍🍳",
-    label: "Meal Maestro",
-    navLabel: "Meal",
-    blurb: "Meal plans and recipes.",
-  },
-  {
-    to: "/calendar",
-    /** Matches `CalendarPage` h1. */
-    emoji: "🗓️",
-    label: "Calendar",
-    blurb: "See when friends are out or busy.",
-  },
+const SONGADAY: AppNavItem = {
+  to: "/songaday",
+  /** Matches `SongadayLayout` h1 (“Song-a-Day Challenge”). */
+  emoji: "🎶",
+  label: "Song-a-Day",
+  blurb: "Daily music prompts and friends' picks.",
+};
+
+const CALENDAR: AppNavItem = {
+  to: "/calendar",
+  /** Matches `CalendarPage` h1. */
+  emoji: "🗓️",
+  label: "Calendar",
+  blurb: "See when friends are out or busy.",
+};
+
+const CLOSET: AppNavItem = {
+  to: "/closet",
+  /** Matches `ClosetPage` h1. */
+  emoji: "👒",
+  label: "Community Closet",
+  navLabel: "Closet",
+  blurb: "Lend and borrow items with friends.",
+};
+
+const QUOTES: AppNavItem = {
+  to: "/quotes",
+  /** Matches `QuotesFeedPage` h1 (“Quotes Archive”). */
+  emoji: "📜",
+  label: "Quotes",
+  blurb: "Archive of user-recorded quotes.",
+};
+
+const MEAL: AppNavItem = {
+  to: "/meal",
+  /** Matches `MealLayout` h1. */
+  emoji: "🧑‍🍳",
+  label: "Meal Maestro",
+  navLabel: "Meals",
+  blurb: "Meal plans and recipes.",
+};
+
+const FRIENDS: AppNavItem = {
+  to: "/profile?tab=friends",
+  /** Friends tab on Profile. */
+  emoji: "👥",
+  label: "Friends",
+  blurb: "Find and browse your friends.",
+};
+
+/** Home app grid order (games rendered as a separate section on home). */
+export const APP_HOME_APPS: AppNavItem[] = [SONGADAY, CALENDAR, CLOSET, QUOTES, MEAL, FRIENDS, ABOUT];
+
+/** Top bar + hamburger order mirrors home icons, with Games inserted before About. */
+export const APP_DESKTOP_NAV: AppNavItem[] = [
+  SONGADAY,
+  CALENDAR,
+  CLOSET,
+  QUOTES,
+  MEAL,
+  FRIENDS,
   GAMES,
   ABOUT,
 ];
 
-/** Top bar + hamburger: same order as the home app grid (About last). */
-export const APP_DESKTOP_NAV: AppNavItem[] = APP_HOME_APPS;
-
 export function guestHamburgerNavItems(): AppNavItem[] {
-  return [GAMES, ABOUT];
+  return [WHATIF, ABOUT];
 }

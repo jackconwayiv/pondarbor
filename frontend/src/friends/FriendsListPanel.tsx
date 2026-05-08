@@ -168,7 +168,7 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
               </datalist>
             </Stack>
             <PondButton
-              colorPalette="teal"
+              colorPalette="lilypad"
               disabled={!canSubmitRequest || loading}
               onClick={() => {
                 void (async () => {

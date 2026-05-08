@@ -247,7 +247,7 @@ export default function SongadayEntryDetailPage() {
         >
           {loadError ?? "Not found."}
         </Text>
-        <PondButton asChild colorPalette="teal">
+        <PondButton asChild colorPalette="lilypad">
           <RouterLink to="/songaday">Return to Song a Day</RouterLink>
         </PondButton>
       </Stack>
@@ -376,7 +376,7 @@ export default function SongadayEntryDetailPage() {
                 <HStack gap="2" flexWrap="wrap" align="center">
                   <PondButton
                     type="button"
-                    colorPalette="teal"
+                    colorPalette="lilypad"
                     loading={saveBusy}
                     disabled={saveBusy}
                     onClick={() => void onSaveClick()}
@@ -463,7 +463,7 @@ export default function SongadayEntryDetailPage() {
         <Text
           fontSize={APP_TEXT_SIZES.helper}
           fontWeight="medium"
-          color={notice.kind === "error" ? "nautical.solid" : "forest.solid"}
+          color={notice.kind === "error" ? "nautical.solid" : "lilypad.solid"}
           role={notice.kind === "error" ? "alert" : "status"}
         >
           {notice.message}

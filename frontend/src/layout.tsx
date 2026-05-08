@@ -36,13 +36,15 @@ import { useIsMobile } from "./responsive";
 import { APP_SHELL_CONTENT_MAX_PROPS } from "./theme/typography";
 
 /** Wordmark font; fixed look (no route-based styling). */
-const NAV_WORDMARK_FONT = '"Brush Script MT", "Segoe Script", cursive';
+const NAV_WORDMARK_FONT = '"Caprasimo", "Spinnaker", Verdana, Geneva, "DejaVu Sans", sans-serif';
 const NAV_WORDMARK_FONT_SIZE = "calc(1.6em + 2px)";
+const NAV_WORDMARK_MOBILE_FONT_SIZE = "calc(1.35em + 1px)";
 const NAV_WORDMARK_LINE_HEIGHT = "1.1";
 /** Slightly smaller app links in the top bar. */
 const NAV_APP_LINK_FONT_SIZE = "0.8125rem";
 const NAV_APP_LINK_LINE_HEIGHT = "1.2";
 const NAV_HSTACK_GAP = "1.5";
+const NAV_APP_LINK_HSTACK_GAP = "2.5";
 /** Extra space between wordmark and first top-nav app link (desktop). */
 const WORDMARK_TO_APP_NAV_PL = { base: "0", md: "3" } as const;
 
@@ -164,6 +166,7 @@ export default function AppLayout() {
   const isClickerRoute =
     location.pathname === "/clicker" ||
     location.pathname.startsWith("/clicker/");
+  const isClickerPlayRoute = location.pathname.startsWith("/clicker/play");
   const isQffRoute =
     location.pathname === "/qff" || location.pathname.startsWith("/qff/");
   const isHarborRoute =
@@ -303,186 +306,203 @@ export default function AppLayout() {
         px={{ base: "2", md: "2" }}
         py="2"
         align="center"
-        bg="navy.solid"
+        bg="sky.emphasized"
         color="navy.fg"
         position="relative"
         w="100%"
       >
         {isMobile ? (
           <>
-            <Box flex="1" display="flex" justifyContent="flex-start" minW={0}>
-              <Menu.Root positioning={{ placement: "bottom-start", gutter: 8 }}>
-                <Menu.Trigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    aria-label="Open navigation menu"
-                    color="navy.fg"
-                    bg="transparent"
-                    _hover={{ bg: "transparent" }}
-                    _active={{ bg: "transparent" }}
-                    _focus={{ boxShadow: "none" }}
-                    _focusVisible={{ boxShadow: "none", outline: "none" }}
-                    px="2"
-                    minW="auto"
-                    lineHeight="1"
-                    fontSize="lg"
-                  >
-                    ☰
-                  </Button>
-                </Menu.Trigger>
-                <Menu.Positioner>
-                  <Menu.Content minW="52">
-                    <Menu.Item
-                      value="home"
-                      onSelect={() => {
-                        navigate("/");
-                      }}
-                      fontSize="sm"
-                    >
-                      <HStack gap="2" w="100%">
-                        <Text aria-hidden>🏠</Text>
-                        <Text>Home</Text>
-                      </HStack>
-                    </Menu.Item>
-                    {showProfileNav ? (
-                      <>
-                        {authedNavEntries.map((item) => (
-                          <Menu.Item
-                            key={item.to}
-                            value={item.to.slice(1) || "home"}
-                            onSelect={() => {
-                              navigate(item.to);
-                            }}
-                            fontSize="sm"
-                          >
-                            <HStack gap="2" w="100%">
-                              <Text aria-hidden>{item.emoji}</Text>
-                              <Text>{item.label}</Text>
-                            </HStack>
-                          </Menu.Item>
-                        ))}
-                      </>
-                    ) : (
-                      <>
-                        <Menu.Item
-                          value="login"
-                          onSelect={() => {
-                            void loginWithRedirect({
-                              authorizationParams:
-                                auth0LoginAuthorizationParams(),
-                            });
-                          }}
-                          fontSize="sm"
-                        >
-                          <HStack gap="2" w="100%">
-                            <Text aria-hidden>🔐</Text>
-                            <Text>Log in</Text>
-                          </HStack>
-                        </Menu.Item>
-                        <Menu.Item
-                          value="sign-up"
-                          onSelect={() => {
-                            void loginWithRedirect({
-                              authorizationParams:
-                                auth0SignupAuthorizationParams(),
-                            });
-                          }}
-                          fontSize="sm"
-                        >
-                          <HStack gap="2" w="100%">
-                            <Text aria-hidden>📝</Text>
-                            <Text>Sign up</Text>
-                          </HStack>
-                        </Menu.Item>
-                        {/* {auth0SlackLoginAuthorizationParams() ? (
-                          <Menu.Item
-                            value="login-slack"
-                            onSelect={() => {
-                              void loginWithRedirect({
-                                authorizationParams:
-                                  auth0SlackLoginAuthorizationParams()!,
-                              });
-                            }}
-                            fontSize="sm"
-                          >
-                            <HStack gap="2" w="100%">
-                              <Text aria-hidden>💬</Text>
-                              <Text>Log in with Slack</Text>
-                            </HStack>
-                          </Menu.Item>
-                        ) : null}
-                        {auth0SlackSignupAuthorizationParams() ? (
-                          <Menu.Item
-                            value="sign-up-slack"
-                            onSelect={() => {
-                              void loginWithRedirect({
-                                authorizationParams:
-                                  auth0SlackSignupAuthorizationParams()!,
-                              });
-                            }}
-                            fontSize="sm"
-                          >
-                            <HStack gap="2" w="100%">
-                              <Text aria-hidden>💬</Text>
-                              <Text>Sign up with Slack</Text>
-                            </HStack>
-                          </Menu.Item>
-                        ) : null} */}
-                        {guestHamburgerNavItems().map((item) => (
-                          <Menu.Item
-                            key={item.to}
-                            value={item.to.slice(1) || "home"}
-                            onSelect={() => {
-                              navigate(item.to);
-                            }}
-                            fontSize="sm"
-                          >
-                            <HStack gap="2" w="100%">
-                              <Text aria-hidden>{item.emoji}</Text>
-                              <Text>{item.label}</Text>
-                            </HStack>
-                          </Menu.Item>
-                        ))}
-                      </>
-                    )}
-                  </Menu.Content>
-                </Menu.Positioner>
-              </Menu.Root>
-            </Box>
             <Box
-              position="absolute"
-              left="50%"
-              transform="translateX(-50%)"
-              zIndex={1}
-              maxW="calc(100% - 7rem)"
-              textAlign="center"
+              flex="0 1 auto"
+              display="flex"
+              justifyContent="flex-start"
+              minW={0}
             >
-              <ChakraLink
-                asChild
-                colorPalette="gray"
-                variant="plain"
-                color="navy.fg"
-                {...navBarLinkProps}
-                fontFamily={NAV_WORDMARK_FONT}
-                fontWeight="normal"
-                letterSpacing="normal"
-                fontSize={NAV_WORDMARK_FONT_SIZE}
-                lineHeight={NAV_WORDMARK_LINE_HEIGHT}
-              >
-                <Link to="/">Pond Arbor</Link>
-              </ChakraLink>
+              <HStack gap="1.5" align="center">
+                <Menu.Root positioning={{ placement: "bottom-start", gutter: 8 }}>
+                  <Menu.Trigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-label="Open navigation menu"
+                      color="navy.fg"
+                      bg="transparent"
+                      _hover={{ bg: "transparent" }}
+                      _active={{ bg: "transparent" }}
+                      _focus={{ boxShadow: "none" }}
+                      _focusVisible={{ boxShadow: "none", outline: "none" }}
+                      px="2"
+                      minW="auto"
+                      lineHeight="1"
+                      fontSize="lg"
+                    >
+                      ☰
+                    </Button>
+                  </Menu.Trigger>
+                  <Menu.Positioner>
+                    <Menu.Content minW="52">
+                      <Menu.Item
+                        value="home"
+                        onSelect={() => {
+                          navigate("/");
+                        }}
+                        fontSize="sm"
+                      >
+                        <HStack gap="2" w="100%">
+                          <Text aria-hidden>🏠</Text>
+                          <Text>Home</Text>
+                        </HStack>
+                      </Menu.Item>
+                      {showProfileNav ? (
+                        <>
+                          {authedNavEntries.map((item) => (
+                            <Menu.Item
+                              key={item.to}
+                              value={item.to.slice(1) || "home"}
+                              onSelect={() => {
+                                navigate(item.to);
+                              }}
+                              fontSize="sm"
+                            >
+                              <HStack gap="2" w="100%">
+                                <Text aria-hidden>{item.emoji}</Text>
+                                <Text>{item.label}</Text>
+                              </HStack>
+                            </Menu.Item>
+                          ))}
+                        </>
+                      ) : (
+                        <>
+                          <Menu.Item
+                            value="login"
+                            onSelect={() => {
+                              void loginWithRedirect({
+                                authorizationParams: auth0LoginAuthorizationParams(),
+                              });
+                            }}
+                            fontSize="sm"
+                          >
+                            <HStack gap="2" w="100%">
+                              <Text aria-hidden>🔐</Text>
+                              <Text>Log in</Text>
+                            </HStack>
+                          </Menu.Item>
+                          <Menu.Item
+                            value="sign-up"
+                            onSelect={() => {
+                              void loginWithRedirect({
+                                authorizationParams: auth0SignupAuthorizationParams(),
+                              });
+                            }}
+                            fontSize="sm"
+                          >
+                            <HStack gap="2" w="100%">
+                              <Text aria-hidden>📝</Text>
+                              <Text>Sign up</Text>
+                            </HStack>
+                          </Menu.Item>
+                          {/* {auth0SlackLoginAuthorizationParams() ? (
+                            <Menu.Item
+                              value="login-slack"
+                              onSelect={() => {
+                                void loginWithRedirect({
+                                  authorizationParams:
+                                    auth0SlackLoginAuthorizationParams()!,
+                                });
+                              }}
+                              fontSize="sm"
+                            >
+                              <HStack gap="2" w="100%">
+                                <Text aria-hidden>💬</Text>
+                                <Text>Log in with Slack</Text>
+                              </HStack>
+                            </Menu.Item>
+                          ) : null}
+                          {auth0SlackSignupAuthorizationParams() ? (
+                            <Menu.Item
+                              value="sign-up-slack"
+                              onSelect={() => {
+                                void loginWithRedirect({
+                                  authorizationParams:
+                                    auth0SlackSignupAuthorizationParams()!,
+                                });
+                              }}
+                              fontSize="sm"
+                            >
+                              <HStack gap="2" w="100%">
+                                <Text aria-hidden>💬</Text>
+                                <Text>Sign up with Slack</Text>
+                              </HStack>
+                            </Menu.Item>
+                          ) : null} */}
+                          {guestHamburgerNavItems().map((item) => (
+                            <Menu.Item
+                              key={item.to}
+                              value={item.to.slice(1) || "home"}
+                              onSelect={() => {
+                                navigate(item.to);
+                              }}
+                              fontSize="sm"
+                            >
+                              <HStack gap="2" w="100%">
+                                <Text aria-hidden>{item.emoji}</Text>
+                                <Text>{item.label}</Text>
+                              </HStack>
+                            </Menu.Item>
+                          ))}
+                        </>
+                      )}
+                    </Menu.Content>
+                  </Menu.Positioner>
+                </Menu.Root>
+                <ChakraLink
+                  asChild
+                  colorPalette="gray"
+                  variant="plain"
+                  color="navy.fg"
+                  {...navBarLinkProps}
+                  fontFamily={NAV_WORDMARK_FONT}
+                  fontWeight="normal"
+                  letterSpacing="normal"
+                  fontSize={NAV_WORDMARK_MOBILE_FONT_SIZE}
+                  lineHeight={NAV_WORDMARK_LINE_HEIGHT}
+                >
+                  <Link to="/">
+                    <HStack gap="1.5" align="center">
+                      <Image
+                        src={pondarborLogoSrc()}
+                        alt="PondArbor"
+                        h="1.1em"
+                        w="auto"
+                        maxH="1.1em"
+                        objectFit="contain"
+                        display="block"
+                      />
+                      <Text
+                        as="span"
+                        lineHeight={NAV_WORDMARK_LINE_HEIGHT}
+                        whiteSpace="nowrap"
+                      >
+                        Pond Arbor
+                      </Text>
+                    </HStack>
+                  </Link>
+                </ChakraLink>
+              </HStack>
             </Box>
             <Box flex="1" display="flex" justifyContent="flex-end" minW={0}>
-              {showProfileNav ? (
-                <HStack gap="0" align="center" flexShrink={0}>
-                  <HomeInboxPopover />
-                  {accountMenu}
-                </HStack>
-              ) : (
-                accountMenu
-              )}
+              <HStack gap="0" align="center" flexShrink={0}>
+                {showProfileNav ? (
+                  <>
+                    <HomeInboxPopover />
+                    {accountMenu}
+                  </>
+                ) : (
+                  accountMenu
+                )}
+              </HStack>
             </Box>
           </>
         ) : (
@@ -535,11 +555,11 @@ export default function AppLayout() {
                 lineHeight={NAV_WORDMARK_LINE_HEIGHT}
                 mx={{ base: "1", md: "1" }}
               >
-                <Link to="/">PondArbor</Link>
+                <Link to="/">Pond Arbor</Link>
               </ChakraLink>
 
               <HStack
-                gap={NAV_HSTACK_GAP}
+                gap={NAV_APP_LINK_HSTACK_GAP}
                 align="center"
                 pl={WORDMARK_TO_APP_NAV_PL}
               >
@@ -663,7 +683,7 @@ export default function AppLayout() {
         >
           {!(
             isQffRoute ||
-            isClickerRoute ||
+            isClickerPlayRoute ||
             isHarborRoute ||
             isPondsteadRoute ||
             isWhatIfPlayOrHandRoute

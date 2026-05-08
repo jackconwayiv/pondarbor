@@ -122,8 +122,7 @@ export function ApprovedFriendsListBlock({
               <PondButton
                 type="button"
                 size="sm"
-                variant="outline"
-                colorPalette="teal"
+                colorPalette="lilypad"
                 flexShrink={0}
                 onClick={() => void onRequestFriend(row.id)}
               >

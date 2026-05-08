@@ -735,7 +735,7 @@ export default function SongadayPage() {
     </Box>
   ) : (
     <Box
-      bg="#AFDEE4"
+      bg="sky.subtle"
       color="navy.solid"
       borderRadius="xl"
       p={{ base: "2.5", md: "2.5" }}
@@ -932,7 +932,7 @@ export default function SongadayPage() {
                     <PondButton
                       type="button"
                       size="md"
-                      colorPalette="teal"
+                      colorPalette="lilypad"
                       onClick={() => void onSubmit()}
                       loading={submitBusy}
                       disabled={formDisabled}
@@ -1246,7 +1246,7 @@ export default function SongadayPage() {
             <PondButton
               type="button"
               variant={bulkOpen ? "solid" : "outline"}
-              colorPalette="nautical"
+              colorPalette="sky"
               w="100%"
             >
               {bulkOpen ? "Hide bulk importer" : "Staff: Bulk importer"}
@@ -1280,7 +1280,7 @@ export default function SongadayPage() {
                     />
                     <PondButton
                       type="button"
-                      colorPalette="teal"
+                      colorPalette="lilypad"
                       onClick={() => void onBulkImport()}
                       loading={bulkBusy}
                     >
@@ -1293,7 +1293,7 @@ export default function SongadayPage() {
                         color={
                           bulkNotice.kind === "error"
                             ? "nautical.solid"
-                            : "teal.solid"
+                            : "lilypad.solid"
                         }
                         role={bulkNotice.kind === "error" ? "alert" : "status"}
                       >

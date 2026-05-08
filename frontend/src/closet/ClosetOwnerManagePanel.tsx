@@ -606,7 +606,7 @@ export function ClosetOwnerManagePanel({
                 <PondButton
                   type="button"
                   size="sm"
-                  colorPalette="teal"
+                  colorPalette="lilypad"
                   loading={imagePickerLoading}
                   disabled={imageUploadBusy}
                   onClick={() => {
@@ -663,7 +663,7 @@ export function ClosetOwnerManagePanel({
                           key={row.image_key}
                           as="button"
                           borderWidth="2px"
-                          borderColor="teal.solid"
+                          borderColor="lilypad.solid"
                           borderRadius="md"
                           overflow="hidden"
                           onClick={() =>
@@ -703,7 +703,7 @@ export function ClosetOwnerManagePanel({
               ) : null}
               {imageUploadBusy ? (
                 <HStack gap="2" align="center" color="gray.700">
-                  <Spinner size="sm" colorPalette="teal" />
+                  <Spinner size="sm" colorPalette="lilypad" />
                   <Text fontSize={APP_TEXT_SIZES.helper}>Uploading photo…</Text>
                 </HStack>
               ) : null}
@@ -784,7 +784,7 @@ export function ClosetOwnerManagePanel({
                       <HStack justify="space-between" align="end" gap="3" flexWrap="wrap">
                         <PondButton
                           size="sm"
-                          colorPalette="teal"
+                          colorPalette="lilypad"
                           onClick={async () => {
                             try {
                               const token = await getToken();
@@ -879,24 +879,24 @@ export function ClosetOwnerManagePanel({
             ) : null}
             <HStack flexWrap="wrap">
               {item.active_loan_id ? (
-                <PondButton size="sm" colorPalette="teal" onClick={() => void onMarkReturnedAsOwner()}>
+                <PondButton size="sm" colorPalette="lilypad" onClick={() => void onMarkReturnedAsOwner()}>
                   Mark returned (complete loan)
                 </PondButton>
               ) : null}
               {!item.active_loan_id && item.custody_marked_returned_by_holder ? (
-                <PondButton size="sm" colorPalette="teal" onClick={() => void onMarkReturnedAsOwner()}>
+                <PondButton size="sm" colorPalette="lilypad" onClick={() => void onMarkReturnedAsOwner()}>
                   Mark returned (complete handoff)
                 </PondButton>
               ) : null}
             </HStack>
             <Stack gap="2">
               {item.active_loan_id ? (
-                <Text fontSize={APP_TEXT_SIZES.helper} color="orange.solid">
+                <Text fontSize={APP_TEXT_SIZES.helper} color="nautical.solid">
                   While a loan is active, prefer Mark returned when the item is back. Change holder
                   here only if you need to correct who has the item without closing the loan yet.
                 </Text>
               ) : item.custody_marked_returned_by_holder ? (
-                <Text fontSize={APP_TEXT_SIZES.helper} color="orange.solid">
+                <Text fontSize={APP_TEXT_SIZES.helper} color="nautical.solid">
                   The holder marked a return. Prefer Mark returned above before changing holder here.
                 </Text>
               ) : (
@@ -945,7 +945,7 @@ export function ClosetOwnerManagePanel({
                 </NativeSelectRoot>
                 <PondButton
                   size="sm"
-                  colorPalette="teal"
+                  colorPalette="lilypad"
                   loading={markReturnedBusy}
                   disabled={!canMarkReturnedAsOwner}
                   onClick={() => void onMarkReturnedAsOwner()}

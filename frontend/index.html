@@ -8,34 +8,121 @@
       name="description"
       content="PondArbor is a community hub for quotes, lending through the community closet, PondClicker, and WhatIf—built by Pond Arbor Workshop for friends and family."
     />
-    <title>PondArbor</title>
+    <title>Pond Arbor</title>
   </head>
   <body>
     <div id="root">
       <main
         style="
-          font-family: Verdana, Geneva, 'DejaVu Sans', sans-serif;
-          max-width: 42rem;
-          margin: 0.5rem auto;
-          padding: 0 0.5rem;
+          --bg: #f6f7f8;
+          --surface: #ffffff;
+          --border: #cbd1d8;
+          --text: #3f4650;
+          --blue-dark: #4a86b8;
+          --blue-base: #7cb7df;
+          --green-base: #b7d394;
+          min-height: calc(100vh - 2rem);
+          font-family: 'Spinnaker', Verdana, Geneva, 'DejaVu Sans', sans-serif;
+          max-width: 64rem;
+          margin: 0.75rem auto;
+          padding: 0 0.5rem 0.5rem;
           line-height: 1.5;
+          color: var(--text);
+          background: var(--bg);
+          border: 1px solid var(--border);
+          border-radius: 24px;
+          overflow: hidden;
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
         "
       >
-        <h1>PondArbor</h1>
-        <p>
-          PondArbor is a hobby project developed by Pond Arbor Workshop to collect various app ideas
-          together in one place. It is shared with friends and family as an opportunity to interact
-          through quotes, a community closet, PondClicker, WhatIf, and other features.
-        </p>
-        <p><a href="/about/privacy">Privacy Policy</a></p>
+        <header
+          style="
+            background: var(--blue-dark);
+            color: #f6f7f8;
+            padding: 0.65rem 0.9rem;
+            border-bottom: 1px solid var(--border);
+          "
+        >
+          <h1
+            style="
+              margin: 0;
+              font-size: clamp(1.35rem, 4vw, 1.8rem);
+              line-height: 1.1;
+              font-family: 'Caprasimo', 'Spinnaker', Verdana, Geneva, 'DejaVu Sans', sans-serif;
+              font-weight: normal;
+              letter-spacing: 0.01em;
+            "
+          >
+            Pond Arbor
+          </h1>
+        </header>
+        <section style="padding: 0.75rem;">
+          <div
+            style="
+              background: var(--surface);
+              border: 1px solid var(--border);
+              border-radius: 18px;
+              padding: 0.8rem;
+            "
+          >
+            <p style="margin: 0 0 0.7rem;">
+              Welcome to Pond Arbor! This is a hobby project by Pond Arbor Workshop (Jack Conway) for friends and family to enjoy a variety of social and lifestyle apps and games.
+            </p>
+            <div
+              style="
+                display: flex;
+                gap: 0.35rem;
+                margin-top: 0.35rem;
+              "
+            >
+              <a
+                href="/about/privacy"
+                style="
+                  flex: 1 1 0;
+                  display: inline-block;
+                  text-align: center;
+                  text-decoration: none;
+                  border-radius: 999px;
+                  padding: 0.42rem 0.5rem;
+                  background: var(--green-base);
+                  color: #1f2937;
+                  font-weight: 600;
+                  font-size: 0.8rem;
+                  white-space: nowrap;
+                "
+              >
+                Privacy Policy
+              </a>
+              <a
+                href="/about/terms"
+                style="
+                  flex: 1 1 0;
+                  display: inline-block;
+                  text-align: center;
+                  text-decoration: none;
+                  border-radius: 999px;
+                  padding: 0.42rem 0.5rem;
+                  background: var(--blue-base);
+                  color: #ffffff;
+                  font-weight: 600;
+                  font-size: 0.8rem;
+                  white-space: nowrap;
+                "
+              >
+                Terms of Service
+              </a>
+            </div>
+          </div>
+        </section>
       </main>
       <noscript>
         <p
           style="
-            font-family: Verdana, Geneva, 'DejaVu Sans', sans-serif;
-            max-width: 42rem;
-            margin: 0.5rem auto;
+            font-family: 'Spinnaker', Verdana, Geneva, 'DejaVu Sans', sans-serif;
+            max-width: 64rem;
+            margin: 0.75rem auto;
             padding: 0 0.5rem;
+            color: #3f4650;
           "
         >
           JavaScript is required to sign in and use the full app.

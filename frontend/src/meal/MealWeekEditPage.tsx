@@ -197,7 +197,7 @@ export default function MealWeekEditPage() {
                 </NativeSelectField>
               </NativeSelectRoot>
               <PondButton
-                colorPalette="teal"
+                colorPalette="lilypad"
                 variant="outline"
                 disabled={!applyTemplateId || busy}
                 onClick={() => {

@@ -431,6 +431,37 @@ export default function CalendarPage() {
           py={{ base: "2", md: "2" }}
         >
           <Box {...APP_SHELL_TRAY_PROPS}>
+            <Stack
+              gap={{ base: "4", md: "4" }}
+              px={{ base: "2", md: "2" }}
+              pt={{ base: "2", md: "2" }}
+              pb="2"
+            >
+              <Box {...PANEL_ENTRY_CARD_PROPS}>
+                <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold" mb="2">
+                  <HStack as="span" display="inline-flex" gap="2" alignItems="center" flexWrap="wrap">
+                    <Text as="span" aria-hidden="true">
+                      🗓️
+                    </Text>
+                    <Text as="span">Calendar</Text>
+                    {loading && !hasLoadedOnceRef.current ? (
+                      <Text
+                        as="span"
+                        fontSize={APP_TEXT_SIZES.helper}
+                        color="fg.muted"
+                        fontWeight="medium"
+                        aria-live="polite"
+                      >
+                        Loading…
+                      </Text>
+                    ) : null}
+                  </HStack>
+                </Heading>
+                <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
+                  Track your plans, import Google calendars, and quickly scan shared availability.
+                </Text>
+              </Box>
+            </Stack>
             <Tabs.List {...APP_SHELL_TAB_LIST_PROPS}>
               <Tabs.Trigger value="month" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                 Month
@@ -495,7 +526,7 @@ export default function CalendarPage() {
                   </HStack>
                   <PondButton
                     size="sm"
-                    colorPalette="teal"
+                    colorPalette="lilypad"
                     onClick={() => setEventDialog({ mode: "create" })}
                     display={{ base: "none", md: "inline-flex" }}
                   >
@@ -506,7 +537,7 @@ export default function CalendarPage() {
                   <Text
                     fontSize={APP_TEXT_SIZES.helper}
                     color={
-                      notice.kind === "success" ? "forest.solid" : "nautical.solid"
+                      notice.kind === "success" ? "lilypad.solid" : "nautical.solid"
                     }
                     fontWeight="medium"
                   >
@@ -527,7 +558,7 @@ export default function CalendarPage() {
                         <HStack gap="2" align="stretch">
                           <PondButton
                             size="sm"
-                            colorPalette="teal"
+                            colorPalette="lilypad"
                             onClick={() => setEventDialog({ mode: "create" })}
                             flex="1"
                           >
@@ -536,10 +567,9 @@ export default function CalendarPage() {
                           <Collapsible.Trigger asChild>
                             <PondButton
                               size="sm"
-                              variant={peopleOpen ? "solid" : "outline"}
-                              colorPalette="sky"
-                              justifyContent="space-between"
-                              color={peopleOpen ? "white" : undefined}
+                              uiClass="filter"
+                              uiActive={peopleOpen}
+                              justifyContent="center"
                               flex="1"
                             >
                               Filter People
@@ -598,7 +628,7 @@ export default function CalendarPage() {
                   </Text>
                   <PondButton
                     size="sm"
-                    colorPalette="teal"
+                    colorPalette="lilypad"
                     onClick={() => setImportOpen(true)}
                   >
                     Import Google Calendar
@@ -608,7 +638,7 @@ export default function CalendarPage() {
                   <Text
                     fontSize={APP_TEXT_SIZES.helper}
                     color={
-                      notice.kind === "success" ? "forest.solid" : "nautical.solid"
+                      notice.kind === "success" ? "lilypad.solid" : "nautical.solid"
                     }
                     fontWeight="medium"
                   >

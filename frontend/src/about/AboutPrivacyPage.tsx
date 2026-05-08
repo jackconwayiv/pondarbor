@@ -189,7 +189,7 @@ export default function AboutPrivacyPage() {
             </Box>
 
             <Box>
-              <PondButton asChild size="sm" colorPalette="teal">
+              <PondButton asChild size="sm" colorPalette="lilypad">
                 <RouterLink to="/about">Back to About</RouterLink>
               </PondButton>
             </Box>

@@ -261,7 +261,7 @@ export function MealAddToWeekDialog({
           </>
         )}
         <PondButton
-          colorPalette="teal"
+          colorPalette="lilypad"
           loading={busy}
           disabled={busy || noTemplates || !selectedDayIso}
           onClick={() => void handleAdd()}

@@ -297,7 +297,7 @@ export default function MealMealDetailPage() {
                     Add to meal plan…
                   </PondButton>
                   <PondButton
-                    colorPalette="teal"
+                    colorPalette="lilypad"
                     onClick={() => {
                       setAddToPlanNotice(null);
                       setIsEditing(true);

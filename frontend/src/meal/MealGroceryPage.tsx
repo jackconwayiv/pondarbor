@@ -412,7 +412,7 @@ export default function MealGroceryPage() {
                         />
                         <PondButton
                           size="sm"
-                          colorPalette="teal"
+                          colorPalette="lilypad"
                           disabled={pantryPickId === ""}
                           onClick={() => {
                             if (pantryPickId === "") return;
@@ -475,7 +475,7 @@ export default function MealGroceryPage() {
                   </Text>
                   <HStack gap="2" flexWrap="wrap">
                     <PondButton
-                      colorPalette="teal"
+                      colorPalette="lilypad"
                       onClick={() => {
                         if (resolvedSelection === "") return;
                         void loadGroceryForInstance(Number(resolvedSelection)).catch((e) =>
@@ -804,7 +804,7 @@ function PantryRowEditor({
       {mode === "count" ? (
         <PondButton
           size="sm"
-          colorPalette="teal"
+          colorPalette="lilypad"
           loading={busy}
           onClick={() =>
             void onSave({

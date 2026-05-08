@@ -45,10 +45,14 @@ export const FIELD_PLACEHOLDER_PROPS = PANEL_FORM_PLACEHOLDER_PROPS;
 
 /** Bordered white fields + canonical placeholders (use for essentially all form controls on site panels). */
 export const PANEL_FIELD_PROPS = {
-  bg: "bg",
+  bg: "white",
   borderWidth: "1px",
   borderColor: "border",
-  borderRadius: "md",
+  borderRadius: "lg",
+  _focusVisible: {
+    borderColor: "sky.border",
+    boxShadow: "0 0 0 1px var(--chakra-colors-sky-border)",
+  },
   ...PANEL_FORM_PLACEHOLDER_PROPS,
 } as const;
 

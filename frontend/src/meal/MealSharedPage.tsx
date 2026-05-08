@@ -135,7 +135,7 @@ export default function MealSharedPage() {
                   From {m.author_display?.trim() || "Friend"}
                 </Text>
                 <PondButton
-                  colorPalette="teal"
+                  colorPalette="lilypad"
                   alignSelf="flex-start"
                   loading={copyBusyId === m.id}
                   disabled={copyBusyId != null}

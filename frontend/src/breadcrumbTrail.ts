@@ -1,6 +1,6 @@
 /**
  * Breadcrumb items for the current path. The last item is the current page (no `to`).
- * Returns null on the home index — no bar there.
+ * Returns null only when a route should not render breadcrumbs.
  */
 export type BreadcrumbItem = { label: string; to?: string };
 
@@ -17,7 +17,7 @@ function normalizePathname(pathname: string): string {
 
 /**
  * Breadcrumb trail for a path. `search` is used for a few multi-surface
- * routes (e.g. Profile tabs). Null when no bar (home index). Last item is
+ * routes (e.g. Profile tabs). Null when no bar. Last item is
  * always the current page (no `to`).
  */
 export function getBreadcrumbItems(
@@ -27,11 +27,18 @@ export function getBreadcrumbItems(
   const p = normalizePathname(pathname);
   const sp = new URLSearchParams(search || "");
   if (p === "/") {
-    return null;
+    return [{ label: "Home" }];
   }
 
   if (p === "/games") {
     return [HOME, { label: "Games" }];
+  }
+
+  if (p === "/clicker") {
+    return [HOME, { ...GAMES }, { label: "PondClicker" }];
+  }
+  if (p.startsWith("/clicker/")) {
+    return [HOME, { ...GAMES }, { label: "PondClicker" }];
   }
 
   if (p === "/create") {

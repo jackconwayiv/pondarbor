@@ -540,8 +540,9 @@ export default function ClosetPage() {
       hasNext,
       onPrev: goPrev,
       onNext: goNext,
+      onClose: closeExpanded,
     }),
-    [hasPrev, hasNext, goPrev, goNext],
+    [hasPrev, hasNext, goPrev, goNext, closeExpanded],
   );
 
   useEffect(() => {
@@ -937,7 +938,7 @@ export default function ClosetPage() {
                       <Text
                         color={
                           notice.kind === "success"
-                            ? "forest.solid"
+                            ? "lilypad.solid"
                             : "nautical.solid"
                         }
                         fontSize={APP_TEXT_SIZES.helper}
@@ -1010,7 +1011,7 @@ export default function ClosetPage() {
                           </Text>
                           {newItemImageBusy ? (
                             <HStack gap="2" align="center" color="fg">
-                              <Spinner size="sm" colorPalette="teal" />
+                              <Spinner size="sm" colorPalette="lilypad" />
                               <Text fontSize={APP_TEXT_SIZES.helper}>
                                 Uploading photo and saving item…
                               </Text>
@@ -1019,7 +1020,7 @@ export default function ClosetPage() {
                         </Stack>
                         <HStack>
                           <PondButton
-                            colorPalette="teal"
+                            colorPalette="lilypad"
                             loading={newItemImageBusy}
                             onClick={async () => {
                               setError(null);
@@ -1129,7 +1130,7 @@ export default function ClosetPage() {
                       flexWrap="nowrap"
                     >
                       <PondButton
-                        colorPalette="forest"
+                        colorPalette="lilypad"
                         color="white"
                         onClick={() => setIsAddItemOpen(true)}
                       >
@@ -1139,7 +1140,8 @@ export default function ClosetPage() {
                         <PondButton
                           type="button"
                           size="sm"
-                          colorPalette="teal"
+                          uiClass="filter"
+                          uiActive={filterToolsOpen}
                           onClick={() => setFilterToolsOpen(true)}
                         >
                           Filter &amp; sort
@@ -1213,7 +1215,7 @@ export default function ClosetPage() {
                               >
                                 <Stack gap="2">
                                   <HStack gap="1">
-                                    <Text fontWeight="bold" color="orange.solid">
+                                    <Text fontWeight="bold" color="nautical.solid">
                                       DECLINED REQUEST:
                                     </Text>
                                     <Text fontWeight="bold">{item.name}</Text>
@@ -1362,7 +1364,7 @@ export default function ClosetPage() {
                                   <HStack flexWrap="wrap">
                                     <PondButton
                                       size="sm"
-                                      colorPalette="teal"
+                                      colorPalette="lilypad"
                                       onClick={async () => {
                                         try {
                                           const token =
@@ -1470,7 +1472,7 @@ export default function ClosetPage() {
                                 closetReturnTo={ITEMS_RETURN_TO}
                                 dashedBorder
                                 titlePrefix={
-                                  <Text fontWeight="bold" color="orange.solid">
+                                  <Text fontWeight="bold" color="nautical.solid">
                                     {`${item.pending_request_count} ${
                                       item.pending_request_count === 1
                                         ? "REQUEST"
@@ -1489,7 +1491,7 @@ export default function ClosetPage() {
                                 closetReturnTo={ITEMS_RETURN_TO}
                                 dashedBorder
                                 titlePrefix={
-                                  <Text fontWeight="bold" color="orange.solid">
+                                  <Text fontWeight="bold" color="nautical.solid">
                                     {`BORROWED FROM ${displayName(
                                       item.owner_user,
                                     ).toUpperCase()}:`}
@@ -1546,7 +1548,7 @@ export default function ClosetPage() {
                                 closetReturnTo={ITEMS_RETURN_TO}
                                 dashedBorder
                                 titlePrefix={
-                                  <Text fontWeight="bold" color="forest.solid">
+                                  <Text fontWeight="bold" color="lilypad.solid">
                                     PENDING APPROVAL:
                                   </Text>
                                 }
@@ -1706,7 +1708,7 @@ export default function ClosetPage() {
                           <Stack gap="2">{filterControls}</Stack>
                           <HStack justify="flex-end" pt="3">
                             <PondButton
-                              colorPalette="teal"
+                              colorPalette="lilypad"
                               onClick={() => setFilterToolsOpen(false)}
                             >
                               Done
@@ -1771,7 +1773,7 @@ export default function ClosetPage() {
                     <HStack>
                       <PondButton
                         size="sm"
-                        colorPalette="nautical"
+                        colorPalette="sky"
                         disabled={gridPage <= 1}
                         onClick={() => setGridPage((p) => Math.max(1, p - 1))}
                       >
@@ -1779,7 +1781,7 @@ export default function ClosetPage() {
                       </PondButton>
                       <PondButton
                         size="sm"
-                        colorPalette="nautical"
+                        colorPalette="sky"
                         disabled={gridPage >= totalGridPages}
                         onClick={() =>
                           setGridPage((p) => Math.min(totalGridPages, p + 1))
@@ -1860,7 +1862,7 @@ export default function ClosetPage() {
                       color={
                         expandedNotice.kind === "error"
                           ? "nautical.solid"
-                          : "forest.solid"
+                          : "lilypad.solid"
                       }
                       role={
                         expandedNotice.kind === "error" ? "alert" : "status"
@@ -1933,7 +1935,7 @@ export default function ClosetPage() {
                       <Text
                         color={
                           imagesNotice.kind === "success"
-                            ? "forest.solid"
+                            ? "lilypad.solid"
                             : "nautical.solid"
                         }
                         fontSize={APP_TEXT_SIZES.helper}

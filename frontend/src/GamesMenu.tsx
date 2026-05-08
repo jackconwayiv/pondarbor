@@ -2,12 +2,11 @@ import { useAuth0 } from "@auth0/auth0-react";
 import {
   Box,
   HStack,
-  Link as ChakraLink,
   SimpleGrid,
   Stack,
   Text,
 } from "@chakra-ui/react";
-import { Link as RouterLink } from "react-router";
+import { Link as RouterLink, Navigate } from "react-router";
 
 import { useAppSession } from "./auth/AppSessionContext";
 import {
@@ -16,33 +15,18 @@ import {
   // auth0SlackLoginAuthorizationParams,
   // auth0SlackSignupAuthorizationParams,
 } from "./auth/auth0LoginParams";
+import SiteFooter from "./components/SiteFooter";
+import { canOpenGameTile, GAME_NAV_ITEMS } from "./gamesNavConfig";
 import PondButton from "./PondButton";
-import { fullBleedStackProps, viewPortWidthBarProps } from "./responsive";
-import { APP_SHELL_CONTENT_MAX_PROPS } from "./theme/typography";
-
-/** Harbormaster (`/harbor`) is not listed here until the game is public-ready. */
-const GAMES_NAV_ITEMS = [
-  { to: "/clicker", label: "PondClicker", emoji: "🪷" },
-  { to: "/whatif", label: "WhatIf", emoji: "🤔" },
-  {
-    to: "/qff",
-    label: "Quest For Fat IV (demo)",
-    emoji: "⚔️",
-  },
-  { to: "/", label: "Home", emoji: "⬅️" },
-] as const;
-
-function canOpenGameTile(
-  to: (typeof GAMES_NAV_ITEMS)[number]["to"],
-  isAuthenticated: boolean,
-): boolean {
-  if (to === "/clicker") return isAuthenticated;
-  return true;
-}
+import { fullBleedStackProps } from "./responsive";
+import { APP_SHELL_TRAY_PROPS, APP_TEXT_SIZES } from "./theme/typography";
 
 export default function GamesMenu() {
   const { loginWithRedirect } = useAuth0();
   const { isAuthenticated } = useAppSession();
+  if (!isAuthenticated) {
+    return <Navigate to="/" replace />;
+  }
 
   return (
     <Stack
@@ -54,209 +38,158 @@ export default function GamesMenu() {
       {...fullBleedStackProps}
     >
       <Box flex="1" w="100%" bg="bg" px={0} py={{ base: "2", md: "2" }}>
-        <Stack
-          gap={{ base: "4", md: "4" }}
-          align="flex-start"
-          {...APP_SHELL_CONTENT_MAX_PROPS}
-          px={{ base: "2", md: "2" }}
-        >
-          {!isAuthenticated ? (
-            <HStack gap="3" align="center" flexWrap="wrap" w="100%">
-              <PondButton
-                colorPalette="lilypad"
-                onClick={() =>
-                  loginWithRedirect({
-                    authorizationParams: auth0LoginAuthorizationParams(),
-                  })
-                }
-              >
-                Log in
-              </PondButton>
-              <PondButton
-                colorPalette="teal"
-                onClick={() =>
-                  loginWithRedirect({
-                    authorizationParams: auth0SignupAuthorizationParams(),
-                  })
-                }
-              >
-                Sign up
-              </PondButton>
-              {/* {auth0SlackLoginAuthorizationParams() ? (
+        <Box {...APP_SHELL_TRAY_PROPS}>
+          <Stack
+            gap={{ base: "4", md: "4" }}
+            align="flex-start"
+            px={{ base: "2", md: "2" }}
+            pt={{ base: "2", md: "2" }}
+            pb="2"
+          >
+            {!isAuthenticated ? (
+              <HStack gap="3" align="center" flexWrap="wrap" w="100%">
                 <PondButton
-                  colorPalette="gray"
-                  variant="outline"
+                  colorPalette="lilypad"
                   onClick={() =>
                     loginWithRedirect({
-                      authorizationParams: auth0SlackLoginAuthorizationParams()!,
+                      authorizationParams: auth0LoginAuthorizationParams(),
                     })
                   }
                 >
-                  Log in with Slack
+                  Log in
                 </PondButton>
-              ) : null}
-              {auth0SlackSignupAuthorizationParams() ? (
                 <PondButton
-                  colorPalette="gray"
-                  variant="outline"
+                  colorPalette="sky"
                   onClick={() =>
                     loginWithRedirect({
-                      authorizationParams: auth0SlackSignupAuthorizationParams()!,
+                      authorizationParams: auth0SignupAuthorizationParams(),
                     })
                   }
                 >
-                  Sign up with Slack
+                  Sign up
                 </PondButton>
-              ) : null} */}
-            </HStack>
-          ) : null}
-
-          <Text
-            fontSize="xs"
-            fontWeight="semibold"
-            textTransform="uppercase"
-            letterSpacing="wider"
-            color="fg.muted"
-            w="100%"
-          >
-            Play
-          </Text>
-          <SimpleGrid
-            as="ul"
-            w="100%"
-            maxW="100%"
-            p="0"
-            m="0"
-            listStyleType="none"
-            columns={{ base: 1, md: 3 }}
-            gap="2.5"
-            role="list"
-            aria-label="Games you can play"
-          >
-            {GAMES_NAV_ITEMS.map((item) => {
-              const canOpen = canOpenGameTile(item.to, isAuthenticated);
-              const cardBody = (
-                <HStack
-                  w="100%"
-                  align="center"
-                  gap="3"
-                  py="2.5"
-                  px="3"
-                  minH="11"
-                  _hover={canOpen ? { bg: "bg.subtle" } : undefined}
-                  transition="background 0.12s ease"
-                  cursor={canOpen ? "pointer" : "not-allowed"}
-                  opacity={canOpen ? 1 : 0.55}
-                >
-                  <Text as="span" fontSize="1.5rem" lineHeight="1" aria-hidden>
-                    {item.emoji}
-                  </Text>
-                  <Text
-                    as="span"
-                    fontSize="md"
-                    fontWeight="semibold"
-                    color="fg"
-                    lineClamp={2}
-                    flex="1"
-                    textAlign="left"
+                {/* {auth0SlackLoginAuthorizationParams() ? (
+                  <PondButton
+                    colorPalette="gray"
+                    variant="outline"
+                    onClick={() =>
+                      loginWithRedirect({
+                        authorizationParams: auth0SlackLoginAuthorizationParams()!,
+                      })
+                    }
                   >
-                    {item.label}
-                  </Text>
-                </HStack>
-              );
-              const content = canOpen ? (
-                <RouterLink
-                  to={item.to}
-                  style={{
-                    textDecoration: "none",
-                    color: "inherit",
-                    display: "block",
-                  }}
-                >
-                  {cardBody}
-                </RouterLink>
-              ) : (
-                <Box
-                  aria-label={`${item.label} (log in to open)`}
-                  display="block"
-                  w="100%"
-                >
-                  {cardBody}
-                </Box>
-              );
-              return (
-                <Box
-                  as="li"
-                  key={item.to}
-                  w="100%"
-                  listStyleType="none"
-                  borderWidth="1px"
-                  borderColor="border"
-                  borderRadius="lg"
-                  overflow="hidden"
-                  boxShadow="sm"
-                  bg="bg.subtle"
-                >
-                  {content}
-                </Box>
-              );
-            })}
-          </SimpleGrid>
-        </Stack>
-      </Box>
+                    Log in with Slack
+                  </PondButton>
+                ) : null}
+                {auth0SlackSignupAuthorizationParams() ? (
+                  <PondButton
+                    colorPalette="gray"
+                    variant="outline"
+                    onClick={() =>
+                      loginWithRedirect({
+                        authorizationParams: auth0SlackSignupAuthorizationParams()!,
+                      })
+                    }
+                  >
+                    Sign up with Slack
+                  </PondButton>
+                ) : null} */}
+              </HStack>
+            ) : null}
 
-      <Box
-        as="footer"
-        flexShrink={0}
-        bg="navy.solid"
-        mt="auto"
-        color="navy.fg"
-        {...viewPortWidthBarProps}
-      >
-        <Box py="2" px={{ base: "2", md: "2" }}>
-          <Box
-            display="flex"
-            flexDirection={{ base: "column", md: "row" }}
-            alignItems={{ base: "flex-end", md: "center" }}
-            justifyContent="flex-end"
-            flexWrap="wrap"
-            columnGap={{ md: "3" }}
-            rowGap="1"
-          >
-            <Text textAlign="right" fontSize="xs" color="inherit">
-              © 2026{" "}
-              <ChakraLink
-                asChild
-                color="inherit"
-                textDecoration="none"
-                _hover={{ color: "sky.solid", textDecoration: "none" }}
-              >
-                <RouterLink to="/about">Pond Arbor Workshop</RouterLink>
-              </ChakraLink>
-              . All rights reserved.
+            <Text
+              fontSize={APP_TEXT_SIZES.title}
+              fontWeight="semibold"
+              fontFamily="heading"
+              color="fg"
+              w="100%"
+            >
+              Choose your game:
             </Text>
-            <Text textAlign="right" fontSize="xs" color="inherit">
-              <ChakraLink
-                asChild
-                color="inherit"
-                textDecoration="none"
-                _hover={{ color: "sky.solid", textDecoration: "none" }}
-              >
-                <RouterLink to="/about/terms">Terms of Service</RouterLink>
-              </ChakraLink>{" "}
-              |{" "}
-              <ChakraLink
-                asChild
-                color="inherit"
-                textDecoration="none"
-                _hover={{ color: "sky.solid", textDecoration: "none" }}
-              >
-                <RouterLink to="/about/privacy">Privacy Policy</RouterLink>
-              </ChakraLink>
-            </Text>
-          </Box>
+            <SimpleGrid
+              as="ul"
+              w="100%"
+              maxW="100%"
+              p="0"
+              m="0"
+              listStyleType="none"
+              columns={{ base: 3, md: 3 }}
+              gap={{ base: "3", md: "4" }}
+              role="list"
+              aria-label="Games you can play"
+            >
+              {GAME_NAV_ITEMS.map((item) => {
+                const canOpen = canOpenGameTile(item.to, isAuthenticated);
+                const cardBody = (
+                  <Stack
+                    w="100%"
+                    align="center"
+                    justify="center"
+                    gap="1.5"
+                    py="2"
+                    px="1"
+                    minH="5.5rem"
+                    borderRadius="lg"
+                    _hover={canOpen ? { bg: "bg.subtle" } : undefined}
+                    transition="background 0.12s ease, transform 0.12s ease"
+                    cursor={canOpen ? "pointer" : "not-allowed"}
+                    opacity={canOpen ? 1 : 0.55}
+                    transform={canOpen ? "translateY(0)" : undefined}
+                  >
+                    <Text as="span" fontSize="2.2rem" lineHeight="1" aria-hidden>
+                      {item.emoji}
+                    </Text>
+                    <Text
+                      as="span"
+                      fontSize="sm"
+                      fontWeight="medium"
+                      color="fg"
+                      lineClamp={2}
+                      textAlign="center"
+                    >
+                      {item.label}
+                    </Text>
+                  </Stack>
+                );
+                const content = canOpen ? (
+                  <RouterLink
+                    to={item.to}
+                    style={{
+                      textDecoration: "none",
+                      color: "inherit",
+                      display: "block",
+                    }}
+                  >
+                    {cardBody}
+                  </RouterLink>
+                ) : (
+                  <Box
+                    aria-label={`${item.label} (log in to open)`}
+                    display="block"
+                    w="100%"
+                  >
+                    {cardBody}
+                  </Box>
+                );
+                return (
+                  <Box
+                    as="li"
+                    key={item.to}
+                    w="100%"
+                    listStyleType="none"
+                    display="flex"
+                    justifyContent="center"
+                  >
+                    {content}
+                  </Box>
+                );
+              })}
+            </SimpleGrid>
+          </Stack>
         </Box>
       </Box>
+
+      <SiteFooter />
     </Stack>
   );
 }

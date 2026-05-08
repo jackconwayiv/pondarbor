@@ -137,7 +137,7 @@ export default function EventFormDialog({
         <HStack justify="space-between" flexWrap="wrap" gap="2">
           <HStack gap="2">
             <PondButton
-              colorPalette="teal"
+              colorPalette="lilypad"
               loading={saving}
               onClick={handleSubmit}
             >

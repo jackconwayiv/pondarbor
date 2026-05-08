@@ -435,7 +435,7 @@ export default function ProfilePage() {
           />
           <Box {...PROFILE_ENTRY_CARD_PROPS}>
             <HStack gap="3" align="center" flexWrap="wrap">
-              <PondButton size="sm" colorPalette="teal" onClick={switchUser}>
+              <PondButton size="sm" colorPalette="lilypad" onClick={switchUser}>
                 Switch user
               </PondButton>
               <PondButton size="sm" colorPalette="nautical" onClick={logout}>
@@ -606,7 +606,7 @@ export default function ProfilePage() {
                   {!isEditing ? (
                     <PondButton
                       size="sm"
-                      colorPalette="teal"
+                      colorPalette="lilypad"
                       alignSelf="flex-start"
                       onClick={() => {
                         setSaveError(null);
@@ -685,7 +685,7 @@ export default function ProfilePage() {
                             </PondButton>
                             <PondButton
                               size="sm"
-                              colorPalette="teal"
+                              colorPalette="lilypad"
                               loading={isImagePickerLoading}
                               disabled={
                                 fieldBusy("avatar_url") || isAvatarUploading
@@ -760,7 +760,7 @@ export default function ProfilePage() {
                               <HStack>
                                 <PondButton
                                   size="sm"
-                                  colorPalette="teal"
+                                  colorPalette="lilypad"
                                   loading={isAvatarUploading}
                                   disabled={
                                     isAvatarUploading ||
@@ -911,7 +911,7 @@ export default function ProfilePage() {
                       <HStack gap="2" pt="2">
                         <PondButton
                           size="sm"
-                          colorPalette="teal"
+                          colorPalette="lilypad"
                           onClick={() => void commitAllFields()}
                           loading={isSavingAny}
                           disabled={isSavingAny}
@@ -986,7 +986,7 @@ export default function ProfilePage() {
                     <HStack gap="3" align="center" flexShrink={0}>
                       <PondButton
                         size="sm"
-                        colorPalette="teal"
+                        colorPalette="lilypad"
                         onClick={switchUser}
                       >
                         Switch user
@@ -1010,7 +1010,7 @@ export default function ProfilePage() {
                     {!user.is_approved ? (
                       <Text
                         fontSize={APP_TEXT_SIZES.body}
-                        color="orange.solid"
+                        color="nautical.solid"
                         fontWeight="medium"
                       >
                         {user.account_status === "pending"

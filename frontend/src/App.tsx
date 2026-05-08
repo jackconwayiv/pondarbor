@@ -87,10 +87,10 @@ function HomeAppNavList({
             w="100%"
             align="center"
             justify="center"
-            gap="1.5"
-            py="2"
+            gap="1"
+            py="1"
             px="1"
-            minH="5.5rem"
+            minH="4.5rem"
             borderRadius="lg"
             _hover={canOpen ? { bg: "bg.subtle" } : undefined}
             transition="background 0.12s ease, transform 0.12s ease"
@@ -167,10 +167,10 @@ function HomeGamesNavList({ isAuthenticated }: { isAuthenticated: boolean }) {
             w="100%"
             align="center"
             justify="center"
-            gap="1.5"
-            py="2"
+            gap="1"
+            py="1"
             px="1"
-            minH="5.5rem"
+            minH="4.5rem"
             borderRadius="lg"
             _hover={canOpen ? { bg: "bg.subtle" } : undefined}
             transition="background 0.12s ease, transform 0.12s ease"
@@ -240,14 +240,14 @@ function App() {
 
   return (
     <Stack flex="1" minH="full" gap="0" align="stretch" w="100%" {...fullBleedStackProps}>
-      <Box flex="1" bg="bg" w="100%" px={0} py={{ base: "2", md: "2" }}>
+      <Box flex="1" bg="bg" w="100%" px={0} py={{ base: "1", md: "1" }}>
         <Box {...APP_SHELL_TRAY_PROPS}>
           <Stack
-            gap={{ base: "6", md: "4" }}
+            gap={{ base: "4", md: "3" }}
             align="stretch"
             px={{ base: "2", md: "2" }}
-            pt={{ base: "3", md: "3" }}
-            pb="2"
+            pt={{ base: "2", md: "2" }}
+            pb="1"
           >
             <Stack gap="1" w="100%" align="center" textAlign="center">
               <Heading as="h1" fontSize={APP_TEXT_SIZES.display} lineHeight="shorter">
@@ -305,7 +305,7 @@ function App() {
               <>
                 <Box w="100%" borderTopWidth="2px" borderColor="border" />
 
-                <Stack gap={{ base: "4", md: "4" }} align="center" w="100%" pt="0">
+                <Stack gap={{ base: "2", md: "2" }} align="center" w="100%" pt="0">
                   <Text
                     fontSize={APP_TEXT_SIZES.label}
                     fontWeight="semibold"
@@ -323,7 +323,7 @@ function App() {
 
                 <Box w="100%" borderTopWidth="2px" borderColor="border" />
 
-                <Stack gap={{ base: "4", md: "4" }} align="center" w="100%">
+                <Stack gap={{ base: "2", md: "2" }} align="center" w="100%">
                   <Text
                     fontSize={APP_TEXT_SIZES.label}
                     fontWeight="semibold"
@@ -339,7 +339,7 @@ function App() {
             ) : (
               <>
                 <Box w="100%" borderTopWidth="2px" borderColor="border" />
-                <Stack gap={{ base: "4", md: "4" }} align="center" w="100%">
+                <Stack gap={{ base: "2", md: "2" }} align="center" w="100%">
                   <Text
                     fontSize={APP_TEXT_SIZES.label}
                     fontWeight="semibold"

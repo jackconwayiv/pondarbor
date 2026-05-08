@@ -55,9 +55,15 @@ function HomeAppNavList({
     "/quotes": 3,
     "/meal": 4,
     "/profile?tab=friends": 5,
-    "/games": 6,
-    "/whatif": 7,
-    "/about": 8,
+    "/profile": 6,
+    "/games": 7,
+    "/whatif": 8,
+    "/about": 9,
+  };
+  // Home-grid-only label overrides; nav/hamburger keep the canonical labels.
+  const HOME_APP_LABEL_OVERRIDES: Record<string, string> = {
+    "/profile?tab=friends": "My Friends",
+    "/profile": "My Profile",
   };
   const orderedItems = [...items].sort((a, b) => {
     const ai = HOME_APP_ORDER[a.to] ?? Number.MAX_SAFE_INTEGER;
@@ -82,6 +88,7 @@ function HomeAppNavList({
           isAuthenticated ||
           item.to === "/about" ||
           item.to === "/whatif";
+        const displayLabel = HOME_APP_LABEL_OVERRIDES[item.to] ?? item.label;
         const cardBody = (
           <Stack
             w="100%"
@@ -109,7 +116,7 @@ function HomeAppNavList({
               lineClamp={2}
               textAlign="center"
             >
-              {item.label}
+              {displayLabel}
             </Text>
           </Stack>
         );
@@ -122,7 +129,7 @@ function HomeAppNavList({
           </RouterLink>
         ) : (
           <Box
-            aria-label={`${item.label} (log in to open)`}
+            aria-label={`${displayLabel} (log in to open)`}
             display="block"
             w="100%"
           >

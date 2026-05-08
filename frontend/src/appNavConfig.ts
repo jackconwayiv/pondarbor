@@ -94,8 +94,16 @@ const FRIENDS: AppNavItem = {
   blurb: "Find and browse your friends.",
 };
 
+const PROFILE: AppNavItem = {
+  to: "/profile",
+  /** Matches `ProfilePage` h1 default tab. */
+  emoji: "👤",
+  label: "Profile",
+  blurb: "Your profile and account settings.",
+};
+
 /** Home app grid order (games rendered as a separate section on home). */
-export const APP_HOME_APPS: AppNavItem[] = [SONGADAY, CALENDAR, CLOSET, QUOTES, MEAL, FRIENDS, ABOUT];
+export const APP_HOME_APPS: AppNavItem[] = [SONGADAY, CALENDAR, CLOSET, QUOTES, MEAL, FRIENDS, PROFILE, ABOUT];
 
 /** Top bar + hamburger order mirrors home icons, with Games inserted before About. */
 export const APP_DESKTOP_NAV: AppNavItem[] = [

@@ -40,7 +40,7 @@ export default function BigThreeStrip(props: {
           p={{ base: "4", md: "5" }}
           boxShadow="sm"
         >
-          <Text fontSize={APP_TEXT_SIZES.label} fontWeight="semibold" color="fg.muted">
+          <Text fontSize={APP_TEXT_SIZES.label} fontWeight="semibold" color={t.accent.labelColor}>
             {t.label}
           </Text>
           <Text
@@ -48,7 +48,7 @@ export default function BigThreeStrip(props: {
             fontWeight="bold"
             fontFamily="heading"
             textTransform="capitalize"
-            color="fg"
+            color={t.accent.valueColor}
             lineHeight="short"
             mt="1"
           >

@@ -6,6 +6,13 @@
 export const DESIGN = {
   /** Base layers */
   cloudWhite: "#F6F7F8",
+  /** Brand gray scale (light / medium / dark column bases) */
+  grayLightBase: "#E5E7EB",
+  grayMediumBase: "#CBD1D8",
+  grayDarkBase: "#9CA3AF",
+  grayLightBorder: "#D1D5DB",
+  grayMediumBorder: "#9CA3AF",
+  grayDarkBorder: "#6B7280",
   mediumGray: "#CBD1D8",
   surface: "#FFFFFF",
   surfaceTint: "#F6F7F8",

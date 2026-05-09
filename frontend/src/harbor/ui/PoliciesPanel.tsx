@@ -32,7 +32,7 @@ export default function PoliciesPanel({ state, catalog, onToggle }: Props) {
   return (
     <section className="harbor-panel">
       <div className="harbor-panel__header">
-        <span className="harbor-panel__title">Policies</span>
+        <span className="harbor-panel__title">Enact a harbor policy</span>
         <span className="harbor-panel__hint">
           {state.activePolicies.length} active
         </span>
@@ -58,7 +58,7 @@ export default function PoliciesPanel({ state, catalog, onToggle }: Props) {
                           /day: {fmtMap(def.extra.per_day_metric_effects)}
                         </span>
                       )}
-                    {cost > 0 && <span className="harbor-chip">⚓ {cost}</span>}
+                    {cost > 0 && <span className="harbor-chip">{cost} ⚓</span>}
                     {isActive && (
                       <span className="harbor-chip harbor-chip--good">Active</span>
                     )}

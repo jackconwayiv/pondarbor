@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from django.db.models.signals import post_delete, post_save
 
-from .models import HARBOR_DEF_MODELS, HarborCatalogVersion
+from .models import HARBOR_DEF_MODELS, HarborCatalogVersion, HarborStageUnlock
 
 
 def _bump_catalog_version() -> None:
@@ -35,3 +35,13 @@ def register_catalog_version_signals() -> None:
             sender=model_cls,
             dispatch_uid=f"harbor_def_delete_{model_cls.__name__}",
         )
+    post_save.connect(
+        _on_def_changed,
+        sender=HarborStageUnlock,
+        dispatch_uid="harbor_stage_unlock_save",
+    )
+    post_delete.connect(
+        _on_def_changed,
+        sender=HarborStageUnlock,
+        dispatch_uid="harbor_stage_unlock_delete",
+    )

@@ -1,24 +1,26 @@
 /**
- * Harbormaster play route (`/harbor/play/:gameId`).
+ * Harbormaster play route (`/harbor/play`).
  *
  * State machine: loading → idle → cinematic → newDay → idle (after end-day).
  */
 
 import { useAuth0 } from "@auth0/auth0-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
 import { auth0LoginAuthorizationParams } from "../auth/auth0LoginParams";
 import {
   fetchHarborCatalog,
   fetchHarborGameState,
+  listHarborGames,
   normalizeHarborState,
+  pickActiveHarborGame,
   saveHarborGameState,
 } from "./api";
 import {
-  computeAge1VoyagePromisedRewards,
-  deriveCommandReserved,
+  deriveEffectiveBerthCap,
+  deriveTotalCommandReserved,
 } from "./engine/derive";
 import {
   EngineError,
@@ -28,6 +30,7 @@ import {
   cancelQueuedAge1Departure,
   createDefaultHarborState,
   declineArrival,
+  dismissMorningReport,
   queueAge1Departure,
   reassignShipBerth,
   resolveEvent,
@@ -41,9 +44,10 @@ import type {
   EventSnapshot,
   HarborCatalog,
   HarborState,
+  ShipDefExtra,
   StageId,
 } from "./engine/types";
-import { getStageDef } from "./stages";
+import { getStageDef, hydrateStageUnlocksFromCatalog } from "./stages";
 import ArrivalsPanel from "./ui/ArrivalsPanel";
 import BerthBoard from "./ui/BerthBoard";
 import BuildingsPanel from "./ui/BuildingsPanel";
@@ -52,7 +56,9 @@ import DoctrinePanel from "./ui/DoctrinePanel";
 import EndDayCinematic from "./ui/EndDayCinematic";
 import EventsPanel from "./ui/EventsPanel";
 import Hud from "./ui/Hud";
+import HarborAtAGlancePanel from "./ui/HarborAtAGlancePanel";
 import LogPanel from "./ui/LogPanel";
+import ObjectivesPanel from "./ui/ObjectivesPanel";
 import OperationsPanel from "./ui/OperationsPanel";
 import PoliciesPanel from "./ui/PoliciesPanel";
 import ShipUpgradesPanel from "./ui/ShipUpgradesPanel";
@@ -60,13 +66,30 @@ import "./harborStyles.css";
 
 type Phase = "loading" | "idle" | "cinematic" | "newDay" | "saving" | "error";
 
+function catalogShowsShipwrightTab(
+  catalog: HarborCatalog,
+  stageId: StageId,
+): boolean {
+  if (stageId !== 1) return false;
+  if ((catalog.ship_upgrades?.length ?? 0) > 0) return true;
+  return catalog.ships.some(
+    (s) =>
+      s.enabled &&
+      s.stage_min <= stageId &&
+      (s.stage_max == null || s.stage_max >= stageId) &&
+      (s.extra as ShipDefExtra).shipwright_purchase != null,
+  );
+}
+
 export default function HarborRoute() {
   const { loginWithRedirect } = useAuth0();
   const { isAuthenticated, isLoading: sessionLoading, getApiAccessToken } =
     useAppSession();
-  const { gameId: gameIdParam } = useParams();
   const [searchParams] = useSearchParams();
-  const gameId = gameIdParam ? Number.parseInt(gameIdParam, 10) : Number.NaN;
+  /** Resolved after listing saves — same “active” rule as the lobby. */
+  const [gameId, setGameId] = useState<number | null>(null);
+  const [harborGameName, setHarborGameName] = useState("");
+  const [noHarborSave, setNoHarborSave] = useState(false);
 
   const [phase, setPhase] = useState<Phase>("loading");
   const [error, setError] = useState<string | null>(null);
@@ -78,12 +101,11 @@ export default function HarborRoute() {
     "idle" | "saving" | "saved" | "error"
   >("idle");
   const [lastSavedDay, setLastSavedDay] = useState<number | null>(null);
-  const [departureCandidate, setDepartureCandidate] = useState<string | null>(
-    null,
-  );
-  const [harborTab, setHarborTab] = useState<"traffic" | "build" | "upgrades">(
-    "traffic",
-  );
+  const [endDayConfirmOpen, setEndDayConfirmOpen] = useState(false);
+  const [harborTab, setHarborTab] = useState<
+    "traffic" | "build" | "upgrades" | "objectives" | "log" | "help"
+  >("traffic");
+  const briefingResumeRef = useRef(false);
   const stateRef = useRef<HarborState | null>(null);
   stateRef.current = state;
 
@@ -95,15 +117,30 @@ export default function HarborRoute() {
   }, [searchParams]);
 
   useEffect(() => {
-    if (!isAuthenticated || !Number.isFinite(gameId)) return;
+    if (!isAuthenticated) return;
     let cancelled = false;
     (async () => {
       try {
         setPhase("loading");
+        setNoHarborSave(false);
+        setGameId(null);
+        setHarborGameName("");
+        setError(null);
         const token = await getApiAccessToken();
         const cat = await fetchHarborCatalog(token);
+        hydrateStageUnlocksFromCatalog(cat.stage_unlocks);
         if (cancelled) return;
-        const stateResp = await fetchHarborGameState(token, gameId);
+        const { games } = await listHarborGames(token);
+        if (cancelled) return;
+        const active = pickActiveHarborGame(games);
+        if (!active) {
+          setNoHarborSave(true);
+          setPhase("idle");
+          return;
+        }
+        setGameId(active.id);
+        setHarborGameName(active.name);
+        const stateResp = await fetchHarborGameState(token, active.id);
         if (cancelled) return;
         const normalized = stateResp.state
           ? normalizeHarborState(stateResp.state, cat, initialStageId)
@@ -120,21 +157,109 @@ export default function HarborRoute() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, getApiAccessToken, gameId, initialStageId]);
+  }, [isAuthenticated, getApiAccessToken, initialStageId]);
 
   useEffect(() => {
     setHarborTab("traffic");
+    briefingResumeRef.current = false;
   }, [gameId]);
+
+  useEffect(() => {
+    if (!isAuthenticated) setGameId(null);
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!state || !catalog || phase !== "idle") return;
+    if (briefingResumeRef.current) return;
+    const pm = state.pendingMorningReport;
+    if (!pm || pm.gameDay !== state.day) return;
+    briefingResumeRef.current = true;
+    setDayResult({
+      state,
+      newEvents: pm.newEvents,
+      newArrivals: pm.newArrivals,
+      resolvedOperations: [],
+      dailyReportLines: pm.dailyReportLines,
+      businessReportLines: pm.businessReportLines,
+    });
+    setPhase("newDay");
+  }, [state, catalog, phase]);
 
   useEffect(() => {
     if (!catalog || !state) return;
     const panels = new Set(getStageDef(state.stageId).panels);
     const hasBuildings = panels.has("buildings");
-    const hasUpgrades =
-      state.stageId === 1 && (catalog.ship_upgrades?.length ?? 0) > 0;
+    const hasUpgrades = catalogShowsShipwrightTab(catalog, state.stageId);
     if (harborTab === "build" && !hasBuildings) setHarborTab("traffic");
     if (harborTab === "upgrades" && !hasUpgrades) setHarborTab("traffic");
   }, [catalog, state, harborTab]);
+
+  const affordableBuildings = useMemo(() => {
+    if (!catalog || !state) return 0;
+    const panels = new Set(getStageDef(state.stageId).panels);
+    if (!panels.has("buildings")) return 0;
+    let n = 0;
+    for (const def of catalog.buildings) {
+      if (
+        !def.enabled ||
+        def.stage_min > state.stageId ||
+        (def.stage_max != null && def.stage_max < state.stageId)
+      ) {
+        continue;
+      }
+      const owned = state.buildings.find((b) => b.slug === def.slug);
+      const level = owned?.level ?? 0;
+      const maxLevel =
+        def.extra.max_level ?? def.extra.level_costs?.length ?? 1;
+      if (level >= maxLevel) continue;
+      const nextCost = def.extra.level_costs?.[level] ?? {};
+      const insufficient = Object.entries(nextCost).some(
+        ([k, v]) => (state.resources as Record<string, number>)[k] < (v as number),
+      );
+      if (!insufficient && state.command >= 1) n += 1;
+    }
+    return n;
+  }, [catalog, state]);
+
+  const affordableUpgrades = useMemo(() => {
+    if (!catalog || !state || state.stageId !== 1) return 0;
+    let n = 0;
+    const upgrades = catalog.ship_upgrades ?? [];
+    for (const up of upgrades) {
+      const cost = up.extra.cost ?? {};
+      const insufficient = Object.entries(cost).some(
+        ([k, v]) => (state.resources as Record<string, number>)[k] < (v as number),
+      );
+      const shipOk = state.ships.some(
+        (s) =>
+          (s.status === "mooring" || s.status === "berthed") &&
+          !(s.attachments ?? []).includes(up.slug),
+      );
+      if (!insufficient && state.command >= 1 && shipOk) n += 1;
+    }
+    const cap = deriveEffectiveBerthCap(state, catalog);
+    const slotsUsed =
+      state.ships.length + (state.pendingHullOrders ?? []).length;
+    const berthOk = slotsUsed < cap;
+    for (const def of catalog.ships) {
+      if (
+        !def.enabled ||
+        def.stage_min > state.stageId ||
+        (def.stage_max != null && def.stage_max < state.stageId)
+      ) {
+        continue;
+      }
+      const purchase = (def.extra as ShipDefExtra).shipwright_purchase;
+      if (!purchase) continue;
+      const cost = purchase.cost ?? {};
+      const insufficient = Object.entries(cost).some(
+        ([k, v]) => (state.resources as Record<string, number>)[k] < (v as number),
+      );
+      const cmdCost = Math.max(0, Math.floor(purchase.command ?? 1));
+      if (!insufficient && state.command >= cmdCost && berthOk) n += 1;
+    }
+    return n;
+  }, [catalog, state]);
 
   const apply = useCallback(
     (mutate: (s: HarborState, c: HarborCatalog) => HarborState) => {
@@ -192,17 +317,20 @@ export default function HarborRoute() {
     [apply],
   );
 
-  const handleRequestDeparture = useCallback((shipId: string) => {
-    setDepartureCandidate(shipId);
-  }, []);
+  const handleQueueDeparture = useCallback(
+    (shipId: string) => apply((s, c) => queueAge1Departure(s, c, shipId)),
+    [apply],
+  );
 
   const handleCancelQueuedDeparture = useCallback(
     (shipId: string) => apply((s) => cancelQueuedAge1Departure(s, shipId)),
     [apply],
   );
 
-  const handleEndDay = useCallback(async () => {
-    if (!state || !catalog || !Number.isFinite(gameId)) return;
+  const performEndDay = useCallback(async () => {
+    if (!state || !catalog || gameId === null) return;
+    setEndDayConfirmOpen(false);
+    setHarborTab("traffic");
     const result = advanceDay(state, catalog);
     setDayResult(result);
     setState(result.state);
@@ -221,28 +349,33 @@ export default function HarborRoute() {
     }
   }, [state, catalog, getApiAccessToken, gameId]);
 
+  const handleEndDayClick = useCallback(() => {
+    if (!state || !catalog || gameId === null) return;
+    const reserved = deriveTotalCommandReserved(state);
+    const unspent = state.command - reserved;
+    if (unspent > 0) {
+      setEndDayConfirmOpen(true);
+      return;
+    }
+    void performEndDay();
+  }, [state, catalog, gameId, performEndDay]);
+
+  useEffect(() => {
+    if (!endDayConfirmOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setEndDayConfirmOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [endDayConfirmOpen]);
+
   const onCinematicDone = useCallback(() => setPhase("newDay"), []);
   const onDaybreakDone = useCallback(() => {
+    setState((prev) => (prev ? dismissMorningReport(prev) : prev));
     setPhase("idle");
     setDayResult(null);
+    setHarborTab("traffic");
   }, []);
-
-  if (!Number.isFinite(gameId)) {
-    return (
-      <div className="harbor-route">
-        <div className="harbor-route__inner">
-          <div className="harbor-panel">
-            <span className="harbor-panel__title">Invalid harbor</span>
-            <p style={{ marginTop: "0.5rem" }}>
-              <Link to="/harbor" className="harbor-lobby-link">
-                ← Back to lobby
-              </Link>
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   if (sessionLoading || phase === "loading") {
     return (
@@ -250,6 +383,26 @@ export default function HarborRoute() {
         <div className="harbor-route__inner">
           <div className="harbor-panel">
             <span className="harbor-panel__title">Loading harbor…</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isAuthenticated && noHarborSave) {
+    return (
+      <div className="harbor-route">
+        <div className="harbor-route__inner">
+          <div className="harbor-panel">
+            <span className="harbor-panel__title">No harbor yet</span>
+            <p style={{ marginTop: "0.5rem", color: "var(--harbor-text-dim)" }}>
+              Start from your harbormaster&apos;s office first.
+            </p>
+            <p style={{ marginTop: "0.75rem" }}>
+              <Link to="/harbor" className="harbor-lobby-link">
+                ← Office (lobby)
+              </Link>
+            </p>
           </div>
         </div>
       </div>
@@ -305,11 +458,10 @@ export default function HarborRoute() {
   const stage = getStageDef(state.stageId);
   const visiblePanels = new Set(stage.panels);
   const showBuildingsTab = visiblePanels.has("buildings");
-  const showUpgradesTab =
-    state.stageId === 1 && (catalog.ship_upgrades?.length ?? 0) > 0;
-  const showHarborTabs = showBuildingsTab || showUpgradesTab;
+  const showUpgradesTab = catalogShowsShipwrightTab(catalog, state.stageId);
   const cinematicActive = phase === "cinematic" || phase === "newDay";
-  const reserved = deriveCommandReserved(state);
+  const reserved = deriveTotalCommandReserved(state);
+  const unspentCommand = Math.max(0, state.command - reserved);
   const canEndDay =
     !cinematicActive && state.command >= reserved && state.command >= 0;
   const saveHint =
@@ -317,41 +469,17 @@ export default function HarborRoute() {
       ? "Saving…"
       : saveStatus === "error"
         ? "Save failed — changes kept locally"
-        : lastSavedDay != null
-          ? `Progress saves when you end the day · last saved after day ${lastSavedDay}`
-          : "Progress saves when you end the day";
-
-  const depShip = departureCandidate
-    ? state.ships.find((s) => s.id === departureCandidate)
-    : null;
-  const depDef = depShip
-    ? catalog.ships.find((s) => s.slug === depShip.defSlug)
-    : null;
-  const depYield =
-    departureCandidate && depShip
-      ? computeAge1VoyagePromisedRewards(state, catalog, departureCandidate)
-      : {};
-  const yieldHint = Object.entries(depYield)
-    .filter(([, v]) => (v ?? 0) > 0)
-    .map(([k, v]) => {
-      const sym =
-        k === "food" ? "🐟" : k === "timber" ? "🪵" : k === "wealth" ? "🪙" : "";
-      return `${sym} +${v} ${k}`;
-    })
-    .join(" · ");
+        : "";
 
   return (
     <div className="harbor-route">
       <div className="harbor-route__inner">
-        <p style={{ margin: "0.25rem 0", fontSize: "0.85rem" }}>
-          <Link to="/harbor" style={{ color: "var(--harbor-info)" }}>
-            ← Harbor lobby
-          </Link>
-        </p>
         <Hud
           state={state}
           stage={stage}
-          onEndDay={() => void handleEndDay()}
+          catalog={catalog}
+          harborName={harborGameName.trim() || "Harbor"}
+          onEndDay={() => void handleEndDayClick()}
           canEndDay={canEndDay}
           saveHint={saveHint}
         />
@@ -366,16 +494,16 @@ export default function HarborRoute() {
           <EventsPanel state={state} onResolve={handleResolveEvent} />
         )}
 
-        {showHarborTabs ? (
-          <div className="harbor-main-tabs" role="tablist" aria-label="Harbor view">
+        <div className="harbor-main-tabs" role="tablist" aria-label="Harbor view">
             <button
               type="button"
               role="tab"
+              aria-label="Harbor traffic"
               aria-selected={harborTab === "traffic"}
               className={`harbor-main-tabs__btn${harborTab === "traffic" ? " harbor-main-tabs__btn--active" : ""}`}
               onClick={() => setHarborTab("traffic")}
             >
-              Harbor Traffic
+              ⚓
             </button>
             {showBuildingsTab ? (
               <button
@@ -387,6 +515,7 @@ export default function HarborRoute() {
                 onClick={() => setHarborTab("build")}
               >
                 🏗️
+                {affordableBuildings > 0 ? ` (${affordableBuildings})` : ""}
               </button>
             ) : null}
             {showUpgradesTab ? (
@@ -399,19 +528,49 @@ export default function HarborRoute() {
                 onClick={() => setHarborTab("upgrades")}
               >
                 🚢
+                {affordableUpgrades > 0 ? ` (${affordableUpgrades})` : ""}
               </button>
             ) : null}
+            <button
+              type="button"
+              role="tab"
+              aria-label="Objectives"
+              aria-selected={harborTab === "objectives"}
+              className={`harbor-main-tabs__btn${harborTab === "objectives" ? " harbor-main-tabs__btn--active" : ""}`}
+              onClick={() => setHarborTab("objectives")}
+            >
+              🎯
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-label="Harbor log"
+              aria-selected={harborTab === "log"}
+              className={`harbor-main-tabs__btn${harborTab === "log" ? " harbor-main-tabs__btn--active" : ""}`}
+              onClick={() => setHarborTab("log")}
+            >
+              📜
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-label="How to Play"
+              aria-selected={harborTab === "help"}
+              className={`harbor-main-tabs__btn${harborTab === "help" ? " harbor-main-tabs__btn--active" : ""}`}
+              onClick={() => setHarborTab("help")}
+            >
+              ❓
+            </button>
           </div>
-        ) : null}
 
-        {(!showHarborTabs || harborTab === "traffic") && (
+        {harborTab === "traffic" && (
           <>
             <BerthBoard
               state={state}
               catalog={catalog}
               onReassign={handleReassign}
-              onRequestDeparture={
-                state.stageId === 1 ? handleRequestDeparture : undefined
+              onQueueDeparture={
+                state.stageId === 1 ? handleQueueDeparture : undefined
               }
               onCancelQueuedDeparture={
                 state.stageId === 1 ? handleCancelQueuedDeparture : undefined
@@ -449,7 +608,18 @@ export default function HarborRoute() {
           <ShipUpgradesPanel state={state} catalog={catalog} onApply={apply} />
         ) : null}
 
-        {visiblePanels.has("policies") && (
+        {harborTab === "objectives" ? (
+          <ObjectivesPanel state={state} catalog={catalog} stage={stage} />
+        ) : null}
+
+        {harborTab === "log" ? <LogPanel state={state} /> : null}
+
+        {harborTab === "help" ? <HarborAtAGlancePanel /> : null}
+
+        {harborTab !== "log" &&
+          harborTab !== "help" &&
+          harborTab !== "objectives" &&
+          visiblePanels.has("policies") && (
           <PoliciesPanel
             state={state}
             catalog={catalog}
@@ -457,7 +627,10 @@ export default function HarborRoute() {
           />
         )}
 
-        {visiblePanels.has("doctrine") && (
+        {harborTab !== "log" &&
+          harborTab !== "help" &&
+          harborTab !== "objectives" &&
+          visiblePanels.has("doctrine") && (
           <DoctrinePanel
             state={state}
             stage={stage}
@@ -465,55 +638,56 @@ export default function HarborRoute() {
             onChoose={handleChooseDoctrine}
           />
         )}
-
-        <LogPanel state={state} />
       </div>
 
-      {departureCandidate && depShip && (
+      {endDayConfirmOpen ? (
         <div
-          className="harbor-daybreak"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="dep-title"
+          className="harbor-end-confirm"
+          role="presentation"
+          onClick={() => setEndDayConfirmOpen(false)}
         >
-          <div className="harbor-daybreak__card">
-            <div id="dep-title" className="harbor-daybreak__title">
-              Confirm departure
-            </div>
-            <div className="harbor-daybreak__hint">
-              {depDef?.name ?? depShip.defSlug}: costs 1 command at end of day,
-              spends {Math.max(1, depDef?.extra.voyage_nights ?? 1)} night
-              {depDef?.extra.voyage_nights === 1 ? "" : "s"} at sea (returns next
-              open day), yields promised cargo when berthed.
-              {yieldHint ? (
-                <>
-                  <br />
-                  <strong>Promised yield:</strong> {yieldHint}
-                </>
-              ) : null}
-            </div>
-            <div className="harbor-row" style={{ justifyContent: "center" }}>
+          <div
+            className="harbor-end-confirm__card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="harbor-end-confirm-title"
+          >
+            <p id="harbor-end-confirm-title" className="harbor-end-confirm__title">
+              End the day?
+            </p>
+            <p className="harbor-end-confirm__body">
+              You still have{" "}
+              <strong>
+                {unspentCommand} command (⚓)
+              </strong>{" "}
+              that has not yet been spent on harbor activities. Would you like to
+              end the day anyway?
+            </p>
+            <div className="harbor-end-confirm__actions">
               <button
                 type="button"
-                className="harbor-button harbor-button--accent"
-                onClick={() => {
-                  apply((s, c) => queueAge1Departure(s, c, departureCandidate));
-                  setDepartureCandidate(null);
+                className="harbor-button harbor-button--ghost"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEndDayConfirmOpen(false);
                 }}
               >
-                Approve
+                Cancel
               </button>
               <button
                 type="button"
-                className="harbor-button"
-                onClick={() => setDepartureCandidate(null)}
+                className="harbor-button harbor-button--accent"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void performEndDay();
+                }}
               >
-                Cancel
+                End Day
               </button>
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
       {phase === "cinematic" && <EndDayCinematic onDone={onCinematicDone} />}
       {phase === "newDay" && dayResult && (
@@ -524,6 +698,17 @@ export default function HarborRoute() {
           newArrivals={dayResult.newArrivals as ArrivalSnapshot[]}
           dailyReportLines={dayResult.dailyReportLines}
           businessReportLines={dayResult.businessReportLines}
+          gameSaved={saveStatus === "saved" && lastSavedDay === state.day}
+          dayOneTips={
+            state.day === 1
+              ? [
+                  "Drag ships between mooring, arrivals, and berths — in Age 1, most moves cost no anchors.",
+                  "Out to sea holds your queue, voyages, laden returns (LADEN), and sometimes a new empty hull waiting for a berth — that is not on voyage; drag it to a berth when you have room.",
+                  "Cargo banks on end-day only after one full day tied up; each unload that fires spends one anchor.",
+                  "Buildings and upgrades spend an anchor when you commission them.",
+                ]
+              : undefined
+          }
           onDone={onDaybreakDone}
         />
       )}

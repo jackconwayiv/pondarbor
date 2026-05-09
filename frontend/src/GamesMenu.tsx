@@ -23,7 +23,7 @@ import { APP_SHELL_TRAY_PROPS, APP_TEXT_SIZES } from "./theme/typography";
 
 export default function GamesMenu() {
   const { loginWithRedirect } = useAuth0();
-  const { isAuthenticated } = useAppSession();
+  const { isAuthenticated, sessionUser } = useAppSession();
   if (!isAuthenticated) {
     return <Navigate to="/" replace />;
   }
@@ -185,6 +185,21 @@ export default function GamesMenu() {
                 );
               })}
             </SimpleGrid>
+
+            {sessionUser?.user?.is_staff ? (
+              <Box pt="3" mt="2" borderTopWidth="1px" borderColor="border.muted">
+                <RouterLink to="/harbor/staff">
+                  <Text
+                    fontSize="sm"
+                    color="fg.muted"
+                    textDecoration="underline"
+                    textUnderlineOffset="3px"
+                  >
+                    Harbormaster catalog editor (staff)
+                  </Text>
+                </RouterLink>
+              </Box>
+            ) : null}
           </Stack>
         </Box>
       </Box>

@@ -1,4 +1,4 @@
-"""Staff CRUD endpoints for the eight harbor catalog tables.
+"""Staff CRUD endpoints for the nine harbor catalog def tables.
 
 A single pair of view functions handles list/create and detail for every
 catalog table; the URL captures `<def_type>` and we look up the model class.

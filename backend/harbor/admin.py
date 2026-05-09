@@ -4,6 +4,7 @@ from .models import (
     HARBOR_DEF_MODELS,
     HarborCatalogVersion,
     HarborGame,
+    HarborStageUnlock,
 )
 
 
@@ -39,3 +40,17 @@ class _HarborDefAdmin(admin.ModelAdmin):
 
 for _model in HARBOR_DEF_MODELS:
     admin.site.register(_model, _HarborDefAdmin)
+
+
+@admin.register(HarborStageUnlock)
+class HarborStageUnlockAdmin(admin.ModelAdmin):
+    list_display = (
+        "stage_id",
+        "title",
+        "era",
+        "doctrine_unlocked",
+        "base_command_per_day",
+        "updated_at",
+    )
+    ordering = ("stage_id",)
+    readonly_fields = ("updated_at",)

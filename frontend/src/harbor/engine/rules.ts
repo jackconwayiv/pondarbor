@@ -16,6 +16,7 @@ import {
   deriveCommandReserved,
   deriveEffectiveBerthCap,
   deriveResourceCaps,
+  deriveUnloadCommandReserved,
   effectiveArrivalWeight,
   eligibleArrivalDefs,
   eligibleEventDefs,
@@ -38,11 +39,17 @@ import type {
   HarborState,
   LogEntry,
   Metric,
+  PendingBuildingProject,
+  PendingHullOrder,
+  PendingShipwrightProject,
   Resource,
   ScheduledConsequence,
   ShipInstance,
   StageId,
 } from "./types";
+
+/** Age 1 building + shipwright commissions complete after this many end-day ticks. */
+export const AGE1_CONSTRUCTION_DAYS = 2;
 
 export class EngineError extends Error {
   constructor(message: string) {
@@ -73,13 +80,30 @@ function clampResources(
 ): HarborState {
   const caps = deriveResourceCaps(state, catalog);
   const resources = { ...state.resources };
+  let metrics = { ...state.metrics };
+  let moraleHit = false;
   for (const r of ALL_RESOURCES_LIST) {
     const cap = caps[r] ?? state.resourceCaps[r] ?? 0;
     const v = resources[r] ?? 0;
     if (v < 0) resources[r] = 0;
-    else if (v > cap) resources[r] = cap;
+    else if (v > cap && cap >= 0) {
+      if (cap === 0) {
+        resources[r] = 0;
+      } else {
+        const surplus = v - cap;
+        const kept = surplus * 0.5;
+        resources[r] = cap + kept;
+      }
+      moraleHit = true;
+    }
   }
-  return { ...state, resources, resourceCaps: caps };
+  if (moraleHit) {
+    metrics = {
+      ...metrics,
+      morale: Math.max(0, (metrics.morale ?? 0) - 1),
+    };
+  }
+  return { ...state, resources, resourceCaps: caps, metrics };
 }
 
 function clampMetrics(state: HarborState): HarborState {
@@ -151,7 +175,7 @@ export function spendCommand(state: HarborState, amount: number): HarborState {
  * Start an operation (voyage, recruit, repair, public_works).
  *
  * For voyages and repairs you must pass a `shipId` whose ship is currently
- * in reserve or berthed; the ship moves to "voyage" status. For `recruit`
+ * in mooring or berthed; the ship moves to "voyage" status. For `recruit`
  * and `public_works` no ship is needed.
  */
 export function startOperation(
@@ -178,6 +202,10 @@ export function startOperation(
     if (ship.status === "voyage") throw new EngineError("Ship is already at sea.");
     if (ship.status === "repair") throw new EngineError("Ship is in the shipyard.");
     if (ship.status === "in_port") throw new EngineError("Berth returning cargo first.");
+    if (ship.status === "sea_laden") throw new EngineError("Berth returning cargo first.");
+    if (ship.status === "sea_waiting") {
+      throw new EngineError("Bring the ship alongside a berth before sending it on operations.");
+    }
     assignedShipId = ship.id;
   }
 
@@ -217,24 +245,33 @@ export function startOperation(
     activeOperations: [...next.activeOperations, operation],
     ships,
   };
-  return pushLog(next, { kind: "info", text: `Started ${def.name}.` });
+  return next;
 }
 
 /**
- * Move a ship between berth slots / reserve / in_port.
- * Age 1+: no command cost. Later ages: costs 1 command per move (legacy).
+ * Move a ship between berth slots / mooring / in_port / sea_laden / sea_waiting.
+ * Age 1: berth moves are free except berthing a returned laden ship from sea (1 ⚓).
+ * Age 2+: costs 1 command per move.
  */
 export function reassignShipBerth(
   state: HarborState,
   catalog: HarborCatalog,
   shipId: string,
-  /** Target berth index (0..effectiveCap-1) or null for reserve. */
+  /** Target berth index (0..effectiveCap-1) or null for mooring. */
   targetBerthIndex: number | null,
 ): HarborState {
   const ship = state.ships.find((s) => s.id === shipId);
   if (!ship) throw new EngineError("Ship not found.");
   if (ship.status === "voyage" || ship.status === "repair") {
     throw new EngineError("Cannot reassign a ship that's away.");
+  }
+  if (ship.status === "sea_laden" && targetBerthIndex == null) {
+    throw new EngineError("Laden ships must take a berth to unload.");
+  }
+  if (ship.status === "sea_waiting" && targetBerthIndex == null) {
+    throw new EngineError(
+      "This ship is waiting offshore for a berth — drag it onto a berth to bring it in.",
+    );
   }
 
   const effCap = deriveEffectiveBerthCap(state, catalog);
@@ -246,13 +283,18 @@ export function reassignShipBerth(
 
   const sameSlot =
     (targetBerthIndex == null &&
-      (ship.status === "reserve" || ship.status === "in_port")) ||
+      (ship.status === "mooring" || ship.status === "in_port")) ||
     (targetBerthIndex != null &&
       ship.status === "berthed" &&
       ship.berthIndex === targetBerthIndex);
   if (sameSlot) return state;
 
-  let next = state.stageId > 1 ? spendCommand(state, 1) : state;
+  let next = state;
+  if (state.stageId > 1) {
+    next = spendCommand(state, 1);
+  } else if (ship.status === "sea_laden" && targetBerthIndex != null) {
+    next = spendCommand(state, 1);
+  }
 
   let occupant: ShipInstance | undefined;
   if (targetBerthIndex != null) {
@@ -261,32 +303,40 @@ export function reassignShipBerth(
     );
   }
 
+  const hasLadenCargo =
+    ship.pendingCargo != null &&
+    Object.values(ship.pendingCargo).some((v) => (v ?? 0) > 0);
+
   next = {
     ...next,
     ships: next.ships.map((s) => {
       if (s.id === ship.id) {
+        const nextStatus = targetBerthIndex == null ? "mooring" : "berthed";
+        let ladenBerthArrivalDay = ship.ladenBerthArrivalDay ?? null;
+        if (
+          nextStatus === "berthed" &&
+          hasLadenCargo &&
+          ship.status !== "berthed"
+        ) {
+          ladenBerthArrivalDay = state.day;
+        }
         return {
           ...s,
-          status: targetBerthIndex == null ? "reserve" : "berthed",
+          status: nextStatus,
           berthIndex: targetBerthIndex,
+          ladenBerthArrivalDay,
         };
       }
       if (occupant && s.id === occupant.id) {
         if (ship.status === "berthed" && ship.berthIndex != null) {
           return { ...s, berthIndex: ship.berthIndex };
         }
-        return { ...s, status: "reserve", berthIndex: null };
+        return { ...s, status: "mooring", berthIndex: null };
       }
       return s;
     }),
   };
-  return pushLog(next, {
-    kind: "info",
-    text:
-      targetBerthIndex == null
-        ? `Ship sent to reserve.`
-        : `Ship moved to berth ${targetBerthIndex + 1}.`,
-  });
+  return next;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -318,8 +368,8 @@ export function queueAge1Departure(
   if (state.stageId !== 1) throw new EngineError("Departures work in Age 1 only.");
   const ship = state.ships.find((s) => s.id === shipId);
   if (!ship) throw new EngineError("Ship not found.");
-  if (ship.status !== "reserve" && ship.status !== "berthed") {
-    throw new EngineError("Ship must be in reserve or a berth.");
+  if (ship.status !== "mooring" && ship.status !== "berthed") {
+    throw new EngineError("Ship must be in mooring or a berth.");
   }
   if (state.queuedDepartures.some((q) => q.shipId === shipId)) {
     throw new EngineError("That ship is already queued to depart.");
@@ -361,6 +411,127 @@ export function cancelQueuedAge1Departure(
   };
 }
 
+/** Clears the persisted morning report after the player dismisses the daybreak UI. */
+export function dismissMorningReport(state: HarborState): HarborState {
+  return { ...state, pendingMorningReport: null };
+}
+
+function completePendingBuilding(
+  state: HarborState,
+  catalog: HarborCatalog,
+  p: PendingBuildingProject,
+): HarborState {
+  const def = catalog.buildings.find((b) => b.slug === p.slug);
+  if (!def) return state;
+  const owned = state.buildings.find((b) => b.slug === p.slug);
+  const buildings = owned
+    ? state.buildings.map((b) =>
+        b.slug === p.slug ? { ...b, level: p.targetLevel } : b,
+      )
+    : [...state.buildings, { slug: p.slug, level: p.targetLevel }];
+  let next = { ...state, buildings };
+  next = clampResources(next, catalog);
+  next = tryPromoteToAge2(next);
+  return pushLog(next, {
+    kind: "good",
+    text: `${def.name} upgraded to L${p.targetLevel}.`,
+  });
+}
+
+function completePendingShipwright(
+  state: HarborState,
+  catalog: HarborCatalog,
+  p: PendingShipwrightProject,
+): HarborState {
+  const up = catalog.ship_upgrades?.find((u) => u.slug === p.upgradeSlug);
+  if (!up) return state;
+  const ship = state.ships.find((s) => s.id === p.shipId);
+  if (!ship) return state;
+  const attachments = [...(ship.attachments ?? []), p.upgradeSlug];
+  const next = {
+    ...state,
+    ships: state.ships.map((s) =>
+      s.id === p.shipId ? { ...s, attachments } : s,
+    ),
+  };
+  return pushLog(next, { kind: "good", text: `Installed ${up.name}.` });
+}
+
+/** Age 1: advances construction timers at each end-day (before `day` increments). */
+function tickAge1Construction(
+  state: HarborState,
+  catalog: HarborCatalog,
+): HarborState {
+  if (state.stageId !== 1) return state;
+  let next = state;
+  const remainingBuild: PendingBuildingProject[] = [];
+  for (const p of next.pendingBuildingProjects) {
+    const rd = p.remainingDays - 1;
+    if (rd > 0) remainingBuild.push({ ...p, remainingDays: rd });
+    else next = completePendingBuilding(next, catalog, p);
+  }
+  next = { ...next, pendingBuildingProjects: remainingBuild };
+
+  const remainingShip: PendingShipwrightProject[] = [];
+  for (const p of next.pendingShipwrightProjects) {
+    const rd = p.remainingDays - 1;
+    if (rd > 0) remainingShip.push({ ...p, remainingDays: rd });
+    else next = completePendingShipwright(next, catalog, p);
+  }
+  next = { ...next, pendingShipwrightProjects: remainingShip };
+
+  const hullOrders = next.pendingHullOrders ?? [];
+  const remainingHull: PendingHullOrder[] = [];
+  for (const p of hullOrders) {
+    const rd = p.remainingDays - 1;
+    if (rd > 0) remainingHull.push({ ...p, remainingDays: rd });
+    else next = grantShip(next, catalog, p.shipSlug);
+  }
+  return { ...next, pendingHullOrders: remainingHull };
+}
+
+/** Commission a catalog hull sold at the shipwright (Age 1): pay upfront, completes after `AGE1_CONSTRUCTION_DAYS`. */
+export function commissionHullOrder(
+  state: HarborState,
+  catalog: HarborCatalog,
+  shipSlug: string,
+): HarborState {
+  if (state.stageId !== 1) throw new EngineError("Hull commissions unlock in Age 1.");
+  const def = catalog.ships.find((s) => s.slug === shipSlug);
+  if (!def) throw new EngineError("Unknown ship.");
+  const purchase = def.extra.shipwright_purchase;
+  if (!purchase || typeof purchase !== "object") {
+    throw new EngineError("That hull is not sold at the shipwright.");
+  }
+  const cap = deriveEffectiveBerthCap(state, catalog);
+  const pendingHullOrders = state.pendingHullOrders ?? [];
+  if (state.ships.length + pendingHullOrders.length >= cap) {
+    throw new EngineError("No spare berth for a new hull.");
+  }
+  const cmdCost = Math.max(0, Math.floor(purchase.command ?? 1));
+  let next = spendCommand(state, cmdCost);
+  next = applyCost(next, purchase.cost ?? {});
+  const idResult = nextId(next, "hullord");
+  const shipName = def.name;
+  return pushLog(
+    {
+      ...idResult.nextState,
+      pendingHullOrders: [
+        ...(idResult.nextState.pendingHullOrders ?? []),
+        {
+          id: idResult.id,
+          shipSlug,
+          remainingDays: AGE1_CONSTRUCTION_DAYS,
+        },
+      ],
+    },
+    {
+      kind: "info",
+      text: `${shipName}: hull laid (${AGE1_CONSTRUCTION_DAYS} days).`,
+    },
+  );
+}
+
 export function attachShipUpgrade(
   state: HarborState,
   catalog: HarborCatalog,
@@ -370,23 +541,38 @@ export function attachShipUpgrade(
   if (state.stageId !== 1) throw new EngineError("Upgrades unlock in Age 1.");
   const ship = state.ships.find((s) => s.id === shipId);
   if (!ship) throw new EngineError("Ship not found.");
-  if (ship.status !== "reserve" && ship.status !== "berthed") {
-    throw new EngineError("Ship must be in reserve or berthed.");
+  if (ship.status !== "mooring" && ship.status !== "berthed") {
+    throw new EngineError("Ship must be moored or berthed.");
   }
   const up = catalog.ship_upgrades?.find((u) => u.slug === upgradeSlug);
   if (!up) throw new EngineError("Unknown upgrade.");
   if ((ship.attachments ?? []).includes(upgradeSlug)) {
     throw new EngineError("Already installed.");
   }
-  let next = applyCost(state, up.extra.cost);
-  const attachments = [...(ship.attachments ?? []), upgradeSlug];
-  next = {
-    ...next,
-    ships: next.ships.map((s) =>
-      s.id === shipId ? { ...s, attachments } : s,
-    ),
-  };
-  return pushLog(next, { kind: "good", text: `Installed ${up.name}.` });
+  if (state.pendingShipwrightProjects.some((x) => x.shipId === shipId)) {
+    throw new EngineError("That ship already has a shipwright project underway.");
+  }
+  let next = spendCommand(state, 1);
+  next = applyCost(next, up.extra.cost);
+  const idResult = nextId(next, "shipproj");
+  return pushLog(
+    {
+      ...idResult.nextState,
+      pendingShipwrightProjects: [
+        ...idResult.nextState.pendingShipwrightProjects,
+        {
+          id: idResult.id,
+          shipId,
+          upgradeSlug,
+          remainingDays: AGE1_CONSTRUCTION_DAYS,
+        },
+      ],
+    },
+    {
+      kind: "info",
+      text: `${up.name}: shipwright work (${AGE1_CONSTRUCTION_DAYS} days).`,
+    },
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -431,7 +617,51 @@ export function declineArrival(
   return pushLog(next, { kind: "warn", text: `Declined: ${arrival.name}.` });
 }
 
-/** Add a ship instance from a catalog ship slug; goes to reserve. */
+/** Place a mooring or offshore-waiting hull into the lowest free berth when capacity allows. */
+function autoAssignBerthForShip(
+  state: HarborState,
+  catalog: HarborCatalog,
+  shipId: string,
+): HarborState {
+  const ship = state.ships.find((s) => s.id === shipId);
+  if (!ship || (ship.status !== "mooring" && ship.status !== "sea_waiting")) {
+    return state;
+  }
+  const eff = deriveEffectiveBerthCap(state, catalog);
+  const taken = new Set<number>();
+  for (const s of state.ships) {
+    if (s.id === shipId) continue;
+    if (s.status === "berthed" && s.berthIndex != null) taken.add(s.berthIndex);
+  }
+  for (let i = 0; i < eff; i += 1) {
+    if (!taken.has(i)) {
+      return {
+        ...state,
+        ships: state.ships.map((s) =>
+          s.id === shipId ? { ...s, status: "berthed", berthIndex: i } : s,
+        ),
+      };
+    }
+  }
+  return state;
+}
+
+/** Try to berth every mooring or sea_waiting ship (e.g. after loading an older save). */
+export function compactMooringIntoBerths(
+  state: HarborState,
+  catalog: HarborCatalog,
+): HarborState {
+  let next = state;
+  const ids = next.ships
+    .filter((s) => s.status === "mooring" || s.status === "sea_waiting")
+    .map((s) => s.id);
+  for (const id of ids) {
+    next = autoAssignBerthForShip(next, catalog, id);
+  }
+  return next;
+}
+
+/** Add a ship instance from a catalog ship slug; ties up at first free berth when possible. */
 export function grantShip(
   state: HarborState,
   catalog: HarborCatalog,
@@ -449,14 +679,30 @@ export function grantShip(
     id: idResult.id,
     defSlug: shipSlug,
     hp: def.extra.hull ?? 1,
-    status: "reserve",
+    status: "mooring",
     berthIndex: null,
     activeOpId: null,
+    ladenBerthArrivalDay: null,
   };
-  return pushLog(
-    { ...idResult.nextState, ships: [...idResult.nextState.ships, ship] },
-    { kind: "good", text: `New ship in reserve: ${def.name}.` },
-  );
+  let next: HarborState = {
+    ...idResult.nextState,
+    ships: [...idResult.nextState.ships, ship],
+  };
+  next = autoAssignBerthForShip(next, catalog, ship.id);
+  const placed = next.ships.find((s) => s.id === ship.id);
+  if (placed?.status === "mooring") {
+    next = {
+      ...next,
+      ships: next.ships.map((s) =>
+        s.id === ship.id ? { ...s, status: "sea_waiting" as const } : s,
+      ),
+    };
+  }
+  const atBerth = next.ships.find((s) => s.id === ship.id)?.status === "berthed";
+  const logText = atBerth
+    ? `Commissioned vessel: ${def.name}.`
+    : `Commissioned vessel: ${def.name} — waiting offshore until a berth is free.`;
+  return pushLog(next, { kind: "good", text: logText });
 }
 
 /* -------------------------------------------------------------------------- */
@@ -507,10 +753,38 @@ export function upgradeBuilding(
       throw new EngineError(`Requires ${prereqSlug}.`);
     }
   }
+  if (state.pendingBuildingProjects.some((p) => p.slug === slug)) {
+    throw new EngineError("That site is already under construction.");
+  }
   const cost = def.extra.level_costs?.[currentLevel];
-  let next = state.stageId > 1 ? spendCommand(state, 1) : state;
-  next = applyCost(next, cost);
   const nextLevel = currentLevel + 1;
+
+  if (state.stageId === 1) {
+    let next = spendCommand(state, 1);
+    next = applyCost(next, cost);
+    const idResult = nextId(next, "bproj");
+    return pushLog(
+      {
+        ...idResult.nextState,
+        pendingBuildingProjects: [
+          ...idResult.nextState.pendingBuildingProjects,
+          {
+            id: idResult.id,
+            slug,
+            targetLevel: nextLevel,
+            remainingDays: AGE1_CONSTRUCTION_DAYS,
+          },
+        ],
+      },
+      {
+        kind: "info",
+        text: `${def.name} construction (${AGE1_CONSTRUCTION_DAYS} days).`,
+      },
+    );
+  }
+
+  let next = spendCommand(state, 1);
+  next = applyCost(next, cost);
   const buildings = owned
     ? next.buildings.map((b) => (b.slug === slug ? { ...b, level: nextLevel } : b))
     : [...next.buildings, { slug, level: nextLevel }];
@@ -617,8 +891,17 @@ export function advanceDay(
   const age1 = next.stageId === 1;
 
   if (age1) {
+    const unloadCost = deriveUnloadCommandReserved(next);
+    if (next.command < unloadCost) {
+      throw new EngineError(
+        "Not enough command to end the day (unload laden vessels).",
+      );
+    }
+    next = { ...next, command: next.command - unloadCost };
     for (const s of next.ships) {
       if (s.status !== "berthed" || !s.pendingCargo) continue;
+      const arrivalDay = s.ladenBerthArrivalDay;
+      if (arrivalDay == null || next.day <= arrivalDay) continue;
       const cargo = s.pendingCargo;
       const parts: string[] = [];
       for (const [res, val] of Object.entries(cargo)) {
@@ -634,18 +917,20 @@ export function advanceDay(
       next = {
         ...next,
         ships: next.ships.map((x) =>
-          x.id === s.id ? { ...x, pendingCargo: null } : x,
+          x.id === s.id
+            ? { ...x, pendingCargo: null, ladenBerthArrivalDay: null }
+            : x,
         ),
       };
     }
   }
 
   if (age1 && next.queuedDepartures.length > 0) {
-    const reserved = deriveCommandReserved(next);
-    if (next.command < reserved) {
+    const queuedCmd = deriveCommandReserved(next);
+    if (next.command < queuedCmd) {
       throw new EngineError("Not enough command to end the day (queued departures).");
     }
-    next = { ...next, command: next.command - reserved };
+    next = { ...next, command: next.command - queuedCmd };
     for (const q of next.queuedDepartures) {
       const opR = nextId(next, "op");
       next = opR.nextState;
@@ -675,12 +960,12 @@ export function advanceDay(
     next = { ...next, queuedDepartures: [] };
   }
 
+  next = tickAge1Construction(next, catalog);
+
   const stillRunning: ActiveOperation[] = [];
   for (const op of next.activeOperations) {
-    if (op.startedDay === next.day && op.deferRewardToBerth) {
-      stillRunning.push(op);
-      continue;
-    }
+    /** Tick same end-day the ship sails so one hourglass comes off immediately;
+     * N-night voyages still need N end-days before return. */
     const ticked: ActiveOperation = { ...op, remainingDays: op.remainingDays - 1 };
     if (ticked.remainingDays > 0) {
       stillRunning.push(ticked);
@@ -693,7 +978,7 @@ export function advanceDay(
           s.id === ticked.shipId
             ? {
                 ...s,
-                status: "in_port",
+                status: "sea_laden",
                 activeOpId: null,
                 berthIndex: null,
                 pendingCargo: { ...(ticked.resolveRewards ?? {}) },
@@ -703,7 +988,7 @@ export function advanceDay(
       };
       next = pushLog(next, {
         kind: "good",
-        text: `A ship returned to the arrivals basin.`,
+        text: `A ship returned — assign a berth to unload.`,
       });
       resolvedOps.push({ op: ticked, success: true });
       continue;
@@ -741,7 +1026,7 @@ export function advanceDay(
         ...next,
         ships: next.ships.map((s) =>
           s.id === ticked.shipId
-            ? { ...s, status: "reserve", activeOpId: null }
+            ? { ...s, status: "mooring", activeOpId: null }
             : s,
         ),
       };
@@ -897,14 +1182,34 @@ export function advanceDay(
   next = clampMetrics(next);
   next = tryPromoteToAge2(next);
 
-  if (age1) {
-    const unassigned = next.ships.filter((s) => s.status === "reserve").length;
-    const atSea = next.ships.filter((s) => s.status === "voyage").length;
-    const arrivals = next.ships.filter((s) => s.status === "in_port").length;
-    dailyReportLines.push(`Unassigned ships: ${unassigned}`);
-    dailyReportLines.push(`Ships on voyage: ${atSea}`);
-    dailyReportLines.push(`Ships in arrivals: ${arrivals}`);
+  if (next.stageId === 1) {
+    for (const s of next.ships) {
+      if (s.status !== "voyage" && s.status !== "repair") continue;
+      const op = next.activeOperations.find((o) => o.id === s.activeOpId);
+      if (!op || op.remainingDays <= 0) continue;
+      const def = catalog.ships.find((x) => x.slug === s.defSlug);
+      const name = def?.name ?? s.defSlug;
+      const nights = Math.max(1, Math.floor(op.remainingDays));
+      dailyReportLines.push(`${name}: ${nights} night(s) out at sea.`);
+    }
+    for (const s of next.ships) {
+      if (s.status !== "sea_laden") continue;
+      const def = catalog.ships.find((x) => x.slug === s.defSlug);
+      const name = def?.name ?? s.defSlug;
+      dailyReportLines.push(`${name}: returned with cargo — assign a berth to unload.`);
+    }
   }
+
+  next = {
+    ...next,
+    pendingMorningReport: {
+      gameDay: next.day,
+      dailyReportLines,
+      businessReportLines,
+      newEvents,
+      newArrivals,
+    },
+  };
 
   return {
     state: next,
@@ -1007,6 +1312,9 @@ export function createDefaultHarborState(
     berthCap: stage.berthCap,
     ships: [],
     buildings: [],
+    pendingBuildingProjects: [],
+    pendingShipwrightProjects: [],
+    pendingHullOrders: [],
     activeOperations: [],
     queuedDepartures: [],
     pendingArrivals: [],
@@ -1016,6 +1324,7 @@ export function createDefaultHarborState(
     doctrine: null,
     log: [],
     idCounter: 0,
+    pendingMorningReport: null,
   };
 
   let next = state;
@@ -1024,6 +1333,7 @@ export function createDefaultHarborState(
       next = grantShip(next, catalog, slug);
     }
   }
+  next = compactMooringIntoBerths(next, catalog);
   for (const [slug, level] of Object.entries(stage.starting.buildings)) {
     next = { ...next, buildings: [...next.buildings, { slug, level }] };
   }

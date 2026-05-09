@@ -62,12 +62,68 @@ export function deriveBerthCapBonus(
   return bonus;
 }
 
-/** Effective berth slots (state cap + building bonuses, max 9). */
+/** Effective throughput / berth slots (state cap + building bonuses, max 9). */
 export function deriveEffectiveBerthCap(
   state: HarborState,
   catalog: HarborCatalog,
 ): number {
   return Math.min(9, state.berthCap + deriveBerthCapBonus(state, catalog));
+}
+
+/** Alias: max ships processed per day (same as effective berth cap). */
+export const deriveEffectiveThroughput = deriveEffectiveBerthCap;
+
+/** Age 1: each laden ship that unloads this end-day costs one anchor token. */
+export function deriveUnloadCommandReserved(state: HarborState): number {
+  if (state.stageId !== 1) return 0;
+  let n = 0;
+  for (const s of state.ships) {
+    if (s.status !== "berthed" || !s.pendingCargo) continue;
+    const any = Object.values(s.pendingCargo).some((v) => (v ?? 0) > 0);
+    if (!any) continue;
+    const ad = s.ladenBerthArrivalDay;
+    if (ad == null || state.day <= ad) continue;
+    n += 1;
+  }
+  return n;
+}
+
+/** Queued voyages + pending unloads (Age 1). */
+export function deriveTotalCommandReserved(state: HarborState): number {
+  return deriveCommandReserved(state) + deriveUnloadCommandReserved(state);
+}
+
+/** Resources expected from queued Age 1 voyages after they complete (promised cargo). */
+export function deriveQueuedVoyageIncome(
+  state: HarborState,
+): Partial<Record<Resource, number>> {
+  const out: Partial<Record<Resource, number>> = {};
+  for (const q of state.queuedDepartures) {
+    for (const [res, val] of Object.entries(q.promisedRewards)) {
+      const r = res as Resource;
+      out[r] = (out[r] ?? 0) + (val ?? 0);
+    }
+  }
+  return out;
+}
+
+/** Cargo that banks this end-day (after one full day berthed with laden hold). */
+export function derivePendingCargoUnloadIncome(
+  state: HarborState,
+): Partial<Record<Resource, number>> {
+  const out: Partial<Record<Resource, number>> = {};
+  for (const s of state.ships) {
+    if (s.status !== "berthed" || !s.pendingCargo) continue;
+    const ad = s.ladenBerthArrivalDay;
+    if (ad == null || state.day <= ad) continue;
+    for (const [res, val] of Object.entries(s.pendingCargo)) {
+      const r = res as Resource;
+      const n = val ?? 0;
+      if (n <= 0) continue;
+      out[r] = (out[r] ?? 0) + n;
+    }
+  }
+  return out;
 }
 
 /** Sum of `level_effects[i].command` across owned levels. */
@@ -175,9 +231,10 @@ export function dailyResourceIncome(
     const effects = def.extra.level_effects ?? [];
     if (owned.level <= 0) continue;
     const top = effects[Math.min(owned.level, effects.length) - 1];
+    const tierMul = def.extra.building_tier ? 2 : 1;
     for (const [res, val] of Object.entries(top?.per_day_resource_effects ?? {})) {
       const r = res as Resource;
-      income[r] = (income[r] ?? 0) + val;
+      income[r] = (income[r] ?? 0) + val * tierMul;
     }
   }
   for (const slug of state.activePolicies) {
@@ -197,6 +254,17 @@ export function dailyMetricDrift(
   catalog: HarborCatalog,
 ): Partial<Record<Metric, number>> {
   const drift: Partial<Record<Metric, number>> = {};
+  for (const owned of state.buildings) {
+    if (owned.level <= 0) continue;
+    const slug = owned.slug;
+    if (
+      slug.includes("patrol") ||
+      slug.includes("watch") ||
+      slug.includes("watchtower")
+    ) {
+      drift.security = (drift.security ?? 0) + 0.25;
+    }
+  }
   for (const slug of state.activePolicies) {
     const p = catalog.policies.find((x) => x.slug === slug);
     if (!p) continue;

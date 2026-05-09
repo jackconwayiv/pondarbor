@@ -21,6 +21,10 @@ type Props = {
   newArrivals: ArrivalSnapshot[];
   dailyReportLines?: string[];
   businessReportLines?: string[];
+  /** Shown after a successful save on this morning card. */
+  gameSaved?: boolean;
+  /** Extra tutorial bullets merged into the first step (e.g. Day 1). */
+  dayOneTips?: string[];
   onDone: () => void;
 };
 
@@ -55,6 +59,8 @@ export default function DaybreakSequence({
   newArrivals,
   dailyReportLines = [],
   businessReportLines = [],
+  gameSaved = false,
+  dayOneTips,
   onDone,
 }: Props) {
   const [stepIdx, setStepIdx] = useState(0);
@@ -100,6 +106,19 @@ export default function DaybreakSequence({
         <div className="harbor-daybreak__day">{hint}</div>
         <div className="harbor-daybreak__title">{title}</div>
         {body && <div className="harbor-daybreak__hint">{body}</div>}
+        {step.kind === "newDay" && dayOneTips && dayOneTips.length > 0 && (
+          <div
+            className="harbor-daybreak__hint"
+            style={{ textAlign: "left", marginTop: "0.5rem" }}
+          >
+            <strong>How to play</strong>
+            <ul style={{ margin: "0.35rem 0 0 1rem", padding: 0 }}>
+              {dayOneTips.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        )}
         {step.kind === "newDay" && dailyReportLines.length > 0 && (
           <div
             className="harbor-daybreak__hint"
@@ -126,6 +145,14 @@ export default function DaybreakSequence({
             </ul>
           </div>
         )}
+        {step.kind === "newDay" && gameSaved ? (
+          <div
+            className="harbor-daybreak__hint"
+            style={{ marginTop: "0.45rem", fontSize: "0.82rem" }}
+          >
+            Game saved.
+          </div>
+        ) : null}
         <button
           type="button"
           className="harbor-button harbor-button--accent harbor-daybreak__continue"

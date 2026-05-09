@@ -36,6 +36,16 @@ class HarborGameApiTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.json()["games"], [])
 
+    def test_create_rejects_long_harbor_name(self):
+        self.client.force_authenticate(self.user)
+        r = self.client.post(
+            "/api/v1/harbor/games/",
+            {"name": "A" * 16},
+            format="json",
+        )
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("15", r.json().get("detail", ""))
+
     def test_create_get_post_state_delete(self):
         self.client.force_authenticate(self.user)
         created = self.client.post(
@@ -121,7 +131,7 @@ class HarborCatalogTests(TestCase):
         slugs = [ship["slug"] for ship in body["ships"]]
         self.assertIn("test-enabled", slugs)
         self.assertNotIn("test-hidden", slugs)
-        # All eight def categories always present.
+        # All def categories + ship upgrades + stage unlocks always present.
         for key in (
             "ships",
             "buildings",
@@ -131,8 +141,11 @@ class HarborCatalogTests(TestCase):
             "consequences",
             "policies",
             "doctrines",
+            "ship_upgrades",
+            "stage_unlocks",
         ):
             self.assertIn(key, body)
+        self.assertEqual(len(body["stage_unlocks"]), 12)
 
 
 class HarborStaffPermissionsTests(TestCase):
@@ -280,6 +293,20 @@ class HarborStaffCrudTests(TestCase):
 
 class HarborCatalogVersionBumpTests(TestCase):
     """Ensure saving or deleting any def row bumps HarborCatalogVersion."""
+
+    def setUp(self):
+        # Row is lazily created on first catalog mutation; seed so tests can read `.version`.
+        HarborCatalogVersion.objects.get_or_create(id=1, defaults={"version": 0})
+
+    def test_stage_unlock_save_bumps_version(self):
+        from harbor.models import HarborStageUnlock
+
+        before = HarborCatalogVersion.objects.get(id=1).version
+        row = HarborStageUnlock.objects.get(stage_id=1)
+        row.title = row.title + " "
+        row.save(update_fields=["title"])
+        after = HarborCatalogVersion.objects.get(id=1).version
+        self.assertGreater(after, before)
 
     def test_version_bumps_on_save_and_delete(self):
         before = HarborCatalogVersion.objects.filter(id=1).first()

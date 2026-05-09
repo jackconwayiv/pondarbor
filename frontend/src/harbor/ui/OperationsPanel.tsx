@@ -29,7 +29,7 @@ export default function OperationsPanel({ state, catalog, onStart }: Props) {
     [state, catalog],
   );
   const availableShips = state.ships.filter(
-    (s) => s.status === "berthed" || s.status === "reserve",
+    (s) => s.status === "berthed" || s.status === "mooring",
   );
   const [pickedShipFor, setPickedShipFor] = useState<Record<string, string>>({});
 
@@ -80,7 +80,7 @@ export default function OperationsPanel({ state, catalog, onStart }: Props) {
                 <span className="harbor-chip">{def.extra.voyage_type}</span>
               )}
               {opCost > 0 && (
-                <span className="harbor-chip">⚓ {opCost}</span>
+                <span className="harbor-chip">{opCost} ⚓</span>
               )}
               {def.extra.duration_days != null && (
                 <span className="harbor-chip">

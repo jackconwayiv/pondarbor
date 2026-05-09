@@ -96,6 +96,9 @@ const HarborStaffDefPage = lazy(
 const HarborStaffPlaytestPage = lazy(
   () => import("./harbor/staff/HarborStaffPlaytestPage"),
 );
+const HarborStaffStagesPage = lazy(
+  () => import("./harbor/staff/HarborStaffStagesPage"),
+);
 const CalendarPage = lazy(() => import("./calendar/CalendarPage"));
 const CalendarDayPage = lazy(() => import("./calendar/CalendarDayPage"));
 const PondsteadHubLayout = lazy(() => import("./pondstead/PondsteadHubLayout"));
@@ -168,8 +171,12 @@ export const router = sentryCreateBrowserRouter([
         element: authedRouteElement(lazyRouteElement(<HarborLobbyPage />)),
       },
       {
-        path: "harbor/play/:gameId",
+        path: "harbor/play",
         element: authedRouteElement(lazyRouteElement(<HarborRoute />)),
+      },
+      {
+        path: "harbor/play/:gameId",
+        element: <Navigate to="/harbor/play" replace />,
       },
       {
         path: "harbor/age10",
@@ -227,6 +234,19 @@ export const router = sentryCreateBrowserRouter([
             element: lazyRouteElement(
               <HarborStaffDefPage defType="doctrines" title="Doctrines" />,
             ),
+          },
+          {
+            path: "ship_upgrades",
+            element: lazyRouteElement(
+              <HarborStaffDefPage
+                defType="ship_upgrades"
+                title="Ship upgrades"
+              />,
+            ),
+          },
+          {
+            path: "stages",
+            element: lazyRouteElement(<HarborStaffStagesPage />),
           },
           {
             path: "playtest",

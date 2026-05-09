@@ -6,6 +6,7 @@
  * for the per-type editor pages.
  */
 
+import { compactMooringIntoBerths } from "./engine/rules";
 import { ALL_METRICS, ALL_RESOURCES } from "./engine/types";
 import type {
   ArrivalSnapshot,
@@ -16,6 +17,7 @@ import type {
   EventDefExtra,
   EventSnapshot,
   HarborCatalog,
+  HarborStageUnlockRow,
   HarborState,
   Metric,
   OperationDefExtra,
@@ -24,6 +26,7 @@ import type {
   Resource,
   ShipDefExtra,
   ShipInstance,
+  ShipUpgradeDefExtra,
   StageId,
   ArrivalDefExtra,
 } from "./engine/types";
@@ -56,6 +59,17 @@ export type HarborGamesListResponse = {
   current_catalog_version: number;
   server_time: string;
 };
+
+/** Most recently updated harbor save — matches lobby “Continue”. */
+export function pickActiveHarborGame(
+  games: HarborGameSummary[],
+): HarborGameSummary | null {
+  if (games.length === 0) return null;
+  return [...games].sort(
+    (a, b) =>
+      new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
+  )[0]!;
+}
 
 export type StaffSchema = {
   resources: string[];
@@ -238,12 +252,19 @@ export function normalizeHarborState(
       if (!id || !defSlug) continue;
       // Tolerate dangling defSlug: keep ship; UI shows "Unknown ship".
       if (catalog && !knownShipSlugs.has(defSlug)) continue;
-      const status = (s.status === "berthed" ||
-      s.status === "voyage" ||
-      s.status === "repair" ||
-      s.status === "in_port"
-        ? s.status
-        : "reserve") as ShipInstance["status"];
+      let st = asString(s.status, "mooring");
+      if (st === "reserve") st = "mooring";
+      const status = (
+        st === "berthed" ||
+        st === "mooring" ||
+        st === "voyage" ||
+        st === "repair" ||
+        st === "in_port" ||
+        st === "sea_laden" ||
+        st === "sea_waiting"
+          ? st
+          : "mooring"
+      ) as ShipInstance["status"];
       const berthIndex =
         typeof s.berthIndex === "number" && s.berthIndex >= 0
           ? Math.floor(s.berthIndex)
@@ -251,6 +272,12 @@ export function normalizeHarborState(
       const attachments = Array.isArray(s.attachments)
         ? s.attachments.filter((x): x is string => typeof x === "string")
         : [];
+      const ladenBerthArrivalDayRaw = s.ladenBerthArrivalDay;
+      const ladenBerthArrivalDay =
+        typeof ladenBerthArrivalDayRaw === "number" &&
+        Number.isFinite(ladenBerthArrivalDayRaw)
+          ? Math.floor(ladenBerthArrivalDayRaw)
+          : null;
       ships.push({
         id,
         defSlug,
@@ -262,8 +289,28 @@ export function normalizeHarborState(
           s.pendingCargo && typeof s.pendingCargo === "object"
             ? asPartialResources(s.pendingCargo)
             : null,
+        ladenBerthArrivalDay,
         attachments,
       });
+    }
+  }
+
+  for (let i = 0; i < ships.length; i += 1) {
+    const sh = ships[i]!;
+    const cargo = sh.pendingCargo;
+    const hasCargo =
+      cargo != null &&
+      Object.values(cargo).some((v) => (typeof v === "number" ? v > 0 : false));
+    if (
+      sh.status === "berthed" &&
+      hasCargo &&
+      sh.ladenBerthArrivalDay == null
+    ) {
+      /** Legacy saves: behave like cargo already sat one full day in berth. */
+      ships[i] = {
+        ...sh,
+        ladenBerthArrivalDay: day > 1 ? day - 1 : 0,
+      };
     }
   }
 
@@ -278,6 +325,59 @@ export function normalizeHarborState(
       const level = Math.max(0, Math.floor(num(b.level, 0)));
       if (level <= 0) continue;
       buildings.push({ slug, level });
+    }
+  }
+
+  const pendingBuildingProjects: HarborState["pendingBuildingProjects"] = [];
+  if (Array.isArray(o.pendingBuildingProjects)) {
+    for (const raw of o.pendingBuildingProjects) {
+      if (!raw || typeof raw !== "object") continue;
+      const p = raw as Record<string, unknown>;
+      const id = asString(p.id);
+      const slug = asString(p.slug);
+      if (!id || !slug) continue;
+      if (catalog && !knownBuildingSlugs.has(slug)) continue;
+      pendingBuildingProjects.push({
+        id,
+        slug,
+        targetLevel: Math.max(1, Math.floor(num(p.targetLevel, 1))),
+        remainingDays: Math.max(1, Math.floor(num(p.remainingDays, 1))),
+      });
+    }
+  }
+
+  const pendingShipwrightProjects: HarborState["pendingShipwrightProjects"] = [];
+  if (Array.isArray(o.pendingShipwrightProjects)) {
+    for (const raw of o.pendingShipwrightProjects) {
+      if (!raw || typeof raw !== "object") continue;
+      const p = raw as Record<string, unknown>;
+      const id = asString(p.id);
+      const shipId = asString(p.shipId);
+      const upgradeSlug = asString(p.upgradeSlug);
+      if (!id || !shipId || !upgradeSlug) continue;
+      pendingShipwrightProjects.push({
+        id,
+        shipId,
+        upgradeSlug,
+        remainingDays: Math.max(1, Math.floor(num(p.remainingDays, 1))),
+      });
+    }
+  }
+
+  const pendingHullOrders: HarborState["pendingHullOrders"] = [];
+  if (Array.isArray(o.pendingHullOrders)) {
+    for (const raw of o.pendingHullOrders) {
+      if (!raw || typeof raw !== "object") continue;
+      const p = raw as Record<string, unknown>;
+      const id = asString(p.id);
+      const shipSlug = asString(p.shipSlug);
+      if (!id || !shipSlug) continue;
+      if (catalog && !knownShipSlugs.has(shipSlug)) continue;
+      pendingHullOrders.push({
+        id,
+        shipSlug,
+        remainingDays: Math.max(1, Math.floor(num(p.remainingDays, 1))),
+      });
     }
   }
 
@@ -433,7 +533,76 @@ export function normalizeHarborState(
     }
   }
 
-  return {
+  let pendingMorningReport: HarborState["pendingMorningReport"] = null;
+  const pm = o.pendingMorningReport;
+  if (pm && typeof pm === "object") {
+    const p = pm as Record<string, unknown>;
+    const gameDay = Math.max(1, Math.floor(num(p.gameDay, 0)));
+    const dailyReportLines = Array.isArray(p.dailyReportLines)
+      ? p.dailyReportLines.filter((x): x is string => typeof x === "string")
+      : [];
+    const businessReportLines = Array.isArray(p.businessReportLines)
+      ? p.businessReportLines.filter((x): x is string => typeof x === "string")
+      : [];
+    const newEvents = Array.isArray(p.newEvents)
+      ? (p.newEvents as unknown[])
+          .map((raw): EventSnapshot | null => {
+            if (!raw || typeof raw !== "object") return null;
+            const e = raw as Record<string, unknown>;
+            const id = asString(e.id);
+            const defSlug = asString(e.defSlug);
+            if (!id || !defSlug) return null;
+            const sev = asString(e.severity, "minor");
+            return {
+              id,
+              defSlug,
+              name: asString(e.name, defSlug),
+              description: asString(e.description),
+              severity:
+                sev === "minor" || sev === "serious" || sev === "crisis" ? sev : "minor",
+              commandCost: Math.max(0, Math.floor(num(e.commandCost, 0))),
+              cost: asPartialResources(e.cost),
+              metricEffects: asPartialMetrics(e.metricEffects),
+              onResolveMetricEffects: asPartialMetrics(e.onResolveMetricEffects),
+              daysActive: Math.max(0, Math.floor(num(e.daysActive, 0))),
+            };
+          })
+          .filter((x): x is EventSnapshot => x !== null)
+      : [];
+    const newArrivals = Array.isArray(p.newArrivals)
+      ? (p.newArrivals as unknown[])
+          .map((raw): ArrivalSnapshot | null => {
+            if (!raw || typeof raw !== "object") return null;
+            const a = raw as Record<string, unknown>;
+            const id = asString(a.id);
+            const defSlug = asString(a.defSlug);
+            if (!id || !defSlug) return null;
+            return {
+              id,
+              defSlug,
+              name: asString(a.name, defSlug),
+              description: asString(a.description),
+              commandCost: Math.max(0, Math.floor(num(a.commandCost, 0))),
+              offer: asPartialResources(a.offer),
+              request: asPartialResources(a.request),
+              metricEffects: asPartialMetrics(a.metricEffects),
+              givesShipSlug: typeof a.givesShipSlug === "string" ? a.givesShipSlug : null,
+            };
+          })
+          .filter((x): x is ArrivalSnapshot => x !== null)
+      : [];
+    if (gameDay >= 1) {
+      pendingMorningReport = {
+        gameDay,
+        dailyReportLines,
+        businessReportLines,
+        newEvents,
+        newArrivals,
+      };
+    }
+  }
+
+  const loaded: HarborState = {
     schemaVersion: SCHEMA_VERSION,
     catalogVersion,
     stageId,
@@ -446,6 +615,9 @@ export function normalizeHarborState(
     berthCap,
     ships,
     buildings,
+    pendingBuildingProjects,
+    pendingShipwrightProjects,
+    pendingHullOrders,
     activeOperations,
     queuedDepartures,
     pendingArrivals,
@@ -455,7 +627,12 @@ export function normalizeHarborState(
     doctrine,
     log,
     idCounter,
+    pendingMorningReport,
   };
+  if (catalog) {
+    return compactMooringIntoBerths(loaded, catalog);
+  }
+  return loaded;
 }
 
 function blankHarborState(stageId: StageId, catalogVersion: number): HarborState {
@@ -497,6 +674,9 @@ function blankHarborState(stageId: StageId, catalogVersion: number): HarborState
     berthCap: Math.min(stageId, 9),
     ships: [],
     buildings: [],
+    pendingBuildingProjects: [],
+    pendingShipwrightProjects: [],
+    pendingHullOrders: [],
     activeOperations: [],
     queuedDepartures: [],
     pendingArrivals: [],
@@ -506,6 +686,7 @@ function blankHarborState(stageId: StageId, catalogVersion: number): HarborState
     doctrine: null,
     log: [],
     idCounter: 0,
+    pendingMorningReport: null,
   };
 }
 
@@ -626,7 +807,8 @@ export type DefType =
   | "events"
   | "consequences"
   | "policies"
-  | "doctrines";
+  | "doctrines"
+  | "ship_upgrades";
 
 export type DefExtraByType = {
   ships: ShipDefExtra;
@@ -637,6 +819,7 @@ export type DefExtraByType = {
   consequences: ConsequenceDefExtra;
   policies: PolicyDefExtra;
   doctrines: DoctrineDefExtra;
+  ship_upgrades: ShipUpgradeDefExtra;
 };
 
 export async function fetchStaffSchema(
@@ -648,6 +831,40 @@ export async function fetchStaffSchema(
     credentials: "omit",
   });
   return jsonOrThrow<StaffSchema>(response, "load schema");
+}
+
+export async function fetchStageUnlockList(
+  accessToken: string | null,
+): Promise<HarborStageUnlockRow[]> {
+  const response = await fetch(
+    `${apiBase()}/api/v1/harbor/staff/stage-unlocks/`,
+    {
+      method: "GET",
+      headers: authHeaders(accessToken),
+      credentials: "omit",
+    },
+  );
+  return jsonOrThrow<HarborStageUnlockRow[]>(response, "load stage unlocks");
+}
+
+export async function patchStageUnlock(
+  accessToken: string | null,
+  stageId: number,
+  body: Partial<HarborStageUnlockRow>,
+): Promise<HarborStageUnlockRow> {
+  const response = await fetch(
+    `${apiBase()}/api/v1/harbor/staff/stage-unlocks/${stageId}/`,
+    {
+      method: "PATCH",
+      headers: {
+        ...authHeaders(accessToken),
+        "Content-Type": "application/json",
+      },
+      credentials: "omit",
+      body: JSON.stringify(body),
+    },
+  );
+  return jsonOrThrow<HarborStageUnlockRow>(response, "patch stage unlock");
 }
 
 export async function fetchDefList<T extends DefType>(

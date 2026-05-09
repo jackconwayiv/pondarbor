@@ -42,7 +42,7 @@ export default function EventsPanel({ state, onResolve }: Props) {
               <span className="harbor-chip">Pay: {fmtMap(e.cost)}</span>
             )}
             {e.commandCost > 0 && (
-              <span className="harbor-chip">⚓ {e.commandCost}</span>
+              <span className="harbor-chip">{e.commandCost} ⚓</span>
             )}
           </div>
           <div className="harbor-actions">

@@ -1,15 +1,16 @@
 /**
  * Stage progression for Harbormaster (1..12).
  *
- * Stages are *cumulative*: each entry in `STAGE_UNLOCKS` lists what is *added*
- * at that stage; the helpers below compose all stages 1..N to produce the
- * stage's effective `StageDef`. Berth cap follows the spec: `min(stageId, 9)`,
- * with stages 10..12 inheriting cap 9.
+ * Stages are *cumulative*: each unlock row lists what is *added* at that stage;
+ * `buildStageDef` composes stages 1..N. Canonical unlock rows are loaded from
+ * `GET /api/v1/harbor/catalog/` (`stage_unlocks`) when present; baked-in
+ * defaults match the backend seed so tests and offline tooling keep working.
  *
- * Content (ships/buildings/...) is *not* defined here — it lives in the
- * backend catalog. Stages only declare which engine surfaces light up.
+ * Content (ships/buildings/…) lives in the backend catalog. Stages only
+ * declare which engine surfaces light up.
  */
 
+import type { HarborStageUnlockRow } from "../engine/types";
 import type {
   Metric,
   PanelKind,
@@ -19,7 +20,7 @@ import type {
   VoyageType,
 } from "../engine/types";
 
-type StageUnlock = {
+export type StageUnlock = {
   id: StageId;
   title: string;
   era: string;
@@ -42,7 +43,7 @@ type StageUnlock = {
   baseCommandPerDay?: number;
 };
 
-const UNLOCKS: StageUnlock[] = [
+const DEFAULT_STAGE_UNLOCKS: StageUnlock[] = [
   {
     id: 1,
     title: "Dock",
@@ -51,6 +52,7 @@ const UNLOCKS: StageUnlock[] = [
     coreTension: "",
     mainLesson: "Limited attention is the real resource.",
     resources: ["food", "timber", "wealth"],
+    metrics: ["population"],
     voyageTypes: ["trade"],
     panels: ["harbor", "buildings"],
     contentTags: ["starter"],
@@ -176,8 +178,12 @@ const UNLOCKS: StageUnlock[] = [
 ];
 
 const STAGE_BY_ID = new Map<StageId, StageUnlock>(
-  UNLOCKS.map((u) => [u.id, u]),
+  DEFAULT_STAGE_UNLOCKS.map((u) => [u.id, u]),
 );
+
+export const STAGE_IDS: readonly StageId[] = [
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+];
 
 function dedupe<T>(values: T[]): T[] {
   const seen = new Set<T>();
@@ -191,11 +197,12 @@ function dedupe<T>(values: T[]): T[] {
 }
 
 const STAGE1_STARTING = {
-  command: 0,
+  /** Extra anchors on top of `baseCommandPerDay` + building bonus (Dock starts at 2 total). */
+  command: 1,
   resources: { food: 5, timber: 5, wealth: 10 } as Partial<Record<Resource, number>>,
   resourceCaps: { food: 25, timber: 25, wealth: 50 } as Partial<Record<Resource, number>>,
-  metrics: {} as Partial<Record<Metric, number>>,
-  ships: { "fishing-boat": 1, "timber-skiff": 1, "merchant-sloop": 1 },
+  metrics: { population: 12 } as Partial<Record<Metric, number>>,
+  ships: { "fishing-boat": 1, "timber-skiff": 1 },
   buildings: {} as Record<string, number>,
 };
 
@@ -257,27 +264,61 @@ export function buildStageDef(stageId: StageId): StageDef {
     voyageTypes: dedupe(accumulated.voyageTypes),
     panels: dedupe(accumulated.panels),
     contentTags: dedupe(accumulated.contentTags),
-    berthCap: Math.min(stageId, 9),
+    berthCap: stageId === 1 ? 2 : Math.min(stageId, 9),
     doctrineUnlocked,
     baseCommandPerDay,
     starting: head.id === 1 ? STAGE1_STARTING : DEFAULT_STARTING,
   };
 }
 
-/** All 12 stage defs, indexed by stage id. */
-export const STAGES: ReadonlyMap<StageId, StageDef> = new Map(
-  ([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as StageId[]).map((id) => [
-    id,
-    buildStageDef(id),
-  ]),
-);
+const STAGES: Map<StageId, StageDef> = new Map();
+
+function rebuildStageDefCache(): void {
+  STAGES.clear();
+  for (const id of STAGE_IDS) {
+    STAGES.set(id, buildStageDef(id));
+  }
+}
+
+function apiRowToUnlock(raw: HarborStageUnlockRow): StageUnlock {
+  return {
+    id: raw.stage_id as StageId,
+    title: raw.title,
+    era: raw.era,
+    ageQuestion: raw.age_question,
+    coreTension: raw.core_tension,
+    mainLesson: raw.main_lesson,
+    resources: (raw.resources ?? []) as Resource[],
+    metrics: (raw.metrics ?? []) as Metric[],
+    voyageTypes: (raw.voyage_types ?? []) as VoyageType[],
+    panels: (raw.panels ?? []) as PanelKind[],
+    contentTags: raw.content_tags ?? [],
+    doctrineUnlocked: raw.doctrine_unlocked,
+    baseCommandPerDay:
+      raw.base_command_per_day != null ? raw.base_command_per_day : undefined,
+  };
+}
+
+/**
+ * Replace stage unlock deltas from the catalog API (12 rows). No-op if the
+ * payload is missing or incomplete so defaults stay in effect.
+ */
+export function hydrateStageUnlocksFromCatalog(
+  rows: HarborStageUnlockRow[] | undefined,
+): void {
+  if (!rows || rows.length !== 12) return;
+  const sorted = [...rows].sort((a, b) => a.stage_id - b.stage_id);
+  STAGE_BY_ID.clear();
+  for (const raw of sorted) {
+    STAGE_BY_ID.set(raw.stage_id as StageId, apiRowToUnlock(raw));
+  }
+  rebuildStageDefCache();
+}
+
+rebuildStageDefCache();
 
 export function getStageDef(stageId: StageId): StageDef {
   const def = STAGES.get(stageId);
   if (!def) throw new Error(`Unknown stage id: ${stageId}`);
   return def;
 }
-
-export const STAGE_IDS: readonly StageId[] = [
-  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
-];

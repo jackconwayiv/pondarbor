@@ -65,7 +65,17 @@ export type PanelKind =
 
 export type StageId = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 
-export type ShipStatus = "berthed" | "reserve" | "voyage" | "repair" | "in_port";
+/** At port but not in a numbered berth (harbor pool). Replaces legacy `reserve`. */
+export type ShipStatus =
+  | "berthed"
+  | "mooring"
+  | "voyage"
+  | "repair"
+  | "in_port"
+  /** Age 1: returned from deferred voyage with cargo; listed in Out to Sea until berthed. */
+  | "sea_laden"
+  /** Unladen hull waiting for a berth — shown in Out to Sea (not on voyage). */
+  | "sea_waiting";
 
 export type ShipInstance = {
   id: string;
@@ -78,6 +88,11 @@ export type ShipInstance = {
   activeOpId?: string | null;
   /** Age 1: cargo not yet banked (applied on End Day after berthing). */
   pendingCargo?: Partial<Record<Resource, number>> | null;
+  /**
+   * Age 1: game day when this ship was first berthed while holding `pendingCargo`.
+   * Unload banks cargo only when `state.day > ladenBerthArrivalDay`.
+   */
+  ladenBerthArrivalDay?: number | null;
   /** Installed ship upgrade slugs (Age 1+). */
   attachments?: string[];
 };
@@ -157,6 +172,30 @@ export type BuildingInstance = {
   level: number;
 };
 
+/** Age 1: building upgrade commissioned but not yet finished (ticks on advanceDay). */
+export type PendingBuildingProject = {
+  id: string;
+  slug: string;
+  /** Building level when construction completes. */
+  targetLevel: number;
+  remainingDays: number;
+};
+
+/** Age 1: ship upgrade commissioned but not yet installed (ticks on advanceDay). */
+export type PendingShipwrightProject = {
+  id: string;
+  shipId: string;
+  upgradeSlug: string;
+  remainingDays: number;
+};
+
+/** Age 1: new hull ordered at the shipyard (cost paid; `grantShip` on completion). */
+export type PendingHullOrder = {
+  id: string;
+  shipSlug: string;
+  remainingDays: number;
+};
+
 export type LogEntry = {
   day: number;
   text: string;
@@ -182,10 +221,16 @@ export type HarborState = {
   resources: Record<Resource, number>;
   resourceCaps: Record<Resource, number>;
   metrics: Record<Metric, number>;
-  /** Berths at indices 0..berthCap-1; we just store the cap and use ship.berthIndex. */
+  /** Max ships you can process per day (berthing + departures); harbor building adds slots. */
   berthCap: number;
   ships: ShipInstance[];
   buildings: BuildingInstance[];
+  /** Age 1 only: buildings upgrading (resource cost already paid). */
+  pendingBuildingProjects: PendingBuildingProject[];
+  /** Age 1 only: ship upgrades in the yard (cost already paid). */
+  pendingShipwrightProjects: PendingShipwrightProject[];
+  /** Age 1 only: new hulls on order at the shipwright. */
+  pendingHullOrders: PendingHullOrder[];
   activeOperations: ActiveOperation[];
   /** Age 1: voyages queued this day; command deducted when the day ends. */
   queuedDepartures: QueuedDeparture[];
@@ -199,10 +244,18 @@ export type HarborState = {
   log: LogEntry[];
   /** Bumped each time we mint a new instance id; deterministic for tests. */
   idCounter: number;
+  /** Set after advanceDay until the player dismisses the morning report (survives reload). */
+  pendingMorningReport?: {
+    gameDay: number;
+    dailyReportLines: string[];
+    businessReportLines: string[];
+    newEvents: EventSnapshot[];
+    newArrivals: ArrivalSnapshot[];
+  } | null;
 };
 
 /**
- * Stage definition (lives in code; not editable via staff UI).
+ * Stage definition composed from cumulative unlock rows (`catalog.stage_unlocks`).
  */
 export type StageDef = {
   id: StageId;
@@ -262,6 +315,13 @@ export type CatalogDef<TExtra = Record<string, unknown>> = {
   sort_order: number;
 };
 
+/** Optional Age 1 shipwright commission (new hull); paid upfront, completes after `AGE1_CONSTRUCTION_DAYS`. */
+export type ShipwrightHullPurchase = {
+  cost?: Partial<Record<Resource, number>>;
+  /** Command (anchors) spent at commission; default 1. */
+  command?: number;
+};
+
 export type ShipDefExtra = {
   role?: string;
   capacity?: number;
@@ -271,9 +331,13 @@ export type ShipDefExtra = {
   voyage_yield?: Partial<Record<Resource, number>>;
   /** Nights at sea before return (1 = arrive after next end-day). */
   voyage_nights?: number;
+  /** If set, this hull can be bought at the Shipwright (Age 1) with a construction delay. */
+  shipwright_purchase?: ShipwrightHullPurchase;
 };
 
 export type BuildingDefExtra = {
+  /** When set, per-day resource effects from this building are doubled (tier scaffolding). */
+  building_tier?: "wood" | "stone" | "reinforced";
   district?: string;
   max_level?: number;
   level_costs?: Array<Partial<Record<Resource, number>>>;
@@ -355,6 +419,23 @@ export type DoctrineDefExtra = {
   permanent_modifiers?: PolicyDefExtra["modifiers"];
 };
 
+/** One row per stage id (1..12); snake_case matches `GET /api/v1/harbor/catalog/`. */
+export type HarborStageUnlockRow = {
+  stage_id: number;
+  title: string;
+  era: string;
+  age_question: string;
+  core_tension: string;
+  main_lesson: string;
+  resources: string[];
+  metrics: string[];
+  voyage_types: string[];
+  panels: string[];
+  content_tags: string[];
+  doctrine_unlocked: boolean;
+  base_command_per_day: number | null;
+};
+
 export type HarborCatalog = {
   catalog_version: number;
   ships: CatalogDef<ShipDefExtra>[];
@@ -365,6 +446,8 @@ export type HarborCatalog = {
   consequences: CatalogDef<ConsequenceDefExtra>[];
   policies: CatalogDef<PolicyDefExtra>[];
   doctrines: CatalogDef<DoctrineDefExtra>[];
-  /** Static Age 1 upgrades (from API; may be empty). */
+  /** Age 1 shipyard attachments (DB-backed; may be empty). */
   ship_upgrades?: CatalogDef<ShipUpgradeDefExtra>[];
+  /** Stage deltas; when 12 rows are present the client hydrates stage defs. */
+  stage_unlocks?: HarborStageUnlockRow[];
 };

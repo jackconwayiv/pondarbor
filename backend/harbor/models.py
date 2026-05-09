@@ -2,7 +2,11 @@
 
 The split is intentional:
   * `HarborGame` is a named save slot per user (many rows per player).
-  * The eight `Harbor*Def` tables are the staff-editable game catalog.
+  * The nine `Harbor*Def` tables are the staff-editable game catalog (ships,
+    buildings, operations, arrivals, events, consequences, policies, doctrines,
+    ship upgrades).
+  * `HarborStageUnlock` rows (1..12) drive cumulative stage composition on the
+    client; edited via staff/stage-unlocks or Django admin.
 
 The catalog tables share a common skeleton (slug, name, description,
 stage_min/max, tags, extra, enabled, sort_order) so the staff CRUD views
@@ -149,7 +153,36 @@ class HarborDoctrineDef(_HarborDefBase):
     """
 
 
-# Public list used by signals + views to iterate every catalog table.
+class HarborShipUpgradeDef(_HarborDefBase):
+    """Static Age 1 shipyard attachment (yield_bonus + cost in extra)."""
+
+
+class HarborStageUnlock(models.Model):
+    """One row per stage id (1..12); deltas compose cumulatively on the client."""
+
+    stage_id = models.PositiveSmallIntegerField(primary_key=True)
+    title = models.CharField(max_length=120)
+    era = models.CharField(max_length=120)
+    age_question = models.TextField(blank=True)
+    core_tension = models.TextField(blank=True)
+    main_lesson = models.TextField(blank=True)
+    resources = models.JSONField(default=list, blank=True)
+    metrics = models.JSONField(default=list, blank=True)
+    voyage_types = models.JSONField(default=list, blank=True)
+    panels = models.JSONField(default=list, blank=True)
+    content_tags = models.JSONField(default=list, blank=True)
+    doctrine_unlocked = models.BooleanField(default=False)
+    base_command_per_day = models.PositiveSmallIntegerField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["stage_id"]
+
+    def __str__(self) -> str:
+        return f"HarborStageUnlock({self.stage_id}: {self.title})"
+
+
+# Public list used by signals + views to iterate every catalog def table.
 HARBOR_DEF_MODELS = [
     HarborShipDef,
     HarborBuildingDef,
@@ -159,4 +192,5 @@ HARBOR_DEF_MODELS = [
     HarborConsequenceDef,
     HarborPolicyDef,
     HarborDoctrineDef,
+    HarborShipUpgradeDef,
 ]

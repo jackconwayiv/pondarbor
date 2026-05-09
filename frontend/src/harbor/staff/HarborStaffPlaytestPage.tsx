@@ -42,7 +42,11 @@ import type {
   HarborState,
   StageId,
 } from "../engine/types";
-import { STAGE_IDS, getStageDef } from "../stages";
+import {
+  STAGE_IDS,
+  getStageDef,
+  hydrateStageUnlocksFromCatalog,
+} from "../stages";
 
 export default function HarborStaffPlaytestPage() {
   const { getApiAccessToken } = useAppSession();
@@ -57,6 +61,7 @@ export default function HarborStaffPlaytestPage() {
     try {
       const token = await getApiAccessToken();
       const cat = await fetchHarborCatalog(token);
+      hydrateStageUnlocksFromCatalog(cat.stage_unlocks);
       setCatalog(cat);
       const fresh = createDefaultHarborState(stageId, cat);
       setState(fresh);
@@ -144,8 +149,14 @@ export default function HarborStaffPlaytestPage() {
 
   if (!state || !catalog) {
     return (
-      <Stack gap={4}>
-        <Heading size="md">Playtest</Heading>
+      <Stack gap={4} w="full" align="stretch">
+        <Box>
+          <Heading size="md">Playtest</Heading>
+          <Text fontSize="sm" color="fg.muted" mt={2}>
+            Loading runs the same catalog fetch as the game. Use Reset after
+            changing staff defs.
+          </Text>
+        </Box>
         {error ? (
           <Box bg="red.subtle" color="red.fg" px={3} py={2} borderRadius="md">
             {error}
@@ -177,16 +188,18 @@ export default function HarborStaffPlaytestPage() {
   );
 
   return (
-    <Stack gap={4}>
-      <Heading size="md">Playtest</Heading>
-      <Text color="fg.muted">
-        Runs the engine against the live catalog without saving. Every button
-        here calls the same engine functions the game uses — use this to
-        sanity-check content and balance.
-      </Text>
+    <Stack gap={4} w="full" align="stretch">
+      <Box>
+        <Heading size="md">Playtest</Heading>
+        <Text color="fg.muted" mt={2} maxW="4xl">
+          Runs the engine against the live catalog without saving. Every control
+          calls the same engine functions the client uses — sanity-check content
+          and balance here before relying on a player save.
+        </Text>
+      </Box>
 
       {/* Controls */}
-      <HStack gap={3} wrap="wrap">
+      <HStack gap={3} wrap="wrap" align="flex-end">
         <Field.Root w="180px">
           <Field.Label>Stage</Field.Label>
           <NativeSelect.Root>

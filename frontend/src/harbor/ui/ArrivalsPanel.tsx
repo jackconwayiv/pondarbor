@@ -48,7 +48,7 @@ export default function ArrivalsPanel({ state, onAccept, onDecline }: Props) {
                 <span className="harbor-chip harbor-chip--good">+ ship</span>
               )}
               {a.commandCost > 0 && (
-                <span className="harbor-chip">⚓ {a.commandCost}</span>
+                <span className="harbor-chip">{a.commandCost} ⚓</span>
               )}
             </div>
             <div className="harbor-actions">

@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import staff_content, views
+from . import staff_content, staff_stage_unlocks, views
 
 urlpatterns = [
     path("games/", views.harbor_games),
@@ -8,6 +8,14 @@ urlpatterns = [
     path("games/<int:game_id>/state/", views.harbor_game_state),
     path("catalog/", views.catalog),
     path("staff/schema/", views.staff_schema),
+    path(
+        "staff/stage-unlocks/<int:stage_id>/",
+        staff_stage_unlocks.staff_stage_unlock_detail,
+    ),
+    path(
+        "staff/stage-unlocks/",
+        staff_stage_unlocks.staff_stage_unlock_list,
+    ),
     path("staff/<str:def_type>/export/", staff_content.staff_def_export),
     path("staff/<str:def_type>/import/", staff_content.staff_def_import),
     path("staff/<str:def_type>/<int:pk>/", staff_content.staff_def_detail),

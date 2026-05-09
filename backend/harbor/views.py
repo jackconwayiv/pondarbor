@@ -22,15 +22,15 @@ from rest_framework.response import Response
 from users.permissions import IsStaffUser
 
 from . import schema_constants
-from .age1_content import SHIP_UPGRADE_DEFS
 from .models import (
     HARBOR_DEF_MODELS,
     HarborCatalogVersion,
     HarborGame,
+    HarborStageUnlock,
 )
 
 MAX_STATE_BYTES = 256 * 1024
-MAX_HARBOR_NAME_LEN = 80
+MAX_HARBOR_NAME_LEN = 15
 
 
 def _server_time_payload():
@@ -255,7 +255,26 @@ DEF_MODEL_BY_SLUG = {
     "consequences": HARBOR_DEF_MODELS[5],
     "policies": HARBOR_DEF_MODELS[6],
     "doctrines": HARBOR_DEF_MODELS[7],
+    "ship_upgrades": HARBOR_DEF_MODELS[8],
 }
+
+
+def _stage_unlock_catalog_dict(row: HarborStageUnlock) -> dict:
+    return {
+        "stage_id": row.stage_id,
+        "title": row.title,
+        "era": row.era,
+        "age_question": row.age_question,
+        "core_tension": row.core_tension,
+        "main_lesson": row.main_lesson,
+        "resources": row.resources or [],
+        "metrics": row.metrics or [],
+        "voyage_types": row.voyage_types or [],
+        "panels": row.panels or [],
+        "content_tags": row.content_tags or [],
+        "doctrine_unlocked": row.doctrine_unlocked,
+        "base_command_per_day": row.base_command_per_day,
+    }
 
 
 @api_view(["GET"])
@@ -266,7 +285,10 @@ def catalog(request):
     for url_slug, model_cls in DEF_MODEL_BY_SLUG.items():
         rows = model_cls.objects.filter(enabled=True).order_by("sort_order", "slug")
         payload[url_slug] = [_def_dict(r) for r in rows]
-    payload["ship_upgrades"] = list(SHIP_UPGRADE_DEFS)
+    payload["stage_unlocks"] = [
+        _stage_unlock_catalog_dict(r)
+        for r in HarborStageUnlock.objects.order_by("stage_id")
+    ]
     return Response(payload)
 
 

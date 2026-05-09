@@ -21,7 +21,10 @@ import {
   auth0LoginAuthorizationParams,
   auth0LoginWithReturnTo,
 } from "../auth/auth0LoginParams";
-import { useAppSession } from "../auth/AppSessionContext";
+import {
+  resolveCurrentUserAvatarUrl,
+  useAppSession,
+} from "../auth/AppSessionContext";
 import {
   fetchWhatIfHandState,
   fetchWhatIfTvState,
@@ -91,8 +94,14 @@ export default function WhatIfHandPage() {
   const navigate = useNavigate();
   const roomCode = code.toUpperCase();
   const { loginWithRedirect } = useAuth0();
-  const { sessionUser, isAuthenticated, getApiAccessToken, resyncSessionSilently } =
-    useAppSession();
+  const {
+    sessionUser,
+    auth0User,
+    isAuthenticated,
+    getApiAccessToken,
+    resyncSessionSilently,
+  } = useAppSession();
+  const currentUserAvatarUrl = resolveCurrentUserAvatarUrl(sessionUser, auth0User);
   const [state, setState] = useState<WhatIfSessionState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -304,9 +313,9 @@ export default function WhatIfHandPage() {
             </Text>
             <HStack align="center" gap="3" w="100%">
               <Avatar.Root size="md" flexShrink={0}>
-                {isAuthenticated && sessionUser?.profile?.avatar_url ? (
-                  <Avatar.Image src={sessionUser.profile.avatar_url} />
-                ) : null}
+                <Avatar.Image
+                  src={isAuthenticated ? currentUserAvatarUrl || undefined : undefined}
+                />
                 <Avatar.Fallback
                   name={
                     isAuthenticated

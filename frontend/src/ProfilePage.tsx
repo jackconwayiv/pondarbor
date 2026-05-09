@@ -20,7 +20,10 @@ import { AchievementSummaryCard } from "./achievements/AchievementSummaryCard";
 import { fetchPublicAchievementsByUserId } from "./achievements/api";
 import { sortAchievementsNewestFirst } from "./achievements/sortAchievements";
 import type { AchievementSummary } from "./achievements/types";
-import { useAppSession } from "./auth/AppSessionContext";
+import {
+  resolveCurrentUserAvatarUrl,
+  useAppSession,
+} from "./auth/AppSessionContext";
 import { PanelBlockSkeleton } from "./components/panelStatus";
 import { PanelErrorState, PanelPageShell } from "./components/panelStatus";
 import { fetchMyImageInventory } from "./closet/api";
@@ -92,6 +95,7 @@ function avatarUrlFromClosetImageKey(imageKey: string): string {
 export default function ProfilePage() {
   const {
     sessionUser,
+    auth0User,
     isAuthenticated,
     isLoading,
     error: sessionError,
@@ -449,6 +453,7 @@ export default function ProfilePage() {
   }
 
   const { user, profile } = sessionUser;
+  const currentUserAvatarUrl = resolveCurrentUserAvatarUrl(sessionUser, auth0User);
   const headerDisplayName = (
     isEditing ? displayName : profile.display_name || ""
   ).trim();
@@ -576,7 +581,7 @@ export default function ProfilePage() {
                       <Avatar.Fallback
                         name={profile.display_name || user.email || "User"}
                       />
-                      <Avatar.Image src={profile.avatar_url || undefined} />
+                      <Avatar.Image src={currentUserAvatarUrl || undefined} />
                       <Float placement="bottom-end" offsetX="1" offsetY="1">
                         <Circle
                           bg={

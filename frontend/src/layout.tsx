@@ -14,7 +14,10 @@ import {
 import { useEffect, useMemo } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 
-import { useAppSession } from "./auth/AppSessionContext";
+import {
+  resolveCurrentUserAvatarUrl,
+  useAppSession,
+} from "./auth/AppSessionContext";
 import {
   auth0LoginAuthorizationParams,
   auth0SignupAuthorizationParams,
@@ -145,6 +148,7 @@ export default function AppLayout() {
   const { loginWithRedirect } = useAuth0();
   const { isAuthenticated, auth0User, sessionUser, logout, switchUser } =
     useAppSession();
+  const currentUserAvatarUrl = resolveCurrentUserAvatarUrl(sessionUser, auth0User);
   const location = useLocation();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
@@ -227,11 +231,7 @@ export default function AppLayout() {
               }
             />
             <Avatar.Image
-              src={
-                sessionUser?.profile.avatar_url ||
-                auth0User?.picture ||
-                undefined
-              }
+              src={currentUserAvatarUrl || undefined}
             />
           </Avatar.Root>
         </Button>

@@ -52,6 +52,15 @@ export type SessionUser = {
   achievements?: AchievementSummary[];
 };
 
+export function resolveCurrentUserAvatarUrl(
+  sessionUser: SessionUser | null | undefined,
+  auth0User: User | null | undefined,
+): string {
+  const profileAvatar = (sessionUser?.profile.avatar_url ?? "").trim();
+  if (profileAvatar) return profileAvatar;
+  return (auth0User?.picture ?? "").trim();
+}
+
 export type ProfilePatch = Partial<
   Pick<
     Profile,

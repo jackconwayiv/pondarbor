@@ -3,7 +3,10 @@ import type { MouseEvent, ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Link as RouterLink } from "react-router";
 
-import { useAppSession } from "../auth/AppSessionContext";
+import {
+  resolveCurrentUserAvatarUrl,
+  useAppSession,
+} from "../auth/AppSessionContext";
 import { APP_TEXT_SIZES, MAPPED_LIST_CARD_OUTER_PROPS } from "../theme/typography";
 import SongadayHeartButton from "./SongadayHeartButton";
 import SongadayHeartReadOnly, { SongadayHeartReadOnlyBlockLink } from "./SongadayHeartReadOnly";
@@ -88,11 +91,10 @@ export default function SongadayListCard({
 
   const apiAvatar = (entry.user.avatar_url || "").trim();
   const sessionId = sessionUser?.user.id;
+  const currentUserAvatar = resolveCurrentUserAvatarUrl(sessionUser, auth0User);
   const avatar =
     sessionId != null && entry.user.id === sessionId
-      ? (sessionUser?.profile?.avatar_url ?? "").trim() ||
-        (auth0User?.picture ?? "").trim() ||
-        apiAvatar
+      ? currentUserAvatar || apiAvatar
       : apiAvatar;
   const label = entry.user.nickname || entry.user.email.split("@")[0];
 

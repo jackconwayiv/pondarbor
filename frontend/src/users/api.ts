@@ -9,6 +9,7 @@ export type StaffPendingSummary = {
   pending_whatif_questions: number;
   contact_messages_count: number;
   latest_contact_message_id: number | null;
+  pending_zodiac_charts?: number;
 };
 
 export type StaffContactMessageRow = {

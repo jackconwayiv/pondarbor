@@ -77,6 +77,13 @@ const QUOTES: AppNavItem = {
   blurb: "Archive of user-recorded quotes.",
 };
 
+const ZODIAC: AppNavItem = {
+  to: "/zodiac",
+  emoji: "🌞",
+  label: "Zodiac",
+  blurb: "Zodiackary natal chart (staff-imported).",
+};
+
 const MEAL: AppNavItem = {
   to: "/meal",
   /** Matches `MealLayout` h1. */
@@ -103,7 +110,17 @@ const PROFILE: AppNavItem = {
 };
 
 /** Home app grid order (games rendered as a separate section on home). */
-export const APP_HOME_APPS: AppNavItem[] = [SONGADAY, CALENDAR, CLOSET, QUOTES, MEAL, FRIENDS, PROFILE, ABOUT];
+export const APP_HOME_APPS: AppNavItem[] = [
+  SONGADAY,
+  CALENDAR,
+  CLOSET,
+  QUOTES,
+  ZODIAC,
+  MEAL,
+  FRIENDS,
+  PROFILE,
+  ABOUT,
+];
 
 /** Top bar + hamburger order mirrors home icons, with Games inserted before About. */
 export const APP_DESKTOP_NAV: AppNavItem[] = [
@@ -111,6 +128,7 @@ export const APP_DESKTOP_NAV: AppNavItem[] = [
   CALENDAR,
   CLOSET,
   QUOTES,
+  ZODIAC,
   MEAL,
   FRIENDS,
   GAMES,

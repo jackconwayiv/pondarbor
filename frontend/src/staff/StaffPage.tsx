@@ -321,6 +321,16 @@ export default function StaffPage() {
                       WhatIf question admin
                     </RouterLink>
                   </ChakraLink>
+                  <ChakraLink
+                    asChild
+                    fontSize="sm"
+                    textDecoration="underline"
+                    color="fg"
+                  >
+                    <RouterLink to="/staff/zodiac">
+                      Zodiackary chart import
+                    </RouterLink>
+                  </ChakraLink>
                 </HStack>
               </Box>
             </Stack>

@@ -145,6 +145,17 @@ export function getBreadcrumbItems(
   if (p === "/staff") {
     return [HOME, { label: "Staff" }];
   }
+  if (p === "/staff/zodiac") {
+    return [
+      HOME,
+      { label: "Staff", to: "/staff" },
+      { label: "Zodiackary import" },
+    ];
+  }
+
+  if (p === "/zodiac") {
+    return [HOME, { label: "Zodiackary" }];
+  }
   if (p.match(/^\/friend\/[^/]+$/)) {
     return [
       HOME,

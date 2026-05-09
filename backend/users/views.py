@@ -177,6 +177,7 @@ def _pending_incoming_friend_request_count(user):
 def _staff_pending_summary_payload():
     """Same JSON object as GET staff/pending-summary/."""
     from whatif.models import WhatIfQuestion
+    from zodiac.models import AstroProfile
 
     pending_members = UserModel.objects.filter(
         account_status=UserModel.AccountStatus.PENDING
@@ -190,11 +191,16 @@ def _staff_pending_summary_payload():
         contact_messages_count=Count("id"),
         latest_contact_message_id=Max("id"),
     )
+    pending_zodiac_charts = AstroProfile.objects.filter(
+        chart_status=AstroProfile.ChartStatus.WAITING_STAFF_CHART
+    ).count()
+
     return {
         "pending_members": pending_members,
         "pending_whatif_questions": pending_whatif,
         "contact_messages_count": contact_agg["contact_messages_count"] or 0,
         "latest_contact_message_id": contact_agg["latest_contact_message_id"],
+        "pending_zodiac_charts": pending_zodiac_charts,
     }
 
 

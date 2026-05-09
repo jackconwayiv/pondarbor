@@ -553,6 +553,7 @@ class StaffApiTests(TestCase):
         self.assertEqual(body["pending_whatif_questions"], 1)
         self.assertEqual(body["contact_messages_count"], 0)
         self.assertIsNone(body["latest_contact_message_id"])
+        self.assertEqual(body["pending_zodiac_charts"], 0)
 
         sender = User.objects.create_user(email="cm@example.com", password="secret12345")
         sender.account_status = User.AccountStatus.APPROVED
@@ -655,6 +656,7 @@ class InboxBootstrapPayloadTests(TestCase):
         self.assertIsNotNone(summary)
         self.assertIn("pending_members", summary)
         self.assertIn("contact_messages_count", summary)
+        self.assertIn("pending_zodiac_charts", summary)
 
 
 class SpaRoutingTests(TestCase):

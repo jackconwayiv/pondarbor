@@ -111,6 +111,7 @@ INSTALLED_APPS = [
     "calendars.apps.CalendarsConfig",
     "harbor.apps.HarborConfig",
     "pondstead.apps.PondsteadConfig",
+    "zodiac.apps.ZodiacConfig",
     # allauth
     "allauth",
     "allauth.account",

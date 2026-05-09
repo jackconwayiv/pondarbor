@@ -137,6 +137,17 @@ function deriveHomeInbox(
             : `${s.pending_whatif_questions} WhatIf questions are awaiting review.`,
       });
     }
+    const pendingZodiac = s.pending_zodiac_charts ?? 0;
+    if (pendingZodiac > 0) {
+      prompts.push({
+        id: "staff-pending-zodiac",
+        to: "/staff/zodiac",
+        text:
+          pendingZodiac === 1
+            ? "1 birth chart is awaiting review."
+            : `${pendingZodiac} birth charts are awaiting review.`,
+      });
+    }
     if (
       s.contact_messages_count > 0 &&
       s.latest_contact_message_id != null

@@ -17,4 +17,5 @@ urlpatterns = [
     path("calendars/", include("calendars.urls")),
     path("harbor/", include("harbor.urls")),
     path("pondstead/", include("pondstead.urls")),
+    path("zodiac/", include("zodiac.urls")),
 ]

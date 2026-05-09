@@ -53,12 +53,13 @@ function HomeAppNavList({
     "/calendar": 1,
     "/closet": 2,
     "/quotes": 3,
-    "/meal": 4,
-    "/profile?tab=friends": 5,
-    "/profile": 6,
-    "/games": 7,
-    "/whatif": 8,
-    "/about": 9,
+    "/zodiac": 4,
+    "/meal": 5,
+    "/profile?tab=friends": 6,
+    "/profile": 7,
+    "/games": 8,
+    "/whatif": 9,
+    "/about": 10,
   };
   // Home-grid-only label overrides; nav/hamburger keep the canonical labels.
   const HOME_APP_LABEL_OVERRIDES: Record<string, string> = {

@@ -16,10 +16,13 @@ import {
   LegacyRedirectPlansTemplateDetail,
   LegacyRedirectPlansWeekDetail,
 } from "./meal/mealLegacyRedirects";
+import StaffPage from "./staff/StaffPage";
 import StaffRoute from "./staff/StaffRoute";
 import { useAppSession } from "./auth/AppSessionContext";
 
 const QuotesFeedPage = lazy(() => import("./quotes/QuotesFeedPage"));
+const ZodiacPage = lazy(() => import("./zodiac/ZodiacPage"));
+const StaffZodiacPage = lazy(() => import("./staff/StaffZodiacPage"));
 const ClosetPage = lazy(() => import("./closet/ClosetPage"));
 const ClosetItemDetailPage = lazy(
   () => import("./closet/ClosetItemDetailPage"),
@@ -273,10 +276,21 @@ export const router = sentryCreateBrowserRouter([
       {
         path: "staff",
         element: authedRouteElement(<StaffRoute />),
+        children: [
+          { index: true, element: <StaffPage /> },
+          {
+            path: "zodiac",
+            element: lazyRouteElement(<StaffZodiacPage />),
+          },
+        ],
       },
       {
         path: "quotes",
         element: authedRouteElement(lazyRouteElement(<QuotesFeedPage />)),
+      },
+      {
+        path: "zodiac",
+        element: authedRouteElement(lazyRouteElement(<ZodiacPage />)),
       },
       {
         path: "closet",

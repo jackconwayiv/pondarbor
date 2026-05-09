@@ -25,6 +25,14 @@ def redirect_icons_svg(request):
     return HttpResponseRedirect(_built_public_asset_url("icons.svg"))
 
 
+def redirect_apple_touch_icon_png(request):
+    return HttpResponseRedirect(_built_public_asset_url("apple-touch-icon.png"))
+
+
+def redirect_site_webmanifest(request):
+    return HttpResponseRedirect(_built_public_asset_url("site.webmanifest"))
+
+
 def spa_index(request, route=None):
     manifest_path = (
         settings.BASE_DIR.parent / "frontend" / "dist" / ".vite" / "manifest.json"
@@ -49,6 +57,10 @@ def spa_index(request, route=None):
             "vite_js": vite_js,
             "vite_css": vite_css,
             "favicon_href": _built_public_asset_url("favicon.svg"),
+            "apple_touch_icon_href": _built_public_asset_url(
+                "apple-touch-icon.png"
+            ),
+            "web_manifest_href": _built_public_asset_url("site.webmanifest"),
             "pondarbor_logo_src": _built_public_asset_url("pondarborlogo.png"),
             "pondarbor_profile_src": _built_public_asset_url(
                 "pondarborprofile.png"

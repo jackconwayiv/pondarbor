@@ -3368,7 +3368,7 @@ export const CATALOG_UPGRADES: UpgradeDef[] = [
     ecologyNote:
       "Where lawn-like turf meets shrubby edge above a stable, armored bank, deer can crop herbs and woody browse without collapsing cover, trailing nutrients that wash into littoral shallows.",
     costs: {
-      energy: 100_000_000_000_000,
+      energy: 1_000_000_000_000,
     },
     maxOwned: 1,
     requirements: [
@@ -3392,7 +3392,7 @@ export const CATALOG_UPGRADES: UpgradeDef[] = [
     ecologyNote:
       "At dawn and dusk, deer stage along browse-rich margins above deep, fertile, oxygenated water, cropping herbs and leaving coarse droppings that subsidize shoreline grazers and detritivores.",
     costs: {
-      energy: 500_000_000_000_000,
+      energy: 5_000_000_000_000,
     },
     maxOwned: 1,
     requirements: [
@@ -3436,7 +3436,7 @@ export const CATALOG_UPGRADES: UpgradeDef[] = [
     ecologyNote:
       "Sedge and rush tussocks at a wet meadow edge hold soil moisture where night-flying insects emerge and mate, linking upland grassland litter to pond-edge food webs.",
     costs: {
-      energy: 100_000_000_000_000,
+      energy: 1_000_000_000_000,
     },
     maxOwned: 1,
     requirements: [
@@ -3460,7 +3460,7 @@ export const CATALOG_UPGRADES: UpgradeDef[] = [
     ecologyNote:
       "On warm nights, soft-winged beetles signal over humid sedge edges where larvae hunt snails in damp soil, pulsing light above water that mirrors their courtship.",
     costs: {
-      energy: 500_000_000_000_000,
+      energy: 5_000_000_000_000,
     },
     maxOwned: 1,
     requirements: [
@@ -3504,7 +3504,7 @@ export const CATALOG_UPGRADES: UpgradeDef[] = [
     ecologyNote:
       "Where fertility drives high insect productivity, emergences and mating swarms stack into aerial clouds that bats and swallows slice through after dusk.",
     costs: {
-      energy: 100_000_000_000_000,
+      energy: 1_000_000_000_000,
     },
     maxOwned: 1,
     requirements: [
@@ -3528,7 +3528,7 @@ export const CATALOG_UPGRADES: UpgradeDef[] = [
     ecologyNote:
       "At insect peaks, bats commute along tree lines and over open water, skimming emergences and exporting nutrients in guano to roost trees and soil.",
     costs: {
-      energy: 500_000_000_000_000,
+      energy: 5_000_000_000_000,
     },
     maxOwned: 1,
     requirements: [
@@ -3572,7 +3572,7 @@ export const CATALOG_UPGRADES: UpgradeDef[] = [
     ecologyNote:
       "Forbs and shrubs bloom along the water’s edge where shelter is high, feeding long-tongued bees that link pollen and nectar to bank stability and seed rain.",
     costs: {
-      energy: 100_000_000_000_000,
+      energy: 1_000_000_000_000,
     },
     maxOwned: 1,
     requirements: [
@@ -3596,7 +3596,7 @@ export const CATALOG_UPGRADES: UpgradeDef[] = [
     ecologyNote:
       "Bumblebees nest in undisturbed soil and tussocks near rich flowering edges, vibrating flowers for pollen and moving nutrients between upland and littoral plants.",
     costs: {
-      energy: 500_000_000_000_000,
+      energy: 5_000_000_000_000,
     },
     maxOwned: 1,
     requirements: [
@@ -3640,7 +3640,7 @@ export const CATALOG_UPGRADES: UpgradeDef[] = [
     ecologyNote:
       "Low, sun-warmed banks with dense cover let snakes thermoregulate at the waterline, slipping between hunt and refuge without crossing bare mud.",
     costs: {
-      energy: 100_000_000_000_000,
+      energy: 1_000_000_000_000,
     },
     maxOwned: 1,
     requirements: [
@@ -3664,7 +3664,7 @@ export const CATALOG_UPGRADES: UpgradeDef[] = [
     ecologyNote:
       "Slender snakes patrol weedy margins and shallow cover, taking fish and amphibians in water that is deep, fertile, oxygenated, and structurally complex.",
     costs: {
-      energy: 500_000_000_000_000,
+      energy: 5_000_000_000_000,
     },
     maxOwned: 1,
     requirements: [
@@ -3708,7 +3708,7 @@ export const CATALOG_UPGRADES: UpgradeDef[] = [
     ecologyNote:
       "A quiet pier shades pilings and posts where spiders span open water, anchoring silk to hunt surface insects without competing with shoreline clutter.",
     costs: {
-      energy: 100_000_000_000_000,
+      energy: 1_000_000_000_000,
     },
     maxOwned: 1,
     requirements: [
@@ -3732,7 +3732,7 @@ export const CATALOG_UPGRADES: UpgradeDef[] = [
     ecologyNote:
       "Large spiders wait motionless on pilings and posts, diving or skimming surface tension to capture prey when the pond is deep, fertile, oxygenated, and sheltered.",
     costs: {
-      energy: 500_000_000_000_000,
+      energy: 5_000_000_000_000,
     },
     maxOwned: 1,
     requirements: [
@@ -3776,7 +3776,7 @@ export const CATALOG_UPGRADES: UpgradeDef[] = [
     ecologyNote:
       "A concealed rivulet undercutting the bank feeds cool, oxygen-rich water to a narrow run where mink can hunt and travel without crossing open mud.",
     costs: {
-      energy: 100_000_000_000_000,
+      energy: 1_000_000_000_000,
     },
     maxOwned: 1,
     requirements: [
@@ -3800,7 +3800,7 @@ export const CATALOG_UPGRADES: UpgradeDef[] = [
     ecologyNote:
       "Semi-aquatic mustelids hunt along hidden runs and dense cover, taking fish and crayfish when depth, fertility, oxygen, and shelter are all extreme.",
     costs: {
-      energy: 500_000_000_000_000,
+      energy: 5_000_000_000_000,
     },
     maxOwned: 1,
     requirements: [
@@ -3844,7 +3844,7 @@ export const CATALOG_UPGRADES: UpgradeDef[] = [
     ecologyNote:
       "Where mixing and low turbidity align, light penetrates the water column so predators and anglers see prey from above, and plants can photosynthesize deeper.",
     costs: {
-      energy: 100_000_000_000_000,
+      energy: 1_000_000_000_000,
     },
     maxOwned: 1,
     requirements: [
@@ -3868,7 +3868,7 @@ export const CATALOG_UPGRADES: UpgradeDef[] = [
     ecologyNote:
       "Kingfishers perch on snags and posts over clear water, diving on fish when depth, fertility, oxygen, and shelter support a dense prey field.",
     costs: {
-      energy: 500_000_000_000_000,
+      energy: 5_000_000_000_000,
     },
     maxOwned: 1,
     requirements: [
@@ -3912,7 +3912,7 @@ export const CATALOG_UPGRADES: UpgradeDef[] = [
     ecologyNote:
       "Milkweed stands anchor monarch breeding with latex-rich leaves and nectar, tying upland forb patches to pond edge humidity and insect prey.",
     costs: {
-      energy: 100_000_000_000_000,
+      energy: 1_000_000_000_000,
     },
     maxOwned: 1,
     requirements: [
@@ -3936,7 +3936,7 @@ export const CATALOG_UPGRADES: UpgradeDef[] = [
     ecologyNote:
       "Monarchs stage on milkweed near rich flowering margins, migrating and laying eggs where depth, fertility, oxygen, and shelter support a full summer food web.",
     costs: {
-      energy: 500_000_000_000_000,
+      energy: 5_000_000_000_000,
     },
     maxOwned: 1,
     requirements: [
@@ -3980,7 +3980,7 @@ export const CATALOG_UPGRADES: UpgradeDef[] = [
     ecologyNote:
       "Picnic scraps and shoreline litter concentrate calories on high-shelter banks where generalists can wash food and retreat to cover between forays.",
     costs: {
-      energy: 100_000_000_000_000,
+      energy: 1_000_000_000_000,
     },
     maxOwned: 1,
     requirements: [
@@ -4004,7 +4004,7 @@ export const CATALOG_UPGRADES: UpgradeDef[] = [
     ecologyNote:
       "Raccoons probe shallows and stranded litter at night, dexterous in water that is deep, fertile, oxygenated, and full of cover for escape from larger predators.",
     costs: {
-      energy: 500_000_000_000_000,
+      energy: 5_000_000_000_000,
     },
     maxOwned: 1,
     requirements: [

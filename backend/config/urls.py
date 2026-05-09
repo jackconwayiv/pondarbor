@@ -2,9 +2,11 @@ from django.contrib import admin
 from django.urls import include, path
 
 from users.frontend_views import (
+    redirect_apple_touch_icon_png,
     redirect_favicon_svg,
     redirect_icons_svg,
     redirect_pondarbor_logo_png,
+    redirect_site_webmanifest,
     spa_index,
 )
 
@@ -14,6 +16,8 @@ urlpatterns = [
     path("api/v1/", include("config.api_urls")),
     path("users/", include("users.urls")),
     path("favicon.svg", redirect_favicon_svg),
+    path("apple-touch-icon.png", redirect_apple_touch_icon_png),
+    path("site.webmanifest", redirect_site_webmanifest),
     path("pondarborlogo.png", redirect_pondarbor_logo_png),
     path("icons.svg", redirect_icons_svg),
     # SPA entrypoint: allow direct navigation to client routes like /profile.

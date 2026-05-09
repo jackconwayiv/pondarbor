@@ -44,11 +44,16 @@ _ASPECT_MAP = {
     "Sextile": ("sextile", 60.0),
     "SemiSquare": ("semi_square", 45.0),
     "Semi-Square": ("semi_square", 45.0),
+    "SesquiQuadrate": ("sesqui_square", 135.0),
+    "Sesqui-Square": ("sesqui_square", 135.0),
     "Quintile": ("quintile", 72.0),
     "BiQuintile": ("bi_quintile", 144.0),
     "Bi-Quintile": ("bi_quintile", 144.0),
     "SemiSextile": ("semi_sextile", 30.0),
     "Semi-Sextile": ("semi_sextile", 30.0),
+    # Some exports label the quincunx / 150° aspect this way:
+    "Inconjunction": ("quincunx", 150.0),
+    "Quincunx": ("quincunx", 150.0),
 }
 
 
@@ -175,15 +180,14 @@ def _normalize_vertical_chart_export(raw: str) -> str:
     while i < n:
         line = lines[i]
 
-        # Aspect: Body \\t Aspect \\t Body \\t Orb \\t N°MM'
-        if (
-            i + 4 < n
-            and lines[i + 3].strip().lower() == "orb"
-            and lines[i + 1] in _ASPECT_MAP
-        ):
-            out.append("\t".join(lines[i : i + 5]))
-            i += 5
-            continue
+        # Aspect: Body \\n AspectName \\n Body \\n Orb \\n N°MM'
+        # Do not require aspect name to be pre-listed — validate after merge (supports
+        # Inconjunction, SesquiQuadrate, etc.).
+        if i + 4 < n and lines[i + 3].strip().lower() == "orb":
+            if _parse_orb(lines[i + 4].strip()) is not None:
+                out.append("\t".join(lines[i : i + 5]))
+                i += 5
+                continue
 
         # House cusp: House N \\t D°M' \\t Sign
         hm = re.match(r"^House\s+(\d+)$", line, re.I)

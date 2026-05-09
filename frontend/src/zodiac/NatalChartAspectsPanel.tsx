@@ -16,6 +16,8 @@ const ASPECT_LABEL: Record<string, string> = {
   trine: "Trine",
   sextile: "Sextile",
   semi_square: "Semi-square",
+  sesqui_square: "Sesqui-square",
+  quincunx: "Quincunx",
   semi_sextile: "Semi-sextile",
   quintile: "Quintile",
   bi_quintile: "Bi-quintile",

@@ -152,3 +152,28 @@ Orb
         self.assertEqual(len(chart["houses"]["cusps_longitude_deg"]), 12)
         self.assertEqual(len(chart["aspects"]), 1)
         self.assertEqual(chart["aspects"][0]["type"], "conjunction")
+
+    def test_vertical_aspect_inconjunction_and_sesqui_quadrate(self):
+        """Exports label quincunx as Inconjunction; sesquisquare as SesquiQuadrate."""
+        text = (
+            MINIMAL_CHART
+            + """
+Moon
+Inconjunction
+MC
+Orb
+0°54'
+Mars
+SesquiQuadrate
+MC
+Orb
+2°06'
+"""
+        )
+        chart, warnings = parse_chart_export_v1(text)
+        unrecognized = [w for w in warnings if w.startswith("Unrecognized line")]
+        self.assertEqual(unrecognized, [])
+        types = [a["type"] for a in chart["aspects"]]
+        self.assertEqual(types, ["quincunx", "sesqui_square"])
+        self.assertEqual(chart["aspects"][0]["body_a"], "moon")
+        self.assertEqual(chart["aspects"][0]["body_b"], "midheaven")

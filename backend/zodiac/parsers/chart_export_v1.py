@@ -39,6 +39,7 @@ _DECIMAL_LON_RE = re.compile(r"^(?P<lon>\d+(\.\d+)?)$")
 _ASPECT_MAP = {
     "Conjunction": ("conjunction", 0.0),
     "Opposition": ("opposition", 180.0),
+    "Opposite": ("opposition", 180.0),
     "Square": ("square", 90.0),
     "Trine": ("trine", 120.0),
     "Sextile": ("sextile", 60.0),

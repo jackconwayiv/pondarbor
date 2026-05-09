@@ -177,3 +177,14 @@ Orb
         self.assertEqual(types, ["quincunx", "sesqui_square"])
         self.assertEqual(chart["aspects"][0]["body_a"], "moon")
         self.assertEqual(chart["aspects"][0]["body_b"], "midheaven")
+
+    def test_opposite_aspect_alias(self):
+        """Some apps export opposition aspects as 'Opposite' instead of 'Opposition'."""
+        text = MINIMAL_CHART + "\nUranus\tOpposite\tMC\tOrb\t2°02'\n"
+        chart, warnings = parse_chart_export_v1(text)
+        unk_aspect = [w for w in warnings if "Unknown aspect type" in w]
+        self.assertEqual(unk_aspect, [])
+        self.assertEqual(len(chart["aspects"]), 1)
+        self.assertEqual(chart["aspects"][0]["type"], "opposition")
+        self.assertEqual(chart["aspects"][0]["body_a"], "uranus")
+        self.assertEqual(chart["aspects"][0]["body_b"], "midheaven")

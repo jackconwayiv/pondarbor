@@ -7,6 +7,10 @@ import {
   patchFriendComment,
   postFriendComment,
 } from "../friend-comments/api";
+import {
+  resolveAvatarUrlForUser,
+  useAppSession,
+} from "../auth/AppSessionContext";
 import type { FriendCommentRow } from "../friend-comments/api";
 import PondButton from "../PondButton";
 import { APP_TEXT_SIZES, PANEL_NESTED_BLOCK_PROPS } from "../theme/typography";
@@ -16,9 +20,15 @@ function avatarInitial(label: string) {
   return label.slice(0, 1).toUpperCase();
 }
 
-function CommentAvatar({ user }: { user: SongadayUserRow }) {
+function CommentAvatar({
+  user,
+  avatarOverride,
+}: {
+  user: SongadayUserRow;
+  avatarOverride?: string;
+}) {
   const [failed, setFailed] = useState(false);
-  const src = (user.avatar_url || "").trim();
+  const src = (avatarOverride ?? user.avatar_url ?? "").trim();
   const label = user.nickname || user.email.split("@")[0];
   useEffect(() => {
     setFailed(false);
@@ -96,6 +106,7 @@ export default function SongadayCommentsPanel({
   composeExpanded = true,
   onCommentPosted,
 }: Props) {
+  const { sessionUser, auth0User } = useAppSession();
   const [rows, setRows] = useState<FriendCommentRow[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -224,7 +235,15 @@ export default function SongadayCommentsPanel({
     >
       {rows.map((r) => (
         <HStack key={r.id} align="flex-start" gap="2" w="full">
-          <CommentAvatar user={r.author} />
+          <CommentAvatar
+            user={r.author}
+            avatarOverride={resolveAvatarUrlForUser(
+              r.author.avatar_url,
+              r.author.id,
+              sessionUser,
+              auth0User,
+            )}
+          />
           <Stack gap="1" flex="1" minW={0} align="stretch">
             {editingId === r.id ? (
               <Stack gap="2">

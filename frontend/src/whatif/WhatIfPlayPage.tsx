@@ -130,6 +130,9 @@ export default function WhatIfPlayPage() {
     };
   }, [roomCode]);
 
+  /** If TV payload includes `you` (e.g. host mirroring), viewer tiles get profile + Google fallback when URL missing. */
+  const viewerPlayerId = state?.state?.you?.id ?? null;
+
   const activeId = state?.state?.active_player_id;
   const activePlayer = (state?.players ?? []).find((p) => p.id === activeId);
   const duel = state?.state?.duel;
@@ -329,6 +332,7 @@ export default function WhatIfPlayPage() {
                         >
                           <WhatIfPlayerFace
                             player={p}
+                            viewerPlayerId={viewerPlayerId}
                             avatarSize="lg"
                             emojiFontSize="clamp(1.15rem, 3vh, 2.1rem)"
                           />
@@ -387,6 +391,7 @@ export default function WhatIfPlayPage() {
                             <>
                               <WhatIfPlayerFace
                                 player={player}
+                                viewerPlayerId={viewerPlayerId}
                                 avatarSize="sm"
                                 emojiFontSize="clamp(1rem, 2.2vh, 1.35rem)"
                               />
@@ -475,6 +480,7 @@ export default function WhatIfPlayPage() {
                               >
                                 <WhatIfPlayerFace
                                   player={pl}
+                                  viewerPlayerId={viewerPlayerId}
                                   avatarSize="sm"
                                   emojiFontSize="clamp(1.05rem, 2.8vh, 1.35rem)"
                                 />
@@ -602,6 +608,7 @@ export default function WhatIfPlayPage() {
                       <HStack flex="1" minW={0} gap="2" align="center">
                         <WhatIfPlayerFace
                           player={p}
+                          viewerPlayerId={viewerPlayerId}
                           avatarSize="lg"
                           emojiFontSize="clamp(1.35rem, 3.5vh, 2rem)"
                         />

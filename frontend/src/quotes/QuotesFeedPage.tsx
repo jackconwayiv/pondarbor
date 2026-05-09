@@ -14,7 +14,10 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate } from "react-router";
 import PondButton from "../PondButton";
-import { useAppSession } from "../auth/AppSessionContext";
+import {
+  resolveAvatarUrlForUser,
+  useAppSession,
+} from "../auth/AppSessionContext";
 import {
   PanelEmptyState,
   PanelListRowSkeleton,
@@ -165,7 +168,14 @@ function QuoteCard({
   onRefreshQuotes,
   onAfterQuoteMutation,
 }: QuoteCardProps) {
+  const { sessionUser, auth0User } = useAppSession();
   const canEdit = viewerUserId != null && quote.owner.id === viewerUserId;
+  const ownerAvatarUrl = resolveAvatarUrlForUser(
+    quote.owner.avatar_url,
+    quote.owner.id,
+    sessionUser,
+    auth0User,
+  );
   const editorRef = useRef<HTMLDivElement | null>(null);
   const [editBody, setEditBody] = useState(quote.body);
   const [editDateOfQuote, setEditDateOfQuote] = useState(quote.date_of_quote ?? "");
@@ -320,6 +330,7 @@ function QuoteCard({
         quote={quote}
         ownerText={quoteOwnerDisplayLabel(quote.owner)}
         ownerProfileUserId={quote.owner.id}
+        ownerAvatarUrl={ownerAvatarUrl}
         showOwnerAvatar
         isClickable={canEdit}
         onClick={() => {

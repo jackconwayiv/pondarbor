@@ -21,10 +21,7 @@ import {
   auth0LoginAuthorizationParams,
   auth0LoginWithReturnTo,
 } from "../auth/auth0LoginParams";
-import {
-  resolveCurrentUserAvatarUrl,
-  useAppSession,
-} from "../auth/AppSessionContext";
+import { useAppSession } from "../auth/AppSessionContext";
 import {
   fetchWhatIfHandState,
   fetchWhatIfTvState,
@@ -33,6 +30,7 @@ import {
   postWhatIfAction,
   savePlayerToken,
 } from "./api";
+import { resolveWhatIfViewerFallbackAvatarUrl } from "./whatifPlayerAvatar";
 import WhatIfShell from "./WhatIfShell";
 import { whatifInputProps } from "./whatifFieldProps";
 import type { WhatIfPlayer, WhatIfSessionState } from "./types";
@@ -101,7 +99,10 @@ export default function WhatIfHandPage() {
     getApiAccessToken,
     resyncSessionSilently,
   } = useAppSession();
-  const currentUserAvatarUrl = resolveCurrentUserAvatarUrl(sessionUser, auth0User);
+  const joinPreviewAvatarUrl = resolveWhatIfViewerFallbackAvatarUrl(
+    sessionUser,
+    auth0User,
+  );
   const [state, setState] = useState<WhatIfSessionState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -314,7 +315,7 @@ export default function WhatIfHandPage() {
             <HStack align="center" gap="3" w="100%">
               <Avatar.Root size="md" flexShrink={0}>
                 <Avatar.Image
-                  src={isAuthenticated ? currentUserAvatarUrl || undefined : undefined}
+                  src={isAuthenticated ? joinPreviewAvatarUrl || undefined : undefined}
                 />
                 <Avatar.Fallback
                   name={
@@ -765,7 +766,12 @@ export default function WhatIfHandPage() {
                     onClick={() => void action({ type: "pick_duel_opponent", target_player_id: p.id })}
                   >
                     <Stack gap="2" align="center" justify="center">
-                      <WhatIfPlayerFace player={p} avatarSize="2xl" emojiFontSize="4xl" />
+                      <WhatIfPlayerFace
+                        player={p}
+                        viewerPlayerId={me?.id ?? null}
+                        avatarSize="2xl"
+                        emojiFontSize="4xl"
+                      />
                       <Text fontSize="xl" fontWeight="semibold">
                         {p.display_name}
                       </Text>
@@ -836,7 +842,12 @@ export default function WhatIfHandPage() {
                 >
                   <Stack gap="2" align="center" justify="center">
                     {displayPlayerA ? (
-                      <WhatIfPlayerFace player={displayPlayerA} avatarSize="2xl" emojiFontSize="4xl" />
+                      <WhatIfPlayerFace
+                        player={displayPlayerA}
+                        viewerPlayerId={me?.id ?? null}
+                        avatarSize="2xl"
+                        emojiFontSize="4xl"
+                      />
                     ) : displayIsChallengeA ? null : (
                       <Text fontSize="4xl" lineHeight="1">
                         🎯
@@ -878,7 +889,12 @@ export default function WhatIfHandPage() {
                 >
                   <Stack gap="2" align="center" justify="center">
                     {displayPlayerB ? (
-                      <WhatIfPlayerFace player={displayPlayerB} avatarSize="2xl" emojiFontSize="4xl" />
+                      <WhatIfPlayerFace
+                        player={displayPlayerB}
+                        viewerPlayerId={me?.id ?? null}
+                        avatarSize="2xl"
+                        emojiFontSize="4xl"
+                      />
                     ) : displayIsChallengeB ? null : (
                       <Text fontSize="4xl" lineHeight="1">
                         🎯
@@ -966,7 +982,12 @@ export default function WhatIfHandPage() {
                         >
                           <Stack gap="2" align="center" justify="center">
                             {subj ? (
-                              <WhatIfPlayerFace player={subj} avatarSize="2xl" emojiFontSize="4xl" />
+                              <WhatIfPlayerFace
+                                player={subj}
+                                viewerPlayerId={me?.id ?? null}
+                                avatarSize="2xl"
+                                emojiFontSize="4xl"
+                              />
                             ) : null}
                             <Text fontSize="xl" fontWeight="semibold">
                               {subj?.display_name}
@@ -999,7 +1020,12 @@ export default function WhatIfHandPage() {
                       onClick={() => void action({ type: "pick_subject", target_player_id: p.id })}
                     >
                       <Stack gap="2" align="center" justify="center">
-                        <WhatIfPlayerFace player={p} avatarSize="2xl" emojiFontSize="4xl" />
+                        <WhatIfPlayerFace
+                          player={p}
+                          viewerPlayerId={me?.id ?? null}
+                          avatarSize="2xl"
+                          emojiFontSize="4xl"
+                        />
                         <Text fontSize="xl" fontWeight="semibold">
                           {p.display_name}
                         </Text>

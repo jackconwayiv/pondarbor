@@ -3,7 +3,10 @@ import { useEffect, useId, useMemo, useState } from "react";
 import { Link } from "react-router";
 
 import PondButton from "../PondButton";
-import { useAppSession } from "../auth/AppSessionContext";
+import {
+  resolveAvatarUrlForUser,
+  useAppSession,
+} from "../auth/AppSessionContext";
 import { PanelListRowSkeleton, PanelMessageSlot } from "../components/panelStatus";
 import {
   APP_TEXT_SIZES,
@@ -30,7 +33,8 @@ export type FriendsListPanelProps = {
 };
 
 export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
-  const { isAuthenticated, sessionUser, getApiAccessToken } = useAppSession();
+  const { isAuthenticated, sessionUser, auth0User, getApiAccessToken } =
+    useAppSession();
   const [incoming, setIncoming] = useState<FriendUser[]>([]);
   const [outgoing, setOutgoing] = useState<FriendUser[]>([]);
   const [approved, setApproved] = useState<FriendUser[]>([]);
@@ -244,7 +248,16 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
                   <HStack>
                     <Avatar.Root size="sm">
                       <Avatar.Fallback name={row.nickname} />
-                      <Avatar.Image src={row.avatar_url || undefined} />
+                      <Avatar.Image
+                        src={
+                          resolveAvatarUrlForUser(
+                            row.avatar_url,
+                            row.id,
+                            sessionUser,
+                            auth0User,
+                          ) || undefined
+                        }
+                      />
                     </Avatar.Root>
                     <Stack gap="0">
                       <Text>{row.nickname}</Text>
@@ -335,7 +348,16 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
                 <HStack>
                   <Avatar.Root size="sm">
                     <Avatar.Fallback name={row.nickname} />
-                    <Avatar.Image src={row.avatar_url || undefined} />
+                    <Avatar.Image
+                      src={
+                        resolveAvatarUrlForUser(
+                          row.avatar_url,
+                          row.id,
+                          sessionUser,
+                          auth0User,
+                        ) || undefined
+                      }
+                    />
                   </Avatar.Root>
                   <Stack gap="0">
                     <Text color="gray.400" fontStyle="italic">

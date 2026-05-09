@@ -9,6 +9,7 @@ type QuoteCardBaseProps = {
   ownerText: string;
   /** When set, the owner line links to `/friend/:id` (use `quote.owner.id`). */
   ownerProfileUserId?: number;
+  ownerAvatarUrl?: string;
   /** When true, hide read-only body and label chips (e.g. while inline editor is open). */
   suppressReadOnlyQuote?: boolean;
   isClickable?: boolean;
@@ -29,6 +30,7 @@ export default function QuoteCardBase({
   quote,
   ownerText,
   ownerProfileUserId,
+  ownerAvatarUrl,
   suppressReadOnlyQuote = false,
   isClickable = false,
   onClick,
@@ -45,7 +47,7 @@ export default function QuoteCardBase({
       <FriendProfileLink userId={ownerProfileUserId}>
         <Avatar.Root size="sm">
           <Avatar.Fallback name={ownerText} />
-          <Avatar.Image src={quote.owner.avatar_url || undefined} />
+          <Avatar.Image src={ownerAvatarUrl || quote.owner.avatar_url || undefined} />
         </Avatar.Root>
       </FriendProfileLink>
     ) : null;

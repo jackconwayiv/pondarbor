@@ -2,6 +2,7 @@ import { Avatar, Box, HStack, Stack, Text } from "@chakra-ui/react";
 import { Link } from "react-router";
 
 import PondButton from "../PondButton";
+import { resolveAvatarUrlForUser, useAppSession } from "../auth/AppSessionContext";
 import { PanelEmptyState } from "../components/panelStatus";
 import { APP_TEXT_SIZES } from "../theme/typography";
 import type { FriendUser } from "./api";
@@ -49,6 +50,7 @@ export function ApprovedFriendsListBlock({
   onAcceptFriendRequest,
   acceptFriendBusyUserId = null,
 }: ApprovedFriendsListBlockProps) {
+  const { sessionUser, auth0User } = useAppSession();
   const resolvedTitle = title ?? (showCountInTitle ? `Friends (${friends.length})` : "Friends");
 
   const inner = (
@@ -96,7 +98,16 @@ export function ApprovedFriendsListBlock({
               <HStack align="center" gap="2" w="full">
                 <Avatar.Root size="sm">
                   <Avatar.Fallback name={row.nickname} />
-                  <Avatar.Image src={row.avatar_url || undefined} />
+                  <Avatar.Image
+                    src={
+                      resolveAvatarUrlForUser(
+                        row.avatar_url,
+                        row.id,
+                        sessionUser,
+                        auth0User,
+                      ) || undefined
+                    }
+                  />
                 </Avatar.Root>
                 <Stack gap="0" flex="1" minW={0}>
                   <Text>{row.nickname}</Text>

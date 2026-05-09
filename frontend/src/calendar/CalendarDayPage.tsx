@@ -14,7 +14,10 @@ import {
   useParams,
 } from "react-router";
 
-import { useAppSession } from "../auth/AppSessionContext";
+import {
+  resolveAvatarUrlForUser,
+  useAppSession,
+} from "../auth/AppSessionContext";
 import { PanelSessionReconnect, SessionLoadingCard } from "../components/panelStatus";
 import { friendProfilePath } from "../friend/profilePaths";
 import PondButton from "../PondButton";
@@ -54,6 +57,7 @@ export default function CalendarDayPage() {
     isAuthenticated,
     isLoading,
     sessionUser,
+    auth0User,
     getApiAccessToken,
     refreshSession,
     error: sessionError,
@@ -301,6 +305,12 @@ export default function CalendarDayPage() {
                     eventsForDay.find((ev) => ev.owner.id === ownerId)?.owner;
                   const ownerLabel =
                     owner?.display_name || owner?.email || `User ${ownerId}`;
+                  const ownerAvatarUrl = resolveAvatarUrlForUser(
+                    owner?.avatar_url,
+                    ownerId,
+                    sessionUser,
+                    auth0User,
+                  );
                   const ownerEvents = eventsForDay.filter(
                     (ev) => ev.owner.id === ownerId,
                   );
@@ -310,8 +320,8 @@ export default function CalendarDayPage() {
                     <HStack gap="2" align="center" minW="0" py="0.5">
                       <Avatar.Root size="sm" flexShrink={0}>
                         <Avatar.Fallback name={ownerLabel} />
-                        {owner?.avatar_url ? (
-                          <Avatar.Image src={owner.avatar_url} />
+                        {ownerAvatarUrl ? (
+                          <Avatar.Image src={ownerAvatarUrl} />
                         ) : null}
                       </Avatar.Root>
                       <Text

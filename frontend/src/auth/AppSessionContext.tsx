@@ -61,6 +61,21 @@ export function resolveCurrentUserAvatarUrl(
   return (auth0User?.picture ?? "").trim();
 }
 
+export function resolveAvatarUrlForUser(
+  apiAvatarUrl: string | null | undefined,
+  userId: number | null | undefined,
+  sessionUser: SessionUser | null | undefined,
+  auth0User: User | null | undefined,
+): string {
+  if (userId != null && sessionUser?.user.id === userId) {
+    return (
+      resolveCurrentUserAvatarUrl(sessionUser, auth0User) ||
+      (apiAvatarUrl ?? "").trim()
+    );
+  }
+  return (apiAvatarUrl ?? "").trim();
+}
+
 export type ProfilePatch = Partial<
   Pick<
     Profile,

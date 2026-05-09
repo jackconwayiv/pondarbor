@@ -17,7 +17,10 @@ import {
 } from "../achievements/api";
 import { sortAchievementsNewestFirst } from "../achievements/sortAchievements";
 import type { AchievementSummary } from "../achievements/types";
-import { useAppSession } from "../auth/AppSessionContext";
+import {
+  resolveAvatarUrlForUser,
+  useAppSession,
+} from "../auth/AppSessionContext";
 import { fetchFriendItemsByOwner } from "../closet/api";
 import { FriendClosetListCard } from "../closet/FriendClosetListCard";
 import type { ClosetItem } from "../closet/types";
@@ -97,6 +100,13 @@ const ENTRY_CARD_PROPS = {
 
 /** Match read-only quote card rows in Quotes. */
 function FriendProfileQuoteCard({ quote }: { quote: Quote }) {
+  const { sessionUser, auth0User } = useAppSession();
+  const ownerAvatarUrl = resolveAvatarUrlForUser(
+    quote.owner.avatar_url,
+    quote.owner.id,
+    sessionUser,
+    auth0User,
+  );
   return (
     <Box
       bg="bg.panel"
@@ -109,6 +119,7 @@ function FriendProfileQuoteCard({ quote }: { quote: Quote }) {
         quote={quote}
         ownerText={quoteOwnerDisplayLabel(quote.owner)}
         ownerProfileUserId={quote.owner.id}
+        ownerAvatarUrl={ownerAvatarUrl}
       />
     </Box>
   );
@@ -120,6 +131,7 @@ export default function FriendProfilePage() {
     isAuthenticated,
     isLoading: sessionLoading,
     sessionUser,
+    auth0User,
     getApiAccessToken,
   } = useAppSession();
 
@@ -169,6 +181,19 @@ export default function FriendProfilePage() {
   const [reloadKey, setReloadKey] = useState(0);
   const unfriendBoxRef = useRef<HTMLDivElement | null>(null);
   const ownUserId = sessionUser?.user?.id ?? null;
+
+  const profileSubjectUserId =
+    summary?.id ?? (lookup.kind === "id" ? lookup.id : null);
+
+  const resolvedProfileAvatarUrl = useMemo(() => {
+    if (!summary || profileSubjectUserId == null) return "";
+    return resolveAvatarUrlForUser(
+      summary.avatar_url,
+      profileSubjectUserId,
+      sessionUser,
+      auth0User,
+    );
+  }, [summary, profileSubjectUserId, sessionUser, auth0User]);
 
   const syncViewerFriendsListFromApi = useCallback(async () => {
     try {
@@ -659,7 +684,7 @@ export default function FriendProfilePage() {
                   <HStack gap="4" align="flex-start">
                     <Avatar.Root size="md">
                       <Avatar.Fallback name={summary.nickname} />
-                      <Avatar.Image src={summary.avatar_url || undefined} />
+                      <Avatar.Image src={resolvedProfileAvatarUrl || undefined} />
                     </Avatar.Root>
                     <Stack gap="0">
                       <Text
@@ -703,7 +728,7 @@ export default function FriendProfilePage() {
                   <HStack gap="4" align="flex-start">
                     <Avatar.Root size="lg">
                       <Avatar.Fallback name={summary.nickname} />
-                      <Avatar.Image src={summary.avatar_url || undefined} />
+                      <Avatar.Image src={resolvedProfileAvatarUrl || undefined} />
                     </Avatar.Root>
                     <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.body}>
                       {summary.nickname}

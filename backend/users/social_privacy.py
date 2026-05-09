@@ -48,6 +48,44 @@ def owner_publish_visibility(owner) -> str:
     )
 
 
+def viewer_may_see_owners_published_content(*, viewer, owner, ctx: ViewerContext | None = None) -> bool:
+    """
+    Whether ``viewer`` may see social objects owned by ``owner`` per Profile.social_publish_visibility
+    ("Sees me"). Align with published_owner_visibility_q / published_user_visibility_q.
+    """
+    ctx = ctx or viewer_context(viewer=viewer)
+    if ctx.viewer_id == owner.id:
+        return True
+    if not ctx.is_approved:
+        return False
+    pub = owner_publish_visibility(owner)
+    if pub == Profile.SocialPublishVisibility.ALL_APPROVED:
+        return True
+    return owner.id in ctx.friend_ids
+
+
+def published_user_visibility_q(*, viewer, ctx: ViewerContext | None = None) -> Q:
+    """
+    Filter a User queryset: which account rows the viewer may see for discovery / shared surfaces
+    per global publish visibility. Uses profile fields on User (not an owner FK).
+    """
+    ctx = ctx or viewer_context(viewer=viewer)
+    mine = Q(pk=ctx.viewer_id)
+    if not ctx.is_approved:
+        return mine
+
+    vis_field = "profile__social_publish_visibility"
+    prof_null_field = "profile__isnull"
+    all_approved = (
+        Q(**{vis_field: Profile.SocialPublishVisibility.ALL_APPROVED})
+        | Q(**{prof_null_field: True})
+    )
+    friends_only = Q(**{vis_field: Profile.SocialPublishVisibility.FRIENDS_ONLY}) & Q(
+        pk__in=list(ctx.friend_ids)
+    )
+    return mine | all_approved | friends_only
+
+
 def can_view_owner_profile(*, viewer, owner) -> bool:
     """Whether viewer may see owner's profile/identity surfaces."""
     if not viewer or not getattr(viewer, "is_authenticated", False):

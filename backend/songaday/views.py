@@ -59,11 +59,11 @@ def _parse_ymd(request):
 
 def _visible_responses_qs(*, viewer, entry: date):
     friend_ids = friend_ids_for_user(user=viewer)
-    q_vis = visible_song_responses_q(viewer=viewer, friend_ids=friend_ids)
+    ctx = viewer_context(viewer=viewer)
+    q_vis = visible_song_responses_q(viewer=viewer, friend_ids=friend_ids, ctx=ctx)
     qs = SongResponse.objects.filter(entry_date=entry).filter(q_vis)
 
     # Apply viewer read preference as a soft filter on the day list.
-    ctx = viewer_context(viewer=viewer)
     scope = getattr(getattr(viewer, "profile", None), "social_read_scope", None) or Profile.SocialReadScope.APPROVED_USERS
     if ctx.is_approved and scope == Profile.SocialReadScope.FRIENDS_ONLY:
         allowed = set(ctx.friend_ids)
@@ -95,10 +95,10 @@ def _parse_iso_date_param(raw: str | None) -> date | None:
 
 def _visible_responses_qs_range(*, viewer, start: date, end: date):
     friend_ids = friend_ids_for_user(user=viewer)
-    q_vis = visible_song_responses_q(viewer=viewer, friend_ids=friend_ids)
+    ctx = viewer_context(viewer=viewer)
+    q_vis = visible_song_responses_q(viewer=viewer, friend_ids=friend_ids, ctx=ctx)
     qs = SongResponse.objects.filter(entry_date__gte=start, entry_date__lte=end).filter(q_vis)
 
-    ctx = viewer_context(viewer=viewer)
     scope = getattr(getattr(viewer, "profile", None), "social_read_scope", None) or Profile.SocialReadScope.APPROVED_USERS
     if ctx.is_approved and scope == Profile.SocialReadScope.FRIENDS_ONLY:
         allowed = set(ctx.friend_ids)

@@ -28,6 +28,7 @@ from calendars.services import (
 )
 from users.permissions import IsApprovedUser
 from users.models import Profile
+from users.social_privacy import published_owner_visibility_q, published_user_visibility_q, viewer_context
 
 User = get_user_model()
 
@@ -84,6 +85,8 @@ def _visible_calendar_users_qs(request, *, search: str = ""):
         qs = qs.filter(
             Q(email__icontains=search) | Q(profile__display_name__icontains=search)
         )
+    ctx = viewer_context(viewer=request.user)
+    qs = qs.filter(published_user_visibility_q(viewer=request.user, ctx=ctx))
     return qs
 
 
@@ -174,8 +177,12 @@ def _events_list_get(request):
         .filter(owner_filter)
         .filter(owner_id_filter)
         .filter(start_date__lte=end_date, end_date__gte=start_date)
-        .order_by("start_date", "id")[:2_000]
     )
+    ctx = viewer_context(viewer=user)
+    events_qs = events_qs.filter(
+        published_owner_visibility_q(viewer=user, owner_fk_field="owner", ctx=ctx)
+    )
+    events_qs = events_qs.order_by("start_date", "id")[:2_000]
 
     return Response(
         {

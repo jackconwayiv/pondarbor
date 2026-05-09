@@ -96,7 +96,7 @@ class SongadayApiTests(TestCase):
         self.assertEqual(r2.status_code, 201)
         self.assertEqual(SongResponse.objects.filter(user=self.alice).count(), 2)
 
-    def test_friend_sees_response_stranger_does_not(self):
+    def test_friend_sees_response_stranger_sees_when_social_publish_all_approved(self):
         self._accept_pair(self.alice, self.bob)
         self.alice_client.post(
             "/api/v1/songaday/responses/",
@@ -112,8 +112,26 @@ class SongadayApiTests(TestCase):
         self.assertEqual(len(rb.json()), 1)
         rs = self.stranger_client.get("/api/v1/songaday/responses/for-date/?year=2026&month=4&day=12")
         self.assertEqual(rs.status_code, 200)
-        # Default policy: visible to all approved users unless the owner opts into friends-only.
+        # social_publish defaults to all_approved; stranger may see if songaday allows it.
         self.assertEqual(len(rs.json()), 1)
+
+    def test_for_date_stranger_does_not_see_when_owner_social_publish_friends_only(self):
+        prof = self.alice.profile
+        prof.social_publish_visibility = Profile.SocialPublishVisibility.FRIENDS_ONLY
+        prof.songaday_visibility = Profile.SongadayVisibility.ALL_APPROVED
+        prof.save(update_fields=["social_publish_visibility", "songaday_visibility"])
+        self.alice_client.post(
+            "/api/v1/songaday/responses/",
+            {
+                "entry_date": "2026-04-12",
+                "prompt_snapshot": "Spring song",
+                "raw_label": "Track",
+            },
+            format="json",
+        )
+        rs = self.stranger_client.get("/api/v1/songaday/responses/for-date/?year=2026&month=4&day=12")
+        self.assertEqual(rs.status_code, 200)
+        self.assertEqual(len(rs.json()), 0)
 
     def test_cannot_heart_own_submission(self):
         cr = self.alice_client.post(

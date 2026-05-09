@@ -4,9 +4,12 @@ from unittest.mock import patch
 from django.test import TestCase
 from django.utils import timezone
 
+from friends.models import FriendRequest
+
 from calendars.models import CalendarSource, Event
 from calendars.services import SyncResult
 from calendars.tests.helpers import CalendarTestMixin
+from users.models import Profile
 
 
 class EventsApiTests(CalendarTestMixin, TestCase):
@@ -552,3 +555,66 @@ class ApprovedUsersEndpointTests(CalendarTestMixin, TestCase):
             resp = self.alice_client.get("/api/v1/calendars/approved-users/?q=bob")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["results"], [])
+
+
+class CalendarSocialPublishTests(CalendarTestMixin, TestCase):
+    """Profile.social_publish_visibility ('Sees me') gates calendar discovery and events."""
+
+    def setUp(self):
+        self.create_users()
+        self.alice_source = CalendarSource.objects.create(
+            owner=self.alice,
+            source_type=CalendarSource.SourceType.MANUAL,
+            display_name="Manual events",
+        )
+        self.bob_source = CalendarSource.objects.create(
+            owner=self.bob,
+            source_type=CalendarSource.SourceType.MANUAL,
+            display_name="Manual events",
+        )
+        self.bob_event = Event.objects.create(
+            owner=self.bob,
+            source=self.bob_source,
+            title="Bob trip",
+            start_date=date(2026, 5, 2),
+            end_date=date(2026, 5, 3),
+        )
+        self.bob.profile.social_publish_visibility = Profile.SocialPublishVisibility.FRIENDS_ONLY
+        self.bob.profile.save(update_fields=["social_publish_visibility"])
+
+    def test_non_friend_does_not_see_friends_only_owner_events(self):
+        resp = self.alice_client.get(
+            "/api/v1/calendars/events/?start_date=2026-05-01&end_date=2026-06-01&owner=all"
+        )
+        self.assertEqual(resp.status_code, 200)
+        owner_ids = {row["owner"]["id"] for row in resp.json()["results"]}
+        self.assertNotIn(self.bob.id, owner_ids)
+
+    def test_non_friend_owner_filter_returns_empty_for_friends_only_user(self):
+        resp = self.alice_client.get(
+            f"/api/v1/calendars/events/?start_date=2026-05-01&end_date=2026-06-01&owner={self.bob.id}"
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["results"], [])
+
+    def test_friend_sees_friends_only_owner_events(self):
+        FriendRequest.objects.update_or_create(
+            requester=self.alice, requested=self.bob, defaults={"is_accepted": True}
+        )
+        FriendRequest.objects.update_or_create(
+            requester=self.bob, requested=self.alice, defaults={"is_accepted": True}
+        )
+        resp = self.alice_client.get(
+            "/api/v1/calendars/events/?start_date=2026-05-01&end_date=2026-06-01&owner=all"
+        )
+        self.assertEqual(resp.status_code, 200)
+        owner_ids = {row["owner"]["id"] for row in resp.json()["results"]}
+        self.assertIn(self.bob.id, owner_ids)
+
+    def test_approved_users_list_excludes_friends_only_non_friend(self):
+        with patch("calendars.views.timezone.localdate", return_value=date(2026, 5, 1)):
+            resp = self.alice_client.get("/api/v1/calendars/approved-users/")
+        self.assertEqual(resp.status_code, 200)
+        emails = {row["email"] for row in resp.json()["results"]}
+        self.assertIn("alice@example.com", emails)
+        self.assertNotIn("bob@example.com", emails)

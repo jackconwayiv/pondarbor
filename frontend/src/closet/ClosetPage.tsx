@@ -1483,22 +1483,41 @@ export default function ClosetPage() {
                               />
                             ))}
 
-                            {/* BORROWED FROM owner */}
-                            {visibleBorrowed.map((item) => (
-                              <ClosetItemLinkCard
-                                key={`borrowed-${item.id}`}
-                                item={item}
-                                closetReturnTo={ITEMS_RETURN_TO}
-                                dashedBorder
-                                titlePrefix={
-                                  <Text fontWeight="bold" color="nautical.solid">
-                                    {`BORROWED FROM ${displayName(
-                                      item.owner_user,
-                                    ).toUpperCase()}:`}
-                                  </Text>
-                                }
-                              />
-                            ))}
+                            {/* BORROWED FROM owner / RETURNED TO owner (pending confirmation) */}
+                            {visibleBorrowed.map((item) => {
+                              const returnPending =
+                                item.active_loan_marked_returned_by_borrower ||
+                                item.custody_marked_returned_by_holder;
+                              return (
+                                <ClosetItemLinkCard
+                                  key={`borrowed-${item.id}`}
+                                  item={item}
+                                  closetReturnTo={ITEMS_RETURN_TO}
+                                  dashedBorder
+                                  titlePrefix={
+                                    <Text
+                                      fontWeight="bold"
+                                      color={
+                                        returnPending ? "lilypad.solid" : "nautical.solid"
+                                      }
+                                    >
+                                      {returnPending
+                                        ? `RETURNED TO ${displayName(
+                                            item.owner_user,
+                                          ).toUpperCase()}:`
+                                        : `BORROWED FROM ${displayName(
+                                            item.owner_user,
+                                          ).toUpperCase()}:`}
+                                    </Text>
+                                  }
+                                  subtitle={
+                                    returnPending
+                                      ? "Waiting for owner to confirm."
+                                      : undefined
+                                  }
+                                />
+                              );
+                            })}
                             {actionCounts.borrowed > ACTIONS_PAGE_SIZE ? (
                               <HStack justify="space-between">
                                 <Text fontSize={APP_TEXT_SIZES.helper}>

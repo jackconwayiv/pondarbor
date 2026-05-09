@@ -106,11 +106,32 @@ function toggleCsvValue(existing: string, value: string): string {
     : appendCsvValue(existing, value);
 }
 
-function sortQuotesByUpdated(quotes: Quote[]): Quote[] {
+function quoteHasCalendarDate(q: Quote): boolean {
+  return Boolean(q.date_of_quote?.trim());
+}
+
+function compareQuotesByUpdatedThenCreatedDesc(a: Quote, b: Quote): number {
+  const u = new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+  if (u !== 0) return u;
+  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+}
+
+/** Dated quotes first (newest quote date first); undated quotes last (most recently updated first). */
+function sortQuotesForFeed(quotes: Quote[]): Quote[] {
   return [...quotes].sort((a, b) => {
-    const updated = new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
-    if (updated !== 0) return updated;
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    const aDated = quoteHasCalendarDate(a);
+    const bDated = quoteHasCalendarDate(b);
+    if (aDated !== bDated) return aDated ? -1 : 1;
+
+    if (aDated && bDated) {
+      const da = a.date_of_quote!.trim();
+      const db = b.date_of_quote!.trim();
+      const byDate = db.localeCompare(da);
+      if (byDate !== 0) return byDate;
+      return compareQuotesByUpdatedThenCreatedDesc(a, b);
+    }
+
+    return compareQuotesByUpdatedThenCreatedDesc(a, b);
   });
 }
 
@@ -484,7 +505,7 @@ export default function QuotesFeedPage() {
     try {
       const token = await getApiAccessToken();
       const data = await fetchMyQuoteFeed(token);
-      setQuotes(sortQuotesByUpdated(data));
+      setQuotes(sortQuotesForFeed(data));
     } catch (err: unknown) {
       if (isAuthFailure(err)) {
         setAuthBlocked(true);
@@ -508,7 +529,7 @@ export default function QuotesFeedPage() {
         fetchMyQuoteFeed(token),
         fetchQuoteLabels(token, "tag"),
       ]);
-      setQuotes(sortQuotesByUpdated(feed));
+      setQuotes(sortQuotesForFeed(feed));
       setTagSuggestions(tags);
     } catch (err: unknown) {
       if (isAuthFailure(err)) {

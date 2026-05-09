@@ -177,8 +177,9 @@ export default function ZodiacPage() {
     }
   }, [waitingForStaffChart]);
 
-  /** Bottom card: waiting (expanded), or non-ready/non-waiting states, or ready without a complete chart UI. */
+  /** Bottom card: no astro row yet (GET returns profile null), waiting (expanded), or other non-ready paths. */
   const showBirthFormAtBottom =
+    profile === null ||
     (waitingForStaffChart && showBirthFormWhileWaiting) ||
     (profile != null &&
       profile.chart_status !== "waiting_staff_chart" &&

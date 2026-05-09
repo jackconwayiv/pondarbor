@@ -11,7 +11,14 @@ import {
   Text,
   Textarea,
 } from "@chakra-ui/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Navigate } from "react-router";
 import PondButton from "../PondButton";
 import {
@@ -484,7 +491,8 @@ export default function QuotesFeedPage() {
 
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [tagSuggestions, setTagSuggestions] = useState<QuoteLabel[]>([]);
-  const [loadingQuotes, setLoadingQuotes] = useState(false);
+  /** Start true so the first paint shows loading skeleton instead of an empty-state flash. */
+  const [loadingQuotes, setLoadingQuotes] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -578,7 +586,9 @@ export default function QuotesFeedPage() {
     return [...map.values()].sort((a, b) => a.label.localeCompare(b.label));
   }, [quotes]);
 
-  useEffect(() => {
+  // Sync checkbox IDs before paint so `visibleQuotes` never briefly treats "no ids yet"
+  // as "filter everything out" (blank-looking feed on mobile).
+  useLayoutEffect(() => {
     const currentIds = owners.map((o) => o.id);
     const prevIds = prevOwnerIdsRef.current;
     const idSet = new Set(currentIds);
@@ -710,7 +720,12 @@ export default function QuotesFeedPage() {
   }
 
   return (
-    <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
+    <Stack
+      flex="1"
+      minH={{ base: "min(100dvh, 100%)", md: "full" }}
+      gap="0"
+      {...fullBleedStackProps}
+    >
       <Box flex="1" bg="bg" px={0} py={{ base: "2", md: "2" }}>
         <Box {...APP_SHELL_TRAY_PROPS}>
           <Stack

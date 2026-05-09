@@ -11,9 +11,13 @@ import { safeAuthReturnTo } from "./auth/safeAuthReturnTo";
 import "@fontsource/caprasimo/400.css";
 import "@fontsource/spinnaker/400.css";
 import "./index.css";
+import RootErrorBoundary from "./RootErrorBoundary";
 import { router } from "./router";
+import { installResumeRepaintNudge } from "./resumeRepaint";
 
 void import("./instrument");
+
+installResumeRepaintNudge();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -36,11 +40,13 @@ createRoot(document.getElementById("root")!).render(
       }}
     >
       <ChakraProvider value={system}>
-        <AppSessionProvider>
-          <AchievementUnlockListener />
-          <AchievementToaster />
-          <RouterProvider router={router} />
-        </AppSessionProvider>
+        <RootErrorBoundary>
+          <AppSessionProvider>
+            <AchievementUnlockListener />
+            <AchievementToaster />
+            <RouterProvider router={router} />
+          </AppSessionProvider>
+        </RootErrorBoundary>
       </ChakraProvider>
     </Auth0Provider>
   </StrictMode>,

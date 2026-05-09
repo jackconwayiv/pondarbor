@@ -670,3 +670,8 @@ class SpaRoutingTests(TestCase):
 
         # Valid in environments where frontend build artifacts are present.
         self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            "no-store",
+            response["Cache-Control"],
+            msg="HTML shell must not be long-cached at CDN (stale index vs new /static/ chunks).",
+        )

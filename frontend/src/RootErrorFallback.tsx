@@ -1,39 +1,22 @@
 import { Box, Button, Text, VStack } from "@chakra-ui/react";
 import { useEffect } from "react";
-import { Link as RouterLink, useRouteError } from "react-router";
 
-export const STALE_CHUNK_RELOAD_KEY = "pondarbor:stale-chunk-reloaded";
+import {
+  errorMessage,
+  isStaleChunkError,
+  STALE_CHUNK_RELOAD_KEY,
+} from "./RouteErrorPage";
 
-export function errorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "string") return err;
-  try {
-    return JSON.stringify(err);
-  } catch {
-    return "Something went wrong.";
-  }
-}
-
-export function isStaleChunkError(message: string): boolean {
-  const m = message.toLowerCase();
-  return (
-    m.includes("is not a valid javascript mime type") ||
-    m.includes("expected a javascript-or-wasm module") ||
-    m.includes("failed to fetch dynamically imported module") ||
-    m.includes("loading chunk") ||
-    m.includes("loading css chunk") ||
-    m.includes("importing a module script failed") ||
-    m.includes("error loading dynamically imported module")
-  );
-}
+type RootErrorFallbackProps = {
+  error: unknown;
+};
 
 /**
- * Shown when a route throws (e.g. lazy chunk 404 after a new deploy while the tab
- * still has an old index.html). Use `errorElement` on the root layout route.
+ * Fallback when the root error boundary catches a render error (same UX as route errorElement).
+ * Uses `<a href="/">` so recovery works even if the router tree is unstable.
  */
-export default function RouteErrorPage() {
-  const err = useRouteError();
-  const message = errorMessage(err);
+export default function RootErrorFallback({ error }: RootErrorFallbackProps) {
+  const message = errorMessage(error);
   const staleChunk = isStaleChunkError(message);
 
   useEffect(() => {
@@ -72,15 +55,15 @@ export default function RouteErrorPage() {
         Reload page
       </Button>
       <Box fontSize="sm">
-        <RouterLink
-          to="/"
+        <a
+          href="/"
           style={{
             color: "var(--chakra-colors-lilypad-solid, #7a9e5c)",
             textDecoration: "underline",
           }}
         >
           Go to home
-        </RouterLink>
+        </a>
       </Box>
     </VStack>
   );

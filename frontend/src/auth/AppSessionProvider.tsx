@@ -87,8 +87,29 @@ type StoredAppSession = {
   bootstrapInboxFetchedAt?: number;
 };
 
+/** Persists across mobile tab/process churn better than `sessionStorage` alone (Auth0 already uses `localstorage`). */
+function readRawCachedSession(): string | null {
+  try {
+    const fromLocal = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (fromLocal) return fromLocal;
+    const fromSession = sessionStorage.getItem(SESSION_STORAGE_KEY);
+    if (fromSession) {
+      try {
+        localStorage.setItem(SESSION_STORAGE_KEY, fromSession);
+        sessionStorage.removeItem(SESSION_STORAGE_KEY);
+      } catch {
+        /* ignore quota / private mode */
+      }
+      return fromSession;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 function loadCachedSession(): StoredAppSession | null {
-  const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
+  const raw = readRawCachedSession();
   if (!raw) return null;
 
   try {
@@ -101,17 +122,27 @@ function loadCachedSession(): StoredAppSession | null {
       bootstrapInboxFetchedAt: parsed.bootstrapInboxFetchedAt,
     };
   } catch {
-    sessionStorage.removeItem(SESSION_STORAGE_KEY);
+    clearCachedSession();
     return null;
   }
 }
 
 function saveCachedSession(data: StoredAppSession) {
-  sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(data));
+  try {
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(data));
+    sessionStorage.removeItem(SESSION_STORAGE_KEY);
+  } catch {
+    /* ignore quota / private mode */
+  }
 }
 
 function clearCachedSession() {
-  sessionStorage.removeItem(SESSION_STORAGE_KEY);
+  try {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+    sessionStorage.removeItem(SESSION_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
 }
 
 export function AppSessionProvider({ children }: AppSessionProviderProps) {

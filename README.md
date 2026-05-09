@@ -18,6 +18,19 @@ Processes: `web -> bash run.sh` and `release -> bash release.sh`
 - **`DATABASE_URL`** (and related env) must be the **same** for **`web`** and **`release`**; if they diverge, you can get “migrations applied” in release while `web` hits an empty or different DB.
 - **App logs**: production uses `LOGGING` in `backend/config/settings.py` so `500` tracebacks show up in Gunicorn logs.
 
+**CDN / reverse proxy (SPA)**
+
+- Do **not** put a long TTL on the **HTML document** (`/` and client routes) without a purge on every deploy. The Django HTML shell sets `Cache-Control: no-store, max-age=0, must-revalidate` so browsers and edges pick up fresh boot URLs after deploy.
+- **Hashed** JS/CSS under **`/static/`** are intended to be cached aggressively (Whitenoise / immutable filenames). Stale-document + fresh-chunk mismatches are what cause “MIME type” / failed dynamic import errors.
+- If your edge overrides `Cache-Control`, align it with the above: short or no cache for HTML, long cache only for fingerprinted static files.
+
+**White screen after deploy (ops)**
+
+1. Try a **hard refresh** once (old tab may still hold pre-deploy HTML in memory).
+2. In browser **Network**, open a failing **`.js`** request: if the body is **HTML** (SPA fallback), a chunk URL is wrong or cached HTML still points at removed files—confirm **`release.sh`** ran `collectstatic` and that **`Vite `base``** in production matches **`STATIC_URL`** (`/static/`).
+3. Check **Sentry** (if configured) for chunk or render errors.
+4. Locally verify builds: install backend deps once (`pip install -r backend/requirements.txt`), then `bash scripts/spa-static-smoke.sh` (frontend build + manifest + `collectstatic`). CI runs the same via `.github/workflows/spa-static-smoke.yml`.
+
 **Manual migrate (one-off / Run command)**
 
 Use the path that exists inside the deployed image (commonly):

@@ -42,7 +42,7 @@ def spa_index(request, route=None):
     vite_js = [entry["file"]]
     vite_css = entry.get("css", [])
 
-    return render(
+    response = render(
         request,
         "index.html",
         {
@@ -55,3 +55,8 @@ def spa_index(request, route=None):
             ),
         },
     )
+    # Avoid long-lived CDN/browser caching of the HTML shell: after deploy, an old
+    # document could still point at removed hashed chunks under /static/. Immutable
+    # hashed assets are served by Whitenoise with strong caching separately.
+    response["Cache-Control"] = "no-store, max-age=0, must-revalidate"
+    return response

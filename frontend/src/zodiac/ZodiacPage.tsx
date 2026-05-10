@@ -32,7 +32,7 @@ import {
   type AstroBirthPayload,
   type AstroProfileRow,
 } from "./api";
-import BigThreeStrip from "./BigThreeStrip";
+import ZodiacOverviewCardsStrip from "./ZodiacOverviewCardsStrip";
 import NatalChartAspectsPanel from "./NatalChartAspectsPanel";
 import NatalChartHousesTable from "./NatalChartHousesTable";
 import NatalChartPlanetsTable from "./NatalChartPlanetsTable";
@@ -448,13 +448,7 @@ export default function ZodiacPage() {
       {trayShell(
         <>
           <Box {...PANEL_ENTRY_CARD_PROPS}>
-            <Flex
-              align={{ base: "flex-start", sm: "center" }}
-              justify="space-between"
-              gap="3"
-              direction={{ base: "column", sm: "row" }}
-              mb="2"
-            >
+            <Flex align="center" justify="space-between" gap="3" mb="2">
               <Heading
                 as="h1"
                 size={{ base: "lg", md: "xl" }}
@@ -470,37 +464,33 @@ export default function ZodiacPage() {
                 </HStack>
               </Heading>
               {hasFullReadyChart ? (
-                <Box flexShrink={0} w={{ base: "full", sm: "auto" }}>
-                  <PondButton
-                    size="sm"
-                    variant="outline"
-                    colorPalette="sky"
-                    w={{ base: "full", sm: "auto" }}
-                    onClick={() => setShowAlterBirthForm(true)}
-                  >
-                    Alter Details
-                  </PondButton>
-                </Box>
+                <PondButton
+                  size="sm"
+                  variant="outline"
+                  colorPalette="sky"
+                  flexShrink={0}
+                  onClick={() => setShowAlterBirthForm(true)}
+                >
+                  Alter Details
+                </PondButton>
               ) : null}
             </Flex>
             <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
-              Your unique natal chart, derived from your birth details.
+              What did the stars say about the moment of your birth?
             </Text>
           </Box>
 
           {profile?.chart_status === "ready" && chart && profile.sun_sign && profile.moon_sign && profile.rising_sign && (
-            <Box {...PANEL_ENTRY_CARD_PROPS}>
+            <Box {...PANEL_ENTRY_CARD_PROPS} mt="-1">
               <Stack gap="6" w="100%">
-                <Stack gap="4">
-                  <Heading as="h2" size="md" fontWeight="bold">
-                    Your big three
-                  </Heading>
-                  <BigThreeStrip
-                    sunSign={profile.sun_sign}
-                    moonSign={profile.moon_sign}
-                    risingSign={profile.rising_sign}
-                  />
-                </Stack>
+                <ZodiacOverviewCardsStrip
+                  sunSign={profile.sun_sign}
+                  moonSign={profile.moon_sign}
+                  risingSign={profile.rising_sign}
+                  mercurySign={chart.points.mercury?.sign}
+                  venusSign={chart.points.venus?.sign}
+                  marsSign={chart.points.mars?.sign}
+                />
 
                 {showAlterBirthForm
                   ? renderBirthInformationCard(cancelAlterBirthForm)

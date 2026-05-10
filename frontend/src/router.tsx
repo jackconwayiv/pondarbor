@@ -293,6 +293,10 @@ export const router = sentryCreateBrowserRouter([
         element: authedRouteElement(lazyRouteElement(<ZodiacPage />)),
       },
       {
+        path: "zodiac/staff",
+        element: authedRouteElement(<Navigate to="/staff/zodiac" replace />),
+      },
+      {
         path: "closet",
         element: authedRouteElement(lazyRouteElement(<ClosetPage />)),
       },

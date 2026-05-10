@@ -25,7 +25,8 @@ import {
   PANEL_FIELD_PROPS,
   PANEL_NESTED_BLOCK_PROPS,
 } from "../theme/typography";
-import BigThreeStrip from "../zodiac/BigThreeStrip";
+import NatalChartWheel from "../zodiac/NatalChartWheel";
+import ZodiacOverviewCardsStrip from "../zodiac/ZodiacOverviewCardsStrip";
 import NatalChartPositions from "../zodiac/NatalChartPositions";
 import {
   fetchStaffImportedCharts,
@@ -290,20 +291,21 @@ export default function StaffZodiacPage() {
                             <Collapsible.Content>
                               <Box px="3" pb="3" pt="0">
                                 {ready ? (
-                                  <>
-                                    <Heading as="h3" size="sm" fontWeight="semibold" mb="3">
-                                      Big three
-                                    </Heading>
-                                    <BigThreeStrip
+                                  <Stack gap="6" w="100%">
+                                    <NatalChartWheel chart={chart!} />
+                                    <ZodiacOverviewCardsStrip
                                       sunSign={row.sun_sign!}
                                       moonSign={row.moon_sign!}
                                       risingSign={row.rising_sign!}
+                                      mercurySign={chart!.points.mercury?.sign}
+                                      venusSign={chart!.points.venus?.sign}
+                                      marsSign={chart!.points.mars?.sign}
                                     />
                                     <NatalChartPositions
                                       chart={chart!}
                                       aspectsNote="Stored natal chart JSON (staff import)."
                                     />
-                                  </>
+                                  </Stack>
                                 ) : (
                                   <Text fontSize="sm" color="fg.muted">
                                     Chart payload incomplete.

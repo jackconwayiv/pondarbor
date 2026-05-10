@@ -152,6 +152,13 @@ export function getBreadcrumbItems(
       { label: "Zodiackary import" },
     ];
   }
+  if (p === "/zodiac/staff") {
+    return [
+      HOME,
+      { label: "Staff", to: "/staff" },
+      { label: "Zodiackary import" },
+    ];
+  }
 
   if (p === "/zodiac") {
     return [HOME, { label: "Zodiackary" }];

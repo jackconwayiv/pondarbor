@@ -171,6 +171,7 @@ export default function WhatIfEntryPage() {
   const [proposeError, setProposeError] = useState<string | null>(null);
   const [proposeSuccess, setProposeSuccess] = useState<string | null>(null);
   const [proposeOpen, setProposeOpen] = useState(false);
+  const [mobileMyGamesOpen, setMobileMyGamesOpen] = useState(false);
   const [mySessions, setMySessions] = useState<WhatIfMySessionsResponse | null>(
     null,
   );
@@ -284,9 +285,11 @@ export default function WhatIfEntryPage() {
   }, [activeTab]);
 
   useEffect(() => {
-    if (showJoinOnly) return;
     if (!isAuthenticated || !isApprovedUser) return;
-    if (activeTab !== "continue") return;
+    const loadForDesktopContinue =
+      !showJoinOnly && activeTab === "continue";
+    const loadForMobileLobby = isMobile && showJoinOnly;
+    if (!loadForDesktopContinue && !loadForMobileLobby) return;
     let cancelled = false;
     setMySessionsLoading(true);
     setMySessionsError(null);
@@ -311,7 +314,23 @@ export default function WhatIfEntryPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeTab, isAuthenticated, isApprovedUser, showJoinOnly, getApiAccessToken]);
+  }, [
+    activeTab,
+    isAuthenticated,
+    isApprovedUser,
+    showJoinOnly,
+    getApiAccessToken,
+    isMobile,
+  ]);
+
+  const myGamesTotalCount = useMemo(() => {
+    if (!mySessions) return 0;
+    return (
+      mySessions.open_lobby.length +
+      mySessions.in_progress.length +
+      mySessions.completed.length
+    );
+  }, [mySessions]);
 
   async function loadQuestions() {
     if (!isAuthenticated || !isStaff) return;
@@ -1441,6 +1460,87 @@ export default function WhatIfEntryPage() {
                       >
                         Submit proposal
                       </PondButton>
+                    </Stack>
+                  </Collapsible.Content>
+                </Collapsible.Root>
+              </Box>
+            ) : null}
+
+            {isMobile &&
+            isAuthenticated &&
+            isApprovedUser &&
+            myGamesTotalCount >= 1 &&
+            !mySessionsLoading &&
+            mySessions ? (
+              <Box {...PANEL_ENTRY_CARD_PROPS}>
+                <Collapsible.Root
+                  open={mobileMyGamesOpen}
+                  onOpenChange={(details) => setMobileMyGamesOpen(details.open)}
+                >
+                  <Collapsible.Trigger asChild>
+                    <button
+                      type="button"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                        width: "100%",
+                        textAlign: "left",
+                        fontSize: "1rem",
+                        fontWeight: 600,
+                        color: "inherit",
+                        cursor: "pointer",
+                        background: "transparent",
+                        border: "none",
+                        padding: 0,
+                        margin: 0,
+                      }}
+                    >
+                      <Text
+                        as="span"
+                        transform={
+                          mobileMyGamesOpen ? "rotate(90deg)" : "rotate(0deg)"
+                        }
+                        transition="transform 0.15s ease"
+                        lineHeight="1"
+                        flexShrink={0}
+                      >
+                        ›
+                      </Text>
+                      <Text as="span" flex="1">
+                        My games ({myGamesTotalCount})
+                      </Text>
+                    </button>
+                  </Collapsible.Trigger>
+                  <Collapsible.Content>
+                    <Stack gap="4" pt="2">
+                      <Text fontSize={APP_TEXT_SIZES.body} color="fg">
+                        Resume hosting or open your hand for a room you host or
+                        have joined.
+                      </Text>
+                      {mySessionsError ? (
+                        <Text
+                          fontSize={APP_TEXT_SIZES.body}
+                          color="nautical.solid"
+                          role="alert"
+                        >
+                          {mySessionsError}
+                        </Text>
+                      ) : null}
+                      <Stack gap="6" align="stretch">
+                        {renderMySessionsSection(
+                          "Open lobby",
+                          mySessions.open_lobby,
+                        )}
+                        {renderMySessionsSection(
+                          "In progress",
+                          mySessions.in_progress,
+                        )}
+                        {renderMySessionsSection(
+                          "Completed",
+                          mySessions.completed,
+                        )}
+                      </Stack>
                     </Stack>
                   </Collapsible.Content>
                 </Collapsible.Root>

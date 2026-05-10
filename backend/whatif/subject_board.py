@@ -37,6 +37,72 @@ def subject_pick_is_degenerate(seat_a: int, seat_b: int) -> bool:
     return seat_a == seat_b
 
 
+def advance_one_player_step(from_seat: int, delta: int, seat_count: int, num_players: int) -> int:
+    """Move one step along the physical ring; Challenge is not a stopping place (slide through)."""
+    L = seat_count
+    P = num_players
+    pos = (from_seat + delta) % L
+    while is_challenge_seat(pos, L, P):
+        pos = (pos + delta) % L
+    return pos
+
+
+def duel_subject_candidate_seats(marker: int, step: int, seat_count: int, num_players: int) -> tuple[int, int]:
+    """
+    Duel subject phase: N steps counterclockwise and clockwise from marker, skipping Challenge
+    as a landing seat (same geometry as candidate_seats but Challenge is traversed, never chosen).
+    Matches legacy directions: seat_a toward (marker - step) on the full ring, seat_b toward (marker + step).
+    """
+    L = seat_count
+    P = num_players
+    if step < 0:
+        raise ValueError("step must be non-negative")
+
+    def walk(delta_sign: int) -> int:
+        pos = marker
+        for _ in range(step):
+            pos = advance_one_player_step(pos, delta_sign, L, P)
+        return pos
+
+    seat_a = walk(-1)
+    seat_b = walk(+1)
+    return seat_a, seat_b
+
+
+def roll_subject_die_duel_subject(
+    marker: int,
+    forbidden_seat: Optional[int],
+    seat_count: int,
+    num_players: int,
+    *,
+    max_attempts: int = 96,
+) -> tuple[int, int, int]:
+    """
+    Roll N then compute duel subject endpoints (player seats only; Challenge skipped while stepping).
+    Same forbidden-seat contract as roll_subject_die.
+    """
+    P = num_players
+    die_faces = min(P, 6)
+    L = seat_count
+    if P < 1 or L < 1:
+        raise ValueError("invalid board size")
+
+    for _ in range(max_attempts):
+        n = random.randint(1, die_faces)
+        a, b = duel_subject_candidate_seats(marker, n, L, P)
+        if forbidden_seat is None:
+            return n, a, b
+        if a != b:
+            if a != forbidden_seat or b != forbidden_seat:
+                return n, a, b
+        else:
+            if a != forbidden_seat:
+                return n, a, b
+    n = 1
+    a, b = duel_subject_candidate_seats(marker, n, L, P)
+    return n, a, b
+
+
 def roll_subject_die(
     marker: int,
     forbidden_seat: Optional[int],

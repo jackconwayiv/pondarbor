@@ -53,45 +53,48 @@ function polygonPath(points: { x: number; y: number }[]): string {
   return points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(3)} ${p.y.toFixed(3)}`).join(" ") + " Z";
 }
 
+/** Text presentation (VS15) so symbols prefer plain glyphs over emoji on mobile. */
+const T = "\uFE0E";
+
 /** ♈–♓ tropical signs (Unicode astrological symbols). */
 const SIGN_GLYPH = [
-  "\u2648",
-  "\u2649",
-  "\u264a",
-  "\u264b",
-  "\u264c",
-  "\u264d",
-  "\u264e",
-  "\u264f",
-  "\u2650",
-  "\u2651",
-  "\u2652",
-  "\u2653",
+  `\u2648${T}`,
+  `\u2649${T}`,
+  `\u264a${T}`,
+  `\u264b${T}`,
+  `\u264c${T}`,
+  `\u264d${T}`,
+  `\u264e${T}`,
+  `\u264f${T}`,
+  `\u2650${T}`,
+  `\u2651${T}`,
+  `\u2652${T}`,
+  `\u2653${T}`,
 ] as const;
 
 /** Planet / point glyphs (Unicode); angles use conventional markers where no single glyph exists. */
 const BODY_GLYPH: Record<string, string> = {
-  sun: "\u2609",
-  moon: "\u263d",
-  mercury: "\u263f",
-  venus: "\u2640",
-  mars: "\u2642",
-  jupiter: "\u2643",
-  saturn: "\u2644",
-  uranus: "\u2645",
-  neptune: "\u2646",
-  pluto: "\u2647",
-  chiron: "\u26b7",
-  ceres: "\u26b3",
-  pallas: "\u26b4",
-  juno: "\u26b5",
-  vesta: "\u26b6",
-  north_node: "\u260a",
-  south_node: "\u260b",
-  lilith: "\u26b8",
-  part_of_fortune: "\u2295",
-  ascendant: "\u2191",
-  midheaven: "\u2316",
+  sun: `\u2609${T}`,
+  moon: `\u263d${T}`,
+  mercury: `\u263f${T}`,
+  venus: `\u2640${T}`,
+  mars: `\u2642${T}`,
+  jupiter: `\u2643${T}`,
+  saturn: `\u2644${T}`,
+  uranus: `\u2645${T}`,
+  neptune: `\u2646${T}`,
+  pluto: `\u2647${T}`,
+  chiron: `\u26b7${T}`,
+  ceres: `\u26b3${T}`,
+  pallas: `\u26b4${T}`,
+  juno: `\u26b5${T}`,
+  vesta: `\u26b6${T}`,
+  north_node: `\u260a${T}`,
+  south_node: `\u260b${T}`,
+  lilith: `\u26b8${T}`,
+  part_of_fortune: `\u2295${T}`,
+  ascendant: `\u2191${T}`,
+  midheaven: `\u2316${T}`,
 };
 
 function bodyLabel(key: string): string {
@@ -268,7 +271,7 @@ export default function NatalChartWheel({ chart }: { chart: NatalChartPayload })
             const lon = normDeg(pt.longitude_deg + (lonOff.get(key) ?? 0));
             const plot = plotAngleDeg(lon, ascDeg);
             const { x, y } = xyFromPlotAngle(R_BODY_BASE, plot);
-            const glyph = BODY_GLYPH[key] ?? "\u26aa";
+            const glyph = BODY_GLYPH[key] ?? `\u26aa${T}`;
             const title = `${bodyLabel(key)}${pt.retrograde ? ", retrograde" : ""}`;
             return (
               <g key={key}>

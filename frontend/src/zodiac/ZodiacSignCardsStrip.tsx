@@ -103,7 +103,7 @@ export default function ZodiacSignCardsStrip({
               mb="1.5"
             />
             <Text
-              fontSize={{ base: "xl", md: "2xl" }}
+              fontSize={{ base: "lg", md: "2xl" }}
               fontWeight="bold"
               fontFamily="heading"
               textTransform="capitalize"

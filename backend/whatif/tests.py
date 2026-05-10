@@ -13,6 +13,7 @@ from whatif.rules import evaluate_vote_scores, two_subject_candidate_ids
 from whatif.subject_board import (
     candidate_seats,
     default_marker_index,
+    duel_subject_candidate_seats,
     is_challenge_seat,
     player_id_at_seat,
     roll_subject_die,
@@ -127,6 +128,26 @@ class WhatIfSubjectBoardTests(TestCase):
             n, _a, _b = roll_subject_die(marker=3, forbidden_seat=None, seat_count=9, num_players=8)
             self.assertGreaterEqual(n, 1)
             self.assertLessEqual(n, 6)
+
+    def test_duel_subject_candidate_seats_never_lands_on_challenge(self):
+        L = 4
+        P = 3
+        for marker in range(L):
+            for step in range(1, 7):
+                a, b = duel_subject_candidate_seats(marker, step, L, P)
+                self.assertFalse(is_challenge_seat(a, L, P), msg=f"m={marker} n={step} a={a}")
+                self.assertFalse(is_challenge_seat(b, L, P), msg=f"m={marker} n={step} b={b}")
+
+    def test_duel_subject_skips_challenge_naive_would_hit(self):
+        """marker=2 step=1: naive CW lands on Challenge (3); duel walk skips to player seats."""
+        L = 4
+        P = 3
+        naive_a, naive_b = candidate_seats(2, 1, L)
+        self.assertEqual((naive_a, naive_b), (1, 3))
+        self.assertTrue(is_challenge_seat(naive_b, L, P))
+        a, b = duel_subject_candidate_seats(2, 1, L, P)
+        self.assertFalse(is_challenge_seat(a, L, P))
+        self.assertFalse(is_challenge_seat(b, L, P))
 
 
 class WhatIfApiTests(TestCase):
@@ -855,8 +876,9 @@ class WhatIfApiTests(TestCase):
         self.assertEqual(pick["status"], "voting")
         self.assertIsNotNone(pick["state"].get("question"))
 
+    @patch("whatif.views.roll_subject_die_duel_subject", return_value=(1, 1, 2))
     @patch("whatif.views.roll_subject_die", return_value=(1, 3, 0))
-    def test_duel_voting_auto_reveals_on_session_get_after_deadline(self, _mock_roll):
+    def test_duel_voting_auto_reveals_on_session_get_after_deadline(self, _mock_roll, _mock_duel):
         """Duel round + lazy auto-reveal when deadline is past (simulated via state); GET session applies it."""
         code, host_secret, _owner = self._create_session()
         p1 = self._join(code, "John")
@@ -977,8 +999,9 @@ class WhatIfApiTests(TestCase):
         self.assertEqual(body["state"].get("duel"), None)
         self.assertIsNotNone(body["state"].get("question_id"))
 
+    @patch("whatif.views.roll_subject_die_duel_subject", return_value=(1, 1, 2))
     @patch("whatif.views.roll_subject_die", return_value=(1, 3, 0))
-    def test_question_skip_keeps_challenge_subject_and_duel(self, _mock_roll):
+    def test_question_skip_keeps_challenge_subject_and_duel(self, _mock_roll, _mock_duel):
         """After skip during challenge voting, same subject and duelists; new question; still voting."""
         code, host_secret, _owner = self._create_session()
         p1 = self._join(code, "John")
@@ -1057,7 +1080,22 @@ class WhatIfApiTests(TestCase):
         self.assertFalse(body["state"].get("voting_paused"))
 
     def test_first_vote_starts_deadline_subsequent_votes_do_not_reset(self):
-        code, _host, p1, p2 = self._start_voting_round()
+        """Needs 3+ players so the second vote is not yet unanimous (2p would snap deadline)."""
+        code, host, _owner = self._create_session()
+        p1 = self._join(code, "John")
+        p2 = self._join(code, "Maya")
+        p3 = self._join(code, "Pat")
+        _mark_all_players_ready(code)
+        start = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "start_game"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host,
+        )
+        self.assertEqual(start.status_code, 200)
+        pick = self._post_pick_subject_die_choice(code, start.json()["state"])
+        self.assertEqual(pick["status"], "voting")
+
         before = timezone.now()
         v1 = self.client.post(
             f"/api/v1/whatif/sessions/{code}/action/",
@@ -1083,6 +1121,46 @@ class WhatIfApiTests(TestCase):
         )
         self.assertEqual(v2.status_code, 200, v2.json())
         self.assertEqual(v2.json()["state"]["voting_deadline_at"], deadline_after_first)
+
+        v3 = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 3},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p3,
+        )
+        self.assertEqual(v3.status_code, 200, v3.json())
+        last_deadline = v3.json()["state"]["voting_deadline_at"]
+        self.assertIsNotNone(last_deadline)
+        d_last = _dt.fromisoformat(last_deadline)
+        if timezone.is_naive(d_last):
+            d_last = timezone.make_aware(d_last)
+        self.assertLessEqual(d_last, timezone.now() + timedelta(seconds=2))
+
+    def test_all_votes_in_snaps_deadline_to_now_two_players(self):
+        code, _host, p1, p2 = self._start_voting_round()
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 1},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        before = timezone.now()
+        v2 = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 2},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p2,
+        )
+        self.assertEqual(v2.status_code, 200, v2.json())
+        dl = v2.json()["state"]["voting_deadline_at"]
+        self.assertIsNotNone(dl)
+        from datetime import datetime as _dt
+
+        d = _dt.fromisoformat(dl)
+        if timezone.is_naive(d):
+            d = timezone.make_aware(d)
+        self.assertLessEqual(d, timezone.now() + timedelta(seconds=2))
+        self.assertGreaterEqual(d, before - timedelta(seconds=2))
 
     def test_unvote_clears_vote_and_decrements_response_count_without_resetting_timer(self):
         code, _host, p1, _p2 = self._start_voting_round()

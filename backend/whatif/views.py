@@ -42,6 +42,7 @@ from whatif.subject_board import (
     is_challenge_seat,
     player_id_at_seat,
     roll_subject_die,
+    roll_subject_die_duel_subject,
     subject_board_seat_count,
     subject_pick_is_degenerate,
 )
@@ -205,7 +206,11 @@ def _subject_die_state_for_turn(player_ids: list[int], prev: dict) -> dict:
         marker = max(0, min(int(marker_raw), l_seats - 1))
     forbidden = prev.get("last_subject_seat_index")
     forbidden_i = int(forbidden) if forbidden is not None else None
-    n, a, b = roll_subject_die(marker, forbidden_i, l_seats, p_count)
+    n, a, b = 1, 0, 0
+    for _ in range(96):
+        n, a, b = roll_subject_die(marker, forbidden_i, l_seats, p_count)
+        if not subject_pick_is_degenerate(a, b):
+            break
     return {
         "marker_index": marker,
         "last_subject_seat_index": prev.get("last_subject_seat_index"),
@@ -235,26 +240,11 @@ def _subject_die_state_for_duel_subject_turn(player_ids: list[int], prev: dict) 
     forbidden = prev.get("last_subject_seat_index")
     forbidden_i = int(forbidden) if forbidden is not None else None
 
-    n = None
-    a = None
-    b = None
+    n, a, b = 1, 0, 0
     for _ in range(96):
-        rolled_n, rolled_a, rolled_b = roll_subject_die(marker, forbidden_i, l_seats, p_count)
-        if is_challenge_seat(rolled_a, l_seats, p_count) or is_challenge_seat(rolled_b, l_seats, p_count):
-            continue
-        n, a, b = rolled_n, rolled_a, rolled_b
-        break
-    if n is None or a is None or b is None:
-        # Deterministic fallback for heavily mocked/forced rolls: pick adjacent non-challenge seats.
-        n = 1
-        a = (marker - 1) % l_seats
-        b = (marker + 1) % l_seats
-        challenge_idx = l_seats - 1 if p_count >= 3 else None
-        if challenge_idx is not None:
-            if a == challenge_idx:
-                a = (a - 1) % l_seats
-            if b == challenge_idx:
-                b = (b + 1) % l_seats
+        n, a, b = roll_subject_die_duel_subject(marker, forbidden_i, l_seats, p_count)
+        if not subject_pick_is_degenerate(a, b):
+            break
 
     return {
         "marker_index": marker,
@@ -1123,9 +1113,11 @@ def session_action(request, code: str):
                 {int(pid): int(choice) for pid, choice in votes.items()}
             )
             state["voted_player_ids"] = sorted(int(pid) for pid in votes.keys())
-            # Start the round timer the first time any vote lands; never reset thereafter,
-            # even if voters subsequently unvote.
-            if state.get("voting_deadline_at") is None and len(votes) >= 1:
+            if votes_complete_for_round(session, state):
+                state["voting_deadline_at"] = timezone.now().isoformat()
+            elif state.get("voting_deadline_at") is None and len(votes) >= 1:
+                # Start the round timer the first time any vote lands; never reset thereafter,
+                # even if voters subsequently unvote (unless all votes in snaps deadline below).
                 _set_voting_deadline(state)
             session.state = state
             session.state_version = F("state_version") + 1

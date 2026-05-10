@@ -6,8 +6,8 @@ export const BIG_THREE_BODY = {
   sun: {
     label: "Sun",
     modalTitle: "Sun sign",
-    /** Large heading in the big-three detail modal (body section). */
-    bodyHeading: "Sun Sign",
+    /** Large heading in the placement detail modal (body section). */
+    bodyHeading: "Sun",
     bodyPhrases: [
       "core identity and overall sense of self",
       "essential personality and central character",
@@ -18,7 +18,7 @@ export const BIG_THREE_BODY = {
   moon: {
     label: "Moon",
     modalTitle: "Moon sign",
-    bodyHeading: "Moon Sign",
+    bodyHeading: "Moon",
     bodyPhrases: [
       "emotional world and instinctive responses",
       "subconscious habits and comfort patterns",
@@ -29,7 +29,7 @@ export const BIG_THREE_BODY = {
   rising: {
     label: "Rising",
     modalTitle: "Ascendant / Rising",
-    bodyHeading: "Rising Sign",
+    bodyHeading: "Rising / Ascendant",
     bodyPhrases: [
       "first impressions and social presentation",
       "outward style and visible persona",
@@ -43,7 +43,7 @@ export const BIG_THREE_BODY = {
 export const PERSONAL_PLANETS_BODY = {
   mercury: {
     label: "Mercury",
-    bodyHeading: "Mercury Sign",
+    bodyHeading: "Mercury",
     bodyPhrases: [
       "communication and how you express ideas",
       "thinking style and mental curiosity",
@@ -53,7 +53,7 @@ export const PERSONAL_PLANETS_BODY = {
   },
   venus: {
     label: "Venus",
-    bodyHeading: "Venus Sign",
+    bodyHeading: "Venus",
     bodyPhrases: [
       "love language and affection style",
       "values, pleasure, and comfort",
@@ -63,7 +63,7 @@ export const PERSONAL_PLANETS_BODY = {
   },
   mars: {
     label: "Mars",
-    bodyHeading: "Mars Sign",
+    bodyHeading: "Mars",
     bodyPhrases: [
       "drive, ambition, and follow-through",
       "how you assert yourself and handle conflict",

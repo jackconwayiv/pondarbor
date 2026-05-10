@@ -192,10 +192,10 @@ export default function WhatIfPlayPage() {
       const bonusLabel = playerId === activeId && n > 1 ? " (active player)" : "";
       return { key: `${id}-${n}`, player: p, playerId, n, sign, bonusLabel };
     });
-  const flairPrefix =
+  const revealFlairsList =
     (state?.status === "post_results" || state?.status === "ended") && !duelPostResults
-      ? (state?.state?.reveal_flairs ?? []).join(" ")
-      : "";
+      ? (state?.state?.reveal_flairs ?? [])
+      : [];
   const winnerId = state?.state?.winner_player_id;
   const winnerPlayer = winnerId != null ? (state?.players ?? []).find((p) => p.id === winnerId) : undefined;
 
@@ -355,31 +355,75 @@ export default function WhatIfPlayPage() {
                         : `${activePlayer.display_name} is choosing who this challenge is about!`}
                     </Text>
                   </Stack>
+                ) : state?.status === "ended" ? (
+                  <Stack gap="2">
+                    {revealFlairsList.length > 0 ? (
+                      <HStack gap="2" flexWrap="wrap" align="center">
+                        {revealFlairsList.map((f) => (
+                          <Box
+                            key={f}
+                            px="3"
+                            py="1"
+                            borderRadius="full"
+                            bg="black"
+                            color="white"
+                            fontSize="clamp(0.95rem, 2.2vh, 1.25rem)"
+                            fontWeight="bold"
+                            lineHeight="1.2"
+                          >
+                            {f}
+                          </Box>
+                        ))}
+                      </HStack>
+                    ) : null}
+                    <Text fontSize="clamp(1.2rem, 3vh, 2.25rem)" fontWeight="bold" lineHeight="1.2">
+                      {winnerPlayer
+                        ? `Game over! ${winnerPlayer.display_name} wins!`
+                        : "Game over!"}
+                    </Text>
+                  </Stack>
+                ) : state?.status === "post_results" ? (
+                  <Stack gap="2">
+                    {revealFlairsList.length > 0 ? (
+                      <HStack gap="2" flexWrap="wrap" align="center">
+                        {revealFlairsList.map((f) => (
+                          <Box
+                            key={f}
+                            px="3"
+                            py="1"
+                            borderRadius="full"
+                            bg="black"
+                            color="white"
+                            fontSize="clamp(0.95rem, 2.2vh, 1.25rem)"
+                            fontWeight="bold"
+                            lineHeight="1.2"
+                          >
+                            {f}
+                          </Box>
+                        ))}
+                      </HStack>
+                    ) : null}
+                    <Text fontSize="clamp(1.2rem, 3vh, 2.25rem)" fontWeight="bold" lineHeight="1.2">
+                      {challengeRevealHeadline != null
+                        ? challengeRevealHeadline
+                        : roundScoreEntries.length === 0
+                          ? "No top votes."
+                          : winningOptions.length > 1
+                            ? `Top votes: ${winningOptions.join(" & ")}`
+                            : winningOptions.length === 1
+                              ? `Top vote: ${winningOptions[0]}`
+                              : "Votes revealed"}
+                    </Text>
+                  </Stack>
                 ) : (
                   <Text fontSize="clamp(1.2rem, 3vh, 2.25rem)" fontWeight="bold" lineHeight="1.2">
-                    {state?.status === "ended"
-                      ? winnerPlayer
-                        ? `${flairPrefix ? `${flairPrefix} ` : ""}Game over! ${winnerPlayer.display_name} wins!`
-                        : "Game over!"
-                      : state?.status === "post_results"
-                        ? `${flairPrefix ? `${flairPrefix} ` : ""}${
-                            challengeRevealHeadline != null
-                              ? challengeRevealHeadline
-                              : roundScoreEntries.length === 0
-                                ? "No top votes."
-                                : winningOptions.length > 1
-                                  ? `Top votes: ${winningOptions.join(" & ")}`
-                                  : winningOptions.length === 1
-                                    ? `Top vote: ${winningOptions[0]}`
-                                    : "Votes revealed"
-                          }`
-                        : activePlayer
-                          ? needPickChallengeTarget
-                            ? `${activePlayer.display_name} is choosing who to challenge!`
-                            : typeof state?.state?.subject_die_value === "number"
-                              ? `${activePlayer.display_name} rolled a ${state.state.subject_die_value} and is choosing this round's subject!`
-                              : `${activePlayer.display_name} is choosing this round's subject!`
-                          : "Waiting for game start"}
+                    {activePlayer
+                      ? needPickChallengeTarget
+                        ? `${activePlayer.display_name} is choosing who to challenge!`
+                        : typeof state?.state?.subject_die_value === "number"
+                          ? `${activePlayer.display_name} rolled a ${state.state.subject_die_value} and is choosing this round's subject!`
+                          : `${activePlayer.display_name} is choosing this round's subject!`
+                      : "Waiting for game start"}
                   </Text>
                 )}
                 {state?.status === "post_results" ? (
@@ -512,7 +556,8 @@ export default function WhatIfPlayPage() {
                     label = "Voting open";
                     tone = "muted";
                   } else if (secsLeft != null && secsLeft <= 0) {
-                    label = "Time's up!";
+                    label =
+                      allVotesIn && !paused ? "All votes are in!" : "Time's up!";
                     tone = "expired";
                   } else if (secsLeft != null && secsLeft <= 14) {
                     const bucket = Math.max(2, Math.ceil(secsLeft / 2) * 2);
@@ -603,34 +648,65 @@ export default function WhatIfPlayPage() {
               </Stack>
               {scoreboardRows.length > 0 ? (
                 <Stack gap="2" w="100%" pt="1">
-                  {scoreboardRows.map((p) => (
-                    <HStack key={p.id} align="center" gap="3" w="100%" minW={0}>
-                      <HStack flex="1" minW={0} gap="2" align="center">
-                        <WhatIfPlayerFace
-                          player={p}
-                          viewerPlayerId={viewerPlayerId}
-                          avatarSize="lg"
-                          emojiFontSize="clamp(1.35rem, 3.5vh, 2rem)"
-                        />
+                  {scoreboardRows.map((p) => {
+                    const seatNo =
+                      joinOrderPlayers.findIndex((pl) => pl.id === p.id) + 1;
+                    const isActiveTurn = activeId != null && p.id === activeId;
+                    return (
+                      <Box key={p.id} position="relative" w="100%" minW={0}>
                         <Text
-                          fontSize="clamp(1.35rem, 3.5vh, 2rem)"
-                          fontWeight="semibold"
-                          lineHeight="1.25"
+                          position="absolute"
+                          top="0"
+                          left="0"
+                          fontSize="clamp(0.65rem, 1.5vh, 0.85rem)"
+                          fontWeight="bold"
+                          lineHeight="1"
+                          color={tvMutedColor}
                         >
-                          {p.display_name} · {p.score} pts
+                          {seatNo}
                         </Text>
-                        {p.paused ? (
+                        {isActiveTurn ? (
                           <Text
-                            color={tvMutedColor}
-                            fontSize="clamp(0.95rem, 2.2vh, 1.15rem)"
-                            fontWeight="medium"
+                            position="absolute"
+                            top="0"
+                            right="0"
+                            fontSize="clamp(0.85rem, 2vh, 1.1rem)"
+                            lineHeight="1"
+                            color={activeChallengeRound ? "white" : "orange.solid"}
+                            aria-label="Active player's turn"
                           >
-                            (paused)
+                            ★
                           </Text>
                         ) : null}
-                      </HStack>
-                    </HStack>
-                  ))}
+                        <HStack align="center" gap="3" w="100%" minW={0} pl="5" pr={isActiveTurn ? "7" : "0"}>
+                          <HStack flex="1" minW={0} gap="2" align="center">
+                            <WhatIfPlayerFace
+                              player={p}
+                              viewerPlayerId={viewerPlayerId}
+                              avatarSize="lg"
+                              emojiFontSize="clamp(1.35rem, 3.5vh, 2rem)"
+                            />
+                            <Text
+                              fontSize="clamp(1.35rem, 3.5vh, 2rem)"
+                              fontWeight="semibold"
+                              lineHeight="1.25"
+                            >
+                              {p.display_name} · {p.score} pts
+                            </Text>
+                            {p.paused ? (
+                              <Text
+                                color={tvMutedColor}
+                                fontSize="clamp(0.95rem, 2.2vh, 1.15rem)"
+                                fontWeight="medium"
+                              >
+                                (paused)
+                              </Text>
+                            ) : null}
+                          </HStack>
+                        </HStack>
+                      </Box>
+                    );
+                  })}
                 </Stack>
               ) : (
                 <Text color={tvMutedColor} fontSize="clamp(1rem, 2.2vh, 1.2rem)" textAlign="center" py="2">

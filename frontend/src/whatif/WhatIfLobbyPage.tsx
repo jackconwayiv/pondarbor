@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router";
 
 import PondButton from "../PondButton";
 import { fullBleedStackProps } from "../responsive";
+import { WhatIfPlayerFace } from "./whatifPlayerFace";
 import {
   APP_SHELL_TRAY_PROPS,
   APP_TEXT_SIZES,
@@ -140,9 +141,12 @@ export default function WhatIfLobbyPage() {
                     px={{ base: "3", md: "4" }}
                     py={{ base: "2", md: "3" }}
                     bg="bg"
+                    gap="3"
+                    align="center"
                   >
+                    <WhatIfPlayerFace player={p} avatarSize="md" emojiFontSize="1.35em" />
                     <Text fontSize={APP_TEXT_SIZES.body}>
-                      {p.avatar_emoji} {p.display_name}
+                      {p.display_name}
                     </Text>
                   </HStack>
                 ))}

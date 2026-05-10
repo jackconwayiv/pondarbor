@@ -199,6 +199,47 @@ export async function fetchWhatIfTvState(
   return (await response.json()) as WhatIfSessionState;
 }
 
+/** Maps backend `detail` strings to short copy for the phone hand UI. */
+const WHATIF_ACTION_DETAIL_FRIENDLY: Record<string, string> = {
+  "Not in voting state.": "That action isn’t available during this phase.",
+  "Not in voting state": "That action isn’t available during this phase.",
+  "Voting is paused. Wait for the active player to resume.":
+    "Voting is paused. Wait for the active player to resume.",
+  "Reveal is only allowed during voting.": "You can’t reveal votes right now.",
+  "Subject pick is only allowed during turn state.": "You can’t pick a subject right now.",
+  "Subject die choice is only allowed during turn state.": "You can’t choose a die option right now.",
+  "Choosing who to challenge is only allowed during turn state.":
+    "You can’t choose an opponent right now.",
+  "Pause is only available during voting.": "Pause isn’t available right now.",
+  "Missing or invalid player token.": "Reconnect to this room from the join screen.",
+};
+
+function friendlyWhatIfActionBody(status: number, bodyText: string): string {
+  let detail = bodyText.trim();
+  try {
+    const j = JSON.parse(bodyText) as { detail?: unknown };
+    if (typeof j.detail === "string") detail = j.detail.trim();
+  } catch {
+    /* use raw body */
+  }
+  const mapped = WHATIF_ACTION_DETAIL_FRIENDLY[detail];
+  if (mapped) return mapped;
+  if (detail.length > 220) return `${detail.slice(0, 217)}…`;
+  return detail || `Something went wrong (${status}).`;
+}
+
+/**
+ * Turns errors thrown by {@link postWhatIfAction} into player-facing text (no raw JSON).
+ */
+export function friendlyWhatIfActionMessage(error: unknown): string {
+  if (!(error instanceof Error)) return "Something went wrong. Try again.";
+  const m = error.message.match(/^Action failed \(\d+\):\s*([\s\S]*)$/);
+  if (!m) return error.message;
+  const statusMatch = error.message.match(/^Action failed \((\d+)\):/);
+  const status = statusMatch ? Number(statusMatch[1]) : 400;
+  return friendlyWhatIfActionBody(status, m[1] ?? "");
+}
+
 export async function fetchWhatIfHandState(
   code: string,
   playerToken: string,

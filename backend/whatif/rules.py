@@ -28,6 +28,8 @@ def two_subject_candidate_ids(
     pool = [pid for pid in player_ids if pid != active_player_id]
     if len(pool) == 0:
         return []
+    if len(pool) == 1:
+        return [pool[0]]
     counts = {pid: int(subject_times.get(str(pid), 0)) for pid in pool}
     min_c = min(counts.values())
     eligible = [pid for pid in pool if counts[pid] == min_c]
@@ -37,7 +39,7 @@ def two_subject_candidate_ids(
     first = eligible[0]
     rest = [pid for pid in pool if pid != first]
     if not rest:
-        return [first]
+        return sorted(random.sample(pool, 2))
     min_rest = min(counts[pid] for pid in rest)
     tier2 = [pid for pid in rest if counts[pid] == min_rest]
     second = random.choice(tier2)

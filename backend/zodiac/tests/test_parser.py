@@ -90,6 +90,25 @@ Part Of Fortune\tgemini\t73.23
         self.assertEqual(chart["points"]["north_node"]["house"], 10)
         self.assertIn("part_of_fortune", chart["points"])
 
+    def test_vertical_aspect_orb_without_trailing_quote(self):
+        """Some exports omit the minute quote on orb (e.g. `10°28` vs `10°28'`)."""
+        text = (
+            MINIMAL_CHART
+            + """
+Sun
+Opposite
+Jupiter
+Orb
+10°28
+"""
+        )
+        chart, warnings = parse_chart_export_v1(text)
+        unrecognized = [w for w in warnings if w.startswith("Unrecognized line")]
+        self.assertEqual(unrecognized, [])
+        self.assertEqual(len(chart["aspects"]), 1)
+        self.assertEqual(chart["aspects"][0]["type"], "opposition")
+        self.assertAlmostEqual(chart["aspects"][0]["orb_deg"], 10 + 28 / 60.0, places=4)
+
     def test_vertical_multiline_export(self):
         """One field per line (common copy/paste) normalizes to the tabbed layout."""
         text = """

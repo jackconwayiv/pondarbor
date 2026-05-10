@@ -33,7 +33,8 @@ _SIGN_ORDER = [
 _SIGN_TITLE = [s.title() for s in _SIGN_ORDER]
 _SIGN_INDEX = {s: i for i, s in enumerate(_SIGN_ORDER)}
 
-_DEG_MIN_RE = re.compile(r"^(?P<deg>\d+)°(?P<min>\d+)'$")
+# Minutes may omit the trailing quote (some exports use `10°28` instead of `10°28'`).
+_DEG_MIN_RE = re.compile(r"^(?P<deg>\d+)°(?P<min>\d+)'?$")
 _DECIMAL_LON_RE = re.compile(r"^(?P<lon>\d+(\.\d+)?)$")
 
 _ASPECT_MAP = {
@@ -124,7 +125,7 @@ def _parse_deg_min(part: str) -> tuple[int, int] | None:
 
 
 def _parse_orb(orb_str: str) -> float | None:
-    m = re.match(r"^(?P<deg>\d+)°(?P<min>\d+)'$", orb_str.strip())
+    m = re.match(r"^(?P<deg>\d+)°(?P<min>\d+)'?$", orb_str.strip())
     if not m:
         return None
     d = int(m.group("deg"))
@@ -241,7 +242,7 @@ def _parse_aspect_line(line: str, warnings: list[str]) -> dict | None:
         orb_s = parts[-1]
     else:
         m = re.match(
-            r"^(?P<a>.+?)\s+(?P<aspect>[A-Za-z][a-zA-Z0-9]*)\s+(?P<b>.+?)\s+Orb\s+(?P<orb>\d+°\d+')",
+            r"^(?P<a>.+?)\s+(?P<aspect>[A-Za-z][a-zA-Z0-9]*)\s+(?P<b>.+?)\s+Orb\s+(?P<orb>\d+°\d+'?)",
             line.replace("\t", " ").strip(),
         )
         if not m:

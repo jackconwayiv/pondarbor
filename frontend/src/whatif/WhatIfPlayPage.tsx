@@ -13,9 +13,15 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 
+import { AppModal } from "../components/AppModal";
 import { useAppSession } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
-import { fetchWhatIfTvState } from "./api";
+import {
+  fetchWhatIfTvState,
+  friendlyWhatIfActionMessage,
+  loadHostToken,
+  postWhatIfAction,
+} from "./api";
 import WhatIfShell from "./WhatIfShell";
 import type { WhatIfPlayer, WhatIfSessionState } from "./types";
 import { WhatIfPlayerFace } from "./whatifPlayerFace";
@@ -89,8 +95,12 @@ export default function WhatIfPlayPage() {
   const { isAuthenticated, resyncSessionSilently } = useAppSession();
   const [state, setState] = useState<WhatIfSessionState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [completeOpen, setCompleteOpen] = useState(false);
+  const [completeBusy, setCompleteBusy] = useState(false);
+  const [completeError, setCompleteError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const endedProfileRefreshRef = useRef(false);
+  const hostToken = useMemo(() => loadHostToken(roomCode), [roomCode]);
 
   useEffect(() => {
     endedProfileRefreshRef.current = false;
@@ -223,6 +233,28 @@ export default function WhatIfPlayPage() {
     (a, b) => b.score - a.score || a.display_name.localeCompare(b.display_name),
   );
 
+  const rankByPlayerId = useMemo(() => {
+    const fs = state?.state?.final_scores;
+    if (!fs?.length) return {} as Record<number, number>;
+    return Object.fromEntries(fs.map((r) => [r.player_id, r.rank]));
+  }, [state?.state?.final_scores]);
+
+  const canHostComplete =
+    !!hostToken &&
+    (state?.status === "turn" ||
+      state?.status === "voting" ||
+      state?.status === "post_results" ||
+      state?.status === "reveal");
+
+  /** Matches backend: winner only when exactly one player has the max score (ties → no winner). */
+  const completeGameWouldLeaveNoWinner = useMemo(() => {
+    const players = state?.players ?? [];
+    if (players.length === 0) return false;
+    const maxScore = Math.max(...players.map((p) => p.score));
+    const leaders = players.filter((p) => p.score === maxScore);
+    return leaders.length !== 1;
+  }, [state?.players]);
+
   const joinOrderPlayers = useMemo(() => [...(state?.players ?? [])], [state?.players]);
   const showSeatStrip =
     !!state?.challenge_mode &&
@@ -246,6 +278,25 @@ export default function WhatIfPlayPage() {
         : "bg.panel";
   const tvCardColor = activeChallengeRound ? "white" : undefined;
   const tvMutedColor = activeChallengeRound ? "whiteAlpha.800" : "fg.muted";
+
+  async function confirmCompleteGame() {
+    if (!hostToken) return;
+    setCompleteBusy(true);
+    setCompleteError(null);
+    try {
+      const next = await postWhatIfAction(
+        roomCode,
+        { type: "complete_game" },
+        { hostToken },
+      );
+      setState(next);
+      setCompleteOpen(false);
+    } catch (e) {
+      setCompleteError(friendlyWhatIfActionMessage(e));
+    } finally {
+      setCompleteBusy(false);
+    }
+  }
 
   return (
     <WhatIfShell maxW="min(100%, 90rem)" withPanel={false}>
@@ -294,14 +345,27 @@ export default function WhatIfPlayPage() {
                   >
                     {roomCode}
                   </Code>
-                  <PondButton
-                    type="button"
-                    colorPalette="teal"
-                    justifySelf="end"
-                    onClick={() => navigate("/whatif?tab=new")}
-                  >
-                    Return to lobby
-                  </PondButton>
+                  <HStack justifySelf="end" gap="2" flexWrap="wrap">
+                    {canHostComplete ? (
+                      <PondButton
+                        type="button"
+                        colorPalette="sky"
+                        onClick={() => {
+                          setCompleteError(null);
+                          setCompleteOpen(true);
+                        }}
+                      >
+                        Complete Game
+                      </PondButton>
+                    ) : null}
+                    <PondButton
+                      type="button"
+                      colorPalette="teal"
+                      onClick={() => navigate("/whatif?tab=new")}
+                    >
+                      Return to lobby
+                    </PondButton>
+                  </HStack>
                 </Grid>
                 {state?.status === "voting" ? (
                   <Flex
@@ -651,6 +715,7 @@ export default function WhatIfPlayPage() {
                   {scoreboardRows.map((p) => {
                     const seatNo =
                       joinOrderPlayers.findIndex((pl) => pl.id === p.id) + 1;
+                    const placement = rankByPlayerId[p.id];
                     const isActiveTurn = activeId != null && p.id === activeId;
                     return (
                       <Box key={p.id} position="relative" w="100%" minW={0}>
@@ -691,6 +756,11 @@ export default function WhatIfPlayPage() {
                               fontWeight="semibold"
                               lineHeight="1.25"
                             >
+                              {placement != null ? (
+                                <Text as="span" color={tvMutedColor} fontWeight="bold" mr="1">
+                                  #{placement}{" "}
+                                </Text>
+                              ) : null}
                               {p.display_name} · {p.score} pts
                             </Text>
                             {p.paused ? (
@@ -716,6 +786,41 @@ export default function WhatIfPlayPage() {
             </Stack>
           </GridItem>
         </Grid>
+
+        <AppModal
+          open={completeOpen}
+          onOpenChange={(open) => {
+            setCompleteOpen(open);
+            if (!open) setCompleteError(null);
+          }}
+          title="Mark this game as complete?"
+          size="sm"
+        >
+          <Stack gap="4">
+            {completeError ? (
+              <Text role="alert" color="red.fg" fontSize="sm">
+                {completeError}
+              </Text>
+            ) : null}
+            {completeGameWouldLeaveNoWinner ? (
+              <Text fontSize="sm" color="fg.muted" lineHeight="tall">
+                NOTE: Ending the game now will result in no winner being determined.
+              </Text>
+            ) : null}
+            <HStack gap="3" justify="flex-end" flexWrap="wrap" w="100%">
+              <PondButton variant="outline" onClick={() => setCompleteOpen(false)} disabled={completeBusy}>
+                Cancel
+              </PondButton>
+              <PondButton
+                colorPalette="sky"
+                onClick={() => void confirmCompleteGame()}
+                disabled={completeBusy}
+              >
+                End Game
+              </PondButton>
+            </HStack>
+          </Stack>
+        </AppModal>
 
         {error ? (
           <Text role="alert" color="nautical.solid">

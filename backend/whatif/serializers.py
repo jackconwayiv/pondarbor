@@ -54,6 +54,7 @@ class SessionActionSerializer(serializers.Serializer):
             "resolve_question_skip",
             "set_player_paused",
             "toggle_voting_pause",
+            "complete_game",
         ]
     )
     option_index = serializers.IntegerField(required=False)

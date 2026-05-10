@@ -223,3 +223,48 @@ def apply_reveal_from_voting_state(
 
     if session.status == WhatIfSession.Status.ENDED:
         evaluate_after_whatif_session_ended(session.id)
+
+
+def apply_host_complete_game(session: WhatIfSession) -> None:
+    """Host ends the session early; placements from current DB scores. Caller holds row lock."""
+    prev = dict(session.state or {})
+    fs = final_scores(session)
+    leaders = [row["player_id"] for row in fs if row["rank"] == 1]
+    winner_id = leaders[0] if len(leaders) == 1 else None
+
+    state = {
+        **prev,
+        "final_scores": fs,
+        "ended_reason": "host_ended",
+        "winner_player_id": winner_id,
+        "votes": {},
+        "vote_counts": {},
+        "voted_player_ids": [],
+        "duel": None,
+        "voting_deadline_at": None,
+        "voting_paused": False,
+        "voting_pause_remaining_seconds": None,
+        "reveal_flairs": [],
+        "round_scores": {},
+    }
+
+    session.status = WhatIfSession.Status.ENDED
+    session.state = state
+    session.state_version = F("state_version") + 1
+    session.save(update_fields=["status", "state", "state_version", "updated_at"])
+    session.refresh_from_db()
+
+    if winner_id is not None:
+        winner = session.players.filter(id=winner_id).first()
+        if winner is not None:
+            WhatIfGameResult.objects.update_or_create(
+                session=session,
+                defaults={
+                    "winner_player": winner,
+                    "winner_user": winner.user,
+                    "winner_display_name": winner.display_name,
+                },
+            )
+
+    mark_whatif_completion_for_session_users(session.id)
+    evaluate_after_whatif_session_ended(session.id)

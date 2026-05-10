@@ -96,6 +96,8 @@ export type WhatIfMySessionRow = {
   is_owner: boolean;
   player_names: string[];
   winner_display_name?: string | null;
+  /** Present when this user has a player row linked to their account (joined while signed in). */
+  player_secret?: string | null;
 };
 
 export type WhatIfMySessionsResponse = {

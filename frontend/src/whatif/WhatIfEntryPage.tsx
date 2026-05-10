@@ -781,8 +781,8 @@ export default function WhatIfEntryPage() {
   );
 
   function renderMySessionRow(row: WhatIfMySessionRow) {
-    const showResume = row.is_owner && row.status !== "ended";
-    const showOpenHand = !row.is_owner && row.status !== "ended";
+    const showResume = row.is_owner && row.status !== "ended" && !isMobile;
+    const showOpenHand = row.status !== "ended" && (!row.is_owner || isMobile);
     const showStatusTag = row.status === "ended";
     return (
       <Flex
@@ -835,7 +835,11 @@ export default function WhatIfEntryPage() {
               size="sm"
               variant="outline"
               colorPalette="teal"
-              onClick={() => navigate(`/whatif/hand/${row.short_code}`)}
+              onClick={() => {
+                const secret = row.player_secret?.trim();
+                if (secret) savePlayerToken(row.short_code, secret);
+                navigate(`/whatif/hand/${row.short_code}`);
+              }}
             >
               Open hand
             </PondButton>

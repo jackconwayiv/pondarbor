@@ -21,6 +21,7 @@ from users.permissions import IsApprovedUser
 
 from whatif import constants
 from whatif.gameplay import (
+    apply_host_complete_game,
     apply_reveal_from_voting_state,
     can_reveal_now,
     final_scores,
@@ -527,6 +528,8 @@ def _serialize_whatif_my_session_row(session: WhatIfSession, user_id: int) -> di
             winner_display_name = w or None
     except ObjectDoesNotExist:
         pass
+    my_player = next((p for p in players if p.user_id == user_id), None)
+    player_secret = str(my_player.player_secret) if my_player is not None else None
     return {
         "short_code": session.short_code,
         "status": session.status,
@@ -535,6 +538,7 @@ def _serialize_whatif_my_session_row(session: WhatIfSession, user_id: int) -> di
         "is_owner": session.owner_id == user_id,
         "player_names": [p.display_name for p in players],
         "winner_display_name": winner_display_name,
+        "player_secret": player_secret,
     }
 
 
@@ -703,6 +707,14 @@ def _resolve_actor_for_action(
             )
         return None, None
 
+    if action_type == "complete_game":
+        if not host_ok:
+            return None, Response(
+                {"detail": "Only the host can complete the game."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return None, None
+
     if player is None:
         return None, Response(
             {"detail": "Missing or invalid player token."},
@@ -841,6 +853,15 @@ def session_action(request, code: str):
             first_non_paused = next((p.id for p in players_ordered if not p.paused), None)
             first_player_id = first_non_paused if first_non_paused is not None else players_ordered[0].id
             _setup_turn(session, next_player_id=first_player_id)
+
+        elif action_type == "complete_game":
+            if session.status == WhatIfSession.Status.ENDED:
+                return Response({"detail": "Game already ended."}, status=status.HTTP_400_BAD_REQUEST)
+            if session.status in _WHATIF_LOBBY_STATUSES:
+                return Response({"detail": "Game has not started."}, status=status.HTTP_400_BAD_REQUEST)
+            if session.status not in _WHATIF_IN_PROGRESS_STATUSES:
+                return Response({"detail": "Cannot complete game in this state."}, status=status.HTTP_400_BAD_REQUEST)
+            apply_host_complete_game(session)
 
         elif action_type == "pick_duel_opponent":
             if session.status != WhatIfSession.Status.TURN:

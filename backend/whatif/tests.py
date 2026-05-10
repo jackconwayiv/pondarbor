@@ -341,6 +341,96 @@ class WhatIfApiTests(TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
+    def test_complete_game_host_ends_with_unique_winner(self):
+        code, host_secret, _user = self._create_session()
+        self._join(code, "John")
+        self._join(code, "Maya")
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "start_game"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        ordered = self._ordered_player_ids(code)
+        WhatIfPlayer.objects.filter(id=ordered[0]).update(score=12)
+        WhatIfPlayer.objects.filter(id=ordered[1]).update(score=7)
+        response = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "complete_game"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["status"], "ended")
+        self.assertEqual(body["state"]["ended_reason"], "host_ended")
+        self.assertEqual(body["state"]["winner_player_id"], ordered[0])
+        fs = body["state"]["final_scores"]
+        self.assertEqual(len(fs), 2)
+        self.assertEqual(fs[0]["player_id"], ordered[0])
+        self.assertEqual(fs[0]["rank"], 1)
+        sess = WhatIfSession.objects.get(short_code=code)
+        self.assertTrue(WhatIfGameResult.objects.filter(session=sess).exists())
+
+    def test_complete_game_tie_at_top_has_no_winner_or_result(self):
+        code, host_secret, _user = self._create_session()
+        self._join(code, "John")
+        self._join(code, "Maya")
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "start_game"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        ordered = self._ordered_player_ids(code)
+        WhatIfPlayer.objects.filter(id__in=ordered).update(score=5)
+        response = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "complete_game"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["status"], "ended")
+        self.assertIsNone(body["state"]["winner_player_id"])
+        ranks = {row["player_id"]: row["rank"] for row in body["state"]["final_scores"]}
+        self.assertEqual(ranks[ordered[0]], 1)
+        self.assertEqual(ranks[ordered[1]], 1)
+        sess = WhatIfSession.objects.get(short_code=code)
+        self.assertFalse(WhatIfGameResult.objects.filter(session=sess).exists())
+
+    def test_complete_game_requires_host_token(self):
+        code, host_secret, _user = self._create_session()
+        p1 = self._join(code, "John")
+        self._join(code, "Maya")
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "start_game"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        response = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "complete_game"},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_complete_game_rejected_in_lobby(self):
+        code, host_secret, _user = self._create_session()
+        self._join(code, "John")
+        self._join(code, "Maya")
+        response = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "complete_game"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("not started", response.json().get("detail", "").lower())
+
     def test_full_round_flow_plurality_and_active_bonus(self):
         code, host_secret, _owner = self._create_session()
         p1 = self._join(code, "John")
@@ -1574,6 +1664,7 @@ class WhatIfMySessionsTests(TestCase):
         self.assertTrue(row["is_owner"])
         self.assertEqual(row["player_names"], [])
         self.assertEqual(row["status"], WhatIfSession.Status.OPEN)
+        self.assertIsNone(row.get("player_secret"))
 
     def test_joined_player_sees_session_not_owner(self):
         host = self._approved("host2@example.com")
@@ -1597,6 +1688,10 @@ class WhatIfMySessionsTests(TestCase):
         self.assertEqual(row["short_code"], code)
         self.assertFalse(row["is_owner"])
         self.assertEqual(row["player_names"], ["Maya"])
+        secret = str(
+            WhatIfPlayer.objects.get(session__short_code=code, display_name="Maya").player_secret
+        )
+        self.assertEqual(row["player_secret"], secret)
 
     def test_open_lobby_sorted_by_updated_at_desc(self):
         host = self._approved("host3@example.com")

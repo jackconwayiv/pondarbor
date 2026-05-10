@@ -279,7 +279,8 @@ export async function postWhatIfAction(
       | "request_question_skip"
       | "resolve_question_skip"
       | "set_player_paused"
-      | "toggle_voting_pause";
+      | "toggle_voting_pause"
+      | "complete_game";
     option_index?: number;
     target_player_id?: number;
     paused?: boolean;

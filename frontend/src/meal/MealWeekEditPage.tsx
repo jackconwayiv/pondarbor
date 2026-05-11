@@ -173,7 +173,7 @@ export default function MealWeekEditPage() {
         <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
           <Stack gap="3">
             <HStack justify="space-between" align="center" flexWrap="wrap" w="100%">
-              <Heading size="sm" fontWeight="semibold">
+              <Heading size="sm">
                 Week of {formatWeekStartShort(weekStart)}
               </Heading>
               <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted">

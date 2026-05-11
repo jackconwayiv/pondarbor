@@ -28,7 +28,6 @@ export default function AboutTermsPage() {
               <Heading
                 as="h1"
                 size={{ base: "lg", md: "xl" }}
-                fontWeight="bold"
                 mb="2"
               >
                 Terms of Service
@@ -50,7 +49,7 @@ export default function AboutTermsPage() {
                   &quot;us&quot;, or &quot;our&quot;).
                 </Text>
 
-                <Heading as="h2" size="md" fontWeight="semibold">
+                <Heading as="h2" size="md">
                   Eligibility and accounts
                 </Heading>
                 <Text
@@ -64,7 +63,7 @@ export default function AboutTermsPage() {
                   laws.
                 </Text>
 
-                <Heading as="h2" size="md" fontWeight="semibold">
+                <Heading as="h2" size="md">
                   Acceptable use
                 </Heading>
                 <Text
@@ -77,7 +76,7 @@ export default function AboutTermsPage() {
                   abusive, or harmful content.
                 </Text>
 
-                <Heading as="h2" size="md" fontWeight="semibold">
+                <Heading as="h2" size="md">
                   User content
                 </Heading>
                 <Text
@@ -91,7 +90,7 @@ export default function AboutTermsPage() {
                   the necessary rights to submit any content you provide.
                 </Text>
 
-                <Heading as="h2" size="md" fontWeight="semibold">
+                <Heading as="h2" size="md">
                   Suspension and termination
                 </Heading>
                 <Text
@@ -103,7 +102,7 @@ export default function AboutTermsPage() {
                   create security risk, or harm users or the service.
                 </Text>
 
-                <Heading as="h2" size="md" fontWeight="semibold">
+                <Heading as="h2" size="md">
                   Age requirement
                 </Heading>
                 <Text
@@ -116,7 +115,7 @@ export default function AboutTermsPage() {
                   least 18.
                 </Text>
 
-                <Heading as="h2" size="md" fontWeight="semibold">
+                <Heading as="h2" size="md">
                   Disclaimers and limitation of liability
                 </Heading>
                 <Text
@@ -131,7 +130,7 @@ export default function AboutTermsPage() {
                   law.
                 </Text>
 
-                <Heading as="h2" size="md" fontWeight="semibold">
+                <Heading as="h2" size="md">
                   Governing law
                 </Heading>
                 <Text
@@ -146,7 +145,7 @@ export default function AboutTermsPage() {
                   you consent to their jurisdiction.
                 </Text>
 
-                <Heading as="h2" size="md" fontWeight="semibold">
+                <Heading as="h2" size="md">
                   Changes to these terms
                 </Heading>
                 <Text
@@ -160,7 +159,7 @@ export default function AboutTermsPage() {
                   effective constitutes acceptance of the revised Terms.
                 </Text>
 
-                <Heading as="h2" size="md" fontWeight="semibold">
+                <Heading as="h2" size="md">
                   Contact
                 </Heading>
                 <Text

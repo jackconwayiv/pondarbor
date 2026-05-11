@@ -87,7 +87,7 @@ export default function WhatIfLobbyPage() {
             <Box {...PANEL_ENTRY_CARD_PROPS}>
               <HStack align="flex-start" justify="space-between" gap="4" w="100%" flexWrap="wrap">
                 <Stack flex="1" minW={0} gap="2">
-                  <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold">
+                  <Heading as="h1" size={{ base: "lg", md: "xl" }}>
                     <HStack
                       as="span"
                       display="inline-flex"

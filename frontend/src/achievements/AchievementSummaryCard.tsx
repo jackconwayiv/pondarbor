@@ -1,4 +1,4 @@
-import { Box, Checkbox, HStack, Stack, Text } from "@chakra-ui/react";
+import { Avatar, Box, Checkbox, HStack, Stack, Text } from "@chakra-ui/react";
 import { useIsMobile } from "../responsive";
 import {
   APP_TEXT_SIZES,
@@ -33,16 +33,47 @@ export type AchievementVisibilityToggle = {
   onCheckedChange: (visibleToFriends: boolean) => void;
 };
 
+export type AchievementPeerAvatar = {
+  userId: number;
+  name: string;
+  src: string;
+};
+
+function PeerAvatarStrip({ peers }: { peers: AchievementPeerAvatar[] }) {
+  if (peers.length === 0) return null;
+  return (
+    <HStack
+      gap="1"
+      flexWrap="wrap"
+      minW={0}
+      flex="1"
+      align="center"
+      justify="flex-start"
+      aria-hidden
+    >
+      {peers.map((p) => (
+        <Avatar.Root key={p.userId} size="sm" flexShrink={0} title={p.name}>
+          <Avatar.Fallback name={p.name} />
+          <Avatar.Image src={p.src || undefined} alt="" />
+        </Avatar.Root>
+      ))}
+    </HStack>
+  );
+}
+
 /** Bordered card with gold coin + slug-driven emoji, bold title, description. */
 export function AchievementSummaryCard({
   achievement: a,
   visibilityToggle,
   showEarnedDate = true,
+  peerAvatars,
 }: {
   achievement: AchievementSummary;
   visibilityToggle?: AchievementVisibilityToggle;
   /** When false, hide the "Earned …" line (e.g. staff catalog of all definitions). */
   showEarnedDate?: boolean;
+  /** Optional peers who show the same achievement (resolved URLs for display). */
+  peerAvatars?: AchievementPeerAvatar[];
 }) {
   const isMobile = useIsMobile();
   const emoji = emojiForAchievementSlug(a.slug);
@@ -63,6 +94,8 @@ export function AchievementSummaryCard({
     ? a.visible_to_friends !== false
     : true;
   const bg = shownToFriends ? "white" : "gray.200";
+  const peers = peerAvatars ?? [];
+  const hasPeers = peers.length > 0;
 
   return (
     <Box {...BASE_CARD_PROPS} bg={bg}>
@@ -125,33 +158,54 @@ export function AchievementSummaryCard({
               {a.description}
             </Text>
           ) : null}
-          {visibilityToggle ? (
-            <Box w="100%" display="flex" justifyContent="flex-end" mt="1">
-              <Checkbox.Root
-                checked={visibilityToggle.checked}
-                colorPalette="teal"
-                size="sm"
-                display="flex"
-                flexDirection="row-reverse"
-                alignItems="center"
-                gap="2"
-                onCheckedChange={(d) => {
-                  visibilityToggle.onCheckedChange(d.checked === true);
-                }}
-              >
-                <Checkbox.HiddenInput />
-                <Checkbox.Control flexShrink={0}>
-                  <Checkbox.Indicator />
-                </Checkbox.Control>
-                <Checkbox.Label
-                  fontSize={{ base: "2xs", md: "xs" }}
-                  fontWeight="medium"
-                  lineHeight="short"
-                >
-                  Show to friends
-                </Checkbox.Label>
-              </Checkbox.Root>
+          {!visibilityToggle && hasPeers ? (
+            <Box w="100%" mt="1" minW={0} overflow="hidden">
+              <PeerAvatarStrip peers={peers} />
             </Box>
+          ) : null}
+          {visibilityToggle ? (
+            <HStack
+              w="100%"
+              justify="space-between"
+              align="center"
+              gap="2"
+              mt="1"
+              minW={0}
+            >
+              {hasPeers ? (
+                <Box minW={0} flex="1" overflow="hidden">
+                  <PeerAvatarStrip peers={peers} />
+                </Box>
+              ) : (
+                <Box flex="1" minW={0} />
+              )}
+              <Box flexShrink={0}>
+                <Checkbox.Root
+                  checked={visibilityToggle.checked}
+                  colorPalette="teal"
+                  size="sm"
+                  display="flex"
+                  flexDirection="row-reverse"
+                  alignItems="center"
+                  gap="2"
+                  onCheckedChange={(d) => {
+                    visibilityToggle.onCheckedChange(d.checked === true);
+                  }}
+                >
+                  <Checkbox.HiddenInput />
+                  <Checkbox.Control flexShrink={0}>
+                    <Checkbox.Indicator />
+                  </Checkbox.Control>
+                  <Checkbox.Label
+                    fontSize={{ base: "2xs", md: "xs" }}
+                    fontWeight="medium"
+                    lineHeight="short"
+                  >
+                    Show to friends
+                  </Checkbox.Label>
+                </Checkbox.Root>
+              </Box>
+            </HStack>
           ) : null}
         </Stack>
       </HStack>

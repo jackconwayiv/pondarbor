@@ -271,7 +271,6 @@ export default function SongadayEntryDetailPage() {
           <HStack justify="space-between" align="flex-start" gap="3" w="100%">
             <Heading
               size={{ base: "md", md: "lg" }}
-              fontWeight="bold"
               flex="1"
               minW={0}
             >

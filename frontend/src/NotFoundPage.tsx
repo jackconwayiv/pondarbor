@@ -24,7 +24,6 @@ export default function NotFoundPage() {
               <Heading
                 as="h1"
                 size={{ base: "lg", md: "xl" }}
-                fontWeight="bold"
                 mb="2"
               >
                 404: Page not found

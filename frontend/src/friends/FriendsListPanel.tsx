@@ -134,7 +134,6 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
           <Heading
             as="h1"
             size={{ base: "lg", md: "xl" }}
-            fontWeight="bold"
             mb="2"
           >
             <HStack

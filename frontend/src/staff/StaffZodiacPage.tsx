@@ -159,7 +159,7 @@ export default function StaffZodiacPage() {
               pb="2"
             >
               <Box {...PANEL_ENTRY_CARD_PROPS}>
-                <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold" mb="2">
+                <Heading as="h1" size={{ base: "lg", md: "xl" }} mb="2">
                   Zodiackary — staff import
                 </Heading>
                 <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall">
@@ -193,7 +193,7 @@ export default function StaffZodiacPage() {
               )}
 
               <Box {...PANEL_ENTRY_CARD_PROPS}>
-                <Heading as="h2" size="md" fontWeight="bold" mb="3">
+                <Heading as="h2" size="md" mb="3">
                   Imported charts ({importedRows.length})
                 </Heading>
                 <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted" mb="3">
@@ -323,7 +323,7 @@ export default function StaffZodiacPage() {
               </Box>
 
               <Box {...PANEL_ENTRY_CARD_PROPS}>
-                <Heading as="h2" size="md" fontWeight="bold" mb="3">
+                <Heading as="h2" size="md" mb="3">
                   Pending queue
                 </Heading>
                 <Box {...PANEL_NESTED_BLOCK_PROPS} overflowX="auto">
@@ -402,7 +402,7 @@ export default function StaffZodiacPage() {
               </Box>
 
               <Box ref={pasteSectionRef} {...PANEL_ENTRY_CARD_PROPS}>
-                <Heading as="h2" size="md" fontWeight="bold" mb="3">
+                <Heading as="h2" size="md" mb="3">
                   Paste chart export
                 </Heading>
                 <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted" mb="2">

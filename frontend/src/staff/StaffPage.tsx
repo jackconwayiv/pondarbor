@@ -288,7 +288,6 @@ export default function StaffPage() {
                 <Heading
                   as="h1"
                   size={{ base: "lg", md: "xl" }}
-                  fontWeight="bold"
                   mb="2"
                 >
                   Staff

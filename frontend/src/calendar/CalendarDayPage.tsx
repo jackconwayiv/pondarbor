@@ -235,7 +235,6 @@ export default function CalendarDayPage() {
                   <Heading
                     as="h1"
                     size={{ base: "md", md: "lg" }}
-                    fontWeight="bold"
                   >
                     {dayLabel}
                   </Heading>

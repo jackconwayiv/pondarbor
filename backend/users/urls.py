@@ -20,7 +20,12 @@ from users.views import (
     user_public_summary_by_email,
     user_public_summary_by_id,
 )
-from achievements.views import user_public_achievements, user_public_achievements_by_id
+from achievements.views import (
+    me_achievement_peers,
+    user_achievement_peers_for_subject_friends,
+    user_public_achievements,
+    user_public_achievements_by_id,
+)
 from quotes.views import user_public_quotes, user_public_quotes_by_id
 
 urlpatterns = [
@@ -28,6 +33,7 @@ urlpatterns = [
     path("csrf/", csrf),
     path("me/", me),
     path("me/profile/", patch_me_profile),
+    path("me/achievement-peers/", me_achievement_peers),
     path("me/achievements/<slug:slug>/", patch_me_achievement_visibility),
     path("approved-check/", approved_check),
     path("upcoming-birthdays/", upcoming_birthdays),
@@ -39,6 +45,7 @@ urlpatterns = [
     path("staff/pending-summary/", staff_pending_summary),
     path("staff/users/<int:user_id>/", staff_user_patch),
     path("staff/users/", staff_users_list),
+    path("<int:user_id>/achievement-peers/", user_achievement_peers_for_subject_friends),
     path("<int:user_id>/public/", user_public_summary_by_id),
     path("<int:user_id>/friends/", user_friends_list_for_viewer),
     path("<int:user_id>/public-quotes/", user_public_quotes_by_id),

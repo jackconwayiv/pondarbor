@@ -14,9 +14,10 @@ import { AchievementSummaryCard } from "../achievements/AchievementSummaryCard";
 import {
   fetchPublicAchievementsByUser,
   fetchPublicAchievementsByUserId,
+  postAchievementPeersForSubjectFriends,
 } from "../achievements/api";
 import { sortAchievementsNewestFirst } from "../achievements/sortAchievements";
-import type { AchievementSummary } from "../achievements/types";
+import type { AchievementPeerAvatarRow, AchievementSummary } from "../achievements/types";
 import {
   resolveAvatarUrlForUser,
   useAppSession,
@@ -164,6 +165,9 @@ export default function FriendProfilePage() {
 
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [achievements, setAchievements] = useState<AchievementSummary[]>([]);
+  const [achievementPeersBySlug, setAchievementPeersBySlug] = useState<
+    Record<string, AchievementPeerAvatarRow[]>
+  >({});
   const [theirFriends, setTheirFriends] = useState<FriendUser[]>([]);
   const [closetItems, setClosetItems] = useState<ClosetItem[]>([]);
   const [summary, setSummary] = useState<PublicUserSummary | null>(null);
@@ -177,7 +181,7 @@ export default function FriendProfilePage() {
   const [currentPage, setCurrentPage] = useState(0);
   const [profileTab, setProfileTab] = useState<
     "friends" | "achievements" | "quotes" | "closet"
-  >("friends");
+  >("achievements");
   const [reloadKey, setReloadKey] = useState(0);
   const unfriendBoxRef = useRef<HTMLDivElement | null>(null);
   const ownUserId = sessionUser?.user?.id ?? null;
@@ -371,8 +375,8 @@ export default function FriendProfilePage() {
   const leftmostVisibleTab = useMemo<
     "friends" | "achievements" | "quotes" | "closet" | null
   >(() => {
-    if (canViewFullProfile) return "friends";
     if (hasAchievements) return "achievements";
+    if (canViewFullProfile) return "friends";
     if (hasQuotes) return "quotes";
     if (hasClosetTab) return "closet";
     return null;
@@ -395,6 +399,75 @@ export default function FriendProfilePage() {
     hasQuotes,
     hasClosetTab,
     leftmostVisibleTab,
+  ]);
+
+  const friendAchievementPeersSlugKey = useMemo(
+    () =>
+      [...new Set(achievements.map((x) => x.slug))]
+        .sort()
+        .join("\0"),
+    [achievements],
+  );
+
+  useEffect(() => {
+    if (!summary?.can_view_full_profile || profileSubjectUserId == null) {
+      setAchievementPeersBySlug({});
+      return;
+    }
+    if (!sessionUser || !sessionUser.user.is_approved || achievements.length === 0) {
+      setAchievementPeersBySlug({});
+      return;
+    }
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const token = await getApiAccessToken();
+        const slugs = [...new Set(achievements.map((a) => a.slug))].sort();
+        const data = await postAchievementPeersForSubjectFriends(
+          profileSubjectUserId,
+          slugs,
+          token,
+        );
+        const merged: Record<string, AchievementPeerAvatarRow[]> = { ...data };
+        const myId = sessionUser.user.id;
+        const display =
+          (sessionUser.profile.display_name ?? "").trim() ||
+          sessionUser.user.email.split("@")[0] ||
+          "You";
+        for (const slug of slugs) {
+          const own = sessionUser.achievements?.some((x) => x.slug === slug);
+          if (!own) continue;
+          const cur = merged[slug] ?? [];
+          if (cur.some((p) => p.id === myId)) continue;
+          merged[slug] = [
+            {
+              id: myId,
+              nickname: display,
+              avatar_url: sessionUser.profile.avatar_url ?? "",
+            },
+            ...cur,
+          ];
+        }
+        if (!cancelled) setAchievementPeersBySlug(merged);
+      } catch {
+        if (!cancelled) setAchievementPeersBySlug({});
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    summary?.can_view_full_profile,
+    profileSubjectUserId,
+    friendAchievementPeersSlugKey,
+    getApiAccessToken,
+    sessionUser?.user.is_approved,
+    sessionUser?.user.id,
+    sessionUser?.user.email,
+    sessionUser?.profile.display_name,
+    sessionUser?.profile.avatar_url,
+    sessionUser?.achievements,
   ]);
 
   const closetReturnTo = useMemo(() => {
@@ -503,7 +576,6 @@ export default function FriendProfilePage() {
                   <Heading
                     as="h1"
                     size={{ base: "lg", md: "xl" }}
-                    fontWeight="bold"
                     mb="2"
                   >
                     {summary ? friendProfileHeading(summary) : "Friend Profile"}
@@ -540,7 +612,6 @@ export default function FriendProfilePage() {
                       <Heading
                         as="h1"
                         size={{ base: "lg", md: "xl" }}
-                        fontWeight="bold"
                       >
                         Friend Profile
                       </Heading>
@@ -879,12 +950,6 @@ export default function FriendProfilePage() {
                 variant="plain"
               >
                 <Tabs.List {...APP_SHELL_TAB_LIST_PROPS}>
-                  <Tabs.Trigger
-                    value="friends"
-                    {...APP_SHELL_TAB_TRIGGER_PROPS}
-                  >
-                    Friends
-                  </Tabs.Trigger>
                   {hasAchievements ? (
                     <Tabs.Trigger
                       value="achievements"
@@ -893,6 +958,12 @@ export default function FriendProfilePage() {
                       Achievements
                     </Tabs.Trigger>
                   ) : null}
+                  <Tabs.Trigger
+                    value="friends"
+                    {...APP_SHELL_TAB_TRIGGER_PROPS}
+                  >
+                    Friends
+                  </Tabs.Trigger>
                   {hasQuotes ? (
                     <Tabs.Trigger
                       value="quotes"
@@ -910,6 +981,30 @@ export default function FriendProfilePage() {
                     </Tabs.Trigger>
                   ) : null}
                 </Tabs.List>
+                {hasAchievements ? (
+                    <Tabs.Content value="achievements" p={{ base: "2", md: "2" }}>
+                      <Stack gap={MAPPED_LIST_STACK_GAP}>
+                        {achievements.map((a) => (
+                          <AchievementSummaryCard
+                            key={a.slug}
+                            achievement={a}
+                            peerAvatars={(achievementPeersBySlug[a.slug] ?? []).map(
+                              (p) => ({
+                                userId: p.id,
+                                name: p.nickname,
+                                src: resolveAvatarUrlForUser(
+                                  p.avatar_url,
+                                  p.id,
+                                  sessionUser,
+                                  auth0User,
+                                ),
+                              }),
+                            )}
+                          />
+                        ))}
+                      </Stack>
+                    </Tabs.Content>
+                  ) : null}
                 <Tabs.Content value="friends" p={{ base: "2", md: "2" }}>
                     <ApprovedFriendsListBlock
                       friends={theirFriends}
@@ -960,18 +1055,6 @@ export default function FriendProfilePage() {
                       }}
                     />
                   </Tabs.Content>
-                {hasAchievements ? (
-                    <Tabs.Content value="achievements" p={{ base: "2", md: "2" }}>
-                      <Stack gap={MAPPED_LIST_STACK_GAP}>
-                        {achievements.map((a) => (
-                          <AchievementSummaryCard
-                            key={a.slug}
-                            achievement={a}
-                          />
-                        ))}
-                      </Stack>
-                    </Tabs.Content>
-                  ) : null}
                 {hasQuotes ? (
                     <Tabs.Content value="quotes" p={{ base: "2", md: "2" }}>
                       <Stack gap={MAPPED_LIST_STACK_GAP}>

@@ -2,11 +2,19 @@ import {
   createSystem,
   defaultConfig,
   defineConfig,
+  defineRecipe,
   defineSemanticTokens,
   defineSlotRecipe,
   defineTokens,
 } from "@chakra-ui/react";
 import { BRAND_COLORS, DESIGN } from "./tokens";
+
+/** Heading hierarchy uses size + Caprasimo, not bold weight (merges into default heading recipe). */
+const pondHeadingRecipe = defineRecipe({
+  base: {
+    fontWeight: "normal",
+  },
+});
 
 /** Success: lilypad; warning/error: nautical. */
 const pondToastSlotRecipe = defineSlotRecipe({
@@ -223,6 +231,9 @@ export const system = createSystem(
             border: { value: { _light: "{colors.pond.pondBlueStrong}", _dark: "{colors.pond.pondBlueStrong}" } },
           },
         }),
+      },
+      recipes: {
+        heading: pondHeadingRecipe,
       },
       slotRecipes: {
         toast: pondToastSlotRecipe,

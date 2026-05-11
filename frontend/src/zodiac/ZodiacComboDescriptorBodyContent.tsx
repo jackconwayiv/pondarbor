@@ -9,7 +9,6 @@ const titleHeadingProps = {
   as: "h2" as const,
   size: "lg" as const,
   fontFamily: "heading",
-  fontWeight: "bold",
   lineHeight: "short",
   color: "fg",
   mb: "0",

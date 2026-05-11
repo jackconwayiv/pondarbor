@@ -1,4 +1,4 @@
-import type { AchievementSummary } from "./types";
+import type { AchievementPeerAvatarRow, AchievementSummary } from "./types";
 
 function apiBase(): string {
   return import.meta.env.VITE_API_BASE_URL ?? "";
@@ -7,6 +7,16 @@ function apiBase(): string {
 function optionalBearerHeaders(accessToken?: string | null): HeadersInit {
   if (!accessToken) return {};
   return { Authorization: `Bearer ${accessToken}` };
+}
+
+function bearerJsonHeaders(accessToken: string | null): HeadersInit {
+  if (!accessToken) {
+    throw new Error("Missing API access token. Refresh your session and try again.");
+  }
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  };
 }
 
 export async function fetchPublicAchievementsByUser(
@@ -38,6 +48,52 @@ export async function fetchPublicAchievementsByUserId(
     throw new Error(`Achievements request failed (${response.status}): ${text}`);
   }
   return (await response.json()) as AchievementSummary[];
+}
+
+type AchievementPeersResponseBody = {
+  peers_by_slug: Record<string, AchievementPeerAvatarRow[]>;
+};
+
+/** Batch: approved friends of the viewer who show each slug on their public achievement list. */
+export async function postAchievementPeersForMyFriends(
+  slugs: string[],
+  accessToken: string | null,
+): Promise<Record<string, AchievementPeerAvatarRow[]>> {
+  const response = await fetch(`${apiBase()}/api/v1/users/me/achievement-peers/`, {
+    method: "POST",
+    headers: bearerJsonHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify({ slugs }),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Achievement peers request failed (${response.status}): ${text}`);
+  }
+  const data = (await response.json()) as AchievementPeersResponseBody;
+  return data.peers_by_slug ?? {};
+}
+
+/** Batch: friends of `subjectUserId` (viewer must be friends with subject) visible to viewer per slug. */
+export async function postAchievementPeersForSubjectFriends(
+  subjectUserId: number,
+  slugs: string[],
+  accessToken: string | null,
+): Promise<Record<string, AchievementPeerAvatarRow[]>> {
+  const response = await fetch(
+    `${apiBase()}/api/v1/users/${subjectUserId}/achievement-peers/`,
+    {
+      method: "POST",
+      headers: bearerJsonHeaders(accessToken),
+      credentials: "omit",
+      body: JSON.stringify({ slugs }),
+    },
+  );
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Achievement peers request failed (${response.status}): ${text}`);
+  }
+  const data = (await response.json()) as AchievementPeersResponseBody;
+  return data.peers_by_slug ?? {};
 }
 
 /** Staff-only: all active achievement definitions as friend-profile-shaped rows (no real unlock date). */

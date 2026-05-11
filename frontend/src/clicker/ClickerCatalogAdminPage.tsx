@@ -171,7 +171,6 @@ function UpgradeCatalogCard({ upgrade: u }: { upgrade: UpgradeDef }) {
             <Heading
               as="h3"
               fontSize={{ base: "xs", md: "sm" }}
-              fontWeight="semibold"
               lineHeight="short"
               color="fg"
             >
@@ -304,7 +303,6 @@ export default function ClickerCatalogAdminPage() {
           <Heading
             as="h1"
             size={{ base: "lg", md: "xl" }}
-            fontWeight="bold"
             mb="2"
           >
             Upgrade catalog
@@ -341,7 +339,6 @@ export default function ClickerCatalogAdminPage() {
           <Heading
             as="h1"
             size={{ base: "lg", md: "xl" }}
-            fontWeight="bold"
             mb="2"
           >
             Upgrade catalog
@@ -380,7 +377,6 @@ export default function ClickerCatalogAdminPage() {
           <Heading
             as="h1"
             size={{ base: "lg", md: "xl" }}
-            fontWeight="bold"
             mb="2"
           >
             Upgrade catalog
@@ -408,7 +404,7 @@ export default function ClickerCatalogAdminPage() {
       <Box {...PANEL_ENTRY_CARD_PROPS}>
         <Stack gap="2" align="flex-start">
           {backButton}
-          <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold">
+          <Heading as="h1" size={{ base: "lg", md: "xl" }}>
             Upgrade catalog (staff)
           </Heading>
           <Text

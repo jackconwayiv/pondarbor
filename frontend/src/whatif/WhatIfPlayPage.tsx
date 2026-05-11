@@ -330,7 +330,6 @@ export default function WhatIfPlayPage() {
                     as="h1"
                     fontSize="clamp(1.35rem, 3.5vh, 2.75rem)"
                     lineHeight="1.15"
-                    fontWeight="bold"
                     justifySelf="start"
                     minW={0}
                   >

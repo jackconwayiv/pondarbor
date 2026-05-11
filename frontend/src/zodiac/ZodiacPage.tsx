@@ -391,7 +391,7 @@ export default function ZodiacPage() {
 
   const renderBirthInformationCard = (onCancel?: () => void) => (
     <Box {...PANEL_ENTRY_CARD_PROPS}>
-      <Heading as="h2" size="md" fontWeight="bold" mb="3">
+      <Heading as="h2" size="md" mb="3">
         Birth information
       </Heading>
 
@@ -426,7 +426,7 @@ export default function ZodiacPage() {
         </SimpleGrid>
 
         <Stack gap="3">
-          <Heading as="h3" size="sm" fontWeight="semibold">
+          <Heading as="h3" size="sm">
             Birth place *
           </Heading>
           <SimpleGrid columns={{ base: 1, sm: 2 }} gap="3" alignItems="start">
@@ -530,7 +530,7 @@ export default function ZodiacPage() {
     return trayShell(
       <>
         <Box {...PANEL_ENTRY_CARD_PROPS}>
-          <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold" mb="2">
+          <Heading as="h1" size={{ base: "lg", md: "xl" }} mb="2">
             <HStack as="span" display="inline-flex" gap="2" alignItems="center" flexWrap="wrap">
               <Text as="span" aria-hidden="true">
                 🌞
@@ -552,7 +552,7 @@ export default function ZodiacPage() {
         <>
           {!hasFullReadyChart ? (
             <Box {...PANEL_ENTRY_CARD_PROPS}>
-              <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold" mb="2">
+              <Heading as="h1" size={{ base: "lg", md: "xl" }} mb="2">
                 <HStack as="span" display="inline-flex" gap="2" alignItems="center" flexWrap="wrap">
                   <Text as="span" aria-hidden="true">
                     🌞
@@ -673,7 +673,7 @@ export default function ZodiacPage() {
 
           {waitingForStaffChart && profile ? (
             <Box {...PANEL_ENTRY_CARD_PROPS}>
-              <Heading as="h2" size="md" fontWeight="bold" mb="3">
+              <Heading as="h2" size="md" mb="3">
                 Natal
               </Heading>
               {natalBirthSummaryStack(profile)}
@@ -718,7 +718,7 @@ export default function ZodiacPage() {
 
           {chartIncompleteReady && profile ? (
             <Box {...PANEL_ENTRY_CARD_PROPS}>
-              <Heading as="h2" size="md" fontWeight="bold" mb="3">
+              <Heading as="h2" size="md" mb="3">
                 Natal
               </Heading>
               {natalBirthSummaryStack(profile)}

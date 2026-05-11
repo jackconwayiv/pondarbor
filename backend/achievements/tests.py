@@ -630,6 +630,100 @@ class AchievementPublicApiTests(TestCase):
         self.assertIsNone(ua.visible_to_friends)
 
 
+class AchievementPeerApiTests(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(email="peer-owner@example.com", password="secret12345")
+        self.friend_visible = User.objects.create_user(
+            email="peer-vis@example.com", password="secret12345"
+        )
+        self.friend_hidden = User.objects.create_user(
+            email="peer-hid@example.com", password="secret12345"
+        )
+        self.viewer = User.objects.create_user(email="peer-viewer@example.com", password="secret12345")
+        for u in (self.owner, self.friend_visible, self.friend_hidden, self.viewer):
+            u.account_status = User.AccountStatus.APPROVED
+            u.save(update_fields=["account_status"])
+        AchievementDefinition.objects.get_or_create(
+            slug=SLUG_ARCHIVIST,
+            defaults={
+                "title": "Archivist",
+                "description": "d",
+                "category": "quotes",
+                "order": 10,
+            },
+        )
+        defn = AchievementDefinition.objects.get(slug=SLUG_ARCHIVIST)
+        UserAchievement.objects.create(user=self.friend_visible, achievement=defn)
+        ua_h = UserAchievement.objects.create(user=self.friend_hidden, achievement=defn)
+        ua_h.visible_to_friends = False
+        ua_h.save(update_fields=["visible_to_friends"])
+        self.client = APIClient()
+
+    def _accept_pair(self, user_a, user_b):
+        FriendRequest.objects.update_or_create(
+            requester=user_a,
+            requested=user_b,
+            defaults={"is_accepted": True},
+        )
+        FriendRequest.objects.update_or_create(
+            requester=user_b,
+            requested=user_a,
+            defaults={"is_accepted": True},
+        )
+
+    def test_me_peers_lists_friend_with_visible_badge(self):
+        self._accept_pair(self.viewer, self.friend_visible)
+        self._accept_pair(self.viewer, self.friend_hidden)
+        self.client.force_login(self.viewer)
+        resp = self.client.post(
+            "/api/v1/users/me/achievement-peers/",
+            data={"slugs": [SLUG_ARCHIVIST]},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()["peers_by_slug"]
+        self.assertIn(SLUG_ARCHIVIST, body)
+        ids = {row["id"] for row in body[SLUG_ARCHIVIST]}
+        self.assertIn(self.friend_visible.id, ids)
+        self.assertNotIn(self.friend_hidden.id, ids)
+
+    def test_subject_friends_peers_requires_friendship(self):
+        self._accept_pair(self.owner, self.friend_visible)
+        self.client.force_login(self.viewer)
+        resp = self.client.post(
+            f"/api/v1/users/{self.owner.id}/achievement-peers/",
+            data={"slugs": [SLUG_ARCHIVIST]},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_subject_friends_peers_when_viewer_friends_with_subject(self):
+        self._accept_pair(self.viewer, self.owner)
+        self._accept_pair(self.owner, self.friend_visible)
+        self.client.force_login(self.viewer)
+        resp = self.client.post(
+            f"/api/v1/users/{self.owner.id}/achievement-peers/",
+            data={"slugs": [SLUG_ARCHIVIST]},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()["peers_by_slug"][SLUG_ARCHIVIST]
+        ids = {row["id"] for row in body}
+        self.assertIn(self.friend_visible.id, ids)
+        self.assertNotIn(self.owner.id, ids)
+
+    def test_me_peers_slug_cap(self):
+        self.client.force_login(self.viewer)
+        slugs = [f"s{i}" for i in range(70)]
+        resp = self.client.post(
+            "/api/v1/users/me/achievement-peers/",
+            data={"slugs": slugs},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertLessEqual(len(resp.json()["peers_by_slug"]), 64)
+
+
 class StaffAchievementDefinitionsApiTests(TestCase):
     def setUp(self):
         self.client = APIClient()

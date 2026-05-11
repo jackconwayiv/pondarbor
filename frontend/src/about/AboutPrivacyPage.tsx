@@ -28,7 +28,6 @@ export default function AboutPrivacyPage() {
               <Heading
                 as="h1"
                 size={{ base: "lg", md: "xl" }}
-                fontWeight="bold"
                 mb="2"
               >
                 Privacy Policy
@@ -50,7 +49,7 @@ export default function AboutPrivacyPage() {
                   uses, and shares personal information when you use PondArbor.
                 </Text>
 
-                <Heading as="h2" size="md" fontWeight="semibold">
+                <Heading as="h2" size="md">
                   Information we collect
                 </Heading>
                 <Text
@@ -64,7 +63,7 @@ export default function AboutPrivacyPage() {
                   messages.
                 </Text>
 
-                <Heading as="h2" size="md" fontWeight="semibold">
+                <Heading as="h2" size="md">
                   Account approval and moderation
                 </Heading>
                 <Text
@@ -80,7 +79,7 @@ export default function AboutPrivacyPage() {
                   accounts and content.
                 </Text>
 
-                <Heading as="h2" size="md" fontWeight="semibold">
+                <Heading as="h2" size="md">
                   How we use information
                 </Heading>
                 <Text
@@ -94,7 +93,7 @@ export default function AboutPrivacyPage() {
                   issues.
                 </Text>
 
-                <Heading as="h2" size="md" fontWeight="semibold">
+                <Heading as="h2" size="md">
                   Sharing and disclosure
                 </Heading>
                 <Text
@@ -107,7 +106,7 @@ export default function AboutPrivacyPage() {
                   required by law or to protect rights and safety.
                 </Text>
 
-                <Heading as="h2" size="md" fontWeight="semibold">
+                <Heading as="h2" size="md">
                   Third-party services
                 </Heading>
                 <Text
@@ -121,7 +120,7 @@ export default function AboutPrivacyPage() {
                   their own privacy terms and security practices.
                 </Text>
 
-                <Heading as="h2" size="md" fontWeight="semibold">
+                <Heading as="h2" size="md">
                   Data retention
                 </Heading>
                 <Text
@@ -135,7 +134,7 @@ export default function AboutPrivacyPage() {
                   no longer required, we delete or anonymize it.
                 </Text>
 
-                <Heading as="h2" size="md" fontWeight="semibold">
+                <Heading as="h2" size="md">
                   Your rights and choices
                 </Heading>
                 <Text
@@ -148,7 +147,7 @@ export default function AboutPrivacyPage() {
                   make a request.
                 </Text>
 
-                <Heading as="h2" size="md" fontWeight="semibold">
+                <Heading as="h2" size="md">
                   Age requirements
                 </Heading>
                 <Text
@@ -161,7 +160,7 @@ export default function AboutPrivacyPage() {
                   from children under 18.
                 </Text>
 
-                <Heading as="h2" size="md" fontWeight="semibold">
+                <Heading as="h2" size="md">
                   Policy updates
                 </Heading>
                 <Text
@@ -174,7 +173,7 @@ export default function AboutPrivacyPage() {
                   policy on this page.
                 </Text>
 
-                <Heading as="h2" size="md" fontWeight="semibold">
+                <Heading as="h2" size="md">
                   Contact
                 </Heading>
                 <Text

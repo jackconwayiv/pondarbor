@@ -282,7 +282,7 @@ export default function MealMealDetailPage() {
           {!isEditing ? (
             <>
               <HStack justify="space-between" mb="2" flexWrap="wrap" gap="2">
-                <Heading size="sm" fontWeight="semibold">
+                <Heading size="sm">
                   {mealTitle.trim() || "Meal"}
                 </Heading>
                 <HStack gap="2" flexWrap="wrap">

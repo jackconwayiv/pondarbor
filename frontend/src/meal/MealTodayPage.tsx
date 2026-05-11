@@ -117,7 +117,7 @@ export default function MealTodayPage() {
 
   return (
     <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP} w="100%">
-      <Heading as="h2" size="md" fontWeight="bold" w="100%">
+      <Heading as="h2" size="md" w="100%">
         {dateHeading}
       </Heading>
       <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">

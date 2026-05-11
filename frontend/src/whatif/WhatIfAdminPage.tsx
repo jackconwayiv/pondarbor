@@ -319,7 +319,7 @@ export default function WhatIfAdminPage() {
                   flexWrap="wrap"
                   gap="3"
                 >
-                  <Heading as="h1" size="lg" fontWeight="bold">
+                  <Heading as="h1" size="lg">
                     Whatif Admin - Questions
                   </Heading>
                   {pendingCount > 0 ? (

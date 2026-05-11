@@ -719,7 +719,7 @@ export default function QuotesFeedPage() {
             pb="2"
           >
             <Box {...PANEL_ENTRY_CARD_PROPS}>
-              <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold" mb="2">
+              <Heading as="h1" size={{ base: "lg", md: "xl" }} mb="2">
                 <HStack as="span" display="inline-flex" gap="2" alignItems="center" flexWrap="wrap">
                   <Text as="span" aria-hidden="true">
                     📜

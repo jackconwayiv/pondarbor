@@ -74,7 +74,7 @@ export default function MealTemplatesPage() {
       {showAddTemplate ? (
         <Card.Root {...PANEL_ENTRY_CARD_PROPS} p="0">
           <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
-            <Heading size="sm" mb="2" fontWeight="semibold">
+            <Heading size="sm" mb="2">
               New template
             </Heading>
             <HStack gap="2" align="flex-end" flexWrap="wrap" w="100%">

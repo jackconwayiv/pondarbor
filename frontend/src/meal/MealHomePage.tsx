@@ -264,7 +264,7 @@ export default function MealHomePage() {
 
   return (
     <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP} w="100%">
-      <Heading as="h2" size="md" fontWeight="bold">
+      <Heading as="h2" size="md">
         Settings
       </Heading>
       <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
@@ -274,7 +274,7 @@ export default function MealHomePage() {
       <Card.Root {...PANEL_ENTRY_CARD_PROPS} p="0">
         <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
           <HStack align="center" flexWrap="wrap" gap="2" w="100%">
-            <Heading as="h3" size="sm" fontWeight="semibold" flexShrink={0}>
+            <Heading as="h3" size="sm" flexShrink={0}>
               Week starts on
             </Heading>
             <NativeSelectRoot size="sm" maxW="xs" flexShrink={0}>
@@ -301,7 +301,7 @@ export default function MealHomePage() {
 
       <Card.Root {...PANEL_ENTRY_CARD_PROPS} p="0">
         <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
-          <Heading as="h3" size="sm" fontWeight="semibold" mb="2">
+          <Heading as="h3" size="sm" mb="2">
             Meal time names
           </Heading>
           <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" mb="3">
@@ -365,7 +365,7 @@ export default function MealHomePage() {
           {...(outgoingPending ? { bg: "teal.solid", color: "black" } : {})}
         >
           <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
-            <Heading size="sm" mb="2" fontWeight="semibold" color={outgoingPending ? "black" : undefined}>
+            <Heading size="sm" mb="2" color={outgoingPending ? "black" : undefined}>
               Meal partner (optional)
             </Heading>
             <Text
@@ -463,7 +463,7 @@ export default function MealHomePage() {
       {!mutual && incomingRequesters.length > 0 ? (
         <Card.Root {...PANEL_ENTRY_CARD_PROPS} p="0" bg="teal.solid" color="black">
           <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
-            <Heading size="sm" mb="2" fontWeight="semibold" color="black">
+            <Heading size="sm" mb="2" color="black">
               Incoming partner request
             </Heading>
             <Text fontSize={APP_TEXT_SIZES.helper} color="black" mb="2">
@@ -539,7 +539,7 @@ export default function MealHomePage() {
 
       {mutual ? (
         <Box {...PANEL_NESTED_BLOCK_PROPS} bg="nautical.solid" color="black">
-          <Heading size="sm" mb="2" fontWeight="semibold">
+          <Heading size="sm" mb="2">
             Disconnect mutual pair
           </Heading>
           <Text fontSize={APP_TEXT_SIZES.helper} color="black" mb="3">

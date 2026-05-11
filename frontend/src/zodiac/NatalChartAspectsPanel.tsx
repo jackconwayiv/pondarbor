@@ -91,7 +91,7 @@ function AspectRows({ rows }: { rows: AspectRow[] }) {
 function AspectTable({ title, rows }: { title: string; rows: AspectRow[] }) {
   return (
     <Box>
-      <Heading as="h3" size="sm" fontWeight="semibold" mb="2">
+      <Heading as="h3" size="sm" mb="2">
         {title}
       </Heading>
       <Box {...PANEL_NESTED_BLOCK_PROPS} overflowX="auto">

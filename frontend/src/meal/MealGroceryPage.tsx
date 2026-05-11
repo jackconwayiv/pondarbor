@@ -342,7 +342,7 @@ export default function MealGroceryPage() {
                 {sessionUser.profile.meal_pantry_enabled && hints.length > 0 ? (
                   <Card.Root {...PANEL_ENTRY_CARD_PROPS} p="0">
                     <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
-                      <Heading size="sm" mb="2" fontWeight="semibold">
+                      <Heading size="sm" mb="2">
                         Inventory not on this week’s plan
                       </Heading>
                       <Stack gap="3">
@@ -373,7 +373,7 @@ export default function MealGroceryPage() {
                 {sessionUser.profile.meal_pantry_enabled ? (
                   <Card.Root {...PANEL_ENTRY_CARD_PROPS} p="0">
                     <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
-                      <Heading size="sm" mb="2" fontWeight="semibold">
+                      <Heading size="sm" mb="2">
                         Pantry inventory
                       </Heading>
                       <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted" mb="2">
@@ -546,7 +546,7 @@ export default function MealGroceryPage() {
 
                 <Card.Root {...PANEL_ENTRY_CARD_PROPS} p="0">
                   <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
-                    <Heading size="sm" mb="2" fontWeight="semibold">
+                    <Heading size="sm" mb="2">
                       Saved lists
                     </Heading>
                     <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted" mb="2">
@@ -598,7 +598,7 @@ export default function MealGroceryPage() {
             <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
               <HStack align="center" gap="3" mb="3" flexWrap="wrap" rowGap="3">
                 <Stack gap="1" minW={0} flex="1">
-                  <Heading size="sm" fontWeight="semibold">
+                  <Heading size="sm">
                     Grocery List
                   </Heading>
                   {selectedInstance ? (

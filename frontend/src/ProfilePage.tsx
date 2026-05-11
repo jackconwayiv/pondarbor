@@ -17,10 +17,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useSearchParams } from "react-router";
 import PondButton from "./PondButton";
 import { AchievementSummaryCard } from "./achievements/AchievementSummaryCard";
-import { fetchPublicAchievementsByUserId } from "./achievements/api";
-import { sortAchievementsNewestFirst } from "./achievements/sortAchievements";
-import type { AchievementSummary } from "./achievements/types";
 import {
+  fetchPublicAchievementsByUserId,
+  postAchievementPeersForMyFriends,
+} from "./achievements/api";
+import { sortAchievementsNewestFirst } from "./achievements/sortAchievements";
+import type { AchievementPeerAvatarRow, AchievementSummary } from "./achievements/types";
+import {
+  resolveAvatarUrlForUser,
   resolveCurrentUserAvatarUrl,
   useAppSession,
 } from "./auth/AppSessionContext";
@@ -123,6 +127,9 @@ export default function ProfilePage() {
   const [profileAchievements, setProfileAchievements] = useState<
     AchievementSummary[]
   >([]);
+  const [achievementPeersBySlug, setAchievementPeersBySlug] = useState<
+    Record<string, AchievementPeerAvatarRow[]>
+  >({});
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<ProfileTab>(() =>
     tabFromSearchParams(searchParams),
@@ -210,6 +217,45 @@ export default function ProfilePage() {
     isAuthenticated,
     sessionUser?.user?.id,
     sessionUser?.achievements,
+  ]);
+
+  const achievementPeersSlugKey = useMemo(
+    () =>
+      [...new Set(profileAchievements.map((x) => x.slug))]
+        .sort()
+        .join("\0"),
+    [profileAchievements],
+  );
+
+  useEffect(() => {
+    if (!sessionUser?.user.is_approved || !isAuthenticated) {
+      setAchievementPeersBySlug({});
+      return;
+    }
+    if (profileAchievements.length === 0) {
+      setAchievementPeersBySlug({});
+      return;
+    }
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const token = await getApiAccessToken();
+        const slugs = [...new Set(profileAchievements.map((a) => a.slug))].sort();
+        const data = await postAchievementPeersForMyFriends(slugs, token);
+        if (!cancelled) setAchievementPeersBySlug(data);
+      } catch {
+        if (!cancelled) setAchievementPeersBySlug({});
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    achievementPeersSlugKey,
+    getApiAccessToken,
+    isAuthenticated,
+    sessionUser?.user.is_approved,
   ]);
 
   const onAchievementVisibilityChange = useCallback(
@@ -508,7 +554,6 @@ export default function ProfilePage() {
                 <Heading
                   as="h1"
                   size={{ base: "lg", md: "xl" }}
-                  fontWeight="bold"
                   mb="2"
                 >
                   <HStack
@@ -939,6 +984,18 @@ export default function ProfilePage() {
                                 onCheckedChange: (v) =>
                                   void onAchievementVisibilityChange(a.slug, v),
                               }}
+                              peerAvatars={(achievementPeersBySlug[a.slug] ?? []).map(
+                                (p) => ({
+                                  userId: p.id,
+                                  name: p.nickname,
+                                  src: resolveAvatarUrlForUser(
+                                    p.avatar_url,
+                                    p.id,
+                                    sessionUser,
+                                    auth0User,
+                                  ),
+                                }),
+                              )}
                             />
                           ))}
                         </Stack>
@@ -985,7 +1042,7 @@ export default function ProfilePage() {
                     gap="4"
                     flexWrap="wrap"
                   >
-                    <Heading as="h2" size="md" fontWeight="semibold">
+                    <Heading as="h2" size="md">
                       Account details
                     </Heading>
                     <HStack gap="3" align="center" flexShrink={0}>

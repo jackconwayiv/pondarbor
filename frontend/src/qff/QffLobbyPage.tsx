@@ -136,7 +136,6 @@ export default function QffLobbyPage() {
           size="sm"
           color="#c8e6a8"
           mb={3}
-          fontWeight="semibold"
           letterSpacing="wide"
         >
           Leaderboard

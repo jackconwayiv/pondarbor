@@ -264,7 +264,7 @@ export default function PondsteadUnitActionsModal({
         ) : null}
         {hasSplit ? (
           <VStack align="stretch" gap="2">
-            <Heading as="h3" size="sm" fontWeight="semibold">
+            <Heading as="h3" size="sm">
               Split
             </Heading>
             {splitOptions.map((k) => (
@@ -293,7 +293,7 @@ export default function PondsteadUnitActionsModal({
             borderColor="border.subtle"
             pt={hasSplit ? 2 : 0}
           >
-            <Heading as="h3" size="sm" fontWeight="semibold">
+            <Heading as="h3" size="sm">
               Build
             </Heading>
             {stack.kind === "worker"

@@ -101,7 +101,7 @@ export default function MealTemplateEditPage() {
             mb="2"
             w="100%"
           >
-            <Heading size="sm" fontWeight="semibold" flex="1" minW="min(100%, 12rem)">
+            <Heading size="sm" flex="1" minW="min(100%, 12rem)">
               {template.name}
             </Heading>
             <HStack gap="2" flexShrink={0}>

@@ -117,7 +117,6 @@ export default function PondsteadCampaignsListPage() {
         <Heading
           as="h1"
           size={{ base: "lg", md: "xl" }}
-          fontWeight="bold"
           mb="2"
         >
           My Pondstead campaigns

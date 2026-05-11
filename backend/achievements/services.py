@@ -532,3 +532,152 @@ def achievements_payload_for_user(
             }
         )
     return out
+
+
+MAX_ACHIEVEMENT_PEER_SLUGS = 64
+MAX_ACHIEVEMENT_PEERS_PER_SLUG = 24
+
+
+def viewer_can_view_user_public_achievement_list(*, viewer, profile_user) -> bool:
+    """Same visibility gate as ``achievements.views._achievements_for_viewer`` before building payload."""
+    from friends.services import are_friends
+
+    from users.models import Profile
+
+    is_owner = bool(
+        viewer
+        and getattr(viewer, "is_authenticated", False)
+        and viewer.id == profile_user.id
+    )
+    if is_owner:
+        return True
+    viewer_approved = bool(
+        viewer
+        and getattr(viewer, "is_authenticated", False)
+        and getattr(viewer, "account_status", None) == User.AccountStatus.APPROVED
+    )
+    if not viewer_approved:
+        return False
+    is_friend = bool(are_friends(user_a=viewer, user_b=profile_user))
+    owner_profile = getattr(profile_user, "profile", None)
+    publish_vis = (
+        getattr(owner_profile, "social_publish_visibility", None)
+        or Profile.SocialPublishVisibility.ALL_APPROVED
+    )
+    return publish_vis == Profile.SocialPublishVisibility.ALL_APPROVED or (
+        publish_vis == Profile.SocialPublishVisibility.FRIENDS_ONLY and is_friend
+    )
+
+
+def _normalize_peer_slugs(slugs: list) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in slugs:
+        if not isinstance(raw, str):
+            continue
+        s = raw.strip()
+        if not s:
+            continue
+        if len(s) > 64:
+            s = s[:64]
+        if s in seen:
+            continue
+        seen.add(s)
+        out.append(s)
+        if len(out) >= MAX_ACHIEVEMENT_PEER_SLUGS:
+            break
+    return out
+
+
+def _user_peer_row(user) -> dict:
+    from users.models import Profile
+
+    profile = getattr(user, "profile", None)
+    if profile is None:
+        profile, _ = Profile.objects.get_or_create(user=user, defaults={"display_name": ""})
+    nickname = (profile.display_name or user.email.split("@")[0]).strip()
+    return {
+        "id": user.id,
+        "nickname": nickname,
+        "avatar_url": profile.avatar_url or "",
+    }
+
+
+def achievement_peers_by_slug_for_viewer_candidates(
+    *,
+    viewer,
+    slugs: list,
+    candidate_user_ids: set[int],
+) -> dict[str, list[dict]]:
+    normalized = _normalize_peer_slugs(slugs if isinstance(slugs, list) else [])
+    if not normalized:
+        return {}
+
+    if not candidate_user_ids:
+        return {s: [] for s in normalized}
+
+    users = list(User.objects.filter(pk__in=candidate_user_ids).select_related("profile"))
+    allowed_ids = [
+        u.id
+        for u in users
+        if viewer_can_view_user_public_achievement_list(viewer=viewer, profile_user=u)
+    ]
+    if not allowed_ids:
+        return {s: [] for s in normalized}
+
+    from django.db.models import Q
+
+    from achievements.models import UserAchievement
+
+    qs = (
+        UserAchievement.objects.filter(
+            user_id__in=allowed_ids,
+            achievement__slug__in=normalized,
+            achievement__show_on_public_profile=True,
+        )
+        .filter(Q(visible_to_friends__isnull=True) | Q(visible_to_friends=True))
+        .select_related("user", "user__profile", "achievement")
+        .order_by("-unlocked_at", "user_id")
+    )
+
+    per_slug_counts: dict[str, int] = {s: 0 for s in normalized}
+    peers_by_slug: dict[str, list[dict]] = {s: [] for s in normalized}
+
+    for ua in qs:
+        slug = ua.achievement.slug
+        if slug not in peers_by_slug:
+            continue
+        if per_slug_counts[slug] >= MAX_ACHIEVEMENT_PEERS_PER_SLUG:
+            continue
+        peers_by_slug[slug].append(_user_peer_row(ua.user))
+        per_slug_counts[slug] += 1
+
+    return peers_by_slug
+
+
+def achievement_peers_for_my_friends(*, viewer, slugs: list) -> dict[str, list[dict]]:
+    from friends.services import friend_ids_for_user
+
+    ids = friend_ids_for_user(user=viewer)
+    ids.discard(viewer.id)
+    return achievement_peers_by_slug_for_viewer_candidates(
+        viewer=viewer,
+        slugs=slugs,
+        candidate_user_ids=ids,
+    )
+
+
+def achievement_peers_for_subject_friends(*, viewer, subject, slugs: list) -> dict[str, list[dict]]:
+    from friends.services import are_friends, friends_queryset_for_user
+
+    if not are_friends(user_a=viewer, user_b=subject):
+        raise ValueError("not_friends")
+
+    candidate_ids = set(friends_queryset_for_user(user=subject).values_list("pk", flat=True))
+    candidate_ids.discard(viewer.pk)
+    candidate_ids.discard(subject.pk)
+    return achievement_peers_by_slug_for_viewer_candidates(
+        viewer=viewer,
+        slugs=slugs,
+        candidate_user_ids=candidate_ids,
+    )

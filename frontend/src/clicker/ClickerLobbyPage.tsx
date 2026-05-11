@@ -94,7 +94,6 @@ export default function ClickerLobbyPage() {
           <Heading
             as="h1"
             size={{ base: "lg", md: "xl" }}
-            fontWeight="bold"
             mb="2"
           >
             PondClicker
@@ -128,7 +127,6 @@ export default function ClickerLobbyPage() {
           <Heading
             as="h1"
             size={{ base: "lg", md: "xl" }}
-            fontWeight="bold"
             mb="2"
           >
             PondClicker
@@ -166,7 +164,6 @@ export default function ClickerLobbyPage() {
         <Heading
           as="h1"
           size={{ base: "lg", md: "xl" }}
-          fontWeight="bold"
           mb="2"
         >
           <HStack as="span" display="inline-flex" gap="2" alignItems="center">

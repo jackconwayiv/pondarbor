@@ -48,7 +48,8 @@ export default function ZodiacSignCardsStrip({
 
   const openTile = (tile: (typeof tileModels)[number]) => {
     if (onTileOpen) {
-      const { accent: _accent, ...rest } = tile;
+      const { accent, ...rest } = tile;
+      void accent;
       onTileOpen(rest);
       return;
     }
@@ -155,7 +156,7 @@ export default function ZodiacSignCardsStrip({
                 </Flex>
                 <Text
                   fontSize="xs"
-                  fontWeight="bold"
+                  fontWeight="normal"
                   fontFamily="heading"
                   color={t.accent.valueColor}
                   lineHeight="short"
@@ -176,7 +177,7 @@ export default function ZodiacSignCardsStrip({
               <Flex align="center" justify="flex-start" gap="2" w="100%" flexWrap="wrap" mt="1">
                 <Text
                   fontSize={{ base: "lg", md: "2xl" }}
-                  fontWeight="bold"
+                  fontWeight="normal"
                   fontFamily="heading"
                   textTransform="capitalize"
                   color={t.accent.valueColor}

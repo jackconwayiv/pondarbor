@@ -72,7 +72,7 @@ export default function ZodiacOverviewMiniTiles({
       <Flex align="center" justify="center" gap="1" w="100%" minW="0">
         <Text
           fontSize="0.65rem"
-          fontWeight="bold"
+          fontWeight="normal"
           color={accent.valueColor}
           lineHeight="1"
           flexShrink={0}
@@ -81,7 +81,7 @@ export default function ZodiacOverviewMiniTiles({
         </Text>
         <Text
           fontSize="0.65rem"
-          fontWeight="bold"
+          fontWeight="normal"
           color={accent.valueColor}
           lineHeight="1"
           display={{ base: "none", md: "inline" }}

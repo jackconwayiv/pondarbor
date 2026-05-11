@@ -1,17 +1,21 @@
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
+from rest_framework import status
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from users.auth0_backend import Auth0TokenAuthentication
-from users.permissions import IsStaffUser
+from users.permissions import IsApprovedUser, IsStaffUser
 
-from achievements.services import achievement_definitions_catalog_payload, achievements_payload_for_user
-from friends.services import are_friends
-from users.models import User as SiteUser
-from users.models import Profile
+from achievements.services import (
+    achievement_definitions_catalog_payload,
+    achievement_peers_for_my_friends,
+    achievement_peers_for_subject_friends,
+    achievements_payload_for_user,
+    viewer_can_view_user_public_achievement_list,
+)
 
 User = get_user_model()
 
@@ -30,32 +34,12 @@ def staff_achievement_definitions(request):
 
 
 def _achievements_for_viewer(*, profile_user, viewer):
+    if not viewer_can_view_user_public_achievement_list(viewer=viewer, profile_user=profile_user):
+        return None
     is_owner = bool(
         viewer and getattr(viewer, "is_authenticated", False) and viewer.id == profile_user.id
     )
-    viewer_approved = bool(
-        viewer
-        and getattr(viewer, "is_authenticated", False)
-        and viewer.account_status == SiteUser.AccountStatus.APPROVED
-    )
-    is_friend = bool(viewer_approved and are_friends(user_a=viewer, user_b=profile_user))
-    if is_owner:
-        can_view = True
-    elif not viewer_approved:
-        can_view = False
-    else:
-        owner_profile = getattr(profile_user, "profile", None)
-        publish_vis = (
-            getattr(owner_profile, "social_publish_visibility", None)
-            or Profile.SocialPublishVisibility.ALL_APPROVED
-        )
-        can_view = (
-            publish_vis == Profile.SocialPublishVisibility.ALL_APPROVED
-            or (publish_vis == Profile.SocialPublishVisibility.FRIENDS_ONLY and is_friend)
-        )
-    if not can_view:
-        return None
-    hide_hidden = (not is_owner)
+    hide_hidden = not is_owner
     return achievements_payload_for_user(
         profile_user,
         public_only=True,
@@ -83,3 +67,43 @@ def user_public_achievements_by_id(request, user_id: int):
     if payload is None:
         return Response([])
     return Response(payload)
+
+
+def _parse_slugs_body(request) -> tuple[list | None, Response | None]:
+    slugs = request.data.get("slugs")
+    if not isinstance(slugs, list):
+        return None, Response({"detail": "slugs must be a list of strings."}, status=status.HTTP_400_BAD_REQUEST)
+    return slugs, None
+
+
+@api_view(["POST"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsAuthenticated, IsApprovedUser])
+def me_achievement_peers(request):
+    slugs, err = _parse_slugs_body(request)
+    if err is not None:
+        return err
+    payload = achievement_peers_for_my_friends(viewer=request.user, slugs=slugs)
+    return Response({"peers_by_slug": payload})
+
+
+@api_view(["POST"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsAuthenticated, IsApprovedUser])
+def user_achievement_peers_for_subject_friends(request, user_id: int):
+    subject = get_object_or_404(User.objects.all(), pk=user_id)
+    slugs, err = _parse_slugs_body(request)
+    if err is not None:
+        return err
+    try:
+        payload = achievement_peers_for_subject_friends(
+            viewer=request.user,
+            subject=subject,
+            slugs=slugs,
+        )
+    except ValueError:
+        return Response(
+            {"detail": "You can only load peers for friends you are connected with."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    return Response({"peers_by_slug": payload})

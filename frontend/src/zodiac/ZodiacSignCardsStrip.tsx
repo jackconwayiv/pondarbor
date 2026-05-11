@@ -1,4 +1,4 @@
-import { Box, Flex, SimpleGrid, Text } from "@chakra-ui/react";
+import { Box, Flex, Grid, SimpleGrid, Text } from "@chakra-ui/react";
 import { useState, type KeyboardEvent } from "react";
 
 import { AppModal } from "../components/AppModal";
@@ -106,28 +106,42 @@ export default function ZodiacSignCardsStrip({
               onClick={() => openTile(t)}
               onKeyDown={(e) => onCardKeyDown(e, t)}
             >
-              <Flex align="center" justify="space-between" gap="2" w="100%">
-                <Flex align="center" minW="0" flex="1" gap="1" flexWrap="nowrap">
-                  {bodySymbolForTileId(t.id) ? (
-                    <Text
-                      as="span"
-                      fontSize={APP_TEXT_SIZES.label}
-                      fontWeight="semibold"
-                      color={t.accent.labelColor}
-                      lineHeight="short"
-                      flexShrink={0}
-                    >
-                      {bodySymbolForTileId(t.id)}
-                    </Text>
-                  ) : null}
+              <Grid
+                templateColumns="auto minmax(0, 1fr) auto"
+                alignItems="center"
+                gap="2"
+                w="100%"
+                columnGap="2"
+              >
+                {bodySymbolForTileId(t.id) ? (
                   <Text
-                    as="span"
+                    fontSize={APP_TEXT_SIZES.label}
+                    fontWeight="semibold"
+                    color={t.accent.labelColor}
+                    lineHeight="short"
+                  >
+                    {bodySymbolForTileId(t.id)}
+                  </Text>
+                ) : (
+                  <Box />
+                )}
+                <Flex
+                  align="center"
+                  justify="flex-start"
+                  gap="1"
+                  minW="0"
+                  w="100%"
+                  maxW="100%"
+                  flexWrap="nowrap"
+                  overflow="hidden"
+                >
+                  <Text
                     fontSize={APP_TEXT_SIZES.label}
                     fontWeight="semibold"
                     color={t.accent.labelColor}
                     lineHeight="short"
                     minW="0"
-                    flex="1"
+                    flex="0 1 auto"
                     truncate
                   >
                     {t.label}
@@ -152,13 +166,13 @@ export default function ZodiacSignCardsStrip({
                   fontFamily="heading"
                   color={houseRomanColorForStripSign(t.sign)}
                   lineHeight="short"
-                  flexShrink={0}
                   textAlign="right"
+                  flexShrink={0}
                   aria-hidden={!houseRoman}
                 >
                   {houseRoman ?? ""}
                 </Text>
-              </Flex>
+              </Grid>
               <Box
                 borderTopWidth="1px"
                 borderColor="border"

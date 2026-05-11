@@ -1,5 +1,6 @@
 import { BIG_THREE_BODY, PERSONAL_PLANETS_BODY } from "./astroLexicon";
 import type { NatalChartPayload } from "./chartTypes";
+import type { ZodiacSignCardTile } from "./ZodiacSignCardsStrip";
 
 export const PLACEMENT_PANE_CHART_KEYS = new Set([
   "sun",

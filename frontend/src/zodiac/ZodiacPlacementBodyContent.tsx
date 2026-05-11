@@ -8,6 +8,8 @@ import {
   traitsForSign,
 } from "./astroLexicon";
 import { signCardAccent } from "./signCardAccent";
+import { formatHouseRoman, housePlacementSection } from "./zodiacHouseDescriptors";
+import ZodiacHousePhraseCallouts from "./ZodiacHousePhraseCallouts";
 import ZodiacPhraseCallouts from "./ZodiacPhraseCallouts";
 import type { ZodiacSignCardTile } from "./ZodiacSignCardsStrip";
 
@@ -36,6 +38,7 @@ export default function ZodiacPlacementBodyContent({
   const placementTraits = traitsForSign(tile.sign);
   const modeElementLabel = modeElementLabelForSign(tile.sign);
   const modeElementParen = modeElementLabel ? `(${modeElementLabel})` : null;
+  const houseSection = tile.house != null ? housePlacementSection(tile.house) : null;
 
   const onComboKeyDown = (e: KeyboardEvent) => {
     if (!onOpenModeElementDetail) return;
@@ -49,32 +52,63 @@ export default function ZodiacPlacementBodyContent({
       <Stack gap={{ base: "3", md: "4" }}>
         <Box>
           <Flex
-            align="center"
+            align="baseline"
+            justify="space-between"
             gap="2"
-            flexWrap="wrap"
+            w="100%"
             mb={tile.retrograde ? "2" : "3"}
           >
-            <Heading {...headingProps} mb="0">
-              {bodySymbolForTileId(tile.id) ? `${bodySymbolForTileId(tile.id)} ` : ""}
-              {tile.bodyHeading}
-            </Heading>
-            {tile.retrograde ? (
-              <Text
+            <Heading
+              {...headingProps}
+              mb="0"
+              display="flex"
+              alignItems="baseline"
+              gap="2"
+              flex="1"
+              minW="0"
+              flexWrap="nowrap"
+            >
+              {bodySymbolForTileId(tile.id) ? (
+                <Box as="span" flexShrink={0} lineHeight="short">
+                  {bodySymbolForTileId(tile.id)}
+                </Box>
+              ) : null}
+              <Box
                 as="span"
-                fontSize="xs"
-                fontWeight="bold"
-                letterSpacing="0.12em"
-                textTransform="uppercase"
-                px="2"
-                py="1"
-                borderRadius="md"
-                bg={modalAccent.bg}
-                color={modalAccent.valueColor}
-                flexShrink={0}
+                flex="1"
+                minW="0"
+                overflow="hidden"
+                textOverflow="ellipsis"
+                whiteSpace="nowrap"
               >
-                RETROGRADE
-              </Text>
-            ) : null}
+                {tile.bodyHeading}
+              </Box>
+              {tile.retrograde ? (
+                <Text
+                  as="span"
+                  fontSize="sm"
+                  color="fg.muted"
+                  fontWeight="normal"
+                  lineHeight="1"
+                  flexShrink={0}
+                  aria-label="Retrograde"
+                >
+                  Я
+                </Text>
+              ) : null}
+            </Heading>
+            <Text
+              as="span"
+              fontFamily="heading"
+              fontWeight="bold"
+              fontSize={{ base: "sm", md: "md" }}
+              color="fg.muted"
+              lineHeight="short"
+              flexShrink={0}
+              textAlign="right"
+            >
+              {tile.house != null ? formatHouseRoman(tile.house) ?? "" : ""}
+            </Text>
           </Flex>
           {tile.retrograde ? (
             <Text
@@ -163,6 +197,12 @@ export default function ZodiacPlacementBodyContent({
             </Text>
           )}
         </Box>
+        {houseSection ? (
+          <Box>
+            <Heading {...headingProps}>{houseSection.heading}</Heading>
+            <ZodiacHousePhraseCallouts phrases={houseSection.phrases} />
+          </Box>
+        ) : null}
       </Stack>
   );
 

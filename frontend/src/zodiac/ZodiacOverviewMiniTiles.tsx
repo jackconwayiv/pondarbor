@@ -33,7 +33,7 @@ export default function ZodiacOverviewMiniTiles({
     const signSym = signSymbolForSign(t.sign);
     const active = t.id === activeTileId;
     const labelLine = (
-      <Flex align="center" justify="center" gap="1" w="100%" minW="0">
+      <Flex align="center" justify="center" gap="1" w="100%" minW="0" flexWrap="nowrap">
         <Text
           fontSize="0.65rem"
           fontWeight="semibold"
@@ -53,6 +53,19 @@ export default function ZodiacOverviewMiniTiles({
         >
           {t.label}
         </Text>
+        {t.retrograde ? (
+          <Text
+            as="span"
+            fontSize="0.65rem"
+            color="fg.muted"
+            fontWeight="normal"
+            lineHeight="1"
+            flexShrink={0}
+            aria-hidden="true"
+          >
+            Я
+          </Text>
+        ) : null}
       </Flex>
     );
     const signLine = (
@@ -85,7 +98,7 @@ export default function ZodiacOverviewMiniTiles({
         role="button"
         tabIndex={0}
         w={fillRow ? "100%" : undefined}
-        aria-label={`${t.label} in ${t.sign}`}
+        aria-label={`${t.label} in ${t.sign}${t.retrograde ? ", retrograde" : ""}`}
         aria-current={active ? "true" : undefined}
         cursor="pointer"
         borderLeftWidth="3px"

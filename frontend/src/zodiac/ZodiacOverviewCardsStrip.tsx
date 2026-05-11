@@ -1,6 +1,6 @@
 import { BIG_THREE_BODY, PERSONAL_PLANETS_BODY } from "./astroLexicon";
 import type { NatalChartPayload } from "./chartTypes";
-import { isPlacementTileRetrograde } from "./zodiacPlacementFromChart";
+import { houseOnTile, isPlacementTileRetrograde } from "./zodiacPlacementFromChart";
 import ZodiacSignCardsStrip, { type ZodiacSignCardTile } from "./ZodiacSignCardsStrip";
 
 export type ZodiacOverviewTileSource = {
@@ -19,6 +19,7 @@ export function buildZodiacOverviewTiles(props: ZodiacOverviewTileSource): Zodia
   const chart = props.natalChart ?? null;
   const retro = (id: string) =>
     chart && isPlacementTileRetrograde(id, chart) ? ({ retrograde: true as const } as const) : {};
+  const house = (id: string) => (chart ? houseOnTile(chart, id) : {});
 
   const tiles: ZodiacSignCardTile[] = [
     {
@@ -28,6 +29,7 @@ export function buildZodiacOverviewTiles(props: ZodiacOverviewTileSource): Zodia
       bodyHeading: BIG_THREE_BODY.sun.bodyHeading,
       bodyPhrases: BIG_THREE_BODY.sun.bodyPhrases,
       ...retro("sun"),
+      ...house("sun"),
     },
     {
       id: "moon",
@@ -36,6 +38,7 @@ export function buildZodiacOverviewTiles(props: ZodiacOverviewTileSource): Zodia
       bodyHeading: BIG_THREE_BODY.moon.bodyHeading,
       bodyPhrases: BIG_THREE_BODY.moon.bodyPhrases,
       ...retro("moon"),
+      ...house("moon"),
     },
     {
       id: "rising",
@@ -43,6 +46,7 @@ export function buildZodiacOverviewTiles(props: ZodiacOverviewTileSource): Zodia
       sign: props.risingSign,
       bodyHeading: BIG_THREE_BODY.rising.bodyHeading,
       bodyPhrases: BIG_THREE_BODY.rising.bodyPhrases,
+      ...house("rising"),
     },
   ];
 
@@ -58,6 +62,7 @@ export function buildZodiacOverviewTiles(props: ZodiacOverviewTileSource): Zodia
         bodyHeading: PERSONAL_PLANETS_BODY.mercury.bodyHeading,
         bodyPhrases: PERSONAL_PLANETS_BODY.mercury.bodyPhrases,
         ...retro("mercury"),
+        ...house("mercury"),
       },
       {
         id: "venus",
@@ -66,6 +71,7 @@ export function buildZodiacOverviewTiles(props: ZodiacOverviewTileSource): Zodia
         bodyHeading: PERSONAL_PLANETS_BODY.venus.bodyHeading,
         bodyPhrases: PERSONAL_PLANETS_BODY.venus.bodyPhrases,
         ...retro("venus"),
+        ...house("venus"),
       },
       {
         id: "mars",
@@ -74,6 +80,7 @@ export function buildZodiacOverviewTiles(props: ZodiacOverviewTileSource): Zodia
         bodyHeading: PERSONAL_PLANETS_BODY.mars.bodyHeading,
         bodyPhrases: PERSONAL_PLANETS_BODY.mars.bodyPhrases,
         ...retro("mars"),
+        ...house("mars"),
       },
     );
   }

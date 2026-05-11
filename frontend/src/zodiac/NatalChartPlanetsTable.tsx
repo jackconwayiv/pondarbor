@@ -12,6 +12,29 @@ function formatUpperSnake(s: string): string {
   return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/** e.g. `in Libra` */
+function inSignPhrase(sign: string | undefined): string {
+  const s = sign?.trim();
+  if (!s) return "—";
+  const lower = s.toLowerCase();
+  return `in ${lower.charAt(0).toUpperCase()}${lower.slice(1)}`;
+}
+
+/** e.g. `in the 7th House`, or em dash when house unknown. */
+function inTheNthHousePhrase(house: number | undefined | null): string {
+  if (house == null || !Number.isInteger(house) || house < 1 || house > 12) return "—";
+  const n = house;
+  const suffix =
+    n % 10 === 1 && n % 100 !== 11
+      ? "st"
+      : n % 10 === 2 && n % 100 !== 12
+        ? "nd"
+        : n % 10 === 3 && n % 100 !== 13
+          ? "rd"
+          : "th";
+  return `in the ${n}${suffix} House`;
+}
+
 function mergedPointEntries(chart: NatalChartPayload): [string, ChartPoint][] {
   const merged: Record<string, ChartPoint> = {
     ...chart.points,
@@ -46,10 +69,10 @@ export default function NatalChartPlanetsTable({ chart, onBodyRowClick }: Props)
       <Table.Root size="sm" variant="line">
         <Table.Header>
           <Table.Row>
-            <Table.ColumnHeader fontWeight="bold">House</Table.ColumnHeader>
             <Table.ColumnHeader fontWeight="bold">Body</Table.ColumnHeader>
-            <Table.ColumnHeader fontWeight="bold">Degrees</Table.ColumnHeader>
             <Table.ColumnHeader fontWeight="bold">Sign</Table.ColumnHeader>
+            <Table.ColumnHeader fontWeight="bold">House</Table.ColumnHeader>
+            <Table.ColumnHeader fontWeight="bold">Degrees</Table.ColumnHeader>
           </Table.Row>
         </Table.Header>
         <Table.Body>
@@ -73,7 +96,6 @@ export default function NatalChartPlanetsTable({ chart, onBodyRowClick }: Props)
                     : undefined
                 }
               >
-                <Table.Cell>{v.house ?? "—"}</Table.Cell>
                 <Table.Cell>
                   <Text
                     as="span"
@@ -93,10 +115,11 @@ export default function NatalChartPlanetsTable({ chart, onBodyRowClick }: Props)
                     ) : null}
                   </Text>
                 </Table.Cell>
+                <Table.Cell>{inSignPhrase(v.sign)}</Table.Cell>
+                <Table.Cell>{inTheNthHousePhrase(v.house)}</Table.Cell>
                 <Table.Cell whiteSpace="nowrap">
                   {formatDegreesMinutesInSignOnly(v.longitude_deg)}
                 </Table.Cell>
-                <Table.Cell textTransform="capitalize">{v.sign}</Table.Cell>
               </Table.Row>
             );
           })}

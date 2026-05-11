@@ -1,6 +1,5 @@
 import { BIG_THREE_BODY, PERSONAL_PLANETS_BODY } from "./astroLexicon";
 import type { NatalChartPayload } from "./chartTypes";
-import type { ZodiacSignCardTile } from "./ZodiacSignCardsStrip";
 
 export const PLACEMENT_PANE_CHART_KEYS = new Set([
   "sun",
@@ -15,6 +14,32 @@ export const PLACEMENT_PANE_CHART_KEYS = new Set([
 export function isPlacementTileRetrograde(tileId: string, chart: NatalChartPayload): boolean {
   if (tileId === "rising") return false;
   return chart.points[tileId]?.retrograde === true;
+}
+
+/** House 1–12 for overview/placement tiles from chart (Rising uses ascendant house or 1). */
+export function houseForPlacementTile(tileId: string, chart: NatalChartPayload): number | null {
+  if (tileId === "rising") {
+    const h = chart.angles.ascendant?.house;
+    if (typeof h === "number" && h >= 1 && h <= 12) return h;
+    return 1;
+  }
+  if (
+    tileId === "sun" ||
+    tileId === "moon" ||
+    tileId === "mercury" ||
+    tileId === "venus" ||
+    tileId === "mars"
+  ) {
+    const h = chart.points[tileId]?.house;
+    if (typeof h === "number" && h >= 1 && h <= 12) return h;
+    return null;
+  }
+  return null;
+}
+
+export function houseOnTile(chart: NatalChartPayload, tileId: string): { house: number } | object {
+  const h = houseForPlacementTile(tileId, chart);
+  return h != null ? { house: h } : {};
 }
 
 function retroFlag(chart: NatalChartPayload, chartKey: string): { retrograde: true } | object {
@@ -37,6 +62,7 @@ export function zodiacTileFromChartBodyKey(
       sign,
       bodyHeading: BIG_THREE_BODY.rising.bodyHeading,
       bodyPhrases: BIG_THREE_BODY.rising.bodyPhrases,
+      ...houseOnTile(chart, "rising"),
     };
   }
 
@@ -50,6 +76,7 @@ export function zodiacTileFromChartBodyKey(
       bodyHeading: BIG_THREE_BODY.sun.bodyHeading,
       bodyPhrases: BIG_THREE_BODY.sun.bodyPhrases,
       ...retroFlag(chart, "sun"),
+      ...houseOnTile(chart, "sun"),
     };
   }
 
@@ -63,6 +90,7 @@ export function zodiacTileFromChartBodyKey(
       bodyHeading: BIG_THREE_BODY.moon.bodyHeading,
       bodyPhrases: BIG_THREE_BODY.moon.bodyPhrases,
       ...retroFlag(chart, "moon"),
+      ...houseOnTile(chart, "moon"),
     };
   }
 
@@ -78,5 +106,6 @@ export function zodiacTileFromChartBodyKey(
     bodyHeading: personal.bodyHeading,
     bodyPhrases: personal.bodyPhrases,
     ...retroFlag(chart, chartKey),
+    ...houseOnTile(chart, chartKey),
   };
 }

@@ -3,6 +3,7 @@ import { Box, Table, Text } from "@chakra-ui/react";
 import { APP_TEXT_SIZES, PANEL_NESTED_BLOCK_PROPS } from "../theme/typography";
 import type { NatalChartPayload } from "./chartTypes";
 import { formatDegreesMinutesSign } from "./chartAngles";
+import { formatHouseRoman } from "./zodiacHouseDescriptors";
 
 export default function NatalChartHousesTable({ chart }: { chart: NatalChartPayload }) {
   const cusps = chart.houses.cusps_longitude_deg;
@@ -24,7 +25,7 @@ export default function NatalChartHousesTable({ chart }: { chart: NatalChartPayl
           <Table.Body>
             {cusps.map((lon, idx) => (
               <Table.Row key={idx}>
-                <Table.Cell>{idx + 1}</Table.Cell>
+                <Table.Cell>{formatHouseRoman(idx + 1) ?? idx + 1}</Table.Cell>
                 <Table.Cell whiteSpace="nowrap">{formatDegreesMinutesSign(lon)}</Table.Cell>
               </Table.Row>
             ))}

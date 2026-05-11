@@ -56,6 +56,8 @@ type Props = {
   chart: NatalChartPayload;
   aspectsNote?: string;
   aspectsPreviewMax?: number;
+  /** When set, only aspects where `body_a` or `body_b` is in this set are shown. */
+  anchorBodies?: Set<string>;
 };
 
 type AspectRow = NatalChartPayload["aspects"][number];
@@ -96,10 +98,10 @@ function AspectTable({ title, rows }: { title: string; rows: AspectRow[] }) {
         <Table.Root size="sm" variant="line">
           <Table.Header>
             <Table.Row>
-              <Table.ColumnHeader>Body</Table.ColumnHeader>
-              <Table.ColumnHeader>Aspect</Table.ColumnHeader>
-              <Table.ColumnHeader>Body</Table.ColumnHeader>
-              <Table.ColumnHeader>Orb</Table.ColumnHeader>
+              <Table.ColumnHeader fontWeight="bold">Body</Table.ColumnHeader>
+              <Table.ColumnHeader fontWeight="bold">Aspect</Table.ColumnHeader>
+              <Table.ColumnHeader fontWeight="bold">Body</Table.ColumnHeader>
+              <Table.ColumnHeader fontWeight="bold">Orb</Table.ColumnHeader>
             </Table.Row>
           </Table.Header>
           <Table.Body>
@@ -112,26 +114,35 @@ function AspectTable({ title, rows }: { title: string; rows: AspectRow[] }) {
 }
 
 export default function NatalChartAspectsPanel(props: Props) {
-  const { chart, aspectsNote, aspectsPreviewMax } = props;
+  const { chart, aspectsNote, aspectsPreviewMax, anchorBodies } = props;
 
-  const { majorRows, minorRows } = useMemo(() => {
-    const raw =
-      aspectsPreviewMax != null
-        ? chart.aspects.slice(0, aspectsPreviewMax)
-        : [...chart.aspects];
+  const { majorRows, minorRows, filteredTotal } = useMemo(() => {
+    let raw = [...chart.aspects];
+    if (anchorBodies?.size) {
+      raw = raw.filter(
+        (a) => anchorBodies.has(a.body_a) || anchorBodies.has(a.body_b),
+      );
+    }
+    if (aspectsPreviewMax != null) {
+      raw = raw.slice(0, aspectsPreviewMax);
+    }
     const major = raw.filter((a) => isMajorAspectType(a.type));
     const minor = raw.filter((a) => !isMajorAspectType(a.type));
     return {
       majorRows: sortAspectsByOrb(major),
       minorRows: sortAspectsByOrb(minor),
+      filteredTotal: raw.length,
     };
-  }, [chart.aspects, aspectsPreviewMax]);
+  }, [chart.aspects, aspectsPreviewMax, anchorBodies]);
+
+  const defaultNote = anchorBodies?.size
+    ? `${filteredTotal} aspect${filteredTotal === 1 ? "" : "s"} involving the Sun, Moon, Ascendant, Mercury, Venus, Mars, or Midheaven.`
+    : `${chart.aspects.length} aspect${chart.aspects.length === 1 ? "" : "s"}.`;
 
   return (
     <>
       <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted" mb="3">
-        {aspectsNote ??
-          `${chart.aspects.length} aspect${chart.aspects.length === 1 ? "" : "s"}.`}
+        {aspectsNote ?? defaultNote}
       </Text>
       <Stack gap="6" w="100%">
         <AspectTable title="Major Aspects" rows={majorRows} />

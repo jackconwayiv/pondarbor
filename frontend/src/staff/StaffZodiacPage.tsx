@@ -300,6 +300,7 @@ export default function StaffZodiacPage() {
                                       mercurySign={chart!.points.mercury?.sign}
                                       venusSign={chart!.points.venus?.sign}
                                       marsSign={chart!.points.mars?.sign}
+                                      natalChart={chart!}
                                     />
                                     <NatalChartPositions
                                       chart={chart!}

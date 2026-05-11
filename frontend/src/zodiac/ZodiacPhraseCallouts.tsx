@@ -14,8 +14,8 @@ export default function ZodiacPhraseCallouts({
         <Box
           key={`${phrase}-${i}`}
           role="listitem"
-          px="3"
-          py="2"
+          px="1.5"
+          py="1"
           borderRadius="lg"
           borderWidth="1px"
           borderColor={accentBorderColor}

@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -59,27 +60,33 @@ def user_astro_profile(request):
     old_key = birth_key_from_model(profile)
     was_ready = profile.chart_status == AstroProfile.ChartStatus.READY
 
-    apply_birth_payload(profile, fields)
+    with transaction.atomic():
+        apply_birth_payload(profile, fields)
 
-    new_key = birth_key_from_model(profile)
+        new_key = birth_key_from_model(profile)
 
-    if was_ready and old_key != new_key:
-        profile.chart_status = AstroProfile.ChartStatus.WAITING_STAFF_CHART
-        profile.natal_chart = None
-        profile.sun_sign = ""
-        profile.moon_sign = ""
-        profile.rising_sign = ""
-        profile.chart_ready_at = None
-        profile.staff_imported_by = None
-        profile.waiting_submitted_at = timezone.now()
-    elif was_ready and old_key == new_key:
-        pass
-    else:
-        profile.chart_status = AstroProfile.ChartStatus.WAITING_STAFF_CHART
-        if created or not profile.waiting_submitted_at:
+        if was_ready and old_key != new_key:
+            profile.chart_status = AstroProfile.ChartStatus.WAITING_STAFF_CHART
+            profile.natal_chart = None
+            profile.sun_sign = ""
+            profile.moon_sign = ""
+            profile.rising_sign = ""
+            profile.chart_ready_at = None
+            profile.staff_imported_by = None
             profile.waiting_submitted_at = timezone.now()
+        elif was_ready and old_key == new_key:
+            pass
+        else:
+            profile.chart_status = AstroProfile.ChartStatus.WAITING_STAFF_CHART
+            if created or not profile.waiting_submitted_at:
+                profile.waiting_submitted_at = timezone.now()
 
-    profile.save()
+        profile.save()
+
+        member_profile, _ = Profile.objects.get_or_create(user=user)
+        if member_profile.birth_date is None and profile.birth_date is not None:
+            member_profile.birth_date = profile.birth_date
+            member_profile.save(update_fields=["birth_date"])
 
     return Response({"profile": serialize_astro_profile(profile)})
 

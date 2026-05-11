@@ -228,3 +228,48 @@ class ZodiacApiTests(TestCase):
         prof = AstroProfile.objects.get(user=user)
         self.assertEqual(prof.chart_status, AstroProfile.ChartStatus.WAITING_STAFF_CHART)
         self.assertIsNone(prof.natal_chart)
+
+    def test_user_put_sets_member_profile_birth_date_when_null(self):
+        user = User.objects.create_user(email="u_bd@example.com", password="secret12345")
+        user.account_status = User.AccountStatus.APPROVED
+        user.save()
+        self.assertIsNone(user.profile.birth_date)
+        self.client.force_login(user)
+        response = self.client.put(
+            "/api/v1/zodiac/profile/",
+            {
+                "birth_date": "1990-06-15",
+                "birth_time": "14:30:00",
+                "country_code": "US",
+                "admin_area": "AZ",
+                "locality": "Phoenix",
+                "postal_code": "85001",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        user.profile.refresh_from_db()
+        self.assertEqual(str(user.profile.birth_date), "1990-06-15")
+
+    def test_user_put_does_not_overwrite_member_profile_birth_date(self):
+        user = User.objects.create_user(email="u_bd2@example.com", password="secret12345")
+        user.account_status = User.AccountStatus.APPROVED
+        user.save()
+        user.profile.birth_date = date(1980, 1, 1)
+        user.profile.save()
+        self.client.force_login(user)
+        response = self.client.put(
+            "/api/v1/zodiac/profile/",
+            {
+                "birth_date": "1999-12-31",
+                "birth_time": "10:00:00",
+                "country_code": "US",
+                "admin_area": "NY",
+                "locality": "NYC",
+                "postal_code": "10001",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        user.profile.refresh_from_db()
+        self.assertEqual(str(user.profile.birth_date), "1980-01-01")

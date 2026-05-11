@@ -1,16 +1,11 @@
-import { Box, Flex, Heading, SimpleGrid, Stack, Text } from "@chakra-ui/react";
+import { Box, SimpleGrid, Text } from "@chakra-ui/react";
 import { useState, type KeyboardEvent } from "react";
 
 import { AppModal } from "../components/AppModal";
 import { APP_TEXT_SIZES } from "../theme/typography";
-import {
-  bodySymbolForTileId,
-  modeElementLabelForSign,
-  signSymbolForSign,
-  traitsForSign,
-} from "./astroLexicon";
+import { bodySymbolForTileId, signSymbolForSign } from "./astroLexicon";
 import { signCardAccent } from "./signCardAccent";
-import ZodiacPhraseCallouts from "./ZodiacPhraseCallouts";
+import ZodiacPlacementBodyContent from "./ZodiacPlacementBodyContent";
 
 export type ZodiacSignCardTile = {
   id: string;
@@ -18,27 +13,25 @@ export type ZodiacSignCardTile = {
   sign: string;
   bodyHeading: string;
   bodyPhrases: readonly string[];
-};
-
-const headingProps = {
-  as: "h2" as const,
-  size: "lg" as const,
-  fontFamily: "heading",
-  fontWeight: "bold",
-  lineHeight: "short",
-  color: "fg",
-  mb: "3",
+  /** When true, chart marks this point retrograde (planets only; not ascendant). */
+  retrograde?: boolean;
 };
 
 type Props = {
   tiles: ZodiacSignCardTile[];
   /** Defaults to two columns on small screens, three from `md` up. */
   gridColumns?: { base: number; md: number };
+  /**
+   * When set, card opens this callback instead of the built-in modal (e.g. member page hosts its own `AppModal`).
+   * When omitted, legacy `AppModal` is used (e.g. staff preview).
+   */
+  onTileOpen?: (tile: ZodiacSignCardTile) => void;
 };
 
 export default function ZodiacSignCardsStrip({
   tiles,
   gridColumns = { base: 2, md: 3 },
+  onTileOpen,
 }: Props) {
   const [detailId, setDetailId] = useState<string | null>(null);
 
@@ -48,18 +41,30 @@ export default function ZodiacSignCardsStrip({
   }));
 
   const activeTile = detailId ? tileModels.find((t) => t.id === detailId) : undefined;
-  const placementTraits = activeTile?.sign ? traitsForSign(activeTile.sign) : null;
-  const placementModeElement = activeTile?.sign
-    ? modeElementLabelForSign(activeTile.sign)
-    : null;
   const modalAccent = activeTile ? signCardAccent(activeTile.sign) : null;
 
-  const onCardKeyDown = (e: KeyboardEvent, id: string) => {
+  const openTile = (tile: (typeof tileModels)[number]) => {
+    if (onTileOpen) {
+      onTileOpen({
+        id: tile.id,
+        label: tile.label,
+        sign: tile.sign,
+        bodyHeading: tile.bodyHeading,
+        bodyPhrases: tile.bodyPhrases,
+      });
+      return;
+    }
+    setDetailId(tile.id);
+  };
+
+  const onCardKeyDown = (e: KeyboardEvent, tile: (typeof tileModels)[number]) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      setDetailId(id);
+      openTile(tile);
     }
   };
+
+  const useExternal = Boolean(onTileOpen);
 
   return (
     <>
@@ -69,8 +74,8 @@ export default function ZodiacSignCardsStrip({
             key={t.id}
             role="button"
             tabIndex={0}
-            aria-haspopup="dialog"
-            aria-expanded={detailId === t.id}
+            aria-haspopup={useExternal ? undefined : "dialog"}
+            aria-expanded={useExternal ? undefined : detailId === t.id}
             aria-label={`${t.label}: ${t.sign}. Open details.`}
             cursor="pointer"
             borderLeftWidth="8px"
@@ -88,8 +93,8 @@ export default function ZodiacSignCardsStrip({
               outlineColor: "fg",
               outlineOffset: "2px",
             }}
-            onClick={() => setDetailId(t.id)}
-            onKeyDown={(e) => onCardKeyDown(e, t.id)}
+            onClick={() => openTile(t)}
+            onKeyDown={(e) => onCardKeyDown(e, t)}
           >
             <Text fontSize={APP_TEXT_SIZES.label} fontWeight="semibold" color={t.accent.labelColor}>
               {bodySymbolForTileId(t.id) ? `${bodySymbolForTileId(t.id)} ` : ""}
@@ -118,87 +123,24 @@ export default function ZodiacSignCardsStrip({
         ))}
       </SimpleGrid>
 
-      <AppModal
-        open={detailId !== null}
-        onOpenChange={(open) => {
-          if (!open) setDetailId(null);
-        }}
-        showHeader={false}
-        size="lg"
-        contentProps={{
-          bg: modalAccent?.bg ?? "bg.panel",
-          cursor: "pointer",
-          onClick: () => setDetailId(null),
-          p: { base: "4", md: "5" },
-        }}
-      >
-        {activeTile && modalAccent ? (
-          <Box
-            bg="bg.panel"
-            borderWidth="1px"
-            borderColor="border"
-            borderRadius="xl"
-            boxShadow="sm"
-            p={{ base: "5", md: "6" }}
-          >
-            <Stack gap={{ base: "3", md: "4" }}>
-              <Box>
-                <Heading {...headingProps}>
-                  {bodySymbolForTileId(activeTile.id) ? `${bodySymbolForTileId(activeTile.id)} ` : ""}
-                  {activeTile.bodyHeading}
-                </Heading>
-                <Box as="ul" m="0" pl="5" color="fg" listStyleType="disc" listStylePosition="outside">
-                  {activeTile.bodyPhrases.map((phrase) => (
-                    <Text as="li" key={phrase} fontSize="xs" lineHeight="tall">
-                      {phrase}
-                    </Text>
-                  ))}
-                </Box>
-              </Box>
-              <Box>
-                <Flex
-                  align="baseline"
-                  justify="space-between"
-                  gap="3"
-                  mb="3"
-                  flexWrap="wrap"
-                >
-                  <Heading
-                    {...headingProps}
-                    mb="0"
-                    textTransform="capitalize"
-                    flex="1"
-                    minW="0"
-                  >
-                    {signSymbolForSign(activeTile.sign) ? `${signSymbolForSign(activeTile.sign)} ` : ""}
-                    {activeTile.sign}
-                  </Heading>
-                  {placementModeElement ? (
-                    <Text
-                      fontSize={APP_TEXT_SIZES.body}
-                      color="fg.muted"
-                      textAlign="right"
-                      flexShrink={0}
-                    >
-                      ({placementModeElement})
-                    </Text>
-                  ) : null}
-                </Flex>
-                {placementTraits ? (
-                  <ZodiacPhraseCallouts
-                    phrases={placementTraits}
-                    accentBorderColor={modalAccent.borderColor}
-                  />
-                ) : (
-                  <Text fontSize="sm" color="fg.muted">
-                    No curated traits for this placement yet.
-                  </Text>
-                )}
-              </Box>
-            </Stack>
-          </Box>
-        ) : null}
-      </AppModal>
+      {!onTileOpen ? (
+        <AppModal
+          open={detailId !== null}
+          onOpenChange={(open) => {
+            if (!open) setDetailId(null);
+          }}
+          showHeader={false}
+          size="lg"
+          contentProps={{
+            bg: modalAccent?.bg ?? "bg.panel",
+            cursor: "pointer",
+            onClick: () => setDetailId(null),
+            p: { base: "4", md: "5" },
+          }}
+        >
+          {activeTile && modalAccent ? <ZodiacPlacementBodyContent tile={activeTile} /> : null}
+        </AppModal>
+      ) : null}
     </>
   );
 }

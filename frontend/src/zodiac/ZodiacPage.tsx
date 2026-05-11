@@ -1,6 +1,5 @@
 import {
   Box,
-  Flex,
   Heading,
   HStack,
   Input,
@@ -32,11 +31,18 @@ import {
   type AstroBirthPayload,
   type AstroProfileRow,
 } from "./api";
-import ZodiacOverviewCardsStrip from "./ZodiacOverviewCardsStrip";
 import NatalChartAspectsPanel from "./NatalChartAspectsPanel";
 import NatalChartHousesTable from "./NatalChartHousesTable";
 import NatalChartPlanetsTable from "./NatalChartPlanetsTable";
 import NatalChartWheel from "./NatalChartWheel";
+import ZodiacComboDescriptorBodyContent from "./ZodiacComboDescriptorBodyContent";
+import ZodiacOverviewCardsStrip, { buildZodiacOverviewTiles } from "./ZodiacOverviewCardsStrip";
+import ZodiacOverviewMiniTiles from "./ZodiacOverviewMiniTiles";
+import ZodiacPlacementBodyContent from "./ZodiacPlacementBodyContent";
+import type { ZodiacSignCardTile } from "./ZodiacSignCardsStrip";
+import { signCardAccent } from "./signCardAccent";
+import { ZODIAC_ASPECT_ANCHOR_BODIES } from "./zodiacDisplayConfig";
+import { zodiacTileFromChartBodyKey } from "./zodiacPlacementFromChart";
 
 /** Normalize for API + stable birthKey comparison (optional time → null). */
 function normalizeBirthTimeForKey(raw: string | null | undefined): string | null {
@@ -66,7 +72,6 @@ function birthPayloadFromForm(state: {
   };
 }
 
-/** Compare only fields collected on the member form (server may still store tz/coords from elsewhere). */
 function birthKey(p: AstroBirthPayload): string {
   return JSON.stringify([
     p.birth_date,
@@ -78,8 +83,66 @@ function birthKey(p: AstroBirthPayload): string {
   ]);
 }
 
+function formatBirthDateLong(iso: string | null | undefined): string {
+  if (!iso?.trim()) return "—";
+  try {
+    const d = new Date(`${iso.trim()}T12:00:00`);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString(undefined, { dateStyle: "long" });
+  } catch {
+    return iso;
+  }
+}
+
+function formatBirthTimeDisplay(isoTime: string | null | undefined): string {
+  if (!isoTime?.trim()) return "Not provided";
+  const t = isoTime.trim();
+  if (t.length >= 5 && t[2] === ":") return t.slice(0, 5);
+  return t;
+}
+
+function natalPlaceLine(p: AstroProfileRow): string {
+  const parts = [
+    p.locality?.trim(),
+    p.admin_area?.trim(),
+    p.country_code?.trim(),
+  ].filter(Boolean);
+  const core = parts.join(", ");
+  const zip = p.postal_code?.trim();
+  if (core && zip) return `${core} ${zip}`;
+  if (core) return core;
+  return "—";
+}
+
+function natalBirthSummaryStack(p: AstroProfileRow): ReactNode {
+  return (
+    <Stack gap="2" fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
+      <Text>
+        <Text as="span" fontWeight="semibold">
+          Birthday:{" "}
+        </Text>
+        {formatBirthDateLong(p.birth_date)}
+      </Text>
+      <Text>
+        <Text as="span" fontWeight="semibold">
+          Birth time:{" "}
+        </Text>
+        {formatBirthTimeDisplay(p.birth_time)}
+      </Text>
+      <Text>
+        <Text as="span" fontWeight="semibold">
+          Place of birth:{" "}
+        </Text>
+        {natalPlaceLine(p)}
+      </Text>
+    </Stack>
+  );
+}
+
+type ZodiacMainTab = "planets" | "houses" | "aspects" | "natal";
+
 export default function ZodiacPage() {
-  const { sessionUser, getApiAccessToken } = useAppSession();
+  const { sessionUser, getApiAccessToken, resyncSessionSilently } = useAppSession();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [profile, setProfile] = useState<AstroProfileRow | null>(null);
@@ -98,12 +161,15 @@ export default function ZodiacPage() {
   const [pendingSavePayload, setPendingSavePayload] = useState<AstroBirthPayload | null>(
     null,
   );
-  /** While staff chart is pending, birth form is hidden until the user chooses to edit. */
   const [showBirthFormWhileWaiting, setShowBirthFormWhileWaiting] = useState(false);
-  /** When chart is ready, birth form opens only from Alter Details (between big three and tabs). */
   const [showAlterBirthForm, setShowAlterBirthForm] = useState(false);
-  /** After saving birth info while waiting for staff chart, show inline confirmation below the banner. */
   const [waitingBirthSavedAck, setWaitingBirthSavedAck] = useState(false);
+
+  const [zodiacTab, setZodiacTab] = useState<ZodiacMainTab>("planets");
+  const [placementPaneTile, setPlacementPaneTile] = useState<ZodiacSignCardTile | null>(
+    null,
+  );
+  const [canvasDescriptorSign, setCanvasDescriptorSign] = useState<string | null>(null);
 
   const applyProfileToForm = useCallback((row: AstroProfileRow | null, prefBirth?: string | null) => {
     if (!row) {
@@ -165,6 +231,31 @@ export default function ZodiacPage() {
       profile.rising_sign,
   );
 
+  const overviewTiles = useMemo(() => {
+    if (!hasFullReadyChart || !profile || !chart) return [];
+    return buildZodiacOverviewTiles({
+      sunSign: profile.sun_sign!,
+      moonSign: profile.moon_sign!,
+      risingSign: profile.rising_sign!,
+      mercurySign: chart.points.mercury?.sign,
+      venusSign: chart.points.venus?.sign,
+      marsSign: chart.points.mars?.sign,
+      natalChart: chart,
+    });
+  }, [hasFullReadyChart, profile, chart]);
+
+  const onMiniPlacementSelect = useCallback((tile: ZodiacSignCardTile) => {
+    setCanvasDescriptorSign(null);
+    setPlacementPaneTile((prev) => (prev?.id === tile.id ? null : tile));
+  }, []);
+
+  const openPlacementTile = useCallback((tile: ZodiacSignCardTile) => {
+    setCanvasDescriptorSign(null);
+    setPlacementPaneTile(tile);
+  }, []);
+
+  const canvasShellSign = canvasDescriptorSign ?? placementPaneTile?.sign ?? null;
+
   useEffect(() => {
     if (!hasFullReadyChart) {
       setShowAlterBirthForm(false);
@@ -177,14 +268,32 @@ export default function ZodiacPage() {
     }
   }, [waitingForStaffChart]);
 
-  /** Bottom card: no astro row yet (GET returns profile null), waiting (expanded), or other non-ready paths. */
+  useEffect(() => {
+    if (!hasFullReadyChart) {
+      setPlacementPaneTile(null);
+      setCanvasDescriptorSign(null);
+    }
+  }, [hasFullReadyChart]);
+
+  useEffect(() => {
+    setPlacementPaneTile(null);
+    setCanvasDescriptorSign(null);
+  }, [chart]);
+
+  const chartIncompleteReady =
+    Boolean(profile) &&
+    !hasFullReadyChart &&
+    !waitingForStaffChart &&
+    profile?.chart_status === "ready";
+
+  const birthFormInWaitingNatalPanel = waitingForStaffChart && showBirthFormWhileWaiting;
+
   const showBirthFormAtBottom =
     profile === null ||
-    (waitingForStaffChart && showBirthFormWhileWaiting) ||
-    (profile != null &&
+    (!birthFormInWaitingNatalPanel &&
+      profile != null &&
       profile.chart_status !== "waiting_staff_chart" &&
-      profile.chart_status !== "ready") ||
-    (profile != null && profile.chart_status === "ready" && !hasFullReadyChart);
+      profile.chart_status !== "ready");
 
   const formPayload = useMemo(
     () =>
@@ -196,14 +305,7 @@ export default function ZodiacPage() {
         locality,
         postal_code,
       }),
-    [
-      birth_date,
-      birth_time,
-      country_code,
-      admin_area,
-      locality,
-      postal_code,
-    ],
+    [birth_date, birth_time, country_code, admin_area, locality, postal_code],
   );
 
   const baselineKey = useMemo(() => {
@@ -234,6 +336,7 @@ export default function ZodiacPage() {
         setShowBirthFormWhileWaiting(false);
         setWaitingBirthSavedAck(true);
       }
+      await resyncSessionSilently();
     } catch (e: unknown) {
       setSaveError(e instanceof Error ? e.message : "Save failed.");
     } finally {
@@ -447,15 +550,9 @@ export default function ZodiacPage() {
     <>
       {trayShell(
         <>
-          <Box {...PANEL_ENTRY_CARD_PROPS}>
-            <Flex align="center" justify="space-between" gap="3" mb="2">
-              <Heading
-                as="h1"
-                size={{ base: "lg", md: "xl" }}
-                fontWeight="bold"
-                flex="1"
-                minW="0"
-              >
+          {!hasFullReadyChart ? (
+            <Box {...PANEL_ENTRY_CARD_PROPS}>
+              <Heading as="h1" size={{ base: "lg", md: "xl" }} fontWeight="bold" mb="2">
                 <HStack as="span" display="inline-flex" gap="2" alignItems="center" flexWrap="wrap">
                   <Text as="span" aria-hidden="true">
                     🌞
@@ -463,112 +560,180 @@ export default function ZodiacPage() {
                   <Text as="span">Zodiackary</Text>
                 </HStack>
               </Heading>
-              {hasFullReadyChart ? (
-                <PondButton
-                  size="sm"
-                  variant="outline"
-                  colorPalette="sky"
-                  flexShrink={0}
-                  onClick={() => setShowAlterBirthForm(true)}
-                >
-                  Alter Details
-                </PondButton>
-              ) : null}
-            </Flex>
-            <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
-              What did the stars say about the moment of your birth?
-            </Text>
-          </Box>
+              <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
+                What did the stars say about the moment of your birth?
+              </Text>
+            </Box>
+          ) : overviewTiles.length > 0 ? (
+            <Box {...PANEL_ENTRY_CARD_PROPS}>
+              <ZodiacOverviewMiniTiles
+                fillRow
+                tiles={overviewTiles}
+                activeTileId={placementPaneTile?.id ?? ""}
+                onSelect={onMiniPlacementSelect}
+              />
+            </Box>
+          ) : null}
 
-          {profile?.chart_status === "ready" && chart && profile.sun_sign && profile.moon_sign && profile.rising_sign && (
+          {hasFullReadyChart && chart && profile ? (
             <Box {...PANEL_ENTRY_CARD_PROPS} mt="-1">
               <Stack gap="6" w="100%">
-                <ZodiacOverviewCardsStrip
-                  sunSign={profile.sun_sign}
-                  moonSign={profile.moon_sign}
-                  risingSign={profile.rising_sign}
-                  mercurySign={chart.points.mercury?.sign}
-                  venusSign={chart.points.venus?.sign}
-                  marsSign={chart.points.mars?.sign}
-                />
+                <Box
+                  borderRadius="xl"
+                  bg={
+                    canvasShellSign
+                      ? signCardAccent(canvasShellSign).bg
+                      : "transparent"
+                  }
+                  p={canvasShellSign ? { base: "4", md: "5" } : undefined}
+                  minH={canvasShellSign ? { base: "240px", md: "260px" } : undefined}
+                >
+                  {canvasDescriptorSign ? (
+                    <ZodiacComboDescriptorBodyContent signRaw={canvasDescriptorSign} />
+                  ) : placementPaneTile ? (
+                    <ZodiacPlacementBodyContent
+                      tile={placementPaneTile}
+                      onOpenModeElementDetail={() =>
+                        setCanvasDescriptorSign(placementPaneTile.sign)
+                      }
+                    />
+                  ) : (
+                    <ZodiacOverviewCardsStrip
+                      sunSign={profile.sun_sign!}
+                      moonSign={profile.moon_sign!}
+                      risingSign={profile.rising_sign!}
+                      mercurySign={chart.points.mercury?.sign}
+                      venusSign={chart.points.venus?.sign}
+                      marsSign={chart.points.mars?.sign}
+                      natalChart={chart}
+                      onTileOpen={openPlacementTile}
+                    />
+                  )}
+                </Box>
 
-                {showAlterBirthForm
-                  ? renderBirthInformationCard(cancelAlterBirthForm)
-                  : null}
-
-                <Tabs.Root defaultValue="chart" variant="plain">
-                <Tabs.List {...APP_SHELL_TAB_LIST_INSET_PROPS}>
-                  <Tabs.Trigger value="chart" {...APP_SHELL_TAB_TRIGGER_PROPS}>
-                    Chart
-                  </Tabs.Trigger>
-                  <Tabs.Trigger value="planets" {...APP_SHELL_TAB_TRIGGER_PROPS}>
-                    Planets
-                  </Tabs.Trigger>
-                  <Tabs.Trigger value="houses" {...APP_SHELL_TAB_TRIGGER_PROPS}>
-                    Houses
-                  </Tabs.Trigger>
-                  <Tabs.Trigger value="aspects" {...APP_SHELL_TAB_TRIGGER_PROPS}>
-                    Aspects
-                  </Tabs.Trigger>
-                </Tabs.List>
-                <Tabs.Content value="chart" pt="4">
-                  <NatalChartWheel chart={chart} />
-                </Tabs.Content>
-                <Tabs.Content value="planets" pt="4">
-                  <NatalChartPlanetsTable chart={chart} />
-                </Tabs.Content>
-                <Tabs.Content value="houses" pt="4">
-                  <NatalChartHousesTable chart={chart} />
-                </Tabs.Content>
-                <Tabs.Content value="aspects" pt="4">
-                  <NatalChartAspectsPanel
-                    chart={chart}
-                    aspectsNote="Parsed from your birth details."
-                  />
-                </Tabs.Content>
-              </Tabs.Root>
+                <Tabs.Root
+                  value={zodiacTab}
+                  onValueChange={(d) => setZodiacTab(d.value as ZodiacMainTab)}
+                  variant="plain"
+                >
+                  <Tabs.List {...APP_SHELL_TAB_LIST_INSET_PROPS}>
+                    <Tabs.Trigger value="planets" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                      Planets
+                    </Tabs.Trigger>
+                    <Tabs.Trigger value="houses" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                      Houses
+                    </Tabs.Trigger>
+                    <Tabs.Trigger value="aspects" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                      Aspects
+                    </Tabs.Trigger>
+                    <Tabs.Trigger value="natal" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                      Natal
+                    </Tabs.Trigger>
+                  </Tabs.List>
+                  <Tabs.Content value="planets" pt="4">
+                    <NatalChartPlanetsTable
+                      chart={chart}
+                      onBodyRowClick={(key) => {
+                        const t = zodiacTileFromChartBodyKey(key, chart);
+                        if (t) openPlacementTile(t);
+                      }}
+                    />
+                  </Tabs.Content>
+                  <Tabs.Content value="houses" pt="4">
+                    <Stack gap="6" w="100%">
+                      <NatalChartWheel chart={chart} />
+                      <NatalChartHousesTable chart={chart} />
+                    </Stack>
+                  </Tabs.Content>
+                  <Tabs.Content value="aspects" pt="4">
+                    <NatalChartAspectsPanel
+                      chart={chart}
+                      anchorBodies={ZODIAC_ASPECT_ANCHOR_BODIES}
+                    />
+                  </Tabs.Content>
+                  <Tabs.Content value="natal" pt="4">
+                    <Stack gap="4" w="100%">
+                      {natalBirthSummaryStack(profile)}
+                      <PondButton
+                        size="sm"
+                        variant="outline"
+                        colorPalette="sky"
+                        alignSelf="flex-start"
+                        onClick={() => setShowAlterBirthForm(true)}
+                      >
+                        Alter details
+                      </PondButton>
+                      {showAlterBirthForm ? renderBirthInformationCard(cancelAlterBirthForm) : null}
+                    </Stack>
+                  </Tabs.Content>
+                </Tabs.Root>
               </Stack>
             </Box>
-          )}
+          ) : null}
 
-          {waitingForStaffChart && (
-            <Stack gap="3" w="100%">
-              <Box
-                borderRadius="xl"
-                borderWidth="1px"
-                borderColor="border"
-                bg="sky.subtle"
-                p={{ base: "4", md: "5" }}
-                boxShadow="sm"
-              >
-                <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.title}>
-                  Waiting for your chart
-                </Text>
-                <Text fontSize={APP_TEXT_SIZES.body} color="fg" mt="2" lineHeight="tall">
-                  We have your birth details. A staff member will import your chart soon — watch
-                  this page for your details.
-                </Text>
+          {waitingForStaffChart && profile ? (
+            <Box {...PANEL_ENTRY_CARD_PROPS}>
+              <Heading as="h2" size="md" fontWeight="bold" mb="3">
+                Natal
+              </Heading>
+              {natalBirthSummaryStack(profile)}
+              <Stack gap="4" mt="4">
                 {!showBirthFormWhileWaiting ? (
-                  <Box mt="4">
-                    <PondButton
-                      colorPalette="sky"
-                      onClick={() => {
-                        setWaitingBirthSavedAck(false);
-                        setShowBirthFormWhileWaiting(true);
-                      }}
-                    >
-                      Edit Birth Details
-                    </PondButton>
-                  </Box>
+                  <PondButton
+                    colorPalette="sky"
+                    onClick={() => {
+                      setWaitingBirthSavedAck(false);
+                      setShowBirthFormWhileWaiting(true);
+                    }}
+                  >
+                    Edit birth details
+                  </PondButton>
                 ) : null}
-              </Box>
-              {waitingBirthSavedAck ? (
-                <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall">
-                  Your birth details were updated.
-                </Text>
-              ) : null}
-            </Stack>
-          )}
+                <Box
+                  borderRadius="lg"
+                  borderWidth="1px"
+                  borderColor="border"
+                  bg="sky.subtle"
+                  p={{ base: "3", md: "4" }}
+                >
+                  <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.title}>
+                    Waiting for your chart
+                  </Text>
+                  <Text fontSize={APP_TEXT_SIZES.body} color="fg" mt="2" lineHeight="tall">
+                    We have your birth details. A staff member will import your chart soon — watch
+                    this page for your details.
+                  </Text>
+                </Box>
+                {waitingBirthSavedAck ? (
+                  <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall">
+                    Your birth details were updated.
+                  </Text>
+                ) : null}
+                {birthFormInWaitingNatalPanel
+                  ? renderBirthInformationCard(cancelWaitingBirthForm)
+                  : null}
+              </Stack>
+            </Box>
+          ) : null}
+
+          {chartIncompleteReady && profile ? (
+            <Box {...PANEL_ENTRY_CARD_PROPS}>
+              <Heading as="h2" size="md" fontWeight="bold" mb="3">
+                Natal
+              </Heading>
+              {natalBirthSummaryStack(profile)}
+              <PondButton
+                mt="4"
+                size="sm"
+                variant="outline"
+                colorPalette="sky"
+                onClick={() => setShowAlterBirthForm(true)}
+              >
+                Alter details
+              </PondButton>
+              {showAlterBirthForm ? renderBirthInformationCard(cancelAlterBirthForm) : null}
+            </Box>
+          ) : null}
 
           {showBirthFormAtBottom
             ? renderBirthInformationCard(

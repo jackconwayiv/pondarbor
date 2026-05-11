@@ -17,8 +17,8 @@ export default function NatalChartHousesTable({ chart }: { chart: NatalChartPayl
         <Table.Root size="sm" variant="line">
           <Table.Header>
             <Table.Row>
-              <Table.ColumnHeader>House</Table.ColumnHeader>
-              <Table.ColumnHeader>Degrees</Table.ColumnHeader>
+              <Table.ColumnHeader fontWeight="bold">House</Table.ColumnHeader>
+              <Table.ColumnHeader fontWeight="bold">Degrees</Table.ColumnHeader>
             </Table.Row>
           </Table.Header>
           <Table.Body>

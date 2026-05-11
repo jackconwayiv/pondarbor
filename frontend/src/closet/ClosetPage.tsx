@@ -169,7 +169,7 @@ export default function ClosetPage() {
     loaned: 1,
     pending: 1,
   });
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
@@ -648,7 +648,10 @@ export default function ClosetPage() {
   }, [expandedNotice]);
 
   useEffect(() => {
-    if (!isAuthenticated || !sessionUser) return;
+    if (!isAuthenticated || !sessionUser) {
+      setLoading(false);
+      return;
+    }
     void refreshCore();
   }, [
     categoryFilter,

@@ -35,7 +35,7 @@ import { pondarborLogoSrc } from "./publicAsset";
 import BreadcrumbBar from "./BreadcrumbBar";
 import { HomeInboxPopover } from "./components/HomeInboxPopover";
 import { HomeInboxProvider } from "./home/homeInboxContext";
-import { useIsMobile } from "./responsive";
+import { APP_SHELL_OUTLET_MIN_HEIGHT_PROPS, useIsMobile } from "./responsive";
 import { APP_SHELL_CONTENT_MAX_PROPS } from "./theme/typography";
 
 /** Wordmark font; fixed look (no route-based styling). */
@@ -694,11 +694,11 @@ export default function AppLayout() {
           ) : null}
           <Box
             flex="1"
-            minH="0"
             minW={0}
             w="100%"
             display="flex"
             flexDirection="column"
+            {...APP_SHELL_OUTLET_MIN_HEIGHT_PROPS}
           >
             <Outlet />
           </Box>

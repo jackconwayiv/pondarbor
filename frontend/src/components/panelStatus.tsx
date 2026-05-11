@@ -8,7 +8,7 @@ import {
 } from "@chakra-ui/react";
 import type { ReactNode } from "react";
 import PondButton from "../PondButton";
-import { fullBleedStackProps } from "../responsive";
+import { APP_PANEL_PAGE_MIN_HEIGHT_PROPS, fullBleedStackProps } from "../responsive";
 import {
   APP_SHELL_TRAY_PROPS,
   APP_TEXT_SIZES,
@@ -22,7 +22,12 @@ type PanelPageShellProps = { children: ReactNode };
  */
 export function PanelPageShell({ children }: PanelPageShellProps) {
   return (
-    <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
+    <Stack
+      flex="1"
+      gap="0"
+      {...APP_PANEL_PAGE_MIN_HEIGHT_PROPS}
+      {...fullBleedStackProps}
+    >
       <Box
         flex="1"
         bg="bg"

@@ -41,7 +41,7 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
   const [approvedUsers, setApprovedUsers] = useState<FriendUser[]>([]);
   const [requestEmail, setRequestEmail] = useState("");
   const [searchResults, setSearchResults] = useState<FriendUser[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
   const [requestError, setRequestError] = useState<string | null>(null);
   const [requestSuccess, setRequestSuccess] = useState<string | null>(null);
@@ -71,7 +71,10 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
   }
 
   useEffect(() => {
-    if (!isAuthenticated || !sessionUser?.user?.is_approved) return;
+    if (!isAuthenticated || !sessionUser?.user?.is_approved) {
+      setLoading(false);
+      return;
+    }
     void loadList();
   }, [isAuthenticated, sessionUser?.user?.is_approved]);
 

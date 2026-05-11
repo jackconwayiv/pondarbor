@@ -31,6 +31,22 @@ export function usePrefersCoarsePointer() {
 export const fullBleedStackProps = {} as const;
 
 /**
+ * Flex outlet under `AppLayout`: on small viewports, ensure a non-zero height so children
+ * using `minH="full"` (percentage of parent) do not collapse to a blank column on reopen.
+ * On `md+`, keep `0` so nested scroll regions still shrink correctly.
+ */
+export const APP_SHELL_OUTLET_MIN_HEIGHT_PROPS = {
+  minH: { base: "min(100dvh, 100%)", md: "0" },
+} as const;
+
+/**
+ * Panel pages using `PanelPageShell` / full-bleed stacks: same mobile floor, `full` on desktop.
+ */
+export const APP_PANEL_PAGE_MIN_HEIGHT_PROPS = {
+  minH: { base: "min(100dvh, 100%)", md: "full" },
+} as const;
+
+/**
  * For site footer *bars* that should span the viewport while nested under the main inset
  * (e.g. home and games hub).
  */

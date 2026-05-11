@@ -82,7 +82,7 @@ export default function CalendarPage() {
   const [birthdays, setBirthdays] = useState<CalendarBirthdayRow[]>([]);
   const [sources, setSources] = useState<CalendarSource[]>([]);
   const [approvedUsers, setApprovedUsers] = useState<CalendarOwnerRow[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [eventsError, setEventsError] = useState<string | null>(null);
   const [sourcesError, setSourcesError] = useState<string | null>(null);
@@ -267,7 +267,10 @@ export default function CalendarPage() {
   }, [getApiAccessToken, monthRange.end, monthRange.start, sessionUser]);
 
   useEffect(() => {
-    if (!isAuthenticated || !sessionUser) return;
+    if (!isAuthenticated || !sessionUser) {
+      setLoading(false);
+      return;
+    }
     void refreshAll();
   }, [isAuthenticated, refreshAll, sessionUser]);
 

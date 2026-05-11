@@ -69,7 +69,7 @@ export default function CalendarDayPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [birthdays, setBirthdays] = useState<CalendarBirthdayRow[]>([]);
   const [approvedUsers, setApprovedUsers] = useState<CalendarOwnerRow[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
 
@@ -104,9 +104,16 @@ export default function CalendarDayPage() {
   }, [dateValid, dayIso, getApiAccessToken, sessionUser]);
 
   useEffect(() => {
-    if (!isAuthenticated || !sessionUser) return;
+    if (!isAuthenticated || !sessionUser) {
+      setLoading(false);
+      return;
+    }
+    if (!dateValid) {
+      setLoading(false);
+      return;
+    }
     void loadAll();
-  }, [isAuthenticated, loadAll, sessionUser]);
+  }, [isAuthenticated, loadAll, sessionUser, dateValid]);
 
   const eventsForDay = useMemo(
     () =>

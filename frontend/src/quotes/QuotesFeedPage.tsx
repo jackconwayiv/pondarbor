@@ -32,7 +32,7 @@ import {
   SessionLoadingCard,
 } from "../components/panelStatus";
 import { validateQuoteBody, validateQuoteLabelNames } from "../forms/validation";
-import { fullBleedStackProps } from "../responsive";
+import { APP_PANEL_PAGE_MIN_HEIGHT_PROPS, fullBleedStackProps } from "../responsive";
 import {
   APP_SHELL_TRAY_PROPS,
   APP_TEXT_SIZES,
@@ -706,8 +706,8 @@ export default function QuotesFeedPage() {
   return (
     <Stack
       flex="1"
-      minH={{ base: "min(100dvh, 100%)", md: "full" }}
       gap="0"
+      {...APP_PANEL_PAGE_MIN_HEIGHT_PROPS}
       {...fullBleedStackProps}
     >
       <Box flex="1" bg="bg" px={0} py={{ base: "2", md: "2" }}>

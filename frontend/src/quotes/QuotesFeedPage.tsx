@@ -183,7 +183,6 @@ function QuoteCard({
     sessionUser,
     auth0User,
   );
-  const editorRef = useRef<HTMLDivElement | null>(null);
   const [editBody, setEditBody] = useState(quote.body);
   const [editDateOfQuote, setEditDateOfQuote] = useState(quote.date_of_quote ?? "");
   const [editTagsCsv, setEditTagsCsv] = useState(labelsToTagsCsv(quote));
@@ -240,6 +239,7 @@ function QuoteCard({
       await onRefreshQuotes();
       onAfterQuoteMutation();
       setCardSuccess("Saved.");
+      onEndEditing();
       return true;
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to update quote");
@@ -259,6 +259,7 @@ function QuoteCard({
     getApiAccessToken,
     onRefreshQuotes,
     onAfterQuoteMutation,
+    onEndEditing,
     quote.id,
   ]);
 
@@ -272,22 +273,6 @@ function QuoteCard({
     setCardSuccess(null);
     onEndEditing();
   }, [quote, onEndEditing]);
-
-  useEffect(() => {
-    if (!isEditing) return;
-    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
-      const target = event.target as Node | null;
-      if (!target) return;
-      if (editorRef.current?.contains(target)) return;
-      closeDiscarding();
-    };
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("touchstart", handlePointerDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("touchstart", handlePointerDown);
-    };
-  }, [closeDiscarding, isEditing]);
 
   useEffect(() => {
     if (!cardSuccess) return;
@@ -359,7 +344,6 @@ function QuoteCard({
               ) : null}
               {isEditing ? (
                 <Box
-                  ref={editorRef}
                   borderWidth="1px"
                   borderColor="border"
                   borderRadius="md"

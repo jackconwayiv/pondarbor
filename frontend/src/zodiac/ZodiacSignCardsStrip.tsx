@@ -8,13 +8,6 @@ import { signCardAccent } from "./signCardAccent";
 import { formatHouseRoman } from "./zodiacHouseDescriptors";
 import ZodiacPlacementBodyContent from "./ZodiacPlacementBodyContent";
 
-/** Dark-card signs where the center Roman house reads better in white. */
-const WHITE_HOUSE_ROMAN_SIGNS = new Set(["leo", "scorpio", "aquarius", "taurus"]);
-
-function houseRomanColorForStripSign(sign: string): string {
-  return WHITE_HOUSE_ROMAN_SIGNS.has(sign.trim().toLowerCase()) ? "#FFFFFF" : "fg";
-}
-
 export type ZodiacSignCardTile = {
   id: string;
   label: string;
@@ -164,7 +157,7 @@ export default function ZodiacSignCardsStrip({
                   fontSize="xs"
                   fontWeight="bold"
                   fontFamily="heading"
-                  color={houseRomanColorForStripSign(t.sign)}
+                  color={t.accent.valueColor}
                   lineHeight="short"
                   textAlign="right"
                   flexShrink={0}

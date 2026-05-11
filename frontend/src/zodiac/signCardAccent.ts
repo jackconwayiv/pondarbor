@@ -48,10 +48,10 @@ export function signCardAccent(signRaw: string): SignCardAccent {
     aries: accentLines(DESIGN.nautical, DESIGN.nauticalDark),
     leo: accentLines(DESIGN.nauticalDark, "#B86A1A", true),
 
-    // Air — light / medium / dark gray (base row of each column)
+    // Air — light / medium / dark gray (Aquarius: dark base + light text for contrast)
     gemini: accentLines(DESIGN.grayLightBase, DESIGN.grayLightBorder),
     libra: accentLines(DESIGN.grayMediumBase, DESIGN.grayMediumBorder),
-    aquarius: accentLines(DESIGN.grayDarkBase, DESIGN.grayDarkBorder),
+    aquarius: accentLines(DESIGN.grayDarkBase, DESIGN.grayDarkBorder, true),
 
     // Water — light / base / dark blue
     pisces: accentLines(DESIGN.skyLight, DESIGN.sky),

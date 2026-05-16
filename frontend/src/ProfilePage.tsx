@@ -7,8 +7,6 @@ import {
   HStack,
   Image,
   Input,
-  NativeSelectField,
-  NativeSelectRoot,
   Stack,
   Tabs,
   Text,
@@ -16,6 +14,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useSearchParams } from "react-router";
 import PondButton from "./PondButton";
+import PondNativeSelect from "./components/PondNativeSelect";
 import { AchievementSummaryCard } from "./achievements/AchievementSummaryCard";
 import {
   fetchPublicAchievementsByUserId,
@@ -858,23 +857,20 @@ export default function ProfilePage() {
                       <Stack gap="1" flex="1" minW={0}>
                         <Text {...profileFieldLabelProps}>Timezone</Text>
                         {isEditing ? (
-                          <NativeSelectRoot
-                            size="md"
-                            disabled={fieldBusy("timezone")}
+                          <PondNativeSelect
+                            rootProps={{ size: "md", disabled: fieldBusy("timezone") }}
+                            fieldProps={{
+                              value: timezone || "UTC",
+                              onChange: (e) => setTimezone(e.target.value),
+                              onBlur: () => void commitField("timezone"),
+                            }}
                           >
-                            <NativeSelectField
-                              value={timezone || "UTC"}
-                              onChange={(e) => setTimezone(e.target.value)}
-                              onBlur={() => void commitField("timezone")}
-                              {...PANEL_FIELD_PROPS}
-                            >
-                              {editTimezoneOptions.map((tz) => (
-                                <option key={tz} value={tz}>
-                                  {tz}
-                                </option>
-                              ))}
-                            </NativeSelectField>
-                          </NativeSelectRoot>
+                            {editTimezoneOptions.map((tz) => (
+                              <option key={tz} value={tz}>
+                                {tz}
+                              </option>
+                            ))}
+                          </PondNativeSelect>
                         ) : (
                           <Text fontSize={APP_TEXT_SIZES.body}>
                             {profile.timezone || "—"}
@@ -891,52 +887,50 @@ export default function ProfilePage() {
                             <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
                               Show me:
                             </Text>
-                            <NativeSelectRoot size="md">
-                              <NativeSelectField
-                                value={socialReadScope}
-                                onChange={(e) => {
+                            <PondNativeSelect
+                              rootProps={{ size: "md" }}
+                              fieldProps={{
+                                value: socialReadScope,
+                                onChange: (e) => {
                                   const next = e.target.value as
                                     | "approved_users"
                                     | "friends_only";
                                   setSocialReadScope(next);
-                                }}
-                                onBlur={() =>
+                                },
+                                onBlur: () =>
                                   void commitPrivacy({
                                     social_read_scope: socialReadScope,
-                                  })
-                                }
-                                {...PANEL_FIELD_PROPS}
-                              >
-                                <option value="approved_users">approved users</option>
-                                <option value="friends_only">my friends</option>
-                              </NativeSelectField>
-                            </NativeSelectRoot>
+                                  }),
+                              }}
+                            >
+                              <option value="approved_users">approved users</option>
+                              <option value="friends_only">my friends</option>
+                            </PondNativeSelect>
                           </Stack>
 
                           <Stack gap="1" flex="1" minW={0}>
                             <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
                               Sees me:
                             </Text>
-                            <NativeSelectRoot size="md">
-                              <NativeSelectField
-                                value={socialPublishVisibility}
-                                onChange={(e) => {
+                            <PondNativeSelect
+                              rootProps={{ size: "md" }}
+                              fieldProps={{
+                                value: socialPublishVisibility,
+                                onChange: (e) => {
                                   const next = e.target.value as
                                     | "all_approved"
                                     | "friends_only";
                                   setSocialPublishVisibility(next);
-                                }}
-                                onBlur={() =>
+                                },
+                                onBlur: () =>
                                   void commitPrivacy({
                                     social_publish_visibility: socialPublishVisibility,
-                                  })
-                                }
-                                {...PANEL_FIELD_PROPS}
-                              >
-                                <option value="all_approved">approved users</option>
-                                <option value="friends_only">my friends</option>
-                              </NativeSelectField>
-                            </NativeSelectRoot>
+                                  }),
+                              }}
+                            >
+                              <option value="all_approved">approved users</option>
+                              <option value="friends_only">my friends</option>
+                            </PondNativeSelect>
                           </Stack>
                         </HStack>
                       ) : (

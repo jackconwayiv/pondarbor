@@ -1,4 +1,5 @@
-import { Card, Heading, HStack, NativeSelectField, NativeSelectRoot, Stack, Text } from "@chakra-ui/react";
+import { Card, Heading, HStack, Stack, Text } from "@chakra-ui/react";
+import PondNativeSelect from "../components/PondNativeSelect";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link as RouterLink, Navigate, useNavigate, useSearchParams } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
@@ -8,7 +9,6 @@ import {
   MAPPED_CLOSET_TAB_STACK_GAP,
   PANEL_ENTRY_CARD_BODY_PROPS,
   PANEL_ENTRY_CARD_PROPS,
-  PANEL_FIELD_PROPS,
 } from "../theme/typography";
 import {
   createInstance,
@@ -182,20 +182,20 @@ export default function MealWeekEditPage() {
             </HStack>
 
             <HStack gap="2" flexWrap="wrap" align="flex-end">
-              <NativeSelectRoot size="sm" minW="12rem">
-                <NativeSelectField
-                  {...PANEL_FIELD_PROPS}
-                  value={applyTemplateId}
-                  onChange={(e) => setApplyTemplateId(e.target.value)}
-                >
-                  <option value="">Template for import</option>
-                  {templates.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </NativeSelectField>
-              </NativeSelectRoot>
+              <PondNativeSelect
+                rootProps={{ size: "sm", minW: "12rem" }}
+                fieldProps={{
+                  value: applyTemplateId,
+                  onChange: (e) => setApplyTemplateId(e.target.value),
+                }}
+              >
+                <option value="">Template for import</option>
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </PondNativeSelect>
               <PondButton
                 colorPalette="lilypad"
                 variant="outline"

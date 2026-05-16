@@ -3,8 +3,6 @@ import {
   Link as ChakraLink,
   Heading,
   HStack,
-  NativeSelectField,
-  NativeSelectRoot,
   Stack,
   Tabs,
   Text,
@@ -18,6 +16,7 @@ import type { AchievementSummary } from "../achievements/types";
 import { useAppSession } from "../auth/AppSessionContext";
 import { useHomeInbox } from "../home/homeInboxContext";
 import PondButton from "../PondButton";
+import PondNativeSelect from "../components/PondNativeSelect";
 import { fullBleedStackProps } from "../responsive";
 import {
   APP_SHELL_TAB_LIST_PROPS,
@@ -486,23 +485,24 @@ export default function StaffPage() {
                                   Staff: {row.is_staff ? "yes" : "no"}
                                 </Text>
                               </HStack>
-                              <NativeSelectRoot size="sm" disabled={disabled}>
-                                <NativeSelectField
-                                  value={statusValue}
-                                  onChange={(e) => {
+                              <PondNativeSelect
+                                rootProps={{ size: "sm", disabled }}
+                                fieldProps={{
+                                  value: statusValue,
+                                  onChange: (e) => {
                                     void onStatusChange(
                                       row,
                                       e.target.value as StaffAccountStatusValue,
                                     );
-                                  }}
-                                >
-                                  {STAFF_ACCOUNT_STATUS_VALUES.map((v) => (
-                                    <option key={v} value={v}>
-                                      {STATUS_LABELS[v]}
-                                    </option>
-                                  ))}
-                                </NativeSelectField>
-                              </NativeSelectRoot>
+                                  },
+                                }}
+                              >
+                                {STAFF_ACCOUNT_STATUS_VALUES.map((v) => (
+                                  <option key={v} value={v}>
+                                    {STATUS_LABELS[v]}
+                                  </option>
+                                ))}
+                              </PondNativeSelect>
                               {row.id === myId ? (
                                 <Text fontSize="xs" color="fg.muted">
                                   You cannot change your own status here.
@@ -534,27 +534,24 @@ export default function StaffPage() {
                                 {row.is_staff ? "Yes" : "No"}
                               </Text>
                               <Box minW="0">
-                                <NativeSelectRoot
-                                  size="sm"
-                                  disabled={disabled}
-                                  maxW="100%"
-                                >
-                                  <NativeSelectField
-                                    value={statusValue}
-                                    onChange={(e) => {
+                                <PondNativeSelect
+                                  rootProps={{ size: "sm", disabled, maxW: "100%" }}
+                                  fieldProps={{
+                                    value: statusValue,
+                                    onChange: (e) => {
                                       void onStatusChange(
                                         row,
                                         e.target.value as StaffAccountStatusValue,
                                       );
-                                    }}
-                                  >
-                                    {STAFF_ACCOUNT_STATUS_VALUES.map((v) => (
-                                      <option key={v} value={v}>
-                                        {STATUS_LABELS[v]}
-                                      </option>
-                                    ))}
-                                  </NativeSelectField>
-                                </NativeSelectRoot>
+                                    },
+                                  }}
+                                >
+                                  {STAFF_ACCOUNT_STATUS_VALUES.map((v) => (
+                                    <option key={v} value={v}>
+                                      {STATUS_LABELS[v]}
+                                    </option>
+                                  ))}
+                                </PondNativeSelect>
                                 {row.id === myId ? (
                                   <Text fontSize="2xs" color="fg.muted" mt="1">
                                     Your account

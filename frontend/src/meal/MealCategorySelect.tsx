@@ -1,4 +1,4 @@
-import { NativeSelectField, NativeSelectRoot } from "@chakra-ui/react";
+import PondNativeSelect from "../components/PondNativeSelect";
 
 export type MealCategoryAxis = "meal_type" | "cuisine" | "time";
 
@@ -27,15 +27,20 @@ export function MealCategorySelect({
   const rootProps = size === "sm" ? { size: "sm" as const, maxW: "xs" as const, w: "100%" } : { w: "100%" };
 
   return (
-    <NativeSelectRoot {...rootProps} disabled={disabled}>
-      <NativeSelectField value={value} onChange={(e) => onValueChange(e.target.value)} aria-label={ariaLabel}>
-        <option value="">{placeholderOption}</option>
-        {options.map((o) => (
-          <option key={o.id} value={String(o.id)}>
-            {o.name}
-          </option>
-        ))}
-      </NativeSelectField>
-    </NativeSelectRoot>
+    <PondNativeSelect
+      rootProps={{ ...rootProps, disabled }}
+      fieldProps={{
+        value,
+        onChange: (e) => onValueChange(e.target.value),
+        "aria-label": ariaLabel,
+      }}
+    >
+      <option value="">{placeholderOption}</option>
+      {options.map((o) => (
+        <option key={o.id} value={String(o.id)}>
+          {o.name}
+        </option>
+      ))}
+    </PondNativeSelect>
   );
 }

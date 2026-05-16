@@ -1,4 +1,5 @@
-import { Box, Heading, Input, Link, NativeSelectField, NativeSelectRoot, Stack, Text } from "@chakra-ui/react";
+import { Box, Heading, Input, Link, Stack, Text } from "@chakra-ui/react";
+import PondNativeSelect from "../components/PondNativeSelect";
 import { useCallback, useEffect, useState } from "react";
 import { Link as RouterLink, Navigate, useNavigate } from "react-router";
 
@@ -155,18 +156,19 @@ export default function PondsteadCampaignsListPage() {
             <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.label} mb="2">
               Seats (2–6)
             </Text>
-            <NativeSelectRoot size="md" maxW="220px">
-              <NativeSelectField
-                value={String(newMaxPlayers)}
-                onChange={(e) => setNewMaxPlayers(Number(e.currentTarget.value))}
-              >
-                {[2, 3, 4, 5, 6].map((n) => (
-                  <option key={n} value={n}>
-                    {n} players
-                  </option>
-                ))}
-              </NativeSelectField>
-            </NativeSelectRoot>
+            <PondNativeSelect
+              rootProps={{ size: "md", maxW: "220px" }}
+              fieldProps={{
+                value: String(newMaxPlayers),
+                onChange: (e) => setNewMaxPlayers(Number(e.currentTarget.value)),
+              }}
+            >
+              {[2, 3, 4, 5, 6].map((n) => (
+                <option key={n} value={n}>
+                  {n} players
+                </option>
+              ))}
+            </PondNativeSelect>
           </Box>
           <PondButton
             type="button"

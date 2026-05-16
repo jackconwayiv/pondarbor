@@ -1,4 +1,5 @@
-import { Box, NativeSelectField, NativeSelectRoot, Stack, Text } from "@chakra-ui/react";
+import { Box, Stack, Text } from "@chakra-ui/react";
+import PondNativeSelect from "../components/PondNativeSelect";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppModal } from "../components/AppModal";
 import PondButton from "../PondButton";
@@ -213,50 +214,53 @@ export function MealAddToWeekDialog({
           <>
             <Stack gap="1">
               <Text fontSize={APP_TEXT_SIZES.helper}>Day</Text>
-              <NativeSelectRoot maxW="100%" disabled={busy}>
-                <NativeSelectField
-                  value={selectedDayIso}
-                  onChange={(e) => setSelectedDayIso(e.target.value)}
-                >
-                  {dayOptions.map((o) => (
-                    <option key={o.iso} value={o.iso}>
-                      {o.label}
-                    </option>
-                  ))}
-                </NativeSelectField>
-              </NativeSelectRoot>
+              <PondNativeSelect
+                rootProps={{ maxW: "100%", disabled: busy }}
+                fieldProps={{
+                  value: selectedDayIso,
+                  onChange: (e) => setSelectedDayIso(e.target.value),
+                }}
+              >
+                {dayOptions.map((o) => (
+                  <option key={o.iso} value={o.iso}>
+                    {o.label}
+                  </option>
+                ))}
+              </PondNativeSelect>
             </Stack>
             {!chosenInstance ? (
               <Stack gap="1">
                 <Text fontSize={APP_TEXT_SIZES.helper}>Template (for new week)</Text>
-                <NativeSelectRoot maxW="100%" disabled={busy}>
-                  <NativeSelectField
-                    value={templateId === "" ? "" : String(templateId)}
-                    onChange={(e) => setTemplateId(Number(e.target.value))}
-                  >
-                    {templates.map((tpl) => (
-                      <option key={tpl.id} value={tpl.id}>
-                        {tpl.name}
-                      </option>
-                    ))}
-                  </NativeSelectField>
-                </NativeSelectRoot>
+                <PondNativeSelect
+                  rootProps={{ maxW: "100%", disabled: busy }}
+                  fieldProps={{
+                    value: templateId === "" ? "" : String(templateId),
+                    onChange: (e) => setTemplateId(Number(e.target.value)),
+                  }}
+                >
+                  {templates.map((tpl) => (
+                    <option key={tpl.id} value={tpl.id}>
+                      {tpl.name}
+                    </option>
+                  ))}
+                </PondNativeSelect>
               </Stack>
             ) : null}
             <Stack gap="1">
               <Text fontSize={APP_TEXT_SIZES.helper}>Meal</Text>
-              <NativeSelectRoot maxW="100%" disabled={busy}>
-                <NativeSelectField
-                  value={String(mealSlotIndex)}
-                  onChange={(e) => setMealSlotIndex(Number(e.target.value))}
-                >
-                  {slotLabels.map((label, s) => (
-                    <option key={s} value={String(s)}>
-                      {label}
-                    </option>
-                  ))}
-                </NativeSelectField>
-              </NativeSelectRoot>
+              <PondNativeSelect
+                rootProps={{ maxW: "100%", disabled: busy }}
+                fieldProps={{
+                  value: String(mealSlotIndex),
+                  onChange: (e) => setMealSlotIndex(Number(e.target.value)),
+                }}
+              >
+                {slotLabels.map((label, s) => (
+                  <option key={s} value={String(s)}>
+                    {label}
+                  </option>
+                ))}
+              </PondNativeSelect>
             </Stack>
           </>
         )}

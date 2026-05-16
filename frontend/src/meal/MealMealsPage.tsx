@@ -1,4 +1,5 @@
-import { Box, Card, HStack, Image, Input, NativeSelectField, NativeSelectRoot, SimpleGrid, Stack, Text } from "@chakra-ui/react";
+import { Box, Card, HStack, Image, Input, SimpleGrid, Stack, Text } from "@chakra-ui/react";
+import PondNativeSelect from "../components/PondNativeSelect";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link as RouterLink, Navigate, useNavigate } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
@@ -169,17 +170,18 @@ export default function MealMealsPage() {
           </Stack>
           <Stack gap="2" w="100%" minW={0}>
             <Text {...MEALS_TOOLBAR_SECTION_LABEL_PROPS}>Sort</Text>
-            <NativeSelectRoot size="sm" maxW="xs" w="100%">
-              <NativeSelectField
-                value={sort ?? "updated_at"}
-                onChange={(e) => setSort(e.target.value as MealListQuery["sort"])}
-                aria-label="Sort"
-              >
-                <option value="updated_at">Recently updated</option>
-                <option value="title">Title A–Z</option>
-                <option value="upcoming_slot_count">Most upcoming plans</option>
-              </NativeSelectField>
-            </NativeSelectRoot>
+            <PondNativeSelect
+              rootProps={{ size: "sm", maxW: "xs", w: "100%" }}
+              fieldProps={{
+                value: sort ?? "updated_at",
+                onChange: (e) => setSort(e.target.value as MealListQuery["sort"]),
+                "aria-label": "Sort",
+              }}
+            >
+              <option value="updated_at">Recently updated</option>
+              <option value="title">Title A–Z</option>
+              <option value="upcoming_slot_count">Most upcoming plans</option>
+            </PondNativeSelect>
           </Stack>
         </SimpleGrid>
 

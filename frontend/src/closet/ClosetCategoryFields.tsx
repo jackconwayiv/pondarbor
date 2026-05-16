@@ -1,13 +1,12 @@
 import {
   HStack,
   Input,
-  NativeSelectField,
-  NativeSelectRoot,
   Stack,
   Text,
 } from "@chakra-ui/react";
 import { useState } from "react";
 
+import PondNativeSelect from "../components/PondNativeSelect";
 import {
   APP_TEXT_SIZES,
   PANEL_FORM_PLACEHOLDER_PROPS,
@@ -55,10 +54,11 @@ export function ClosetCategoryFields({
         <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
           Category:
         </Text>
-        <NativeSelectRoot w="100%">
-          <NativeSelectField
-            value={selectValue}
-            onChange={(e) => {
+        <PondNativeSelect
+          rootProps={{ w: "100%" }}
+          fieldProps={{
+            value: selectValue,
+            onChange: (e) => {
               const v = e.target.value;
               if (v === "") {
                 setCustomChosenWithEmpty(false);
@@ -75,17 +75,17 @@ export function ClosetCategoryFields({
               }
               setCustomChosenWithEmpty(false);
               onCategoryChange(v);
-            }}
-          >
-            <option value="">None</option>
-            {CLOSET_CATEGORY_PRESETS.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-            <option value={CLOSET_CUSTOM_SELECT_VALUE}>Custom…</option>
-          </NativeSelectField>
-        </NativeSelectRoot>
+            },
+          }}
+        >
+          <option value="">None</option>
+          {CLOSET_CATEGORY_PRESETS.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+          <option value={CLOSET_CUSTOM_SELECT_VALUE}>Custom…</option>
+        </PondNativeSelect>
       </Stack>
       {showCustomInput ? (
         <Stack

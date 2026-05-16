@@ -4,8 +4,6 @@ import {
   Heading,
   HStack,
   Input,
-  NativeSelectField,
-  NativeSelectRoot,
   Stack,
   Tabs,
   Text,
@@ -14,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
+import PondNativeSelect from "../components/PondNativeSelect";
 import { fetchFriendsList } from "../friends/api";
 import {
   APP_SHELL_TAB_LIST_NESTED_PROPS,
@@ -277,24 +276,24 @@ export default function MealHomePage() {
             <Heading as="h3" size="sm" flexShrink={0}>
               Week starts on
             </Heading>
-            <NativeSelectRoot size="sm" maxW="xs" flexShrink={0}>
-              <NativeSelectField
-                {...PANEL_FIELD_PROPS}
-                value={String(profile.meal_week_starts_on ?? 0)}
-                onChange={(e) => {
+            <PondNativeSelect
+              rootProps={{ size: "sm", maxW: "xs", flexShrink: 0 }}
+              fieldProps={{
+                value: String(profile.meal_week_starts_on ?? 0),
+                onChange: (e) => {
                   const v = Number(e.target.value);
                   void patchMyProfile({ meal_week_starts_on: v }).catch((err: Error) =>
                     setNotice({ tone: "error", text: err.message }),
                   );
-                }}
-              >
-                {WEEKDAY_FULL.map((label, i) => (
-                  <option key={label} value={i}>
-                    {label}
-                  </option>
-                ))}
-              </NativeSelectField>
-            </NativeSelectRoot>
+                },
+              }}
+            >
+              {WEEKDAY_FULL.map((label, i) => (
+                <option key={label} value={i}>
+                  {label}
+                </option>
+              ))}
+            </PondNativeSelect>
           </HStack>
         </Card.Body>
       </Card.Root>
@@ -327,11 +326,12 @@ export default function MealHomePage() {
                 <Tabs.Content key={key} value={key} p="2" pt="3">
                   <Stack gap="2" maxW="md">
                     {Array.from({ length: n }, (_, i) => (
-                      <NativeSelectRoot key={i} size="sm">
-                        <NativeSelectField
-                          {...PANEL_FIELD_PROPS}
-                          value={row[i]}
-                          onChange={(e) => {
+                      <PondNativeSelect
+                        key={i}
+                        rootProps={{ size: "sm" }}
+                        fieldProps={{
+                          value: row[i],
+                          onChange: (e) => {
                             const v = e.target.value;
                             const prev = mealSlotDraftRef.current;
                             const nextRow = [...(prev[key] ?? defaultSlotLabelsForCount(n))];
@@ -340,15 +340,15 @@ export default function MealHomePage() {
                             mealSlotDraftRef.current = nextDraft;
                             setMealSlotDraft(nextDraft);
                             void persistMealSlotRow(key, nextRow);
-                          }}
-                        >
-                          {MEAL_SLOT_NAME_OPTIONS.map((opt) => (
-                            <option key={opt} value={opt}>
-                              {opt}
-                            </option>
-                          ))}
-                        </NativeSelectField>
-                      </NativeSelectRoot>
+                          },
+                        }}
+                      >
+                        {MEAL_SLOT_NAME_OPTIONS.map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                      </PondNativeSelect>
                     ))}
                   </Stack>
                 </Tabs.Content>

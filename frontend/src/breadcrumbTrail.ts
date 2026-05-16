@@ -105,6 +105,9 @@ export function getBreadcrumbItems(
     ];
   }
 
+  if (p === "/people") {
+    return [HOME, { label: "Family Tree" }];
+  }
   if (p === "/closet") {
     return [HOME, { label: "Community Closet" }];
   }

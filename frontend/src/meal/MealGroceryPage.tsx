@@ -6,8 +6,6 @@ import {
   Heading,
   HStack,
   Input,
-  NativeSelectField,
-  NativeSelectRoot,
   Stack,
   Text,
 } from "@chakra-ui/react";
@@ -15,6 +13,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link as RouterLink, Navigate } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
+import PondNativeSelect from "../components/PondNativeSelect";
 import {
   APP_TEXT_SIZES,
   MAPPED_CLOSET_TAB_STACK_GAP,
@@ -312,19 +311,19 @@ export default function MealGroceryPage() {
                   </Checkbox.Root>
                 </HStack>
 
-                <NativeSelectRoot size="sm" maxW="md">
-                  <NativeSelectField
-                    {...PANEL_FIELD_PROPS}
-                    value={resolvedSelection}
-                    onChange={(e) => setSelectedId(e.target.value)}
-                  >
-                    {sortedInstances.map((i) => (
-                      <option key={i.id} value={i.id}>
-                        Week of {formatWeekStartShort(i.week_start)}
-                      </option>
-                    ))}
-                  </NativeSelectField>
-                </NativeSelectRoot>
+                <PondNativeSelect
+                  rootProps={{ size: "sm", maxW: "md" }}
+                  fieldProps={{
+                    value: resolvedSelection,
+                    onChange: (e) => setSelectedId(e.target.value),
+                  }}
+                >
+                  {sortedInstances.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      Week of {formatWeekStartShort(i.week_start)}
+                    </option>
+                  ))}
+                </PondNativeSelect>
 
                 {selectedInstance ? (
                   <Text fontSize={APP_TEXT_SIZES.helper}>
@@ -388,20 +387,21 @@ export default function MealGroceryPage() {
                           onChange={(e) => setPantrySearch(e.target.value)}
                           {...PANEL_FIELD_PROPS}
                         />
-                        <NativeSelectRoot size="sm" minW="10rem">
-                          <NativeSelectField
-                            value={pantryPickId === "" ? "" : String(pantryPickId)}
-                            onChange={(e) => setPantryPickId(e.target.value ? Number(e.target.value) : "")}
-                            {...PANEL_FIELD_PROPS}
-                          >
-                            <option value="">Pick…</option>
-                            {pantryOpts.map((o) => (
-                              <option key={o.id} value={o.id}>
-                                {o.name}
-                              </option>
-                            ))}
-                          </NativeSelectField>
-                        </NativeSelectRoot>
+                        <PondNativeSelect
+                          rootProps={{ size: "sm", minW: "10rem" }}
+                          fieldProps={{
+                            value: pantryPickId === "" ? "" : String(pantryPickId),
+                            onChange: (e) =>
+                              setPantryPickId(e.target.value ? Number(e.target.value) : ""),
+                          }}
+                        >
+                          <option value="">Pick…</option>
+                          {pantryOpts.map((o) => (
+                            <option key={o.id} value={o.id}>
+                              {o.name}
+                            </option>
+                          ))}
+                        </PondNativeSelect>
                         <Input
                           w="5rem"
                           type="number"
@@ -763,16 +763,16 @@ function PantryRowEditor({
       <Text fontSize={APP_TEXT_SIZES.helper} minW="8rem" fontWeight="medium">
         {row.ingredient.name}
       </Text>
-      <NativeSelectRoot size="sm">
-        <NativeSelectField
-          value={mode}
-          onChange={(e) => setMode(e.target.value as "count" | "simple")}
-          {...PANEL_FIELD_PROPS}
-        >
-          <option value="count">Count</option>
-          <option value="simple">Have / Don’t have</option>
-        </NativeSelectField>
-      </NativeSelectRoot>
+      <PondNativeSelect
+        rootProps={{ size: "sm" }}
+        fieldProps={{
+          value: mode,
+          onChange: (e) => setMode(e.target.value as "count" | "simple"),
+        }}
+      >
+        <option value="count">Count</option>
+        <option value="simple">Have / Don’t have</option>
+      </PondNativeSelect>
       {mode === "count" ? (
         <Input
           w="6rem"
@@ -783,23 +783,23 @@ function PantryRowEditor({
           {...PANEL_FIELD_PROPS}
         />
       ) : (
-        <NativeSelectRoot size="sm">
-          <NativeSelectField
-            value={row.simple_have === true ? "1" : row.simple_have === false ? "0" : ""}
-            onChange={(e) => {
+        <PondNativeSelect
+          rootProps={{ size: "sm" }}
+          fieldProps={{
+            value: row.simple_have === true ? "1" : row.simple_have === false ? "0" : "",
+            onChange: (e) => {
               const v = e.target.value;
               void onSave({
                 ingredient_id: row.ingredient.id,
                 simple_have: v === "1" ? true : v === "0" ? false : null,
               });
-            }}
-            {...PANEL_FIELD_PROPS}
-          >
-            <option value="">—</option>
-            <option value="1">Have</option>
-            <option value="0">Don’t have</option>
-          </NativeSelectField>
-        </NativeSelectRoot>
+            },
+          }}
+        >
+          <option value="">—</option>
+          <option value="1">Have</option>
+          <option value="0">Don’t have</option>
+        </PondNativeSelect>
       )}
       {mode === "count" ? (
         <PondButton

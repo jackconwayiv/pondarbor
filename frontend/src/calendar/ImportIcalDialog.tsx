@@ -1,8 +1,6 @@
 import {
   HStack,
   Input,
-  NativeSelectField,
-  NativeSelectRoot,
   Stack,
   Text,
 } from "@chakra-ui/react";
@@ -10,6 +8,7 @@ import { useEffect, useState } from "react";
 
 import { AppModal } from "../components/AppModal";
 import PondButton from "../PondButton";
+import PondNativeSelect from "../components/PondNativeSelect";
 import { APP_TEXT_SIZES, PANEL_FIELD_PROPS } from "../theme/typography";
 import type { CalendarColor, SourceCreatePayload } from "./types";
 
@@ -131,18 +130,19 @@ export default function ImportIcalDialog({ open, onOpenChange, onSubmit }: Props
           <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium">
             Color
           </Text>
-          <NativeSelectRoot maxW="260px">
-            <NativeSelectField
-              value={color}
-              onChange={(e) => setColor(e.target.value as CalendarColor)}
-            >
-              {COLOR_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </NativeSelectField>
-          </NativeSelectRoot>
+          <PondNativeSelect
+            rootProps={{ maxW: "260px" }}
+            fieldProps={{
+              value: color,
+              onChange: (e) => setColor(e.target.value as CalendarColor),
+            }}
+          >
+            {COLOR_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </PondNativeSelect>
         </Stack>
         {error ? (
           <Text color="nautical.solid" fontSize={APP_TEXT_SIZES.helper}>

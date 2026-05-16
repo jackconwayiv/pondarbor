@@ -56,6 +56,14 @@ export const PANEL_FIELD_PROPS = {
   ...PANEL_FORM_PLACEHOLDER_PROPS,
 } as const;
 
+/** Panel dropdowns: same chrome as inputs but distinct fill so selects read as controls, not text fields. */
+export const PANEL_SELECT_PROPS = {
+  ...PANEL_FIELD_PROPS,
+  bg: "gray.50",
+  cursor: "pointer",
+  pr: "8",
+} as const;
+
 /**
  * Main content tray (replaces the older `gray.100` shell). Default width is `5xl` site-wide; same
  * shell pattern as `ClosetPage` (Community Closet).

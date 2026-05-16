@@ -8,7 +8,7 @@ import {
   Tabs,
   Text,
 } from "@chakra-ui/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useParams } from "react-router";
 import { AchievementSummaryCard } from "../achievements/AchievementSummaryCard";
 import {
@@ -37,6 +37,9 @@ import {
 } from "../friends/api";
 import NotFoundPage from "../NotFoundPage";
 import PondButton from "../PondButton";
+import RouteLoadingFallback from "../RouteLoadingFallback";
+
+const PeoplePage = lazy(() => import("../people/PeoplePage"));
 import {
   fetchPublicQuotesByUser,
   fetchPublicQuotesByUserId,
@@ -180,7 +183,7 @@ export default function FriendProfilePage() {
   const [confirmUnfriend, setConfirmUnfriend] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
   const [profileTab, setProfileTab] = useState<
-    "friends" | "achievements" | "quotes" | "closet"
+    "friends" | "achievements" | "quotes" | "closet" | "people"
   >("achievements");
   const [reloadKey, setReloadKey] = useState(0);
   const unfriendBoxRef = useRef<HTMLDivElement | null>(null);
@@ -373,12 +376,13 @@ export default function FriendProfilePage() {
   const friendshipStatus = summary?.friendship_status ?? "none";
   const canManageFriendshipById = lookup.kind === "id";
   const leftmostVisibleTab = useMemo<
-    "friends" | "achievements" | "quotes" | "closet" | null
+    "friends" | "achievements" | "quotes" | "closet" | "people" | null
   >(() => {
     if (hasAchievements) return "achievements";
     if (canViewFullProfile) return "friends";
     if (hasQuotes) return "quotes";
     if (hasClosetTab) return "closet";
+    if (canViewFullProfile) return "people";
     return null;
   }, [canViewFullProfile, hasAchievements, hasQuotes, hasClosetTab]);
 
@@ -388,7 +392,8 @@ export default function FriendProfilePage() {
       (profileTab === "friends" && canViewFullProfile) ||
       (profileTab === "achievements" && hasAchievements) ||
       (profileTab === "quotes" && hasQuotes) ||
-      (profileTab === "closet" && hasClosetTab);
+      (profileTab === "closet" && hasClosetTab) ||
+      (profileTab === "people" && canViewFullProfile);
     if (!tabVisible) {
       setProfileTab(leftmostVisibleTab);
     }
@@ -944,7 +949,8 @@ export default function FriendProfilePage() {
                       | "friends"
                       | "achievements"
                       | "quotes"
-                      | "closet",
+                      | "closet"
+                      | "people",
                   )
                 }
                 variant="plain"
@@ -964,6 +970,14 @@ export default function FriendProfilePage() {
                   >
                     Friends
                   </Tabs.Trigger>
+                  {canViewFullProfile ? (
+                    <Tabs.Trigger
+                      value="people"
+                      {...APP_SHELL_TAB_TRIGGER_PROPS}
+                    >
+                      Family Tree
+                    </Tabs.Trigger>
+                  ) : null}
                   {hasQuotes ? (
                     <Tabs.Trigger
                       value="quotes"
@@ -1005,6 +1019,20 @@ export default function FriendProfilePage() {
                       </Stack>
                     </Tabs.Content>
                   ) : null}
+                {canViewFullProfile && profileSubjectUserId != null ? (
+                  <Tabs.Content value="people" p={{ base: "2", md: "2" }}>
+                    <Suspense fallback={<RouteLoadingFallback />}>
+                      <PeoplePage
+                        embed
+                        readOnly
+                        ownerUserId={profileSubjectUserId}
+                        ownerDisplayName={
+                          summary ? friendProfileHeading(summary) : undefined
+                        }
+                      />
+                    </Suspense>
+                  </Tabs.Content>
+                ) : null}
                 <Tabs.Content value="friends" p={{ base: "2", md: "2" }}>
                     <ApprovedFriendsListBlock
                       friends={theirFriends}

@@ -113,8 +113,10 @@ SLUG_MONTH_OF_MUSIC = "month_of_music"
 SLUG_MUSIC_LOVER = "music_lover"
 SLUG_MUSICALLY_MULTILOQUENT = "musically_multiloquent"
 SLUG_SCHEDULE_COORDINATOR = "schedule_coordinator"
+SLUG_FAMILIAL_ARBORIST = "familial_arborist"
 
 ARCHIVIST_MIN_QUOTES = 10
+FAMILIAL_ARBORIST_MIN_PEOPLE = 10
 TOWN_CRIER_MIN_PUBLIC = 10
 WHATIF_WIZ_MIN_PLAYERS = 3
 WHATIF_WARRIOR_MIN_SESSIONS = 5
@@ -181,6 +183,15 @@ def evaluate_pondclicker_achievements_for_user(user_id: int, state: dict) -> boo
         if _try_unlock(user_id, slug):
             any_new = True
     return any_new
+
+
+def evaluate_people_achievements_for_user(user_id: int) -> None:
+    """Call after people create / update / delete; unlocks at 10 active people (sticky)."""
+    from people.models import Person
+
+    n = Person.objects.filter(owner_user_id=user_id, deleted_at__isnull=True).count()
+    if n >= FAMILIAL_ARBORIST_MIN_PEOPLE:
+        _try_unlock(user_id, SLUG_FAMILIAL_ARBORIST)
 
 
 def evaluate_quote_achievements_for_user(user_id: int) -> None:

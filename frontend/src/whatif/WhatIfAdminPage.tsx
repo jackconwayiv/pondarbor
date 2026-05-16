@@ -3,8 +3,6 @@ import {
   Heading,
   HStack,
   Input,
-  NativeSelectField,
-  NativeSelectRoot,
   Stack,
   Tabs,
   Text,
@@ -18,6 +16,7 @@ import {
   validateWhatIfQuestionDraft,
 } from "../forms/validation";
 import PondButton from "../PondButton";
+import PondNativeSelect from "../components/PondNativeSelect";
 import {
   APP_SHELL_TAB_LIST_PROPS,
   APP_SHELL_TAB_TRIGGER_PROPS,
@@ -370,23 +369,21 @@ export default function WhatIfAdminPage() {
                     <Text fontSize="sm" color="gray.700">
                       List
                     </Text>
-                    <NativeSelectRoot>
-                      <NativeSelectField
-                        value={questionListFilter}
-                        onChange={(e) =>
+                    <PondNativeSelect
+                      fieldProps={{
+                        value: questionListFilter,
+                        onChange: (e) =>
                           setQuestionListFilter(
                             e.target.value as WhatIfQuestionListFilter,
-                          )
-                        }
-                        {...whatifInputProps}
-                      >
-                        {WHATIF_QUESTION_LIST_FILTERS.map((v) => (
-                          <option key={v} value={v}>
-                            {WHATIF_QUESTION_LIST_FILTER_LABELS[v]}
-                          </option>
-                        ))}
-                      </NativeSelectField>
-                    </NativeSelectRoot>
+                          ),
+                      }}
+                    >
+                      {WHATIF_QUESTION_LIST_FILTERS.map((v) => (
+                        <option key={v} value={v}>
+                          {WHATIF_QUESTION_LIST_FILTER_LABELS[v]}
+                        </option>
+                      ))}
+                    </PondNativeSelect>
                   </Stack>
                   <PondButton
                     type="button"

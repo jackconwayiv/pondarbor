@@ -93,6 +93,13 @@ const MEAL: AppNavItem = {
   blurb: "Meal plans and recipes.",
 };
 
+const FAMILY_TREE: AppNavItem = {
+  to: "/people",
+  emoji: "🌳",
+  label: "Family Tree",
+  blurb: "Your people and how they relate to you.",
+};
+
 const FRIENDS: AppNavItem = {
   to: "/profile?tab=friends",
   /** Friends tab on Profile. */
@@ -117,6 +124,7 @@ export const APP_HOME_APPS: AppNavItem[] = [
   QUOTES,
   ZODIAC,
   MEAL,
+  FAMILY_TREE,
   FRIENDS,
   PROFILE,
   ABOUT,
@@ -130,6 +138,7 @@ export const APP_DESKTOP_NAV: AppNavItem[] = [
   QUOTES,
   ZODIAC,
   MEAL,
+  FAMILY_TREE,
   FRIENDS,
   GAMES,
   ABOUT,

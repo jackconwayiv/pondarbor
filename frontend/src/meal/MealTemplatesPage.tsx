@@ -1,4 +1,5 @@
-import { Card, Heading, HStack, Input, NativeSelectField, NativeSelectRoot, Stack, Text } from "@chakra-ui/react";
+import { Card, Heading, HStack, Input, Stack, Text } from "@chakra-ui/react";
+import PondNativeSelect from "../components/PondNativeSelect";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link as RouterLink, Navigate } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
@@ -86,19 +87,19 @@ export default function MealTemplatesPage() {
                 minW="min(100%, 10rem)"
                 {...PANEL_FIELD_PROPS}
               />
-              <NativeSelectRoot size="sm" w={{ base: "100%", sm: "9rem" }} flexShrink={0}>
-                <NativeSelectField
-                  {...PANEL_FIELD_PROPS}
-                  value={String(slotsPerDay)}
-                  onChange={(e) => setSlotsPerDay(Number(e.target.value))}
-                >
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <option key={n} value={n}>
-                      {n} meal{n === 1 ? "" : "s"} / day
-                    </option>
-                  ))}
-                </NativeSelectField>
-              </NativeSelectRoot>
+              <PondNativeSelect
+                rootProps={{ size: "sm", w: { base: "100%", sm: "9rem" }, flexShrink: 0 }}
+                fieldProps={{
+                  value: String(slotsPerDay),
+                  onChange: (e) => setSlotsPerDay(Number(e.target.value)),
+                }}
+              >
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <option key={n} value={n}>
+                    {n} meal{n === 1 ? "" : "s"} / day
+                  </option>
+                ))}
+              </PondNativeSelect>
               <PondButton
                 colorPalette="lilypad"
                 flexShrink={0}

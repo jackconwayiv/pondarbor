@@ -14,6 +14,35 @@ export function isTreeFriend(person: PeoplePerson): boolean {
 /** Same generation as self when relation_core says so (bio links may be missing). */
 const SELF_PEER_RELATION_CORES = new Set(["brother", "sister"]);
 
+/** Generation offset from self when relation_core labels lack FK links. */
+export const RELATION_GENERATION_OFFSET: Record<string, number> = {
+  mother: -1,
+  father: -1,
+  brother: 0,
+  sister: 0,
+  cousin: 0,
+  spouse: 0,
+  partner: 0,
+  significant_other: 0,
+  aunt: -1,
+  uncle: -1,
+  grandpa: -2,
+  grandma: -2,
+  child: 1,
+  son: 1,
+  daughter: 1,
+  niece: 1,
+  nephew: 1,
+};
+
+/** Offset from self for relation_core; each `great` prefix shifts one generation older. */
+export function relationGenerationOffset(person: PeoplePerson): number | null {
+  const base = RELATION_GENERATION_OFFSET[person.relation_core];
+  if (base === undefined) return null;
+  const greatCount = person.relation_prefix_tokens.filter((t) => t === "great").length;
+  return base - greatCount;
+}
+
 function sharedBioParentIds(a: PeoplePerson, b: PeoplePerson): string[] {
   const bParents = new Set(
     [b.bio_mother_id, b.bio_father_id].filter((id): id is string => Boolean(id)),
@@ -21,6 +50,124 @@ function sharedBioParentIds(a: PeoplePerson, b: PeoplePerson): string[] {
   return [a.bio_mother_id, a.bio_father_id].filter(
     (id): id is string => id != null && id !== "" && bParents.has(id),
   );
+}
+
+function propagateParentChildRanks(
+  people: PeoplePerson[],
+  parentsOf: Map<string, string[]>,
+  childrenOf: Map<string, string[]>,
+  ranks: Map<string, number | null>,
+): void {
+  let changed = true;
+  let guard = 0;
+  while (changed && guard < people.length + 8) {
+    guard += 1;
+    changed = false;
+    for (const p of people) {
+      const r = ranks.get(p.id);
+      if (r == null) continue;
+      for (const par of parentsOf.get(p.id) ?? []) {
+        const nr = r - 1;
+        const cur = ranks.get(par);
+        if (cur == null || cur > nr) {
+          ranks.set(par, nr);
+          changed = true;
+        }
+      }
+      for (const ch of childrenOf.get(p.id) ?? []) {
+        const nr = r + 1;
+        const cur = ranks.get(ch);
+        if (cur == null || cur < nr) {
+          ranks.set(ch, nr);
+          changed = true;
+        }
+      }
+    }
+  }
+}
+
+function alignPartnerRanks(
+  partnerPairs: [string, string][],
+  byId: Map<string, PeoplePerson>,
+  ranks: Map<string, number | null>,
+): void {
+  let changed = true;
+  let guard = 0;
+  while (changed && guard < partnerPairs.length + 4) {
+    guard += 1;
+    changed = false;
+    for (const [a, b] of partnerPairs) {
+      if (!byId.has(a) || !byId.has(b)) continue;
+      const ra = ranks.get(a);
+      const rb = ranks.get(b);
+      if (ra == null && rb == null) continue;
+      const base = ra == null ? (rb as number) : rb == null ? ra : Math.min(ra, rb);
+      if (ranks.get(a) !== base || ranks.get(b) !== base) {
+        ranks.set(a, base);
+        ranks.set(b, base);
+        changed = true;
+      }
+    }
+  }
+}
+
+function alignSiblingPeerRanks(people: PeoplePerson[], self: PeoplePerson, ranks: Map<string, number | null>): void {
+  const selfRank = ranks.get(self.id);
+  if (selfRank == null) return;
+
+  let peerChanged = true;
+  let peerGuard = 0;
+  while (peerChanged && peerGuard < people.length + 4) {
+    peerGuard += 1;
+    peerChanged = false;
+    for (const p of people) {
+      if (p.id === self.id) continue;
+      const isPeer =
+        SELF_PEER_RELATION_CORES.has(p.relation_core) ||
+        sharedBioParentIds(p, self).length > 0;
+      if (!isPeer) continue;
+      const cur = ranks.get(p.id);
+      if (cur !== selfRank) {
+        ranks.set(p.id, selfRank);
+        peerChanged = true;
+      }
+    }
+    for (const p of people) {
+      const r = ranks.get(p.id);
+      if (r == null) continue;
+      for (const other of people) {
+        if (other.id === p.id) continue;
+        if (sharedBioParentIds(p, other).length === 0) continue;
+        const ro = ranks.get(other.id);
+        const align = ro == null ? r : Math.min(r, ro);
+        if (ranks.get(p.id) !== align) {
+          ranks.set(p.id, align);
+          peerChanged = true;
+        }
+        if (ro != null && ranks.get(other.id) !== align) {
+          ranks.set(other.id, align);
+          peerChanged = true;
+        }
+      }
+    }
+  }
+}
+
+function applyRelationCoreHints(
+  people: PeoplePerson[],
+  self: PeoplePerson,
+  ranks: Map<string, number | null>,
+): void {
+  const selfRank = ranks.get(self.id);
+  if (selfRank == null) return;
+
+  for (const p of people) {
+    if (p.id === self.id) continue;
+    if (ranks.get(p.id) != null) continue;
+    const offset = relationGenerationOffset(p);
+    if (offset == null) continue;
+    ranks.set(p.id, selfRank + offset);
+  }
 }
 
 /** Approximate generation rank: lower = older (drawn higher on page). */
@@ -59,86 +206,14 @@ export function computePersonRanks(
     row.person_b_id,
   ]);
 
-  let changed = true;
-  let guard = 0;
-  while (changed && guard < people.length + partnerships.length + 8) {
-    guard += 1;
-    changed = false;
-    for (const p of people) {
-      const r = ranks.get(p.id);
-      if (r == null) continue;
-      for (const par of parentsOf.get(p.id) ?? []) {
-        const nr = r - 1;
-        const cur = ranks.get(par);
-        if (cur == null || cur > nr) {
-          ranks.set(par, nr);
-          changed = true;
-        }
-      }
-      for (const ch of childrenOf.get(p.id) ?? []) {
-        const nr = r + 1;
-        const cur = ranks.get(ch);
-        if (cur == null || cur < nr) {
-          ranks.set(ch, nr);
-          changed = true;
-        }
-      }
-    }
-    for (const [a, b] of partnerPairs) {
-      if (!byId.has(a) || !byId.has(b)) continue;
-      const ra = ranks.get(a);
-      const rb = ranks.get(b);
-      if (ra == null && rb == null) continue;
-      const base = ra == null ? (rb as number) : rb == null ? ra : Math.min(ra, rb);
-      if (ranks.get(a) !== base || ranks.get(b) !== base) {
-        ranks.set(a, base);
-        ranks.set(b, base);
-        changed = true;
-      }
-    }
-  }
+  propagateParentChildRanks(people, parentsOf, childrenOf, ranks);
+  alignPartnerRanks(partnerPairs, byId, ranks);
 
-  // Siblings (shared bio parent) and brother/sister labels share self's generation.
   if (self) {
-    const selfRank = ranks.get(self.id);
-    if (selfRank != null) {
-      let peerChanged = true;
-      let peerGuard = 0;
-      while (peerChanged && peerGuard < people.length + 4) {
-        peerGuard += 1;
-        peerChanged = false;
-        for (const p of people) {
-          if (p.id === self.id) continue;
-          const isPeer =
-            SELF_PEER_RELATION_CORES.has(p.relation_core) ||
-            sharedBioParentIds(p, self).length > 0;
-          if (!isPeer) continue;
-          const cur = ranks.get(p.id);
-          if (cur !== selfRank) {
-            ranks.set(p.id, selfRank);
-            peerChanged = true;
-          }
-        }
-        for (const p of people) {
-          const r = ranks.get(p.id);
-          if (r == null) continue;
-          for (const other of people) {
-            if (other.id === p.id) continue;
-            if (sharedBioParentIds(p, other).length === 0) continue;
-            const ro = ranks.get(other.id);
-            const align = ro == null ? r : Math.min(r, ro);
-            if (ranks.get(p.id) !== align) {
-              ranks.set(p.id, align);
-              peerChanged = true;
-            }
-            if (ro != null && ranks.get(other.id) !== align) {
-              ranks.set(other.id, align);
-              peerChanged = true;
-            }
-          }
-        }
-      }
-    }
+    alignSiblingPeerRanks(people, self, ranks);
+    applyRelationCoreHints(people, self, ranks);
+    alignPartnerRanks(partnerPairs, byId, ranks);
+    alignSiblingPeerRanks(people, self, ranks);
   }
 
   // Pets sit one generation below the tree owner (same row as children).
@@ -153,8 +228,8 @@ export function computePersonRanks(
     }
   }
 
-  const assigned = people.map((p) => ranks.get(p.id)).filter((x): x is number => x != null);
-  const fallback = assigned.length ? Math.min(...assigned) : 0;
+  const selfRank = self ? (ranks.get(self.id) ?? 0) : 0;
+  const fallback = selfRank;
   const out = new Map<string, number>();
   for (const p of people) {
     const r = ranks.get(p.id);

@@ -4,6 +4,8 @@ import {
   clampPeopleTreePan,
   computePeopleTreeInitialPan,
   computePeopleTreePanBounds,
+  PEOPLE_TREE_PAN_BOTTOM_EXTRA,
+  PEOPLE_TREE_PAN_MARGIN,
 } from "./usePeopleTreePan";
 
 describe("people tree pan bounds", () => {
@@ -16,9 +18,9 @@ describe("people tree pan bounds", () => {
     expect(clampPeopleTreePan({ x: 0, y: 0 }, bounds)).toEqual({ x: 100, y: 75 });
   });
 
-  it("top-aligns tall content instead of vertically centering focus", () => {
-    const pan = computePeopleTreeInitialPan(400, 300, 900, 500, 450, 24, 40);
-    expect(pan.y).toBe(16);
+  it("centers focus vertically when content is taller than viewport", () => {
+    const pan = computePeopleTreeInitialPan(400, 300, 900, 500, 450, 200, 40, 0);
+    expect(pan.y).toBe(150 - 200);
     expect(pan.x).toBe(-250);
   });
 
@@ -34,5 +36,24 @@ describe("people tree pan bounds", () => {
       x: -540,
       y: 40,
     });
+  });
+
+  it("adds extra bottom scroll range via bottomExtra", () => {
+    const without = computePeopleTreePanBounds(400, 300, 900, 500, PEOPLE_TREE_PAN_MARGIN, 0);
+    const withExtra = computePeopleTreePanBounds(
+      400,
+      300,
+      900,
+      500,
+      PEOPLE_TREE_PAN_MARGIN,
+      PEOPLE_TREE_PAN_BOTTOM_EXTRA,
+    );
+    expect(withExtra.minY).toBe(without.minY - PEOPLE_TREE_PAN_BOTTOM_EXTRA);
+    expect(withExtra.maxY).toBe(without.maxY);
+
+    const panAtMin = clampPeopleTreePan({ x: 0, y: withExtra.minY }, withExtra);
+    expect(panAtMin.y).toBe(
+      300 - 500 - PEOPLE_TREE_PAN_MARGIN - PEOPLE_TREE_PAN_BOTTOM_EXTRA,
+    );
   });
 });

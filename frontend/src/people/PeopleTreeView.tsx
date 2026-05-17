@@ -10,11 +10,16 @@ import type { PeopleGraphBundle, PeoplePerson } from "./types";
 import { usePeopleTreeAnchors } from "./usePeopleTreeAnchors";
 import {
   computePeopleTreePanBounds,
-  contentTopFromAnchors,
+  contentBottomFromAnchors,
+  PEOPLE_TREE_PAN_BOTTOM_EXTRA,
+  PEOPLE_TREE_PAN_MARGIN,
   usePeopleTreePan,
 } from "./usePeopleTreePan";
 
-const RANK_GUTTER_MIN_H = { base: "2.25rem", md: "2.75rem" } as const;
+const RANK_GUTTER_MIN_H = { base: "3.5rem", md: "4rem" } as const;
+/** Guard when anchor bottoms lag container height measurement. */
+const BOTTOM_CANVAS_PAD_PX = 32;
+const BOTTOM_CANVAS_SPACER = { base: "5rem", md: "4rem" } as const;
 const CARD_WIDTH = "11rem";
 /** Legend strip + outer chrome above the pannable area. */
 const LEGEND_BAND_PX = 36;
@@ -98,15 +103,25 @@ export default function PeopleTreeView({
   const panAreaRef = useRef<HTMLDivElement | null>(null);
   const [panAreaSize, setPanAreaSize] = useState({ w: 0, h: 0 });
 
+  const effectiveContentH = useMemo(() => {
+    if (!layout) return 0;
+    const anchorBottom = contentBottomFromAnchors(layout.anchors);
+    return Math.max(layout.height, anchorBottom + BOTTOM_CANVAS_PAD_PX);
+  }, [layout]);
+
   const panBounds = useMemo(() => {
-    if (!layout || panAreaSize.w <= 0 || panAreaSize.h <= 0) return null;
+    if (!layout || panAreaSize.w <= 0 || panAreaSize.h <= 0 || effectiveContentH <= 0) {
+      return null;
+    }
     return computePeopleTreePanBounds(
       panAreaSize.w,
       panAreaSize.h,
       layout.width,
-      layout.height,
+      effectiveContentH,
+      PEOPLE_TREE_PAN_MARGIN,
+      PEOPLE_TREE_PAN_BOTTOM_EXTRA,
     );
-  }, [layout?.width, layout?.height, panAreaSize.h, panAreaSize.w]);
+  }, [layout?.width, effectiveContentH, panAreaSize.h, panAreaSize.w]);
 
   const viewportHeight = useMemo(() => {
     const legendBand = personCount > 0 ? LEGEND_BAND_PX : 0;
@@ -159,17 +174,17 @@ export default function PeopleTreeView({
     const self = bundle.people.find((p) => p.is_self);
     const anchor = self ? layout.anchors.get(self.id) : null;
     const focusX = anchor?.center.x ?? layout.width / 2;
-    const contentTopY = contentTopFromAnchors(layout.anchors);
+    const focusY = anchor?.center.y ?? layout.height / 2;
     centerOn(
       panAreaSize.w,
       panAreaSize.h,
       layout.width,
-      layout.height,
+      effectiveContentH,
       focusX,
-      contentTopY,
+      focusY,
     );
     didCenterRef.current = true;
-  }, [layout, bundle.people.length, centerOn, panAreaSize.h, panAreaSize.w]);
+  }, [layout, bundle.people.length, centerOn, effectiveContentH, panAreaSize.h, panAreaSize.w]);
 
   return (
     <Box
@@ -220,7 +235,7 @@ export default function PeopleTreeView({
           left={0}
           top={0}
           w="max-content"
-          py="2"
+          py={{ base: 4, md: 5 }}
           px="3"
             style={{
               transform: `translate(${pan.x}px, ${pan.y}px)`,
@@ -273,6 +288,7 @@ export default function PeopleTreeView({
                   />
                 </Box>
               ) : null}
+              <Box aria-hidden minH={BOTTOM_CANVAS_SPACER} w="100%" flexShrink={0} />
             </Stack>
         </Box>
       </Box>

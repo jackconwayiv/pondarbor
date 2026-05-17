@@ -31,14 +31,18 @@ export type PeopleTreePanBounds = {
 /** Keep at least `margin` px of padding between graph edges and the viewport. */
 export const PEOPLE_TREE_PAN_MARGIN = 40;
 
+/** Extra scroll range below measured content (≈ one generation row on mobile). */
+export const PEOPLE_TREE_PAN_BOTTOM_EXTRA = 160;
+
 export function computePeopleTreePanBounds(
   viewportW: number,
   viewportH: number,
   contentW: number,
   contentH: number,
   margin = PEOPLE_TREE_PAN_MARGIN,
+  bottomExtra = 0,
 ): PeopleTreePanBounds {
-  const axis = (viewport: number, content: number) => {
+  const axisX = (viewport: number, content: number) => {
     if (content <= viewport) {
       const centered = (viewport - content) / 2;
       return { min: centered, max: centered };
@@ -48,9 +52,18 @@ export function computePeopleTreePanBounds(
       max: margin,
     };
   };
-  const x = axis(viewportW, contentW);
-  const y = axis(viewportH, contentH);
-  return { minX: x.min, maxX: x.max, minY: y.min, maxY: y.max };
+  const x = axisX(viewportW, contentW);
+  let yMin: number;
+  let yMax: number;
+  if (contentH <= viewportH) {
+    const centered = (viewportH - contentH) / 2;
+    yMin = centered;
+    yMax = centered;
+  } else {
+    yMin = viewportH - contentH - margin - bottomExtra;
+    yMax = margin;
+  }
+  return { minX: x.min, maxX: x.max, minY: yMin, maxY: yMax };
 }
 
 export function clampPeopleTreePan(
@@ -63,19 +76,28 @@ export function clampPeopleTreePan(
   };
 }
 
-/** Initial pan: center focus horizontally; align graph top when content is scrollable. */
+/** Initial pan: center focus horizontally; vertically center self when scrollable. */
 export function computePeopleTreeInitialPan(
   viewportW: number,
   viewportH: number,
   contentW: number,
   contentH: number,
   focusX: number,
-  contentTopY: number,
+  focusY: number,
   margin = PEOPLE_TREE_PAN_MARGIN,
+  bottomExtra = 0,
 ): PeopleTreePan {
-  const bounds = computePeopleTreePanBounds(viewportW, viewportH, contentW, contentH, margin);
+  const bounds = computePeopleTreePanBounds(
+    viewportW,
+    viewportH,
+    contentW,
+    contentH,
+    margin,
+    bottomExtra,
+  );
   const x = viewportW / 2 - focusX;
-  const y = contentH > viewportH ? margin - contentTopY : viewportH / 2 - contentH / 2;
+  const y =
+    contentH > viewportH ? viewportH / 2 - focusY : viewportH / 2 - contentH / 2;
   return clampPeopleTreePan({ x, y }, bounds);
 }
 
@@ -89,6 +111,14 @@ export function contentTopFromAnchors(anchors: Map<string, PersonAnchor>): numbe
     }
   }
   return minY;
+}
+
+export function contentBottomFromAnchors(anchors: Map<string, PersonAnchor>): number {
+  let maxY = 0;
+  for (const anchor of anchors.values()) {
+    if (anchor.bottom.y > maxY) maxY = anchor.bottom.y;
+  }
+  return maxY;
 }
 
 function isPanBlockedTarget(target: EventTarget | null): boolean {
@@ -182,7 +212,7 @@ export function usePeopleTreePan(bounds: PeopleTreePanBounds | null) {
       contentW: number,
       contentH: number,
       focusX: number,
-      contentTopY: number,
+      focusY: number,
     ) => {
       setPanBounded(
         computePeopleTreeInitialPan(
@@ -191,7 +221,9 @@ export function usePeopleTreePan(bounds: PeopleTreePanBounds | null) {
           contentW,
           contentH,
           focusX,
-          contentTopY,
+          focusY,
+          PEOPLE_TREE_PAN_MARGIN,
+          PEOPLE_TREE_PAN_BOTTOM_EXTRA,
         ),
       );
     },

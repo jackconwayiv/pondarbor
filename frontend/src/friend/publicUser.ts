@@ -20,11 +20,15 @@ function apiBase(): string {
   return import.meta.env.VITE_API_BASE_URL ?? "";
 }
 
+/** Display name for headings (display_name, else nickname). */
+export function friendDisplayName(summary: PublicUserSummary): string {
+  const raw = (summary.display_name ?? summary.nickname).trim();
+  return raw.length > 0 ? raw : "User";
+}
+
 /** Heading line: "{name}'s profile" using display name, or email local-part if unset. */
 export function friendProfileHeading(summary: PublicUserSummary): string {
-  const raw = (summary.display_name ?? summary.nickname).trim();
-  const name = raw.length > 0 ? raw : "User";
-  return `${name}'s profile`;
+  return `${friendDisplayName(summary)}'s profile`;
 }
 
 function optionalBearerHeaders(accessToken?: string | null): HeadersInit {

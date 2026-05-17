@@ -4,8 +4,11 @@ import {
   clampPeopleTreePan,
   computePeopleTreeInitialPan,
   computePeopleTreePanBounds,
+  panForScaleChange,
   PEOPLE_TREE_PAN_BOTTOM_EXTRA,
   PEOPLE_TREE_PAN_MARGIN,
+  PEOPLE_TREE_SCALE_MAX,
+  PEOPLE_TREE_SCALE_MIN,
 } from "./usePeopleTreePan";
 
 describe("people tree pan bounds", () => {
@@ -19,9 +22,10 @@ describe("people tree pan bounds", () => {
   });
 
   it("centers focus vertically when content is taller than viewport", () => {
-    const pan = computePeopleTreeInitialPan(400, 300, 900, 500, 450, 200, 40, 0);
-    expect(pan.y).toBe(150 - 200);
-    expect(pan.x).toBe(-250);
+    const scale = 1;
+    const pan = computePeopleTreeInitialPan(400, 300, 900, 500, 450, 200, scale, 40, 0);
+    expect(pan.y).toBe(150 - 200 * scale);
+    expect(pan.x).toBe(200 - 450 * scale);
   });
 
   it("limits pan when content is larger than the viewport", () => {
@@ -55,5 +59,32 @@ describe("people tree pan bounds", () => {
     expect(panAtMin.y).toBe(
       300 - 500 - PEOPLE_TREE_PAN_MARGIN - PEOPLE_TREE_PAN_BOTTOM_EXTRA,
     );
+  });
+
+  it("expands bounds when content is scaled up", () => {
+    const at1 = computePeopleTreePanBounds(400, 300, 500, 400, 40, 0);
+    const at2 = computePeopleTreePanBounds(400, 300, 1000, 800, 40, 0);
+    expect(at2.minX).toBeLessThan(at1.minX);
+    expect(at2.minY).toBeLessThan(at1.minY);
+  });
+});
+
+describe("panForScaleChange", () => {
+  it("keeps focal content point fixed when zooming in", () => {
+    const pan = { x: 10, y: 20 };
+    const focal = { x: 200, y: 150 };
+    const oldScale = 1;
+    const newScale = 2;
+    const next = panForScaleChange(pan, oldScale, newScale, focal.x, focal.y);
+    const contentX = (focal.x - pan.x) / oldScale;
+    const contentY = (focal.y - pan.y) / oldScale;
+    expect(next.x + contentX * newScale).toBeCloseTo(focal.x);
+    expect(next.y + contentY * newScale).toBeCloseTo(focal.y);
+  });
+});
+
+describe("scale limits", () => {
+  it("documents zoom range", () => {
+    expect(PEOPLE_TREE_SCALE_MIN).toBeLessThan(PEOPLE_TREE_SCALE_MAX);
   });
 });

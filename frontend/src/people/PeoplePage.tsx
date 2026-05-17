@@ -355,9 +355,6 @@ export default function PeoplePage({
                 </PondButton>
               ) : null}
             </HStack>
-            <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg.muted">
-              {pageIntro}
-            </Text>
           </Stack>
         ) : (
           <Box {...PANEL_ENTRY_CARD_PROPS}>
@@ -434,6 +431,7 @@ export default function PeoplePage({
             friendRow={treeRows.friendRow}
             expandedId={expandedId}
             readOnly={readOnly}
+            showLegend={!embed}
             onToggle={(personId) => {
               setExpandedId(expandedId === personId ? null : personId);
             }}

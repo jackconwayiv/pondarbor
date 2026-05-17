@@ -67,6 +67,7 @@ import {
 import {
   fetchPublicUserSummaryByEmail,
   fetchPublicUserSummaryById,
+  friendDisplayName,
   friendProfileHeading,
   type PublicUserSummary,
 } from "./publicUser";
@@ -1027,7 +1028,7 @@ export default function FriendProfilePage() {
                         readOnly
                         ownerUserId={profileSubjectUserId}
                         ownerDisplayName={
-                          summary ? friendProfileHeading(summary) : undefined
+                          summary ? friendDisplayName(summary) : undefined
                         }
                       />
                     </Suspense>

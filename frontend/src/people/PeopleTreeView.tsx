@@ -1,5 +1,6 @@
-import { Box, Flex, Separator, Stack, Text } from "@chakra-ui/react";
+import { Box, Button, Flex, HStack, Separator, Stack, Text } from "@chakra-ui/react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { FaMagnifyingGlassMinus, FaMagnifyingGlassPlus } from "react-icons/fa6";
 
 import { APP_TEXT_SIZES } from "../theme/typography";
 import { PersonAnchorSlot } from "./PersonAnchorSlot";
@@ -8,13 +9,7 @@ import PeopleTreeConnectors from "./PeopleTreeConnectors";
 import { computeTreeEdges } from "./peopleTreeEdges";
 import type { PeopleGraphBundle, PeoplePerson } from "./types";
 import { usePeopleTreeAnchors } from "./usePeopleTreeAnchors";
-import {
-  computePeopleTreePanBounds,
-  contentBottomFromAnchors,
-  PEOPLE_TREE_PAN_BOTTOM_EXTRA,
-  PEOPLE_TREE_PAN_MARGIN,
-  usePeopleTreePan,
-} from "./usePeopleTreePan";
+import { contentBottomFromAnchors, usePeopleTreePan } from "./usePeopleTreePan";
 
 const RANK_GUTTER_MIN_H = { base: "3.5rem", md: "4rem" } as const;
 /** Guard when anchor bottoms lag container height measurement. */
@@ -37,8 +32,8 @@ const VIEWPORT_MIN_HEIGHT = `${VIEWPORT_TARGET_PX}px`;
 
 export function peopleTreeLegend(hasRelationshipEdges: boolean): string {
   return hasRelationshipEdges
-    ? "Drag background to pan."
-    : "Set parents or partners in Edit. Drag background to pan.";
+    ? "Pinch or use +/− to zoom; drag background to pan."
+    : "Set parents or partners in Edit. Pinch or use +/− to zoom; drag to pan.";
 }
 
 export type PeopleTreeViewProps = {
@@ -47,6 +42,8 @@ export type PeopleTreeViewProps = {
   friendRow?: PeoplePerson[];
   expandedId: string | null;
   readOnly: boolean;
+  /** When false, omit the drag hint above the canvas (e.g. friend profile embed). */
+  showLegend?: boolean;
   onToggle: (personId: string) => void;
   onEdit: (person: PeoplePerson) => void;
 };
@@ -94,6 +91,7 @@ export default function PeopleTreeView({
   friendRow = [],
   expandedId,
   readOnly,
+  showLegend = true,
   onToggle,
   onEdit,
 }: PeopleTreeViewProps) {
@@ -109,19 +107,7 @@ export default function PeopleTreeView({
     return Math.max(layout.height, anchorBottom + BOTTOM_CANVAS_PAD_PX);
   }, [layout]);
 
-  const panBounds = useMemo(() => {
-    if (!layout || panAreaSize.w <= 0 || panAreaSize.h <= 0 || effectiveContentH <= 0) {
-      return null;
-    }
-    return computePeopleTreePanBounds(
-      panAreaSize.w,
-      panAreaSize.h,
-      layout.width,
-      effectiveContentH,
-      PEOPLE_TREE_PAN_MARGIN,
-      PEOPLE_TREE_PAN_BOTTOM_EXTRA,
-    );
-  }, [layout?.width, effectiveContentH, panAreaSize.h, panAreaSize.w]);
+  const contentW = layout?.width ?? 0;
 
   const viewportHeight = useMemo(() => {
     const legendBand = personCount > 0 ? LEGEND_BAND_PX : 0;
@@ -132,13 +118,24 @@ export default function PeopleTreeView({
   }, [layout?.height, personCount]);
   const {
     pan,
+    scale,
     dragging,
+    canZoomIn,
+    canZoomOut,
+    zoomIn,
+    zoomOut,
     onPointerDown,
     onPointerMove,
     onPointerUp,
     onPointerCancel,
     centerOn,
-  } = usePeopleTreePan(panBounds);
+  } = usePeopleTreePan({
+    viewportW: panAreaSize.w,
+    viewportH: panAreaSize.h,
+    contentW,
+    contentH: effectiveContentH,
+    panAreaRef,
+  });
   const didCenterRef = useRef(false);
   const edges = useMemo(() => computeTreeEdges(bundle), [bundle]);
 
@@ -175,16 +172,9 @@ export default function PeopleTreeView({
     const anchor = self ? layout.anchors.get(self.id) : null;
     const focusX = anchor?.center.x ?? layout.width / 2;
     const focusY = anchor?.center.y ?? layout.height / 2;
-    centerOn(
-      panAreaSize.w,
-      panAreaSize.h,
-      layout.width,
-      effectiveContentH,
-      focusX,
-      focusY,
-    );
+    centerOn(panAreaSize.w, panAreaSize.h, contentW, effectiveContentH, focusX, focusY);
     didCenterRef.current = true;
-  }, [layout, bundle.people.length, centerOn, effectiveContentH, panAreaSize.h, panAreaSize.w]);
+  }, [layout, bundle.people.length, centerOn, contentW, effectiveContentH, panAreaSize.h, panAreaSize.w]);
 
   return (
     <Box
@@ -200,7 +190,7 @@ export default function PeopleTreeView({
       h={viewportHeight}
       minH={VIEWPORT_MIN_HEIGHT}
     >
-      {personCount > 0 ? (
+      {showLegend && personCount > 0 ? (
         <Text
           px="2"
           pt="1.5"
@@ -229,6 +219,54 @@ export default function PeopleTreeView({
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
       >
+        {personCount > 0 ? (
+          <HStack
+            data-people-tree-zoom=""
+            position="absolute"
+            top="2"
+            right="2"
+            zIndex={2}
+            gap="1"
+            pointerEvents="auto"
+          >
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              colorPalette="gray"
+              aria-label="Zoom out"
+              disabled={!canZoomOut}
+              px="2"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                zoomOut();
+              }}
+            >
+              <Box as="span" display="block" lineHeight="0" color="fg" aria-hidden>
+                <FaMagnifyingGlassMinus size={16} />
+              </Box>
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              colorPalette="gray"
+              aria-label="Zoom in"
+              disabled={!canZoomIn}
+              px="2"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                zoomIn();
+              }}
+            >
+              <Box as="span" display="block" lineHeight="0" color="fg" aria-hidden>
+                <FaMagnifyingGlassPlus size={16} />
+              </Box>
+            </Button>
+          </HStack>
+        ) : null}
         <Box
           ref={containerRef}
           position="absolute"
@@ -237,11 +275,12 @@ export default function PeopleTreeView({
           w="max-content"
           py={{ base: 4, md: 5 }}
           px="3"
-            style={{
-              transform: `translate(${pan.x}px, ${pan.y}px)`,
-              willChange: dragging ? "transform" : undefined,
-            }}
-          >
+          style={{
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
+            transformOrigin: "0 0",
+            willChange: dragging ? "transform" : undefined,
+          }}
+        >
             {layout && layout.width > 0 && layout.height > 0 && layout.anchors.size > 0 ? (
               <PeopleTreeConnectors layout={layout} edges={edges} />
             ) : null}

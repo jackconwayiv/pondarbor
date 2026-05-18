@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { EstatesGameState } from "./api";
+import type { EstatesGameState, EstatesRoundState } from "./api";
 import {
   mergeOptimisticPlacement,
   serverHasPendingPlacement,
@@ -10,11 +10,11 @@ import {
 function minimalGame(
   overrides: Partial<EstatesGameState> & {
     hand?: Array<Record<string, unknown>>;
-    placements?: Record<string, Record<string, unknown>>;
+    placements?: EstatesRoundState["placements_by_zone"];
   } = {},
 ): EstatesGameState {
   const hand = overrides.hand ?? [{ card_id: "c1", suit: "peasant" }];
-  const placements = overrides.placements ?? {};
+  const placements: EstatesRoundState["placements_by_zone"] = overrides.placements ?? {};
   return {
     id: "g1",
     status: "active",

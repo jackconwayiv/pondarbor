@@ -22,7 +22,7 @@ ALLOW_USER_HARD_DELETE = os.getenv("ALLOW_USER_HARD_DELETE", "").lower() in ("tr
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-insecure-secret-key")
 DEBUG = os.getenv("DEBUG", "True").lower() == "true"
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("DATABASE_PRIVATE_URL")
 
 if DATABASE_URL:
     DATABASES = {"default": dj_database_url.parse(DATABASE_URL, conn_max_age=600)}

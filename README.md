@@ -16,7 +16,15 @@ Processes: `web -> bash run.sh` and `release -> bash release.sh`
 
 - **Release** process must stay enabled and run **`bash release.sh`** (or equivalent) on every deploy so `collectstatic` runs (admin static + Whitenoise manifest) and **`manage.py migrate`** runs against production Postgres.
 - **`DATABASE_URL`** (and related env) must be the **same** for **`web`** and **`release`**; if they diverge, you can get “migrations applied” in release while `web` hits an empty or different DB.
+- Appliku may expose the internal Postgres URL as **`DATABASE_PRIVATE_URL`** only. Django and `release.sh` accept either name (`DATABASE_URL` wins if both are set). Prefer setting **`DATABASE_URL`** explicitly in Environment Variables (copy the private URL when the DB is on the same server).
 - **App logs**: production uses `LOGGING` in `backend/config/settings.py` so `500` tracebacks show up in Gunicorn logs.
+
+**Release fails with “DATABASE_URL is not set”**
+
+1. Application → **Environment Variables**: confirm **`DATABASE_URL`** or **`DATABASE_PRIVATE_URL`** is present (not empty).
+2. Confirm the **release** process command is **`bash release.sh`** (image path: `/code/release.sh`).
+3. On a one-off container (**Run Command**), run `env | grep -i database` and confirm at least one URL variable is set.
+4. Redeploy after fixing env; release should log Django applying migrations (e.g. `estates`).
 
 **CDN / reverse proxy (SPA)**
 

@@ -7,6 +7,7 @@ import { RouterProvider } from "react-router";
 import { AchievementUnlockListener } from "./achievements/AchievementUnlockListener";
 import { AchievementToaster } from "./achievements/achievementToaster";
 import { AppSessionProvider } from "./auth/AppSessionProvider";
+import { getPondarborPublicConfig } from "./auth/publicConfig";
 import { safeAuthReturnTo } from "./auth/safeAuthReturnTo";
 import "@fontsource/caprasimo/400.css";
 import "@fontsource/spinnaker/400.css";
@@ -19,14 +20,16 @@ void import("./instrument");
 
 installResumeRepaintNudge();
 
+const publicConfig = getPondarborPublicConfig();
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <Auth0Provider
-      domain={import.meta.env.VITE_AUTH0_DOMAIN!}
-      clientId={import.meta.env.VITE_AUTH0_CLIENT_ID!}
+      domain={publicConfig.auth0Domain}
+      clientId={publicConfig.auth0ClientId}
       authorizationParams={{
         redirect_uri: window.location.origin,
-        audience: import.meta.env.VITE_AUTH0_API_AUDIENCE,
+        audience: publicConfig.auth0ApiAudience ?? undefined,
         // Required for OIDC: without `openid`, sessions after redirect are incomplete.
         scope: "openid profile email",
       }}

@@ -21,6 +21,12 @@ build_settings:
       value: "false"
     - name: SECRET_KEY
       source: manual
+    - name: VITE_AUTH0_DOMAIN
+      source: manual
+    - name: VITE_AUTH0_CLIENT_ID
+      source: manual
+    - name: VITE_AUTH0_API_AUDIENCE
+      source: manual
 
 services:
   web:

@@ -20,6 +20,7 @@ import {
   auth0LoginAuthorizationParams,
   auth0LoginWithReturnTo,
 } from "./auth0LoginParams";
+import { auth0ApiAudience } from "./publicConfig";
 
 type AppSessionProviderProps = {
   children: ReactNode;
@@ -187,7 +188,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       try {
         token = await getAccessTokenSilently({
           authorizationParams: {
-            audience: import.meta.env.VITE_AUTH0_API_AUDIENCE,
+            audience: auth0ApiAudience(),
           },
         });
       } catch (err: unknown) {
@@ -249,7 +250,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     try {
       return await getAccessTokenSilently({
         authorizationParams: {
-          audience: import.meta.env.VITE_AUTH0_API_AUDIENCE,
+          audience: auth0ApiAudience(),
         },
       });
     } catch (err: unknown) {
@@ -362,7 +363,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       try {
         token = await getAccessTokenSilently({
           authorizationParams: {
-            audience: import.meta.env.VITE_AUTH0_API_AUDIENCE,
+            audience: auth0ApiAudience(),
           },
         });
       } catch (err: unknown) {

@@ -24,6 +24,7 @@ Do **not** set a separate Appliku **build command** for `npm ci` / `npm run buil
 - Appliku may expose the internal Postgres URL as **`DATABASE_PRIVATE_URL`** only. Django and `release.sh` accept either name (`DATABASE_URL` wins if both are set). Prefer setting **`DATABASE_URL`** explicitly in Environment Variables (copy the private URL when the DB is on the same server).
 - Set **`REDIS_URL`** (Appliku Redis addon or manual) so Django Channels uses Redis instead of an in-memory layer (better for WebSockets under load).
 - Set **`DEBUG=false`** in production.
+- **Auth0 login** (Dockerfile deploy): set **`VITE_AUTH0_DOMAIN`**, **`VITE_AUTH0_CLIENT_ID`**, and **`VITE_AUTH0_API_AUDIENCE`** in Environment Variables (or matching `AUTH0_DOMAIN` / `AUTH0_API_AUDIENCE` plus client id). Django injects these into the HTML shell at request time — they are not baked in during `docker build`.
 - **App logs**: production uses `LOGGING` in `backend/config/settings.py` so `500` tracebacks show up in the web process logs.
 
 **RAM / disk diagnostics (on the server)**

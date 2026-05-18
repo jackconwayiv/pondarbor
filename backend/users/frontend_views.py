@@ -1,5 +1,6 @@
 import json
 
+from config.spa_public_config import get_spa_public_config
 from django.conf import settings
 from django.contrib.staticfiles.storage import staticfiles_storage
 from django.http import Http404, HttpResponseRedirect
@@ -52,6 +53,7 @@ def spa_index(request, route=None):
         request,
         "index.html",
         {
+            "spa_public_config": get_spa_public_config(),
             "vite_js": vite_js,
             "vite_css": vite_css,
             "favicon_href": _built_public_asset_url("favicon.svg"),

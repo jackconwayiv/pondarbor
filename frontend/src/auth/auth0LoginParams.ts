@@ -1,18 +1,16 @@
 import type { AuthorizationParams, RedirectLoginOptions } from "@auth0/auth0-react";
 
+import { auth0ApiAudience, auth0SlackConnectionName as slackConnection } from "./publicConfig";
 import { safeAuthReturnTo } from "./safeAuthReturnTo";
 
 const base = (): Pick<AuthorizationParams, "audience" | "scope"> => ({
-  audience: import.meta.env.VITE_AUTH0_API_AUDIENCE,
+  audience: auth0ApiAudience(),
   scope: "openid profile email",
 });
 
 /** Auth0 social connection name for Slack (Authentication → Social → Slack). */
 export function auth0SlackConnectionName(): string | undefined {
-  const raw = import.meta.env.VITE_AUTH0_SLACK_CONNECTION;
-  if (typeof raw !== "string") return undefined;
-  const t = raw.trim();
-  return t || undefined;
+  return slackConnection();
 }
 
 /**

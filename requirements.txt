@@ -5,7 +5,6 @@ channels-redis>=4.0
 asgiref>=3.8
 djangorestframework
 django-cors-headers
-gunicorn
 python-dotenv
 dj-database-url
 whitenoise

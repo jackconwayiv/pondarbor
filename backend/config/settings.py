@@ -25,7 +25,9 @@ DEBUG = os.getenv("DEBUG", "True").lower() == "true"
 DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("DATABASE_PRIVATE_URL")
 
 if DATABASE_URL:
-    DATABASES = {"default": dj_database_url.parse(DATABASE_URL, conn_max_age=600)}
+    _conn_max_age_raw = os.getenv("DATABASE_CONN_MAX_AGE", "600").strip()
+    _conn_max_age = int(_conn_max_age_raw) if _conn_max_age_raw.isdigit() else 600
+    DATABASES = {"default": dj_database_url.parse(DATABASE_URL, conn_max_age=_conn_max_age)}
 else:
     DATABASES = {
         "default": {
@@ -344,7 +346,7 @@ QFF_ROOM_BROADCAST_RETENTION_SECONDS = int(
     os.getenv("QFF_ROOM_BROADCAST_RETENTION_SECONDS", "5")
 )
 
-# Logs go to stderr so Gunicorn / Appliku "App Logs" shows tracebacks for 500s.
+# Logs go to stderr so Daphne / Appliku "App Logs" shows tracebacks for 500s.
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,

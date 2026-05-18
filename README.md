@@ -6,18 +6,33 @@ Run locally with Docker Compose: `docker compose up --build`
 Frontend: `http://localhost:5173` • Backend: `http://localhost:8000` • Health: `/api/v1/users/health/` (legacy `/users/health/` still mounted)
 
 ## Deploy
-Appliku deploys this as a **single app**.
-Build command: `cd frontend && npm ci && npm run build`
-Processes: `web -> bash run.sh` and `release -> bash release.sh`
+Appliku deploys this as a **single app** using the root **`Dockerfile`** (multi-stage: builds frontend, installs Python deps, runs Daphne).
 
-`release.sh` and `run.sh` resolve paths from the script location so migrations and Gunicorn always use **`backend/`** even when the host cwd differs (e.g. Appliku one-off vs web).
+Repo config: [`appliku.yml`](appliku.yml) — import via App → **YAML Config** (must be committed and pushed; does not provision Postgres/Redis — keep existing addon URLs in Environment Variables).
+
+Processes: **`web` → `bash run.sh`** (Daphne ASGI) and **`release` → `bash release.sh`**.
+
+Do **not** set a separate Appliku **build command** for `npm ci` / `npm run build`; the Dockerfile already builds the frontend. A duplicate build wastes RAM during deploy and can leave stray `frontend/node_modules` on disk.
+
+`release.sh` and `run.sh` resolve paths from the script location so migrations and the web process always use **`backend/`** even when the host cwd differs (e.g. Appliku one-off vs web).
 
 **Check in Appliku**
 
-- **Release** process must stay enabled and run **`bash release.sh`** (or equivalent) on every deploy so `collectstatic` runs (admin static + Whitenoise manifest) and **`manage.py migrate`** runs against production Postgres.
+- **Build** → `build_image`: **`dockerfile`**, `dockerfile_path`: **`Dockerfile`**, **build command empty** (or removed).
+- **Release** process must stay enabled and run **`bash release.sh`** on every deploy so `collectstatic` runs (admin static + Whitenoise manifest) and **`manage.py migrate`** runs against production Postgres.
 - **`DATABASE_URL`** (and related env) must be the **same** for **`web`** and **`release`**; if they diverge, you can get “migrations applied” in release while `web` hits an empty or different DB.
 - Appliku may expose the internal Postgres URL as **`DATABASE_PRIVATE_URL`** only. Django and `release.sh` accept either name (`DATABASE_URL` wins if both are set). Prefer setting **`DATABASE_URL`** explicitly in Environment Variables (copy the private URL when the DB is on the same server).
-- **App logs**: production uses `LOGGING` in `backend/config/settings.py` so `500` tracebacks show up in Gunicorn logs.
+- Set **`REDIS_URL`** (Appliku Redis addon or manual) so Django Channels uses Redis instead of an in-memory layer (better for WebSockets under load).
+- Set **`DEBUG=false`** in production.
+- **App logs**: production uses `LOGGING` in `backend/config/settings.py` so `500` tracebacks show up in the web process logs.
+
+**RAM / disk diagnostics (on the server)**
+
+```bash
+bash scripts/appliku-diagnostics.sh
+```
+
+If disk is tight after deploys: `docker image prune -f` and `docker builder prune -f` (reclaims old image layers; safe during a maintenance window).
 
 **Release fails with “DATABASE_URL is not set”**
 

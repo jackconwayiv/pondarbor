@@ -1,14 +1,52 @@
 .git
 .gitignore
-node_modules
-frontend/node_modules
+.github
+.cursor
+
+# Python
+.venv
 backend/.venv
+backend/.vent
 __pycache__
+**/__pycache__
 *.pyc
 *.pyo
 *.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+
+# Local DB / generated
+*.sqlite3
+db.sqlite3
+backend/db.sqlite3
 backend/staticfiles
 backend/media
+
+# Node (frontend built inside Docker; do not send host node_modules)
+node_modules
+frontend/node_modules
 frontend/dist
+
+# Env / secrets
 .env
 .env.*
+
+# Dev-only / docs
+docker-compose.yml
+UI_STYLE_GUIDE.md
+line
+
+# Accidental root node artifacts
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Frontend tests (not needed for production build)
+frontend/**/*.test.ts
+frontend/**/*.test.tsx
+
+# Backend tests
+backend/**/tests

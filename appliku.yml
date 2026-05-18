@@ -1,0 +1,35 @@
+# Appliku deploy config. Import via App → YAML Config, or keep in sync with dashboard export.
+# Build: multi-stage root Dockerfile (frontend + Python). Do not set a separate npm build_command.
+#
+# Postgres and Redis are NOT provisioned here — keep your existing Appliku addons and URLs in
+# Environment Variables (DATABASE_URL, REDIS_URL). To wire YAML to addons by name instead, export
+# config from the dashboard and use from_database with your addon's exact name.
+
+build_settings:
+  build_image: dockerfile
+  dockerfile_path: Dockerfile
+  container_port: 8000
+  skip_release_command: false
+  environment_variables:
+    - name: ALLOWED_HOSTS
+      from_domains: true
+    - name: DATABASE_URL
+      source: manual
+    - name: REDIS_URL
+      source: manual
+    - name: DEBUG
+      value: "false"
+    - name: SECRET_KEY
+      source: manual
+
+services:
+  web:
+    command: bash run.sh
+    scale: 1
+  release:
+    command: bash release.sh
+
+commands:
+  - python3 /app/backend/manage.py migrate
+  - python3 /app/backend/manage.py collectstatic --noinput
+  - env | grep -i database

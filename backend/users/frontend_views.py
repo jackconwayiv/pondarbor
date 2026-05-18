@@ -34,9 +34,7 @@ def redirect_site_webmanifest(request):
 
 
 def spa_index(request, route=None):
-    manifest_path = (
-        settings.BASE_DIR.parent / "frontend" / "dist" / ".vite" / "manifest.json"
-    )
+    manifest_path = settings.FRONTEND_DIST_DIR / ".vite" / "manifest.json"
 
     if not manifest_path.exists():
         raise Http404("Frontend build manifest not found.")

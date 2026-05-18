@@ -1,6 +1,11 @@
 import { Outlet } from "react-router";
 
-export default function WhatIfLayout() {
-  return <Outlet />;
-}
+import { WhatIfResumeProvider } from "./WhatIfResumeContext";
 
+export default function WhatIfLayout() {
+  return (
+    <WhatIfResumeProvider>
+      <Outlet />
+    </WhatIfResumeProvider>
+  );
+}

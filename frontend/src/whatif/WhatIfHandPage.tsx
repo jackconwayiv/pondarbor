@@ -23,7 +23,6 @@ import {
 } from "../auth/auth0LoginParams";
 import { useAppSession } from "../auth/AppSessionContext";
 import {
-  fetchWhatIfHandState,
   fetchWhatIfTvState,
   friendlyWhatIfActionMessage,
   joinWhatIfSession,
@@ -31,14 +30,15 @@ import {
   postWhatIfAction,
   savePlayerToken,
 } from "./api";
+import { useWhatIfSessionSync } from "./useWhatIfSessionSync";
 import { resolveWhatIfViewerFallbackAvatarUrl } from "./whatifPlayerAvatar";
 import WhatIfShell from "./WhatIfShell";
 import { whatifInputProps } from "./whatifFieldProps";
 import type { WhatIfPlayer, WhatIfSessionState } from "./types";
+import { isWhatIfLobbyStatus } from "./whatifSessionStatus";
 import { WhatIfPlayerFace } from "./whatifPlayerFace";
 import { subjectBoardSeatLabel } from "./whatifSubjectBoardUi";
 
-const POLL_MS = 2000;
 const DISPLAY_NAME_RE = /^[A-Za-z0-9 ]*$/;
 
 function sanitizeDisplayNameInput(raw: string): string {
@@ -111,6 +111,9 @@ export default function WhatIfHandPage() {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [name, setName] = useState("");
   const [enrolledPlayerNames, setEnrolledPlayerNames] = useState<string[]>([]);
+  const [prefetchRoomStatus, setPrefetchRoomStatus] = useState<
+    WhatIfSessionState["status"] | null | "loading"
+  >("loading");
   const [confirmSkip, setConfirmSkip] = useState(false);
   const confirmSkipRef = useRef<HTMLButtonElement | null>(null);
   const storedPlayerToken = useMemo(
@@ -122,6 +125,7 @@ export default function WhatIfHandPage() {
   );
   const playerToken = sessionPlayerSecret ?? storedPlayerToken;
   const endedProfileRefreshRef = useRef(false);
+  const skipRefetchAtVersionRef = useRef(0);
 
   useEffect(() => {
     endedProfileRefreshRef.current = false;
@@ -148,17 +152,23 @@ export default function WhatIfHandPage() {
   useEffect(() => {
     if (playerToken || roomCode.length !== 4) {
       setEnrolledPlayerNames([]);
+      setPrefetchRoomStatus(playerToken ? "loading" : null);
       return;
     }
+    setPrefetchRoomStatus("loading");
     let cancelled = false;
     const t = window.setTimeout(() => {
       void (async () => {
         try {
           const sess = await fetchWhatIfTvState(roomCode);
           if (cancelled || !sess) return;
+          setPrefetchRoomStatus(sess.status);
           setEnrolledPlayerNames((sess.players ?? []).map((p) => p.display_name));
         } catch {
-          if (!cancelled) setEnrolledPlayerNames([]);
+          if (!cancelled) {
+            setEnrolledPlayerNames([]);
+            setPrefetchRoomStatus(null);
+          }
         }
       })();
     }, 300);
@@ -168,27 +178,16 @@ export default function WhatIfHandPage() {
     };
   }, [roomCode, playerToken]);
 
-  useEffect(() => {
-    if (!playerToken) return;
-    const token = playerToken;
-    let cancelled = false;
-    async function poll() {
-      try {
-        const next = await fetchWhatIfHandState(roomCode, token);
-        if (!cancelled && next) {
-          setState(next);
-        }
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load hand");
-      }
-    }
-    void poll();
-    const id = window.setInterval(() => void poll(), POLL_MS);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, [roomCode, playerToken]);
+  useWhatIfSessionSync({
+    roomCode,
+    mode: "hand",
+    playerToken,
+    enabled: !!playerToken,
+    sessionStatus: state?.status ?? null,
+    onState: setState,
+    onError: setError,
+    skipRefetchAtVersionRef,
+  });
 
   useEffect(() => {
     if (state?.status !== "post_results") return;
@@ -221,8 +220,17 @@ export default function WhatIfHandPage() {
     return enrolledPlayerNames.some((n) => normalizeWhatIfDisplayNameForCompare(n) === c);
   }, [name, enrolledPlayerNames, playerToken]);
 
+  const joinBlockedBecauseStarted =
+    prefetchRoomStatus !== "loading" &&
+    prefetchRoomStatus != null &&
+    !isWhatIfLobbyStatus(prefetchRoomStatus);
+
   const joinHandDisabled =
-    busy || !sanitizeDisplayNameInput(name.trim()) || nameTakenInRoom;
+    busy ||
+    !sanitizeDisplayNameInput(name.trim()) ||
+    nameTakenInRoom ||
+    joinBlockedBecauseStarted ||
+    prefetchRoomStatus === "loading";
 
   const joinNamePlaceholder = isAuthenticated
     ? "Letters, numbers, spaces (max 12)"
@@ -259,6 +267,7 @@ export default function WhatIfHandPage() {
     setActionError(null);
     try {
       const next = await postWhatIfAction(roomCode, payload, { playerToken });
+      skipRefetchAtVersionRef.current = next.state_version;
       setState(next);
     } catch (e) {
       setActionError(friendlyWhatIfActionMessage(e));
@@ -268,6 +277,43 @@ export default function WhatIfHandPage() {
   }
 
   if (!playerToken) {
+    if (joinBlockedBecauseStarted) {
+      return (
+        <WhatIfShell withPanel>
+          <Stack gap="5">
+            <Heading as="h1" size="lg">
+              Game in progress
+            </Heading>
+            <Stack gap="1">
+              <Text fontSize="sm" fontWeight="medium" color="gray.700">
+                Room Code:
+              </Text>
+              <Code fontSize="2em" w="fit-content">
+                {roomCode}
+              </Code>
+            </Stack>
+            <Text color="gray.700">
+              This game has already started. New players cannot join this room.
+            </Text>
+            <Text color="gray.700">
+              If you were already playing on this phone, go back to WhatIf and tap
+              Resume game {roomCode}. If you joined on another device, use the same
+              player name only when rejoining is allowed in the lobby.
+            </Text>
+            <PondButton
+              type="button"
+              colorPalette="teal"
+              size="md"
+              alignSelf="flex-start"
+              onClick={() => navigate("/whatif")}
+            >
+              Back to WhatIf
+            </PondButton>
+          </Stack>
+        </WhatIfShell>
+      );
+    }
+
     return (
       <WhatIfShell withPanel>
         <Stack gap="5">

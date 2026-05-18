@@ -271,6 +271,25 @@ class WhatIfApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("already in the room", response.json().get("detail", ""))
 
+    def test_join_rejects_after_game_started(self):
+        code, host_secret, _user = self._create_session()
+        self._join(code, "John")
+        self._join(code, "Maya")
+        start = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "start_game"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        self.assertEqual(start.status_code, 200)
+        response = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/join/",
+            {"display_name": "Latecomer"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("already started", response.json().get("detail", "").lower())
+
     def test_join_assigns_unique_avatar_emojis_per_session(self):
         code, _host_secret, _user = self._create_session()
         emojis: list[str] = []
@@ -1721,4 +1740,45 @@ class WhatIfMySessionsTests(TestCase):
         self.assertEqual(len(body["completed"]), 1)
         self.assertEqual(body["completed"][0]["short_code"], code)
         self.assertEqual(body["completed"][0]["status"], WhatIfSession.Status.ENDED)
+
+
+class WhatIfRealtimeTests(WhatIfApiTests):
+    def test_session_group_name(self):
+        from whatif.realtime import whatif_session_group_name
+
+        self.assertEqual(whatif_session_group_name("abcd"), "whatif_session_ABCD")
+
+    @patch("whatif.views.notify_whatif_session")
+    def test_join_session_notifies_websocket_clients(self, mock_notify):
+        code, _host, _user = self._create_session()
+        mock_notify.reset_mock()
+        self._join(code, "Maya")
+        mock_notify.assert_called_once()
+        called_code, = mock_notify.call_args[0]
+        self.assertEqual(called_code, code)
+        self.assertIsNotNone(mock_notify.call_args[1].get("state_version"))
+
+    @patch("whatif.views.notify_whatif_session")
+    def test_session_action_notifies_websocket_clients(self, mock_notify):
+        code, _host, p1, _p2 = self._start_voting_round()
+        mock_notify.reset_mock()
+        vote = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 1},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.assertEqual(vote.status_code, 200)
+        self.assertTrue(mock_notify.called)
+        self.assertEqual(mock_notify.call_args[0][0], code)
+
+    def test_validate_player_token(self):
+        from whatif.consumers import _validate_player_token
+
+        code, _host, _user = self._create_session()
+        secret = self._join(code, "Pat")
+        self.assertTrue(_validate_player_token(code, secret))
+        self.assertFalse(
+            _validate_player_token(code, "00000000-0000-0000-0000-000000000001"),
+        )
 

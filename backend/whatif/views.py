@@ -47,6 +47,7 @@ from whatif.subject_board import (
     subject_board_seat_count,
     subject_pick_is_degenerate,
 )
+from whatif.realtime import notify_whatif_session
 from whatif.serializers import (
     JoinSessionSerializer,
     SessionActionSerializer,
@@ -261,6 +262,8 @@ def _subject_die_state_for_duel_subject_turn(player_ids: list[int], prev: dict) 
 
 def _maybe_auto_reveal_voting(session: WhatIfSession) -> WhatIfSession:
     """Apply reveal when the voting deadline passed (idempotent). Caller does not hold a lock."""
+    version_before = session.state_version
+    status_before = session.status
     if session.status != WhatIfSession.Status.VOTING:
         return session
     st = dict(session.state or {})
@@ -277,6 +280,8 @@ def _maybe_auto_reveal_voting(session: WhatIfSession) -> WhatIfSession:
             return locked
         apply_reveal_from_voting_state(locked, st2)
     locked.refresh_from_db()
+    if locked.state_version != version_before or locked.status != status_before:
+        notify_whatif_session(locked.short_code, state_version=locked.state_version)
     return locked
 
 
@@ -595,6 +600,11 @@ def join_session(request, code: str):
             WhatIfSession.objects.select_for_update(),
             short_code=code.upper(),
         )
+        if session.status not in _WHATIF_LOBBY_STATUSES:
+            return Response(
+                {"detail": "This game has already started. New players cannot join."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         if (
             WhatIfPlayer.objects.filter(session=session)
             .filter(display_name__iexact=display_name)
@@ -614,6 +624,7 @@ def join_session(request, code: str):
         session.state_version = F("state_version") + 1
         session.save(update_fields=["state_version", "updated_at"])
     session.refresh_from_db()
+    notify_whatif_session(session.short_code, state_version=session.state_version)
 
     return Response(
         {
@@ -1369,6 +1380,7 @@ def session_action(request, code: str):
 
     session.refresh_from_db()
     session = _maybe_auto_reveal_voting(session)
+    notify_whatif_session(session.short_code, state_version=session.state_version)
     payload = WhatIfSessionPublicSerializer(session).data
     player_for_hand = _find_player_for_request(session, request)
     if player_for_hand is not None:

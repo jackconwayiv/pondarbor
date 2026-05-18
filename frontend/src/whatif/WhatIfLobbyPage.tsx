@@ -1,5 +1,5 @@
 import { Box, Code, Heading, HStack, Stack, Text } from "@chakra-ui/react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 
 import PondButton from "../PondButton";
@@ -10,14 +10,9 @@ import {
   APP_TEXT_SIZES,
   PANEL_ENTRY_CARD_PROPS,
 } from "../theme/typography";
-import {
-  fetchWhatIfTvState,
-  loadHostToken,
-  postWhatIfAction,
-} from "./api";
+import { loadHostToken, postWhatIfAction } from "./api";
 import type { WhatIfSessionState } from "./types";
-
-const POLL_MS = 2000;
+import { useWhatIfSessionSync } from "./useWhatIfSessionSync";
 
 export default function WhatIfLobbyPage() {
   const navigate = useNavigate();
@@ -28,29 +23,18 @@ export default function WhatIfLobbyPage() {
   const [busy, setBusy] = useState(false);
   const hostToken = useMemo(() => loadHostToken(roomCode), [roomCode]);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function poll() {
-      try {
-        // No `since=` — avoids HTTP 304, which Vite's dev proxy often surfaces as 502.
-        const next = await fetchWhatIfTvState(roomCode);
-        if (!cancelled && next) {
-          setState(next);
-          if (next.status !== "open" && next.status !== "pre_lobby") {
-            navigate(`/whatif/play/${roomCode}`);
-          }
-        }
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load lobby");
+  useWhatIfSessionSync({
+    roomCode,
+    mode: "tv",
+    sessionStatus: state?.status ?? null,
+    onState: (next) => {
+      setState(next);
+      if (next.status !== "open" && next.status !== "pre_lobby") {
+        navigate(`/whatif/play/${roomCode}`);
       }
-    }
-    void poll();
-    const id = window.setInterval(() => void poll(), POLL_MS);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, [roomCode, navigate]);
+    },
+    onError: setError,
+  });
 
   async function handleStart() {
     if (!hostToken) {

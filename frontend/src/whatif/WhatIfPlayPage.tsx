@@ -16,18 +16,12 @@ import { useNavigate, useParams } from "react-router";
 import { AppModal } from "../components/AppModal";
 import { useAppSession } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
-import {
-  fetchWhatIfTvState,
-  friendlyWhatIfActionMessage,
-  loadHostToken,
-  postWhatIfAction,
-} from "./api";
+import { friendlyWhatIfActionMessage, loadHostToken, postWhatIfAction } from "./api";
+import { useWhatIfSessionSync } from "./useWhatIfSessionSync";
 import WhatIfShell from "./WhatIfShell";
 import type { WhatIfPlayer, WhatIfSessionState } from "./types";
 import { WhatIfPlayerFace } from "./whatifPlayerFace";
 import { subjectBoardSeatCount, subjectBoardSeatLabel } from "./whatifSubjectBoardUi";
-
-const POLL_MS = 2000;
 
 function WhatIfTvSeatStrip({
   players,
@@ -100,6 +94,7 @@ export default function WhatIfPlayPage() {
   const [completeError, setCompleteError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const endedProfileRefreshRef = useRef(false);
+  const skipRefetchAtVersionRef = useRef(0);
   const hostToken = useMemo(() => loadHostToken(roomCode), [roomCode]);
 
   useEffect(() => {
@@ -119,26 +114,14 @@ export default function WhatIfPlayPage() {
     return () => window.clearInterval(id);
   }, [state?.status]);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function poll() {
-      try {
-        // No `since=` — avoids HTTP 304, which Vite's dev proxy often surfaces as 502.
-        const next = await fetchWhatIfTvState(roomCode);
-        if (!cancelled && next) {
-          setState(next);
-        }
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load game state");
-      }
-    }
-    void poll();
-    const id = window.setInterval(() => void poll(), POLL_MS);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, [roomCode]);
+  useWhatIfSessionSync({
+    roomCode,
+    mode: "tv",
+    sessionStatus: state?.status ?? null,
+    onState: setState,
+    onError: setError,
+    skipRefetchAtVersionRef,
+  });
 
   /** If TV payload includes `you` (e.g. host mirroring), viewer tiles get profile + Google fallback when URL missing. */
   const viewerPlayerId = state?.state?.you?.id ?? null;
@@ -289,6 +272,7 @@ export default function WhatIfPlayPage() {
         { type: "complete_game" },
         { hostToken },
       );
+      skipRefetchAtVersionRef.current = next.state_version;
       setState(next);
       setCompleteOpen(false);
     } catch (e) {

@@ -59,6 +59,18 @@ export function loadPlayerToken(code: string): string | null {
   return sessionStorage.getItem(playerTokenStorageKey(code));
 }
 
+/** All room codes with a player token saved in this tab's sessionStorage. */
+export function listStoredWhatIfPlayerCodes(): string[] {
+  const codes: string[] = [];
+  for (let i = 0; i < sessionStorage.length; i++) {
+    const key = sessionStorage.key(i);
+    if (!key?.startsWith(PLAYER_TOKEN_PREFIX)) continue;
+    const code = key.slice(PLAYER_TOKEN_PREFIX.length).trim().toUpperCase();
+    if (code.length === 4) codes.push(code);
+  }
+  return codes;
+}
+
 export function hostTokenStorageKey(code: string): string {
   return `${HOST_TOKEN_PREFIX}${code.toUpperCase()}`;
 }

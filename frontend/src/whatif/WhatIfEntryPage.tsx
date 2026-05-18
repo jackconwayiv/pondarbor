@@ -52,7 +52,10 @@ import {
   type WhatIfQuestionAdmin,
   type WhatIfQuestionListFilter,
 } from "./api";
-import type { WhatIfMySessionRow, WhatIfMySessionsResponse } from "./types";
+import type { WhatIfMySessionRow, WhatIfMySessionsResponse, WhatIfSessionState } from "./types";
+import WhatIfResumeBanners from "./WhatIfResumeBanners";
+import { useWhatIfResumeContext } from "./WhatIfResumeContext";
+import { isWhatIfLobbyStatus } from "./whatifSessionStatus";
 import { WhatIfQuestionAdminListItem } from "./WhatIfQuestionAdminListItem";
 import { WhatIfQuestionFields } from "./WhatIfQuestionFields";
 import {
@@ -172,12 +175,20 @@ export default function WhatIfEntryPage() {
   const [proposeSuccess, setProposeSuccess] = useState<string | null>(null);
   const [proposeOpen, setProposeOpen] = useState(false);
   const [mobileMyGamesOpen, setMobileMyGamesOpen] = useState(false);
+  const [joinFormOpen, setJoinFormOpen] = useState(false);
+  const { targets: resumeTargets, loading: resumeTargetsLoading } =
+    useWhatIfResumeContext();
+  const hasResumeBanners =
+    isMobile && !resumeTargetsLoading && resumeTargets.length > 0;
   const [mySessions, setMySessions] = useState<WhatIfMySessionsResponse | null>(
     null,
   );
   const [mySessionsLoading, setMySessionsLoading] = useState(false);
   const [mySessionsError, setMySessionsError] = useState<string | null>(null);
   const [enrolledPlayerNames, setEnrolledPlayerNames] = useState<string[]>([]);
+  const [joinRoomStatus, setJoinRoomStatus] = useState<
+    WhatIfSessionState["status"] | null
+  >(null);
   const lastPlayerTabRef = useRef<PlayerTab>(isMobile ? "join" : "new");
   const lastAdminTabRef = useRef<AdminTab>("admin-list");
   const exampleBulk = useMemo(
@@ -228,9 +239,15 @@ export default function WhatIfEntryPage() {
   }, [isAuthenticated, sessionUser?.profile?.display_name]);
 
   useEffect(() => {
+    if (resumeTargetsLoading) return;
+    setJoinFormOpen(!hasResumeBanners);
+  }, [resumeTargetsLoading, hasResumeBanners]);
+
+  useEffect(() => {
     const code = joinCode.trim().toUpperCase();
     if (code.length !== 4) {
       setEnrolledPlayerNames([]);
+      setJoinRoomStatus(null);
       return;
     }
     let cancelled = false;
@@ -239,11 +256,15 @@ export default function WhatIfEntryPage() {
         try {
           const state = await fetchWhatIfTvState(code);
           if (cancelled || !state) return;
+          setJoinRoomStatus(state.status);
           setEnrolledPlayerNames(
             (state.players ?? []).map((p) => p.display_name),
           );
         } catch {
-          if (!cancelled) setEnrolledPlayerNames([]);
+          if (!cancelled) {
+            setEnrolledPlayerNames([]);
+            setJoinRoomStatus(null);
+          }
         }
       })();
     }, 300);
@@ -262,11 +283,15 @@ export default function WhatIfEntryPage() {
     );
   }, [name, enrolledPlayerNames]);
 
+  const joinBlockedBecauseStarted =
+    joinRoomStatus != null && !isWhatIfLobbyStatus(joinRoomStatus);
+
   const joinFormDisabled =
     busy ||
     joinCode.trim().length !== 4 ||
     !sanitizeDisplayNameInput(name.trim()) ||
-    nameTakenInRoom;
+    nameTakenInRoom ||
+    joinBlockedBecauseStarted;
 
   useEffect(() => {
     if (
@@ -661,6 +686,13 @@ export default function WhatIfEntryPage() {
           That name is already taken in this room.
         </Text>
       ) : null}
+      {joinBlockedBecauseStarted ? (
+        <Text fontSize={APP_TEXT_SIZES.body} color="fg" role="status">
+          This game has already started. New players cannot join. If you were already
+          playing, use a Resume game banner above or open your hand from
+          My games.
+        </Text>
+      ) : null}
       <PondButton
         type="button"
         colorPalette="teal"
@@ -672,6 +704,56 @@ export default function WhatIfEntryPage() {
         Join on this phone
       </PondButton>
     </Stack>
+  );
+
+  const joinFormCollapsibleTrigger = (
+    <button
+      type="button"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "0.5rem",
+        width: "100%",
+        textAlign: "left",
+        fontSize: "1rem",
+        fontWeight: 600,
+        color: "inherit",
+        cursor: "pointer",
+        background: "transparent",
+        border: "none",
+        padding: 0,
+        margin: 0,
+      }}
+    >
+      <Text
+        as="span"
+        transform={joinFormOpen ? "rotate(90deg)" : "rotate(0deg)"}
+        transition="transform 0.15s ease"
+        lineHeight="1"
+        flexShrink={0}
+      >
+        ›
+      </Text>
+      <Text as="span" flex="1">
+        Join as a player
+      </Text>
+    </button>
+  );
+
+  const joinFormBlock = hasResumeBanners ? (
+    <Collapsible.Root
+      open={joinFormOpen}
+      onOpenChange={(details) => setJoinFormOpen(details.open)}
+    >
+      <Collapsible.Trigger asChild>{joinFormCollapsibleTrigger}</Collapsible.Trigger>
+      <Collapsible.Content>
+        <Stack gap="4" pt="2">
+          {joinFormContent}
+        </Stack>
+      </Collapsible.Content>
+    </Collapsible.Root>
+  ) : (
+    joinFormContent
   );
 
   const playerTabTriggers = (
@@ -866,7 +948,7 @@ export default function WhatIfEntryPage() {
   const playerTabPanels = (
     <>
       <Tabs.Content value="join" pt="2">
-        {joinFormContent}
+        {joinFormBlock}
       </Tabs.Content>
 
       <Tabs.Content value="new" pt="2">
@@ -1188,6 +1270,7 @@ export default function WhatIfEntryPage() {
                   <Code>/whatif/hand/ROOM</Code> to play along!
                 </Text>
               ) : null}
+              <WhatIfResumeBanners />
               {showDesktopUnapprovedOnly ? (
                 <Text
                   fontSize={APP_TEXT_SIZES.body}
@@ -1204,7 +1287,7 @@ export default function WhatIfEntryPage() {
               <Box {...PANEL_ENTRY_CARD_PROPS}>
                 <Stack gap="4">
                   {showJoinOnly ? (
-                    joinFormContent
+                    joinFormBlock
                   ) : isStaff ? (
                     <Tabs.Root
                       id="whatif-entry-outer"

@@ -37,6 +37,12 @@ COPY release.sh /app/release.sh
 
 COPY --from=frontend-build /app/frontend/dist /app/frontend/dist
 
+# Whitenoise serves STATIC_ROOT only. Release collectstatic runs in a separate
+# container and does not populate the web image — bake static files at build time.
+ENV SECRET_KEY=collectstatic-build-placeholder
+ENV DEBUG=false
+RUN cd /app/backend && python3 manage.py collectstatic --noinput
+
 RUN chmod +x /app/run.sh /app/release.sh
 
 EXPOSE 8000

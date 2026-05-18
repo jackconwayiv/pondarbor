@@ -19,7 +19,7 @@ Do **not** set a separate Appliku **build command** for `npm ci` / `npm run buil
 **Check in Appliku**
 
 - **Build** → `build_image`: **`dockerfile`**, `dockerfile_path`: **`Dockerfile`**, **build command empty** (or removed).
-- **Release** process must stay enabled and run **`bash release.sh`** on every deploy so `collectstatic` runs (admin static + Whitenoise manifest) and **`manage.py migrate`** runs against production Postgres.
+- **Release** process must stay enabled and run **`bash release.sh`** on every deploy so **`manage.py migrate`** runs against production Postgres. SPA/admin static for **Dockerfile** deploys are baked via `collectstatic` in the image build; release `collectstatic` still updates manifest when admin assets change without a full image rebuild.
 - **`DATABASE_URL`** (and related env) must be the **same** for **`web`** and **`release`**; if they diverge, you can get “migrations applied” in release while `web` hits an empty or different DB.
 - Appliku may expose the internal Postgres URL as **`DATABASE_PRIVATE_URL`** only. Django and `release.sh` accept either name (`DATABASE_URL` wins if both are set). Prefer setting **`DATABASE_URL`** explicitly in Environment Variables (copy the private URL when the DB is on the same server).
 - Set **`REDIS_URL`** (Appliku Redis addon or manual) so Django Channels uses Redis instead of an in-memory layer (better for WebSockets under load).

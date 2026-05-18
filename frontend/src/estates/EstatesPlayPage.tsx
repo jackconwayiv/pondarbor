@@ -509,8 +509,8 @@ export default function EstatesPlayPage() {
     <Stack
       flex="1"
       minH={0}
-      h={{ base: "min(100dvh, 100%)", md: "100%" }}
-      maxH="100%"
+      h={{ base: "min(100dvh, 100%)", md: "calc(100dvh - 3.25rem)" }}
+      maxH={{ base: "min(100dvh, 100%)", md: "calc(100dvh - 3.25rem)" }}
       gap="0"
       {...playCanvasProps}
       overflow="hidden"

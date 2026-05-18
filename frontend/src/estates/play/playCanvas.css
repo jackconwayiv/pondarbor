@@ -17,10 +17,15 @@
   --gilt-soft: #f0d27a;
   --lapis: #1f3d8a;
   --lapis-wash: #b8c4e0;
+  --lapis-wash-dim: #9aa9c7;
   --vermilion: #b8332a;
   --vermilion-wash: #efc4bd;
+  --royal: #c9a41a;
+  --royal-wash: #f5e9b0;
+  --royal-wash-dim: #e0d08e;
   --verdigris: #5d7f4f;
   --verdigris-wash: #cbdbb7;
+  --verdigris-wash-dim: #b0c7a2;
   --stone-light: #c5bfb4;
   --stone: #a8a299;
   --stone-medium: #867f73;
@@ -82,7 +87,7 @@
   transform: translateX(-50%) scale(var(--canvas-scale, 1));
   transform-origin: top center;
   overflow: visible;
-  --estates-band-gap: 72px;
+  --estates-band-gap: 88px;
   --estates-card-w: 110px;
   --estates-card-h: 154px;
   --zone-banner-h: 40px;
@@ -323,11 +328,36 @@
   box-shadow: 0 1px 2px rgba(40, 28, 12, 0.12);
 }
 
+/* Effect hints hidden by default; desktop shows on zone hover, mobile on tap toggle */
+.estates-zone-hint--effect {
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.15s ease,
+    visibility 0.15s ease;
+}
+
+@media (min-width: 768px) {
+  .estates-zone-box:hover .estates-zone-hint--effect {
+    opacity: 1;
+    visibility: visible;
+  }
+}
+
+.estates-zone-box--hint-open .estates-zone-hint--effect {
+  opacity: 1;
+  visibility: visible;
+}
+
 .estates-zone-hint--invalid {
   color: var(--vermilion);
   font-weight: 700;
   background: rgba(239, 196, 189, 0.92);
   border-color: rgba(184, 51, 42, 0.35);
+}
+
+.estates-zone-box--hint-open {
+  cursor: pointer;
 }
 
 /* Played-card slot anchors (half overhang above / below) */
@@ -727,8 +757,8 @@
 }
 
 .estates-card--royal {
-  --card-bg: var(--vermilion-wash);
-  --card-tone: var(--vermilion);
+  --card-bg: var(--royal-wash);
+  --card-tone: var(--royal);
 }
 
 .estates-card--small {
@@ -883,6 +913,18 @@
     -2px 2px 0 var(--ink),
     -4px 4px 0 rgba(40, 28, 12, 0.18),
     0 0 0 3px var(--gilt);
+}
+
+.estates-card--zone-loser.estates-card--peasant {
+  --card-bg: var(--verdigris-wash-dim);
+}
+
+.estates-card--zone-loser.estates-card--noble {
+  --card-bg: var(--lapis-wash-dim);
+}
+
+.estates-card--zone-loser.estates-card--royal {
+  --card-bg: var(--royal-wash-dim);
 }
 
 .estates-card--dimmed {
@@ -1072,6 +1114,7 @@
 }
 
 .estates-hourglass__label {
+  font-family: var(--estates-font-sans, "Spinnaker", Verdana, Geneva, "DejaVu Sans", sans-serif);
   font-size: 13px;
   color: var(--ink-soft, #4a3624);
 }
@@ -1178,4 +1221,6 @@
   flex-shrink: 0;
   width: 100%;
   padding-top: 8px;
+  display: flex;
+  justify-content: flex-end;
 }

@@ -128,6 +128,27 @@ function firstValidDropZone(
   return null;
 }
 
+function arrayMove<T>(items: T[], fromIndex: number, toIndex: number): T[] {
+  const next = items.slice();
+  const [moved] = next.splice(fromIndex, 1);
+  next.splice(toIndex, 0, moved);
+  return next;
+}
+
+function findReorderTargetCardId(
+  event: DragEndEvent,
+  draggedCardId: string,
+): string | null {
+  const overId = event.over?.id;
+  const fromOver = overId != null ? parseHandCardDragId(overId) : null;
+  if (fromOver && fromOver !== draggedCardId) return fromOver;
+  for (const hit of event.collisions ?? []) {
+    const candidate = parseHandCardDragId(hit.id);
+    if (candidate && candidate !== draggedCardId) return candidate;
+  }
+  return null;
+}
+
 function resolvePlacementZone(
   event: DragEndEvent,
   cardId: string,
@@ -156,6 +177,7 @@ export type EstatesPlayViewProps = {
   myPlayerState: EstatesPlayerState;
   opponentPlayerState: EstatesPlayerState | null;
   onPlaceCard: (zone: string, cardId: string) => Promise<void>;
+  onReorderHand: (cardIds: string[]) => Promise<void>;
   isMyScoringChoice: boolean;
   scoringZoneCardOwner: "mine" | "opponent" | null;
   scoringTargets: Array<{ zone?: string; cardId: string; modifierLabel: string }>;
@@ -172,6 +194,7 @@ export default function EstatesPlayView({
   myPlayerState,
   opponentPlayerState,
   onPlaceCard,
+  onReorderHand,
   isMyScoringChoice,
   scoringZoneCardOwner,
   scoringTargets,
@@ -217,6 +240,15 @@ export default function EstatesPlayView({
     !isPaused &&
     activeGame.round_state?.phase === "placement" &&
     activeGame.round_state.pending_actor_seat !== mySeat;
+
+  const canReorderHand = Boolean(
+    !isPaused &&
+    activeGame.round_state?.phase === "placement" &&
+    !isMyScoringChoice &&
+    !placementPending,
+  );
+
+  const canDragHandCard = canReorderHand;
 
   const scoringTargetMap = useMemo(() => {
     const map = new Map<string, { zone?: string; cardId: string; modifierLabel: string }>();
@@ -335,7 +367,19 @@ export default function EstatesPlayView({
     (event: DragEndEvent) => {
       const cardId = parseHandCardDragId(event.active.id);
       clearActiveDrag();
-      if (!cardId || !isMyTurn) return;
+      if (!cardId) return;
+
+      const reorderTargetId = findReorderTargetCardId(event, cardId);
+      if (reorderTargetId && canReorderHand) {
+        const hand = myPlayerState.hand ?? [];
+        const oldIndex = hand.findIndex((card) => String(card.card_id || "") === cardId);
+        const newIndex = hand.findIndex((card) => String(card.card_id || "") === reorderTargetId);
+        if (oldIndex >= 0 && newIndex >= 0 && oldIndex !== newIndex) {
+          const reordered = arrayMove(hand, oldIndex, newIndex);
+          void onReorderHand(reordered.map((card) => String(card.card_id || "")));
+        }
+        return;
+      }
 
       const overId = event.over?.id;
       const droppedOnHand =
@@ -346,13 +390,24 @@ export default function EstatesPlayView({
         );
       if (droppedOnHand) return;
 
+      if (!isMyTurn) return;
+
       const meta = handCardMeta.get(cardId);
       if (!meta) return;
       const zone = resolvePlacementZone(event, cardId, canDropInZone);
       if (!zone) return;
       void onPlaceCard(zone, cardId);
     },
-    [canDropInZone, clearActiveDrag, handCardMeta, isMyTurn, onPlaceCard],
+    [
+      canDropInZone,
+      canReorderHand,
+      clearActiveDrag,
+      handCardMeta,
+      isMyTurn,
+      myPlayerState.hand,
+      onPlaceCard,
+      onReorderHand,
+    ],
   );
 
   const handleDragCancel = useCallback(() => {
@@ -370,7 +425,7 @@ export default function EstatesPlayView({
         key={cardId}
         card={card as Record<string, unknown>}
         dragId={handCardDragId(cardId)}
-        disabled={!(isMyTurn && !isMyScoringChoice && !placementPending)}
+        disabled={!canDragHandCard}
         scoringTarget={resolveScoringTarget(undefined, cardId)}
       />
     );
@@ -407,7 +462,7 @@ export default function EstatesPlayView({
                 discardCount={opponentPlayerState?.discard.length ?? 0}
                 onDiscardClick={() =>
                   openDiscardModal(
-                    `${opponentName}'s spent`,
+                    `${opponentName}'s spent cards`,
                     (opponentPlayerState?.discard ?? []) as Array<Record<string, unknown>>,
                   )
                 }
@@ -437,6 +492,7 @@ export default function EstatesPlayView({
                       ? getDropBlockReason(zone, activeDrag.cardId)
                       : null;
                   const iWinZone = winningSeat === Number(mySeatKey);
+                  const hasResolvedZoneWinner = winningSeat === 1 || winningSeat === 2;
 
                   const opponentScoringTarget =
                     scoringZoneCardOwner === "opponent" && opponentPlaced?.card
@@ -457,6 +513,9 @@ export default function EstatesPlayView({
                     <Card
                       card={opponentPlaced.card}
                       isWinner={winningSeat === Number(opponentSeatKey)}
+                      zoneLoser={
+                        hasResolvedZoneWinner && winningSeat !== Number(opponentSeatKey)
+                      }
                       winnerAnchor="top"
                       scoringTarget={opponentScoringTarget}
                       dimmed={opponentDimmed}
@@ -467,6 +526,7 @@ export default function EstatesPlayView({
                     <Card
                       card={myPlaced.card}
                       isWinner={iWinZone}
+                      zoneLoser={hasResolvedZoneWinner && !iWinZone}
                       winnerAnchor="bottom"
                       scoringTarget={mineScoringTarget}
                       dimmed={mineDimmed}
@@ -501,7 +561,7 @@ export default function EstatesPlayView({
                 discardCount={myPlayerState.discard.length}
                 onDiscardClick={() =>
                   openDiscardModal(
-                    "Your spent",
+                    "Your spent cards",
                     (myPlayerState.discard ?? []) as Array<Record<string, unknown>>,
                   )
                 }

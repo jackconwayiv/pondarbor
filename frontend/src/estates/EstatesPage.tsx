@@ -34,6 +34,7 @@ import {
   type EstatesMyGameRow,
   type EstatesMyGamesResponse,
 } from "./api";
+import { ESTATES_HOW_TO_PLAY_BODY, ESTATES_HOW_TO_PLAY_TITLE } from "./estatesHowToPlay";
 import { estatesLobbiesWsUrl } from "./estatesWs";
 
 function isUserInGame(game: EstatesGameState, userId: number | undefined): boolean {
@@ -281,16 +282,37 @@ export default function EstatesPage() {
           </Text>
         ) : null}
         {showStatusTag ? (
-          <Badge
-            bg="yellow.200"
-            color="black"
-            borderWidth="1px"
-            borderColor="yellow.400"
-            flexShrink={0}
-            fontWeight="semibold"
-          >
-            {row.winner_display_name ? `Winner: ${row.winner_display_name}` : "Completed"}
-          </Badge>
+          (() => {
+            const myName = sessionUser?.profile.display_name?.trim();
+            const winnerName = row.winner_display_name?.trim();
+            if (!winnerName) {
+              return (
+                <Badge
+                  bg="bg.subtle"
+                  color="fg.muted"
+                  borderWidth="1px"
+                  borderColor="border"
+                  flexShrink={0}
+                  fontWeight="semibold"
+                >
+                  Completed
+                </Badge>
+              );
+            }
+            const didWin = Boolean(myName && winnerName === myName);
+            return (
+              <Badge
+                bg={didWin ? "lilypad.subtle" : "nautical.subtle"}
+                color={didWin ? "lilypad.fg" : "nautical.fg"}
+                borderWidth="1px"
+                borderColor={didWin ? "lilypad.border" : "nautical.border"}
+                flexShrink={0}
+                fontWeight="semibold"
+              >
+                {didWin ? "WIN" : "LOSS"}
+              </Badge>
+            );
+          })()
         ) : null}
         <HStack gap="2" flexShrink={0} flexWrap="wrap">
           {showOpenLobby ? (
@@ -372,6 +394,12 @@ export default function EstatesPage() {
           <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall">
             A head-to-head card duel. Create an open lobby, join an existing one, then confirm to deal opening
             hands and begin round 1.
+          </Text>
+          <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.label} mt="4" mb="2">
+            {ESTATES_HOW_TO_PLAY_TITLE}
+          </Text>
+          <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall" whiteSpace="pre-line">
+            {ESTATES_HOW_TO_PLAY_BODY}
           </Text>
         </Box>
 

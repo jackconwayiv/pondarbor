@@ -7,17 +7,18 @@ from dataclasses import dataclass
 SUIT_CARD_CONFIG = (
     ("peasant", "green", "pitchfork"),
     ("noble", "blue", "heraldic_shield"),
-    ("royal", "orange", "crown"),
+    ("royal", "yellow", "crown"),
 )
 
 ZONE_NAMES_IN_SCORING_ORDER = ("gate", "farm", "road", "tower", "throne")
 
-# Automated scoring pauses: gate, farm, road, then tower+throne together.
+# Automated scoring pauses: one zone per step in scoring order.
 SCORING_STEPS_IN_ORDER: tuple[tuple[str, ...], ...] = (
     ("gate",),
     ("farm",),
     ("road",),
-    ("tower", "throne"),
+    ("tower",),
+    ("throne",),
 )
 ZONE_ALLOWED_SUITS = {
     "gate": {"peasant", "noble", "royal"},
@@ -100,7 +101,7 @@ def normalize_suit_value(suit: str) -> str:
         return "peasant"
     if value in {"noble", "blue"}:
         return "noble"
-    if value in {"royal", "orange"}:
+    if value in {"royal", "orange", "yellow"}:
         return "royal"
     return value
 
@@ -114,7 +115,7 @@ def normalize_card_suit(card: dict) -> str:
             return "peasant"
         if value in {"noble", "blue"}:
             return "noble"
-        if value in {"royal", "orange"}:
+        if value in {"royal", "orange", "yellow"}:
             return "royal"
     return suit
 

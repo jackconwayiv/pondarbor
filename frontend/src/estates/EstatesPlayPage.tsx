@@ -1,8 +1,10 @@
-import { Box, Grid, Heading, HStack, Spinner, Stack, Text } from "@chakra-ui/react";
+import { Box, Flex, Grid, HStack, IconButton, Spinner, Stack, Text } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { FaQuestionCircle } from "react-icons/fa";
 import { Navigate, useNavigate, useParams } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
+import { AppModal } from "../components/AppModal";
 import { SessionLoadingCard } from "../components/panelStatus";
 import PondButton from "../PondButton";
 import { useIsMobile } from "../responsive";
@@ -12,9 +14,12 @@ import {
   concedeEstatesGame,
   fetchMyEstatesGame,
   placeEstatesCard,
+  reorderEstatesHand,
   type EstatesGameState,
 } from "./api";
-import { ESTATES_PLAY_CANVAS_BG } from "./estatesPlayTheme";
+import { ESTATES_HOW_TO_PLAY_BODY, ESTATES_HOW_TO_PLAY_TITLE } from "./estatesHowToPlay";
+import { ESTATES_GAME_FONT_FAMILY, ESTATES_PLAY_CANVAS_BG } from "./estatesPlayTheme";
+import { personalizeEstatesStatusMessage } from "./estatesStatusMessage";
 import { estatesGameWsUrl } from "./estatesWs";
 import EstatesPlayView from "./EstatesPlayView";
 import {
@@ -24,18 +29,16 @@ import {
 } from "./optimisticPlacement";
 import { ScoringStepHourglassTimer } from "./ScoringStepHourglassTimer";
 
+/** Override theme heading font (Caprasimo) so status bar uses Spinnaker. */
+const estatesGameFont = { fontFamily: ESTATES_GAME_FONT_FAMILY } as const;
+
+/** Single text size for the in-game status header (matches default “waiting for…” line). */
+const headerTextSize = APP_TEXT_SIZES.body;
+
 function seatForUser(game: EstatesGameState, userId: number): number | null {
   if (game.player_1_id === userId) return 1;
   if (game.player_2_id === userId) return 2;
   return null;
-}
-
-const SCORING_ZONE_ORDER = ["gate", "farm", "road", "tower", "throne"] as const;
-
-function priorScoredZones(sourceZone: string): ReadonlySet<string> {
-  const idx = SCORING_ZONE_ORDER.indexOf(sourceZone as (typeof SCORING_ZONE_ORDER)[number]);
-  if (idx <= 0) return new Set();
-  return new Set(SCORING_ZONE_ORDER.slice(0, idx));
 }
 
 function placedCardEntry(value: unknown): { card: Record<string, unknown>; confirmed: boolean } | null {
@@ -62,6 +65,7 @@ export default function EstatesPlayPage() {
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [pendingPlacement, setPendingPlacement] = useState<PendingPlacement | null>(null);
   const [confirmConcede, setConfirmConcede] = useState(false);
+  const [howToPlayOpen, setHowToPlayOpen] = useState(false);
   const confirmConcedeButtonRef = useRef<HTMLButtonElement | null>(null);
   const pendingPlacementRef = useRef<PendingPlacement | null>(null);
   const isMobile = useIsMobile();
@@ -211,22 +215,18 @@ export default function EstatesPlayPage() {
   const scoringTargets = useMemo<Array<{ zone?: string; cardId: string; modifierLabel: string }>>(() => {
     if (!game || !scoringAwaitingChoice) return [];
     const effectType = String(scoringAwaitingChoice.type || "");
-    if (effectType === "road_upgrade") {
+    if (effectType === "farm_upgrade" || effectType === "road_upgrade") {
       return (myPlayerState?.hand ?? []).map((card) => ({
         cardId: String(card.card_id || ""),
         modifierLabel: "+1",
       }));
     }
-    if (effectType === "gate_debuff" || effectType === "farm_buff") {
+    if (effectType === "gate_debuff") {
       const sourceZone = String(scoringAwaitingChoice.source_zone || "");
-      const targetSeat =
-        effectType === "gate_debuff" ? String(mySeat === 1 ? 2 : 1) : String(mySeat);
-      const modifierLabel = effectType === "gate_debuff" ? "-1" : "+2";
+      const targetSeat = String(mySeat === 1 ? 2 : 1);
+      const modifierLabel = "-1";
       const placements = game.round_state?.placements_by_zone ?? {};
       const excludedZones = new Set<string>([sourceZone]);
-      if (effectType === "farm_buff") {
-        for (const zone of priorScoredZones(sourceZone)) excludedZones.add(zone);
-      }
       const out: Array<{ zone?: string; cardId: string; modifierLabel: string }> = [];
       for (const [zoneName, zonePayload] of Object.entries(placements)) {
         if (excludedZones.has(zoneName)) continue;
@@ -249,7 +249,6 @@ export default function EstatesPlayPage() {
     if (!isMyScoringChoice || !scoringAwaitingChoice) return null;
     const effectType = String(scoringAwaitingChoice.type || "");
     if (effectType === "gate_debuff") return "opponent";
-    if (effectType === "farm_buff") return "mine";
     return null;
   }, [isMyScoringChoice, scoringAwaitingChoice]);
 
@@ -261,11 +260,11 @@ export default function EstatesPlayPage() {
     if (effectType === "gate_debuff") {
       return `You won the ${zoneLabel}! Choose a card to apply -1.`;
     }
-    if (effectType === "farm_buff") {
-      return `You won the ${zoneLabel}! Choose one of your other zone cards to apply +2.`;
-    }
-    if (effectType === "road_upgrade") {
+    if (effectType === "farm_upgrade" || effectType === "road_upgrade") {
       return `You won the ${zoneLabel}! Choose a hand card to permanently gain +1.`;
+    }
+    if (effectType === "tower_start_choice") {
+      return "Go first or second next round?";
     }
     return "Choose a scoring target.";
   }, [isMyScoringChoice, scoringAwaitingChoice]);
@@ -294,9 +293,10 @@ export default function EstatesPlayPage() {
   );
   const myScore = myPlayerState?.score ?? 0;
   const opponentScore = opponentPlayerState?.score ?? 0;
-  const statusMessage = game?.round_state?.status_message || "";
-  const mobileStatusCentered = (isMyTurn || isMyScoringChoice) && !isPaused;
-
+  const statusMessage = useMemo(() => {
+    const raw = game?.round_state?.status_message || "";
+    return personalizeEstatesStatusMessage(raw, myPlayerState?.display_name);
+  }, [game?.round_state?.status_message, myPlayerState?.display_name]);
   const completionMessage = useMemo(() => {
     if (!game || game.status !== "completed") return null;
     const opponentName = opponentPlayerState?.display_name || "Opponent";
@@ -348,6 +348,24 @@ export default function EstatesPlayPage() {
     }
   };
 
+  const onReorderHand = useCallback(
+    async (cardIds: string[]) => {
+      if (!game || cardIds.length === 0) return;
+      setBusyAction("reorder-hand");
+      setLoadError(null);
+      try {
+        const token = await getApiAccessToken();
+        const updated = await reorderEstatesHand(token, game.id, cardIds);
+        setGame(updated);
+      } catch (e) {
+        setLoadError(e instanceof Error ? e.message : "Could not reorder hand.");
+      } finally {
+        setBusyAction(null);
+      }
+    },
+    [game, getApiAccessToken],
+  );
+
   const onPlaceCard = useCallback(
     async (zone: string, cardId: string) => {
       if (!game || !mySeat) return;
@@ -386,7 +404,7 @@ export default function EstatesPlayPage() {
       const token = await getApiAccessToken();
       const effectType = String(scoringAwaitingChoice.type || "");
       const payload =
-        effectType === "road_upgrade"
+        effectType === "farm_upgrade" || effectType === "road_upgrade"
           ? { target_card_id: cardId }
           : { target_zone: zone, target_card_id: cardId };
       const updated = await chooseEstatesEffectTarget(token, game.id, payload);
@@ -397,6 +415,25 @@ export default function EstatesPlayPage() {
       setBusyAction(null);
     }
   };
+
+  const onTowerStartChoice = async (goFirst: boolean) => {
+    if (!game || !scoringAwaitingChoice) return;
+    setBusyAction("choose-target");
+    setLoadError(null);
+    try {
+      const token = await getApiAccessToken();
+      const updated = await chooseEstatesEffectTarget(token, game.id, { go_first: goFirst });
+      setGame(updated);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Could not apply scoring choice.");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const scoringEffectType = String(scoringAwaitingChoice?.type || "");
+  const isTowerStartChoice =
+    isMyScoringChoice && scoringEffectType === "tower_start_choice";
 
   if (isLoading) {
     return (
@@ -463,7 +500,6 @@ export default function EstatesPlayPage() {
     <PondButton
       ref={confirmConcedeButtonRef}
       size="sm"
-      w={isMobile ? "full" : undefined}
       flexShrink={0}
       colorPalette="nautical"
       variant={confirmConcede ? "solid" : "outline"}
@@ -494,7 +530,6 @@ export default function EstatesPlayPage() {
   const lobbyButton: ReactNode = (
     <PondButton
       size="sm"
-      w={isMobile ? "full" : undefined}
       flexShrink={0}
       colorPalette="lilypad"
       onClick={() => navigate("/estates")}
@@ -503,15 +538,54 @@ export default function EstatesPlayPage() {
     </PondButton>
   );
 
-  const trailingControl = isCompleted ? lobbyButton : concedeButton;
+  const trailingControl = (
+    <HStack gap="2" justify="flex-end" w="auto" flexShrink={0}>
+      {isCompleted ? lobbyButton : concedeButton}
+    </HStack>
+  );
+
+  const towerStartChoiceButtons = (
+    <HStack gap="2" flexShrink={0} flexWrap="nowrap">
+      <PondButton
+        size="xs"
+        variant="outline"
+        colorPalette="lilypad"
+        minH="7"
+        h="auto"
+        py="1"
+        px="3"
+        whiteSpace="nowrap"
+        loading={busyAction === "choose-target"}
+        disabled={busyAction === "choose-target"}
+        onClick={() => void onTowerStartChoice(true)}
+      >
+        First
+      </PondButton>
+      <PondButton
+        size="xs"
+        colorPalette="lilypad"
+        minH="7"
+        h="auto"
+        py="1"
+        px="3"
+        whiteSpace="nowrap"
+        loading={busyAction === "choose-target"}
+        disabled={busyAction === "choose-target"}
+        onClick={() => void onTowerStartChoice(false)}
+      >
+        Second
+      </PondButton>
+    </HStack>
+  );
 
   return (
     <Stack
       flex="1"
       minH={0}
-      h={{ base: "min(100dvh, 100%)", md: "calc(100dvh - 3.25rem)" }}
-      maxH={{ base: "min(100dvh, 100%)", md: "calc(100dvh - 3.25rem)" }}
+      h={{ base: "min(100dvh, 100%)", md: "calc(100dvh - 2.75rem)" }}
+      maxH={{ base: "min(100dvh, 100%)", md: "calc(100dvh - 2.75rem)" }}
       gap="0"
+      fontFamily={ESTATES_GAME_FONT_FAMILY}
       {...playCanvasProps}
       overflow="hidden"
     >
@@ -520,84 +594,165 @@ export default function EstatesPlayPage() {
         alignItems="center"
         gap={{ base: "2", md: "3" }}
         px={{ base: "2", md: "3" }}
-        py="2"
+        py="1.5"
         borderBottomWidth="1px"
         borderColor="border"
         bg="bg"
         flexShrink={0}
         w="full"
+        {...estatesGameFont}
       >
         <Text
           display={{ base: "none", md: "block" }}
-          fontSize={APP_TEXT_SIZES.helper}
+          fontSize={headerTextSize}
           color="fg.muted"
           whiteSpace="nowrap"
           fontWeight="medium"
           justifySelf="start"
+          {...estatesGameFont}
         >
           Round {game.round}
         </Text>
 
         <Stack
           gap="0.5"
-          align={{ base: mobileStatusCentered ? "center" : "flex-start", md: "center" }}
+          align={{ base: "flex-start", md: "center" }}
           justify="center"
-          textAlign={{ base: mobileStatusCentered ? "center" : "start", md: "center" }}
+          textAlign={{ base: "start", md: "center" }}
           minW={0}
-          minH={{ base: undefined, md: game.status === "active" ? "5.5rem" : undefined }}
+          minH={game.status === "active" ? { base: "2.75rem", md: "2.5rem" } : undefined}
           px="1"
           w="full"
         >
           {isCompleted ? (
-            <Heading size="lg" color="lilypad.fg" lineHeight="1.1" lineClamp={2}>
+            <Text
+              fontSize={headerTextSize}
+              fontWeight="bold"
+              color="fg"
+              lineHeight="1.25"
+              lineClamp={2}
+              {...estatesGameFont}
+            >
               {completionMessage}
-            </Heading>
+            </Text>
           ) : isPaused ? (
             <>
-              <Text fontWeight="semibold" color="nautical.solid" fontSize={APP_TEXT_SIZES.body}>
+              <Text
+                fontWeight="semibold"
+                color="nautical.solid"
+                fontSize={headerTextSize}
+                {...estatesGameFont}
+              >
                 Game paused
               </Text>
-              <Text fontSize={APP_TEXT_SIZES.helper} color="fg" lineClamp={2}>
+              <Text fontSize={headerTextSize} color="fg" lineClamp={2} {...estatesGameFont}>
                 {statusMessage || "Waiting for a disconnected player to return to the game."}
               </Text>
             </>
           ) : isMyTurn ? (
-            <Heading size="lg" color="lilypad.fg" lineHeight="1.1">
+            <Text fontSize={headerTextSize} fontWeight="bold" color="fg" lineHeight="1.25" {...estatesGameFont}>
               Your turn!
-            </Heading>
+            </Text>
+          ) : isMyScoringChoice && isTowerStartChoice ? (
+            <Flex
+              align="center"
+              gap="2"
+              w="full"
+              minW={0}
+              justify={{ base: "flex-start", md: "center" }}
+            >
+              <Text
+                fontSize={headerTextSize}
+                fontWeight="semibold"
+                color="fg"
+                flex="1"
+                minW={0}
+                lineClamp={2}
+                lineHeight="1.25"
+                textAlign={{ base: "start", md: "center" }}
+                {...estatesGameFont}
+              >
+                {myScoringChoiceMessage}
+              </Text>
+              {towerStartChoiceButtons}
+            </Flex>
           ) : isMyScoringChoice ? (
-            <Heading size="lg" color="lilypad.fg" lineHeight="1.2" lineClamp={3}>
+            <Text
+              fontSize={headerTextSize}
+              fontWeight="semibold"
+              color="fg"
+              lineClamp={3}
+              lineHeight="1.25"
+              textAlign={{ base: "start", md: "center" }}
+              {...estatesGameFont}
+            >
               {myScoringChoiceMessage}
-            </Heading>
+            </Text>
           ) : (
-            <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineClamp={2}>
+            <Text fontSize={headerTextSize} color="fg" lineClamp={2} {...estatesGameFont}>
               {statusMessage || "Waiting for updates…"}
             </Text>
           )}
           {isScoringProcessing && scoringWaitUntilMs != null ? (
-            <ScoringStepHourglassTimer waitingUntilMs={scoringWaitUntilMs} />
+            <ScoringStepHourglassTimer
+              waitingUntilMs={scoringWaitUntilMs}
+              labelFontFamily={ESTATES_GAME_FONT_FAMILY}
+            />
           ) : null}
         </Stack>
 
         <Stack gap="0" align="flex-end" justifySelf="end" flexShrink={0}>
           <Text
             display={{ base: "block", md: "none" }}
-            fontSize={APP_TEXT_SIZES.helper}
+            fontSize={headerTextSize}
             color="fg.muted"
             whiteSpace="nowrap"
             fontWeight="medium"
             lineHeight="1.2"
+            {...estatesGameFont}
           >
             Round {game.round}
           </Text>
-          <HStack gap="3" align="center">
-            <Text fontSize="2xl" fontWeight="bold" color="fg" letterSpacing="wide" whiteSpace="nowrap">
+          <HStack gap="2" align="center">
+            <IconButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-label="How to play"
+              title="How to play"
+              color="fg.muted"
+              _hover={{ color: "fg", bg: "bg.subtle" }}
+              onClick={() => setHowToPlayOpen(true)}
+            >
+              <FaQuestionCircle size={16} />
+            </IconButton>
+            <Text
+              fontSize="2xl"
+              fontWeight="bold"
+              color="fg"
+              letterSpacing="wide"
+              whiteSpace="nowrap"
+              {...estatesGameFont}
+            >
               {myScore} - {opponentScore}
             </Text>
             {!isMobile ? trailingControl : null}
           </HStack>
         </Stack>
       </Grid>
+
+      <AppModal
+        open={howToPlayOpen}
+        onOpenChange={setHowToPlayOpen}
+        title={ESTATES_HOW_TO_PLAY_TITLE}
+        size="lg"
+        contentProps={{ fontFamily: ESTATES_GAME_FONT_FAMILY }}
+        bodyProps={{ fontFamily: ESTATES_GAME_FONT_FAMILY }}
+      >
+        <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall" whiteSpace="pre-line">
+          {ESTATES_HOW_TO_PLAY_BODY}
+        </Text>
+      </AppModal>
 
       {loadError ? (
         <Box px="3" py="2" bg="nautical.subtle" flexShrink={0}>
@@ -622,6 +777,7 @@ export default function EstatesPlayPage() {
           myPlayerState={myPlayerState}
           opponentPlayerState={opponentPlayerState}
           onPlaceCard={onPlaceCard}
+          onReorderHand={onReorderHand}
           isMyScoringChoice={isMyScoringChoice}
           scoringZoneCardOwner={scoringZoneCardOwner}
           scoringTargets={scoringTargets}

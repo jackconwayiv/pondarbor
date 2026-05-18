@@ -5,7 +5,7 @@ import "./playCanvas.css";
 /** Fixed design width on desktop — does not widen to fill the viewport. */
 const LANDSCAPE_W = 1100;
 const LANDSCAPE_H = 900;
-const LANDSCAPE_OVERHANG_Y = 80;
+const LANDSCAPE_OVERHANG_Y = 88;
 
 const PORTRAIT_W = 800;
 const PORTRAIT_H = 1000;

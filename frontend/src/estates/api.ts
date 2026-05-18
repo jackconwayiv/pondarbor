@@ -282,6 +282,23 @@ export async function confirmEstatesCard(accessToken: string, gameId: string): P
   return (await response.json()) as EstatesGameState;
 }
 
+export async function reorderEstatesHand(
+  accessToken: string,
+  gameId: string,
+  cardIds: string[],
+): Promise<EstatesGameState> {
+  const response = await fetch(`${estatesBase()}/games/${gameId}/actions/reorder-hand/`, {
+    method: "POST",
+    credentials: "omit",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({ card_ids: cardIds }),
+  });
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
+  }
+  return (await response.json()) as EstatesGameState;
+}
+
 export async function concedeEstatesGame(accessToken: string, gameId: string): Promise<EstatesGameState> {
   const response = await fetch(`${estatesBase()}/games/${gameId}/actions/concede/`, {
     method: "POST",
@@ -295,10 +312,16 @@ export async function concedeEstatesGame(accessToken: string, gameId: string): P
   return (await response.json()) as EstatesGameState;
 }
 
+export type ChooseEstatesEffectTargetPayload = {
+  target_zone?: string;
+  target_card_id?: string;
+  go_first?: boolean;
+};
+
 export async function chooseEstatesEffectTarget(
   accessToken: string,
   gameId: string,
-  payload: { target_zone?: string; target_card_id: string },
+  payload: ChooseEstatesEffectTargetPayload,
 ): Promise<EstatesGameState> {
   const response = await fetch(`${estatesBase()}/games/${gameId}/actions/choose-effect-target/`, {
     method: "POST",

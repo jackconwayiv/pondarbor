@@ -16,7 +16,7 @@ export function normalizeSuitValue(suitOrColor: string): string {
   const value = suitOrColor.trim().toLowerCase();
   if (value === "peasant" || value === "green") return "peasant";
   if (value === "noble" || value === "blue") return "noble";
-  if (value === "royal" || value === "orange") return "royal";
+  if (value === "royal" || value === "orange" || value === "yellow") return "royal";
   return value;
 }
 

@@ -7,6 +7,7 @@ export type ScoringStepHourglassTimerProps = {
   durationMs?: number;
   label?: string;
   size?: number;
+  labelFontFamily?: string;
 };
 
 function clamp01(value: number): number {
@@ -20,6 +21,7 @@ export function ScoringStepHourglassTimer({
   durationMs = SCORING_STEP_DELAY_MS,
   label = "Processing board…",
   size = 22,
+  labelFontFamily,
 }: ScoringStepHourglassTimerProps) {
   const [progress, setProgress] = useState(0);
 
@@ -87,7 +89,12 @@ export function ScoringStepHourglassTimer({
           <rect x="10.5" y="10.5" width="1" height="2" fill="var(--gilt, #d4a83a)" />
         ) : null}
       </svg>
-      <span className="estates-hourglass__label">{label}</span>
+      <span
+        className="estates-hourglass__label"
+        style={labelFontFamily ? { fontFamily: labelFontFamily } : undefined}
+      >
+        {label}
+      </span>
     </span>
   );
 }

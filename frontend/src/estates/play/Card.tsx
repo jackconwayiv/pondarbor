@@ -19,6 +19,8 @@ export type CardProps = {
   size?: CardSize;
   isWinner?: boolean;
   winnerAnchor?: "top" | "bottom";
+  /** Darken the card face when this zone has a winner and this card lost. */
+  zoneLoser?: boolean;
   isDragging?: boolean;
   scoringTarget?: CardScoringTarget;
   /** Dim this card while another card is being chosen in the same pool. */
@@ -56,7 +58,7 @@ function suitClass(suit: string): string {
 }
 
 function suitGlyphPrimary(suit: string): string {
-  if (suit === "royal") return "var(--vermilion)";
+  if (suit === "royal") return "var(--royal)";
   if (suit === "noble") return "var(--lapis)";
   return "var(--verdigris)";
 }
@@ -67,6 +69,7 @@ export function Card(props: CardProps) {
     size = "default",
     isWinner,
     winnerAnchor,
+    zoneLoser,
     isDragging,
     scoringTarget,
     dimmed,
@@ -91,6 +94,7 @@ export function Card(props: CardProps) {
     draggable ? "estates-card--draggable" : null,
     isDragging ? "estates-card--dragging" : null,
     isWinner ? "estates-card--winner" : null,
+    zoneLoser ? "estates-card--zone-loser" : null,
     dimmed ? "estates-card--dimmed" : null,
   ]
     .filter(Boolean)

@@ -120,7 +120,7 @@ export function HeraldicShieldGlyph({ size = 24, color, ...rest }: GlyphProps) {
 }
 
 export function CrownGlyph({ size = 24, color, ...rest }: GlyphProps) {
-  return <PixelArt rows={CROWN_ROWS} primary={color ?? "var(--vermilion)"} size={size} {...rest} />;
+  return <PixelArt rows={CROWN_ROWS} primary={color ?? "var(--royal)"} size={size} {...rest} />;
 }
 
 export function SuitGlyph({

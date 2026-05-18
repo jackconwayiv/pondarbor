@@ -1,6 +1,7 @@
 import { useDroppable } from "@dnd-kit/core";
-import type { CSSProperties, ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 
+import { useIsMobile } from "../../responsive";
 import {
   ZONE_ALLOWED_SUITS,
   type CanonicalSuit,
@@ -20,10 +21,10 @@ const ZONE_LABELS: Record<ZoneName, string> = {
 };
 
 const ZONE_EFFECT_HINTS: Record<ZoneName, string> = {
-  farm: "2nd: give a card +2 this round",
   gate: "1st: give a card -1 this round",
-  road: "3rd: permanent +1 to a card in hand",
-  tower: "4th: draw +1 card next round",
+  farm: "2nd: permanent +1 to a card in hand",
+  road: "3rd: draw +1 card next turn",
+  tower: "4th: choose who plays first next round",
   throne: "5th: gain 1 point",
 };
 
@@ -40,7 +41,7 @@ function zoneSpacedName(zone: ZoneName): string {
 }
 
 function suitWashVar(suit: string): string {
-  if (suit === "royal") return "rgba(184, 51, 42, 0.28)";
+  if (suit === "royal") return "rgba(201, 164, 26, 0.32)";
   if (suit === "noble") return "rgba(31, 61, 138, 0.25)";
   return "rgba(93, 127, 79, 0.28)";
 }
@@ -87,6 +88,9 @@ export function Zone({
   mineSlot,
   stackAbove,
 }: ZoneProps) {
+  const isMobile = useIsMobile();
+  const [effectHintOpen, setEffectHintOpen] = useState(false);
+
   const { setNodeRef, isOver } = useDroppable({
     id: zoneDropId(zone),
     disabled: !isMyTurn,
@@ -94,11 +98,17 @@ export function Zone({
 
   const hoverValid = isOver && dropValid;
   const hoverInvalid = isOver && dropInvalid;
+  const showInvalidHint = hoverInvalid && Boolean(invalidReason);
+  const invalidHintText =
+    invalidReason === "already_placed"
+      ? "Already placed here this round"
+      : ZONE_INVALID_HINTS[zone];
 
   const boxClass = [
     "estates-zone-box",
     hoverValid ? "estates-zone-box--hover-valid" : null,
     hoverInvalid ? "estates-zone-box--hover-invalid" : null,
+    isMobile && effectHintOpen && !showInvalidHint ? "estates-zone-box--hint-open" : null,
   ]
     .filter(Boolean)
     .join(" ");
@@ -110,19 +120,33 @@ export function Zone({
   const cellClass = ["estates-zone-cell", `estates-zone-cell--${zone}`].join(" ");
   const cellStyle: CSSProperties | undefined = stackAbove ? { zIndex: 5 } : undefined;
 
-  const hint =
-    hoverInvalid && invalidReason
-      ? invalidReason === "already_placed"
-        ? "Already placed here this round"
-        : ZONE_INVALID_HINTS[zone]
-      : ZONE_EFFECT_HINTS[zone];
-
   const allowed = [...ZONE_ALLOWED_SUITS[zone]] as Array<CanonicalSuit>;
+
+  const onZoneBoxClick = () => {
+    if (!isMobile || showInvalidHint) return;
+    setEffectHintOpen((open) => !open);
+  };
 
   return (
     <div className={cellClass} style={cellStyle}>
       <div className="estates-zone-stack">
-        <div ref={setNodeRef} className={boxClass} style={boxStyle}>
+        <div
+          ref={setNodeRef}
+          className={boxClass}
+          style={boxStyle}
+          onClick={onZoneBoxClick}
+          onKeyDown={(event) => {
+            if (!isMobile || showInvalidHint) return;
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              setEffectHintOpen((open) => !open);
+            }
+          }}
+          role={isMobile ? "button" : undefined}
+          tabIndex={isMobile ? 0 : undefined}
+          aria-expanded={isMobile ? effectHintOpen : undefined}
+          aria-label={isMobile ? `${ZONE_LABELS[zone]} zone, toggle effect hint` : undefined}
+        >
           <div className="estates-zone-art" aria-hidden>
             <ZoneIllumination zone={zone} />
           </div>
@@ -136,15 +160,13 @@ export function Zone({
             </span>
           </div>
 
-          <div
-            className={
-              hoverInvalid
-                ? "estates-zone-hint estates-zone-hint--invalid"
-                : "estates-zone-hint"
-            }
-          >
-            {hint}
-          </div>
+          {showInvalidHint ? (
+            <div className="estates-zone-hint estates-zone-hint--invalid">{invalidHintText}</div>
+          ) : (
+            <div className="estates-zone-hint estates-zone-hint--effect">
+              {ZONE_EFFECT_HINTS[zone]}
+            </div>
+          )}
         </div>
 
         {opponentSlot ? (

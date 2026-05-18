@@ -7,6 +7,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 MANIFEST="$ROOT/frontend/dist/.vite/manifest.json"
 
 cd "$ROOT/frontend"
+# npm 11+ warns on Cursor's npm_config_devdir (node-gyp path, not an npm config key).
+unset npm_config_devdir
 npm ci
 npm run build
 

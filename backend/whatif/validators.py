@@ -2,11 +2,8 @@ import re
 
 DISPLAY_NAME_RE = re.compile(r"^[A-Za-z0-9 ]{1,12}$")
 
-# Letters, digits, spaces, common punctuation; {subject} allowed in prompts.
-QUESTION_TEXT_RE = re.compile(
-    r"^[\w\s.,?!'\"()\-:;{}\[\]]+$",
-    re.UNICODE,
-)
+# Disallow ASCII control characters (except common whitespace handled by strip).
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 
 def validate_display_name(value: str) -> str:
@@ -24,8 +21,6 @@ def validate_question_text_field(name: str, value: str, *, max_length: int) -> s
     s = value.strip()
     if len(s) > max_length:
         raise ValueError(f"{name} must be at most {max_length} characters.")
-    if not QUESTION_TEXT_RE.fullmatch(s):
-        raise ValueError(
-            f"{name} contains invalid characters. Use letters, numbers, spaces, and common punctuation."
-        )
+    if _CONTROL_CHAR_RE.search(s):
+        raise ValueError(f"{name} contains unsupported characters.")
     return s

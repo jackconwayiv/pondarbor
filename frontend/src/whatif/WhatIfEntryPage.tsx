@@ -155,7 +155,6 @@ export default function WhatIfEntryPage() {
   const canProposeQuestions =
     isAuthenticated &&
     isApprovedUser &&
-    !isStaff &&
     (sessionUser?.profile?.whatif_completed_session ?? false);
   const [adminBusy, setAdminBusy] = useState(false);
   const [adminError, setAdminError] = useState<string | null>(null);

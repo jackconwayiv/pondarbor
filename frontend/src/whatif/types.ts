@@ -54,6 +54,8 @@ export type WhatIfRoundState = {
   /** Times each player id has been the round subject this session. */
   subject_times?: Record<string, number>;
   next_turn_not_before?: string | null;
+  /** ISO timestamp when votes were revealed; drives TV scoreboard reveal animation. */
+  revealed_at?: string | null;
   final_scores?: Array<{
     player_id: number;
     display_name: string;

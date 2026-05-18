@@ -21,66 +21,9 @@ import { useWhatIfSessionSync } from "./useWhatIfSessionSync";
 import WhatIfShell from "./WhatIfShell";
 import type { WhatIfPlayer, WhatIfSessionState } from "./types";
 import { WhatIfPlayerFace } from "./whatifPlayerFace";
-import { subjectBoardSeatCount, subjectBoardSeatLabel } from "./whatifSubjectBoardUi";
-
-function WhatIfTvSeatStrip({
-  players,
-  markerIndex,
-  candidateSeatA,
-  candidateSeatB,
-  activeTurnSubjectPhase,
-  activeChallengeRound,
-}: {
-  players: WhatIfPlayer[];
-  markerIndex?: number | null;
-  candidateSeatA?: number | null;
-  candidateSeatB?: number | null;
-  activeTurnSubjectPhase: boolean;
-  activeChallengeRound: boolean;
-}) {
-  const P = players.length;
-  if (P < 2) return null;
-  const L = subjectBoardSeatCount(P);
-  const cand =
-    activeTurnSubjectPhase &&
-    typeof candidateSeatA === "number" &&
-    typeof candidateSeatB === "number"
-      ? new Set<number>([candidateSeatA, candidateSeatB])
-      : null;
-  return (
-    <Box w="100%" overflowX="auto" overflowY="visible" pt="1" pb="1">
-      <HStack gap="2" minW="min-content" justify="center" flexWrap="wrap">
-        {Array.from({ length: L }, (_, i) => i).map((i) => {
-          const isMarker = markerIndex != null && Number(markerIndex) === i;
-          const isCand = cand?.has(i) ?? false;
-          const label = subjectBoardSeatLabel(players, i);
-          return (
-            <Box
-              key={i}
-              px="3"
-              py="2"
-              borderRadius="lg"
-              borderWidth="2px"
-              borderColor={isCand ? "teal.solid" : "border"}
-              bg={isCand ? "teal.50" : "bg.panel"}
-              boxShadow={
-                isMarker
-                  ? `0 0 0 3px var(--chakra-colors-${activeChallengeRound ? "bg-canvas" : "orange-solid"})`
-                  : undefined
-              }
-              minW="5rem"
-              textAlign="center"
-            >
-              <Text color="black" fontSize="clamp(0.85rem, 2vh, 1.1rem)" fontWeight="semibold" lineHeight="1.2">
-                {label}
-              </Text>
-            </Box>
-          );
-        })}
-      </HStack>
-    </Box>
-  );
-}
+import { whatifPlayerSeatIndex } from "./whatifPlayerSeatColors";
+import { WhatIfTvScoreboard } from "./WhatIfTvScoreboard";
+import { WhatIfTvSeatRing } from "./WhatIfTvSeatRing";
 
 export default function WhatIfPlayPage() {
   const navigate = useNavigate();
@@ -109,8 +52,9 @@ export default function WhatIfPlayPage() {
   }, [isAuthenticated, resyncSessionSilently, state?.status]);
 
   useEffect(() => {
-    if (state?.status !== "voting") return;
-    const id = window.setInterval(() => setNowMs(Date.now()), 1000);
+    if (state?.status !== "voting" && state?.status !== "post_results") return;
+    const ms = state?.status === "post_results" ? 100 : 1000;
+    const id = window.setInterval(() => setNowMs(Date.now()), ms);
     return () => window.clearInterval(id);
   }, [state?.status]);
 
@@ -212,16 +156,6 @@ export default function WhatIfPlayPage() {
     return byOpt;
   }, [state?.status, state?.state?.votes, state?.players]);
 
-  const scoreboardRows = [...((state?.players ?? []).slice())].sort(
-    (a, b) => b.score - a.score || a.display_name.localeCompare(b.display_name),
-  );
-
-  const rankByPlayerId = useMemo(() => {
-    const fs = state?.state?.final_scores;
-    if (!fs?.length) return {} as Record<number, number>;
-    return Object.fromEntries(fs.map((r) => [r.player_id, r.rank]));
-  }, [state?.state?.final_scores]);
-
   const canHostComplete =
     !!hostToken &&
     (state?.status === "turn" ||
@@ -240,16 +174,20 @@ export default function WhatIfPlayPage() {
 
   const joinOrderPlayers = useMemo(() => [...(state?.players ?? [])], [state?.players]);
   const showSeatStrip =
-    !!state?.challenge_mode &&
     joinOrderPlayers.length >= 2 &&
     state?.status !== "ended" &&
     state?.status !== "pre_lobby" &&
     state?.status !== "open";
+  const subjectDieValue = state?.state?.subject_die_value;
+  const hasSubjectDie =
+    typeof subjectDieValue === "number" && subjectDieValue >= 1 && subjectDieValue <= 6;
   const seatStripSubjectPhase =
     state?.status === "turn" &&
     !state?.state?.challenge_target_player_id &&
     duel?.step !== "pick_opponent" &&
-    typeof state?.state?.subject_die_value === "number";
+    hasSubjectDie;
+  const showSeatRingDie =
+    state?.status === "turn" && hasSubjectDie && (seatStripSubjectPhase || duel?.step === "pick_opponent");
   const activeChallengeRound =
     state?.status !== "ended" &&
     (duel?.step === "pick_opponent" || duel?.step === "pick_subject" || duel?.step === "voting");
@@ -380,8 +318,12 @@ export default function WhatIfPlayPage() {
                           <WhatIfPlayerFace
                             player={p}
                             viewerPlayerId={viewerPlayerId}
+                            seatIndex={
+                              whatifPlayerSeatIndex(p.id, joinOrderPlayers) >= 0
+                                ? whatifPlayerSeatIndex(p.id, joinOrderPlayers)
+                                : undefined
+                            }
                             avatarSize="lg"
-                            emojiFontSize="clamp(1.15rem, 3vh, 2.1rem)"
                           />
                         </Box>
                       ))
@@ -397,9 +339,7 @@ export default function WhatIfPlayPage() {
                       {activePlayer.display_name} challenged {challengedPlayer.display_name}!
                     </Text>
                     <Text fontSize="clamp(1.2rem, 3vh, 2.25rem)" fontWeight="bold" lineHeight="1.2">
-                      {typeof state?.state?.subject_die_value === "number"
-                        ? `${activePlayer.display_name} rolled a ${state.state.subject_die_value} and is choosing who this challenge is about!`
-                        : `${activePlayer.display_name} is choosing who this challenge is about!`}
+                      {activePlayer.display_name} is choosing who this challenge is about!
                     </Text>
                   </Stack>
                 ) : state?.status === "ended" ? (
@@ -467,9 +407,7 @@ export default function WhatIfPlayPage() {
                     {activePlayer
                       ? needPickChallengeTarget
                         ? `${activePlayer.display_name} is choosing who to challenge!`
-                        : typeof state?.state?.subject_die_value === "number"
-                          ? `${activePlayer.display_name} rolled a ${state.state.subject_die_value} and is choosing this round's subject!`
-                          : `${activePlayer.display_name} is choosing this round's subject!`
+                        : `${activePlayer.display_name} is choosing this round's subject!`
                       : "Waiting for game start"}
                   </Text>
                 )}
@@ -483,8 +421,12 @@ export default function WhatIfPlayPage() {
                               <WhatIfPlayerFace
                                 player={player}
                                 viewerPlayerId={viewerPlayerId}
+                                seatIndex={
+                                  whatifPlayerSeatIndex(player.id, joinOrderPlayers) >= 0
+                                    ? whatifPlayerSeatIndex(player.id, joinOrderPlayers)
+                                    : undefined
+                                }
                                 avatarSize="sm"
-                                emojiFontSize="clamp(1rem, 2.2vh, 1.35rem)"
                               />
                               <Text>
                                 {player.display_name}: {sign}
@@ -572,8 +514,12 @@ export default function WhatIfPlayPage() {
                                 <WhatIfPlayerFace
                                   player={pl}
                                   viewerPlayerId={viewerPlayerId}
+                                  seatIndex={
+                                    whatifPlayerSeatIndex(pl.id, joinOrderPlayers) >= 0
+                                      ? whatifPlayerSeatIndex(pl.id, joinOrderPlayers)
+                                      : undefined
+                                  }
                                   avatarSize="sm"
-                                  emojiFontSize="clamp(1.05rem, 2.8vh, 1.35rem)"
                                 />
                               </Box>
                             ))}
@@ -668,15 +614,18 @@ export default function WhatIfPlayPage() {
               color={tvCardColor}
               w="100%"
             >
-              <Stack gap="2" w="100%">
+              <Stack gap="1" w="100%">
                 {showSeatStrip ? (
-                  <WhatIfTvSeatStrip
+                  <WhatIfTvSeatRing
                     players={joinOrderPlayers}
                     markerIndex={state?.state?.marker_index}
                     candidateSeatA={state?.state?.subject_candidate_seat_a}
                     candidateSeatB={state?.state?.subject_candidate_seat_b}
                     activeTurnSubjectPhase={seatStripSubjectPhase}
+                    showCenterDie={showSeatRingDie}
                     activeChallengeRound={activeChallengeRound}
+                    activePlayerId={activeId}
+                    subjectDieValue={subjectDieValue}
                   />
                 ) : null}
                 <Text
@@ -693,79 +642,17 @@ export default function WhatIfPlayPage() {
                   The first player to {state?.win_score ?? 25} points wins!
                 </Text>
               </Stack>
-              {scoreboardRows.length > 0 ? (
-                <Stack gap="2" w="100%" pt="1">
-                  {scoreboardRows.map((p) => {
-                    const seatNo =
-                      joinOrderPlayers.findIndex((pl) => pl.id === p.id) + 1;
-                    const placement = rankByPlayerId[p.id];
-                    const isActiveTurn = activeId != null && p.id === activeId;
-                    return (
-                      <Box key={p.id} position="relative" w="100%" minW={0}>
-                        <Text
-                          position="absolute"
-                          top="0"
-                          left="0"
-                          fontSize="clamp(0.65rem, 1.5vh, 0.85rem)"
-                          fontWeight="bold"
-                          lineHeight="1"
-                          color={tvMutedColor}
-                        >
-                          {seatNo}
-                        </Text>
-                        {isActiveTurn ? (
-                          <Text
-                            position="absolute"
-                            top="0"
-                            right="0"
-                            fontSize="clamp(0.85rem, 2vh, 1.1rem)"
-                            lineHeight="1"
-                            color={activeChallengeRound ? "white" : "orange.solid"}
-                            aria-label="Active player's turn"
-                          >
-                            ★
-                          </Text>
-                        ) : null}
-                        <HStack align="center" gap="3" w="100%" minW={0} pl="5" pr={isActiveTurn ? "7" : "0"}>
-                          <HStack flex="1" minW={0} gap="2" align="center">
-                            <WhatIfPlayerFace
-                              player={p}
-                              viewerPlayerId={viewerPlayerId}
-                              avatarSize="lg"
-                              emojiFontSize="clamp(1.35rem, 3.5vh, 2rem)"
-                            />
-                            <Text
-                              fontSize="clamp(1.35rem, 3.5vh, 2rem)"
-                              fontWeight="semibold"
-                              lineHeight="1.25"
-                            >
-                              {placement != null ? (
-                                <Text as="span" color={tvMutedColor} fontWeight="bold" mr="1">
-                                  #{placement}{" "}
-                                </Text>
-                              ) : null}
-                              {p.display_name} · {p.score} pts
-                            </Text>
-                            {p.paused ? (
-                              <Text
-                                color={tvMutedColor}
-                                fontSize="clamp(0.95rem, 2.2vh, 1.15rem)"
-                                fontWeight="medium"
-                              >
-                                (paused)
-                              </Text>
-                            ) : null}
-                          </HStack>
-                        </HStack>
-                      </Box>
-                    );
-                  })}
-                </Stack>
-              ) : (
-                <Text color={tvMutedColor} fontSize="clamp(1rem, 2.2vh, 1.2rem)" textAlign="center" py="2">
-                  —
-                </Text>
-              )}
+              <WhatIfTvScoreboard
+                players={state?.players ?? []}
+                status={state?.status}
+                roundScores={state?.state?.round_scores}
+                revealedAt={state?.state?.revealed_at}
+                nowMs={nowMs}
+                joinOrderPlayers={joinOrderPlayers}
+                viewerPlayerId={viewerPlayerId}
+                activeChallengeRound={activeChallengeRound}
+                tvMutedColor={tvMutedColor}
+              />
             </Stack>
           </GridItem>
         </Grid>

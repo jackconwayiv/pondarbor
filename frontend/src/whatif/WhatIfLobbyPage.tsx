@@ -1,10 +1,11 @@
-import { Box, Code, Heading, HStack, Stack, Text } from "@chakra-ui/react";
+import { Box, Code, Heading, HStack, SimpleGrid, Stack, Text } from "@chakra-ui/react";
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 
 import PondButton from "../PondButton";
 import { fullBleedStackProps } from "../responsive";
 import { WhatIfPlayerFace } from "./whatifPlayerFace";
+import { whatifPlayerSeatIndex } from "./whatifPlayerSeatColors";
 import {
   APP_SHELL_TRAY_PROPS,
   APP_TEXT_SIZES,
@@ -115,26 +116,34 @@ export default function WhatIfLobbyPage() {
                 {state?.players?.length ?? 0} player
                 {(state?.players?.length ?? 0) === 1 ? "" : "s"} in the lobby
               </Text>
-              <Stack gap="2">
-                {(state?.players ?? []).map((p) => (
-                  <HStack
-                    key={p.id}
-                    borderWidth="1px"
-                    borderColor="border"
-                    borderRadius="md"
-                    px={{ base: "3", md: "4" }}
-                    py={{ base: "2", md: "3" }}
-                    bg="bg"
-                    gap="3"
-                    align="center"
-                  >
-                    <WhatIfPlayerFace player={p} avatarSize="md" emojiFontSize="1.35em" />
-                    <Text fontSize={APP_TEXT_SIZES.body}>
-                      {p.display_name}
-                    </Text>
-                  </HStack>
-                ))}
-              </Stack>
+              <SimpleGrid columns={2} gap="2">
+                {(state?.players ?? []).map((p) => {
+                  const seatIndex = whatifPlayerSeatIndex(p.id, state?.players ?? []);
+                  return (
+                    <HStack
+                      key={p.id}
+                      borderWidth="1px"
+                      borderColor="border"
+                      borderRadius="md"
+                      px={{ base: "3", md: "4" }}
+                      py={{ base: "2", md: "3" }}
+                      bg="bg"
+                      gap="3"
+                      align="center"
+                      minW={0}
+                    >
+                      <WhatIfPlayerFace
+                        player={p}
+                        seatIndex={seatIndex >= 0 ? seatIndex : undefined}
+                        avatarSize="md"
+                      />
+                      <Text fontSize={APP_TEXT_SIZES.body} truncate>
+                        {p.display_name}
+                      </Text>
+                    </HStack>
+                  );
+                })}
+              </SimpleGrid>
 
               <PondButton
                 type="button"

@@ -1,0 +1,12 @@
+{
+  "//": "Cursor sets npm_config_devdir for sandbox node-gyp; npm 11+ warns it is not a valid npm config key.",
+  "terminal.integrated.env.osx": {
+    "npm_config_devdir": ""
+  },
+  "terminal.integrated.env.linux": {
+    "npm_config_devdir": ""
+  },
+  "terminal.integrated.env.windows": {
+    "npm_config_devdir": ""
+  }
+}

@@ -3,6 +3,7 @@ import {
   Avatar,
   Box,
   Code,
+  Flex,
   Grid,
   GridItem,
   Heading,
@@ -36,7 +37,14 @@ import WhatIfShell from "./WhatIfShell";
 import { whatifInputProps } from "./whatifFieldProps";
 import type { WhatIfPlayer, WhatIfSessionState } from "./types";
 import { isWhatIfLobbyStatus } from "./whatifSessionStatus";
+import { voteOptionFontSize } from "./whatifHandVoteUi";
+import {
+  formatWhatIfTopVoteLine,
+  scoreboardCompetitionRanks,
+  scoreboardRowMedalGradient,
+} from "./whatifScoreboardUi";
 import { WhatIfPlayerFace } from "./whatifPlayerFace";
+import { whatifPlayerSeatIndex } from "./whatifPlayerSeatColors";
 import { subjectBoardSeatLabel } from "./whatifSubjectBoardUi";
 
 const DISPLAY_NAME_RE = /^[A-Za-z0-9 ]*$/;
@@ -329,8 +337,8 @@ export default function WhatIfHandPage() {
             </Code>
           </Stack>
           <Text color="gray.700">
-            Enter the name others will see on this phone. The TV shows the main board; this screen is your private
-            hand.
+            Enter the name others will see on this phone. The TV shows the main board; this screen is for your votes
+            and choices.
           </Text>
 
           {!isAuthenticated ? (
@@ -419,6 +427,11 @@ export default function WhatIfHandPage() {
 
   const me = state?.state?.you;
   const playerList = state?.players ?? [];
+  const mySeatIndex = me != null ? whatifPlayerSeatIndex(me.id, playerList) : -1;
+  const seatIndexFor = (playerId: number) => {
+    const i = whatifPlayerSeatIndex(playerId, playerList);
+    return i >= 0 ? i : undefined;
+  };
   const isActive = !!me && me.id === state?.state?.active_player_id;
   const duel = state?.state?.duel;
   const subjectCandidateIds = state?.state?.subject_candidate_ids ?? [];
@@ -558,6 +571,27 @@ export default function WhatIfHandPage() {
 
   const showVoteGrid =
     state?.status === "voting" && (!duelVoting || isDuelist) && Object.keys(answers).length > 0;
+  const showPauseGameButton =
+    state?.status === "voting" && isActive && !imPaused && (!canReveal || votingPaused);
+  const showRevealVotesButton =
+    state?.status === "voting" && isActive && !imPaused && canReveal;
+  const showNextTurnButton = state?.status === "post_results" && isActive && canAdvance;
+  const duelPostResults =
+    state?.status === "post_results" &&
+    duel?.step === "voting" &&
+    duel?.challenged_player_id != null;
+  const topVoteLine =
+    state?.status === "post_results" && !duelPostResults
+      ? formatWhatIfTopVoteLine(state?.state?.vote_counts, answers)
+      : null;
+
+  const myScoreMedalBg = useMemo(() => {
+    if (!me) return undefined;
+    const ranks = scoreboardCompetitionRanks(
+      playerList.map((p) => ({ id: p.id, score: p.score })),
+    );
+    return scoreboardRowMedalGradient(ranks[me.id]);
+  }, [me, playerList]);
 
   return (
     <WhatIfShell withPanel={false}>
@@ -616,36 +650,102 @@ export default function WhatIfHandPage() {
           color={challengeHeaderInvolved ? "white" : undefined}
           flexShrink={0}
         >
-          <HStack justify="space-between" align="center" w="100%" gap="3" flexWrap="wrap">
-            <Stack gap="0" flex="1" minW="0">
-              <Heading as="h1" size="xl">
-                Your Hand
-              </Heading>
-            </Stack>
-            {showSkipButton ? (
+          <Flex align="center" w="100%" gap={{ base: 2, sm: 4 }} minH="2.75rem">
+            <Box flex="1" minW={0} display="flex" justifyContent="flex-start" alignItems="center">
+              {me ? (
+                <Box aria-label={me.display_name}>
+                  <WhatIfPlayerFace
+                    player={me}
+                    viewerPlayerId={me.id}
+                    seatIndex={mySeatIndex >= 0 ? mySeatIndex : undefined}
+                    avatarSize="lg"
+                  />
+                </Box>
+              ) : (
+                <Heading as="h1" size="xl" lineHeight="1.2" truncate minW={0}>
+                  WhatIf
+                </Heading>
+              )}
+            </Box>
+            <Box flexShrink={0} display="flex" justifyContent="center" px={{ base: 1, sm: 2 }}>
+            {showPauseGameButton ? (
               <PondButton
-                ref={confirmSkip ? confirmSkipRef : undefined}
                 type="button"
-                colorPalette="orange"
-                flexShrink={0}
-                disabled={busy || imPaused}
-                onClick={() => {
-                  if (!confirmSkip) {
-                    setConfirmSkip(true);
-                    return;
-                  }
-                  void action({ type: "request_question_skip" });
-                  setConfirmSkip(false);
-                }}
+                {...(challengeHeaderInvolved && !votingPaused
+                  ? {
+                      variant: "outline" as const,
+                      borderColor: "white",
+                      color: "white",
+                      borderWidth: "2px",
+                      _hover: { bg: "whiteAlpha.200" },
+                    }
+                  : {
+                      colorPalette: votingPaused ? ("lilypad" as const) : ("orange" as const),
+                      variant: votingPaused ? ("solid" as const) : ("outline" as const),
+                    })}
+                onClick={() => void action({ type: "toggle_voting_pause" })}
+                loading={busy}
+                disabled={busy}
               >
-                {confirmSkip ? "Confirm Veto" : "Veto Question"}
+                {votingPaused ? "Resume game" : "Pause game"}
               </PondButton>
-            ) : me && !(state?.status === "voting" && showSkipButton) ? (
-              <Text flexShrink={0} fontSize="1.65em" fontWeight="semibold" lineHeight="1">
-                {formatHandTotalScoreLabel(me.score)}
-              </Text>
+            ) : showRevealVotesButton ? (
+              <PondButton
+                type="button"
+                colorPalette="teal"
+                onClick={() => void action({ type: "reveal" })}
+                loading={busy}
+                disabled={busy || votingPaused}
+              >
+                Reveal votes
+              </PondButton>
+            ) : showNextTurnButton ? (
+              <PondButton
+                type="button"
+                colorPalette="teal"
+                onClick={() => void action({ type: "next_turn" })}
+                loading={busy}
+                disabled={busy || imPaused}
+              >
+                {`${nextPlayerName}'s turn`}
+              </PondButton>
             ) : null}
-          </HStack>
+            </Box>
+            <Box flex="1" minW={0} display="flex" justifyContent="flex-end" alignItems="center">
+            <HStack flexShrink={0}>
+              {showSkipButton ? (
+                <PondButton
+                  ref={confirmSkip ? confirmSkipRef : undefined}
+                  type="button"
+                  colorPalette="orange"
+                  disabled={busy || imPaused}
+                  onClick={() => {
+                    if (!confirmSkip) {
+                      setConfirmSkip(true);
+                      return;
+                    }
+                    void action({ type: "request_question_skip" });
+                    setConfirmSkip(false);
+                  }}
+                >
+                  {confirmSkip ? "Confirm Veto" : "Veto Question"}
+                </PondButton>
+              ) : me && !(state?.status === "voting" && showSkipButton) ? (
+                myScoreMedalBg ? (
+                  <Box px="2" borderRadius="md" bg={myScoreMedalBg} flexShrink={0} lineHeight="1">
+                    <Text fontSize="1.65em" fontWeight="semibold" lineHeight="1">
+                      {formatHandTotalScoreLabel(me.score)}
+                    </Text>
+                  </Box>
+                ) : (
+                  <Text fontSize="1.65em" fontWeight="semibold" lineHeight="1" flexShrink={0}>
+                    {formatHandTotalScoreLabel(me.score)}
+                  </Text>
+                )
+              ) : null}
+            </HStack>
+            </Box>
+          </Flex>
           {actionError || error ? (
             <Text role="alert" color={challengeHeaderInvolved ? "orange.100" : "nautical.solid"} fontWeight="medium">
               {actionError ?? error}
@@ -691,7 +791,9 @@ export default function WhatIfHandPage() {
             </Text>
           ) : null}
           {needSubjectPhaseWaiting && !needPickOpponent && !needDuelSubjectPick && !isActive ? (
-            <Text color={headerMutedColor}>Waiting for {activeName} to choose this round&apos;s subject…</Text>
+            <Text color={headerMutedColor}>
+              Waiting for {activeName} to choose this round's subject…
+            </Text>
           ) : null}
           {needSubjectPhaseWaiting &&
           isActive &&
@@ -703,6 +805,11 @@ export default function WhatIfHandPage() {
           ) : null}
           {needPickOpponent && isActive ? <Text fontWeight="medium">Who do you challenge?</Text> : null}
           {needDuelSubjectPick && isActive ? <Text fontWeight="medium">Pick the subject for this challenge:</Text> : null}
+          {needDieSubjectPick && isActive ? (
+            <Text fontWeight="medium">
+              {dieDegenerate ? "Confirm this landing spot." : "Choose this round's subject…"}
+            </Text>
+          ) : null}
           {state?.status === "voting" && votingPaused ? (
             <Text
               p="3"
@@ -716,45 +823,20 @@ export default function WhatIfHandPage() {
                 : `Game paused by ${activeName}. Voting is locked until they resume.`}
             </Text>
           ) : null}
-          {state?.status === "voting" && isActive && !imPaused ? (
-            <HStack gap="3" flexWrap="wrap">
-              {!canReveal || votingPaused ? (
-                <PondButton
-                  type="button"
-                  {...(challengeHeaderInvolved && !votingPaused
-                    ? {
-                        variant: "outline" as const,
-                        borderColor: "white",
-                        color: "white",
-                        borderWidth: "2px",
-                        _hover: { bg: "whiteAlpha.200" },
-                      }
-                    : {
-                        colorPalette: votingPaused ? ("lilypad" as const) : ("orange" as const),
-                        variant: votingPaused ? ("solid" as const) : ("outline" as const),
-                      })}
-                  onClick={() => void action({ type: "toggle_voting_pause" })}
-                  loading={busy}
-                  disabled={busy}
-                >
-                  {votingPaused ? "Resume game" : "Pause game"}
-                </PondButton>
-              ) : null}
-              {canReveal ? (
-                <PondButton
-                  type="button"
-                  colorPalette="teal"
-                  onClick={() => void action({ type: "reveal" })}
-                  loading={busy}
-                  disabled={busy || votingPaused}
-                >
-                  Reveal votes
-                </PondButton>
-              ) : null}
-            </HStack>
-          ) : null}
           {state?.status === "post_results" ? (
             <Stack gap="2">
+              {topVoteLine ? (
+                <Text
+                  fontSize="lg"
+                  fontWeight="semibold"
+                  textAlign="center"
+                  w="100%"
+                  color={challengeHeaderInvolved ? "white" : undefined}
+                  lineHeight="1.3"
+                >
+                  {topVoteLine}
+                </Text>
+              ) : null}
               {!suppressSpectatorZeroRoundPoints ? (
                 <Text
                   fontSize="32px"
@@ -768,25 +850,14 @@ export default function WhatIfHandPage() {
                 </Text>
               ) : null}
               {isActive ? (
-                canAdvance ? (
-                  <PondButton
-                    type="button"
-                    colorPalette="teal"
-                    alignSelf="flex-start"
-                    onClick={() => void action({ type: "next_turn" })}
-                    loading={busy}
-                    disabled={busy || imPaused}
-                  >
-                    {nextPlayerName}&apos;s turn
-                  </PondButton>
-                ) : (
-                  <Text fontSize="sm" color="gray.600">
+                !canAdvance ? (
+                  <Text fontSize="sm" color={headerMutedColor}>
                     Waiting for score reveal timer…
                   </Text>
-                )
+                ) : null
               ) : (
-                <Text fontSize="sm" color="gray.600">
-                  Waiting for {activeName} to start {nextPlayerName}&apos;s turn…
+                <Text fontSize="sm" color={headerMutedColor}>
+                  Waiting for {activeName} to start {nextPlayerName}'s turn…
                 </Text>
               )}
             </Stack>
@@ -801,10 +872,10 @@ export default function WhatIfHandPage() {
                 <PondButton
                   key={p.id}
                   type="button"
-                  bg="white"
-                  color="black"
+                  bg="nautical.solid"
+                  color="white"
                   borderWidth="2px"
-                  borderColor="border"
+                  borderColor="transparent"
                   borderRadius="lg"
                   minH="56px"
                   h="auto"
@@ -814,7 +885,8 @@ export default function WhatIfHandPage() {
                   justifyContent="flex-start"
                   disabled={busy || imPaused}
                   _hover={{
-                    bg: "gray.50",
+                    bg: "nautical.emphasized",
+                    color: "white",
                     borderColor: "teal.solid",
                   }}
                   onClick={() => void action({ type: "pick_duel_opponent", target_player_id: p.id })}
@@ -823,8 +895,8 @@ export default function WhatIfHandPage() {
                     <WhatIfPlayerFace
                       player={p}
                       viewerPlayerId={me?.id ?? null}
+                      seatIndex={seatIndexFor(p.id)}
                       avatarSize="md"
-                      emojiFontSize="1.75rem"
                     />
                     <Text fontSize="lg" fontWeight="semibold" textAlign="left">
                       {p.display_name}
@@ -837,17 +909,6 @@ export default function WhatIfHandPage() {
 
         {needDieSubjectPick && isActive ? (
           <Stack gap="3" w="100%" align="stretch">
-            <Text fontWeight="medium">
-              You rolled a <strong>{dieValue}</strong>.{" "}
-              {dieDegenerate ? (
-                "Confirm this landing spot."
-              ) : (
-                <>
-                  Choose between {subjectDieSeatLabelContent(displayLabelA, { sentence: true })} or{" "}
-                  {subjectDieSeatLabelContent(displayLabelB, { sentence: true })}.
-                </>
-              )}
-            </Text>
             {dieDegenerate ? (
               <PondButton
                 type="button"
@@ -874,7 +935,7 @@ export default function WhatIfHandPage() {
               <SimpleGrid columns={2} gap="3" w="100%">
                 <PondButton
                   type="button"
-                  bg={displayIsChallengeA ? "nautical.subtle" : "white"}
+                  bg={displayIsChallengeA ? "nautical.solid" : "white"}
                   color={displayIsChallengeA ? "white" : "black"}
                   borderWidth="16px"
                   borderColor="transparent"
@@ -886,8 +947,8 @@ export default function WhatIfHandPage() {
                   disabled={busy || imPaused}
                   loading={busy}
                   _hover={{
-                    bg: displayIsChallengeA ? "nautical.muted" : "white",
-                    color: "black",
+                    bg: displayIsChallengeA ? "nautical.emphasized" : "white",
+                    color: displayIsChallengeA ? "white" : "black",
                     borderColor: "teal.solid",
                     borderWidth: "16px",
                   }}
@@ -898,8 +959,8 @@ export default function WhatIfHandPage() {
                       <WhatIfPlayerFace
                         player={displayPlayerA}
                         viewerPlayerId={me?.id ?? null}
-                        avatarSize="2xl"
-                        emojiFontSize="4xl"
+                        seatIndex={seatIndexFor(displayPlayerA.id)}
+                      avatarSize="2xl"
                       />
                     ) : displayIsChallengeA ? null : (
                       <Text fontSize="4xl" lineHeight="1">
@@ -912,7 +973,7 @@ export default function WhatIfHandPage() {
                         : ""}
                     </Text>
                     {displayIsChallengeA ? (
-                      <Text fontSize="sm" fontWeight="medium" lineHeight="short">
+                      <Text fontSize="xs" fontWeight="medium" lineHeight="snug">
                         Choose one player. If you both get the same answer, you each get 4 points. Fail and lose 2
                         points each!
                       </Text>
@@ -921,7 +982,7 @@ export default function WhatIfHandPage() {
                 </PondButton>
                 <PondButton
                   type="button"
-                  bg={displayIsChallengeB ? "nautical.subtle" : "white"}
+                  bg={displayIsChallengeB ? "nautical.solid" : "white"}
                   color={displayIsChallengeB ? "white" : "black"}
                   borderWidth="16px"
                   borderColor="transparent"
@@ -933,8 +994,8 @@ export default function WhatIfHandPage() {
                   disabled={busy || imPaused}
                   loading={busy}
                   _hover={{
-                    bg: displayIsChallengeB ? "nautical.muted" : "white",
-                    color: "black",
+                    bg: displayIsChallengeB ? "nautical.emphasized" : "white",
+                    color: displayIsChallengeB ? "white" : "black",
                     borderColor: "teal.solid",
                     borderWidth: "16px",
                   }}
@@ -945,8 +1006,8 @@ export default function WhatIfHandPage() {
                       <WhatIfPlayerFace
                         player={displayPlayerB}
                         viewerPlayerId={me?.id ?? null}
-                        avatarSize="2xl"
-                        emojiFontSize="4xl"
+                        seatIndex={seatIndexFor(displayPlayerB.id)}
+                      avatarSize="2xl"
                       />
                     ) : displayIsChallengeB ? null : (
                       <Text fontSize="4xl" lineHeight="1">
@@ -959,7 +1020,7 @@ export default function WhatIfHandPage() {
                         : ""}
                     </Text>
                     {displayIsChallengeB ? (
-                      <Text fontSize="sm" fontWeight="medium" lineHeight="short">
+                      <Text fontSize="xs" fontWeight="medium" lineHeight="snug">
                         Choose one player. If you both get the same answer, you each get 4 points. Fail and lose 2
                         points each!
                       </Text>
@@ -980,7 +1041,7 @@ export default function WhatIfHandPage() {
                       <PondButton
                         key={`ch-${i}`}
                         type="button"
-                        bg="nautical.subtle"
+                        bg="nautical.solid"
                         color="white"
                         borderWidth="16px"
                         borderColor="transparent"
@@ -991,8 +1052,8 @@ export default function WhatIfHandPage() {
                         textAlign="center"
                         disabled={busy || imPaused}
                         _hover={{
-                          bg: "nautical.muted",
-                          color: "black",
+                          bg: "nautical.emphasized",
+                          color: "white",
                           borderColor: "teal.solid",
                           borderWidth: "16px",
                         }}
@@ -1002,7 +1063,7 @@ export default function WhatIfHandPage() {
                           <Text fontSize="xl" fontWeight="bold" fontStyle="italic">
                             Challenge!
                           </Text>
-                          <Text fontSize="sm" fontWeight="medium" lineHeight="short">
+                          <Text fontSize="xs" fontWeight="medium" lineHeight="snug">
                             Choose one player. If you both get the same answer, you each get 4 points. Fail and lose 2 points each!
                           </Text>
                         </Stack>
@@ -1038,8 +1099,8 @@ export default function WhatIfHandPage() {
                               <WhatIfPlayerFace
                                 player={subj}
                                 viewerPlayerId={me?.id ?? null}
-                                avatarSize="2xl"
-                                emojiFontSize="4xl"
+                                seatIndex={seatIndexFor(subj.id)}
+                      avatarSize="2xl"
                               />
                             ) : null}
                             <Text fontSize="xl" fontWeight="semibold">
@@ -1076,8 +1137,8 @@ export default function WhatIfHandPage() {
                         <WhatIfPlayerFace
                           player={p}
                           viewerPlayerId={me?.id ?? null}
-                          avatarSize="2xl"
-                          emojiFontSize="4xl"
+                          seatIndex={seatIndexFor(p.id)}
+                      avatarSize="2xl"
                         />
                         <Text fontSize="xl" fontWeight="semibold">
                           {p.display_name}
@@ -1117,8 +1178,8 @@ export default function WhatIfHandPage() {
                         borderRadius="lg"
                         h="100%"
                         w="100%"
-                        py="1.5"
-                        px="1.5"
+                        py="1"
+                        px="1"
                         whiteSpace="normal"
                         textAlign="center"
                         disabled={tileDisabled}
@@ -1137,21 +1198,15 @@ export default function WhatIfHandPage() {
                         }
                       >
                         <Stack gap="0.5" align="center" justify="center" maxW="100%">
-                          <Text fontSize="sm" opacity={0.25} lineHeight="1">
+                          <Text fontSize="xs" opacity={0.25} lineHeight="1">
                             {idx}
                           </Text>
                           <Text
                             fontWeight="semibold"
                             textAlign="center"
                             lineHeight="1.15"
-                            fontSize="clamp(0.78rem, 2.75vw, 1rem)"
-                            css={{
-                              display: "-webkit-box",
-                              WebkitLineClamp: 4,
-                              WebkitBoxOrient: "vertical",
-                              overflow: "hidden",
-                              wordBreak: "break-word",
-                            }}
+                            fontSize={voteOptionFontSize(answer)}
+                            wordBreak="break-word"
                           >
                             {answer}
                           </Text>

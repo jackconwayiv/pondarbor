@@ -1,0 +1,42 @@
+.whatif-scoreboard-row--flip {
+  will-change: transform;
+}
+
+.whatif-scoreboard-delta {
+  flex-shrink: 0;
+  font-size: clamp(1rem, 2.5vh, 1.45rem);
+  font-weight: bold;
+}
+
+.whatif-scoreboard-delta--positive {
+  color: var(--chakra-colors-teal-solid, #0d9488);
+}
+
+.whatif-scoreboard-delta--negative {
+  color: var(--chakra-colors-nautical-solid, #e9a14a);
+}
+
+.whatif-scoreboard-delta--negative-on-challenge {
+  color: #ffffff;
+}
+
+.whatif-scoreboard-delta--enter {
+  animation: whatif-scoreboard-delta-enter 0.5s ease-out forwards;
+}
+
+@keyframes whatif-scoreboard-delta-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-0.75em);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .whatif-scoreboard-delta--enter {
+    animation: none;
+  }
+}

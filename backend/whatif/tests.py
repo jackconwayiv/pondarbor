@@ -20,6 +20,7 @@ from whatif.subject_board import (
     subject_board_seat_count,
     subject_pick_is_degenerate,
 )
+from whatif.validators import validate_question_text_field
 from whatif.views import AVATAR_EMOJIS, _draw_question
 
 
@@ -148,6 +149,35 @@ class WhatIfSubjectBoardTests(TestCase):
         a, b = duel_subject_candidate_seats(2, 1, L, P)
         self.assertFalse(is_challenge_seat(a, L, P))
         self.assertFalse(is_challenge_seat(b, L, P))
+
+
+class WhatIfValidatorTests(TestCase):
+    def test_question_text_accepts_common_punctuation(self):
+        samples = [
+            "Don't stop!",
+            "50% off",
+            "C++",
+            "…",
+            "—em dash—",
+            "@mention",
+            "Q&A / notes & more",
+        ]
+        for s in samples:
+            with self.subTest(s=s):
+                self.assertEqual(validate_question_text_field("prompt", s, max_length=500), s)
+
+    def test_question_text_rejects_control_characters(self):
+        with self.assertRaises(ValueError) as ctx:
+            validate_question_text_field("prompt", "bad\x00text", max_length=500)
+        self.assertIn("unsupported characters", str(ctx.exception).lower())
+
+    def test_question_text_strips_and_enforces_max_length(self):
+        self.assertEqual(
+            validate_question_text_field("answer_1", "  hi  ", max_length=10),
+            "hi",
+        )
+        with self.assertRaises(ValueError):
+            validate_question_text_field("answer_1", "x" * 11, max_length=10)
 
 
 class WhatIfApiTests(TestCase):

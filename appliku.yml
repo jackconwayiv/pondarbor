@@ -1,5 +1,7 @@
 # Appliku deploy config. Import via App → YAML Config, or keep in sync with dashboard export.
 # Build: multi-stage root Dockerfile (frontend + Python). Do not set a separate npm build_command.
+# Build peak RAM: Dockerfile sets npm_config_jobs=2 and NODE_OPTIONS heap cap in the frontend stage only.
+# Runtime: single Daphne process (run.sh) — not multi-worker Gunicorn.
 #
 # Postgres and Redis are NOT provisioned here — keep your existing Appliku addons and URLs in
 # Environment Variables (DATABASE_URL, REDIS_URL). To wire YAML to addons by name instead, export

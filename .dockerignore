@@ -29,20 +29,28 @@ backend/media
 node_modules
 frontend/node_modules
 frontend/dist
+frontend/.env
+frontend/.env.*
 
 # Env / secrets
 .env
 .env.*
 
-# Dev-only / docs
+# Dev-only / docs (not needed in build context)
 docker-compose.yml
+backend/Dockerfile
+frontend/Dockerfile
+README.md
 UI_STYLE_GUIDE.md
+**/*.md
+scripts
+appliku.yml
 line
 
-# Accidental root node artifacts
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
+# Accidental root node artifacts only (keep frontend/package-lock.json)
+/package-lock.json
+/yarn.lock
+/pnpm-lock.yaml
 
 # Frontend tests (not needed for production build)
 frontend/**/*.test.ts

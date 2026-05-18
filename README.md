@@ -12,7 +12,9 @@ Repo config: [`appliku.yml`](appliku.yml) — import via App → **YAML Config**
 
 Processes: **`web` → `bash run.sh`** (Daphne ASGI) and **`release` → `bash release.sh`**.
 
-Do **not** set a separate Appliku **build command** for `npm ci` / `npm run build`; the Dockerfile already builds the frontend. A duplicate build wastes RAM during deploy and can leave stray `frontend/node_modules` on disk.
+Do **not** set a separate Appliku **build command** for `npm ci` / `npm run build`; the Dockerfile already builds the frontend (`npm_config_jobs=2` and a Node heap cap limit **build-time** peak RAM). A duplicate build wastes RAM during deploy and can leave stray `frontend/node_modules` on disk.
+
+**`.dockerignore`** shrinks what is sent to `docker build` (faster builds, lower build peak RAM on the server). It does **not** change runtime container RAM. Production runs **one Daphne process** (not Gunicorn workers). On a **shared server**, Appliku’s server RAM % includes Postgres, other apps, and Docker — `pondarbor_web` is typically ~100–150 MiB.
 
 `release.sh` and `run.sh` resolve paths from the script location so migrations and the web process always use **`backend/`** even when the host cwd differs (e.g. Appliku one-off vs web).
 
@@ -29,11 +31,13 @@ Do **not** set a separate Appliku **build command** for `npm ci` / `npm run buil
 
 **RAM / disk diagnostics (on the server)**
 
+Run Command or SSH (scripts are not in the image):
+
 ```bash
-bash scripts/appliku-diagnostics.sh
+docker ps --format 'table {{.Names}}\t{{.Status}}'; docker stats --no-stream
 ```
 
-If disk is tight after deploys: `docker image prune -f` and `docker builder prune -f` (reclaims old image layers; safe during a maintenance window).
+If disk is tight after deploys: `docker image prune -f` and `docker builder prune -f` (reclaims old image layers; safe during a maintenance window). Orphan one-offs: `docker container prune -f`.
 
 **Release fails with “DATABASE_URL is not set”**
 

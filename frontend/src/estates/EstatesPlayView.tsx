@@ -155,6 +155,7 @@ export type EstatesPlayViewProps = {
   scoringTargets: Array<{ zone?: string; cardId: string; modifierLabel: string }>;
   onApplyScoringTarget: (cardId: string, zone: string) => Promise<void>;
   busyAction: string | null;
+  placementPending?: boolean;
   fillHeight?: boolean;
   mobileConcedeControl?: ReactNode;
 };
@@ -170,6 +171,7 @@ export default function EstatesPlayView({
   scoringTargets,
   onApplyScoringTarget,
   busyAction,
+  placementPending = false,
   mobileConcedeControl = null,
 }: EstatesPlayViewProps) {
   const [activeDrag, setActiveDrag] = useState<ActiveDragMeta | null>(null);
@@ -351,7 +353,7 @@ export default function EstatesPlayView({
         key={cardId}
         card={card as Record<string, unknown>}
         dragId={handCardDragId(cardId)}
-        disabled={!(isMyTurn && !isMyScoringChoice)}
+        disabled={!(isMyTurn && !isMyScoringChoice && !placementPending)}
         scoringTarget={resolveScoringTarget(undefined, cardId)}
       />
     );
@@ -486,7 +488,7 @@ export default function EstatesPlayView({
                     (myPlayerState.discard ?? []) as Array<Record<string, unknown>>,
                   )
                 }
-                enableHandReturn={isMyTurn && !isMyScoringChoice}
+                enableHandReturn={isMyTurn && !isMyScoringChoice && !placementPending}
                 dragActive={Boolean(activeDrag)}
                 scrollableHand={!showHandSixGrid}
                 handSixGrid={showHandSixGrid}

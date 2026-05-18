@@ -1,6 +1,6 @@
 /* Illuminated-manuscript pixel-art play canvas.
  * Scoped to .estates-canvas-root; intentionally outside Chakra theme tokens.
- * Base design 1600×860 (landscape) / 800×1000 (portrait); --canvas-w and --canvas-h
+ * Base design 1480×760 (landscape) / 800×1000 (portrait); --canvas-w and --canvas-h
  * grow to match the wrapper aspect (set from JS). Stage is top-aligned and scaled
  * to fit without clipping. */
 
@@ -82,8 +82,8 @@
 }
 
 .estates-canvas-stage[data-canvas-mode="landscape"] {
-  --canvas-w: 1600;
-  --canvas-h: 860;
+  --canvas-w: 1480;
+  --canvas-h: 760;
 }
 
 .estates-canvas-stage[data-canvas-mode="portrait"] {

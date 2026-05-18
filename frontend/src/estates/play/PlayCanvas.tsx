@@ -2,8 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 
 import "./playCanvas.css";
 
-const LANDSCAPE_W = 1600;
-const LANDSCAPE_H = 860;
+const LANDSCAPE_W = 1480;
+const LANDSCAPE_H = 760;
 const PORTRAIT_W = 800;
 const PORTRAIT_H = 1000;
 const PORTRAIT_MAX_VIEWPORT_W = 768;

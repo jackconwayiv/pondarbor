@@ -17,7 +17,18 @@ import {
 import { ESTATES_PLAY_CANVAS_BG } from "./estatesPlayTheme";
 import { estatesGameWsUrl } from "./estatesWs";
 import EstatesPlayView from "./EstatesPlayView";
+import {
+  mergeOptimisticPlacement,
+  serverHasPendingPlacement,
+  type PendingPlacement,
+} from "./optimisticPlacement";
 import { ScoringStepHourglassTimer } from "./ScoringStepHourglassTimer";
+
+function seatForUser(game: EstatesGameState, userId: number): number | null {
+  if (game.player_1_id === userId) return 1;
+  if (game.player_2_id === userId) return 2;
+  return null;
+}
 
 const SCORING_ZONE_ORDER = ["gate", "farm", "road", "tower", "throne"] as const;
 
@@ -49,12 +60,37 @@ export default function EstatesPlayPage() {
   const [game, setGame] = useState<EstatesGameState | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [pendingPlacement, setPendingPlacement] = useState<PendingPlacement | null>(null);
   const [confirmConcede, setConfirmConcede] = useState(false);
   const confirmConcedeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const pendingPlacementRef = useRef<PendingPlacement | null>(null);
   const isMobile = useIsMobile();
 
   const myUserId = sessionUser?.user.id;
   const playCanvasProps = { bg: ESTATES_PLAY_CANVAS_BG } as const;
+
+  const setPending = useCallback((placement: PendingPlacement | null) => {
+    pendingPlacementRef.current = placement;
+    setPendingPlacement(placement);
+  }, []);
+
+  const applyFetchedGame = useCallback(
+    (mine: EstatesGameState) => {
+      const seat = myUserId != null ? seatForUser(mine, myUserId) : null;
+      const pending = pendingPlacementRef.current;
+      if (pending && seat != null) {
+        if (serverHasPendingPlacement(mine, seat, pending)) {
+          setPending(null);
+          setGame(mine);
+          return;
+        }
+        setGame(mergeOptimisticPlacement(mine, seat, pending));
+        return;
+      }
+      setGame(mine);
+    },
+    [myUserId, setPending],
+  );
 
   const loadGame = useCallback(async () => {
     if (!isAuthenticated || !gameId) return;
@@ -63,6 +99,7 @@ export default function EstatesPlayPage() {
       const token = await getApiAccessToken();
       const mine = await fetchMyEstatesGame(token);
       if (!mine || mine.id !== gameId) {
+        setPending(null);
         setGame(null);
         setLoadError("Game not found or you are not a player in this match.");
         return;
@@ -73,11 +110,11 @@ export default function EstatesPlayPage() {
         navigate("/estates", { replace: true });
         return;
       }
-      setGame(mine);
+      applyFetchedGame(mine);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Failed to load game.");
     }
-  }, [gameId, getApiAccessToken, isAuthenticated, navigate]);
+  }, [applyFetchedGame, gameId, getApiAccessToken, isAuthenticated, navigate, setPending]);
 
   useEffect(() => {
     void loadGame();
@@ -145,15 +182,20 @@ export default function EstatesPlayPage() {
     return null;
   }, [game, myUserId]);
 
+  const displayGame = useMemo(() => {
+    if (!game || !mySeat) return game;
+    return mergeOptimisticPlacement(game, mySeat, pendingPlacement);
+  }, [game, mySeat, pendingPlacement]);
+
   const myPlayerState = useMemo(() => {
-    if (!game || !mySeat) return null;
-    return game.players.find((p) => p.seat_index === mySeat) ?? null;
-  }, [game, mySeat]);
+    if (!displayGame || !mySeat) return null;
+    return displayGame.players.find((p) => p.seat_index === mySeat) ?? null;
+  }, [displayGame, mySeat]);
 
   const opponentPlayerState = useMemo(() => {
-    if (!game || !mySeat) return null;
-    return game.players.find((p) => p.seat_index !== mySeat) ?? null;
-  }, [game, mySeat]);
+    if (!displayGame || !mySeat) return null;
+    return displayGame.players.find((p) => p.seat_index !== mySeat) ?? null;
+  }, [displayGame, mySeat]);
 
   const scoringAwaitingChoice = useMemo(() => {
     if (!game) return null;
@@ -306,20 +348,35 @@ export default function EstatesPlayPage() {
     }
   };
 
-  const onPlaceCard = async (zone: string, cardId: string) => {
-    if (!game) return;
-    setBusyAction(`place-${cardId}`);
-    setLoadError(null);
-    try {
-      const token = await getApiAccessToken();
-      const updated = await placeEstatesCard(token, game.id, { card_id: cardId, zone });
-      setGame(updated);
-    } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "Could not place card.");
-    } finally {
-      setBusyAction(null);
-    }
-  };
+  const onPlaceCard = useCallback(
+    async (zone: string, cardId: string) => {
+      if (!game || !mySeat) return;
+      const player = game.players.find((p) => p.seat_index === mySeat);
+      const card = (player?.hand ?? []).find((c) => String(c.card_id || "") === cardId);
+      if (!card) return;
+
+      const placement: PendingPlacement = {
+        zone,
+        cardId,
+        card: card as Record<string, unknown>,
+      };
+      setPending(placement);
+      setBusyAction(`place-${cardId}`);
+      setLoadError(null);
+      try {
+        const token = await getApiAccessToken();
+        const updated = await placeEstatesCard(token, game.id, { card_id: cardId, zone });
+        setPending(null);
+        setGame(updated);
+      } catch (e) {
+        setPending(null);
+        setLoadError(e instanceof Error ? e.message : "Could not place card.");
+      } finally {
+        setBusyAction(null);
+      }
+    },
+    [game, getApiAccessToken, mySeat, setPending],
+  );
 
   const onApplyScoringTarget = async (cardId: string, zone: string) => {
     if (!game || !scoringAwaitingChoice || !cardId) return;
@@ -485,6 +542,7 @@ export default function EstatesPlayPage() {
           justify="center"
           textAlign={{ base: mobileStatusCentered ? "center" : "start", md: "center" }}
           minW={0}
+          minH={{ base: undefined, md: game.status === "active" ? "5.5rem" : undefined }}
           px="1"
           w="full"
         >
@@ -557,7 +615,7 @@ export default function EstatesPlayPage() {
         flexDirection="column"
       >
         <EstatesPlayView
-          activeGame={game}
+          activeGame={displayGame ?? game}
           mySeat={mySeat}
           myPlayerState={myPlayerState}
           opponentPlayerState={opponentPlayerState}
@@ -567,6 +625,7 @@ export default function EstatesPlayPage() {
           scoringTargets={scoringTargets}
           onApplyScoringTarget={onApplyScoringTarget}
           busyAction={busyAction}
+          placementPending={pendingPlacement != null}
           fillHeight={isMobile}
           mobileConcedeControl={isMobile ? trailingControl : null}
         />

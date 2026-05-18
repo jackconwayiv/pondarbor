@@ -20,6 +20,7 @@ import {
 import { ESTATES_HOW_TO_PLAY_BODY, ESTATES_HOW_TO_PLAY_TITLE } from "./estatesHowToPlay";
 import { ESTATES_GAME_FONT_FAMILY, ESTATES_PLAY_CANVAS_BG } from "./estatesPlayTheme";
 import { personalizeEstatesStatusMessage } from "./estatesStatusMessage";
+import { connectEstatesWebSocket } from "./estatesWsClient";
 import { estatesGameWsUrl } from "./estatesWs";
 import EstatesPlayView from "./EstatesPlayView";
 import {
@@ -126,49 +127,17 @@ export default function EstatesPlayPage() {
 
   useEffect(() => {
     if (!gameId || !isAuthenticated) return;
-    let cancelled = false;
-    let socket: WebSocket | null = null;
-    let reconnectTimer: number | null = null;
-
-    const connect = async () => {
-      try {
+    return connectEstatesWebSocket({
+      getUrl: async () => {
         const token = await getApiAccessToken();
-        if (cancelled) return;
-        socket = new WebSocket(estatesGameWsUrl(gameId, token));
-        socket.onmessage = (event) => {
-          try {
-            const msg = JSON.parse(event.data) as { type?: string };
-            if (msg.type === "game_update" || msg.type === "connected") {
-              void loadGame();
-            }
-          } catch {
-            /* ignore malformed events */
-          }
-        };
-        socket.onclose = () => {
-          if (cancelled) return;
-          reconnectTimer = window.setTimeout(() => {
-            void connect();
-          }, 1200);
-        };
-      } catch {
-        if (cancelled) return;
-        reconnectTimer = window.setTimeout(() => {
-          void connect();
-        }, 1200);
-      }
-    };
-
-    void connect();
-    return () => {
-      cancelled = true;
-      if (reconnectTimer !== null) {
-        window.clearTimeout(reconnectTimer);
-      }
-      if (socket) {
-        socket.close();
-      }
-    };
+        return estatesGameWsUrl(gameId, token);
+      },
+      onMessage: (msg) => {
+        if (msg.type === "game_update" || msg.type === "connected") {
+          void loadGame();
+        }
+      },
+    });
   }, [gameId, getApiAccessToken, isAuthenticated, loadGame]);
 
   useEffect(() => {

@@ -3,6 +3,11 @@
 # Build peak RAM: Dockerfile sets npm_config_jobs=2 and NODE_OPTIONS heap cap in the frontend stage only.
 # Runtime: single Daphne process (run.sh) — not multi-worker Gunicorn.
 #
+# Deploy downtime: standalone Appliku replaces one web container (stop-then-start) — expect a
+# short gap (often 30–90s) while Daphne cold-starts. For near zero-downtime, use a Docker Swarm
+# cluster and set web.scale to 2 (needs ~2× web RAM). Do not set scale: 2 on standalone compose
+# without Swarm load balancing.
+#
 # Postgres and Redis are NOT provisioned here — keep your existing Appliku addons and URLs in
 # Environment Variables (DATABASE_URL, REDIS_URL). To wire YAML to addons by name instead, export
 # config from the dashboard and use from_database with your addon's exact name.
@@ -34,6 +39,7 @@ services:
   web:
     command: bash run.sh
     scale: 1
+    # Swarm cluster only (not standalone): use scale: 2 for rolling deploys (~220 MiB web RAM).
   release:
     command: bash release.sh
 

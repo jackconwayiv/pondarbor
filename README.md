@@ -39,6 +39,17 @@ docker ps --format 'table {{.Names}}\t{{.Status}}'; docker stats --no-stream
 
 If disk is tight after deploys: `docker image prune -f` and `docker builder prune -f` (reclaims old image layers; safe during a maintenance window). Orphan one-offs: `docker container prune -f`.
 
+**Deploy downtime (502/503 or brief 500s)**
+
+Appliku **standalone** deploys **replace** the single `web` container: the old process stops before the new one is ready. With `scale: 1` in [`appliku.yml`](appliku.yml), expect a **short gap** (often **30–90 seconds**) while Daphne and Django start. The image HEALTHCHECK uses `/api/v1/users/health/` with a **60s start-period** — the container may show `unhealthy` during that window even though the site recovers once routing catches up.
+
+| Mode | Downtime |
+|------|----------|
+| **Standalone** (`scale: 1`, shared server) | Short blip on each deploy — normal |
+| **Docker Swarm cluster** (`web.scale: 2`) | Rolling updates — near zero-downtime if the host has RAM for two replicas (~2× ~110 MiB for PondArbor) |
+
+**Mitigations without Swarm:** deploy off-peak; QFF and Estates WebSockets reconnect after the new container is up; HTTP users can refresh once. **Do not** remove the HEALTHCHECK or skip `release.sh` migrations routinely.
+
 **Release fails with “DATABASE_URL is not set”**
 
 1. Application → **Environment Variables**: confirm **`DATABASE_URL`** or **`DATABASE_PRIVATE_URL`** is present (not empty).

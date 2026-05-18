@@ -35,6 +35,7 @@ import {
   type EstatesMyGamesResponse,
 } from "./api";
 import { ESTATES_HOW_TO_PLAY_BODY, ESTATES_HOW_TO_PLAY_TITLE } from "./estatesHowToPlay";
+import { connectEstatesWebSocket } from "./estatesWsClient";
 import { estatesLobbiesWsUrl } from "./estatesWs";
 
 function isUserInGame(game: EstatesGameState, userId: number | undefined): boolean {
@@ -125,49 +126,17 @@ export default function EstatesPage() {
   }, [myGame, navigate]);
 
   useEffect(() => {
-    let cancelled = false;
-    let socket: WebSocket | null = null;
-    let reconnectTimer: number | null = null;
-
-    const connect = async () => {
-      try {
+    return connectEstatesWebSocket({
+      getUrl: async () => {
         const token = await getApiAccessToken();
-        if (cancelled) return;
-        socket = new WebSocket(estatesLobbiesWsUrl(token));
-        socket.onmessage = (event) => {
-          try {
-            const msg = JSON.parse(event.data) as { type?: string };
-            if (msg.type === "lobbies_update" || msg.type === "connected") {
-              void loadLobbyData();
-            }
-          } catch {
-            /* ignore malformed events */
-          }
-        };
-        socket.onclose = () => {
-          if (cancelled) return;
-          reconnectTimer = window.setTimeout(() => {
-            void connect();
-          }, 1200);
-        };
-      } catch {
-        if (cancelled) return;
-        reconnectTimer = window.setTimeout(() => {
-          void connect();
-        }, 1200);
-      }
-    };
-
-    void connect();
-    return () => {
-      cancelled = true;
-      if (reconnectTimer !== null) {
-        window.clearTimeout(reconnectTimer);
-      }
-      if (socket) {
-        socket.close();
-      }
-    };
+        return estatesLobbiesWsUrl(token);
+      },
+      onMessage: (msg) => {
+        if (msg.type === "lobbies_update" || msg.type === "connected") {
+          void loadLobbyData();
+        }
+      },
+    });
   }, [getApiAccessToken, loadLobbyData]);
 
   const onCreateLobby = async () => {

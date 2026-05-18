@@ -2,8 +2,13 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 
 import "./playCanvas.css";
 
-const LANDSCAPE_W = 1480;
-const LANDSCAPE_H = 760;
+/** Landscape design size — larger canvas ⇒ smaller fit scale (more zoomed out). */
+const LANDSCAPE_W = 1720;
+const LANDSCAPE_H = 940;
+/** Inset and overhang budget so scaled cards/winners do not force page scroll. */
+const LANDSCAPE_FIT_PAD_X = 32;
+const LANDSCAPE_FIT_PAD_Y = 40;
+const LANDSCAPE_OVERHANG_Y = 96;
 const PORTRAIT_W = 800;
 const PORTRAIT_H = 1000;
 const PORTRAIT_MAX_VIEWPORT_W = 768;
@@ -55,7 +60,18 @@ export function PlayCanvas({ children }: PlayCanvasProps) {
       const measuredH = Math.ceil(stage.getBoundingClientRect().height) || baseH;
       stage.style.setProperty("--canvas-h", String(measuredH));
 
-      const scale = Math.min(rect.width / designW, rect.height / measuredH);
+      const isLandscape = currentMode === "landscape";
+      const availW = isLandscape
+        ? Math.max(0, rect.width - LANDSCAPE_FIT_PAD_X * 2)
+        : rect.width;
+      const availH = isLandscape
+        ? Math.max(0, rect.height - LANDSCAPE_FIT_PAD_Y * 2)
+        : rect.height;
+      const heightForScale = isLandscape ? measuredH + LANDSCAPE_OVERHANG_Y : measuredH;
+      let scale = Math.min(availW / designW, availH / heightForScale);
+      if (isLandscape) {
+        scale = Math.min(scale, 1);
+      }
       stage.style.setProperty("--canvas-scale", String(scale));
       /* Expose the scale to the document root so dnd-kit's DragOverlay (rendered
        * outside the scaled stage) can size the drag preview to match hand cards. */

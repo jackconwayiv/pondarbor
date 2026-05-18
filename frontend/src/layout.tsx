@@ -83,6 +83,8 @@ const navBarLinkProps = {
 function isGamesNavTreeActive(pathname: string): boolean {
   return (
     pathname === "/games" ||
+    pathname === "/estates" ||
+    pathname.startsWith("/estates/") ||
     pathname === "/clicker" ||
     pathname.startsWith("/clicker/") ||
     pathname === "/whatif" ||
@@ -140,6 +142,7 @@ const HIDE_DOCUMENT_SCROLLBAR_PREFIXES = [
   "/calendar",
   "/meal",
   "/pondstead",
+  "/estates/play",
 ] as const;
 /** Exact paths only (e.g. WhatIf entry at `/whatif`, not lobby/play/hand). */
 const HIDE_DOCUMENT_SCROLLBAR_EXACT = ["/whatif"] as const;
@@ -178,6 +181,7 @@ export default function AppLayout() {
     location.pathname.startsWith("/harbor/");
   const isPondsteadRoute =
     location.pathname === "/pondstead" || location.pathname.startsWith("/pondstead/");
+  const isEstatesPlayRoute = location.pathname.startsWith("/estates/play/");
   const isWhatIfPlayOrHandRoute =
     location.pathname.startsWith("/whatif/play/") ||
     location.pathname.startsWith("/whatif/hand/");
@@ -650,7 +654,7 @@ export default function AppLayout() {
         maxW="100%"
         {...(isQffRoute
           ? { p: 0, bg: qffAppShellBg }
-          : isHarborRoute || isPondsteadRoute
+          : isHarborRoute || isPondsteadRoute || isEstatesPlayRoute
             ? { p: 0, bg: "transparent" }
             : {
                 pt: "2px",
@@ -669,7 +673,7 @@ export default function AppLayout() {
           w="100%"
           display="flex"
           flexDirection="column"
-          {...(isClickerRoute || isHarborRoute || isPondsteadRoute
+          {...(isClickerRoute || isHarborRoute || isPondsteadRoute || isEstatesPlayRoute
             ? { p: 0 }
             : {
                 px: 0,
@@ -686,6 +690,7 @@ export default function AppLayout() {
             isClickerPlayRoute ||
             isHarborRoute ||
             isPondsteadRoute ||
+            isEstatesPlayRoute ||
             isWhatIfPlayOrHandRoute
           ) ? (
             <Box {...APP_SHELL_CONTENT_MAX_PROPS} px={{ base: "2", md: "2" }}>

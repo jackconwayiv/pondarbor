@@ -40,6 +40,12 @@ export function getBreadcrumbItems(
   if (p.startsWith("/clicker/")) {
     return [HOME, { ...GAMES }, { label: "PondClicker" }];
   }
+  if (p.startsWith("/estates/play/")) {
+    return null;
+  }
+  if (p === "/estates" || p.startsWith("/estates/")) {
+    return [HOME, { ...GAMES }, { label: "Estates" }];
+  }
 
   if (p === "/create") {
     return [HOME, { label: "QFF", to: "/qff" }, { label: "Create" }];

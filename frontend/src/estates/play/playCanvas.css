@@ -1,0 +1,1163 @@
+/* Illuminated-manuscript pixel-art play canvas.
+ * Scoped to .estates-canvas-root; intentionally outside Chakra theme tokens.
+ * Base design 1600×860 (landscape) / 800×1000 (portrait); --canvas-w and --canvas-h
+ * grow to match the wrapper aspect (set from JS). Stage is top-aligned and scaled
+ * to fit without clipping. */
+
+/* Palette + typography shared by the play canvas and the drag overlay (overlay
+ * is portaled to document.body, outside .estates-canvas-root). */
+.estates-canvas-root,
+.estates-drag-layer {
+  --ink: #2a1d10;
+  --ink-soft: #4a3624;
+  --parchment: #f1e7cf;
+  --parchment-deep: #d9c89a;
+  --parchment-dark: #b9a26a;
+  --gilt: #d4a83a;
+  --gilt-deep: #a87a17;
+  --gilt-soft: #f0d27a;
+  --lapis: #1f3d8a;
+  --lapis-wash: #b8c4e0;
+  --vermilion: #b8332a;
+  --vermilion-wash: #efc4bd;
+  --verdigris: #5d7f4f;
+  --verdigris-wash: #cbdbb7;
+  --stone-light: #c5bfb4;
+  --stone: #a8a299;
+  --stone-medium: #867f73;
+  --stone-dark: #5e574c;
+  --mortar-dark: #3a352c;
+  /* Legacy palette aliases used by zone illuminations — pointed at the new
+   * stone palette so castle scenes match the wall band. */
+  --mortar: var(--mortar-dark);
+  --brick-a: var(--stone);
+  --brick-b: var(--stone-medium);
+
+  --estates-font-sans: "Spinnaker", Verdana, Geneva, "DejaVu Sans", sans-serif;
+  font-family: var(--estates-font-sans);
+  color: var(--ink);
+}
+
+.estates-canvas-root {
+  /* Absolute fill of the (position: relative) shell so we never depend on
+   * `height: 100%` resolving through the flex chain. Shell color matches the
+   * page canvas bg so any letterbox margin blends in rather than looking like
+   * extra parchment inside the board. */
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #e5ddd0;
+}
+
+.estates-drag-layer {
+  z-index: 2000;
+  pointer-events: none;
+}
+
+/* Flex column: opponent, realm (content-sized), hand. --estates-band-gap keeps
+ * zone card overhangs from touching the opponent / hand bands. */
+.estates-canvas-stage {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  /* ~half a zone card (154px) plus clearance so overhangs miss the bands */
+  --estates-band-gap: 96px;
+  gap: var(--estates-band-gap) 0;
+  width: calc(var(--canvas-w, 1600) * 1px);
+  height: auto;
+  transform: translateX(-50%) scale(var(--canvas-scale, 1));
+  transform-origin: top center;
+  overflow: visible;
+  background: var(--parchment);
+  box-shadow:
+    inset 0 0 80px rgba(80, 56, 26, 0.32),
+    0 14px 36px rgba(40, 28, 12, 0.22);
+  background-image:
+    radial-gradient(circle at 18% 22%, rgba(80, 56, 26, 0.14) 0 1px, transparent 2px),
+    radial-gradient(circle at 76% 64%, rgba(80, 56, 26, 0.1) 0 1px, transparent 2px),
+    radial-gradient(circle at 41% 89%, rgba(80, 56, 26, 0.12) 0 1px, transparent 2px);
+}
+
+.estates-canvas-stage[data-canvas-mode="landscape"] {
+  --canvas-w: 1600;
+  --canvas-h: 860;
+}
+
+.estates-canvas-stage[data-canvas-mode="portrait"] {
+  --canvas-w: 800;
+  --canvas-h: 1000;
+  --estates-band-gap: 80px;
+}
+
+/* Region bands — flex children, no absolute top/bottom gaps. */
+.estates-opponent-band {
+  position: relative;
+  flex: 0 0 auto;
+  height: 132px;
+  margin: 0 16px;
+}
+
+.estates-realm-region {
+  position: relative;
+  flex: 0 0 auto;
+  margin: 0 16px;
+  overflow: visible;
+}
+
+.estates-hand-band {
+  position: relative;
+  flex: 0 0 auto;
+  height: 184px;
+  margin: 0 16px;
+}
+
+.estates-canvas-stage[data-canvas-mode="portrait"] .estates-opponent-band {
+  height: 112px;
+  margin: 0 12px;
+}
+
+.estates-canvas-stage[data-canvas-mode="portrait"] .estates-realm-region {
+  margin: 0 12px;
+}
+
+.estates-canvas-stage[data-canvas-mode="portrait"] .estates-hand-band {
+  height: 240px;
+  margin: 0 12px;
+}
+
+/* Realm grid: 3x3 with the four corners + center occupied by zones.
+ * Farm   .      Road
+ * .      Gate   .
+ * Throne .      Tower
+ * Every zone is the same size; the brick wall sits in the middle row band
+ * behind the grid so it shows through the empty middle-left / middle-right
+ * cells and the Gate appears "set into" the wall. */
+.estates-realm-grid {
+  position: relative;
+  display: grid;
+  overflow: visible;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: auto auto auto;
+  grid-template-areas:
+    "farm   .     road"
+    ".      gate  ."
+    "throne .     tower";
+  row-gap: 0;
+  column-gap: 24px;
+  align-content: start;
+  padding: 0 8px;
+  z-index: 2;
+}
+
+.estates-zone-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  width: 100%;
+}
+
+.estates-zone-cell--farm { grid-area: farm; align-items: flex-end; }
+.estates-zone-cell--gate { grid-area: gate; }
+.estates-zone-cell--road { grid-area: road; align-items: flex-end; }
+.estates-zone-cell--tower { grid-area: tower; align-items: flex-start; }
+.estates-zone-cell--throne { grid-area: throne; align-items: flex-start; }
+
+/* Stack wraps the zone frame + card slots so played cards can overhang the frame.
+ * Width follows the grid column; height comes from the 7:5 zone aspect ratio. */
+.estates-zone-stack {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 7 / 5;
+  overflow: visible;
+}
+
+/* Equal-size zone box centered in each grid cell, 7:5 ratio. */
+.estates-zone-box {
+  --zone-banner-h: 40px;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border: 4px solid var(--ink);
+  outline: 2px solid var(--gilt);
+  outline-offset: -8px;
+  background: var(--parchment-deep);
+  overflow: visible;
+  box-shadow: inset 0 0 0 1px var(--gilt-soft);
+  transition:
+    box-shadow 0.12s ease,
+    border-color 0.12s ease,
+    filter 0.12s ease,
+    background-color 0.12s ease;
+}
+
+.estates-zone-box--hover-valid {
+  border-color: var(--gilt-deep);
+  box-shadow:
+    inset 0 0 0 1px var(--gilt-soft),
+    0 0 0 5px var(--gilt),
+    0 0 16px rgba(212, 168, 58, 0.65);
+}
+
+.estates-zone-box--hover-valid::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--zone-hover-wash, rgba(212, 168, 58, 0.25));
+  pointer-events: none;
+  mix-blend-mode: multiply;
+}
+
+.estates-zone-box--hover-invalid {
+  border-color: var(--vermilion);
+  box-shadow:
+    inset 0 0 0 1px var(--gilt-soft),
+    0 0 0 4px var(--vermilion);
+}
+
+.estates-zone-box--hover-invalid .estates-zone-art,
+.estates-zone-box--hover-invalid .estates-zone-banner,
+.estates-zone-box--hover-invalid .estates-zone-hint {
+  filter: grayscale(0.55) brightness(0.85);
+}
+
+.estates-zone-box--hover-invalid::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(184, 51, 42, 0.18);
+  pointer-events: none;
+}
+
+/* Zone art behind everything else inside the zone */
+.estates-zone-art {
+  position: absolute;
+  inset: 0;
+  display: block;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: 0;
+}
+
+.estates-zone-art svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  image-rendering: pixelated;
+  shape-rendering: crispEdges;
+}
+
+/* Zone banner ribbon (name + allowed glyphs) along the top of the zone */
+.estates-zone-banner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--zone-banner-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  background:
+    linear-gradient(180deg, var(--gilt-soft), var(--gilt) 65%, var(--gilt-deep));
+  border-bottom: 2px solid var(--ink);
+  pointer-events: none;
+}
+
+.estates-zone-banner__name {
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: 0.28em;
+  color: #1a1208;
+  text-transform: uppercase;
+  line-height: 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+.estates-zone-banner__glyphs {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.estates-zone-banner__glyphs svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+/* Zone effect hint — centered in the art area below the banner, above cards */
+.estates-zone-hint {
+  position: absolute;
+  top: calc((100% + var(--zone-banner-h, 40px)) / 2);
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 7;
+  max-width: calc(100% - 16px);
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: #1a1208;
+  pointer-events: none;
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: rgba(241, 231, 207, 0.88);
+  border: 1px solid rgba(42, 29, 16, 0.2);
+  box-shadow: 0 1px 2px rgba(40, 28, 12, 0.12);
+}
+
+.estates-zone-hint--invalid {
+  color: var(--vermilion);
+  font-weight: 700;
+  background: rgba(239, 196, 189, 0.92);
+  border-color: rgba(184, 51, 42, 0.35);
+}
+
+/* Played-card slot anchors (half overhang above / below) */
+.estates-zone-slot {
+  position: absolute;
+  left: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 6;
+  overflow: visible;
+}
+
+.estates-zone-slot--opponent {
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.estates-zone-slot--mine {
+  bottom: 0;
+  left: 50%;
+  transform: translate(-50%, 50%);
+}
+
+.estates-zone-slot > * {
+  pointer-events: auto;
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -50%);
+}
+
+/* Castle brick band sits as a sibling of the grid inside the realm region.
+ * It spans the full realm-region width at the vertical center (which is also
+ * the vertical center of the middle row), behind the grid (z-index 1). The
+ * Gate's zone-box covers the band in the center column; the empty middle-left
+ * and middle-right cells reveal the band, reading as a wall the Gate punches
+ * through. */
+.estates-brick-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 56px;
+  transform: translateY(-50%);
+  z-index: 1;
+  pointer-events: none;
+  background-image: var(--brick-tile);
+  background-repeat: repeat;
+  background-size: 64px 56px;
+  background-position: center;
+  box-shadow:
+    inset 0 1px 0 var(--mortar-dark),
+    inset 0 -1px 0 var(--mortar-dark),
+    0 4px 10px rgba(40, 28, 12, 0.24);
+  image-rendering: pixelated;
+}
+
+.estates-canvas-stage[data-canvas-mode="portrait"] .estates-realm-grid {
+  padding: 0 12px;
+  row-gap: 0;
+  column-gap: 14px;
+}
+
+.estates-canvas-stage[data-canvas-mode="portrait"] .estates-brick-band {
+  height: 84px;
+}
+
+/* Pile (deck / discard) styling */
+.estates-pile {
+  position: relative;
+  width: 96px;
+  height: 134px;
+  border: 3px solid var(--ink);
+  border-radius: 6px;
+  background:
+    linear-gradient(160deg, var(--lapis) 0%, var(--lapis) 55%, #163067 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 4px;
+  box-shadow:
+    -3px 3px 0 var(--ink),
+    -5px 5px 0 rgba(40, 28, 12, 0.25);
+  cursor: default;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.estates-pile--face-up {
+  background: var(--parchment);
+}
+
+.estates-pile--clickable {
+  cursor: pointer;
+}
+
+.estates-pile--clickable:hover {
+  filter: brightness(1.05);
+}
+
+.estates-pile--clickable:focus-visible {
+  outline: 3px solid var(--gilt);
+  outline-offset: 3px;
+}
+
+.estates-pile__label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: var(--gilt-soft);
+  font-weight: 700;
+  text-align: center;
+  line-height: 1;
+}
+
+.estates-pile--face-up .estates-pile__label {
+  color: var(--ink);
+}
+
+.estates-pile__count {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--parchment);
+  line-height: 1;
+}
+
+.estates-pile--face-up .estates-pile__count {
+  color: var(--ink);
+}
+
+.estates-pile__pattern {
+  position: absolute;
+  inset: 8px;
+  border: 2px solid var(--gilt);
+  pointer-events: none;
+}
+
+.estates-pile__pattern::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border: 1px dashed var(--gilt-soft);
+  border-radius: 3px;
+}
+
+.estates-pile__bonus {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 12px;
+  background: var(--gilt);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--ink);
+  z-index: 2;
+}
+
+/* Player band (opponent / hand) shell */
+.estates-band {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, var(--parchment) 0%, var(--parchment-deep) 100%);
+  border: 3px solid var(--ink);
+  outline: 2px solid var(--gilt-deep);
+  outline-offset: -8px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  transition: outline-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+/* Opponent band: tighter padding + compact piles so it can be a slim stripe
+ * across the top without clipping its deck/spent indicators. */
+.estates-band--opponent {
+  padding: 4px 16px;
+  gap: 12px;
+}
+
+.estates-band--opponent .estates-pile {
+  width: 64px;
+  height: 88px;
+  border-width: 2px;
+  padding: 4px 3px;
+}
+
+.estates-band--opponent .estates-pile__count {
+  font-size: 18px;
+}
+
+.estates-band--opponent .estates-pile__label {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+}
+
+.estates-band--opponent .estates-band__avatar {
+  width: 64px;
+  height: 64px;
+  font-size: 26px;
+  border-width: 3px;
+}
+
+.estates-band--opponent .estates-band__name {
+  font-size: 24px;
+  max-width: 360px;
+}
+
+.estates-band--active {
+  outline-color: var(--gilt);
+  box-shadow: 0 0 0 4px rgba(212, 168, 58, 0.45);
+}
+
+.estates-band--active .estates-band__name {
+  color: var(--gilt-deep);
+}
+
+.estates-band--return-hover {
+  outline-color: var(--gilt);
+  box-shadow: 0 0 0 6px var(--gilt);
+}
+
+.estates-band__deck,
+.estates-band__spent {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+.estates-band__center {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.estates-band__center--opponent .estates-band__player {
+  justify-content: center;
+}
+
+.estates-band__player {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.estates-band__identity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+
+.estates-band__meta {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  font-style: italic;
+  line-height: 1.2;
+  text-align: left;
+}
+
+.estates-band--mine {
+  padding: 6px 12px;
+  gap: 12px;
+}
+
+.estates-band--mine .estates-band__center {
+  justify-content: center;
+}
+
+.estates-band--mine .estates-band__hand {
+  width: 100%;
+  justify-content: center;
+}
+
+.estates-band__avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--lapis-wash);
+  border: 3px solid var(--ink);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.estates-band__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.estates-band__name {
+  font-weight: 700;
+  font-size: 20px;
+  color: var(--ink);
+  line-height: 1.1;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.estates-band__hand {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.estates-band__hand--scrollable {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  justify-content: center;
+  scrollbar-width: none;
+  /* Allow horizontal scroll in the gap between cards; cards set touch-action: none. */
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+}
+
+.estates-band__hand--scrollable::-webkit-scrollbar {
+  display: none;
+}
+
+/* Mobile opening hand: 2×3 before the player commits a card to a zone */
+.estates-band__hand--six-grid {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  grid-template-rows: repeat(2, auto);
+  justify-content: center;
+  align-content: center;
+  gap: 8px;
+  width: 100%;
+  overflow: visible;
+}
+
+.estates-hand-band:has(.estates-band--hand-six-grid) {
+  height: 292px;
+}
+
+.estates-canvas-stage[data-canvas-mode="portrait"] .estates-hand-band:has(.estates-band--hand-six-grid) {
+  height: 292px;
+}
+
+/* Card */
+.estates-card {
+  position: relative;
+  width: 110px;
+  height: 154px;
+  border: 4px solid var(--ink);
+  border-radius: 6px;
+  background: var(--card-bg, var(--parchment));
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 6px;
+  user-select: none;
+  flex-shrink: 0;
+  box-shadow:
+    -2px 2px 0 var(--ink),
+    -4px 4px 0 rgba(40, 28, 12, 0.18);
+  font-family: inherit;
+  --card-glyph-color: var(--ink);
+}
+
+.estates-card--peasant {
+  --card-bg: var(--verdigris-wash);
+  --card-tone: var(--verdigris);
+}
+
+.estates-card--noble {
+  --card-bg: var(--lapis-wash);
+  --card-tone: var(--lapis);
+}
+
+.estates-card--royal {
+  --card-bg: var(--vermilion-wash);
+  --card-tone: var(--vermilion);
+}
+
+.estates-card--small {
+  width: 70px;
+  height: 98px;
+  border-width: 3px;
+  padding: 4px;
+}
+
+.estates-card--draggable {
+  cursor: grab;
+  touch-action: none;
+  -webkit-touch-callout: none;
+}
+
+.estates-card--draggable:active {
+  cursor: grabbing;
+}
+
+.estates-card--dragging {
+  opacity: 0;
+}
+
+.estates-card__corner {
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--ink);
+  line-height: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+
+.estates-card--small .estates-card__corner {
+  font-size: 13px;
+}
+
+.estates-card__corner svg {
+  width: 14px;
+  height: 14px;
+}
+
+.estates-card--small .estates-card__corner svg {
+  width: 10px;
+  height: 10px;
+}
+
+.estates-card__corner--bottom {
+  align-items: flex-end;
+  transform: rotate(180deg);
+  align-self: flex-end;
+}
+
+.estates-card__center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.estates-card__center svg {
+  width: 56px;
+  height: 56px;
+}
+
+.estates-card--small .estates-card__center svg {
+  width: 32px;
+  height: 32px;
+}
+
+.estates-card__rank {
+  position: absolute;
+  bottom: 38px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-weight: 800;
+  font-size: 28px;
+  color: var(--ink);
+  line-height: 1;
+  text-shadow: 0 1px 0 rgba(255, 240, 192, 0.6);
+}
+
+.estates-card--small .estates-card__rank {
+  bottom: 24px;
+  font-size: 18px;
+}
+
+.estates-card__temp-banner {
+  position: absolute;
+  top: 6px;
+  right: -10px;
+  padding: 2px 10px;
+  background: var(--temp-banner-bg, var(--gilt));
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 14px;
+  border: 2px solid var(--ink);
+  transform: rotate(8deg);
+  z-index: 3;
+  box-shadow: -1px 1px 0 var(--ink);
+}
+
+.estates-card__temp-banner--negative {
+  --temp-banner-bg: var(--vermilion);
+  color: var(--parchment);
+}
+
+.estates-card__perm-star {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 18px;
+  height: 18px;
+  color: var(--gilt-deep);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.estates-card--small .estates-card__perm-star {
+  width: 12px;
+  height: 12px;
+}
+
+.estates-card__winner-triangle {
+  position: absolute;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  pointer-events: none;
+}
+
+.estates-card__winner-triangle--top {
+  top: -10px;
+  transform: translateX(-50%);
+  border-bottom: 12px solid var(--gilt);
+}
+
+.estates-card__winner-triangle--bottom {
+  bottom: -12px;
+  transform: translateX(-50%);
+  border-top: 12px solid var(--gilt);
+}
+
+.estates-card--winner {
+  border-color: var(--gilt-deep);
+  box-shadow:
+    -2px 2px 0 var(--ink),
+    -4px 4px 0 rgba(40, 28, 12, 0.18),
+    0 0 0 3px var(--gilt);
+}
+
+.estates-card--dimmed {
+  opacity: 0.5;
+  filter: grayscale(0.4);
+}
+
+/* Scoring target badge (overlay on card) */
+.estates-scoring-target {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 6;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-family: inherit;
+  animation: estates-scoring-pulse 1.3s ease-in-out infinite;
+}
+
+.estates-scoring-target__badge {
+  min-width: 44px;
+  height: 44px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--badge-bg, var(--gilt));
+  color: var(--ink);
+  border: 3px solid var(--ink);
+  font-weight: 700;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    0 0 0 3px var(--parchment),
+    0 0 0 5px var(--gilt);
+}
+
+.estates-scoring-target--negative .estates-scoring-target__badge {
+  --badge-bg: var(--vermilion);
+  color: var(--parchment);
+}
+
+.estates-scoring-target[data-applying="true"] {
+  cursor: wait;
+  animation: none;
+  opacity: 0.65;
+}
+
+@keyframes estates-scoring-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+/* Hand return overlay zone (within the hand band) */
+.estates-band__return-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.estates-band__return-overlay--active {
+  pointer-events: auto;
+}
+
+/* Paused / disconnected veil */
+.estates-pause-veil {
+  position: absolute;
+  inset: 0;
+  background: rgba(217, 200, 154, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  pointer-events: auto;
+}
+
+.estates-pause-veil__ribbon {
+  background: var(--parchment);
+  border: 3px solid var(--ink);
+  outline: 2px solid var(--gilt);
+  outline-offset: -7px;
+  padding: 20px 36px;
+  max-width: 540px;
+  text-align: center;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 600;
+  box-shadow: 0 8px 24px rgba(40, 28, 12, 0.35);
+}
+
+.estates-pause-veil__title {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--vermilion);
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+/* Drag overlay card preview. Scales to match the current canvas scale so the
+ * dragged card matches the size of hand cards. Palette comes from .estates-drag-layer. */
+.estates-drag-preview {
+  transform: scale(calc(var(--estates-canvas-scale, 1) * 1.05));
+  transform-origin: top left;
+  filter: drop-shadow(0 6px 10px rgba(40, 28, 12, 0.4));
+}
+
+.estates-drag-preview .estates-card {
+  opacity: 1;
+  filter: none;
+}
+
+.estates-spent-modal__cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  padding: 8px 0;
+}
+
+/* Spent pile modal: compact but same card chrome as the play surface */
+.estates-spent-modal .estates-card--small {
+  width: 54px;
+  height: 76px;
+  padding: 2px;
+  border-width: 2px;
+}
+
+.estates-spent-modal .estates-card--small .estates-card__corner {
+  font-size: 11px;
+}
+
+.estates-spent-modal .estates-card--small .estates-card__corner svg {
+  width: 12px;
+  height: 12px;
+}
+
+.estates-spent-modal .estates-card--small .estates-card__center svg {
+  width: 22px;
+  height: 22px;
+}
+
+.estates-spent-modal .estates-card--small .estates-card__rank {
+  font-size: 14px;
+  bottom: 16px;
+}
+
+.estates-spent-modal .estates-card--small .estates-card__temp-banner {
+  font-size: 9px;
+  padding: 1px 4px;
+}
+
+.estates-spent-modal .estates-card--small .estates-card__perm-star {
+  width: 10px;
+  height: 10px;
+}
+
+/* Hourglass timer */
+.estates-hourglass {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.estates-hourglass__svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+  animation: estates-hourglass-flip 2.6s ease-in-out infinite;
+}
+
+@keyframes estates-hourglass-flip {
+  0%, 38% { transform: rotate(0deg); }
+  50% { transform: rotate(180deg); }
+  88%, 100% { transform: rotate(180deg); }
+}
+
+.estates-hourglass__label {
+  font-size: 13px;
+  color: var(--ink-soft, #4a3624);
+}
+
+/* Mobile/portrait specific tweaks */
+.estates-canvas-stage[data-canvas-mode="portrait"] .estates-card {
+  width: 90px;
+  height: 126px;
+  border-width: 3px;
+}
+
+.estates-canvas-stage[data-canvas-mode="portrait"] .estates-card__center svg {
+  width: 42px;
+  height: 42px;
+}
+
+.estates-canvas-stage[data-canvas-mode="portrait"] .estates-card__rank {
+  bottom: 28px;
+  font-size: 22px;
+}
+
+.estates-canvas-stage[data-canvas-mode="portrait"] .estates-pile {
+  width: 74px;
+  height: 104px;
+}
+
+.estates-canvas-stage[data-canvas-mode="portrait"] .estates-band--opponent .estates-pile {
+  width: 60px;
+  height: 84px;
+  padding: 4px 3px;
+}
+
+.estates-canvas-stage[data-canvas-mode="portrait"] .estates-band--opponent .estates-pile__count {
+  font-size: 15px;
+}
+
+.estates-canvas-stage[data-canvas-mode="portrait"] .estates-band--opponent .estates-pile__label {
+  font-size: 9px;
+}
+
+.estates-canvas-stage[data-canvas-mode="portrait"] .estates-band--opponent .estates-band__avatar {
+  width: 52px;
+  height: 52px;
+  font-size: 22px;
+}
+
+.estates-canvas-stage[data-canvas-mode="portrait"] .estates-band--opponent .estates-band__name {
+  font-size: 20px;
+  max-width: 200px;
+}
+
+.estates-canvas-stage[data-canvas-mode="portrait"] .estates-band__name {
+  font-size: 16px;
+  max-width: 160px;
+}
+
+.estates-canvas-stage[data-canvas-mode="portrait"] .estates-band {
+  gap: 12px;
+  padding: 10px 14px;
+}
+
+.estates-canvas-stage[data-canvas-mode="portrait"] .estates-zone-box {
+  --zone-banner-h: 34px;
+}
+
+.estates-canvas-stage[data-canvas-mode="portrait"] .estates-zone-banner {
+  height: var(--zone-banner-h);
+  padding: 0 10px;
+}
+
+.estates-canvas-stage[data-canvas-mode="portrait"] .estates-zone-banner__name {
+  font-size: 13px;
+  letter-spacing: 0.2em;
+}
+
+.estates-canvas-stage[data-canvas-mode="portrait"] .estates-zone-banner__glyphs svg {
+  width: 14px;
+  height: 14px;
+}
+
+.estates-canvas-stage[data-canvas-mode="portrait"] .estates-zone-hint {
+  font-size: 12px;
+  padding: 3px 8px;
+  max-width: calc(100% - 12px);
+}
+
+/* Shell wraps the canvas with optional bottom controls (e.g. mobile concede) */
+.estates-play-shell {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+.estates-play-shell__canvas {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  position: relative;
+}
+
+.estates-play-shell__footer {
+  flex-shrink: 0;
+  width: 100%;
+  padding-top: 8px;
+}

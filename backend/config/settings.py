@@ -113,6 +113,7 @@ INSTALLED_APPS = [
     "pondstead.apps.PondsteadConfig",
     "zodiac.apps.ZodiacConfig",
     "people.apps.PeopleConfig",
+    "estates.apps.EstatesConfig",
     # allauth
     "allauth",
     "allauth.account",

@@ -212,6 +212,7 @@ export function RoadIllumination(props: SVGProps<SVGSVGElement>) {
     const inset = Math.floor(((y - 20) * 22) / 18);
     const x1 = 22 + inset;
     const width = 64 - 2 * (22 + inset);
+    if (width <= 0) continue;
     road.push({ x: x1, y, w: width, h: 1, fill: PALETTE.parchmentDark });
   }
   /* cobbles */

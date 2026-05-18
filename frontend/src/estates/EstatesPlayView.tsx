@@ -12,8 +12,14 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { Text } from "@chakra-ui/react";
-import { useCallback, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
-
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { AppModal } from "../components/AppModal";
 import { useIsMobile } from "../responsive";
 import { APP_TEXT_SIZES } from "../theme/typography";
@@ -175,6 +181,9 @@ export default function EstatesPlayView({
   mobileConcedeControl = null,
 }: EstatesPlayViewProps) {
   const [activeDrag, setActiveDrag] = useState<ActiveDragMeta | null>(null);
+  const [dragPreviewSize, setDragPreviewSize] = useState<{ width: number; height: number } | null>(
+    null,
+  );
   const [discardModal, setDiscardModal] = useState<DiscardModalState | null>(null);
   const activeDragRef = useRef<ActiveDragMeta | null>(null);
   const canDropInZoneRef = useRef<(zone: ZoneName, cardId: string) => boolean>(() => false);
@@ -256,6 +265,7 @@ export default function EstatesPlayView({
   );
 
   const isMobile = useIsMobile();
+  const usePortraitCanvasScale = isMobile;
   const myHandCards = myPlayerState.hand ?? [];
   const showHandSixGrid = isMobile && myHandCards.length === 6 && !iHavePlacedThisRound;
 
@@ -305,6 +315,12 @@ export default function EstatesPlayView({
       const drag = { cardId, suit: meta.suit };
       activeDragRef.current = drag;
       setActiveDrag(drag);
+      const rect = event.active.rect.current.initial ?? event.active.rect.current.translated;
+      if (rect && rect.width > 0 && rect.height > 0) {
+        setDragPreviewSize({ width: rect.width, height: rect.height });
+      } else {
+        setDragPreviewSize(null);
+      }
     },
     [handCardMeta],
   );
@@ -312,6 +328,7 @@ export default function EstatesPlayView({
   const clearActiveDrag = useCallback(() => {
     activeDragRef.current = null;
     setActiveDrag(null);
+    setDragPreviewSize(null);
   }, []);
 
   const handleDragEnd = useCallback(
@@ -507,7 +524,14 @@ export default function EstatesPlayView({
           ) : null}
 
           <DragOverlay dropAnimation={null} className="estates-drag-layer">
-            {activeDragCard ? <DragPreviewCard card={activeDragCard} /> : null}
+            {activeDragCard ? (
+              <DragPreviewCard
+                card={activeDragCard}
+                width={usePortraitCanvasScale ? undefined : dragPreviewSize?.width}
+                height={usePortraitCanvasScale ? undefined : dragPreviewSize?.height}
+                portraitScale={usePortraitCanvasScale}
+              />
+            ) : null}
           </DragOverlay>
         </DndContext>
 

@@ -1,8 +1,7 @@
 /* Illuminated-manuscript pixel-art play canvas.
  * Scoped to .estates-canvas-root; intentionally outside Chakra theme tokens.
- * Base design 1720×940 (landscape) / 800×1000 (portrait); --canvas-w and --canvas-h
- * grow to match the wrapper aspect (set from JS). Stage is top-aligned and scaled
- * to fit without clipping. */
+ * Landscape (desktop): responsive flex column — fills the shell, no transform scale.
+ * Portrait (mobile): virtual 800×1000 canvas scaled via JS (--canvas-scale). */
 
 /* Palette + typography shared by the play canvas and the drag overlay (overlay
  * is portaled to document.body, outside .estates-canvas-root). */
@@ -54,23 +53,15 @@
   pointer-events: none;
 }
 
-/* Flex column: opponent, realm (content-sized), hand. --estates-band-gap keeps
- * zone card overhangs from touching the opponent / hand bands. */
+/* Flex column: opponent, realm, hand. --estates-band-gap keeps zone overhangs off bands. */
 .estates-canvas-stage {
-  position: absolute;
-  top: 0;
-  left: 50%;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  /* ~half a zone card (154px) plus clearance so overhangs miss the bands */
   --estates-band-gap: 96px;
+  --estates-card-w: 110px;
+  --estates-card-h: 154px;
   gap: var(--estates-band-gap) 0;
-  width: calc(var(--canvas-w, 1600) * 1px);
-  height: auto;
-  transform: translateX(-50%) scale(var(--canvas-scale, 1));
-  transform-origin: top center;
-  overflow: visible;
   background: var(--parchment);
   box-shadow:
     inset 0 0 80px rgba(80, 56, 26, 0.32),
@@ -81,18 +72,38 @@
     radial-gradient(circle at 41% 89%, rgba(80, 56, 26, 0.12) 0 1px, transparent 2px);
 }
 
+/* Desktop / landscape: responsive fill — no JS scale */
 .estates-canvas-stage[data-canvas-mode="landscape"] {
-  --canvas-w: 1720;
-  --canvas-h: 940;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  min-height: 0;
+  transform: none;
+  overflow: hidden;
+  --estates-band-gap: clamp(24px, 3.5vh, 72px);
+  --estates-card-w: clamp(52px, 5.2vw, 110px);
+  --estates-card-h: calc(var(--estates-card-w) * 154 / 110);
+  --zone-banner-h: clamp(26px, 3vh, 40px);
 }
 
+/* Mobile portrait: scaled virtual canvas */
 .estates-canvas-stage[data-canvas-mode="portrait"] {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: calc(var(--canvas-w, 800) * 1px);
+  height: auto;
+  transform: translateX(-50%) scale(var(--canvas-scale, 1));
+  transform-origin: top center;
+  overflow: visible;
+  --estates-band-gap: 80px;
   --canvas-w: 800;
   --canvas-h: 1000;
-  --estates-band-gap: 80px;
 }
 
-/* Region bands — flex children, no absolute top/bottom gaps. */
+/* Region bands — flex children */
 .estates-opponent-band {
   position: relative;
   flex: 0 0 auto;
@@ -112,6 +123,28 @@
   flex: 0 0 auto;
   height: 184px;
   margin: 0 16px;
+}
+
+.estates-canvas-stage[data-canvas-mode="landscape"] .estates-opponent-band {
+  height: clamp(68px, 10vh, 120px);
+  margin: 0 clamp(8px, 1.2vw, 16px);
+  flex-shrink: 0;
+}
+
+.estates-canvas-stage[data-canvas-mode="landscape"] .estates-realm-region {
+  flex: 1 1 0;
+  min-height: 0;
+  margin: 0 clamp(8px, 1.2vw, 16px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
+
+.estates-canvas-stage[data-canvas-mode="landscape"] .estates-hand-band {
+  height: clamp(88px, 13vh, 168px);
+  margin: 0 clamp(8px, 1.2vw, 16px);
+  flex-shrink: 0;
 }
 
 .estates-canvas-stage[data-canvas-mode="portrait"] .estates-opponent-band {
@@ -152,6 +185,16 @@
   z-index: 2;
 }
 
+.estates-canvas-stage[data-canvas-mode="landscape"] .estates-realm-grid {
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  column-gap: clamp(8px, 1.4vw, 24px);
+  align-content: center;
+  padding: 0 clamp(4px, 0.6vw, 8px);
+}
+
 .estates-zone-cell {
   position: relative;
   display: flex;
@@ -159,6 +202,13 @@
   justify-content: center;
   overflow: visible;
   width: 100%;
+}
+
+.estates-canvas-stage[data-canvas-mode="landscape"] .estates-zone-cell {
+  container-type: size;
+  min-height: 0;
+  min-width: 0;
+  overflow: visible;
 }
 
 .estates-zone-cell--farm { grid-area: farm; align-items: flex-end; }
@@ -175,6 +225,13 @@
   max-width: 100%;
   aspect-ratio: 7 / 5;
   overflow: visible;
+}
+
+.estates-canvas-stage[data-canvas-mode="landscape"] .estates-zone-stack {
+  width: min(100cqw, calc(100cqh * 7 / 5));
+  height: min(calc(100cqw * 5 / 7), 100cqh);
+  max-width: 100%;
+  max-height: 100%;
 }
 
 /* Equal-size zone box centered in each grid cell, 7:5 ratio. */
@@ -384,6 +441,63 @@
 
 .estates-canvas-stage[data-canvas-mode="portrait"] .estates-brick-band {
   height: 84px;
+}
+
+/* Landscape: scale piles, bands, zone chrome with viewport */
+.estates-canvas-stage[data-canvas-mode="landscape"] .estates-pile {
+  width: clamp(48px, 4.8vw, 96px);
+  height: clamp(66px, 6.7vw, 134px);
+}
+
+.estates-canvas-stage[data-canvas-mode="landscape"] .estates-band--opponent .estates-pile {
+  width: clamp(44px, 4vw, 64px);
+  height: clamp(60px, 5.5vw, 88px);
+}
+
+.estates-canvas-stage[data-canvas-mode="landscape"] .estates-band--opponent .estates-pile__count {
+  font-size: clamp(14px, 1.2vw, 18px);
+}
+
+.estates-canvas-stage[data-canvas-mode="landscape"] .estates-band--opponent .estates-band__avatar {
+  width: clamp(44px, 4.5vw, 64px);
+  height: clamp(44px, 4.5vw, 64px);
+  font-size: clamp(18px, 1.8vw, 26px);
+}
+
+.estates-canvas-stage[data-canvas-mode="landscape"] .estates-band--opponent .estates-band__name {
+  font-size: clamp(16px, 1.6vw, 24px);
+  max-width: min(360px, 28vw);
+}
+
+.estates-canvas-stage[data-canvas-mode="landscape"] .estates-band__name {
+  font-size: clamp(14px, 1.4vw, 20px);
+  max-width: min(260px, 22vw);
+}
+
+.estates-canvas-stage[data-canvas-mode="landscape"] .estates-card__corner {
+  font-size: clamp(12px, 1.2vw, 18px);
+}
+
+.estates-canvas-stage[data-canvas-mode="landscape"] .estates-card__center svg {
+  width: clamp(28px, 3vw, 56px);
+  height: clamp(28px, 3vw, 56px);
+}
+
+.estates-canvas-stage[data-canvas-mode="landscape"] .estates-card__rank {
+  font-size: clamp(18px, 2vw, 28px);
+  bottom: clamp(22px, 2.5vw, 38px);
+}
+
+.estates-canvas-stage[data-canvas-mode="landscape"] .estates-zone-banner__name {
+  font-size: clamp(11px, 1.1vw, 16px);
+}
+
+.estates-canvas-stage[data-canvas-mode="landscape"] .estates-zone-hint {
+  font-size: clamp(10px, 1vw, 14px);
+}
+
+.estates-canvas-stage[data-canvas-mode="landscape"] .estates-brick-band {
+  height: clamp(40px, 5vh, 56px);
 }
 
 /* Pile (deck / discard) styling */
@@ -687,8 +801,8 @@
 /* Card */
 .estates-card {
   position: relative;
-  width: 110px;
-  height: 154px;
+  width: var(--estates-card-w, 110px);
+  height: var(--estates-card-h, 154px);
   border: 4px solid var(--ink);
   border-radius: 6px;
   background: var(--card-bg, var(--parchment));
@@ -975,12 +1089,19 @@
   margin-bottom: 6px;
 }
 
-/* Drag overlay card preview. Scales to match the current canvas scale so the
- * dragged card matches the size of hand cards. Palette comes from .estates-drag-layer. */
+/* Drag overlay: portrait uses canvas scale; landscape uses measured card box (inline size). */
 .estates-drag-preview {
+  filter: drop-shadow(0 6px 10px rgba(40, 28, 12, 0.4));
+}
+
+.estates-drag-preview--portrait-scale {
   transform: scale(calc(var(--estates-canvas-scale, 1) * 1.05));
   transform-origin: top left;
-  filter: drop-shadow(0 6px 10px rgba(40, 28, 12, 0.4));
+}
+
+.estates-drag-preview--sized .estates-card {
+  width: 100%;
+  height: 100%;
 }
 
 .estates-drag-preview .estates-card {

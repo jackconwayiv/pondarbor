@@ -213,11 +213,33 @@ export function DraggableHandCard({ card, dragId, disabled, scoringTarget }: Dra
 
 export type DragPreviewCardProps = {
   card: Record<string, unknown>;
+  /** Measured hand-card box (landscape responsive layout). */
+  width?: number;
+  height?: number;
+  /** Portrait scaled canvas — apply --estates-canvas-scale on the preview wrapper. */
+  portraitScale?: boolean;
 };
 
-export function DragPreviewCard({ card }: DragPreviewCardProps): ReactNode {
+export function DragPreviewCard({
+  card,
+  width,
+  height,
+  portraitScale = false,
+}: DragPreviewCardProps): ReactNode {
+  const sized = width != null && height != null && width > 0 && height > 0;
+  const wrapperClass = [
+    "estates-drag-preview",
+    portraitScale ? "estates-drag-preview--portrait-scale" : null,
+    sized ? "estates-drag-preview--sized" : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <div className="estates-drag-preview">
+    <div
+      className={wrapperClass}
+      style={sized ? { width, height } : undefined}
+    >
       <Card card={card} />
     </div>
   );

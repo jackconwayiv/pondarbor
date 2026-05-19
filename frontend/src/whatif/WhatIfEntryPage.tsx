@@ -40,6 +40,7 @@ import {
   fetchWhatIfPendingCount,
   fetchMyWhatIfSessions,
   fetchWhatIfTvState,
+  WhatIfRoomNotFoundError,
   joinWhatIfSession,
   listWhatIfQuestions,
   patchWhatIfQuestion,
@@ -188,6 +189,7 @@ export default function WhatIfEntryPage() {
   const [joinRoomStatus, setJoinRoomStatus] = useState<
     WhatIfSessionState["status"] | null
   >(null);
+  const [joinRoomNotFound, setJoinRoomNotFound] = useState(false);
   const lastPlayerTabRef = useRef<PlayerTab>(isMobile ? "join" : "new");
   const lastAdminTabRef = useRef<AdminTab>("admin-list");
   const exampleBulk = useMemo(
@@ -247,6 +249,7 @@ export default function WhatIfEntryPage() {
     if (code.length !== 4) {
       setEnrolledPlayerNames([]);
       setJoinRoomStatus(null);
+      setJoinRoomNotFound(false);
       return;
     }
     let cancelled = false;
@@ -255,14 +258,17 @@ export default function WhatIfEntryPage() {
         try {
           const state = await fetchWhatIfTvState(code);
           if (cancelled || !state) return;
+          setJoinRoomNotFound(false);
           setJoinRoomStatus(state.status);
-          setEnrolledPlayerNames(
-            (state.players ?? []).map((p) => p.display_name),
-          );
-        } catch {
+          setEnrolledPlayerNames([
+            ...(state.players ?? []).map((p) => p.display_name),
+            ...(state.npcs ?? []).map((n) => n.display_name),
+          ]);
+        } catch (e) {
           if (!cancelled) {
             setEnrolledPlayerNames([]);
             setJoinRoomStatus(null);
+            setJoinRoomNotFound(e instanceof WhatIfRoomNotFoundError);
           }
         }
       })();
@@ -290,7 +296,8 @@ export default function WhatIfEntryPage() {
     joinCode.trim().length !== 4 ||
     !sanitizeDisplayNameInput(name.trim()) ||
     nameTakenInRoom ||
-    joinBlockedBecauseStarted;
+    joinBlockedBecauseStarted ||
+    joinRoomNotFound;
 
   useEffect(() => {
     if (
@@ -644,7 +651,7 @@ export default function WhatIfEntryPage() {
   const joinFormContent = (
     <Stack gap="4">
       <Text fontSize={APP_TEXT_SIZES.body} color="fg">
-        Join as a player on this device with the room code from the host.
+        Join as a player on this device with the room code from the host. Connect a computer to a TV or projector if you want to host a game.
       </Text>
       <Stack gap="1.5">
         <Text fontSize={APP_TEXT_SIZES.label} fontWeight="medium" color="fg">
@@ -683,6 +690,12 @@ export default function WhatIfEntryPage() {
           fontWeight="medium"
         >
           That name is already taken in this room.
+        </Text>
+      ) : null}
+      {joinRoomNotFound ? (
+        <Text fontSize={APP_TEXT_SIZES.body} color="nautical.solid" fontWeight="medium" role="status">
+          Room code not found on this site. Ask the host for the code shown on their TV lobby, or
+          create a new game if you are the host.
         </Text>
       ) : null}
       {joinBlockedBecauseStarted ? (
@@ -1228,6 +1241,10 @@ export default function WhatIfEntryPage() {
   const showDesktopUnapprovedOnly =
     showJoinOnly && !isMobile && (!isAuthenticated || !isApprovedUser);
 
+  /** Mobile join-only with no resume cards: one panel instead of a gap between intro + join. */
+  const mobileJoinInIntroCard =
+    isMobile && showJoinOnly && !hasResumeBanners && !showDesktopUnapprovedOnly;
+
   return (
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
       <Box
@@ -1242,7 +1259,7 @@ export default function WhatIfEntryPage() {
               <Heading
                 as="h1"
                 size={{ base: "lg", md: "xl" }}
-                mb="2"
+                mb={mobileJoinInIntroCard ? "0" : "2"}
               >
                 <HStack
                   as="span"
@@ -1263,13 +1280,18 @@ export default function WhatIfEntryPage() {
                   color="fg"
                 >
                   Gather a group of friends for this multiplayer party game!
-                  Someone creates a new game room and projects{" "}
+                  Someone creates a new game room and projects 
                   <Code>/whatif/play/ROOM</Code> on a TV or projector to host a
-                  game, and each player joins on their mobile device at{" "}
-                  <Code>/whatif/hand/ROOM</Code> to play along!
+                  game. Each player joins on their mobile device at{" "}
+                  <Code>/whatif</Code> to play along! You'll be imagining the players in a variety of silly scenarios and secretly voting for which option best fits their personality. The most popular option wins the round.
                 </Text>
               ) : null}
               <WhatIfResumeBanners />
+              {mobileJoinInIntroCard ? (
+                <Stack gap="3" pt="2">
+                  {joinFormBlock}
+                </Stack>
+              ) : null}
               {showDesktopUnapprovedOnly ? (
                 <Text
                   fontSize={APP_TEXT_SIZES.body}
@@ -1282,7 +1304,7 @@ export default function WhatIfEntryPage() {
               ) : null}
             </Box>
 
-            {!showDesktopUnapprovedOnly ? (
+            {!showDesktopUnapprovedOnly && !(mobileJoinInIntroCard && showJoinOnly) ? (
               <Box {...PANEL_ENTRY_CARD_PROPS}>
                 <Stack gap="4">
                   {showJoinOnly ? (

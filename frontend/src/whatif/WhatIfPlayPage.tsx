@@ -23,7 +23,9 @@ import type { WhatIfPlayer, WhatIfSessionState } from "./types";
 import { WhatIfPlayerFace } from "./whatifPlayerFace";
 import { whatifPlayerSeatIndex } from "./whatifPlayerSeatColors";
 import { WhatIfTvScoreboard } from "./WhatIfTvScoreboard";
+import { hasChallengeTarget } from "./whatifChallengeTarget";
 import { WhatIfTvSeatRing } from "./WhatIfTvSeatRing";
+import { WHATIF_SCOREBOARD_GOLD_GRADIENT, formatWhatIfTopVoteLine } from "./whatifScoreboardUi";
 
 export default function WhatIfPlayPage() {
   const navigate = useNavigate();
@@ -102,10 +104,19 @@ export default function WhatIfPlayPage() {
   const eligibleVoterIds = new Set(eligibleVoters.map((p) => p.id));
   const allVotesIn =
     state?.status === "voting" &&
-    (state?.players?.length ?? 0) > 0 &&
-    (eligibleVoterIds.size === 0
-      ? true
-      : [...eligibleVoterIds].every((id) => votedPlayerIds.includes(id)));
+    (() => {
+      const players = state?.players ?? [];
+      if (players.length === 0) return false;
+      if (duelVoting && activeId != null && challengedId != null) {
+        for (const pid of [activeId, challengedId]) {
+          const pl = players.find((p) => p.id === pid);
+          if (pl && !pl.paused && !votedPlayerIds.includes(pid)) return false;
+        }
+        return true;
+      }
+      if (eligibleVoterIds.size === 0) return true;
+      return [...eligibleVoterIds].every((id) => votedPlayerIds.includes(id));
+    })();
   const voteRows = Object.entries(state?.state?.vote_counts ?? {}).sort(
     (a, b) => Number(b[1]) - Number(a[1]) || Number(a[0]) - Number(b[0]),
   );
@@ -135,6 +146,10 @@ export default function WhatIfPlayPage() {
       : [];
   const winnerId = state?.state?.winner_player_id;
   const winnerPlayer = winnerId != null ? (state?.players ?? []).find((p) => p.id === winnerId) : undefined;
+  const topVoteLine =
+    (state?.status === "post_results" || state?.status === "ended") && !duelPostResults
+      ? formatWhatIfTopVoteLine(state?.state?.vote_counts, state?.state?.question?.answers)
+      : null;
 
   const voterPlayersByOption = useMemo(() => {
     const st = state?.status;
@@ -183,7 +198,7 @@ export default function WhatIfPlayPage() {
     typeof subjectDieValue === "number" && subjectDieValue >= 1 && subjectDieValue <= 6;
   const seatStripSubjectPhase =
     state?.status === "turn" &&
-    !state?.state?.challenge_target_player_id &&
+    !hasChallengeTarget(state?.state) &&
     duel?.step !== "pick_opponent" &&
     hasSubjectDie;
   const showSeatRingDie =
@@ -193,7 +208,7 @@ export default function WhatIfPlayPage() {
     (duel?.step === "pick_opponent" || duel?.step === "pick_subject" || duel?.step === "voting");
   const tvCardBg =
     state?.status === "ended"
-      ? "orange.100"
+      ? WHATIF_SCOREBOARD_GOLD_GRADIENT
       : activeChallengeRound
         ? "nautical.solid"
         : "bg.panel";
@@ -463,6 +478,15 @@ export default function WhatIfPlayPage() {
                   <Text fontSize="clamp(1.1rem, 2.6vh, 1.75rem)" fontWeight="semibold" lineHeight="1.25">
                     {state.state.question.prompt}
                   </Text>
+                  {state?.status === "ended" && topVoteLine ? (
+                    <Text
+                      fontSize="clamp(1rem, 2.2vh, 1.35rem)"
+                      fontWeight="semibold"
+                      lineHeight="1.3"
+                    >
+                      {topVoteLine}
+                    </Text>
+                  ) : null}
                   {state.state.question.proposed_by?.display_name ? (
                     <HStack gap="2" align="center">
                       {state.state.question.proposed_by.avatar_url ? (
@@ -546,7 +570,7 @@ export default function WhatIfPlayPage() {
                     label = "Game paused";
                     tone = "muted";
                   } else if (deadlineIso == null) {
-                    label = "Voting open";
+                    label = "Secret voting open";
                     tone = "muted";
                   } else if (secsLeft != null && secsLeft <= 0) {
                     label =
@@ -557,7 +581,7 @@ export default function WhatIfPlayPage() {
                     label = `${bucket}s`;
                     tone = bucket <= 4 ? "urgent" : "active";
                   } else {
-                    label = "Voting open";
+                    label = "Secret voting open";
                     tone = "muted";
                   }
 
@@ -618,6 +642,7 @@ export default function WhatIfPlayPage() {
                 {showSeatStrip ? (
                   <WhatIfTvSeatRing
                     players={joinOrderPlayers}
+                    npcs={state?.npcs ?? []}
                     markerIndex={state?.state?.marker_index}
                     candidateSeatA={state?.state?.subject_candidate_seat_a}
                     candidateSeatB={state?.state?.subject_candidate_seat_b}
@@ -626,6 +651,18 @@ export default function WhatIfPlayPage() {
                     activeChallengeRound={activeChallengeRound}
                     activePlayerId={activeId}
                     subjectDieValue={subjectDieValue}
+                    votingTimer={
+                      state?.status === "voting"
+                        ? {
+                            deadlineIso: state.state.voting_deadline_at ?? null,
+                            pauseRemainingSeconds:
+                              state.state.voting_pause_remaining_seconds ?? null,
+                            paused: !!state.state.voting_paused,
+                            allVotesIn,
+                            fallbackNowMs: nowMs,
+                          }
+                        : null
+                    }
                   />
                 ) : null}
                 <Text

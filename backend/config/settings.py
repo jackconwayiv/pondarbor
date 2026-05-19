@@ -29,10 +29,12 @@ if DATABASE_URL:
     _conn_max_age = int(_conn_max_age_raw) if _conn_max_age_raw.isdigit() else 600
     DATABASES = {"default": dj_database_url.parse(DATABASE_URL, conn_max_age=_conn_max_age)}
 else:
+    _sqlite_opts: dict = {"timeout": 20}
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": BASE_DIR / "db.sqlite3",
+            "OPTIONS": _sqlite_opts,
         }
     }
 

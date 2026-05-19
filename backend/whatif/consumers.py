@@ -13,6 +13,7 @@ from django.shortcuts import get_object_or_404
 
 from whatif.models import WhatIfPlayer, WhatIfSession
 from whatif.realtime import whatif_session_group_name
+from whatif.gameplay import maybe_declare_pending_winner
 from whatif.views import _load_session, _maybe_auto_reveal_voting
 
 WS_PING_THROTTLE_SECONDS = 2
@@ -39,6 +40,7 @@ def _handle_ping(code: str) -> int | None:
     before_version = session.state_version
     before_status = session.status
     session = _maybe_auto_reveal_voting(session)
+    session = maybe_declare_pending_winner(session)
     session.refresh_from_db()
     if session.state_version != before_version or session.status != before_status:
         return session.state_version

@@ -61,6 +61,7 @@ export function fitSeatRingLabel(
   };
 }
 
-export function formatPlayerSeatLabel(seatIndex: number, displayName: string): string {
-  return `${seatIndex + 1} ${displayName}`;
+/** Human join-order seat number (1..P), not physical wedge index. */
+export function formatPlayerSeatLabel(humanNumber: number, displayName: string): string {
+  return `${humanNumber} ${displayName}`;
 }

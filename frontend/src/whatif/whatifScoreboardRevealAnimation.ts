@@ -6,6 +6,9 @@ export const SCOREBOARD_REVEAL_SCORE_COUNT_MS = 750;
 export const SCOREBOARD_REVEAL_SETTLE_MS = 1000;
 export const SCOREBOARD_REVEAL_REORDER_MS = 500;
 
+/** Hold after scoreboard animation before server declares winner; sync with backend constants.py */
+export const DECLARE_WINNER_HOLD_MS = 2000;
+
 const DELTA_START_MS = SCOREBOARD_REVEAL_HOLD_MS;
 const SCORE_COUNT_START_MS = DELTA_START_MS + SCOREBOARD_REVEAL_DELTA_IN_MS;
 const SETTLE_START_MS = SCORE_COUNT_START_MS + SCOREBOARD_REVEAL_SCORE_COUNT_MS;

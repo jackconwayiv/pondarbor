@@ -4,6 +4,13 @@ export const TV_SEAT_RING_CX = 50;
 export const TV_SEAT_RING_CY = 50;
 export const TV_SEAT_RING_R_OUTER = 46;
 export const TV_SEAT_RING_R_INNER = 30;
+/** Voting countdown annulus between die area and wedge inner edge. */
+export const TV_SEAT_RING_TIMER_R_INNER = 17;
+export const TV_SEAT_RING_TIMER_R_OUTER = 28.5;
+export const TV_SEAT_RING_TIMER_R_MID =
+  (TV_SEAT_RING_TIMER_R_INNER + TV_SEAT_RING_TIMER_R_OUTER) / 2;
+export const TV_SEAT_RING_TIMER_STROKE_WIDTH =
+  (TV_SEAT_RING_TIMER_R_OUTER - TV_SEAT_RING_TIMER_R_INNER) / 2;
 /** Thin band outside the main ring for marker highlight. */
 export const TV_SEAT_RING_MARKER_BAND_OUTER = TV_SEAT_RING_R_OUTER + 2.2;
 export const TV_SEAT_RING_MARKER_BAND_INNER = TV_SEAT_RING_R_OUTER + 0.4;

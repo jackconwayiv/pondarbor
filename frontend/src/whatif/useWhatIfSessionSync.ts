@@ -121,7 +121,7 @@ export function useWhatIfSessionSync(options: UseWhatIfSessionSyncOptions): void
   ]);
 
   useEffect(() => {
-    if (sessionStatus !== "voting") return;
+    if (sessionStatus !== "voting" && sessionStatus !== "post_results") return;
     const id = window.setInterval(() => {
       const socket = wsRef.current;
       if (socket?.readyState === WebSocket.OPEN) {
@@ -130,4 +130,13 @@ export function useWhatIfSessionSync(options: UseWhatIfSessionSyncOptions): void
     }, WS_PING_MS);
     return () => window.clearInterval(id);
   }, [sessionStatus]);
+
+  /** Winner declare runs server-side after post_results; poll so UI reaches `ended` without another action. */
+  useEffect(() => {
+    if (sessionStatus !== "post_results") return;
+    const id = window.setInterval(() => {
+      void doRefetch();
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [sessionStatus, doRefetch]);
 }

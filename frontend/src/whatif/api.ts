@@ -1,5 +1,13 @@
 import type { WhatIfMySessionsResponse, WhatIfSessionState } from "./types";
 
+/** Thrown when GET session returns 404 (room code not in this environment's database). */
+export class WhatIfRoomNotFoundError extends Error {
+  constructor() {
+    super("Room code not found. Check the 4-letter code and try again.");
+    this.name = "WhatIfRoomNotFoundError";
+  }
+}
+
 /** Query param for GET /whatif/questions/ — server filters non-deleted rows. */
 export const WHATIF_QUESTION_LIST_FILTERS = ["all", "active", "inactive", "rejected"] as const;
 export type WhatIfQuestionListFilter = (typeof WHATIF_QUESTION_LIST_FILTERS)[number];
@@ -57,6 +65,10 @@ export function savePlayerToken(code: string, token: string): void {
 
 export function loadPlayerToken(code: string): string | null {
   return sessionStorage.getItem(playerTokenStorageKey(code));
+}
+
+export function clearPlayerToken(code: string): void {
+  sessionStorage.removeItem(playerTokenStorageKey(code));
 }
 
 /** All room codes with a player token saved in this tab's sessionStorage. */
@@ -188,7 +200,7 @@ export async function joinWhatIfSession(
       /* ignore non-JSON errors */
     }
     if (response.status === 404) {
-      throw new Error("Room code not found. Check the 4-letter code and try again.");
+      throw new WhatIfRoomNotFoundError();
     }
     if (detail) throw new Error(detail);
     throw new Error(`Failed to join game (${response.status})`);
@@ -207,6 +219,7 @@ export async function fetchWhatIfTvState(
     { method: "GET", cache: "no-store" },
   );
   if (response.status === 304) return null;
+  if (response.status === 404) throw new WhatIfRoomNotFoundError();
   if (!response.ok) throw new Error(`Failed to fetch session (${response.status})`);
   return (await response.json()) as WhatIfSessionState;
 }
@@ -224,6 +237,9 @@ const WHATIF_ACTION_DETAIL_FRIENDLY: Record<string, string> = {
     "You can’t choose an opponent right now.",
   "Pause is only available during voting.": "Pause isn’t available right now.",
   "Missing or invalid player token.": "Reconnect to this room from the join screen.",
+  "Winner will be declared after the score reveal.":
+    "This round decided the game — hang on while scores finish on the TV.",
+  "Game has ended.": "This game is over.",
 };
 
 function friendlyWhatIfActionBody(status: number, bodyText: string): string {
@@ -292,9 +308,14 @@ export async function postWhatIfAction(
       | "resolve_question_skip"
       | "set_player_paused"
       | "toggle_voting_pause"
-      | "complete_game";
+      | "complete_game"
+      | "add_npc"
+      | "remove_npc"
+      | "leave_game";
     option_index?: number;
     target_player_id?: number;
+    npc_id?: number;
+    display_name?: string;
     paused?: boolean;
     challenge?: boolean;
     approve?: boolean;

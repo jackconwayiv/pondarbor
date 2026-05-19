@@ -1,3 +1,9 @@
+export type WhatIfNpc = {
+  id: number;
+  display_name: string;
+  avatar_emoji: string;
+};
+
 export type WhatIfPlayer = {
   id: number;
   display_name: string;
@@ -32,10 +38,11 @@ export type WhatIfRoundState = {
   voted_player_ids?: number[];
   round_scores?: Record<string, number>;
   challenge_target_player_id?: number | null;
+  challenge_target_npc_id?: number | null;
   /** Legacy duel tiles only; normal challenge rounds use the subject die. */
   subject_candidate_ids?: number[];
   subject_options?: WhatIfSubjectOption[];
-  /** Step rolled on the subject die (1..min(P, 6)); present until the active player picks A/B. */
+  /** Step rolled on the subject die (1..6); present until the active player picks A/B. */
   subject_die_value?: number | null;
   subject_candidate_seat_a?: number | null;
   subject_candidate_seat_b?: number | null;
@@ -65,6 +72,10 @@ export type WhatIfRoundState = {
     rank: number;
   }>;
   winner_player_id?: number | null;
+  /** Set on winning reveal; cleared when status becomes ended. */
+  pending_winner_player_id?: number | null;
+  /** ISO timestamp when server promotes post_results → ended after scoreboard animation. */
+  declare_winner_not_before?: string | null;
   you?: WhatIfPlayer;
   your_vote?: number | null;
 };
@@ -85,6 +96,7 @@ export type WhatIfSessionState = {
   win_score?: number;
   state: WhatIfRoundState;
   players?: WhatIfPlayer[];
+  npcs?: WhatIfNpc[];
   created_at?: string;
   updated_at?: string;
 };

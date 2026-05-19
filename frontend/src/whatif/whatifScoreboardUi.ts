@@ -18,9 +18,13 @@ export function scoreboardCompetitionRanks(players: ScoreboardRankPlayer[]): Rec
   return out;
 }
 
+/** Gold medal tint — 1st-place scoreboard rows and game-over TV cards. */
+export const WHATIF_SCOREBOARD_GOLD_GRADIENT =
+  "linear-gradient(90deg, rgba(255, 215, 0, 0.14), transparent)";
+
 /** Subtle row backgrounds for top 3 ranks (competition ranking). */
 export function scoreboardRowMedalGradient(rank: number | undefined): string | undefined {
-  if (rank === 1) return "linear-gradient(90deg, rgba(255, 215, 0, 0.14), transparent)";
+  if (rank === 1) return WHATIF_SCOREBOARD_GOLD_GRADIENT;
   if (rank === 2) return "linear-gradient(90deg, rgba(180, 190, 200, 0.18), transparent)";
   if (rank === 3) return "linear-gradient(90deg, rgba(180, 120, 70, 0.14), transparent)";
   return undefined;

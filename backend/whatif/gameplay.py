@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from django.db import transaction
 from django.db.models import F
+
+from whatif import constants
+from whatif.db_utils import retry_on_db_locked
 from django.utils import timezone
 
 from achievements.services import evaluate_after_whatif_session_ended
@@ -127,6 +131,13 @@ def final_scores(session: WhatIfSession) -> list[dict]:
     return rows
 
 
+def invalidate_session_player_prefetch(session: WhatIfSession) -> None:
+    """Score updates use QuerySet.update(); drop cached players so serializers read fresh scores."""
+    cache = getattr(session, "_prefetched_objects_cache", None)
+    if cache is not None:
+        cache.pop("players", None)
+
+
 def mark_whatif_completion_for_session_users(session_id: int) -> None:
     from users.models import Profile
 
@@ -151,6 +162,7 @@ def apply_reveal_from_voting_state(
     active_player_id = int(state["active_player_id"])
     duel = state.get("duel") or {}
     subject_id = state.get("challenge_target_player_id")
+    subject_npc_id = state.get("challenge_target_npc_id")
 
     if duel.get("step") == "voting" and duel.get("challenged_player_id"):
         challenged_id = int(duel["challenged_player_id"])
@@ -179,6 +191,7 @@ def apply_reveal_from_voting_state(
         )
 
     session.refresh_from_db()
+    invalidate_session_player_prefetch(session)
     score_map = dict(
         WhatIfPlayer.objects.filter(session_id=session.id).values_list("id", "score")
     )
@@ -190,39 +203,100 @@ def apply_reveal_from_voting_state(
         total_players_in_room=total_players,
         votes=votes,
         round_scores=rs_for_flair,
-        subject_player_id=int(subject_id) if subject_id is not None else None,
+        subject_player_id=int(subject_id) if subject_id is not None and subject_npc_id is None else None,
     )
 
     state["round_scores"] = {str(pid): points for pid, points in round_scores.items()}
     state["reveal_flairs"] = flairs
-    state["revealed_at"] = timezone.now().isoformat()
+    revealed_now = timezone.now()
+    state["revealed_at"] = revealed_now.isoformat()
     state["next_turn_not_before"] = (
-        timezone.now() + timedelta(seconds=constants.ROUND_TRANSITION_SECONDS)
+        revealed_now + timedelta(milliseconds=constants.SCOREBOARD_REVEAL_TOTAL_MS)
     ).isoformat()
     state["final_scores"] = final_scores(session)
 
     session.status = WhatIfSession.Status.POST_RESULTS
     if winner_player_id is not None:
-        session.status = WhatIfSession.Status.ENDED
-        winner = session.players.filter(id=winner_player_id).first()
-        if winner is not None:
-            WhatIfGameResult.objects.update_or_create(
-                session=session,
-                defaults={
-                    "winner_player": winner,
-                    "winner_user": winner.user,
-                    "winner_display_name": winner.display_name,
-                },
+        state["pending_winner_player_id"] = int(winner_player_id)
+        state["declare_winner_not_before"] = (
+            revealed_now
+            + timedelta(
+                milliseconds=constants.SCOREBOARD_REVEAL_TOTAL_MS
+                + constants.DECLARE_WINNER_HOLD_AFTER_SCOREBOARD_MS
             )
-            state["winner_player_id"] = winner.id
-        mark_whatif_completion_for_session_users(session.id)
+        ).isoformat()
 
     session.state = state
     session.state_version = F("state_version") + 1
     session.save(update_fields=["status", "state", "state_version", "updated_at"])
 
-    if session.status == WhatIfSession.Status.ENDED:
-        evaluate_after_whatif_session_ended(session.id)
+
+def declare_pending_winner_if_due(session: WhatIfSession) -> bool:
+    """Promote post_results → ended when the hold elapsed. Caller holds row lock on session."""
+    if session.status != WhatIfSession.Status.POST_RESULTS:
+        return False
+    st = dict(session.state or {})
+    if st.get("pending_winner_player_id") is None:
+        return False
+    not_before = parse_iso_datetime(st.get("declare_winner_not_before"))
+    if not_before is None or timezone.now() < not_before:
+        return False
+    apply_declare_pending_winner(session)
+    return True
+
+
+def apply_declare_pending_winner(session: WhatIfSession) -> None:
+    """Promote post_results → ended after scoreboard animation. Caller holds row lock."""
+    state = dict(session.state or {})
+    pending_id = state.pop("pending_winner_player_id", None)
+    state.pop("declare_winner_not_before", None)
+    if pending_id is None:
+        return
+
+    winner_id = int(pending_id)
+    state["winner_player_id"] = winner_id
+    session.status = WhatIfSession.Status.ENDED
+    session.state = state
+    session.state_version = F("state_version") + 1
+    session.save(update_fields=["status", "state", "state_version", "updated_at"])
+
+    winner = WhatIfPlayer.objects.filter(id=winner_id, session_id=session.id).first()
+    if winner is not None:
+        WhatIfGameResult.objects.update_or_create(
+            session=session,
+            defaults={
+                "winner_player": winner,
+                "winner_user": winner.user,
+                "winner_display_name": winner.display_name,
+            },
+        )
+    mark_whatif_completion_for_session_users(session.id)
+    evaluate_after_whatif_session_ended(session.id)
+
+
+@retry_on_db_locked(max_attempts=8, initial_delay_s=0.05, backoff=0.25)
+def maybe_declare_pending_winner(session: WhatIfSession) -> WhatIfSession:
+    """Apply declare-winner when the post-reveal hold elapsed (idempotent). Caller does not hold a lock."""
+    version_before = session.state_version
+    status_before = session.status
+    if session.status != WhatIfSession.Status.POST_RESULTS:
+        return session
+    st = dict(session.state or {})
+    if st.get("pending_winner_player_id") is None:
+        return session
+    not_before = parse_iso_datetime(st.get("declare_winner_not_before"))
+    if not_before is None or timezone.now() < not_before:
+        return session
+    with transaction.atomic():
+        locked = WhatIfSession.objects.select_for_update().get(id=session.id)
+        if not declare_pending_winner_if_due(locked):
+            return locked
+    locked.refresh_from_db()
+    if locked.state_version != version_before or locked.status != status_before:
+        from whatif.realtime import notify_whatif_session
+
+        notify_whatif_session(locked.short_code, state_version=locked.state_version)
+    return locked
 
 
 def apply_host_complete_game(session: WhatIfSession) -> None:

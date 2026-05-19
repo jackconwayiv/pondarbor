@@ -158,6 +158,23 @@ class WhatIfPlayer(models.Model):
         return f"WhatIfPlayer({self.id}, {self.display_name})"
 
 
+class WhatIfNpc(models.Model):
+    session = models.ForeignKey(
+        WhatIfSession,
+        on_delete=models.CASCADE,
+        related_name="npcs",
+    )
+    display_name = models.CharField(max_length=80)
+    avatar_emoji = models.CharField(max_length=10)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self) -> str:
+        return f"WhatIfNpc({self.id}, {self.display_name})"
+
+
 class WhatIfGameResult(models.Model):
     session = models.OneToOneField(
         WhatIfSession, on_delete=models.CASCADE, related_name="result"

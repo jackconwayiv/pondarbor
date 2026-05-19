@@ -20,6 +20,7 @@ from rest_framework.response import Response
 from users.permissions import IsApprovedUser
 
 from whatif import constants
+from whatif.db_utils import retry_on_db_locked
 from whatif.gameplay import (
     apply_host_complete_game,
     apply_reveal_from_voting_state,
@@ -27,11 +28,14 @@ from whatif.gameplay import (
     final_scores,
     is_voting_deadline_passed,
     mark_whatif_completion_for_session_users,
+    declare_pending_winner_if_due,
+    maybe_declare_pending_winner,
     parse_iso_datetime,
     pause_blocked_for_duel,
     votes_complete_for_round,
 )
 from whatif.models import (
+    WhatIfNpc,
     WhatIfPlayer,
     WhatIfQuestion,
     WhatIfQuestionSession,
@@ -39,11 +43,13 @@ from whatif.models import (
 )
 from whatif.rules import vote_breakdown
 from whatif.subject_board import (
+    build_ring_layout,
+    challenge_seat_index,
     default_marker_index,
     is_challenge_seat,
-    player_id_at_seat,
     roll_subject_die,
-    roll_subject_die_duel_subject,
+    roll_subject_die_duel_subject,  # re-exported for tests that patch views.roll_subject_die_duel_subject
+    seat_occupant_at,
     subject_board_seat_count,
     subject_pick_is_degenerate,
 )
@@ -51,6 +57,7 @@ from whatif.realtime import notify_whatif_session
 from whatif.serializers import (
     JoinSessionSerializer,
     SessionActionSerializer,
+    WhatIfNpcSerializer,
     WhatIfQuestionAdminSerializer,
     WhatIfQuestionProposeSerializer,
     WhatIfPlayerSerializer,
@@ -58,6 +65,7 @@ from whatif.serializers import (
     WhatIfSessionPublicSerializer,
     whatif_players_serializer_context,
 )
+from whatif.validators import validate_display_name
 
 AVATAR_EMOJIS = [
     "🦊",
@@ -92,12 +100,80 @@ AVATAR_EMOJIS = [
 
 
 def _pick_avatar_emoji(session: WhatIfSession) -> str:
-    """Pick an emoji not yet used by another player in this session (unique while pool allows)."""
+    """Pick an emoji not yet used in this session (players + NPCs; unique while pool allows)."""
     used = set(session.players.values_list("avatar_emoji", flat=True))
+    used.update(session.npcs.values_list("avatar_emoji", flat=True))
     available = [e for e in AVATAR_EMOJIS if e not in used]
     if available:
         return random.choice(available)
     return random.choice(AVATAR_EMOJIS)
+
+
+def _whatif_entity_count(session: WhatIfSession) -> int:
+    return session.players.count() + session.npcs.count()
+
+
+def _display_name_taken(session: WhatIfSession, display_name: str) -> bool:
+    if session.players.filter(display_name__iexact=display_name).exists():
+        return True
+    return session.npcs.filter(display_name__iexact=display_name).exists()
+
+
+def _session_ring_context(session: WhatIfSession) -> tuple[list[int], list[int], list, int, int, int]:
+    """player_ids, npc_ids, layout, P, E, L"""
+    rows = list(session.players.all().order_by("created_at", "id"))
+    npc_rows = list(session.npcs.all().order_by("created_at", "id"))
+    player_ids = [p.id for p in rows]
+    npc_ids = [n.id for n in npc_rows]
+    layout = build_ring_layout(player_ids, npc_ids)
+    p = len(player_ids)
+    e = len(layout)
+    l_seats = subject_board_seat_count(p, e)
+    return player_ids, npc_ids, layout, p, e, l_seats
+
+
+def _has_challenge_target(state: dict) -> bool:
+    return state.get("challenge_target_player_id") is not None or state.get(
+        "challenge_target_npc_id"
+    ) is not None
+
+
+def _subject_die_state_for_session(session: WhatIfSession, prev: dict, *, duel_pick_subject: bool) -> dict:
+    player_ids, _npc_ids, _layout, p_count, e_count, l_seats = _session_ring_context(session)
+    if p_count == 0:
+        return {
+            "subject_candidate_ids": [],
+            "subject_options": [],
+        }
+    marker_raw = prev.get("marker_index")
+    if marker_raw is None:
+        marker = default_marker_index(p_count, e_count)
+    else:
+        marker = max(0, min(int(marker_raw), l_seats - 1))
+    forbidden = prev.get("last_subject_seat_index")
+    forbidden_i = int(forbidden) if forbidden is not None else None
+    exclude: frozenset[int] = frozenset()
+    if duel_pick_subject:
+        ch = challenge_seat_index(p_count, e_count)
+        if ch is not None:
+            exclude = frozenset({ch})
+    n, a, b = 1, 0, 0
+    for _ in range(96):
+        n, a, b = roll_subject_die(
+            marker, forbidden_i, l_seats, p_count, exclude_seats=exclude
+        )
+        if not subject_pick_is_degenerate(a, b):
+            break
+    return {
+        "marker_index": marker,
+        "last_subject_seat_index": prev.get("last_subject_seat_index"),
+        "subject_die_value": n,
+        "subject_candidate_seat_a": a,
+        "subject_candidate_seat_b": b,
+        "subject_pick_degenerate": subject_pick_is_degenerate(a, b),
+        "subject_candidate_ids": [],
+        "subject_options": [],
+    }
 
 
 def _generate_short_code() -> str:
@@ -111,7 +187,7 @@ def _generate_short_code() -> str:
 
 def _load_session(code: str) -> WhatIfSession:
     return get_object_or_404(
-        WhatIfSession.objects.prefetch_related("players"),
+        WhatIfSession.objects.prefetch_related("players", "npcs"),
         short_code=code.upper(),
     )
 
@@ -192,72 +268,14 @@ def _strip_subject_die_keys(state: dict) -> None:
         state.pop(k, None)
 
 
-def _subject_die_state_for_turn(player_ids: list[int], prev: dict) -> dict:
+def _subject_die_state_for_turn(session: WhatIfSession, prev: dict) -> dict:
     """Fresh die roll + markers for a new TURN (subject not yet chosen)."""
-    p_count = len(player_ids)
-    if p_count == 0:
-        return {
-            "subject_candidate_ids": [],
-            "subject_options": [],
-        }
-    l_seats = subject_board_seat_count(p_count)
-    marker_raw = prev.get("marker_index")
-    if marker_raw is None:
-        marker = default_marker_index(p_count)
-    else:
-        marker = max(0, min(int(marker_raw), l_seats - 1))
-    forbidden = prev.get("last_subject_seat_index")
-    forbidden_i = int(forbidden) if forbidden is not None else None
-    n, a, b = 1, 0, 0
-    for _ in range(96):
-        n, a, b = roll_subject_die(marker, forbidden_i, l_seats, p_count)
-        if not subject_pick_is_degenerate(a, b):
-            break
-    return {
-        "marker_index": marker,
-        "last_subject_seat_index": prev.get("last_subject_seat_index"),
-        "subject_die_value": n,
-        "subject_candidate_seat_a": a,
-        "subject_candidate_seat_b": b,
-        "subject_pick_degenerate": subject_pick_is_degenerate(a, b),
-        "subject_candidate_ids": [],
-        "subject_options": [],
-    }
+    return _subject_die_state_for_session(session, prev, duel_pick_subject=False)
 
 
-def _subject_die_state_for_duel_subject_turn(player_ids: list[int], prev: dict) -> dict:
-    """Fresh die roll for duel-subject pick; both die options must be player seats."""
-    p_count = len(player_ids)
-    if p_count == 0:
-        return {
-            "subject_candidate_ids": [],
-            "subject_options": [],
-        }
-    l_seats = subject_board_seat_count(p_count)
-    marker_raw = prev.get("marker_index")
-    if marker_raw is None:
-        marker = default_marker_index(p_count)
-    else:
-        marker = max(0, min(int(marker_raw), l_seats - 1))
-    forbidden = prev.get("last_subject_seat_index")
-    forbidden_i = int(forbidden) if forbidden is not None else None
-
-    n, a, b = 1, 0, 0
-    for _ in range(96):
-        n, a, b = roll_subject_die_duel_subject(marker, forbidden_i, l_seats, p_count)
-        if not subject_pick_is_degenerate(a, b):
-            break
-
-    return {
-        "marker_index": marker,
-        "last_subject_seat_index": prev.get("last_subject_seat_index"),
-        "subject_die_value": n,
-        "subject_candidate_seat_a": a,
-        "subject_candidate_seat_b": b,
-        "subject_pick_degenerate": subject_pick_is_degenerate(a, b),
-        "subject_candidate_ids": [],
-        "subject_options": [],
-    }
+def _subject_die_state_for_duel_subject_turn(session: WhatIfSession, prev: dict) -> dict:
+    """Fresh die roll for duel-subject pick (same geometry as normal; excludes Challenge wedge)."""
+    return _subject_die_state_for_session(session, prev, duel_pick_subject=True)
 
 
 def _maybe_auto_reveal_voting(session: WhatIfSession) -> WhatIfSession:
@@ -306,12 +324,9 @@ def _setup_turn(session: WhatIfSession, *, next_player_id: int) -> bool:
     session.status = WhatIfSession.Status.TURN
     rows = list(session.players.all().order_by("created_at", "id"))
     player_ids = [p.id for p in rows]
-    non_paused_ids = [p.id for p in rows if not p.paused]
-    # Prefer subject pool = non-paused only when at least two are in play (baton target is never paused).
-    subject_pool = non_paused_ids if len(non_paused_ids) >= 2 else player_ids
     die_block: dict = {"subject_candidate_ids": [], "subject_options": []}
     if session.challenge_mode:
-        die_block = _subject_die_state_for_turn(player_ids, prev)
+        die_block = _subject_die_state_for_turn(session, prev)
 
     session.state = {
         "active_player_id": next_player_id,
@@ -323,6 +338,7 @@ def _setup_turn(session: WhatIfSession, *, next_player_id: int) -> bool:
         "round_scores": {},
         "reveal_flairs": [],
         "challenge_target_player_id": None,
+        "challenge_target_npc_id": None,
         "subject_times": subject_times,
         **die_block,
         "duel": None,
@@ -349,7 +365,7 @@ def _public_round_state(session: WhatIfSession) -> dict:
         rendered_prompt = state.get("question_prompt")
         if isinstance(rendered_prompt, str) and rendered_prompt.strip():
             q["prompt"] = rendered_prompt
-        if session.status == WhatIfSession.Status.TURN and not state.get("challenge_target_player_id"):
+        if session.status == WhatIfSession.Status.TURN and not _has_challenge_target(state):
             state["question"] = None
         else:
             state["question"] = q
@@ -605,13 +621,14 @@ def join_session(request, code: str):
                 {"detail": "This game has already started. New players cannot join."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if (
-            WhatIfPlayer.objects.filter(session=session)
-            .filter(display_name__iexact=display_name)
-            .exists()
-        ):
+        if _whatif_entity_count(session) >= constants.WHATIF_MAX_ENTITIES:
             return Response(
-                {"detail": "A player with this name is already in the room."},
+                {"detail": "This room is full (8 players and NPCs)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if _display_name_taken(session, display_name):
+            return Response(
+                {"detail": "That name is already in the room."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         avatar = _pick_avatar_emoji(session)
@@ -645,6 +662,7 @@ def join_session(request, code: str):
 def session_state(request, code: str):
     session = _load_session(code)
     session = _maybe_auto_reveal_voting(session)
+    session = maybe_declare_pending_winner(session)
     not_modified = _version_not_modified_response(session, request)
     if not_modified is not None:
         return not_modified
@@ -658,9 +676,11 @@ def session_state(request, code: str):
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
+@retry_on_db_locked(max_attempts=8, initial_delay_s=0.05, backoff=0.25)
 def hand_state(request, code: str):
     session = _load_session(code)
     session = _maybe_auto_reveal_voting(session)
+    session = maybe_declare_pending_winner(session)
     player = _find_player_for_request(session, request)
     if player is None:
         return Response({"detail": "Missing or invalid player token."}, status=status.HTTP_403_FORBIDDEN)
@@ -670,6 +690,7 @@ def hand_state(request, code: str):
         return not_modified
 
     players_ordered = list(session.players.order_by("created_at", "id"))
+    npcs_ordered = list(session.npcs.order_by("created_at", "id"))
     payload = {
         "short_code": session.short_code,
         "status": session.status,
@@ -681,6 +702,7 @@ def hand_state(request, code: str):
             many=True,
             context=whatif_players_serializer_context(players_ordered),
         ).data,
+        "npcs": WhatIfNpcSerializer(npcs_ordered, many=True).data,
     }
     resp = Response(payload, status=status.HTTP_200_OK)
     resp["ETag"] = f'"{session.state_version}"'
@@ -702,12 +724,12 @@ def _resolve_actor_for_action(
     host_hdr = request.headers.get("X-Whatif-Host-Token", "").strip()
     host_ok = bool(host_hdr and str(session.host_secret) == host_hdr)
 
-    if action_type == "start_game":
+    if action_type in ("start_game", "add_npc", "remove_npc"):
         if not host_ok:
-            return None, Response(
-                {"detail": "Only the host can start the game from the lobby."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+            detail = "Only the host can perform this action."
+            if action_type == "start_game":
+                detail = "Only the host can start the game from the lobby."
+            return None, Response({"detail": detail}, status=status.HTTP_403_FORBIDDEN)
         return None, None
 
     if action_type == "set_player_paused":
@@ -767,7 +789,8 @@ def _apply_question_skip_locked(session: WhatIfSession, state: dict, *, requeste
         )
     ap = state.get("active_player_id")
     target_id = state.get("challenge_target_player_id")
-    if ap is None or target_id is None:
+    target_npc_id = state.get("challenge_target_npc_id")
+    if ap is None or (target_id is None and target_npc_id is None):
         ordered = _player_ids_in_turn_order(session)
         fallback_id = int(ap) if ap is not None else (ordered[0] if ordered else None)
         if fallback_id is None:
@@ -775,10 +798,22 @@ def _apply_question_skip_locked(session: WhatIfSession, state: dict, *, requeste
         _setup_turn(session, next_player_id=fallback_id)
         return
 
-    target = session.players.filter(id=int(target_id)).first()
-    if target is None:
-        _setup_turn(session, next_player_id=int(ap))
-        return
+    if target_npc_id is not None:
+        target_npc = session.npcs.filter(id=int(target_npc_id)).first()
+        if target_npc is None:
+            _setup_turn(session, next_player_id=int(ap))
+            return
+        subject_name = target_npc.display_name
+        challenge_player_id = None
+        challenge_npc_id = int(target_npc_id)
+    else:
+        target = session.players.filter(id=int(target_id)).first()
+        if target is None:
+            _setup_turn(session, next_player_id=int(ap))
+            return
+        subject_name = target.display_name
+        challenge_player_id = int(target_id)
+        challenge_npc_id = None
 
     duel = state.get("duel") or {}
     if duel.get("step") == "voting" and duel.get("challenged_player_id") is not None:
@@ -804,7 +839,7 @@ def _apply_question_skip_locked(session: WhatIfSession, state: dict, *, requeste
         evaluate_after_whatif_session_ended(session.id)
         return
 
-    rendered_prompt = _render_question_prompt(question, subject_name=target.display_name)
+    rendered_prompt = _render_question_prompt(question, subject_name=subject_name)
     new_state = {
         "active_player_id": int(ap),
         "question_id": question.id,
@@ -814,7 +849,8 @@ def _apply_question_skip_locked(session: WhatIfSession, state: dict, *, requeste
         "voted_player_ids": [],
         "round_scores": {},
         "reveal_flairs": [],
-        "challenge_target_player_id": int(target_id),
+        "challenge_target_player_id": challenge_player_id,
+        "challenge_target_npc_id": challenge_npc_id,
         "subject_times": dict(state.get("subject_times") or {}),
         "subject_candidate_ids": [],
         "subject_options": [],
@@ -865,6 +901,52 @@ def session_action(request, code: str):
             first_player_id = first_non_paused if first_non_paused is not None else players_ordered[0].id
             _setup_turn(session, next_player_id=first_player_id)
 
+        elif action_type == "add_npc":
+            if session.status not in _WHATIF_LOBBY_STATUSES:
+                return Response(
+                    {"detail": "NPCs can only be added before the game starts."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            raw_name = serializer.validated_data.get("display_name")
+            if not raw_name:
+                return Response({"detail": "display_name is required."}, status=400)
+            try:
+                display_name = validate_display_name(str(raw_name))
+            except ValueError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            if _whatif_entity_count(session) >= constants.WHATIF_MAX_ENTITIES:
+                return Response(
+                    {"detail": "This room is full (8 players and NPCs)."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if _display_name_taken(session, display_name):
+                return Response(
+                    {"detail": "That name is already in the room."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            npc = WhatIfNpc.objects.create(
+                session=session,
+                display_name=display_name,
+                avatar_emoji=_pick_avatar_emoji(session),
+            )
+            session.state_version = F("state_version") + 1
+            session.save(update_fields=["state_version", "updated_at"])
+
+        elif action_type == "remove_npc":
+            if session.status not in _WHATIF_LOBBY_STATUSES:
+                return Response(
+                    {"detail": "NPCs can only be removed before the game starts."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            npc_id = serializer.validated_data.get("npc_id")
+            if not npc_id:
+                return Response({"detail": "npc_id is required."}, status=400)
+            deleted, _ = WhatIfNpc.objects.filter(session=session, id=int(npc_id)).delete()
+            if not deleted:
+                return Response({"detail": "NPC not found in this session."}, status=404)
+            session.state_version = F("state_version") + 1
+            session.save(update_fields=["state_version", "updated_at"])
+
         elif action_type == "complete_game":
             if session.status == WhatIfSession.Status.ENDED:
                 return Response({"detail": "Game already ended."}, status=status.HTTP_400_BAD_REQUEST)
@@ -900,10 +982,8 @@ def session_action(request, code: str):
                 return Response({"detail": "Player does not exist in this session."}, status=400)
             if opp.paused:
                 return Response({"detail": "That player is paused."}, status=400)
-            rows = list(session.players.all().order_by("created_at", "id"))
-            all_ids = [p.id for p in rows]
             state["duel"] = {"step": "pick_subject", "challenged_player_id": int(target_id)}
-            state.update(_subject_die_state_for_duel_subject_turn(all_ids, state))
+            state.update(_subject_die_state_for_duel_subject_turn(session, state))
             session.state = state
             session.state_version = F("state_version") + 1
             session.save(update_fields=["state", "state_version", "updated_at"])
@@ -926,7 +1006,7 @@ def session_action(request, code: str):
             duel = state.get("duel") or {}
             if duel.get("step") == "pick_opponent":
                 return Response({"detail": "Choose who to challenge first."}, status=400)
-            if duel.get("step") != "pick_subject" and state.get("challenge_target_player_id"):
+            if duel.get("step") != "pick_subject" and _has_challenge_target(state):
                 return Response({"detail": "Subject is already chosen for this round."}, status=400)
 
             challenge_req = bool(serializer.validated_data.get("challenge"))
@@ -943,11 +1023,12 @@ def session_action(request, code: str):
                 state["duel"] = {"step": "pick_opponent", "challenged_player_id": None}
                 state["subject_candidate_ids"] = []
                 state["subject_options"] = []
-                rows_m = list(session.players.all().order_by("created_at", "id"))
-                if len(rows_m) >= 3:
-                    lm = subject_board_seat_count(len(rows_m))
-                    state["marker_index"] = lm - 1
-                    state["last_subject_seat_index"] = lm - 1
+                _pids, _nids, _layout, p_m, e_m, l_m = _session_ring_context(session)
+                if p_m >= 3:
+                    ch = challenge_seat_index(p_m, e_m)
+                    if ch is not None:
+                        state["marker_index"] = ch
+                        state["last_subject_seat_index"] = ch
                 _strip_subject_die_keys(state)
                 session.state = state
                 session.state_version = F("state_version") + 1
@@ -986,6 +1067,7 @@ def session_action(request, code: str):
                 st[str(target_id)] = st.get(str(target_id), 0) + 1
                 state["subject_times"] = st
                 state["challenge_target_player_id"] = target_id
+                state["challenge_target_npc_id"] = None
                 state["question_prompt"] = rendered_prompt
                 state["subject_candidate_ids"] = []
                 state["subject_options"] = []
@@ -1034,7 +1116,7 @@ def session_action(request, code: str):
             duel = state.get("duel") or {}
             if duel.get("step") == "pick_opponent":
                 return Response({"detail": "Choose who to challenge first."}, status=400)
-            if state.get("challenge_target_player_id"):
+            if _has_challenge_target(state):
                 return Response({"detail": "Subject is already chosen for this round."}, status=400)
             if state.get("subject_die_value") is None:
                 return Response({"detail": "No subject die roll is pending."}, status=400)
@@ -1047,11 +1129,13 @@ def session_action(request, code: str):
             if degenerate and choice != "a":
                 return Response({"detail": "Only choice 'a' is valid for this roll."}, status=400)
             chosen = a if choice == "a" else b
-            rows = list(session.players.all().order_by("created_at", "id"))
-            ordered_ids = [p.id for p in rows]
-            p_ct = len(ordered_ids)
-            l_seats = subject_board_seat_count(p_ct)
-            if is_challenge_seat(chosen, l_seats, p_ct):
+            player_ids, npc_ids, layout, p_ct, e_ct, l_seats = _session_ring_context(session)
+            if is_challenge_seat(chosen, l_seats, p_ct, e_ct):
+                if duel.get("step") == "pick_subject":
+                    return Response(
+                        {"detail": "Challenge is not a valid subject during this challenge round."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
                 state["duel"] = {"step": "pick_opponent", "challenged_player_id": None}
                 state["subject_candidate_ids"] = []
                 state["subject_options"] = []
@@ -1062,17 +1146,29 @@ def session_action(request, code: str):
                 session.state_version = F("state_version") + 1
                 session.save(update_fields=["state", "state_version", "updated_at"])
             else:
-                tid = player_id_at_seat(ordered_ids, chosen, l_seats)
-                if tid is None:
+                occ = seat_occupant_at(layout, chosen, l_seats, p_ct)
+                if occ is None:
                     return Response({"detail": "Invalid subject seat."}, status=500)
-                target = session.players.filter(id=int(tid)).first()
-                if target is None:
-                    return Response({"detail": "Player does not exist in this session."}, status=400)
-                if target.paused:
-                    return Response(
-                        {"detail": "That player is paused and cannot be the subject."},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
+                kind, entity_id = occ
+                if kind == "player":
+                    target = session.players.filter(id=int(entity_id)).first()
+                    if target is None:
+                        return Response({"detail": "Player does not exist in this session."}, status=400)
+                    if target.paused:
+                        return Response(
+                            {"detail": "That player is paused and cannot be the subject."},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                    subject_name = target.display_name
+                    state["challenge_target_player_id"] = int(entity_id)
+                    state["challenge_target_npc_id"] = None
+                else:
+                    npc = session.npcs.filter(id=int(entity_id)).first()
+                    if npc is None:
+                        return Response({"detail": "NPC does not exist in this session."}, status=400)
+                    subject_name = npc.display_name
+                    state["challenge_target_player_id"] = None
+                    state["challenge_target_npc_id"] = int(entity_id)
                 question = _question_for_round(state)
                 if question is None:
                     replacement = _draw_question(session)
@@ -1081,13 +1177,12 @@ def session_action(request, code: str):
                     question = replacement
                     state["question_id"] = question.id
                 try:
-                    rendered_prompt = _render_question_prompt(question, subject_name=target.display_name)
+                    rendered_prompt = _render_question_prompt(question, subject_name=subject_name)
                 except ValueError as exc:
                     return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
                 st = dict(state.get("subject_times") or {})
-                st[str(tid)] = st.get(str(tid), 0) + 1
+                st[str(entity_id)] = st.get(str(entity_id), 0) + 1
                 state["subject_times"] = st
-                state["challenge_target_player_id"] = tid
                 state["question_prompt"] = rendered_prompt
                 state["subject_candidate_ids"] = []
                 state["subject_options"] = []
@@ -1253,35 +1348,61 @@ def session_action(request, code: str):
             apply_reveal_from_voting_state(session, st)
 
         elif action_type == "next_turn":
-            if session.status != WhatIfSession.Status.POST_RESULTS:
+            status_before_next_turn = session.status
+            declare_pending_winner_if_due(session)
+            session.refresh_from_db()
+            state = dict(session.state or {})
+            if session.status == WhatIfSession.Status.ENDED:
+                if status_before_next_turn == WhatIfSession.Status.ENDED:
+                    return Response({"detail": "Game already ended."}, status=status.HTTP_400_BAD_REQUEST)
+            elif session.status != WhatIfSession.Status.POST_RESULTS:
                 return Response({"detail": "Not ready for next turn."}, status=400)
-            next_pl = WhatIfPlayer.objects.select_for_update().filter(id=actor.id, session_id=session.id).first()
-            if next_pl is None:
-                return Response({"detail": "Player not found in this session."}, status=400)
-            if next_pl.paused:
-                return Response(
-                    {"detail": "You are paused by the host. Ask them to resume you."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            if state.get("active_player_id") != actor.id:
-                return Response({"detail": "Only the active player can advance to next turn."}, status=403)
-            not_before = state.get("next_turn_not_before")
-            if isinstance(not_before, str):
-                try:
-                    nb = datetime.fromisoformat(not_before)
-                    if timezone.is_naive(nb):
-                        nb = timezone.make_aware(nb)
-                    if timezone.now() < nb:
-                        return Response({"detail": "Please wait before starting the next turn."}, status=400)
-                except ValueError:
-                    pass
-            next_player_id = _next_turn_player_id(session, state)
-            if next_player_id is None:
-                return Response(
-                    {"detail": "All players are paused; resume someone on the TV scoreboard before the next turn."},
-                    status=400,
-                )
-            _setup_turn(session, next_player_id=next_player_id)
+            else:
+                if state.get("pending_winner_player_id") is not None:
+                    return Response(
+                        {"detail": "Winner will be declared after the score reveal."},
+                        status=400,
+                    )
+                next_pl = WhatIfPlayer.objects.select_for_update().filter(
+                    id=actor.id, session_id=session.id
+                ).first()
+                if next_pl is None:
+                    return Response({"detail": "Player not found in this session."}, status=400)
+                if next_pl.paused:
+                    return Response(
+                        {"detail": "You are paused by the host. Ask them to resume you."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if state.get("active_player_id") != actor.id:
+                    return Response(
+                        {"detail": "Only the active player can advance to next turn."},
+                        status=403,
+                    )
+                not_before = state.get("next_turn_not_before")
+                if isinstance(not_before, str):
+                    try:
+                        nb = datetime.fromisoformat(not_before)
+                        if timezone.is_naive(nb):
+                            nb = timezone.make_aware(nb)
+                        if timezone.now() < nb:
+                            return Response(
+                                {"detail": "Please wait before starting the next turn."},
+                                status=400,
+                            )
+                    except ValueError:
+                        pass
+                next_player_id = _next_turn_player_id(session, state)
+                if next_player_id is None:
+                    return Response(
+                        {
+                            "detail": (
+                                "All players are paused; resume someone on the TV scoreboard "
+                                "before the next turn."
+                            )
+                        },
+                        status=400,
+                    )
+                _setup_turn(session, next_player_id=next_player_id)
 
         elif action_type == "skip":
             if session.status != WhatIfSession.Status.TURN:
@@ -1346,6 +1467,16 @@ def session_action(request, code: str):
             else:
                 _apply_question_skip_locked(session, state, requester_id=int(pending))
 
+        elif action_type == "leave_game":
+            if session.status not in _WHATIF_LOBBY_STATUSES:
+                return Response(
+                    {"detail": "You can only leave before the game starts."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            actor.delete()
+            session.state_version = F("state_version") + 1
+            session.save(update_fields=["state_version", "updated_at"])
+
         elif action_type == "set_player_paused":
             target_id = serializer.validated_data.get("target_player_id")
             paused_flag = serializer.validated_data.get("paused")
@@ -1380,6 +1511,7 @@ def session_action(request, code: str):
 
     session.refresh_from_db()
     session = _maybe_auto_reveal_voting(session)
+    session = maybe_declare_pending_winner(session)
     notify_whatif_session(session.short_code, state_version=session.state_version)
     payload = WhatIfSessionPublicSerializer(session).data
     player_for_hand = _find_player_for_request(session, request)

@@ -44,6 +44,11 @@ export function whatifPlayerSeatIndex(playerId: number, players: WhatIfPlayer[])
   return players.findIndex((p) => p.id === playerId);
 }
 
+/** Neutral ring for NPC emoji avatars (not join-order seat hue). */
+export function whatifNpcRingColor(): string {
+  return "#a1a1aa";
+}
+
 export function whatifSeatRingWidth(avatarSize: WhatIfPlayerFaceRingSize): number {
   if (avatarSize === "sm") return 2;
   return 3;

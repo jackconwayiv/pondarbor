@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from whatif import rules
-from whatif.models import WhatIfPlayer, WhatIfQuestion, WhatIfSession
+from whatif.models import WhatIfNpc, WhatIfPlayer, WhatIfQuestion, WhatIfSession
 from whatif.validators import validate_display_name, validate_question_text_field
 
 
@@ -55,14 +55,25 @@ class SessionActionSerializer(serializers.Serializer):
             "set_player_paused",
             "toggle_voting_pause",
             "complete_game",
+            "add_npc",
+            "remove_npc",
+            "leave_game",
         ]
     )
     option_index = serializers.IntegerField(required=False)
     target_player_id = serializers.IntegerField(required=False)
+    npc_id = serializers.IntegerField(required=False)
+    display_name = serializers.CharField(max_length=12, required=False)
     paused = serializers.BooleanField(required=False)
     challenge = serializers.BooleanField(required=False)
     approve = serializers.BooleanField(required=False)
     choice = serializers.ChoiceField(choices=["a", "b"], required=False)
+
+
+class WhatIfNpcSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WhatIfNpc
+        fields = ["id", "display_name", "avatar_emoji"]
 
 
 class WhatIfPlayerSerializer(serializers.ModelSerializer):
@@ -232,6 +243,7 @@ class WhatIfQuestionProposeSerializer(serializers.ModelSerializer):
 
 class WhatIfSessionPublicSerializer(serializers.ModelSerializer):
     players = WhatIfPlayerSerializer(many=True, read_only=True)
+    npcs = WhatIfNpcSerializer(many=True, read_only=True)
     win_score = serializers.SerializerMethodField()
 
     class Meta:
@@ -243,6 +255,7 @@ class WhatIfSessionPublicSerializer(serializers.ModelSerializer):
             "state_version",
             "state",
             "players",
+            "npcs",
             "win_score",
             "created_at",
             "updated_at",

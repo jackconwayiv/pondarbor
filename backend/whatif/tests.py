@@ -8,15 +8,18 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from whatif.models import WhatIfGameResult, WhatIfPlayer, WhatIfQuestion, WhatIfSession
+from whatif import constants
+from whatif.models import WhatIfGameResult, WhatIfNpc, WhatIfPlayer, WhatIfQuestion, WhatIfSession
 from whatif.rules import evaluate_vote_scores, two_subject_candidate_ids
 from whatif.subject_board import (
+    build_ring_layout,
     candidate_seats,
     default_marker_index,
     duel_subject_candidate_seats,
     is_challenge_seat,
     player_id_at_seat,
     roll_subject_die,
+    seat_occupant_at,
     subject_board_seat_count,
     subject_pick_is_degenerate,
 )
@@ -91,11 +94,31 @@ class WhatIfSubjectBoardTests(TestCase):
     def test_seat_count_and_default_marker(self):
         self.assertEqual(subject_board_seat_count(2), 2)
         self.assertEqual(subject_board_seat_count(3), 4)
+        self.assertEqual(subject_board_seat_count(3, 5), 6)
         self.assertEqual(default_marker_index(2), 0)
         self.assertEqual(default_marker_index(3), 3)
+        self.assertEqual(default_marker_index(3, 5), 5)
+
+    def test_build_ring_layout_interleaves(self):
+        layout = build_ring_layout([1, 2, 3, 4, 5], [101])
+        kinds = [k for k, _ in layout]
+        self.assertEqual(
+            kinds,
+            ["player", "player", "player", "npc", "player", "player"],
+        )
+        self.assertEqual(layout[3], ("npc", 101))
+        layout2 = build_ring_layout([1, 2, 3, 4], [101, 102, 103, 104])
+        self.assertEqual(len(layout2), 8)
+        self.assertEqual([k for k, _ in layout2].count("npc"), 4)
+
+    def test_two_players_with_npcs_no_challenge(self):
+        layout = build_ring_layout([1, 2], [101])
+        self.assertEqual(len(layout), 3)
+        self.assertEqual(subject_board_seat_count(2, 3), 3)
 
     def test_candidate_seats_wrap(self):
         self.assertEqual(candidate_seats(1, 2, 4), (3, 3))
+        self.assertEqual(candidate_seats(0, 5, 4), (3, 1))
 
     def test_player_id_at_seat_and_challenge(self):
         ids = [10, 20, 30]
@@ -104,6 +127,11 @@ class WhatIfSubjectBoardTests(TestCase):
         self.assertIsNone(player_id_at_seat(ids, 3, L))
         self.assertTrue(is_challenge_seat(3, L, 3))
         self.assertFalse(is_challenge_seat(2, L, 3))
+
+    def test_seat_occupant_npc(self):
+        layout = build_ring_layout([10, 20, 30], [99])
+        L = subject_board_seat_count(3, 4)
+        self.assertEqual(seat_occupant_at(layout, 2, L, 3), ("npc", 99))
 
     def test_roll_respects_forbidden_seat(self):
         random.seed(0)
@@ -123,12 +151,12 @@ class WhatIfSubjectBoardTests(TestCase):
         self.assertTrue(subject_pick_is_degenerate(1, 1))
         self.assertFalse(subject_pick_is_degenerate(0, 1))
 
-    def test_roll_caps_die_faces_at_six(self):
+    def test_roll_always_d6(self):
         random.seed(1)
         for _ in range(120):
-            n, _a, _b = roll_subject_die(marker=3, forbidden_seat=None, seat_count=9, num_players=8)
+            n, _a, _b = roll_subject_die(marker=3, forbidden_seat=None, seat_count=4, num_players=2)
             self.assertGreaterEqual(n, 1)
-            self.assertLessEqual(n, 6)
+            self.assertLessEqual(n, constants.SUBJECT_DIE_FACES)
 
     def test_duel_subject_candidate_seats_never_lands_on_challenge(self):
         L = 4
@@ -224,6 +252,17 @@ class WhatIfApiTests(TestCase):
         self.assertEqual(response.status_code, 201)
         return response.json()["player_secret"]
 
+    def _fast_forward_declare_winner(self, code: str) -> dict:
+        """Session GET applies declare-winner after scoreboard animation delay."""
+        session = WhatIfSession.objects.get(short_code=code.upper())
+        st = dict(session.state or {})
+        st["declare_winner_not_before"] = (timezone.now() - timedelta(seconds=1)).isoformat()
+        session.state = st
+        session.save(update_fields=["state"])
+        polled = self.client.get(f"/api/v1/whatif/sessions/{code}/")
+        self.assertEqual(polled.status_code, 200)
+        return polled.json()
+
     def _ordered_player_ids(self, code: str) -> list[int]:
         return list(
             WhatIfPlayer.objects.filter(session__short_code=code)
@@ -234,10 +273,14 @@ class WhatIfApiTests(TestCase):
     def _player_secret_by_id(self, code: str, player_id: int) -> str:
         return str(WhatIfPlayer.objects.get(session__short_code=code, id=player_id).player_secret)
 
-    def _die_choice_prefer_non_active(self, state: dict, ordered_ids: list[int]) -> str:
+    def _die_choice_prefer_non_active(self, code: str, state: dict, ordered_ids: list[int]) -> str:
         """Pick 'a' or 'b' for pick_subject_die_choice; 3+ avoids active as subject when a seat allows."""
+        session = WhatIfSession.objects.get(short_code=code)
+        npc_ids = list(session.npcs.order_by("created_at", "id").values_list("id", flat=True))
+        layout = build_ring_layout(ordered_ids, npc_ids)
         p = len(ordered_ids)
-        L = subject_board_seat_count(p)
+        e = len(layout)
+        L = subject_board_seat_count(p, e)
         active = int(state["active_player_id"])
         a = int(state["subject_candidate_seat_a"])
         b = int(state["subject_candidate_seat_b"])
@@ -245,13 +288,16 @@ class WhatIfApiTests(TestCase):
             return "a"
 
         def rank(seat: int) -> tuple[int, int]:
-            if is_challenge_seat(seat, L, p):
+            if is_challenge_seat(seat, L, p, e):
                 return (2, seat)
-            tid = player_id_at_seat(ordered_ids, seat, L)
-            if tid is None:
+            occ = seat_occupant_at(layout, seat, L, p)
+            if occ is None:
                 return (2, seat)
+            kind, eid = occ
+            if kind == "npc":
+                return (0, seat)
             # 2p: either player may be subject; 3+: prefer not the baton holder when possible.
-            non_active = 0 if (p == 2 or tid != active) else 1
+            non_active = 0 if (p == 2 or eid != active) else 1
             return (non_active, seat)
 
         ra, rb = rank(a), rank(b)
@@ -263,7 +309,7 @@ class WhatIfApiTests(TestCase):
 
     def _post_pick_subject_die_choice(self, code: str, state: dict) -> dict:
         ordered_ids = self._ordered_player_ids(code)
-        choice = self._die_choice_prefer_non_active(state, ordered_ids)
+        choice = self._die_choice_prefer_non_active(code, state, ordered_ids)
         aid = int(state["active_player_id"])
         token = self._player_secret_by_id(code, aid)
         resp = self.client.post(
@@ -290,6 +336,80 @@ class WhatIfApiTests(TestCase):
         self.assertEqual(body["players"][0]["display_name"], "Alex")
         self.assertIn("ready_to_start", body["players"][0])
 
+    def test_hand_state_includes_npcs(self):
+        code, host_secret, _user = self._create_session()
+        self._join(code, "John")
+        self._join(code, "Maya")
+        self._join(code, "Alex")
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "add_npc", "display_name": "Ghost"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "start_game"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        token = self._player_secret_by_id(code, self._ordered_player_ids(code)[0])
+        hand = self.client.get(
+            f"/api/v1/whatif/sessions/{code}/hand/",
+            HTTP_X_WHATIF_PLAYER_TOKEN=token,
+        )
+        self.assertEqual(hand.status_code, 200)
+        body = hand.json()
+        self.assertEqual(len(body["npcs"]), 1)
+        self.assertEqual(body["npcs"][0]["display_name"], "Ghost")
+        self.assertIn("avatar_emoji", body["npcs"][0])
+
+    def test_add_npc_and_entity_cap(self):
+        code, host_secret, _user = self._create_session()
+        self._join(code, "John")
+        self._join(code, "Maya")
+        add = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "add_npc", "display_name": "Ghost"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        self.assertEqual(add.status_code, 200)
+        body = self.client.get(f"/api/v1/whatif/sessions/{code}/").json()
+        self.assertEqual(len(body["npcs"]), 1)
+        self.assertEqual(body["npcs"][0]["display_name"], "Ghost")
+        for i in range(5):
+            self.client.post(
+                f"/api/v1/whatif/sessions/{code}/action/",
+                {"type": "add_npc", "display_name": f"N{i}"},
+                format="json",
+                HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+            )
+        full = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "add_npc", "display_name": "Extra"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        self.assertEqual(full.status_code, 400)
+        join_full = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/join/",
+            {"display_name": "Zed"},
+            format="json",
+        )
+        self.assertEqual(join_full.status_code, 400)
+
+    def test_npc_name_collides_with_player(self):
+        code, host_secret, _user = self._create_session()
+        self._join(code, "Alex")
+        dup = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "add_npc", "display_name": "alex"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        self.assertEqual(dup.status_code, 400)
+
     def test_join_rejects_duplicate_display_name_case_insensitive(self):
         code, _host_secret, _user = self._create_session()
         self._join(code, "Alex")
@@ -300,6 +420,98 @@ class WhatIfApiTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn("already in the room", response.json().get("detail", ""))
+
+    def test_leave_game_removes_player_from_lobby(self):
+        code, _host_secret, _user = self._create_session()
+        p1 = self._join(code, "Alex")
+        self._join(code, "Maya")
+        leave = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "leave_game"},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.assertEqual(leave.status_code, 200)
+        polled = self.client.get(f"/api/v1/whatif/sessions/{code}/")
+        self.assertEqual(polled.status_code, 200)
+        self.assertEqual([p["display_name"] for p in polled.json()["players"]], ["Maya"])
+        rejoin = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/join/",
+            {"display_name": "Alex"},
+            format="json",
+        )
+        self.assertEqual(rejoin.status_code, 201)
+
+    def test_next_turn_after_winning_reveal_declares_winner_when_hold_elapsed(self):
+        code, host_secret, _user = self._create_session()
+        p1 = self._join(code, "John")
+        p2 = self._join(code, "Maya")
+        _mark_all_players_ready(code)
+        start = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "start_game"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        active_id = start.json()["state"]["active_player_id"]
+        active_token = p1 if WhatIfPlayer.objects.get(player_secret=p1).id == active_id else p2
+        active_player = WhatIfPlayer.objects.get(player_secret=active_token)
+        WhatIfPlayer.objects.filter(id=active_player.id).update(score=24)
+        self._post_pick_subject_die_choice(code, start.json()["state"])
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 1},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 1},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p2,
+        )
+        reveal = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "reveal"},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=active_token,
+        )
+        self.assertEqual(reveal.status_code, 200)
+        self.assertEqual(reveal.json()["status"], "post_results")
+        session = WhatIfSession.objects.get(short_code=code)
+        st = dict(session.state or {})
+        st["declare_winner_not_before"] = (timezone.now() - timedelta(seconds=1)).isoformat()
+        session.state = st
+        session.save(update_fields=["state"])
+        next_turn = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "next_turn"},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=active_token,
+        )
+        self.assertEqual(next_turn.status_code, 200)
+        self.assertEqual(next_turn.json()["status"], "ended")
+        self.assertEqual(next_turn.json()["state"]["winner_player_id"], active_player.id)
+
+    def test_leave_game_rejected_after_start(self):
+        code, host_secret, _user = self._create_session()
+        p1 = self._join(code, "John")
+        self._join(code, "Maya")
+        start = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "start_game"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        self.assertEqual(start.status_code, 200)
+        leave = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "leave_game"},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.assertEqual(leave.status_code, 400)
+        self.assertIn("before the game starts", leave.json().get("detail", "").lower())
 
     def test_join_rejects_after_game_started(self):
         code, host_secret, _user = self._create_session()
@@ -323,7 +535,7 @@ class WhatIfApiTests(TestCase):
     def test_join_assigns_unique_avatar_emojis_per_session(self):
         code, _host_secret, _user = self._create_session()
         emojis: list[str] = []
-        for i in range(20):
+        for i in range(constants.WHATIF_MAX_ENTITIES):
             secret = self._join(code, f"Player{i}")
             p = WhatIfPlayer.objects.get(player_secret=secret)
             emojis.append(p.avatar_emoji)
@@ -494,9 +706,9 @@ class WhatIfApiTests(TestCase):
         self.assertEqual(start.status_code, 200)
         st0 = start.json()["state"]
         ordered = self._ordered_player_ids(code)
-        choice = self._die_choice_prefer_non_active(st0, ordered)
+        choice = self._die_choice_prefer_non_active(code, st0, ordered)
         seat = int(st0["subject_candidate_seat_a" if choice == "a" else "subject_candidate_seat_b"])
-        target_id = player_id_at_seat(ordered, seat, subject_board_seat_count(len(ordered)))
+        target_id = player_id_at_seat(ordered, seat, subject_board_seat_count(len(ordered), len(ordered)))
         self.assertIsNotNone(target_id)
         target_name = WhatIfPlayer.objects.get(id=target_id).display_name
         pick = self._post_pick_subject_die_choice(code, st0)
@@ -655,7 +867,7 @@ class WhatIfApiTests(TestCase):
         self.assertEqual(reveal.status_code, 200)
         self.assertEqual(reveal.json()["status"], "post_results")
 
-    @patch("whatif.constants.ROUND_TRANSITION_SECONDS", 0)
+    @patch("whatif.constants.SCOREBOARD_REVEAL_TOTAL_MS", 0)
     def test_next_turn_skips_paused_player_in_rotation(self):
         code, host_secret, _owner = self._create_session()
         p1 = self._join(code, "John")
@@ -888,9 +1100,70 @@ class WhatIfApiTests(TestCase):
             HTTP_X_WHATIF_PLAYER_TOKEN=active_token,
         )
         self.assertEqual(reveal.status_code, 200)
-        self.assertEqual(reveal.json()["status"], "ended")
+        body = reveal.json()
+        self.assertEqual(body["status"], "post_results")
+        self.assertEqual(body["state"]["pending_winner_player_id"], active_player.id)
+        self.assertIsNone(body["state"].get("winner_player_id"))
+        self._fast_forward_declare_winner(code)
         result = WhatIfGameResult.objects.get(session__short_code=code)
         self.assertEqual(result.winner_display_name, result.winner_player.display_name)
+
+    def test_winning_reveal_waits_for_scoreboard_before_declaring_winner(self):
+        code, host_secret, _owner = self._create_session()
+        p1 = self._join(code, "GuestOne")
+        p2 = self._join(code, "GuestTwo")
+        _mark_all_players_ready(code)
+        start = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "start_game"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        active_id = start.json()["state"]["active_player_id"]
+        active_token = p1 if WhatIfPlayer.objects.get(player_secret=p1).id == active_id else p2
+        active_player = WhatIfPlayer.objects.get(player_secret=active_token)
+        WhatIfPlayer.objects.filter(id=active_player.id).update(score=24)
+        self._post_pick_subject_die_choice(code, start.json()["state"])
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 1},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 1},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p2,
+        )
+        reveal = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "reveal"},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=active_token,
+        )
+        self.assertEqual(reveal.status_code, 200)
+        body = reveal.json()
+        self.assertEqual(body["status"], "post_results")
+        self.assertIsNotNone(body["state"].get("revealed_at"))
+        self.assertEqual(body["state"]["pending_winner_player_id"], active_player.id)
+
+        polled = self.client.get(f"/api/v1/whatif/sessions/{code}/")
+        self.assertEqual(polled.status_code, 200)
+        self.assertEqual(polled.json()["status"], "post_results")
+
+        ended = self._fast_forward_declare_winner(code)
+        self.assertEqual(ended["status"], "ended")
+        self.assertEqual(ended["state"]["winner_player_id"], active_player.id)
+        self.assertIsNone(ended["state"].get("pending_winner_player_id"))
+
+        next_turn = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "next_turn"},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=active_token,
+        )
+        self.assertEqual(next_turn.status_code, 400)
 
     @patch("whatif.rules.WIN_SCORE", 5)
     def test_reveal_ends_game_using_fresh_db_scores_at_custom_threshold(self):
@@ -929,9 +1202,51 @@ class WhatIfApiTests(TestCase):
             HTTP_X_WHATIF_PLAYER_TOKEN=active_token,
         )
         self.assertEqual(reveal.status_code, 200)
-        self.assertEqual(reveal.json()["status"], "ended")
+        self.assertEqual(reveal.json()["status"], "post_results")
+        self.assertEqual(reveal.json()["state"]["pending_winner_player_id"], active_player.id)
+        ended = self._fast_forward_declare_winner(code)
+        self.assertEqual(ended["status"], "ended")
         active_player.refresh_from_db()
         self.assertGreaterEqual(active_player.score, 5)
+
+    def test_reveal_response_includes_fresh_player_scores(self):
+        """TV/hand payloads must not serve stale prefetched scores after F() updates."""
+        code, host_secret, _owner = self._create_session()
+        p1 = self._join(code, "John")
+        p2 = self._join(code, "Maya")
+        _mark_all_players_ready(code)
+        start = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "start_game"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        self._post_pick_subject_die_choice(code, start.json()["state"])
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 2},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 2},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p2,
+        )
+        reveal = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "reveal"},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.assertEqual(reveal.status_code, 200)
+        body = reveal.json()
+        db_scores = dict(
+            WhatIfPlayer.objects.filter(session__short_code=code).values_list("id", "score")
+        )
+        for row in body["players"]:
+            self.assertEqual(row["score"], db_scores[row["id"]], msg=row["display_name"])
 
     def test_draw_question_prefers_global_least_used(self):
         WhatIfQuestion.objects.all().delete()
@@ -1015,9 +1330,8 @@ class WhatIfApiTests(TestCase):
         self.assertEqual(pick["status"], "voting")
         self.assertIsNotNone(pick["state"].get("question"))
 
-    @patch("whatif.views.roll_subject_die_duel_subject", return_value=(1, 1, 2))
-    @patch("whatif.views.roll_subject_die", return_value=(1, 3, 0))
-    def test_duel_voting_auto_reveals_on_session_get_after_deadline(self, _mock_roll, _mock_duel):
+    @patch("whatif.views.roll_subject_die", side_effect=[(1, 3, 0), (1, 1, 2)])
+    def test_duel_voting_auto_reveals_on_session_get_after_deadline(self, _mock_roll):
         """Duel round + lazy auto-reveal when deadline is past (simulated via state); GET session applies it."""
         code, host_secret, _owner = self._create_session()
         p1 = self._join(code, "John")
@@ -1138,9 +1452,8 @@ class WhatIfApiTests(TestCase):
         self.assertEqual(body["state"].get("duel"), None)
         self.assertIsNotNone(body["state"].get("question_id"))
 
-    @patch("whatif.views.roll_subject_die_duel_subject", return_value=(1, 1, 2))
-    @patch("whatif.views.roll_subject_die", return_value=(1, 3, 0))
-    def test_question_skip_keeps_challenge_subject_and_duel(self, _mock_roll, _mock_duel):
+    @patch("whatif.views.roll_subject_die", side_effect=[(1, 3, 0), (1, 1, 2)])
+    def test_question_skip_keeps_challenge_subject_and_duel(self, _mock_roll):
         """After skip during challenge voting, same subject and duelists; new question; still voting."""
         code, host_secret, _owner = self._create_session()
         p1 = self._join(code, "John")

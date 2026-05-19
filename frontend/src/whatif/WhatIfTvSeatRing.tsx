@@ -1,12 +1,15 @@
 import { Box } from "@chakra-ui/react";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { WhatIfDieFace } from "./WhatIfDieFace";
-import type { WhatIfPlayer } from "./types";
-import { whatifPlayerSeatIndex, whatifSeatRingColor } from "./whatifPlayerSeatColors";
+import type { WhatIfNpc, WhatIfPlayer } from "./types";
+import { humanPlayerNumber, seatOccupantAt } from "./whatifRingLayout";
+import { whatifSeatRingColor } from "./whatifPlayerSeatColors";
 import {
-  subjectBoardSeatCount,
+  physicalSeatIndexForPlayer,
+  ringLayoutFromSession,
   subjectBoardSeatIsChallenge,
+  subjectBoardSeatIsNpc,
   subjectBoardSeatLabel,
 } from "./whatifSubjectBoardUi";
 import {
@@ -18,11 +21,15 @@ import {
   TV_SEAT_RING_CX,
   TV_SEAT_RING_CY,
   TV_SEAT_RING_R_INNER,
+  TV_SEAT_RING_R_OUTER,
   wedgeLabelArcPath,
   wedgeLabelArcPathId,
   wedgeLabelRadius,
   wedgeMarkerOuterRingPath,
 } from "./whatifTvSeatRingGeometry";
+import { WhatIfTvVotingTimerRing } from "./whatifVotingTimerRing";
+
+const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
 
 /** Challenge wedge on light scoreboard card — solid orange, white label. */
 const CHALLENGE_WEDGE_FILL_DEFAULT = "var(--chakra-colors-nautical-solid, #E9A14A)";
@@ -31,29 +38,43 @@ const CHALLENGE_WEDGE_LABEL_DEFAULT = "#ffffff";
 const CHALLENGE_WEDGE_FILL_ON_ORANGE_CARD = "var(--chakra-colors-nautical-subtle, #F7C78A)";
 const CHALLENGE_WEDGE_LABEL_ON_ORANGE_CARD = "#18181b";
 
+const PLAYER_WEDGE_FILL = "var(--chakra-colors-bg-panel, #fafafa)";
+const NPC_WEDGE_FILL = "#f3f4f6";
+/** Die-roll subject options (A/B) — radial fill inner (green) → outer (white). */
+const CANDIDATE_WEDGE_GRADIENT_ID = "whatif-candidate-wedge-fill";
+const CANDIDATE_WEDGE_GRADIENT_INNER = "var(--chakra-colors-teal-solid, #b7d394)";
+const CANDIDATE_WEDGE_GRADIENT_OUTER = "#ffffff";
+const CANDIDATE_WEDGE_FILL = `url(#${CANDIDATE_WEDGE_GRADIENT_ID})`;
+
 /** Visual scale for the whole ring (layout + SVG). */
 const TV_SEAT_RING_DISPLAY_SCALE = 0.75;
 const TV_SEAT_RING_MAX_WIDTH_REM = 28 * TV_SEAT_RING_DISPLAY_SCALE;
-/** Pull layout in above/below the square ring box (Chakra spacing units). */
 const TV_SEAT_RING_VERTICAL_TRIM_TOP = 3;
 const TV_SEAT_RING_VERTICAL_TRIM_BOTTOM = 0;
 
 type WhatIfTvSeatRingProps = {
   players: WhatIfPlayer[];
+  npcs?: WhatIfNpc[];
   markerIndex?: number | null;
   candidateSeatA?: number | null;
   candidateSeatB?: number | null;
   activeTurnSubjectPhase: boolean;
-  /** Show die in ring center (subject pick or challenge “who to challenge” after roll). */
   showCenterDie?: boolean;
-  /** TV scoreboard card uses `nautical.solid` during duel steps. */
   activeChallengeRound?: boolean;
   activePlayerId?: number | null;
   subjectDieValue?: number | null;
+  votingTimer?: {
+    deadlineIso: string | null;
+    pauseRemainingSeconds: number | null;
+    paused: boolean;
+    allVotesIn?: boolean;
+    fallbackNowMs: number;
+  } | null;
 };
 
 export function WhatIfTvSeatRing({
   players,
+  npcs = [],
   markerIndex,
   candidateSeatA,
   candidateSeatB,
@@ -62,12 +83,15 @@ export function WhatIfTvSeatRing({
   activeChallengeRound = false,
   activePlayerId,
   subjectDieValue,
+  votingTimer = null,
 }: WhatIfTvSeatRingProps) {
-  const P = players.length;
-  const L = subjectBoardSeatCount(P);
+  const { layout, playerIds, p, e, l: L } = useMemo(
+    () => ringLayoutFromSession(players, npcs),
+    [players, npcs],
+  );
 
-  const activeSeatIndex =
-    activePlayerId != null ? whatifPlayerSeatIndex(activePlayerId, players) : -1;
+  const activePhysicalSeat =
+    activePlayerId != null ? physicalSeatIndexForPlayer(players, npcs, activePlayerId) : -1;
 
   const cand = useMemo(() => {
     if (
@@ -90,13 +114,22 @@ export function WhatIfTvSeatRing({
     const bits: string[] = [`Subject board, ${L} seats`];
     if (markerIndex != null) bits.push(`marker on seat ${Number(markerIndex) + 1}`);
     if (cand) bits.push("two candidate seats highlighted");
-    if (activeSeatIndex >= 0) bits.push(`active player seat ${activeSeatIndex + 1}`);
+    if (activePhysicalSeat >= 0) bits.push(`active player on wedge ${activePhysicalSeat + 1}`);
     if (showDie) bits.push(`die showing ${subjectDieValue}`);
     return bits.join("; ");
-  }, [L, markerIndex, cand, activeSeatIndex, showDie, subjectDieValue]);
+  }, [L, markerIndex, cand, activePhysicalSeat, showDie, subjectDieValue]);
 
   const svgRef = useRef<SVGSVGElement>(null);
   const [unitPx, setUnitPx] = useState(4);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia(REDUCED_MOTION);
+    const update = () => setPrefersReducedMotion(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
 
   useLayoutEffect(() => {
     const el = svgRef.current;
@@ -113,12 +146,11 @@ export function WhatIfTvSeatRing({
 
   const toLabelPx = (viewBoxSize: number) => viewBoxSize * unitPx;
 
-  if (P < 2) return null;
+  if (players.length < 2) return null;
 
   const textFill = "#18181b";
   const mutedFill = "#71717a";
   const starFill = "var(--chakra-colors-orange-solid, #ea580c)";
-  const playerWedgeFill = "var(--chakra-colors-bg-panel, #fafafa)";
   const wedgeStrokeDefault = "#18181b";
   const markerHighlightFill = "#d4d4d8";
   const dieSize = TV_SEAT_RING_R_INNER * 1.35 * 0.5;
@@ -148,6 +180,19 @@ export function WhatIfTvSeatRing({
         style={{ display: "block", fontSize: 0 }}
       >
         <defs>
+          <radialGradient
+            id={CANDIDATE_WEDGE_GRADIENT_ID}
+            gradientUnits="userSpaceOnUse"
+            cx={TV_SEAT_RING_CX}
+            cy={TV_SEAT_RING_CY}
+            r={TV_SEAT_RING_R_OUTER}
+          >
+            <stop
+              offset={TV_SEAT_RING_R_INNER / TV_SEAT_RING_R_OUTER}
+              stopColor={CANDIDATE_WEDGE_GRADIENT_INNER}
+            />
+            <stop offset={1} stopColor={CANDIDATE_WEDGE_GRADIENT_OUTER} />
+          </radialGradient>
           {Array.from({ length: L }, (_, seatIndex) => {
             const labelR = wedgeLabelRadius(seatIndex, L);
             return (
@@ -163,30 +208,40 @@ export function WhatIfTvSeatRing({
         {Array.from({ length: L }, (_, seatIndex) => {
           const isMarker = markerIndex != null && Number(markerIndex) === seatIndex;
           const isCand = cand?.has(seatIndex) ?? false;
-          const isChallenge = subjectBoardSeatIsChallenge(seatIndex, P);
-          const isActiveTurn =
-            activeSeatIndex >= 0 &&
-            seatIndex === activeSeatIndex &&
-            !isChallenge;
+          const isChallenge = subjectBoardSeatIsChallenge(seatIndex, p, e);
+          const isNpc = subjectBoardSeatIsNpc(players, npcs, seatIndex);
+          const isActiveTurn = activePhysicalSeat >= 0 && seatIndex === activePhysicalSeat && !isChallenge;
 
-          const seatColor = whatifSeatRingColor(seatIndex);
+          const occ = seatOccupantAt(layout, seatIndex, L, p);
+          const joinSeatIdx =
+            occ?.kind === "player" ? playerIds.indexOf(occ.id) : -1;
+          const seatColor = joinSeatIdx >= 0 ? whatifSeatRingColor(joinSeatIdx) : mutedFill;
 
-          const fill = isChallenge ? challengeWedgeFill : isCand ? "#f4f4f5" : playerWedgeFill;
+          let fill = PLAYER_WEDGE_FILL;
+          if (isChallenge) fill = challengeWedgeFill;
+          else if (isCand) fill = CANDIDATE_WEDGE_FILL;
+          else if (isNpc) fill = NPC_WEDGE_FILL;
+
           const stroke = wedgeStrokeDefault;
           const strokeWidth = 0.55;
-          const strokeDasharray = isCand ? "3 2.5" : undefined;
 
-          const labelName = subjectBoardSeatLabel(players, seatIndex);
+          const labelName = subjectBoardSeatLabel(players, npcs, seatIndex);
           const starSuffix = isActiveTurn ? " ★" : "";
+          const humanNum =
+            occ?.kind === "player" ? humanPlayerNumber(occ.id, playerIds) : null;
           const labelText = isChallenge
             ? "Challenge"
-            : `${formatPlayerSeatLabel(seatIndex, labelName)}${starSuffix}`;
+            : isNpc
+              ? labelName
+              : humanNum != null
+                ? `${formatPlayerSeatLabel(humanNum, labelName)}${starSuffix}`
+                : `${labelName}${starSuffix}`;
           const labelR = wedgeLabelRadius(seatIndex, L);
           const { fontSize, displayText, truncated } = fitSeatRingLabel(labelText, L, labelR);
           const arcId = wedgeLabelArcPathId(seatIndex);
-          const seatPrefix = `${seatIndex + 1} `;
           const labelPx = toLabelPx(fontSize);
           const seatNumPx = toLabelPx(fontSize * 0.82);
+          const seatPrefix = humanNum != null ? `${humanNum} ` : "";
 
           return (
             <g key={seatIndex}>
@@ -195,7 +250,6 @@ export function WhatIfTvSeatRing({
                 fill={fill}
                 stroke={stroke}
                 strokeWidth={strokeWidth}
-                strokeDasharray={strokeDasharray}
                 vectorEffect="non-scaling-stroke"
               />
               {isMarker ? (
@@ -221,8 +275,21 @@ export function WhatIfTvSeatRing({
                       {displayText}
                     </tspan>
                   ) : truncated ? (
-                    <tspan fill={seatColor} style={{ fontSize: `${labelPx}px` }}>
+                    <tspan
+                      fill={isNpc ? textFill : seatColor}
+                      fontStyle={isNpc ? "italic" : undefined}
+                      style={{ fontSize: `${labelPx}px` }}
+                    >
                       {displayText}
+                    </tspan>
+                  ) : isNpc ? (
+                    <tspan
+                      fill={textFill}
+                      fontStyle="italic"
+                      fontWeight={600}
+                      style={{ fontSize: `${labelPx}px` }}
+                    >
+                      {labelName}
                     </tspan>
                   ) : (
                     <>
@@ -244,6 +311,13 @@ export function WhatIfTvSeatRing({
             </g>
           );
         })}
+
+        <WhatIfTvVotingTimerRing
+          votingTimer={votingTimer}
+          activeChallengeRound={activeChallengeRound}
+          reduceMotion={prefersReducedMotion}
+          unitPx={unitPx}
+        />
 
         {showDie ? (
           <WhatIfDieFace

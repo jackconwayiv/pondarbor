@@ -22,10 +22,10 @@ const ZONE_LABELS: Record<ZoneName, string> = {
 
 const ZONE_SCORE_ORDER_HINTS: Record<ZoneName, string> = {
   gate: "Scored 1st",
-  farm: "Scored 2nd",
-  road: "Scored 3rd",
-  tower: "Scored 4th",
-  throne: "Scored 5th",
+  throne: "Scored 2nd",
+  farm: "Scored 3rd",
+  road: "Scored 4th",
+  tower: "Scored 5th",
 };
 
 const ZONE_SUIT_HINTS: Record<ZoneName, string> = {

@@ -6,9 +6,9 @@ Only certain suits of cards can be played in certain zones, and each player can 
 
 The zones are scored in this order:
 • Gate: Give a card in play -1 this round.
+• Throne: Gain 1 point.
 • Farm: Give a card in your hand a permanent +1 upgrade.
 • Road: Draw an extra card next turn.
 • Tower: Go second next round and discard a card from your hand.
-• Throne: Gain 1 point.
 
-The first player to 7 points wins.`;
+The first player to 7 points wins. If Throne puts you at the winning score, the game ends immediately and the remaining zones are not scored on screen (zone wins still count for achievements).`;

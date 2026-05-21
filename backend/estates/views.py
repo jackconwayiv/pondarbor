@@ -16,7 +16,15 @@ from rest_framework.response import Response
 from users.permissions import IsApprovedUser
 
 from .bot_user import get_computer_user, is_computer_user
-from .computer import EffectMove, PlacementMove, pick_random_persona, rank_computer_moves
+from .computer import (
+    EffectMove,
+    PlacementMove,
+    assign_round_zone_personas,
+    rank_computer_moves,
+    serialize_zone_personas,
+    zone_personas_from_payload,
+    pick_random_zone_personas,
+)
 from .constants import (
     COMPUTER_CARD_PLAY_DELAY_MS,
     COMPUTER_FIRST_CARD_DELAY_MAX_MS,
@@ -294,6 +302,7 @@ def _commit_card_placement(
                 "zone_index": 0,
                 "waiting_until_ms": now_ms + SCORING_STEP_DELAY_MS,
                 "awaiting_choice": None,
+                "zone_wins_recorded": [],
             },
         }
     else:
@@ -464,6 +473,29 @@ def _now_ms() -> int:
     return int(timezone.now().timestamp() * 1000)
 
 
+def _solo_round_zone_personas(
+    *,
+    locked: EstatesGame,
+    placements: dict | None = None,
+) -> dict[str, str]:
+    human_row = EstatesPlayerState.objects.filter(
+        game=locked, seat_index=HUMAN_SEAT_INDEX
+    ).first()
+    computer_row = EstatesPlayerState.objects.filter(
+        game=locked, seat_index=COMPUTER_SEAT_INDEX
+    ).first()
+    opponent_discard = list(human_row.discard or []) if human_row else []
+    return assign_round_zone_personas(
+        difficulty=locked.computer_difficulty or "normal",
+        stored_persona=locked.computer_persona or "",
+        opponent_discard=opponent_discard,
+        placements=placements or initial_placements_by_zone(),
+        opponent_seat=HUMAN_SEAT_INDEX,
+        opponent_hand_count=len(human_row.hand or []) if human_row else 0,
+        opponent_deck_count=len(human_row.deck or []) if human_row else 0,
+    )
+
+
 def _start_active_game(
     *,
     locked: EstatesGame,
@@ -514,6 +546,10 @@ def _start_active_game(
     round_state.pending_actor_seat = starting_seat
     round_state.pending_action = "play_card"
     round_state.pending_payload = {}
+    if locked.is_solo:
+        round_state.pending_payload = {
+            "computer_zone_personas": _solo_round_zone_personas(locked=locked),
+        }
     round_state.phase_started_at = now
     round_state.pending_computer_action_at = None
     if solo_presence:
@@ -713,6 +749,14 @@ def _try_run_computer_step(*, game_id: str) -> bool:
         else:
             awaiting = None
 
+        zone_personas = zone_personas_from_payload(
+            payload,
+            stored_persona=locked.computer_persona or "",
+        )
+        difficulty = locked.computer_difficulty or "normal"
+        opponent_discard = (
+            list(human_row.discard or []) if difficulty in ("normal", "hard") else []
+        )
         ranked = rank_computer_moves(
             phase=round_state.phase,
             pending_action=round_state.pending_action,
@@ -724,8 +768,12 @@ def _try_run_computer_step(*, game_id: str) -> bool:
             computer_score=int(computer_row.score or 0),
             opponent_score=int(human_row.score or 0),
             victory_score=int(locked.victory_score or VICTORY_SCORE),
-            persona=locked.computer_persona or "throne_rush",
-            difficulty=locked.computer_difficulty or "normal",
+            zone_personas=zone_personas,
+            difficulty=difficulty,
+            opponent_discard=opponent_discard,
+            opponent_hand_count=len(human_row.hand or []),
+            opponent_deck_count=len(human_row.deck or []),
+            computer_is_starting_player=bool(computer_row.is_starting_player),
         )
         if not ranked:
             _clear_computer_schedule(round_state)
@@ -866,6 +914,13 @@ def _start_next_round(locked: EstatesGame, round_state: EstatesRoundState) -> No
     round_state.pending_actor_seat = next_start
     round_state.pending_action = "play_card"
     round_state.pending_payload = {}
+    if locked.is_solo:
+        round_state.pending_payload = {
+            "computer_zone_personas": _solo_round_zone_personas(
+                locked=locked,
+                placements=round_state.placements_by_zone,
+            ),
+        }
     round_state.status_message = f"Waiting for {next_name} to play a card."
     round_state.phase_started_at = timezone.now()
     update_fields = [
@@ -897,6 +952,46 @@ def _zones_scored_before(zone_name: str) -> frozenset[str]:
     except ValueError:
         return frozenset()
     return frozenset(zones[:idx])
+
+
+def _record_zone_win_once(
+    *,
+    scoring: dict,
+    user_id: int,
+    zone_name: str,
+) -> None:
+    """Increment zone-win stats at most once per zone per scoring round."""
+    recorded: list[str] = list(scoring.get("zone_wins_recorded") or [])
+    if zone_name in recorded:
+        return
+    record_estates_zone_win(user_id, zone_name)
+    recorded.append(zone_name)
+    scoring["zone_wins_recorded"] = recorded
+
+
+def _record_zone_wins_for_scoring_steps(
+    *,
+    scoring: dict,
+    placements: dict,
+    player_rows: dict[int, EstatesPlayerState],
+    start_index: int,
+) -> None:
+    """Credit human zone wins for scoring steps skipped after an early Throne victory."""
+    winners_by_zone = _recompute_zone_winners(placements)
+    for step in SCORING_STEPS_IN_ORDER[start_index:]:
+        zone_name = step[0]
+        winner_payload = winners_by_zone.get(zone_name)
+        winner_seat = _winner_seat_from_payload(winner_payload)
+        if winner_seat is None:
+            continue
+        winner_row = player_rows.get(winner_seat)
+        if winner_row is None:
+            continue
+        _record_zone_win_once(
+            scoring=scoring,
+            user_id=winner_row.user_id,
+            zone_name=zone_name,
+        )
 
 
 def _progress_scoring_if_ready(*, locked: EstatesGame, round_state: EstatesRoundState) -> bool:
@@ -962,7 +1057,8 @@ def _progress_scoring_if_ready(*, locked: EstatesGame, round_state: EstatesRound
     if winner_row is None:
         return False
 
-    record_estates_zone_win(winner_row.user_id, zone_name)
+    _record_zone_win_once(scoring=scoring, user_id=winner_row.user_id, zone_name=zone_name)
+    payload["scoring"] = scoring
 
     if zone_name == "gate":
         scoring["awaiting_choice"] = {
@@ -1103,6 +1199,14 @@ def _progress_scoring_if_ready(*, locked: EstatesGame, round_state: EstatesRound
         winner_row.score = int(winner_row.score or 0) + 1
         winner_row.save(update_fields=["score", "updated_at"])
         if winner_row.score >= int(locked.victory_score or VICTORY_SCORE):
+            _record_zone_wins_for_scoring_steps(
+                scoring=scoring,
+                placements=placements,
+                player_rows=player_rows,
+                start_index=zone_index + 1,
+            )
+            payload["zone_winners"] = winners_by_zone
+            payload["scoring"] = scoring
             locked.status = EstatesGame.Status.COMPLETED
             locked.winner_user_id = winner_row.user_id
             locked.completion_outcome = EstatesGame.CompletionOutcome.VICTORY_SCORE
@@ -1121,6 +1225,7 @@ def _progress_scoring_if_ready(*, locked: EstatesGame, round_state: EstatesRound
             round_state.phase = EstatesRoundState.Phase.COMPLETED
             round_state.pending_action = ""
             round_state.pending_actor_seat = None
+            round_state.pending_payload = payload
             round_state.status_message = f"{winner_name} wins the Throne and wins the game!"
             round_state.phase_started_at = timezone.now()
             round_state.save(
@@ -1128,6 +1233,7 @@ def _progress_scoring_if_ready(*, locked: EstatesGame, round_state: EstatesRound
                     "phase",
                     "pending_action",
                     "pending_actor_seat",
+                    "pending_payload",
                     "status_message",
                     "phase_started_at",
                     "updated_at",
@@ -1198,7 +1304,11 @@ def lobby_solo(request):
     serializer.is_valid(raise_exception=True)
     difficulty = serializer.validated_data["difficulty"]
     computer_user = get_computer_user()
-    persona = pick_random_persona()
+    stored_persona = (
+        serialize_zone_personas(pick_random_zone_personas())
+        if difficulty == "easy"
+        else ""
+    )
 
     with transaction.atomic():
         game = EstatesGame.objects.create(
@@ -1208,7 +1318,7 @@ def lobby_solo(request):
             round=1,
             is_solo=True,
             computer_difficulty=difficulty,
-            computer_persona=persona,
+            computer_persona=stored_persona,
             victory_score=SOLO_VICTORY_SCORE,
         )
         EstatesPlayerState.objects.create(

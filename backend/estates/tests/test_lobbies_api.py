@@ -9,7 +9,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from estates.constants import MAX_LOBBY_AGE_HOURS
-from estates.models import EstatesGame, EstatesPlayerState, EstatesRoundState
+from estates.models import EstatesGame, EstatesPlayerState, EstatesRoundState, EstatesUserStats
 from estates.presence import adjust_presence_connection
 from estates.game_setup import SCORING_STEPS_IN_ORDER, is_suit_allowed_in_zone, normalize_card_suit, normalize_suit_value
 from estates.views import _progress_scoring_if_ready, _zone_no_winner_status_message, _zone_winner_payload
@@ -444,7 +444,8 @@ class EstatesLobbyApiTests(TestCase):
 
     def test_scoring_steps_are_one_zone_each(self):
         self.assertEqual(len(SCORING_STEPS_IN_ORDER), 5)
-        self.assertEqual(SCORING_STEPS_IN_ORDER[-1], ("throne",))
+        self.assertEqual(SCORING_STEPS_IN_ORDER[1], ("throne",))
+        self.assertEqual(SCORING_STEPS_IN_ORDER[-1], ("tower",))
 
     def test_empty_gate_scoring_advances_without_message(self):
         game = EstatesGame.objects.create(
@@ -517,9 +518,10 @@ class EstatesLobbyApiTests(TestCase):
             placements_by_zone=placements,
             pending_payload={
                 "scoring": {
-                    "zone_index": 2,
+                    "zone_index": 3,
                     "waiting_until_ms": 0,
                     "awaiting_choice": None,
+                    "zone_wins_recorded": ["gate", "throne", "farm"],
                 },
             },
         )
@@ -586,9 +588,10 @@ class EstatesLobbyApiTests(TestCase):
             placements_by_zone=placements,
             pending_payload={
                 "scoring": {
-                    "zone_index": 3,
+                    "zone_index": 4,
                     "waiting_until_ms": 0,
                     "awaiting_choice": None,
+                    "zone_wins_recorded": ["gate", "throne", "farm", "road"],
                 },
             },
         )
@@ -600,7 +603,7 @@ class EstatesLobbyApiTests(TestCase):
         host_state.refresh_from_db()
         scoring = round_state.pending_payload["scoring"]
 
-        self.assertEqual(scoring["zone_index"], 3)
+        self.assertEqual(scoring["zone_index"], 4)
         self.assertEqual(scoring["awaiting_choice"]["type"], "tower_discard")
         self.assertEqual(host_state.draw_bonus, 0)
         self.assertIn("discard", round_state.status_message.lower())
@@ -675,9 +678,10 @@ class EstatesLobbyApiTests(TestCase):
             placements_by_zone=placements,
             pending_payload={
                 "scoring": {
-                    "zone_index": 3,
+                    "zone_index": 4,
                     "waiting_until_ms": 0,
                     "awaiting_choice": None,
+                    "zone_wins_recorded": ["gate", "throne", "farm", "road"],
                 },
             },
         )
@@ -737,9 +741,10 @@ class EstatesLobbyApiTests(TestCase):
             placements_by_zone=placements,
             pending_payload={
                 "scoring": {
-                    "zone_index": 4,
+                    "zone_index": 1,
                     "waiting_until_ms": 0,
                     "awaiting_choice": None,
+                    "zone_wins_recorded": ["gate"],
                 },
             },
         )
@@ -749,6 +754,145 @@ class EstatesLobbyApiTests(TestCase):
         round_state.refresh_from_db()
         self.assertEqual(guest_state.score, 1)
         self.assertIn("Throne", round_state.status_message)
+
+    def test_throne_victory_records_skipped_zone_wins_without_scoring_them(self):
+        game = EstatesGame.objects.create(
+            player_1=self.host,
+            player_2=self.guest,
+            status=EstatesGame.Status.ACTIVE,
+            round=1,
+            victory_score=7,
+        )
+        host_state = EstatesPlayerState.objects.create(
+            game=game,
+            user=self.host,
+            seat_index=1,
+            deck=[],
+            hand=[],
+            discard=[],
+            draw_bonus=0,
+            score=6,
+        )
+        guest_state = EstatesPlayerState.objects.create(
+            game=game,
+            user=self.guest,
+            seat_index=2,
+            deck=[],
+            hand=[],
+            discard=[],
+            draw_bonus=0,
+            score=0,
+        )
+        farm_card = {
+            "card_id": "peasant-3-1",
+            "suit": "peasant",
+            "rank": 3,
+            "temporary_value_modifier": 0,
+            "permanent_value_bonus": 0,
+        }
+        throne_card = {
+            "card_id": "royal-5-1",
+            "suit": "royal",
+            "rank": 5,
+            "temporary_value_modifier": 0,
+            "permanent_value_bonus": 0,
+        }
+        placements = {
+            zone: {"1": None, "2": None}
+            for zone in ("gate", "farm", "road", "tower", "throne")
+        }
+        placements["farm"] = {"1": None, "2": {"card": farm_card, "confirmed": True}}
+        placements["throne"] = {"1": {"card": throne_card, "confirmed": True}, "2": None}
+        guest_stats, _ = EstatesUserStats.objects.get_or_create(user=self.guest)
+        guest_farm_before = guest_stats.zone_farm_wins
+        round_state = EstatesRoundState.objects.create(
+            game=game,
+            phase=EstatesRoundState.Phase.SCORING,
+            placements_by_zone=placements,
+            pending_payload={
+                "scoring": {
+                    "zone_index": 1,
+                    "waiting_until_ms": 0,
+                    "awaiting_choice": None,
+                    "zone_wins_recorded": ["gate"],
+                },
+            },
+        )
+        progressed = _progress_scoring_if_ready(locked=game, round_state=round_state)
+        self.assertTrue(progressed)
+        game.refresh_from_db()
+        host_state.refresh_from_db()
+        guest_state.refresh_from_db()
+        guest_stats.refresh_from_db()
+        round_state.refresh_from_db()
+        self.assertEqual(game.status, EstatesGame.Status.COMPLETED)
+        self.assertEqual(host_state.score, 7)
+        scoring = round_state.pending_payload["scoring"]
+        self.assertEqual(scoring["zone_index"], 1)
+        self.assertEqual(guest_stats.zone_farm_wins, guest_farm_before + 1)
+        self.assertEqual(host_state.draw_bonus, 0)
+        self.assertIn("throne", scoring["zone_wins_recorded"])
+        self.assertIn("farm", scoring["zone_wins_recorded"])
+
+    def test_throne_victory_does_not_double_count_zone_wins(self):
+        game = EstatesGame.objects.create(
+            player_1=self.host,
+            player_2=self.guest,
+            status=EstatesGame.Status.ACTIVE,
+            round=1,
+            victory_score=7,
+        )
+        host_state = EstatesPlayerState.objects.create(
+            game=game,
+            user=self.host,
+            seat_index=1,
+            deck=[],
+            hand=[],
+            discard=[],
+            score=6,
+        )
+        EstatesPlayerState.objects.create(
+            game=game,
+            user=self.guest,
+            seat_index=2,
+            deck=[],
+            hand=[],
+            discard=[],
+            score=0,
+        )
+        throne_card = {
+            "card_id": "royal-5-1",
+            "suit": "royal",
+            "rank": 5,
+            "temporary_value_modifier": 0,
+            "permanent_value_bonus": 0,
+        }
+        placements = {
+            zone: {"1": None, "2": None}
+            for zone in ("gate", "farm", "road", "tower", "throne")
+        }
+        placements["throne"] = {"1": {"card": throne_card, "confirmed": True}, "2": None}
+        host_stats, _ = EstatesUserStats.objects.get_or_create(user=self.host)
+        throne_before = host_stats.zone_throne_wins
+        round_state = EstatesRoundState.objects.create(
+            game=game,
+            phase=EstatesRoundState.Phase.SCORING,
+            placements_by_zone=placements,
+            pending_payload={
+                "scoring": {
+                    "zone_index": 1,
+                    "waiting_until_ms": 0,
+                    "awaiting_choice": None,
+                    "zone_wins_recorded": ["gate"],
+                },
+            },
+        )
+        progressed = _progress_scoring_if_ready(locked=game, round_state=round_state)
+        self.assertTrue(progressed)
+        host_state.refresh_from_db()
+        host_stats.refresh_from_db()
+        self.assertEqual(host_state.score, 7)
+        self.assertEqual(host_stats.zone_throne_wins, throne_before + 1)
 
     def test_orange_color_and_suit_aliases_normalize_to_royal(self):
         card = {"suit": "orange", "color": "orange", "rank": 3}

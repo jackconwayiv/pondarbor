@@ -10,15 +10,15 @@ SUIT_CARD_CONFIG = (
     ("royal", "yellow", "crown"),
 )
 
-ZONE_NAMES_IN_SCORING_ORDER = ("gate", "farm", "road", "tower", "throne")
+ZONE_NAMES_IN_SCORING_ORDER = ("gate", "throne", "farm", "road", "tower")
 
 # Automated scoring pauses: one zone per step in scoring order.
 SCORING_STEPS_IN_ORDER: tuple[tuple[str, ...], ...] = (
     ("gate",),
+    ("throne",),
     ("farm",),
     ("road",),
     ("tower",),
-    ("throne",),
 )
 ZONE_ALLOWED_SUITS = {
     "gate": {"peasant", "noble", "royal"},

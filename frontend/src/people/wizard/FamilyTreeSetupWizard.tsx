@@ -15,7 +15,11 @@ import {
   personToFormState,
   type PersonFormState,
 } from "../personFormState";
-import { buildWizardPrefill, siblingSpousePerson } from "./wizardPrefill";
+import {
+  buildWizardPrefill,
+  siblingHouseholdTitle,
+  siblingSpousePerson,
+} from "./wizardPrefill";
 import {
   persistChildOfSelf,
   persistGrandparent,
@@ -59,9 +63,11 @@ export type FamilyTreeSetupWizardProps = {
 function PrefillCard({
   person,
   onEdit,
+  hideEdit = false,
 }: {
   person: PeoplePerson;
   onEdit: () => void;
+  hideEdit?: boolean;
 }) {
   return (
     <HStack
@@ -73,9 +79,11 @@ function PrefillCard({
       <Text fontSize={APP_TEXT_SIZES.body} color="fg">
         {person.name}
       </Text>
-      <PondButton type="button" size="xs" variant="outline" colorPalette="sky" onClick={onEdit}>
-        Edit
-      </PondButton>
+      {hideEdit ? null : (
+        <PondButton type="button" size="xs" variant="outline" colorPalette="sky" onClick={onEdit}>
+          Edit
+        </PondButton>
+      )}
     </HStack>
   );
 }
@@ -120,6 +128,26 @@ export function FamilyTreeSetupWizard({
     setDrafts((prev) => prev.filter((d) => d.draftId !== draftId));
   const patchDraftForm = (draftId: string, form: PersonFormState) =>
     setDrafts((prev) => prev.map((d) => (d.draftId === draftId ? { ...d, form } : d)));
+
+  const entryFormOpen = useMemo(
+    () =>
+      editingId !== null ||
+      drafts.length > 0 ||
+      spouseForSiblingId !== null ||
+      showStepMotherForm ||
+      showStepFatherForm ||
+      !prefill.parentSlots.mother ||
+      !prefill.parentSlots.father,
+    [
+      editingId,
+      drafts.length,
+      spouseForSiblingId,
+      showStepMotherForm,
+      showStepFatherForm,
+      prefill.parentSlots.mother,
+      prefill.parentSlots.father,
+    ],
+  );
 
   const wasOpenRef = useRef(false);
   useEffect(() => {
@@ -192,13 +220,13 @@ export function FamilyTreeSetupWizard({
     setEntryForm(personToFormState(p));
   };
 
-  const renderEditingEntry = (saveLabel: string, onSave: () => Promise<void>) => (
+  const renderEditingEntry = (onSave: () => Promise<void>) => (
     <WizardPersonEntry
       form={entryForm}
       onFormChange={setEntryForm}
       busy={busy}
       getApiAccessToken={getApiAccessToken}
-      saveLabel={saveLabel}
+      saveLabel="Save"
       onClose={() => setEditingId(null)}
       onSave={() => void run(onSave)}
       {...suggestedRelationEntryProps(entryForm)}
@@ -207,7 +235,6 @@ export function FamilyTreeSetupWizard({
 
   const renderDraftEntry = (
     draft: WizardDraft,
-    saveLabel: string,
     onSave: (form: PersonFormState) => Promise<void>,
     opts?: { lockedCore?: string },
   ) => (
@@ -217,7 +244,7 @@ export function FamilyTreeSetupWizard({
       onFormChange={(next) => patchDraftForm(draft.draftId, next)}
       busy={busy}
       getApiAccessToken={getApiAccessToken}
-      saveLabel={saveLabel}
+      saveLabel="Save"
       onClose={() => removeDraftById(draft.draftId)}
       onSave={() =>
         void run(async () => {
@@ -331,14 +358,14 @@ export function FamilyTreeSetupWizard({
         {label}
       </Text>
       {person && editingId !== person.id ? (
-        <PrefillCard person={person} onEdit={() => startEdit(person)} />
+        <PrefillCard person={person} hideEdit={entryFormOpen} onEdit={() => startEdit(person)} />
       ) : (
         <WizardPersonEntry
           form={editingId === person?.id ? entryForm : form}
           onFormChange={editingId === person?.id ? setEntryForm : setForm}
           busy={busy}
           getApiAccessToken={getApiAccessToken}
-          saveLabel={person ? "Update" : "Add"}
+          saveLabel="Save"
           onSave={() => void saveParentSlot(slot, editingId === person?.id ? entryForm : form)}
           {...suggestedRelationEntryProps(editingId === person?.id ? entryForm : form)}
         />
@@ -361,7 +388,7 @@ export function FamilyTreeSetupWizard({
           <Text fontSize={APP_TEXT_SIZES.label} fontWeight="semibold" color="fg">
             {heading}
           </Text>
-          <PrefillCard person={person} onEdit={() => startEdit(person)} />
+          <PrefillCard person={person} hideEdit={entryFormOpen} onEdit={() => startEdit(person)} />
         </Stack>
       );
     }
@@ -376,7 +403,7 @@ export function FamilyTreeSetupWizard({
             onFormChange={setEntryForm}
             busy={busy}
             getApiAccessToken={getApiAccessToken}
-            saveLabel={person ? "Update" : "Add"}
+            saveLabel="Save"
             onSave={() => void saveParentSlot(slot, entryForm)}
             onClose={() => {
               onHideForm();
@@ -387,6 +414,7 @@ export function FamilyTreeSetupWizard({
         </Stack>
       );
     }
+    if (entryFormOpen) return null;
     return (
       <PondButton
         key={slot}
@@ -449,7 +477,7 @@ export function FamilyTreeSetupWizard({
         )}
         {prefill.parentSlots.extra.map((p) =>
           editingId === p.id ? null : (
-            <PrefillCard key={p.id} person={p} onEdit={() => startEdit(p)} />
+            <PrefillCard key={p.id} person={p} hideEdit={entryFormOpen} onEdit={() => startEdit(p)} />
           ),
         )}
         {draftsOf("extraParent").map((draft, index) => (
@@ -459,12 +487,12 @@ export function FamilyTreeSetupWizard({
                 ? `Other parent figure (${index + 1})`
                 : "Other parent figure"}
             </Text>
-            {renderDraftEntry(draft, "Add", async (form) => {
+            {renderDraftEntry(draft, async (form) => {
               await persistNewPerson(deps, form);
             })}
           </Stack>
         ))}
-        {editingExtraParent ? renderEditingEntry("Update", async () => {
+        {editingExtraParent ? renderEditingEntry(async () => {
           const prev = bundle.people.find((p) => p.id === editingId);
           if (!editingId || !prev) return;
           await persistPersonPatch(deps, editingId, entryForm, {
@@ -473,18 +501,20 @@ export function FamilyTreeSetupWizard({
             previousSuffixTokens: prev.relation_suffix_tokens,
           });
         }) : null}
-        <PondButton
-          type="button"
-          size="sm"
-          variant="outline"
-          colorPalette="sky"
-          onClick={() => {
-            setEditingId(null);
-            pushDraft(newWizardDraft("extraParent", { core: "mother" }));
-          }}
-        >
-          Add another parent figure
-        </PondButton>
+        {!entryFormOpen ? (
+          <PondButton
+            type="button"
+            size="sm"
+            variant="outline"
+            colorPalette="sky"
+            onClick={() => {
+              setEditingId(null);
+              pushDraft(newWizardDraft("extraParent", { core: "mother" }));
+            }}
+          >
+            Add another parent figure
+          </PondButton>
+        ) : null}
       </Stack>
     </WizardStepShell>
   );
@@ -504,11 +534,11 @@ export function FamilyTreeSetupWizard({
         <Stack gap="3">
           {people.map((p) =>
             editingId === p.id ? null : (
-              <PrefillCard key={p.id} person={p} onEdit={() => startEdit(p)} />
+              <PrefillCard key={p.id} person={p} hideEdit={entryFormOpen} onEdit={() => startEdit(p)} />
             ),
           )}
           {editingId && people.some((p) => p.id === editingId)
-            ? renderEditingEntry("Update", async () => {
+            ? renderEditingEntry(async () => {
                 const prev = bundle.people.find((p) => p.id === editingId);
                 if (!editingId || !prev) return;
                 await persistPersonPatch(deps, editingId, entryForm, {
@@ -518,19 +548,21 @@ export function FamilyTreeSetupWizard({
                 });
               })
             : null}
-          {pageDrafts.map((draft) => renderDraftEntry(draft, "Add", onSave))}
-          <PondButton
-            type="button"
-            size="sm"
-            variant="outline"
-            colorPalette="sky"
-            onClick={() => {
-              setEditingId(null);
-              pushDraft(newWizardDraft(kind, makeForm()));
-            }}
-          >
-            {opts?.addButtonLabel ?? "Add another"}
-          </PondButton>
+          {pageDrafts.map((draft) => renderDraftEntry(draft, onSave))}
+          {!entryFormOpen ? (
+            <PondButton
+              type="button"
+              size="sm"
+              variant="outline"
+              colorPalette="sky"
+              onClick={() => {
+                setEditingId(null);
+                pushDraft(newWizardDraft(kind, makeForm()));
+              }}
+            >
+              {opts?.addButtonLabel ?? "Add another"}
+            </PondButton>
+          ) : null}
         </Stack>
       </WizardStepShell>
     );
@@ -549,9 +581,9 @@ export function FamilyTreeSetupWizard({
           return (
             <Stack key={sib.id} gap="2" {...PANEL_NESTED_BLOCK_PROPS}>
               {editingId !== sib.id ? (
-                <PrefillCard person={sib} onEdit={() => startEdit(sib)} />
+                <PrefillCard person={sib} hideEdit={entryFormOpen} onEdit={() => startEdit(sib)} />
               ) : editingId === sib.id ? (
-                renderEditingEntry("Update", async () => {
+                renderEditingEntry(async () => {
                   const prev = bundle.people.find((p) => p.id === editingId);
                   if (!editingId || !prev) return;
                   await persistPersonPatch(deps, editingId, entryForm, {
@@ -579,7 +611,7 @@ export function FamilyTreeSetupWizard({
                     onFormChange={setSpouseForm}
                     busy={busy}
                     getApiAccessToken={getApiAccessToken}
-                    saveLabel="Add"
+                    saveLabel="Save"
                     {...suggestedRelationEntryProps(spouseForm)}
                     onClose={() => {
                       setSpouseForSiblingId(null);
@@ -596,7 +628,7 @@ export function FamilyTreeSetupWizard({
                     }
                   />
                 </Stack>
-              ) : (
+              ) : entryFormOpen ? null : (
                 <PondButton
                   type="button"
                   size="xs"
@@ -619,12 +651,12 @@ export function FamilyTreeSetupWizard({
             <Text fontSize={APP_TEXT_SIZES.label} fontWeight="semibold" color="fg">
               New sibling
             </Text>
-            {renderDraftEntry(draft, "Add", async (form) => {
+            {renderDraftEntry(draft, async (form) => {
               await persistNewPerson(deps, form);
             })}
           </Stack>
         ))}
-        {!editingId ? (
+        {!entryFormOpen ? (
           <HStack gap="2" flexWrap="wrap">
             {(
               [
@@ -683,12 +715,12 @@ export function FamilyTreeSetupWizard({
         </HStack>
         {[...prefill.children, ...prefill.pets].map((p) =>
           editingId === p.id ? null : (
-            <PrefillCard key={p.id} person={p} onEdit={() => startEdit(p)} />
+            <PrefillCard key={p.id} person={p} hideEdit={entryFormOpen} onEdit={() => startEdit(p)} />
           ),
         )}
         {editingId &&
         [...prefill.children, ...prefill.pets].some((p) => p.id === editingId)
-          ? renderEditingEntry("Update", async () => {
+          ? renderEditingEntry(async () => {
               const prev = bundle.people.find((p) => p.id === editingId);
               if (!editingId || !prev) return;
               await persistPersonPatch(deps, editingId, entryForm, {
@@ -703,7 +735,6 @@ export function FamilyTreeSetupWizard({
             </Text>
             {renderDraftEntry(
               draft,
-              "Add",
               async (form) => {
                 if (form.core === "pet") {
                   await persistNewPerson(deps, { ...form, core: "pet" });
@@ -715,20 +746,22 @@ export function FamilyTreeSetupWizard({
             )}
           </Stack>
         ))}
-        <PondButton
-          type="button"
-          size="sm"
-          variant="outline"
-          colorPalette="lilypad"
-          onClick={() => {
-            setEditingId(null);
-            pushDraft(
-              newWizardDraft("child", { core: childKind === "pet" ? "pet" : "child" }),
-            );
-          }}
-        >
-          Add {childKind === "pet" ? "pet" : "child"}
-        </PondButton>
+        {!entryFormOpen ? (
+          <PondButton
+            type="button"
+            size="sm"
+            variant="outline"
+            colorPalette="lilypad"
+            onClick={() => {
+              setEditingId(null);
+              pushDraft(
+                newWizardDraft("child", { core: childKind === "pet" ? "pet" : "child" }),
+              );
+            }}
+          >
+            Add {childKind === "pet" ? "pet" : "child"}
+          </PondButton>
+        ) : null}
       </Stack>
     </WizardStepShell>
   );
@@ -774,11 +807,11 @@ export function FamilyTreeSetupWizard({
                 </Text>
                 {gps.map((g) =>
                   editingId === g.id ? null : (
-                    <PrefillCard key={g.id} person={g} onEdit={() => startEdit(g)} />
+                    <PrefillCard key={g.id} person={g} hideEdit={entryFormOpen} onEdit={() => startEdit(g)} />
                   ),
                 )}
                 {editingId && gps.some((g) => g.id === editingId)
-                  ? renderEditingEntry("Update", async () => {
+                  ? renderEditingEntry(async () => {
                       const prev = bundle.people.find((p) => p.id === editingId);
                       if (!editingId || !prev) return;
                       await persistPersonPatch(deps, editingId, entryForm, {
@@ -792,55 +825,57 @@ export function FamilyTreeSetupWizard({
                   .filter((d) => d.grandparentParentId === id)
                   .map((draft) => (
                     <Stack key={draft.draftId} gap="2">
-                      {renderDraftEntry(draft, "Add", async (form) => {
+                      {renderDraftEntry(draft, async (form) => {
                         await persistGrandparent(deps, form, id);
                       })}
                     </Stack>
                   ))}
-                <HStack gap="2" flexWrap="wrap">
-                  <PondButton
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    colorPalette="lilypad"
-                    onClick={() => {
-                      setEditingId(null);
-                      pushDraft(
-                        newWizardDraft("grandparent", { core: "grandma" }, { grandparentParentId: id }),
-                      );
-                    }}
-                  >
-                    Add {side} grandmother
-                  </PondButton>
-                  <PondButton
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    colorPalette="lilypad"
-                    onClick={() => {
-                      setEditingId(null);
-                      pushDraft(
-                        newWizardDraft("grandparent", { core: "grandpa" }, { grandparentParentId: id }),
-                      );
-                    }}
-                  >
-                    Add {side} grandfather
-                  </PondButton>
-                  <PondButton
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    colorPalette="sky"
-                    onClick={() => {
-                      setEditingId(null);
-                      pushDraft(
-                        newWizardDraft("grandparent", { core: "grandma" }, { grandparentParentId: id }),
-                      );
-                    }}
-                  >
-                    Add another
-                  </PondButton>
-                </HStack>
+                {!entryFormOpen ? (
+                  <HStack gap="2" flexWrap="wrap">
+                    <PondButton
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      colorPalette="lilypad"
+                      onClick={() => {
+                        setEditingId(null);
+                        pushDraft(
+                          newWizardDraft("grandparent", { core: "grandma" }, { grandparentParentId: id }),
+                        );
+                      }}
+                    >
+                      Add {side} grandmother
+                    </PondButton>
+                    <PondButton
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      colorPalette="lilypad"
+                      onClick={() => {
+                        setEditingId(null);
+                        pushDraft(
+                          newWizardDraft("grandparent", { core: "grandpa" }, { grandparentParentId: id }),
+                        );
+                      }}
+                    >
+                      Add {side} grandfather
+                    </PondButton>
+                    <PondButton
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      colorPalette="sky"
+                      onClick={() => {
+                        setEditingId(null);
+                        pushDraft(
+                          newWizardDraft("grandparent", { core: "grandma" }, { grandparentParentId: id }),
+                        );
+                      }}
+                    >
+                      Add another
+                    </PondButton>
+                  </HStack>
+                ) : null}
               </Stack>
             );
           })}
@@ -911,16 +946,16 @@ export function FamilyTreeSetupWizard({
                 return (
                   <Stack key={sib.id} gap="2" {...PANEL_NESTED_BLOCK_PROPS}>
                     <Text fontSize={APP_TEXT_SIZES.label} fontWeight="semibold" color="fg">
-                      {sib.name}&apos;s children
+                      {siblingHouseholdTitle(sib, spouse)}
                     </Text>
                     {(prefill.niecesBySibling[sib.id] ?? []).map((n) =>
                       editingId === n.id ? null : (
-                        <PrefillCard key={n.id} person={n} onEdit={() => startEdit(n)} />
+                        <PrefillCard key={n.id} person={n} hideEdit={entryFormOpen} onEdit={() => startEdit(n)} />
                       ),
                     )}
                     {editingId &&
                     (prefill.niecesBySibling[sib.id] ?? []).some((n) => n.id === editingId)
-                      ? renderEditingEntry("Update", async () => {
+                      ? renderEditingEntry(async () => {
                           const prev = bundle.people.find((p) => p.id === editingId);
                           if (!editingId || !prev) return;
                           await persistPersonPatch(deps, editingId, entryForm, {
@@ -934,7 +969,7 @@ export function FamilyTreeSetupWizard({
                       .filter((d) => d.nieceSiblingId === sib.id)
                       .map((draft) => (
                         <Stack key={draft.draftId} gap="2">
-                          {renderDraftEntry(draft, "Add", async (form) => {
+                          {renderDraftEntry(draft, async (form) => {
                             await persistNewPerson(deps, form, {
                               nieceSibling: sib,
                               nieceSecondParentId: spouse?.id,
@@ -942,6 +977,7 @@ export function FamilyTreeSetupWizard({
                           })}
                         </Stack>
                       ))}
+                    {!entryFormOpen ? (
                     <HStack gap="2" flexWrap="wrap">
                       <PondButton
                         type="button"
@@ -972,6 +1008,7 @@ export function FamilyTreeSetupWizard({
                         Add nephew
                       </PondButton>
                     </HStack>
+                    ) : null}
                   </Stack>
                 );
               })}

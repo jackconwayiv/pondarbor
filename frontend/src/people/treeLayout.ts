@@ -6,6 +6,28 @@ export const GRID_COL_STEP = 1;
 export const GRID_ROW_STEP = 1;
 export const GRID_PADDING = 2;
 
+/** Uniform cell count or per-edge padding for trim/padding helpers. */
+export type GridPad =
+  | number
+  | { top?: number; right?: number; bottom?: number; left?: number };
+
+export function resolveGridPad(pad: GridPad): {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+} {
+  if (typeof pad === "number") {
+    return { top: pad, right: pad, bottom: pad, left: pad };
+  }
+  return {
+    top: pad.top ?? GRID_PADDING,
+    right: pad.right ?? GRID_PADDING,
+    bottom: pad.bottom ?? GRID_PADDING,
+    left: pad.left ?? GRID_PADDING,
+  };
+}
+
 export type GridCoord = { col: number; row: number };
 
 export function cellKey(col: number, row: number): string {
@@ -34,8 +56,9 @@ export function occupiedCells(layout: PeopleTreeLayout): Set<string> {
 /** Shrink bounds to `pad` empty cells beyond the furthest occupied cell in each direction. */
 export function trimGridAroundOccupied(
   layout: PeopleTreeLayout,
-  pad = GRID_PADDING,
+  pad: GridPad = GRID_PADDING,
 ): PeopleTreeLayout {
+  const p = resolveGridPad(pad);
   const positions = Object.values(layout.positions);
   if (positions.length === 0) {
     return ensureGridPadding(layout, pad);
@@ -52,24 +75,36 @@ export function trimGridAroundOccupied(
   }
   return {
     ...layout,
-    min_col: minCol - pad,
-    max_col: maxCol + pad,
-    min_row: minRow - pad,
-    max_row: maxRow + pad,
+    min_col: minCol - p.left,
+    max_col: maxCol + p.right,
+    min_row: minRow - p.top,
+    max_row: maxRow + p.bottom,
   };
 }
 
 /** Extend bounds so at least `pad` empty rows/cols exist beyond every occupied cell. */
-export function ensureGridPadding(layout: PeopleTreeLayout, pad = GRID_PADDING): PeopleTreeLayout {
+export function ensureGridPadding(
+  layout: PeopleTreeLayout,
+  pad: GridPad = GRID_PADDING,
+): PeopleTreeLayout {
+  const p = resolveGridPad(pad);
+  const colPad = Math.max(p.left, p.right);
+  const rowPad = Math.max(p.top, p.bottom);
   let { min_col, min_row, max_col, max_row } = layout;
   for (const pos of Object.values(layout.positions)) {
-    if (pos.col - pad < min_col) min_col = pos.col - pad;
-    if (pos.col + pad > max_col) max_col = pos.col + pad;
-    if (pos.row - pad < min_row) min_row = pos.row - pad;
-    if (pos.row + pad > max_row) max_row = pos.row + pad;
+    if (pos.col - colPad < min_col) min_col = pos.col - colPad;
+    if (pos.col + colPad > max_col) max_col = pos.col + colPad;
+    if (pos.row - rowPad < min_row) min_row = pos.row - rowPad;
+    if (pos.row + rowPad > max_row) max_row = pos.row + rowPad;
   }
   if (Object.keys(layout.positions).length === 0) {
-    return { ...layout, min_col: -pad, min_row: -pad, max_col: pad, max_row: pad };
+    return {
+      ...layout,
+      min_col: -p.left,
+      min_row: -p.top,
+      max_col: p.right,
+      max_row: p.bottom,
+    };
   }
   return { ...layout, min_col, min_row, max_col, max_row };
 }

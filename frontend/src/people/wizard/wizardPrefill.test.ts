@@ -32,6 +32,38 @@ describe("buildWizardPrefill", () => {
     expect(prefill.niecesBySibling.sib).toHaveLength(1);
     expect(hasAnySiblings(prefill)).toBe(true);
   });
+
+  it("groups nieces under direct sibling household only, not in-law section", () => {
+    const self = testPerson("self", { is_self: true, relation_core: "self" });
+    const brother = testPerson("bro", { relation_core: "brother", gender: "male" });
+    const inLaw = testPerson("sil", {
+      relation_core: "sister",
+      gender: "female",
+      relation_suffix_tokens: ["in_law"],
+    });
+    const niece = testPerson("n", {
+      relation_core: "niece",
+      bio_father_id: "bro",
+      bio_mother_id: "sil",
+    });
+    const prefill = buildWizardPrefill({
+      count: 4,
+      people: [self, brother, inLaw, niece],
+      partnerships: [
+        {
+          id: "p1",
+          person_a_id: "bro",
+          person_b_id: "sil",
+          status: "current",
+          anniversary_date: null,
+        },
+      ],
+      guardian_links: [],
+    });
+    expect(prefill.siblings.map((p) => p.id)).toEqual(["bro"]);
+    expect(prefill.niecesBySibling.bro).toHaveLength(1);
+    expect(prefill.niecesBySibling.sil).toBeUndefined();
+  });
 });
 
 describe("firstIncompleteWizardPage", () => {

@@ -46,77 +46,93 @@ export async function persistNewPerson(
   } = {},
 ): Promise<PeoplePerson> {
   const token = await deps.getToken();
+  const displayName = form.name.trim() || "Person";
   const created = await createPerson(
     token,
     personPayloadFromForm(form, { isCreate: opts.isCreate ?? true }),
   );
 
-  if (opts.linkSelfParents !== false) {
-    await syncSelfParentLinks(token, deps.bundle, patchPerson, {
-      editedPersonId: created.id,
-      relationCore: form.core,
-      prefixTokens: form.prefix,
-      suffixTokens: form.suffix,
-    });
-  }
+  const refreshAfterSave = async () => {
+    try {
+      await deps.refresh();
+    } catch (e: unknown) {
+      const detail = e instanceof Error ? e.message : "Something went wrong.";
+      throw new Error(`Saved ${displayName}, but could not refresh: ${detail}`);
+    }
+  };
 
-  const self = deps.bundle.people.find((p) => p.is_self);
-  if (self) {
-    if (opts.setSelfStepMother) {
-      await patchPerson(token, self.id, {
-        step_mother_id: created.id,
-        step_father_id: self.step_father_id,
+  try {
+    if (opts.linkSelfParents !== false) {
+      await syncSelfParentLinks(token, deps.bundle, patchPerson, {
+        editedPersonId: created.id,
+        relationCore: form.core,
+        prefixTokens: form.prefix,
+        suffixTokens: form.suffix,
       });
     }
-    if (opts.setSelfStepFather) {
-      await patchPerson(token, self.id, {
-        step_mother_id: self.step_mother_id,
-        step_father_id: created.id,
-      });
-    }
-  }
 
-  if (opts.patchParentId && opts.patchParentSlot) {
-    const patch =
-      opts.patchParentSlot === "mother"
-        ? { bio_mother_id: created.id }
-        : { bio_father_id: created.id };
-    await patchPerson(token, opts.patchParentId, patch);
-  }
-
-  if (opts.nieceSibling) {
-    const slot = siblingParentSlotForNiece(opts.nieceSibling);
-    const niecePatch: { bio_mother_id?: string; bio_father_id?: string } = {};
-    if (slot === "mother" || (slot === "choose" && form.mother)) {
-      niecePatch.bio_mother_id = opts.nieceSibling.id;
-    } else if (slot === "father" || (slot === "choose" && form.father)) {
-      niecePatch.bio_father_id = opts.nieceSibling.id;
-    } else {
-      niecePatch.bio_mother_id = opts.nieceSibling.id;
-    }
-    if (opts.nieceSecondParentId) {
-      const second = deps.bundle.people.find((p) => p.id === opts.nieceSecondParentId);
-      if (second?.gender === "male") {
-        niecePatch.bio_father_id = opts.nieceSecondParentId;
-      } else if (second?.gender === "female") {
-        niecePatch.bio_mother_id = opts.nieceSecondParentId;
-      } else if (!niecePatch.bio_father_id) {
-        niecePatch.bio_father_id = opts.nieceSecondParentId;
-      } else {
-        niecePatch.bio_mother_id = opts.nieceSecondParentId;
+    const self = deps.bundle.people.find((p) => p.is_self);
+    if (self) {
+      if (opts.setSelfStepMother) {
+        await patchPerson(token, self.id, {
+          step_mother_id: created.id,
+          step_father_id: self.step_father_id,
+        });
+      }
+      if (opts.setSelfStepFather) {
+        await patchPerson(token, self.id, {
+          step_mother_id: self.step_mother_id,
+          step_father_id: created.id,
+        });
       }
     }
-    await patchPerson(token, created.id, niecePatch);
+
+    if (opts.patchParentId && opts.patchParentSlot) {
+      const patch =
+        opts.patchParentSlot === "mother"
+          ? { bio_mother_id: created.id }
+          : { bio_father_id: created.id };
+      await patchPerson(token, opts.patchParentId, patch);
+    }
+
+    if (opts.nieceSibling) {
+      const slot = siblingParentSlotForNiece(opts.nieceSibling);
+      const niecePatch: { bio_mother_id?: string; bio_father_id?: string } = {};
+      if (slot === "mother" || (slot === "choose" && form.mother)) {
+        niecePatch.bio_mother_id = opts.nieceSibling.id;
+      } else if (slot === "father" || (slot === "choose" && form.father)) {
+        niecePatch.bio_father_id = opts.nieceSibling.id;
+      } else {
+        niecePatch.bio_mother_id = opts.nieceSibling.id;
+      }
+      if (opts.nieceSecondParentId) {
+        const second = deps.bundle.people.find((p) => p.id === opts.nieceSecondParentId);
+        if (second?.gender === "male") {
+          niecePatch.bio_father_id = opts.nieceSecondParentId;
+        } else if (second?.gender === "female") {
+          niecePatch.bio_mother_id = opts.nieceSecondParentId;
+        } else if (!niecePatch.bio_father_id) {
+          niecePatch.bio_father_id = opts.nieceSecondParentId;
+        } else {
+          niecePatch.bio_mother_id = opts.nieceSecondParentId;
+        }
+      }
+      await patchPerson(token, created.id, niecePatch);
+    }
+
+    if (opts.partnershipWithId) {
+      await createPartnership(token, {
+        person_one_id: created.id,
+        person_two_id: opts.partnershipWithId,
+      });
+    }
+  } catch (e: unknown) {
+    await refreshAfterSave();
+    const detail = e instanceof Error ? e.message : "Something went wrong.";
+    throw new Error(`Saved ${displayName}, but linking to the tree failed: ${detail}`);
   }
 
-  if (opts.partnershipWithId) {
-    await createPartnership(token, {
-      person_one_id: created.id,
-      person_two_id: opts.partnershipWithId,
-    });
-  }
-
-  await deps.refresh();
+  await refreshAfterSave();
   return created;
 }
 

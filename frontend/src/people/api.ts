@@ -33,7 +33,8 @@ async function parseApiError(response: Response): Promise<string> {
     }
     return t.slice(0, 400);
   } catch {
-    return response.statusText || "Request failed";
+    const fallback = response.statusText || "Request failed";
+    return response.status > 0 ? `${fallback} (${response.status})` : fallback;
   }
 }
 

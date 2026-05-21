@@ -44,6 +44,37 @@ describe("people tree pan bounds", () => {
     });
   });
 
+  it("uses asymmetric margins for pan bounds", () => {
+    const bounds = computePeopleTreePanBounds(400, 300, 900, 500, {
+      top: 12,
+      side: 12,
+      bottom: 40,
+      bottomExtra: 160,
+    });
+    expect(bounds.maxX).toBe(12);
+    expect(bounds.maxY).toBe(12);
+    expect(bounds.minX).toBe(400 - 900 - 12);
+    expect(bounds.minY).toBe(300 - 500 - 40 - 160);
+  });
+
+  it("top align frames content top near viewport top inset", () => {
+    const pan = computePeopleTreeInitialPan(
+      400,
+      300,
+      900,
+      500,
+      450,
+      200,
+      1,
+      { top: 12, side: 12, bottom: 40 },
+      undefined,
+      "top",
+      80,
+    );
+    expect(pan.y).toBe(12 - 80);
+    expect(pan.x).toBe(200 - 450);
+  });
+
   it("adds extra bottom scroll range via bottomExtra", () => {
     const without = computePeopleTreePanBounds(400, 300, 900, 500, PEOPLE_TREE_PAN_MARGIN, 0);
     const withExtra = computePeopleTreePanBounds(

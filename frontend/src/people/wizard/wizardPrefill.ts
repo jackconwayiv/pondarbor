@@ -7,9 +7,9 @@ import {
   isCousinPerson,
   isExtraParentFigure,
   isFriendPerson,
+  isDirectSiblingPerson,
   isNieceNephewPerson,
   isPetPerson,
-  isSiblingPerson,
   isSpousePerson,
   isStepParentToSelf,
   siblingPartnerId,
@@ -75,7 +75,7 @@ export function buildWizardPrefill(bundle: PeopleGraphBundle): WizardPrefill {
     }
   }
 
-  const siblings = others.filter(isSiblingPerson);
+  const siblings = others.filter(isDirectSiblingPerson);
   const children = others.filter(isChildPerson);
   const pets = others.filter(isPetPerson);
   const spouses = others.filter(isSpousePerson);
@@ -99,11 +99,20 @@ export function buildWizardPrefill(bundle: PeopleGraphBundle): WizardPrefill {
 
   const niecesBySibling: Record<string, PeoplePerson[]> = {};
   for (const sib of siblings) {
-    niecesBySibling[sib.id] = others.filter(
-      (p) =>
-        isNieceNephewPerson(p) &&
-        (p.bio_mother_id === sib.id || p.bio_father_id === sib.id),
-    );
+    const partnerId = siblingPartnerId(bundle, sib.id);
+    const householdIds = new Set([sib.id, ...(partnerId ? [partnerId] : [])]);
+    const seen = new Set<string>();
+    const list: PeoplePerson[] = [];
+    for (const p of others) {
+      if (!isNieceNephewPerson(p)) continue;
+      if (!householdIds.has(p.bio_mother_id ?? "") && !householdIds.has(p.bio_father_id ?? "")) {
+        continue;
+      }
+      if (seen.has(p.id)) continue;
+      seen.add(p.id);
+      list.push(p);
+    }
+    niecesBySibling[sib.id] = list;
   }
 
   return {
@@ -132,4 +141,12 @@ export function siblingSpousePerson(
   const pid = siblingPartnerId(bundle, sibling.id);
   if (!pid) return null;
   return bundle.people.find((p) => p.id === pid) ?? null;
+}
+
+export function siblingHouseholdTitle(
+  sibling: PeoplePerson,
+  spouse: PeoplePerson | null,
+): string {
+  if (spouse) return `${sibling.name} & ${spouse.name}'s children`;
+  return `${sibling.name}'s children`;
 }

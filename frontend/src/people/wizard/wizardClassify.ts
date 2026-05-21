@@ -15,6 +15,11 @@ export function isSiblingPerson(p: PeoplePerson): boolean {
   return SIBLING_CORES.has(p.relation_core);
 }
 
+/** Bio sibling on your tree, not an in-law stored as brother/sister + in_law suffix. */
+export function isDirectSiblingPerson(p: PeoplePerson): boolean {
+  return isSiblingPerson(p) && !p.relation_suffix_tokens.includes("in_law");
+}
+
 export function isChildPerson(p: PeoplePerson): boolean {
   return CHILD_CORES.has(p.relation_core);
 }

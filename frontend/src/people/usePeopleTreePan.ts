@@ -46,6 +46,17 @@ export type PeopleTreePanBounds = {
   maxY: number;
 };
 
+export type PeopleTreePanMargins = {
+  top?: number;
+  side?: number;
+  bottom?: number;
+  bottomExtra?: number;
+};
+
+export type PeopleTreeInitialAlign = "center" | "top";
+
+type MarginInput = number | PeopleTreePanMargins;
+
 export type UsePeopleTreePanOptions = {
   viewportW: number;
   viewportH: number;
@@ -54,8 +65,12 @@ export type UsePeopleTreePanOptions = {
   panAreaRef: RefObject<HTMLElement | null>;
   /** Pinch and ctrl/meta wheel zoom; default true. */
   enablePinchZoom?: boolean;
-  /** Extra scroll range below content bottom; default {@link PEOPLE_TREE_PAN_BOTTOM_EXTRA}. */
+  /** Per-edge pan insets; defaults to {@link PEOPLE_TREE_PAN_MARGIN} on all sides. */
+  panMargins?: PeopleTreePanMargins;
+  /** @deprecated Prefer `panMargins.bottomExtra`. Merged when `bottomExtra` is omitted from `panMargins`. */
   panBottomExtra?: number;
+  /** Initial vertical framing; view mode uses `"top"`. */
+  initialAlign?: PeopleTreeInitialAlign;
 };
 
 /** Keep at least `margin` px of padding between graph edges and the viewport. */
@@ -63,6 +78,38 @@ export const PEOPLE_TREE_PAN_MARGIN = 40;
 
 /** Extra scroll range below measured content (≈ one generation row on mobile). */
 export const PEOPLE_TREE_PAN_BOTTOM_EXTRA = 160;
+
+export function normalizePanMargins(
+  marginOrMargins: MarginInput = PEOPLE_TREE_PAN_MARGIN,
+  bottomExtra?: number,
+): PeopleTreePanMargins {
+  if (typeof marginOrMargins === "number") {
+    return {
+      top: marginOrMargins,
+      side: marginOrMargins,
+      bottom: marginOrMargins,
+      bottomExtra: bottomExtra ?? 0,
+    };
+  }
+  return {
+    ...marginOrMargins,
+    bottomExtra: bottomExtra ?? marginOrMargins.bottomExtra,
+  };
+}
+
+export function resolvePanMargins(m?: PeopleTreePanMargins): {
+  top: number;
+  side: number;
+  bottom: number;
+  bottomExtra: number;
+} {
+  return {
+    top: m?.top ?? PEOPLE_TREE_PAN_MARGIN,
+    side: m?.side ?? PEOPLE_TREE_PAN_MARGIN,
+    bottom: m?.bottom ?? PEOPLE_TREE_PAN_MARGIN,
+    bottomExtra: m?.bottomExtra ?? 0,
+  };
+}
 
 export function clampPeopleTreeScale(scale: number): number {
   return Math.min(PEOPLE_TREE_SCALE_MAX, Math.max(PEOPLE_TREE_SCALE_MIN, scale));
@@ -73,17 +120,20 @@ export function computePeopleTreePanBounds(
   viewportH: number,
   contentW: number,
   contentH: number,
-  margin = PEOPLE_TREE_PAN_MARGIN,
-  bottomExtra = 0,
+  marginOrMargins: MarginInput = PEOPLE_TREE_PAN_MARGIN,
+  bottomExtra?: number,
 ): PeopleTreePanBounds {
+  const { top, side, bottom, bottomExtra: extra } = resolvePanMargins(
+    normalizePanMargins(marginOrMargins, bottomExtra),
+  );
   const axisX = (viewport: number, content: number) => {
     if (content <= viewport) {
       const centered = (viewport - content) / 2;
       return { min: centered, max: centered };
     }
     return {
-      min: viewport - content - margin,
-      max: margin,
+      min: viewport - content - side,
+      max: side,
     };
   };
   const x = axisX(viewportW, contentW);
@@ -94,8 +144,8 @@ export function computePeopleTreePanBounds(
     yMin = centered;
     yMax = centered;
   } else {
-    yMin = viewportH - contentH - margin - bottomExtra;
-    yMax = margin;
+    yMin = viewportH - contentH - bottom - extra;
+    yMax = top;
   }
   return { minX: x.min, maxX: x.max, minY: yMin, maxY: yMax };
 }
@@ -126,7 +176,7 @@ export function panForScaleChange(
   };
 }
 
-/** Initial pan: center focus; contentW/H should already include scale. */
+/** Initial pan: center focus horizontally; contentW/H should already include scale. */
 export function computePeopleTreeInitialPan(
   viewportW: number,
   viewportH: number,
@@ -135,20 +185,29 @@ export function computePeopleTreeInitialPan(
   focusX: number,
   focusY: number,
   scale: number,
-  margin = PEOPLE_TREE_PAN_MARGIN,
-  bottomExtra = 0,
+  marginOrMargins: MarginInput = PEOPLE_TREE_PAN_MARGIN,
+  bottomExtra?: number,
+  align: PeopleTreeInitialAlign = "center",
+  contentTopY = 0,
 ): PeopleTreePan {
+  const margins = normalizePanMargins(marginOrMargins, bottomExtra);
   const bounds = computePeopleTreePanBounds(
     viewportW,
     viewportH,
     contentW,
     contentH,
-    margin,
-    bottomExtra,
+    margins,
   );
+  const { top } = resolvePanMargins(margins);
   const x = viewportW / 2 - focusX * scale;
-  const y =
-    contentH > viewportH ? viewportH / 2 - focusY * scale : viewportH / 2 - contentH / 2;
+  let y: number;
+  if (align === "top") {
+    y = top - contentTopY * scale;
+  } else if (contentH > viewportH) {
+    y = viewportH / 2 - focusY * scale;
+  } else {
+    y = viewportH / 2 - contentH / 2;
+  }
   return clampPeopleTreePan({ x, y }, bounds);
 }
 
@@ -218,6 +277,20 @@ function touchCentroid(touches: TouchList, rect: DOMRect): { x: number; y: numbe
   };
 }
 
+function panMarginsForHook(
+  panMargins?: PeopleTreePanMargins,
+  panBottomExtra?: number,
+): PeopleTreePanMargins {
+  const base = panMargins ?? {};
+  if (panBottomExtra !== undefined && base.bottomExtra === undefined) {
+    return { ...base, bottomExtra: panBottomExtra };
+  }
+  if (panMargins == null && panBottomExtra === undefined) {
+    return { bottomExtra: PEOPLE_TREE_PAN_BOTTOM_EXTRA };
+  }
+  return base;
+}
+
 export function usePeopleTreePan({
   viewportW,
   viewportH,
@@ -225,8 +298,14 @@ export function usePeopleTreePan({
   contentH,
   panAreaRef,
   enablePinchZoom = true,
-  panBottomExtra = PEOPLE_TREE_PAN_BOTTOM_EXTRA,
+  panMargins,
+  panBottomExtra,
+  initialAlign = "center",
 }: UsePeopleTreePanOptions) {
+  const resolvedMargins = useMemo(
+    () => panMarginsForHook(panMargins, panBottomExtra),
+    [panMargins, panBottomExtra],
+  );
   const [pan, setPan] = useState<PeopleTreePan>({ x: 0, y: 0 });
   const [scale, setScale] = useState(PEOPLE_TREE_SCALE_DEFAULT);
   const panRef = useRef(pan);
@@ -249,10 +328,9 @@ export function usePeopleTreePan({
       viewportH,
       scaledContentW,
       scaledContentH,
-      PEOPLE_TREE_PAN_MARGIN,
-      panBottomExtra,
+      resolvedMargins,
     );
-  }, [viewportW, viewportH, scaledContentW, scaledContentH, panBottomExtra]);
+  }, [viewportW, viewportH, scaledContentW, scaledContentH, resolvedMargins]);
 
   const applyBounds = useCallback(
     (next: PeopleTreePan) => {
@@ -436,6 +514,7 @@ export function usePeopleTreePan({
       ch: number,
       focusX: number,
       focusY: number,
+      contentTopY = 0,
     ) => {
       const nextScale = PEOPLE_TREE_SCALE_DEFAULT;
       scaleRef.current = nextScale;
@@ -451,12 +530,14 @@ export function usePeopleTreePan({
           focusX,
           focusY,
           nextScale,
-          PEOPLE_TREE_PAN_MARGIN,
-          panBottomExtra,
+          resolvedMargins,
+          undefined,
+          initialAlign,
+          contentTopY,
         ),
       );
     },
-    [panBottomExtra],
+    [resolvedMargins, initialAlign],
   );
 
   const resetScale = useCallback(() => {

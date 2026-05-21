@@ -21,6 +21,7 @@ import {
   swapPeopleInLayout,
   trimGridAroundOccupied,
 } from "./treeLayout";
+import { TREE_CARD_SIZE } from "./treeGridConstants";
 import type { PeopleGraphBundle, PeopleTreeLayout } from "./types";
 import { usePeopleTreeAnchors } from "./usePeopleTreeAnchors";
 
@@ -47,16 +48,20 @@ function DraggablePersonCard({
     <Box
       ref={setNodeRef}
       data-tree-draggable=""
-      opacity={isDragging ? 0.4 : 1}
       cursor={disabled ? "default" : "grab"}
       touchAction="none"
-      w="100%"
-      h="100%"
+      w={TREE_CARD_SIZE}
+      h={TREE_CARD_SIZE}
+      flexShrink={0}
       {...(disabled ? {} : { ...listeners, ...attributes })}
     >
-      <Box pointerEvents="none" w="100%" h="100%">
-        {children}
-      </Box>
+      {isDragging ? (
+        <Box w={TREE_CARD_SIZE} h={TREE_CARD_SIZE} flexShrink={0} aria-hidden />
+      ) : (
+        <Box pointerEvents="none" w="100%" h="100%">
+          {children}
+        </Box>
+      )}
     </Box>
   );
 }
@@ -72,7 +77,17 @@ function DroppableCell({
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: cellDndId(col, row) });
   return (
-    <Box ref={setNodeRef} w="100%" h="100%" bg={isOver ? "teal.subtle" : undefined} borderRadius="md">
+    <Box
+      ref={setNodeRef}
+      w="100%"
+      h="100%"
+      borderRadius="md"
+      bg={isOver ? "teal.muted" : undefined}
+      borderWidth={isOver ? "2px" : undefined}
+      borderStyle={isOver ? "solid" : undefined}
+      borderColor={isOver ? "teal.solid" : undefined}
+      boxShadow={isOver ? "0 0 0 2px var(--chakra-colors-teal-solid)" : undefined}
+    >
       {children}
     </Box>
   );
@@ -157,7 +172,14 @@ export default function FamilyTreeRearrangeView({
       </FamilyTreeCanvas>
       <DragOverlay dropAnimation={null}>
         {activePerson ? (
-          <Box opacity={0.92} pointerEvents="none">
+          <Box
+            w={TREE_CARD_SIZE}
+            h={TREE_CARD_SIZE}
+            flexShrink={0}
+            opacity={0.95}
+            pointerEvents="none"
+            boxShadow="md"
+          >
             <PersonCard person={activePerson} bundle={bundle} variant="squareCompact" />
           </Box>
         ) : null}

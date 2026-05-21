@@ -11,7 +11,12 @@ import { FaMagnifyingGlassMinus, FaMagnifyingGlassPlus } from "react-icons/fa6";
 
 import type { PeopleTreeLayout as AnchorLayout } from "./usePeopleTreeAnchors";
 import { usePeopleTreeAnchors } from "./usePeopleTreeAnchors";
-import { contentBottomFromAnchors, usePeopleTreePan } from "./usePeopleTreePan";
+import {
+  contentBottomFromAnchors,
+  contentTopFromAnchors,
+  PEOPLE_TREE_PAN_BOTTOM_EXTRA,
+  usePeopleTreePan,
+} from "./usePeopleTreePan";
 
 const BOTTOM_CANVAS_PAD_PX = 32;
 const GENERATION_ROW_PX = 172;
@@ -24,6 +29,24 @@ const TARGET_PAN_AREA_PX =
 const VIEWPORT_TARGET_PX = TARGET_PAN_AREA_PX;
 const VIEWPORT_MAX_HEIGHT = { base: "min(82vh, 48rem)", md: "min(86vh, 52rem)" } as const;
 const VIEWPORT_MIN_HEIGHT = `${VIEWPORT_TARGET_PX}px`;
+
+const VIEW_DISPLAY_GENERATIONS = 2;
+const VIEW_DISPLAY_TARGET_PX =
+  VIEW_DISPLAY_GENERATIONS * GENERATION_ROW_PX +
+  (VIEW_DISPLAY_GENERATIONS - 1) * RANK_GUTTER_PX +
+  24;
+const VIEW_DISPLAY_MAX_HEIGHT = { base: "min(48dvh, 22rem)", md: "min(86vh, 52rem)" } as const;
+const VIEW_DISPLAY_MIN_HEIGHT = {
+  base: "min(240px, 38dvh)",
+  md: `${VIEW_DISPLAY_TARGET_PX}px`,
+} as const;
+
+const VIEW_PAN_MARGINS = {
+  top: 12,
+  side: 12,
+  bottom: 40,
+  bottomExtra: PEOPLE_TREE_PAN_BOTTOM_EXTRA,
+} as const;
 
 export type FamilyTreeCanvasAnchorApi = {
   containerRef: React.RefObject<HTMLDivElement | null>;
@@ -71,11 +94,18 @@ export default function FamilyTreeCanvas({
   }, [layout, clampPanToGrid]);
 
   const viewportHeight = useMemo(() => {
+    if (clampPanToGrid) {
+      const floorPx = VIEW_DISPLAY_TARGET_PX;
+      return {
+        base: `min(${VIEW_DISPLAY_MAX_HEIGHT.base}, max(${VIEW_DISPLAY_MIN_HEIGHT.base}, ${floorPx}px))`,
+        md: `min(${VIEW_DISPLAY_MAX_HEIGHT.md}, max(${VIEW_DISPLAY_MIN_HEIGHT.md}, ${floorPx}px))`,
+      };
+    }
     const floorPx = personCount > 0 ? VIEWPORT_TARGET_PX : TARGET_PAN_AREA_PX;
     const fromContent = layout?.height ? layout.height + 8 : 0;
     const needed = Math.max(floorPx, fromContent);
     return `max(${VIEWPORT_MIN_HEIGHT}, min(${VIEWPORT_MAX_HEIGHT}, ${Math.round(needed)}px))`;
-  }, [layout?.height, personCount]);
+  }, [clampPanToGrid, layout?.height, personCount]);
 
   const {
     pan,
@@ -97,7 +127,8 @@ export default function FamilyTreeCanvas({
     contentH: effectiveContentH,
     panAreaRef,
     enablePinchZoom,
-    panBottomExtra: clampPanToGrid ? 0 : undefined,
+    panMargins: clampPanToGrid ? VIEW_PAN_MARGINS : undefined,
+    initialAlign: clampPanToGrid ? "top" : "center",
   });
 
   const didCenterRef = useRef(false);
@@ -129,9 +160,27 @@ export default function FamilyTreeCanvas({
     const anchor = centerOnPersonId ? layout.anchors.get(centerOnPersonId) : null;
     const focusX = anchor?.center.x ?? layout.width / 2;
     const focusY = anchor?.center.y ?? layout.height / 2;
-    centerOn(panAreaSize.w, panAreaSize.h, contentW, effectiveContentH, focusX, focusY);
+    const contentTopY = clampPanToGrid ? contentTopFromAnchors(layout.anchors) : 0;
+    centerOn(
+      panAreaSize.w,
+      panAreaSize.h,
+      contentW,
+      effectiveContentH,
+      focusX,
+      focusY,
+      contentTopY,
+    );
     didCenterRef.current = true;
-  }, [layout, centerOnPersonId, centerOn, contentW, effectiveContentH, panAreaSize.h, panAreaSize.w]);
+  }, [
+    clampPanToGrid,
+    layout,
+    centerOnPersonId,
+    centerOn,
+    contentW,
+    effectiveContentH,
+    panAreaSize.h,
+    panAreaSize.w,
+  ]);
 
   return (
     <Box
@@ -145,7 +194,7 @@ export default function FamilyTreeCanvas({
       display="flex"
       flexDirection="column"
       h={viewportHeight}
-      minH={VIEWPORT_MIN_HEIGHT}
+      minH={clampPanToGrid ? VIEW_DISPLAY_MIN_HEIGHT : VIEWPORT_MIN_HEIGHT}
     >
       <Box
         ref={panAreaRef}
@@ -217,8 +266,9 @@ export default function FamilyTreeCanvas({
           left={0}
           top={0}
           w="max-content"
-          py={{ base: 4, md: 5 }}
-          px="3"
+          pt={clampPanToGrid ? "1" : { base: 4, md: 5 }}
+          pb={clampPanToGrid ? "5" : { base: 4, md: 5 }}
+          px={clampPanToGrid ? "1" : "3"}
           style={{
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
             transformOrigin: "0 0",

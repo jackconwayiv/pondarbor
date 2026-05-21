@@ -67,6 +67,21 @@ describe("treeLayout", () => {
     expect(trimmed.max_row).toBe(2);
   });
 
+  it("trimGridAroundOccupied supports asymmetric padding", () => {
+    const layout: PeopleTreeLayout = {
+      positions: { a: { col: 0, row: 0 }, b: { col: 4, row: -2 } },
+      min_col: -20,
+      min_row: -20,
+      max_col: 20,
+      max_row: 20,
+    };
+    const trimmed = trimGridAroundOccupied(layout, { top: 0, left: 1, right: 1, bottom: 2 });
+    expect(trimmed.min_col).toBe(-1);
+    expect(trimmed.min_row).toBe(-2);
+    expect(trimmed.max_col).toBe(5);
+    expect(trimmed.max_row).toBe(2);
+  });
+
   it("swapPeopleInLayout exchanges two people and trims grid", () => {
     const layout: PeopleTreeLayout = {
       positions: {

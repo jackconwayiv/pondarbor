@@ -203,7 +203,7 @@ export function WizardPersonEntry({
             disabled={busy}
             onClick={onClose}
           >
-            Close
+            Cancel
           </PondButton>
         ) : null}
         <PondButton

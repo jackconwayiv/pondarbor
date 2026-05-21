@@ -23,7 +23,7 @@ export default function FamilyTreeDisplayView({
 
   const gridLayout = useMemo(() => {
     const resolved = resolveDisplayLayout(bundle.layout, bundle.people, bundle.partnerships);
-    return trimGridAroundOccupied(resolved);
+    return trimGridAroundOccupied(resolved, { top: 1, left: 1, right: 1, bottom: 2 });
   }, [bundle.layout, bundle.people, bundle.partnerships]);
 
   const edges = useMemo(() => computeTreeEdges(bundle), [bundle]);

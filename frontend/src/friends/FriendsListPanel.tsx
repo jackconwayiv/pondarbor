@@ -287,15 +287,7 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
                           setIncoming((prev) =>
                             prev.filter((x) => x.id !== row.id),
                           );
-                          setApproved((prev) => {
-                            const next = [...prev, row];
-                            next.sort((a, b) =>
-                              a.nickname.localeCompare(b.nickname, undefined, {
-                                sensitivity: "base",
-                              }),
-                            );
-                            return next;
-                          });
+                          setApproved((prev) => [row, ...prev]);
                         } catch (err: unknown) {
                           setPageError(
                             err instanceof Error

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from django.contrib.auth import get_user_model
 from django.db.models import Q, QuerySet
+from django.db.models.functions import Coalesce
 
 from friends.models import FriendRequest
 
@@ -34,4 +35,11 @@ def friend_ids_for_user(*, user) -> set[int]:
         "requester_id", flat=True
     )
     return set(sent).union(set(received))
+
+
+def order_users_by_recent_activity(qs: QuerySet) -> QuerySet:
+    """Most recently active first (last_login, else date_joined); email tiebreaker."""
+    return qs.annotate(_activity_at=Coalesce("last_login", "date_joined")).order_by(
+        "-_activity_at", "email"
+    )
 

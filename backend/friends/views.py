@@ -8,8 +8,9 @@ from users.permissions import IsApprovedUser
 from rest_framework.response import Response
 
 from friends.models import FriendRequest
-from friends.services import friends_queryset_for_user
+from friends.services import friends_queryset_for_user, order_users_by_recent_activity
 from users.models import Profile
+from users.social_privacy import published_user_visibility_q, viewer_context
 
 UserModel = get_user_model()
 
@@ -107,8 +108,8 @@ def friends_list(request):
         )
         .order_by("-updated_at")
     )
-    approved_users = friends_queryset_for_user(user=user).select_related("profile").order_by(
-        "profile__display_name", "email"
+    approved_users = order_users_by_recent_activity(
+        friends_queryset_for_user(user=user).select_related("profile")
     )
     return Response(
         {
@@ -245,7 +246,9 @@ def approved_users_list(request):
             deleted_at__isnull=True,
         )
         .exclude(pk__in=excluded_ids)
-        .order_by("profile__display_name", "email")
     )
+    ctx = viewer_context(viewer=user)
+    qs = qs.filter(published_user_visibility_q(viewer=user, ctx=ctx))
+    qs = order_users_by_recent_activity(qs)
     return Response([friend_user_row_dict(row) for row in qs])
 

@@ -658,6 +658,20 @@ class InboxBootstrapPayloadTests(TestCase):
         self.assertIn("contact_messages_count", summary)
         self.assertIn("pending_zodiac_charts", summary)
 
+    def test_bootstrap_session_updates_last_login(self):
+        user = User.objects.create_user(email="boot@example.com", password="secret12345")
+        user.account_status = User.AccountStatus.APPROVED
+        user.last_login = None
+        user.save(update_fields=["account_status", "last_login"])
+        client = APIClient()
+        client.force_authenticate(user=user)
+        before = timezone.now()
+        response = client.post("/api/v1/users/bootstrap/")
+        self.assertEqual(response.status_code, 200)
+        user.refresh_from_db()
+        self.assertIsNotNone(user.last_login)
+        self.assertGreaterEqual(user.last_login, before)
+
 
 class SpaRoutingTests(TestCase):
     def test_spa_index_accepts_catch_all_route_kwarg(self):

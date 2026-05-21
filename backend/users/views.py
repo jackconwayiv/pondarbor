@@ -475,7 +475,10 @@ def bootstrap_session(request):
     Same authentication contract as sync_profile.
     """
     try:
-        session_data = MeSerializer(serialize_me(request.user)).data
+        user = request.user
+        user.last_login = timezone.now()
+        user.save(update_fields=["last_login"])
+        session_data = MeSerializer(serialize_me(user)).data
         inbox_data = inbox_bootstrap_payload(request)
         return Response({"session": session_data, "inbox": inbox_data})
     except Exception:

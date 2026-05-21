@@ -1,6 +1,9 @@
+from datetime import timedelta
+
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from friends.models import FriendRequest
@@ -269,6 +272,53 @@ class FriendsApiTests(TestCase):
         self.assertNotIn(self.bob.email, emails)
         self.assertNotIn(self.charlie.email, emails)
         self.assertNotIn(self.pending_user.email, emails)
+
+    def test_approved_users_list_excludes_friends_only_non_friend(self):
+        self.bob.profile.social_publish_visibility = Profile.SocialPublishVisibility.FRIENDS_ONLY
+        self.bob.profile.save(update_fields=["social_publish_visibility"])
+
+        resp = self.alice_client.get("/api/v1/friends/approved-users/")
+        self.assertEqual(resp.status_code, 200)
+        emails = {row["email"] for row in resp.json()}
+        self.assertNotIn(self.bob.email, emails)
+
+    def test_approved_users_search_still_finds_friends_only(self):
+        self.bob.profile.social_publish_visibility = Profile.SocialPublishVisibility.FRIENDS_ONLY
+        self.bob.profile.save(update_fields=["social_publish_visibility"])
+
+        resp = self.alice_client.get("/api/v1/friends/approved-users/search/?q=bob")
+        self.assertEqual(resp.status_code, 200)
+        emails = {row["email"] for row in resp.json()}
+        self.assertIn(self.bob.email, emails)
+
+    def test_approved_users_list_ordered_by_recent_activity(self):
+        self.bob.profile.social_publish_visibility = Profile.SocialPublishVisibility.FRIENDS_ONLY
+        self.bob.profile.save(update_fields=["social_publish_visibility"])
+        now = timezone.now()
+        User.objects.filter(pk=self.charlie.pk).update(
+            last_login=now - timedelta(days=10)
+        )
+        dave = self._make_user("dave@example.com", approved=True, display_name="Dave")
+        User.objects.filter(pk=dave.pk).update(last_login=now - timedelta(days=1))
+
+        resp = self.alice_client.get("/api/v1/friends/approved-users/")
+        self.assertEqual(resp.status_code, 200)
+        emails = [row["email"] for row in resp.json()]
+        self.assertEqual(emails, [dave.email, self.charlie.email])
+
+    def test_approved_friends_ordered_by_recent_activity(self):
+        self._accept_pair(self.alice, self.bob)
+        self._accept_pair(self.alice, self.charlie)
+        now = timezone.now()
+        User.objects.filter(pk=self.bob.pk).update(last_login=now - timedelta(days=1))
+        User.objects.filter(pk=self.charlie.pk).update(
+            last_login=now - timedelta(days=10)
+        )
+
+        resp = self.alice_client.get("/api/v1/friends/")
+        self.assertEqual(resp.status_code, 200)
+        emails = [row["email"] for row in resp.json()["approved_friends"]]
+        self.assertEqual(emails, [self.bob.email, self.charlie.email])
 
     def test_ignore_then_rerequest_does_not_create_false_reverse_incoming(self):
         # A requests B.

@@ -1,6 +1,7 @@
 import type { SVGProps } from "react";
 
 import type { CanonicalSuit } from "../../estatesDropRules";
+import { GlyphSvg, MS } from "../manuscript/shared";
 
 export type GlyphProps = SVGProps<SVGSVGElement> & {
   size?: number;
@@ -8,119 +9,91 @@ export type GlyphProps = SVGProps<SVGSVGElement> & {
   color?: string;
 };
 
-type RowSpec = string;
-type Pixel = { x: number; y: number; w?: number; h?: number; fill?: string };
-
-/** Convert a 16-row art string ("#" = ink, "*" = gilt highlight, "X" = primary, "." = empty) to rects. */
-function rowsToRects(
-  rows: RowSpec[],
-  primary: string,
-  ink = "var(--ink)",
-  gilt = "var(--gilt-deep)",
-): Pixel[] {
-  const out: Pixel[] = [];
-  rows.forEach((row, y) => {
-    [...row].forEach((cell, x) => {
-      if (cell === "#") out.push({ x, y, fill: ink });
-      else if (cell === "*") out.push({ x, y, fill: gilt });
-      else if (cell === "X") out.push({ x, y, fill: primary });
-    });
-  });
-  return out;
-}
-
-function PixelArt({
-  rows,
-  primary,
-  size,
-  ink,
-  gilt,
-  ...rest
-}: GlyphProps & { rows: RowSpec[]; primary: string; ink?: string; gilt?: string }) {
-  const rects = rowsToRects(rows, primary, ink, gilt);
-  const dim = rows.length;
+/** Pitchfork — three tines, wooden handle, verdigris heads. */
+export function PitchforkGlyph({ size = 24, color, ...rest }: GlyphProps) {
+  const fill = color ?? "var(--verdigris)";
   return (
-    <svg
-      width={size ?? 24}
-      height={size ?? 24}
-      viewBox={`0 0 ${dim} ${dim}`}
-      shapeRendering="crispEdges"
-      {...rest}
-    >
-      {rects.map((p, i) => (
-        <rect key={i} x={p.x} y={p.y} width={p.w ?? 1} height={p.h ?? 1} fill={p.fill} />
-      ))}
-    </svg>
+    <GlyphSvg size={size} aria-hidden {...rest}>
+      <path
+        d="M 5 3 L 5 6 M 8 3 L 8 6 M 11 3 L 11 6"
+        fill="none"
+        stroke={fill}
+        strokeWidth={1.2}
+        strokeLinecap="round"
+      />
+      <path
+        d="M 4.5 6 Q 5 5 5.5 6 M 7.5 6 Q 8 5 8.5 6 M 10.5 6 Q 11 5 11.5 6"
+        fill={fill}
+        stroke={MS.ink}
+        strokeWidth={0.4}
+      />
+      <path
+        d="M 4 7 L 12 7 L 11 8.5 L 5 8.5 Z"
+        fill={fill}
+        stroke={MS.ink}
+        strokeWidth={0.5}
+        strokeLinejoin="round"
+      />
+      <rect x="7" y="8.5" width="2" height="6" rx="0.3" fill={MS.parchmentDark} stroke={MS.ink} strokeWidth={0.4} />
+      <path d="M 6 14.5 L 10 14.5 L 9 15.5 L 7 15.5 Z" fill={MS.parchmentDark} stroke={MS.ink} strokeWidth={0.4} />
+    </GlyphSvg>
   );
 }
 
-const PITCHFORK_ROWS: RowSpec[] = [
-  "................",
-  "................",
-  "..#...#...#.....",
-  "..#...#...#.....",
-  "..#...#...#.....",
-  "..#XX#XX#X#.....",
-  "..#XXXXXXX#.....",
-  "..#XXXXX*X#.....",
-  "...########.....",
-  "......##........",
-  "......##........",
-  "......##........",
-  "......##........",
-  "......##........",
-  ".....####.......",
-  "................",
-];
-
-const SHIELD_ROWS: RowSpec[] = [
-  "................",
-  "..############..",
-  "..#XXXXXXXXXX#..",
-  "..#X*XXXXXX*X#..",
-  "..#XXXXXXXXXX#..",
-  "..#XX######XX#..",
-  "..#XX#XXXX#XX#..",
-  "..#XX#XX*X#XX#..",
-  "..#XX#XXXX#XX#..",
-  "..#XX######XX#..",
-  "..#XXXXXXXXXX#..",
-  "...#XXXXXXXX#...",
-  "....#XXXXXX#....",
-  ".....#XXXX#.....",
-  "......####......",
-  "................",
-];
-
-const CROWN_ROWS: RowSpec[] = [
-  "................",
-  "................",
-  "..*...*...*.....",
-  ".*.*.*.*.*.*....",
-  ".###.###.###....",
-  ".#X#.#X#.#X#....",
-  ".#X###X###X#....",
-  ".#XXXXXXXXX#....",
-  ".#X*XX*XX*X#....",
-  ".#XXXXXXXXX#....",
-  ".###########....",
-  "................",
-  "................",
-  "................",
-  "................",
-  "................",
-];
-
-export function PitchforkGlyph({ size = 24, color, ...rest }: GlyphProps) {
-  return <PixelArt rows={PITCHFORK_ROWS} primary={color ?? "var(--verdigris)"} size={size} {...rest} />;
-}
-
+/** Heater shield with gilt charge cross. */
 export function HeraldicShieldGlyph({ size = 24, color, ...rest }: GlyphProps) {
-  return <PixelArt rows={SHIELD_ROWS} primary={color ?? "var(--lapis)"} size={size} {...rest} />;
+  const fill = color ?? "var(--lapis)";
+  return (
+    <GlyphSvg size={size} aria-hidden {...rest}>
+      <path
+        d="M 3 4 L 13 4 Q 14 8 8 14 Q 2 8 3 4 Z"
+        fill={fill}
+        stroke={MS.ink}
+        strokeWidth={0.7}
+        strokeLinejoin="round"
+      />
+      <path
+        d="M 8 5.5 L 8 12 M 5 8.5 L 11 8.5"
+        fill="none"
+        stroke={`url(#glyph-gilt)`}
+        strokeWidth={0.9}
+        strokeLinecap="round"
+      />
+      <circle cx="8" cy="8.5" r="1" fill={MS.giltSoft} stroke={MS.ink} strokeWidth={0.3} />
+    </GlyphSvg>
+  );
 }
 
+/** Three-point crown with gilt gradient and gem dots. */
 export function CrownGlyph({ size = 24, color, ...rest }: GlyphProps) {
-  return <PixelArt rows={CROWN_ROWS} primary={color ?? "var(--royal)"} size={size} {...rest} />;
+  const fill = color ?? "var(--royal)";
+  return (
+    <GlyphSvg size={size} aria-hidden {...rest}>
+      <path
+        d="M 2.5 10 L 4 6 L 6 9 L 8 4 L 10 9 L 12 6 L 13.5 10 L 13.5 12 L 2.5 12 Z"
+        fill={`url(#glyph-gilt)`}
+        stroke={MS.ink}
+        strokeWidth={0.6}
+        strokeLinejoin="round"
+      />
+      <path
+        d="M 3 12 L 13 12"
+        fill="none"
+        stroke={MS.ink}
+        strokeWidth={0.5}
+      />
+      <circle cx="4" cy="7" r="0.5" fill={fill} stroke={MS.ink} strokeWidth={0.2} />
+      <circle cx="8" cy="5.5" r="0.5" fill={MS.vermilion} stroke={MS.ink} strokeWidth={0.2} />
+      <circle cx="12" cy="7" r="0.5" fill={MS.lapis} stroke={MS.ink} strokeWidth={0.2} />
+      <path
+        d="M 4 9.5 L 5 10.5 L 4 11.5 M 7.5 9 L 8.5 10 L 7.5 11 M 11 9.5 L 12 10.5 L 11 11.5"
+        fill="none"
+        stroke={MS.giltDeep}
+        strokeWidth={0.35}
+        strokeLinecap="round"
+      />
+    </GlyphSvg>
+  );
 }
 
 export function SuitGlyph({
@@ -132,29 +105,24 @@ export function SuitGlyph({
   return <PitchforkGlyph {...rest} />;
 }
 
+/** Six-point gilt star for permanent bonus indicator. */
 export function PermanentBonusStar({ size = 16, color }: { size?: number; color?: string }) {
+  const starFill = color ? color : "url(#star-gilt)";
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 16 16"
-      shapeRendering="crispEdges"
-      aria-hidden
-    >
-      <g fill={color ?? "var(--gilt-deep)"}>
-        <rect x="7" y="2" width="2" height="3" />
-        <rect x="6" y="4" width="4" height="1" />
-        <rect x="2" y="6" width="12" height="2" />
-        <rect x="3" y="8" width="10" height="1" />
-        <rect x="4" y="9" width="2" height="3" />
-        <rect x="10" y="9" width="2" height="3" />
-        <rect x="3" y="11" width="2" height="2" />
-        <rect x="11" y="11" width="2" height="2" />
-      </g>
-      <g fill="var(--ink)">
-        <rect x="7" y="3" width="2" height="1" />
-        <rect x="2" y="7" width="12" height="1" />
-      </g>
+    <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden>
+      <defs>
+        <linearGradient id="star-gilt" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="var(--gilt-soft)" />
+          <stop offset="100%" stopColor="var(--gilt-deep)" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M 8 2 L 9.2 6 L 13.5 6 L 10 8.5 L 11.2 13 L 8 10.5 L 4.8 13 L 6 8.5 L 2.5 6 L 6.8 6 Z"
+        fill={starFill}
+        stroke={MS.ink}
+        strokeWidth={0.5}
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

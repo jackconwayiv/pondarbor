@@ -1,4 +1,4 @@
-/* Illuminated-manuscript pixel-art play canvas.
+/* Estates play canvas (stained-glass zone miniatures, path-based cards).
  * Scoped to .estates-canvas-root; intentionally outside Chakra theme tokens.
  * Landscape (desktop): fixed 1100px design canvas, height-fit scale via JS (--canvas-scale).
  * Portrait (mobile): virtual 800×1000 canvas scaled via JS (--canvas-scale). */
@@ -184,16 +184,16 @@
 .estates-zone-cell--throne { grid-area: throne; align-items: flex-start; }
 
 /* Stack wraps the zone frame + card slots so played cards can overhang the frame.
- * Width follows the grid column; height comes from the 7:5 zone aspect ratio. */
+ * Width follows the grid column; height comes from the zone SVG aspect ratio (64×44). */
 .estates-zone-stack {
   position: relative;
   width: 100%;
   max-width: 100%;
-  aspect-ratio: 7 / 5;
+  aspect-ratio: 64 / 44;
   overflow: visible;
 }
 
-/* Equal-size zone box centered in each grid cell, 7:5 ratio. */
+/* Equal-size zone box centered in each grid cell, matches zone SVG 64×44. */
 .estates-zone-box {
   --zone-banner-h: 40px;
   position: relative;
@@ -264,8 +264,9 @@
   width: 100%;
   height: 100%;
   display: block;
-  image-rendering: pixelated;
-  shape-rendering: crispEdges;
+  shape-rendering: geometricPrecision;
+  /* Glass panes on parchment-deep; boost saturation for stained-glass read. */
+  filter: saturate(1.35) brightness(1.05);
 }
 
 /* Zone banner ribbon (name + allowed glyphs) along the top of the zone */
@@ -455,7 +456,6 @@
     inset 0 1px 0 var(--mortar-dark),
     inset 0 -1px 0 var(--mortar-dark),
     0 4px 10px rgba(40, 28, 12, 0.24);
-  image-rendering: pixelated;
 }
 
 .estates-canvas-stage[data-canvas-mode="portrait"] .estates-realm-grid {
@@ -921,16 +921,18 @@
 .estates-card__center svg {
   width: 56px;
   height: 56px;
+  transform: translateY(-14px);
 }
 
 .estates-card--small .estates-card__center svg {
   width: 32px;
   height: 32px;
+  transform: translateY(-8px);
 }
 
 .estates-card__rank {
   position: absolute;
-  bottom: 38px;
+  bottom: 33px;
   left: 50%;
   transform: translateX(-50%);
   font-weight: 800;
@@ -941,7 +943,7 @@
 }
 
 .estates-card--small .estates-card__rank {
-  bottom: 24px;
+  bottom: 20px;
   font-size: 18px;
 }
 
@@ -1180,11 +1182,12 @@
 .estates-spent-modal .estates-card--small .estates-card__center svg {
   width: 22px;
   height: 22px;
+  transform: translateY(-6px);
 }
 
 .estates-spent-modal .estates-card--small .estates-card__rank {
   font-size: 14px;
-  bottom: 16px;
+  bottom: 13px;
 }
 
 .estates-spent-modal .estates-card--small .estates-card__temp-banner {
@@ -1233,10 +1236,11 @@
 .estates-canvas-stage[data-canvas-mode="portrait"] .estates-card__center svg {
   width: 42px;
   height: 42px;
+  transform: translateY(-10px);
 }
 
 .estates-canvas-stage[data-canvas-mode="portrait"] .estates-card__rank {
-  bottom: 28px;
+  bottom: 24px;
   font-size: 22px;
 }
 

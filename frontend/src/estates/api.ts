@@ -60,6 +60,25 @@ export type EstatesMyGamesResponse = {
   completed: EstatesMyGameRow[];
 };
 
+export type EstatesUserStats = {
+  games_completed: number;
+  pvp_wins: number;
+  solo_wins: number;
+  zone_wins: {
+    farm: number;
+    road: number;
+    tower: number;
+    gate: number;
+    throne: number;
+  };
+  achievement_thresholds: {
+    noble: number;
+    royal: number;
+    peasant: number;
+    zone_badges: number;
+  };
+};
+
 export type EstatesGameState = {
   id: string;
   status: "lobby" | "active" | "completed";
@@ -162,6 +181,18 @@ export async function fetchMyEstatesGamesList(
     throw new Error(await parseApiError(response));
   }
   return (await response.json()) as EstatesMyGamesResponse;
+}
+
+export async function fetchMyEstatesStats(accessToken: string): Promise<EstatesUserStats> {
+  const response = await fetch(`${estatesBase()}/stats/mine/`, {
+    method: "GET",
+    credentials: "omit",
+    headers: authHeaders(accessToken),
+  });
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
+  }
+  return (await response.json()) as EstatesUserStats;
 }
 
 export async function createSoloEstatesGame(

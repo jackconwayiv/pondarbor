@@ -24,6 +24,14 @@ const SLUG_TO_EMOJI: Record<string, string> = {
   music_lover: "\u{1F493}",
   musically_multiloquent: "\u{1F4AC}",
   schedule_coordinator: "🗓️",
+  estates_farmhand: "🌾",
+  estates_highwayman: "👣",
+  estates_lookout: "🗼",
+  estates_gatekeeper: "⛩️",
+  estates_monarch: "👑",
+  estates_royal: "🏰",
+  estates_noble: "🛡️",
+  estates_peasant: "⚒️",
 };
 
 const DEFAULT_EMOJI = "🏆";

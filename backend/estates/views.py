@@ -40,7 +40,7 @@ from .game_setup import (
     normalize_card_suit,
     suit_strength,
 )
-from .models import EstatesGame, EstatesPlayerState, EstatesRoundState
+from .models import EstatesGame, EstatesPlayerState, EstatesRoundState, EstatesUserStats
 from .presence import initialize_presence_for_active_game, initialize_presence_for_solo_game
 from .realtime import notify_estates_game, notify_estates_lobbies
 from .serializers import (
@@ -51,6 +51,7 @@ from .serializers import (
     _user_display_name,
     serialize_estates_game_state,
 )
+from .stats import record_estates_game_completed, record_estates_zone_win, serialize_estates_user_stats
 
 logger = logging.getLogger(__name__)
 
@@ -961,6 +962,8 @@ def _progress_scoring_if_ready(*, locked: EstatesGame, round_state: EstatesRound
     if winner_row is None:
         return False
 
+    record_estates_zone_win(winner_row.user_id, zone_name)
+
     if zone_name == "gate":
         scoring["awaiting_choice"] = {
             "type": "gate_debuff",
@@ -1130,6 +1133,7 @@ def _progress_scoring_if_ready(*, locked: EstatesGame, round_state: EstatesRound
                     "updated_at",
                 ]
             )
+            record_estates_game_completed(locked)
             return True
         return _schedule_scoring_pause(
             round_state=round_state,
@@ -1434,6 +1438,13 @@ def list_my_games(request):
             "completed": [_serialize_estates_my_game_row(g, uid) for g in completed],
         }
     )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated, IsApprovedUser])
+def stats_mine(request):
+    stats = EstatesUserStats.objects.filter(user_id=request.user.id).first()
+    return Response(serialize_estates_user_stats(stats))
 
 
 @api_view(["GET"])
@@ -1924,6 +1935,7 @@ def game_concede(request, game_id):
                 "updated_at",
             ]
         )
+        record_estates_game_completed(locked)
 
     refreshed = _game_queryset().get(pk=game.pk)
     notify_estates_game(str(game.pk))

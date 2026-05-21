@@ -114,6 +114,14 @@ SLUG_MUSIC_LOVER = "music_lover"
 SLUG_MUSICALLY_MULTILOQUENT = "musically_multiloquent"
 SLUG_SCHEDULE_COORDINATOR = "schedule_coordinator"
 SLUG_FAMILIAL_ARBORIST = "familial_arborist"
+SLUG_ESTATES_FARMHAND = "estates_farmhand"
+SLUG_ESTATES_HIGHWAYMAN = "estates_highwayman"
+SLUG_ESTATES_LOOKOUT = "estates_lookout"
+SLUG_ESTATES_GATEKEEPER = "estates_gatekeeper"
+SLUG_ESTATES_MONARCH = "estates_monarch"
+SLUG_ESTATES_ROYAL = "estates_royal"
+SLUG_ESTATES_NOBLE = "estates_noble"
+SLUG_ESTATES_PEASANT = "estates_peasant"
 
 ARCHIVIST_MIN_QUOTES = 10
 FAMILIAL_ARBORIST_MIN_PEOPLE = 10
@@ -127,6 +135,10 @@ SMORGASBORD_MIN_MEALS = 20
 MONTH_OF_MUSIC_MIN_RESPONSES = 30
 MUSIC_LOVER_MIN_HEARTS = 10
 MUSICALLY_MULTILOQUENT_MIN_DISTINCT_FRIEND_POSTS = 10
+ESTATES_ZONE_BADGE_MIN_WINS = 50
+ESTATES_ROYAL_MIN_PVP_WINS = 5
+ESTATES_NOBLE_MIN_GAMES = 10
+ESTATES_PEASANT_MIN_SOLO_WINS = 5
 
 
 def _filled_meal_instance_slot_count(instance_id: int) -> int:
@@ -373,6 +385,30 @@ def evaluate_whatif_dece_proposer_for_user(user_id: int) -> None:
         _try_unlock(user_id, SLUG_WHATIF_DECE_PROPOSER)
 
 
+def evaluate_estates_achievements_for_user(user_id: int) -> None:
+    from estates.models import EstatesUserStats
+
+    stats = EstatesUserStats.objects.filter(user_id=user_id).first()
+    if stats is None:
+        return
+    if stats.zone_farm_wins >= ESTATES_ZONE_BADGE_MIN_WINS:
+        _try_unlock(user_id, SLUG_ESTATES_FARMHAND)
+    if stats.zone_road_wins >= ESTATES_ZONE_BADGE_MIN_WINS:
+        _try_unlock(user_id, SLUG_ESTATES_HIGHWAYMAN)
+    if stats.zone_tower_wins >= ESTATES_ZONE_BADGE_MIN_WINS:
+        _try_unlock(user_id, SLUG_ESTATES_LOOKOUT)
+    if stats.zone_gate_wins >= ESTATES_ZONE_BADGE_MIN_WINS:
+        _try_unlock(user_id, SLUG_ESTATES_GATEKEEPER)
+    if stats.zone_throne_wins >= ESTATES_ZONE_BADGE_MIN_WINS:
+        _try_unlock(user_id, SLUG_ESTATES_MONARCH)
+    if stats.pvp_wins >= ESTATES_ROYAL_MIN_PVP_WINS:
+        _try_unlock(user_id, SLUG_ESTATES_ROYAL)
+    if stats.games_completed >= ESTATES_NOBLE_MIN_GAMES:
+        _try_unlock(user_id, SLUG_ESTATES_NOBLE)
+    if stats.solo_wins >= ESTATES_PEASANT_MIN_SOLO_WINS:
+        _try_unlock(user_id, SLUG_ESTATES_PEASANT)
+
+
 def evaluate_after_whatif_session_ended(session_id: int) -> None:
     """
     Call whenever a session transitions to ENDED (winner path or no_more_questions).
@@ -489,6 +525,10 @@ def backfill_all_achievements() -> None:
         .distinct()
     ):
         evaluate_schedule_coordinator_for_user(uid)
+
+    from estates.stats import backfill_estates_match_stats_from_history
+
+    backfill_estates_match_stats_from_history()
 
 
 def achievement_definitions_catalog_payload() -> list[dict]:

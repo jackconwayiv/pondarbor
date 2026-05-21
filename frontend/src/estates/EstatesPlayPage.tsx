@@ -36,7 +36,8 @@ const estatesGameFont = { fontFamily: ESTATES_GAME_FONT_FAMILY } as const;
 /** Single text size for the in-game status header (matches default “waiting for…” line). */
 const headerTextSize = APP_TEXT_SIZES.body;
 
-/** Reserve height for two status lines (+ scoring hourglass) so the top bar does not resize. */
+/** Match PlayCanvas landscape design width so header aligns with the board on desktop. */
+const PLAY_HEADER_DESKTOP_MAX_W = "1100px";
 const PLAY_HEADER_STATUS_MIN_H = { base: "4.5rem", md: "4.25rem" } as const;
 const PLAY_HEADER_BAR_MIN_H = { base: "5.5rem", md: "5.25rem" } as const;
 
@@ -63,6 +64,7 @@ export default function EstatesPlayPage() {
     getApiAccessToken,
     error: sessionError,
     refreshSession,
+    resyncSessionSilently,
   } = useAppSession();
 
   const [game, setGame] = useState<EstatesGameState | null>(null);
@@ -73,6 +75,7 @@ export default function EstatesPlayPage() {
   const [howToPlayOpen, setHowToPlayOpen] = useState(false);
   const confirmConcedeButtonRef = useRef<HTMLButtonElement | null>(null);
   const pendingPlacementRef = useRef<PendingPlacement | null>(null);
+  const completionResyncedRef = useRef(false);
   const isMobile = useIsMobile();
 
   const myUserId = sessionUser?.user.id;
@@ -339,6 +342,12 @@ export default function EstatesPlayPage() {
 
   const isCompleted = game?.status === "completed";
 
+  useEffect(() => {
+    if (!game || game.status !== "completed" || completionResyncedRef.current) return;
+    completionResyncedRef.current = true;
+    void resyncSessionSilently().catch(() => {});
+  }, [game, resyncSessionSilently]);
+
   const onConcede = async () => {
     if (!game) return;
     setBusyAction("concede");
@@ -347,6 +356,7 @@ export default function EstatesPlayPage() {
       const token = await getApiAccessToken();
       await concedeEstatesGame(token, game.id);
       setConfirmConcede(false);
+      void resyncSessionSilently().catch(() => {});
       navigate("/estates", { replace: true });
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Could not concede game.");
@@ -545,11 +555,8 @@ export default function EstatesPlayPage() {
       {...playCanvasProps}
       overflow="hidden"
     >
-      <Grid
-        templateColumns={{ base: "1fr auto", md: "1fr auto 1fr" }}
-        alignItems="center"
-        gap={{ base: "2", md: "3" }}
-        px={{ base: "2", md: "3" }}
+      <Box
+        px={{ base: "2", md: "4" }}
         py="2"
         minH={PLAY_HEADER_BAR_MIN_H}
         borderBottomWidth="1px"
@@ -559,6 +566,14 @@ export default function EstatesPlayPage() {
         w="full"
         {...estatesGameFont}
       >
+        <Grid
+          templateColumns={{ base: "1fr auto", md: "1fr auto 1fr" }}
+          alignItems="center"
+          gap={{ base: "2", md: "3" }}
+          maxW={{ base: "full", md: PLAY_HEADER_DESKTOP_MAX_W }}
+          mx={{ base: "0", md: "auto" }}
+          w="full"
+        >
         <Text
           display={{ base: "none", md: "block" }}
           fontSize={headerTextSize}
@@ -566,6 +581,7 @@ export default function EstatesPlayPage() {
           whiteSpace="nowrap"
           fontWeight="medium"
           justifySelf="start"
+          pl={{ md: "2" }}
           {...estatesGameFont}
         >
           Round {game.round}
@@ -635,7 +651,7 @@ export default function EstatesPlayPage() {
           ) : null}
         </Stack>
 
-        <Stack gap="0" align="flex-end" justifySelf="end" flexShrink={0}>
+        <Stack gap="0" align="flex-end" justifySelf="end" flexShrink={0} pr={{ md: "2" }}>
           <Text
             display={{ base: "block", md: "none" }}
             fontSize={headerTextSize}
@@ -673,7 +689,8 @@ export default function EstatesPlayPage() {
             {!isMobile ? trailingControl : null}
           </HStack>
         </Stack>
-      </Grid>
+        </Grid>
+      </Box>
 
       <AppModal
         open={howToPlayOpen}

@@ -7,6 +7,7 @@ urlpatterns = [
     path("lobbies/solo/", views.lobby_solo),
     path("games/mine/", views.games_mine),
     path("games/mine/list/", views.list_my_games),
+    path("stats/mine/", views.stats_mine),
     path("games/<uuid:game_id>/actions/place-card/", views.game_place_card),
     path("games/<uuid:game_id>/actions/reorder-hand/", views.game_reorder_hand),
     path("games/<uuid:game_id>/actions/clear-staged-card/", views.game_clear_staged_card),

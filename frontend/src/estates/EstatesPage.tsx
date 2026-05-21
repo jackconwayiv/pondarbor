@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate, useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
+import { emojiForAchievementSlug } from "../achievements/achievementIcon";
 import { AppModal } from "../components/AppModal";
 import {
   PanelMessageSlot,
@@ -29,6 +30,7 @@ import {
   createSoloEstatesGame,
   fetchMyEstatesGame,
   fetchMyEstatesGamesList,
+  fetchMyEstatesStats,
   leaveEstatesLobby,
   joinEstatesLobby,
   listOpenEstatesLobbies,
@@ -36,8 +38,10 @@ import {
   type EstatesComputerDifficulty,
   type EstatesMyGameRow,
   type EstatesMyGamesResponse,
+  type EstatesUserStats,
 } from "./api";
 import { ESTATES_HOW_TO_PLAY_BODY, ESTATES_HOW_TO_PLAY_TITLE } from "./estatesHowToPlay";
+import EstatesResumeBanners from "./EstatesResumeBanners";
 import { connectEstatesWebSocket } from "./estatesWsClient";
 import { estatesLobbiesWsUrl } from "./estatesWs";
 
@@ -66,6 +70,32 @@ function opponentNameForMyGameRow(row: EstatesMyGameRow): string | null {
 }
 
 const MY_GAMES_PAGE_SIZE = 10;
+
+function formatStatProgress(current: number, target: number): string {
+  return `${current} / ${target}`;
+}
+
+function hasNonZeroEstatesStats(stats: EstatesUserStats | null): boolean {
+  if (!stats) return false;
+  if (stats.games_completed > 0 || stats.pvp_wins > 0 || stats.solo_wins > 0) {
+    return true;
+  }
+  return Object.values(stats.zone_wins).some((count) => count > 0);
+}
+
+const ZONE_STAT_ROWS = [
+  { slug: "estates_farmhand", label: "Farm", zoneKey: "farm" as const },
+  { slug: "estates_highwayman", label: "Road", zoneKey: "road" as const },
+  { slug: "estates_lookout", label: "Tower", zoneKey: "tower" as const },
+  { slug: "estates_gatekeeper", label: "Gate", zoneKey: "gate" as const },
+  { slug: "estates_monarch", label: "Throne", zoneKey: "throne" as const },
+] as const;
+
+const MATCH_STAT_ROWS = [
+  { slug: "estates_noble", label: "Games played", statKey: "games_completed" as const, thresholdKey: "noble" as const },
+  { slug: "estates_royal", label: "Wins vs players", statKey: "pvp_wins" as const, thresholdKey: "royal" as const },
+  { slug: "estates_peasant", label: "Wins vs computer", statKey: "solo_wins" as const, thresholdKey: "peasant" as const },
+] as const;
 
 function computerDifficultyLabel(
   difficulty: EstatesMyGameRow["computer_difficulty"],
@@ -126,8 +156,10 @@ export default function EstatesPage() {
   const [openLobbies, setOpenLobbies] = useState<EstatesGameState[] | null>(null);
   const [myGame, setMyGame] = useState<EstatesGameState | null>(null);
   const [myGames, setMyGames] = useState<EstatesMyGamesResponse | null>(null);
+  const [myStats, setMyStats] = useState<EstatesUserStats | null>(null);
   const [myGamesLoading, setMyGamesLoading] = useState(false);
   const [myGamesOpen, setMyGamesOpen] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [soloDifficulty, setSoloDifficulty] = useState<EstatesComputerDifficulty>("normal");
@@ -142,14 +174,16 @@ export default function EstatesPage() {
     setMyGamesLoading(true);
     try {
       const token = await getApiAccessToken();
-      const [rows, mine, gamesList] = await Promise.all([
+      const [rows, mine, gamesList, stats] = await Promise.all([
         listOpenEstatesLobbies(token),
         fetchMyEstatesGame(token),
         fetchMyEstatesGamesList(token),
+        fetchMyEstatesStats(token),
       ]);
       setOpenLobbies(rows);
       setMyGame(mine);
       setMyGames(gamesList);
+      setMyStats(stats);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load lobbies.");
     } finally {
@@ -175,6 +209,26 @@ export default function EstatesPage() {
     return myGamesAllRows.slice(start, start + MY_GAMES_PAGE_SIZE);
   }, [myGamesAllRows, myGamesSafePage]);
 
+  const resumeTargets = useMemo(() => {
+    if (!myGames) return [];
+    return myGames.in_progress
+      .filter((row) => row.status === "active")
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+      .map((row) => {
+        const scoreLabel =
+          row.my_score != null && row.opponent_score != null
+            ? `${row.my_score}–${row.opponent_score}`
+            : null;
+        return {
+          id: row.id,
+          opponentLabel: myGameOpponentLabel(row),
+          scoreLabel,
+        };
+      });
+  }, [myGames]);
+
+  const showStatsRecord = hasNonZeroEstatesStats(myStats);
+
   useEffect(() => {
     setMyGamesPage((p) => Math.min(p, Math.max(0, myGamesTotalPages - 1)));
   }, [myGamesTotalCount, myGamesTotalPages]);
@@ -182,12 +236,6 @@ export default function EstatesPage() {
   useEffect(() => {
     void loadLobbyData();
   }, [loadLobbyData]);
-
-  useEffect(() => {
-    if (myGame?.status === "active" && myGame.id) {
-      navigate(`/estates/play/${myGame.id}`, { replace: true });
-    }
-  }, [myGame, navigate]);
 
   useEffect(() => {
     return connectEstatesWebSocket({
@@ -490,6 +538,7 @@ export default function EstatesPage() {
           <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall">
             Estates is a custom card game designed and developed by Jack! It's a head-to-head card-placing duel. Start a solo game against the computer, or create an open lobby and invite a friend to face you!
           </Text>
+          <EstatesResumeBanners targets={resumeTargets} loading={myGamesLoading} />
         </Box>
 
         <PanelMessageSlot error={error} />
@@ -734,6 +783,73 @@ export default function EstatesPage() {
               </Collapsible.Content>
             </Collapsible.Root>
           </Box>
+        ) : null}
+
+        {showStatsRecord && myStats ? (
+          <Collapsible.Root open={statsOpen} onOpenChange={(e) => setStatsOpen(e.open)}>
+            <Box {...PANEL_ENTRY_CARD_PROPS}>
+              <Collapsible.Trigger asChild>
+                <PondButton
+                  type="button"
+                  variant="ghost"
+                  colorPalette="sky"
+                  w="full"
+                  justifyContent="space-between"
+                  px="0"
+                  h="auto"
+                  minH="0"
+                  fontWeight="semibold"
+                  fontSize={APP_TEXT_SIZES.label}
+                >
+                  <Text as="span">Your Stats</Text>
+                  <Text as="span" aria-hidden="true">
+                    {statsOpen ? "▾" : "▸"}
+                  </Text>
+                </PondButton>
+              </Collapsible.Trigger>
+              <Collapsible.Content>
+                <Stack gap="3" pt="3">
+                  <Stack gap="2">
+                    {MATCH_STAT_ROWS.map((row) => {
+                      const current = myStats[row.statKey];
+                      const target = myStats.achievement_thresholds[row.thresholdKey];
+                      return (
+                        <HStack key={row.slug} justify="space-between" gap="3">
+                          <HStack gap="2" minW="0">
+                            <Text aria-hidden="true">{emojiForAchievementSlug(row.slug)}</Text>
+                            <Text fontSize={APP_TEXT_SIZES.body}>{row.label}</Text>
+                          </HStack>
+                          <Text fontSize={APP_TEXT_SIZES.body} fontWeight="medium" flexShrink={0}>
+                            {formatStatProgress(current, target)}
+                          </Text>
+                        </HStack>
+                      );
+                    })}
+                  </Stack>
+                  <Stack gap="2">
+                    <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" fontWeight="semibold">
+                      Zone wins
+                    </Text>
+                    {ZONE_STAT_ROWS.map((row) => {
+                      const current = myStats.zone_wins[row.zoneKey];
+                      const target = myStats.achievement_thresholds.zone_badges;
+                      return (
+                        <HStack key={row.slug} justify="space-between" gap="3">
+                          <HStack gap="2" minW="0">
+                            <Text aria-hidden="true">{emojiForAchievementSlug(row.slug)}</Text>
+                            <Text fontSize={APP_TEXT_SIZES.body}>{row.label}</Text>
+                          </HStack>
+                          <Text fontSize={APP_TEXT_SIZES.body} fontWeight="medium" flexShrink={0}>
+                            {formatStatProgress(current, target)}
+                          </Text>
+                        </HStack>
+                      );
+                    })}
+                  </Stack>
+                </Stack>
+              </Collapsible.Content>
+            </Box>
+          </Collapsible.Root>
         ) : null}
 
       </Stack>

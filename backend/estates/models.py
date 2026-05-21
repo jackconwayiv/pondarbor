@@ -60,6 +60,7 @@ class EstatesGame(models.Model):
     victory_score = models.PositiveSmallIntegerField(default=VICTORY_SCORE)
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
+    stats_recorded_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -127,6 +128,27 @@ class EstatesRoundState(models.Model):
     disconnected_seat = models.PositiveSmallIntegerField(null=True, blank=True)
     pending_computer_action_at = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+
+class EstatesUserStats(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="estates_stats",
+    )
+    games_completed = models.PositiveIntegerField(default=0)
+    pvp_wins = models.PositiveIntegerField(default=0)
+    solo_wins = models.PositiveIntegerField(default=0)
+    zone_farm_wins = models.PositiveIntegerField(default=0)
+    zone_road_wins = models.PositiveIntegerField(default=0)
+    zone_tower_wins = models.PositiveIntegerField(default=0)
+    zone_gate_wins = models.PositiveIntegerField(default=0)
+    zone_throne_wins = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name_plural = "Estates user stats"
 
 
 class EstatesGameEvent(models.Model):

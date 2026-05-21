@@ -1,4 +1,4 @@
-import { Box, Flex, Grid, HStack, IconButton, Spinner, Stack, Text } from "@chakra-ui/react";
+import { Box, Grid, HStack, IconButton, Spinner, Stack, Text } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { FaQuestionCircle } from "react-icons/fa";
 import { Navigate, useNavigate, useParams } from "react-router";
@@ -35,6 +35,10 @@ const estatesGameFont = { fontFamily: ESTATES_GAME_FONT_FAMILY } as const;
 
 /** Single text size for the in-game status header (matches default “waiting for…” line). */
 const headerTextSize = APP_TEXT_SIZES.body;
+
+/** Reserve height for two status lines (+ scoring hourglass) so the top bar does not resize. */
+const PLAY_HEADER_STATUS_MIN_H = { base: "4.5rem", md: "4.25rem" } as const;
+const PLAY_HEADER_BAR_MIN_H = { base: "5.5rem", md: "5.25rem" } as const;
 
 function seatForUser(game: EstatesGameState, userId: number): number | null {
   if (game.player_1_id === userId) return 1;
@@ -148,6 +152,20 @@ export default function EstatesPlayPage() {
     return () => window.clearInterval(id);
   }, [game, loadGame]);
 
+  useEffect(() => {
+    if (!game?.is_solo || !game.round_state) return;
+    const rs = game.round_state;
+    const computerActive =
+      rs.pending_actor_seat === 2 &&
+      (rs.pending_action === "play_card" || rs.pending_action === "choose_effect_target");
+    const scoringActive = rs.phase === "scoring";
+    if (!computerActive && !scoringActive) return;
+    const id = window.setInterval(() => {
+      void loadGame();
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [game, loadGame]);
+
   const mySeat = useMemo(() => {
     if (!game || !myUserId) return null;
     if (game.player_1_id === myUserId) return 1;
@@ -184,10 +202,15 @@ export default function EstatesPlayPage() {
   const scoringTargets = useMemo<Array<{ zone?: string; cardId: string; modifierLabel: string }>>(() => {
     if (!game || !scoringAwaitingChoice) return [];
     const effectType = String(scoringAwaitingChoice.type || "");
-    if (effectType === "farm_upgrade" || effectType === "road_upgrade") {
+    if (
+      effectType === "farm_upgrade" ||
+      effectType === "road_upgrade" ||
+      effectType === "tower_discard"
+    ) {
+      const label = effectType === "tower_discard" ? "Discard" : "+1";
       return (myPlayerState?.hand ?? []).map((card) => ({
         cardId: String(card.card_id || ""),
-        modifierLabel: "+1",
+        modifierLabel: label,
       }));
     }
     if (effectType === "gate_debuff") {
@@ -232,8 +255,8 @@ export default function EstatesPlayPage() {
     if (effectType === "farm_upgrade" || effectType === "road_upgrade") {
       return `You won the ${zoneLabel}! Choose a hand card to permanently gain +1.`;
     }
-    if (effectType === "tower_start_choice") {
-      return "Go first or second next round?";
+    if (effectType === "tower_discard") {
+      return "You won the Tower! Choose a hand card to discard. You will go second next round.";
     }
     return "Choose a scoring target.";
   }, [isMyScoringChoice, scoringAwaitingChoice]);
@@ -263,9 +286,24 @@ export default function EstatesPlayPage() {
   const myScore = myPlayerState?.score ?? 0;
   const opponentScore = opponentPlayerState?.score ?? 0;
   const statusMessage = useMemo(() => {
-    const raw = game?.round_state?.status_message || "";
+    const rs = game?.round_state;
+    if (
+      game?.is_solo &&
+      rs &&
+      !isPaused &&
+      rs.pending_actor_seat === 2 &&
+      (rs.pending_action === "play_card" || rs.pending_action === "choose_effect_target")
+    ) {
+      return "Computer is thinking…";
+    }
+    const raw = rs?.status_message || "";
     return personalizeEstatesStatusMessage(raw, myPlayerState?.display_name);
-  }, [game?.round_state?.status_message, myPlayerState?.display_name]);
+  }, [
+    game?.is_solo,
+    game?.round_state,
+    isPaused,
+    myPlayerState?.display_name,
+  ]);
   const completionMessage = useMemo(() => {
     if (!game || game.status !== "completed") return null;
     const opponentName = opponentPlayerState?.display_name || "Opponent";
@@ -373,7 +411,9 @@ export default function EstatesPlayPage() {
       const token = await getApiAccessToken();
       const effectType = String(scoringAwaitingChoice.type || "");
       const payload =
-        effectType === "farm_upgrade" || effectType === "road_upgrade"
+        effectType === "farm_upgrade" ||
+        effectType === "road_upgrade" ||
+        effectType === "tower_discard"
           ? { target_card_id: cardId }
           : { target_zone: zone, target_card_id: cardId };
       const updated = await chooseEstatesEffectTarget(token, game.id, payload);
@@ -384,25 +424,6 @@ export default function EstatesPlayPage() {
       setBusyAction(null);
     }
   };
-
-  const onTowerStartChoice = async (goFirst: boolean) => {
-    if (!game || !scoringAwaitingChoice) return;
-    setBusyAction("choose-target");
-    setLoadError(null);
-    try {
-      const token = await getApiAccessToken();
-      const updated = await chooseEstatesEffectTarget(token, game.id, { go_first: goFirst });
-      setGame(updated);
-    } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "Could not apply scoring choice.");
-    } finally {
-      setBusyAction(null);
-    }
-  };
-
-  const scoringEffectType = String(scoringAwaitingChoice?.type || "");
-  const isTowerStartChoice =
-    isMyScoringChoice && scoringEffectType === "tower_start_choice";
 
   if (isLoading) {
     return (
@@ -513,40 +534,6 @@ export default function EstatesPlayPage() {
     </HStack>
   );
 
-  const towerStartChoiceButtons = (
-    <HStack gap="2" flexShrink={0} flexWrap="nowrap">
-      <PondButton
-        size="xs"
-        variant="outline"
-        colorPalette="lilypad"
-        minH="7"
-        h="auto"
-        py="1"
-        px="3"
-        whiteSpace="nowrap"
-        loading={busyAction === "choose-target"}
-        disabled={busyAction === "choose-target"}
-        onClick={() => void onTowerStartChoice(true)}
-      >
-        First
-      </PondButton>
-      <PondButton
-        size="xs"
-        colorPalette="lilypad"
-        minH="7"
-        h="auto"
-        py="1"
-        px="3"
-        whiteSpace="nowrap"
-        loading={busyAction === "choose-target"}
-        disabled={busyAction === "choose-target"}
-        onClick={() => void onTowerStartChoice(false)}
-      >
-        Second
-      </PondButton>
-    </HStack>
-  );
-
   return (
     <Stack
       flex="1"
@@ -563,7 +550,8 @@ export default function EstatesPlayPage() {
         alignItems="center"
         gap={{ base: "2", md: "3" }}
         px={{ base: "2", md: "3" }}
-        py="1.5"
+        py="2"
+        minH={PLAY_HEADER_BAR_MIN_H}
         borderBottomWidth="1px"
         borderColor="border"
         bg="bg"
@@ -589,7 +577,7 @@ export default function EstatesPlayPage() {
           justify="center"
           textAlign={{ base: "start", md: "center" }}
           minW={0}
-          minH={game.status === "active" ? { base: "2.75rem", md: "2.5rem" } : undefined}
+          minH={PLAY_HEADER_STATUS_MIN_H}
           px="1"
           w="full"
         >
@@ -622,29 +610,6 @@ export default function EstatesPlayPage() {
             <Text fontSize={headerTextSize} fontWeight="bold" color="fg" lineHeight="1.25" {...estatesGameFont}>
               Your turn!
             </Text>
-          ) : isMyScoringChoice && isTowerStartChoice ? (
-            <Flex
-              align="center"
-              gap="2"
-              w="full"
-              minW={0}
-              justify={{ base: "flex-start", md: "center" }}
-            >
-              <Text
-                fontSize={headerTextSize}
-                fontWeight="semibold"
-                color="fg"
-                flex="1"
-                minW={0}
-                lineClamp={2}
-                lineHeight="1.25"
-                textAlign={{ base: "start", md: "center" }}
-                {...estatesGameFont}
-              >
-                {myScoringChoiceMessage}
-              </Text>
-              {towerStartChoiceButtons}
-            </Flex>
           ) : isMyScoringChoice ? (
             <Text
               fontSize={headerTextSize}

@@ -20,21 +20,51 @@ const ZONE_LABELS: Record<ZoneName, string> = {
   tower: "TOWER",
 };
 
+const ZONE_SCORE_ORDER_HINTS: Record<ZoneName, string> = {
+  gate: "Scored 1st",
+  farm: "Scored 2nd",
+  road: "Scored 3rd",
+  tower: "Scored 4th",
+  throne: "Scored 5th",
+};
+
+const ZONE_SUIT_HINTS: Record<ZoneName, string> = {
+  gate: "Any suit",
+  farm: "Peasants only",
+  road: "Peasants or nobles only",
+  tower: "Nobles or royals only",
+  throne: "Royals only",
+};
+
 const ZONE_EFFECT_HINTS: Record<ZoneName, string> = {
-  gate: "1st: give a card -1 this round",
-  farm: "2nd: permanent +1 to a card in hand",
-  road: "3rd: draw +1 card next turn",
-  tower: "4th: choose who plays first next round",
-  throne: "5th: gain 1 point",
+  gate: "Give a card −1 this round",
+  farm: "Permanent +1 to a card in hand",
+  road: "Draw +1 card next turn",
+  tower: "Go second next round; discard a hand card",
+  throne: "Gain 1 point",
 };
 
 const ZONE_INVALID_HINTS: Record<ZoneName, string> = {
-  farm: "Peasant only",
+  farm: "Peasants only",
   gate: "Any suit",
-  road: "Peasant or noble only",
-  tower: "Noble or royal only",
-  throne: "Royal only",
+  road: "Peasants or nobles only",
+  tower: "Nobles or royals only",
+  throne: "Royals only",
 };
+
+function ZoneHintPanel({ zone }: { zone: ZoneName }) {
+  return (
+    <div className="estates-zone-hint estates-zone-hint--effect">
+      <p className="estates-zone-hint__row estates-zone-hint__row--order">
+        {ZONE_SCORE_ORDER_HINTS[zone]}
+      </p>
+      <p className="estates-zone-hint__row estates-zone-hint__row--suits">{ZONE_SUIT_HINTS[zone]}</p>
+      <p className="estates-zone-hint__row estates-zone-hint__row--effect">
+        {ZONE_EFFECT_HINTS[zone]}
+      </p>
+    </div>
+  );
+}
 
 function zoneSpacedName(zone: ZoneName): string {
   return ZONE_LABELS[zone].split("").join(" ");
@@ -163,9 +193,7 @@ export function Zone({
           {showInvalidHint ? (
             <div className="estates-zone-hint estates-zone-hint--invalid">{invalidHintText}</div>
           ) : (
-            <div className="estates-zone-hint estates-zone-hint--effect">
-              {ZONE_EFFECT_HINTS[zone]}
-            </div>
+            <ZoneHintPanel zone={zone} />
           )}
         </div>
 

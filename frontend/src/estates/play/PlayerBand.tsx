@@ -1,6 +1,7 @@
 import { useDroppable } from "@dnd-kit/core";
 import type { ReactNode } from "react";
 
+import { ActionSockets } from "./ActionSockets";
 import { PileStack } from "./PileStack";
 
 export const HAND_RETURN_DROP_ID = "hand-return";
@@ -12,6 +13,8 @@ export type PlayerBandProps = {
   avatarUrl?: string;
   deckCount: number;
   deckDrawBonus?: number;
+  /** Confirmed placement actions taken this round (0–3). */
+  actionsTaken?: number;
   discardCount: number;
   onDiscardClick: () => void;
   center?: ReactNode;
@@ -35,6 +38,7 @@ export function PlayerBand({
   avatarUrl,
   deckCount,
   deckDrawBonus = 0,
+  actionsTaken,
   discardCount,
   onDiscardClick,
   center,
@@ -80,8 +84,13 @@ export function PlayerBand({
           aria-hidden={!dragActive}
         />
       ) : null}
-      <div className="estates-band__deck">
-        <PileStack label="Deck" count={deckCount} bonus={deckDrawBonus} />
+      <div className="estates-band__deck-column">
+        <div className="estates-band__deck">
+          <PileStack label="Deck" count={deckCount} bonus={deckDrawBonus} />
+        </div>
+        {actionsTaken != null ? (
+          <ActionSockets actionsTaken={actionsTaken} compact={opponent} />
+        ) : null}
       </div>
       <div
         className={`estates-band__center${opponent ? " estates-band__center--opponent" : ""}`}

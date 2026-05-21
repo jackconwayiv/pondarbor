@@ -9,10 +9,15 @@ export type EstatesPlayerState = EstatesPlayerIdentity & {
   deck: Array<Record<string, unknown>>;
   hand: Array<Record<string, unknown>>;
   discard: Array<Record<string, unknown>>;
+  hand_count: number;
+  deck_count: number;
+  discard_count: number;
   draw_bonus: number;
   is_starting_player: boolean;
   score: number;
 };
+
+export type EstatesComputerDifficulty = "easy" | "normal" | "hard";
 
 export type EstatesRoundState = {
   round_number: number;
@@ -29,6 +34,7 @@ export type EstatesRoundState = {
   connections_seat_2: number;
   is_paused: boolean;
   disconnected_seat: number | null;
+  pending_computer_action_at?: string | null;
 };
 
 export type EstatesCompletionOutcome = "victory_score" | "concession";
@@ -39,6 +45,8 @@ export type EstatesMyGameRow = {
   created_at: string;
   updated_at: string;
   is_owner: boolean;
+  is_solo: boolean;
+  computer_difficulty: EstatesComputerDifficulty | null;
   player_names: string[];
   winner_display_name: string | null;
   round: number;
@@ -57,6 +65,8 @@ export type EstatesGameState = {
   status: "lobby" | "active" | "completed";
   round: number;
   is_solo: boolean;
+  computer_difficulty: EstatesComputerDifficulty | null;
+  computer_persona: string | null;
   victory_score: number;
   player_1_id: number;
   player_2_id: number | null;
@@ -152,6 +162,22 @@ export async function fetchMyEstatesGamesList(
     throw new Error(await parseApiError(response));
   }
   return (await response.json()) as EstatesMyGamesResponse;
+}
+
+export async function createSoloEstatesGame(
+  accessToken: string,
+  difficulty: EstatesComputerDifficulty,
+): Promise<EstatesGameState> {
+  const response = await fetch(`${estatesBase()}/lobbies/solo/`, {
+    method: "POST",
+    credentials: "omit",
+    headers: authHeaders(accessToken),
+    body: JSON.stringify({ difficulty }),
+  });
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
+  }
+  return (await response.json()) as EstatesGameState;
 }
 
 export async function createEstatesLobby(
@@ -315,7 +341,6 @@ export async function concedeEstatesGame(accessToken: string, gameId: string): P
 export type ChooseEstatesEffectTargetPayload = {
   target_zone?: string;
   target_card_id?: string;
-  go_first?: boolean;
 };
 
 export async function chooseEstatesEffectTarget(

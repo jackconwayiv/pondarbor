@@ -307,25 +307,37 @@
   display: block;
 }
 
-/* Zone effect hint — centered in the art area below the banner, above cards */
+/* Zone hints fill the art area below the banner (desktop hover, mobile tap toggle). */
 .estates-zone-hint {
+  --zone-hint-inset: 8px;
   position: absolute;
-  top: calc((100% + var(--zone-banner-h, 40px)) / 2);
-  left: 50%;
-  transform: translate(-50%, -50%);
+  top: calc(var(--zone-banner-h, 40px) + var(--zone-hint-inset));
+  right: var(--zone-hint-inset);
+  bottom: var(--zone-hint-inset);
+  left: var(--zone-hint-inset);
+  transform: none;
   z-index: 7;
-  max-width: calc(100% - 16px);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 10px;
+  max-width: none;
+  width: auto;
   text-align: center;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.25;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.35;
   color: #1a1208;
   pointer-events: none;
-  padding: 4px 10px;
-  border-radius: 4px;
-  background: rgba(241, 231, 207, 0.88);
-  border: 1px solid rgba(42, 29, 16, 0.2);
-  box-shadow: 0 1px 2px rgba(40, 28, 12, 0.12);
+  padding: 14px 16px;
+  border-radius: 6px;
+  background: rgba(241, 231, 207, 0.96);
+  border: 2px solid var(--ink);
+  box-shadow:
+    -3px 3px 0 var(--ink),
+    inset 0 0 0 1px var(--gilt-soft);
 }
 
 /* Effect hints hidden by default; desktop shows on zone hover, mobile on tap toggle */
@@ -349,11 +361,40 @@
   visibility: visible;
 }
 
-.estates-zone-hint--invalid {
-  color: var(--vermilion);
+.estates-zone-hint__row {
+  margin: 0;
+}
+
+.estates-zone-hint__row--order {
+  font-size: 0.95em;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.estates-zone-hint__row--suits {
+  font-size: 0.9em;
   font-weight: 700;
-  background: rgba(239, 196, 189, 0.92);
-  border-color: rgba(184, 51, 42, 0.35);
+  color: var(--ink-soft);
+}
+
+.estates-zone-hint__row--effect {
+  font-size: 0.88em;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.estates-zone-hint--invalid {
+  align-items: center;
+  justify-content: center;
+  color: var(--vermilion);
+  font-weight: 800;
+  font-size: 19px;
+  background: rgba(239, 196, 189, 0.96);
+  border-color: var(--vermilion);
+  box-shadow:
+    -3px 3px 0 var(--ink),
+    inset 0 0 0 1px rgba(184, 51, 42, 0.25);
 }
 
 .estates-zone-box--hint-open {
@@ -591,11 +632,66 @@
   box-shadow: 0 0 0 6px var(--gilt);
 }
 
+.estates-band__deck-column {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.estates-band--opponent .estates-band__deck-column {
+  gap: 6px;
+}
+
 .estates-band__deck,
 .estates-band__spent {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
+}
+
+/* Placement actions: three ruby sockets along the deck (top = first action). */
+.estates-action-sockets {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 2px 0;
+}
+
+.estates-action-sockets--compact {
+  gap: 4px;
+}
+
+.estates-action-socket {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--ink);
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.estates-action-sockets--compact .estates-action-socket {
+  width: 11px;
+  height: 11px;
+  border-width: 1.5px;
+}
+
+.estates-action-socket--available {
+  background:
+    radial-gradient(circle at 32% 28%, #f5b8b0 0%, var(--vermilion) 42%, #7a2218 100%);
+  box-shadow:
+    inset -1px -2px 0 rgba(26, 18, 8, 0.35),
+    0 1px 0 rgba(26, 18, 8, 0.2);
+}
+
+.estates-action-socket--spent {
+  background: var(--parchment-deep);
+  box-shadow: inset 0 1px 3px rgba(26, 18, 8, 0.28);
+  border-color: var(--ink-soft);
 }
 
 .estates-band__center {
@@ -971,6 +1067,14 @@
   color: var(--parchment);
 }
 
+.estates-scoring-target--discard .estates-scoring-target__badge {
+  --badge-bg: var(--vermilion);
+  color: var(--parchment);
+  min-width: 72px;
+  font-size: 15px;
+  letter-spacing: 0.04em;
+}
+
 .estates-scoring-target[data-applying="true"] {
   cursor: wait;
   animation: none;
@@ -1196,9 +1300,15 @@
 }
 
 .estates-canvas-stage[data-canvas-mode="portrait"] .estates-zone-hint {
-  font-size: 12px;
-  padding: 3px 8px;
-  max-width: calc(100% - 12px);
+  --zone-hint-inset: 6px;
+  font-size: 16px;
+  line-height: 1.3;
+  padding: 10px 12px;
+  gap: 8px;
+}
+
+.estates-canvas-stage[data-canvas-mode="portrait"] .estates-zone-hint--invalid {
+  font-size: 15px;
 }
 
 /* Shell wraps the canvas with optional bottom controls (e.g. mobile concede) */

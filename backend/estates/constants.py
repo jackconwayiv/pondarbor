@@ -3,3 +3,21 @@ SCORING_STEP_DELAY_MS = 2000
 MAX_LOBBY_AGE_HOURS = 24
 MY_GAMES_LIST_LIMIT = 50
 
+COMPUTER_SEAT_INDEX = 2
+HUMAN_SEAT_INDEX = 1
+SOLO_VICTORY_SCORE = 7
+
+COMPUTER_CARD_PLAY_DELAY_MS = 1000
+COMPUTER_FIRST_CARD_DELAY_MIN_MS = 1000
+COMPUTER_FIRST_CARD_DELAY_MAX_MS = 2000
+
+COMPUTER_DIFFICULTIES = frozenset({"easy", "normal", "hard"})
+COMPUTER_PERSONAS = (
+    "throne_rush",
+    "farm_builder",
+    "road_runner",
+    "gate_slasher",
+)
+
+ESTATES_COMPUTER_USER_EMAIL = "estates-computer@pondarbor.invalid"
+

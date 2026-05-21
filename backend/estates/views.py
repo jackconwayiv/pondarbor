@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import random
 from datetime import timedelta
 
@@ -14,7 +15,20 @@ from rest_framework.response import Response
 
 from users.permissions import IsApprovedUser
 
-from .constants import MAX_LOBBY_AGE_HOURS, MY_GAMES_LIST_LIMIT, SCORING_STEP_DELAY_MS, VICTORY_SCORE
+from .bot_user import get_computer_user, is_computer_user
+from .computer import EffectMove, PlacementMove, pick_random_persona, rank_computer_moves
+from .constants import (
+    COMPUTER_CARD_PLAY_DELAY_MS,
+    COMPUTER_FIRST_CARD_DELAY_MAX_MS,
+    COMPUTER_FIRST_CARD_DELAY_MIN_MS,
+    COMPUTER_SEAT_INDEX,
+    HUMAN_SEAT_INDEX,
+    MAX_LOBBY_AGE_HOURS,
+    MY_GAMES_LIST_LIMIT,
+    SCORING_STEP_DELAY_MS,
+    SOLO_VICTORY_SCORE,
+    VICTORY_SCORE,
+)
 from .game_setup import (
     SCORING_STEPS_IN_ORDER,
     ZONE_NAMES_IN_SCORING_ORDER,
@@ -27,15 +41,18 @@ from .game_setup import (
     suit_strength,
 )
 from .models import EstatesGame, EstatesPlayerState, EstatesRoundState
-from .presence import initialize_presence_for_active_game
+from .presence import initialize_presence_for_active_game, initialize_presence_for_solo_game
 from .realtime import notify_estates_game, notify_estates_lobbies
 from .serializers import (
-    LobbyCreateSerializer,
     JoinLobbySerializer,
+    LobbyCreateSerializer,
     LobbySettingsSerializer,
+    SoloLobbyCreateSerializer,
     _user_display_name,
     serialize_estates_game_state,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _game_queryset():
@@ -109,6 +126,8 @@ def _paused_response(round_state: EstatesRoundState) -> Response:
 
 
 def _player_name_for_seat(game: EstatesGame, seat_index: int) -> str:
+    if game.is_solo and seat_index == COMPUTER_SEAT_INDEX:
+        return "Computer"
     if seat_index == 1:
         profile = getattr(game.player_1, "profile", None)
         display_name = (getattr(profile, "display_name", "") or "").strip()
@@ -118,6 +137,64 @@ def _player_name_for_seat(game: EstatesGame, seat_index: int) -> str:
         display_name = (getattr(profile, "display_name", "") or "").strip()
         return display_name or game.player_2.email.split("@", 1)[0]
     return "Player"
+
+
+def _serialize_for_request(game: EstatesGame, request) -> dict:
+    return serialize_estates_game_state(game, requesting_user_id=int(request.user.id))
+
+
+def _user_has_open_estates_game(user_id: int) -> bool:
+    return (
+        _games_for_user(user_id)
+        .filter(status__in=(EstatesGame.Status.LOBBY, EstatesGame.Status.ACTIVE))
+        .exists()
+    )
+
+
+def _schedule_computer_action(
+    round_state: EstatesRoundState,
+    *,
+    first_in_sequence: bool = False,
+) -> None:
+    if first_in_sequence:
+        delay_ms = random.randint(COMPUTER_FIRST_CARD_DELAY_MIN_MS, COMPUTER_FIRST_CARD_DELAY_MAX_MS)
+    else:
+        delay_ms = COMPUTER_CARD_PLAY_DELAY_MS
+    round_state.pending_computer_action_at = timezone.now() + timedelta(milliseconds=delay_ms)
+
+
+def _clear_computer_schedule(round_state: EstatesRoundState) -> None:
+    round_state.pending_computer_action_at = None
+
+
+def _computer_action_due(round_state: EstatesRoundState) -> bool:
+    due_at = round_state.pending_computer_action_at
+    if due_at is None:
+        return False
+    return timezone.now() >= due_at
+
+
+def _maybe_schedule_computer_after_human_action(
+    *,
+    locked: EstatesGame,
+    round_state: EstatesRoundState,
+) -> None:
+    if not locked.is_solo or locked.status != EstatesGame.Status.ACTIVE:
+        return
+    if round_state.pending_actor_seat != COMPUTER_SEAT_INDEX:
+        _clear_computer_schedule(round_state)
+        return
+    if round_state.phase == EstatesRoundState.Phase.PLACEMENT:
+        actions = dict(round_state.actions_taken_by_seat or {})
+        first_play = int(actions.get(str(COMPUTER_SEAT_INDEX), 0)) == 0
+        _schedule_computer_action(round_state, first_in_sequence=first_play)
+        round_state.save(update_fields=["pending_computer_action_at", "updated_at"])
+    elif (
+        round_state.phase == EstatesRoundState.Phase.SCORING
+        and round_state.pending_action == "choose_effect_target"
+    ):
+        _schedule_computer_action(round_state, first_in_sequence=False)
+        round_state.save(update_fields=["pending_computer_action_at", "updated_at"])
 
 
 def _games_for_user(user_id: int):
@@ -133,6 +210,23 @@ def _find_card_in_hand(player_state: EstatesPlayerState, *, card_id: str):
         if str(card.get("card_id")) == card_id:
             return idx, card
     return None, None
+
+
+def _discard_hand_card(player_state: EstatesPlayerState, *, card_id: str) -> bool:
+    hand = list(player_state.hand or [])
+    for idx, card in enumerate(hand):
+        if str(card.get("card_id") or "") != card_id:
+            continue
+        card_for_discard = dict(card)
+        card_for_discard["temporary_value_modifier"] = 0
+        discard = list(player_state.discard or [])
+        discard.append(card_for_discard)
+        hand.pop(idx)
+        player_state.hand = hand
+        player_state.discard = discard
+        player_state.save(update_fields=["hand", "discard", "updated_at"])
+        return True
+    return False
 
 
 def _clear_unconfirmed_for_seat(placements_by_zone: dict, *, seat_key: str) -> None:
@@ -369,6 +463,326 @@ def _now_ms() -> int:
     return int(timezone.now().timestamp() * 1000)
 
 
+def _start_active_game(
+    *,
+    locked: EstatesGame,
+    round_state: EstatesRoundState,
+    solo_presence: bool = False,
+) -> int:
+    """Deal hands and enter placement. Returns starting seat index."""
+    now = timezone.now()
+    locked.status = EstatesGame.Status.ACTIVE
+    locked.started_at = now
+    locked.round = 1
+    locked.save(update_fields=["status", "started_at", "round", "updated_at"])
+
+    starting_seat = random.choice((1, 2))
+    player_states = {
+        state.seat_index: state
+        for state in EstatesPlayerState.objects.select_for_update().filter(game=locked).order_by("seat_index")
+    }
+    for idx in (1, 2):
+        state = player_states.get(idx)
+        if state is None:
+            raise ValueError("Missing player state rows.")
+        opening = create_opening_hand_state(hand_size=5)
+        state.deck = opening.deck
+        state.hand = opening.hand
+        state.discard = opening.discard
+        state.draw_bonus = 0
+        state.is_starting_player = idx == starting_seat
+        state.score = 0
+        state.save(
+            update_fields=[
+                "deck",
+                "hand",
+                "discard",
+                "draw_bonus",
+                "is_starting_player",
+                "score",
+                "updated_at",
+            ]
+        )
+
+    next_name = _player_name_for_seat(locked, starting_seat)
+    round_state.round_number = 1
+    round_state.phase = EstatesRoundState.Phase.PLACEMENT
+    round_state.turn_player_seat = starting_seat
+    round_state.actions_taken_by_seat = {"1": 0, "2": 0}
+    round_state.placements_by_zone = initial_placements_by_zone()
+    round_state.pending_actor_seat = starting_seat
+    round_state.pending_action = "play_card"
+    round_state.pending_payload = {}
+    round_state.phase_started_at = now
+    round_state.pending_computer_action_at = None
+    if solo_presence:
+        initialize_presence_for_solo_game(round_state)
+    else:
+        initialize_presence_for_active_game(round_state)
+    round_state.status_message = f"Waiting for {next_name} to play a card."
+
+    if locked.is_solo and starting_seat == COMPUTER_SEAT_INDEX:
+        _schedule_computer_action(round_state, first_in_sequence=True)
+
+    round_state.save(
+        update_fields=[
+            "round_number",
+            "phase",
+            "turn_player_seat",
+            "actions_taken_by_seat",
+            "placements_by_zone",
+            "pending_actor_seat",
+            "pending_action",
+            "pending_payload",
+            "phase_started_at",
+            "status_message",
+            "connections_seat_1",
+            "connections_seat_2",
+            "is_paused",
+            "disconnected_seat",
+            "pending_computer_action_at",
+            "updated_at",
+        ]
+    )
+    return starting_seat
+
+
+def _place_card_for_seat(
+    *,
+    locked: EstatesGame,
+    round_state: EstatesRoundState,
+    seat_index: int,
+    zone: str,
+    card_id: str,
+) -> None:
+    player_state = EstatesPlayerState.objects.select_for_update().filter(game=locked, seat_index=seat_index).first()
+    if player_state is None:
+        raise ValueError("Missing player state.")
+    _idx, card = _find_card_in_hand(player_state, card_id=card_id)
+    if card is None:
+        raise ValueError("Card not found in hand.")
+    card_suit = normalize_card_suit(card)
+    if not is_suit_allowed_in_zone(zone=zone, suit=card_suit):
+        raise ValueError("That card suit is not allowed in this zone.")
+    placements = _normalize_placements(dict(round_state.placements_by_zone or {}))
+    seat_key = str(seat_index)
+    existing = placements[zone].get(seat_key)
+    if isinstance(existing, dict) and bool(existing.get("confirmed")):
+        raise ValueError("Already confirmed a card in that zone.")
+    _commit_card_placement(
+        locked=locked,
+        round_state=round_state,
+        player_state=player_state,
+        seat_index=seat_index,
+        zone=zone,
+        card=card,
+        placements=placements,
+    )
+
+
+def _apply_effect_for_seat(
+    *,
+    locked: EstatesGame,
+    round_state: EstatesRoundState,
+    seat_index: int,
+    move: EffectMove,
+) -> None:
+    payload = dict(round_state.pending_payload or {})
+    scoring = dict(payload.get("scoring") or {})
+    awaiting = dict(scoring.get("awaiting_choice") or {})
+    if not awaiting:
+        raise ValueError("No scoring choice is pending.")
+    actor_seat = int(awaiting.get("actor_seat") or 0)
+    if actor_seat != seat_index:
+        raise ValueError("Not actor seat.")
+    effect_type = str(awaiting.get("type") or "")
+
+    placements = dict(round_state.placements_by_zone or {})
+    if effect_type == "gate_debuff":
+        target_zone = move.target_zone
+        target_card_id = move.target_card_id
+        if target_zone not in placements:
+            raise ValueError("Invalid target zone.")
+        if target_zone == str(awaiting.get("source_zone") or ""):
+            raise ValueError("Target must be in another zone.")
+        target_seat = int(awaiting.get("target_seat") or 0)
+        zone_payload = placements.get(target_zone) or {}
+        seat_payload = zone_payload.get(str(target_seat))
+        if not isinstance(seat_payload, dict):
+            raise ValueError("Target card not found.")
+        card = seat_payload.get("card")
+        if not isinstance(card, dict):
+            raise ValueError("Target card not found.")
+        if str(card.get("card_id") or "") != target_card_id:
+            raise ValueError("Target card mismatch.")
+        card["temporary_value_modifier"] = int(card.get("temporary_value_modifier") or 0) - 1
+        seat_payload["card"] = card
+        zone_payload[str(target_seat)] = seat_payload
+        placements[target_zone] = zone_payload
+        winner_name = _player_name_for_seat(locked, actor_seat)
+        round_state.status_message = f"{winner_name} applies -1 from Gate."
+        round_state.placements_by_zone = placements
+    elif effect_type == "farm_upgrade":
+        winner_row = EstatesPlayerState.objects.select_for_update().filter(game=locked, seat_index=actor_seat).first()
+        if winner_row is None:
+            raise ValueError("Missing player state.")
+        hand = list(winner_row.hand or [])
+        found = False
+        for idx, card in enumerate(hand):
+            if str(card.get("card_id") or "") == move.target_card_id:
+                card["permanent_value_bonus"] = int(card.get("permanent_value_bonus") or 0) + 1
+                hand[idx] = card
+                found = True
+                break
+        if not found:
+            raise ValueError("Target hand card not found.")
+        winner_row.hand = hand
+        winner_row.save(update_fields=["hand", "updated_at"])
+        winner_name = _player_name_for_seat(locked, actor_seat)
+        round_state.status_message = f"{winner_name} permanently upgrades a hand card from Farm (+1)."
+    elif effect_type == "tower_discard":
+        scoring["next_round_start_seat"] = _other_seat(actor_seat)
+        winner_row = EstatesPlayerState.objects.select_for_update().filter(game=locked, seat_index=actor_seat).first()
+        if winner_row is None:
+            raise ValueError("Missing player state.")
+        winner_name = _player_name_for_seat(locked, actor_seat)
+        hand = list(winner_row.hand or [])
+        if hand:
+            if not move.target_card_id:
+                raise ValueError("Target hand card is required.")
+            if not _discard_hand_card(winner_row, card_id=move.target_card_id):
+                raise ValueError("Target hand card not found.")
+        round_state.status_message = (
+            f"{winner_name} discards from hand (Tower) and will go second next round."
+        )
+    else:
+        raise ValueError("Unsupported choice effect.")
+
+    winners_by_zone = _recompute_zone_winners(round_state.placements_by_zone or {})
+    zone_index = coerce_int(scoring.get("zone_index"), 0)
+    scoring["zone_index"] = zone_index + 1
+    scoring["awaiting_choice"] = None
+    scoring["waiting_until_ms"] = _now_ms() + SCORING_STEP_DELAY_MS
+    payload["zone_winners"] = winners_by_zone
+    payload["scoring"] = scoring
+    round_state.pending_payload = payload
+    round_state.pending_action = "resolve_scoring"
+    round_state.pending_actor_seat = None
+    round_state.phase_started_at = timezone.now()
+    round_state.save(
+        update_fields=[
+            "placements_by_zone",
+            "pending_payload",
+            "pending_action",
+            "pending_actor_seat",
+            "status_message",
+            "phase_started_at",
+            "updated_at",
+        ]
+    )
+
+
+def _try_run_computer_step(*, game_id: str) -> bool:
+    with transaction.atomic():
+        locked = EstatesGame.objects.select_for_update().get(pk=game_id)
+        if not locked.is_solo or locked.status != EstatesGame.Status.ACTIVE:
+            return False
+        round_state = EstatesRoundState.objects.select_for_update().get(game=locked)
+        if round_state.is_paused:
+            return False
+        if round_state.pending_actor_seat != COMPUTER_SEAT_INDEX:
+            return False
+        if not _computer_action_due(round_state):
+            return False
+
+        player_rows = {
+            row.seat_index: row
+            for row in EstatesPlayerState.objects.select_for_update().filter(game=locked).order_by("seat_index")
+        }
+        computer_row = player_rows.get(COMPUTER_SEAT_INDEX)
+        human_row = player_rows.get(HUMAN_SEAT_INDEX)
+        if computer_row is None or human_row is None:
+            return False
+
+        payload = dict(round_state.pending_payload or {})
+        scoring = dict(payload.get("scoring") or {})
+        awaiting = scoring.get("awaiting_choice")
+        if isinstance(awaiting, dict):
+            awaiting = dict(awaiting)
+        else:
+            awaiting = None
+
+        ranked = rank_computer_moves(
+            phase=round_state.phase,
+            pending_action=round_state.pending_action,
+            awaiting_choice=awaiting,
+            computer_hand=list(computer_row.hand or []),
+            placements=dict(round_state.placements_by_zone or {}),
+            computer_seat=COMPUTER_SEAT_INDEX,
+            opponent_seat=HUMAN_SEAT_INDEX,
+            computer_score=int(computer_row.score or 0),
+            opponent_score=int(human_row.score or 0),
+            victory_score=int(locked.victory_score or VICTORY_SCORE),
+            persona=locked.computer_persona or "throne_rush",
+            difficulty=locked.computer_difficulty or "normal",
+        )
+        if not ranked:
+            _clear_computer_schedule(round_state)
+            round_state.save(update_fields=["pending_computer_action_at", "updated_at"])
+            return False
+
+        for move in ranked:
+            try:
+                if isinstance(move, PlacementMove):
+                    _place_card_for_seat(
+                        locked=locked,
+                        round_state=round_state,
+                        seat_index=COMPUTER_SEAT_INDEX,
+                        zone=move.zone,
+                        card_id=move.card_id,
+                    )
+                elif isinstance(move, EffectMove):
+                    _apply_effect_for_seat(
+                        locked=locked,
+                        round_state=round_state,
+                        seat_index=COMPUTER_SEAT_INDEX,
+                        move=move,
+                    )
+                else:
+                    continue
+                break
+            except ValueError as exc:
+                logger.warning("computer move failed game=%s move=%s: %s", game_id, move, exc)
+                continue
+        else:
+            logger.error("computer exhausted moves game=%s", game_id)
+            return False
+
+        round_state.refresh_from_db()
+        locked.refresh_from_db()
+
+        if locked.status == EstatesGame.Status.COMPLETED:
+            _clear_computer_schedule(round_state)
+            round_state.save(update_fields=["pending_computer_action_at", "updated_at"])
+            return True
+
+        if round_state.phase == EstatesRoundState.Phase.SCORING and round_state.pending_action == "resolve_scoring":
+            _progress_scoring_if_ready(locked=locked, round_state=round_state)
+            round_state.refresh_from_db()
+
+        if round_state.pending_actor_seat == COMPUTER_SEAT_INDEX:
+            if round_state.phase == EstatesRoundState.Phase.PLACEMENT:
+                _schedule_computer_action(round_state, first_in_sequence=False)
+            elif round_state.pending_action == "choose_effect_target":
+                _schedule_computer_action(round_state, first_in_sequence=False)
+            round_state.save(update_fields=["pending_computer_action_at", "updated_at"])
+        else:
+            _clear_computer_schedule(round_state)
+            round_state.save(update_fields=["pending_computer_action_at", "updated_at"])
+
+        return True
+
+
 def _recompute_zone_winners(placements_by_zone: dict) -> dict[str, dict | None]:
     out: dict[str, dict | None] = {}
     for zone_name, payload in placements_by_zone.items():
@@ -453,21 +867,26 @@ def _start_next_round(locked: EstatesGame, round_state: EstatesRoundState) -> No
     round_state.pending_payload = {}
     round_state.status_message = f"Waiting for {next_name} to play a card."
     round_state.phase_started_at = timezone.now()
-    round_state.save(
-        update_fields=[
-            "round_number",
-            "phase",
-            "turn_player_seat",
-            "actions_taken_by_seat",
-            "placements_by_zone",
-            "pending_actor_seat",
-            "pending_action",
-            "pending_payload",
-            "status_message",
-            "phase_started_at",
-            "updated_at",
-        ]
-    )
+    update_fields = [
+        "round_number",
+        "phase",
+        "turn_player_seat",
+        "actions_taken_by_seat",
+        "placements_by_zone",
+        "pending_actor_seat",
+        "pending_action",
+        "pending_payload",
+        "status_message",
+        "phase_started_at",
+        "updated_at",
+    ]
+    if locked.is_solo and next_start == COMPUTER_SEAT_INDEX:
+        _schedule_computer_action(round_state, first_in_sequence=True)
+        update_fields.append("pending_computer_action_at")
+    else:
+        _clear_computer_schedule(round_state)
+        update_fields.append("pending_computer_action_at")
+    round_state.save(update_fields=update_fields)
 
 
 def _zones_scored_before(zone_name: str) -> frozenset[str]:
@@ -557,7 +976,30 @@ def _progress_scoring_if_ready(*, locked: EstatesGame, round_state: EstatesRound
         round_state.pending_action = "choose_effect_target"
         round_state.status_message = f"Waiting for {winner_name} to choose a card for Gate (-1)."
         round_state.phase_started_at = timezone.now()
-        round_state.save(update_fields=["pending_payload", "pending_actor_seat", "pending_action", "status_message", "phase_started_at", "updated_at"])
+        if locked.is_solo and winner_seat == COMPUTER_SEAT_INDEX:
+            _schedule_computer_action(round_state, first_in_sequence=False)
+            round_state.save(
+                update_fields=[
+                    "pending_payload",
+                    "pending_actor_seat",
+                    "pending_action",
+                    "status_message",
+                    "phase_started_at",
+                    "pending_computer_action_at",
+                    "updated_at",
+                ]
+            )
+        else:
+            round_state.save(
+                update_fields=[
+                    "pending_payload",
+                    "pending_actor_seat",
+                    "pending_action",
+                    "status_message",
+                    "phase_started_at",
+                    "updated_at",
+                ]
+            )
         return True
 
     if zone_name == "farm":
@@ -574,7 +1016,30 @@ def _progress_scoring_if_ready(*, locked: EstatesGame, round_state: EstatesRound
         round_state.pending_action = "choose_effect_target"
         round_state.status_message = f"Waiting for {winner_name} to permanently upgrade a hand card from Farm (+1)."
         round_state.phase_started_at = timezone.now()
-        round_state.save(update_fields=["pending_payload", "pending_actor_seat", "pending_action", "status_message", "phase_started_at", "updated_at"])
+        if locked.is_solo and winner_seat == COMPUTER_SEAT_INDEX:
+            _schedule_computer_action(round_state, first_in_sequence=False)
+            round_state.save(
+                update_fields=[
+                    "pending_payload",
+                    "pending_actor_seat",
+                    "pending_action",
+                    "status_message",
+                    "phase_started_at",
+                    "pending_computer_action_at",
+                    "updated_at",
+                ]
+            )
+        else:
+            round_state.save(
+                update_fields=[
+                    "pending_payload",
+                    "pending_actor_seat",
+                    "pending_action",
+                    "status_message",
+                    "phase_started_at",
+                    "updated_at",
+                ]
+            )
         return True
 
     if zone_name == "road":
@@ -591,7 +1056,7 @@ def _progress_scoring_if_ready(*, locked: EstatesGame, round_state: EstatesRound
 
     if zone_name == "tower":
         scoring["awaiting_choice"] = {
-            "type": "tower_start_choice",
+            "type": "tower_discard",
             "source_zone": zone_name,
             "actor_seat": winner_seat,
         }
@@ -601,9 +1066,34 @@ def _progress_scoring_if_ready(*, locked: EstatesGame, round_state: EstatesRound
         round_state.pending_payload = payload
         round_state.pending_actor_seat = winner_seat
         round_state.pending_action = "choose_effect_target"
-        round_state.status_message = f"Waiting for {winner_name} to choose who plays first next round."
+        round_state.status_message = (
+            f"Waiting for {winner_name} to choose a hand card to discard (Tower)."
+        )
         round_state.phase_started_at = timezone.now()
-        round_state.save(update_fields=["pending_payload", "pending_actor_seat", "pending_action", "status_message", "phase_started_at", "updated_at"])
+        if locked.is_solo and winner_seat == COMPUTER_SEAT_INDEX:
+            _schedule_computer_action(round_state, first_in_sequence=False)
+            round_state.save(
+                update_fields=[
+                    "pending_payload",
+                    "pending_actor_seat",
+                    "pending_action",
+                    "status_message",
+                    "phase_started_at",
+                    "pending_computer_action_at",
+                    "updated_at",
+                ]
+            )
+        else:
+            round_state.save(
+                update_fields=[
+                    "pending_payload",
+                    "pending_actor_seat",
+                    "pending_action",
+                    "status_message",
+                    "phase_started_at",
+                    "updated_at",
+                ]
+            )
         return True
 
     if zone_name == "throne":
@@ -659,6 +1149,11 @@ def lobbies_collection(request):
     _prune_stale_lobbies()
 
     if request.method == "POST":
+        if _user_has_open_estates_game(request.user.id):
+            return Response(
+                {"detail": "Finish or leave your current Estates game before starting another."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         serializer = LobbyCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         victory_score = serializer.validated_data.get("victory_score", VICTORY_SCORE)
@@ -666,7 +1161,7 @@ def lobbies_collection(request):
         game = _game_queryset().get(pk=game.pk)
         notify_estates_game(str(game.pk))
         notify_estates_lobbies()
-        return Response(serialize_estates_game_state(game), status=status.HTTP_201_CREATED)
+        return Response(_serialize_for_request(game, request), status=status.HTTP_201_CREATED)
 
     rows = (
         _game_queryset()
@@ -677,7 +1172,83 @@ def lobbies_collection(request):
         .exclude(player_1_id=request.user.id)
         .order_by("-created_at")[:50]
     )
-    return Response([serialize_estates_game_state(game) for game in rows], status=status.HTTP_200_OK)
+    return Response(
+        [serialize_estates_game_state(game, requesting_user_id=request.user.id) for game in rows],
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated, IsApprovedUser])
+def lobby_solo(request):
+    _prune_stale_lobbies()
+    if is_computer_user(request.user):
+        return Response({"detail": "Computer account cannot start solo games."}, status=status.HTTP_403_FORBIDDEN)
+    if _user_has_open_estates_game(request.user.id):
+        return Response(
+            {"detail": "Finish or leave your current Estates game before starting another."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    serializer = SoloLobbyCreateSerializer(data=request.data if isinstance(request.data, dict) else {})
+    serializer.is_valid(raise_exception=True)
+    difficulty = serializer.validated_data["difficulty"]
+    computer_user = get_computer_user()
+    persona = pick_random_persona()
+
+    with transaction.atomic():
+        game = EstatesGame.objects.create(
+            player_1=request.user,
+            player_2=computer_user,
+            status=EstatesGame.Status.LOBBY,
+            round=1,
+            is_solo=True,
+            computer_difficulty=difficulty,
+            computer_persona=persona,
+            victory_score=SOLO_VICTORY_SCORE,
+        )
+        EstatesPlayerState.objects.create(
+            game=game,
+            user=request.user,
+            seat_index=HUMAN_SEAT_INDEX,
+            deck=[],
+            hand=[],
+            discard=[],
+            draw_bonus=0,
+            is_starting_player=False,
+            score=0,
+        )
+        EstatesPlayerState.objects.create(
+            game=game,
+            user=computer_user,
+            seat_index=COMPUTER_SEAT_INDEX,
+            deck=[],
+            hand=[],
+            discard=[],
+            draw_bonus=0,
+            is_starting_player=False,
+            score=0,
+        )
+        EstatesRoundState.objects.create(
+            game=game,
+            round_number=1,
+            phase=EstatesRoundState.Phase.LOBBY,
+            turn_player_seat=None,
+            actions_taken_by_seat={"1": 0, "2": 0},
+            placements_by_zone={},
+            pending_actor_seat=None,
+            pending_action="",
+            pending_payload={},
+            status_message="Starting game against Computer.",
+        )
+        locked = EstatesGame.objects.select_for_update().get(pk=game.pk)
+        round_state = EstatesRoundState.objects.select_for_update().get(game=locked)
+        _start_active_game(locked=locked, round_state=round_state, solo_presence=True)
+
+    game = _game_queryset().get(pk=game.pk)
+    notify_estates_game(str(game.pk))
+    notify_estates_lobbies()
+    return Response(_serialize_for_request(game, request), status=status.HTTP_201_CREATED)
 
 
 @api_view(["POST"])
@@ -699,7 +1270,13 @@ def lobby_join(request, game_id):
         return Response({"detail": "Lobby is already full."}, status=status.HTTP_400_BAD_REQUEST)
 
     if game.player_2_id == request.user.id:
-        return Response(serialize_estates_game_state(game), status=status.HTTP_200_OK)
+        return Response(_serialize_for_request(game, request), status=status.HTTP_200_OK)
+
+    if _user_has_open_estates_game(request.user.id):
+        return Response(
+            {"detail": "Finish or leave your current Estates game before joining another."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     with transaction.atomic():
         locked = EstatesGame.objects.select_for_update().get(pk=game.pk)
@@ -732,7 +1309,7 @@ def lobby_join(request, game_id):
     refreshed = _game_queryset().get(pk=game.pk)
     notify_estates_game(str(game.pk))
     notify_estates_lobbies()
-    return Response(serialize_estates_game_state(refreshed), status=status.HTTP_200_OK)
+    return Response(_serialize_for_request(refreshed, request), status=status.HTTP_200_OK)
 
 
 @api_view(["POST"])
@@ -772,17 +1349,22 @@ def lobby_leave(request, game_id):
     refreshed = _game_queryset().get(pk=game.pk)
     notify_estates_game(str(game.pk))
     notify_estates_lobbies()
-    return Response(serialize_estates_game_state(refreshed), status=status.HTTP_200_OK)
+    return Response(_serialize_for_request(refreshed, request), status=status.HTTP_200_OK)
 
 
 def _serialize_estates_my_game_row(game: EstatesGame, user_id: int) -> dict:
     player_names = [_user_display_name(game.player_1)]
-    if game.player_2_id:
+    if game.is_solo:
+        player_names.append("Computer")
+    elif game.player_2_id:
         player_names.append(_user_display_name(game.player_2))
 
     winner_display_name = None
     if game.winner_user_id:
-        winner_display_name = _user_display_name(game.winner_user)
+        if game.is_solo and game.winner_user_id == get_computer_user().id:
+            winner_display_name = "Computer"
+        else:
+            winner_display_name = _user_display_name(game.winner_user)
 
     my_score: int | None = None
     opponent_score: int | None = None
@@ -798,6 +1380,8 @@ def _serialize_estates_my_game_row(game: EstatesGame, user_id: int) -> dict:
         "created_at": game.created_at.isoformat(),
         "updated_at": game.updated_at.isoformat(),
         "is_owner": game.player_1_id == user_id,
+        "is_solo": game.is_solo,
+        "computer_difficulty": (game.computer_difficulty or None) if game.is_solo else None,
         "player_names": player_names,
         "winner_display_name": winner_display_name,
         "round": game.round,
@@ -868,17 +1452,20 @@ def games_mine(request):
         return Response(status=status.HTTP_204_NO_CONTENT)
     if game.status == EstatesGame.Status.ACTIVE:
         progressed = False
+        computer_step = False
         try:
             with transaction.atomic():
                 locked = EstatesGame.objects.select_for_update().get(pk=game.pk)
                 round_state = EstatesRoundState.objects.select_for_update().get(game=locked)
+                if locked.is_solo:
+                    computer_step = _try_run_computer_step(game_id=str(game.pk))
                 progressed = _progress_scoring_if_ready(locked=locked, round_state=round_state)
         except EstatesRoundState.DoesNotExist:
             pass
         game = _game_queryset().get(pk=game.pk)
-        if progressed:
+        if progressed or computer_step:
             notify_estates_game(str(game.pk))
-    return Response(serialize_estates_game_state(game), status=status.HTTP_200_OK)
+    return Response(serialize_estates_game_state(game, requesting_user_id=request.user.id), status=status.HTTP_200_OK)
 
 
 @api_view(["PATCH", "DELETE"])
@@ -904,7 +1491,7 @@ def lobby_detail(request, game_id):
         refreshed = _game_queryset().get(pk=game.pk)
         notify_estates_game(str(game.pk))
         notify_estates_lobbies()
-        return Response(serialize_estates_game_state(refreshed), status=status.HTTP_200_OK)
+        return Response(_serialize_for_request(refreshed, request), status=status.HTTP_200_OK)
 
     # DELETE
     if game.player_1_id != request.user.id:
@@ -940,79 +1527,22 @@ def lobby_confirm(request, game_id):
             return Response({"detail": "Game already started."}, status=status.HTTP_400_BAD_REQUEST)
         if locked.player_2_id is None:
             return Response({"detail": "Waiting for a second player."}, status=status.HTTP_400_BAD_REQUEST)
-        now = timezone.now()
-        locked.status = EstatesGame.Status.ACTIVE
-        locked.started_at = now
-        locked.round = 1
-        locked.save(update_fields=["status", "started_at", "round", "updated_at"])
-
-        starting_seat = random.choice((1, 2))
-        player_states = {
-            state.seat_index: state
-            for state in EstatesPlayerState.objects.select_for_update().filter(game=locked).order_by("seat_index")
-        }
-        for idx in (1, 2):
-            state = player_states.get(idx)
-            if state is None:
-                return Response({"detail": "Missing player state rows."}, status=status.HTTP_400_BAD_REQUEST)
-            opening = create_opening_hand_state(hand_size=5)
-            state.deck = opening.deck
-            state.hand = opening.hand
-            state.discard = opening.discard
-            state.draw_bonus = 0
-            state.is_starting_player = idx == starting_seat
-            state.score = 0
-            state.save(
-                update_fields=[
-                    "deck",
-                    "hand",
-                    "discard",
-                    "draw_bonus",
-                    "is_starting_player",
-                    "score",
-                    "updated_at",
-                ]
-            )
-
-        round_state.round_number = 1
-        round_state.phase = EstatesRoundState.Phase.PLACEMENT
-        round_state.turn_player_seat = starting_seat
-        round_state.actions_taken_by_seat = {"1": 0, "2": 0}
-        round_state.placements_by_zone = initial_placements_by_zone()
-        round_state.pending_actor_seat = starting_seat
-        round_state.pending_action = "play_card"
-        round_state.pending_payload = {}
-        round_state.phase_started_at = now
-        initialize_presence_for_active_game(round_state)
-        round_state.save(
-            update_fields=[
-                "round_number",
-                "phase",
-                "turn_player_seat",
-                "actions_taken_by_seat",
-                "placements_by_zone",
-                "pending_actor_seat",
-                "pending_action",
-                "pending_payload",
-                "phase_started_at",
-                "status_message",
-                "connections_seat_1",
-                "connections_seat_2",
-                "is_paused",
-                "disconnected_seat",
-                "updated_at",
-            ]
-        )
+        try:
+            _start_active_game(locked=locked, round_state=round_state, solo_presence=False)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
     refreshed = _game_queryset().get(pk=game.pk)
     notify_estates_game(str(game.pk))
     notify_estates_lobbies()
-    return Response(serialize_estates_game_state(refreshed), status=status.HTTP_200_OK)
+    return Response(_serialize_for_request(refreshed, request), status=status.HTTP_200_OK)
 
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsApprovedUser])
 def game_place_card(request, game_id):
+    if is_computer_user(request.user):
+        return Response({"detail": "Computer cannot act via the API."}, status=status.HTTP_403_FORBIDDEN)
     game = get_object_or_404(_game_queryset(), pk=game_id)
     seat_index = _seat_for_user(game, user_id=request.user.id)
     if seat_index is None:
@@ -1043,35 +1573,29 @@ def game_place_card(request, game_id):
         if taken >= 3:
             return Response({"detail": "You have already confirmed 3 actions this round."}, status=status.HTTP_400_BAD_REQUEST)
 
-        player_state = EstatesPlayerState.objects.select_for_update().filter(game=locked, seat_index=seat_index).first()
-        if player_state is None:
-            return Response({"detail": "Missing player state."}, status=status.HTTP_400_BAD_REQUEST)
-        _idx, card = _find_card_in_hand(player_state, card_id=card_id)
-        if card is None:
-            return Response({"detail": "Card not found in your hand."}, status=status.HTTP_400_BAD_REQUEST)
-        card_suit = normalize_card_suit(card)
-        if not is_suit_allowed_in_zone(zone=zone, suit=card_suit):
-            return Response({"detail": "That card suit is not allowed in this zone."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            _place_card_for_seat(
+                locked=locked,
+                round_state=round_state,
+                seat_index=seat_index,
+                zone=zone,
+                card_id=card_id,
+            )
+        except ValueError as exc:
+            detail = str(exc)
+            if "not found" in detail.lower():
+                return Response({"detail": "Card not found in your hand."}, status=status.HTTP_400_BAD_REQUEST)
+            if "suit" in detail.lower():
+                return Response({"detail": "That card suit is not allowed in this zone."}, status=status.HTTP_400_BAD_REQUEST)
+            if "Already confirmed" in detail:
+                return Response({"detail": "You already confirmed a card in that zone this round."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
 
-        placements = _normalize_placements(dict(round_state.placements_by_zone or {}))
-        seat_key = str(seat_index)
-        existing = placements[zone].get(seat_key)
-        if isinstance(existing, dict) and bool(existing.get("confirmed")):
-            return Response({"detail": "You already confirmed a card in that zone this round."}, status=status.HTTP_400_BAD_REQUEST)
-
-        _commit_card_placement(
-            locked=locked,
-            round_state=round_state,
-            player_state=player_state,
-            seat_index=seat_index,
-            zone=zone,
-            card=card,
-            placements=placements,
-        )
+        _maybe_schedule_computer_after_human_action(locked=locked, round_state=round_state)
 
     refreshed = _game_queryset().get(pk=game.pk)
     notify_estates_game(str(game.pk))
-    return Response(serialize_estates_game_state(refreshed), status=status.HTTP_200_OK)
+    return Response(_serialize_for_request(refreshed, request), status=status.HTTP_200_OK)
 
 
 @api_view(["POST"])
@@ -1116,7 +1640,7 @@ def game_reorder_hand(request, game_id):
 
     refreshed = _game_queryset().get(pk=game.pk)
     notify_estates_game(str(game.pk))
-    return Response(serialize_estates_game_state(refreshed), status=status.HTTP_200_OK)
+    return Response(_serialize_for_request(refreshed, request), status=status.HTTP_200_OK)
 
 
 @api_view(["POST"])
@@ -1150,7 +1674,7 @@ def game_clear_staged_card(request, game_id):
 
     refreshed = _game_queryset().get(pk=game.pk)
     notify_estates_game(str(game.pk))
-    return Response(serialize_estates_game_state(refreshed), status=status.HTTP_200_OK)
+    return Response(_serialize_for_request(refreshed, request), status=status.HTTP_200_OK)
 
 
 @api_view(["POST"])
@@ -1204,12 +1728,14 @@ def game_confirm_card(request, game_id):
 
     refreshed = _game_queryset().get(pk=game.pk)
     notify_estates_game(str(game.pk))
-    return Response(serialize_estates_game_state(refreshed), status=status.HTTP_200_OK)
+    return Response(_serialize_for_request(refreshed, request), status=status.HTTP_200_OK)
 
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated, IsApprovedUser])
 def game_choose_effect_target(request, game_id):
+    if is_computer_user(request.user):
+        return Response({"detail": "Computer cannot act via the API."}, status=status.HTTP_403_FORBIDDEN)
     game = get_object_or_404(_game_queryset(), pk=game_id)
     seat_index = _seat_for_user(game, user_id=request.user.id)
     if seat_index is None:
@@ -1278,15 +1804,29 @@ def game_choose_effect_target(request, game_id):
             winner_name = _player_name_for_seat(locked, actor_seat)
             zone_label = "Farm" if effect_type == "farm_upgrade" else "Road"
             round_state.status_message = f"{winner_name} permanently upgrades a hand card from {zone_label} (+1)."
-        elif effect_type == "tower_start_choice":
-            if "go_first" not in body:
-                return Response({"detail": "go_first is required."}, status=status.HTTP_400_BAD_REQUEST)
-            go_first = bool(body.get("go_first"))
-            next_seat = actor_seat if go_first else _other_seat(actor_seat)
-            scoring["next_round_start_seat"] = next_seat
+        elif effect_type == "tower_discard":
+            scoring["next_round_start_seat"] = _other_seat(actor_seat)
+            winner_row = EstatesPlayerState.objects.select_for_update().filter(
+                game=locked, seat_index=actor_seat
+            ).first()
+            if winner_row is None:
+                return Response({"detail": "Missing player state."}, status=status.HTTP_400_BAD_REQUEST)
             winner_name = _player_name_for_seat(locked, actor_seat)
-            order_label = "first" if go_first else "second"
-            round_state.status_message = f"{winner_name} will go {order_label} next round."
+            hand = list(winner_row.hand or [])
+            if hand:
+                if not target_card_id:
+                    return Response(
+                        {"detail": "target_card_id is required."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if not _discard_hand_card(winner_row, card_id=target_card_id):
+                    return Response(
+                        {"detail": "Target hand card not found."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            round_state.status_message = (
+                f"{winner_name} discards from hand (Tower) and will go second next round."
+            )
         else:
             return Response({"detail": "Unsupported choice effect."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -1315,7 +1855,7 @@ def game_choose_effect_target(request, game_id):
 
     refreshed = _game_queryset().get(pk=game.pk)
     notify_estates_game(str(game.pk))
-    return Response(serialize_estates_game_state(refreshed), status=status.HTTP_200_OK)
+    return Response(_serialize_for_request(refreshed, request), status=status.HTTP_200_OK)
 
 
 @api_view(["POST"])
@@ -1387,5 +1927,5 @@ def game_concede(request, game_id):
 
     refreshed = _game_queryset().get(pk=game.pk)
     notify_estates_game(str(game.pk))
-    return Response(serialize_estates_game_state(refreshed), status=status.HTTP_200_OK)
+    return Response(_serialize_for_request(refreshed, request), status=status.HTTP_200_OK)
 

@@ -33,6 +33,7 @@ import {
   type ZoneName,
 } from "./estatesDropRules";
 import { Card, DraggableHandCard, DragPreviewCard } from "./play/Card";
+import { ESTATES_ACTIONS_PER_PLAYER } from "./play/ActionSockets";
 import { HAND_RETURN_DROP_ID, PlayerBand } from "./play/PlayerBand";
 import { PlayCanvas } from "./play/PlayCanvas";
 import { RealmGrid } from "./play/RealmGrid";
@@ -240,6 +241,17 @@ export default function EstatesPlayView({
     !isPaused &&
     activeGame.round_state?.phase === "placement" &&
     activeGame.round_state.pending_actor_seat !== mySeat;
+
+  const actionsTakenBySeat = activeGame.round_state?.actions_taken_by_seat;
+  const myActionsTaken = Math.min(
+    ESTATES_ACTIONS_PER_PLAYER,
+    Math.max(0, Number(actionsTakenBySeat?.[String(mySeat)] ?? 0)),
+  );
+  const opponentSeat = mySeat === 1 ? 2 : 1;
+  const opponentActionsTaken = Math.min(
+    ESTATES_ACTIONS_PER_PLAYER,
+    Math.max(0, Number(actionsTakenBySeat?.[String(opponentSeat)] ?? 0)),
+  );
 
   const canReorderHand = Boolean(
     !isPaused &&
@@ -457,9 +469,18 @@ export default function EstatesPlayView({
                 active={isOpponentTurn}
                 displayName={opponentName}
                 avatarUrl={opponentAvatar}
-                deckCount={opponentPlayerState?.deck.length ?? 0}
+                deckCount={
+                  opponentPlayerState?.deck_count ??
+                  opponentPlayerState?.deck.length ??
+                  0
+                }
                 deckDrawBonus={opponentPlayerState?.draw_bonus ?? 0}
-                discardCount={opponentPlayerState?.discard.length ?? 0}
+                actionsTaken={opponentActionsTaken}
+                discardCount={
+                  opponentPlayerState?.discard_count ??
+                  opponentPlayerState?.discard.length ??
+                  0
+                }
                 onDiscardClick={() =>
                   openDiscardModal(
                     `${opponentName}'s spent cards`,
@@ -558,6 +579,7 @@ export default function EstatesPlayView({
                 avatarUrl={undefined}
                 deckCount={myPlayerState.deck.length}
                 deckDrawBonus={myPlayerState.draw_bonus}
+                actionsTaken={myActionsTaken}
                 discardCount={myPlayerState.discard.length}
                 onDiscardClick={() =>
                   openDiscardModal(

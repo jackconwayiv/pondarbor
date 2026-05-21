@@ -34,6 +34,9 @@ export function personalizeEstatesStatusMessage(
   if (rest.startsWith("permanently upgrades ")) {
     return `You permanently upgraded ${rest.slice(21)}`;
   }
+  if (rest.startsWith("discards ")) {
+    return `You discard ${rest.slice(9)}`;
+  }
   if (rest.startsWith("will go ")) {
     return `You ${rest}`;
   }

@@ -6,6 +6,7 @@ import {
   Flex,
   Heading,
   HStack,
+  SimpleGrid,
   Stack,
   Text,
 } from "@chakra-ui/react";
@@ -13,8 +14,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate, useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
+import { AppModal } from "../components/AppModal";
 import {
-  PanelListRowSkeleton,
   PanelMessageSlot,
   PanelPageShell,
   SessionLoadingCard,
@@ -25,12 +26,14 @@ import {
   cancelEstatesLobby,
   confirmEstatesLobby,
   createEstatesLobby,
+  createSoloEstatesGame,
   fetchMyEstatesGame,
   fetchMyEstatesGamesList,
   leaveEstatesLobby,
   joinEstatesLobby,
   listOpenEstatesLobbies,
   type EstatesGameState,
+  type EstatesComputerDifficulty,
   type EstatesMyGameRow,
   type EstatesMyGamesResponse,
 } from "./api";
@@ -62,11 +65,52 @@ function opponentNameForMyGameRow(row: EstatesMyGameRow): string | null {
   return hostName?.trim() || null;
 }
 
+const MY_GAMES_PAGE_SIZE = 10;
+
+function computerDifficultyLabel(
+  difficulty: EstatesMyGameRow["computer_difficulty"],
+): string | null {
+  if (!difficulty) return null;
+  return DIFFICULTY_OPTIONS.find((opt) => opt.value === difficulty)?.label ?? null;
+}
+
+function computerOpponentName(
+  difficulty: EstatesMyGameRow["computer_difficulty"],
+): string {
+  const label = computerDifficultyLabel(difficulty);
+  return label ? `Computer (${label})` : "Computer";
+}
+
 function myGameOpponentLabel(row: EstatesMyGameRow): string {
+  if (row.is_solo) {
+    return `vs. ${computerOpponentName(row.computer_difficulty)}`;
+  }
   const opponent = opponentNameForMyGameRow(row);
   if (opponent) return `vs. ${opponent}`;
   return "Waiting for opponent";
 }
+
+const DIFFICULTY_OPTIONS: { value: EstatesComputerDifficulty; label: string }[] = [
+  { value: "easy", label: "Easy" },
+  { value: "normal", label: "Normal" },
+  { value: "hard", label: "Hard" },
+];
+
+const ESTATES_COMPUTER_CARD_PROPS = {
+  ...PANEL_ENTRY_CARD_PROPS,
+  bg: "sky.subtle",
+  borderWidth: "1px",
+  borderColor: "sky.border",
+  h: "full",
+} as const;
+
+const ESTATES_LOBBY_CARD_PROPS = {
+  ...PANEL_ENTRY_CARD_PROPS,
+  bg: "lilypad.subtle",
+  borderWidth: "1px",
+  borderColor: "lilypad.border",
+  h: "full",
+} as const;
 
 export default function EstatesPage() {
   const navigate = useNavigate();
@@ -86,6 +130,9 @@ export default function EstatesPage() {
   const [myGamesOpen, setMyGamesOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [soloDifficulty, setSoloDifficulty] = useState<EstatesComputerDifficulty>("normal");
+  const [myGamesPage, setMyGamesPage] = useState(0);
+  const [howToPlayOpen, setHowToPlayOpen] = useState(false);
 
   const myUserId = sessionUser?.user.id;
 
@@ -110,10 +157,27 @@ export default function EstatesPage() {
     }
   }, [getApiAccessToken, isAuthenticated]);
 
-  const myGamesTotalCount = useMemo(() => {
-    if (!myGames) return 0;
-    return myGames.open_lobby.length + myGames.in_progress.length + myGames.completed.length;
+  const myGamesAllRows = useMemo(() => {
+    if (!myGames) return [];
+    return [...myGames.open_lobby, ...myGames.in_progress, ...myGames.completed].sort(
+      (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
+    );
   }, [myGames]);
+
+  const myGamesTotalCount = myGamesAllRows.length;
+
+  const myGamesTotalPages = Math.max(1, Math.ceil(myGamesTotalCount / MY_GAMES_PAGE_SIZE));
+
+  const myGamesSafePage = Math.min(myGamesPage, myGamesTotalPages - 1);
+
+  const myGamesPageRows = useMemo(() => {
+    const start = myGamesSafePage * MY_GAMES_PAGE_SIZE;
+    return myGamesAllRows.slice(start, start + MY_GAMES_PAGE_SIZE);
+  }, [myGamesAllRows, myGamesSafePage]);
+
+  useEffect(() => {
+    setMyGamesPage((p) => Math.min(p, Math.max(0, myGamesTotalPages - 1)));
+  }, [myGamesTotalCount, myGamesTotalPages]);
 
   useEffect(() => {
     void loadLobbyData();
@@ -149,6 +213,22 @@ export default function EstatesPage() {
       await loadLobbyData();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not create lobby.");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const onPlayVsComputer = async () => {
+    setBusyAction("solo");
+    setError(null);
+    try {
+      const token = await getApiAccessToken();
+      const game = await createSoloEstatesGame(token, soloDifficulty);
+      setMyGame(game);
+      await loadLobbyData();
+      navigate(`/estates/play/${game.id}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not start solo game.");
     } finally {
       setBusyAction(null);
     }
@@ -288,7 +368,6 @@ export default function EstatesPage() {
             <PondButton
               type="button"
               size="sm"
-              variant="outline"
               colorPalette="lilypad"
               disabled={row.id !== myGame?.id}
               onClick={() => void loadLobbyData()}
@@ -311,19 +390,49 @@ export default function EstatesPage() {
     );
   }
 
-  function renderMyGamesSection(title: string, rows: EstatesMyGameRow[]) {
-    if (rows.length === 0) return null;
-    return (
-      <Stack key={title} gap="2" align="stretch">
-        <Text fontWeight="bold" fontSize={APP_TEXT_SIZES.body}>
-          {title}
-        </Text>
-        <Stack gap="0" align="stretch">
-          {rows.map((row) => renderMyGameRow(row))}
+  const myGamesPagination =
+    myGamesTotalCount > MY_GAMES_PAGE_SIZE ? (
+      <Box
+        bg="bg.subtle"
+        borderWidth="1px"
+        borderColor="border"
+        borderRadius="md"
+        p="3"
+      >
+        <Stack gap="2">
+          <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+            Showing {myGamesSafePage * MY_GAMES_PAGE_SIZE + 1}–
+            {Math.min((myGamesSafePage + 1) * MY_GAMES_PAGE_SIZE, myGamesTotalCount)} of{" "}
+            {myGamesTotalCount}
+          </Text>
+          <HStack gap="3" flexWrap="wrap" align="center">
+            <PondButton
+              type="button"
+              size="sm"
+              variant="outline"
+              colorPalette="sky"
+              onClick={() => setMyGamesPage(myGamesSafePage - 1)}
+              disabled={myGamesSafePage === 0}
+            >
+              Previous
+            </PondButton>
+            <Text fontSize={APP_TEXT_SIZES.helper}>
+              Page {myGamesSafePage + 1} of {myGamesTotalPages}
+            </Text>
+            <PondButton
+              type="button"
+              size="sm"
+              variant="outline"
+              colorPalette="sky"
+              onClick={() => setMyGamesPage(myGamesSafePage + 1)}
+              disabled={myGamesSafePage >= myGamesTotalPages - 1}
+            >
+              Next
+            </PondButton>
+          </HStack>
         </Stack>
-      </Stack>
-    );
-  }
+      </Box>
+    ) : null;
 
   if (isLoading) {
     return <SessionLoadingCard />;
@@ -357,27 +466,38 @@ export default function EstatesPage() {
     <PanelPageShell>
       <Stack gap={{ base: "3", md: "3" }} p={{ base: "2", md: "2" }}>
         <Box {...PANEL_ENTRY_CARD_PROPS}>
-          <Heading as="h1" size={{ base: "lg", md: "xl" }} mb="2">
-            Estates
-          </Heading>
+          <HStack align="flex-start" justify="space-between" gap="3" w="full" flexWrap="wrap" mb="2">
+            <Heading as="h1" size={{ base: "lg", md: "xl" }} mb="0">
+              <HStack as="span" display="inline-flex" gap="2" alignItems="center">
+                <Text as="span" aria-hidden="true">
+                  🏰
+                </Text>
+                <Text as="span">Estates</Text>
+              </HStack>
+            </Heading>
+            <PondButton
+              type="button"
+              size="sm"
+              variant="outline"
+              colorPalette="sky"
+              flexShrink={0}
+              alignSelf="flex-start"
+              onClick={() => setHowToPlayOpen(true)}
+            >
+              How to Play
+            </PondButton>
+          </HStack>
           <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall">
-            A head-to-head card duel. Create an open lobby, join an existing one, then confirm to deal opening
-            hands and begin round 1.
-          </Text>
-          <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.label} mt="4" mb="2">
-            {ESTATES_HOW_TO_PLAY_TITLE}
-          </Text>
-          <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall" whiteSpace="pre-line">
-            {ESTATES_HOW_TO_PLAY_BODY}
+            Estates is a custom card game designed and developed by Jack! It's a head-to-head card-placing duel. Start a solo game against the computer, or create an open lobby and invite a friend to face you!
           </Text>
         </Box>
 
         <PanelMessageSlot error={error} />
 
         {openLobbyGame ? (
-          <Box {...PANEL_ENTRY_CARD_PROPS}>
-            <Box borderWidth="1px" borderColor="border" borderRadius="md" bg="bg" p="3">
-              <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.label} mb="3">
+          <Box {...ESTATES_LOBBY_CARD_PROPS}>
+            <Stack gap="3" align="stretch">
+              <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.label}>
                 {amLobbyOwner ? "Your Lobby" : `${openLobbyGame.player_1.display_name}'s Lobby`}
               </Text>
               <HStack gap="2" align="stretch" flexWrap="nowrap">
@@ -394,7 +514,7 @@ export default function EstatesPage() {
                       borderColor="border"
                       borderRadius="md"
                       p="2"
-                      bg={seated ? "bg" : "bg.subtle"}
+                      bg="white"
                       opacity={seated ? 1 : 0.7}
                       gap="2"
                     >
@@ -425,8 +545,7 @@ export default function EstatesPage() {
                   );
                 })}
               </HStack>
-            </Box>
-            <HStack mt="1" gap="2" flexWrap="wrap">
+              <HStack gap="2" flexWrap="wrap" justify="center">
               {openLobbyGame.player_2_id ? (
                 <>
                 {amLobbyOwner ? (
@@ -439,7 +558,7 @@ export default function EstatesPage() {
                   </PondButton>
                 ) : (
                   <PondButton
-                    colorPalette="sky"
+                    colorPalette="lilypad"
                     variant="outline"
                     onClick={() => void onLeaveLobby(openLobbyGame.id)}
                     loading={busyAction === `leave-${openLobbyGame.id}`}
@@ -450,37 +569,23 @@ export default function EstatesPage() {
                 </>
               ) : amLobbyOwner ? (
                 <PondButton
-                  colorPalette="nautical"
-                  variant="outline"
+                  colorPalette="lilypad"
                   onClick={() => void onCancelLobby(openLobbyGame.id)}
                   loading={busyAction === `cancel-${openLobbyGame.id}`}
                 >
                   Cancel lobby
                 </PondButton>
               ) : null}
-            </HStack>
+              </HStack>
+            </Stack>
           </Box>
         ) : (
-          <Box {...PANEL_ENTRY_CARD_PROPS}>
-            <HStack justify="space-between" align="center" mb="3">
-              <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.label}>
+          <>
+          {openLobbies != null && openLobbies.length > 0 ? (
+            <Box {...PANEL_ENTRY_CARD_PROPS}>
+              <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.label} mb="3">
                 Open Lobbies
               </Text>
-              <PondButton
-                colorPalette="lilypad"
-                onClick={() => void onCreateLobby()}
-                loading={busyAction === "create"}
-              >
-                New Game
-              </PondButton>
-            </HStack>
-            {openLobbies === null ? (
-              <PanelListRowSkeleton rows={3} />
-            ) : openLobbies.length === 0 ? (
-              <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-                No open lobbies right now.
-              </Text>
-            ) : (
               <Stack gap="2">
                 {openLobbies.map((game) => {
                   const inGame = isUserInGame(game, myUserId);
@@ -510,8 +615,71 @@ export default function EstatesPage() {
                   );
                 })}
               </Stack>
-            )}
-          </Box>
+            </Box>
+          ) : null}
+          <SimpleGrid columns={{ base: 1, md: 2 }} gap="3" alignItems="stretch">
+            <Box {...ESTATES_COMPUTER_CARD_PROPS}>
+              <Stack align="center" textAlign="center" gap="3" w="full">
+                <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.label}>
+                  Play vs Computer
+                </Text>
+                <HStack
+                  gap="4"
+                  flexWrap="wrap"
+                  justify="center"
+                  role="radiogroup"
+                  aria-label="Computer difficulty"
+                >
+                  {DIFFICULTY_OPTIONS.map((opt) => (
+                    <label
+                      key={opt.value}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                        cursor: busyAction === "solo" ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="estates-solo-difficulty"
+                        value={opt.value}
+                        checked={soloDifficulty === opt.value}
+                        disabled={busyAction === "solo"}
+                        onChange={() => setSoloDifficulty(opt.value)}
+                      />
+                      <Text fontSize={APP_TEXT_SIZES.body}>{opt.label}</Text>
+                    </label>
+                  ))}
+                </HStack>
+                <PondButton
+                  colorPalette="sky"
+                  onClick={() => void onPlayVsComputer()}
+                  loading={busyAction === "solo"}
+                >
+                  Play vs Computer
+                </PondButton>
+              </Stack>
+            </Box>
+            <Box {...ESTATES_LOBBY_CARD_PROPS}>
+              <Stack align="center" textAlign="center" gap="3" w="full">
+                <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.label}>
+                  Play vs. Friend
+                </Text>
+                <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" lineHeight="tall" maxW="20rem">
+                  Host a lobby and invite a friend to join.
+                </Text>
+                <PondButton
+                  colorPalette="lilypad"
+                  onClick={() => void onCreateLobby()}
+                  loading={busyAction === "create"}
+                >
+                  New Game Lobby
+                </PondButton>
+              </Stack>
+            </Box>
+          </SimpleGrid>
+          </>
         )}
 
         {myGamesTotalCount >= 1 && !myGamesLoading && myGames ? (
@@ -558,11 +726,10 @@ export default function EstatesPage() {
                   <Text fontSize={APP_TEXT_SIZES.body} color="fg">
                     Resume an in-progress duel or return to a lobby you are hosting or joined.
                   </Text>
-                  <Stack gap="6" align="stretch">
-                    {renderMyGamesSection("Open lobby", myGames.open_lobby)}
-                    {renderMyGamesSection("In progress", myGames.in_progress)}
-                    {renderMyGamesSection("Completed", myGames.completed)}
+                  <Stack gap="0" align="stretch">
+                    {myGamesPageRows.map((row) => renderMyGameRow(row))}
                   </Stack>
+                  {myGamesPagination}
                 </Stack>
               </Collapsible.Content>
             </Collapsible.Root>
@@ -570,6 +737,17 @@ export default function EstatesPage() {
         ) : null}
 
       </Stack>
+
+      <AppModal
+        open={howToPlayOpen}
+        onOpenChange={setHowToPlayOpen}
+        title={ESTATES_HOW_TO_PLAY_TITLE}
+        size="lg"
+      >
+        <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall" whiteSpace="pre-line">
+          {ESTATES_HOW_TO_PLAY_BODY}
+        </Text>
+      </AppModal>
     </PanelPageShell>
   );
 }

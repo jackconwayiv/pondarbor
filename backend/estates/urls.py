@@ -4,6 +4,7 @@ from . import views
 
 urlpatterns = [
     path("lobbies/", views.lobbies_collection),
+    path("lobbies/solo/", views.lobby_solo),
     path("games/mine/", views.games_mine),
     path("games/mine/list/", views.list_my_games),
     path("games/<uuid:game_id>/actions/place-card/", views.game_place_card),

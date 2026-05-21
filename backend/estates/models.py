@@ -55,6 +55,8 @@ class EstatesGame(models.Model):
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.LOBBY)
     round = models.PositiveIntegerField(default=1)
     is_solo = models.BooleanField(default=False)
+    computer_difficulty = models.CharField(max_length=16, blank=True, default="")
+    computer_persona = models.CharField(max_length=32, blank=True, default="")
     victory_score = models.PositiveSmallIntegerField(default=VICTORY_SCORE)
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
@@ -123,6 +125,7 @@ class EstatesRoundState(models.Model):
     connections_seat_2 = models.PositiveSmallIntegerField(default=0)
     is_paused = models.BooleanField(default=False)
     disconnected_seat = models.PositiveSmallIntegerField(null=True, blank=True)
+    pending_computer_action_at = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
 

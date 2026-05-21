@@ -160,7 +160,14 @@ export function Card(props: CardProps) {
 
 function ScoringTargetButton({ target }: { target: CardScoringTarget }) {
   const negative = target.modifierLabel.startsWith("-");
-  const className = `estates-scoring-target${negative ? " estates-scoring-target--negative" : ""}`;
+  const discard = target.modifierLabel === "Discard";
+  const className = [
+    "estates-scoring-target",
+    negative ? "estates-scoring-target--negative" : null,
+    discard ? "estates-scoring-target--discard" : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
   const onClick = (e: MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     e.preventDefault();

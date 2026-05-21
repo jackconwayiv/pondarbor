@@ -497,7 +497,7 @@ export default function PeoplePage({
       ) : nonSelfCount === 0 ? (
         <PanelEmptyState
           title="Your family tree is ready to grow."
-          description="Walk through a quick setup for parents, siblings, and more—or add people one at a time."
+          description="Walk through a quick setup for parents, siblings, and more."
           actionLabel={readOnly ? undefined : "Set up tree"}
           onAction={readOnly ? undefined : () => openWizard(false)}
           actionColorPalette="lilypad"

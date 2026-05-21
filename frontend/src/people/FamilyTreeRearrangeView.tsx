@@ -50,9 +50,13 @@ function DraggablePersonCard({
       opacity={isDragging ? 0.4 : 1}
       cursor={disabled ? "default" : "grab"}
       touchAction="none"
+      w="100%"
+      h="100%"
       {...(disabled ? {} : { ...listeners, ...attributes })}
     >
-      {children}
+      <Box pointerEvents="none" w="100%" h="100%">
+        {children}
+      </Box>
     </Box>
   );
 }

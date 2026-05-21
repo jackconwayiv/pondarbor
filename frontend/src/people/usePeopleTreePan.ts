@@ -14,10 +14,16 @@ const DRAG_THRESHOLD_PX = 4;
 
 /** Furthest zoom out (+/− and pinch). */
 export const PEOPLE_TREE_SCALE_MIN = 0.2;
-/** Default when the tree canvas first centers (previous minimum zoom). */
-export const PEOPLE_TREE_SCALE_DEFAULT = 0.6;
 export const PEOPLE_TREE_SCALE_MAX = 2.5;
 export const PEOPLE_TREE_ZOOM_STEP = 1.15;
+
+/** Previous default before lowering initial zoom (3 notches). */
+const PEOPLE_TREE_SCALE_LEGACY_DEFAULT = 0.6;
+
+/** Initial scale for View and Rearrange (3 zoom-out notches below legacy default). */
+export const PEOPLE_TREE_SCALE_DEFAULT = clampPeopleTreeScale(
+  PEOPLE_TREE_SCALE_LEGACY_DEFAULT / PEOPLE_TREE_ZOOM_STEP ** 3,
+);
 
 const WHEEL_ZOOM_STEP = 0.02;
 const WHEEL_ZOOM_STEP_LINE = 0.012;

@@ -6,6 +6,7 @@ import PeopleTreeConnectors from "./PeopleTreeConnectors";
 import PersonCard from "./PersonCard";
 import { computeTreeEdges } from "./peopleTreeEdges";
 import { resolveDisplayLayout, trimGridAroundOccupied } from "./treeLayout";
+import { TREE_VIEW_GRID_GAP } from "./treeGridConstants";
 import type { PeopleGraphBundle } from "./types";
 import { usePeopleTreeAnchors } from "./usePeopleTreeAnchors";
 
@@ -44,6 +45,7 @@ export default function FamilyTreeDisplayView({
       <FamilyTreeGrid
         layout={gridLayout}
         registerAnchor={registerAnchor}
+        gap={TREE_VIEW_GRID_GAP}
         renderOverlay={
           anchorLayout &&
           anchorLayout.width > 0 &&

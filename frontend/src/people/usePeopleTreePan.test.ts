@@ -10,6 +10,7 @@ import {
   PEOPLE_TREE_SCALE_DEFAULT,
   PEOPLE_TREE_SCALE_MAX,
   PEOPLE_TREE_SCALE_MIN,
+  PEOPLE_TREE_ZOOM_STEP,
 } from "./usePeopleTreePan";
 
 describe("people tree pan bounds", () => {
@@ -88,5 +89,9 @@ describe("scale limits", () => {
   it("documents zoom range", () => {
     expect(PEOPLE_TREE_SCALE_MIN).toBeLessThan(PEOPLE_TREE_SCALE_DEFAULT);
     expect(PEOPLE_TREE_SCALE_DEFAULT).toBeLessThan(PEOPLE_TREE_SCALE_MAX);
+  });
+
+  it("default scale is 3 zoom-out notches below legacy 0.6", () => {
+    expect(PEOPLE_TREE_SCALE_DEFAULT).toBeCloseTo(0.6 / PEOPLE_TREE_ZOOM_STEP ** 3, 6);
   });
 });

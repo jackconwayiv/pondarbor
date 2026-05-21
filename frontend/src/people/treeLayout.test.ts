@@ -120,6 +120,25 @@ describe("treeLayout", () => {
     expect(layout.positions.mom!.row).toBeLessThan(0);
   });
 
+  it("seedLayoutFromPeople places partners on adjacent columns", () => {
+    const people = [
+      person("self", { is_self: true, relation_core: "self", gender: "male" }),
+      person("spouse", { relation_core: "wife", gender: "female" }),
+    ];
+    const partnerships = [
+      {
+        id: "p1",
+        person_a_id: "self",
+        person_b_id: "spouse",
+        status: "current" as const,
+        anniversary_date: null,
+      },
+    ];
+    const layout = seedLayoutFromPeople(people, partnerships);
+    expect(layout.positions.self).toEqual({ col: 0, row: 0 });
+    expect(layout.positions.spouse).toEqual({ col: 1, row: 0 });
+  });
+
   it("expandGridOnPlacement grows max_col when dropping on right edge", () => {
     const layout: PeopleTreeLayout = {
       positions: { a: { col: 4, row: 0 } },

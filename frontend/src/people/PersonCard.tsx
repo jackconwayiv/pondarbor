@@ -1,4 +1,5 @@
 import { Box, Card, HStack, Image, Stack, Text } from "@chakra-ui/react";
+import type { CSSProperties } from "react";
 
 import PondButton from "../PondButton";
 import { APP_TEXT_SIZES } from "../theme/typography";
@@ -74,9 +75,17 @@ export default function PersonCard({
               objectFit="contain"
               objectPosition="center"
               draggable={false}
+              userSelect="none"
+              style={{ WebkitUserDrag: "none" } as CSSProperties}
             />
           ) : (
-            <Text fontSize="2xl" fontWeight="bold" color="gray.400" userSelect="none">
+            <Text
+              fontSize="2xl"
+              fontWeight="bold"
+              color="gray.400"
+              userSelect="none"
+              style={{ WebkitUserDrag: "none" } as CSSProperties}
+            >
               {initial}
             </Text>
           )}

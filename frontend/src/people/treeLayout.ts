@@ -2,8 +2,8 @@ import { orderPeopleInRow } from "./orderRowPeople";
 import { computePersonRanks, isTreeFriend } from "./rankPeople";
 import type { PeoplePartnershipRow, PeoplePerson, PeopleTreeLayout } from "./types";
 
-export const GRID_COL_STEP = 2;
-export const GRID_ROW_STEP = 2;
+export const GRID_COL_STEP = 1;
+export const GRID_ROW_STEP = 1;
 export const GRID_PADDING = 2;
 
 export type GridCoord = { col: number; row: number };

@@ -10,6 +10,8 @@ export type FamilyTreeGridProps = {
   layout: PeopleTreeLayout;
   registerAnchor: (personId: string, el: HTMLElement | null) => void;
   showGridLines?: boolean;
+  /** CSS grid gap; defaults to {@link TREE_GRID_GAP}. */
+  gap?: string;
   renderCell: (col: number, row: number, occupantId: string | null) => ReactNode;
   renderOverlay?: ReactNode;
 };
@@ -18,6 +20,7 @@ export default function FamilyTreeGrid({
   layout,
   registerAnchor,
   showGridLines = false,
+  gap = TREE_GRID_GAP,
   renderCell,
   renderOverlay,
 }: FamilyTreeGridProps) {
@@ -45,7 +48,7 @@ export default function FamilyTreeGrid({
         display="grid"
         gridTemplateColumns={`repeat(${cols}, ${TREE_CARD_SIZE})`}
         gridTemplateRows={`repeat(${rows}, ${TREE_CARD_SIZE})`}
-        gap={TREE_GRID_GAP}
+        gap={gap}
         position="relative"
       >
         {cells.map(({ col, row, occupantId }) => (

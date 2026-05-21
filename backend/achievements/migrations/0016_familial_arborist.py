@@ -7,7 +7,7 @@ def seed_familial_arborist(apps, schema_editor):
         slug="familial_arborist",
         defaults={
             "title": "Familial Arborist",
-            "description": "You've shared 10 or more People.",
+            "description": "Share 10 or more people in your Family Tree.",
             "category": "people",
             "order": 140,
             "show_on_public_profile": True,

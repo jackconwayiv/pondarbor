@@ -8,13 +8,18 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { Box } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import FamilyTreeCanvas from "./FamilyTreeCanvas";
-import FamilyTreeGrid, { cellDndId, parseCellDndId } from "./FamilyTreeGrid";
+import FamilyTreeGrid, { cellDndId } from "./FamilyTreeGrid";
+import {
+  familyTreeCellCollisionDetection,
+  resolveRearrangeDropCell,
+} from "./familyTreeDnd";
 import PersonCard from "./PersonCard";
 import {
   resolveDisplayLayout,
@@ -31,13 +36,19 @@ export type FamilyTreeRearrangeViewProps = {
   onLayoutChange: (layout: PeopleTreeLayout) => void;
 };
 
+type GridCell = { col: number; row: number };
+
+type DragPreviewSize = { width: number; height: number };
+
 function DraggablePersonCard({
   personId,
   disabled,
+  isDropTarget,
   children,
 }: {
   personId: string;
   disabled: boolean;
+  isDropTarget: boolean;
   children: React.ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -53,6 +64,13 @@ function DraggablePersonCard({
       w={TREE_CARD_SIZE}
       h={TREE_CARD_SIZE}
       flexShrink={0}
+      outline={isDropTarget ? "2px solid" : undefined}
+      outlineColor={isDropTarget ? "teal.solid" : undefined}
+      outlineOffset={isDropTarget ? "2px" : undefined}
+      borderRadius={isDropTarget ? "xl" : undefined}
+      boxShadow={
+        isDropTarget ? "0 0 0 2px var(--chakra-colors-teal-solid)" : undefined
+      }
       {...(disabled ? {} : { ...listeners, ...attributes })}
     >
       {isDragging ? (
@@ -69,28 +87,36 @@ function DraggablePersonCard({
 function DroppableCell({
   col,
   row,
+  highlighted,
   children,
 }: {
   col: number;
   row: number;
+  highlighted: boolean;
   children: React.ReactNode;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: cellDndId(col, row) });
+  const { setNodeRef } = useDroppable({ id: cellDndId(col, row) });
   return (
     <Box
       ref={setNodeRef}
       w="100%"
       h="100%"
       borderRadius="md"
-      bg={isOver ? "teal.muted" : undefined}
-      borderWidth={isOver ? "2px" : undefined}
-      borderStyle={isOver ? "solid" : undefined}
-      borderColor={isOver ? "teal.solid" : undefined}
-      boxShadow={isOver ? "0 0 0 2px var(--chakra-colors-teal-solid)" : undefined}
+      bg={highlighted ? "teal.muted" : undefined}
+      borderWidth={highlighted ? "2px" : undefined}
+      borderStyle={highlighted ? "solid" : undefined}
+      borderColor={highlighted ? "teal.solid" : undefined}
+      boxShadow={
+        highlighted ? "0 0 0 2px var(--chakra-colors-teal-solid)" : undefined
+      }
     >
       {children}
     </Box>
   );
+}
+
+function isSameCell(a: GridCell | null, col: number, row: number): boolean {
+  return a != null && a.col === col && a.row === row;
 }
 
 export default function FamilyTreeRearrangeView({
@@ -110,6 +136,10 @@ export default function FamilyTreeRearrangeView({
   const selfId = bundle.people.find((p) => p.is_self)?.id ?? null;
   const byId = useMemo(() => new Map(bundle.people.map((p) => [p.id, p])), [bundle.people]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [hoverCell, setHoverCell] = useState<GridCell | null>(null);
+  const [dragPreviewSize, setDragPreviewSize] = useState<DragPreviewSize | null>(null);
+
+  const activeFrom = activeId ? gridLayout.positions[activeId] : null;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -120,28 +150,82 @@ export default function FamilyTreeRearrangeView({
     bumpMeasure();
   }, [gridLayout, bumpMeasure]);
 
+  const clearDragState = useCallback(() => {
+    setActiveId(null);
+    setHoverCell(null);
+    setDragPreviewSize(null);
+  }, []);
+
   const onDragStart = useCallback((event: DragStartEvent) => {
     setActiveId(String(event.active.id));
+    const rect = event.active.rect.current.initial;
+    if (rect) {
+      setDragPreviewSize({
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      });
+    } else {
+      setDragPreviewSize(null);
+    }
   }, []);
+
+  const onDragOver = useCallback(
+    (event: DragOverEvent) => {
+      const from = gridLayout.positions[String(event.active.id)];
+      const cell = resolveRearrangeDropCell(
+        event.over?.id,
+        event.collisions ?? undefined,
+        gridLayout,
+      );
+      if (cell && from && cell.col === from.col && cell.row === from.row) {
+        setHoverCell(null);
+        return;
+      }
+      setHoverCell(cell);
+    },
+    [gridLayout],
+  );
 
   const onDragEnd = useCallback(
     (event: DragEndEvent) => {
-      setActiveId(null);
       const draggedId = String(event.active.id);
-      const overId = event.over?.id ? String(event.over.id) : null;
-      if (!overId) return;
-      const cell = parseCellDndId(overId);
+      const cell = resolveRearrangeDropCell(
+        event.over?.id,
+        event.collisions ?? undefined,
+        gridLayout,
+      );
+      clearDragState();
       if (!cell) return;
       const next = swapPeopleInLayout(gridLayout, draggedId, cell.col, cell.row, bundle.people);
       if (next) onLayoutChange(next);
     },
-    [gridLayout, bundle.people, onLayoutChange],
+    [gridLayout, bundle.people, onLayoutChange, clearDragState],
   );
+
+  const onDragCancel = useCallback(() => {
+    clearDragState();
+  }, [clearDragState]);
 
   const activePerson = activeId ? byId.get(activeId) : null;
 
+  const cellHighlighted = useCallback(
+    (col: number, row: number) => {
+      if (!isSameCell(hoverCell, col, row)) return false;
+      if (activeFrom && activeFrom.col === col && activeFrom.row === row) return false;
+      return true;
+    },
+    [hoverCell, activeFrom],
+  );
+
   return (
-    <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={familyTreeCellCollisionDetection}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragEnd={onDragEnd}
+      onDragCancel={onDragCancel}
+    >
       <FamilyTreeCanvas
         personCount={personCount}
         centerOnPersonId={selfId}
@@ -152,35 +236,45 @@ export default function FamilyTreeRearrangeView({
           layout={gridLayout}
           registerAnchor={registerAnchor}
           showGridLines
-          renderCell={(col, row, occupantId) => (
-            <DroppableCell col={col} row={row}>
-              {occupantId ? (
-                <DraggablePersonCard
-                  personId={occupantId}
-                  disabled={occupantId === selfId}
-                >
-                  <PersonCard
-                    person={byId.get(occupantId)!}
-                    bundle={bundle}
-                    variant="squareCompact"
-                  />
-                </DraggablePersonCard>
-              ) : null}
-            </DroppableCell>
-          )}
+          renderCell={(col, row, occupantId) => {
+            const highlighted = cellHighlighted(col, row);
+            const isOccupiedDropTarget = Boolean(occupantId && highlighted);
+            return (
+              <DroppableCell col={col} row={row} highlighted={highlighted}>
+                {occupantId ? (
+                  <DraggablePersonCard
+                    personId={occupantId}
+                    disabled={occupantId === selfId}
+                    isDropTarget={isOccupiedDropTarget}
+                  >
+                    <PersonCard
+                      person={byId.get(occupantId)!}
+                      bundle={bundle}
+                      variant="squareCompact"
+                    />
+                  </DraggablePersonCard>
+                ) : null}
+              </DroppableCell>
+            );
+          }}
         />
       </FamilyTreeCanvas>
-      <DragOverlay dropAnimation={null}>
-        {activePerson ? (
+      <DragOverlay dropAnimation={null} adjustScale={false}>
+        {activePerson && dragPreviewSize ? (
           <Box
-            w={TREE_CARD_SIZE}
-            h={TREE_CARD_SIZE}
+            w={`${dragPreviewSize.width}px`}
+            h={`${dragPreviewSize.height}px`}
             flexShrink={0}
             opacity={0.95}
             pointerEvents="none"
-            boxShadow="md"
+            boxShadow="sm"
           >
-            <PersonCard person={activePerson} bundle={bundle} variant="squareCompact" />
+            <PersonCard
+              person={activePerson}
+              bundle={bundle}
+              variant="squareCompact"
+              fillContainer
+            />
           </Box>
         ) : null}
       </DragOverlay>

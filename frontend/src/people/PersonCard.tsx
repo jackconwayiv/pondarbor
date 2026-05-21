@@ -12,6 +12,8 @@ export type PersonCardProps = {
   person: PeoplePerson;
   bundle: PeopleGraphBundle;
   variant?: "default" | "squareCompact";
+  /** When true (squareCompact only), fill the parent box instead of TREE_CARD_SIZE. */
+  fillContainer?: boolean;
   expanded?: boolean;
   readOnly?: boolean;
   onToggle?: () => void;
@@ -23,6 +25,7 @@ export default function PersonCard({
   person,
   bundle,
   variant = "default",
+  fillContainer = false,
   expanded = false,
   readOnly = false,
   onToggle,
@@ -47,9 +50,9 @@ export default function PersonCard({
         borderColor="border"
         borderRadius="xl"
         p="0"
-        w={TREE_CARD_SIZE}
-        h={TREE_CARD_SIZE}
-        aspectRatio={1}
+        w={fillContainer ? "100%" : TREE_CARD_SIZE}
+        h={fillContainer ? "100%" : TREE_CARD_SIZE}
+        aspectRatio={fillContainer ? undefined : 1}
         cursor={clickable ? "pointer" : "default"}
         onClick={clickable ? onActivate : undefined}
         _hover={clickable ? { borderColor: "teal.solid", boxShadow: "sm" } : undefined}
@@ -68,11 +71,9 @@ export default function PersonCard({
             <Image
               src={imageSrc}
               alt=""
-              maxW="100%"
-              maxH="100%"
-              w="auto"
-              h="auto"
-              objectFit="contain"
+              w="100%"
+              h="100%"
+              objectFit="cover"
               objectPosition="center"
               draggable={false}
               userSelect="none"
@@ -138,7 +139,7 @@ export default function PersonCard({
             alt=""
             w="100%"
             h="100%"
-            objectFit="contain"
+            objectFit="cover"
             objectPosition="center"
             draggable={false}
           />

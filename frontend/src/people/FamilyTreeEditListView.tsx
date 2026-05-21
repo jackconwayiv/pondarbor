@@ -81,11 +81,9 @@ function PersonEditRowCard({
             <Image
               src={imageSrc}
               alt=""
-              maxW="100%"
-              maxH="100%"
-              w="auto"
-              h="auto"
-              objectFit="contain"
+              w="100%"
+              h="100%"
+              objectFit="cover"
               objectPosition="center"
               draggable={false}
             />

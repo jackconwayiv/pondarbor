@@ -116,30 +116,30 @@ const PROFILE: AppNavItem = {
   blurb: "Your profile and account settings.",
 };
 
-/** Home app grid order (games rendered as a separate section on home). */
+/** Home app grid order (individual games appended on home for signed-in users). */
 export const APP_HOME_APPS: AppNavItem[] = [
   SONGADAY,
   CALENDAR,
+  FRIENDS,
+  PROFILE,
   CLOSET,
   QUOTES,
   ZODIAC,
-  MEAL,
   FAMILY_TREE,
-  FRIENDS,
-  PROFILE,
+  MEAL,
   ABOUT,
 ];
 
-/** Top bar + hamburger order mirrors home icons, with Games inserted before About. */
+/** Top bar + hamburger order (Games hub; no Profile — account menu only). */
 export const APP_DESKTOP_NAV: AppNavItem[] = [
   SONGADAY,
   CALENDAR,
+  FRIENDS,
   CLOSET,
   QUOTES,
   ZODIAC,
-  MEAL,
   FAMILY_TREE,
-  FRIENDS,
+  MEAL,
   GAMES,
   ABOUT,
 ];

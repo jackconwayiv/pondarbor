@@ -16,7 +16,7 @@ import {
   // auth0SlackSignupAuthorizationParams,
 } from "./auth/auth0LoginParams";
 import SiteFooter from "./components/SiteFooter";
-import { canOpenGameTile, GAME_NAV_ITEMS } from "./gamesNavConfig";
+import { canOpenGameTile, visibleGamesMenuItems } from "./gamesNavConfig";
 import PondButton from "./PondButton";
 import { fullBleedStackProps } from "./responsive";
 import { APP_SHELL_TRAY_PROPS, APP_TEXT_SIZES } from "./theme/typography";
@@ -24,6 +24,8 @@ import { APP_SHELL_TRAY_PROPS, APP_TEXT_SIZES } from "./theme/typography";
 export default function GamesMenu() {
   const { loginWithRedirect } = useAuth0();
   const { isAuthenticated, sessionUser } = useAppSession();
+  const isStaff = !!sessionUser?.user?.is_staff;
+  const gameItems = visibleGamesMenuItems(isStaff);
   if (!isAuthenticated) {
     return <Navigate to="/" replace />;
   }
@@ -113,12 +115,12 @@ export default function GamesMenu() {
               p="0"
               m="0"
               listStyleType="none"
-              columns={{ base: 3, md: 3 }}
+              columns={{ base: 4, md: 4 }}
               gap={{ base: "3", md: "4" }}
               role="list"
               aria-label="Games you can play"
             >
-              {GAME_NAV_ITEMS.map((item) => {
+              {gameItems.map((item) => {
                 const canOpen = canOpenGameTile(item.to, isAuthenticated);
                 const cardBody = (
                   <Stack
@@ -185,21 +187,6 @@ export default function GamesMenu() {
                 );
               })}
             </SimpleGrid>
-
-            {sessionUser?.user?.is_staff ? (
-              <Box pt="3" mt="2" borderTopWidth="1px" borderColor="border.muted">
-                <RouterLink to="/harbor/staff">
-                  <Text
-                    fontSize="sm"
-                    color="fg.muted"
-                    textDecoration="underline"
-                    textUnderlineOffset="3px"
-                  >
-                    Harbormaster catalog editor (staff)
-                  </Text>
-                </RouterLink>
-              </Box>
-            ) : null}
           </Stack>
         </Box>
       </Box>

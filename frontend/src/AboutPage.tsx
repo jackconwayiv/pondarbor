@@ -2,8 +2,11 @@ import { useAuth0 } from "@auth0/auth0-react";
 import {
   Box,
   Flex,
+  Heading,
   HStack,
   Image,
+  Link as ChakraLink,
+  SimpleGrid,
   Stack,
   Text,
   Textarea,
@@ -74,6 +77,19 @@ export default function AboutPage() {
             pb="2"
           >
             <Box {...PANEL_ENTRY_CARD_PROPS}>
+              <Heading as="h1" size={{ base: "lg", md: "xl" }} mb="2">
+                <HStack
+                  as="span"
+                  display="inline-flex"
+                  gap="2"
+                  alignItems="center"
+                >
+                  <Text as="span" aria-hidden="true">
+                    🐢
+                  </Text>
+                  <Text as="span">About Pond Arbor</Text>
+                </HStack>
+              </Heading>
             <Flex
   flexDirection={isMobile ? "column" : "row"}
   alignItems={isMobile ? "stretch" : "flex-start"}
@@ -89,7 +105,7 @@ export default function AboutPage() {
 
     <Stack minW={0} gap="2">
       <Text fontSize={APP_TEXT_SIZES.body} color="fg">
-        Pond Arbor is a hobby project developed by Pond Arbor Workshop (Jack Conway) to collect
+        <b>Pond Arbor</b> is a hobby project developed by <b>Pond Arbor Workshop</b> (Jack Conway) to collect
         various app ideas together in one place. I'm sharing it with friends and
         family as an opportunity to interact through these earth-shattering apps.
       </Text>
@@ -100,6 +116,7 @@ export default function AboutPage() {
             </Box>
 
             <Box {...PANEL_ENTRY_CARD_PROPS}>
+              <Box w="100%" maxW="lg" mx="auto">
               {!isAuthenticated ? (
                 <Stack gap="3" align="flex-start">
                   <Text fontSize={APP_TEXT_SIZES.body} color="fg">
@@ -128,7 +145,7 @@ export default function AboutPage() {
                   here.
                 </Text>
               ) : (
-                <Stack gap="2" align="stretch" maxW="lg">
+                <Stack gap="2" align="stretch">
                   <Box display="none" aria-hidden="true">
                     <input
                       name="website"
@@ -186,6 +203,151 @@ export default function AboutPage() {
                   ) : null}
                 </Stack>
               )}
+              </Box>
+            </Box>
+
+            <Box {...PANEL_ENTRY_CARD_PROPS}>
+              <Stack gap="4" align="stretch">
+                <Stack gap="1">
+                <Text fontSize={APP_TEXT_SIZES.label} fontWeight="medium">
+                      Typography:
+                    </Text>
+                </Stack>
+                <SimpleGrid columns={{ base: 1, md: 2 }} gap="3">
+                  <Stack
+                    gap="3"
+                    p={{ base: "3", md: "3.5" }}
+                    minH={{ md: "10.5rem" }}
+                    bg="sky.subtle"
+                    borderRadius="lg"
+                    borderWidth="1px"
+                    borderColor="sky.border"
+                    boxShadow="sm"
+                    justify="space-between"
+                  >
+                    <Stack gap="2">
+                      <Text
+                        fontSize="xs"
+                        fontWeight="medium"
+                        letterSpacing="0.12em"
+                        textTransform="uppercase"
+                        color="sky.emphasized"
+                      >
+                        Titles &amp; Headings
+                      </Text>
+                      <Text
+                        fontFamily="heading"
+                        fontSize={{ base: "2xl", md: "3xl" }}
+                        lineHeight="1.1"
+                        color="fg"
+                      >
+                        Caprasimo
+                      </Text>
+                      <Text
+                        fontFamily="heading"
+                        fontSize={{ base: "md", md: "lg" }}
+                        color="fg.muted"
+                        lineHeight="short"
+                      >
+                        Where will your Pond Arbor adventure take you?
+                      </Text>
+                    </Stack>
+                    <Flex
+                      align="center"
+                      justify="space-between"
+                      gap="2"
+                      pt="2"
+                      borderTopWidth="1px"
+                      borderColor="border.subtle"
+                    >
+                      <ChakraLink
+                        href="https://fonts.google.com/specimen/Caprasimo"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        fontSize={APP_TEXT_SIZES.helper}
+                        fontWeight="medium"
+                        color="sky.emphasized"
+                        textDecoration="underline"
+                        textUnderlineOffset="2px"
+                        _hover={{ color: "sky.solid" }}
+                      >
+                        Caprasimo
+                      </ChakraLink>
+                      <Text
+                        fontFamily="heading"
+                        fontSize="sm"
+                        color="fg.subtle"
+                        aria-hidden
+                      >
+                        Aa Bb Cc · 123
+                      </Text>
+                    </Flex>
+                  </Stack>
+                  <Stack
+                    gap="3"
+                    p={{ base: "3", md: "3.5" }}
+                    minH={{ md: "10.5rem" }}
+                    bg="lilypad.subtle"
+                    borderRadius="lg"
+                    borderWidth="1px"
+                    borderColor="lilypad.border"
+                    boxShadow="sm"
+                    justify="space-between"
+                  >
+                    <Stack gap="2">
+                      <Text
+                        fontSize="xs"
+                        fontWeight="medium"
+                        letterSpacing="0.12em"
+                        textTransform="uppercase"
+                        color="lilypad.emphasized"
+                      >
+                        Body Text
+                      </Text>
+                      <Text
+                        fontFamily="body"
+                        fontSize={APP_TEXT_SIZES.body}
+                        lineHeight="tall"
+                        color="fg"
+                      >
+                        In the <b>Spinnaker</b> font, friends and family gather at the pond to share music,
+                        meals, games, and the occasional earth-shattering app
+                        idea.
+                      </Text>
+                    </Stack>
+                    <Flex
+                      align="center"
+                      justify="space-between"
+                      gap="2"
+                      pt="2"
+                      borderTopWidth="1px"
+                      borderColor="border.subtle"
+                    >
+                      <ChakraLink
+                        href="https://fonts.google.com/specimen/Spinnaker"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        fontSize={APP_TEXT_SIZES.helper}
+                        fontWeight="medium"
+                        color="lilypad.emphasized"
+                        textDecoration="underline"
+                        textUnderlineOffset="2px"
+                        _hover={{ color: "lilypad.solid" }}
+                      >
+                        Spinnaker
+                      </ChakraLink>
+                      <Text
+                        fontFamily="body"
+                        fontSize="sm"
+                        color="fg.subtle"
+                        aria-hidden
+                      >
+                        Aa Bb Cc · 123
+                      </Text>
+                    </Flex>
+                  </Stack>
+                </SimpleGrid>
+              </Stack>
             </Box>
           </Stack>
         </Box>

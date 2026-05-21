@@ -17,7 +17,7 @@ import {
   auth0LoginAuthorizationParams,
   auth0SignupAuthorizationParams,
 } from "./auth/auth0LoginParams";
-import { canOpenGameTile, GAME_NAV_ITEMS } from "./gamesNavConfig";
+import { canOpenGameTile, visibleGameNavItems } from "./gamesNavConfig";
 import PondButton from "./PondButton";
 import { pondarborProfileSrc } from "./publicAsset";
 import { SessionLoadingCard } from "./components/panelStatus";
@@ -36,6 +36,10 @@ const GUEST_HOME_APPS = [
   { to: "/about", emoji: "🐢", label: "About" },
 ] as const;
 
+const GAME_HOME_PATHS = new Set(
+  visibleGameNavItems(true).map((item) => item.to),
+);
+
 function HomeAppNavList({
   isAuthenticated,
   isStaff,
@@ -43,24 +47,29 @@ function HomeAppNavList({
   isAuthenticated: boolean;
   isStaff: boolean;
 }) {
-  // Hide Meal Maestro from non-staff while the app is being refactored.
+  // Hide Meal Maestro and QFF demo from non-staff while those apps are staff-only.
   const baseItems = APP_HOME_APPS.filter(
     (item) => item.to !== "/meal" || isStaff,
   );
-  const items = isAuthenticated ? baseItems : [...GUEST_HOME_APPS];
+  const gameItems = visibleGameNavItems(isStaff);
+  const items = isAuthenticated
+    ? [...baseItems, ...gameItems]
+    : [...GUEST_HOME_APPS];
   const HOME_APP_ORDER: Record<string, number> = {
     "/songaday": 0,
     "/calendar": 1,
-    "/closet": 2,
-    "/quotes": 3,
-    "/zodiac": 4,
-    "/meal": 5,
-    "/people": 6,
-    "/profile?tab=friends": 7,
-    "/profile": 8,
-    "/games": 9,
+    "/profile?tab=friends": 2,
+    "/profile": 3,
+    "/closet": 4,
+    "/quotes": 5,
+    "/zodiac": 6,
+    "/people": 7,
+    "/meal": 8,
+    "/clicker": 9,
     "/whatif": 10,
     "/about": 11,
+    "/estates": 12,
+    "/qff": 13,
   };
   // Home-grid-only label overrides; nav/hamburger keep the canonical labels.
   const HOME_APP_LABEL_OVERRIDES: Record<string, string> = {
@@ -80,16 +89,17 @@ function HomeAppNavList({
       p="0"
       m="0"
       listStyleType="none"
-      columns={{ base: 3, md: 3 }}
+      columns={{ base: 4, md: 4 }}
       gap={{ base: "3", md: "4" }}
       role="list"
       aria-label="Apps"
     >
       {orderedItems.map((item) => {
-        const canOpen =
-          isAuthenticated ||
-          item.to === "/about" ||
-          item.to === "/whatif";
+        const canOpen = GAME_HOME_PATHS.has(item.to)
+          ? canOpenGameTile(item.to, isAuthenticated)
+          : isAuthenticated ||
+            item.to === "/about" ||
+            item.to === "/whatif";
         const displayLabel = HOME_APP_LABEL_OVERRIDES[item.to] ?? item.label;
         const cardBody = (
           <Stack
@@ -155,86 +165,6 @@ function HomeAppNavList({
   );
 }
 
-function HomeGamesNavList({ isAuthenticated }: { isAuthenticated: boolean }) {
-  return (
-    <SimpleGrid
-      as="ul"
-      w="100%"
-      maxW="100%"
-      p="0"
-      m="0"
-      listStyleType="none"
-      columns={{ base: 3, md: 3 }}
-      gap={{ base: "3", md: "4" }}
-      role="list"
-      aria-label="Games"
-    >
-      {GAME_NAV_ITEMS.map((item) => {
-        const canOpen = canOpenGameTile(item.to, isAuthenticated);
-        const cardBody = (
-          <Stack
-            w="100%"
-            align="center"
-            justify="center"
-            gap="1"
-            py="1"
-            px="1"
-            minH="4.5rem"
-            borderRadius="lg"
-            _hover={canOpen ? { bg: "bg.subtle" } : undefined}
-            transition="background 0.12s ease, transform 0.12s ease"
-            cursor={canOpen ? "pointer" : "not-allowed"}
-            opacity={canOpen ? 1 : 0.55}
-            transform={canOpen ? "translateY(0)" : undefined}
-          >
-            <Text as="span" fontSize="2.2rem" lineHeight="1" aria-hidden>
-              {item.emoji}
-            </Text>
-            <Text
-              as="span"
-              fontSize="sm"
-              fontWeight="medium"
-              color="fg"
-              lineClamp={2}
-              textAlign="center"
-            >
-              {item.label}
-            </Text>
-          </Stack>
-        );
-        const content = canOpen ? (
-          <RouterLink
-            to={item.to}
-            style={{ textDecoration: "none", color: "inherit", display: "block" }}
-          >
-            {cardBody}
-          </RouterLink>
-        ) : (
-          <Box
-            aria-label={`${item.label} (log in to open)`}
-            display="block"
-            w="100%"
-          >
-            {cardBody}
-          </Box>
-        );
-        return (
-          <Box
-            as="li"
-            key={item.to}
-            w="100%"
-            listStyleType="none"
-            display="flex"
-            justifyContent="center"
-          >
-            {content}
-          </Box>
-        );
-      })}
-    </SimpleGrid>
-  );
-}
-
 function App() {
   const { loginWithRedirect } = useAuth0();
 
@@ -256,7 +186,7 @@ function App() {
             align="stretch"
             px={{ base: "2", md: "2" }}
             pt={{ base: "2", md: "2" }}
-            pb="1"
+            pb={{ base: "3", md: "3" }}
           >
             <Stack gap="1" w="100%" align="center" textAlign="center">
               <Heading as="h1" fontSize={APP_TEXT_SIZES.display} lineHeight="shorter">
@@ -328,21 +258,6 @@ function App() {
                     isAuthenticated={isAuthenticated}
                     isStaff={!!sessionUser?.user.is_staff}
                   />
-                </Stack>
-
-                <Box w="100%" borderTopWidth="2px" borderColor="border" />
-
-                <Stack gap={{ base: "2", md: "2" }} align="center" w="100%">
-                  <Text
-                    fontSize={APP_TEXT_SIZES.label}
-                    fontWeight="semibold"
-                    color="sky.emphasized"
-                    textAlign="center"
-                    w="100%"
-                  >
-                    Perhaps some amusement on the pond?
-                  </Text>
-                  <HomeGamesNavList isAuthenticated={isAuthenticated} />
                 </Stack>
               </>
             ) : (

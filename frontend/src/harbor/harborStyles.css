@@ -84,7 +84,7 @@
   margin: 0 0 0.55rem;
   font-family: var(--harbor-font-heading);
   font-size: clamp(1.65rem, 5vw, 2.05rem);
-  font-weight: 700;
+  font-weight: normal;
   letter-spacing: 0.03em;
   line-height: 1.15;
   color: var(--harbor-text);
@@ -122,13 +122,13 @@
   margin: 0 0 0.25rem;
   font-family: var(--harbor-font-heading);
   font-size: 1.12rem;
-  font-weight: 700;
+  font-weight: normal;
   letter-spacing: 0.02em;
   color: var(--harbor-text);
 }
 .harbor-lobby__section-title--muted {
   font-size: 1rem;
-  font-weight: 600;
+  font-weight: normal;
   color: var(--harbor-accent);
 }
 .harbor-lobby__divider {
@@ -228,7 +228,7 @@
 .harbor-hud__title {
   font-family: var(--harbor-font-heading);
   font-size: 1.05rem;
-  font-weight: 600;
+  font-weight: normal;
   letter-spacing: 0.02em;
   line-height: 1.25;
 }
@@ -509,7 +509,7 @@
 .harbor-panel__title {
   font-family: var(--harbor-font-heading);
   font-size: 0.95rem;
-  font-weight: 600;
+  font-weight: normal;
   letter-spacing: 0.02em;
 }
 .harbor-panel__hint {
@@ -536,7 +536,7 @@
 }
 .harbor-card__title {
   font-family: var(--harbor-font-heading);
-  font-weight: 600;
+  font-weight: normal;
   font-size: 0.95rem;
 }
 .harbor-card__desc {
@@ -1286,7 +1286,7 @@
 .harbor-daybreak__title {
   font-family: var(--harbor-font-heading);
   font-size: 1.6rem;
-  font-weight: 700;
+  font-weight: normal;
   margin-bottom: 0.5rem;
 }
 .harbor-daybreak__hint {
@@ -1323,7 +1323,7 @@
 .harbor-end-confirm__title {
   font-family: var(--harbor-font-heading);
   font-size: 1.15rem;
-  font-weight: 700;
+  font-weight: normal;
   margin: 0 0 0.65rem;
 }
 
@@ -1452,7 +1452,7 @@
 .harbor-help-howto__heading {
   font-family: var(--harbor-font-heading);
   font-size: 0.82rem;
-  font-weight: 600;
+  font-weight: normal;
   margin: 0 0 0.35rem;
   color: var(--harbor-text);
   letter-spacing: 0.02em;

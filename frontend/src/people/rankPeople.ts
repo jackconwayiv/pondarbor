@@ -153,6 +153,26 @@ function alignSiblingPeerRanks(people: PeoplePerson[], self: PeoplePerson, ranks
   }
 }
 
+/** Keep self's bio/step parents on one generation row after collateral FK propagation. */
+function alignSelfParentRanks(self: PeoplePerson, ranks: Map<string, number | null>): void {
+  const parentIds = [
+    self.bio_mother_id,
+    self.bio_father_id,
+    self.step_mother_id,
+    self.step_father_id,
+  ].filter((id): id is string => Boolean(id));
+
+  const parentRanks = parentIds
+    .map((id) => ranks.get(id))
+    .filter((r): r is number => r != null);
+  if (parentRanks.length < 2) return;
+
+  const unified = Math.max(...parentRanks);
+  for (const id of parentIds) {
+    ranks.set(id, unified);
+  }
+}
+
 function applyRelationCoreHints(
   people: PeoplePerson[],
   self: PeoplePerson,
@@ -214,6 +234,7 @@ export function computePersonRanks(
     applyRelationCoreHints(people, self, ranks);
     alignPartnerRanks(partnerPairs, byId, ranks);
     alignSiblingPeerRanks(people, self, ranks);
+    alignSelfParentRanks(self, ranks);
   }
 
   // Pets sit one generation below the tree owner (same row as children).

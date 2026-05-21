@@ -9,12 +9,15 @@ import {
 } from "react";
 import { FaMagnifyingGlassMinus, FaMagnifyingGlassPlus } from "react-icons/fa6";
 
+import { useIsMobile } from "../responsive";
 import type { PeopleTreeLayout as AnchorLayout } from "./usePeopleTreeAnchors";
 import { usePeopleTreeAnchors } from "./usePeopleTreeAnchors";
 import {
   contentBottomFromAnchors,
   contentTopFromAnchors,
   PEOPLE_TREE_PAN_BOTTOM_EXTRA,
+  PEOPLE_TREE_SCALE_DEFAULT,
+  PEOPLE_TREE_SCALE_DEFAULT_VIEW_DESKTOP,
   usePeopleTreePan,
 } from "./usePeopleTreePan";
 
@@ -30,15 +33,19 @@ const VIEWPORT_TARGET_PX = TARGET_PAN_AREA_PX;
 const VIEWPORT_MAX_HEIGHT = { base: "min(82vh, 48rem)", md: "min(86vh, 52rem)" } as const;
 const VIEWPORT_MIN_HEIGHT = `${VIEWPORT_TARGET_PX}px`;
 
-const VIEW_DISPLAY_GENERATIONS = 2;
-const VIEW_DISPLAY_TARGET_PX =
-  VIEW_DISPLAY_GENERATIONS * GENERATION_ROW_PX +
-  (VIEW_DISPLAY_GENERATIONS - 1) * RANK_GUTTER_PX +
-  24;
-const VIEW_DISPLAY_MAX_HEIGHT = { base: "min(48dvh, 22rem)", md: "min(86vh, 52rem)" } as const;
+const VIEW_DISPLAY_GENERATIONS_MOBILE = 2;
+const VIEW_DISPLAY_GENERATIONS_DESKTOP = 3;
+const viewDisplayTargetPx = (generations: number) =>
+  generations * GENERATION_ROW_PX + (generations - 1) * RANK_GUTTER_PX + 24;
+const VIEW_DISPLAY_TARGET_PX_MOBILE = viewDisplayTargetPx(VIEW_DISPLAY_GENERATIONS_MOBILE);
+const VIEW_DISPLAY_TARGET_PX_DESKTOP = viewDisplayTargetPx(VIEW_DISPLAY_GENERATIONS_DESKTOP);
+const VIEW_DISPLAY_MAX_HEIGHT = {
+  base: "min(52dvh, 24rem)",
+  md: "min(86vh, 56rem)",
+} as const;
 const VIEW_DISPLAY_MIN_HEIGHT = {
-  base: "min(240px, 38dvh)",
-  md: `${VIEW_DISPLAY_TARGET_PX}px`,
+  base: "min(260px, 40dvh)",
+  md: `${VIEW_DISPLAY_TARGET_PX_DESKTOP}px`,
 } as const;
 
 const VIEW_PAN_MARGINS = {
@@ -93,12 +100,16 @@ export default function FamilyTreeCanvas({
     return Math.max(layout.height, anchorBottom + BOTTOM_CANVAS_PAD_PX);
   }, [layout, clampPanToGrid]);
 
+  const isMobile = useIsMobile();
+  const viewDefaultScale = isMobile
+    ? PEOPLE_TREE_SCALE_DEFAULT
+    : PEOPLE_TREE_SCALE_DEFAULT_VIEW_DESKTOP;
+
   const viewportHeight = useMemo(() => {
     if (clampPanToGrid) {
-      const floorPx = VIEW_DISPLAY_TARGET_PX;
       return {
-        base: `min(${VIEW_DISPLAY_MAX_HEIGHT.base}, max(${VIEW_DISPLAY_MIN_HEIGHT.base}, ${floorPx}px))`,
-        md: `min(${VIEW_DISPLAY_MAX_HEIGHT.md}, max(${VIEW_DISPLAY_MIN_HEIGHT.md}, ${floorPx}px))`,
+        base: `min(${VIEW_DISPLAY_MAX_HEIGHT.base}, max(${VIEW_DISPLAY_MIN_HEIGHT.base}, ${VIEW_DISPLAY_TARGET_PX_MOBILE}px))`,
+        md: `min(${VIEW_DISPLAY_MAX_HEIGHT.md}, max(${VIEW_DISPLAY_MIN_HEIGHT.md}, ${VIEW_DISPLAY_TARGET_PX_DESKTOP}px))`,
       };
     }
     const floorPx = personCount > 0 ? VIEWPORT_TARGET_PX : TARGET_PAN_AREA_PX;
@@ -129,6 +140,7 @@ export default function FamilyTreeCanvas({
     enablePinchZoom,
     panMargins: clampPanToGrid ? VIEW_PAN_MARGINS : undefined,
     initialAlign: clampPanToGrid ? "top" : "center",
+    defaultScale: clampPanToGrid ? viewDefaultScale : undefined,
   });
 
   const didCenterRef = useRef(false);
@@ -150,8 +162,16 @@ export default function FamilyTreeCanvas({
   }, [personCount, bumpMeasure]);
 
   useEffect(() => {
+    const el = panAreaRef.current;
+    if (!el || !clampPanToGrid) return;
+    const blockSelect = (e: Event) => e.preventDefault();
+    el.addEventListener("selectstart", blockSelect);
+    return () => el.removeEventListener("selectstart", blockSelect);
+  }, [clampPanToGrid]);
+
+  useEffect(() => {
     didCenterRef.current = false;
-  }, [personCount, centerOnPersonId]);
+  }, [personCount, centerOnPersonId, clampPanToGrid ? viewDefaultScale : null]);
 
   useEffect(() => {
     if (!layout || layout.width <= 0 || layout.height <= 0) return;
@@ -180,6 +200,7 @@ export default function FamilyTreeCanvas({
     effectiveContentH,
     panAreaSize.h,
     panAreaSize.w,
+    viewDefaultScale,
   ]);
 
   return (
@@ -206,7 +227,7 @@ export default function FamilyTreeCanvas({
         overflow="hidden"
         cursor={dragging ? "grabbing" : "grab"}
         touchAction="none"
-        userSelect={dragging ? "none" : undefined}
+        userSelect={clampPanToGrid || dragging ? "none" : undefined}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -269,10 +290,12 @@ export default function FamilyTreeCanvas({
           pt={clampPanToGrid ? "1" : { base: 4, md: 5 }}
           pb={clampPanToGrid ? "5" : { base: 4, md: 5 }}
           px={clampPanToGrid ? "1" : "3"}
+          userSelect={clampPanToGrid ? "none" : undefined}
           style={{
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
             transformOrigin: "0 0",
             willChange: dragging ? "transform" : undefined,
+            WebkitUserSelect: clampPanToGrid ? "none" : undefined,
           }}
         >
           {children}

@@ -53,6 +53,7 @@ export default function PersonCard({
         w={fillContainer ? "100%" : TREE_CARD_SIZE}
         h={fillContainer ? "100%" : TREE_CARD_SIZE}
         aspectRatio={fillContainer ? undefined : 1}
+        userSelect="none"
         cursor={clickable ? "pointer" : "default"}
         onClick={clickable ? onActivate : undefined}
         _hover={clickable ? { borderColor: "teal.solid", boxShadow: "sm" } : undefined}

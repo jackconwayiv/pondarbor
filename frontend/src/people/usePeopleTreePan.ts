@@ -25,6 +25,11 @@ export const PEOPLE_TREE_SCALE_DEFAULT = clampPeopleTreeScale(
   PEOPLE_TREE_SCALE_LEGACY_DEFAULT / PEOPLE_TREE_ZOOM_STEP ** 3,
 );
 
+/** View mode on desktop: 3 zoom-in notches above mobile default. */
+export const PEOPLE_TREE_SCALE_DEFAULT_VIEW_DESKTOP = clampPeopleTreeScale(
+  PEOPLE_TREE_SCALE_DEFAULT * PEOPLE_TREE_ZOOM_STEP ** 3,
+);
+
 const WHEEL_ZOOM_STEP = 0.02;
 const WHEEL_ZOOM_STEP_LINE = 0.012;
 
@@ -71,6 +76,8 @@ export type UsePeopleTreePanOptions = {
   panBottomExtra?: number;
   /** Initial vertical framing; view mode uses `"top"`. */
   initialAlign?: PeopleTreeInitialAlign;
+  /** Initial zoom scale; defaults to {@link PEOPLE_TREE_SCALE_DEFAULT}. */
+  defaultScale?: number;
 };
 
 /** Keep at least `margin` px of padding between graph edges and the viewport. */
@@ -301,13 +308,15 @@ export function usePeopleTreePan({
   panMargins,
   panBottomExtra,
   initialAlign = "center",
+  defaultScale = PEOPLE_TREE_SCALE_DEFAULT,
 }: UsePeopleTreePanOptions) {
+  const resolvedDefaultScale = clampPeopleTreeScale(defaultScale);
   const resolvedMargins = useMemo(
     () => panMarginsForHook(panMargins, panBottomExtra),
     [panMargins, panBottomExtra],
   );
   const [pan, setPan] = useState<PeopleTreePan>({ x: 0, y: 0 });
-  const [scale, setScale] = useState(PEOPLE_TREE_SCALE_DEFAULT);
+  const [scale, setScale] = useState(resolvedDefaultScale);
   const panRef = useRef(pan);
   panRef.current = pan;
   const scaleRef = useRef(scale);
@@ -516,7 +525,7 @@ export function usePeopleTreePan({
       focusY: number,
       contentTopY = 0,
     ) => {
-      const nextScale = PEOPLE_TREE_SCALE_DEFAULT;
+      const nextScale = resolvedDefaultScale;
       scaleRef.current = nextScale;
       setScale(nextScale);
       const scaledW = cw * nextScale;
@@ -537,13 +546,13 @@ export function usePeopleTreePan({
         ),
       );
     },
-    [resolvedMargins, initialAlign],
+    [resolvedMargins, initialAlign, resolvedDefaultScale],
   );
 
   const resetScale = useCallback(() => {
-    scaleRef.current = PEOPLE_TREE_SCALE_DEFAULT;
-    setScale(PEOPLE_TREE_SCALE_DEFAULT);
-  }, []);
+    scaleRef.current = resolvedDefaultScale;
+    setScale(resolvedDefaultScale);
+  }, [resolvedDefaultScale]);
 
   return {
     pan,

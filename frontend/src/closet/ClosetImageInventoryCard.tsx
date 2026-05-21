@@ -7,6 +7,7 @@ import type { ClosetImageInventoryRow } from "./types";
 function usageSummaryLine(row: ClosetImageInventoryRow): string {
   const nItems = row.attached_live_item_count;
   const nMeals = row.attached_meal_count ?? 0;
+  const nPeople = row.attached_person_count ?? 0;
   const parts: string[] = [];
   if (nItems > 0) {
     parts.push(`${nItems} live item${nItems === 1 ? "" : "s"}`);
@@ -14,11 +15,14 @@ function usageSummaryLine(row: ClosetImageInventoryRow): string {
   if (nMeals > 0) {
     parts.push(`${nMeals} recipe${nMeals === 1 ? "" : "s"}`);
   }
+  if (nPeople > 0) {
+    parts.push(`${nPeople} family tree ${nPeople === 1 ? "person" : "people"}`);
+  }
   if (row.attached_as_avatar) {
     parts.push("your avatar");
   }
   if (parts.length === 0) {
-    return "Not used by items, recipes, or avatar";
+    return "Not used by items, recipes, family tree, or avatar";
   }
   return `Used by: ${parts.join(", ")}`;
 }

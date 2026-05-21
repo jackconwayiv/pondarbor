@@ -83,6 +83,10 @@ export type ClosetImageInventoryRow = {
   attached_meal_count?: number;
   attached_meal_ids?: number[];
   attached_meal_titles?: string[];
+  /** Family tree people using this image (when API provides it). */
+  attached_person_count?: number;
+  attached_person_ids?: string[];
+  attached_person_names?: string[];
   status: "attached" | "stranded";
   present_in_bucket: boolean;
 };

@@ -8,6 +8,7 @@ import {
   PEOPLE_TREE_PAN_BOTTOM_EXTRA,
   PEOPLE_TREE_PAN_MARGIN,
   PEOPLE_TREE_SCALE_DEFAULT,
+  PEOPLE_TREE_SCALE_DEFAULT_VIEW_DESKTOP,
   PEOPLE_TREE_SCALE_MAX,
   PEOPLE_TREE_SCALE_MIN,
   PEOPLE_TREE_ZOOM_STEP,
@@ -124,5 +125,13 @@ describe("scale limits", () => {
 
   it("default scale is 3 zoom-out notches below legacy 0.6", () => {
     expect(PEOPLE_TREE_SCALE_DEFAULT).toBeCloseTo(0.6 / PEOPLE_TREE_ZOOM_STEP ** 3, 6);
+  });
+
+  it("desktop view default is 3 zoom-in notches above mobile default", () => {
+    expect(PEOPLE_TREE_SCALE_DEFAULT_VIEW_DESKTOP).toBeCloseTo(0.6, 6);
+    expect(PEOPLE_TREE_SCALE_DEFAULT_VIEW_DESKTOP).toBeCloseTo(
+      PEOPLE_TREE_SCALE_DEFAULT * PEOPLE_TREE_ZOOM_STEP ** 3,
+      6,
+    );
   });
 });

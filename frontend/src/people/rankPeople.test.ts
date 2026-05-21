@@ -94,6 +94,23 @@ describe("computePersonRanks", () => {
     expect(ranks.get("gunc")).toBe(-2);
   });
 
+  it("keeps mother and father on same rank when uncle shares bio_mother", () => {
+    const people = [
+      testPerson("self", {
+        is_self: true,
+        relation_core: "self",
+        bio_mother_id: "mom",
+        bio_father_id: "dad",
+      }),
+      testPerson("mom", { relation_core: "mother" }),
+      testPerson("dad", { relation_core: "father" }),
+      testPerson("unc", { relation_core: "uncle", bio_mother_id: "mom" }),
+    ];
+    const ranks = computePersonRanks(people, []);
+    expect(ranks.get("mom")).toBe(ranks.get("dad"));
+    expect(ranks.get("mom")).toBe(-1);
+  });
+
   it("keeps FK-derived mother rank when relation_core also says mother", () => {
     const people = [
       testPerson("self", {

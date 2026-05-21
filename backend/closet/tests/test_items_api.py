@@ -315,6 +315,44 @@ class ClosetItemsApiTests(ClosetTestMixin, TestCase):
         self.assertFalse(by_key[stranded_key]["attached_as_avatar"])
         self.assertNotIn(other_user_key, by_key)
 
+    @override_settings(CLOSET_R2_KEY_PREFIX="closet", CLOSET_R2_PUBLIC_BASE_URL="https://cdn.example.test")
+    @patch("closet.views._build_r2_client")
+    def test_images_inventory_counts_family_tree_person_as_attached(self, build_client_mock):
+        from people.models import Person
+
+        person_key = f"closet/{self.owner.id}/20240101/mom.jpg"
+        self.owner_client.get("/api/v1/people/")
+        Person.objects.create(
+            owner_user=self.owner,
+            name="Mom",
+            relation_core="mother",
+            image_key=person_key,
+            bio_mother_id=None,
+            bio_father_id=None,
+        )
+
+        client = build_client_mock.return_value
+        client.list_objects_v2.return_value = {
+            "Contents": [{"Key": person_key}],
+            "IsTruncated": False,
+        }
+        with patch.dict(
+            "os.environ",
+            {
+                "CLOUDFLARE_ACCOUNT_ID": "acct",
+                "CLOSET_R2_BUCKET": "bucket",
+                "CLOSET_R2_ACCESS_KEY_ID": "ak",
+                "CLOSET_R2_SECRET_ACCESS_KEY": "sk",
+            },
+            clear=False,
+        ):
+            resp = self.owner_client.get("/api/v1/closet/images/")
+        self.assertEqual(resp.status_code, 200)
+        by_key = {row["image_key"]: row for row in resp.json()["results"]}
+        self.assertEqual(by_key[person_key]["status"], "attached")
+        self.assertEqual(by_key[person_key]["attached_person_count"], 1)
+        self.assertEqual(by_key[person_key]["attached_live_item_count"], 0)
+
     @override_settings(CLOSET_R2_KEY_PREFIX="closet")
     @patch("closet.views._build_r2_client")
     def test_image_delete_detaches_live_items_and_deletes_bucket_object(self, build_client_mock):

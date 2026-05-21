@@ -1034,6 +1034,7 @@ def uploads_presign(request):
 @cache_control(private=True, no_store=True)
 def images_mine(request):
     from meal.models import Meal
+    from people.models import Person
 
     closet_key_prefix = expected_closet_image_key_prefix(request.user.id)
     meal_key_prefix = expected_meal_image_key_prefix(request.user.id)
@@ -1065,6 +1066,20 @@ def images_mine(request):
         meal_ids_by_key[key].append(int(row["id"]))
         meal_titles_by_key[key].append(str(row.get("title") or "").strip() or f"Meal {row['id']}")
     meal_db_keys = set(meal_ids_by_key.keys())
+
+    person_ids_by_key: dict[str, list[str]] = defaultdict(list)
+    person_names_by_key: dict[str, list[str]] = defaultdict(list)
+    for row in Person.objects.filter(
+        owner_user=request.user,
+        deleted_at__isnull=True,
+    ).exclude(image_key="").values("id", "name", "image_key"):
+        key = (row.get("image_key") or "").strip()
+        if not key or not closet_image_key_owned_by_user(key, user_id):
+            continue
+        pid = str(row["id"])
+        person_ids_by_key[key].append(pid)
+        person_names_by_key[key].append(str(row.get("name") or "").strip() or f"Person {pid}")
+    person_db_keys = set(person_ids_by_key.keys())
 
     profile_avatar_url = (
         Profile.objects.filter(user=request.user)
@@ -1110,7 +1125,7 @@ def images_mine(request):
     bucket_keys_union = bucket_keys_closet | bucket_keys_meal
     all_keys = sorted(
         k
-        for k in (item_db_keys | meal_db_keys | bucket_keys_union)
+        for k in (item_db_keys | meal_db_keys | person_db_keys | bucket_keys_union)
         if _user_owns_storage_image_key(k, user_id)
     )
     rows = []
@@ -1121,10 +1136,18 @@ def images_mine(request):
         attached_meal_ids = sorted(meal_ids_by_key.get(key, []))
         attached_meal_titles = meal_titles_by_key.get(key, [])
         attached_meal_count = len(attached_meal_ids)
+        attached_person_ids = sorted(person_ids_by_key.get(key, []))
+        attached_person_names = person_names_by_key.get(key, [])
+        attached_person_count = len(attached_person_ids)
         attached_as_avatar = bool(
             profile_avatar_url and closet_item_image_url(key) == profile_avatar_url
         )
-        is_attached = attached_count > 0 or attached_as_avatar or attached_meal_count > 0
+        is_attached = (
+            attached_count > 0
+            or attached_as_avatar
+            or attached_meal_count > 0
+            or attached_person_count > 0
+        )
         rows.append(
             {
                 "image_key": key,
@@ -1135,6 +1158,9 @@ def images_mine(request):
                 "attached_meal_count": attached_meal_count,
                 "attached_meal_ids": attached_meal_ids,
                 "attached_meal_titles": attached_meal_titles,
+                "attached_person_count": attached_person_count,
+                "attached_person_ids": attached_person_ids,
+                "attached_person_names": attached_person_names,
                 "attached_as_avatar": attached_as_avatar,
                 "status": "attached" if is_attached else "stranded",
                 "present_in_bucket": key in bucket_keys_union,
@@ -1149,6 +1175,7 @@ def images_mine(request):
 @transaction.atomic
 def image_delete(request):
     from meal.models import Meal
+    from people.models import Person
 
     raw_key = str(request.data.get("image_key") or "").strip()
     if not raw_key:
@@ -1172,6 +1199,11 @@ def image_delete(request):
     detached_meal_count = Meal.objects.filter(owner_user=request.user, image_key=raw_key).update(
         image_key="",
     )
+    detached_person_count = Person.objects.filter(
+        owner_user=request.user,
+        deleted_at__isnull=True,
+        image_key=raw_key,
+    ).update(image_key="")
 
     try:
         client = _build_r2_client(config)
@@ -1188,6 +1220,7 @@ def image_delete(request):
             "detached_live_item_count": detached_count,
             "detached_avatar_count": detached_avatar_count,
             "detached_meal_count": detached_meal_count,
+            "detached_person_count": detached_person_count,
         }
     )
 

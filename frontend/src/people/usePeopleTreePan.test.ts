@@ -7,6 +7,7 @@ import {
   panForScaleChange,
   PEOPLE_TREE_PAN_BOTTOM_EXTRA,
   PEOPLE_TREE_PAN_MARGIN,
+  PEOPLE_TREE_SCALE_DEFAULT,
   PEOPLE_TREE_SCALE_MAX,
   PEOPLE_TREE_SCALE_MIN,
 } from "./usePeopleTreePan";
@@ -85,6 +86,7 @@ describe("panForScaleChange", () => {
 
 describe("scale limits", () => {
   it("documents zoom range", () => {
-    expect(PEOPLE_TREE_SCALE_MIN).toBeLessThan(PEOPLE_TREE_SCALE_MAX);
+    expect(PEOPLE_TREE_SCALE_MIN).toBeLessThan(PEOPLE_TREE_SCALE_DEFAULT);
+    expect(PEOPLE_TREE_SCALE_DEFAULT).toBeLessThan(PEOPLE_TREE_SCALE_MAX);
   });
 });

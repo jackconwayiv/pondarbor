@@ -43,13 +43,17 @@ export function usePeopleTreeAnchors(personCount: number) {
     const container = containerRef.current;
     if (!container) return;
     const cr = container.getBoundingClientRect();
+    // Canvas uses CSS layout size; children may be inside a scaled transform — map
+    // getBoundingClientRect deltas back into layout (unscaled) coordinates.
+    const scaleX = cr.width > 0 ? container.offsetWidth / cr.width : 1;
+    const scaleY = cr.height > 0 ? container.offsetHeight / cr.height : 1;
     const anchors = new Map<string, PersonAnchor>();
     for (const [id, el] of anchorElsRef.current) {
       const r = el.getBoundingClientRect();
-      const x = r.left - cr.left;
-      const y = r.top - cr.top;
-      const w = r.width;
-      const h = r.height;
+      const x = (r.left - cr.left) * scaleX;
+      const y = (r.top - cr.top) * scaleY;
+      const w = r.width * scaleX;
+      const h = r.height * scaleY;
       anchors.set(id, {
         top: { x: x + w / 2, y },
         bottom: { x: x + w / 2, y: y + h },
@@ -58,8 +62,8 @@ export function usePeopleTreeAnchors(personCount: number) {
         right: { x: x + w, y: y + h / 2 },
       });
     }
-    const width = Math.max(container.offsetWidth, cr.width);
-    const height = Math.max(container.offsetHeight, cr.height);
+    const width = container.offsetWidth;
+    const height = container.offsetHeight;
     setLayout((prev) => {
       if (
         prev &&

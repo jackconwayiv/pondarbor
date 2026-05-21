@@ -180,8 +180,84 @@ class PeopleApiTests(TestCase):
         body = resp.json()
         self.assertIsNone(body["gender"])
 
+    def test_layout_patch_and_bundle_includes_layout(self):
+        self.owner_client.get("/api/v1/people/")
+        people = Person.objects.filter(owner_user=self.owner, deleted_at__isnull=True)
+        positions = {str(p.id): {"col": i * 2, "row": 0} for i, p in enumerate(people)}
+        payload = {
+            "positions": positions,
+            "min_col": -2,
+            "min_row": -2,
+            "max_col": max(6, len(people) * 2),
+            "max_row": 2,
+        }
+        patch_resp = self.owner_client.patch(
+            "/api/v1/people/layout/",
+            payload,
+            format="json",
+        )
+        self.assertEqual(patch_resp.status_code, 200, patch_resp.content)
+        get_resp = self.owner_client.get("/api/v1/people/")
+        self.assertIn("layout", get_resp.json())
+        self.assertEqual(get_resp.json()["layout"]["positions"], positions)
+
+    def test_delete_person_removes_layout_position(self):
+        self.owner_client.get("/api/v1/people/")
+        created = self.owner_client.post(
+            "/api/v1/people/",
+            {
+                "name": "Temp",
+                "relation_core": "brother",
+                "relation_prefix_tokens": [],
+                "relation_suffix_tokens": [],
+            },
+            format="json",
+        ).json()
+        pid = created["id"]
+        people = Person.objects.filter(owner_user=self.owner, deleted_at__isnull=True)
+        positions = {str(p.id): {"col": i, "row": 0} for i, p in enumerate(people)}
+        self.owner_client.patch(
+            "/api/v1/people/layout/",
+            {
+                "positions": positions,
+                "min_col": 0,
+                "min_row": 0,
+                "max_col": len(people) + 2,
+                "max_row": 2,
+            },
+            format="json",
+        )
+        self.owner_client.delete(f"/api/v1/people/{pid}/")
+        layout = self.owner_client.get("/api/v1/people/").json()["layout"]
+        self.assertNotIn(pid, layout["positions"])
+
     def test_cannot_delete_self_person(self):
         self.owner_client.get("/api/v1/people/")
         self_id = Person.objects.get(owner_user=self.owner, is_self=True).id
         resp = self.owner_client.delete(f"/api/v1/people/{self_id}/")
         self.assertEqual(resp.status_code, 400)
+
+    def test_partial_birthday_without_year(self):
+        self.owner_client.get("/api/v1/people/")
+        created = self.owner_client.post(
+            "/api/v1/people/",
+            {
+                "name": "Mystery Age",
+                "relation_core": "cousin",
+                "relation_prefix_tokens": [],
+                "relation_suffix_tokens": [],
+                "birthday": "06-15",
+            },
+            format="json",
+        )
+        self.assertEqual(created.status_code, 201)
+        self.assertEqual(created.json()["birthday"], "06-15")
+
+        pid = created.json()["id"]
+        patched = self.owner_client.patch(
+            f"/api/v1/people/{pid}/",
+            {"birthday": "1990-06-15"},
+            format="json",
+        )
+        self.assertEqual(patched.status_code, 200)
+        self.assertEqual(patched.json()["birthday"], "1990-06-15")

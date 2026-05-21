@@ -3,6 +3,7 @@ import type {
   PeoplePerson,
   PeoplePersonCreatePayload,
   PeoplePersonPatchPayload,
+  PeopleTreeLayout,
 } from "./types";
 
 function apiBase(): string {
@@ -68,6 +69,22 @@ export async function fetchPeopleSummary(accessToken: string | null): Promise<{ 
     throw new Error(await parseApiError(response));
   }
   return (await response.json()) as { count: number };
+}
+
+export async function patchPeopleTreeLayout(
+  accessToken: string | null,
+  layout: PeopleTreeLayout,
+): Promise<PeopleTreeLayout> {
+  const response = await fetch(`${apiBase()}/api/v1/people/layout/`, {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(layout),
+  });
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
+  }
+  return (await response.json()) as PeopleTreeLayout;
 }
 
 export async function fetchPeopleGraphForUser(

@@ -374,6 +374,8 @@ export default function FriendProfilePage() {
   const hasQuotes = quotes.length > 0;
   const hasClosetTab =
     Boolean(summary?.can_view_full_profile) && closetItems.length > 0;
+  const hasFamilyTreeTab =
+    canViewFullProfile && (summary?.people_count ?? 0) >= 3;
   const friendshipStatus = summary?.friendship_status ?? "none";
   const canManageFriendshipById = lookup.kind === "id";
   const leftmostVisibleTab = useMemo<
@@ -383,9 +385,9 @@ export default function FriendProfilePage() {
     if (canViewFullProfile) return "friends";
     if (hasQuotes) return "quotes";
     if (hasClosetTab) return "closet";
-    if (canViewFullProfile) return "people";
+    if (hasFamilyTreeTab) return "people";
     return null;
-  }, [canViewFullProfile, hasAchievements, hasQuotes, hasClosetTab]);
+  }, [canViewFullProfile, hasAchievements, hasQuotes, hasClosetTab, hasFamilyTreeTab]);
 
   useEffect(() => {
     if (!leftmostVisibleTab) return;
@@ -394,7 +396,7 @@ export default function FriendProfilePage() {
       (profileTab === "achievements" && hasAchievements) ||
       (profileTab === "quotes" && hasQuotes) ||
       (profileTab === "closet" && hasClosetTab) ||
-      (profileTab === "people" && canViewFullProfile);
+      (profileTab === "people" && hasFamilyTreeTab);
     if (!tabVisible) {
       setProfileTab(leftmostVisibleTab);
     }
@@ -404,6 +406,7 @@ export default function FriendProfilePage() {
     hasAchievements,
     hasQuotes,
     hasClosetTab,
+    hasFamilyTreeTab,
     leftmostVisibleTab,
   ]);
 
@@ -971,7 +974,7 @@ export default function FriendProfilePage() {
                   >
                     Friends
                   </Tabs.Trigger>
-                  {canViewFullProfile ? (
+                  {hasFamilyTreeTab ? (
                     <Tabs.Trigger
                       value="people"
                       {...APP_SHELL_TAB_TRIGGER_PROPS}
@@ -1020,7 +1023,7 @@ export default function FriendProfilePage() {
                       </Stack>
                     </Tabs.Content>
                   ) : null}
-                {canViewFullProfile && profileSubjectUserId != null ? (
+                {hasFamilyTreeTab && profileSubjectUserId != null ? (
                   <Tabs.Content value="people" p={{ base: "2", md: "2" }}>
                     <Suspense fallback={<RouteLoadingFallback />}>
                       <PeoplePage

@@ -9,7 +9,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from achievements.services import evaluate_people_achievements_for_user
-from people.models import Person, PersonGuardianLink, PersonPartnership
+from people.layout import remove_person_from_layout, validate_layout_payload
+from people.models import FamilyTreeLayout, Person, PersonGuardianLink, PersonPartnership
 from people.serializers import (
     GuardianLinkSerializer,
     PersonCreateSerializer,
@@ -79,6 +80,7 @@ def people_detail(request, person_id):
             return Response({"detail": "Cannot delete your self person."}, status=status.HTTP_400_BAD_REQUEST)
         person.deleted_at = timezone.now()
         person.save(update_fields=["deleted_at", "updated_at"])
+        remove_person_from_layout(request.user.id, person.id)
         evaluate_people_achievements_for_user(request.user.id)
         return Response(status=status.HTTP_204_NO_CONTENT)
     ser = PersonPatchSerializer(
@@ -190,6 +192,48 @@ def people_guardian_detail(request, person_id, link_id):
     link.delete()
     evaluate_people_achievements_for_user(request.user.id)
     return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def people_layout_patch(request):
+    err = _require_approved(request)
+    if err:
+        return err
+    data = request.data
+    positions = data.get("positions")
+    if positions is None:
+        return Response({"detail": "positions is required."}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        min_col = int(data.get("min_col", 0))
+        min_row = int(data.get("min_row", 0))
+        max_col = int(data.get("max_col", 0))
+        max_row = int(data.get("max_row", 0))
+    except (TypeError, ValueError):
+        return Response({"detail": "Invalid grid bounds."}, status=status.HTTP_400_BAD_REQUEST)
+    errors = validate_layout_payload(
+        owner_id=request.user.id,
+        positions=positions,
+        min_col=min_col,
+        min_row=min_row,
+        max_col=max_col,
+        max_row=max_row,
+    )
+    if errors:
+        return Response({"detail": errors}, status=status.HTTP_400_BAD_REQUEST)
+    row, _ = FamilyTreeLayout.objects.update_or_create(
+        owner_user_id=request.user.id,
+        defaults={
+            "positions": positions,
+            "min_col": min_col,
+            "min_row": min_row,
+            "max_col": max_col,
+            "max_row": max_row,
+        },
+    )
+    from people.layout import layout_payload
+
+    return Response(layout_payload(row))
 
 
 @api_view(["GET"])

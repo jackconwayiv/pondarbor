@@ -3,6 +3,9 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 // Align with Chakra default `md` breakpoint (48em ~= 768px).
 export const DESKTOP_MIN_WIDTH_PX = 768;
 
+/** App shell top bar: keep hamburger through tablet widths (many nav links). */
+export const NAV_DESKTOP_MIN_WIDTH_PX = 1024;
+
 const POINTER_COARSE_QUERY = "(pointer: coarse)";
 
 function subscribePointerCoarse(callback: () => void) {
@@ -63,19 +66,37 @@ function getIsMobileViewport() {
   return window.innerWidth < DESKTOP_MIN_WIDTH_PX;
 }
 
-export function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(getIsMobileViewport);
+function getIsNavCompactViewport() {
+  if (typeof window === "undefined") return false;
+  return window.innerWidth < NAV_DESKTOP_MIN_WIDTH_PX;
+}
+
+function useViewportBelow(thresholdPx: number, getSnapshot: () => boolean) {
+  const [isBelow, setIsBelow] = useState(getSnapshot);
 
   useEffect(() => {
     const onResize = () => {
-      setIsMobile(getIsMobileViewport());
+      setIsBelow(
+        typeof window === "undefined"
+          ? false
+          : window.innerWidth < thresholdPx,
+      );
     };
 
     window.addEventListener("resize", onResize);
     return () => {
       window.removeEventListener("resize", onResize);
     };
-  }, []);
+  }, [thresholdPx]);
 
-  return isMobile;
+  return isBelow;
+}
+
+export function useIsMobile() {
+  return useViewportBelow(DESKTOP_MIN_WIDTH_PX, getIsMobileViewport);
+}
+
+/** True when the app shell should show the hamburger nav (phones + tablets). */
+export function useNavCompactLayout() {
+  return useViewportBelow(NAV_DESKTOP_MIN_WIDTH_PX, getIsNavCompactViewport);
 }

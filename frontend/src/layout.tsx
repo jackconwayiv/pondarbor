@@ -35,7 +35,7 @@ import { pondarborLogoSrc } from "./publicAsset";
 import BreadcrumbBar from "./BreadcrumbBar";
 import { HomeInboxPopover } from "./components/HomeInboxPopover";
 import { HomeInboxProvider } from "./home/homeInboxContext";
-import { APP_SHELL_OUTLET_MIN_HEIGHT_PROPS, useIsMobile } from "./responsive";
+import { APP_SHELL_OUTLET_MIN_HEIGHT_PROPS, useNavCompactLayout } from "./responsive";
 import { APP_SHELL_CONTENT_MAX_PROPS } from "./theme/typography";
 
 /** Wordmark font; fixed look (no route-based styling). */
@@ -141,6 +141,8 @@ const HIDE_DOCUMENT_SCROLLBAR_PREFIXES = [
   "/closet",
   "/calendar",
   "/meal",
+  "/people",
+  "/friend",
   "/pondstead",
   "/estates/play",
 ] as const;
@@ -154,7 +156,7 @@ export default function AppLayout() {
   const currentUserAvatarUrl = resolveCurrentUserAvatarUrl(sessionUser, auth0User);
   const location = useLocation();
   const navigate = useNavigate();
-  const isMobile = useIsMobile();
+  const useCompactNav = useNavCompactLayout();
 
   // `auth0User` is cleared when the Auth0 client logs out; rely on it so nav stays in sync.
   const showProfileNav = isAuthenticated && !!auth0User;
@@ -315,7 +317,7 @@ export default function AppLayout() {
         position="relative"
         w="100%"
       >
-        {isMobile ? (
+        {useCompactNav ? (
           <>
             <Box
               flex="0 1 auto"

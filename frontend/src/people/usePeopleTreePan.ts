@@ -12,7 +12,10 @@ import type { PersonAnchor } from "./peopleTreeLayout";
 
 const DRAG_THRESHOLD_PX = 4;
 
-export const PEOPLE_TREE_SCALE_MIN = 0.6;
+/** Furthest zoom out (+/− and pinch). */
+export const PEOPLE_TREE_SCALE_MIN = 0.2;
+/** Default when the tree canvas first centers (previous minimum zoom). */
+export const PEOPLE_TREE_SCALE_DEFAULT = 0.6;
 export const PEOPLE_TREE_SCALE_MAX = 2.5;
 export const PEOPLE_TREE_ZOOM_STEP = 1.15;
 
@@ -43,6 +46,10 @@ export type UsePeopleTreePanOptions = {
   contentW: number;
   contentH: number;
   panAreaRef: RefObject<HTMLElement | null>;
+  /** Pinch and ctrl/meta wheel zoom; default true. */
+  enablePinchZoom?: boolean;
+  /** Extra scroll range below content bottom; default {@link PEOPLE_TREE_PAN_BOTTOM_EXTRA}. */
+  panBottomExtra?: number;
 };
 
 /** Keep at least `margin` px of padding between graph edges and the viewport. */
@@ -161,15 +168,24 @@ export function contentBottomFromAnchors(anchors: Map<string, PersonAnchor>): nu
 
 function isPanBlockedTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
-  return Boolean(
+  if (
     target.closest("[data-people-tree-zoom]") ||
-      target.closest("[data-person-card]") ||
-      target.closest("button") ||
-      target.closest("a") ||
-      target.closest("input") ||
-      target.closest("select") ||
-      target.closest("textarea"),
-  );
+    target.closest("[data-person-card]") ||
+    target.closest("[data-tree-draggable]") ||
+    target.closest("button") ||
+    target.closest("a") ||
+    target.closest("input") ||
+    target.closest("select") ||
+    target.closest("textarea")
+  ) {
+    return true;
+  }
+  // Occupied grid cells: pan on empty cells only (rearrange view).
+  const cell = target.closest("[data-tree-cell-droppable]");
+  if (cell?.querySelector("[data-person-card], [data-tree-draggable]")) {
+    return true;
+  }
+  return false;
 }
 
 function isZoomWheelEvent(e: WheelEvent): "pinch" | "line" | null {
@@ -202,9 +218,11 @@ export function usePeopleTreePan({
   contentW,
   contentH,
   panAreaRef,
+  enablePinchZoom = true,
+  panBottomExtra = PEOPLE_TREE_PAN_BOTTOM_EXTRA,
 }: UsePeopleTreePanOptions) {
   const [pan, setPan] = useState<PeopleTreePan>({ x: 0, y: 0 });
-  const [scale, setScale] = useState(1);
+  const [scale, setScale] = useState(PEOPLE_TREE_SCALE_DEFAULT);
   const panRef = useRef(pan);
   panRef.current = pan;
   const scaleRef = useRef(scale);
@@ -226,9 +244,9 @@ export function usePeopleTreePan({
       scaledContentW,
       scaledContentH,
       PEOPLE_TREE_PAN_MARGIN,
-      PEOPLE_TREE_PAN_BOTTOM_EXTRA,
+      panBottomExtra,
     );
-  }, [viewportW, viewportH, scaledContentW, scaledContentH]);
+  }, [viewportW, viewportH, scaledContentW, scaledContentH, panBottomExtra]);
 
   const applyBounds = useCallback(
     (next: PeopleTreePan) => {
@@ -286,6 +304,7 @@ export function usePeopleTreePan({
   useEffect(() => {
     const el = panAreaRef.current;
     if (!el || viewportW <= 0 || viewportH <= 0) return;
+    if (!enablePinchZoom) return;
 
     const pinchStateRef = { startDistance: 0, startScale: 1, focalX: 0, focalY: 0 };
 
@@ -354,7 +373,7 @@ export function usePeopleTreePan({
       el.removeEventListener("touchend", onTouchEnd);
       el.removeEventListener("touchcancel", onTouchEnd);
     };
-  }, [panAreaRef, viewportW, viewportH, applyScaleAtFocal]);
+  }, [panAreaRef, viewportW, viewportH, applyScaleAtFocal, enablePinchZoom]);
 
   const onPointerDown = useCallback((e: ReactPointerEvent<HTMLElement>) => {
     if (e.button !== 0) return;
@@ -412,7 +431,7 @@ export function usePeopleTreePan({
       focusX: number,
       focusY: number,
     ) => {
-      const nextScale = 1;
+      const nextScale = PEOPLE_TREE_SCALE_DEFAULT;
       scaleRef.current = nextScale;
       setScale(nextScale);
       const scaledW = cw * nextScale;
@@ -427,16 +446,16 @@ export function usePeopleTreePan({
           focusY,
           nextScale,
           PEOPLE_TREE_PAN_MARGIN,
-          PEOPLE_TREE_PAN_BOTTOM_EXTRA,
+          panBottomExtra,
         ),
       );
     },
-    [],
+    [panBottomExtra],
   );
 
   const resetScale = useCallback(() => {
-    scaleRef.current = 1;
-    setScale(1);
+    scaleRef.current = PEOPLE_TREE_SCALE_DEFAULT;
+    setScale(PEOPLE_TREE_SCALE_DEFAULT);
   }, []);
 
   return {

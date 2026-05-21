@@ -14,12 +14,33 @@ export function parentChildPath(from: Point, to: Point): string {
   return `M ${from.x} ${from.y} L ${from.x} ${midY} L ${to.x} ${midY} L ${to.x} ${to.y}`;
 }
 
-/** Horizontal partner link at the vertical midpoint of the two cards. */
+/** Horizontal segment between two points (same y). */
 export function partnerPath(a: Point, b: Point): string {
   const y = (a.y + b.y) / 2;
   const x1 = a.x;
   const x2 = b.x;
   return `M ${x1} ${y} L ${x2} ${y}`;
+}
+
+/** ~half a square card — partners on the same grid row vs different rows. */
+export const PARTNER_SAME_ROW_Y_THRESHOLD = 88;
+
+/** Partner line between two card anchors (layout coordinates). */
+export function partnerPathBetween(left: PersonAnchor, right: PersonAnchor): string {
+  const dy = Math.abs(left.center.y - right.center.y);
+  if (dy <= PARTNER_SAME_ROW_Y_THRESHOLD) {
+    const overlapTop = Math.max(left.top.y, right.top.y);
+    const overlapBottom = Math.min(left.bottom.y, right.bottom.y);
+    const y =
+      overlapTop < overlapBottom
+        ? (overlapTop + overlapBottom) / 2
+        : (left.center.y + right.center.y) / 2;
+    return partnerPath({ x: left.right.x, y }, { x: right.left.x, y });
+  }
+  const y1 = left.center.y;
+  const y2 = right.center.y;
+  const midX = (left.right.x + right.left.x) / 2;
+  return `M ${left.right.x} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${right.left.x} ${y2}`;
 }
 
 export function elbowPoint(from: Point, to: Point): Point {

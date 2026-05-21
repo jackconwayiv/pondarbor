@@ -1,21 +1,9 @@
+import { normalizePartialDateForApi } from "./partialDate";
 import { isParentRelationCore } from "./parentSync";
+import type { PersonFormState } from "./personFormState";
 import type { PeoplePersonCreatePayload } from "./types";
 
-export type PersonFormState = {
-  name: string;
-  core: string;
-  alias: string;
-  prefix: string[];
-  suffix: string[];
-  birth: string;
-  death: string;
-  gender: string;
-  imageKey: string;
-  mother: string;
-  father: string;
-  stepMother: string;
-  stepFather: string;
-};
+export type { PersonFormState };
 
 function suffixTokensForCore(core: string, suffix: string[]): string[] {
   if (core === "friend") return suffix;
@@ -44,8 +32,8 @@ export function personPayloadFromForm(
     relation_alias: form.alias.trim(),
     relation_prefix_tokens: form.prefix,
     relation_suffix_tokens: suffixTokensForCore(form.core, form.suffix),
-    birthday: form.birth || null,
-    death_date: form.death || null,
+    birthday: normalizePartialDateForApi(form.birth),
+    death_date: normalizePartialDateForApi(form.death),
     gender: form.gender || null,
     ...(imageKey ? { image_key: imageKey } : {}),
     ...(skipTheirParents

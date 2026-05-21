@@ -1,3 +1,10 @@
+/** Chakra `css` prop: scrollable region without a visible scrollbar (wheel/touch still work). */
+export const HIDE_SCROLLBAR_CSS = {
+  scrollbarWidth: "none",
+  msOverflowStyle: "none",
+  "&::-webkit-scrollbar": { display: "none" },
+} as const;
+
 export const APP_TEXT_SIZES = {
   display: { base: "2xl", md: "3xl" },
   title: { base: "lg", md: "xl" },

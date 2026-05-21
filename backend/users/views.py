@@ -404,6 +404,12 @@ def _public_user_summary_response(*, request, user):
             .filter(owner_eligible_for_closet_publication_q())
             .count()
         )
+    if can_view_full_profile:
+        from people.models import Person
+
+        payload["people_count"] = Person.objects.filter(
+            owner_user=user, deleted_at__isnull=True
+        ).count()
     return Response(payload)
 
 

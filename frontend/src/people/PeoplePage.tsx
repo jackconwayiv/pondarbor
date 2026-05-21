@@ -1,4 +1,4 @@
-import { Box, Heading, HStack, Stack, Text } from "@chakra-ui/react";
+import { Box, Heading, HStack, Stack, Tabs, Text } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate } from "react-router";
 
@@ -13,16 +13,23 @@ import {
   SessionLoadingCard,
 } from "../components/panelStatus";
 import {
+  APP_SHELL_TAB_LIST_PROPS,
+  APP_SHELL_TAB_TRIGGER_PROPS,
+} from "../theme/appShellTabs";
+import {
   APP_TEXT_SIZES,
   PANEL_ENTRY_CARD_PROPS,
   PANEL_NESTED_BLOCK_PROPS,
 } from "../theme/typography";
 import {
+  familyLinksFormHasValues,
   familyLinksVariantForForm,
-  PersonFamilyLinksFields,
+  PersonFamilyLinksSection,
 } from "./PersonFamilyLinksFields";
 import { PersonFormFields } from "./PersonFormFields";
-import PeopleTreeView from "./PeopleTreeView";
+import FamilyTreeDisplayView from "./FamilyTreeDisplayView";
+import FamilyTreeEditListView from "./FamilyTreeEditListView";
+import FamilyTreeRearrangeView from "./FamilyTreeRearrangeView";
 import {
   createGuardianLink,
   createPartnership,
@@ -33,32 +40,32 @@ import {
   fetchPeopleGraph,
   fetchPeopleGraphForUser,
   patchPartnership,
+  patchPeopleTreeLayout,
   patchPerson,
 } from "./api";
+import { resolveDisplayLayout, seedLayoutFromPeople } from "./treeLayout";
+import { FamilyTreeSetupWizard } from "./wizard/FamilyTreeSetupWizard";
+import { isWizardAutoOpenDisabled } from "./wizard/wizardStorage";
 import { syncSelfParentLinks } from "./parentSync";
+import {
+  applyPersonFormField,
+  emptyPersonForm,
+  personToFormState,
+} from "./personFormState";
 import { personPayloadFromForm } from "./personPayload";
-import { buildTreeRows } from "./rankPeople";
-import type { PeopleGraphBundle, PeoplePerson } from "./types";
+import type { PeopleGraphBundle, PeoplePerson, PeopleTreeLayout } from "./types";
 
-function emptyForm() {
-  return {
-    name: "",
-    core: "cousin",
-    alias: "",
-    prefix: [] as string[],
-    suffix: [] as string[],
-    birth: "",
-    death: "",
-    gender: "",
-    imageKey: "",
-    imageUrl: "",
-    mother: "",
-    father: "",
-    stepMother: "",
-    stepFather: "",
-    partnerOther: "",
-    guardian: "",
-  };
+export type TreeInteractionMode = "view" | "rearrange" | "edit";
+
+const TREE_MODE_TABS: { id: TreeInteractionMode; label: string }[] = [
+  { id: "view", label: "View" },
+  { id: "rearrange", label: "Rearrange" },
+  { id: "edit", label: "People" },
+];
+
+function parseTreeMode(value: string | null | undefined): TreeInteractionMode {
+  if (value === "rearrange" || value === "edit") return value;
+  return "view";
 }
 
 export default function PeoplePage({
@@ -75,38 +82,30 @@ export default function PeoplePage({
   ownerDisplayName?: string;
 } = {}) {
   const readOnly = readOnlyProp || ownerUserId != null;
-  const { isAuthenticated, isLoading, getApiAccessToken } = useAppSession();
+  const { isAuthenticated, isLoading, getApiAccessToken, sessionUser } = useAppSession();
   const [bundle, setBundle] = useState<PeopleGraphBundle | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [treeMode, setTreeMode] = useState<TreeInteractionMode>("view");
+  const [treeLayout, setTreeLayout] = useState<PeopleTreeLayout | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editPerson, setEditPerson] = useState<PeoplePerson | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const fetchGenRef = useRef(0);
 
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState(emptyPersonForm);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardCloseDisablesAuto, setWizardCloseDisablesAuto] = useState(false);
+  const autoOpenAttemptedRef = useRef(false);
+  const layoutSeedAttemptedRef = useRef(false);
+  const layoutPatchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const setFormField = <K extends keyof ReturnType<typeof emptyForm>>(
+  const setFormField = <K extends keyof typeof form>(
     key: K,
-    value: ReturnType<typeof emptyForm>[K],
+    value: (typeof form)[K],
   ) => {
-    setForm((prev) => {
-      const next = { ...prev, [key]: value };
-      if (key === "core" && value !== "friend" && prev.suffix.includes("best")) {
-        next.suffix = prev.suffix.filter((t) => t !== "best");
-      }
-      if (
-        key === "core" &&
-        (value === "mother" || value === "father") &&
-        value !== prev.core
-      ) {
-        next.mother = "";
-        next.father = "";
-      }
-      return next;
-    });
+    setForm((prev) => applyPersonFormField(prev, key, value));
   };
 
   const refresh = useCallback(async () => {
@@ -137,10 +136,91 @@ export default function PeoplePage({
     };
   }, [isAuthenticated, refresh]);
 
-  const treeRows = useMemo(() => {
-    if (!bundle) return { rowsByRank: [], friendRow: [] };
-    return buildTreeRows(bundle.people, bundle.partnerships);
+  const nonSelfCount = useMemo(
+    () => bundle?.people.filter((p) => !p.is_self).length ?? 0,
+    [bundle],
+  );
+
+  useEffect(() => {
+    if (readOnly || !bundle || !sessionUser?.user.id) return;
+    if (autoOpenAttemptedRef.current) return;
+    if (nonSelfCount > 0) return;
+    if (isWizardAutoOpenDisabled(sessionUser.user.id)) return;
+    autoOpenAttemptedRef.current = true;
+    setWizardCloseDisablesAuto(true);
+    setWizardOpen(true);
+  }, [readOnly, bundle, nonSelfCount, sessionUser?.user.id]);
+
+  const openWizard = (fromAuto = false) => {
+    setWizardCloseDisablesAuto(fromAuto);
+    setWizardOpen(true);
+  };
+
+  const memberCount = bundle?.people.length ?? 0;
+  const showSetupTreeButton =
+    !readOnly &&
+    Boolean(bundle) &&
+    (memberCount < 5 || treeMode === "edit");
+
+  const resolvedLayout = useMemo(() => {
+    if (!bundle) return null;
+    return resolveDisplayLayout(bundle.layout, bundle.people, bundle.partnerships);
   }, [bundle]);
+
+  useEffect(() => {
+    if (!bundle || !resolvedLayout) {
+      setTreeLayout(null);
+      return;
+    }
+    setTreeLayout(resolvedLayout);
+  }, [bundle, resolvedLayout]);
+
+  useEffect(() => {
+    if (readOnly || !bundle || layoutSeedAttemptedRef.current) return;
+    if (bundle.layout && Object.keys(bundle.layout.positions).length > 0) {
+      layoutSeedAttemptedRef.current = true;
+      return;
+    }
+    layoutSeedAttemptedRef.current = true;
+    const seed = seedLayoutFromPeople(bundle.people, bundle.partnerships);
+    void (async () => {
+      try {
+        const token = await getApiAccessToken();
+        const saved = await patchPeopleTreeLayout(token, seed);
+        setBundle((prev) => (prev ? { ...prev, layout: saved } : prev));
+        setTreeLayout(saved);
+      } catch (e: unknown) {
+        layoutSeedAttemptedRef.current = false;
+        setError(e instanceof Error ? e.message : "Failed to save initial layout.");
+      }
+    })();
+  }, [readOnly, bundle, getApiAccessToken]);
+
+  useEffect(() => {
+    return () => {
+      if (layoutPatchTimerRef.current) clearTimeout(layoutPatchTimerRef.current);
+    };
+  }, []);
+
+  const scheduleLayoutPatch = useCallback(
+    (layout: PeopleTreeLayout) => {
+      setTreeLayout(layout);
+      if (layoutPatchTimerRef.current) clearTimeout(layoutPatchTimerRef.current);
+      layoutPatchTimerRef.current = setTimeout(() => {
+        void (async () => {
+          try {
+            const token = await getApiAccessToken();
+            const saved = await patchPeopleTreeLayout(token, layout);
+            setBundle((prev) => (prev ? { ...prev, layout: saved } : prev));
+            setTreeLayout(saved);
+          } catch (e: unknown) {
+            setError(e instanceof Error ? e.message : "Failed to save layout.");
+          }
+        })();
+      }, 400);
+    },
+    [getApiAccessToken],
+  );
 
   const pageHeading = useMemo(() => {
     if (ownerUserId != null && ownerDisplayName?.trim()) {
@@ -152,32 +232,8 @@ export default function PeoplePage({
     return "Family Tree";
   }, [ownerUserId, ownerDisplayName]);
 
-  const pageIntro = useMemo(() => {
-    if (readOnly) {
-      return "View how this person organizes their relatives, partners, and connections.";
-    }
-    return "Add relatives, link parents and partners, and show off your family tree.";
-  }, [readOnly]);
-
   const loadFormFromPerson = (p: PeoplePerson) => {
-    setForm({
-      name: p.name,
-      core: p.relation_core,
-      alias: p.relation_alias || "",
-      prefix: [...(p.relation_prefix_tokens || [])],
-      suffix: [...(p.relation_suffix_tokens || [])],
-      birth: p.birthday || "",
-      death: p.death_date || "",
-      gender: p.gender || "",
-      imageKey: p.image_key || "",
-      imageUrl: p.image_url || "",
-      mother: p.bio_mother_id || "",
-      father: p.bio_father_id || "",
-      stepMother: p.step_mother_id || "",
-      stepFather: p.step_father_id || "",
-      partnerOther: "",
-      guardian: "",
-    });
+    setForm(personToFormState(p));
   };
 
   const openEdit = (p: PeoplePerson) => {
@@ -267,7 +323,7 @@ export default function PeoplePage({
         await createGuardianLink(token, created.id, { guardian_id: form.guardian });
       }
       setAddOpen(false);
-      setForm(emptyForm());
+      setForm(emptyPersonForm());
       await refresh();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Create failed.");
@@ -324,122 +380,195 @@ export default function PeoplePage({
   }
 
   const openAddDialog = () => {
-    setForm(emptyForm());
+    setForm(emptyPersonForm());
     setAddOpen(true);
   };
 
-  const mainBody = (
-    <>
-      <Stack
-        gap="2"
-        px={{ base: "2", md: "2" }}
-        pt={{ base: "2", md: "2" }}
-        pb="2"
-        overflow="visible"
+  const ownerUserIdForWizard = sessionUser?.user.id;
+
+  const showTreeToolbar = !readOnly && Boolean(bundle) && nonSelfCount > 0;
+
+  const headerToolbarButton = showTreeToolbar ? (
+    showSetupTreeButton ? (
+      <PondButton
+        type="button"
+        colorPalette="sky"
+        size="sm"
+        variant="outline"
+        flexShrink={0}
+        onClick={() => openWizard(false)}
       >
-        {embed ? (
-          <Stack gap="2">
-            <HStack justify="space-between" align="flex-start" flexWrap="wrap" gap="2">
-              <Heading as="h2" size="md" color="fg" flex="1" minW="12rem">
-                {pageHeading}
-              </Heading>
-              {!readOnly ? (
-                <PondButton
-                  type="button"
-                  colorPalette="lilypad"
-                  size="sm"
-                  flexShrink={0}
-                  onClick={openAddDialog}
-                >
-                  Add person
-                </PondButton>
-              ) : null}
-            </HStack>
-          </Stack>
+        Set up tree
+      </PondButton>
+    ) : (
+      <PondButton
+        type="button"
+        colorPalette="lilypad"
+        size="sm"
+        flexShrink={0}
+        onClick={openAddDialog}
+      >
+        Add person
+      </PondButton>
+    )
+  ) : null;
+
+  const layoutLoadingHint = (
+    <Box px={{ base: "2", md: "2" }} py="2">
+      <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+        Loading tree layout…
+      </Text>
+    </Box>
+  );
+
+  const readOnlyTreeBody =
+    bundle && nonSelfCount > 0 ? (
+      treeLayout ? (
+        <FamilyTreeDisplayView bundle={{ ...bundle, layout: treeLayout }} />
+      ) : (
+        layoutLoadingHint
+      )
+    ) : null;
+
+  const editableTreeTabs =
+    bundle && nonSelfCount > 0 ? (
+      <Tabs.Root
+        value={treeMode}
+        variant="plain"
+        lazyMount
+        unmountOnExit
+        onValueChange={(details) => setTreeMode(parseTreeMode(details.value))}
+      >
+        <Tabs.List
+          {...APP_SHELL_TAB_LIST_PROPS}
+          py={undefined}
+          pt="1"
+          pb="2"
+        >
+          {TREE_MODE_TABS.map(({ id, label }) => (
+            <Tabs.Trigger key={id} value={id} {...APP_SHELL_TAB_TRIGGER_PROPS}>
+              {label}
+            </Tabs.Trigger>
+          ))}
+        </Tabs.List>
+        <Tabs.Content value="view" p={{ base: "2", md: "2" }}>
+          {treeLayout ? (
+            <FamilyTreeDisplayView bundle={{ ...bundle, layout: treeLayout }} />
+          ) : (
+            layoutLoadingHint
+          )}
+        </Tabs.Content>
+        <Tabs.Content value="rearrange" p={{ base: "2", md: "2" }}>
+          {treeLayout ? (
+            <FamilyTreeRearrangeView
+              bundle={bundle}
+              layout={treeLayout}
+              onLayoutChange={scheduleLayoutPatch}
+            />
+          ) : (
+            layoutLoadingHint
+          )}
+        </Tabs.Content>
+        <Tabs.Content value="edit" p={{ base: "2", md: "2" }}>
+          <FamilyTreeEditListView
+            bundle={bundle}
+            onEditPerson={openEdit}
+            onAddPerson={openAddDialog}
+          />
+        </Tabs.Content>
+      </Tabs.Root>
+    ) : null;
+
+  const treeArea = (
+    <>
+      {error ? <PanelMessageSlot error={error} /> : null}
+      {!bundle ? (
+        embed && readOnly ? (
+          <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+            Loading tree…
+          </Text>
         ) : (
-          <Box {...PANEL_ENTRY_CARD_PROPS}>
-            <HStack
-              justify="space-between"
-              align="flex-start"
-              flexWrap="wrap"
-              gap="2"
-              mb="2"
-            >
-              <Heading as="h1" size={{ base: "lg", md: "xl" }} flex="1" minW="12rem">
-                <HStack
-                  as="span"
-                  display="inline-flex"
-                  gap="2"
-                  alignItems="center"
-                  flexWrap="wrap"
-                >
-                  <Text as="span" aria-hidden="true">
-                    🌳
-                  </Text>
-                  <Text as="span">{pageHeading}</Text>
-                  {!bundle ? (
-                    <Text
-                      as="span"
-                      fontSize={APP_TEXT_SIZES.helper}
-                      color="fg.muted"
-                      fontWeight="medium"
-                      aria-live="polite"
-                    >
-                      Loading…
-                    </Text>
-                  ) : null}
-                </HStack>
-              </Heading>
-              {!readOnly ? (
-                <PondButton
-                  type="button"
-                  colorPalette="lilypad"
-                  size="sm"
-                  flexShrink={0}
-                  onClick={openAddDialog}
-                >
-                  Add person
-                </PondButton>
-              ) : null}
-            </HStack>
-            <Text fontSize={APP_TEXT_SIZES.body} lineHeight="snug" color="fg">
-              {pageIntro}
-            </Text>
-          </Box>
-        )}
-
-        {error ? <PanelMessageSlot error={error} /> : null}
-
-        {!bundle ? (
           <Box {...PANEL_ENTRY_CARD_PROPS}>
             <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
               Loading tree…
             </Text>
           </Box>
-        ) : bundle.people.length === 0 ? (
-          <PanelEmptyState
-            title="No people on your tree yet."
-            description="Add yourself, parents, siblings, and anyone else you want to track."
-            actionLabel={readOnly ? undefined : "Add person"}
-            onAction={readOnly ? undefined : openAddDialog}
-            actionColorPalette="lilypad"
-          />
-        ) : (
-          <PeopleTreeView
-            bundle={bundle}
-            rowsByRank={treeRows.rowsByRank}
-            friendRow={treeRows.friendRow}
-            expandedId={expandedId}
-            readOnly={readOnly}
-            showLegend={!embed}
-            onToggle={(personId) => {
-              setExpandedId(expandedId === personId ? null : personId);
-            }}
-            onEdit={openEdit}
-          />
-        )}
+        )
+      ) : nonSelfCount === 0 ? (
+        <PanelEmptyState
+          title="Your family tree is ready to grow."
+          description="Walk through a quick setup for parents, siblings, and more—or add people one at a time."
+          actionLabel={readOnly ? undefined : "Set up tree"}
+          onAction={readOnly ? undefined : () => openWizard(false)}
+          actionColorPalette="lilypad"
+        />
+      ) : readOnly ? (
+        readOnlyTreeBody
+      ) : (
+        editableTreeTabs
+      )}
+    </>
+  );
 
-      </Stack>
+  const mainBody = (
+    <>
+      {embed && readOnly ? (
+        treeArea
+      ) : (
+        <Stack
+          gap="1"
+          px={{ base: "2", md: "2" }}
+          pt={{ base: "2", md: "2" }}
+          pb="2"
+          overflow="visible"
+        >
+          {embed ? (
+            <Heading as="h2" size="md" color="fg">
+              {pageHeading}
+            </Heading>
+          ) : (
+            <Box
+              {...PANEL_ENTRY_CARD_PROPS}
+              pb={bundle && nonSelfCount > 0 ? "1" : undefined}
+            >
+              <HStack
+                justify="space-between"
+                align="flex-start"
+                gap="2"
+                flexWrap="nowrap"
+              >
+                <Heading as="h1" size={{ base: "lg", md: "xl" }} flex="1" minW={0}>
+                  <HStack
+                    as="span"
+                    display="inline-flex"
+                    gap="2"
+                    alignItems="center"
+                    flexWrap="wrap"
+                  >
+                    <Text as="span" aria-hidden="true">
+                      🌳
+                    </Text>
+                    <Text as="span">{pageHeading}</Text>
+                    {!bundle ? (
+                      <Text
+                        as="span"
+                        fontSize={APP_TEXT_SIZES.helper}
+                        color="fg.muted"
+                        fontWeight="medium"
+                        aria-live="polite"
+                      >
+                        Loading…
+                      </Text>
+                    ) : null}
+                  </HStack>
+                </Heading>
+                {headerToolbarButton}
+              </HStack>
+            </Box>
+          )}
+          {treeArea}
+        </Stack>
+      )}
 
       <AppModal open={addOpen} onOpenChange={setAddOpen} title="Add person" size="lg">
         <Stack gap="3">
@@ -464,7 +593,12 @@ export default function PeoplePage({
                   onFormImageKeyChange={(v) => setFormField("imageKey", v)}
                   getApiAccessToken={getApiAccessToken}
                 />
-                <PersonFamilyLinksFields
+                <PersonFamilyLinksSection
+                  key={`add-person-links-${addOpen}`}
+                  defaultOpen={
+                    addFamilyLinksVariant === "parent-relation-hint" ||
+                    familyLinksFormHasValues(form)
+                  }
                   candidates={addFamilyLinkCandidates}
                   subjectName={form.name}
                   formMother={form.mother}
@@ -540,7 +674,13 @@ export default function PeoplePage({
                       relationCoreLocked={editPerson.is_self}
                     />
                     {!readOnly ? (
-                      <PersonFamilyLinksFields
+                      <PersonFamilyLinksSection
+                        key={`edit-person-links-${editPerson.id}-${editOpen}`}
+                        defaultOpen={
+                          familyLinksFormHasValues(form) ||
+                          editPerson.partnerships.length > 0 ||
+                          editPerson.guardian_links.length > 0
+                        }
                         candidates={familyLinkCandidates}
                         subjectPersonId={editPerson.id}
                         subjectName={editPerson.name}
@@ -561,88 +701,106 @@ export default function PeoplePage({
                         onFormPartnerOtherChange={(v) => setFormField("partnerOther", v)}
                         formGuardian={form.guardian}
                         onFormGuardianChange={(v) => setFormField("guardian", v)}
-                      />
+                      >
+                        {editPerson.partnerships.length > 0 ? (
+                          <Stack gap="2" {...PANEL_NESTED_BLOCK_PROPS}>
+                            <Text
+                              fontSize={APP_TEXT_SIZES.label}
+                              fontWeight="semibold"
+                              color="fg"
+                            >
+                              Partnerships
+                            </Text>
+                            {editPerson.partnerships.map((pr) => {
+                              const other = bundle?.people.find(
+                                (x) => x.id === pr.other_person_id,
+                              );
+                              return (
+                                <HStack
+                                  key={pr.id}
+                                  justify="space-between"
+                                  flexWrap="wrap"
+                                  gap="2"
+                                >
+                                  <Text fontSize={APP_TEXT_SIZES.body} color="fg">
+                                    {other?.name ?? pr.other_person_id} — {pr.status}
+                                  </Text>
+                                  <HStack gap="1">
+                                    <PondButton
+                                      type="button"
+                                      size="xs"
+                                      colorPalette="sky"
+                                      variant="outline"
+                                      onClick={async () => {
+                                        const token = await getApiAccessToken();
+                                        const next =
+                                          pr.status === "current" ? "former" : "current";
+                                        await patchPartnership(token, pr.id, { status: next });
+                                        await refresh();
+                                      }}
+                                    >
+                                      Toggle
+                                    </PondButton>
+                                    <PondButton
+                                      type="button"
+                                      size="xs"
+                                      colorPalette="nautical"
+                                      variant="outline"
+                                      onClick={async () => {
+                                        const token = await getApiAccessToken();
+                                        await deletePartnership(token, pr.id);
+                                        await refresh();
+                                      }}
+                                    >
+                                      Remove
+                                    </PondButton>
+                                  </HStack>
+                                </HStack>
+                              );
+                            })}
+                          </Stack>
+                        ) : null}
+                        {editPerson.guardian_links.length > 0 ? (
+                          <Stack gap="2" {...PANEL_NESTED_BLOCK_PROPS}>
+                            <Text
+                              fontSize={APP_TEXT_SIZES.label}
+                              fontWeight="semibold"
+                              color="fg"
+                            >
+                              Guardians
+                            </Text>
+                            {editPerson.guardian_links.map((g) => {
+                              const gu = bundle?.people.find((x) => x.id === g.guardian_id);
+                              return (
+                                <HStack
+                                  key={g.id}
+                                  justify="space-between"
+                                  flexWrap="wrap"
+                                  gap="2"
+                                >
+                                  <Text fontSize={APP_TEXT_SIZES.body} color="fg">
+                                    {gu?.name ?? g.guardian_id}
+                                  </Text>
+                                  <PondButton
+                                    type="button"
+                                    size="xs"
+                                    colorPalette="nautical"
+                                    variant="outline"
+                                    onClick={async () => {
+                                      const token = await getApiAccessToken();
+                                      await deleteGuardianLink(token, editPerson.id, g.id);
+                                      await refresh();
+                                    }}
+                                  >
+                                    Remove
+                                  </PondButton>
+                                </HStack>
+                              );
+                            })}
+                          </Stack>
+                        ) : null}
+                      </PersonFamilyLinksSection>
                     ) : null}
-            {editPerson.partnerships.length > 0 ? (
-              <Stack gap="2" {...PANEL_NESTED_BLOCK_PROPS}>
-                <Text fontSize={APP_TEXT_SIZES.label} fontWeight="semibold" color="fg">
-                  Partnerships
-                </Text>
-                {editPerson.partnerships.map((pr) => {
-                  const other = bundle?.people.find((x) => x.id === pr.other_person_id);
-                  return (
-                    <HStack key={pr.id} justify="space-between" flexWrap="wrap" gap="2">
-                      <Text fontSize={APP_TEXT_SIZES.body} color="fg">
-                        {other?.name ?? pr.other_person_id} — {pr.status}
-                      </Text>
-                      {!readOnly ? (
-                        <HStack gap="1">
-                          <PondButton
-                            type="button"
-                            size="xs"
-                            colorPalette="sky"
-                            variant="outline"
-                            onClick={async () => {
-                              const token = await getApiAccessToken();
-                              const next = pr.status === "current" ? "former" : "current";
-                              await patchPartnership(token, pr.id, { status: next });
-                              await refresh();
-                            }}
-                          >
-                            Toggle
-                          </PondButton>
-                          <PondButton
-                            type="button"
-                            size="xs"
-                            colorPalette="nautical"
-                            variant="outline"
-                            onClick={async () => {
-                              const token = await getApiAccessToken();
-                              await deletePartnership(token, pr.id);
-                              await refresh();
-                            }}
-                          >
-                            Remove
-                          </PondButton>
-                        </HStack>
-                      ) : null}
-                    </HStack>
-                  );
-                })}
-              </Stack>
-            ) : null}
-            {editPerson.guardian_links.length > 0 ? (
-              <Stack gap="2" {...PANEL_NESTED_BLOCK_PROPS}>
-                <Text fontSize={APP_TEXT_SIZES.label} fontWeight="semibold" color="fg">
-                  Guardians
-                </Text>
-                {editPerson.guardian_links.map((g) => {
-                  const gu = bundle?.people.find((x) => x.id === g.guardian_id);
-                  return (
-                    <HStack key={g.id} justify="space-between" flexWrap="wrap" gap="2">
-                      <Text fontSize={APP_TEXT_SIZES.body} color="fg">
-                        {gu?.name ?? g.guardian_id}
-                      </Text>
-                      {!readOnly ? (
-                        <PondButton
-                          type="button"
-                          size="xs"
-                          colorPalette="nautical"
-                          variant="outline"
-                          onClick={async () => {
-                            const token = await getApiAccessToken();
-                            await deleteGuardianLink(token, editPerson.id, g.id);
-                            await refresh();
-                          }}
-                        >
-                          Remove
-                        </PondButton>
-                      ) : null}
-                    </HStack>
-                  );
-                })}
-              </Stack>
-            ) : null}
             <HStack gap="2" flexWrap="wrap" justify="space-between" pt="1">
               <HStack gap="2" flexWrap="wrap">
                 <PondButton
@@ -685,6 +843,18 @@ export default function PeoplePage({
           </Stack>
         ) : null}
       </AppModal>
+
+      {bundle && ownerUserIdForWizard != null && !readOnly ? (
+        <FamilyTreeSetupWizard
+          open={wizardOpen}
+          onOpenChange={setWizardOpen}
+          bundle={bundle}
+          refresh={refresh}
+          getApiAccessToken={getApiAccessToken}
+          userId={ownerUserIdForWizard}
+          markAutoOpenDisabledOnClose={wizardCloseDisablesAuto}
+        />
+      ) : null}
     </>
   );
 

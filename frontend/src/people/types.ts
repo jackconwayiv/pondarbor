@@ -43,11 +43,20 @@ export type PeoplePerson = {
   updated_at: string;
 };
 
+export type PeopleTreeLayout = {
+  positions: Record<string, { col: number; row: number }>;
+  min_col: number;
+  min_row: number;
+  max_col: number;
+  max_row: number;
+};
+
 export type PeopleGraphBundle = {
   count: number;
   people: PeoplePerson[];
   partnerships: PeoplePartnershipRow[];
   guardian_links: PeopleGuardianLinkRow[];
+  layout?: PeopleTreeLayout | null;
 };
 
 export type PeoplePersonCreatePayload = {

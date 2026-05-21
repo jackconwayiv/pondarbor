@@ -6,7 +6,9 @@ from django.db.models import Prefetch
 from rest_framework import serializers
 
 from closet.serializers import _validate_closet_image_key_for_user, closet_item_image_url
+from people.layout import get_layout_for_owner, layout_payload
 from people.models import Person, PersonGuardianLink, PersonPartnership
+from people.partial_dates import normalize_partial_date
 from people.relation_vocab import (
     RELATION_CORE_VALUES,
     validate_prefix_tokens,
@@ -38,6 +40,28 @@ def _person_queryset_for_owner(owner_id: int):
 
 def person_image_url(obj: Person) -> str:
     return closet_item_image_url(obj.image_key or "")
+
+
+class PartialDateField(serializers.CharField):
+    """``YYYY-MM-DD`` or ``MM-DD`` when year is unknown."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("required", False)
+        kwargs.setdefault("allow_null", True)
+        kwargs.setdefault("allow_blank", True)
+        kwargs.setdefault("max_length", 10)
+        super().__init__(**kwargs)
+
+    def to_internal_value(self, data):
+        if data is None or (isinstance(data, str) and not data.strip()):
+            return None
+        try:
+            return normalize_partial_date(super().to_internal_value(data))
+        except serializers.ValidationError:
+            raise
+        except Exception as exc:
+            detail = getattr(exc, "detail", None) or str(exc)
+            raise serializers.ValidationError(detail) from exc
 
 
 class PersonSerializer(serializers.ModelSerializer):
@@ -130,8 +154,8 @@ class PersonCreateSerializer(serializers.Serializer):
     relation_suffix_tokens = serializers.ListField(child=serializers.CharField(), required=False)
     relation_core = serializers.CharField(max_length=32)
     relation_alias = serializers.CharField(required=False, allow_blank=True, max_length=120)
-    birthday = serializers.DateField(required=False, allow_null=True)
-    death_date = serializers.DateField(required=False, allow_null=True)
+    birthday = PartialDateField()
+    death_date = PartialDateField()
     gender = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=16)
     bio_mother_id = serializers.UUIDField(required=False, allow_null=True)
     bio_father_id = serializers.UUIDField(required=False, allow_null=True)
@@ -205,8 +229,8 @@ class PersonPatchSerializer(serializers.Serializer):
     relation_suffix_tokens = serializers.ListField(child=serializers.CharField(), required=False)
     relation_core = serializers.CharField(max_length=32, required=False)
     relation_alias = serializers.CharField(required=False, allow_blank=True, max_length=120)
-    birthday = serializers.DateField(required=False, allow_null=True)
-    death_date = serializers.DateField(required=False, allow_null=True)
+    birthday = PartialDateField()
+    death_date = PartialDateField()
     gender = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=16)
     bio_mother_id = serializers.UUIDField(required=False, allow_null=True)
     bio_father_id = serializers.UUIDField(required=False, allow_null=True)
@@ -373,9 +397,11 @@ def graph_bundle_for_owner(*, owner_id: int) -> dict[str, Any]:
         }
         for g in glinks
     ]
+    layout_row = get_layout_for_owner(owner_id)
     return {
         "count": len(people),
         "people": ser.data,
         "partnerships": partnership_rows,
         "guardian_links": guardian_rows,
+        "layout": layout_payload(layout_row),
     }

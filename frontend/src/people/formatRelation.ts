@@ -1,3 +1,4 @@
+import { formatPartialDateDisplay } from "./partialDate";
 import { labelForRelationCore } from "./relationVocab";
 import type { PeoplePerson } from "./types";
 
@@ -43,10 +44,11 @@ export function formatRelationLine(p: PeoplePerson): string {
 }
 
 export function formatLifeDates(p: PeoplePerson): string {
-  if (p.death_date) {
-    const b = p.birthday || "—";
-    return `${b} – ${p.death_date}`;
+  const birth = formatPartialDateDisplay(p.birthday);
+  const death = formatPartialDateDisplay(p.death_date);
+  if (death) {
+    return `${birth || "—"} – ${death}`;
   }
-  if (p.birthday) return `DOB: ${p.birthday}`;
+  if (birth) return `DOB: ${birth}`;
   return "—";
 }

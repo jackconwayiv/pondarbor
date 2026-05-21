@@ -26,8 +26,8 @@ class Person(models.Model):
     relation_core = models.CharField(max_length=32)
     relation_suffix_tokens = models.JSONField(default=list, blank=True)
     relation_alias = models.CharField(max_length=120, blank=True)
-    birthday = models.DateField(null=True, blank=True)
-    death_date = models.DateField(null=True, blank=True)
+    birthday = models.CharField(max_length=10, null=True, blank=True)
+    death_date = models.CharField(max_length=10, null=True, blank=True)
     gender = models.CharField(
         max_length=16,
         choices=Gender.choices,
@@ -81,6 +81,25 @@ class Person(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+
+class FamilyTreeLayout(models.Model):
+    """Per-owner manual grid positions for the family tree canvas."""
+
+    owner_user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="family_tree_layout",
+    )
+    positions = models.JSONField(default=dict, blank=True)
+    min_col = models.IntegerField(default=0)
+    min_row = models.IntegerField(default=0)
+    max_col = models.IntegerField(default=6)
+    max_row = models.IntegerField(default=6)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"FamilyTreeLayout(owner={self.owner_user_id})"
 
 
 class PersonPartnership(models.Model):

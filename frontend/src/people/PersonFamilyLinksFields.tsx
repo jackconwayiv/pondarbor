@@ -1,6 +1,9 @@
-import { Stack, Text } from "@chakra-ui/react";
+import { Collapsible, Stack, Text } from "@chakra-ui/react";
+import type { ReactNode } from "react";
+import { useState } from "react";
 
 import PondNativeSelect from "../components/PondNativeSelect";
+import PondButton from "../PondButton";
 import { APP_TEXT_SIZES, PANEL_NESTED_BLOCK_PROPS } from "../theme/typography";
 import { parentRelationHintText } from "./parentRelationHint";
 import { partnerLinkCandidates } from "./partnerLinkCandidates";
@@ -307,6 +310,60 @@ export function PersonFamilyLinksFields({
       ) : null}
       {connectionsBlock}
     </Stack>
+  );
+}
+
+export function familyLinksFormHasValues(state: {
+  mother?: string;
+  father?: string;
+  stepMother?: string;
+  stepFather?: string;
+  partnerOther?: string;
+  guardian?: string;
+}): boolean {
+  return Boolean(
+    state.mother?.trim() ||
+      state.father?.trim() ||
+      state.stepMother?.trim() ||
+      state.stepFather?.trim() ||
+      state.partnerOther?.trim() ||
+      state.guardian?.trim(),
+  );
+}
+
+export type PersonFamilyLinksSectionProps = PersonFamilyLinksFieldsProps & {
+  /** Start expanded when the form already has link picks or existing tree links. */
+  defaultOpen?: boolean;
+  children?: ReactNode;
+};
+
+/** Collapsible wrapper for add/edit person modals (not the setup wizard). */
+export function PersonFamilyLinksSection({
+  defaultOpen = false,
+  children,
+  ...fieldsProps
+}: PersonFamilyLinksSectionProps) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <Collapsible.Root open={open} onOpenChange={(details) => setOpen(details.open)}>
+      <Collapsible.Trigger asChild>
+        <PondButton
+          type="button"
+          variant={open ? "solid" : "outline"}
+          colorPalette="sky"
+          w="100%"
+        >
+          {open ? "Hide this person's relationships" : "This person's relationships"}
+        </PondButton>
+      </Collapsible.Trigger>
+      <Collapsible.Content>
+        <Stack gap="3" mt="3">
+          <PersonFamilyLinksFields {...fieldsProps} />
+          {children}
+        </Stack>
+      </Collapsible.Content>
+    </Collapsible.Root>
   );
 }
 

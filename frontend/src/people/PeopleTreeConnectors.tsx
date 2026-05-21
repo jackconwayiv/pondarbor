@@ -8,9 +8,8 @@ import {
 import {
   elbowPoint,
   parentChildPath,
-  partnerPath,
+  partnerPathBetween,
   petLeashPaths,
-  type Point,
 } from "./peopleTreeLayout";
 import type { TreeEdge } from "./peopleTreeEdges";
 import type { PeopleTreeLayout } from "./usePeopleTreeAnchors";
@@ -44,10 +43,9 @@ function collectEdgeDots(
       if (!a || !b) continue;
       const left = a.center.x <= b.center.x ? a : b;
       const right = a.center.x <= b.center.x ? b : a;
-      const y = (left.center.y + right.center.y) / 2;
       dots.push(
-        { x: left.right.x, y, key: `r-${edge.aId}-${edge.bId}-l` },
-        { x: right.left.x, y, key: `r-${edge.aId}-${edge.bId}-r` },
+        { x: left.right.x, y: left.center.y, key: `r-${edge.aId}-${edge.bId}-l` },
+        { x: right.left.x, y: right.center.y, key: `r-${edge.aId}-${edge.bId}-r` },
       );
     } else if (edge.kind === "guardian") {
       const g = anchors.get(edge.guardianId);
@@ -99,10 +97,8 @@ export default function PeopleTreeConnectors({ layout, edges }: Props) {
       if (!a || !b) continue;
       const left = a.center.x <= b.center.x ? a : b;
       const right = a.center.x <= b.center.x ? b : a;
-      const from: Point = { x: left.right.x, y: (left.center.y + right.center.y) / 2 };
-      const to: Point = { x: right.left.x, y: from.y };
       paths.push({
-        d: partnerPath(from, to),
+        d: partnerPathBetween(left, right),
         stroke: PEOPLE_TREE_LINE,
         dash: edge.former ? "6 4" : undefined,
         opacity: edge.former ? 0.55 : 1,

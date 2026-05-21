@@ -30,10 +30,8 @@ const VIEWPORT_TARGET_PX = TARGET_PAN_AREA_PX + LEGEND_BAND_PX;
 const VIEWPORT_MAX_HEIGHT = { base: "min(82vh, 48rem)", md: "min(86vh, 52rem)" } as const;
 const VIEWPORT_MIN_HEIGHT = `${VIEWPORT_TARGET_PX}px`;
 
-export function peopleTreeLegend(hasRelationshipEdges: boolean): string {
-  return hasRelationshipEdges
-    ? "Pinch or use +/− to zoom; drag background to pan."
-    : "Set parents or partners in Edit. Pinch or use +/− to zoom; drag to pan.";
+export function peopleTreeLegend(): string {
+  return "Pinch or use +/− to zoom; drag background to pan.";
 }
 
 export type PeopleTreeViewProps = {
@@ -139,8 +137,6 @@ export default function PeopleTreeView({
   const didCenterRef = useRef(false);
   const edges = useMemo(() => computeTreeEdges(bundle), [bundle]);
 
-  const hasRelationshipEdges = edges.length > 0;
-
   useLayoutEffect(() => {
     const panArea = panAreaRef.current;
     if (!panArea) return;
@@ -200,7 +196,7 @@ export default function PeopleTreeView({
           color="fg.muted"
           flexShrink={0}
         >
-          {peopleTreeLegend(hasRelationshipEdges)}
+          {peopleTreeLegend()}
         </Text>
       ) : null}
       <Box

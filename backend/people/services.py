@@ -4,6 +4,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Q
 
 from people.models import Person, PersonPartnership
+from people.partial_dates import date_to_partial
 
 
 def ensure_self_person(user) -> None:
@@ -26,7 +27,7 @@ def ensure_self_person(user) -> None:
             p.name = display
             updates.append("name")
         if p.birthday is None and bd is not None:
-            p.birthday = bd
+            p.birthday = date_to_partial(bd)
             updates.append("birthday")
         if updates:
             p.save(update_fields=updates + ["updated_at"])
@@ -42,7 +43,7 @@ def ensure_self_person(user) -> None:
         soft_deleted.deleted_at = None
         soft_deleted.name = display
         if bd is not None:
-            soft_deleted.birthday = bd
+            soft_deleted.birthday = date_to_partial(bd)
         soft_deleted.save(update_fields=["deleted_at", "name", "birthday", "updated_at"])
         return
 
@@ -53,7 +54,7 @@ def ensure_self_person(user) -> None:
                 name=display,
                 relation_core="self",
                 relation_alias="me",
-                birthday=bd,
+                birthday=date_to_partial(bd),
                 is_self=True,
                 relation_prefix_tokens=[],
                 relation_suffix_tokens=[],

@@ -37,7 +37,7 @@ select {
   font-size: max(16px, 1rem);
 }
 
-/* Quotes, Closet, WhatIf entry: hide document scrollbar so width stays aligned; scrolling still works. */
+/* Panel routes (Quotes, Closet, People, …): hide document scrollbar so width stays aligned; scrolling still works. */
 html.pa-hide-scrollbar,
 body.pa-hide-scrollbar {
   scrollbar-width: none;

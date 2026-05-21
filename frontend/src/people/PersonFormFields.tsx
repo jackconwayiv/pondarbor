@@ -2,6 +2,7 @@ import { Input, Stack, Text } from "@chakra-ui/react";
 
 import PondNativeSelect from "../components/PondNativeSelect";
 import { APP_TEXT_SIZES, PANEL_FIELD_PROPS } from "../theme/typography";
+import { PersonDateFields } from "./PersonDateFields";
 import { PersonImageField } from "./PersonImageField";
 import { RelationFields } from "./RelationFields";
 
@@ -91,30 +92,6 @@ export function PersonFormFields({
 
       <Stack gap="1">
         <Text fontSize={APP_TEXT_SIZES.label} fontWeight="medium" color="fg">
-          Birthday (optional)
-        </Text>
-        <Input
-          type="date"
-          value={formBirth}
-          onChange={(e) => onFormBirthChange(e.target.value)}
-          disabled={disabled}
-          {...PANEL_FIELD_PROPS}
-        />
-      </Stack>
-      <Stack gap="1">
-        <Text fontSize={APP_TEXT_SIZES.label} fontWeight="medium" color="fg">
-          Death date (optional)
-        </Text>
-        <Input
-          type="date"
-          value={formDeath}
-          onChange={(e) => onFormDeathChange(e.target.value)}
-          disabled={disabled}
-          {...PANEL_FIELD_PROPS}
-        />
-      </Stack>
-      <Stack gap="1">
-        <Text fontSize={APP_TEXT_SIZES.label} fontWeight="medium" color="fg">
           Gender (optional)
         </Text>
         <PondNativeSelect
@@ -130,6 +107,18 @@ export function PersonFormFields({
           <option value="other">Other</option>
         </PondNativeSelect>
       </Stack>
+      <PersonDateFields
+        label="Birthday (optional)"
+        value={formBirth}
+        onChange={onFormBirthChange}
+        disabled={disabled}
+      />
+      <PersonDateFields
+        label="Death date (optional)"
+        value={formDeath}
+        onChange={onFormDeathChange}
+        disabled={disabled}
+      />
     </Stack>
   );
 }

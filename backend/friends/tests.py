@@ -1,11 +1,13 @@
 from datetime import timedelta
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from estates.constants import ESTATES_COMPUTER_USER_EMAIL
 from friends.models import FriendRequest
 from users.models import Profile
 
@@ -272,6 +274,38 @@ class FriendsApiTests(TestCase):
         self.assertNotIn(self.bob.email, emails)
         self.assertNotIn(self.charlie.email, emails)
         self.assertNotIn(self.pending_user.email, emails)
+
+    def test_approved_users_list_excludes_hidden_system_accounts(self):
+        self._make_user(
+            ESTATES_COMPUTER_USER_EMAIL,
+            approved=True,
+            display_name="Computer",
+        )
+        self._make_user(
+            settings.CONTACT_INBOX_EMAIL,
+            approved=True,
+            display_name="PondArbor",
+        )
+
+        list_resp = self.alice_client.get("/api/v1/friends/approved-users/")
+        self.assertEqual(list_resp.status_code, 200)
+        list_emails = {row["email"] for row in list_resp.json()}
+        self.assertNotIn(ESTATES_COMPUTER_USER_EMAIL, list_emails)
+        self.assertNotIn(settings.CONTACT_INBOX_EMAIL, list_emails)
+
+        search_resp = self.alice_client.get(
+            "/api/v1/friends/approved-users/search/?q=estates-computer"
+        )
+        self.assertEqual(search_resp.status_code, 200)
+        search_emails = {row["email"] for row in search_resp.json()}
+        self.assertNotIn(ESTATES_COMPUTER_USER_EMAIL, search_emails)
+
+        contact_search = self.alice_client.get(
+            f"/api/v1/friends/approved-users/search/?q={settings.CONTACT_INBOX_EMAIL.split('@')[0]}"
+        )
+        self.assertEqual(contact_search.status_code, 200)
+        contact_emails = {row["email"] for row in contact_search.json()}
+        self.assertNotIn(settings.CONTACT_INBOX_EMAIL, contact_emails)
 
     def test_approved_users_list_excludes_friends_only_non_friend(self):
         self.bob.profile.social_publish_visibility = Profile.SocialPublishVisibility.FRIENDS_ONLY

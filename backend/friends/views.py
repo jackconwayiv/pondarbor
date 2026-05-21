@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Q
@@ -7,12 +8,22 @@ from rest_framework.decorators import api_view, permission_classes
 from users.permissions import IsApprovedUser
 from rest_framework.response import Response
 
+from estates.constants import ESTATES_COMPUTER_USER_EMAIL
 from friends.models import FriendRequest
 from friends.services import friends_queryset_for_user, order_users_by_recent_activity
 from users.models import Profile
 from users.social_privacy import published_user_visibility_q, viewer_context
 
 UserModel = get_user_model()
+
+
+def _exclude_hidden_approved_user_emails(qs):
+    """Users that should not appear in Approved Users discovery (friends tab)."""
+    qs = qs.exclude(email__iexact=ESTATES_COMPUTER_USER_EMAIL)
+    contact = (getattr(settings, "CONTACT_INBOX_EMAIL", "") or "").strip()
+    if contact:
+        qs = qs.exclude(email__iexact=contact)
+    return qs
 
 
 def _profile_for_user(user):
@@ -213,6 +224,9 @@ def approved_users_search(request):
             deleted_at__isnull=True,
         )
         .exclude(pk=user.pk)
+    )
+    qs = (
+        _exclude_hidden_approved_user_emails(qs)
         .filter(Q(email__icontains=search) | Q(profile__display_name__icontains=search))
         .order_by("profile__display_name", "email")[:20]
     )
@@ -247,6 +261,7 @@ def approved_users_list(request):
         )
         .exclude(pk__in=excluded_ids)
     )
+    qs = _exclude_hidden_approved_user_emails(qs)
     ctx = viewer_context(viewer=user)
     qs = qs.filter(published_user_visibility_q(viewer=user, ctx=ctx))
     qs = order_users_by_recent_activity(qs)

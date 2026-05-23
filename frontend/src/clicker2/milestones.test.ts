@@ -299,6 +299,16 @@ describe("isMilestoneMet", () => {
     expect(def.description).toBe("Reach 1,000 energy per second.");
   });
 
+  it("energy per second milestones ignore weather-boosted EpS in context", () => {
+    const def = GLOBAL_MILESTONES.find((m) => m.id === "eps_kiloflow")!;
+    const baseEps = 100;
+    const boostedEps = 10_000;
+    expect(isMilestoneMet(def, ctx({ energyPerSecond: baseEps }))).toBe(false);
+    expect(isMilestoneMet(def, ctx({ energyPerSecond: boostedEps }))).toBe(true);
+    // buildMilestoneEvalContext must pass base EpS (sim.energyPerSecond), not
+    // effectiveEnergyPerSecond, so wind does not unlock EpS milestones early.
+  });
+
   it("hundredaire at pond energy boundary", () => {
     const def = GLOBAL_MILESTONES.find((m) => m.id === "hundredaire")!;
     expect(isMilestoneMet(def, ctx({ energyInPond: 99 }))).toBe(false);

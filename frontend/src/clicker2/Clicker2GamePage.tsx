@@ -304,7 +304,7 @@ export default function Clicker2GamePage() {
       denizenMutationLevelsRef.current,
     );
     const nowPerf = performance.now();
-    const eps = effectiveEnergyPerSecond(
+    const boostedEps = effectiveEnergyPerSecond(
       sim.energyPerSecond,
       activeBlusterBoostRef.current,
       nowPerf,
@@ -312,17 +312,17 @@ export default function Clicker2GamePage() {
     return {
       energyInPond: computeEffectiveEnergy(
         energyRef.current,
-        eps,
+        boostedEps,
         energyAnchorMsRef.current,
         nowPerf,
       ),
       allTimeEnergyEarned: computeEffectiveEnergy(
         statisticsRef.current.all_time_energy_earned ?? 0,
-        eps,
+        boostedEps,
         statisticsPassiveAnchorMsRef.current,
         nowPerf,
       ),
-      energyPerSecond: eps,
+      energyPerSecond: sim.energyPerSecond,
       energyPerClick: sim.clickValue,
       totalClicks: statisticsRef.current.total_clicks ?? 0,
       weatherEventsClicked: statisticsRef.current.weather_events_clicked ?? 0,

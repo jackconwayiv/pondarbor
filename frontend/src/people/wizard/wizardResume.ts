@@ -1,4 +1,4 @@
-import { buildWizardPrefill, hasAnySiblings } from "./wizardPrefill";
+import { buildWizardPrefill, hasNiecesWizardPage } from "./wizardPrefill";
 import { activeWizardPages, type WizardPageId } from "./wizardSteps";
 import { grandparentIdsForParent } from "./wizardClassify";
 import type { PeopleGraphBundle } from "../types";
@@ -59,7 +59,10 @@ export function isWizardPageComplete(
     case "cousins":
       return bucketPageComplete(prefill.cousins.length);
     case "nieces":
-      return Object.values(prefill.niecesBySibling).some((arr) => arr.length > 0);
+      return (
+        Object.values(prefill.niecesBySibling).some((arr) => arr.length > 0) ||
+        prefill.standaloneNiecesNephews.length > 0
+      );
     case "friends":
       return bucketPageComplete(prefill.friends.length);
     default:
@@ -69,7 +72,7 @@ export function isWizardPageComplete(
 
 /** First page that still looks empty/incomplete; falls back to first active page. */
 export function firstIncompleteWizardPage(bundle: PeopleGraphBundle): WizardPageId {
-  const active = activeWizardPages(hasAnySiblings(buildWizardPrefill(bundle)));
+  const active = activeWizardPages(hasNiecesWizardPage(buildWizardPrefill(bundle)));
   for (const pageId of active) {
     if (!isWizardPageComplete(bundle, pageId)) return pageId;
   }

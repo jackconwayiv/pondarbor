@@ -8,8 +8,11 @@ import {
   isExtraParentFigure,
   isFriendPerson,
   isDirectSiblingPerson,
+  isGrandparentPerson,
   isNieceNephewPerson,
   isPetPerson,
+  isSiblingInLawPartnerOfDirectSibling,
+  isSiblingInLawPerson,
   isSpousePerson,
   isStepParentToSelf,
   siblingPartnerId,
@@ -37,6 +40,12 @@ export type WizardPrefill = {
   cousins: PeoplePerson[];
   /** Nieces/nephews grouped by sibling id. */
   niecesBySibling: Record<string, PeoplePerson[]>;
+  /** Brother/sister-in-law not shown as a direct sibling's partner subtext. */
+  standaloneSiblingInLaws: PeoplePerson[];
+  /** Niece/nephew with relation label only, not bio-linked to a sibling household. */
+  standaloneNiecesNephews: PeoplePerson[];
+  /** Grandma/grandpa with relation label only, not structurally linked to a bio parent. */
+  standaloneGrandparents: PeoplePerson[];
   friends: PeoplePerson[];
 };
 
@@ -115,6 +124,28 @@ export function buildWizardPrefill(bundle: PeopleGraphBundle): WizardPrefill {
     niecesBySibling[sib.id] = list;
   }
 
+  const linkedGrandparentIds = new Set<string>();
+  for (const list of Object.values(grandparentsByParent)) {
+    for (const g of list) linkedGrandparentIds.add(g.id);
+  }
+  const standaloneGrandparents = others.filter(
+    (p) => isGrandparentPerson(p) && !linkedGrandparentIds.has(p.id),
+  );
+
+  const linkedNieceIds = new Set<string>();
+  for (const list of Object.values(niecesBySibling)) {
+    for (const n of list) linkedNieceIds.add(n.id);
+  }
+  const standaloneNiecesNephews = others.filter(
+    (p) => isNieceNephewPerson(p) && !linkedNieceIds.has(p.id),
+  );
+
+  const standaloneSiblingInLaws = others.filter(
+    (p) =>
+      isSiblingInLawPerson(p) &&
+      !isSiblingInLawPartnerOfDirectSibling(bundle, p.id, siblings),
+  );
+
   return {
     self,
     parentSlots,
@@ -126,12 +157,56 @@ export function buildWizardPrefill(bundle: PeopleGraphBundle): WizardPrefill {
     auntsUncles,
     cousins,
     niecesBySibling,
+    standaloneSiblingInLaws,
+    standaloneNiecesNephews,
+    standaloneGrandparents,
     friends,
   };
 }
 
 export function hasAnySiblings(prefill: WizardPrefill): boolean {
   return prefill.siblings.length > 0;
+}
+
+export function hasNiecesWizardPage(prefill: WizardPrefill): boolean {
+  return prefill.siblings.length > 0 || prefill.standaloneNiecesNephews.length > 0;
+}
+
+/** Every person id assigned to a wizard display bucket (for coverage tests). */
+export function wizardDisplayBucketIds(prefill: WizardPrefill): string[] {
+  const ids: string[] = [];
+  if (prefill.self) ids.push(prefill.self.id);
+  const { parentSlots } = prefill;
+  for (const p of [
+    parentSlots.mother,
+    parentSlots.father,
+    parentSlots.stepMother,
+    parentSlots.stepFather,
+    ...parentSlots.extra,
+  ]) {
+    if (p) ids.push(p.id);
+  }
+  for (const list of [
+    prefill.siblings,
+    prefill.standaloneSiblingInLaws,
+    prefill.children,
+    prefill.pets,
+    prefill.spouses,
+    prefill.auntsUncles,
+    prefill.cousins,
+    prefill.standaloneNiecesNephews,
+    prefill.standaloneGrandparents,
+    prefill.friends,
+  ]) {
+    for (const p of list) ids.push(p.id);
+  }
+  for (const list of Object.values(prefill.grandparentsByParent)) {
+    for (const p of list) ids.push(p.id);
+  }
+  for (const list of Object.values(prefill.niecesBySibling)) {
+    for (const p of list) ids.push(p.id);
+  }
+  return ids;
 }
 
 export function siblingSpousePerson(

@@ -17,6 +17,7 @@ import {
 } from "../personFormState";
 import {
   buildWizardPrefill,
+  hasNiecesWizardPage,
   siblingHouseholdTitle,
   siblingSpousePerson,
 } from "./wizardPrefill";
@@ -48,6 +49,9 @@ import {
   type WizardDraftKind,
 } from "./wizardEntryUi";
 import { WizardPersonEntry, newEntryForm } from "./WizardPersonEntry";
+
+const STANDALONE_RELATION_HINT =
+  "Shown by how you relate to them. Link parents or partners after saving if you want tree lines.";
 import { WizardStepShell } from "./WizardStepShell";
 import type { PeopleGraphBundle, PeoplePerson } from "../types";
 
@@ -102,8 +106,8 @@ export function FamilyTreeSetupWizard({
   const isMobile = useIsMobile();
   const prefill = useMemo(() => buildWizardPrefill(bundle), [bundle]);
   const activePages = useMemo(
-    () => activeWizardPages(prefill.siblings.length > 0),
-    [prefill.siblings.length],
+    () => activeWizardPages(hasNiecesWizardPage(prefill)),
+    [prefill.siblings.length, prefill.standaloneNiecesNephews.length],
   );
 
   const [pageId, setPageId] = useState<WizardPageId>("you");
@@ -657,6 +661,78 @@ export function FamilyTreeSetupWizard({
             })}
           </Stack>
         ))}
+        <Stack gap="2" {...PANEL_NESTED_BLOCK_PROPS}>
+          <Text fontSize={APP_TEXT_SIZES.label} fontWeight="semibold" color="fg">
+            Siblings-in-law
+          </Text>
+          <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+            {STANDALONE_RELATION_HINT}
+          </Text>
+          {prefill.standaloneSiblingInLaws.map((p) =>
+            editingId === p.id ? null : (
+              <PrefillCard key={p.id} person={p} hideEdit={entryInProgress} onEdit={() => startEdit(p)} />
+            ),
+          )}
+          {editingId &&
+          prefill.standaloneSiblingInLaws.some((p) => p.id === editingId)
+            ? renderEditingEntry(async () => {
+                const prev = bundle.people.find((p) => p.id === editingId);
+                if (!editingId || !prev) return;
+                await persistPersonPatch(deps, editingId, entryForm, {
+                  previousCore: prev.relation_core,
+                  previousPrefixTokens: prev.relation_prefix_tokens,
+                  previousSuffixTokens: prev.relation_suffix_tokens,
+                });
+              })
+            : null}
+          {draftsOf("siblingInLaw").map((draft) => (
+            <Stack key={draft.draftId} gap="2">
+              {renderDraftEntry(draft, async (form) => {
+                await persistNewPerson(deps, form);
+              })}
+            </Stack>
+          ))}
+          {!entryInProgress ? (
+            <HStack gap="2" flexWrap="wrap">
+              <PondButton
+                type="button"
+                size="sm"
+                variant="outline"
+                colorPalette="lilypad"
+                onClick={() => {
+                  setEditingId(null);
+                  pushDraft(
+                    newWizardDraft("siblingInLaw", {
+                      core: "brother",
+                      suffix: ["in_law"],
+                      gender: "male",
+                    }),
+                  );
+                }}
+              >
+                Add brother-in-law
+              </PondButton>
+              <PondButton
+                type="button"
+                size="sm"
+                variant="outline"
+                colorPalette="lilypad"
+                onClick={() => {
+                  setEditingId(null);
+                  pushDraft(
+                    newWizardDraft("siblingInLaw", {
+                      core: "sister",
+                      suffix: ["in_law"],
+                      gender: "female",
+                    }),
+                  );
+                }}
+              >
+                Add sister-in-law
+              </PondButton>
+            </HStack>
+          ) : null}
+        </Stack>
         {!entryInProgress ? (
           <HStack gap="2" flexWrap="wrap">
             {(
@@ -880,6 +956,72 @@ export function FamilyTreeSetupWizard({
               </Stack>
             );
           })}
+          {(prefill.standaloneGrandparents.length > 0 ||
+            draftsOf("grandparent").some((d) => !d.grandparentParentId) ||
+            !entryInProgress) && (
+            <Stack gap="2" {...PANEL_NESTED_BLOCK_PROPS}>
+              <Text fontSize={APP_TEXT_SIZES.label} fontWeight="semibold" color="fg">
+                Other grandparents
+              </Text>
+              <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                {STANDALONE_RELATION_HINT}
+              </Text>
+              {prefill.standaloneGrandparents.map((g) =>
+                editingId === g.id ? null : (
+                  <PrefillCard key={g.id} person={g} hideEdit={entryInProgress} onEdit={() => startEdit(g)} />
+                ),
+              )}
+              {editingId &&
+              prefill.standaloneGrandparents.some((g) => g.id === editingId)
+                ? renderEditingEntry(async () => {
+                    const prev = bundle.people.find((p) => p.id === editingId);
+                    if (!editingId || !prev) return;
+                    await persistPersonPatch(deps, editingId, entryForm, {
+                      previousCore: prev.relation_core,
+                      previousPrefixTokens: prev.relation_prefix_tokens,
+                      previousSuffixTokens: prev.relation_suffix_tokens,
+                    });
+                  })
+                : null}
+              {draftsOf("grandparent")
+                .filter((d) => !d.grandparentParentId)
+                .map((draft) => (
+                  <Stack key={draft.draftId} gap="2">
+                    {renderDraftEntry(draft, async (form) => {
+                      await persistNewPerson(deps, form);
+                    })}
+                  </Stack>
+                ))}
+              {!entryInProgress ? (
+                <HStack gap="2" flexWrap="wrap">
+                  <PondButton
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    colorPalette="lilypad"
+                    onClick={() => {
+                      setEditingId(null);
+                      pushDraft(newWizardDraft("grandparent", { core: "grandma" }));
+                    }}
+                  >
+                    Add grandmother
+                  </PondButton>
+                  <PondButton
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    colorPalette="lilypad"
+                    onClick={() => {
+                      setEditingId(null);
+                      pushDraft(newWizardDraft("grandparent", { core: "grandpa" }));
+                    }}
+                  >
+                    Add grandfather
+                  </PondButton>
+                </HStack>
+              ) : null}
+            </Stack>
+          )}
         </Stack>
       </WizardStepShell>
     );
@@ -1013,6 +1155,68 @@ export function FamilyTreeSetupWizard({
                   </Stack>
                 );
               })}
+              <Stack gap="2" {...PANEL_NESTED_BLOCK_PROPS}>
+                <Text fontSize={APP_TEXT_SIZES.label} fontWeight="semibold" color="fg">
+                  Other nieces &amp; nephews
+                </Text>
+                <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                  {STANDALONE_RELATION_HINT}
+                </Text>
+                {prefill.standaloneNiecesNephews.map((n) =>
+                  editingId === n.id ? null : (
+                    <PrefillCard key={n.id} person={n} hideEdit={entryInProgress} onEdit={() => startEdit(n)} />
+                  ),
+                )}
+                {editingId &&
+                prefill.standaloneNiecesNephews.some((n) => n.id === editingId)
+                  ? renderEditingEntry(async () => {
+                      const prev = bundle.people.find((p) => p.id === editingId);
+                      if (!editingId || !prev) return;
+                      await persistPersonPatch(deps, editingId, entryForm, {
+                        previousCore: prev.relation_core,
+                        previousPrefixTokens: prev.relation_prefix_tokens,
+                        previousSuffixTokens: prev.relation_suffix_tokens,
+                      });
+                    })
+                  : null}
+                {draftsOf("niece")
+                  .filter((d) => !d.nieceSiblingId)
+                  .map((draft) => (
+                    <Stack key={draft.draftId} gap="2">
+                      {renderDraftEntry(draft, async (form) => {
+                        await persistNewPerson(deps, form);
+                      })}
+                    </Stack>
+                  ))}
+                {!entryInProgress ? (
+                  <HStack gap="2" flexWrap="wrap">
+                    <PondButton
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      colorPalette="lilypad"
+                      onClick={() => {
+                        setEditingId(null);
+                        pushDraft(newWizardDraft("niece", { core: "niece" }));
+                      }}
+                    >
+                      Add niece
+                    </PondButton>
+                    <PondButton
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      colorPalette="lilypad"
+                      onClick={() => {
+                        setEditingId(null);
+                        pushDraft(newWizardDraft("niece", { core: "nephew" }));
+                      }}
+                    >
+                      Add nephew
+                    </PondButton>
+                  </HStack>
+                ) : null}
+              </Stack>
             </Stack>
           </WizardStepShell>
         );

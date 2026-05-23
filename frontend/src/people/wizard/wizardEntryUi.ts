@@ -56,6 +56,7 @@ export function suggestedRelationHint(
 
 export type WizardDraftKind =
   | "sibling"
+  | "siblingInLaw"
   | "child"
   | "grandparent"
   | "niece"

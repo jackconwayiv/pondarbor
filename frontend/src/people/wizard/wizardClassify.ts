@@ -20,6 +20,22 @@ export function isDirectSiblingPerson(p: PeoplePerson): boolean {
   return isSiblingPerson(p) && !p.relation_suffix_tokens.includes("in_law");
 }
 
+export function isSiblingInLawPerson(p: PeoplePerson): boolean {
+  return isSiblingPerson(p) && p.relation_suffix_tokens.includes("in_law");
+}
+
+/** True when person is the current partner of a direct sibling (shown as spouse subtext). */
+export function isSiblingInLawPartnerOfDirectSibling(
+  bundle: PeopleGraphBundle,
+  personId: string,
+  directSiblings: PeoplePerson[],
+): boolean {
+  for (const sib of directSiblings) {
+    if (siblingPartnerId(bundle, sib.id) === personId) return true;
+  }
+  return false;
+}
+
 export function isChildPerson(p: PeoplePerson): boolean {
   return CHILD_CORES.has(p.relation_core);
 }

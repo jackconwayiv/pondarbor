@@ -42,6 +42,8 @@ import {
   defaultMotherForm,
   newWizardDraft,
   suggestedRelationEntryProps,
+  wizardEntryInProgress,
+  wizardParentsAddBlocked,
   type WizardDraft,
   type WizardDraftKind,
 } from "./wizardEntryUi";
@@ -129,24 +131,23 @@ export function FamilyTreeSetupWizard({
   const patchDraftForm = (draftId: string, form: PersonFormState) =>
     setDrafts((prev) => prev.map((d) => (d.draftId === draftId ? { ...d, form } : d)));
 
-  const entryFormOpen = useMemo(
-    () =>
-      editingId !== null ||
-      drafts.length > 0 ||
-      spouseForSiblingId !== null ||
-      showStepMotherForm ||
-      showStepFatherForm ||
-      !prefill.parentSlots.mother ||
-      !prefill.parentSlots.father,
-    [
+  const entryInProgressState = useMemo(
+    () => ({
       editingId,
-      drafts.length,
+      draftCount: drafts.length,
       spouseForSiblingId,
       showStepMotherForm,
       showStepFatherForm,
-      prefill.parentSlots.mother,
-      prefill.parentSlots.father,
-    ],
+    }),
+    [editingId, drafts.length, spouseForSiblingId, showStepMotherForm, showStepFatherForm],
+  );
+  const entryInProgress = useMemo(
+    () => wizardEntryInProgress(entryInProgressState),
+    [entryInProgressState],
+  );
+  const parentsAddBlocked = useMemo(
+    () => wizardParentsAddBlocked(entryInProgressState, prefill.parentSlots),
+    [entryInProgressState, prefill.parentSlots],
   );
 
   const wasOpenRef = useRef(false);
@@ -358,7 +359,7 @@ export function FamilyTreeSetupWizard({
         {label}
       </Text>
       {person && editingId !== person.id ? (
-        <PrefillCard person={person} hideEdit={entryFormOpen} onEdit={() => startEdit(person)} />
+        <PrefillCard person={person} hideEdit={entryInProgress} onEdit={() => startEdit(person)} />
       ) : (
         <WizardPersonEntry
           form={editingId === person?.id ? entryForm : form}
@@ -388,7 +389,7 @@ export function FamilyTreeSetupWizard({
           <Text fontSize={APP_TEXT_SIZES.label} fontWeight="semibold" color="fg">
             {heading}
           </Text>
-          <PrefillCard person={person} hideEdit={entryFormOpen} onEdit={() => startEdit(person)} />
+          <PrefillCard person={person} hideEdit={entryInProgress} onEdit={() => startEdit(person)} />
         </Stack>
       );
     }
@@ -414,7 +415,7 @@ export function FamilyTreeSetupWizard({
         </Stack>
       );
     }
-    if (entryFormOpen) return null;
+    if (parentsAddBlocked) return null;
     return (
       <PondButton
         key={slot}
@@ -477,7 +478,7 @@ export function FamilyTreeSetupWizard({
         )}
         {prefill.parentSlots.extra.map((p) =>
           editingId === p.id ? null : (
-            <PrefillCard key={p.id} person={p} hideEdit={entryFormOpen} onEdit={() => startEdit(p)} />
+            <PrefillCard key={p.id} person={p} hideEdit={entryInProgress} onEdit={() => startEdit(p)} />
           ),
         )}
         {draftsOf("extraParent").map((draft, index) => (
@@ -501,7 +502,7 @@ export function FamilyTreeSetupWizard({
             previousSuffixTokens: prev.relation_suffix_tokens,
           });
         }) : null}
-        {!entryFormOpen ? (
+        {!parentsAddBlocked ? (
           <PondButton
             type="button"
             size="sm"
@@ -534,7 +535,7 @@ export function FamilyTreeSetupWizard({
         <Stack gap="3">
           {people.map((p) =>
             editingId === p.id ? null : (
-              <PrefillCard key={p.id} person={p} hideEdit={entryFormOpen} onEdit={() => startEdit(p)} />
+              <PrefillCard key={p.id} person={p} hideEdit={entryInProgress} onEdit={() => startEdit(p)} />
             ),
           )}
           {editingId && people.some((p) => p.id === editingId)
@@ -549,7 +550,7 @@ export function FamilyTreeSetupWizard({
               })
             : null}
           {pageDrafts.map((draft) => renderDraftEntry(draft, onSave))}
-          {!entryFormOpen ? (
+          {!entryInProgress ? (
             <PondButton
               type="button"
               size="sm"
@@ -581,7 +582,7 @@ export function FamilyTreeSetupWizard({
           return (
             <Stack key={sib.id} gap="2" {...PANEL_NESTED_BLOCK_PROPS}>
               {editingId !== sib.id ? (
-                <PrefillCard person={sib} hideEdit={entryFormOpen} onEdit={() => startEdit(sib)} />
+                <PrefillCard person={sib} hideEdit={entryInProgress} onEdit={() => startEdit(sib)} />
               ) : editingId === sib.id ? (
                 renderEditingEntry(async () => {
                   const prev = bundle.people.find((p) => p.id === editingId);
@@ -628,7 +629,7 @@ export function FamilyTreeSetupWizard({
                     }
                   />
                 </Stack>
-              ) : entryFormOpen ? null : (
+              ) : entryInProgress ? null : (
                 <PondButton
                   type="button"
                   size="xs"
@@ -656,7 +657,7 @@ export function FamilyTreeSetupWizard({
             })}
           </Stack>
         ))}
-        {!entryFormOpen ? (
+        {!entryInProgress ? (
           <HStack gap="2" flexWrap="wrap">
             {(
               [
@@ -715,7 +716,7 @@ export function FamilyTreeSetupWizard({
         </HStack>
         {[...prefill.children, ...prefill.pets].map((p) =>
           editingId === p.id ? null : (
-            <PrefillCard key={p.id} person={p} hideEdit={entryFormOpen} onEdit={() => startEdit(p)} />
+            <PrefillCard key={p.id} person={p} hideEdit={entryInProgress} onEdit={() => startEdit(p)} />
           ),
         )}
         {editingId &&
@@ -746,7 +747,7 @@ export function FamilyTreeSetupWizard({
             )}
           </Stack>
         ))}
-        {!entryFormOpen ? (
+        {!entryInProgress ? (
           <PondButton
             type="button"
             size="sm"
@@ -807,7 +808,7 @@ export function FamilyTreeSetupWizard({
                 </Text>
                 {gps.map((g) =>
                   editingId === g.id ? null : (
-                    <PrefillCard key={g.id} person={g} hideEdit={entryFormOpen} onEdit={() => startEdit(g)} />
+                    <PrefillCard key={g.id} person={g} hideEdit={entryInProgress} onEdit={() => startEdit(g)} />
                   ),
                 )}
                 {editingId && gps.some((g) => g.id === editingId)
@@ -830,7 +831,7 @@ export function FamilyTreeSetupWizard({
                       })}
                     </Stack>
                   ))}
-                {!entryFormOpen ? (
+                {!entryInProgress ? (
                   <HStack gap="2" flexWrap="wrap">
                     <PondButton
                       type="button"
@@ -950,7 +951,7 @@ export function FamilyTreeSetupWizard({
                     </Text>
                     {(prefill.niecesBySibling[sib.id] ?? []).map((n) =>
                       editingId === n.id ? null : (
-                        <PrefillCard key={n.id} person={n} hideEdit={entryFormOpen} onEdit={() => startEdit(n)} />
+                        <PrefillCard key={n.id} person={n} hideEdit={entryInProgress} onEdit={() => startEdit(n)} />
                       ),
                     )}
                     {editingId &&
@@ -977,7 +978,7 @@ export function FamilyTreeSetupWizard({
                           })}
                         </Stack>
                       ))}
-                    {!entryFormOpen ? (
+                    {!entryInProgress ? (
                     <HStack gap="2" flexWrap="wrap">
                       <PondButton
                         type="button"

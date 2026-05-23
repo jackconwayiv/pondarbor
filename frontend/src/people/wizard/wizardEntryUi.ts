@@ -2,6 +2,42 @@ import { formatDefaultRelationLine } from "../formatRelation";
 import { emptyPersonForm, type PersonFormState } from "../personFormState";
 import type { PeoplePerson } from "../types";
 
+export type WizardParentSlots = {
+  mother: PeoplePerson | null;
+  father: PeoplePerson | null;
+};
+
+export type WizardEntryInProgressState = {
+  editingId: string | null;
+  draftCount: number;
+  spouseForSiblingId: string | null;
+  showStepMotherForm: boolean;
+  showStepFatherForm: boolean;
+};
+
+/** True when the user is mid add/edit on any wizard step (hides other "Add …" buttons). */
+export function wizardEntryInProgress(state: WizardEntryInProgressState): boolean {
+  return (
+    state.editingId !== null ||
+    state.draftCount > 0 ||
+    state.spouseForSiblingId !== null ||
+    state.showStepMotherForm ||
+    state.showStepFatherForm
+  );
+}
+
+/** True when bio mother or father slot is still empty (Parents-step gating only). */
+export function wizardParentsSlotsIncomplete(parentSlots: WizardParentSlots): boolean {
+  return !parentSlots.mother || !parentSlots.father;
+}
+
+export function wizardParentsAddBlocked(
+  entryState: WizardEntryInProgressState,
+  parentSlots: WizardParentSlots,
+): boolean {
+  return wizardEntryInProgress(entryState) || wizardParentsSlotsIncomplete(parentSlots);
+}
+
 export function relationLabelFromForm(form: PersonFormState): string {
   return formatDefaultRelationLine({
     relation_core: form.core,

@@ -15,6 +15,10 @@ from achievements.services import (
     SLUG_PONDCLICKER_TIER_2,
     SLUG_PONDCLICKER_TIER_6,
     SLUG_PONDCLICKER_TIER_7,
+    SLUG_PONDCLICKER_POND_PAWN,
+    SLUG_PONDCLICKER_TADPOLE_TRAVELER,
+    SLUG_PONDCLICKER_LILY_PAD_LEAPER,
+    SLUG_PONDCLICKER_MARSH_WARDEN,
     SLUG_SCHEDULE_COORDINATOR,
     SLUG_SHARING_IS_CARING,
     SLUG_SOMETHING_BORROWED,
@@ -28,6 +32,7 @@ from achievements.services import (
     evaluate_closet_return_achievements_for_users,
     evaluate_closet_sharing_is_caring_for_user,
     evaluate_after_whatif_session_ended,
+    evaluate_clicker2_achievements_for_user,
     evaluate_meal_maestro_partner_for_user,
     evaluate_meal_maestro_smorgasbord_for_user,
     evaluate_meal_maestro_tasty_plans_for_instance,
@@ -367,6 +372,103 @@ class PondClickerAchievementTests(TestCase):
         evaluate_pondclicker_achievements_for_user(user.id, {"owned_upgrades": state_ok})
         self.assertTrue(
             UserAchievement.objects.filter(user=user, achievement__slug=SLUG_PONDCLICKER_TIER_7).exists()
+        )
+
+
+def _clicker2_state_with_milestones(n: int) -> dict:
+    return {
+        "milestones_reached": {f"m{i}": float(i) for i in range(n)},
+    }
+
+
+class Clicker2AchievementTests(TestCase):
+    MILESTONE_SLUGS = (
+        SLUG_PONDCLICKER_POND_PAWN,
+        SLUG_PONDCLICKER_TADPOLE_TRAVELER,
+        "pondclicker_pond_pioneer",
+        SLUG_PONDCLICKER_LILY_PAD_LEAPER,
+        "pondclicker_wetland_wanderer",
+        SLUG_PONDCLICKER_MARSH_WARDEN,
+        "pondclicker_current_commander",
+        "pondclicker_stillwater_strategist",
+        "pondclicker_ecosystem_architect",
+        "pondclicker_pond_potentate",
+    )
+
+    def setUp(self):
+        for idx, slug in enumerate(self.MILESTONE_SLUGS):
+            AchievementDefinition.objects.get_or_create(
+                slug=slug,
+                defaults={
+                    "title": slug,
+                    "description": "",
+                    "category": "pondclicker",
+                    "order": 57 + idx,
+                },
+            )
+
+    def test_no_unlock_below_fifty_milestones(self):
+        user = User.objects.create_user(email="c2-49@example.com", password="secret12345")
+        evaluate_clicker2_achievements_for_user(user.id, _clicker2_state_with_milestones(49))
+        self.assertFalse(
+            UserAchievement.objects.filter(user=user, achievement__slug=SLUG_PONDCLICKER_POND_PAWN).exists()
+        )
+
+    def test_pond_pawn_unlocks_at_fifty_milestones(self):
+        user = User.objects.create_user(email="c2-50@example.com", password="secret12345")
+        evaluate_clicker2_achievements_for_user(user.id, _clicker2_state_with_milestones(50))
+        self.assertTrue(
+            UserAchievement.objects.filter(user=user, achievement__slug=SLUG_PONDCLICKER_POND_PAWN).exists()
+        )
+        self.assertFalse(
+            UserAchievement.objects.filter(
+                user=user,
+                achievement__slug=SLUG_PONDCLICKER_TADPOLE_TRAVELER,
+            ).exists()
+        )
+
+    def test_tadpole_traveler_unlocks_at_one_hundred_milestones(self):
+        user = User.objects.create_user(email="c2-100@example.com", password="secret12345")
+        evaluate_clicker2_achievements_for_user(user.id, _clicker2_state_with_milestones(100))
+        self.assertTrue(
+            UserAchievement.objects.filter(user=user, achievement__slug=SLUG_PONDCLICKER_POND_PAWN).exists()
+        )
+        self.assertTrue(
+            UserAchievement.objects.filter(
+                user=user,
+                achievement__slug=SLUG_PONDCLICKER_TADPOLE_TRAVELER,
+            ).exists()
+        )
+        self.assertFalse(
+            UserAchievement.objects.filter(
+                user=user,
+                achievement__slug="pondclicker_pond_pioneer",
+            ).exists()
+        )
+
+    def test_two_hundred_milestones_unlocks_first_four_tiers(self):
+        user = User.objects.create_user(email="c2-200@example.com", password="secret12345")
+        evaluate_clicker2_achievements_for_user(user.id, _clicker2_state_with_milestones(200))
+        for slug in self.MILESTONE_SLUGS[:4]:
+            self.assertTrue(
+                UserAchievement.objects.filter(user=user, achievement__slug=slug).exists(),
+                slug,
+            )
+        self.assertFalse(
+            UserAchievement.objects.filter(
+                user=user,
+                achievement__slug="pondclicker_wetland_wanderer",
+            ).exists()
+        )
+
+    def test_evaluate_is_idempotent(self):
+        user = User.objects.create_user(email="c2-idem@example.com", password="secret12345")
+        state = _clicker2_state_with_milestones(300)
+        self.assertTrue(evaluate_clicker2_achievements_for_user(user.id, state))
+        self.assertFalse(evaluate_clicker2_achievements_for_user(user.id, state))
+        self.assertEqual(
+            UserAchievement.objects.filter(user=user).count(),
+            6,
         )
 
 

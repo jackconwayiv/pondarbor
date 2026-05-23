@@ -6,7 +6,10 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from achievements.services import evaluate_pondclicker_achievements_for_user
+from achievements.services import (
+    evaluate_clicker2_achievements_for_user,
+    evaluate_pondclicker_achievements_for_user,
+)
 
 from .models import Clicker2GameSave, ClickerGameSave
 
@@ -196,7 +199,14 @@ def clicker2_game_state(request):
         },
     )
     row.refresh_from_db()
-    return Response({**_serialize_click2_save(row), **_server_time_payload()})
+    badges_unlocked = evaluate_clicker2_achievements_for_user(request.user.pk, state)
+    return Response(
+        {
+            **_serialize_click2_save(row),
+            "clicker2_badges_unlocked": badges_unlocked,
+            **_server_time_payload(),
+        }
+    )
 
 
 @api_view(["GET"])

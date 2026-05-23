@@ -142,6 +142,8 @@ const STATISTICS_UI_SYNC_MS = 5000;
 const LOCAL_SAVE_INTERVAL_MS = 5000;
 const LOCAL_SAVE_DEBOUNCE_MS = 500;
 const BACKEND_SAVE_INTERVAL_MS = 60_000;
+const BACKEND_SAVE_RETRY_DELAY_MS = 10_000;
+const BACKEND_SAVE_MAX_RETRIES = 3;
 const SAVED_BANNER_MS = 5000;
 /** Set true to show mutagen testing controls in the shop column (staff only). */
 const SHOW_MUTAGEN_DEV_TOOLS = false;
@@ -245,6 +247,8 @@ export default function Clicker2GamePage() {
 
   const saveDirtyRef = useRef(false);
   const saveInFlightRef = useRef(false);
+  const saveFailureCountRef = useRef(0);
+  const saveRetryTimeoutRef = useRef(0);
   const localSaveDebounceRef = useRef(0);
   const spendableEnergyRef = useRef(0);
   const lastSpendableForAffordRef = useRef(0);
@@ -422,6 +426,60 @@ export default function Clicker2GamePage() {
       setSavedBannerKey((current) => (current === key ? 0 : current));
     }, SAVED_BANNER_MS);
   }, []);
+
+  const runBackendSave = useCallback(
+    async (fromScheduledRetry = false) => {
+      if (!saveDirtyRef.current) return;
+      if (saveInFlightRef.current) return;
+
+      if (!fromScheduledRetry) saveFailureCountRef.current = 0;
+
+      saveInFlightRef.current = true;
+      flushLocalSaveNow();
+      const state = snapshotState();
+      stateRef.current = state;
+
+      let scheduledRetry = false;
+      try {
+        const token = await getApiAccessToken();
+        const saveRes = await saveClicker2State(token, state);
+        saveDirtyRef.current = false;
+        saveFailureCountRef.current = 0;
+        setSaveError(null);
+        showSavedBanner();
+        persistLocalSave();
+        if (saveRes.clicker2_badges_unlocked) {
+          void resyncSessionSilently();
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Save failed";
+        if (isAuthFailure(msg)) void resyncSessionSilently();
+
+        saveFailureCountRef.current += 1;
+        if (saveFailureCountRef.current <= BACKEND_SAVE_MAX_RETRIES) {
+          scheduledRetry = true;
+          saveRetryTimeoutRef.current = window.setTimeout(() => {
+            saveRetryTimeoutRef.current = 0;
+            saveInFlightRef.current = false;
+            void runBackendSave(true);
+          }, BACKEND_SAVE_RETRY_DELAY_MS);
+        } else {
+          setSaveError(msg);
+          saveFailureCountRef.current = 0;
+        }
+      } finally {
+        if (!scheduledRetry) saveInFlightRef.current = false;
+      }
+    },
+    [
+      flushLocalSaveNow,
+      getApiAccessToken,
+      persistLocalSave,
+      resyncSessionSilently,
+      showSavedBanner,
+      snapshotState,
+    ],
+  );
 
   const gameLoopRefsBox = useRef<Clicker2GameLoopRefs>({
     ownedDenizens: ownedDenizensRef,
@@ -883,27 +941,7 @@ export default function Clicker2GamePage() {
     }, LOCAL_SAVE_INTERVAL_MS);
 
     const backendId = window.setInterval(() => {
-      if (!saveDirtyRef.current || saveInFlightRef.current) return;
-      saveInFlightRef.current = true;
-      flushLocalSaveNow();
-      const state = snapshotState();
-      stateRef.current = state;
-      void (async () => {
-        try {
-          const token = await getApiAccessToken();
-          await saveClicker2State(token, state);
-          saveDirtyRef.current = false;
-          setSaveError(null);
-          showSavedBanner();
-          persistLocalSave();
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : "Save failed";
-          setSaveError(msg);
-          if (isAuthFailure(msg)) void resyncSessionSilently();
-        } finally {
-          saveInFlightRef.current = false;
-        }
-      })();
+      void runBackendSave(false);
     }, BACKEND_SAVE_INTERVAL_MS);
 
     const flushLocal = () => flushLocalSaveNow();
@@ -915,19 +953,19 @@ export default function Clicker2GamePage() {
       window.clearInterval(backendId);
       window.clearTimeout(localSaveDebounceRef.current);
       window.clearTimeout(savedBannerTimeoutRef.current);
+      window.clearTimeout(saveRetryTimeoutRef.current);
+      saveRetryTimeoutRef.current = 0;
+      saveInFlightRef.current = false;
       window.removeEventListener("pagehide", flushLocal);
       window.removeEventListener("beforeunload", flushLocal);
     };
   }, [
     isAuthenticated,
     loadStatus,
-    getApiAccessToken,
-    resyncSessionSilently,
     flushLocalSaveNow,
     flushStatisticsToState,
     persistLocalSave,
-    snapshotState,
-    showSavedBanner,
+    runBackendSave,
   ]);
 
   const pondDenizens = useMemo(

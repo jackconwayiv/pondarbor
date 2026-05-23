@@ -35,6 +35,16 @@ SLUG_PONDCLICKER_TIER_4 = "pondclicker_tier_4_pond"
 SLUG_PONDCLICKER_TIER_5 = "pondclicker_tier_5_pond"
 SLUG_PONDCLICKER_TIER_6 = "pondclicker_tier_6_pond"
 SLUG_PONDCLICKER_TIER_7 = "pondclicker_tier_7_pond"
+SLUG_PONDCLICKER_POND_PAWN = "pondclicker_pond_pawn"
+SLUG_PONDCLICKER_TADPOLE_TRAVELER = "pondclicker_tadpole_traveler"
+SLUG_PONDCLICKER_POND_PIONEER = "pondclicker_pond_pioneer"
+SLUG_PONDCLICKER_LILY_PAD_LEAPER = "pondclicker_lily_pad_leaper"
+SLUG_PONDCLICKER_WETLAND_WANDERER = "pondclicker_wetland_wanderer"
+SLUG_PONDCLICKER_MARSH_WARDEN = "pondclicker_marsh_warden"
+SLUG_PONDCLICKER_CURRENT_COMMANDER = "pondclicker_current_commander"
+SLUG_PONDCLICKER_STILLWATER_STRATEGIST = "pondclicker_stillwater_strategist"
+SLUG_PONDCLICKER_ECOSYSTEM_ARCHITECT = "pondclicker_ecosystem_architect"
+SLUG_PONDCLICKER_POND_POTENTATE = "pondclicker_pond_potentate"
 
 # Marquee denizen ids per tier (mirrors frontend `MARQUEE_IDS_BY_TIER` in clicker/catalog.ts).
 PONDCLICKER_MARQUEE_BY_TIER: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -101,6 +111,18 @@ PONDCLICKER_MARQUEE_BY_TIER: tuple[tuple[str, tuple[str, ...]], ...] = (
             "raccoon",
         ),
     ),
+)
+PONDCLICKER_MILESTONE_ACHIEVEMENTS: tuple[tuple[str, int], ...] = (
+    (SLUG_PONDCLICKER_POND_PAWN, 50),
+    (SLUG_PONDCLICKER_TADPOLE_TRAVELER, 100),
+    (SLUG_PONDCLICKER_POND_PIONEER, 150),
+    (SLUG_PONDCLICKER_LILY_PAD_LEAPER, 200),
+    (SLUG_PONDCLICKER_WETLAND_WANDERER, 250),
+    (SLUG_PONDCLICKER_MARSH_WARDEN, 300),
+    (SLUG_PONDCLICKER_CURRENT_COMMANDER, 350),
+    (SLUG_PONDCLICKER_STILLWATER_STRATEGIST, 400),
+    (SLUG_PONDCLICKER_ECOSYSTEM_ARCHITECT, 450),
+    (SLUG_PONDCLICKER_POND_POTENTATE, 500),
 )
 SLUG_SHARING_IS_CARING = "sharing_is_caring"
 SLUG_SOMETHING_BORROWED = "something_borrowed"
@@ -191,6 +213,32 @@ def evaluate_pondclicker_achievements_for_user(user_id: int, state: dict) -> boo
     any_new = False
     for slug, required in PONDCLICKER_MARQUEE_BY_TIER:
         if not _pondclicker_marquee_tier_complete(owned, required):
+            continue
+        if _try_unlock(user_id, slug):
+            any_new = True
+    return any_new
+
+
+def _clicker2_milestone_count(state: dict) -> int:
+    raw = state.get("milestones_reached")
+    if not isinstance(raw, dict):
+        return 0
+    return sum(
+        1 for v in raw.values() if isinstance(v, (int, float)) and v >= 0
+    )
+
+
+def evaluate_clicker2_achievements_for_user(user_id: int, state: dict) -> bool:
+    """
+    Unlock PondClicker Redux milestone-count badges. Idempotent via `_try_unlock`.
+    Returns True if any new unlock was granted on this call.
+    """
+    if not isinstance(state, dict):
+        return False
+    count = _clicker2_milestone_count(state)
+    any_new = False
+    for slug, min_count in PONDCLICKER_MILESTONE_ACHIEVEMENTS:
+        if count < min_count:
             continue
         if _try_unlock(user_id, slug):
             any_new = True
@@ -468,7 +516,7 @@ def achievement_rows_for_user(
 
 def backfill_all_achievements() -> None:
     """Management command: grant unlocks for users who already meet rules (post-deploy)."""
-    from clicker.models import ClickerGameSave
+    from clicker.models import Clicker2GameSave, ClickerGameSave
     from whatif.models import WhatIfGameResult, WhatIfPlayer, WhatIfSession
 
     from meal.models import MealPlanInstance
@@ -486,6 +534,9 @@ def backfill_all_achievements() -> None:
 
     for row in ClickerGameSave.objects.iterator():
         evaluate_pondclicker_achievements_for_user(row.user_id, row.state or {})
+
+    for row in Clicker2GameSave.objects.iterator():
+        evaluate_clicker2_achievements_for_user(row.user_id, row.state or {})
 
     for uid in (
         User.objects.filter(whatif_players__session__status=WhatIfSession.Status.ENDED)

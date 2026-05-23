@@ -63,6 +63,7 @@ export type Clicker2StateResponse = {
   updated_at: string | null;
   last_played_at: string | null;
   server_time: string;
+  clicker2_badges_unlocked?: boolean;
 };
 
 function numField(

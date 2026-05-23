@@ -1,0 +1,108 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  clickWeatherMultiplier,
+  shopSurfaceForWeather,
+  SUNSHINE_SHOP_BACKGROUND,
+  sunWeatherBonus,
+  WEATHER_FADE_IN_MS,
+  WEATHER_FADE_OUT_MS,
+  WEATHER_SPAWN_CHANCES_PERCENT,
+  WEATHER_VARIANT_IDS,
+  WEATHER_VARIANTS,
+  WEATHER_VISIBLE_MS_14,
+  WEATHER_VISIBLE_MS_17,
+  WEATHER_VISIBLE_MS_20,
+  weatherVisibleFadeTier,
+  type WeatherVariantId,
+} from "./weatherEvents";
+
+describe("weather variant catalog", () => {
+  it("spawn chances sum to 100%", () => {
+    const total = WEATHER_VARIANT_IDS.reduce(
+      (sum, id) => sum + WEATHER_SPAWN_CHANCES_PERCENT[id],
+      0,
+    );
+    expect(total).toBeCloseTo(100, 5);
+  });
+
+  it("family totals match 30/30/40 rain wind sun", () => {
+    const byFamily = { rain: 0, bluster: 0, sun: 0 };
+    for (const id of WEATHER_VARIANT_IDS) {
+      byFamily[WEATHER_VARIANTS[id].family] += WEATHER_SPAWN_CHANCES_PERCENT[id];
+    }
+    expect(byFamily.rain).toBeCloseTo(30, 5);
+    expect(byFamily.bluster).toBeCloseTo(30, 5);
+    expect(byFamily.sun).toBeCloseTo(40, 5);
+  });
+
+  it("visible ms tiers are 14s 17s 20s with 1s in and 3s out", () => {
+    expect(WEATHER_VISIBLE_MS_14).toBe(WEATHER_FADE_IN_MS + 10_000 + WEATHER_FADE_OUT_MS);
+    expect(WEATHER_VISIBLE_MS_17).toBe(WEATHER_FADE_IN_MS + 13_000 + WEATHER_FADE_OUT_MS);
+    expect(WEATHER_VISIBLE_MS_20).toBe(WEATHER_FADE_IN_MS + 16_000 + WEATHER_FADE_OUT_MS);
+    expect(weatherVisibleFadeTier(WEATHER_VISIBLE_MS_14)).toBe("14");
+    expect(weatherVisibleFadeTier(WEATHER_VISIBLE_MS_17)).toBe("17");
+    expect(weatherVisibleFadeTier(WEATHER_VISIBLE_MS_20)).toBe("20");
+  });
+
+  it("sun bonuses use variant pond fraction and eps minutes", () => {
+    expect(sunWeatherBonus(10_000, 100, "sunshine")).toBe(
+      Math.floor(Math.min(2_500, 100 * 25 * 60)),
+    );
+    expect(sunWeatherBonus(10_000, 100, "mostly_sunny")).toBe(
+      Math.floor(Math.min(2_000, 100 * 20 * 60)),
+    );
+    expect(sunWeatherBonus(10_000, 100, "partly_sunny")).toBe(
+      Math.floor(Math.min(1_500, 100 * 15 * 60)),
+    );
+  });
+
+  it("sunshine pulse tints shop when no rain or wind boost", () => {
+    expect(
+      shopSurfaceForWeather({
+        clickMultiplier: 1,
+        epsMultiplier: 1,
+        sunshinePulseActive: true,
+      }),
+    ).toBe(SUNSHINE_SHOP_BACKGROUND);
+    expect(
+      shopSurfaceForWeather({
+        clickMultiplier: 25,
+        epsMultiplier: 1,
+        sunshinePulseActive: true,
+      }),
+    ).not.toBe(SUNSHINE_SHOP_BACKGROUND);
+  });
+
+  it("rain click multiplier is instant full strength during hold", () => {
+    const now = 1_000;
+    const boost = { untilPerfMs: now + 5_000, peakMultiplier: 50 };
+    expect(clickWeatherMultiplier(boost, now + 500)).toBe(50);
+    expect(clickWeatherMultiplier(boost, now + 2_500)).toBe(50);
+    expect(clickWeatherMultiplier(boost, now + 4_999)).toBe(50);
+    expect(clickWeatherMultiplier(boost, now + 5_001)).toBe(1);
+    expect(clickWeatherMultiplier(null, now)).toBe(1);
+  });
+
+  it("each variant has unique display name", () => {
+    const names = WEATHER_VARIANT_IDS.map((id) => WEATHER_VARIANTS[id].name);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it("variant weights match spec", () => {
+    const weights: Record<WeatherVariantId, number> = {
+      downpour: 5,
+      rainstorm: 10,
+      drizzle: 15,
+      howling_gale: 5,
+      strong_wind: 10,
+      steady_breeze: 15,
+      sunshine: 5,
+      mostly_sunny: 15,
+      partly_sunny: 20,
+    };
+    for (const id of WEATHER_VARIANT_IDS) {
+      expect(WEATHER_VARIANTS[id].spawnWeight).toBe(weights[id]);
+    }
+  });
+});

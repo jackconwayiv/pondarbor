@@ -9,6 +9,7 @@ urlpatterns = [
     path("friends/", include("friends.urls")),
     path("whatif/", include("whatif.urls")),
     path("clicker/", include("clicker.urls")),
+    path("clicker2/", include("clicker.clicker2_urls")),
     path("achievements/", include("achievements.urls")),
     path("qff/", include("qff.urls")),
     path("closet/", include("closet.urls")),

@@ -38,6 +38,14 @@ export function getBreadcrumbItems(
     return [HOME, { ...GAMES }, { label: "PondClicker" }];
   }
   if (p.startsWith("/clicker/")) {
+    if (p === "/clicker/2") {
+      return [
+        HOME,
+        { ...GAMES },
+        { label: "PondClicker", to: "/clicker" },
+        { label: "Redux" },
+      ];
+    }
     return [HOME, { ...GAMES }, { label: "PondClicker" }];
   }
   if (p.startsWith("/estates/play/")) {

@@ -8,7 +8,7 @@ from rest_framework.response import Response
 
 from achievements.services import evaluate_pondclicker_achievements_for_user
 
-from .models import ClickerGameSave
+from .models import Clicker2GameSave, ClickerGameSave
 
 MAX_STATE_BYTES = 256 * 1024
 
@@ -106,6 +106,97 @@ def game_state(request):
             **_server_time_payload(),
         }
     )
+
+
+def _serialize_click2_save(row: Clicker2GameSave):
+    return {
+        "state": row.state,
+        "schema_version": row.schema_version,
+        "created_at": row.created_at.isoformat(),
+        "updated_at": row.updated_at.isoformat(),
+        "last_played_at": row.last_played_at.isoformat() if row.last_played_at else None,
+    }
+
+
+def _validate_state_post(request):
+    raw = request.body
+    if len(raw) > MAX_STATE_BYTES:
+        return None, Response(
+            {"detail": "State payload too large."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    try:
+        body = json.loads(raw.decode("utf-8")) if raw else {}
+    except json.JSONDecodeError:
+        return None, Response(
+            {"detail": "Invalid JSON."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    state = body.get("state")
+    if state is None:
+        return None, Response(
+            {"detail": 'Missing "state" field.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if not isinstance(state, dict):
+        return None, Response(
+            {"detail": '"state" must be a JSON object.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    schema_version = body.get("schema_version", 1)
+    try:
+        schema_version = int(schema_version)
+    except (TypeError, ValueError):
+        return None, Response(
+            {"detail": '"schema_version" must be a positive integer.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if schema_version < 1:
+        return None, Response(
+            {"detail": '"schema_version" must be >= 1.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return (state, schema_version), None
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def clicker2_game_state(request):
+    if request.method == "GET":
+        try:
+            row = Clicker2GameSave.objects.get(user=request.user)
+        except Clicker2GameSave.DoesNotExist:
+            return Response(
+                {
+                    "state": None,
+                    "schema_version": 1,
+                    "created_at": None,
+                    "updated_at": None,
+                    "last_played_at": None,
+                    **_server_time_payload(),
+                },
+                status=status.HTTP_200_OK,
+            )
+        return Response({**_serialize_click2_save(row), **_server_time_payload()})
+
+    parsed, err = _validate_state_post(request)
+    if err is not None:
+        return err
+    state, schema_version = parsed
+
+    now = timezone.now()
+    row, _created = Clicker2GameSave.objects.update_or_create(
+        user=request.user,
+        defaults={
+            "state": state,
+            "schema_version": schema_version,
+            "last_played_at": now,
+        },
+    )
+    row.refresh_from_db()
+    return Response({**_serialize_click2_save(row), **_server_time_payload()})
 
 
 @api_view(["GET"])

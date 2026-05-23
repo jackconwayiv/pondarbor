@@ -175,7 +175,9 @@ export default function AppLayout() {
   const isClickerRoute =
     location.pathname === "/clicker" ||
     location.pathname.startsWith("/clicker/");
-  const isClickerPlayRoute = location.pathname.startsWith("/clicker/play");
+  const isClickerPlayRoute =
+    location.pathname.startsWith("/clicker/play") ||
+    location.pathname === "/clicker/2";
   const isQffRoute =
     location.pathname === "/qff" || location.pathname.startsWith("/qff/");
   const isHarborRoute =
@@ -656,7 +658,10 @@ export default function AppLayout() {
         maxW="100%"
         {...(isQffRoute
           ? { p: 0, bg: qffAppShellBg }
-          : isHarborRoute || isPondsteadRoute || isEstatesPlayRoute
+          : isHarborRoute ||
+              isPondsteadRoute ||
+              isEstatesPlayRoute ||
+              isClickerPlayRoute
             ? { p: 0, bg: "transparent" }
             : {
                 pt: "2px",

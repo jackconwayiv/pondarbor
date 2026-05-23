@@ -1,0 +1,89 @@
+/** Fade in 1s, hold, fade out 3s — keyframe stops differ by total visible tier. */
+@keyframes clicker2WeatherFade14 {
+  0% {
+    opacity: 0;
+  }
+  7.15% {
+    opacity: 1;
+  }
+  78.57% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes clicker2WeatherFade17 {
+  0% {
+    opacity: 0;
+  }
+  5.88% {
+    opacity: 1;
+  }
+  82.35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes clicker2WeatherFade20 {
+  0% {
+    opacity: 0;
+  }
+  5% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes clicker2WeatherBob {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    transform: translate(-50%, calc(-50% - 6px)) scale(1.04);
+  }
+}
+
+.clicker2WeatherEvent {
+  animation:
+    clicker2WeatherFade14 var(--weather-life-ms, 14s) linear forwards,
+    clicker2WeatherBob 2.4s ease-in-out infinite;
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+
+.clicker2WeatherEvent--visible17 {
+  animation-name: clicker2WeatherFade17, clicker2WeatherBob;
+}
+
+.clicker2WeatherEvent--visible20 {
+  animation-name: clicker2WeatherFade20, clicker2WeatherBob;
+}
+
+.clicker2WeatherEvent--paused {
+  animation-play-state: paused;
+}
+
+.clicker2WeatherEvent:hover {
+  filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.4)) brightness(1.06);
+}
+
+.clicker2WeatherEvent:active {
+  transform: translate(-50%, -50%) scale(0.96);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clicker2WeatherEvent {
+    animation: none;
+    opacity: 1;
+  }
+}

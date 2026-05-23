@@ -9,7 +9,11 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "clicker2:pricing-report": "tsx scripts/clicker2-evolution-pricing-report.ts",
+    "clicker2:pricing-generate": "tsx scripts/clicker2-evolution-pricing-report.ts --write",
+    "clicker2:denizen-cost-curve": "tsx scripts/clicker2-denizen-base-cost-curve.ts",
+    "clicker2:evolution-tier-mults": "tsx scripts/clicker2-evolution-tier-mults.ts"
   },
   "dependencies": {
     "@auth0/auth0-react": "^2.15.1",
@@ -17,6 +21,7 @@
     "@dnd-kit/core": "^6.3.1",
     "@emotion/react": "^11.14.0",
     "@fontsource/caprasimo": "^5.2.7",
+    "@fontsource/major-mono-display": "^5.2.8",
     "@fontsource/spinnaker": "^5.2.8",
     "@sentry/react": "^10.47.0",
     "react": "^19.2.4",

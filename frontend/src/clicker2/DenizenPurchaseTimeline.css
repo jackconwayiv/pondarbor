@@ -1,0 +1,54 @@
+.denizenPurchaseTimeline {
+  width: 100%;
+  overflow: hidden;
+}
+
+.denizenPurchaseTimelineTrack {
+  display: block;
+  line-height: 1.15;
+  font-size: 1.1rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  user-select: none;
+}
+
+.denizenPurchaseTimelineGlyph {
+  display: inline;
+  letter-spacing: -0.06em;
+}
+
+.denizenPurchaseTimelineGlyph--new {
+  display: inline-block;
+  animation: denizenPurchaseTimelineNew 2.5s ease-out forwards;
+}
+
+@keyframes denizenPurchaseTimelineNew {
+  0% {
+    background: rgba(255, 220, 100, 0.55);
+    border-radius: 0.2rem;
+    box-shadow: 0 0 0 2px rgba(255, 200, 60, 0.45);
+  }
+  35% {
+    background: rgba(255, 235, 150, 0.35);
+    box-shadow: 0 0 0 1px rgba(255, 200, 60, 0.25);
+  }
+  100% {
+    background: transparent;
+    box-shadow: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .denizenPurchaseTimelineGlyph--new {
+    animation: none;
+    background: rgba(255, 220, 100, 0.35);
+    border-radius: 0.2rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .denizenPurchaseTimelineTrack {
+    font-size: 1rem;
+  }
+}

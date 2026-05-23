@@ -1,0 +1,58 @@
+.clickerPageBackgroundFade {
+  animation: clickerPageBackgroundFade 1s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes clickerPageBackgroundFade {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.clickerSunshinePagePulse {
+  /* 1s in + 5s hold + 1s out — duration set inline from SUNSHINE_PULSE_MS */
+  animation: clickerSunshinePagePulse 7s ease-in-out forwards;
+}
+
+@keyframes clickerSunshinePagePulse {
+  0% {
+    opacity: 0;
+  }
+  14.29% {
+    opacity: 1;
+  }
+  85.71% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clickerPageBackgroundFade {
+    animation-duration: 0.2s;
+  }
+
+  .clickerSunshinePagePulse {
+    animation-duration: 1.6s;
+  }
+
+  @keyframes clickerSunshinePagePulse {
+    0% {
+      opacity: 0;
+    }
+    18.75% {
+      opacity: 1;
+    }
+    81.25% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+}

@@ -1,0 +1,24 @@
+.pond2MilestoneCelebrateCard {
+  animation: pond2MilestoneCelebrateEnter 0.5s ease-out forwards;
+}
+
+@keyframes pond2MilestoneCelebrateEnter {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.pond2MilestoneCelebrateCard--paused {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pond2MilestoneCelebrateCard {
+    animation: none;
+  }
+}

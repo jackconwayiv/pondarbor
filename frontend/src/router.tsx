@@ -39,6 +39,10 @@ const SongadayEntryDetailPage = lazy(
 const ClickerLayout = lazy(() => import("./clicker/ClickerLayout"));
 const ClickerLobbyPage = lazy(() => import("./clicker/ClickerLobbyPage"));
 const ClickerGamePage = lazy(() => import("./clicker/ClickerGamePage"));
+const Clicker2GamePage = lazy(() => import("./clicker2/Clicker2GamePage"));
+const Clicker2CatalogAdminPage = lazy(
+  () => import("./clicker2/Clicker2CatalogAdminPage"),
+);
 const ClickerCatalogAdminPage = lazy(
   () => import("./clicker/ClickerCatalogAdminPage"),
 );
@@ -492,9 +496,14 @@ export const router = sentryCreateBrowserRouter([
         children: [
           { index: true, element: lazyRouteElement(<ClickerLobbyPage />) },
           { path: "play", element: lazyRouteElement(<ClickerGamePage />) },
+          { path: "2", element: lazyRouteElement(<Clicker2GamePage />) },
           {
             path: "dev/catalog",
             element: lazyRouteElement(<ClickerCatalogAdminPage />),
+          },
+          {
+            path: "dev/redux-catalog",
+            element: lazyRouteElement(<Clicker2CatalogAdminPage />),
           },
         ],
       },

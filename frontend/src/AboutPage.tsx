@@ -13,6 +13,7 @@ import {
 } from "@chakra-ui/react";
 import { useCallback, useState } from "react";
 
+import BrandColorsSection from "./about/BrandColorsSection";
 import { submitContactMessage } from "./about/contactApi";
 import { useAppSession } from "./auth/AppSessionContext";
 import { auth0LoginAuthorizationParams } from "./auth/auth0LoginParams";
@@ -348,6 +349,10 @@ export default function AboutPage() {
                   </Stack>
                 </SimpleGrid>
               </Stack>
+            </Box>
+
+            <Box {...PANEL_ENTRY_CARD_PROPS}>
+              <BrandColorsSection />
             </Box>
           </Stack>
         </Box>

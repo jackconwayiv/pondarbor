@@ -1,0 +1,22 @@
+.pond2HeadlineStrip {
+  background: transparent;
+  border: none;
+  /* One row of two milestone cards; scroll when there are more. */
+  height: 4.75rem;
+  min-height: 4.75rem;
+  max-height: 4.75rem;
+  overflow: hidden;
+}
+
+.pond2HeadlineStripGrid {
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  align-content: start;
+}
+
+.pond2HeadlineStrip--headline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

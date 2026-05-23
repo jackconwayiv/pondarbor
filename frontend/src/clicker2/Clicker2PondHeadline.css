@@ -1,0 +1,8 @@
+.pond2PondHeadline {
+  width: 100%;
+  max-width: 28rem;
+}
+
+.pond2PondHeadline--haiku {
+  max-width: 22rem;
+}

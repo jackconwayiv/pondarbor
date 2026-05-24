@@ -53,7 +53,14 @@ import {
   marginalValueAtUnlock,
   paybackSec,
 } from "./evolutionPricing";
-import { POND_PRODUCTION_EMOJI } from "./clicker2OwnedEvolutions";
+import {
+  evolutionDisplayEmoji,
+  POND_PRODUCTION_EMOJI,
+} from "./clicker2OwnedEvolutions";
+import {
+  listPairingSpecialties,
+  PAIRING_SPECIALTY_DENIZEN_ID,
+} from "./pairingEvolutions";
 import { formatEnergyAmount, formatEnergyRate, formatShopCost } from "./formatEnergy";
 import { specialtyTierGradient } from "./specialtyTierColors";
 import {
@@ -96,12 +103,29 @@ function CatalogFramedChrome({ children }: { children: ReactNode }) {
 }
 
 function specialtyUnlockSummary(s: SpecialtyDef): string {
+  if (s.pairingUnlock) {
+    return Object.entries(s.pairingUnlock)
+      .map(([denizenId, count]) => {
+        const label = getDenizenDef(denizenId)?.namePlural ?? denizenId;
+        return `${count.toLocaleString()} ${label}`;
+      })
+      .join(" · ");
+  }
   if (s.unlockAllTimeEnergy != null) {
     return `${formatEnergyAmount(s.unlockAllTimeEnergy)} all-time earned`;
   }
   const def = getDenizenDef(s.denizenId);
   const label = def?.namePlural ?? s.denizenId;
   return `${s.unlockOwned.toLocaleString()} ${label} owned`;
+}
+
+function pairingSourcePerStepFromDef(def: SpecialtyDef): number | null {
+  const scaling = def.effects?.find(
+    (e) => e.type === "denizen_eps_percent_per_denizen",
+  );
+  return scaling?.type === "denizen_eps_percent_per_denizen"
+    ? scaling.sourcePerStep
+    : null;
 }
 
 function SpecialtyTierTitleCard({
@@ -551,17 +575,108 @@ const CATALOG_DENIZEN_ORDER: readonly string[] = [
   ...DENIZENS.map((d) => d.id),
 ];
 
-const SPECIALTY_CATALOG_CHAIN_IDS: readonly string[] =
-  CATALOG_DENIZEN_ORDER.filter((id) => specialtiesForDenizen(id).length > 0);
+const SPECIALTY_CATALOG_CHAIN_IDS: readonly string[] = CATALOG_DENIZEN_ORDER.filter(
+  (id) =>
+    specialtiesForDenizen(id).length > 0 &&
+    id !== PAIRING_SPECIALTY_DENIZEN_ID,
+);
 
 function specialtyCatalogChainLabel(denizenId: string): string {
   if (denizenId === POND_SPECIALTY_DENIZEN_ID) return "Pond production";
+  if (denizenId === PAIRING_SPECIALTY_DENIZEN_ID) return "Pairing";
   return getDenizenDef(denizenId)?.namePlural ?? denizenId;
 }
 
 function specialtyCatalogChainEmoji(denizenId: string): string {
   if (denizenId === POND_SPECIALTY_DENIZEN_ID) return POND_PRODUCTION_EMOJI;
+  if (denizenId === PAIRING_SPECIALTY_DENIZEN_ID) return "🔗";
   return getDenizenDef(denizenId)?.emoji ?? "✨";
+}
+
+function PairingCatalogPage() {
+  const all = listPairingSpecialties(SPECIALTIES);
+  const [lowerFilter, setLowerFilter] = useState<string>("");
+  const [higherFilter, setHigherFilter] = useState<string>("");
+
+  const filtered = all.filter((def) => {
+    if (lowerFilter && def.pairingLowerDenizenId !== lowerFilter) return false;
+    if (higherFilter && def.pairingHigherDenizenId !== higherFilter) return false;
+    return true;
+  });
+
+  return (
+    <Stack gap="3">
+      <Heading as="h2" size="sm">
+        Pairing {EVOLUTIONS_LABEL_LOWER} ({filtered.length})
+      </Heading>
+      <HStack gap="2" flexWrap="wrap" fontSize="xs">
+        <Box>
+          <Text as="span" fontWeight="semibold" mr="1">
+            Booster (L):
+          </Text>
+          <select
+            value={lowerFilter}
+            onChange={(e) => setLowerFilter(e.target.value)}
+            style={{ fontSize: "0.75rem", maxWidth: "12rem" }}
+          >
+            <option value="">All</option>
+            {DENIZENS.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.emoji} {d.namePlural}
+              </option>
+            ))}
+          </select>
+        </Box>
+        <Box>
+          <Text as="span" fontWeight="semibold" mr="1">
+            Partner (H):
+          </Text>
+          <select
+            value={higherFilter}
+            onChange={(e) => setHigherFilter(e.target.value)}
+            style={{ fontSize: "0.75rem", maxWidth: "12rem" }}
+          >
+            <option value="">All</option>
+            {DENIZENS.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.emoji} {d.namePlural}
+              </option>
+            ))}
+          </select>
+        </Box>
+      </HStack>
+      <Stack gap="2">
+        {filtered.map((def) => {
+          const step = pairingSourcePerStepFromDef(def);
+          const l = def.pairingLowerDenizenId
+            ? getDenizenDef(def.pairingLowerDenizenId)
+            : undefined;
+          const h = def.pairingHigherDenizenId
+            ? getDenizenDef(def.pairingHigherDenizenId)
+            : undefined;
+          return (
+            <Box key={def.id} {...CARD_SHELL_PROPS}>
+              <HStack gap="2" align="flex-start" mb="1">
+                <Text fontSize="lg" lineHeight="1" aria-hidden>
+                  {evolutionDisplayEmoji(def)}
+                </Text>
+                <Stack gap="0.5" flex="1" minW="0">
+                  <Text fontWeight="bold" fontSize="sm">
+                    #{def.id} {def.name}
+                  </Text>
+                  <Text fontSize="2xs" color="gray.600" fontFamily="mono">
+                    {l?.namePlural ?? "?"} → {h?.namePlural ?? "?"}
+                    {step != null ? ` · per ${step}` : null}
+                  </Text>
+                </Stack>
+              </HStack>
+              <SpecialtyCatalogCard def={def} />
+            </Box>
+          );
+        })}
+      </Stack>
+    </Stack>
+  );
 }
 
 function SpecialtiesCatalogChainPage({
@@ -620,6 +735,11 @@ function SpecialtyCatalogChainTabTrigger({ denizenId }: { denizenId: string }) {
   );
 }
 
+const SPECIALTY_CATALOG_TAB_IDS: readonly string[] = [
+  ...SPECIALTY_CATALOG_CHAIN_IDS,
+  PAIRING_SPECIALTY_DENIZEN_ID,
+];
+
 function SpecialtiesCatalogByDenizen({
   chainTab,
   onChainTabChange,
@@ -627,7 +747,7 @@ function SpecialtiesCatalogByDenizen({
   chainTab: string;
   onChainTabChange: (denizenId: string) => void;
 }) {
-  const chains = SPECIALTY_CATALOG_CHAIN_IDS;
+  const chains = SPECIALTY_CATALOG_TAB_IDS;
   const activeChain = chains.includes(chainTab) ? chainTab : chains[0];
 
   if (chains.length === 0 || !activeChain) return null;
@@ -644,11 +764,14 @@ function SpecialtiesCatalogByDenizen({
           <SpecialtyCatalogChainTabTrigger key={denizenId} denizenId={denizenId} />
         ))}
       </Tabs.List>
-      {chains.map((denizenId) => (
+      {SPECIALTY_CATALOG_CHAIN_IDS.map((denizenId) => (
         <Tabs.Content key={denizenId} value={denizenId} pt="3">
           <SpecialtiesCatalogChainPage denizenId={denizenId} />
         </Tabs.Content>
       ))}
+      <Tabs.Content value={PAIRING_SPECIALTY_DENIZEN_ID} pt="3">
+        <PairingCatalogPage />
+      </Tabs.Content>
     </Tabs.Root>
   );
 }

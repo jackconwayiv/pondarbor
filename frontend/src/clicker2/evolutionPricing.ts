@@ -13,6 +13,7 @@ import {
   marginalClickIfBuySpecialty,
   marginalEpsIfBuySpecialty,
 } from "./simulation";
+import { PAIRING_SPECIALTY_DENIZEN_ID } from "./pairingEvolutions";
 import {
   DENIZEN_SPECIALTY_UNLOCK_TIER,
   POND_SPECIALTY_DENIZEN_ID,
@@ -112,6 +113,7 @@ export function pondTierToLadderTierIndex(pondTierIndex: number): number {
 
 export function evolutionChainKind(def: SpecialtyDef): EvolutionChainKind {
   if (def.denizenId === POND_SPECIALTY_DENIZEN_ID) return "pond";
+  if (def.denizenId === PAIRING_SPECIALTY_DENIZEN_ID) return "denizen";
   if (def.denizenId === "ripples") return "ripple";
   return "denizen";
 }
@@ -209,6 +211,20 @@ export function buildReferenceStateAtUnlock(
 ): ReferenceUnlockState {
   const ownedDenizens: Record<string, number> = {};
   const ownedSpecialties: Record<number, boolean> = {};
+
+  if (specialty.pairingUnlock) {
+    for (const def of DENIZENS) {
+      ownedDenizens[def.id] = 0;
+    }
+    ownedDenizens.ripples = 1;
+    for (const [denizenId, required] of Object.entries(specialty.pairingUnlock)) {
+      ownedDenizens[denizenId] = Math.max(
+        ownedDenizens[denizenId] ?? 0,
+        required,
+      );
+    }
+    return { ownedDenizens, ownedSpecialties };
+  }
 
   const tierIndex = specialtyTierIndex(specialty);
   const isPond = specialty.denizenId === POND_SPECIALTY_DENIZEN_ID;
@@ -353,6 +369,7 @@ export function applyMonotoneChainPrices(
   const chains = new Set(specialties.map((s) => s.denizenId));
 
   for (const denizenId of chains) {
+    if (denizenId === PAIRING_SPECIALTY_DENIZEN_ID) continue;
     const chain = specialtiesForDenizen(denizenId).slice().sort(
       (a, b) => specialtyTierIndex(a) - specialtyTierIndex(b),
     );
@@ -374,6 +391,10 @@ export function generateSpecialtyPrices(
 ): Record<number, number> {
   const raw: Record<number, number> = {};
   for (const s of specialties) {
+    if (s.denizenId === PAIRING_SPECIALTY_DENIZEN_ID) {
+      raw[s.id] = s.price;
+      continue;
+    }
     raw[s.id] = proposedPriceAtUnlock(s, options);
   }
   return applyMonotoneChainPrices(specialties, raw);
@@ -388,6 +409,7 @@ export function validatePricingTable(
 
   const chains = new Set(specialties.map((s) => s.denizenId));
   for (const denizenId of chains) {
+    if (denizenId === PAIRING_SPECIALTY_DENIZEN_ID) continue;
     const chain = specialtiesForDenizen(denizenId).slice().sort(
       (a, b) => specialtyTierIndex(a) - specialtyTierIndex(b),
     );

@@ -35,6 +35,13 @@ function countNonRippleObjects(ownedDenizens: Record<string, number>): number {
   return total;
 }
 
+function specialtyEffectsFromDef(
+  def: NonNullable<ReturnType<typeof getSpecialtyDef>>,
+): SpecialtyEffect[] {
+  if (def.effects?.length) return [...def.effects];
+  return [def.effect];
+}
+
 function ownedSpecialtyEffects(
   ownedSpecialties: Record<number, boolean>,
 ): SpecialtyEffect[] {
@@ -43,7 +50,7 @@ function ownedSpecialtyEffects(
     if (!owned) continue;
     const id = Number(rawId);
     const def = getSpecialtyDef(id);
-    if (def) out.push(def.effect);
+    if (def) out.push(...specialtyEffectsFromDef(def));
   }
   return out;
 }
@@ -91,6 +98,7 @@ function concentricRingsBonusPerNonRipple(effects: SpecialtyEffect[]): number {
 function epsForDenizen(
   def: DenizenDef,
   owned: number,
+  ownedDenizens: Record<string, number>,
   effects: SpecialtyEffect[],
   nonRippleCount: number,
   mutationLevel: number,
@@ -99,6 +107,16 @@ function epsForDenizen(
   const effMult =
     denizenEfficiencyMultiplier(def.id, effects) * globalEpsBoost(effects);
   let perCopy = def.baseEps * effMult;
+  for (const e of effects) {
+    if (
+      e.type === "denizen_eps_percent_per_denizen" &&
+      e.targetDenizenId === def.id
+    ) {
+      const src = getOwnedDenizenCount(ownedDenizens, e.sourceDenizenId);
+      const steps = Math.floor(src / e.sourcePerStep);
+      perCopy *= 1 + (e.percent * steps) / 100;
+    }
+  }
   if (def.id === "ripples") {
     perCopy += concentricRingsBonusPerNonRipple(effects) * nonRippleCount;
   }
@@ -120,9 +138,25 @@ export function denizenEpsPerCopy(
   const mutationLevel = getMutationLevel(denizenMutationLevels, def.id);
   const owned = getOwnedDenizenCount(ownedDenizens, def.id);
   if (owned > 0) {
-    return epsForDenizen(def, owned, effects, nonRippleCount, mutationLevel) / owned;
+    return (
+      epsForDenizen(
+        def,
+        owned,
+        ownedDenizens,
+        effects,
+        nonRippleCount,
+        mutationLevel,
+      ) / owned
+    );
   }
-  return epsForDenizen(def, 1, effects, nonRippleCount, mutationLevel);
+  return epsForDenizen(
+    def,
+    1,
+    ownedDenizens,
+    effects,
+    nonRippleCount,
+    mutationLevel,
+  );
 }
 
 /** Per-denizen EpS per copy for shop tooltips — one specialty scan for the whole map. */
@@ -159,6 +193,7 @@ export function simulateGame(
     const eps = epsForDenizen(
       def,
       owned,
+      ownedDenizens,
       effects,
       nonRippleCount,
       mutationLevel,

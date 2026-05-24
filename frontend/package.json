@@ -13,7 +13,8 @@
     "clicker2:pricing-report": "tsx scripts/clicker2-evolution-pricing-report.ts",
     "clicker2:pricing-generate": "tsx scripts/clicker2-evolution-pricing-report.ts --write",
     "clicker2:denizen-cost-curve": "tsx scripts/clicker2-denizen-base-cost-curve.ts",
-    "clicker2:evolution-tier-mults": "tsx scripts/clicker2-evolution-tier-mults.ts"
+    "clicker2:evolution-tier-mults": "tsx scripts/clicker2-evolution-tier-mults.ts",
+    "clicker2:pairing-generate": "tsx scripts/clicker2-pairing-generate.ts"
   },
   "dependencies": {
     "@auth0/auth0-react": "^2.15.1",

@@ -126,11 +126,19 @@ export function mergeNewlyRevealedDenizens(
 export function isSpecialtyUnlocked(
   specialty: Pick<
     SpecialtyDef,
-    "unlockOwned" | "unlockAllTimeEnergy" | "denizenId"
+    "unlockOwned" | "unlockAllTimeEnergy" | "denizenId" | "pairingUnlock"
   >,
   ownedDenizens: Record<string, number>,
   allTimeEnergyEarned: number,
 ): boolean {
+  if (specialty.pairingUnlock) {
+    for (const [denizenId, required] of Object.entries(specialty.pairingUnlock)) {
+      if (getOwnedDenizenCount(ownedDenizens, denizenId) < required) {
+        return false;
+      }
+    }
+    return true;
+  }
   if (specialty.unlockAllTimeEnergy != null) {
     return allTimeEnergyEarned >= specialty.unlockAllTimeEnergy;
   }

@@ -1,13 +1,23 @@
 import { denizenDoubleEfficiencyEffectText, getDenizenDef } from "./denizens";
 import { DENIZEN_EVOLUTION_TIER_MULT } from "./evolutionTierMults";
 import { specialtyCatalogPrice } from "./evolutionPrices.generated";
+import { PAIRING_SPECIALTIES } from "./pairingSpecialties.generated";
 
 export type SpecialtyEffect =
   | { type: "double_click_and_denizen"; denizenId: string }
   | { type: "double_denizen"; denizenId: string }
+  | {
+      type: "denizen_eps_percent_per_denizen";
+      sourceDenizenId: string;
+      targetDenizenId: string;
+      percent: number;
+      sourcePerStep: number;
+    }
   | { type: "concentric_rings" }
   | { type: "concentric_rings_mult"; factor: number }
   | { type: "production_percent"; percent: number };
+
+export type PairingUnlockRequirements = Readonly<Record<string, number>>;
 
 export type SpecialtyDef = {
   id: number;
@@ -17,8 +27,14 @@ export type SpecialtyDef = {
   unlockOwned: number;
   /** Pond production tiers: unlock when all-time energy earned reaches this value. */
   unlockAllTimeEnergy?: number;
+  /** Cross-denizen pairing: all listed owned counts must be met. */
+  pairingUnlock?: PairingUnlockRequirements;
+  pairingLowerDenizenId?: string;
+  pairingHigherDenizenId?: string;
   price: number;
   effect: SpecialtyEffect;
+  /** When set, all effects apply (pairing cards). */
+  effects?: readonly SpecialtyEffect[];
   effectText: string;
   ecologyNote: string;
 };
@@ -753,6 +769,8 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
     "No empty niche remains; biomass and story pack until the water reads as one saturated organism. Omnipresent saturation is every tier speaking at once.",
     "Mud, open water, sky, myth, and abyss breathe as one whole that no longer behaves like a puddle. One whole pond is transcendence—the basin knowing its name.",
   ]),
+
+  ...PAIRING_SPECIALTIES,
 ];
 
 function buildDoubleTier(

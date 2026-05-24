@@ -14,6 +14,7 @@ import {
 } from "./evolutionPricing";
 import { DENIZEN_EVOLUTION_TIER_MULT } from "./evolutionTierMults";
 import { getDenizenDef } from "./denizens";
+import { PAIRING_SPECIALTY_DENIZEN_ID } from "./pairingEvolutions";
 import {
   POND_SPECIALTY_DENIZEN_ID,
   specialtiesForDenizen,
@@ -67,6 +68,7 @@ describe("generateSpecialtyPrices", () => {
   it("keeps prices non-decreasing within each chain", () => {
     const chains = new Set(SPECIALTIES.map((s) => s.denizenId));
     for (const denizenId of chains) {
+      if (denizenId === PAIRING_SPECIALTY_DENIZEN_ID) continue;
       const chain = specialtiesForDenizen(denizenId);
       let prev = 0;
       for (const s of chain) {
@@ -138,7 +140,13 @@ describe("generateSpecialtyPrices", () => {
 
   it("prices every denizen chain as baseCost × tier mult", () => {
     for (const def of SPECIALTIES.map((s) => s.denizenId)) {
-      if (def === POND_SPECIALTY_DENIZEN_ID || def === "ripples") continue;
+      if (
+        def === POND_SPECIALTY_DENIZEN_ID ||
+        def === "ripples" ||
+        def === PAIRING_SPECIALTY_DENIZEN_ID
+      ) {
+        continue;
+      }
       const denizen = getDenizenDef(def);
       expect(denizen).toBeDefined();
       const chain = specialtiesForDenizen(def);

@@ -72,7 +72,11 @@ import {
   spendableCrossedAffordBoundary,
 } from "./clicker2Afford";
 import type { GetDenizenShopTooltipSnapshot } from "./denizenShopTooltip";
-import { accruePassiveStatistics } from "./clicker2Statistics";
+import {
+  accrueGrossEnergyBonus,
+  accruePassiveStatistics,
+  effectiveAllTimeEnergyEarned,
+} from "./clicker2Statistics";
 import { useClicker2MotionPaused } from "./useClicker2MotionPaused";
 import {
   applyMutation,
@@ -274,7 +278,6 @@ export default function Clicker2GamePage() {
   const revealedDenizensRef = useRef(revealedDenizens);
   revealedDenizensRef.current = revealedDenizens;
   const statisticsRef = useRef(statistics);
-  statisticsRef.current = statistics;
   const mutagensBankRef = useRef(mutagensBank);
   mutagensBankRef.current = mutagensBank;
   const totalMutagensAcquiredRef = useRef(totalMutagensAcquired);
@@ -316,8 +319,8 @@ export default function Clicker2GamePage() {
         energyAnchorMsRef.current,
         nowPerf,
       ),
-      allTimeEnergyEarned: computeEffectiveEnergy(
-        statisticsRef.current.all_time_energy_earned ?? 0,
+      allTimeEnergyEarned: effectiveAllTimeEnergyEarned(
+        statisticsRef.current,
         boostedEps,
         statisticsPassiveAnchorMsRef.current,
         nowPerf,
@@ -561,6 +564,26 @@ export default function Clicker2GamePage() {
     );
   }, []);
 
+  const effectiveAllTimeEnergyEarnedNow = useCallback(() => {
+    const sim = simulateGame(
+      ownedDenizensRef.current,
+      ownedSpecialtiesRef.current,
+      denizenMutationLevelsRef.current,
+    );
+    const nowPerf = performance.now();
+    const boostedEps = effectiveEnergyPerSecond(
+      sim.energyPerSecond,
+      activeBlusterBoostRef.current,
+      nowPerf,
+    );
+    return effectiveAllTimeEnergyEarned(
+      statisticsRef.current,
+      boostedEps,
+      statisticsPassiveAnchorMsRef.current,
+      nowPerf,
+    );
+  }, []);
+
   const reanchorEnergyFromEffective = useCallback(() => {
     commitSyncedEnergy(effectiveEnergyNow());
   }, [commitSyncedEnergy, effectiveEnergyNow]);
@@ -571,8 +594,19 @@ export default function Clicker2GamePage() {
     [ownedDenizens, ownedSpecialties, denizenMutationLevels],
   );
 
+  const effectiveAllTimeEnergyEarnedDisplay = useMemo(
+    () => effectiveAllTimeEnergyEarnedNow(),
+    [
+      effectiveAllTimeEnergyEarnedNow,
+      loopCounterText,
+      statistics,
+      simulation.energyPerSecond,
+      activeBlusterBoost,
+    ],
+  );
+
   const mutagenUnlocked = isMutagenSystemUnlocked(
-    statistics.all_time_energy_earned ?? 0,
+    effectiveAllTimeEnergyEarnedDisplay,
   );
   void mutagenUiTick;
 
@@ -762,6 +796,7 @@ export default function Clicker2GamePage() {
           ),
         );
         setStatistics(stateWithWeather.statistics);
+        statisticsRef.current = stateWithWeather.statistics;
         setMutagensBank(stateWithWeather.mutagens_bank);
         setTotalMutagensAcquired(stateWithWeather.total_mutagens_acquired);
         setMutagenFormingStartedAtMs(stateWithWeather.mutagen_forming_started_at_ms);
@@ -1024,10 +1059,14 @@ export default function Clicker2GamePage() {
             s,
             ownedDenizens,
             ownedSpecialties,
-            statistics.all_time_energy_earned ?? 0,
+            effectiveAllTimeEnergyEarnedDisplay,
           ),
       ).sort(compareVisibleSpecialtyShopOrder),
-    [ownedDenizens, ownedSpecialties, statistics.all_time_energy_earned],
+    [
+      ownedDenizens,
+      ownedSpecialties,
+      effectiveAllTimeEnergyEarnedDisplay,
+    ],
   );
 
   const affordThresholds = useMemo(
@@ -1373,11 +1412,12 @@ export default function Clicker2GamePage() {
       );
       if (bonus > 0) {
         commitSyncedEnergy(pondEnergy + bonus);
-        setStatistics((s) => ({
-          ...s,
-          era_energy_earned: (s.era_energy_earned ?? 0) + bonus,
-          all_time_energy_earned: (s.all_time_energy_earned ?? 0) + bonus,
-        }));
+        statisticsRef.current = accrueGrossEnergyBonus(
+          statisticsRef.current,
+          bonus,
+        );
+        setStatistics({ ...statisticsRef.current });
+        saveDirtyRef.current = true;
       }
       const pulseKey = performance.now();
       setSunshineBannerBonus(bonus);
@@ -1409,20 +1449,22 @@ export default function Clicker2GamePage() {
       setWeatherUiRevision((n) => n + 1);
     }
 
-    setStatistics((s) => {
+    {
+      const stats = statisticsRef.current;
       const next = {
-        ...s,
-        weather_events_clicked: (s.weather_events_clicked ?? 0) + 1,
+        ...stats,
+        weather_events_clicked: (stats.weather_events_clicked ?? 0) + 1,
       };
       if (family === "sun") {
-        next.weather_sun_clicked = (s.weather_sun_clicked ?? 0) + 1;
+        next.weather_sun_clicked = (stats.weather_sun_clicked ?? 0) + 1;
       } else if (family === "bluster") {
-        next.weather_wind_clicked = (s.weather_wind_clicked ?? 0) + 1;
+        next.weather_wind_clicked = (stats.weather_wind_clicked ?? 0) + 1;
       } else {
-        next.weather_rain_clicked = (s.weather_rain_clicked ?? 0) + 1;
+        next.weather_rain_clicked = (stats.weather_rain_clicked ?? 0) + 1;
       }
-      return next;
-    });
+      statisticsRef.current = next;
+      setStatistics(next);
+    }
     setActiveWeather(null);
     scheduleNextWeatherSpawn();
     markGameDirty();
@@ -1458,7 +1500,7 @@ export default function Clicker2GamePage() {
       !isSpecialtyUnlocked(
         def,
         ownedDenizensRef.current,
-        statisticsRef.current.all_time_energy_earned ?? 0,
+        effectiveAllTimeEnergyEarnedNow(),
       )
     ) {
       return;
@@ -1469,7 +1511,13 @@ export default function Clicker2GamePage() {
     setOwnedSpecialties((o) => ({ ...o, [def.id]: true }));
     markGameDirty();
     syncMilestones();
-  }, [commitSyncedEnergy, effectiveEnergyNow, markGameDirty, syncMilestones]);
+  }, [
+    commitSyncedEnergy,
+    effectiveAllTimeEnergyEarnedNow,
+    effectiveEnergyNow,
+    markGameDirty,
+    syncMilestones,
+  ]);
 
   if (!isAuthenticated && !sessionLoading) {
     return <Navigate to="/clicker" replace />;
@@ -1694,7 +1742,7 @@ export default function Clicker2GamePage() {
             />
 
             <MutagenPanel
-              allTimeEnergyEarned={statistics.all_time_energy_earned ?? 0}
+              allTimeEnergyEarned={effectiveAllTimeEnergyEarnedDisplay}
               mutagensBank={mutagensBank}
               mutagenFormingStartedAtMs={mutagenFormingStartedAtMs}
               nowMs={Date.now()}
@@ -1723,7 +1771,7 @@ export default function Clicker2GamePage() {
                   colorPalette="gray"
                   onClick={handleDevGrantMutagenUnlockEnergy}
                   disabled={
-                    (statistics.all_time_energy_earned ?? 0) >=
+                    effectiveAllTimeEnergyEarnedDisplay >=
                     MUTAGEN_UNLOCK_ALL_TIME_ENERGY
                   }
                 >

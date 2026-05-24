@@ -5,8 +5,11 @@ import {
   type SpecialtyDef,
 } from "./specialties";
 
+/** Pond production evolution chain (not spendable energy ⚡). */
+export const POND_PRODUCTION_EMOJI = "💦";
+
 export function evolutionDisplayEmoji(def: SpecialtyDef): string {
-  if (def.denizenId === POND_SPECIALTY_DENIZEN_ID) return "⚡";
+  if (def.denizenId === POND_SPECIALTY_DENIZEN_ID) return POND_PRODUCTION_EMOJI;
   return getDenizenDef(def.denizenId)?.emoji ?? "✨";
 }
 

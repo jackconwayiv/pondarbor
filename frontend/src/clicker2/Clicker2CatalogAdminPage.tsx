@@ -53,6 +53,7 @@ import {
   marginalValueAtUnlock,
   paybackSec,
 } from "./evolutionPricing";
+import { POND_PRODUCTION_EMOJI } from "./clicker2OwnedEvolutions";
 import { formatEnergyAmount, formatEnergyRate, formatShopCost } from "./formatEnergy";
 import { specialtyTierGradient } from "./specialtyTierColors";
 import {
@@ -126,7 +127,7 @@ function SpecialtyTierTitleCard({
       <HStack gap="2" align="flex-start">
         <Text fontSize="lg" lineHeight="1" aria-hidden>
           {def.denizenId === POND_SPECIALTY_DENIZEN_ID
-            ? "⚡"
+            ? POND_PRODUCTION_EMOJI
             : (getDenizenDef(def.denizenId)?.emoji ?? "✨")}
         </Text>
         <Stack gap="0.5" flex="1" minW="0">
@@ -559,7 +560,7 @@ function specialtyCatalogChainLabel(denizenId: string): string {
 }
 
 function specialtyCatalogChainEmoji(denizenId: string): string {
-  if (denizenId === POND_SPECIALTY_DENIZEN_ID) return "⚡";
+  if (denizenId === POND_SPECIALTY_DENIZEN_ID) return POND_PRODUCTION_EMOJI;
   return getDenizenDef(denizenId)?.emoji ?? "✨";
 }
 

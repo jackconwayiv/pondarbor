@@ -1,7 +1,7 @@
 import { useEffect, useRef, type MutableRefObject } from "react";
 
 import { publishDisplayEpsIfChanged } from "./clicker2DisplayEps";
-import { formatEnergyAmount } from "./formatEnergy";
+import { formatEnergyAmountHud } from "./formatEnergy";
 import { simulateGame } from "./simulation";
 import {
   computeEffectiveEnergy,
@@ -157,7 +157,7 @@ export function useClicker2GameLoop(
         const shown = Math.round(Math.max(0, refs.displayValue.current));
         if (shown !== refs.lastShownCounterInt.current) {
           refs.lastShownCounterInt.current = shown;
-          queueCounterDisplay(formatEnergyAmount(shown));
+          queueCounterDisplay(formatEnergyAmountHud(shown));
         }
       }
     };
@@ -201,7 +201,7 @@ export function snapClicker2CounterToEffective(
   const shown = Math.round(Math.max(0, target));
   refs.lastShownCounterInt.current = shown;
   publishDisplayEpsIfChanged(eps);
-  onCounterDisplay(formatEnergyAmount(shown));
+  onCounterDisplay(formatEnergyAmountHud(shown));
 }
 
 export function snapClicker2CounterDisplay(
@@ -236,7 +236,7 @@ export function snapClicker2CounterDisplay(
   const shown = Math.round(Math.max(0, refs.displayValue.current));
   refs.lastShownCounterInt.current = shown;
   publishDisplayEpsIfChanged(displayEnergyPerSecond);
-  return formatEnergyAmount(shown);
+  return formatEnergyAmountHud(shown);
 }
 
 export function snapClicker2CounterAtBlusterEnd(
@@ -278,5 +278,5 @@ export function snapClicker2CounterAtBlusterEnd(
     boost.untilPerfMs,
   );
   publishDisplayEpsIfChanged(eps);
-  return formatEnergyAmount(shown);
+  return formatEnergyAmountHud(shown);
 }

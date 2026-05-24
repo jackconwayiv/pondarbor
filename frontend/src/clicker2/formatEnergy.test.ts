@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatEnergyAmount,
   formatEnergyAmountCompact,
+  formatEnergyAmountHud,
 } from "./formatEnergy";
 
 describe("formatEnergyAmount", () => {
@@ -10,6 +11,18 @@ describe("formatEnergyAmount", () => {
     expect(formatEnergyAmount(1_200_000)).toBe("1.2 million");
     expect(formatEnergyAmount(12_000_000)).toBe("12 million");
     expect(formatEnergyAmount(1_230_000)).toBe("1.23 million");
+  });
+});
+
+describe("formatEnergyAmountHud", () => {
+  it("uses three decimal places for scaled mantissas", () => {
+    expect(formatEnergyAmountHud(1_200_000)).toBe("1.200 million");
+    expect(formatEnergyAmountHud(12_000_000)).toBe("12.000 million");
+    expect(formatEnergyAmountHud(1_230_000)).toBe("1.230 million");
+  });
+
+  it("keeps sub-million values as plain integers", () => {
+    expect(formatEnergyAmountHud(999_999)).toBe("999,999");
   });
 });
 

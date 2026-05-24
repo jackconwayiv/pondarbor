@@ -25,6 +25,7 @@ import {
   type MilestoneTitleEntry,
   type WeatherClickThreshold,
 } from "./milestoneTitles";
+import { POND_PRODUCTION_EMOJI } from "./clicker2OwnedEvolutions";
 import {
   POND_SPECIALTY_DENIZEN_ID,
   specialtiesForDenizen,
@@ -899,7 +900,7 @@ export function milestoneDisplayEmoji(def: MilestoneDef): string | undefined {
   if (def.kind === "weather_sun_clicked") return WEATHER_SUN_MILESTONE_EMOJI;
   if (def.kind === "weather_wind_clicked") return WEATHER_WIND_MILESTONE_EMOJI;
   if (def.kind === "weather_rain_clicked") return WEATHER_RAIN_MILESTONE_EMOJI;
-  if (def.denizenId === POND_SPECIALTY_DENIZEN_ID) return ENERGY_EMOJI;
+  if (def.denizenId === POND_SPECIALTY_DENIZEN_ID) return POND_PRODUCTION_EMOJI;
   if (def.denizenId) return getDenizenDef(def.denizenId)?.emoji;
   return undefined;
 }

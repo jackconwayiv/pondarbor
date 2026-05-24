@@ -3,7 +3,7 @@ import "@fontsource/major-mono-display/400.css";
 import { useEffect, useRef, useState } from "react";
 
 import {
-  formatEnergyAmount,
+  formatEnergyAmountHud,
   splitEnergyAmountDisplay,
 } from "./formatEnergy";
 import { computeEffectiveEnergy } from "./useEffectiveEnergy";
@@ -98,7 +98,7 @@ export default function RollingEnergyCounter({
   const lastFrameMsRef = useRef(performance.now());
 
   const [displayText, setDisplayText] = useState(() =>
-    formatEnergyAmount(Math.round(Math.max(0, displayValueRef.current))),
+    formatEnergyAmountHud(Math.round(Math.max(0, displayValueRef.current))),
   );
   const lastShownIntRef = useRef(Math.round(Math.max(0, displayValueRef.current)));
 
@@ -123,7 +123,7 @@ export default function RollingEnergyCounter({
       const shown = Math.round(Math.max(0, displayValueRef.current));
       if (shown !== lastShownIntRef.current) {
         lastShownIntRef.current = shown;
-        setDisplayText(formatEnergyAmount(shown));
+        setDisplayText(formatEnergyAmountHud(shown));
       }
 
       rafId = requestAnimationFrame(tick);
@@ -146,7 +146,7 @@ export default function RollingEnergyCounter({
       const shown = Math.round(Math.max(0, target));
       if (shown !== lastShownIntRef.current) {
         lastShownIntRef.current = shown;
-        setDisplayText(formatEnergyAmount(shown));
+        setDisplayText(formatEnergyAmountHud(shown));
       }
     }
   }, [syncedEnergy, energyPerSecond, anchorMs]);

@@ -84,6 +84,15 @@ function trimDecimalZeros(s: string): string {
   return s.replace(/\.0+$/, "").replace(/(\.[0-9]*?)0+$/, "$1");
 }
 
+/** HUD mantissa: always three fractional digits for stable counter width. */
+function formatMantissaHud(value: number): string {
+  const r = Math.round(value * 1000) / 1000;
+  return r.toLocaleString(HUD_NUMBER_LOCALE, {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
+  });
+}
+
 /** At most six significant digits in the mantissa portion. */
 function formatMantissa(value: number): string {
   if (value >= 100) {
@@ -118,6 +127,24 @@ export function formatEnergyAmount(n: number): string {
   }
   if (LARGEST_SUFFIX && x >= LARGEST_SUFFIX.threshold) {
     return `${formatMantissa(x / LARGEST_SUFFIX.threshold)} ${LARGEST_SUFFIX.label}`;
+  }
+  return Math.floor(x).toLocaleString(HUD_NUMBER_LOCALE);
+}
+
+/** Main pond energy counter — fixed three decimals when a scale word is shown. */
+export function formatEnergyAmountHud(n: number): string {
+  const x = Math.max(0, n);
+  if (!Number.isFinite(x)) return "0";
+  if (x < 1e6) {
+    return Math.floor(x).toLocaleString(HUD_NUMBER_LOCALE);
+  }
+  for (const { threshold, label } of SUFFIXES) {
+    if (x >= threshold) {
+      return `${formatMantissaHud(x / threshold)} ${label}`;
+    }
+  }
+  if (LARGEST_SUFFIX && x >= LARGEST_SUFFIX.threshold) {
+    return `${formatMantissaHud(x / LARGEST_SUFFIX.threshold)} ${LARGEST_SUFFIX.label}`;
   }
   return Math.floor(x).toLocaleString(HUD_NUMBER_LOCALE);
 }

@@ -23,6 +23,7 @@ import {
 } from "../clicker/ecologyUi.constants";
 import { CLICKER_SURFACES } from "../clicker/clickerTheme";
 
+import { POND_PRODUCTION_EMOJI } from "./clicker2OwnedEvolutions";
 import { EVOLUTION_LABEL, EVOLUTIONS_LABEL } from "./clicker2Copy";
 import { CLICKER2_SHOP_SECTION_HEADING_PROPS } from "./clicker2ShopUi";
 import { getDenizenDef } from "./denizens";
@@ -100,7 +101,7 @@ const SpecialtyEmojiButton = memo(function SpecialtyEmojiButton({
 
   const emoji =
     def.denizenId === POND_SPECIALTY_DENIZEN_ID
-      ? "⚡"
+      ? POND_PRODUCTION_EMOJI
       : (getDenizenDef(def.denizenId)?.emoji ?? "✨");
   const tierBackground = specialtyTierGradient(specialtyTierIndex(def));
 

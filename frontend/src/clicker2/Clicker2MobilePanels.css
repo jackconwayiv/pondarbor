@@ -13,12 +13,25 @@
 }
 
 .click2MobilePanelsViewport {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: hidden;
   width: 100%;
   max-width: 100%;
   touch-action: pan-y;
+}
+
+.click2MobilePanelsWeatherOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.click2MobilePanelsWeatherOverlay .clicker2WeatherEvent {
+  pointer-events: auto;
 }
 
 .click2MobilePanelsTrack {

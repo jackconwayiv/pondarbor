@@ -153,10 +153,12 @@ const DenizenShopRow = memo(function DenizenShopRow({
   const showMobileHelp = !canHoverFinePointer && showDetails;
 
   const row = (
-    <Box position="relative" w="full">
+    <Flex gap="1" align="stretch" w="full">
       <Button
         type="button"
         variant="outline"
+        flex="1"
+        minW="0"
         w="full"
         h="auto"
         display="flex"
@@ -178,7 +180,6 @@ const DenizenShopRow = memo(function DenizenShopRow({
         cursor={purchasable ? "pointer" : maxed ? "default" : "not-allowed"}
         textAlign="left"
         fontWeight="normal"
-        pr={showMobileHelp ? "2rem" : undefined}
         aria-label={
           owned === 0
             ? `${displayName}, ${formatShopCost(cost ?? 0)}`
@@ -256,17 +257,28 @@ const DenizenShopRow = memo(function DenizenShopRow({
           ) : null}
         </Box>
       </Button>
-      {showMobileHelp ? (
-        <Box position="absolute" top="0.25rem" right="0.25rem" zIndex={1}>
-          <ShopHelpMobilePopover
-            ariaLabel={`Denizen details: ${def.name}`}
-            onOpenChange={onTooltipOpenChange}
-          >
-            {tooltipSnap ? <DenizenDetails def={def} {...tooltipSnap} /> : null}
-          </ShopHelpMobilePopover>
-        </Box>
+      {!canHoverFinePointer ? (
+        <Flex
+          align="center"
+          justify="center"
+          flexShrink={0}
+          w="1rem"
+          minW="1rem"
+          alignSelf="stretch"
+        >
+          {showMobileHelp ? (
+            <ShopHelpMobilePopover
+              ariaLabel={`Denizen details: ${def.name}`}
+              onOpenChange={onTooltipOpenChange}
+            >
+              {tooltipSnap ? (
+                <DenizenDetails def={def} {...tooltipSnap} />
+              ) : null}
+            </ShopHelpMobilePopover>
+          ) : null}
+        </Flex>
       ) : null}
-    </Box>
+    </Flex>
   );
 
   if (!canHoverFinePointer || !showDetails) {
@@ -300,6 +312,7 @@ function DenizenShopList({
   canHoverFinePointer,
   onBuy,
   savedBannerKey = 0,
+  hideSavedIndicator = false,
 }: {
   denizens: readonly DenizenDef[];
   spendableEnergy: number;
@@ -311,8 +324,10 @@ function DenizenShopList({
   onBuy: (def: DenizenDef) => void;
   /** Non-zero while the post-save indicator is visible. */
   savedBannerKey?: number;
+  /** When true, saved indicator is rendered elsewhere (e.g. mobile HUD). */
+  hideSavedIndicator?: boolean;
 }) {
-  const showSavedIndicator = savedBannerKey > 0;
+  const showSavedIndicator = !hideSavedIndicator && savedBannerKey > 0;
   if (denizens.length === 0 && !showSavedIndicator) return null;
 
   return (
@@ -321,6 +336,7 @@ function DenizenShopList({
         <Text {...CLICKER2_SHOP_SECTION_HEADING_PROPS} mb="0">
           Denizens
         </Text>
+        {hideSavedIndicator ? null : (
         <Box flexShrink={0} display="flex" alignItems="center" justifyContent="flex-end">
           <Text
             key={
@@ -340,6 +356,7 @@ function DenizenShopList({
             Saved
           </Text>
         </Box>
+        )}
       </Flex>
       {denizens.length > 0 ? (
       <Stack gap="0.5">

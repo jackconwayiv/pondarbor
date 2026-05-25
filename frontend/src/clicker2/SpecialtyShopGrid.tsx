@@ -10,6 +10,8 @@ import {
 } from "@chakra-ui/react";
 import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
+import { useIsMobile } from "../responsive";
+
 import {
   ecologyTooltipRootBaseProps,
   ecologyTooltipSurfaceProps,
@@ -57,14 +59,15 @@ const SpecialtyEmojiButton = memo(function SpecialtyEmojiButton({
   );
 
   const cell = (
-    <Box
-      position="relative"
-      w="full"
-      minW="0"
-      data-specialty-cell=""
-      zIndex={helpOpen ? SHOP_HELP_POPOVER_Z_INDEX : undefined}
-    >
-      <Button
+    <Flex gap="0.25" align="stretch" minW="0" w="full">
+      <Box
+        position="relative"
+        flex="1"
+        minW="0"
+        data-specialty-cell=""
+        zIndex={helpOpen ? SHOP_HELP_POPOVER_Z_INDEX : undefined}
+      >
+        <Button
         type="button"
         variant="outline"
         w="full"
@@ -124,17 +127,18 @@ const SpecialtyEmojiButton = memo(function SpecialtyEmojiButton({
           <SpecialtyShopCardLabel name={def.name} muted={!canAfford} />
         ) : null}
       </Button>
+      </Box>
       {!canHoverFinePointer ? (
-        <Box position="absolute" top="0.25rem" right="0.25rem" zIndex={1}>
+        <Flex align="flex-start" flexShrink={0} w="1rem" minW="1rem" pt="0.25rem">
           <ShopHelpMobilePopover
             ariaLabel={`${EVOLUTION_LABEL} details: ${def.name}`}
             onOpenChange={(e) => setHelpOpen(e.open)}
           >
             <EvolutionTooltipContent def={def} />
           </ShopHelpMobilePopover>
-        </Box>
+        </Flex>
       ) : null}
-    </Box>
+    </Flex>
   );
 
   if (!canHoverFinePointer) {
@@ -158,7 +162,8 @@ const SpecialtyEmojiButton = memo(function SpecialtyEmojiButton({
   );
 });
 
-const GRID_COLUMNS = 4;
+const GRID_COLUMNS_DESKTOP = 4;
+const GRID_COLUMNS_MOBILE = 3;
 
 export default function SpecialtyShopGrid({
   specialties,
@@ -173,6 +178,8 @@ export default function SpecialtyShopGrid({
   onBuy: (def: SpecialtyDef) => void;
   headerTrailing?: ReactNode;
 }) {
+  const isMobile = useIsMobile();
+  const gridColumns = isMobile ? GRID_COLUMNS_MOBILE : GRID_COLUMNS_DESKTOP;
   const [hoverExpanded, setHoverExpanded] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
   const [rowHeightPx, setRowHeightPx] = useState(0);
@@ -192,12 +199,13 @@ export default function SpecialtyShopGrid({
     const ro = new ResizeObserver(measure);
     ro.observe(grid);
     return () => ro.disconnect();
-  }, [specialties.length]);
+  }, [specialties.length, gridColumns]);
 
   if (specialties.length === 0 && !headerTrailing) return null;
 
   const isExpanded = !canHoverFinePointer || hoverExpanded;
-  const showCollapse = canHoverFinePointer && specialties.length > GRID_COLUMNS;
+  const showCollapse =
+    canHoverFinePointer && specialties.length > gridColumns;
   const clipHeightPx = isExpanded || !showCollapse ? fullHeightPx : rowHeightPx;
 
   return (
@@ -223,7 +231,7 @@ export default function SpecialtyShopGrid({
         <Box
           ref={gridRef}
           display="grid"
-          gridTemplateColumns={`repeat(${GRID_COLUMNS}, minmax(0, 1fr))`}
+          gridTemplateColumns={`repeat(${gridColumns}, minmax(0, 1fr))`}
           gap="1"
         >
           {specialties.map((def) => {

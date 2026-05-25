@@ -45,6 +45,7 @@ import { prependDenizenPurchase } from "./purchaseTimeline";
 import { specialtyAcquiredMigrationPending } from "./specialtyAcquiredAt";
 import { listOwnedEvolutionDefs } from "./clicker2OwnedEvolutions";
 import Clicker2MobilePanels from "./Clicker2MobilePanels";
+import Clicker2MobileHud from "./Clicker2MobileHud";
 import Clicker2MobileShopPanels from "./Clicker2MobileShopPanels";
 import Clicker2StatsModal, {
   type Clicker2StatsSnapshot,
@@ -144,6 +145,7 @@ import {
   startBlusterBoost,
   startRainBoost,
   weatherFamily,
+  weatherEventEmoji,
   SUNSHINE_PULSE_MS,
   sunWeatherBonus,
   type ActiveBlusterBoost,
@@ -692,6 +694,12 @@ export default function Clicker2GamePage() {
   const showWeatherBoostBanner =
     clickMultiplier > 1 || epsMultiplier > 1 || sunshinePulseKey > 0;
   const showBannerSlot = showWeatherBoostBanner;
+  const ongoingWeatherHudEmoji =
+    isMobile &&
+    boostBannerVariantId != null &&
+    (clickMultiplier > 1 || epsMultiplier > 1)
+      ? weatherEventEmoji(boostBannerVariantId)
+      : null;
 
   const trySpawnWeatherFromTimer = useCallback(() => {
     weatherSpawnTimeoutRef.current = 0;
@@ -1703,7 +1711,7 @@ export default function Clicker2GamePage() {
       justify="flex-start"
       position="relative"
     >
-      {activeWeather ? (
+      {activeWeather && !isMobile ? (
         <Clicker2WeatherEvent
           variantId={activeWeather.variantId}
           leftPct={activeWeather.leftPct}
@@ -1712,15 +1720,19 @@ export default function Clicker2GamePage() {
           onActivate={onWeatherEventActivate}
         />
       ) : null}
-      <RollingEnergyCounter
-        syncedEnergy={energy}
-        energyPerSecond={displayEnergyPerSecond}
-        anchorMs={energyAnchorMs}
-        displayText={loopCounterText}
-      />
-      <Text fontSize="sm" color="gray.700">
-        {formatEnergyRate(displayEnergyPerSecond)} {ENERGY_EMOJI} per second
-      </Text>
+      {!isMobile ? (
+        <>
+          <RollingEnergyCounter
+            syncedEnergy={energy}
+            energyPerSecond={displayEnergyPerSecond}
+            anchorMs={energyAnchorMs}
+            displayText={loopCounterText}
+          />
+          <Text fontSize="sm" color="gray.700">
+            {formatEnergyRate(displayEnergyPerSecond)} {ENERGY_EMOJI} per second
+          </Text>
+        </>
+      ) : null}
       <Clicker2HeadlineStrip
         mode={celebrationMilestones.length > 0 ? "milestones" : "headline"}
       >
@@ -1877,6 +1889,7 @@ export default function Clicker2GamePage() {
       ownedDenizens={ownedDenizens}
       revealedDenizens={revealedDenizens}
       savedBannerKey={savedBannerKey}
+      hideSavedIndicator={isMobile}
       canHoverFinePointer={canHoverFinePointer}
       effectiveEnergy={spendableEnergy}
       getTooltipSnapshot={getDenizenTooltipSnapshot}
@@ -1899,7 +1912,7 @@ export default function Clicker2GamePage() {
         spendableEnergy={spendableEnergy}
         canHoverFinePointer={canHoverFinePointer}
         onBuy={buySpecialty}
-        headerTrailing={shopStatsButton}
+        headerTrailing={isMobile ? undefined : shopStatsButton}
       />
     </Stack>
   );
@@ -1978,10 +1991,21 @@ export default function Clicker2GamePage() {
             flexDirection="column"
             {...viewPortWidthBarProps}
           >
+            <Clicker2MobileHud
+              syncedEnergy={energy}
+              energyPerSecond={displayEnergyPerSecond}
+              anchorMs={energyAnchorMs}
+              displayText={loopCounterText}
+              statsButton={shopStatsButton}
+              savedBannerKey={savedBannerKey}
+              ongoingWeatherEmoji={ongoingWeatherHudEmoji}
+            />
             <Clicker2MobilePanels
               pondPanel={pondPanel}
               shopPanel={shopPanel}
               depthPanel={depthPanel}
+              activeWeather={activeWeather}
+              onWeatherEventActivate={onWeatherEventActivate}
             />
           </Box>
         ) : (

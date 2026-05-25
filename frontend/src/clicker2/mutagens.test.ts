@@ -111,28 +111,28 @@ describe("mutagens", () => {
   it("uses phase flavor text instead of a countdown", () => {
     const hour = 60 * 60 * 1000;
     expect(mutagenFormingStatusMessage(20 * hour)).toBe(
-      "A new mutation is beginning to take shape.",
+      "A new mutation is beginning to take shape...",
     );
     expect(mutagenFormingStatusMessage(15 * hour + 1)).toBe(
-      "A new mutation is beginning to take shape.",
+      "A new mutation is beginning to take shape...",
     );
     expect(mutagenFormingStatusMessage(15 * hour)).toBe(
-      "A new mutation is taking shape.",
+      "A new mutation is taking shape...",
     );
     expect(mutagenFormingStatusMessage(10 * hour + 1)).toBe(
-      "A new mutation is taking shape.",
+      "A new mutation is taking shape...",
     );
     expect(mutagenFormingStatusMessage(10 * hour)).toBe(
-      "A new mutation is nearly here.",
+      "A new mutation is nearly here...",
     );
     expect(mutagenFormingStatusMessage(5 * hour + 1)).toBe(
-      "A new mutation is nearly here.",
+      "A new mutation is nearly here...",
     );
     expect(mutagenFormingStatusMessage(5 * hour)).toBe(
-      "A new mutation is imminent.",
+      "A new mutation is imminent...",
     );
     expect(mutagenFormingStatusMessage(0)).toBe(
-      "A new mutation is imminent.",
+      "A new mutation is imminent...",
     );
     expect(msUntilNextMutagenFormingUiTick(20 * hour)).toBe(5 * hour);
     expect(msUntilNextMutagenFormingUiTick(3 * hour)).toBe(3 * hour);

@@ -201,15 +201,15 @@ const MUTAGEN_FORMING_HOUR_MS = 60 * 60 * 1000;
 export function mutagenFormingStatusMessage(msRemaining: number): string {
   const ms = Math.max(0, msRemaining);
   if (ms > 15 * MUTAGEN_FORMING_HOUR_MS) {
-    return "A new mutation is beginning to take shape.";
+    return "A new mutation is beginning to take shape...";
   }
   if (ms > 10 * MUTAGEN_FORMING_HOUR_MS) {
-    return "A new mutation is taking shape.";
+    return "A new mutation is taking shape...";
   }
   if (ms > 5 * MUTAGEN_FORMING_HOUR_MS) {
-    return "A new mutation is nearly here.";
+    return "A new mutation is nearly here...";
   }
-  return "A new mutation is imminent.";
+  return "A new mutation is imminent...";
 }
 
 /** Ms until the forming message phase changes, or until collectible (0). */

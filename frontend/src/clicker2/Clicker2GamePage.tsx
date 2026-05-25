@@ -29,6 +29,7 @@ import {
   fetchClicker2State,
   resolvePondStartedAtMs,
   saveClicker2State,
+  SCHEMA_VERSION,
   type Clicker2GameState,
 } from "./api";
 import {
@@ -40,6 +41,7 @@ import {
 import Clicker2PondStage from "./Clicker2PondStage";
 import PondDepthChart from "./PondDepthChart";
 import { prependDenizenPurchase } from "./purchaseTimeline";
+import { specialtyAcquiredMigrationPending } from "./specialtyAcquiredAt";
 import { listOwnedEvolutionDefs } from "./clicker2OwnedEvolutions";
 import Clicker2StatsModal, {
   type Clicker2StatsSnapshot,
@@ -188,6 +190,9 @@ export default function Clicker2GamePage() {
   const [ownedSpecialties, setOwnedSpecialties] = useState<
     Record<number, boolean>
   >({});
+  const [specialtyAcquiredAtMs, setSpecialtyAcquiredAtMs] = useState<
+    Record<number, number>
+  >({});
   const [revealedDenizens, setRevealedDenizens] = useState<
     Record<string, boolean>
   >(() => createDefaultClicker2State().revealed_denizens);
@@ -292,6 +297,8 @@ export default function Clicker2GamePage() {
   denizenPurchaseTimelineRef.current = denizenPurchaseTimeline;
   const ownedSpecialtiesRef = useRef(ownedSpecialties);
   ownedSpecialtiesRef.current = ownedSpecialties;
+  const specialtyAcquiredAtMsRef = useRef(specialtyAcquiredAtMs);
+  specialtyAcquiredAtMsRef.current = specialtyAcquiredAtMs;
   const revealedDenizensRef = useRef(revealedDenizens);
   revealedDenizensRef.current = revealedDenizens;
   const statisticsRef = useRef(statistics);
@@ -377,6 +384,7 @@ export default function Clicker2GamePage() {
       ),
       owned_denizens: ownedDenizensRef.current,
       owned_specialties: ownedSpecialtiesRef.current,
+      specialty_acquired_at_ms: specialtyAcquiredAtMsRef.current,
       revealed_denizens: revealedDenizensRef.current,
       catalog_version: stateRef.current.catalog_version,
       pond_started_at_ms: pondStartedAtMsRef.current,
@@ -771,6 +779,7 @@ export default function Clicker2GamePage() {
     ),
     owned_denizens: ownedDenizens,
     owned_specialties: ownedSpecialties,
+    specialty_acquired_at_ms: specialtyAcquiredAtMs,
     revealed_denizens: revealedDenizens,
     catalog_version: stateRef.current.catalog_version,
     pond_started_at_ms: pondStartedAtMs,
@@ -813,7 +822,12 @@ export default function Clicker2GamePage() {
         };
         saveDirtyRef.current =
           loadedState.pond_started_at_ms !== merged.pond_started_at_ms ||
-          loadedState.next_weather_spawn_at_ms !== nextWeatherSpawnAt;
+          loadedState.next_weather_spawn_at_ms !== nextWeatherSpawnAt ||
+          specialtyAcquiredMigrationPending(
+            res.state,
+            stateWithWeather.owned_specialties,
+          ) ||
+          (local != null && local.schema_version < SCHEMA_VERSION);
         setEnergy(stateWithWeather.energy);
         energyRef.current = stateWithWeather.energy;
         const loadedAt = performance.now();
@@ -822,6 +836,7 @@ export default function Clicker2GamePage() {
         setOwnedDenizens(stateWithWeather.owned_denizens);
         setDenizenPurchaseTimeline(stateWithWeather.denizen_purchase_timeline);
         setOwnedSpecialties(stateWithWeather.owned_specialties);
+        setSpecialtyAcquiredAtMs(stateWithWeather.specialty_acquired_at_ms);
         setRevealedDenizens(
           mergeNewlyRevealedDenizens(
             stateWithWeather.energy,
@@ -1370,6 +1385,7 @@ export default function Clicker2GamePage() {
 
     const ownedEvolutionDefs = listOwnedEvolutionDefs(
       ownedSpecialtiesRef.current,
+      specialtyAcquiredAtMsRef.current,
     );
 
     const milestoneStatuses = milestoneStatusList(milestonesReachedRef.current).map(
@@ -1617,7 +1633,9 @@ export default function Clicker2GamePage() {
     const eff = effectiveEnergyNow();
     if (eff < def.price) return;
     commitSyncedEnergy(eff - def.price);
+    const acquiredAt = Date.now();
     setOwnedSpecialties((o) => ({ ...o, [def.id]: true }));
+    setSpecialtyAcquiredAtMs((m) => ({ ...m, [def.id]: acquiredAt }));
     markGameDirty();
     syncMilestones();
   }, [

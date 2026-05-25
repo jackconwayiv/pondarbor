@@ -29,12 +29,32 @@ export function evolutionDisplayEmoji(def: SpecialtyDef): string {
   return getDenizenDef(def.denizenId)?.emoji ?? "✨";
 }
 
-/** Owned evolutions for stats UI: most expensive to least expensive. */
+/** Stats tie-break when acquisition timestamps match (price desc, then id asc). */
+export function compareOwnedEvolutionStatsTieBreak(
+  a: SpecialtyDef,
+  b: SpecialtyDef,
+): number {
+  if (b.price !== a.price) return b.price - a.price;
+  return a.id - b.id;
+}
+
+export function compareOwnedEvolutionDefsForStats(
+  a: SpecialtyDef,
+  b: SpecialtyDef,
+  specialtyAcquiredAtMs: Record<number, number>,
+): number {
+  const aMs = specialtyAcquiredAtMs[a.id] ?? 0;
+  const bMs = specialtyAcquiredAtMs[b.id] ?? 0;
+  if (bMs !== aMs) return bMs - aMs;
+  return compareOwnedEvolutionStatsTieBreak(a, b);
+}
+
+/** Owned evolutions for stats UI: newest acquired first; ties use price/id order. */
 export function listOwnedEvolutionDefs(
   ownedSpecialties: Record<number, boolean>,
+  specialtyAcquiredAtMs: Record<number, number> = {},
 ): SpecialtyDef[] {
-  return SPECIALTIES.filter((s) => ownedSpecialties[s.id]).sort((a, b) => {
-    if (b.price !== a.price) return b.price - a.price;
-    return a.id - b.id;
-  });
+  return SPECIALTIES.filter((s) => ownedSpecialties[s.id]).sort((a, b) =>
+    compareOwnedEvolutionDefsForStats(a, b, specialtyAcquiredAtMs),
+  );
 }

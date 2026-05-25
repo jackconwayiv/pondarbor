@@ -7,10 +7,11 @@ import {
   normalizeMilestonesReached,
 } from "./milestones";
 import { resolveDenizenPurchaseTimeline } from "./purchaseTimeline";
+import { resolveSpecialtyAcquiredAtMs } from "./specialtyAcquiredAt";
 import { DENIZEN_IDS, FIRST_DENIZEN_ID } from "./denizens";
 import { SPECIALTY_IDS } from "./specialties";
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 export const CATALOG_CONTENT_VERSION = 20;
 
 export type Clicker2Statistics = {
@@ -31,6 +32,8 @@ export type Clicker2GameState = {
   energy: number;
   owned_denizens: Record<string, number>;
   owned_specialties: Record<number, boolean>;
+  /** Specialty id → wall-clock epoch ms when first acquired. */
+  specialty_acquired_at_ms: Record<number, number>;
   revealed_denizens: Record<string, boolean>;
   catalog_version: number;
   /** Epoch ms when the current pond era began. */
@@ -95,6 +98,7 @@ export function createDefaultClicker2State(): Clicker2GameState {
     energy: 0,
     owned_denizens: {},
     owned_specialties: {},
+    specialty_acquired_at_ms: {},
     revealed_denizens: { [FIRST_DENIZEN_ID]: true },
     catalog_version: CATALOG_CONTENT_VERSION,
     pond_started_at_ms: Date.now(),
@@ -270,6 +274,11 @@ export function normalizeClicker2State(raw: unknown): Clicker2GameState {
     if (floor > 0) total_mutagens_acquired = floor;
   }
 
+  const specialty_acquired_at_ms = resolveSpecialtyAcquiredAtMs(
+    o.specialty_acquired_at_ms,
+    owned_specialties,
+  );
+
   const milestones_reached = normalizeMilestonesReached(o.milestones_reached);
   const milestones_dismissed = normalizeMilestonesDismissed(
     o.milestones_dismissed,
@@ -278,6 +287,7 @@ export function normalizeClicker2State(raw: unknown): Clicker2GameState {
     energy,
     owned_denizens,
     owned_specialties,
+    specialty_acquired_at_ms,
     revealed_denizens,
     catalog_version,
     pond_started_at_ms,

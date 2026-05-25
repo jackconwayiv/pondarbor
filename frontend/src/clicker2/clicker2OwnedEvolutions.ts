@@ -1,6 +1,7 @@
 import { getDenizenDef } from "./denizens";
 import { PAIRING_SPECIALTY_DENIZEN_ID } from "./pairingEvolutions";
 import {
+  CLICK_SPECIALTY_DENIZEN_ID,
   POND_SPECIALTY_DENIZEN_ID,
   SPECIALTIES,
   type SpecialtyDef,
@@ -9,8 +10,12 @@ import {
 /** Pond production evolution chain (not spendable energy ⚡). */
 export const POND_PRODUCTION_EMOJI = "💦";
 
+/** Click reflection evolution chain. */
+export const CLICK_CHAIN_EMOJI = "🪷";
+
 export function evolutionDisplayEmoji(def: SpecialtyDef): string {
   if (def.denizenId === POND_SPECIALTY_DENIZEN_ID) return POND_PRODUCTION_EMOJI;
+  if (def.denizenId === CLICK_SPECIALTY_DENIZEN_ID) return CLICK_CHAIN_EMOJI;
   if (def.denizenId === PAIRING_SPECIALTY_DENIZEN_ID) {
     const l = def.pairingLowerDenizenId
       ? getDenizenDef(def.pairingLowerDenizenId)?.emoji

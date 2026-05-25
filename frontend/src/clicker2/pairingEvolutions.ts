@@ -200,6 +200,27 @@ export function listPairingSpecialties(
   );
 }
 
+/** Denizen ids that can be the lower (L) member of a pairing (every tier except the last). */
+export const PAIRING_LOWER_DENIZEN_IDS: readonly string[] = DENIZENS.slice(
+  0,
+  -1,
+).map((d) => d.id);
+
+/** Shop/catalog color tier from L denizen id (ripples = 0, sediment = 1, …). */
+export function pairingLowerDenizenTierIndexForId(lowerDenizenId: string): number {
+  const idx = getDenizenIndex(lowerDenizenId);
+  if (idx < 0) return 0;
+  return Math.min(14, idx);
+}
+
+/** Shop/catalog card color tier from L’s position on the ladder (ripples = 0). */
+export function pairingLowerDenizenTierIndex(def: SpecialtyDef): number {
+  if (def.denizenId !== PAIRING_SPECIALTY_DENIZEN_ID) return 0;
+  const lowerId = def.pairingLowerDenizenId;
+  if (!lowerId) return 0;
+  return pairingLowerDenizenTierIndexForId(lowerId);
+}
+
 export function pairingSpecialtyCount(): number {
   const n = DENIZENS.length;
   return (n * (n - 1)) / 2;

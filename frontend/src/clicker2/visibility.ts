@@ -126,10 +126,15 @@ export function mergeNewlyRevealedDenizens(
 export function isSpecialtyUnlocked(
   specialty: Pick<
     SpecialtyDef,
-    "unlockOwned" | "unlockAllTimeEnergy" | "denizenId" | "pairingUnlock"
+    | "unlockOwned"
+    | "unlockAllTimeEnergy"
+    | "unlockClickEnergy"
+    | "denizenId"
+    | "pairingUnlock"
   >,
   ownedDenizens: Record<string, number>,
   allTimeEnergyEarned: number,
+  energyFromClicking = 0,
 ): boolean {
   if (specialty.pairingUnlock) {
     for (const [denizenId, required] of Object.entries(specialty.pairingUnlock)) {
@@ -138,6 +143,9 @@ export function isSpecialtyUnlocked(
       }
     }
     return true;
+  }
+  if (specialty.unlockClickEnergy != null) {
+    return energyFromClicking >= specialty.unlockClickEnergy;
   }
   if (specialty.unlockAllTimeEnergy != null) {
     return allTimeEnergyEarned >= specialty.unlockAllTimeEnergy;
@@ -154,7 +162,13 @@ export function isSpecialtyShopVisible(
   ownedDenizens: Record<string, number>,
   ownedSpecialties: Record<number, boolean>,
   allTimeEnergyEarned: number,
+  energyFromClicking = 0,
 ): boolean {
   if (ownedSpecialties[specialty.id]) return false;
-  return isSpecialtyUnlocked(specialty, ownedDenizens, allTimeEnergyEarned);
+  return isSpecialtyUnlocked(
+    specialty,
+    ownedDenizens,
+    allTimeEnergyEarned,
+    energyFromClicking,
+  );
 }

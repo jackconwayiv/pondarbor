@@ -23,10 +23,9 @@ import {
 } from "../clicker/ecologyUi.constants";
 import { CLICKER_SURFACES } from "../clicker/clickerTheme";
 
-import { POND_PRODUCTION_EMOJI } from "./clicker2OwnedEvolutions";
+import { evolutionDisplayEmoji } from "./clicker2OwnedEvolutions";
 import { EVOLUTION_LABEL, EVOLUTIONS_LABEL } from "./clicker2Copy";
 import { CLICKER2_SHOP_SECTION_HEADING_PROPS } from "./clicker2ShopUi";
-import { getDenizenDef } from "./denizens";
 import { formatShopCost } from "./formatEnergy";
 import { specialtyTierGradient } from "./specialtyTierColors";
 import { EvolutionTooltipContent } from "./EvolutionTooltipContent";
@@ -36,10 +35,10 @@ import {
 } from "./specialtyShopCardLabel";
 import { useShopTooltipSnapshot } from "./useShopTooltipSnapshot";
 import {
-  POND_SPECIALTY_DENIZEN_ID,
-  specialtyTierIndex,
-  type SpecialtyDef,
-} from "./specialties";
+  PAIRING_SPECIALTY_DENIZEN_ID,
+  pairingLowerDenizenTierIndex,
+} from "./pairingEvolutions";
+import { specialtyTierIndex, type SpecialtyDef } from "./specialties";
 
 function SpecialtyHelpMobileButton({ def }: { def: SpecialtyDef }) {
   return (
@@ -99,11 +98,12 @@ const SpecialtyEmojiButton = memo(function SpecialtyEmojiButton({
   const { snapshot: tooltipDef, onOpenChange: onTooltipOpenChange } =
     useShopTooltipSnapshot(captureSnapshot);
 
-  const emoji =
-    def.denizenId === POND_SPECIALTY_DENIZEN_ID
-      ? POND_PRODUCTION_EMOJI
-      : (getDenizenDef(def.denizenId)?.emoji ?? "✨");
-  const tierBackground = specialtyTierGradient(specialtyTierIndex(def));
+  const emoji = evolutionDisplayEmoji(def);
+  const tierBackground = specialtyTierGradient(
+    def.denizenId === PAIRING_SPECIALTY_DENIZEN_ID
+      ? pairingLowerDenizenTierIndex(def)
+      : specialtyTierIndex(def),
+  );
 
   const cell = (
     <Box position="relative" w="full" minW="0" data-specialty-cell="">

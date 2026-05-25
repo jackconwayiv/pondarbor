@@ -205,7 +205,13 @@ export function simulateGame(
   const clickMult = rippleEfficiencyMultiplier(effects) * globalEpsBoost(effects);
   const ringsBonus =
     concentricRingsBonusPerNonRipple(effects) * nonRippleCount;
-  const clickValue = Math.max(0, (1 + ringsBonus) * clickMult);
+  let clickEpsPercent = 0;
+  for (const e of effects) {
+    if (e.type === "click_eps_percent") clickEpsPercent += e.percent;
+  }
+  const clickValue =
+    Math.max(0, (1 + ringsBonus) * clickMult) +
+    (energyPerSecond * clickEpsPercent) / 100;
 
   return { energyPerSecond, clickValue, denizenEps };
 }

@@ -1050,6 +1050,9 @@ export default function Clicker2GamePage() {
     ],
   );
 
+  const energyFromClickingDisplay =
+    statistics.energy_from_clicking ?? 0;
+
   const visibleSpecialties = useMemo(
     () =>
       SPECIALTIES.filter(
@@ -1060,12 +1063,14 @@ export default function Clicker2GamePage() {
             ownedDenizens,
             ownedSpecialties,
             effectiveAllTimeEnergyEarnedDisplay,
+            energyFromClickingDisplay,
           ),
       ).sort(compareVisibleSpecialtyShopOrder),
     [
       ownedDenizens,
       ownedSpecialties,
       effectiveAllTimeEnergyEarnedDisplay,
+      energyFromClickingDisplay,
     ],
   );
 
@@ -1501,6 +1506,7 @@ export default function Clicker2GamePage() {
         def,
         ownedDenizensRef.current,
         effectiveAllTimeEnergyEarnedNow(),
+        statisticsRef.current.energy_from_clicking ?? 0,
       )
     ) {
       return;

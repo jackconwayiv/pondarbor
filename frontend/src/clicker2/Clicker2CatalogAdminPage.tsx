@@ -37,7 +37,12 @@ import {
   EVOLUTIONS_LABEL,
   EVOLUTIONS_LABEL_LOWER,
 } from "./clicker2Copy";
-import { DENIZENS, getDenizenDef, nextDenizenCost } from "./denizens";
+import {
+  DENIZENS,
+  getDenizenDef,
+  getDenizenIndex,
+  nextDenizenCost,
+} from "./denizens";
 import {
   buildDenizenFirstMilestones,
   GLOBAL_MILESTONES,
@@ -54,16 +59,20 @@ import {
   paybackSec,
 } from "./evolutionPricing";
 import {
+  CLICK_CHAIN_EMOJI,
   evolutionDisplayEmoji,
   POND_PRODUCTION_EMOJI,
 } from "./clicker2OwnedEvolutions";
 import {
   listPairingSpecialties,
+  PAIRING_LOWER_DENIZEN_IDS,
   PAIRING_SPECIALTY_DENIZEN_ID,
+  pairingLowerDenizenTierIndexForId,
 } from "./pairingEvolutions";
 import { formatEnergyAmount, formatEnergyRate, formatShopCost } from "./formatEnergy";
 import { specialtyTierGradient } from "./specialtyTierColors";
 import {
+  CLICK_SPECIALTY_DENIZEN_ID,
   POND_SPECIALTY_DENIZEN_ID,
   specialtiesForDenizen,
   specialtyTierIndex,
@@ -113,6 +122,9 @@ function specialtyUnlockSummary(s: SpecialtyDef): string {
   }
   if (s.unlockAllTimeEnergy != null) {
     return `${formatEnergyAmount(s.unlockAllTimeEnergy)} all-time earned`;
+  }
+  if (s.unlockClickEnergy != null) {
+    return `${formatEnergyAmount(s.unlockClickEnergy)} energy from clicking`;
   }
   const def = getDenizenDef(s.denizenId);
   const label = def?.namePlural ?? s.denizenId;
@@ -572,6 +584,7 @@ function DenizenCatalogCard({
 
 const CATALOG_DENIZEN_ORDER: readonly string[] = [
   POND_SPECIALTY_DENIZEN_ID,
+  CLICK_SPECIALTY_DENIZEN_ID,
   ...DENIZENS.map((d) => d.id),
 ];
 
@@ -583,98 +596,151 @@ const SPECIALTY_CATALOG_CHAIN_IDS: readonly string[] = CATALOG_DENIZEN_ORDER.fil
 
 function specialtyCatalogChainLabel(denizenId: string): string {
   if (denizenId === POND_SPECIALTY_DENIZEN_ID) return "Pond production";
+  if (denizenId === CLICK_SPECIALTY_DENIZEN_ID) return "Click reflections";
   if (denizenId === PAIRING_SPECIALTY_DENIZEN_ID) return "Pairing";
   return getDenizenDef(denizenId)?.namePlural ?? denizenId;
 }
 
 function specialtyCatalogChainEmoji(denizenId: string): string {
   if (denizenId === POND_SPECIALTY_DENIZEN_ID) return POND_PRODUCTION_EMOJI;
+  if (denizenId === CLICK_SPECIALTY_DENIZEN_ID) return CLICK_CHAIN_EMOJI;
   if (denizenId === PAIRING_SPECIALTY_DENIZEN_ID) return "🔗";
   return getDenizenDef(denizenId)?.emoji ?? "✨";
 }
 
-function PairingCatalogPage() {
-  const all = listPairingSpecialties(SPECIALTIES);
-  const [lowerFilter, setLowerFilter] = useState<string>("");
-  const [higherFilter, setHigherFilter] = useState<string>("");
+function PairingCatalogLowerPanel({ lowerDenizenId }: { lowerDenizenId: string }) {
+  const lowerDef = getDenizenDef(lowerDenizenId);
+  const tierIndex = pairingLowerDenizenTierIndexForId(lowerDenizenId);
 
-  const filtered = all.filter((def) => {
-    if (lowerFilter && def.pairingLowerDenizenId !== lowerFilter) return false;
-    if (higherFilter && def.pairingHigherDenizenId !== higherFilter) return false;
-    return true;
-  });
+  const chain = listPairingSpecialties(SPECIALTIES)
+    .filter((def) => def.pairingLowerDenizenId === lowerDenizenId)
+    .sort(
+      (a, b) =>
+        getDenizenIndex(a.pairingHigherDenizenId ?? "") -
+        getDenizenIndex(b.pairingHigherDenizenId ?? ""),
+    );
 
   return (
-    <Stack gap="3">
-      <Heading as="h2" size="sm">
-        Pairing {EVOLUTIONS_LABEL_LOWER} ({filtered.length})
+    <Stack gap="2">
+      <Heading as="h3" size="sm">
+        {lowerDef?.emoji} {lowerDef?.namePlural ?? lowerDenizenId} → … (
+        {chain.length})
       </Heading>
-      <HStack gap="2" flexWrap="wrap" fontSize="xs">
-        <Box>
-          <Text as="span" fontWeight="semibold" mr="1">
-            Booster (L):
-          </Text>
-          <select
-            value={lowerFilter}
-            onChange={(e) => setLowerFilter(e.target.value)}
-            style={{ fontSize: "0.75rem", maxWidth: "12rem" }}
-          >
-            <option value="">All</option>
-            {DENIZENS.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.emoji} {d.namePlural}
-              </option>
-            ))}
-          </select>
-        </Box>
-        <Box>
-          <Text as="span" fontWeight="semibold" mr="1">
-            Partner (H):
-          </Text>
-          <select
-            value={higherFilter}
-            onChange={(e) => setHigherFilter(e.target.value)}
-            style={{ fontSize: "0.75rem", maxWidth: "12rem" }}
-          >
-            <option value="">All</option>
-            {DENIZENS.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.emoji} {d.namePlural}
-              </option>
-            ))}
-          </select>
-        </Box>
-      </HStack>
-      <Stack gap="2">
-        {filtered.map((def) => {
+      <Grid
+        templateColumns={{
+          base: "1fr",
+          md: "repeat(2, 1fr)",
+          lg: "repeat(3, 1fr)",
+        }}
+        gap="2"
+      >
+        {chain.map((def) => {
           const step = pairingSourcePerStepFromDef(def);
-          const l = def.pairingLowerDenizenId
-            ? getDenizenDef(def.pairingLowerDenizenId)
-            : undefined;
           const h = def.pairingHigherDenizenId
             ? getDenizenDef(def.pairingHigherDenizenId)
             : undefined;
           return (
-            <Box key={def.id} {...CARD_SHELL_PROPS}>
-              <HStack gap="2" align="flex-start" mb="1">
-                <Text fontSize="lg" lineHeight="1" aria-hidden>
-                  {evolutionDisplayEmoji(def)}
-                </Text>
-                <Stack gap="0.5" flex="1" minW="0">
-                  <Text fontWeight="bold" fontSize="sm">
-                    #{def.id} {def.name}
+            <Stack key={def.id} gap="1" minW="0">
+              <Box
+                {...PANEL_ENTRY_CARD_PROPS}
+                bg={specialtyTierGradient(tierIndex)}
+                borderColor="blackAlpha.200"
+                py="2"
+                px="3"
+              >
+                <HStack gap="2" align="flex-start">
+                  <Text fontSize="lg" lineHeight="1" aria-hidden>
+                    {evolutionDisplayEmoji(def)}
                   </Text>
-                  <Text fontSize="2xs" color="gray.600" fontFamily="mono">
-                    {l?.namePlural ?? "?"} → {h?.namePlural ?? "?"}
-                    {step != null ? ` · per ${step}` : null}
-                  </Text>
-                </Stack>
-              </HStack>
+                  <Stack gap="0.5" flex="1" minW="0">
+                    <Text fontWeight="bold" fontSize="sm" lineHeight="1.25">
+                      #{def.id} {def.name}
+                    </Text>
+                    <Text
+                      fontSize="2xs"
+                      color="gray.700"
+                      fontFamily="mono"
+                      lineHeight="1.25"
+                    >
+                      → {h?.namePlural ?? "?"}
+                      {step != null ? ` · per ${step}` : null}
+                    </Text>
+                  </Stack>
+                </HStack>
+              </Box>
               <SpecialtyCatalogCard def={def} />
-            </Box>
+            </Stack>
           );
         })}
-      </Stack>
+      </Grid>
+    </Stack>
+  );
+}
+
+function PairingCatalogLowerTabTrigger({
+  lowerDenizenId,
+}: {
+  lowerDenizenId: string;
+}) {
+  const def = getDenizenDef(lowerDenizenId);
+  const count = listPairingSpecialties(SPECIALTIES).filter(
+    (s) => s.pairingLowerDenizenId === lowerDenizenId,
+  ).length;
+
+  return (
+    <Tabs.Trigger
+      value={lowerDenizenId}
+      {...APP_SHELL_TAB_TRIGGER_PROPS}
+      fontSize={APP_TEXT_SIZES.label}
+      px="2.5"
+      py="1.5"
+      aria-label={`${def?.namePlural ?? lowerDenizenId} booster (${count})`}
+      title={def?.namePlural ?? lowerDenizenId}
+    >
+      <Text as="span" fontSize="lg" lineHeight="1" aria-hidden>
+        {def?.emoji ?? "✨"}
+      </Text>
+    </Tabs.Trigger>
+  );
+}
+
+function PairingCatalogPage() {
+  const [lowerTab, setLowerTab] = useState(
+    () => PAIRING_LOWER_DENIZEN_IDS[0] ?? "ripples",
+  );
+  const total = listPairingSpecialties(SPECIALTIES).length;
+  const activeLower = PAIRING_LOWER_DENIZEN_IDS.includes(lowerTab)
+    ? lowerTab
+    : PAIRING_LOWER_DENIZEN_IDS[0];
+
+  return (
+    <Stack gap="3">
+      <Heading as="h2" size="sm">
+        Pairing {EVOLUTIONS_LABEL_LOWER} ({total})
+      </Heading>
+      <Text fontSize="xs" color="gray.600">
+        By booster (L) denizen — card colors match shop tiers (Ripples = palest).
+      </Text>
+      <Tabs.Root
+        value={activeLower}
+        variant="plain"
+        w="100%"
+        onValueChange={(details) => setLowerTab(details.value)}
+      >
+        <Tabs.List {...APP_SHELL_TAB_LIST_NESTED_PROPS} flexWrap="wrap">
+          {PAIRING_LOWER_DENIZEN_IDS.map((denizenId) => (
+            <PairingCatalogLowerTabTrigger
+              key={denizenId}
+              lowerDenizenId={denizenId}
+            />
+          ))}
+        </Tabs.List>
+        {PAIRING_LOWER_DENIZEN_IDS.map((denizenId) => (
+          <Tabs.Content key={denizenId} value={denizenId} pt="3">
+            <PairingCatalogLowerPanel lowerDenizenId={denizenId} />
+          </Tabs.Content>
+        ))}
+      </Tabs.Root>
     </Stack>
   );
 }

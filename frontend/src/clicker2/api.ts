@@ -11,7 +11,7 @@ import { DENIZEN_IDS, FIRST_DENIZEN_ID } from "./denizens";
 import { SPECIALTY_IDS } from "./specialties";
 
 export const SCHEMA_VERSION = 3;
-export const CATALOG_CONTENT_VERSION = 18;
+export const CATALOG_CONTENT_VERSION = 19;
 
 export type Clicker2Statistics = {
   total_clicks: number;

@@ -15,7 +15,8 @@ export type SpecialtyEffect =
     }
   | { type: "concentric_rings" }
   | { type: "concentric_rings_mult"; factor: number }
-  | { type: "production_percent"; percent: number };
+  | { type: "production_percent"; percent: number }
+  | { type: "click_eps_percent"; percent: number };
 
 export type PairingUnlockRequirements = Readonly<Record<string, number>>;
 
@@ -27,6 +28,8 @@ export type SpecialtyDef = {
   unlockOwned: number;
   /** Pond production tiers: unlock when all-time energy earned reaches this value. */
   unlockAllTimeEnergy?: number;
+  /** Click reflection chain: unlock when lifetime energy from clicking reaches this value. */
+  unlockClickEnergy?: number;
   /** Cross-denizen pairing: all listed owned counts must be met. */
   pairingUnlock?: PairingUnlockRequirements;
   pairingLowerDenizenId?: string;
@@ -90,6 +93,36 @@ const UNLOCK_TIER = DENIZEN_SPECIALTY_UNLOCK_TIER;
 
 /** Pond-wide production specialties (not tied to a denizen owned count). */
 export const POND_SPECIALTY_DENIZEN_ID = "pond" as const;
+
+/** Click reflection chain: +1% of EpS per click per tier (unlocked by click energy earned). */
+export const CLICK_SPECIALTY_DENIZEN_ID = "click" as const;
+
+export const CLICK_SPECIALTY_ID_START = 617;
+
+/** unlockClick[i] = 1_000 × 100^i */
+export function clickChainUnlockEnergy(tierIndex: number): number {
+  return 1_000 * 100 ** tierIndex;
+}
+
+/** price[i] = 50_000 × 100^i */
+export function clickChainPrice(tierIndex: number): number {
+  return 50_000 * 100 ** tierIndex;
+}
+
+export const CLICK_UNLOCK_ENERGY: readonly number[] = Array.from(
+  { length: 15 },
+  (_, i) => clickChainUnlockEnergy(i),
+);
+
+export const CLICK_CHAIN_PRICE: readonly number[] = Array.from(
+  { length: 15 },
+  (_, i) => clickChainPrice(i),
+);
+
+const CLICK_SPECIALTY_IDS: readonly number[] = Array.from(
+  { length: 15 },
+  (_, i) => CLICK_SPECIALTY_ID_START + i,
+);
 
 /** Canonical evolution tier multipliers (price = round(baseCost × mult)). */
 export const DENIZEN_SPECIALTY_COST_MULT = DENIZEN_EVOLUTION_TIER_MULT;
@@ -174,6 +207,39 @@ function buildPondProductionChain(
       specialtyCatalogPrice(POND_PRODUCTION_IDS[i]!),
       ecologyNotes[i] ?? "",
       { unlockAllTimeEnergy },
+    ),
+  );
+}
+
+function clickReflectionSpecialty(
+  id: number,
+  name: string,
+  tierIndex: number,
+  ecologyNote: string,
+): SpecialtyDef {
+  return {
+    id,
+    name,
+    denizenId: CLICK_SPECIALTY_DENIZEN_ID,
+    unlockOwned: 0,
+    unlockClickEnergy: clickChainUnlockEnergy(tierIndex),
+    price: specialtyCatalogPrice(id),
+    effect: { type: "click_eps_percent", percent: 1 },
+    effectText: "Clicks gain +1% of your EpS",
+    ecologyNote,
+  };
+}
+
+function buildClickReflectionChain(
+  names: readonly string[],
+  ecologyNotes: readonly string[],
+): SpecialtyDef[] {
+  return CLICK_SPECIALTY_IDS.map((id, i) =>
+    clickReflectionSpecialty(
+      id,
+      names[i] ?? `Click reflection ${i + 1}`,
+      i,
+      ecologyNotes[i] ?? "",
     ),
   );
 }
@@ -769,6 +835,43 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
     "No empty niche remains; biomass and story pack until the water reads as one saturated organism. Omnipresent saturation is every tier speaking at once.",
     "Mud, open water, sky, myth, and abyss breathe as one whole that no longer behaves like a puddle. One whole pond is transcendence—the basin knowing its name.",
   ]),
+
+  ...buildClickReflectionChain(
+    [
+      "Light on the Meniscus",
+      "Mirrored Surface",
+      "Crystalline Blue",
+      "Gentle Trickle",
+      "Babbling Brook",
+      "Pleasing Rush",
+      "Gentle Patter",
+      "Silver Gleam",
+      "Morning Glass",
+      "Shimmer Lane",
+      "Quiet Riffle",
+      "Pool Bright",
+      "Rain Tattoo",
+      "Brook Song",
+      "Lotus Light",
+    ],
+    [
+      "Sunlight skims the meniscus and throws pale glints across the still bowl.",
+      "The surface holds a mirrored sheet of sky until a breath of wind breaks it.",
+      "Crystalline blue deepens in the shallows where light refracts through clear water.",
+      "A gentle trickle from the rim keeps the film alive with quiet motion.",
+      "Babbling brook notes carry from the inlet, stitching current to open water.",
+      "A pleasing rush where the outlet falls reminds the basin it is always flowing.",
+      "Gentle patter of rain stipples the pond and rings overlap in soft rhythm.",
+      "Silver gleam at dusk turns every ripple into a brief thread of light.",
+      "Morning glass calms the pond so the shore and clouds repeat in perfect copy.",
+      "Shimmer lanes cross the surface when breeze and current trade places.",
+      "A quiet riffle at the stone shelf scatters photons through dancing facets.",
+      "Pool bright noonlight drives photosynthesis and heat in the top millimeters.",
+      "Rain tattoo drums the film and sends concentric bright rings outward.",
+      "Brook song from the feeder stream keeps oxygen and sparkle in steady supply.",
+      "Lotus light gathers on pads and open water—the pond shining back at the sky.",
+    ],
+  ),
 
   ...PAIRING_SPECIALTIES,
 ];

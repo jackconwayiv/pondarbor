@@ -2,12 +2,6 @@ import {
   Box,
   Button,
   Flex,
-  IconButton,
-  PopoverBody,
-  PopoverContent,
-  PopoverPositioner,
-  PopoverRoot,
-  PopoverTrigger,
   Text,
   TooltipContent,
   TooltipPositioner,
@@ -17,12 +11,10 @@ import {
 import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import {
-  ecologyPopoverContentProps,
   ecologyTooltipRootBaseProps,
   ecologyTooltipSurfaceProps,
+  SHOP_HELP_POPOVER_Z_INDEX,
 } from "../clicker/ecologyUi.constants";
-import { CLICKER_SURFACES } from "../clicker/clickerTheme";
-
 import { evolutionDisplayEmoji } from "./clicker2OwnedEvolutions";
 import { EVOLUTION_LABEL, EVOLUTIONS_LABEL } from "./clicker2Copy";
 import { CLICKER2_SHOP_SECTION_HEADING_PROPS } from "./clicker2ShopUi";
@@ -38,50 +30,8 @@ import {
   PAIRING_SPECIALTY_DENIZEN_ID,
   pairingLowerDenizenTierIndex,
 } from "./pairingEvolutions";
+import { ShopHelpMobilePopover } from "./ShopHelpMobilePopover";
 import { specialtyTierIndex, type SpecialtyDef } from "./specialties";
-
-function SpecialtyHelpMobileButton({ def }: { def: SpecialtyDef }) {
-  return (
-    <PopoverRoot positioning={{ placement: "bottom-end" }}>
-      <PopoverTrigger asChild>
-        <IconButton
-          variant="plain"
-          borderRadius="full"
-          bg={CLICKER_SURFACES.active}
-          color="black"
-          borderWidth="1px"
-          borderStyle="solid"
-          borderColor="black"
-          minW="1rem"
-          w="1rem"
-          h="1rem"
-          minH="1rem"
-          fontSize="8px"
-          fontWeight="extrabold"
-          lineHeight="1"
-          p="0"
-          flexShrink={0}
-          aria-label={`${EVOLUTION_LABEL} details: ${def.name}`}
-          _hover={{ bg: "gray.100" }}
-          _active={{ bg: CLICKER_SURFACES.inactive }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          ?
-        </IconButton>
-      </PopoverTrigger>
-      <PopoverPositioner>
-        <PopoverContent
-          {...ecologyPopoverContentProps}
-          w={{ base: "calc(100vw - 2rem)", md: "auto" }}
-        >
-          <PopoverBody bg={CLICKER_SURFACES.active} color="black" p="3" border="none">
-            <EvolutionTooltipContent def={def} />
-          </PopoverBody>
-        </PopoverContent>
-      </PopoverPositioner>
-    </PopoverRoot>
-  );
-}
 
 const SpecialtyEmojiButton = memo(function SpecialtyEmojiButton({
   def,
@@ -97,6 +47,7 @@ const SpecialtyEmojiButton = memo(function SpecialtyEmojiButton({
   const captureSnapshot = useCallback(() => def, [def]);
   const { snapshot: tooltipDef, onOpenChange: onTooltipOpenChange } =
     useShopTooltipSnapshot(captureSnapshot);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const emoji = evolutionDisplayEmoji(def);
   const tierBackground = specialtyTierGradient(
@@ -106,7 +57,13 @@ const SpecialtyEmojiButton = memo(function SpecialtyEmojiButton({
   );
 
   const cell = (
-    <Box position="relative" w="full" minW="0" data-specialty-cell="">
+    <Box
+      position="relative"
+      w="full"
+      minW="0"
+      data-specialty-cell=""
+      zIndex={helpOpen ? SHOP_HELP_POPOVER_Z_INDEX : undefined}
+    >
       <Button
         type="button"
         variant="outline"
@@ -169,7 +126,12 @@ const SpecialtyEmojiButton = memo(function SpecialtyEmojiButton({
       </Button>
       {!canHoverFinePointer ? (
         <Box position="absolute" top="0.25rem" right="0.25rem" zIndex={1}>
-          <SpecialtyHelpMobileButton def={def} />
+          <ShopHelpMobilePopover
+            ariaLabel={`${EVOLUTION_LABEL} details: ${def.name}`}
+            onOpenChange={(e) => setHelpOpen(e.open)}
+          >
+            <EvolutionTooltipContent def={def} />
+          </ShopHelpMobilePopover>
         </Box>
       ) : null}
     </Box>

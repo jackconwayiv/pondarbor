@@ -29,3 +29,19 @@ export const ecologyPopoverContentProps = {
   maxW: "280px",
   boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
 };
+
+/** Above clicker play chrome (`PAGE_CONTENT_Z_INDEX` is 5) and shop card stacks. */
+export const SHOP_HELP_POPOVER_Z_INDEX = 1500;
+
+export const shopHelpPopoverRootProps = {
+  portalled: true,
+  positioning: {
+    placement: "bottom-end" as const,
+    strategy: "fixed" as const,
+    gutter: 8,
+  },
+} as const;
+
+export const shopHelpPopoverPositionerProps = {
+  zIndex: SHOP_HELP_POPOVER_Z_INDEX,
+} as const;

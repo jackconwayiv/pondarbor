@@ -2,12 +2,6 @@ import {
   Box,
   Button,
   Flex,
-  IconButton,
-  PopoverBody,
-  PopoverContent,
-  PopoverPositioner,
-  PopoverRoot,
-  PopoverTrigger,
   Stack,
   Text,
   TooltipContent,
@@ -18,7 +12,6 @@ import {
 import { memo, useCallback } from "react";
 
 import {
-  ecologyPopoverContentProps,
   ecologyTooltipRootBaseProps,
   ecologyTooltipSurfaceProps,
 } from "../clicker/ecologyUi.constants";
@@ -33,10 +26,8 @@ import {
 } from "./shopTooltipText";
 import { CLICKER2_SHOP_SECTION_HEADING_PROPS } from "./clicker2ShopUi";
 import { MUTAGEN_EMOJI } from "./mutagens";
-import type {
-  DenizenShopTooltipSnapshot,
-  GetDenizenShopTooltipSnapshot,
-} from "./denizenShopTooltip";
+import type { GetDenizenShopTooltipSnapshot } from "./denizenShopTooltip";
+import { ShopHelpMobilePopover } from "./ShopHelpMobilePopover";
 import { useShopTooltipSnapshot } from "./useShopTooltipSnapshot";
 import { isDenizenIdentityRevealed } from "./visibility";
 
@@ -127,59 +118,6 @@ function DenizenDetails({
   );
 }
 
-function DenizenHelpMobileButton({
-  def,
-  captureSnapshot,
-}: {
-  def: DenizenDef;
-  captureSnapshot: () => DenizenShopTooltipSnapshot;
-}) {
-  const { snapshot, onOpenChange } = useShopTooltipSnapshot(captureSnapshot);
-
-  return (
-    <PopoverRoot positioning={{ placement: "bottom-end" }} onOpenChange={onOpenChange}>
-      <PopoverTrigger asChild>
-        <IconButton
-          variant="plain"
-          borderRadius="full"
-          bg={CLICKER_SURFACES.active}
-          color="black"
-          borderWidth="1px"
-          borderStyle="solid"
-          borderColor="black"
-          minW="1rem"
-          w="1rem"
-          h="1rem"
-          minH="1rem"
-          fontSize="8px"
-          fontWeight="extrabold"
-          lineHeight="1"
-          p="0"
-          flexShrink={0}
-          aria-label={`Denizen details: ${def.name}`}
-          _hover={{ bg: "gray.100" }}
-          _active={{ bg: CLICKER_SURFACES.inactive }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          ?
-        </IconButton>
-      </PopoverTrigger>
-      <PopoverPositioner>
-        <PopoverContent
-          {...ecologyPopoverContentProps}
-          w={{ base: "calc(100vw - 2rem)", md: "auto" }}
-        >
-          <PopoverBody bg={CLICKER_SURFACES.active} color="black" p="3" border="none">
-            {snapshot ? (
-              <DenizenDetails def={def} {...snapshot} />
-            ) : null}
-          </PopoverBody>
-        </PopoverContent>
-      </PopoverPositioner>
-    </PopoverRoot>
-  );
-}
-
 const DenizenShopRow = memo(function DenizenShopRow({
   def,
   owned,
@@ -212,117 +150,123 @@ const DenizenShopRow = memo(function DenizenShopRow({
   const showDetails = owned > 0;
   const displayName = identityRevealed ? def.name : "???";
 
+  const showMobileHelp = !canHoverFinePointer && showDetails;
+
   const row = (
-    <Button
-      type="button"
-      variant="outline"
-      w="full"
-      h="auto"
-      display="flex"
-      alignItems="center"
-      justifyContent="flex-start"
-      gap="1"
-      px="0.5"
-      py="0"
-      minH="3.25rem"
-      overflow="hidden"
-      borderWidth="2px"
-      borderColor="border"
-      borderRadius="md"
-      bg={
-        canAfford || maxed
-          ? CLICKER_SURFACES.active
-          : CLICKER_SURFACES.inactive
-      }
-      cursor={purchasable ? "pointer" : maxed ? "default" : "not-allowed"}
-      position="relative"
-      textAlign="left"
-      fontWeight="normal"
-      aria-label={
-        owned === 0
-          ? `${displayName}, ${formatShopCost(cost ?? 0)}`
-          : maxed
-            ? `${displayName}, ${owned.toLocaleString()} owned, maximum`
-            : `${displayName}, ${owned.toLocaleString()} owned, ${formatShopCost(cost ?? 0)}`
-      }
-      _hover={
-        purchasable
-          ? { bg: "gray.50", borderColor: "gray.400" }
-          : undefined
-      }
-      _active={purchasable ? { bg: CLICKER_SURFACES.inactive } : undefined}
-      onClick={() => {
-        if (purchasable) onBuy(def);
-      }}
-    >
-      <Text
-        as="span"
-        fontSize="2.5rem"
-        lineHeight="1"
-        flexShrink={0}
-        aria-hidden
-        style={identityRevealed ? undefined : { filter: "brightness(0)" }}
+    <Box position="relative" w="full">
+      <Button
+        type="button"
+        variant="outline"
+        w="full"
+        h="auto"
+        display="flex"
+        alignItems="center"
+        justifyContent="flex-start"
+        gap="1"
+        px="0.5"
+        py="0"
+        minH="3.25rem"
+        overflow="hidden"
+        borderWidth="2px"
+        borderColor="border"
+        borderRadius="md"
+        bg={
+          canAfford || maxed
+            ? CLICKER_SURFACES.active
+            : CLICKER_SURFACES.inactive
+        }
+        cursor={purchasable ? "pointer" : maxed ? "default" : "not-allowed"}
+        textAlign="left"
+        fontWeight="normal"
+        pr={showMobileHelp ? "2rem" : undefined}
+        aria-label={
+          owned === 0
+            ? `${displayName}, ${formatShopCost(cost ?? 0)}`
+            : maxed
+              ? `${displayName}, ${owned.toLocaleString()} owned, maximum`
+              : `${displayName}, ${owned.toLocaleString()} owned, ${formatShopCost(cost ?? 0)}`
+        }
+        _hover={
+          purchasable
+            ? { bg: "gray.50", borderColor: "gray.400" }
+            : undefined
+        }
+        _active={purchasable ? { bg: CLICKER_SURFACES.inactive } : undefined}
+        onClick={() => {
+          if (purchasable) onBuy(def);
+        }}
       >
-        {def.emoji}
-      </Text>
-      <Stack gap="0" flex="1" minW="0" align="flex-start" justify="center">
         <Text
-          fontSize="xl"
+          as="span"
+          fontSize="2.5rem"
           lineHeight="1"
-          fontWeight="normal"
-          fontFamily="heading"
-          truncate
-          w="full"
+          flexShrink={0}
+          aria-hidden
+          style={identityRevealed ? undefined : { filter: "brightness(0)" }}
         >
-          {displayName}
+          {def.emoji}
         </Text>
-        {!maxed && cost !== null ? (
+        <Stack gap="0" flex="1" minW="0" align="flex-start" justify="center">
           <Text
-            fontSize="sm"
-            lineHeight="1.1"
-            color="gray.500"
-            fontVariantNumeric="tabular-nums"
+            fontSize="xl"
+            lineHeight="1"
+            fontWeight="normal"
+            fontFamily="heading"
             truncate
             w="full"
           >
-            {formatShopCost(cost)}
+            {displayName}
           </Text>
-        ) : null}
-      </Stack>
-      <Box
-        position="relative"
-        flexShrink={0}
-        alignSelf="stretch"
-        minW="3.5rem"
-        pr="0.5"
-      >
-        {!canHoverFinePointer && showDetails ? (
-          <Box position="absolute" top="0.25rem" right="0.25rem" zIndex={2}>
-            <DenizenHelpMobileButton
-              def={def}
-              captureSnapshot={captureSnapshot}
-            />
-          </Box>
-        ) : null}
-        {owned > 0 ? (
-          <Text
-            position="absolute"
-            right="0"
-            bottom="0"
-            fontSize="2.5rem"
-            lineHeight="0.85"
-            fontWeight="bold"
-            fontVariantNumeric="tabular-nums"
-            color={!canAfford && !maxed ? DENIZEN_OWNED_INACTIVE_COLOR : "gray.300"}
-            pointerEvents="none"
-            userSelect="none"
-            aria-hidden
+          {!maxed && cost !== null ? (
+            <Text
+              fontSize="sm"
+              lineHeight="1.1"
+              color="gray.500"
+              fontVariantNumeric="tabular-nums"
+              truncate
+              w="full"
+            >
+              {formatShopCost(cost)}
+            </Text>
+          ) : null}
+        </Stack>
+        <Box
+          position="relative"
+          flexShrink={0}
+          alignSelf="stretch"
+          minW="3.5rem"
+          pr="0.5"
+        >
+          {owned > 0 ? (
+            <Text
+              position="absolute"
+              right="0"
+              bottom="0"
+              fontSize="2.5rem"
+              lineHeight="0.85"
+              fontWeight="bold"
+              fontVariantNumeric="tabular-nums"
+              color={!canAfford && !maxed ? DENIZEN_OWNED_INACTIVE_COLOR : "gray.300"}
+              pointerEvents="none"
+              userSelect="none"
+              aria-hidden
+            >
+              {owned.toLocaleString()}
+            </Text>
+          ) : null}
+        </Box>
+      </Button>
+      {showMobileHelp ? (
+        <Box position="absolute" top="0.25rem" right="0.25rem" zIndex={1}>
+          <ShopHelpMobilePopover
+            ariaLabel={`Denizen details: ${def.name}`}
+            onOpenChange={onTooltipOpenChange}
           >
-            {owned.toLocaleString()}
-          </Text>
-        ) : null}
-      </Box>
-    </Button>
+            {tooltipSnap ? <DenizenDetails def={def} {...tooltipSnap} /> : null}
+          </ShopHelpMobilePopover>
+        </Box>
+      ) : null}
+    </Box>
   );
 
   if (!canHoverFinePointer || !showDetails) {

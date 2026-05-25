@@ -1,0 +1,86 @@
+.click2MobilePanels {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+.click2MobilePanelsTabBar {
+  flex-shrink: 0;
+  margin-bottom: 1rem;
+}
+
+.click2MobilePanelsViewport {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  width: 100%;
+  max-width: 100%;
+  touch-action: pan-y;
+}
+
+.click2MobilePanelsTrack {
+  display: flex;
+  height: 100%;
+  width: calc(100% * var(--click2-mobile-panel-count, 3));
+  will-change: transform;
+}
+
+.click2MobilePanelsTrack--animate {
+  transition: transform 280ms ease-out;
+}
+
+.click2MobilePanelsPanel {
+  flex: 0 0 calc(100% / var(--click2-mobile-panel-count, 3));
+  width: calc(100% / var(--click2-mobile-panel-count, 3));
+  min-width: 0;
+  height: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.click2MobilePanelsPanel::-webkit-scrollbar {
+  display: none;
+}
+
+.click2MobilePanelsTab {
+  flex: 1;
+  min-width: 0;
+  border-radius: 9999px;
+  padding: 0.35rem 0.5rem;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: center;
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  color: var(--chakra-colors-gray-500);
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    padding 0.2s ease;
+}
+
+.click2MobilePanelsTab--active {
+  padding: 0.45rem 0.85rem;
+  background: white;
+  color: var(--chakra-colors-gray-800);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(11, 37, 69, 0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .click2MobilePanelsTrack--animate {
+    transition: none;
+  }
+}

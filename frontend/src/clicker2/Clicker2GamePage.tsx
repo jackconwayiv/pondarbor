@@ -18,6 +18,7 @@ import { Navigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
 import { ClickerPageShell } from "../clicker/ClickerShell";
+import { useIsMobile, viewPortWidthBarProps } from "../responsive";
 import PondButton from "../PondButton";
 import { PanelBlockSkeleton } from "../components/panelStatus";
 import { HIDE_SCROLLBAR_CSS } from "../theme/typography";
@@ -43,6 +44,8 @@ import PondDepthChart from "./PondDepthChart";
 import { prependDenizenPurchase } from "./purchaseTimeline";
 import { specialtyAcquiredMigrationPending } from "./specialtyAcquiredAt";
 import { listOwnedEvolutionDefs } from "./clicker2OwnedEvolutions";
+import Clicker2MobilePanels from "./Clicker2MobilePanels";
+import Clicker2MobileShopPanels from "./Clicker2MobileShopPanels";
 import Clicker2StatsModal, {
   type Clicker2StatsSnapshot,
 } from "./Clicker2StatsModal";
@@ -69,9 +72,9 @@ import {
 import {
   captureClicker2TabTitleBase,
   restoreClicker2TabTitle,
-  syncClicker2TabTitle,
+  useClicker2TabTitleInterval,
 } from "./clicker2TabTitle";
-import { ENERGY_EMOJI, formatEnergyRate } from "./formatEnergy";
+import { ENERGY_EMOJI, formatEnergyAmountHud, formatEnergyRate } from "./formatEnergy";
 import RollingEnergyCounter from "./RollingEnergyCounter";
 import SpecialtyShopGrid from "./SpecialtyShopGrid";
 import {
@@ -289,12 +292,12 @@ export default function Clicker2GamePage() {
   const [shopAffordRevision, setShopAffordRevision] = useState(0);
   const [loopCounterText, setLoopCounterText] = useState("0");
   const publishCounterHud = useCallback((text: string) => {
-    syncClicker2TabTitle(text);
     setLoopCounterText(text);
   }, []);
   /** 1 Hz while passive EpS accrues — refreshes all-time display without coupling to HUD counter. */
   const [passiveAccrualDisplayTick, setPassiveAccrualDisplayTick] = useState(0);
   const motionPaused = useClicker2MotionPaused();
+  const isMobile = useIsMobile();
   const [canHoverFinePointer] = useMediaQuery(
     ["(hover: hover) and (pointer: fine)"],
     { ssr: false, fallback: [false] },
@@ -602,6 +605,10 @@ export default function Clicker2GamePage() {
       energyAnchorMsRef.current,
     );
   }, []);
+
+  useClicker2TabTitleInterval(loadStatus === "ready", () =>
+    formatEnergyAmountHud(Math.round(effectiveEnergyNow())),
+  );
 
   const effectiveAllTimeEnergyEarnedNow = useCallback(() => {
     const sim = simulateGame(
@@ -1685,6 +1692,261 @@ export default function Clicker2GamePage() {
     );
   }
 
+  const pondPanel = (
+    <Stack
+      flex={isMobile ? "1" : { base: "none", lg: "1 1 0" }}
+      minW={isMobile ? undefined : { base: "auto", lg: 0 }}
+      minH={0}
+      w="full"
+      gap="2"
+      align="center"
+      justify="flex-start"
+      position="relative"
+    >
+      {activeWeather ? (
+        <Clicker2WeatherEvent
+          variantId={activeWeather.variantId}
+          leftPct={activeWeather.leftPct}
+          topPct={activeWeather.topPct}
+          motionPaused={motionPaused}
+          onActivate={onWeatherEventActivate}
+        />
+      ) : null}
+      <RollingEnergyCounter
+        syncedEnergy={energy}
+        energyPerSecond={displayEnergyPerSecond}
+        anchorMs={energyAnchorMs}
+        displayText={loopCounterText}
+      />
+      <Text fontSize="sm" color="gray.700">
+        {formatEnergyRate(displayEnergyPerSecond)} {ENERGY_EMOJI} per second
+      </Text>
+      <Clicker2HeadlineStrip
+        mode={celebrationMilestones.length > 0 ? "milestones" : "headline"}
+      >
+        {celebrationMilestones.length > 0 ? (
+          celebrationMilestones.map((milestone) => (
+            <MilestoneCelebrateCard
+              key={milestone.id}
+              milestone={milestone}
+              onDismiss={() =>
+                handleDismissMilestoneCelebration(milestone.id)
+              }
+              motionPaused={motionPaused}
+            />
+          ))
+        ) : activeHeadlineText ? (
+          <Clicker2PondHeadline text={activeHeadlineText} />
+        ) : null}
+      </Clicker2HeadlineStrip>
+      <Box w="full">
+        <Clicker2PondStage
+          denizens={pondDenizens}
+          blossomCount={blossomCount}
+          clickValue={effectiveClickValue}
+          motionPaused={motionPaused}
+          lightClickFx={clickMultiplier > 1}
+          onClickPond={onClickPond}
+        />
+        {showBannerSlot ? (
+          <Box className="pond2MilestoneBannerSlot pond2MilestoneBannerSlot--weather">
+            <Stack align="center" gap="0.5">
+              {boostBannerVariantId &&
+              epsMultiplier > 1 &&
+              weatherFamily(boostBannerVariantId) === "bluster" ? (
+                <>
+                  <Text
+                    as="span"
+                    className={
+                      motionPaused
+                        ? "pond2BlusterBanner pond2BlusterBanner--paused"
+                        : "pond2BlusterBanner"
+                    }
+                  >
+                    {weatherBoostBannerTitle(boostBannerVariantId)}
+                  </Text>
+                  <Text
+                    as="span"
+                    className="pond2WeatherBannerSub pond2WeatherBannerSubBluster"
+                  >
+                    {weatherBoostBannerSubtitle(boostBannerVariantId)}
+                  </Text>
+                </>
+              ) : clickMultiplier > 1 && boostBannerVariantId ? (
+                <>
+                  <Text
+                    as="span"
+                    className={
+                      motionPaused
+                        ? "pond2RainstormBanner pond2RainstormBanner--paused"
+                        : "pond2RainstormBanner"
+                    }
+                  >
+                    {weatherBoostBannerTitle(boostBannerVariantId)}
+                  </Text>
+                  <Text
+                    as="span"
+                    className="pond2WeatherBannerSub pond2WeatherBannerSubRain"
+                  >
+                    {weatherBoostBannerSubtitle(boostBannerVariantId)}
+                  </Text>
+                </>
+              ) : sunshinePulseKey > 0 && sunshineBannerVariantId ? (
+                <>
+                  <Text as="span" className="pond2SunshineBanner">
+                    {weatherBoostBannerTitle(sunshineBannerVariantId)}
+                  </Text>
+                  <Text
+                    as="span"
+                    className="pond2WeatherBannerSub pond2WeatherBannerSubSun"
+                  >
+                    {sunshineBoostBannerSubtitle(sunshineBannerBonus)}
+                  </Text>
+                </>
+              ) : null}
+            </Stack>
+          </Box>
+        ) : null}
+      </Box>
+      {saveError ? (
+        <Text fontSize="xs" color="nautical.solid" role="alert">
+          {saveError}
+        </Text>
+      ) : null}
+    </Stack>
+  );
+
+  const depthPanel = (
+    <Box
+      flex={isMobile ? "1" : { base: "none", lg: "1 1 0" }}
+      minW={isMobile ? undefined : { base: "auto", lg: 0 }}
+      minH={0}
+      w="full"
+      display="flex"
+      flexDirection="column"
+      alignItems="center"
+      overflowY="auto"
+      pt={isMobile ? undefined : { lg: "6" }}
+      css={HIDE_SCROLLBAR_CSS}
+      py={isMobile ? "1" : undefined}
+    >
+      <Box
+        w="full"
+        maxW={isMobile ? "full" : { base: "full", lg: "calc(100% - 2.5rem)" }}
+        mx="auto"
+      >
+        <PondDepthChart
+          timeline={denizenPurchaseTimeline}
+          ownedDenizens={ownedDenizens}
+          denizenMutationLevels={denizenMutationLevels}
+          mutagenUnlocked={mutagenUnlocked}
+          mutagensBank={mutagensBank}
+          onMutate={handleMutateDenizen}
+        />
+      </Box>
+    </Box>
+  );
+
+  const shopStatsButton = (
+    <PondButton
+      type="button"
+      size="xs"
+      variant="outline"
+      colorPalette="lilypad"
+      bg="whiteAlpha.900"
+      borderColor="lilypad.muted"
+      color="lilypad.emphasized"
+      fontWeight="semibold"
+      px="2.5"
+      boxShadow="0 1px 2px rgba(0, 0, 0, 0.06)"
+      _hover={{
+        bg: "lilypad.subtle",
+        borderColor: "lilypad.border",
+        color: "lilypad.emphasized",
+      }}
+      onClick={openStatsModal}
+    >
+      Stats
+    </PondButton>
+  );
+
+  const shopDenizensPanel = (
+    <DenizenShopList
+      denizens={visibleDenizens}
+      spendableEnergy={spendableEnergy}
+      ownedDenizens={ownedDenizens}
+      revealedDenizens={revealedDenizens}
+      savedBannerKey={savedBannerKey}
+      canHoverFinePointer={canHoverFinePointer}
+      effectiveEnergy={spendableEnergy}
+      getTooltipSnapshot={getDenizenTooltipSnapshot}
+      onBuy={buyDenizen}
+    />
+  );
+
+  const shopEvolutionsPanel = (
+    <Stack gap="3">
+      <MutagenPanel
+        allTimeEnergyEarned={effectiveAllTimeEnergyEarnedDisplay}
+        mutagensBank={mutagensBank}
+        mutagenFormingStartedAtMs={mutagenFormingStartedAtMs}
+        nowMs={Date.now()}
+        onCollect={handleCollectMutagen}
+        canHoverFinePointer={canHoverFinePointer}
+      />
+      <SpecialtyShopGrid
+        specialties={visibleSpecialties}
+        spendableEnergy={spendableEnergy}
+        canHoverFinePointer={canHoverFinePointer}
+        onBuy={buySpecialty}
+        headerTrailing={shopStatsButton}
+      />
+    </Stack>
+  );
+
+  const shopPanel = (
+    <Box
+      flex={isMobile ? "1" : { base: "1", lg: "0 0 360px" }}
+      minW={isMobile ? undefined : "0"}
+      minH={0}
+      w="full"
+      display="flex"
+      flexDirection="column"
+      overflowY={isMobile ? "hidden" : "auto"}
+      borderRadius="md"
+      bg={shopBackground}
+      p="2"
+      transition={`background-color ${WEATHER_PAGE_BACKGROUND_FADE_MS}ms ease`}
+      css={isMobile ? undefined : HIDE_SCROLLBAR_CSS}
+    >
+      {isMobile ? (
+        <Clicker2MobileShopPanels
+          denizensPanel={shopDenizensPanel}
+          evolutionsPanel={shopEvolutionsPanel}
+        />
+      ) : (
+        <Stack gap="3">
+          <SpecialtyShopGrid
+            specialties={visibleSpecialties}
+            spendableEnergy={spendableEnergy}
+            canHoverFinePointer={canHoverFinePointer}
+            onBuy={buySpecialty}
+            headerTrailing={shopStatsButton}
+          />
+          <MutagenPanel
+            allTimeEnergyEarned={effectiveAllTimeEnergyEarnedDisplay}
+            mutagensBank={mutagensBank}
+            mutagenFormingStartedAtMs={mutagenFormingStartedAtMs}
+            nowMs={Date.now()}
+            onCollect={handleCollectMutagen}
+            canHoverFinePointer={canHoverFinePointer}
+          />
+          {shopDenizensPanel}
+        </Stack>
+      )}
+    </Box>
+  );
+
   return (
     <ClickerPageShell
       fullWidthContent
@@ -1703,307 +1965,40 @@ export default function Clicker2GamePage() {
         display="flex"
         flexDirection="column"
         position="relative"
-        mx={{ base: "-3", md: "-4" }}
+        mx={isMobile ? undefined : { base: "-3", md: "-4" }}
         my={{ base: "-1", md: "-2" }}
-        px={{ base: "3", md: "4" }}
+        px={isMobile ? undefined : { base: "3", md: "4" }}
         py={{ base: "1", md: "2" }}
       >
-        <Flex
-          direction={{ base: "column", lg: "row" }}
-          gap={{ base: "3", lg: "3" }}
-          flex="1"
-          minH="0"
-          w="full"
-          align={{ lg: "stretch" }}
-          pl={{ base: 0, lg: "6" }}
-        >
-        <Stack
-          flex={{ base: "none", lg: "1 1 0" }}
-          minW={{ base: "auto", lg: 0 }}
-          minH={0}
-          w="full"
-          gap="2"
-          align="center"
-          justify="flex-start"
-          position="relative"
-        >
-          {activeWeather ? (
-            <Clicker2WeatherEvent
-              variantId={activeWeather.variantId}
-              leftPct={activeWeather.leftPct}
-              topPct={activeWeather.topPct}
-              motionPaused={motionPaused}
-              onActivate={onWeatherEventActivate}
-            />
-          ) : null}
-          <RollingEnergyCounter
-            syncedEnergy={energy}
-            energyPerSecond={displayEnergyPerSecond}
-            anchorMs={energyAnchorMs}
-            displayText={loopCounterText}
-          />
-          <Text fontSize="sm" color="gray.700">
-            {formatEnergyRate(displayEnergyPerSecond)} {ENERGY_EMOJI} per second
-          </Text>
-          <Clicker2HeadlineStrip
-            mode={celebrationMilestones.length > 0 ? "milestones" : "headline"}
-          >
-            {celebrationMilestones.length > 0 ? (
-              celebrationMilestones.map((milestone) => (
-                <MilestoneCelebrateCard
-                  key={milestone.id}
-                  milestone={milestone}
-                  onDismiss={() =>
-                    handleDismissMilestoneCelebration(milestone.id)
-                  }
-                  motionPaused={motionPaused}
-                />
-              ))
-            ) : activeHeadlineText ? (
-              <Clicker2PondHeadline text={activeHeadlineText} />
-            ) : null}
-          </Clicker2HeadlineStrip>
-          <Box w="full">
-            <Clicker2PondStage
-              denizens={pondDenizens}
-              blossomCount={blossomCount}
-              clickValue={effectiveClickValue}
-              motionPaused={motionPaused}
-              lightClickFx={clickMultiplier > 1}
-              onClickPond={onClickPond}
-            />
-            {showBannerSlot ? (
-            <Box
-              className="pond2MilestoneBannerSlot pond2MilestoneBannerSlot--weather"
-            >
-              <Stack align="center" gap="0.5">
-                {boostBannerVariantId &&
-                epsMultiplier > 1 &&
-                weatherFamily(boostBannerVariantId) === "bluster" ? (
-                  <>
-                    <Text
-                      as="span"
-                      className={
-                        motionPaused
-                          ? "pond2BlusterBanner pond2BlusterBanner--paused"
-                          : "pond2BlusterBanner"
-                      }
-                    >
-                      {weatherBoostBannerTitle(boostBannerVariantId)}
-                    </Text>
-                    <Text
-                      as="span"
-                      className="pond2WeatherBannerSub pond2WeatherBannerSubBluster"
-                    >
-                      {weatherBoostBannerSubtitle(boostBannerVariantId)}
-                    </Text>
-                  </>
-                ) : clickMultiplier > 1 && boostBannerVariantId ? (
-                  <>
-                    <Text
-                      as="span"
-                      className={
-                        motionPaused
-                          ? "pond2RainstormBanner pond2RainstormBanner--paused"
-                          : "pond2RainstormBanner"
-                      }
-                    >
-                      {weatherBoostBannerTitle(boostBannerVariantId)}
-                    </Text>
-                    <Text
-                      as="span"
-                      className="pond2WeatherBannerSub pond2WeatherBannerSubRain"
-                    >
-                      {weatherBoostBannerSubtitle(boostBannerVariantId)}
-                    </Text>
-                  </>
-                ) : sunshinePulseKey > 0 && sunshineBannerVariantId ? (
-                  <>
-                    <Text as="span" className="pond2SunshineBanner">
-                      {weatherBoostBannerTitle(sunshineBannerVariantId)}
-                    </Text>
-                    <Text
-                      as="span"
-                      className="pond2WeatherBannerSub pond2WeatherBannerSubSun"
-                    >
-                      {sunshineBoostBannerSubtitle(sunshineBannerBonus)}
-                    </Text>
-                  </>
-                ) : null}
-              </Stack>
-            </Box>
-            ) : null}
-          </Box>
-          {saveError ? (
-            <Text fontSize="xs" color="nautical.solid" role="alert">
-              {saveError}
-            </Text>
-          ) : null}
-        </Stack>
-
-        <Box
-          flex={{ base: "none", lg: "1 1 0" }}
-          minW={{ base: "auto", lg: 0 }}
-          minH={0}
-          w="full"
-          overflowY="auto"
-          pt={{ lg: "6" }}
-          display="flex"
-          flexDirection="column"
-          alignItems="center"
-          css={HIDE_SCROLLBAR_CSS}
-        >
+        {isMobile ? (
           <Box
-            w="full"
-            maxW={{ base: "full", lg: "calc(100% - 2.5rem)" }}
-            mx="auto"
+            flex="1"
+            minH="0"
+            display="flex"
+            flexDirection="column"
+            {...viewPortWidthBarProps}
           >
-            <PondDepthChart
-              timeline={denizenPurchaseTimeline}
-              ownedDenizens={ownedDenizens}
-              denizenMutationLevels={denizenMutationLevels}
-              mutagenUnlocked={mutagenUnlocked}
-              mutagensBank={mutagensBank}
-              onMutate={handleMutateDenizen}
+            <Clicker2MobilePanels
+              pondPanel={pondPanel}
+              shopPanel={shopPanel}
+              depthPanel={depthPanel}
             />
           </Box>
-        </Box>
-
-        <Box
-          flex={{ base: "1", lg: "0 0 360px" }}
-          minW="0"
-          minH="0"
-          overflowY="auto"
-          borderRadius="md"
-          bg={shopBackground}
-          p="2"
-          transition={`background-color ${WEATHER_PAGE_BACKGROUND_FADE_MS}ms ease`}
-          css={HIDE_SCROLLBAR_CSS}
-        >
-          <Stack gap="3">
-            <SpecialtyShopGrid
-              specialties={visibleSpecialties}
-              spendableEnergy={spendableEnergy}
-              canHoverFinePointer={canHoverFinePointer}
-              onBuy={buySpecialty}
-              headerTrailing={
-                <PondButton
-                  type="button"
-                  size="xs"
-                  variant="outline"
-                  colorPalette="lilypad"
-                  bg="whiteAlpha.900"
-                  borderColor="lilypad.muted"
-                  color="lilypad.emphasized"
-                  fontWeight="semibold"
-                  px="2.5"
-                  boxShadow="0 1px 2px rgba(0, 0, 0, 0.06)"
-                  _hover={{
-                    bg: "lilypad.subtle",
-                    borderColor: "lilypad.border",
-                    color: "lilypad.emphasized",
-                  }}
-                  onClick={openStatsModal}
-                >
-                  Stats
-                </PondButton>
-              }
-            />
-
-            <MutagenPanel
-              allTimeEnergyEarned={effectiveAllTimeEnergyEarnedDisplay}
-              mutagensBank={mutagensBank}
-              mutagenFormingStartedAtMs={mutagenFormingStartedAtMs}
-              nowMs={Date.now()}
-              onCollect={handleCollectMutagen}
-              canHoverFinePointer={canHoverFinePointer}
-            />
-
-            {/*
-             * CLICKER2_DEV_TOOLS — staff-only UI (import BLOSSOM_RING_MAX when re-enabled).
-             * {showClicker2DevTools ? (
-             *   <Flex
-             *     gap="1"
-             *     flexWrap="wrap"
-             *     align="center"
-             *     borderWidth="1px"
-             *     borderStyle="dashed"
-             *     borderColor="gray.400"
-             *     borderRadius="md"
-             *     p="1.5"
-             *   >
-             *     <Text fontSize="2xs" color="gray.600" flex="1" minW="6rem">
-             *       TEMP dev tools
-             *     </Text>
-             *     <PondButton
-             *       type="button"
-             *       size="xs"
-             *       variant="outline"
-             *       colorPalette="gray"
-             *       onClick={handleDevSetBlossoms100}
-             *       disabled={blossomCount >= BLOSSOM_RING_MAX}
-             *     >
-             *       Set blossoms to 100
-             *     </PondButton>
-             *     <PondButton
-             *       type="button"
-             *       size="xs"
-             *       variant="outline"
-             *       colorPalette="gray"
-             *       onClick={handleDevRevertBlossomsToEarned}
-             *       disabled={devBlossomOverride === null}
-             *     >
-             *       Revert blossoms to earned
-             *     </PondButton>
-             *     <PondButton
-             *       type="button"
-             *       size="xs"
-             *       variant="outline"
-             *       colorPalette="gray"
-             *       onClick={handleDevGainOneOfEachDenizen}
-             *     >
-             *       +1 of each denizen
-             *     </PondButton>
-             *     <PondButton
-             *       type="button"
-             *       size="xs"
-             *       variant="outline"
-             *       colorPalette="gray"
-             *       onClick={handleDevGrantMutagenUnlockEnergy}
-             *       disabled={
-             *         effectiveAllTimeEnergyEarnedDisplay >=
-             *         MUTAGEN_UNLOCK_ALL_TIME_ENERGY
-             *       }
-             *     >
-             *       +1B lifetime
-             *     </PondButton>
-             *     <PondButton
-             *       type="button"
-             *       size="xs"
-             *       variant="outline"
-             *       colorPalette="gray"
-             *       onClick={handleDevGrantMutagen}
-             *     >
-             *       +1 mutagen
-             *     </PondButton>
-             *   </Flex>
-             * ) : null}
-             */}
-
-            <DenizenShopList
-              denizens={visibleDenizens}
-              spendableEnergy={spendableEnergy}
-              ownedDenizens={ownedDenizens}
-              revealedDenizens={revealedDenizens}
-              savedBannerKey={savedBannerKey}
-              canHoverFinePointer={canHoverFinePointer}
-              effectiveEnergy={spendableEnergy}
-              getTooltipSnapshot={getDenizenTooltipSnapshot}
-              onBuy={buyDenizen}
-            />
-          </Stack>
-        </Box>
-      </Flex>
+        ) : (
+          <Flex
+            direction={{ base: "column", lg: "row" }}
+            gap={{ base: "3", lg: "3" }}
+            flex="1"
+            minH="0"
+            w="full"
+            align={{ lg: "stretch" }}
+            pl={{ base: 0, lg: "6" }}
+          >
+            {pondPanel}
+            {depthPanel}
+            {shopPanel}
+          </Flex>
+        )}
       </Box>
       <Clicker2StatsModal
         open={statsModalOpen}

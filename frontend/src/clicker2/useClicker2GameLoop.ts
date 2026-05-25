@@ -11,7 +11,6 @@ import {
   spendableCrossedAffordBoundary,
   type collectShopAffordThresholds,
 } from "./clicker2Afford";
-import { syncClicker2TabTitle } from "./clicker2TabTitle";
 import {
   effectiveEnergyPerSecond,
   type ActiveBlusterBoost,
@@ -156,13 +155,11 @@ export function useClicker2GameLoop(
         onAffordBoundaryCrossRef.current();
       }
 
-      const shown = Math.round(Math.max(0, refs.displayValue.current));
-      if (shown !== refs.lastShownCounterInt.current) {
-        refs.lastShownCounterInt.current = shown;
-        const hudText = formatEnergyAmountHud(shown);
-        syncClicker2TabTitle(hudText);
-        if (!hidden) {
-          queueCounterDisplay(hudText);
+      if (!hidden) {
+        const shown = Math.round(Math.max(0, refs.displayValue.current));
+        if (shown !== refs.lastShownCounterInt.current) {
+          refs.lastShownCounterInt.current = shown;
+          queueCounterDisplay(formatEnergyAmountHud(shown));
         }
       }
     };

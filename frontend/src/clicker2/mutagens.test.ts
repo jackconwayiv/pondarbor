@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyMutation,
+  autoCollectMutagen,
   bootstrapMutagenPipelineOnLoad,
   collectMutagen,
   ensureMutagenPipelineStarted,
@@ -11,13 +12,17 @@ import {
   shouldShowDenizenMutationLevel,
   isMutagenCollectible,
   isMutagenSystemUnlocked,
+  MUTAGEN_AUTO_COLLECT_GRACE_MS,
   MUTAGEN_FORMATION_MS,
   MUTAGEN_MAX_LEVEL,
   MUTAGEN_UNLOCK_ALL_TIME_ENERGY,
   mutagenCostForNextLevel,
+  msUntilMutagenAutoCollect,
   msUntilMutagenCollectible,
   msUntilNextMutagenFormingUiTick,
   mutagenFormingStatusMessage,
+  mutagenReadyInMessage,
+  settleMutagenPipeline,
   totalMutagensSpentForLevel,
 } from "./mutagens";
 import { createDefaultClicker2State } from "./api";
@@ -138,6 +143,27 @@ describe("mutagens", () => {
     expect(msUntilNextMutagenFormingUiTick(3 * hour)).toBe(3 * hour);
   });
 
+  it("formats ready-in countdown for hours and minutes", () => {
+    const hour = 60 * 60 * 1000;
+    const minute = 60 * 1000;
+    expect(mutagenReadyInMessage(20 * hour)).toBe(
+      "It will be ready in 20 hours.",
+    );
+    expect(mutagenReadyInMessage(1 * hour)).toBe("It will be ready in 1 hour.");
+    expect(mutagenReadyInMessage(61 * minute)).toBe(
+      "It will be ready in 2 hours.",
+    );
+    expect(mutagenReadyInMessage(59 * minute)).toBe(
+      "It will be ready in 59 minutes.",
+    );
+    expect(mutagenReadyInMessage(1 * minute)).toBe(
+      "It will be ready in 1 minute.",
+    );
+    expect(mutagenReadyInMessage(30 * 1000)).toBe(
+      "It will be ready in 1 minute.",
+    );
+  });
+
   it("detects when any mutagen has been spent", () => {
     expect(hasSpentAnyMutagen({})).toBe(false);
     expect(hasSpentAnyMutagen({ fungi: 1 })).toBe(true);
@@ -176,5 +202,81 @@ describe("mutagens", () => {
     };
     const boot = bootstrapMutagenPipelineOnLoad(state, 99_000);
     expect(boot.mutagen_forming_started_at_ms).toBe(99_000);
+    expect(boot.completedCount).toBe(0);
+  });
+
+  function unlockedSlice(startedAt: number, bank = 0, acquired = 0) {
+    return {
+      statistics: {
+        ...createDefaultClicker2State().statistics,
+        all_time_energy_earned: MUTAGEN_UNLOCK_ALL_TIME_ENERGY,
+      },
+      mutagens_bank: bank,
+      mutagen_forming_started_at_ms: startedAt,
+      total_mutagens_acquired: acquired,
+    };
+  }
+
+  it("auto-collects only after the 4-hour grace window", () => {
+    const T0 = 1_000_000;
+    const hour = 60 * 60 * 1000;
+    const slice = unlockedSlice(T0, 1, 1);
+
+    expect(autoCollectMutagen(slice, T0 + 19 * hour)).toBeNull();
+    expect(autoCollectMutagen(slice, T0 + 22 * hour)).toBeNull();
+
+    const auto = autoCollectMutagen(slice, T0 + 24 * hour);
+    expect(auto).not.toBeNull();
+    expect(auto!.mutagens_bank).toBe(2);
+    expect(auto!.mutagen_forming_started_at_ms).toBe(T0 + 24 * hour);
+  });
+
+  it("settles offline mutagen progress with grace", () => {
+    const T0 = 1_000_000;
+    const hour = 60 * 60 * 1000;
+    const slice = unlockedSlice(T0);
+
+    expect(settleMutagenPipeline(slice, T0 + 19 * hour)).toMatchObject({
+      mutagens_bank: 0,
+      mutagen_forming_started_at_ms: T0,
+      completedCount: 0,
+    });
+
+    expect(settleMutagenPipeline(slice, T0 + 22 * hour)).toMatchObject({
+      mutagens_bank: 0,
+      mutagen_forming_started_at_ms: T0,
+      completedCount: 0,
+    });
+    expect(isMutagenCollectible(T0, T0 + 22 * hour)).toBe(true);
+
+    expect(settleMutagenPipeline(slice, T0 + 24 * hour)).toMatchObject({
+      mutagens_bank: 1,
+      mutagen_forming_started_at_ms: T0 + 24 * hour,
+      total_mutagens_acquired: 1,
+      completedCount: 1,
+    });
+
+    expect(settleMutagenPipeline(slice, T0 + 71 * hour)).toMatchObject({
+      mutagens_bank: 2,
+      mutagen_forming_started_at_ms: T0 + 48 * hour,
+      total_mutagens_acquired: 2,
+      completedCount: 2,
+    });
+    expect(isMutagenCollectible(T0 + 48 * hour, T0 + 71 * hour)).toBe(true);
+
+    expect(settleMutagenPipeline(slice, T0 + 72 * hour)).toMatchObject({
+      mutagens_bank: 3,
+      mutagen_forming_started_at_ms: T0 + 72 * hour,
+      total_mutagens_acquired: 3,
+      completedCount: 3,
+    });
+  });
+
+  it("msUntilMutagenAutoCollect includes formation plus grace", () => {
+    const T0 = 100_000;
+    expect(msUntilMutagenAutoCollect(T0, T0)).toBe(
+      MUTAGEN_FORMATION_MS + MUTAGEN_AUTO_COLLECT_GRACE_MS,
+    );
+    expect(msUntilMutagenAutoCollect(0, T0)).toBe(Number.POSITIVE_INFINITY);
   });
 });

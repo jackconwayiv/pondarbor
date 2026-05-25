@@ -96,8 +96,10 @@ import {
   ensureMutagenPipelineStarted,
   getMutationLevel,
   isMutagenSystemUnlocked,
+  msUntilMutagenAutoCollect,
   msUntilMutagenCollectible,
   msUntilNextMutagenFormingUiTick,
+  settleMutagenPipeline,
 } from "./mutagens";
 import { denizenPerCopyEpsMap, simulateGame } from "./simulation";
 import {
@@ -843,14 +845,17 @@ export default function Clicker2GamePage() {
           loadedState.next_weather_spawn_at_ms > 0
             ? loadedState.next_weather_spawn_at_ms
             : nextWeatherSpawnAtMsFromNow();
+        const { completedCount: mutagenSettledCount, ...mutagenState } =
+          mutagenBoot;
         const stateWithWeather = {
           ...loadedState,
-          ...mutagenBoot,
+          ...mutagenState,
           next_weather_spawn_at_ms: nextWeatherSpawnAt,
         };
         saveDirtyRef.current =
           loadedState.pond_started_at_ms !== merged.pond_started_at_ms ||
           loadedState.next_weather_spawn_at_ms !== nextWeatherSpawnAt ||
+          mutagenSettledCount > 0 ||
           specialtyAcquiredMigrationPending(
             res.state,
             stateWithWeather.owned_specialties,
@@ -1038,19 +1043,58 @@ export default function Clicker2GamePage() {
     return () => window.clearInterval(id);
   }, [isAuthenticated, loadStatus, flushStatisticsToState]);
 
+  const applyMutagenPipelineSettlement = useCallback(
+    (nowMs: number): number => {
+      const result = settleMutagenPipeline(
+        {
+          statistics: statisticsRef.current,
+          mutagens_bank: mutagensBankRef.current,
+          mutagen_forming_started_at_ms: mutagenFormingStartedAtMsRef.current,
+          total_mutagens_acquired: totalMutagensAcquiredRef.current,
+        },
+        nowMs,
+      );
+      if (result.completedCount === 0) return 0;
+      mutagensBankRef.current = result.mutagens_bank;
+      mutagenFormingStartedAtMsRef.current =
+        result.mutagen_forming_started_at_ms;
+      totalMutagensAcquiredRef.current = result.total_mutagens_acquired;
+      setMutagensBank(result.mutagens_bank);
+      setMutagenFormingStartedAtMs(result.mutagen_forming_started_at_ms);
+      setTotalMutagensAcquired(result.total_mutagens_acquired);
+      markGameDirty();
+      syncMilestones();
+      return result.completedCount;
+    },
+    [markGameDirty, syncMilestones],
+  );
+
   useEffect(() => {
     if (!isAuthenticated || loadStatus !== "ready") return;
     if (!mutagenUnlocked) return;
 
     let timeoutId = 0;
     const scheduleMutagenUiTick = () => {
-      const started = mutagenFormingStartedAtMsRef.current;
       const now = Date.now();
+      if (applyMutagenPipelineSettlement(now) > 0) {
+        timeoutId = window.setTimeout(() => {
+          setMutagenUiTick((n) => n + 1);
+          scheduleMutagenUiTick();
+        }, 0);
+        return;
+      }
+
+      const started = mutagenFormingStartedAtMsRef.current;
       const msLeft = msUntilMutagenCollectible(started, now);
-      const delay =
-        started > 0 && msLeft > 0
-          ? msUntilNextMutagenFormingUiTick(msLeft)
-          : 60_000;
+      const msUntilAuto = msUntilMutagenAutoCollect(started, now);
+      let delay = 60_000;
+      if (started > 0) {
+        if (msLeft > 0) {
+          delay = Math.min(msUntilNextMutagenFormingUiTick(msLeft), msLeft);
+        } else if (msUntilAuto > 0) {
+          delay = msUntilAuto;
+        }
+      }
       timeoutId = window.setTimeout(() => {
         setMutagenUiTick((n) => n + 1);
         scheduleMutagenUiTick();
@@ -1064,6 +1108,7 @@ export default function Clicker2GamePage() {
     loadStatus,
     mutagenUnlocked,
     mutagenFormingStartedAtMs,
+    applyMutagenPipelineSettlement,
   ]);
 
   useEffect(() => {

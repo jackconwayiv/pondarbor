@@ -26,6 +26,7 @@ import {
   isMutagenSystemUnlocked,
   msUntilMutagenCollectible,
   mutagenFormingStatusMessage,
+  mutagenReadyInMessage,
   MUTAGEN_EMOJI,
 } from "./mutagens";
 
@@ -95,13 +96,23 @@ export default function MutagenPanel({
             </PondButton>
           </Flex>
         ) : mutagenFormingStartedAtMs > 0 ? (
-          <Text fontSize="sm" lineHeight="1.4" color={DESIGN.textPrimary}>
-            {MUTAGEN_EMOJI} {mutagenFormingStatusMessage(msLeft)}
-          </Text>
+          <Stack gap="0.5">
+            <Text fontSize="sm" lineHeight="1.4" color={DESIGN.textPrimary}>
+              {MUTAGEN_EMOJI} {mutagenFormingStatusMessage(msLeft)}
+            </Text>
+            <Text fontSize="sm" lineHeight="1.4" color={DESIGN.textPrimary}>
+              {mutagenReadyInMessage(msLeft)}
+            </Text>
+          </Stack>
         ) : (
-          <Text fontSize="sm" lineHeight="1.4" color={DESIGN.textPrimary}>
-            {MUTAGEN_EMOJI} First {MUTAGEN_LABEL.toLowerCase()} forming…
-          </Text>
+          <Stack gap="0.5">
+            <Text fontSize="sm" lineHeight="1.4" color={DESIGN.textPrimary}>
+              {MUTAGEN_EMOJI} First {MUTAGEN_LABEL.toLowerCase()} forming…
+            </Text>
+            <Text fontSize="sm" lineHeight="1.4" color={DESIGN.textPrimary}>
+              {mutagenReadyInMessage(msLeft)}
+            </Text>
+          </Stack>
         )}
       </Stack>
     </Box>

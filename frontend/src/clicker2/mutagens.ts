@@ -4,6 +4,8 @@ import type { Clicker2GameState } from "./api";
 export const MUTAGEN_UNLOCK_ALL_TIME_ENERGY = 1_000_000_000;
 /** Real-world wall-clock formation time before a mutagen is collectible. */
 export const MUTAGEN_FORMATION_MS = 20 * 60 * 60 * 1000;
+/** After collectible, manual Collect is available for this long before auto-collect. */
+export const MUTAGEN_AUTO_COLLECT_GRACE_MS = 4 * 60 * 60 * 1000;
 export const MUTAGEN_MAX_LEVEL = 10;
 export const MUTAGEN_EMOJI = "🧬";
 
@@ -88,6 +90,86 @@ export function msUntilMutagenCollectible(
 ): number {
   if (formingStartedAtMs <= 0) return MUTAGEN_FORMATION_MS;
   return Math.max(0, mutagenCollectibleAtMs(formingStartedAtMs) - nowMs);
+}
+
+export function mutagenAutoCollectAtMs(formingStartedAtMs: number): number {
+  return formingStartedAtMs + MUTAGEN_FORMATION_MS + MUTAGEN_AUTO_COLLECT_GRACE_MS;
+}
+
+export function msUntilMutagenAutoCollect(
+  formingStartedAtMs: number,
+  nowMs: number,
+): number {
+  if (formingStartedAtMs <= 0) return Number.POSITIVE_INFINITY;
+  return Math.max(0, mutagenAutoCollectAtMs(formingStartedAtMs) - nowMs);
+}
+
+export function autoCollectMutagen(
+  slice: MutagenPipelineSlice,
+  nowMs: number,
+): MutagenPipelineSlice | null {
+  const started = ensureMutagenPipelineStarted(slice, nowMs);
+  const formingStarted = started.mutagen_forming_started_at_ms;
+  if (formingStarted <= 0) return null;
+  const autoAt = mutagenAutoCollectAtMs(formingStarted);
+  if (nowMs < autoAt) return null;
+  return {
+    ...started,
+    mutagens_bank: started.mutagens_bank + 1,
+    mutagen_forming_started_at_ms: autoAt,
+  };
+}
+
+export type MutagenPipelineState = MutagenPipelineSlice & {
+  total_mutagens_acquired: number;
+};
+
+export type SettleMutagenPipelineResult = MutagenPipelineState & {
+  completedCount: number;
+};
+
+/** Fast-forward pipeline for offline time; auto-collects only after grace expires. */
+export function settleMutagenPipeline(
+  slice: MutagenPipelineState,
+  nowMs: number,
+): SettleMutagenPipelineResult {
+  if (!isMutagenSystemUnlocked(slice.statistics.all_time_energy_earned)) {
+    return { ...slice, completedCount: 0 };
+  }
+
+  let bank = slice.mutagens_bank;
+  let started = slice.mutagen_forming_started_at_ms;
+  let totalAcquired = slice.total_mutagens_acquired;
+  let completed = 0;
+
+  if (started <= 0) {
+    return { ...slice, completedCount: 0 };
+  }
+
+  while (true) {
+    const collectibleAt = mutagenCollectibleAtMs(started);
+    const autoAt = mutagenAutoCollectAtMs(started);
+
+    if (nowMs < collectibleAt) break;
+
+    if (nowMs >= autoAt) {
+      completed += 1;
+      bank += 1;
+      totalAcquired += 1;
+      started = autoAt;
+      continue;
+    }
+
+    break;
+  }
+
+  return {
+    ...slice,
+    mutagens_bank: bank,
+    mutagen_forming_started_at_ms: started,
+    total_mutagens_acquired: totalAcquired,
+    completedCount: completed,
+  };
 }
 
 export function ensureMutagenPipelineStarted(
@@ -176,12 +258,15 @@ export function normalizeDenizenMutationLevels(
   return out;
 }
 
-/** After load: start formation timer if player already at 1B+ with no active pipeline. */
+/** After load: start pipeline if needed, then settle offline mutagen progress. */
 export function bootstrapMutagenPipelineOnLoad(
   state: Clicker2GameState,
   nowMs: number,
-): Pick<Clicker2GameState, "mutagens_bank" | "mutagen_forming_started_at_ms"> {
-  const slice = ensureMutagenPipelineStarted(
+): Pick<
+  Clicker2GameState,
+  "mutagens_bank" | "mutagen_forming_started_at_ms" | "total_mutagens_acquired"
+> & { completedCount: number } {
+  const ensured = ensureMutagenPipelineStarted(
     {
       statistics: state.statistics,
       mutagens_bank: state.mutagens_bank,
@@ -189,9 +274,18 @@ export function bootstrapMutagenPipelineOnLoad(
     },
     nowMs,
   );
+  const settled = settleMutagenPipeline(
+    {
+      ...ensured,
+      total_mutagens_acquired: state.total_mutagens_acquired,
+    },
+    nowMs,
+  );
   return {
-    mutagens_bank: slice.mutagens_bank,
-    mutagen_forming_started_at_ms: slice.mutagen_forming_started_at_ms,
+    mutagens_bank: settled.mutagens_bank,
+    mutagen_forming_started_at_ms: settled.mutagen_forming_started_at_ms,
+    total_mutagens_acquired: settled.total_mutagens_acquired,
+    completedCount: settled.completedCount,
   };
 }
 
@@ -210,6 +304,21 @@ export function mutagenFormingStatusMessage(msRemaining: number): string {
     return "A new mutation is nearly here...";
   }
   return "A new mutation is imminent...";
+}
+
+/** Countdown copy for the mutagen panel second line while forming. */
+export function mutagenReadyInMessage(msRemaining: number): string {
+  const ms = Math.max(0, msRemaining);
+  if (ms >= MUTAGEN_FORMING_HOUR_MS) {
+    const hours = Math.ceil(ms / MUTAGEN_FORMING_HOUR_MS);
+    return hours === 1
+      ? "It will be ready in 1 hour."
+      : `It will be ready in ${hours} hours.`;
+  }
+  const minutes = Math.max(1, Math.ceil(ms / (60 * 1000)));
+  return minutes === 1
+    ? "It will be ready in 1 minute."
+    : `It will be ready in ${minutes} minutes.`;
 }
 
 /** Ms until the forming message phase changes, or until collectible (0). */

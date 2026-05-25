@@ -12,8 +12,13 @@ export const PAIRING_SPECIALTY_DENIZEN_ID = "pairing" as const;
 
 export const PAIRING_SPECIALTY_ID_START = 364;
 
-/** Applied to the L/H blend base price for every pairing evolution. */
+/** Uniform factor on L/H blend before per-L-tier scaling (legacy base = blend × 10). */
 export const PAIRING_PRICE_MULTIPLIER = 10;
+
+/** Per-L-row multiplier on shipped price: ripples=10×, sediment=11×, … (10 + L ladder index). */
+export function pairingLowerTierPriceScale(lowerDenizenId: string): number {
+  return 10 + pairingUnlockLowerDenizenTierIndex(lowerDenizenId);
+}
 
 /** H owned at ripples × next H; +2 per L tier, +1 per H step up the ladder within L. */
 export const PAIRING_H_UNLOCK_BASE = 15;
@@ -254,7 +259,8 @@ export function proposedPairingPrice(
   const l2 = catalogPrice(denizenSecondEvolutionPriceId(lowerDenizenId));
   const h1 = catalogPrice(denizenFirstEvolutionPriceId(higherDenizenId));
   const blend = Math.round(0.5 * l2 + 0.5 * h1);
-  return Math.max(1, blend * PAIRING_PRICE_MULTIPLIER);
+  const scale = pairingLowerTierPriceScale(lowerDenizenId);
+  return Math.max(1, blend * PAIRING_PRICE_MULTIPLIER * scale);
 }
 
 function pairingEffectText(

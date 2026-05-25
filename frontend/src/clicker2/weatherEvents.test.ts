@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   clickWeatherMultiplier,
+  epsWeatherMultiplier,
   shopSurfaceForWeather,
-  startWindClickBoost,
+  startBlusterBoost,
   SUNSHINE_SHOP_BACKGROUND,
   sunWeatherBonus,
   weatherAmbientFromBoosts,
@@ -70,14 +71,15 @@ describe("weather variant catalog", () => {
     ).not.toBe(SUNSHINE_SHOP_BACKGROUND);
   });
 
-  it("wind events grant click boost for the EpS boost duration", () => {
+  it("wind events grant EpS boost only, not click multiplier", () => {
     const now = 5_000;
-    const galeClick = startWindClickBoost("howling_gale", now)!;
-    expect(galeClick.peakMultiplier).toBe(10);
-    expect(clickWeatherMultiplier(galeClick, now + 30_000)).toBe(10);
-    expect(startWindClickBoost("drizzle", now)).toBeNull();
+    const galeEps = startBlusterBoost("howling_gale", now);
+    expect(galeEps.peakMultiplier).toBe(10);
+    expect(epsWeatherMultiplier(galeEps, now + 30_000)).toBe(10);
+    expect(clickWeatherMultiplier(null, now)).toBe(1);
+    expect(WEATHER_VARIANTS.howling_gale.clickMultiplier).toBeUndefined();
     expect(
-      weatherAmbientFromBoosts({ clickMultiplier: 10, epsMultiplier: 10 }),
+      weatherAmbientFromBoosts({ clickMultiplier: 1, epsMultiplier: 10 }),
     ).toBe("bluster");
   });
 

@@ -66,6 +66,11 @@ import {
   totalDenizensOwned,
   type DenizenDef,
 } from "./denizens";
+import {
+  captureClicker2TabTitleBase,
+  restoreClicker2TabTitle,
+  syncClicker2TabTitle,
+} from "./clicker2TabTitle";
 import { ENERGY_EMOJI, formatEnergyRate } from "./formatEnergy";
 import RollingEnergyCounter from "./RollingEnergyCounter";
 import SpecialtyShopGrid from "./SpecialtyShopGrid";
@@ -135,7 +140,6 @@ import {
   nextWeatherSpawnAtMsFromNow,
   startBlusterBoost,
   startRainBoost,
-  startWindClickBoost,
   weatherFamily,
   SUNSHINE_PULSE_MS,
   sunWeatherBonus,
@@ -284,6 +288,10 @@ export default function Clicker2GamePage() {
   const affordThresholdsRef = useRef<number[]>([]);
   const [shopAffordRevision, setShopAffordRevision] = useState(0);
   const [loopCounterText, setLoopCounterText] = useState("0");
+  const publishCounterHud = useCallback((text: string) => {
+    syncClicker2TabTitle(text);
+    setLoopCounterText(text);
+  }, []);
   /** 1 Hz while passive EpS accrues — refreshes all-time display without coupling to HUD counter. */
   const [passiveAccrualDisplayTick, setPassiveAccrualDisplayTick] = useState(0);
   const motionPaused = useClicker2MotionPaused();
@@ -568,13 +576,13 @@ export default function Clicker2GamePage() {
         now,
       );
       bumpShopAffordIfBoundaryCrossed(prevSpendable, nextSpendable);
-      setLoopCounterText(
+      publishCounterHud(
         snapClicker2CounterDisplay(gameLoopRefsBox.current, eps, now),
       );
       setEnergy(nextSynced);
       setEnergyAnchorMs(now);
     },
-    [bumpShopAffordIfBoundaryCrossed],
+    [bumpShopAffordIfBoundaryCrossed, publishCounterHud],
   );
 
   const effectiveEnergyNow = useCallback(() => {
@@ -730,7 +738,7 @@ export default function Clicker2GamePage() {
       energyRef.current = frozen;
       energyAnchorMsRef.current = now;
       bumpShopAffordIfBoundaryCrossed(prevSpendable, frozen);
-      setLoopCounterText(
+      publishCounterHud(
         snapClicker2CounterAtBlusterEnd(gameLoopRefsBox.current, endedBoost),
       );
       setEnergy(frozen);
@@ -742,8 +750,13 @@ export default function Clicker2GamePage() {
       saveDirtyRef.current = true;
       syncMilestones();
     },
-    [bumpShopAffordIfBoundaryCrossed, syncMilestones],
+    [bumpShopAffordIfBoundaryCrossed, publishCounterHud, syncMilestones],
   );
+
+  useEffect(() => {
+    captureClicker2TabTitleBase();
+    return () => restoreClicker2TabTitle();
+  }, []);
 
   const scheduleBlusterBoostEnd = useCallback(
     (boost: ActiveBlusterBoost) => {
@@ -1193,7 +1206,7 @@ export default function Clicker2GamePage() {
   useClicker2GameLoop(
     loadStatus === "ready",
     gameLoopRefsBox,
-    setLoopCounterText,
+    publishCounterHud,
     () => setShopAffordRevision((n) => n + 1),
   );
 
@@ -1202,15 +1215,15 @@ export default function Clicker2GamePage() {
     const onVisibility = () => {
       if (document.hidden) return;
       reanchorEnergyFromEffective();
-      snapClicker2CounterToEffective(gameLoopRefsBox, setLoopCounterText);
+      snapClicker2CounterToEffective(gameLoopRefsBox, publishCounterHud);
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [loadStatus, reanchorEnergyFromEffective]);
+  }, [loadStatus, reanchorEnergyFromEffective, publishCounterHud]);
 
   useEffect(() => {
     if (loadStatus !== "ready") return;
-    setLoopCounterText(
+    publishCounterHud(
       snapClicker2CounterDisplay(
         gameLoopRefsBox.current,
         effectiveEnergyPerSecond(
@@ -1224,7 +1237,7 @@ export default function Clicker2GamePage() {
         ),
       ),
     );
-  }, [loadStatus, energy, energyAnchorMs]);
+  }, [loadStatus, energy, energyAnchorMs, publishCounterHud]);
 
   const handleCollectMutagen = useCallback(() => {
     const nowMs = Date.now();
@@ -1560,12 +1573,6 @@ export default function Clicker2GamePage() {
       const boost = startBlusterBoost(event.variantId);
       activeBlusterBoostRef.current = boost;
       setActiveBlusterBoost(boost);
-      const windClickBoost = startWindClickBoost(event.variantId);
-      if (windClickBoost) {
-        activeRainBoostRef.current = windClickBoost;
-        setActiveRainBoost(windClickBoost);
-        scheduleRainBoostEnd(windClickBoost);
-      }
       setBoostBannerVariantId(event.variantId);
       scheduleBlusterBoostEnd(boost);
       setWeatherUiRevision((n) => n + 1);
@@ -1841,13 +1848,15 @@ export default function Clicker2GamePage() {
           w="full"
           overflowY="auto"
           pt={{ lg: "6" }}
+          display="flex"
+          flexDirection="column"
+          alignItems="center"
           css={HIDE_SCROLLBAR_CSS}
         >
           <Box
             w="full"
             maxW={{ base: "full", lg: "calc(100% - 2.5rem)" }}
-            mr={{ base: 0, lg: "6" }}
-            pr={{ base: 0, lg: "3" }}
+            mx="auto"
           >
             <PondDepthChart
               timeline={denizenPurchaseTimeline}

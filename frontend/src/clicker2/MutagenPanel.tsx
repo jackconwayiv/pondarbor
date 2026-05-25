@@ -60,6 +60,7 @@ export default function MutagenPanel({
       px="2"
       py="1.5"
       borderWidth="1px"
+      borderStyle={mutagensBank > 0 ? "solid" : "dashed"}
       borderColor="lilypad.emphasized"
       background={MUTAGEN_WARM_GRADIENT}
       cursor={canHoverFinePointer ? "help" : undefined}

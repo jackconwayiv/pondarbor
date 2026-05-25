@@ -31,12 +31,12 @@ describe("pairingSourcePerStep", () => {
 });
 
 describe("proposedPairingPrice", () => {
-  it("blends 50% L 2nd evolution + 50% H 1st evolution for launch pairs", () => {
-    expect(proposedPairingPrice("ripples", "sediment", catalogPrice)).toBe(7_500);
-    expect(proposedPairingPrice("ripples", "fungi", catalogPrice)).toBe(52_500);
-    expect(proposedPairingPrice("sediment", "fungi", catalogPrice)).toBe(75_000);
+  it("blends 50% L 2nd evolution + 50% H 1st evolution with L-tier scale", () => {
+    expect(proposedPairingPrice("ripples", "sediment", catalogPrice)).toBe(75_000);
+    expect(proposedPairingPrice("ripples", "fungi", catalogPrice)).toBe(525_000);
+    expect(proposedPairingPrice("sediment", "fungi", catalogPrice)).toBe(825_000);
     expect(proposedPairingPrice("sediment", "microbes", catalogPrice)).toBe(
-      525_000,
+      5_775_000,
     );
   });
 
@@ -78,9 +78,13 @@ describe("generatePairingSpecialtyDefs", () => {
 
   it("applies blend pricing on generated defs", () => {
     const shifting = SPECIALTIES.find((s) => s.name === "Shifting Bed")!;
-    expect(shifting.price).toBe(7_500);
+    expect(shifting.price).toBe(
+      proposedPairingPrice("ripples", "sediment", catalogPrice),
+    );
     const primeval = SPECIALTIES.find((s) => s.name === "Primeval Layer")!;
-    expect(primeval.price).toBe(525_000);
+    expect(primeval.price).toBe(
+      proposedPairingPrice("sediment", "microbes", catalogPrice),
+    );
   });
 });
 

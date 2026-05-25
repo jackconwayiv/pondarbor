@@ -23,8 +23,6 @@ import {
   ecologyTooltipSurfaceProps,
 } from "../clicker/ecologyUi.constants";
 import { CLICKER_SURFACES } from "../clicker/clickerTheme";
-import { DESIGN } from "../theme/tokens";
-
 import type { DenizenDef } from "./denizens";
 import { denizenLabelForCount, getOwnedDenizenCount, nextDenizenCost } from "./denizens";
 import { formatEnergyAmount, formatEnergyRate, formatShopCost } from "./formatEnergy";
@@ -33,20 +31,8 @@ import {
   ShopFlavorText,
   ShopTooltipHeader,
 } from "./shopTooltipText";
-import PondButton from "../PondButton";
-
-import {
-  CLICKER2_SHOP_SECTION_HEADING_PROPS,
-  MUTAGEN_WARM_GRADIENT,
-} from "./clicker2ShopUi";
-import {
-  canMutateDenizen,
-  getMutationLevel,
-  isDenizenMutable,
-  mutagenCostForNextLevel,
-  MUTAGEN_MAX_LEVEL,
-  MUTAGEN_EMOJI,
-} from "./mutagens";
+import { CLICKER2_SHOP_SECTION_HEADING_PROPS } from "./clicker2ShopUi";
+import { MUTAGEN_EMOJI } from "./mutagens";
 import type {
   DenizenShopTooltipSnapshot,
   GetDenizenShopTooltipSnapshot,
@@ -204,10 +190,6 @@ const DenizenShopRow = memo(function DenizenShopRow({
   getTooltipSnapshot,
   canHoverFinePointer,
   onBuy,
-  mutagenUnlocked,
-  mutagensBank,
-  mutationLevel,
-  onMutate,
 }: {
   def: DenizenDef;
   owned: number;
@@ -218,10 +200,6 @@ const DenizenShopRow = memo(function DenizenShopRow({
   getTooltipSnapshot: GetDenizenShopTooltipSnapshot;
   canHoverFinePointer: boolean;
   onBuy: (def: DenizenDef) => void;
-  mutagenUnlocked: boolean;
-  mutagensBank: number;
-  mutationLevel: number;
-  onMutate: (def: DenizenDef) => void;
 }) {
   const captureSnapshot = useCallback(
     () => getTooltipSnapshot(def.id, owned, cost, maxed),
@@ -233,14 +211,6 @@ const DenizenShopRow = memo(function DenizenShopRow({
   const purchasable = !maxed && canAfford;
   const showDetails = owned > 0;
   const displayName = identityRevealed ? def.name : "???";
-  const showMutate =
-    mutagenUnlocked &&
-    mutagensBank >= 1 &&
-    isDenizenMutable(def.id) &&
-    owned > 0 &&
-    mutationLevel < MUTAGEN_MAX_LEVEL;
-  const canMutate = canMutateDenizen(def, owned, mutationLevel, mutagensBank);
-  const mutateCost = mutagenCostForNextLevel(mutationLevel);
 
   const row = (
     <Button
@@ -355,47 +325,8 @@ const DenizenShopRow = memo(function DenizenShopRow({
     </Button>
   );
 
-  const rowWithMutate = (
-    <Flex w="full" gap="1" align="stretch">
-      {showMutate ? (
-        <PondButton
-          type="button"
-          size="xs"
-          alignSelf="center"
-          flexShrink={0}
-          variant={canMutate ? "outline" : "solid"}
-          colorPalette={canMutate ? undefined : "gray"}
-          disabled={!canMutate}
-          background={canMutate ? MUTAGEN_WARM_GRADIENT : undefined}
-          color={canMutate ? DESIGN.textPrimary : undefined}
-          borderWidth="1px"
-          borderColor={canMutate ? "border" : undefined}
-          _hover={
-            canMutate
-              ? {
-                  background: MUTAGEN_WARM_GRADIENT,
-                  bg: "transparent",
-                  borderColor: "lilypad.emphasized",
-                  color: DESIGN.textPrimary,
-                }
-              : undefined
-          }
-          aria-label={`Mutate ${def.name}, costs ${mutateCost} mutagen${mutateCost === 1 ? "" : "s"}`}
-          onClick={() => {
-            if (canMutate) onMutate(def);
-          }}
-        >
-          {MUTAGEN_EMOJI} {mutateCost}
-        </PondButton>
-      ) : null}
-      <Box flex="1" minW="0">
-        {row}
-      </Box>
-    </Flex>
-  );
-
   if (!canHoverFinePointer || !showDetails) {
-    return rowWithMutate;
+    return row;
   }
 
   return (
@@ -405,7 +336,7 @@ const DenizenShopRow = memo(function DenizenShopRow({
       positioning={{ placement: "top" }}
       onOpenChange={onTooltipOpenChange}
     >
-      <TooltipTrigger asChild>{rowWithMutate}</TooltipTrigger>
+      <TooltipTrigger asChild>{row}</TooltipTrigger>
       <TooltipPositioner>
         <TooltipContent {...ecologyTooltipSurfaceProps} maxW="300px">
           {tooltipSnap ? <DenizenDetails def={def} {...tooltipSnap} /> : null}
@@ -424,10 +355,6 @@ function DenizenShopList({
   getTooltipSnapshot,
   canHoverFinePointer,
   onBuy,
-  mutagenUnlocked,
-  mutagensBank,
-  denizenMutationLevels,
-  onMutate,
   savedBannerKey = 0,
 }: {
   denizens: readonly DenizenDef[];
@@ -438,10 +365,6 @@ function DenizenShopList({
   getTooltipSnapshot: GetDenizenShopTooltipSnapshot;
   canHoverFinePointer: boolean;
   onBuy: (def: DenizenDef) => void;
-  mutagenUnlocked: boolean;
-  mutagensBank: number;
-  denizenMutationLevels: Record<string, number>;
-  onMutate: (def: DenizenDef) => void;
   /** Non-zero while the post-save indicator is visible. */
   savedBannerKey?: number;
 }) {
@@ -499,10 +422,6 @@ function DenizenShopList({
               getTooltipSnapshot={getTooltipSnapshot}
               canHoverFinePointer={canHoverFinePointer}
               onBuy={onBuy}
-              mutagenUnlocked={mutagenUnlocked}
-              mutagensBank={mutagensBank}
-              mutationLevel={getMutationLevel(denizenMutationLevels, def.id)}
-              onMutate={onMutate}
             />
           );
         })}

@@ -52,29 +52,29 @@ const SUFFIXES: ReadonlyArray<{ threshold: number; label: string }> = [
 
 const LARGEST_SUFFIX = SUFFIXES[0];
 
-/** Short scale words for rainstorm click pops (e.g. "12 mil"). */
-const COMPACT_SCALE_WORD: Record<string, string> = {
-  million: "mil",
-  billion: "bil",
-  trillion: "tril",
-  quadrillion: "quad",
-  quintillion: "quint",
-  sextillion: "sext",
-  septillion: "sept",
-  octillion: "oct",
-  nonillion: "non",
-  decillion: "dec",
-  undecillion: "undec",
-  duodecillion: "duodec",
-  tredecillion: "tredec",
-  quattuordecillion: "quat",
-  quindecillion: "quin",
-  sexdecillion: "sexdec",
-  septendecillion: "septdec",
-  octodecillion: "octdec",
-  novemdecillion: "novemdec",
-  vigintillion: "vigint",
-  unvigintillion: "unvigint",
+/** Letter suffixes for click pops (K at 10k+, then M/B/T aligned with short scale). */
+const COMPACT_LETTER_SUFFIX: Record<string, string> = {
+  million: "M",
+  billion: "B",
+  trillion: "T",
+  quadrillion: "Q",
+  quintillion: "Qi",
+  sextillion: "Sx",
+  septillion: "Sp",
+  octillion: "Oc",
+  nonillion: "No",
+  decillion: "De",
+  undecillion: "Ud",
+  duodecillion: "Dd",
+  tredecillion: "Td",
+  quattuordecillion: "Qd",
+  quindecillion: "Qn",
+  sexdecillion: "Se",
+  septendecillion: "Sd",
+  octodecillion: "Od",
+  novemdecillion: "Nd",
+  vigintillion: "V",
+  unvigintillion: "Uv",
 };
 
 const HUD_NUMBER_LOCALE = "en-US" as const;
@@ -160,7 +160,7 @@ function formatMantissaCompact(value: number): string {
   return trimDecimalZeros(r.toFixed(2));
 }
 
-/** Abbreviated energy for rainstorm click pops (e.g. `12 mil`, `4.5 bil`). */
+/** Abbreviated energy for click pops (e.g. `50K`, `12M`, `4.5B`). */
 export function formatEnergyAmountCompact(n: number): string {
   const x = Math.max(0, n);
   if (!Number.isFinite(x)) return "0";
@@ -172,15 +172,15 @@ export function formatEnergyAmountCompact(n: number): string {
   }
   for (const { threshold, label } of SUFFIXES) {
     if (x >= threshold) {
-      const word = COMPACT_SCALE_WORD[label] ?? label.slice(0, 5);
-      return `${formatMantissaCompact(x / threshold)} ${word}`;
+      const suffix = COMPACT_LETTER_SUFFIX[label] ?? label.slice(0, 1).toUpperCase();
+      return `${formatMantissaCompact(x / threshold)}${suffix}`;
     }
   }
   if (LARGEST_SUFFIX && x >= LARGEST_SUFFIX.threshold) {
-    const word =
-      COMPACT_SCALE_WORD[LARGEST_SUFFIX.label] ??
-      LARGEST_SUFFIX.label.slice(0, 5);
-    return `${formatMantissaCompact(x / LARGEST_SUFFIX.threshold)} ${word}`;
+    const suffix =
+      COMPACT_LETTER_SUFFIX[LARGEST_SUFFIX.label] ??
+      LARGEST_SUFFIX.label.slice(0, 1).toUpperCase();
+    return `${formatMantissaCompact(x / LARGEST_SUFFIX.threshold)}${suffix}`;
   }
   return Math.floor(x).toLocaleString(HUD_NUMBER_LOCALE);
 }

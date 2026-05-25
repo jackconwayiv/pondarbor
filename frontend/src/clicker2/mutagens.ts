@@ -7,8 +7,6 @@ export const MUTAGEN_FORMATION_MS = 20 * 60 * 60 * 1000;
 export const MUTAGEN_MAX_LEVEL = 10;
 export const MUTAGEN_EMOJI = "🧬";
 
-const FUNGI_DENIZEN_INDEX = getDenizenIndex("fungi");
-
 export type MutagenPipelineSlice = Pick<
   Clicker2GameState,
   "statistics" | "mutagens_bank" | "mutagen_forming_started_at_ms"
@@ -18,9 +16,9 @@ export function isMutagenSystemUnlocked(allTimeEnergyEarned: number): boolean {
   return allTimeEnergyEarned >= MUTAGEN_UNLOCK_ALL_TIME_ENERGY;
 }
 
+/** All catalog denizens (ripples through transcendence) can be leveled with mutagen. */
 export function isDenizenMutable(denizenId: string): boolean {
-  const index = getDenizenIndex(denizenId);
-  return index >= FUNGI_DENIZEN_INDEX && index >= 0;
+  return getDenizenIndex(denizenId) >= 0;
 }
 
 export function getMutationLevel(
@@ -30,6 +28,32 @@ export function getMutationLevel(
   const v = levels[denizenId];
   if (typeof v !== "number" || !Number.isFinite(v)) return 0;
   return Math.min(MUTAGEN_MAX_LEVEL, Math.max(0, Math.floor(v)));
+}
+
+/** True after the player has spent at least one mutagen on any denizen. */
+export function hasSpentAnyMutagen(
+  levels: Record<string, number>,
+): boolean {
+  for (const v of Object.values(levels)) {
+    if (typeof v === "number" && Number.isFinite(v) && v > 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function shouldShowDenizenMutationLevel(
+  denizenId: string,
+  owned: number,
+  levels: Record<string, number>,
+  mutagenUnlocked: boolean,
+): boolean {
+  return (
+    mutagenUnlocked &&
+    isDenizenMutable(denizenId) &&
+    owned > 0 &&
+    hasSpentAnyMutagen(levels)
+  );
 }
 
 /** Mutagens required to advance from `level` to `level + 1`. */
@@ -171,13 +195,37 @@ export function bootstrapMutagenPipelineOnLoad(
   };
 }
 
-export function formatMutagenCountdown(msRemaining: number): string {
-  const totalSec = Math.ceil(msRemaining / 1000);
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  if (h > 0) {
-    return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+const MUTAGEN_FORMING_HOUR_MS = 60 * 60 * 1000;
+
+/** Flavor text for the mutagen panel by hours remaining (20h formation window). */
+export function mutagenFormingStatusMessage(msRemaining: number): string {
+  const ms = Math.max(0, msRemaining);
+  if (ms > 15 * MUTAGEN_FORMING_HOUR_MS) {
+    return "A new mutation is beginning to take shape.";
   }
-  return `${m}:${String(s).padStart(2, "0")}`;
+  if (ms > 10 * MUTAGEN_FORMING_HOUR_MS) {
+    return "A new mutation is taking shape.";
+  }
+  if (ms > 5 * MUTAGEN_FORMING_HOUR_MS) {
+    return "A new mutation is nearly here.";
+  }
+  return "A new mutation is imminent.";
+}
+
+/** Ms until the forming message phase changes, or until collectible (0). */
+export function msUntilNextMutagenFormingUiTick(msRemaining: number): number {
+  const ms = Math.max(0, msRemaining);
+  if (ms === 0) return 60_000;
+  const phaseThresholds = [
+    15 * MUTAGEN_FORMING_HOUR_MS,
+    10 * MUTAGEN_FORMING_HOUR_MS,
+    5 * MUTAGEN_FORMING_HOUR_MS,
+    0,
+  ];
+  for (const threshold of phaseThresholds) {
+    if (ms > threshold) {
+      return Math.max(1_000, ms - threshold);
+    }
+  }
+  return Math.max(1_000, ms);
 }

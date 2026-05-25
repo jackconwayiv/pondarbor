@@ -16,9 +16,14 @@ export type SimulationOutput = {
 /** Stub for future Conditions / Prestige / Weather. */
 export function globalEpsBoost(
   effects: SpecialtyEffect[],
+  blossomCount = 0,
 ): number {
   let bonusPercent = 0;
+  const blossoms = Math.max(0, blossomCount);
   for (const e of effects) {
+    if (e.type === "eps_percent_per_blossom") {
+      bonusPercent += e.percentPerBlossom * blossoms;
+    }
     if (e.type === "production_percent") {
       bonusPercent += e.percent;
     }
@@ -102,10 +107,12 @@ function epsForDenizen(
   effects: SpecialtyEffect[],
   nonRippleCount: number,
   mutationLevel: number,
+  blossomCount: number,
 ): number {
   if (owned <= 0) return 0;
   const effMult =
-    denizenEfficiencyMultiplier(def.id, effects) * globalEpsBoost(effects);
+    denizenEfficiencyMultiplier(def.id, effects) *
+    globalEpsBoost(effects, blossomCount);
   let perCopy = def.baseEps * effMult;
   for (const e of effects) {
     if (
@@ -132,6 +139,7 @@ export function denizenEpsPerCopy(
   ownedDenizens: Record<string, number>,
   ownedSpecialties: Record<number, boolean>,
   denizenMutationLevels: Record<string, number> = {},
+  blossomCount = 0,
 ): number {
   const effects = ownedSpecialtyEffects(ownedSpecialties);
   const nonRippleCount = countNonRippleObjects(ownedDenizens);
@@ -146,6 +154,7 @@ export function denizenEpsPerCopy(
         effects,
         nonRippleCount,
         mutationLevel,
+        blossomCount,
       ) / owned
     );
   }
@@ -156,6 +165,7 @@ export function denizenEpsPerCopy(
     effects,
     nonRippleCount,
     mutationLevel,
+    blossomCount,
   );
 }
 
@@ -164,6 +174,7 @@ export function denizenPerCopyEpsMap(
   ownedDenizens: Record<string, number>,
   ownedSpecialties: Record<number, boolean>,
   denizenMutationLevels: Record<string, number> = {},
+  blossomCount = 0,
 ): Record<string, number> {
   const map: Record<string, number> = {};
   for (const def of DENIZENS) {
@@ -172,6 +183,7 @@ export function denizenPerCopyEpsMap(
       ownedDenizens,
       ownedSpecialties,
       denizenMutationLevels,
+      blossomCount,
     );
   }
   return map;
@@ -181,6 +193,7 @@ export function simulateGame(
   ownedDenizens: Record<string, number>,
   ownedSpecialties: Record<number, boolean>,
   denizenMutationLevels: Record<string, number> = {},
+  blossomCount = 0,
 ): SimulationOutput {
   const effects = ownedSpecialtyEffects(ownedSpecialties);
   const nonRippleCount = countNonRippleObjects(ownedDenizens);
@@ -197,12 +210,14 @@ export function simulateGame(
       effects,
       nonRippleCount,
       mutationLevel,
+      blossomCount,
     );
     denizenEps[def.id] = eps;
     energyPerSecond += eps;
   }
 
-  const clickMult = rippleEfficiencyMultiplier(effects) * globalEpsBoost(effects);
+  const clickMult =
+    rippleEfficiencyMultiplier(effects) * globalEpsBoost(effects, blossomCount);
   const ringsBonus =
     concentricRingsBonusPerNonRipple(effects) * nonRippleCount;
   let clickEpsPercent = 0;
@@ -221,11 +236,13 @@ export function marginalEpsIfBuyDenizen(
   ownedDenizens: Record<string, number>,
   ownedSpecialties: Record<number, boolean>,
   denizenMutationLevels: Record<string, number> = {},
+  blossomCount = 0,
 ): number {
   const cur = simulateGame(
     ownedDenizens,
     ownedSpecialties,
     denizenMutationLevels,
+    blossomCount,
   );
   const owned = getOwnedDenizenCount(ownedDenizens, def.id);
   if (nextDenizenCost(def, owned) === null) return 0;
@@ -233,6 +250,7 @@ export function marginalEpsIfBuyDenizen(
     { ...ownedDenizens, [def.id]: owned + 1 },
     ownedSpecialties,
     denizenMutationLevels,
+    blossomCount,
   );
   return next.energyPerSecond - cur.energyPerSecond;
 }
@@ -242,17 +260,24 @@ export function marginalEpsIfBuySpecialty(
   ownedDenizens: Record<string, number>,
   ownedSpecialties: Record<number, boolean>,
   denizenMutationLevels: Record<string, number> = {},
+  blossomCount = 0,
 ): number {
   if (ownedSpecialties[specialtyId]) return 0;
   const cur = simulateGame(
     ownedDenizens,
     ownedSpecialties,
     denizenMutationLevels,
+    blossomCount,
   );
-  const next = simulateGame(ownedDenizens, {
-    ...ownedSpecialties,
-    [specialtyId]: true,
-  }, denizenMutationLevels);
+  const next = simulateGame(
+    ownedDenizens,
+    {
+      ...ownedSpecialties,
+      [specialtyId]: true,
+    },
+    denizenMutationLevels,
+    blossomCount,
+  );
   return next.energyPerSecond - cur.energyPerSecond;
 }
 
@@ -261,18 +286,25 @@ export function marginalClickIfBuySpecialty(
   ownedDenizens: Record<string, number>,
   ownedSpecialties: Record<number, boolean>,
   denizenMutationLevels: Record<string, number> = {},
+  blossomCount = 0,
 ): number {
   if (ownedSpecialties[specialtyId]) return 0;
   const cur = simulateGame(
     ownedDenizens,
     ownedSpecialties,
     denizenMutationLevels,
+    blossomCount,
   );
   const def = getSpecialtyDef(specialtyId);
   if (!def) return 0;
-  const next = simulateGame(ownedDenizens, {
-    ...ownedSpecialties,
-    [specialtyId]: true,
-  }, denizenMutationLevels);
+  const next = simulateGame(
+    ownedDenizens,
+    {
+      ...ownedSpecialties,
+      [specialtyId]: true,
+    },
+    denizenMutationLevels,
+    blossomCount,
+  );
   return next.clickValue - cur.clickValue;
 }

@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { DENIZENS, denizenFirstWelcomeDescription } from "./denizens";
+import { POLLINATOR_SPECIALTY_DENIZEN_ID } from "./pollinatorEvolutions";
 import { specialtiesForDenizen } from "./specialties";
 import {
   buildDenizenFirstMilestones,
   buildDenizenCountMilestones,
   buildEvolutionCountMilestones,
+  buildPollinatorEvolutionCountMilestones,
   buildDenizenMutationMilestones,
   evolutionChainDenizenIds,
   countMilestonesReached,
@@ -73,6 +75,7 @@ describe("milestones catalog", () => {
     expect(buildEvolutionCountMilestones()).toHaveLength(
       evolutionChainDenizenIds().length * 4,
     );
+    expect(buildPollinatorEvolutionCountMilestones()).toHaveLength(5);
     expect(buildDenizenCountMilestones()).toHaveLength(DENIZENS.length * 5);
     expect(buildDenizenMutationMilestones()).toHaveLength(DENIZENS.length * 3);
     expect(buildDenizenFirstMilestones()).toHaveLength(DENIZENS.length);
@@ -84,6 +87,7 @@ describe("milestones catalog", () => {
       GLOBAL_MILESTONES.length +
         WEATHER_CLICK_MILESTONES.length +
         chainCount * 4 +
+        5 +
         DENIZENS.length * 5 +
         DENIZENS.length * 3 +
         DENIZENS.length,
@@ -104,14 +108,19 @@ describe("milestones catalog", () => {
     expect(ENERGY_PER_SECOND_MILESTONE_THRESHOLDS.at(-1)).toBe(1e66);
   });
 
-  it("evolution count milestones at 1, 5, 10, and 15 per chain", () => {
+  it("evolution count milestones at 1, 5, 10, and 15 per chain plus pollinator at 20", () => {
     const evolutionIds = MILESTONES.filter((m) => m.kind === "evolution_count").map(
       (m) => m.id,
     );
     expect(evolutionIds).toContain("skipping_stone");
     expect(evolutionIds).toContain("sludge_trudger");
     expect(evolutionIds).toContain("evolution_count_pond_15");
-    expect(evolutionIds).toHaveLength(evolutionChainDenizenIds().length * 4);
+    expect(evolutionIds).toContain("abuzz");
+    expect(evolutionIds).toContain("pollinator_milestone_5");
+    expect(evolutionIds).toContain("allergy_season");
+    expect(evolutionIds).toContain("fruitful_pond");
+    expect(evolutionIds).toContain("fertile_fen");
+    expect(evolutionIds).toHaveLength(evolutionChainDenizenIds().length * 4 + 5);
   });
 
   it("denizen count milestones at 50 through 2000 per denizen", () => {
@@ -366,6 +375,31 @@ describe("isMilestoneMet", () => {
     );
     expect(isMilestoneMet(def, ctx({ ownedSpecialties: owned }))).toBe(false);
     owned[chain[14]!.id] = true;
+    expect(isMilestoneMet(def, ctx({ ownedSpecialties: owned }))).toBe(true);
+  });
+
+  it("abuzz when pollinator chain has one evolution", () => {
+    const def = MILESTONES.find((m) => m.id === "abuzz")!;
+    const chain = specialtiesForDenizen(POLLINATOR_SPECIALTY_DENIZEN_ID);
+    expect(def.denizenId).toBe(POLLINATOR_SPECIALTY_DENIZEN_ID);
+    expect(def.threshold).toBe(1);
+    expect(def.description).toBe("Evolve your pollinators.");
+    expect(def.criteriaText).toBe("Evolve your Pollinator");
+    expect(isMilestoneMet(def, ctx())).toBe(false);
+    expect(
+      isMilestoneMet(def, ctx({ ownedSpecialties: { [chain[0]!.id]: true } })),
+    ).toBe(true);
+    expect(milestoneDisplayEmoji(def)).toBe("🐝");
+  });
+
+  it("fertile fen requires twenty pollinator evolutions", () => {
+    const def = MILESTONES.find((m) => m.id === "fertile_fen")!;
+    const chain = specialtiesForDenizen(POLLINATOR_SPECIALTY_DENIZEN_ID);
+    const owned = Object.fromEntries(
+      chain.slice(0, 19).map((s) => [s.id, true]),
+    );
+    expect(isMilestoneMet(def, ctx({ ownedSpecialties: owned }))).toBe(false);
+    owned[chain[19]!.id] = true;
     expect(isMilestoneMet(def, ctx({ ownedSpecialties: owned }))).toBe(true);
   });
 

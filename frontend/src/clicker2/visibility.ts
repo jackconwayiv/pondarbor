@@ -6,7 +6,7 @@ import {
   getDenizenIndex,
   getOwnedDenizenCount,
 } from "./denizens";
-import type { SpecialtyDef } from "./specialties";
+import { SPECIALTIES, type SpecialtyDef } from "./specialties";
 
 /** Previous denizen owned count before this card appears (silhouette + ???). */
 export const DENIZEN_TEASE_PREV_OWNED = 1;
@@ -129,12 +129,18 @@ export function isSpecialtyUnlocked(
     | "unlockOwned"
     | "unlockAllTimeEnergy"
     | "unlockClickEnergy"
+    | "unlockBlossoms"
     | "denizenId"
     | "pairingUnlock"
+    | "pairingLowerDenizenId"
+    | "pairingHigherDenizenId"
   >,
   ownedDenizens: Record<string, number>,
   allTimeEnergyEarned: number,
   energyFromClicking = 0,
+  blossomCount = 0,
+  _ownedSpecialties: Record<number, boolean> = {},
+  _allSpecialties: readonly SpecialtyDef[] = SPECIALTIES,
 ): boolean {
   if (specialty.pairingUnlock) {
     for (const [denizenId, required] of Object.entries(specialty.pairingUnlock)) {
@@ -146,6 +152,9 @@ export function isSpecialtyUnlocked(
   }
   if (specialty.unlockClickEnergy != null) {
     return energyFromClicking >= specialty.unlockClickEnergy;
+  }
+  if (specialty.unlockBlossoms != null) {
+    return blossomCount >= specialty.unlockBlossoms;
   }
   if (specialty.unlockAllTimeEnergy != null) {
     return allTimeEnergyEarned >= specialty.unlockAllTimeEnergy;
@@ -163,6 +172,8 @@ export function isSpecialtyShopVisible(
   ownedSpecialties: Record<number, boolean>,
   allTimeEnergyEarned: number,
   energyFromClicking = 0,
+  blossomCount = 0,
+  allSpecialties: readonly SpecialtyDef[] = SPECIALTIES,
 ): boolean {
   if (ownedSpecialties[specialty.id]) return false;
   return isSpecialtyUnlocked(
@@ -170,5 +181,8 @@ export function isSpecialtyShopVisible(
     ownedDenizens,
     allTimeEnergyEarned,
     energyFromClicking,
+    blossomCount,
+    ownedSpecialties,
+    allSpecialties,
   );
 }

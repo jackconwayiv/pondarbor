@@ -15,6 +15,11 @@ export const PAIRING_SPECIALTY_ID_START = 364;
 /** Applied to the L/H blend base price for every pairing evolution. */
 export const PAIRING_PRICE_MULTIPLIER = 10;
 
+/** H owned at ripples × next H; +2 per L tier, +1 per H step up the ladder within L. */
+export const PAIRING_H_UNLOCK_BASE = 15;
+export const PAIRING_H_UNLOCK_PER_L_TIER = 2;
+export const PAIRING_H_UNLOCK_PER_H_SLOT = 1;
+
 export type PairingUnlockRequirements = Readonly<Record<string, number>>;
 
 /** First specialty id in each denizen's 15-tier double chain (`buildDoubleTier` start). */
@@ -57,11 +62,152 @@ export function pairingSourcePerStep(
   return 10 + li + (hi - li - 1);
 }
 
+/** 0 = first H above L on the ladder; each step up adds +1 to H owned required. */
+export function pairingSlotIndexForHigher(
+  lowerDenizenId: string,
+  higherDenizenId: string,
+): number {
+  const li = getDenizenIndex(lowerDenizenId);
+  const hi = getDenizenIndex(higherDenizenId);
+  if (li < 0 || hi < 0 || hi <= li) {
+    throw new Error(
+      `pairingSlotIndexForHigher: invalid pair ${lowerDenizenId} → ${higherDenizenId}`,
+    );
+  }
+  return hi - li - 1;
+}
+
+/** L ladder index for unlock counts (uncapped; ripples = 0 … great_mammals = 15). */
+export function pairingUnlockLowerDenizenTierIndex(
+  lowerDenizenId: string,
+): number {
+  const idx = getDenizenIndex(lowerDenizenId);
+  return idx < 0 ? 0 : idx;
+}
+
+export function pairingHigherDenizenUnlockCount(
+  lowerDenizenId: string,
+  higherDenizenId: string,
+): number {
+  return (
+    PAIRING_H_UNLOCK_BASE +
+    pairingUnlockLowerDenizenTierIndex(lowerDenizenId) *
+      PAIRING_H_UNLOCK_PER_L_TIER +
+    pairingSlotIndexForHigher(lowerDenizenId, higherDenizenId) *
+      PAIRING_H_UNLOCK_PER_H_SLOT
+  );
+}
+
 export function pairingUnlockRequirements(
   lowerDenizenId: string,
   higherDenizenId: string,
 ): PairingUnlockRequirements {
-  return { [lowerDenizenId]: 1, [higherDenizenId]: 15 };
+  return {
+    [lowerDenizenId]: 1,
+    [higherDenizenId]: pairingHigherDenizenUnlockCount(
+      lowerDenizenId,
+      higherDenizenId,
+    ),
+  };
+}
+
+export const PAIRING_CATALOG_UNLOCK_NOTES: readonly string[] = [
+  "Unlock: 1 of the L (booster) denizen plus H owned from the formula below.",
+  "No prior pairing in the same L row is required.",
+  `H required = ${PAIRING_H_UNLOCK_BASE} + ${PAIRING_H_UNLOCK_PER_L_TIER}×L ladder index + ${PAIRING_H_UNLOCK_PER_H_SLOT}×H slot (steps above L on the denizen ladder).`,
+  "Catalog prices use reference unlock with only those denizen counts (payback ~120s).",
+  "Regenerate pairingSpecialties.generated.ts after formula changes: npm run clicker2:pairing-generate",
+];
+
+/** Human-readable unlock line for staff catalog (L then H). */
+export function formatPairingUnlockSummary(
+  specialty: Pick<
+    SpecialtyDef,
+    "pairingUnlock" | "pairingLowerDenizenId" | "pairingHigherDenizenId"
+  >,
+): string {
+  if (!specialty.pairingUnlock) return "";
+  const parts: string[] = [];
+  const lowerId = specialty.pairingLowerDenizenId;
+  const higherId = specialty.pairingHigherDenizenId;
+  const append = (denizenId: string | undefined) => {
+    if (!denizenId) return;
+    const required = specialty.pairingUnlock![denizenId];
+    if (required == null) return;
+    const label = getDenizenDef(denizenId)?.namePlural ?? denizenId;
+    parts.push(`${required.toLocaleString()} ${label}`);
+  };
+  append(lowerId);
+  append(higherId);
+  for (const [denizenId, required] of Object.entries(specialty.pairingUnlock)) {
+    if (denizenId === lowerId || denizenId === higherId) continue;
+    const label = getDenizenDef(denizenId)?.namePlural ?? denizenId;
+    parts.push(`${required.toLocaleString()} ${label}`);
+  }
+  return parts.join(" · ");
+}
+
+/** Shows how H owned was derived (catalog reference). */
+export function pairingUnlockFormulaDescription(
+  lowerDenizenId: string,
+  higherDenizenId: string,
+): string {
+  const lTier = pairingUnlockLowerDenizenTierIndex(lowerDenizenId);
+  const hSlot = pairingSlotIndexForHigher(lowerDenizenId, higherDenizenId);
+  const total = pairingHigherDenizenUnlockCount(lowerDenizenId, higherDenizenId);
+  const hLabel = getDenizenDef(higherDenizenId)?.namePlural ?? higherDenizenId;
+  return `${PAIRING_H_UNLOCK_BASE} + ${PAIRING_H_UNLOCK_PER_L_TIER}×${lTier} + ${PAIRING_H_UNLOCK_PER_H_SLOT}×${hSlot} = ${total.toLocaleString()} ${hLabel}`;
+}
+
+/** H denizen id for the previous pairing in the same L row, if any. */
+export function previousPairingHigherDenizenId(
+  lowerDenizenId: string,
+  higherDenizenId: string,
+): string | null {
+  if (pairingSlotIndexForHigher(lowerDenizenId, higherDenizenId) <= 0) {
+    return null;
+  }
+  const hi = getDenizenIndex(higherDenizenId);
+  return DENIZENS[hi - 1]!.id;
+}
+
+export function priorPairingSpecialtyFor(
+  lowerDenizenId: string,
+  higherDenizenId: string,
+  specialties: readonly SpecialtyDef[],
+): SpecialtyDef | undefined {
+  const prevHigher = previousPairingHigherDenizenId(
+    lowerDenizenId,
+    higherDenizenId,
+  );
+  if (!prevHigher) return undefined;
+  return specialties.find(
+    (s) =>
+      s.denizenId === PAIRING_SPECIALTY_DENIZEN_ID &&
+      s.pairingLowerDenizenId === lowerDenizenId &&
+      s.pairingHigherDenizenId === prevHigher,
+  );
+}
+
+/** Earlier pairings in the same L row (lower H index), in ladder order. */
+export function priorPairingsInLowerRow(
+  lowerDenizenId: string,
+  higherDenizenId: string,
+  specialties: readonly SpecialtyDef[],
+): SpecialtyDef[] {
+  const hi = getDenizenIndex(higherDenizenId);
+  if (hi < 0) return [];
+  return listPairingSpecialties(specialties)
+    .filter((s) => {
+      if (s.pairingLowerDenizenId !== lowerDenizenId) return false;
+      const shi = getDenizenIndex(s.pairingHigherDenizenId ?? "");
+      return shi >= 0 && shi < hi;
+    })
+    .sort(
+      (a, b) =>
+        getDenizenIndex(a.pairingHigherDenizenId ?? "") -
+        getDenizenIndex(b.pairingHigherDenizenId ?? ""),
+    );
 }
 
 export function pairingEvolutionName(

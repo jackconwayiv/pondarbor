@@ -38,7 +38,7 @@ import {
   writeClicker2LocalSave,
 } from "./localSave";
 import Clicker2PondStage from "./Clicker2PondStage";
-import DenizenPurchaseTimeline from "./DenizenPurchaseTimeline";
+import PondDepthChart from "./PondDepthChart";
 import { prependDenizenPurchase } from "./purchaseTimeline";
 import { listOwnedEvolutionDefs } from "./clicker2OwnedEvolutions";
 import Clicker2StatsModal, {
@@ -85,7 +85,8 @@ import {
   ensureMutagenPipelineStarted,
   getMutationLevel,
   isMutagenSystemUnlocked,
-  MUTAGEN_UNLOCK_ALL_TIME_ENERGY,
+  msUntilMutagenCollectible,
+  msUntilNextMutagenFormingUiTick,
 } from "./mutagens";
 import { denizenPerCopyEpsMap, simulateGame } from "./simulation";
 import {
@@ -99,6 +100,7 @@ import {
   useClicker2GameLoop,
   type Clicker2GameLoopRefs,
 } from "./useClicker2GameLoop";
+import { blossomCountFromMilestones } from "./blossoms";
 import {
   SPECIALTIES,
   compareVisibleSpecialtyShopOrder,
@@ -131,9 +133,10 @@ import {
   nextWeatherSpawnAtMsFromNow,
   startBlusterBoost,
   startRainBoost,
+  startWindClickBoost,
+  weatherFamily,
   SUNSHINE_PULSE_MS,
   sunWeatherBonus,
-  weatherFamily,
   type ActiveBlusterBoost,
   type ActiveRainBoost,
   type ActiveWeatherEvent,
@@ -149,8 +152,14 @@ const BACKEND_SAVE_INTERVAL_MS = 60_000;
 const BACKEND_SAVE_RETRY_DELAY_MS = 10_000;
 const BACKEND_SAVE_MAX_RETRIES = 3;
 const SAVED_BANNER_MS = 5000;
-/** Set true to show mutagen testing controls in the shop column (staff only). */
-const SHOW_MUTAGEN_DEV_TOOLS = false;
+/*
+ * Staff-only temp dev tools (shop column). Re-enable for local QA:
+ * 1. Uncomment SHOW_CLICKER2_DEV_TOOLS below and set true.
+ * 2. Uncomment blocks marked CLICKER2_DEV_TOOLS (state, handlers, UI).
+ * 3. Restore imports: BLOSSOM_RING_MAX (blossoms), MUTAGEN_UNLOCK_ALL_TIME_ENERGY (mutagens).
+ * Gated at runtime: SHOW_CLICKER2_DEV_TOOLS && sessionUser?.user?.is_staff
+ */
+// const SHOW_CLICKER2_DEV_TOOLS = true;
 
 type LoadStatus = "loading" | "ready" | "error";
 
@@ -244,10 +253,16 @@ export default function Clicker2GamePage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
 
-  const showMutagenDevTools =
-    SHOW_MUTAGEN_DEV_TOOLS && !!sessionUser?.user?.is_staff;
-  const showMutagenDevToolsRef = useRef(showMutagenDevTools);
-  showMutagenDevToolsRef.current = showMutagenDevTools;
+  /*
+   * CLICKER2_DEV_TOOLS — staff-only shop-column QA controls (see SHOW_CLICKER2_DEV_TOOLS).
+   * const showClicker2DevTools =
+   *   SHOW_CLICKER2_DEV_TOOLS && !!sessionUser?.user?.is_staff;
+   * const showClicker2DevToolsRef = useRef(showClicker2DevTools);
+   * showClicker2DevToolsRef.current = showClicker2DevTools;
+   * const [devBlossomOverride, setDevBlossomOverride] = useState<number | null>(
+   *   null,
+   * );
+   */
 
   const saveDirtyRef = useRef(false);
   const saveInFlightRef = useRef(false);
@@ -264,6 +279,8 @@ export default function Clicker2GamePage() {
   const affordThresholdsRef = useRef<number[]>([]);
   const [shopAffordRevision, setShopAffordRevision] = useState(0);
   const [loopCounterText, setLoopCounterText] = useState("0");
+  /** 1 Hz while passive EpS accrues — refreshes all-time display without coupling to HUD counter. */
+  const [passiveAccrualDisplayTick, setPassiveAccrualDisplayTick] = useState(0);
   const motionPaused = useClicker2MotionPaused();
   const [canHoverFinePointer] = useMediaQuery(
     ["(hover: hover) and (pointer: fine)"],
@@ -288,6 +305,8 @@ export default function Clicker2GamePage() {
   denizenMutationLevelsRef.current = denizenMutationLevels;
   const milestonesReachedRef = useRef(milestonesReached);
   milestonesReachedRef.current = milestonesReached;
+  const blossomCountRef = useRef(0);
+  blossomCountRef.current = blossomCountFromMilestones(milestonesReached);
   const milestonesDismissedRef = useRef(milestonesDismissed);
   milestonesDismissedRef.current = milestonesDismissed;
   const pondStartedAtMsRef = useRef(pondStartedAtMs);
@@ -305,6 +324,7 @@ export default function Clicker2GamePage() {
       ownedDenizensRef.current,
       ownedSpecialtiesRef.current,
       denizenMutationLevelsRef.current,
+      blossomCountRef.current,
     );
     const nowPerf = performance.now();
     const boostedEps = effectiveEnergyPerSecond(
@@ -343,6 +363,7 @@ export default function Clicker2GamePage() {
       ownedDenizensRef.current,
       ownedSpecialtiesRef.current,
       denizenMutationLevelsRef.current,
+      blossomCountRef.current,
     );
     const eps = effectiveEnergyPerSecond(
       sim.energyPerSecond,
@@ -488,6 +509,7 @@ export default function Clicker2GamePage() {
     ownedDenizens: ownedDenizensRef,
     ownedSpecialties: ownedSpecialtiesRef,
     denizenMutationLevels: denizenMutationLevelsRef,
+    blossomCount: blossomCountRef,
     energy: energyRef,
     energyAnchorMs: energyAnchorMsRef,
     activeBlusterBoost: activeBlusterBoostRef,
@@ -552,6 +574,7 @@ export default function Clicker2GamePage() {
       ownedDenizensRef.current,
       ownedSpecialtiesRef.current,
       denizenMutationLevelsRef.current,
+      blossomCountRef.current,
     );
     const eps = effectiveEnergyPerSecond(
       sim.energyPerSecond,
@@ -569,6 +592,7 @@ export default function Clicker2GamePage() {
       ownedDenizensRef.current,
       ownedSpecialtiesRef.current,
       denizenMutationLevelsRef.current,
+      blossomCountRef.current,
     );
     const nowPerf = performance.now();
     const boostedEps = effectiveEnergyPerSecond(
@@ -588,20 +612,30 @@ export default function Clicker2GamePage() {
     commitSyncedEnergy(effectiveEnergyNow());
   }, [commitSyncedEnergy, effectiveEnergyNow]);
 
+  const blossomCount = useMemo(
+    () => blossomCountFromMilestones(milestonesReached),
+    [milestonesReached],
+  );
+
   const simulation = useMemo(
     () =>
-      simulateGame(ownedDenizens, ownedSpecialties, denizenMutationLevels),
-    [ownedDenizens, ownedSpecialties, denizenMutationLevels],
+      simulateGame(
+        ownedDenizens,
+        ownedSpecialties,
+        denizenMutationLevels,
+        blossomCount,
+      ),
+    [ownedDenizens, ownedSpecialties, denizenMutationLevels, blossomCount],
   );
 
   const effectiveAllTimeEnergyEarnedDisplay = useMemo(
     () => effectiveAllTimeEnergyEarnedNow(),
     [
       effectiveAllTimeEnergyEarnedNow,
-      loopCounterText,
       statistics,
       simulation.energyPerSecond,
       activeBlusterBoost,
+      passiveAccrualDisplayTick,
     ],
   );
 
@@ -901,6 +935,7 @@ export default function Clicker2GamePage() {
           sim,
         );
         statisticsPassiveAnchorMsRef.current = performance.now();
+        setPassiveAccrualDisplayTick((n) => n + 1);
       }
       if (
         isMutagenSystemUnlocked(
@@ -963,9 +998,30 @@ export default function Clicker2GamePage() {
   useEffect(() => {
     if (!isAuthenticated || loadStatus !== "ready") return;
     if (!mutagenUnlocked) return;
-    const id = window.setInterval(() => setMutagenUiTick((n) => n + 1), 1000);
-    return () => window.clearInterval(id);
-  }, [isAuthenticated, loadStatus, mutagenUnlocked]);
+
+    let timeoutId = 0;
+    const scheduleMutagenUiTick = () => {
+      const started = mutagenFormingStartedAtMsRef.current;
+      const now = Date.now();
+      const msLeft = msUntilMutagenCollectible(started, now);
+      const delay =
+        started > 0 && msLeft > 0
+          ? msUntilNextMutagenFormingUiTick(msLeft)
+          : 60_000;
+      timeoutId = window.setTimeout(() => {
+        setMutagenUiTick((n) => n + 1);
+        scheduleMutagenUiTick();
+      }, delay);
+    };
+
+    scheduleMutagenUiTick();
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    isAuthenticated,
+    loadStatus,
+    mutagenUnlocked,
+    mutagenFormingStartedAtMs,
+  ]);
 
   useEffect(() => {
     if (!isAuthenticated || loadStatus !== "ready") return;
@@ -1064,6 +1120,7 @@ export default function Clicker2GamePage() {
             ownedSpecialties,
             effectiveAllTimeEnergyEarnedDisplay,
             energyFromClickingDisplay,
+            blossomCount,
           ),
       ).sort(compareVisibleSpecialtyShopOrder),
     [
@@ -1071,6 +1128,7 @@ export default function Clicker2GamePage() {
       ownedSpecialties,
       effectiveAllTimeEnergyEarnedDisplay,
       energyFromClickingDisplay,
+      blossomCount,
     ],
   );
 
@@ -1095,8 +1153,9 @@ export default function Clicker2GamePage() {
         ownedDenizens,
         ownedSpecialties,
         denizenMutationLevels,
+        blossomCount,
       ),
-    [ownedDenizens, ownedSpecialties, denizenMutationLevels],
+    [ownedDenizens, ownedSpecialties, denizenMutationLevels, blossomCount],
   );
 
   const getDenizenTooltipSnapshot = useCallback<GetDenizenShopTooltipSnapshot>(
@@ -1144,6 +1203,7 @@ export default function Clicker2GamePage() {
             ownedDenizensRef.current,
             ownedSpecialtiesRef.current,
             denizenMutationLevelsRef.current,
+            blossomCountRef.current,
           ).energyPerSecond,
           activeBlusterBoostRef.current,
         ),
@@ -1207,36 +1267,71 @@ export default function Clicker2GamePage() {
     [markGameDirty],
   );
 
-  /** TEMP: remove before release — tops up lifetime energy to mutagen unlock threshold. */
-  const handleDevGrantMutagenUnlockEnergy = useCallback(() => {
-    if (!showMutagenDevToolsRef.current) return;
-    const stats = statisticsRef.current;
-    const current = stats.all_time_energy_earned ?? 0;
-    const needed = Math.max(0, MUTAGEN_UNLOCK_ALL_TIME_ENERGY - current);
-    if (needed <= 0) return;
-    stats.all_time_energy_earned = current + needed;
-    setStatistics({ ...stats });
-    const nowMs = Date.now();
-    const pipeline = ensureMutagenPipelineStarted(
-      {
-        statistics: stats,
-        mutagens_bank: mutagensBankRef.current,
-        mutagen_forming_started_at_ms: mutagenFormingStartedAtMsRef.current,
-      },
-      nowMs,
-    );
-    mutagenFormingStartedAtMsRef.current = pipeline.mutagen_forming_started_at_ms;
-    setMutagenFormingStartedAtMs(pipeline.mutagen_forming_started_at_ms);
-    markGameDirty();
-  }, [markGameDirty]);
-
-  /** TEMP: remove before release */
-  const handleDevGrantMutagen = useCallback(() => {
-    if (!showMutagenDevToolsRef.current) return;
-    mutagensBankRef.current += 1;
-    setMutagensBank(mutagensBankRef.current);
-    markGameDirty();
-  }, [markGameDirty]);
+  /*
+   * CLICKER2_DEV_TOOLS — handlers (staff-gated via showClicker2DevToolsRef).
+   *
+   * const handleDevGrantMutagenUnlockEnergy = useCallback(() => {
+   *   if (!showClicker2DevToolsRef.current) return;
+   *   const stats = statisticsRef.current;
+   *   const current = stats.all_time_energy_earned ?? 0;
+   *   const needed = Math.max(0, MUTAGEN_UNLOCK_ALL_TIME_ENERGY - current);
+   *   if (needed <= 0) return;
+   *   stats.all_time_energy_earned = current + needed;
+   *   setStatistics({ ...stats });
+   *   const nowMs = Date.now();
+   *   const pipeline = ensureMutagenPipelineStarted(
+   *     {
+   *       statistics: stats,
+   *       mutagens_bank: mutagensBankRef.current,
+   *       mutagen_forming_started_at_ms: mutagenFormingStartedAtMsRef.current,
+   *     },
+   *     nowMs,
+   *   );
+   *   mutagenFormingStartedAtMsRef.current = pipeline.mutagen_forming_started_at_ms;
+   *   setMutagenFormingStartedAtMs(pipeline.mutagen_forming_started_at_ms);
+   *   markGameDirty();
+   * }, [markGameDirty]);
+   *
+   * const handleDevGrantMutagen = useCallback(() => {
+   *   if (!showClicker2DevToolsRef.current) return;
+   *   mutagensBankRef.current += 1;
+   *   setMutagensBank(mutagensBankRef.current);
+   *   markGameDirty();
+   * }, [markGameDirty]);
+   *
+   * const handleDevSetBlossoms100 = useCallback(() => {
+   *   if (!showClicker2DevToolsRef.current) return;
+   *   setDevBlossomOverride(BLOSSOM_RING_MAX);
+   * }, []);
+   *
+   * const handleDevRevertBlossomsToEarned = useCallback(() => {
+   *   if (!showClicker2DevToolsRef.current) return;
+   *   setDevBlossomOverride(null);
+   * }, []);
+   *
+   * const handleDevGainOneOfEachDenizen = useCallback(() => {
+   *   if (!showClicker2DevToolsRef.current) return;
+   *   const nextOwned = { ...ownedDenizensRef.current };
+   *   const toPrepend: string[] = [];
+   *   for (const def of DENIZENS) {
+   *     const owned = getOwnedDenizenCount(nextOwned, def.id);
+   *     if (owned >= def.maxOwned) continue;
+   *     nextOwned[def.id] = owned + 1;
+   *     toPrepend.push(def.emoji);
+   *   }
+   *   if (toPrepend.length === 0) return;
+   *   ownedDenizensRef.current = nextOwned;
+   *   setOwnedDenizens(nextOwned);
+   *   let nextTimeline = denizenPurchaseTimelineRef.current;
+   *   for (let i = toPrepend.length - 1; i >= 0; i--) {
+   *     nextTimeline = prependDenizenPurchase(nextTimeline, toPrepend[i]!);
+   *   }
+   *   denizenPurchaseTimelineRef.current = nextTimeline;
+   *   setDenizenPurchaseTimeline(nextTimeline);
+   *   markGameDirty();
+   *   syncMilestones();
+   * }, [markGameDirty, syncMilestones]);
+   */
 
   const openStatsModal = useCallback(() => {
     flushStatisticsToState();
@@ -1244,6 +1339,7 @@ export default function Clicker2GamePage() {
       ownedDenizensRef.current,
       ownedSpecialtiesRef.current,
       denizenMutationLevelsRef.current,
+      blossomCountRef.current,
     );
     const stats = statisticsRef.current;
     const capturedWallMs = Date.now();
@@ -1297,6 +1393,7 @@ export default function Clicker2GamePage() {
       ownedEvolutionDefs,
       milestonesReached: milestoneStatuses.filter((m) => m.reachedAtMs != null)
         .length,
+      blossoms: blossomCountRef.current,
       milestoneStatuses,
       energyPerSecond: displayEps,
       energyPerClick:
@@ -1338,6 +1435,7 @@ export default function Clicker2GamePage() {
       ownedDenizensRef.current,
       ownedSpecialtiesRef.current,
       denizenMutationLevelsRef.current,
+      blossomCountRef.current,
     );
     const gain =
       sim.clickValue *
@@ -1405,16 +1503,13 @@ export default function Clicker2GamePage() {
       ownedDenizensRef.current,
       ownedSpecialtiesRef.current,
       denizenMutationLevelsRef.current,
+      blossomCountRef.current,
     );
     const pondEnergy = effectiveEnergyNow();
 
     const family = weatherFamily(event.variantId);
     if (family === "sun") {
-      const bonus = sunWeatherBonus(
-        pondEnergy,
-        sim.energyPerSecond,
-        event.variantId,
-      );
+      const bonus = sunWeatherBonus(sim.energyPerSecond, event.variantId);
       if (bonus > 0) {
         commitSyncedEnergy(pondEnergy + bonus);
         statisticsRef.current = accrueGrossEnergyBonus(
@@ -1449,6 +1544,12 @@ export default function Clicker2GamePage() {
       const boost = startBlusterBoost(event.variantId);
       activeBlusterBoostRef.current = boost;
       setActiveBlusterBoost(boost);
+      const windClickBoost = startWindClickBoost(event.variantId);
+      if (windClickBoost) {
+        activeRainBoostRef.current = windClickBoost;
+        setActiveRainBoost(windClickBoost);
+        scheduleRainBoostEnd(windClickBoost);
+      }
       setBoostBannerVariantId(event.variantId);
       scheduleBlusterBoostEnd(boost);
       setWeatherUiRevision((n) => n + 1);
@@ -1507,6 +1608,8 @@ export default function Clicker2GamePage() {
         ownedDenizensRef.current,
         effectiveAllTimeEnergyEarnedNow(),
         statisticsRef.current.energy_from_clicking ?? 0,
+        blossomCountRef.current,
+        ownedSpecialtiesRef.current,
       )
     ) {
       return;
@@ -1559,6 +1662,7 @@ export default function Clicker2GamePage() {
 
   return (
     <ClickerPageShell
+      fullWidthContent
       defaultPageBackground={weatherSurfaces.page}
       pageBackgroundFadeOutMs={WEATHER_PAGE_BACKGROUND_FADE_MS}
       sunshinePulseKey={
@@ -1581,28 +1685,32 @@ export default function Clicker2GamePage() {
       >
         <Flex
           direction={{ base: "column", lg: "row" }}
-          gap={{ base: "3", lg: "4" }}
+          gap={{ base: "3", lg: "3" }}
           flex="1"
           minH="0"
           w="full"
-          position="relative"
+          align={{ lg: "stretch" }}
+          pl={{ base: 0, lg: "6" }}
         >
-        {activeWeather ? (
-          <Clicker2WeatherEvent
-            variantId={activeWeather.variantId}
-            leftPct={activeWeather.leftPct}
-            topPct={activeWeather.topPct}
-            motionPaused={motionPaused}
-            onActivate={onWeatherEventActivate}
-          />
-        ) : null}
         <Stack
-          flex={{ base: "none", lg: "1" }}
-          minW="0"
+          flex={{ base: "none", lg: "1 1 0" }}
+          minW={{ base: "auto", lg: 0 }}
+          minH={0}
+          w="full"
           gap="2"
           align="center"
           justify="flex-start"
+          position="relative"
         >
+          {activeWeather ? (
+            <Clicker2WeatherEvent
+              variantId={activeWeather.variantId}
+              leftPct={activeWeather.leftPct}
+              topPct={activeWeather.topPct}
+              motionPaused={motionPaused}
+              onActivate={onWeatherEventActivate}
+            />
+          ) : null}
           <RollingEnergyCounter
             syncedEnergy={energy}
             energyPerSecond={displayEnergyPerSecond}
@@ -1630,9 +1738,10 @@ export default function Clicker2GamePage() {
               <Clicker2PondHeadline text={activeHeadlineText} />
             ) : null}
           </Clicker2HeadlineStrip>
-          <Box w="full" maxW={{ base: "full", lg: "520px" }}>
+          <Box w="full">
             <Clicker2PondStage
               denizens={pondDenizens}
+              blossomCount={blossomCount}
               clickValue={effectiveClickValue}
               motionPaused={motionPaused}
               lightClickFx={clickMultiplier > 1}
@@ -1643,26 +1752,9 @@ export default function Clicker2GamePage() {
               className="pond2MilestoneBannerSlot pond2MilestoneBannerSlot--weather"
             >
               <Stack align="center" gap="0.5">
-                {clickMultiplier > 1 && boostBannerVariantId ? (
-                  <>
-                    <Text
-                      as="span"
-                      className={
-                        motionPaused
-                          ? "pond2RainstormBanner pond2RainstormBanner--paused"
-                          : "pond2RainstormBanner"
-                      }
-                    >
-                      {weatherBoostBannerTitle(boostBannerVariantId)}
-                    </Text>
-                    <Text
-                      as="span"
-                      className="pond2WeatherBannerSub pond2WeatherBannerSubRain"
-                    >
-                      {weatherBoostBannerSubtitle(boostBannerVariantId)}
-                    </Text>
-                  </>
-                ) : epsMultiplier > 1 && boostBannerVariantId ? (
+                {boostBannerVariantId &&
+                epsMultiplier > 1 &&
+                weatherFamily(boostBannerVariantId) === "bluster" ? (
                   <>
                     <Text
                       as="span"
@@ -1677,6 +1769,25 @@ export default function Clicker2GamePage() {
                     <Text
                       as="span"
                       className="pond2WeatherBannerSub pond2WeatherBannerSubBluster"
+                    >
+                      {weatherBoostBannerSubtitle(boostBannerVariantId)}
+                    </Text>
+                  </>
+                ) : clickMultiplier > 1 && boostBannerVariantId ? (
+                  <>
+                    <Text
+                      as="span"
+                      className={
+                        motionPaused
+                          ? "pond2RainstormBanner pond2RainstormBanner--paused"
+                          : "pond2RainstormBanner"
+                      }
+                    >
+                      {weatherBoostBannerTitle(boostBannerVariantId)}
+                    </Text>
+                    <Text
+                      as="span"
+                      className="pond2WeatherBannerSub pond2WeatherBannerSubRain"
                     >
                       {weatherBoostBannerSubtitle(boostBannerVariantId)}
                     </Text>
@@ -1697,7 +1808,6 @@ export default function Clicker2GamePage() {
               </Stack>
             </Box>
             ) : null}
-            <DenizenPurchaseTimeline timeline={denizenPurchaseTimeline} />
           </Box>
           {saveError ? (
             <Text fontSize="xs" color="nautical.solid" role="alert">
@@ -1705,6 +1815,32 @@ export default function Clicker2GamePage() {
             </Text>
           ) : null}
         </Stack>
+
+        <Box
+          flex={{ base: "none", lg: "1 1 0" }}
+          minW={{ base: "auto", lg: 0 }}
+          minH={0}
+          w="full"
+          overflowY="auto"
+          pt={{ lg: "6" }}
+          css={HIDE_SCROLLBAR_CSS}
+        >
+          <Box
+            w="full"
+            maxW={{ base: "full", lg: "calc(100% - 2.5rem)" }}
+            mr={{ base: 0, lg: "6" }}
+            pr={{ base: 0, lg: "3" }}
+          >
+            <PondDepthChart
+              timeline={denizenPurchaseTimeline}
+              ownedDenizens={ownedDenizens}
+              denizenMutationLevels={denizenMutationLevels}
+              mutagenUnlocked={mutagenUnlocked}
+              mutagensBank={mutagensBank}
+              onMutate={handleMutateDenizen}
+            />
+          </Box>
+        </Box>
 
         <Box
           flex={{ base: "1", lg: "0 0 360px" }}
@@ -1756,44 +1892,76 @@ export default function Clicker2GamePage() {
               canHoverFinePointer={canHoverFinePointer}
             />
 
-            {showMutagenDevTools ? (
-              <Flex
-                gap="1"
-                flexWrap="wrap"
-                align="center"
-                borderWidth="1px"
-                borderStyle="dashed"
-                borderColor="gray.400"
-                borderRadius="md"
-                p="1.5"
-              >
-                <Text fontSize="2xs" color="gray.600" flex="1" minW="6rem">
-                  TEMP dev tools
-                </Text>
-                <PondButton
-                  type="button"
-                  size="xs"
-                  variant="outline"
-                  colorPalette="gray"
-                  onClick={handleDevGrantMutagenUnlockEnergy}
-                  disabled={
-                    effectiveAllTimeEnergyEarnedDisplay >=
-                    MUTAGEN_UNLOCK_ALL_TIME_ENERGY
-                  }
-                >
-                  +1B lifetime
-                </PondButton>
-                <PondButton
-                  type="button"
-                  size="xs"
-                  variant="outline"
-                  colorPalette="gray"
-                  onClick={handleDevGrantMutagen}
-                >
-                  +1 mutagen
-                </PondButton>
-              </Flex>
-            ) : null}
+            {/*
+             * CLICKER2_DEV_TOOLS — staff-only UI (import BLOSSOM_RING_MAX when re-enabled).
+             * {showClicker2DevTools ? (
+             *   <Flex
+             *     gap="1"
+             *     flexWrap="wrap"
+             *     align="center"
+             *     borderWidth="1px"
+             *     borderStyle="dashed"
+             *     borderColor="gray.400"
+             *     borderRadius="md"
+             *     p="1.5"
+             *   >
+             *     <Text fontSize="2xs" color="gray.600" flex="1" minW="6rem">
+             *       TEMP dev tools
+             *     </Text>
+             *     <PondButton
+             *       type="button"
+             *       size="xs"
+             *       variant="outline"
+             *       colorPalette="gray"
+             *       onClick={handleDevSetBlossoms100}
+             *       disabled={blossomCount >= BLOSSOM_RING_MAX}
+             *     >
+             *       Set blossoms to 100
+             *     </PondButton>
+             *     <PondButton
+             *       type="button"
+             *       size="xs"
+             *       variant="outline"
+             *       colorPalette="gray"
+             *       onClick={handleDevRevertBlossomsToEarned}
+             *       disabled={devBlossomOverride === null}
+             *     >
+             *       Revert blossoms to earned
+             *     </PondButton>
+             *     <PondButton
+             *       type="button"
+             *       size="xs"
+             *       variant="outline"
+             *       colorPalette="gray"
+             *       onClick={handleDevGainOneOfEachDenizen}
+             *     >
+             *       +1 of each denizen
+             *     </PondButton>
+             *     <PondButton
+             *       type="button"
+             *       size="xs"
+             *       variant="outline"
+             *       colorPalette="gray"
+             *       onClick={handleDevGrantMutagenUnlockEnergy}
+             *       disabled={
+             *         effectiveAllTimeEnergyEarnedDisplay >=
+             *         MUTAGEN_UNLOCK_ALL_TIME_ENERGY
+             *       }
+             *     >
+             *       +1B lifetime
+             *     </PondButton>
+             *     <PondButton
+             *       type="button"
+             *       size="xs"
+             *       variant="outline"
+             *       colorPalette="gray"
+             *       onClick={handleDevGrantMutagen}
+             *     >
+             *       +1 mutagen
+             *     </PondButton>
+             *   </Flex>
+             * ) : null}
+             */}
 
             <DenizenShopList
               denizens={visibleDenizens}
@@ -1802,17 +1970,9 @@ export default function Clicker2GamePage() {
               revealedDenizens={revealedDenizens}
               savedBannerKey={savedBannerKey}
               canHoverFinePointer={canHoverFinePointer}
-              effectiveEnergy={computeEffectiveEnergy(
-                energy,
-                displayEnergyPerSecond,
-                energyAnchorMs,
-              )}
+              effectiveEnergy={spendableEnergy}
               getTooltipSnapshot={getDenizenTooltipSnapshot}
               onBuy={buyDenizen}
-              mutagenUnlocked={mutagenUnlocked}
-              mutagensBank={mutagensBank}
-              denizenMutationLevels={denizenMutationLevels}
-              onMutate={handleMutateDenizen}
             />
           </Stack>
         </Box>

@@ -76,7 +76,6 @@ export type WeatherVariantDef = {
   clickBoostHoldMs?: number;
   epsMultiplier?: number;
   epsBoostMs?: number;
-  pondFraction?: number;
   epsMinutes?: number;
 };
 
@@ -119,6 +118,7 @@ export const WEATHER_VARIANTS: Readonly<Record<WeatherVariantId, WeatherVariantD
       emoji: "🌪️",
       spawnWeight: 5,
       visibleMs: WEATHER_VISIBLE_MS_14,
+      clickMultiplier: 10,
       epsMultiplier: 10,
       epsBoostMs: WIND_EPS_BOOST_MS,
     },
@@ -129,6 +129,7 @@ export const WEATHER_VARIANTS: Readonly<Record<WeatherVariantId, WeatherVariantD
       emoji: "🌬️",
       spawnWeight: 10,
       visibleMs: WEATHER_VISIBLE_MS_17,
+      clickMultiplier: 5,
       epsMultiplier: 7,
       epsBoostMs: WIND_EPS_BOOST_MS,
     },
@@ -139,6 +140,7 @@ export const WEATHER_VARIANTS: Readonly<Record<WeatherVariantId, WeatherVariantD
       emoji: "💨",
       spawnWeight: 15,
       visibleMs: WEATHER_VISIBLE_MS_20,
+      clickMultiplier: 2,
       epsMultiplier: 5,
       epsBoostMs: WIND_EPS_BOOST_MS,
     },
@@ -149,8 +151,7 @@ export const WEATHER_VARIANTS: Readonly<Record<WeatherVariantId, WeatherVariantD
       emoji: "☀️",
       spawnWeight: 5,
       visibleMs: WEATHER_VISIBLE_MS_14,
-      pondFraction: 0.25,
-      epsMinutes: 25,
+      epsMinutes: 15,
     },
     mostly_sunny: {
       id: "mostly_sunny",
@@ -159,8 +160,7 @@ export const WEATHER_VARIANTS: Readonly<Record<WeatherVariantId, WeatherVariantD
       emoji: "⛅",
       spawnWeight: 15,
       visibleMs: WEATHER_VISIBLE_MS_17,
-      pondFraction: 0.2,
-      epsMinutes: 20,
+      epsMinutes: 10,
     },
     partly_sunny: {
       id: "partly_sunny",
@@ -169,8 +169,7 @@ export const WEATHER_VARIANTS: Readonly<Record<WeatherVariantId, WeatherVariantD
       emoji: "🌥️",
       spawnWeight: 20,
       visibleMs: WEATHER_VISIBLE_MS_20,
-      pondFraction: 0.15,
-      epsMinutes: 15,
+      epsMinutes: 5,
     },
   };
 
@@ -284,9 +283,15 @@ function variantEffectSummary(def: WeatherVariantDef): string {
     return `${def.clickMultiplier}× click energy for ${holdSec} seconds`;
   }
   if (def.family === "bluster") {
-    return `${def.epsMultiplier}× energy per second for ${formatDurationMs(def.epsBoostMs ?? WIND_EPS_BOOST_MS)}`;
+    const duration = formatDurationMs(def.epsBoostMs ?? WIND_EPS_BOOST_MS);
+    const eps = `${def.epsMultiplier}× energy per second for ${duration}`;
+    if (def.clickMultiplier != null && def.clickMultiplier > 1) {
+      return `${def.clickMultiplier}× click energy and ${eps}`;
+    }
+    return eps;
   }
-  return `Bonus energy: min(${Math.round((def.pondFraction ?? 0) * 100)}% of pond total, ${def.epsMinutes} minutes of EpS)`;
+  const minutes = def.epsMinutes ?? 0;
+  return `${minutes} minute${minutes === 1 ? "" : "s"} of EpS as bonus energy`;
 }
 
 function variantCatalogNotes(def: WeatherVariantDef): readonly string[] {
@@ -401,16 +406,11 @@ export function weatherEventOpacity(
 }
 
 export function sunWeatherBonus(
-  pondEnergy: number,
   energyPerSecond: number,
   variantId: WeatherVariantId,
 ): number {
-  const def = weatherVariantDef(variantId);
-  const pondFraction = def.pondFraction ?? 0;
-  const epsMinutes = def.epsMinutes ?? 0;
-  const fromPond = pondEnergy * pondFraction;
-  const fromPassive = energyPerSecond * epsMinutes * 60;
-  return Math.max(0, Math.floor(Math.min(fromPond, fromPassive)));
+  const epsMinutes = weatherVariantDef(variantId).epsMinutes ?? 0;
+  return Math.max(0, Math.floor(energyPerSecond * epsMinutes * 60));
 }
 
 export function isRainClickBoostActive(
@@ -474,12 +474,27 @@ export function startBlusterBoost(
   };
 }
 
+/** Click boost for wind variants (same duration as EpS boost). */
+export function startWindClickBoost(
+  variantId: WeatherVariantId,
+  nowPerfMs = performance.now(),
+): ActiveRainBoost | null {
+  const def = weatherVariantDef(variantId);
+  if (def.family !== "bluster" || (def.clickMultiplier ?? 1) <= 1) {
+    return null;
+  }
+  return {
+    untilPerfMs: nowPerfMs + (def.epsBoostMs ?? WIND_EPS_BOOST_MS),
+    peakMultiplier: def.clickMultiplier ?? 1,
+  };
+}
+
 export function weatherAmbientFromBoosts(opts: {
   clickMultiplier: number;
   epsMultiplier: number;
 }): WeatherAmbient {
-  if (opts.clickMultiplier > 1) return "rain";
   if (opts.epsMultiplier > 1) return "bluster";
+  if (opts.clickMultiplier > 1) return "rain";
   return "clear";
 }
 
@@ -515,7 +530,11 @@ export function weatherBoostBannerSubtitle(variantId: WeatherVariantId): string 
   }
   if (def.family === "bluster") {
     const seconds = (def.epsBoostMs ?? WIND_EPS_BOOST_MS) / 1000;
-    return `${def.epsMultiplier}× energy per second for ${seconds} seconds`;
+    const eps = `${def.epsMultiplier}× energy per second for ${seconds} seconds`;
+    if (def.clickMultiplier != null && def.clickMultiplier > 1) {
+      return `${def.clickMultiplier}× click energy and ${eps}`;
+    }
+    return eps;
   }
   return "";
 }
@@ -528,10 +547,14 @@ export function weatherEventAriaLabel(variantId: WeatherVariantId): string {
   }
   if (def.family === "bluster") {
     const seconds = (def.epsBoostMs ?? WIND_EPS_BOOST_MS) / 1000;
-    return `${def.name} — click for ${def.epsMultiplier}× energy per second for ${seconds} seconds`;
+    const eps = `${def.epsMultiplier}× energy per second for ${seconds} seconds`;
+    if (def.clickMultiplier != null && def.clickMultiplier > 1) {
+      return `${def.name} — click for ${def.clickMultiplier}× click energy and ${eps}`;
+    }
+    return `${def.name} — click for ${eps}`;
   }
-  const pct = Math.round((def.pondFraction ?? 0) * 100);
-  return `${def.name} — click for bonus energy (min ${pct}% of pond, ${def.epsMinutes} minutes of EpS)`;
+  const minutes = def.epsMinutes ?? 0;
+  return `${def.name} — click for ${minutes} minute${minutes === 1 ? "" : "s"} of EpS as bonus energy`;
 }
 
 export function sunshineBoostBannerSubtitle(bonus: number): string {

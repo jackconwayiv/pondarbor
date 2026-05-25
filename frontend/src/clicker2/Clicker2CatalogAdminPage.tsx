@@ -61,16 +61,21 @@ import {
 import {
   CLICK_CHAIN_EMOJI,
   evolutionDisplayEmoji,
+  PAIRING_EVOLUTION_EMOJI,
   POND_PRODUCTION_EMOJI,
 } from "./clicker2OwnedEvolutions";
 import {
+  formatPairingUnlockSummary,
   listPairingSpecialties,
+  PAIRING_CATALOG_UNLOCK_NOTES,
   PAIRING_LOWER_DENIZEN_IDS,
   PAIRING_SPECIALTY_DENIZEN_ID,
   pairingLowerDenizenTierIndexForId,
+  pairingUnlockFormulaDescription,
 } from "./pairingEvolutions";
 import { formatEnergyAmount, formatEnergyRate, formatShopCost } from "./formatEnergy";
 import { specialtyTierGradient } from "./specialtyTierColors";
+import { POLLINATOR_SPECIALTY_DENIZEN_ID } from "./pollinatorEvolutions";
 import {
   CLICK_SPECIALTY_DENIZEN_ID,
   POND_SPECIALTY_DENIZEN_ID,
@@ -113,18 +118,16 @@ function CatalogFramedChrome({ children }: { children: ReactNode }) {
 
 function specialtyUnlockSummary(s: SpecialtyDef): string {
   if (s.pairingUnlock) {
-    return Object.entries(s.pairingUnlock)
-      .map(([denizenId, count]) => {
-        const label = getDenizenDef(denizenId)?.namePlural ?? denizenId;
-        return `${count.toLocaleString()} ${label}`;
-      })
-      .join(" · ");
+    return formatPairingUnlockSummary(s);
   }
   if (s.unlockAllTimeEnergy != null) {
     return `${formatEnergyAmount(s.unlockAllTimeEnergy)} all-time earned`;
   }
   if (s.unlockClickEnergy != null) {
     return `${formatEnergyAmount(s.unlockClickEnergy)} energy from clicking`;
+  }
+  if (s.unlockBlossoms != null) {
+    return `${s.unlockBlossoms.toLocaleString()} Blossoms`;
   }
   const def = getDenizenDef(s.denizenId);
   const label = def?.namePlural ?? s.denizenId;
@@ -218,6 +221,16 @@ function SpecialtyCatalogCard({ def }: { def: SpecialtyDef }) {
           </Text>{" "}
           {specialtyUnlockSummary(def)}
         </Text>
+        {def.pairingUnlock &&
+        def.pairingLowerDenizenId &&
+        def.pairingHigherDenizenId ? (
+          <Text color="gray.600" fontFamily="mono" fontSize="2xs" lineHeight="1.35">
+            {pairingUnlockFormulaDescription(
+              def.pairingLowerDenizenId,
+              def.pairingHigherDenizenId,
+            )}
+          </Text>
+        ) : null}
         <Text>
           <Text as="span" fontWeight="semibold">
             Gate:
@@ -585,6 +598,7 @@ function DenizenCatalogCard({
 const CATALOG_DENIZEN_ORDER: readonly string[] = [
   POND_SPECIALTY_DENIZEN_ID,
   CLICK_SPECIALTY_DENIZEN_ID,
+  POLLINATOR_SPECIALTY_DENIZEN_ID,
   ...DENIZENS.map((d) => d.id),
 ];
 
@@ -597,6 +611,7 @@ const SPECIALTY_CATALOG_CHAIN_IDS: readonly string[] = CATALOG_DENIZEN_ORDER.fil
 function specialtyCatalogChainLabel(denizenId: string): string {
   if (denizenId === POND_SPECIALTY_DENIZEN_ID) return "Pond production";
   if (denizenId === CLICK_SPECIALTY_DENIZEN_ID) return "Click reflections";
+  if (denizenId === POLLINATOR_SPECIALTY_DENIZEN_ID) return "Pollinators";
   if (denizenId === PAIRING_SPECIALTY_DENIZEN_ID) return "Pairing";
   return getDenizenDef(denizenId)?.namePlural ?? denizenId;
 }
@@ -604,7 +619,8 @@ function specialtyCatalogChainLabel(denizenId: string): string {
 function specialtyCatalogChainEmoji(denizenId: string): string {
   if (denizenId === POND_SPECIALTY_DENIZEN_ID) return POND_PRODUCTION_EMOJI;
   if (denizenId === CLICK_SPECIALTY_DENIZEN_ID) return CLICK_CHAIN_EMOJI;
-  if (denizenId === PAIRING_SPECIALTY_DENIZEN_ID) return "🔗";
+  if (denizenId === POLLINATOR_SPECIALTY_DENIZEN_ID) return "🐝";
+  if (denizenId === PAIRING_SPECIALTY_DENIZEN_ID) return PAIRING_EVOLUTION_EMOJI;
   return getDenizenDef(denizenId)?.emoji ?? "✨";
 }
 
@@ -718,8 +734,21 @@ function PairingCatalogPage() {
       <Heading as="h2" size="sm">
         Pairing {EVOLUTIONS_LABEL_LOWER} ({total})
       </Heading>
+      <Box {...CARD_SHELL_PROPS}>
+        <Stack gap="1" fontSize="xs">
+          <Text fontWeight="semibold" fontSize="sm">
+            Unlock rules
+          </Text>
+          {PAIRING_CATALOG_UNLOCK_NOTES.map((note) => (
+            <Text key={note} color="gray.600" lineHeight="1.35">
+              {note}
+            </Text>
+          ))}
+        </Stack>
+      </Box>
       <Text fontSize="xs" color="gray.600">
-        By booster (L) denizen — card colors match shop tiers (Ripples = palest).
+        By booster (L) denizen — card colors match shop color tiers (Ripples =
+        palest; capped at tier 14 for display only).
       </Text>
       <Tabs.Root
         value={activeLower}

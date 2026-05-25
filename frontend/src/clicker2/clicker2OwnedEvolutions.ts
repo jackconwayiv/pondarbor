@@ -1,5 +1,6 @@
 import { getDenizenDef } from "./denizens";
 import { PAIRING_SPECIALTY_DENIZEN_ID } from "./pairingEvolutions";
+import { POLLINATOR_SPECIALTY_DENIZEN_ID } from "./pollinatorEvolutions";
 import {
   CLICK_SPECIALTY_DENIZEN_ID,
   POND_SPECIALTY_DENIZEN_ID,
@@ -13,17 +14,17 @@ export const POND_PRODUCTION_EMOJI = "💦";
 /** Click reflection evolution chain. */
 export const CLICK_CHAIN_EMOJI = "🪷";
 
+/** Paired (L×H) evolutions in shop, stats, and catalog. */
+export const PAIRING_EVOLUTION_EMOJI = "🍃";
+
 export function evolutionDisplayEmoji(def: SpecialtyDef): string {
   if (def.denizenId === POND_SPECIALTY_DENIZEN_ID) return POND_PRODUCTION_EMOJI;
   if (def.denizenId === CLICK_SPECIALTY_DENIZEN_ID) return CLICK_CHAIN_EMOJI;
+  if (def.denizenId === POLLINATOR_SPECIALTY_DENIZEN_ID) {
+    return def.pollinatorEmoji ?? "🐝";
+  }
   if (def.denizenId === PAIRING_SPECIALTY_DENIZEN_ID) {
-    const l = def.pairingLowerDenizenId
-      ? getDenizenDef(def.pairingLowerDenizenId)?.emoji
-      : undefined;
-    const h = def.pairingHigherDenizenId
-      ? getDenizenDef(def.pairingHigherDenizenId)?.emoji
-      : undefined;
-    if (l && h) return `${l}${h}`;
+    return PAIRING_EVOLUTION_EMOJI;
   }
   return getDenizenDef(def.denizenId)?.emoji ?? "✨";
 }

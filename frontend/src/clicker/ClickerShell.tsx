@@ -18,6 +18,8 @@ export function ClickerPageShell({
   sunshinePulseKey = 0,
   sunshinePageBackground,
   sunshinePulseDurationMs = 7_000,
+  /** When true, content uses the full shell width (no `7xl` cap). */
+  fullWidthContent = false,
   children,
 }: {
   titleLeft?: ReactNode;
@@ -33,6 +35,7 @@ export function ClickerPageShell({
   sunshinePageBackground?: string;
   /** Total fade-in + hold + fade-out (must match `clickerSunshinePagePulse` keyframe ratios). */
   sunshinePulseDurationMs?: number;
+  fullWidthContent?: boolean;
   children: ReactNode;
 }) {
   const [fadeOutBackground, setFadeOutBackground] = useState<string | null>(
@@ -167,7 +170,14 @@ export function ClickerPageShell({
         px={{ base: "3", md: "4" }}
         py={{ base: "1", md: "2" }}
       >
-        <Stack gap="1.5" maxW="7xl" mx="auto" w="full" flex="1" minH="0">
+        <Stack
+          gap="1.5"
+          maxW={fullWidthContent ? undefined : "7xl"}
+          mx={fullWidthContent ? undefined : "auto"}
+          w="full"
+          flex="1"
+          minH="0"
+        >
           {titleLeft != null || titleRight != null ? (
             <Flex align="center" justify="space-between" gap="3" flexWrap="wrap" w="full">
               <Flex flexWrap="wrap" align="center" gap={{ base: 2, md: 4 }} flex="1" minW="0">

@@ -2,6 +2,7 @@ import { Box, Text } from "@chakra-ui/react";
 import {
   type CSSProperties,
   type MouseEvent,
+  memo,
   useEffect,
   useId,
   useMemo,
@@ -22,6 +23,10 @@ import {
   MAX_POND_RIPPLES,
 } from "./clicker2PondClickFx";
 import { formatEnergyAmount, formatEnergyAmountCompact } from "./formatEnergy";
+import {
+  blossomRingPlacements,
+  type BlossomRingPlacement,
+} from "./blossoms";
 
 function hash32(str: string): number {
   let h = 2166136261;
@@ -60,14 +65,47 @@ export type PondDenizenVisual = {
   emoji: string;
 };
 
-export default function Clicker2PondStage({
+const POND_CORE_WIDTH_PCT = 76;
+/** Push pond below vertical center so blossom halo has room above/below. */
+const POND_CORE_TOP_OFFSET_PCT = 6;
+
+function blossomGlyphScale(ringIndex: number): number {
+  return ringIndex <= 0
+    ? 0.82
+    : ringIndex === 1
+      ? 0.88
+      : ringIndex === 2
+        ? 0.94
+        : 1;
+}
+
+function BlossomRingGlyph({ placement }: { placement: BlossomRingPlacement }) {
+  const scale = blossomGlyphScale(placement.ringIndex);
+  return (
+    <Text
+      as="span"
+      className="pond2BlossomRingGlyph"
+      position="absolute"
+      left={`${placement.left}%`}
+      top={`${placement.top}%`}
+      transform={`translate(-50%, -50%) scale(${scale})`}
+    >
+      {placement.emoji}
+    </Text>
+  );
+}
+
+function Clicker2PondStage({
   denizens,
+  blossomCount = 0,
   clickValue,
   motionPaused = false,
   lightClickFx = false,
   onClickPond,
 }: {
   denizens: PondDenizenVisual[];
+  /** Milestone-earned blossoms to draw (0–100); only earned blossoms render. */
+  blossomCount?: number;
   clickValue: number;
   /** When true (hidden tab or prefers-reduced-motion), skip or pause decorative motion. */
   motionPaused?: boolean;
@@ -197,10 +235,21 @@ export default function Clicker2PondStage({
     onClickPond();
   };
 
-  const pondStageMinH = { base: "36vh", md: "min(320px, 42vh)" } as const;
+  const pondStageMinH = { base: "38vh", md: "min(360px, 46vh)" } as const;
+
+  const blossomPlacements = useMemo(
+    () => blossomRingPlacements(blossomCount),
+    [blossomCount],
+  );
 
   return (
-    <Box position="relative" w="full" maxW="full" minH={pondStageMinH}>
+    <Box
+      className="pond2StageRoot"
+      position="relative"
+      w="full"
+      maxW="full"
+      minH={pondStageMinH}
+    >
       <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden>
         <defs>
           <clipPath id={clipId} clipPathUnits="objectBoundingBox">
@@ -209,9 +258,14 @@ export default function Clicker2PondStage({
         </defs>
       </svg>
       <Box
+        className="pond2PondCore"
         position="relative"
-        w="full"
+        w={`${POND_CORE_WIDTH_PCT}%`}
+        maxW="full"
         minH={pondStageMinH}
+        mx="auto"
+        mt={`${POND_CORE_TOP_OFFSET_PCT}%`}
+        zIndex={1}
         overflow="hidden"
         style={{
           clipPath: `url(#${clipId})`,
@@ -331,6 +385,22 @@ export default function Clicker2PondStage({
           }}
         />
       </Box>
+      {blossomPlacements.length > 0 ? (
+        <Box
+          className="pond2BlossomHalo"
+          position="absolute"
+          inset="0"
+          zIndex={3}
+          pointerEvents="none"
+          aria-hidden
+        >
+          {blossomPlacements.map((placement, i) => (
+            <BlossomRingGlyph key={`blossom-${i}`} placement={placement} />
+          ))}
+        </Box>
+      ) : null}
     </Box>
   );
 }
+
+export default memo(Clicker2PondStage);

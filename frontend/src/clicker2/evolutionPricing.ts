@@ -13,7 +13,13 @@ import {
   marginalClickIfBuySpecialty,
   marginalEpsIfBuySpecialty,
 } from "./simulation";
-import { PAIRING_SPECIALTY_DENIZEN_ID } from "./pairingEvolutions";
+import {
+  PAIRING_SPECIALTY_DENIZEN_ID,
+} from "./pairingEvolutions";
+import {
+  POLLINATOR_PRICE_ANCHORS,
+  POLLINATOR_SPECIALTY_DENIZEN_ID,
+} from "./pollinatorEvolutions";
 import {
   CLICK_CHAIN_PRICE,
   CLICK_SPECIALTY_DENIZEN_ID,
@@ -68,7 +74,12 @@ export const POND_PRODUCTION_PRICE_ANCHORS: readonly number[] = [
   500_000_000_000,
 ];
 
-export type EvolutionChainKind = "denizen" | "ripple" | "pond" | "click";
+export type EvolutionChainKind =
+  | "denizen"
+  | "ripple"
+  | "pond"
+  | "click"
+  | "pollinator";
 
 export type EvolutionPricingOptions = {
   paybackSec?: number;
@@ -99,6 +110,7 @@ const DEFAULT_CHAIN_MULTIPLIERS: Record<EvolutionChainKind, number> = {
   ripple: 1,
   pond: 1,
   click: 1,
+  pollinator: 1,
 };
 
 /** Progression ladder index → denizen owned count in reference builds. */
@@ -117,6 +129,7 @@ export function pondTierToLadderTierIndex(pondTierIndex: number): number {
 export function evolutionChainKind(def: SpecialtyDef): EvolutionChainKind {
   if (def.denizenId === POND_SPECIALTY_DENIZEN_ID) return "pond";
   if (def.denizenId === CLICK_SPECIALTY_DENIZEN_ID) return "click";
+  if (def.denizenId === POLLINATOR_SPECIALTY_DENIZEN_ID) return "pollinator";
   if (def.denizenId === PAIRING_SPECIALTY_DENIZEN_ID) return "denizen";
   if (def.denizenId === "ripples") return "ripple";
   return "denizen";
@@ -213,9 +226,16 @@ export function clickReflectionAnchoredPrice(tierIndex: number): number {
   return anchor;
 }
 
+export function pollinatorAnchoredPrice(tierIndex: number): number {
+  const anchor =
+    POLLINATOR_PRICE_ANCHORS[tierIndex] ??
+    POLLINATOR_PRICE_ANCHORS[POLLINATOR_PRICE_ANCHORS.length - 1]!;
+  return anchor;
+}
+
 /**
- * Reference save at unlock: prior in-chain evolutions, pond % earned by then,
- * denizen counts aligned to progression (not the full ladder at once for pond).
+ * Reference save at unlock: in-chain evolutions where applicable, pond % earned by then,
+ * denizen counts aligned to progression (pairings: L/H counts only, no prior pairing owned).
  */
 export function buildReferenceStateAtUnlock(
   specialty: SpecialtyDef,
@@ -250,6 +270,28 @@ export function buildReferenceStateAtUnlock(
       if (
         s.unlockClickEnergy != null &&
         s.unlockClickEnergy < specialty.unlockClickEnergy
+      ) {
+        ownedSpecialties[s.id] = true;
+      }
+    }
+    return { ownedDenizens, ownedSpecialties };
+  }
+
+  if (specialty.unlockBlossoms != null) {
+    const tierIndex = specialtyTierIndex(specialty);
+    const ownedPerDenizen = ladderOwnedCountForTierIndex(
+      Math.min(14, tierIndex),
+    );
+    for (const def of DENIZENS) {
+      ownedDenizens[def.id] = ownedPerDenizen;
+    }
+    ownedDenizens.ripples = 1;
+    const pollinatorChain = specialtiesForDenizen(POLLINATOR_SPECIALTY_DENIZEN_ID);
+    for (const s of pollinatorChain) {
+      if (s.id === specialty.id) continue;
+      if (
+        s.unlockBlossoms != null &&
+        s.unlockBlossoms < specialty.unlockBlossoms
       ) {
         ownedSpecialties[s.id] = true;
       }
@@ -339,15 +381,20 @@ export function marginalValueAtUnlock(
   options?: EvolutionPricingOptions,
 ): MarginalAtUnlock {
   const ref = state ?? buildReferenceStateAtUnlock(specialty);
+  const blossomCount = specialty.unlockBlossoms ?? 0;
   const marginalEps = marginalEpsIfBuySpecialty(
     specialty.id,
     ref.ownedDenizens,
     ref.ownedSpecialties,
+    {},
+    blossomCount,
   );
   const marginalClick = marginalClickIfBuySpecialty(
     specialty.id,
     ref.ownedDenizens,
     ref.ownedSpecialties,
+    {},
+    blossomCount,
   );
 
   const kind = evolutionChainKind(specialty);
@@ -390,6 +437,12 @@ export function proposedPriceAtUnlock(
     return clickReflectionAnchoredPrice(tierIndex);
   }
 
+  if (kind === "pollinator") {
+    void paybackSecVal;
+    void mult;
+    return pollinatorAnchoredPrice(tierIndex);
+  }
+
   if (kind === "ripple") {
     return rippleEvolutionPrice(tierIndex);
   }
@@ -408,7 +461,8 @@ export function applyMonotoneChainPrices(
   for (const denizenId of chains) {
     if (
       denizenId === PAIRING_SPECIALTY_DENIZEN_ID ||
-      denizenId === CLICK_SPECIALTY_DENIZEN_ID
+      denizenId === CLICK_SPECIALTY_DENIZEN_ID ||
+      denizenId === POLLINATOR_SPECIALTY_DENIZEN_ID
     ) {
       continue;
     }

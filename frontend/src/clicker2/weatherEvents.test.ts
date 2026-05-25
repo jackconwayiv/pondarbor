@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   clickWeatherMultiplier,
   shopSurfaceForWeather,
+  startWindClickBoost,
   SUNSHINE_SHOP_BACKGROUND,
   sunWeatherBonus,
+  weatherAmbientFromBoosts,
   WEATHER_FADE_IN_MS,
   WEATHER_FADE_OUT_MS,
   WEATHER_SPAWN_CHANCES_PERCENT,
@@ -45,16 +47,10 @@ describe("weather variant catalog", () => {
     expect(weatherVisibleFadeTier(WEATHER_VISIBLE_MS_20)).toBe("20");
   });
 
-  it("sun bonuses use variant pond fraction and eps minutes", () => {
-    expect(sunWeatherBonus(10_000, 100, "sunshine")).toBe(
-      Math.floor(Math.min(2_500, 100 * 25 * 60)),
-    );
-    expect(sunWeatherBonus(10_000, 100, "mostly_sunny")).toBe(
-      Math.floor(Math.min(2_000, 100 * 20 * 60)),
-    );
-    expect(sunWeatherBonus(10_000, 100, "partly_sunny")).toBe(
-      Math.floor(Math.min(1_500, 100 * 15 * 60)),
-    );
+  it("sun bonuses grant eps minutes of passive income", () => {
+    expect(sunWeatherBonus(100, "sunshine")).toBe(Math.floor(100 * 15 * 60));
+    expect(sunWeatherBonus(100, "mostly_sunny")).toBe(Math.floor(100 * 10 * 60));
+    expect(sunWeatherBonus(100, "partly_sunny")).toBe(Math.floor(100 * 5 * 60));
   });
 
   it("sunshine pulse tints shop when no rain or wind boost", () => {
@@ -72,6 +68,17 @@ describe("weather variant catalog", () => {
         sunshinePulseActive: true,
       }),
     ).not.toBe(SUNSHINE_SHOP_BACKGROUND);
+  });
+
+  it("wind events grant click boost for the EpS boost duration", () => {
+    const now = 5_000;
+    const galeClick = startWindClickBoost("howling_gale", now)!;
+    expect(galeClick.peakMultiplier).toBe(10);
+    expect(clickWeatherMultiplier(galeClick, now + 30_000)).toBe(10);
+    expect(startWindClickBoost("drizzle", now)).toBeNull();
+    expect(
+      weatherAmbientFromBoosts({ clickMultiplier: 10, epsMultiplier: 10 }),
+    ).toBe("bluster");
   });
 
   it("rain click multiplier is instant full strength during hold", () => {

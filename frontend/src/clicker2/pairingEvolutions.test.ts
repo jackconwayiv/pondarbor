@@ -5,6 +5,9 @@ import { SPECIALTY_PRICE_BY_ID } from "./evolutionPrices.generated";
 import {
   generatePairingSpecialtyDefs,
   pairingEvolutionName,
+  formatPairingUnlockSummary,
+  pairingUnlockFormulaDescription,
+  pairingUnlockRequirements,
   pairingSourcePerStep,
   pairingSpecialtyCount,
   proposedPairingPrice,
@@ -84,11 +87,57 @@ describe("generatePairingSpecialtyDefs", () => {
 describe("pairing unlock and simulation", () => {
   const nutrientFloor = SPECIALTIES.find((s) => s.name === "Nutrient Floor")!;
 
-  it("requires 1 sediment and 15 fungi, not the reverse", () => {
-    const ok = { sediment: 1, fungi: 15, ripples: 1 };
-    const bad = { sediment: 15, fungi: 1, ripples: 1 };
+  it("formats catalog unlock summary without prior pairing", () => {
+    const nutrientFloor = SPECIALTIES.find((s) => s.name === "Nutrient Floor")!;
+    expect(formatPairingUnlockSummary(nutrientFloor)).toBe(
+      "1 Sediment · 17 Fungi",
+    );
+    expect(pairingUnlockFormulaDescription("great_mammals", "humans")).toBe(
+      "15 + 2×15 + 1×0 = 45 Humans",
+    );
+  });
+
+  it("scales H owned by L tier (+2) and H slot within L (+1)", () => {
+    expect(pairingUnlockRequirements("ripples", "sediment")).toEqual({
+      ripples: 1,
+      sediment: 15,
+    });
+    expect(pairingUnlockRequirements("ripples", "fungi")).toEqual({
+      ripples: 1,
+      fungi: 16,
+    });
+    expect(pairingUnlockRequirements("sediment", "fungi")).toEqual({
+      sediment: 1,
+      fungi: 17,
+    });
+    expect(pairingUnlockRequirements("sediment", "microbes")).toEqual({
+      sediment: 1,
+      microbes: 18,
+    });
+    expect(pairingUnlockRequirements("fungi", "microbes")).toEqual({
+      fungi: 1,
+      microbes: 19,
+    });
+    expect(pairingUnlockRequirements("great_mammals", "humans")).toEqual({
+      great_mammals: 1,
+      humans: 45,
+    });
+  });
+
+  it("requires 1 sediment and tier-scaled H owned, not the reverse", () => {
+    const ok = { sediment: 1, fungi: 17, ripples: 1 };
+    const bad = { sediment: 17, fungi: 1, ripples: 1 };
     expect(isSpecialtyUnlocked(nutrientFloor, ok, 0)).toBe(true);
     expect(isSpecialtyUnlocked(nutrientFloor, bad, 0)).toBe(false);
+  });
+
+  it("does not require prior pairings in the same L row", () => {
+    const primeval = SPECIALTIES.find((s) => s.name === "Primeval Layer")!;
+    const okDenizens = { sediment: 1, microbes: 18, fungi: 17, ripples: 1 };
+    expect(isSpecialtyUnlocked(primeval, okDenizens, 0, 0, 0, {})).toBe(true);
+    expect(isSpecialtyUnlocked(nutrientFloor, okDenizens, 0, 0, 0, {})).toBe(
+      true,
+    );
   });
 
   it("doubles sediment and scales fungi from sediment count", () => {

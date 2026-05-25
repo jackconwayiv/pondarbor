@@ -6,7 +6,9 @@ import {
   collectMutagen,
   ensureMutagenPipelineStarted,
   getMutationLevel,
+  hasSpentAnyMutagen,
   isDenizenMutable,
+  shouldShowDenizenMutationLevel,
   isMutagenCollectible,
   isMutagenSystemUnlocked,
   MUTAGEN_FORMATION_MS,
@@ -14,6 +16,8 @@ import {
   MUTAGEN_UNLOCK_ALL_TIME_ENERGY,
   mutagenCostForNextLevel,
   msUntilMutagenCollectible,
+  msUntilNextMutagenFormingUiTick,
+  mutagenFormingStatusMessage,
   totalMutagensSpentForLevel,
 } from "./mutagens";
 import { createDefaultClicker2State } from "./api";
@@ -69,10 +73,22 @@ describe("mutagens", () => {
     expect(mutagenCostForNextLevel(MUTAGEN_MAX_LEVEL)).toBe(0);
   });
 
-  it("mutates fungi+ owned denizens only", () => {
+  it("mutates catalog denizens including ripples and sediment", () => {
     expect(isDenizenMutable("algae")).toBe(false);
+    expect(isDenizenMutable("ripples")).toBe(true);
+    expect(isDenizenMutable("sediment")).toBe(true);
     expect(isDenizenMutable("fungi")).toBe(true);
     expect(isDenizenMutable("microbes")).toBe(true);
+
+    const ripplesResult = applyMutation(
+      { mutagens_bank: 10, denizen_mutation_levels: {} },
+      "ripples",
+      1,
+    );
+    expect(ripplesResult).not.toBeNull();
+    expect(getMutationLevel(ripplesResult!.denizen_mutation_levels, "ripples")).toBe(
+      1,
+    );
 
     const result = applyMutation(
       { mutagens_bank: 10, denizen_mutation_levels: {} },
@@ -90,6 +106,63 @@ describe("mutagens", () => {
         5,
       ),
     ).toBeNull();
+  });
+
+  it("uses phase flavor text instead of a countdown", () => {
+    const hour = 60 * 60 * 1000;
+    expect(mutagenFormingStatusMessage(20 * hour)).toBe(
+      "A new mutation is beginning to take shape.",
+    );
+    expect(mutagenFormingStatusMessage(15 * hour + 1)).toBe(
+      "A new mutation is beginning to take shape.",
+    );
+    expect(mutagenFormingStatusMessage(15 * hour)).toBe(
+      "A new mutation is taking shape.",
+    );
+    expect(mutagenFormingStatusMessage(10 * hour + 1)).toBe(
+      "A new mutation is taking shape.",
+    );
+    expect(mutagenFormingStatusMessage(10 * hour)).toBe(
+      "A new mutation is nearly here.",
+    );
+    expect(mutagenFormingStatusMessage(5 * hour + 1)).toBe(
+      "A new mutation is nearly here.",
+    );
+    expect(mutagenFormingStatusMessage(5 * hour)).toBe(
+      "A new mutation is imminent.",
+    );
+    expect(mutagenFormingStatusMessage(0)).toBe(
+      "A new mutation is imminent.",
+    );
+    expect(msUntilNextMutagenFormingUiTick(20 * hour)).toBe(5 * hour);
+    expect(msUntilNextMutagenFormingUiTick(3 * hour)).toBe(3 * hour);
+  });
+
+  it("detects when any mutagen has been spent", () => {
+    expect(hasSpentAnyMutagen({})).toBe(false);
+    expect(hasSpentAnyMutagen({ fungi: 1 })).toBe(true);
+  });
+
+  it("shows mutation level on mutable owned denizens after first spend", () => {
+    const levels = { fungi: 1 };
+    expect(
+      shouldShowDenizenMutationLevel("ripples", 1, levels, true),
+    ).toBe(true);
+    expect(
+      shouldShowDenizenMutationLevel("fungi", 2, levels, true),
+    ).toBe(true);
+    expect(
+      shouldShowDenizenMutationLevel("microbes", 3, levels, true),
+    ).toBe(true);
+    expect(
+      shouldShowDenizenMutationLevel("microbes", 3, {}, true),
+    ).toBe(false);
+    expect(
+      shouldShowDenizenMutationLevel("fungi", 0, levels, true),
+    ).toBe(false);
+    expect(shouldShowDenizenMutationLevel("fungi", 2, levels, false)).toBe(
+      false,
+    );
   });
 
   it("bootstrap starts formation on load when already unlocked", () => {

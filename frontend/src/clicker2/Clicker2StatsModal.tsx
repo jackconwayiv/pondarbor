@@ -66,6 +66,7 @@ export type Clicker2StatsSnapshot = {
   evolutionsOwned: number;
   ownedEvolutionDefs: readonly SpecialtyDef[];
   milestonesReached: number;
+  blossoms: number;
   milestoneStatuses: Array<{
     id: string;
     title: string;
@@ -215,6 +216,10 @@ function MilestonesStatusPanel({
   );
 }
 
+function statsCatalogTabLabel(base: string, count: number): string {
+  return `${base} (${count.toLocaleString()})`;
+}
+
 function StatsCatalogTabs({
   evolutionsOwned,
   milestonesReached,
@@ -231,6 +236,15 @@ function StatsCatalogTabs({
   const [tab, setTab] = useState("evolutions");
 
   if (!showEvolutions && !showMilestones) return null;
+
+  const evolutionsTabLabel = statsCatalogTabLabel(
+    `${EVOLUTIONS_LABEL} acquired`,
+    evolutionsOwned,
+  );
+  const milestonesTabLabel = statsCatalogTabLabel(
+    `${MILESTONES_LABEL} reached`,
+    milestonesReached,
+  );
 
   const activeTab =
     showEvolutions && showMilestones
@@ -263,10 +277,10 @@ function StatsCatalogTabs({
         >
           <Tabs.List {...APP_SHELL_TAB_LIST_NESTED_PROPS}>
             <Tabs.Trigger value="evolutions" {...APP_SHELL_TAB_TRIGGER_PROPS} fontSize="xs">
-              {EVOLUTIONS_LABEL} owned
+              {evolutionsTabLabel}
             </Tabs.Trigger>
             <Tabs.Trigger value="milestones" {...APP_SHELL_TAB_TRIGGER_PROPS} fontSize="xs">
-              {MILESTONES_LABEL} reached
+              {milestonesTabLabel}
             </Tabs.Trigger>
           </Tabs.List>
           <Tabs.Content value={activeTab} pt="2">
@@ -276,9 +290,7 @@ function StatsCatalogTabs({
       ) : (
         <Stack gap="2">
           <Text fontSize="xs" fontWeight="semibold" color="gray.600">
-            {activeTab === "evolutions"
-              ? `${EVOLUTIONS_LABEL} owned`
-              : `${MILESTONES_LABEL} reached`}
+            {activeTab === "evolutions" ? evolutionsTabLabel : milestonesTabLabel}
           </Text>
           {panel}
         </Stack>
@@ -329,12 +341,12 @@ export default function Clicker2StatsModal({
           value={formatPondAgeAgo(snapshot.pondStartedAtMs, snapshot.capturedAtWallMs)}
         />
         <StatsRow
-          label="Denizens owned"
+          label="Denizens welcomed"
           value={snapshot.denizensOwned.toLocaleString()}
         />
         {snapshot.evolutionsOwned > 0 ? (
           <StatsRow
-            label={`${EVOLUTIONS_LABEL} owned`}
+            label={`${EVOLUTIONS_LABEL} acquired`}
             value={snapshot.evolutionsOwned.toLocaleString()}
           />
         ) : null}
@@ -342,6 +354,12 @@ export default function Clicker2StatsModal({
           <StatsRow
             label={`${MILESTONES_LABEL} reached`}
             value={snapshot.milestonesReached.toLocaleString()}
+          />
+        ) : null}
+        {snapshot.blossoms > 0 ? (
+          <StatsRow
+            label="Blossoms grown"
+            value={snapshot.blossoms.toLocaleString()}
           />
         ) : null}
         <StatsRow
@@ -363,7 +381,7 @@ export default function Clicker2StatsModal({
         />
         {snapshot.weatherEventsClicked > 0 ? (
           <StatsRow
-            label="Weather events clicked"
+            label="Weather witnessed"
             value={snapshot.weatherEventsClicked.toLocaleString()}
           />
         ) : null}

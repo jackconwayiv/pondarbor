@@ -108,6 +108,17 @@ export const EVOLUTION_COUNT_TITLES: Readonly<
   ...evo("transcendence", { title: "Awakening Ripple" }, "Boundary-Less Basin", "Consciousness Current", "Zenith of Unity"),
 };
 
+/** Pollinator evolution-count titles keyed by `pollinator_${threshold}` (includes 20). */
+export const POLLINATOR_EVOLUTION_COUNT_TITLES: Readonly<
+  Record<string, MilestoneTitleEntry>
+> = {
+  pollinator_1: { id: "abuzz", title: "Abuzz" },
+  pollinator_5: { id: "pollinator_milestone_5", title: "Pollinator" },
+  pollinator_10: { id: "allergy_season", title: "Allergy Season" },
+  pollinator_15: { id: "fruitful_pond", title: "Fruitful Pond" },
+  pollinator_20: { id: "fertile_fen", title: "Fertile Fen" },
+};
+
 function count(
   denizenId: string,
   t50: string,
@@ -384,14 +395,14 @@ export const ENERGY_PER_CLICK_TITLES: Readonly<
   Record<number, MilestoneTitleEntry>
 > = {
   5: { id: "ripplefinger", title: "Ripplefinger" },
-  10: { id: "wavetouch", title: "Wavetouch" },
-  25: { id: "crestmember", title: "Crestmember" },
-  50: { id: "springdigit", title: "Springdigit" },
-  75: { id: "stirring_palm", title: "Stirring Palm" },
-  100: { id: "billowbrush", title: "Billowbrush" },
-  250: { id: "undulating_hand", title: "Undulating Hand" },
-  500: { id: "slapknuckle", title: "Slapknuckle" },
-  1_000: { id: "spilling_graze", title: "Spilling Graze" },
+  50: { id: "wavetouch", title: "Wavetouch" },
+  100: { id: "crestmember", title: "Crestmember" },
+  250: { id: "springdigit", title: "Springdigit" },
+  500: { id: "stirring_palm", title: "Stirring Palm" },
+  750: { id: "billowbrush", title: "Billowbrush" },
+  1_000: { id: "undulating_hand", title: "Undulating Hand" },
+  2_500: { id: "slapknuckle", title: "Slapknuckle" },
+  5_000: { id: "spilling_graze", title: "Spilling Graze" },
   10_000: { id: "gnarhand", title: "Gnarhand" },
   100_000: { id: "roiling_grip", title: "Roiling Grip" },
   1_000_000: { id: "capsizing_caress", title: "Capsizing Caress" },

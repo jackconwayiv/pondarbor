@@ -16,6 +16,7 @@ import {
   ENERGY_PER_CLICK_TITLES,
   EPS_TITLES,
   EVOLUTION_COUNT_TITLES,
+  POLLINATOR_EVOLUTION_COUNT_TITLES,
   MUTATION_TITLES,
   WEATHER_CLICK_THRESHOLDS,
   WEATHER_RAIN_TITLES,
@@ -26,10 +27,13 @@ import {
   type WeatherClickThreshold,
 } from "./milestoneTitles";
 import { POND_PRODUCTION_EMOJI } from "./clicker2OwnedEvolutions";
+import { POLLINATOR_SPECIALTY_DENIZEN_ID } from "./pollinatorEvolutions";
 import {
   POND_SPECIALTY_DENIZEN_ID,
   specialtiesForDenizen,
 } from "./specialties";
+
+const POLLINATOR_CHAIN_MILESTONE_EMOJI = "🐝";
 
 export const MILESTONE_MILLION = 1_000_000;
 export const MILESTONE_OCTILLION = 1e27;
@@ -318,7 +322,7 @@ export const ENERGY_PER_SECOND_MILESTONES: readonly MilestoneDef[] =
   );
 
 export const ENERGY_PER_CLICK_MILESTONE_THRESHOLDS: readonly number[] = [
-  5, 10, 25, 50, 75, 100, 250, 500, 1_000, 10_000, 100_000, 1_000_000,
+  5, 50, 100, 250, 500, 750, 1_000, 2_500, 5_000, 10_000, 100_000, 1_000_000,
 ] as const;
 
 function energyPerClickAmountPhrase(threshold: number): string {
@@ -464,6 +468,9 @@ function evolutionChainNames(denizenId: string): {
   if (denizenId === POND_SPECIALTY_DENIZEN_ID) {
     return { prose: "pond production", criteria: "Pond production" };
   }
+  if (denizenId === POLLINATOR_SPECIALTY_DENIZEN_ID) {
+    return { prose: "pollinators", criteria: "Pollinator" };
+  }
   const def = getDenizenDef(denizenId);
   if (!def) return { prose: denizenId, criteria: denizenId };
   return { prose: def.namePlural.toLowerCase(), criteria: def.name };
@@ -524,6 +531,26 @@ export function buildEvolutionCountMilestones(): MilestoneDef[] {
     EVOLUTION_COUNT_THRESHOLDS.map((threshold) =>
       evolutionCountMilestone(denizenId, threshold),
     ),
+  );
+}
+
+const POLLINATOR_EVOLUTION_COUNT_THRESHOLDS = [1, 5, 10, 15, 20] as const;
+
+function pollinatorEvolutionCountMilestone(threshold: number): MilestoneDef {
+  const denizenId = POLLINATOR_SPECIALTY_DENIZEN_ID;
+  const key = `${denizenId}_${threshold}`;
+  const titleEntry = POLLINATOR_EVOLUTION_COUNT_TITLES[key];
+  const base = evolutionCountMilestone(denizenId, threshold);
+  return {
+    ...base,
+    id: titleEntry?.id ?? base.id,
+    title: titleEntry?.title ?? base.title,
+  };
+}
+
+export function buildPollinatorEvolutionCountMilestones(): MilestoneDef[] {
+  return POLLINATOR_EVOLUTION_COUNT_THRESHOLDS.map((threshold) =>
+    pollinatorEvolutionCountMilestone(threshold),
   );
 }
 
@@ -711,6 +738,7 @@ export const MILESTONES: readonly MilestoneDef[] = [
   ...GLOBAL_MILESTONES,
   ...WEATHER_CLICK_MILESTONES,
   ...buildEvolutionCountMilestones(),
+  ...buildPollinatorEvolutionCountMilestones(),
   ...buildDenizenCountMilestones(),
   ...buildDenizenMutationMilestones(),
   ...buildDenizenFirstMilestones(),
@@ -901,6 +929,9 @@ export function milestoneDisplayEmoji(def: MilestoneDef): string | undefined {
   if (def.kind === "weather_wind_clicked") return WEATHER_WIND_MILESTONE_EMOJI;
   if (def.kind === "weather_rain_clicked") return WEATHER_RAIN_MILESTONE_EMOJI;
   if (def.denizenId === POND_SPECIALTY_DENIZEN_ID) return POND_PRODUCTION_EMOJI;
+  if (def.denizenId === POLLINATOR_SPECIALTY_DENIZEN_ID) {
+    return POLLINATOR_CHAIN_MILESTONE_EMOJI;
+  }
   if (def.denizenId) return getDenizenDef(def.denizenId)?.emoji;
   return undefined;
 }

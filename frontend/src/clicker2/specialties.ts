@@ -1,6 +1,7 @@
 import { denizenDoubleEfficiencyEffectText, getDenizenDef } from "./denizens";
 import { DENIZEN_EVOLUTION_TIER_MULT } from "./evolutionTierMults";
 import { specialtyCatalogPrice } from "./evolutionPrices.generated";
+import { buildPollinatorChain } from "./pollinatorEvolutions";
 import { PAIRING_SPECIALTIES } from "./pairingSpecialties.generated";
 
 export type SpecialtyEffect =
@@ -16,7 +17,8 @@ export type SpecialtyEffect =
   | { type: "concentric_rings" }
   | { type: "concentric_rings_mult"; factor: number }
   | { type: "production_percent"; percent: number }
-  | { type: "click_eps_percent"; percent: number };
+  | { type: "click_eps_percent"; percent: number }
+  | { type: "eps_percent_per_blossom"; percentPerBlossom: number };
 
 export type PairingUnlockRequirements = Readonly<Record<string, number>>;
 
@@ -30,6 +32,10 @@ export type SpecialtyDef = {
   unlockAllTimeEnergy?: number;
   /** Click reflection chain: unlock when lifetime energy from clicking reaches this value. */
   unlockClickEnergy?: number;
+  /** Pollinator chain: unlock when milestone-derived blossom count reaches this value. */
+  unlockBlossoms?: number;
+  /** Pollinator shop/catalog emoji (not a denizen id). */
+  pollinatorEmoji?: string;
   /** Cross-denizen pairing: all listed owned counts must be met. */
   pairingUnlock?: PairingUnlockRequirements;
   pairingLowerDenizenId?: string;
@@ -872,6 +878,8 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
       "Lotus light gathers on pads and open water—the pond shining back at the sky.",
     ],
   ),
+
+  ...buildPollinatorChain(),
 
   ...PAIRING_SPECIALTIES,
 ];

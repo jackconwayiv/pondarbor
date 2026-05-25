@@ -27,13 +27,15 @@ describe("formatEnergyAmountHud", () => {
 });
 
 describe("formatEnergyAmountCompact", () => {
-  it("formats millions and billions with short words", () => {
-    expect(formatEnergyAmountCompact(12_000_000)).toBe("12 mil");
-    expect(formatEnergyAmountCompact(4_500_000_000)).toBe("4.5 bil");
+  it("formats millions, billions, and trillions with letter suffixes", () => {
+    expect(formatEnergyAmountCompact(12_000_000)).toBe("12M");
+    expect(formatEnergyAmountCompact(4_500_000_000)).toBe("4.5B");
+    expect(formatEnergyAmountCompact(2_300_000_000_000)).toBe("2.3T");
   });
 
   it("uses K for thousands below a million", () => {
     expect(formatEnergyAmountCompact(50_000)).toBe("50K");
+    expect(formatEnergyAmountCompact(999_999)).toBe("1000K");
   });
 
   it("keeps small values as plain integers", () => {

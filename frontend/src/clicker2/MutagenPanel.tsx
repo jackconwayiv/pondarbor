@@ -22,10 +22,10 @@ import {
   MUTAGEN_WARM_GRADIENT,
 } from "./clicker2ShopUi";
 import {
-  formatMutagenCountdown,
   isMutagenCollectible,
   isMutagenSystemUnlocked,
   msUntilMutagenCollectible,
+  mutagenFormingStatusMessage,
   MUTAGEN_EMOJI,
 } from "./mutagens";
 
@@ -95,10 +95,7 @@ export default function MutagenPanel({
           </Flex>
         ) : mutagenFormingStartedAtMs > 0 ? (
           <Text fontSize="sm" lineHeight="1.4" color={DESIGN.textPrimary}>
-            {MUTAGEN_EMOJI} Next {MUTAGEN_LABEL.toLowerCase()} in{" "}
-            <Text as="span" fontVariantNumeric="tabular-nums" fontWeight="medium">
-              {formatMutagenCountdown(msLeft)}
-            </Text>
+            {MUTAGEN_EMOJI} {mutagenFormingStatusMessage(msLeft)}
           </Text>
         ) : (
           <Text fontSize="sm" lineHeight="1.4" color={DESIGN.textPrimary}>

@@ -33,12 +33,69 @@ const BLOSSOM_RING_OUTER_RADIUS_X_PCT = 52;
 const BLOSSOM_RING_INNER_RADIUS_Y_PCT = 48;
 const BLOSSOM_RING_OUTER_RADIUS_Y_PCT = 64;
 
+export type BlossomSlotCoord = {
+  left: number;
+  top: number;
+  ringIndex: number;
+};
+
 export type BlossomRingPlacement = {
   emoji: string;
   left: number;
   top: number;
   ringIndex: number;
 };
+
+/**
+ * Earn order → slot index (0–99); fixed permutation (seed 0x50e4d Fisher–Yates).
+ * Do not change without visual intent.
+ */
+export const BLOSSOM_SLOT_FILL_ORDER: readonly number[] = [
+  12, 62, 81, 42, 21, 34, 97, 35, 25, 19, 89, 80, 98, 30, 41, 90, 31, 45, 20,
+  86, 61, 1, 17, 11, 48, 23, 28, 22, 10, 0, 4, 33, 55, 26, 32, 65, 13, 38, 2,
+  6, 16, 40, 9, 50, 77, 83, 73, 96, 70, 57, 8, 36, 93, 51, 60, 74, 49, 53, 24,
+  58, 46, 79, 59, 44, 14, 67, 3, 18, 27, 76, 71, 87, 5, 43, 29, 52, 39, 75,
+  99, 78, 37, 47, 66, 95, 82, 85, 88, 69, 7, 91, 56, 92, 63, 54, 84, 94, 68,
+  72, 15, 64,
+];
+
+/** Canonical halo anchors in legacy inner→outer ring order (slot index 0–99). */
+export function buildBlossomSlotCoordinates(): readonly BlossomSlotCoord[] {
+  const ringCount = BLOSSOM_RING_CAPACITIES.length;
+  const out: BlossomSlotCoord[] = [];
+
+  for (let r = 0; r < ringCount; r++) {
+    const cap = BLOSSOM_RING_CAPACITIES[r] ?? 0;
+    if (cap <= 0) continue;
+
+    const t = ringCount <= 1 ? 0 : r / (ringCount - 1);
+    const radiusX =
+      ringCount <= 1
+        ? BLOSSOM_RING_INNER_RADIUS_X_PCT
+        : BLOSSOM_RING_INNER_RADIUS_X_PCT +
+          t * (BLOSSOM_RING_OUTER_RADIUS_X_PCT - BLOSSOM_RING_INNER_RADIUS_X_PCT);
+    const radiusY =
+      ringCount <= 1
+        ? BLOSSOM_RING_INNER_RADIUS_Y_PCT
+        : BLOSSOM_RING_INNER_RADIUS_Y_PCT +
+          t * (BLOSSOM_RING_OUTER_RADIUS_Y_PCT - BLOSSOM_RING_INNER_RADIUS_Y_PCT);
+    const angleOffset = (r % 2 === 1 ? Math.PI / cap : 0) - Math.PI / 2;
+
+    for (let s = 0; s < cap; s++) {
+      const angle = angleOffset + (2 * Math.PI * s) / cap;
+      out.push({
+        left: 50 + radiusX * Math.cos(angle),
+        top: 50 + radiusY * Math.sin(angle),
+        ringIndex: r,
+      });
+    }
+  }
+
+  return out;
+}
+
+export const BLOSSOM_SLOT_COORDS: readonly BlossomSlotCoord[] =
+  buildBlossomSlotCoordinates();
 
 export function blossomCountFromMilestoneTotal(milestoneCount: number): number {
   return Math.floor(Math.max(0, milestoneCount) / BLOSSOMS_PER_MILESTONE);
@@ -57,46 +114,22 @@ export function blossomEmojiAt(index: number): string {
 }
 
 /**
- * Place earned blossoms on concentric rings (inner first, then outward). Full
- * rings use every slot; the active partial ring spaces only its earned count.
- * Odd rings are half-step staggered to nest between neighbors.
+ * Place earned blossoms on fixed halo slots via {@link BLOSSOM_SLOT_FILL_ORDER}
+ * (pseudo-random scatter, deterministic for all players).
  */
 export function blossomRingPlacements(earnedCount: number): BlossomRingPlacement[] {
   const count = Math.min(Math.max(0, Math.floor(earnedCount)), BLOSSOM_RING_MAX);
   const out: BlossomRingPlacement[] = [];
-  const ringCount = BLOSSOM_RING_CAPACITIES.length;
-  let assigned = 0;
 
-  for (let r = 0; r < ringCount && assigned < count; r++) {
-    const cap = BLOSSOM_RING_CAPACITIES[r] ?? 0;
-    if (cap <= 0) continue;
-
-    const onRing = Math.min(cap, count - assigned);
-    const isPartial = onRing < cap;
-    const slotsForAngles = isPartial ? onRing : cap;
-    const t = ringCount <= 1 ? 0 : r / (ringCount - 1);
-    const radiusX =
-      ringCount <= 1
-        ? BLOSSOM_RING_INNER_RADIUS_X_PCT
-        : BLOSSOM_RING_INNER_RADIUS_X_PCT +
-          t * (BLOSSOM_RING_OUTER_RADIUS_X_PCT - BLOSSOM_RING_INNER_RADIUS_X_PCT);
-    const radiusY =
-      ringCount <= 1
-        ? BLOSSOM_RING_INNER_RADIUS_Y_PCT
-        : BLOSSOM_RING_INNER_RADIUS_Y_PCT +
-          t * (BLOSSOM_RING_OUTER_RADIUS_Y_PCT - BLOSSOM_RING_INNER_RADIUS_Y_PCT);
-    const angleOffset = (r % 2 === 1 ? Math.PI / cap : 0) - Math.PI / 2;
-
-    for (let s = 0; s < onRing; s++) {
-      const angle = angleOffset + (2 * Math.PI * s) / slotsForAngles;
-      out.push({
-        emoji: blossomEmojiAt(assigned),
-        left: 50 + radiusX * Math.cos(angle),
-        top: 50 + radiusY * Math.sin(angle),
-        ringIndex: r,
-      });
-      assigned++;
-    }
+  for (let i = 0; i < count; i++) {
+    const slot = BLOSSOM_SLOT_FILL_ORDER[i]!;
+    const coord = BLOSSOM_SLOT_COORDS[slot]!;
+    out.push({
+      emoji: blossomEmojiAt(i),
+      left: coord.left,
+      top: coord.top,
+      ringIndex: coord.ringIndex,
+    });
   }
 
   return out;

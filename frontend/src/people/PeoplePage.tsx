@@ -1,8 +1,9 @@
 import { Box, Heading, HStack, Stack, Tabs, Text } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Navigate } from "react-router";
+import { Navigate, useSearchParams } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
+import FriendProfileLink from "../friend/FriendProfileLink";
 import { AppModal } from "../components/AppModal";
 import PondButton from "../PondButton";
 import {
@@ -39,10 +40,12 @@ import {
   deletePerson,
   fetchPeopleGraph,
   fetchPeopleGraphForUser,
+  fetchFriendsWithFamilyTrees,
   patchPartnership,
   patchPeopleTreeLayout,
   patchPerson,
 } from "./api";
+import type { FriendWithFamilyTree } from "./api";
 import { resolveDisplayLayout, seedLayoutFromPeople } from "./treeLayout";
 import { FamilyTreeSetupWizard } from "./wizard/FamilyTreeSetupWizard";
 import { isWizardAutoOpenDisabled } from "./wizard/wizardStorage";
@@ -54,16 +57,27 @@ import {
 } from "./personFormState";
 import { personPayloadFromForm } from "./personPayload";
 import type { PeopleGraphBundle, PeoplePerson, PeopleTreeLayout } from "./types";
+import FamilyTreeFriendsTabView from "./FamilyTreeFriendsTabView";
 
-export type TreeInteractionMode = "view" | "rearrange" | "edit";
+export type TreeInteractionMode = "view" | "rearrange" | "edit" | "friends";
 
-const TREE_MODE_TABS: { id: TreeInteractionMode; label: string }[] = [
+const OWN_TREE_MODE_TABS: { id: Exclude<TreeInteractionMode, "friends">; label: string }[] = [
   { id: "view", label: "View" },
   { id: "rearrange", label: "Rearrange" },
   { id: "edit", label: "People" },
 ];
 
-function parseTreeMode(value: string | null | undefined): TreeInteractionMode {
+function parseHubTreeMode(
+  value: string | null | undefined,
+  hasFriendsTab: boolean,
+): TreeInteractionMode {
+  if (value === "friends" && hasFriendsTab) return "friends";
+  if (value === "rearrange") return "rearrange";
+  if (value === "edit") return "edit";
+  return "view";
+}
+
+function parseEmbedTreeMode(value: string | null | undefined): Exclude<TreeInteractionMode, "friends"> {
   if (value === "rearrange" || value === "edit") return value;
   return "view";
 }
@@ -81,18 +95,62 @@ export default function PeoplePage({
   /** Friend profile embed: heading uses this name. */
   ownerDisplayName?: string;
 } = {}) {
-  const readOnly = readOnlyProp || ownerUserId != null;
+  const [searchParams, setSearchParams] = useSearchParams();
   const { isAuthenticated, isLoading, getApiAccessToken, sessionUser } = useAppSession();
+
+  const [friendsWithTrees, setFriendsWithTrees] = useState<FriendWithFamilyTree[]>([]);
+  const [friendsLoaded, setFriendsLoaded] = useState(false);
+  const [friendsLoadError, setFriendsLoadError] = useState<string | null>(null);
+  const [friendSelectionError, setFriendSelectionError] = useState<string | null>(null);
+
+  const hubUserParam = searchParams.get("user");
+  const hubRequestedFriendId = useMemo<number | undefined | null>(() => {
+    if (embed) return null;
+    if (hubUserParam == null || hubUserParam.trim() === "" || hubUserParam === "me") return null;
+    const parsed = Number.parseInt(hubUserParam, 10);
+    return Number.isNaN(parsed) ? undefined : parsed;
+  }, [embed, hubUserParam]);
+
+  const isHubShell = !embed && ownerUserId == null;
+  const viewerUserId = sessionUser?.user.id;
+
+  const visibleFriends = useMemo(
+    () =>
+      viewerUserId != null
+        ? friendsWithTrees.filter((f) => f.id !== viewerUserId)
+        : friendsWithTrees,
+    [friendsWithTrees, viewerUserId],
+  );
+  const showFriendsTab = isHubShell && friendsLoaded && visibleFriends.length > 0;
+
+  const hubSelectedFriend =
+    hubRequestedFriendId != null && hubRequestedFriendId !== undefined
+      ? visibleFriends.find((f) => f.id === hubRequestedFriendId) ?? null
+      : null;
+
+  const embedOwnerUserId = ownerUserId;
+  const embedOwnerDisplayName = ownerDisplayName;
+  const ownTreeOwnerUserId = viewerUserId;
+
+  const hubTabParam = searchParams.get("tab");
+  const hubTreeMode = parseHubTreeMode(hubTabParam, showFriendsTab);
+
+  const readOnly = readOnlyProp || embedOwnerUserId != null;
   const [bundle, setBundle] = useState<PeopleGraphBundle | null>(null);
+  const [friendBundle, setFriendBundle] = useState<PeopleGraphBundle | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [friendError, setFriendError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [treeMode, setTreeMode] = useState<TreeInteractionMode>("view");
+  const [embedTreeMode, setEmbedTreeMode] = useState<Exclude<TreeInteractionMode, "friends">>("view");
+  const treeMode = isHubShell ? hubTreeMode : embedTreeMode;
   const [treeLayout, setTreeLayout] = useState<PeopleTreeLayout | null>(null);
+  const [friendTreeLayout, setFriendTreeLayout] = useState<PeopleTreeLayout | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editPerson, setEditPerson] = useState<PeoplePerson | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const fetchGenRef = useRef(0);
+  const friendFetchGenRef = useRef(0);
 
   const [form, setForm] = useState(emptyPersonForm);
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -111,12 +169,12 @@ export default function PeoplePage({
   const refresh = useCallback(async () => {
     setError(null);
     const token = await getApiAccessToken();
-    const data =
-      ownerUserId != null
-        ? await fetchPeopleGraphForUser(token, ownerUserId)
-        : await fetchPeopleGraph(token);
-    setBundle(data);
-  }, [getApiAccessToken, ownerUserId]);
+    if (embedOwnerUserId != null) {
+      setBundle(await fetchPeopleGraphForUser(token, embedOwnerUserId));
+      return;
+    }
+    setBundle(await fetchPeopleGraph(token));
+  }, [getApiAccessToken, embedOwnerUserId]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -135,6 +193,122 @@ export default function PeoplePage({
       cancelled = true;
     };
   }, [isAuthenticated, refresh]);
+
+  useEffect(() => {
+    if (embed) return;
+    if (!isAuthenticated) return;
+    if (!sessionUser?.user?.is_approved) return;
+
+    let cancelled = false;
+    setFriendsLoaded(false);
+    setFriendsLoadError(null);
+    void (async () => {
+      try {
+        const token = await getApiAccessToken();
+        const payload = await fetchFriendsWithFamilyTrees(token);
+        if (cancelled) return;
+        setFriendsWithTrees(payload.friends);
+      } catch (e: unknown) {
+        if (cancelled) return;
+        setFriendsLoadError(e instanceof Error ? e.message : "Failed to load friends.");
+      } finally {
+        if (cancelled) return;
+        setFriendsLoaded(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [embed, isAuthenticated, getApiAccessToken, sessionUser?.user?.is_approved]);
+
+  useEffect(() => {
+    if (!isHubShell) return;
+    if (!friendsLoaded) return;
+    if (hubTabParam === "friends" && !showFriendsTab) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("tab");
+      next.delete("user");
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    if (hubTabParam !== "friends" && hubUserParam) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("user");
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    if (hubTreeMode !== "friends") return;
+    if (hubRequestedFriendId === undefined) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("user");
+      setSearchParams(next, { replace: true });
+      setFriendSelectionError("That friend selection is not available.");
+      return;
+    }
+    if (hubRequestedFriendId != null && hubSelectedFriend == null) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("user");
+      setSearchParams(next, { replace: true });
+      setFriendSelectionError("That friend's family tree isn't available.");
+    }
+  }, [
+    isHubShell,
+    friendsLoaded,
+    showFriendsTab,
+    hubTabParam,
+    hubTreeMode,
+    hubUserParam,
+    hubRequestedFriendId,
+    hubSelectedFriend,
+    searchParams,
+    setSearchParams,
+  ]);
+
+  useEffect(() => {
+    if (!isHubShell || hubTreeMode !== "friends") return;
+    const friendId = hubSelectedFriend?.id;
+    if (friendId == null) {
+      setFriendBundle(null);
+      setFriendTreeLayout(null);
+      setFriendError(null);
+      return;
+    }
+    const gen = ++friendFetchGenRef.current;
+    let cancelled = false;
+    void (async () => {
+      setFriendError(null);
+      try {
+        const token = await getApiAccessToken();
+        const data = await fetchPeopleGraphForUser(token, friendId);
+        if (cancelled || gen !== friendFetchGenRef.current) return;
+        setFriendBundle(data);
+      } catch (e: unknown) {
+        if (cancelled || gen !== friendFetchGenRef.current) return;
+        setFriendError(e instanceof Error ? e.message : "Failed to load friend's tree.");
+        setFriendBundle(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isHubShell, hubTreeMode, hubSelectedFriend?.id, getApiAccessToken]);
+
+  useEffect(() => {
+    if (!friendBundle) {
+      setFriendTreeLayout(null);
+      return;
+    }
+    setFriendTreeLayout(
+      resolveDisplayLayout(friendBundle.layout, friendBundle.people, friendBundle.partnerships),
+    );
+  }, [friendBundle]);
+
+  useEffect(() => {
+    if (!friendSelectionError) return;
+    const timer = window.setTimeout(() => setFriendSelectionError(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [friendSelectionError]);
 
   const nonSelfCount = useMemo(
     () => bundle?.people.filter((p) => !p.is_self).length ?? 0,
@@ -222,15 +396,76 @@ export default function PeoplePage({
     [getApiAccessToken],
   );
 
-  const pageHeading = useMemo(() => {
-    if (ownerUserId != null && ownerDisplayName?.trim()) {
-      return `${ownerDisplayName.trim()}'s Family Tree`;
-    }
-    if (ownerUserId != null) {
-      return "Family Tree";
+  const pageHeadingNode = useMemo(() => {
+    if (isHubShell) return "Family Tree";
+    const displayName = embedOwnerDisplayName?.trim();
+    if (embedOwnerUserId != null && displayName) {
+      const viewingOthersTree =
+        viewerUserId == null || embedOwnerUserId !== viewerUserId;
+      if (viewingOthersTree) {
+        return (
+          <>
+            <FriendProfileLink userId={embedOwnerUserId}>{displayName}</FriendProfileLink>
+            {"'s Family Tree"}
+          </>
+        );
+      }
+      return `${displayName}'s Family Tree`;
     }
     return "Family Tree";
-  }, [ownerUserId, ownerDisplayName]);
+  }, [isHubShell, embedOwnerUserId, embedOwnerDisplayName, viewerUserId]);
+
+  const hubTreeModeTabs = useMemo(() => {
+    const tabs: { id: TreeInteractionMode; label: string }[] = [...OWN_TREE_MODE_TABS];
+    if (showFriendsTab) {
+      tabs.push({ id: "friends", label: "Friends" });
+    }
+    return tabs;
+  }, [showFriendsTab]);
+
+  const setHubTreeMode = useCallback(
+    (mode: TreeInteractionMode) => {
+      const next = new URLSearchParams(searchParams);
+      if (mode === "view") {
+        next.delete("tab");
+        next.delete("user");
+      } else {
+        next.set("tab", mode);
+        if (mode !== "friends") next.delete("user");
+      }
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  const selectHubFriend = useCallback(
+    (friendId: number) => {
+      const next = new URLSearchParams(searchParams);
+      next.set("tab", "friends");
+      next.set("user", String(friendId));
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  useEffect(() => {
+    if (!isHubShell || hubTreeMode !== "friends") return;
+    if (!friendsLoaded || visibleFriends.length === 0) return;
+    if (hubRequestedFriendId != null) return;
+    selectHubFriend(visibleFriends[0]!.id);
+  }, [
+    isHubShell,
+    hubTreeMode,
+    friendsLoaded,
+    visibleFriends,
+    hubRequestedFriendId,
+    selectHubFriend,
+  ]);
+
+  const friendNonSelfCount = useMemo(
+    () => friendBundle?.people.filter((p) => !p.is_self).length ?? 0,
+    [friendBundle],
+  );
 
   const loadFormFromPerson = (p: PeoplePerson) => {
     setForm(personToFormState(p));
@@ -386,7 +621,11 @@ export default function PeoplePage({
 
   const ownerUserIdForWizard = sessionUser?.user.id;
 
-  const showTreeToolbar = !readOnly && Boolean(bundle) && nonSelfCount > 0;
+  const showTreeToolbar =
+    !readOnly &&
+    Boolean(bundle) &&
+    nonSelfCount > 0 &&
+    !(isHubShell && treeMode === "friends");
 
   const headerToolbarButton = showTreeToolbar ? (
     showSetupTreeButton ? (
@@ -421,23 +660,90 @@ export default function PeoplePage({
     </Box>
   );
 
+  const embedTreeOwnerUserId = embedOwnerUserId ?? ownTreeOwnerUserId;
+
   const readOnlyTreeBody =
     bundle && nonSelfCount > 0 ? (
       treeLayout ? (
-        <FamilyTreeDisplayView bundle={{ ...bundle, layout: treeLayout }} />
+        <FamilyTreeDisplayView
+          bundle={{ ...bundle, layout: treeLayout }}
+          treeOwnerUserId={embedTreeOwnerUserId}
+        />
       ) : (
         layoutLoadingHint
       )
     ) : null;
 
-  const editableTreeTabs =
-    bundle && nonSelfCount > 0 ? (
+  const ownTreeViewContent =
+    nonSelfCount > 0 ? (
+      treeLayout ? (
+        <FamilyTreeDisplayView
+          bundle={{ ...bundle!, layout: treeLayout }}
+          treeOwnerUserId={ownTreeOwnerUserId}
+        />
+      ) : (
+        layoutLoadingHint
+      )
+    ) : (
+      <PanelEmptyState
+        title="Your family tree is ready to grow."
+        description="Walk through a quick setup for parents, siblings, and more."
+        actionLabel="Set up tree"
+        onAction={() => openWizard(false)}
+        actionColorPalette="lilypad"
+      />
+    );
+
+  const renderFriendTreePanel = (friend: FriendWithFamilyTree) => {
+    if (hubSelectedFriend?.id !== friend.id) {
+      return (
+        <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+          Loading tree…
+        </Text>
+      );
+    }
+    return (
+      <>
+        {friendError ? <PanelMessageSlot error={friendError} /> : null}
+        {!friendBundle ? (
+          <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+            Loading tree…
+          </Text>
+        ) : friendNonSelfCount === 0 ? (
+          <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+            This friend&apos;s tree has no relatives to display yet.
+          </Text>
+        ) : friendTreeLayout ? (
+          <FamilyTreeDisplayView
+            bundle={{ ...friendBundle, layout: friendTreeLayout }}
+            treeOwnerUserId={friend.id}
+          />
+        ) : (
+          layoutLoadingHint
+        )}
+      </>
+    );
+  };
+
+  const friendsTabContent = (
+    <FamilyTreeFriendsTabView
+      friends={visibleFriends}
+      selectedFriendId={hubSelectedFriend?.id ?? null}
+      onSelectFriendId={selectHubFriend}
+      friendsLoadError={friendsLoadError}
+      friendSelectionError={friendSelectionError}
+      renderTreePanel={renderFriendTreePanel}
+    />
+  );
+
+  const hubTreeTabs =
+    bundle && (nonSelfCount > 0 || showFriendsTab) ? (
       <Tabs.Root
         value={treeMode}
         variant="plain"
         lazyMount
         unmountOnExit
-        onValueChange={(details) => setTreeMode(parseTreeMode(details.value))}
+        onValueChange={(details) => setHubTreeMode(parseHubTreeMode(details.value, showFriendsTab))}
       >
         <Tabs.List
           {...APP_SHELL_TAB_LIST_PROPS}
@@ -445,7 +751,71 @@ export default function PeoplePage({
           pt="1"
           pb="2"
         >
-          {TREE_MODE_TABS.map(({ id, label }) => (
+          {hubTreeModeTabs.map(({ id, label }) => (
+            <Tabs.Trigger key={id} value={id} {...APP_SHELL_TAB_TRIGGER_PROPS}>
+              {label}
+            </Tabs.Trigger>
+          ))}
+        </Tabs.List>
+        <Tabs.Content value="view" p={{ base: "2", md: "2" }}>
+          {ownTreeViewContent}
+        </Tabs.Content>
+        <Tabs.Content value="rearrange" p={{ base: "2", md: "2" }}>
+          {nonSelfCount > 0 ? (
+            treeLayout ? (
+              <FamilyTreeRearrangeView
+                bundle={bundle}
+                layout={treeLayout}
+                onLayoutChange={scheduleLayoutPatch}
+                treeOwnerUserId={ownTreeOwnerUserId}
+              />
+            ) : (
+              layoutLoadingHint
+            )
+          ) : (
+            <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+              Add people to your tree before rearranging the layout.
+            </Text>
+          )}
+        </Tabs.Content>
+        <Tabs.Content value="edit" p={{ base: "2", md: "2" }}>
+          {nonSelfCount > 0 ? (
+            <FamilyTreeEditListView
+              bundle={bundle}
+              treeOwnerUserId={ownTreeOwnerUserId}
+              onEditPerson={openEdit}
+              onAddPerson={openAddDialog}
+            />
+          ) : (
+            <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+              Add people to your tree to manage them here.
+            </Text>
+          )}
+        </Tabs.Content>
+        {showFriendsTab ? (
+          <Tabs.Content value="friends" p={{ base: "2", md: "2" }}>
+            {friendsTabContent}
+          </Tabs.Content>
+        ) : null}
+      </Tabs.Root>
+    ) : null;
+
+  const embedEditableTreeTabs =
+    bundle && nonSelfCount > 0 ? (
+      <Tabs.Root
+        value={embedTreeMode}
+        variant="plain"
+        lazyMount
+        unmountOnExit
+        onValueChange={(details) => setEmbedTreeMode(parseEmbedTreeMode(details.value))}
+      >
+        <Tabs.List
+          {...APP_SHELL_TAB_LIST_PROPS}
+          py={undefined}
+          pt="1"
+          pb="2"
+        >
+          {OWN_TREE_MODE_TABS.map(({ id, label }) => (
             <Tabs.Trigger key={id} value={id} {...APP_SHELL_TAB_TRIGGER_PROPS}>
               {label}
             </Tabs.Trigger>
@@ -453,7 +823,10 @@ export default function PeoplePage({
         </Tabs.List>
         <Tabs.Content value="view" p={{ base: "2", md: "2" }}>
           {treeLayout ? (
-            <FamilyTreeDisplayView bundle={{ ...bundle, layout: treeLayout }} />
+            <FamilyTreeDisplayView
+              bundle={{ ...bundle, layout: treeLayout }}
+              treeOwnerUserId={embedTreeOwnerUserId}
+            />
           ) : (
             layoutLoadingHint
           )}
@@ -464,6 +837,7 @@ export default function PeoplePage({
               bundle={bundle}
               layout={treeLayout}
               onLayoutChange={scheduleLayoutPatch}
+              treeOwnerUserId={embedTreeOwnerUserId}
             />
           ) : (
             layoutLoadingHint
@@ -472,6 +846,7 @@ export default function PeoplePage({
         <Tabs.Content value="edit" p={{ base: "2", md: "2" }}>
           <FamilyTreeEditListView
             bundle={bundle}
+            treeOwnerUserId={embedTreeOwnerUserId}
             onEditPerson={openEdit}
             onAddPerson={openAddDialog}
           />
@@ -494,6 +869,17 @@ export default function PeoplePage({
             </Text>
           </Box>
         )
+      ) : isHubShell ? (
+        hubTreeTabs ??
+        (!showFriendsTab ? (
+          <PanelEmptyState
+            title="Your family tree is ready to grow."
+            description="Walk through a quick setup for parents, siblings, and more."
+            actionLabel="Set up tree"
+            onAction={() => openWizard(false)}
+            actionColorPalette="lilypad"
+          />
+        ) : null)
       ) : nonSelfCount === 0 ? (
         <PanelEmptyState
           title="Your family tree is ready to grow."
@@ -505,7 +891,7 @@ export default function PeoplePage({
       ) : readOnly ? (
         readOnlyTreeBody
       ) : (
-        editableTreeTabs
+        embedEditableTreeTabs
       )}
     </>
   );
@@ -524,7 +910,7 @@ export default function PeoplePage({
         >
           {embed ? (
             <Heading as="h2" size="md" color="fg">
-              {pageHeading}
+              {pageHeadingNode}
             </Heading>
           ) : (
             <Box
@@ -548,7 +934,7 @@ export default function PeoplePage({
                     <Text as="span" aria-hidden="true">
                       🌳
                     </Text>
-                    <Text as="span">{pageHeading}</Text>
+                    <Text as="span">{pageHeadingNode}</Text>
                     {!bundle ? (
                       <Text
                         as="span"

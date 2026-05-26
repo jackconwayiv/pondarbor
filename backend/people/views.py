@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from django.db import transaction
+from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -10,6 +11,7 @@ from rest_framework.response import Response
 
 from achievements.services import evaluate_people_achievements_for_user
 from people.layout import remove_person_from_layout, validate_layout_payload
+from people.constants import FAMILY_TREE_TAB_MIN_PEOPLE
 from people.models import FamilyTreeLayout, Person, PersonGuardianLink, PersonPartnership
 from people.serializers import (
     GuardianLinkSerializer,
@@ -20,9 +22,11 @@ from people.serializers import (
     graph_bundle_for_owner,
 )
 from people.services import ensure_self_person
-from users.models import User
+from users.models import Profile, User
 from users.permissions import IsApprovedUser
-from users.social_privacy import can_view_owner_profile
+from users.social_privacy import can_view_owner_profile, owner_publish_visibility, viewer_context
+
+from friends.services import friends_queryset_for_user, order_users_by_recent_activity
 
 
 def _require_approved(request):
@@ -248,3 +252,57 @@ def people_friend_bundle(request, owner_user_id: int):
     if not can_view_owner_profile(viewer=request.user, owner=owner):
         return Response({"detail": "Not allowed."}, status=status.HTTP_403_FORBIDDEN)
     return Response(graph_bundle_for_owner(owner_id=owner.id))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def people_friends_with_family_trees(request):
+    """
+    Friends whose profile would show the Family Tree tab to the viewer.
+
+    A friend is included when:
+    - viewer and friend are approved friends
+    - friend has >= FAMILY_TREE_TAB_MIN_PEOPLE active Person rows
+    - viewer is allowed to view the friend's full profile per social_publish_visibility
+    """
+    err = _require_approved(request)
+    if err:
+        return err
+
+    viewer = request.user
+    ctx = viewer_context(viewer=viewer)
+
+    friends_qs = friends_queryset_for_user(user=viewer).select_related("profile")
+
+    friends_qs = friends_qs.annotate(
+        people_count=Count("people_owned", filter=Q(people_owned__deleted_at__isnull=True))
+    )
+    friends_qs = friends_qs.filter(people_count__gte=FAMILY_TREE_TAB_MIN_PEOPLE)
+    friends_qs = order_users_by_recent_activity(friends_qs)
+
+    out: list[dict[str, object]] = []
+    for friend in friends_qs:
+        allowed = owner_publish_visibility(friend) == Profile.SocialPublishVisibility.ALL_APPROVED or (
+            friend.id in ctx.friend_ids
+        )
+        if not allowed:
+            continue
+
+        profile = getattr(friend, "profile", None)
+        nickname = (
+            (getattr(profile, "display_name", None) or "")
+            .strip()
+            or (friend.email.split("@")[0] if friend.email and "@" in friend.email else friend.email)
+        )
+        avatar_url = (getattr(profile, "avatar_url", None) or "") or ""
+
+        out.append(
+            {
+                "id": friend.id,
+                "nickname": nickname.strip(),
+                "avatar_url": avatar_url,
+                "people_count": int(getattr(friend, "people_count", 0) or 0),
+            }
+        )
+
+    return Response({"friends": out})

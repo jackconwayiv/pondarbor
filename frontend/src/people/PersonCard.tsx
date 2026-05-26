@@ -1,16 +1,21 @@
 import { Box, Card, HStack, Image, Stack, Text } from "@chakra-ui/react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
+import { Link } from "react-router";
 
+import { useAppSession } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
 import { APP_TEXT_SIZES } from "../theme/typography";
 import { formatLifeDates, formatRelationLine } from "./formatRelation";
 import { personParentsLine } from "./personCardParents";
 import { TREE_CARD_SIZE } from "./treeGridConstants";
+import { treeOwnerProfilePath } from "./treeOwnerProfilePath";
 import type { PeopleGraphBundle, PeoplePerson } from "./types";
 
 export type PersonCardProps = {
   person: PeoplePerson;
   bundle: PeopleGraphBundle;
+  /** Pond user who owns this tree; links the self person's name and avatar to their profile. */
+  treeOwnerUserId?: number;
   variant?: "default" | "squareCompact";
   /** When true (squareCompact only), fill the parent box instead of TREE_CARD_SIZE. */
   fillContainer?: boolean;
@@ -21,9 +26,30 @@ export type PersonCardProps = {
   onActivate?: () => void;
 };
 
+const profileLinkStyle: CSSProperties = {
+  textDecoration: "none",
+  color: "inherit",
+  display: "block",
+};
+
+function TreeOwnerProfileLink({
+  to,
+  children,
+}: {
+  to: string;
+  children: ReactNode;
+}) {
+  return (
+    <Link to={to} style={profileLinkStyle} onClick={(e) => e.stopPropagation()}>
+      {children}
+    </Link>
+  );
+}
+
 export default function PersonCard({
   person,
   bundle,
+  treeOwnerUserId,
   variant = "default",
   fillContainer = false,
   expanded = false,
@@ -32,14 +58,72 @@ export default function PersonCard({
   onEdit,
   onActivate,
 }: PersonCardProps) {
+  const { sessionUser } = useAppSession();
   const imageSrc = (person.image_url || "").trim();
   const parentsLine = personParentsLine(person, bundle);
   const relationLine = formatRelationLine(person);
   const lifeDates = formatLifeDates(person);
   const initial = (person.name.trim().slice(0, 1) || "?").toUpperCase();
+  const selfProfileTo =
+    person.is_self && treeOwnerUserId != null
+      ? treeOwnerProfilePath(treeOwnerUserId, sessionUser?.user.id)
+      : null;
+
+  const portrait = (
+    <Box
+      position="relative"
+      flex="1"
+      minH={0}
+      bg="bg.subtle"
+      display="flex"
+      alignItems="center"
+      justifyContent="center"
+      overflow="hidden"
+      cursor={selfProfileTo ? "pointer" : undefined}
+      _hover={selfProfileTo ? { opacity: 0.92 } : undefined}
+    >
+      {imageSrc ? (
+        <Image
+          src={imageSrc}
+          alt=""
+          w="100%"
+          h="100%"
+          objectFit="cover"
+          objectPosition="center"
+          draggable={false}
+          userSelect="none"
+          style={{ WebkitUserDrag: "none" } as CSSProperties}
+        />
+      ) : (
+        <Text
+          fontSize={variant === "squareCompact" ? "2xl" : "3xl"}
+          fontWeight="bold"
+          color="gray.400"
+          userSelect="none"
+          style={{ WebkitUserDrag: "none" } as CSSProperties}
+        >
+          {initial}
+        </Text>
+      )}
+    </Box>
+  );
+
+  const nameLine = (
+    <Text
+      fontWeight="semibold"
+      fontSize={variant === "squareCompact" ? "xs" : "sm"}
+      lineClamp={
+        variant === "squareCompact" ? 1 : expanded ? undefined : 2
+      }
+      color="fg"
+      _hover={selfProfileTo ? { textDecoration: "underline" } : undefined}
+    >
+      {person.name}
+    </Text>
+  );
 
   if (variant === "squareCompact") {
-    const clickable = Boolean(onActivate);
+    const clickable = Boolean(onActivate) && !selfProfileTo;
     return (
       <Card.Root
         data-person-card=""
@@ -58,44 +142,17 @@ export default function PersonCard({
         onClick={clickable ? onActivate : undefined}
         _hover={clickable ? { borderColor: "teal.solid", boxShadow: "sm" } : undefined}
       >
-        <Box
-          position="relative"
-          flex="1"
-          minH={0}
-          bg="bg.subtle"
-          display="flex"
-          alignItems="center"
-          justifyContent="center"
-          overflow="hidden"
-        >
-          {imageSrc ? (
-            <Image
-              src={imageSrc}
-              alt=""
-              w="100%"
-              h="100%"
-              objectFit="cover"
-              objectPosition="center"
-              draggable={false}
-              userSelect="none"
-              style={{ WebkitUserDrag: "none" } as CSSProperties}
-            />
-          ) : (
-            <Text
-              fontSize="2xl"
-              fontWeight="bold"
-              color="gray.400"
-              userSelect="none"
-              style={{ WebkitUserDrag: "none" } as CSSProperties}
-            >
-              {initial}
-            </Text>
-          )}
-        </Box>
+        {selfProfileTo ? (
+          <TreeOwnerProfileLink to={selfProfileTo}>{portrait}</TreeOwnerProfileLink>
+        ) : (
+          portrait
+        )}
         <Stack gap="0" px="2" py="1.5" borderTopWidth="1px" borderColor="border" flexShrink={0}>
-          <Text fontWeight="semibold" fontSize="xs" lineClamp={1} color="fg">
-            {person.name}
-          </Text>
+          {selfProfileTo ? (
+            <TreeOwnerProfileLink to={selfProfileTo}>{nameLine}</TreeOwnerProfileLink>
+          ) : (
+            nameLine
+          )}
           {relationLine ? (
             <Text fontSize="xs" color="fg.muted" lineClamp={1}>
               {relationLine}
@@ -124,32 +181,65 @@ export default function PersonCard({
       onClick={onToggle}
       _hover={{ borderColor: expanded ? "sky.border" : "teal.solid", boxShadow: "sm" }}
     >
-      <Box
-        position="relative"
-        flex="1"
-        minH={{ base: "100px", md: "120px" }}
-        maxH={{ base: "min(42vw, 160px)", md: "180px" }}
-        bg="bg.subtle"
-        display="flex"
-        alignItems="center"
-        justifyContent="center"
-      >
-        {imageSrc ? (
-          <Image
-            src={imageSrc}
-            alt=""
-            w="100%"
-            h="100%"
-            objectFit="cover"
-            objectPosition="center"
-            draggable={false}
-          />
-        ) : (
-          <Text fontSize="3xl" fontWeight="bold" color="gray.400" userSelect="none">
-            {initial}
-          </Text>
-        )}
-      </Box>
+      {selfProfileTo ? (
+        <TreeOwnerProfileLink to={selfProfileTo}>
+          <Box
+            position="relative"
+            flex="1"
+            minH={{ base: "100px", md: "120px" }}
+            maxH={{ base: "min(42vw, 160px)", md: "180px" }}
+            bg="bg.subtle"
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            cursor="pointer"
+            _hover={{ opacity: 0.92 }}
+          >
+            {imageSrc ? (
+              <Image
+                src={imageSrc}
+                alt=""
+                w="100%"
+                h="100%"
+                objectFit="cover"
+                objectPosition="center"
+                draggable={false}
+              />
+            ) : (
+              <Text fontSize="3xl" fontWeight="bold" color="gray.400" userSelect="none">
+                {initial}
+              </Text>
+            )}
+          </Box>
+        </TreeOwnerProfileLink>
+      ) : (
+        <Box
+          position="relative"
+          flex="1"
+          minH={{ base: "100px", md: "120px" }}
+          maxH={{ base: "min(42vw, 160px)", md: "180px" }}
+          bg="bg.subtle"
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+        >
+          {imageSrc ? (
+            <Image
+              src={imageSrc}
+              alt=""
+              w="100%"
+              h="100%"
+              objectFit="cover"
+              objectPosition="center"
+              draggable={false}
+            />
+          ) : (
+            <Text fontSize="3xl" fontWeight="bold" color="gray.400" userSelect="none">
+              {initial}
+            </Text>
+          )}
+        </Box>
+      )}
       <Stack
         gap="1"
         px="3"
@@ -166,9 +256,11 @@ export default function PersonCard({
       >
         <HStack gap="2" align="flex-start" justify="space-between">
           <Stack gap="0" flex="1" minW={0} align="flex-start">
-            <Text fontWeight="semibold" fontSize="sm" lineClamp={expanded ? undefined : 2} color="fg">
-              {person.name}
-            </Text>
+            {selfProfileTo ? (
+              <TreeOwnerProfileLink to={selfProfileTo}>{nameLine}</TreeOwnerProfileLink>
+            ) : (
+              nameLine
+            )}
             {relationLine ? (
               <Text fontSize="xs" color="fg.muted" lineClamp={expanded ? undefined : 2}>
                 {relationLine}

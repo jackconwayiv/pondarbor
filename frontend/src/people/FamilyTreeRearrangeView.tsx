@@ -34,6 +34,7 @@ export type FamilyTreeRearrangeViewProps = {
   bundle: PeopleGraphBundle;
   layout: PeopleTreeLayout;
   onLayoutChange: (layout: PeopleTreeLayout) => void;
+  treeOwnerUserId?: number;
 };
 
 type GridCell = { col: number; row: number };
@@ -44,11 +45,13 @@ function DraggablePersonCard({
   personId,
   disabled,
   isDropTarget,
+  allowInnerPointerEvents,
   children,
 }: {
   personId: string;
   disabled: boolean;
   isDropTarget: boolean;
+  allowInnerPointerEvents?: boolean;
   children: React.ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -76,7 +79,7 @@ function DraggablePersonCard({
       {isDragging ? (
         <Box w={TREE_CARD_SIZE} h={TREE_CARD_SIZE} flexShrink={0} aria-hidden />
       ) : (
-        <Box pointerEvents="none" w="100%" h="100%">
+        <Box pointerEvents={allowInnerPointerEvents ? "auto" : "none"} w="100%" h="100%">
           {children}
         </Box>
       )}
@@ -123,6 +126,7 @@ export default function FamilyTreeRearrangeView({
   bundle,
   layout: layoutProp,
   onLayoutChange,
+  treeOwnerUserId,
 }: FamilyTreeRearrangeViewProps) {
   const personCount = bundle.people.length;
   const anchorApi = usePeopleTreeAnchors(personCount);
@@ -239,17 +243,22 @@ export default function FamilyTreeRearrangeView({
           renderCell={(col, row, occupantId) => {
             const highlighted = cellHighlighted(col, row);
             const isOccupiedDropTarget = Boolean(occupantId && highlighted);
+            const occupant = occupantId ? byId.get(occupantId) : undefined;
             return (
               <DroppableCell col={col} row={row} highlighted={highlighted}>
-                {occupantId ? (
+                {occupant ? (
                   <DraggablePersonCard
-                    personId={occupantId}
+                    personId={occupantId!}
                     disabled={occupantId === selfId}
                     isDropTarget={isOccupiedDropTarget}
+                    allowInnerPointerEvents={
+                      occupant.is_self && treeOwnerUserId != null
+                    }
                   >
                     <PersonCard
-                      person={byId.get(occupantId)!}
+                      person={occupant}
                       bundle={bundle}
+                      treeOwnerUserId={treeOwnerUserId}
                       variant="squareCompact"
                     />
                   </DraggablePersonCard>
@@ -272,6 +281,7 @@ export default function FamilyTreeRearrangeView({
             <PersonCard
               person={activePerson}
               bundle={bundle}
+              treeOwnerUserId={treeOwnerUserId}
               variant="squareCompact"
               fillContainer
             />

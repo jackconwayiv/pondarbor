@@ -5,6 +5,7 @@ from people import views
 urlpatterns = [
     path("summary/", views.people_summary),
     path("layout/", views.people_layout_patch),
+    path("friends/", views.people_friends_with_family_trees),
     path("users/<int:owner_user_id>/", views.people_friend_bundle),
     path("partnerships/", views.people_partnerships),
     path("partnerships/<uuid:partnership_id>/", views.people_partnership_detail),

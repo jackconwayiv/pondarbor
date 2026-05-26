@@ -1,7 +1,10 @@
 import { Box, HStack, Image, Stack, Text } from "@chakra-ui/react";
 import { useMemo } from "react";
+import { Link } from "react-router";
 
+import { useAppSession } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
+import { treeOwnerProfilePath } from "./treeOwnerProfilePath";
 import {
   APP_TEXT_SIZES,
   HIDE_SCROLLBAR_CSS,
@@ -21,6 +24,7 @@ const EDIT_ROW_AVATAR_PX = "48px";
 
 export type FamilyTreeEditListViewProps = {
   bundle: PeopleGraphBundle;
+  treeOwnerUserId?: number;
   onEditPerson: (person: PeoplePerson) => void;
   onAddPerson: () => void;
 };
@@ -35,9 +39,13 @@ function sortPeopleForEditList(people: PeoplePerson[]): PeoplePerson[] {
 
 function PersonEditRowCard({
   person,
+  treeOwnerUserId,
+  viewerUserId,
   onEdit,
 }: {
   person: PeoplePerson;
+  treeOwnerUserId?: number;
+  viewerUserId?: number;
   onEdit: () => void;
 }) {
   const imageSrc = (person.image_url || "").trim();
@@ -49,6 +57,56 @@ function PersonEditRowCard({
     lifeDates !== "—" ? lifeDates : null,
   ].filter(Boolean);
   const metaLine = metaParts.length > 0 ? metaParts.join(" · ") : null;
+  const selfProfileTo =
+    person.is_self && treeOwnerUserId != null
+      ? treeOwnerProfilePath(treeOwnerUserId, viewerUserId)
+      : null;
+  const isViewerTreeOwner =
+    treeOwnerUserId != null &&
+    viewerUserId != null &&
+    treeOwnerUserId === viewerUserId;
+
+  const avatarBlock = (
+    <Box
+      w={EDIT_ROW_AVATAR_PX}
+      h={EDIT_ROW_AVATAR_PX}
+      flexShrink={0}
+      borderRadius="md"
+      bg="bg.subtle"
+      display="flex"
+      alignItems="center"
+      justifyContent="center"
+      overflow="hidden"
+    >
+      {imageSrc ? (
+        <Image
+          src={imageSrc}
+          alt=""
+          w="100%"
+          h="100%"
+          objectFit="cover"
+          objectPosition="center"
+          draggable={false}
+        />
+      ) : (
+        <Text fontSize="lg" fontWeight="bold" color="gray.400" userSelect="none">
+          {initial}
+        </Text>
+      )}
+    </Box>
+  );
+
+  const nameBlock = (
+    <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.body} lineClamp={1} color="fg">
+      {person.name}
+      {person.is_self && isViewerTreeOwner ? (
+        <Text as="span" fontWeight="medium" color="fg.muted">
+          {" "}
+          (you)
+        </Text>
+      ) : null}
+    </Text>
+  );
 
   return (
     <Box
@@ -66,44 +124,30 @@ function PersonEditRowCard({
       onClick={onEdit}
     >
       <HStack align="center" gap="2">
-        <Box
-          w={EDIT_ROW_AVATAR_PX}
-          h={EDIT_ROW_AVATAR_PX}
-          flexShrink={0}
-          borderRadius="md"
-          bg="bg.subtle"
-          display="flex"
-          alignItems="center"
-          justifyContent="center"
-          overflow="hidden"
-        >
-          {imageSrc ? (
-            <Image
-              src={imageSrc}
-              alt=""
-              w="100%"
-              h="100%"
-              objectFit="cover"
-              objectPosition="center"
-              draggable={false}
-            />
-          ) : (
-            <Text fontSize="lg" fontWeight="bold" color="gray.400" userSelect="none">
-              {initial}
-            </Text>
-          )}
-        </Box>
+        {selfProfileTo ? (
+          <Link
+            to={selfProfileTo}
+            onClick={(e) => e.stopPropagation()}
+            style={{ textDecoration: "none", color: "inherit", flexShrink: 0 }}
+          >
+            {avatarBlock}
+          </Link>
+        ) : (
+          avatarBlock
+        )}
         <Stack gap="0" flex="1" minW={0}>
           <HStack gap="2" align="center" justify="space-between">
-            <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.body} lineClamp={1} color="fg">
-              {person.name}
-              {person.is_self ? (
-                <Text as="span" fontWeight="medium" color="fg.muted">
-                  {" "}
-                  (you)
-                </Text>
-              ) : null}
-            </Text>
+            {selfProfileTo ? (
+              <Link
+                to={selfProfileTo}
+                onClick={(e) => e.stopPropagation()}
+                style={{ textDecoration: "none", color: "inherit", flex: 1, minWidth: 0 }}
+              >
+                {nameBlock}
+              </Link>
+            ) : (
+              nameBlock
+            )}
             <Text
               as="span"
               aria-hidden
@@ -128,9 +172,12 @@ function PersonEditRowCard({
 
 export default function FamilyTreeEditListView({
   bundle,
+  treeOwnerUserId,
   onEditPerson,
   onAddPerson,
 }: FamilyTreeEditListViewProps) {
+  const { sessionUser } = useAppSession();
+  const viewerUserId = sessionUser?.user.id;
   const people = useMemo(
     () => sortPeopleForEditList(bundle.people),
     [bundle.people],
@@ -152,6 +199,8 @@ export default function FamilyTreeEditListView({
           <PersonEditRowCard
             key={person.id}
             person={person}
+            treeOwnerUserId={treeOwnerUserId}
+            viewerUserId={viewerUserId}
             onEdit={() => onEditPerson(person)}
           />
         ))}

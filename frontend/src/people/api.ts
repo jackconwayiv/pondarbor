@@ -6,6 +6,13 @@ import type {
   PeopleTreeLayout,
 } from "./types";
 
+export type FriendWithFamilyTree = {
+  id: number;
+  nickname: string;
+  avatar_url: string;
+  people_count: number;
+};
+
 function apiBase(): string {
   return import.meta.env.VITE_API_BASE_URL ?? "";
 }
@@ -101,6 +108,20 @@ export async function fetchPeopleGraphForUser(
     throw new Error(await parseApiError(response));
   }
   return (await response.json()) as PeopleGraphBundle;
+}
+
+export async function fetchFriendsWithFamilyTrees(
+  accessToken: string | null,
+): Promise<{ friends: FriendWithFamilyTree[] }> {
+  const response = await fetch(`${apiBase()}/api/v1/people/friends/`, {
+    method: "GET",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
+  }
+  return (await response.json()) as { friends: FriendWithFamilyTree[] };
 }
 
 export async function createPerson(

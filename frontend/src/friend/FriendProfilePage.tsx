@@ -71,6 +71,7 @@ import {
   friendProfileHeading,
   type PublicUserSummary,
 } from "./publicUser";
+import { friendHasVisibleFamilyTree } from "../people/familyTreeVisibility";
 
 const PAGE_SIZE = 10;
 
@@ -374,8 +375,10 @@ export default function FriendProfilePage() {
   const hasQuotes = quotes.length > 0;
   const hasClosetTab =
     Boolean(summary?.can_view_full_profile) && closetItems.length > 0;
-  const hasFamilyTreeTab =
-    canViewFullProfile && (summary?.people_count ?? 0) >= 3;
+  const hasFamilyTreeTab = friendHasVisibleFamilyTree({
+    canViewFullProfile,
+    peopleCount: summary?.people_count,
+  });
   const friendshipStatus = summary?.friendship_status ?? "none";
   const canManageFriendshipById = lookup.kind === "id";
   const leftmostVisibleTab = useMemo<

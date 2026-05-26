@@ -12,10 +12,12 @@ import { usePeopleTreeAnchors } from "./usePeopleTreeAnchors";
 
 export type FamilyTreeDisplayViewProps = {
   bundle: PeopleGraphBundle;
+  treeOwnerUserId?: number;
 };
 
 export default function FamilyTreeDisplayView({
   bundle,
+  treeOwnerUserId,
 }: FamilyTreeDisplayViewProps) {
   const personCount = bundle.people.length;
   const anchorApi = usePeopleTreeAnchors(personCount);
@@ -59,7 +61,12 @@ export default function FamilyTreeDisplayView({
           const person = byId.get(occupantId);
           if (!person) return null;
           return (
-            <PersonCard person={person} bundle={bundle} variant="squareCompact" />
+            <PersonCard
+              person={person}
+              bundle={bundle}
+              treeOwnerUserId={treeOwnerUserId}
+              variant="squareCompact"
+            />
           );
         }}
       />

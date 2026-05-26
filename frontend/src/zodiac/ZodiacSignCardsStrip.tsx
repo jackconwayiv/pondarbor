@@ -1,12 +1,10 @@
-import { Box, Flex, Grid, SimpleGrid, Text } from "@chakra-ui/react";
-import { useState, type KeyboardEvent } from "react";
+import { SimpleGrid } from "@chakra-ui/react";
+import { useState } from "react";
 
 import { AppModal } from "../components/AppModal";
-import { APP_TEXT_SIZES } from "../theme/typography";
-import { bodySymbolForTileId, signSymbolForSign } from "./astroLexicon";
 import { signCardAccent } from "./signCardAccent";
-import { formatHouseRoman } from "./zodiacHouseDescriptors";
 import ZodiacPlacementBodyContent from "./ZodiacPlacementBodyContent";
+import ZodiacSignCard from "./ZodiacSignCard";
 
 export type ZodiacSignCardTile = {
   id: string;
@@ -46,151 +44,26 @@ export default function ZodiacSignCardsStrip({
   const activeTile = detailId ? tileModels.find((t) => t.id === detailId) : undefined;
   const modalAccent = activeTile ? signCardAccent(activeTile.sign) : null;
 
-  const openTile = (tile: (typeof tileModels)[number]) => {
+  const openTile = (tile: ZodiacSignCardTile) => {
     if (onTileOpen) {
-      const { accent, ...rest } = tile;
-      void accent;
-      onTileOpen(rest);
+      onTileOpen(tile);
       return;
     }
     setDetailId(tile.id);
   };
 
-  const onCardKeyDown = (e: KeyboardEvent, tile: (typeof tileModels)[number]) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      openTile(tile);
-    }
-  };
-
-  const useExternal = Boolean(onTileOpen);
-
   return (
     <>
       <SimpleGrid columns={gridColumns} gap={{ base: "3", md: "4" }} w="100%">
-        {tileModels.map((t) => {
-          const houseRoman = t.house != null ? formatHouseRoman(t.house) : null;
-          const ariaHouse = t.house != null ? ` House ${t.house}.` : "";
-          const ariaRetro = t.retrograde ? " Retrograde." : "";
-          const ariaLabel = `${t.label}: ${t.sign}.${ariaHouse}${ariaRetro} Open details.`;
-          return (
-            <Box
-              key={t.id}
-              role="button"
-              tabIndex={0}
-              aria-haspopup={useExternal ? undefined : "dialog"}
-              aria-expanded={useExternal ? undefined : detailId === t.id}
-              aria-label={ariaLabel}
-              cursor="pointer"
-              borderLeftWidth="8px"
-              borderLeftColor={t.accent.borderColor}
-              borderWidth="1px"
-              borderColor="border"
-              borderRadius="xl"
-              bg={t.accent.bg}
-              p={{ base: "2.5", md: "3" }}
-              boxShadow="sm"
-              transition="box-shadow 0.15s ease"
-              _hover={{ boxShadow: "md" }}
-              _focusVisible={{
-                outline: "2px solid",
-                outlineColor: "fg",
-                outlineOffset: "2px",
-              }}
-              onClick={() => openTile(t)}
-              onKeyDown={(e) => onCardKeyDown(e, t)}
-            >
-              <Grid
-                templateColumns="auto minmax(0, 1fr) auto"
-                alignItems="center"
-                gap="2"
-                w="100%"
-                columnGap="2"
-              >
-                {bodySymbolForTileId(t.id) ? (
-                  <Text
-                    fontSize={APP_TEXT_SIZES.label}
-                    fontWeight="semibold"
-                    color={t.accent.labelColor}
-                    lineHeight="short"
-                  >
-                    {bodySymbolForTileId(t.id)}
-                  </Text>
-                ) : (
-                  <Box />
-                )}
-                <Flex
-                  align="center"
-                  justify="flex-start"
-                  gap="1"
-                  minW="0"
-                  w="100%"
-                  maxW="100%"
-                  flexWrap="nowrap"
-                  overflow="hidden"
-                >
-                  <Text
-                    fontSize={APP_TEXT_SIZES.label}
-                    fontWeight="semibold"
-                    color={t.accent.labelColor}
-                    lineHeight="short"
-                    minW="0"
-                    flex="0 1 auto"
-                    truncate
-                  >
-                    {t.label}
-                  </Text>
-                  {t.retrograde ? (
-                    <Text
-                      as="span"
-                      fontSize="sm"
-                      color="fg.muted"
-                      fontWeight="normal"
-                      lineHeight="1"
-                      flexShrink={0}
-                      aria-hidden="true"
-                    >
-                      Я
-                    </Text>
-                  ) : null}
-                </Flex>
-                <Text
-                  fontSize="xs"
-                  fontWeight="normal"
-                  fontFamily="heading"
-                  color={t.accent.valueColor}
-                  lineHeight="short"
-                  textAlign="right"
-                  flexShrink={0}
-                  aria-hidden={!houseRoman}
-                >
-                  {houseRoman ?? ""}
-                </Text>
-              </Grid>
-              <Box
-                borderTopWidth="1px"
-                borderColor="border"
-                opacity={0.45}
-                mt="1.5"
-                mb="1.5"
-              />
-              <Flex align="center" justify="flex-start" gap="2" w="100%" flexWrap="wrap" mt="1">
-                <Text
-                  fontSize={{ base: "lg", md: "2xl" }}
-                  fontWeight="normal"
-                  fontFamily="heading"
-                  textTransform="capitalize"
-                  color={t.accent.valueColor}
-                  lineHeight="short"
-                  textAlign="start"
-                >
-                  {signSymbolForSign(t.sign) ? `${signSymbolForSign(t.sign)} ` : ""}
-                  {t.sign}
-                </Text>
-              </Flex>
-            </Box>
-          );
-        })}
+        {tileModels.map((t) => (
+          <ZodiacSignCard
+            key={t.id}
+            tile={t}
+            accent={t.accent}
+            onOpen={openTile}
+            interactive
+          />
+        ))}
       </SimpleGrid>
 
       {!onTileOpen ? (

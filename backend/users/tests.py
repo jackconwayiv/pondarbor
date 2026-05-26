@@ -91,6 +91,43 @@ class UsersApiTests(TestCase):
         self.assertEqual(body["email"], "target@example.com")
         self.assertEqual(body["closet_items_count"], 0)
 
+    def test_public_summary_friend_includes_birth_and_big_three(self):
+        from datetime import date
+
+        from zodiac.models import AstroProfile
+
+        viewer = User.objects.create_user(email="zbv@example.com", password="secret12345")
+        viewer.account_status = User.AccountStatus.APPROVED
+        viewer.save(update_fields=["account_status"])
+        target = User.objects.create_user(email="zbt@example.com", password="secret12345")
+        target.account_status = User.AccountStatus.APPROVED
+        target.save(update_fields=["account_status"])
+        target.profile.display_name = "ZodiacTarget"
+        target.profile.birth_date = date(1992, 7, 4)
+        target.profile.save(update_fields=["display_name", "birth_date"])
+
+        FriendRequest.objects.create(requester=viewer, requested=target, is_accepted=True)
+        FriendRequest.objects.create(requester=target, requested=viewer, is_accepted=True)
+
+        AstroProfile.objects.create(
+            user=target,
+            chart_status=AstroProfile.ChartStatus.READY,
+            birth_date=date(1992, 7, 4),
+            sun_sign="cancer",
+            moon_sign="leo",
+            rising_sign="virgo",
+            natal_chart={"points": {}, "angles": {}},
+        )
+
+        self.client.force_login(viewer)
+        resp = self.client.get(f"/api/v1/users/{target.id}/public/")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["birth_date"], "1992-07-04")
+        self.assertEqual(body["sun_sign"], "cancer")
+        self.assertEqual(body["moon_sign"], "leo")
+        self.assertEqual(body["rising_sign"], "virgo")
+
     def test_public_summary_friend_includes_closet_items_count(self):
         viewer = User.objects.create_user(email="cv@example.com", password="secret12345")
         viewer.account_status = User.AccountStatus.APPROVED
@@ -182,6 +219,30 @@ class UsersApiTests(TestCase):
         self.assertEqual(str(user.profile.birth_date), "1990-05-17")
         self.assertEqual(user.profile.social_publish_visibility, "friends_only")
         self.assertEqual(user.profile.social_read_scope, "friends_only")
+
+    def test_patch_profile_syncs_astro_birth_date(self):
+        from zodiac.models import AstroProfile
+
+        user = User.objects.create_user(email="syncbd@example.com", password="secret12345")
+        user.account_status = User.AccountStatus.APPROVED
+        user.save()
+        AstroProfile.objects.create(
+            user=user,
+            chart_status=AstroProfile.ChartStatus.WAITING_STAFF_CHART,
+            birth_date=None,
+            country_code="US",
+            admin_area="NY",
+            locality="NYC",
+        )
+        self.client.force_login(user)
+        response = self.client.patch(
+            "/api/v1/users/me/profile/",
+            {"birth_date": "1995-08-20"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        astro = AstroProfile.objects.get(user=user)
+        self.assertEqual(str(astro.birth_date), "1995-08-20")
 
     def test_patch_profile_allows_clearing_birth_date(self):
         user = User.objects.create_user(email="clear@example.com", password="secret12345")

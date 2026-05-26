@@ -168,6 +168,34 @@ export async function staffImportChart(
 }
 
 /** Remove an imported chart and return the member to the waiting queue. */
+export type FriendWithZodiac = {
+  id: number;
+  nickname: string;
+  avatar_url: string;
+  sun_sign: string;
+  moon_sign: string;
+  rising_sign: string;
+  mercury_sign: string;
+  venus_sign: string;
+  mars_sign: string;
+  natal_chart: NatalChartPayload;
+};
+
+export async function fetchFriendsWithZodiac(
+  accessToken: string | null,
+): Promise<{ friends: FriendWithZodiac[] }> {
+  const response = await fetch(`${apiBase()}/api/v1/zodiac/friends/`, {
+    method: "GET",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) {
+    const t = await response.text();
+    throw new Error(`Zodiac friends (${response.status}): ${t}`);
+  }
+  return (await response.json()) as { friends: FriendWithZodiac[] };
+}
+
 export async function staffClearChart(
   accessToken: string | null,
   userId: number,

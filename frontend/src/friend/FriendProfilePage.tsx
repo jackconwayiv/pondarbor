@@ -72,6 +72,7 @@ import {
   type PublicUserSummary,
 } from "./publicUser";
 import { friendHasVisibleFamilyTree } from "../people/familyTreeVisibility";
+import FriendProfileBirthBigThreeStrip from "./FriendProfileBirthBigThreeStrip";
 
 const PAGE_SIZE = 10;
 
@@ -962,6 +963,12 @@ export default function FriendProfilePage() {
                 }
                 variant="plain"
               >
+                <FriendProfileBirthBigThreeStrip
+                  birthDate={summary.birth_date}
+                  sunSign={summary.sun_sign}
+                  moonSign={summary.moon_sign}
+                  risingSign={summary.rising_sign}
+                />
                 <Tabs.List {...APP_SHELL_TAB_LIST_PROPS}>
                   {hasAchievements ? (
                     <Tabs.Trigger

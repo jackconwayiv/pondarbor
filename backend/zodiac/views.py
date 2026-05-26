@@ -5,8 +5,12 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
+from friends.services import friends_queryset_for_user, order_users_by_recent_activity
 from users.models import Profile, User
 from users.permissions import IsApprovedUser, IsStaffUser
+from users.social_privacy import owner_publish_visibility, viewer_context
+from zodiac.birth_sync import sync_birth_date_across_profiles
+from zodiac.friend_zodiac import friend_has_shareable_zodiac, serialize_friend_zodiac_row
 from zodiac.models import AstroProfile
 from zodiac.parsers.chart_export_v1 import parse_chart_export_v1
 from zodiac.services import (
@@ -83,12 +87,57 @@ def user_astro_profile(request):
 
         profile.save()
 
-        member_profile, _ = Profile.objects.get_or_create(user=user)
-        if member_profile.birth_date is None and profile.birth_date is not None:
-            member_profile.birth_date = profile.birth_date
-            member_profile.save(update_fields=["birth_date"])
+        sync_birth_date_across_profiles(user=user, birth_date=profile.birth_date)
 
     return Response({"profile": serialize_astro_profile(profile)})
+
+
+def _require_approved(request):
+    user = request.user
+    if not user.is_authenticated:
+        return Response({"detail": "Authentication required."}, status=status.HTTP_401_UNAUTHORIZED)
+    if user.account_status != User.AccountStatus.APPROVED:
+        return Response({"detail": "Account not approved."}, status=status.HTTP_403_FORBIDDEN)
+    return None
+
+
+@api_view(["GET"])
+@permission_classes([IsApprovedUser])
+def zodiac_friends_with_charts(request):
+    """
+    Friends whose zodiac would appear on the viewer's Zodiac Friends tab.
+
+    Requires ready chart with big three plus Mercury, Venus, and Mars signs, and the same
+    profile visibility rules as people/friends/.
+    """
+    err = _require_approved(request)
+    if err:
+        return err
+
+    viewer = request.user
+    ctx = viewer_context(viewer=viewer)
+
+    friends_qs = friends_queryset_for_user(user=viewer).select_related(
+        "profile", "astro_profile"
+    )
+    friends_qs = order_users_by_recent_activity(friends_qs)
+
+    out: list[dict[str, object]] = []
+    for friend in friends_qs:
+        allowed = owner_publish_visibility(friend) == Profile.SocialPublishVisibility.ALL_APPROVED or (
+            friend.id in ctx.friend_ids
+        )
+        if not allowed:
+            continue
+
+        astro = getattr(friend, "astro_profile", None)
+        if not friend_has_shareable_zodiac(astro):
+            continue
+
+        prof = getattr(friend, "profile", None)
+        out.append(serialize_friend_zodiac_row(user=friend, profile=prof, astro=astro))
+
+    return Response({"friends": out})
 
 
 @api_view(["GET"])

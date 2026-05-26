@@ -27,10 +27,13 @@ import {
 } from "../theme/typography";
 import {
   fetchAstroProfile,
+  fetchFriendsWithZodiac,
   putAstroBirth,
   type AstroBirthPayload,
   type AstroProfileRow,
+  type FriendWithZodiac,
 } from "./api";
+import { formatBirthDateLong } from "./birthDateFormat";
 import NatalChartAspectsPanel from "./NatalChartAspectsPanel";
 import NatalChartHousesTable from "./NatalChartHousesTable";
 import NatalChartPlanetsTable from "./NatalChartPlanetsTable";
@@ -43,6 +46,7 @@ import type { ZodiacSignCardTile } from "./ZodiacSignCardsStrip";
 import { signCardAccent } from "./signCardAccent";
 import { ZODIAC_ASPECT_ANCHOR_BODIES } from "./zodiacDisplayConfig";
 import { zodiacTileFromChartBodyKey } from "./zodiacPlacementFromChart";
+import ZodiacFriendsTabPanel from "./ZodiacFriendsTabPanel";
 
 /** Normalize for API + stable birthKey comparison (optional time → null). */
 function normalizeBirthTimeForKey(raw: string | null | undefined): string | null {
@@ -81,17 +85,6 @@ function birthKey(p: AstroBirthPayload): string {
     p.locality,
     p.postal_code,
   ]);
-}
-
-function formatBirthDateLong(iso: string | null | undefined): string {
-  if (!iso?.trim()) return "—";
-  try {
-    const d = new Date(`${iso.trim()}T12:00:00`);
-    if (Number.isNaN(d.getTime())) return iso;
-    return d.toLocaleDateString(undefined, { dateStyle: "long" });
-  } catch {
-    return iso;
-  }
 }
 
 function formatBirthTimeDisplay(isoTime: string | null | undefined): string {
@@ -139,7 +132,7 @@ function natalBirthSummaryStack(p: AstroProfileRow): ReactNode {
   );
 }
 
-type ZodiacMainTab = "planets" | "houses" | "aspects" | "natal";
+type ZodiacMainTab = "planets" | "houses" | "aspects" | "natal" | "friends";
 
 export default function ZodiacPage() {
   const { sessionUser, getApiAccessToken, resyncSessionSilently } = useAppSession();
@@ -170,6 +163,20 @@ export default function ZodiacPage() {
     null,
   );
   const [canvasDescriptorSign, setCanvasDescriptorSign] = useState<string | null>(null);
+
+  const [friendsWithZodiac, setFriendsWithZodiac] = useState<FriendWithZodiac[]>([]);
+  const [friendsLoaded, setFriendsLoaded] = useState(false);
+  const [friendsLoadError, setFriendsLoadError] = useState<string | null>(null);
+
+  const viewerUserId = sessionUser?.user.id;
+  const visibleFriends = useMemo(
+    () =>
+      viewerUserId != null
+        ? friendsWithZodiac.filter((f) => f.id !== viewerUserId)
+        : friendsWithZodiac,
+    [friendsWithZodiac, viewerUserId],
+  );
+  const showFriendsTab = friendsLoaded && visibleFriends.length > 0;
 
   const applyProfileToForm = useCallback((row: AstroProfileRow | null, prefBirth?: string | null) => {
     if (!row) {
@@ -213,6 +220,29 @@ export default function ZodiacPage() {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+    if (!sessionUser?.user?.is_approved) return;
+    let cancelled = false;
+    setFriendsLoaded(false);
+    setFriendsLoadError(null);
+    void (async () => {
+      try {
+        const token = await getApiAccessToken();
+        const payload = await fetchFriendsWithZodiac(token);
+        if (cancelled) return;
+        setFriendsWithZodiac(payload.friends);
+      } catch (e: unknown) {
+        if (cancelled) return;
+        setFriendsLoadError(e instanceof Error ? e.message : "Failed to load friends.");
+      } finally {
+        if (!cancelled) setFriendsLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [getApiAccessToken, sessionUser?.user?.is_approved]);
 
   useEffect(() => {
     if (profile?.chart_status !== "waiting_staff_chart") {
@@ -274,6 +304,12 @@ export default function ZodiacPage() {
       setCanvasDescriptorSign(null);
     }
   }, [hasFullReadyChart]);
+
+  useEffect(() => {
+    if (!hasFullReadyChart && showFriendsTab) {
+      setZodiacTab("friends");
+    }
+  }, [hasFullReadyChart, showFriendsTab]);
 
   useEffect(() => {
     setPlacementPaneTile(null);
@@ -629,6 +665,11 @@ export default function ZodiacPage() {
                     <Tabs.Trigger value="natal" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                       Natal
                     </Tabs.Trigger>
+                    {showFriendsTab ? (
+                      <Tabs.Trigger value="friends" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                        Friends
+                      </Tabs.Trigger>
+                    ) : null}
                   </Tabs.List>
                   <Tabs.Content value="planets" pt="4">
                     <NatalChartPlanetsTable
@@ -666,8 +707,36 @@ export default function ZodiacPage() {
                       {showAlterBirthForm ? renderBirthInformationCard(cancelAlterBirthForm) : null}
                     </Stack>
                   </Tabs.Content>
+                  {showFriendsTab ? (
+                    <Tabs.Content value="friends" pt="4">
+                      <ZodiacFriendsTabPanel
+                        friends={visibleFriends}
+                        friendsLoadError={friendsLoadError}
+                      />
+                    </Tabs.Content>
+                  ) : null}
                 </Tabs.Root>
               </Stack>
+            </Box>
+          ) : showFriendsTab ? (
+            <Box {...PANEL_ENTRY_CARD_PROPS}>
+              <Tabs.Root
+                value={zodiacTab}
+                onValueChange={(d) => setZodiacTab(d.value as ZodiacMainTab)}
+                variant="plain"
+              >
+                <Tabs.List {...APP_SHELL_TAB_LIST_INSET_PROPS}>
+                  <Tabs.Trigger value="friends" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                    Friends
+                  </Tabs.Trigger>
+                </Tabs.List>
+                <Tabs.Content value="friends" pt="4">
+                  <ZodiacFriendsTabPanel
+                    friends={visibleFriends}
+                    friendsLoadError={friendsLoadError}
+                  />
+                </Tabs.Content>
+              </Tabs.Root>
             </Box>
           ) : null}
 

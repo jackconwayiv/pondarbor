@@ -16,6 +16,11 @@ export type PublicUserSummary = {
   closet_items_count?: number;
   /** Active family tree members including self (when viewer may see full profile). */
   people_count?: number;
+  /** ISO date; only when viewer may see full profile and friend set a birthday. */
+  birth_date?: string;
+  sun_sign?: string;
+  moon_sign?: string;
+  rising_sign?: string;
 };
 
 function apiBase(): string {

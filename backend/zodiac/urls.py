@@ -5,9 +5,11 @@ from zodiac.views import (
     staff_pending_charts,
     staff_user_chart,
     user_astro_profile,
+    zodiac_friends_with_charts,
 )
 
 urlpatterns = [
+    path("friends/", zodiac_friends_with_charts),
     path("profile/", user_astro_profile),
     path("staff/pending/", staff_pending_charts),
     path("staff/imported/", staff_imported_charts),

@@ -406,10 +406,24 @@ def _public_user_summary_response(*, request, user):
         )
     if can_view_full_profile:
         from people.models import Person
+        from zodiac.models import AstroProfile
 
         payload["people_count"] = Person.objects.filter(
             owner_user=user, deleted_at__isnull=True
         ).count()
+        if profile.birth_date is not None:
+            payload["birth_date"] = profile.birth_date.isoformat()
+        try:
+            astro = AstroProfile.objects.get(user=user)
+        except AstroProfile.DoesNotExist:
+            astro = None
+        if astro and astro.chart_status == AstroProfile.ChartStatus.READY:
+            if astro.sun_sign:
+                payload["sun_sign"] = astro.sun_sign
+            if astro.moon_sign:
+                payload["moon_sign"] = astro.moon_sign
+            if astro.rising_sign:
+                payload["rising_sign"] = astro.rising_sign
     return Response(payload)
 
 
@@ -554,6 +568,10 @@ def patch_me_profile(request):
     if "songaday_visibility" in data:
         profile.songaday_visibility = data["songaday_visibility"]
     profile.save()
+    if "birth_date" in data:
+        from zodiac.birth_sync import sync_birth_date_across_profiles
+
+        sync_birth_date_across_profiles(user=request.user, birth_date=profile.birth_date)
     if "meal_crud_partner_id" in data:
         evaluate_meal_maestro_partner_for_user(request.user.id)
     return Response(MeSerializer(serialize_me(request.user)).data)

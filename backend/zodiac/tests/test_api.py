@@ -22,6 +22,9 @@ House 9	9°11'	Sagittarius
 House 10	29°13'	Sagittarius
 House 11	19°07'	Capricorn
 House 12	14°34'	Aquarius
+Mercury	5°10'		Virgo
+Venus	12°20'		Scorpio
+Mars	18°30'		Aries
 """
 
 
@@ -251,7 +254,7 @@ class ZodiacApiTests(TestCase):
         user.profile.refresh_from_db()
         self.assertEqual(str(user.profile.birth_date), "1990-06-15")
 
-    def test_user_put_does_not_overwrite_member_profile_birth_date(self):
+    def test_user_put_syncs_member_profile_birth_date(self):
         user = User.objects.create_user(email="u_bd2@example.com", password="secret12345")
         user.account_status = User.AccountStatus.APPROVED
         user.save()
@@ -272,4 +275,49 @@ class ZodiacApiTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         user.profile.refresh_from_db()
-        self.assertEqual(str(user.profile.birth_date), "1980-01-01")
+        self.assertEqual(str(user.profile.birth_date), "1999-12-31")
+
+    def test_zodiac_friends_lists_ready_charts(self):
+        from friends.models import FriendRequest
+
+        viewer = User.objects.create_user(email="zv@example.com", password="secret12345")
+        viewer.account_status = User.AccountStatus.APPROVED
+        viewer.save()
+        friend = User.objects.create_user(email="zf@example.com", password="secret12345")
+        friend.account_status = User.AccountStatus.APPROVED
+        friend.save()
+        friend.profile.display_name = "Z Friend"
+        friend.profile.save()
+        FriendRequest.objects.create(requester=viewer, requested=friend, is_accepted=True)
+        FriendRequest.objects.create(requester=friend, requested=viewer, is_accepted=True)
+        AstroProfile.objects.create(
+            user=friend,
+            chart_status=AstroProfile.ChartStatus.WAITING_STAFF_CHART,
+            birth_date=date(1991, 3, 4),
+            birth_time=time(8, 0, 0),
+            country_code="US",
+            admin_area="CA",
+            locality="LA",
+            postal_code="90001",
+        )
+        staff = User.objects.create_user(
+            email="zstaff@example.com", password="secret12345", is_staff=True
+        )
+        staff.account_status = User.AccountStatus.APPROVED
+        staff.save()
+        self.client.force_login(staff)
+        r = self.client.post(
+            f"/api/v1/zodiac/staff/users/{friend.id}/chart/",
+            {"chart_text": MINIMAL_CHART},
+            format="json",
+        )
+        self.assertEqual(r.status_code, 200)
+
+        self.client.force_login(viewer)
+        resp = self.client.get("/api/v1/zodiac/friends/")
+        self.assertEqual(resp.status_code, 200)
+        friends = resp.json()["friends"]
+        self.assertEqual(len(friends), 1)
+        self.assertEqual(friends[0]["id"], friend.id)
+        self.assertEqual(friends[0]["sun_sign"], "libra")
+        self.assertIn("mercury", friends[0]["natal_chart"]["points"])

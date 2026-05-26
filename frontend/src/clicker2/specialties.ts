@@ -897,7 +897,7 @@ function buildSedimentChain(ecologyNotes: readonly string[]): SpecialtyDef[] {
       "sediment",
       75,
       specialtyCatalogPrice(SEDIMENT_CRACIAL_GLAPE_SPECIALTY_ID),
-      "Glacial melt presses pale silt into the margin, packing cold fines that thaw slowly and feed the bottom when the pond warms. Cracial glape is muck that remembers ice.",
+      "A particular specialty of Middlebury, VT. There was a time when this dense pond scraping was a hot commodity in the local community.",
     ),
     ...tiers.slice(4),
   ];

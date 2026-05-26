@@ -135,7 +135,7 @@ export function validateRampStepMultipliers(
   return errors;
 }
 
-const LOCKED_COST = [15, 100, 1_000] as const;
+const LOCKED_COST = [15, 100, 1_100] as const;
 const LOCKED_EPS = [0.1, 1, 5] as const;
 
 const COST_SPEC: RampSpec = {

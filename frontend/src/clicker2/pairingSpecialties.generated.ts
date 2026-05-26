@@ -183,8 +183,8 @@ export const PAIRING_SPECIALTIES: readonly SpecialtyDef[] = [
         "sourcePerStep": 16
       }
     ],
-    effectText: "Ripples are twice as efficient. Small Swimmers gain +1% EpS per 16 Ripples owned",
-    ecologyNote: "Ripples and Small Swimmers exchange matter and energy across the pond.",
+    effectText: "Ripples are twice as efficient. Darters gain +1% EpS per 16 Ripples owned",
+    ecologyNote: "Ripples and Darters exchange matter and energy across the pond.",
   },
   {
     id: 371,
@@ -729,8 +729,8 @@ export const PAIRING_SPECIALTIES: readonly SpecialtyDef[] = [
         "sourcePerStep": 16
       }
     ],
-    effectText: "Sediment is twice as efficient. Small Swimmers gain +1% EpS per 16 Sediment owned",
-    ecologyNote: "Sediment and Small Swimmers exchange matter and energy across the pond.",
+    effectText: "Sediment is twice as efficient. Darters gain +1% EpS per 16 Sediment owned",
+    ecologyNote: "Sediment and Darters exchange matter and energy across the pond.",
   },
   {
     id: 392,
@@ -1249,8 +1249,8 @@ export const PAIRING_SPECIALTIES: readonly SpecialtyDef[] = [
         "sourcePerStep": 16
       }
     ],
-    effectText: "Fungi are twice as efficient. Small Swimmers gain +1% EpS per 16 Fungi owned",
-    ecologyNote: "Fungi and Small Swimmers exchange matter and energy across the pond.",
+    effectText: "Fungi are twice as efficient. Darters gain +1% EpS per 16 Fungi owned",
+    ecologyNote: "Fungi and Darters exchange matter and energy across the pond.",
   },
   {
     id: 412,
@@ -1743,8 +1743,8 @@ export const PAIRING_SPECIALTIES: readonly SpecialtyDef[] = [
         "sourcePerStep": 16
       }
     ],
-    effectText: "Microbes are twice as efficient. Small Swimmers gain +1% EpS per 16 Microbes owned",
-    ecologyNote: "Microbes and Small Swimmers exchange matter and energy across the pond.",
+    effectText: "Microbes are twice as efficient. Darters gain +1% EpS per 16 Microbes owned",
+    ecologyNote: "Microbes and Darters exchange matter and energy across the pond.",
   },
   {
     id: 431,
@@ -2211,8 +2211,8 @@ export const PAIRING_SPECIALTIES: readonly SpecialtyDef[] = [
         "sourcePerStep": 16
       }
     ],
-    effectText: "Zooplankton is twice as efficient. Small Swimmers gain +1% EpS per 16 Zooplankton owned",
-    ecologyNote: "Zooplankton and Small Swimmers exchange matter and energy across the pond.",
+    effectText: "Zooplankton is twice as efficient. Darters gain +1% EpS per 16 Zooplankton owned",
+    ecologyNote: "Zooplankton and Darters exchange matter and energy across the pond.",
   },
   {
     id: 449,
@@ -2653,8 +2653,8 @@ export const PAIRING_SPECIALTIES: readonly SpecialtyDef[] = [
         "sourcePerStep": 16
       }
     ],
-    effectText: "Aquatic Plants are twice as efficient. Small Swimmers gain +1% EpS per 16 Aquatic Plants owned",
-    ecologyNote: "Aquatic Plants and Small Swimmers exchange matter and energy across the pond.",
+    effectText: "Aquatic Plants are twice as efficient. Darters gain +1% EpS per 16 Aquatic Plants owned",
+    ecologyNote: "Aquatic Plants and Darters exchange matter and energy across the pond.",
   },
   {
     id: 466,
@@ -3069,8 +3069,8 @@ export const PAIRING_SPECIALTIES: readonly SpecialtyDef[] = [
         "sourcePerStep": 16
       }
     ],
-    effectText: "Invertebrates are twice as efficient. Small Swimmers gain +1% EpS per 16 Invertebrates owned",
-    ecologyNote: "Invertebrates and Small Swimmers exchange matter and energy across the pond.",
+    effectText: "Invertebrates are twice as efficient. Darters gain +1% EpS per 16 Invertebrates owned",
+    ecologyNote: "Invertebrates and Darters exchange matter and energy across the pond.",
   },
   {
     id: 482,
@@ -3485,8 +3485,8 @@ export const PAIRING_SPECIALTIES: readonly SpecialtyDef[] = [
         "sourcePerStep": 17
       }
     ],
-    effectText: "Small Swimmers are twice as efficient. Amphibians gain +1% EpS per 17 Small Swimmers owned",
-    ecologyNote: "Small Swimmers and Amphibians exchange matter and energy across the pond.",
+    effectText: "Darters are twice as efficient. Amphibians gain +1% EpS per 17 Darters owned",
+    ecologyNote: "Darters and Amphibians exchange matter and energy across the pond.",
   },
   {
     id: 498,
@@ -3511,8 +3511,8 @@ export const PAIRING_SPECIALTIES: readonly SpecialtyDef[] = [
         "sourcePerStep": 18
       }
     ],
-    effectText: "Small Swimmers are twice as efficient. Small Fish gain +1% EpS per 18 Small Swimmers owned",
-    ecologyNote: "Small Swimmers and Small Fish exchange matter and energy across the pond.",
+    effectText: "Darters are twice as efficient. Small Fish gain +1% EpS per 18 Darters owned",
+    ecologyNote: "Darters and Small Fish exchange matter and energy across the pond.",
   },
   {
     id: 499,
@@ -3537,8 +3537,8 @@ export const PAIRING_SPECIALTIES: readonly SpecialtyDef[] = [
         "sourcePerStep": 19
       }
     ],
-    effectText: "Small Swimmers are twice as efficient. Reptiles gain +1% EpS per 19 Small Swimmers owned",
-    ecologyNote: "Small Swimmers and Reptiles exchange matter and energy across the pond.",
+    effectText: "Darters are twice as efficient. Reptiles gain +1% EpS per 19 Darters owned",
+    ecologyNote: "Darters and Reptiles exchange matter and energy across the pond.",
   },
   {
     id: 500,
@@ -3563,8 +3563,8 @@ export const PAIRING_SPECIALTIES: readonly SpecialtyDef[] = [
         "sourcePerStep": 20
       }
     ],
-    effectText: "Small Swimmers are twice as efficient. Large Fish gain +1% EpS per 20 Small Swimmers owned",
-    ecologyNote: "Small Swimmers and Large Fish exchange matter and energy across the pond.",
+    effectText: "Darters are twice as efficient. Large Fish gain +1% EpS per 20 Darters owned",
+    ecologyNote: "Darters and Large Fish exchange matter and energy across the pond.",
   },
   {
     id: 501,
@@ -3589,8 +3589,8 @@ export const PAIRING_SPECIALTIES: readonly SpecialtyDef[] = [
         "sourcePerStep": 21
       }
     ],
-    effectText: "Small Swimmers are twice as efficient. Waterfowl gain +1% EpS per 21 Small Swimmers owned",
-    ecologyNote: "Small Swimmers and Waterfowl exchange matter and energy across the pond.",
+    effectText: "Darters are twice as efficient. Waterfowl gain +1% EpS per 21 Darters owned",
+    ecologyNote: "Darters and Waterfowl exchange matter and energy across the pond.",
   },
   {
     id: 502,
@@ -3615,8 +3615,8 @@ export const PAIRING_SPECIALTIES: readonly SpecialtyDef[] = [
         "sourcePerStep": 22
       }
     ],
-    effectText: "Small Swimmers are twice as efficient. Shore Mammals gain +1% EpS per 22 Small Swimmers owned",
-    ecologyNote: "Small Swimmers and Shore Mammals exchange matter and energy across the pond.",
+    effectText: "Darters are twice as efficient. Shore Mammals gain +1% EpS per 22 Darters owned",
+    ecologyNote: "Darters and Shore Mammals exchange matter and energy across the pond.",
   },
   {
     id: 503,
@@ -3641,8 +3641,8 @@ export const PAIRING_SPECIALTIES: readonly SpecialtyDef[] = [
         "sourcePerStep": 23
       }
     ],
-    effectText: "Small Swimmers are twice as efficient. Hunting Birds gain +1% EpS per 23 Small Swimmers owned",
-    ecologyNote: "Small Swimmers and Hunting Birds exchange matter and energy across the pond.",
+    effectText: "Darters are twice as efficient. Hunting Birds gain +1% EpS per 23 Darters owned",
+    ecologyNote: "Darters and Hunting Birds exchange matter and energy across the pond.",
   },
   {
     id: 504,
@@ -3667,8 +3667,8 @@ export const PAIRING_SPECIALTIES: readonly SpecialtyDef[] = [
         "sourcePerStep": 24
       }
     ],
-    effectText: "Small Swimmers are twice as efficient. Great Mammals gain +1% EpS per 24 Small Swimmers owned",
-    ecologyNote: "Small Swimmers and Great Mammals exchange matter and energy across the pond.",
+    effectText: "Darters are twice as efficient. Great Mammals gain +1% EpS per 24 Darters owned",
+    ecologyNote: "Darters and Great Mammals exchange matter and energy across the pond.",
   },
   {
     id: 505,
@@ -3693,8 +3693,8 @@ export const PAIRING_SPECIALTIES: readonly SpecialtyDef[] = [
         "sourcePerStep": 25
       }
     ],
-    effectText: "Small Swimmers are twice as efficient. Humans gain +1% EpS per 25 Small Swimmers owned",
-    ecologyNote: "Small Swimmers and Humans exchange matter and energy across the pond.",
+    effectText: "Darters are twice as efficient. Humans gain +1% EpS per 25 Darters owned",
+    ecologyNote: "Darters and Humans exchange matter and energy across the pond.",
   },
   {
     id: 506,
@@ -3719,8 +3719,8 @@ export const PAIRING_SPECIALTIES: readonly SpecialtyDef[] = [
         "sourcePerStep": 26
       }
     ],
-    effectText: "Small Swimmers are twice as efficient. Cryptids gain +1% EpS per 26 Small Swimmers owned",
-    ecologyNote: "Small Swimmers and Cryptids exchange matter and energy across the pond.",
+    effectText: "Darters are twice as efficient. Cryptids gain +1% EpS per 26 Darters owned",
+    ecologyNote: "Darters and Cryptids exchange matter and energy across the pond.",
   },
   {
     id: 507,
@@ -3745,8 +3745,8 @@ export const PAIRING_SPECIALTIES: readonly SpecialtyDef[] = [
         "sourcePerStep": 27
       }
     ],
-    effectText: "Small Swimmers are twice as efficient. Spirits gain +1% EpS per 27 Small Swimmers owned",
-    ecologyNote: "Small Swimmers and Spirits exchange matter and energy across the pond.",
+    effectText: "Darters are twice as efficient. Spirits gain +1% EpS per 27 Darters owned",
+    ecologyNote: "Darters and Spirits exchange matter and energy across the pond.",
   },
   {
     id: 508,
@@ -3771,8 +3771,8 @@ export const PAIRING_SPECIALTIES: readonly SpecialtyDef[] = [
         "sourcePerStep": 28
       }
     ],
-    effectText: "Small Swimmers are twice as efficient. Leviathans gain +1% EpS per 28 Small Swimmers owned",
-    ecologyNote: "Small Swimmers and Leviathans exchange matter and energy across the pond.",
+    effectText: "Darters are twice as efficient. Leviathans gain +1% EpS per 28 Darters owned",
+    ecologyNote: "Darters and Leviathans exchange matter and energy across the pond.",
   },
   {
     id: 509,
@@ -3797,8 +3797,8 @@ export const PAIRING_SPECIALTIES: readonly SpecialtyDef[] = [
         "sourcePerStep": 29
       }
     ],
-    effectText: "Small Swimmers are twice as efficient. Abyssals gain +1% EpS per 29 Small Swimmers owned",
-    ecologyNote: "Small Swimmers and Abyssals exchange matter and energy across the pond.",
+    effectText: "Darters are twice as efficient. Abyssals gain +1% EpS per 29 Darters owned",
+    ecologyNote: "Darters and Abyssals exchange matter and energy across the pond.",
   },
   {
     id: 510,
@@ -3823,8 +3823,8 @@ export const PAIRING_SPECIALTIES: readonly SpecialtyDef[] = [
         "sourcePerStep": 30
       }
     ],
-    effectText: "Small Swimmers are twice as efficient. Celestials gain +1% EpS per 30 Small Swimmers owned",
-    ecologyNote: "Small Swimmers and Celestials exchange matter and energy across the pond.",
+    effectText: "Darters are twice as efficient. Celestials gain +1% EpS per 30 Darters owned",
+    ecologyNote: "Darters and Celestials exchange matter and energy across the pond.",
   },
   {
     id: 511,
@@ -3849,8 +3849,8 @@ export const PAIRING_SPECIALTIES: readonly SpecialtyDef[] = [
         "sourcePerStep": 31
       }
     ],
-    effectText: "Small Swimmers are twice as efficient. Transcendence gain +1% EpS per 31 Small Swimmers owned",
-    ecologyNote: "Small Swimmers and Transcendence exchange matter and energy across the pond.",
+    effectText: "Darters are twice as efficient. Transcendence gain +1% EpS per 31 Darters owned",
+    ecologyNote: "Darters and Transcendence exchange matter and energy across the pond.",
   },
   {
     id: 512,

@@ -84,6 +84,26 @@ describe("pondDepthChart", () => {
     expect(new Set(DENIZEN_DEPTH_ORDER).size).toBe(DENIZENS.length);
   });
 
+  it("orders margin and shore life above purely aquatic fish", () => {
+    const amphibians = DENIZEN_DEPTH_ORDER.indexOf("amphibians");
+    const reptiles = DENIZEN_DEPTH_ORDER.indexOf("reptiles");
+    const darters = DENIZEN_DEPTH_ORDER.indexOf("small_swimmers");
+    const largeFish = DENIZEN_DEPTH_ORDER.indexOf("large_fish");
+    expect(amphibians).toBeLessThan(darters);
+    expect(reptiles).toBeLessThan(darters);
+    expect(darters).toBeLessThan(largeFish);
+  });
+
+  it("keeps decomposers and sediment at the floor below open-water hunters", () => {
+    const largeFish = DENIZEN_DEPTH_ORDER.indexOf("large_fish");
+    const invertebrates = DENIZEN_DEPTH_ORDER.indexOf("invertebrates");
+    const leviathans = DENIZEN_DEPTH_ORDER.indexOf("leviathans");
+    const sediment = DENIZEN_DEPTH_ORDER.indexOf("sediment");
+    expect(largeFish).toBeLessThan(invertebrates);
+    expect(invertebrates).toBeLessThan(leviathans);
+    expect(leviathans).toBeLessThan(sediment);
+  });
+
   it("ignores unknown emojis", () => {
     const ripples = getDenizenDef("ripples")!;
     expect(partitionTimelineByDenizen(["🌊", "❓"])).toEqual([

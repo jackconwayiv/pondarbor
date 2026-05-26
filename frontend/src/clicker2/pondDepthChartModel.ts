@@ -12,31 +12,38 @@ export const POND_DEPTH_CHART_MAX_VISIBLE_GLYPHS =
 
 /**
  * Display order top → bottom (sky/mythic rim down to pond floor).
+ * Ecological placement only — not shop unlock tier.
  * Sediment is always the bottom band; leviathans sit just above abyssals.
  */
 export const DENIZEN_DEPTH_ORDER: readonly string[] = [
+  // sky / mythic rim
   "transcendence",
   "celestials",
   "spirits",
+  // air, shore, and land–water margin
   "hunting_birds",
   "cryptids",
   "humans",
   "great_mammals",
   "shore_mammals",
+  "amphibians",
+  "reptiles",
   "waterfowl",
+  // surface film and upper water column
   "ripples",
   "zooplankton",
-  "small_swimmers",
+  // littoral structure and shallow open water
   "aquatic_plants",
-  "amphibians",
+  "small_swimmers",
   "small_fish",
+  // deep open water and benthos
   "large_fish",
-  "reptiles",
   "invertebrates",
-  "fungi",
-  "microbes",
   "leviathans",
   "abyssals",
+  // decomposers and floor
+  "fungi",
+  "microbes",
   "sediment",
 ];
 
@@ -81,20 +88,20 @@ const DENIZEN_DEPTH_ZONE_BY_ID: Record<string, number> = {
   humans: 1,
   great_mammals: 1,
   shore_mammals: 1,
+  amphibians: 1,
+  reptiles: 1,
   waterfowl: 1,
   ripples: 2,
   zooplankton: 2,
-  small_swimmers: 2,
   aquatic_plants: 3,
-  amphibians: 3,
+  small_swimmers: 3,
   small_fish: 3,
-  large_fish: 3,
-  reptiles: 3,
-  invertebrates: 4,
-  fungi: 4,
-  microbes: 4,
+  large_fish: 4,
   leviathans: 4,
   abyssals: 4,
+  invertebrates: 4,
+  fungi: 5,
+  microbes: 5,
   sediment: 5,
 };
 

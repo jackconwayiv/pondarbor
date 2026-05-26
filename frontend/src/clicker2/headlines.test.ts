@@ -17,7 +17,7 @@ describe("headlines", () => {
     expect(activeHeadlineForEps(3)?.id).toBe("mosquito_departure");
     expect(activeHeadlineForEps(4.9)?.id).toBe("mosquito_departure");
     expect(activeHeadlineForEps(5)?.id).toBe("energy_trickle");
-    expect(activeHeadlineForEps(9.9)?.id).toBe("energy_trickle");
+    expect(activeHeadlineForEps(9.9)?.id).toBe("robot_poetry");
     expect(activeHeadlineForEps(10)?.id).toBe("first_clarity");
     expect(activeHeadlineForEps(1_000)?.id).toBe("liquid_silver");
   });

@@ -162,11 +162,11 @@ export default function NatalChartWheel({ chart }: { chart: NatalChartPayload })
 
   return (
     <Box {...PANEL_NESTED_BLOCK_PROPS} overflow="hidden">
-      <Box maxW="420px" mx="auto" color="fg">
+      <Box maxW="420px" mx="auto" color="fg" w="100%" aspectRatio={1}>
         <svg
           viewBox="-108 -108 216 216"
           width="100%"
-          height="auto"
+          height="100%"
           role="img"
           aria-label="Natal chart wheel. Ascendant left below the horizon; houses two through six along the bottom, seven through twelve along the top, counter-clockwise."
           style={{ fontFamily: GLYPH_FONT }}

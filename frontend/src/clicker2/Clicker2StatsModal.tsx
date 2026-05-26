@@ -322,14 +322,23 @@ export default function Clicker2StatsModal({
     >
       <Stack gap="2.5">
         <StatsRow label="Energy in pond" value={energyAmount(snapshot.energyInPond)} />
-        <StatsRow
-          label="Energy earned (this cycle)"
-          value={energyAmount(snapshot.eraEnergyEarned)}
-        />
-        <StatsRow
-          label="Energy earned (lifetime)"
-          value={energyAmount(snapshot.allTimeEnergyEarned)}
-        />
+        {snapshot.stratumLevel >= 1 ? (
+          <>
+            <StatsRow
+              label="Total energy earned (this cycle)"
+              value={energyAmount(snapshot.eraEnergyEarned)}
+            />
+            <StatsRow
+              label="Total energy earned (lifetime)"
+              value={energyAmount(snapshot.allTimeEnergyEarned)}
+            />
+          </>
+        ) : (
+          <StatsRow
+            label="Total energy earned"
+            value={energyAmount(snapshot.allTimeEnergyEarned)}
+          />
+        )}
         {snapshot.pondEra > 1 ? (
           <StatsRow
             label={CYCLE_LABEL}

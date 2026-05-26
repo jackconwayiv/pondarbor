@@ -11,3 +11,6 @@ export const MUTATION_LABEL = "Mutation";
 export const MUTATIONS_LABEL = "Mutations";
 export const MILESTONE_LABEL = "Milestone";
 export const MILESTONES_LABEL = "Milestones";
+export const STRATUM_LABEL = "Stratum";
+export const STRATA_LABEL = "Strata";
+export const CYCLE_LABEL = "Cycle";

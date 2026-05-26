@@ -25,7 +25,7 @@ import { HIDE_SCROLLBAR_CSS } from "../theme/typography";
 import { DESIGN } from "../theme/tokens";
 
 import { evolutionDisplayEmoji } from "./clicker2OwnedEvolutions";
-import { EVOLUTIONS_LABEL, MILESTONES_LABEL, MUTAGENS_LABEL } from "./clicker2Copy";
+import { EVOLUTIONS_LABEL, MILESTONES_LABEL, MUTAGENS_LABEL, CYCLE_LABEL, STRATUM_LABEL } from "./clicker2Copy";
 import { EvolutionTooltipContent } from "./EvolutionTooltipContent";
 import { ENERGY_EMOJI, formatEnergyAmount, formatEnergyRate } from "./formatEnergy";
 import { formatPondAgeAgo } from "./formatPondAge";
@@ -57,10 +57,13 @@ function StatsRow({ label, value }: { label: string; value: ReactNode }) {
 
 export type Clicker2StatsSnapshot = {
   energyInPond: number;
-  /** 1-based; era 2+ shows per-era and all-time energy totals. */
+  /** 1-based pond cycle (internal `pond_era`). */
   pondEra: number;
   eraEnergyEarned: number;
   allTimeEnergyEarned: number;
+  /** 0 before 1T lifetime energy; derived from all-time total. */
+  stratumLevel: number;
+  energyToNextStratum: number;
   pondStartedAtMs: number;
   denizensOwned: number;
   evolutionsOwned: number;
@@ -76,11 +79,6 @@ export type Clicker2StatsSnapshot = {
   }>;
   energyPerSecond: number;
   energyPerClick: number;
-  /** Ripples passive EpS only (`denizenEps.ripples`); does not match total pond EpS or click-linked term. */
-  ripplesPassiveEps: number;
-  /** Matches `simulateGame`; rain multiplies HUD click but not passive EpS. */
-  energyPerClickSurfaceRingsBaseline: number;
-  energyPerClickFromReflections: number;
   totalClicks: number;
   energyFromClicking: number;
   weatherEventsClicked: number;
@@ -324,23 +322,34 @@ export default function Clicker2StatsModal({
     >
       <Stack gap="2.5">
         <StatsRow label="Energy in pond" value={energyAmount(snapshot.energyInPond)} />
-        {snapshot.pondEra >= 2 ? (
-          <>
-            <StatsRow
-              label="Total energy produced (this era)"
-              value={energyAmount(snapshot.eraEnergyEarned)}
-            />
-            <StatsRow
-              label="Total energy produced (all time)"
-              value={energyAmount(snapshot.allTimeEnergyEarned)}
-            />
-          </>
-        ) : (
+        <StatsRow
+          label="Energy earned (this cycle)"
+          value={energyAmount(snapshot.eraEnergyEarned)}
+        />
+        <StatsRow
+          label="Energy earned (lifetime)"
+          value={energyAmount(snapshot.allTimeEnergyEarned)}
+        />
+        {snapshot.pondEra > 1 ? (
           <StatsRow
-            label="Total energy produced"
-            value={energyAmount(snapshot.eraEnergyEarned)}
+            label={CYCLE_LABEL}
+            value={snapshot.pondEra.toLocaleString()}
           />
-        )}
+        ) : null}
+        {snapshot.stratumLevel >= 1 ? (
+          <StatsRow
+            label={STRATUM_LABEL}
+            value={
+              <>
+                {snapshot.stratumLevel.toLocaleString()}
+                <Text as="span" display="block" fontSize="xs" color="gray.600" fontWeight="normal">
+                  {formatEnergyAmount(snapshot.energyToNextStratum)} {ENERGY_EMOJI} to{" "}
+                  {STRATUM_LABEL} {snapshot.stratumLevel + 1}
+                </Text>
+              </>
+            }
+          />
+        ) : null}
         <StatsRow
           label="Pond started"
           value={formatPondAgeAgo(snapshot.pondStartedAtMs, snapshot.capturedAtWallMs)}
@@ -379,22 +388,6 @@ export default function Clicker2StatsModal({
               : "0"
           }
         />
-        {snapshot.energyPerClick > 0 ? (
-          <>
-            <StatsRow
-              label="  · surface & rings (baseline)"
-              value={energyAmount(snapshot.energyPerClickSurfaceRingsBaseline)}
-            />
-            <StatsRow
-              label="  · click reflections (+ % of pond EpS)"
-              value={energyAmount(snapshot.energyPerClickFromReflections)}
-            />
-            <StatsRow
-              label="Ripples passive EpS"
-              value={`${formatEnergyRate(snapshot.ripplesPassiveEps)} ${ENERGY_EMOJI}`}
-            />
-          </>
-        ) : null}
         <StatsRow label="Number of clicks" value={snapshot.totalClicks.toLocaleString()} />
         <StatsRow
           label="Energy from clicking"

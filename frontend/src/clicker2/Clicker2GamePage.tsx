@@ -58,6 +58,7 @@ import { Clicker2PondHeadline } from "./Clicker2PondHeadline";
 import { MilestoneCelebrateCard } from "./MilestoneCelebrateCard";
 import { activeHeadlineForEps } from "./headlines";
 import MutagenPanel from "./MutagenPanel";
+import StrataProgressRow from "./StrataProgressRow";
 import {
   celebrationMilestoneDefs,
   evaluateNewMilestones,
@@ -115,6 +116,10 @@ import {
   type Clicker2GameLoopRefs,
 } from "./useClicker2GameLoop";
 import { blossomCountFromMilestones } from "./blossoms";
+import {
+  energyToNextStratum,
+  stratumLevelFromAllTimeEnergy,
+} from "./strata";
 import {
   SPECIALTIES,
   compareVisibleSpecialtyShopOrder,
@@ -1475,12 +1480,15 @@ export default function Clicker2GamePage() {
     );
 
     const clickWx = clickWeatherMultiplier(activeRainBoostRef.current);
+    const stratumLevel = stratumLevelFromAllTimeEnergy(allTimeEnergyEarned);
 
     setStatsSnapshot({
       energyInPond,
       pondEra: pondEraRef.current,
       eraEnergyEarned,
       allTimeEnergyEarned,
+      stratumLevel,
+      energyToNextStratum: energyToNextStratum(allTimeEnergyEarned),
       pondStartedAtMs: pondStartedAtMsRef.current,
       denizensOwned: totalDenizensOwned(ownedDenizensRef.current),
       evolutionsOwned: ownedEvolutionDefs.length,
@@ -1491,11 +1499,6 @@ export default function Clicker2GamePage() {
       milestoneStatuses,
       energyPerSecond: displayEps,
       energyPerClick: sim.clickValue * clickWx,
-      ripplesPassiveEps: sim.denizenEps.ripples ?? 0,
-      energyPerClickSurfaceRingsBaseline:
-        sim.clickBreakdown.clickBaseline * clickWx,
-      energyPerClickFromReflections:
-        sim.clickBreakdown.clickFromEpSPercent * clickWx,
       totalClicks: stats.total_clicks ?? 0,
       energyFromClicking: stats.energy_from_clicking ?? 0,
       weatherEventsClicked: stats.weather_events_clicked ?? 0,
@@ -1901,6 +1904,10 @@ export default function Clicker2GamePage() {
         maxW={isMobile ? "full" : { base: "full", lg: "calc(100% - 2.5rem)" }}
         mx="auto"
       >
+        <StrataProgressRow
+          allTimeEnergyEarned={effectiveAllTimeEnergyEarnedDisplay}
+          pondEra={pondEra}
+        />
         <PondDepthChart
           timeline={denizenPurchaseTimeline}
           ownedDenizens={ownedDenizens}

@@ -128,6 +128,38 @@ class UsersApiTests(TestCase):
         self.assertEqual(body["moon_sign"], "leo")
         self.assertEqual(body["rising_sign"], "virgo")
 
+    def test_public_summary_hides_astro_when_display_astro_off(self):
+        from zodiac.models import AstroProfile
+
+        viewer = User.objects.create_user(email="zah@example.com", password="secret12345")
+        viewer.account_status = User.AccountStatus.APPROVED
+        viewer.save(update_fields=["account_status"])
+        target = User.objects.create_user(email="zat@example.com", password="secret12345")
+        target.account_status = User.AccountStatus.APPROVED
+        target.save(update_fields=["account_status"])
+        target.profile.display_astro = False
+        target.profile.save(update_fields=["display_astro"])
+
+        FriendRequest.objects.create(requester=viewer, requested=target, is_accepted=True)
+        FriendRequest.objects.create(requester=target, requested=viewer, is_accepted=True)
+
+        AstroProfile.objects.create(
+            user=target,
+            chart_status=AstroProfile.ChartStatus.READY,
+            sun_sign="aries",
+            moon_sign="taurus",
+            rising_sign="gemini",
+            natal_chart={"points": {}, "angles": {}},
+        )
+
+        self.client.force_login(viewer)
+        resp = self.client.get(f"/api/v1/users/{target.id}/public/")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertNotIn("sun_sign", body)
+        self.assertNotIn("moon_sign", body)
+        self.assertNotIn("rising_sign", body)
+
     def test_public_summary_friend_includes_closet_items_count(self):
         viewer = User.objects.create_user(email="cv@example.com", password="secret12345")
         viewer.account_status = User.AccountStatus.APPROVED

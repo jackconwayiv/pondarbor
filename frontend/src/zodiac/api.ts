@@ -175,10 +175,7 @@ export type FriendWithZodiac = {
   sun_sign: string;
   moon_sign: string;
   rising_sign: string;
-  mercury_sign: string;
-  venus_sign: string;
-  mars_sign: string;
-  natal_chart: NatalChartPayload;
+  natal_chart: NatalChartPayload | null;
 };
 
 export async function fetchFriendsWithZodiac(

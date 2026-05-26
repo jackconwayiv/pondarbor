@@ -1,124 +1,93 @@
 import { Box, SimpleGrid, Stack, Text } from "@chakra-ui/react";
 import { useMemo } from "react";
+import { Link as RouterLink } from "react-router";
 
-import { APP_TEXT_SIZES, PANEL_NESTED_BLOCK_PROPS } from "../theme/typography";
-import { BIG_THREE_BODY, signSymbolForSign } from "../zodiac/astroLexicon";
-import { formatBirthMonthDay } from "../zodiac/birthDateFormat";
+import { APP_TEXT_SIZES } from "../theme/typography";
+import { buildZodiacOverviewTiles } from "../zodiac/ZodiacOverviewCardsStrip";
 import { signCardAccent } from "../zodiac/signCardAccent";
+import ZodiacSignCard from "../zodiac/ZodiacSignCard";
+import { formatBirthMonthDay } from "../zodiac/birthDateFormat";
 
-type Cell =
-  | { kind: "birthday"; label: string; value: string }
-  | { kind: "sign"; id: "sun" | "moon" | "rising"; label: string; sign: string };
-
-export type FriendProfileBirthBigThreeStripProps = {
+export type FriendProfileBirthdayInlineProps = {
   birthDate?: string | null;
+};
+
+/** Right-aligned birthday label for the profile identity row. */
+export function FriendProfileBirthdayInline({ birthDate }: FriendProfileBirthdayInlineProps) {
+  const label = formatBirthMonthDay(birthDate);
+  if (!label) return null;
+
+  return (
+    <Stack gap="0.5" align="flex-end" flexShrink={0} textAlign="right" ml="auto">
+      <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" fontWeight="medium">
+        Birthday
+      </Text>
+      <Text fontSize={APP_TEXT_SIZES.title} fontWeight="semibold" color="fg">
+        {label}
+      </Text>
+    </Stack>
+  );
+}
+
+export type FriendProfileBigThreeRowProps = {
+  userId: number;
   sunSign?: string | null;
   moonSign?: string | null;
   risingSign?: string | null;
 };
 
-function StripCell({ cell }: { cell: Cell }) {
-  if (cell.kind === "birthday") {
-    return (
-      <Box
-        borderWidth="1px"
-        borderColor="border"
-        borderRadius="lg"
-        bg="bg.panel"
-        p={{ base: "2.5", md: "3" }}
-        textAlign="center"
-      >
-        <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" fontWeight="medium" mb="1">
-          {cell.label}
-        </Text>
-        <Text fontSize={APP_TEXT_SIZES.title} fontWeight="semibold" color="fg">
-          {cell.value}
-        </Text>
-      </Box>
-    );
-  }
-
-  const accent = signCardAccent(cell.sign);
-  return (
-    <Box
-      borderLeftWidth="6px"
-      borderLeftColor={accent.borderColor}
-      borderWidth="1px"
-      borderColor="border"
-      borderRadius="lg"
-      bg={accent.bg}
-      p={{ base: "2.5", md: "3" }}
-      textAlign="center"
-    >
-      <Text fontSize={APP_TEXT_SIZES.helper} color={accent.labelColor} fontWeight="medium" mb="1">
-        {cell.label}
-      </Text>
-      <Text
-        fontSize={APP_TEXT_SIZES.title}
-        fontWeight="semibold"
-        fontFamily="heading"
-        textTransform="capitalize"
-        color={accent.valueColor}
-      >
-        {signSymbolForSign(cell.sign) ? `${signSymbolForSign(cell.sign)} ` : ""}
-        {cell.sign}
-      </Text>
-    </Box>
-  );
+function zodiacFriendsTabUrl(userId: number): string {
+  return `/zodiac?tab=friends&user=${userId}`;
 }
 
-export default function FriendProfileBirthBigThreeStrip({
-  birthDate,
+/** Big-three placement cards on their own row; each links to Zodiac Friends tab. */
+export function FriendProfileBigThreeRow({
+  userId,
   sunSign,
   moonSign,
   risingSign,
-}: FriendProfileBirthBigThreeStripProps) {
-  const cells = useMemo(() => {
-    const out: Cell[] = [];
-    const birthday = formatBirthMonthDay(birthDate);
-    if (birthday) {
-      out.push({ kind: "birthday", label: "Birthday", value: birthday });
+}: FriendProfileBigThreeRowProps) {
+  const tiles = useMemo(() => {
+    if (!sunSign?.trim() && !moonSign?.trim() && !risingSign?.trim()) {
+      return [];
     }
-    const signs: { id: "sun" | "moon" | "rising"; raw?: string | null; label: string }[] = [
-      { id: "sun", raw: sunSign, label: BIG_THREE_BODY.sun.label },
-      { id: "moon", raw: moonSign, label: BIG_THREE_BODY.moon.label },
-      { id: "rising", raw: risingSign, label: BIG_THREE_BODY.rising.label },
-    ];
-    for (const s of signs) {
-      const trimmed = s.raw?.trim();
-      if (trimmed) {
-        out.push({ kind: "sign", id: s.id, label: s.label, sign: trimmed });
-      }
-    }
-    return out;
-  }, [birthDate, sunSign, moonSign, risingSign]);
+    return buildZodiacOverviewTiles({
+      sunSign: sunSign?.trim() || "—",
+      moonSign: moonSign?.trim() || "—",
+      risingSign: risingSign?.trim() || "—",
+    }).filter((t) => {
+      if (t.id === "sun") return Boolean(sunSign?.trim());
+      if (t.id === "moon") return Boolean(moonSign?.trim());
+      if (t.id === "rising") return Boolean(risingSign?.trim());
+      return false;
+    });
+  }, [sunSign, moonSign, risingSign]);
 
-  if (cells.length === 0) {
-    return null;
-  }
+  if (tiles.length === 0) return null;
 
-  const birthdayCell = cells.find((c) => c.kind === "birthday");
-  const signCells = cells.filter((c) => c.kind === "sign") as Extract<Cell, { kind: "sign" }>[];
+  const zodiacUrl = zodiacFriendsTabUrl(userId);
 
   return (
-    <Box {...PANEL_NESTED_BLOCK_PROPS} w="100%">
-      <Box display={{ base: "none", md: "block" }}>
-        <SimpleGrid columns={Math.min(4, cells.length)} gap="3" w="100%">
-          {cells.map((cell) => (
-            <StripCell key={cell.kind === "birthday" ? "birthday" : cell.id} cell={cell} />
-          ))}
-        </SimpleGrid>
-      </Box>
-      <Stack gap="3" display={{ base: "flex", md: "none" }} w="100%">
-        {birthdayCell ? <StripCell cell={birthdayCell} /> : null}
-        {signCells.length > 0 ? (
-          <SimpleGrid columns={Math.min(3, signCells.length)} gap="3" w="100%">
-            {signCells.map((cell) => (
-              <StripCell key={cell.id} cell={cell} />
-            ))}
-          </SimpleGrid>
-        ) : null}
-      </Stack>
-    </Box>
+    <SimpleGrid columns={{ base: 3 }} gap="3" w="100%">
+      {tiles.map((tile) => (
+        <RouterLink
+          key={tile.id}
+          to={zodiacUrl}
+          style={{ display: "block", textDecoration: "none", color: "inherit" }}
+        >
+          <Box
+            cursor="pointer"
+            transition="box-shadow 0.15s ease"
+            _hover={{ "& > *": { boxShadow: "md" } }}
+          >
+            <ZodiacSignCard
+              tile={tile}
+              accent={signCardAccent(tile.sign)}
+              interactive={false}
+            />
+          </Box>
+        </RouterLink>
+      ))}
+    </SimpleGrid>
   );
 }

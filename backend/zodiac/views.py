@@ -107,8 +107,8 @@ def zodiac_friends_with_charts(request):
     """
     Friends whose zodiac would appear on the viewer's Zodiac Friends tab.
 
-    Requires ready chart with big three plus Mercury, Venus, and Mars signs, and the same
-    profile visibility rules as people/friends/.
+    Requires ready chart with sun, moon, and rising signs, and the same profile visibility
+    rules as people/friends/.
     """
     err = _require_approved(request)
     if err:

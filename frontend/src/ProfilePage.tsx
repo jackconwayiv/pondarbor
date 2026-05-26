@@ -1,6 +1,7 @@
 import {
   Avatar,
   Box,
+  Checkbox,
   Circle,
   Float,
   Heading,
@@ -46,6 +47,7 @@ import {
 } from "./theme/typography";
 import { getSortedIanaTimeZones, timeZoneOptionsForValue } from "./timezones";
 import { FriendsListPanel } from "./friends/FriendsListPanel";
+import { fetchAstroProfile } from "./zodiac/api";
 
 type ProfileTab = "profile" | "friends" | "account";
 
@@ -121,6 +123,9 @@ export default function ProfilePage() {
   const [socialReadScope, setSocialReadScope] = useState<
     "approved_users" | "friends_only"
   >("approved_users");
+  const [displayAstro, setDisplayAstro] = useState(true);
+  const [displayAstroSaving, setDisplayAstroSaving] = useState(false);
+  const [hasZodiacBirthInfo, setHasZodiacBirthInfo] = useState(false);
   const [savingFields, setSavingFields] = useState<SavingState>({});
   const [saveError, setSaveError] = useState<string | null>(null);
   const [profileAchievements, setProfileAchievements] = useState<
@@ -153,6 +158,27 @@ export default function ProfilePage() {
   }, [searchParams]);
 
   useEffect(() => {
+    if (!isAuthenticated || !sessionUser?.user.is_approved) {
+      setHasZodiacBirthInfo(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const token = await getApiAccessToken();
+        const res = await fetchAstroProfile(token);
+        if (cancelled) return;
+        setHasZodiacBirthInfo(Boolean(res.profile?.birth_date?.trim()));
+      } catch {
+        if (!cancelled) setHasZodiacBirthInfo(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, sessionUser?.user.is_approved, getApiAccessToken]);
+
+  useEffect(() => {
     if (!sessionUser) return;
     setDisplayName(sessionUser.profile.display_name ?? "");
     setAvatarUrl(sessionUser.profile.avatar_url ?? "");
@@ -162,7 +188,29 @@ export default function ProfilePage() {
       sessionUser.profile.social_publish_visibility ?? "all_approved",
     );
     setSocialReadScope(sessionUser.profile.social_read_scope ?? "approved_users");
+    setDisplayAstro(sessionUser.profile.display_astro ?? true);
   }, [sessionUser]);
+
+  const commitDisplayAstro = useCallback(
+    async (next: boolean) => {
+      if (!sessionUser) return;
+      const prev = sessionUser.profile.display_astro ?? true;
+      setDisplayAstro(next);
+      setSaveError(null);
+      setDisplayAstroSaving(true);
+      try {
+        await patchMyProfile({ display_astro: next });
+      } catch (err: unknown) {
+        setSaveError(
+          err instanceof Error ? err.message : "Display Astro setting update failed",
+        );
+        setDisplayAstro(prev);
+      } finally {
+        setDisplayAstroSaving(false);
+      }
+    },
+    [patchMyProfile, sessionUser],
+  );
 
   const commitPrivacy = useCallback(
     async (
@@ -511,6 +559,11 @@ export default function ProfilePage() {
         color: "fg" as const,
       }
     : { fontSize: APP_TEXT_SIZES.label, color: "fg.muted" as const };
+
+  const astroProfileStatusText =
+    (profile.display_astro ?? true)
+      ? "Displaying Astro info on profile"
+      : "Hiding Astro info from profile";
 
   return (
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
@@ -879,77 +932,132 @@ export default function ProfilePage() {
                       </Stack>
                     </HStack>
 
-                    <Stack gap="1" pt="2">
-                      <Text {...profileFieldLabelProps}>Privacy</Text>
-                      {isEditing ? (
-                        <HStack gap={{ base: "3", md: "8" }} align="flex-start">
-                          <Stack gap="1" flex="1" minW={0}>
-                            <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-                              Show me:
-                            </Text>
-                            <PondNativeSelect
-                              rootProps={{ size: "md" }}
-                              fieldProps={{
-                                value: socialReadScope,
-                                onChange: (e) => {
-                                  const next = e.target.value as
-                                    | "approved_users"
-                                    | "friends_only";
-                                  setSocialReadScope(next);
-                                },
-                                onBlur: () =>
-                                  void commitPrivacy({
-                                    social_read_scope: socialReadScope,
-                                  }),
-                              }}
-                            >
-                              <option value="approved_users">approved users</option>
-                              <option value="friends_only">my friends</option>
-                            </PondNativeSelect>
-                          </Stack>
+                    <HStack
+                      align="flex-start"
+                      gap={{ base: "3", md: "8" }}
+                      w="100%"
+                      pt="2"
+                      flexWrap={{ base: "wrap", md: "nowrap" }}
+                    >
+                      <Stack gap="1" flex="1" minW={{ base: "100%", md: 0 }}>
+                        <Text {...profileFieldLabelProps}>Privacy</Text>
+                        {isEditing ? (
+                          <HStack gap={{ base: "3", md: "8" }} align="flex-start">
+                            <Stack gap="1" flex="1" minW={0}>
+                              <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                                Show me:
+                              </Text>
+                              <PondNativeSelect
+                                rootProps={{ size: "md" }}
+                                fieldProps={{
+                                  value: socialReadScope,
+                                  onChange: (e) => {
+                                    const next = e.target.value as
+                                      | "approved_users"
+                                      | "friends_only";
+                                    setSocialReadScope(next);
+                                  },
+                                  onBlur: () =>
+                                    void commitPrivacy({
+                                      social_read_scope: socialReadScope,
+                                    }),
+                                }}
+                              >
+                                <option value="approved_users">approved users</option>
+                                <option value="friends_only">my friends</option>
+                              </PondNativeSelect>
+                            </Stack>
 
-                          <Stack gap="1" flex="1" minW={0}>
-                            <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-                              Sees me:
+                            <Stack gap="1" flex="1" minW={0}>
+                              <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                                Sees me:
+                              </Text>
+                              <PondNativeSelect
+                                rootProps={{ size: "md" }}
+                                fieldProps={{
+                                  value: socialPublishVisibility,
+                                  onChange: (e) => {
+                                    const next = e.target.value as
+                                      | "all_approved"
+                                      | "friends_only";
+                                    setSocialPublishVisibility(next);
+                                  },
+                                  onBlur: () =>
+                                    void commitPrivacy({
+                                      social_publish_visibility: socialPublishVisibility,
+                                    }),
+                                }}
+                              >
+                                <option value="all_approved">approved users</option>
+                                <option value="friends_only">my friends</option>
+                              </PondNativeSelect>
+                            </Stack>
+                          </HStack>
+                        ) : (
+                          <Stack gap="1">
+                            <Text fontSize={APP_TEXT_SIZES.body}>
+                              Sees me:{" "}
+                              {profile.social_publish_visibility === "friends_only"
+                                ? "my friends"
+                                : "approved users"}
                             </Text>
-                            <PondNativeSelect
-                              rootProps={{ size: "md" }}
-                              fieldProps={{
-                                value: socialPublishVisibility,
-                                onChange: (e) => {
-                                  const next = e.target.value as
-                                    | "all_approved"
-                                    | "friends_only";
-                                  setSocialPublishVisibility(next);
-                                },
-                                onBlur: () =>
-                                  void commitPrivacy({
-                                    social_publish_visibility: socialPublishVisibility,
-                                  }),
-                              }}
-                            >
-                              <option value="all_approved">approved users</option>
-                              <option value="friends_only">my friends</option>
-                            </PondNativeSelect>
+                            <Text fontSize={APP_TEXT_SIZES.body}>
+                              Show me:{" "}
+                              {profile.social_read_scope === "friends_only"
+                                ? "my friends"
+                                : "approved users"}
+                            </Text>
                           </Stack>
-                        </HStack>
-                      ) : (
-                        <Stack gap="1">
-                          <Text fontSize={APP_TEXT_SIZES.body}>
-                            Sees me:{" "}
-                            {profile.social_publish_visibility === "friends_only"
-                              ? "my friends"
-                              : "approved users"}
-                          </Text>
-                          <Text fontSize={APP_TEXT_SIZES.body}>
-                            Show me:{" "}
-                            {profile.social_read_scope === "friends_only"
-                              ? "my friends"
-                              : "approved users"}
-                          </Text>
+                        )}
+                      </Stack>
+
+                      {hasZodiacBirthInfo ? (
+                        <Stack
+                          gap="1"
+                          flex="1"
+                          minW={{ base: "100%", md: 0 }}
+                          w={{ base: "100%", md: "auto" }}
+                        >
+                          {isEditing ? (
+                            <HStack align="flex-start" gap="3" w="100%">
+                              <Checkbox.Root
+                                checked={displayAstro}
+                                disabled={displayAstroSaving}
+                                colorPalette="lilypad"
+                                alignSelf="flex-start"
+                                mt="0.5"
+                                onCheckedChange={(d) => {
+                                  void commitDisplayAstro(d.checked === true);
+                                }}
+                              >
+                                <Checkbox.HiddenInput />
+                                <Checkbox.Control flexShrink={0}>
+                                  <Checkbox.Indicator />
+                                </Checkbox.Control>
+                              </Checkbox.Root>
+                              <Stack gap="0.5" flex="1" minW={0}>
+                                <Text
+                                  fontSize={APP_TEXT_SIZES.body}
+                                  fontWeight="medium"
+                                >
+                                  Display Astro
+                                </Text>
+                                <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                                  Show Sun, Moon, and Rising on your friend profile.
+                                </Text>
+                              </Stack>
+                            </HStack>
+                          ) : (
+                            <>
+                              <Text {...profileFieldLabelProps}>Astro</Text>
+                              <Text fontSize={APP_TEXT_SIZES.body}>
+                                {astroProfileStatusText}
+                              </Text>
+                            </>
+                          )}
                         </Stack>
-                      )}
-                    </Stack>
+                      ) : null}
+                    </HStack>
 
                     {isEditing ? (
                       <HStack gap="2" pt="2">

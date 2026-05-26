@@ -81,6 +81,10 @@ class Profile(models.Model):
         max_length=64, default=PROFILE_TIMEZONE_DEFAULT
     )
     birth_date = models.DateField(null=True, blank=True)
+    display_astro = models.BooleanField(
+        default=True,
+        help_text="When true, Sun/Moon/Rising appear on the member's friend profile.",
+    )
     # Set when the user has finished at least one WhatIf session (any role).
     whatif_completed_session = models.BooleanField(default=False)
     meal_week_starts_on = models.PositiveSmallIntegerField(

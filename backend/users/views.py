@@ -113,6 +113,7 @@ def serialize_me(user):
             "meal_partner_incoming_pending": incoming_meal_partner_pending(user=user),
             "meal_slot_labels": profile.meal_slot_labels,
             "meal_pantry_enabled": profile.meal_pantry_enabled,
+            "display_astro": profile.display_astro,
             "social_publish_visibility": profile.social_publish_visibility,
             "social_read_scope": profile.social_read_scope,
             "songaday_visibility": profile.songaday_visibility,
@@ -417,7 +418,7 @@ def _public_user_summary_response(*, request, user):
             astro = AstroProfile.objects.get(user=user)
         except AstroProfile.DoesNotExist:
             astro = None
-        if astro and astro.chart_status == AstroProfile.ChartStatus.READY:
+        if profile.display_astro and astro and astro.chart_status == AstroProfile.ChartStatus.READY:
             if astro.sun_sign:
                 payload["sun_sign"] = astro.sun_sign
             if astro.moon_sign:
@@ -565,6 +566,8 @@ def patch_me_profile(request):
             profile.meal_slot_labels = {**(profile.meal_slot_labels or {}), **incoming}
     if "meal_pantry_enabled" in data:
         profile.meal_pantry_enabled = bool(data["meal_pantry_enabled"])
+    if "display_astro" in data:
+        profile.display_astro = bool(data["display_astro"])
     if "songaday_visibility" in data:
         profile.songaday_visibility = data["songaday_visibility"]
     profile.save()

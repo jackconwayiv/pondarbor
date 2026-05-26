@@ -9,12 +9,14 @@ import { signCardAccent } from "./signCardAccent";
 import ZodiacSignCard from "./ZodiacSignCard";
 import type { ZodiacSignCardTile } from "./ZodiacSignCardsStrip";
 
+const BIG_THREE_IDS = ["sun", "moon", "rising"] as const;
+
 export type FriendZodiacPlacementsRowProps = {
   friend: FriendWithZodiac;
   onPlacementOpen: (tile: ZodiacSignCardTile) => void;
 };
 
-function FriendIdentityCard({ friend }: { friend: FriendWithZodiac }) {
+function FriendIdentity({ friend }: { friend: FriendWithZodiac }) {
   const { sessionUser, auth0User } = useAppSession();
   const avatarSrc =
     resolveAvatarUrlForUser(friend.avatar_url, friend.id, sessionUser, auth0User) ||
@@ -23,23 +25,14 @@ function FriendIdentityCard({ friend }: { friend: FriendWithZodiac }) {
 
   return (
     <FriendProfileLink userId={friend.id}>
-      <Box
-        as="span"
-        display="flex"
-        flexDirection="column"
-        alignItems="center"
-        justifyContent="center"
+      <Stack
+        align="center"
+        justify="center"
         gap="2"
         h="100%"
-        minH={{ base: "auto", md: "100%" }}
-        p={{ base: "2", md: "3" }}
-        borderWidth="1px"
-        borderColor="border"
-        borderRadius="xl"
-        bg="bg.panel"
-        boxShadow="sm"
-        transition="box-shadow 0.15s ease"
-        _hover={{ boxShadow: "md" }}
+        py={{ base: "1", md: "0" }}
+        transition="opacity 0.15s ease"
+        _hover={{ opacity: 0.9 }}
       >
         <Avatar.Root size="lg">
           <Avatar.Fallback name={friend.nickname} />
@@ -54,7 +47,7 @@ function FriendIdentityCard({ friend }: { friend: FriendWithZodiac }) {
         >
           {friend.nickname}
         </Text>
-      </Box>
+      </Stack>
     </FriendProfileLink>
   );
 }
@@ -67,89 +60,43 @@ export default function FriendZodiacPlacementsRow({
     sunSign: friend.sun_sign,
     moonSign: friend.moon_sign,
     risingSign: friend.rising_sign,
-    mercurySign: friend.mercury_sign,
-    venusSign: friend.venus_sign,
-    marsSign: friend.mars_sign,
     natalChart: friend.natal_chart,
-  });
+  }).filter((t) => BIG_THREE_IDS.includes(t.id as (typeof BIG_THREE_IDS)[number]));
 
-  const tileById = (id: string) => tiles.find((t) => t.id === id);
-
-  const row0 = ["sun", "moon", "rising"] as const;
-  const row1 = ["mercury", "venus", "mars"] as const;
-
-  const placementCells = (
-    <>
-      {row0.map((id) => {
-        const tile = tileById(id);
-        if (!tile) return <Box key={id} display="none" />;
-        return (
-          <ZodiacSignCard
-            key={id}
-            tile={tile}
-            accent={signCardAccent(tile.sign)}
-            onOpen={onPlacementOpen}
-          />
-        );
-      })}
-      {row1.map((id) => {
-        const tile = tileById(id);
-        if (!tile) return <Box key={id} display="none" />;
-        return (
-          <ZodiacSignCard
-            key={id}
-            tile={tile}
-            accent={signCardAccent(tile.sign)}
-            onOpen={onPlacementOpen}
-          />
-        );
-      })}
-    </>
-  );
+  const placementCards = tiles.map((tile) => (
+    <ZodiacSignCard
+      key={tile.id}
+      tile={tile}
+      accent={signCardAccent(tile.sign)}
+      onOpen={onPlacementOpen}
+    />
+  ));
 
   return (
-    <Box w="100%">
+    <Box
+      w="100%"
+      borderWidth="1px"
+      borderColor="border"
+      borderRadius="xl"
+      bg="bg.panel"
+      p={{ base: "3", md: "4" }}
+      boxShadow="sm"
+    >
       <Box display={{ base: "none", md: "block" }}>
         <Grid
-          templateColumns="minmax(140px, 1fr) repeat(3, minmax(0, 1fr))"
-          templateRows="repeat(2, auto)"
-          gap={{ base: "3", md: "4" }}
+          templateColumns="minmax(120px, 0.85fr) repeat(3, minmax(0, 1fr))"
+          gap="4"
           w="100%"
           alignItems="stretch"
         >
-          <Box gridRow="span 2" minH="0">
-            <FriendIdentityCard friend={friend} />
-          </Box>
-          {row0.map((id) => {
-            const tile = tileById(id);
-            if (!tile) return null;
-            return (
-              <ZodiacSignCard
-                key={id}
-                tile={tile}
-                accent={signCardAccent(tile.sign)}
-                onOpen={onPlacementOpen}
-              />
-            );
-          })}
-          {row1.map((id) => {
-            const tile = tileById(id);
-            if (!tile) return null;
-            return (
-              <ZodiacSignCard
-                key={id}
-                tile={tile}
-                accent={signCardAccent(tile.sign)}
-                onOpen={onPlacementOpen}
-              />
-            );
-          })}
+          <FriendIdentity friend={friend} />
+          {placementCards}
         </Grid>
       </Box>
-      <Stack gap="3" display={{ base: "flex", md: "none" }}>
-        <FriendIdentityCard friend={friend} />
-        <SimpleGrid columns={2} gap="3" w="100%">
-          {placementCells}
+      <Stack gap="4" display={{ base: "flex", md: "none" }} w="100%">
+        <FriendIdentity friend={friend} />
+        <SimpleGrid columns={3} gap="3" w="100%">
+          {placementCards}
         </SimpleGrid>
       </Stack>
     </Box>

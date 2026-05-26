@@ -72,7 +72,10 @@ import {
   type PublicUserSummary,
 } from "./publicUser";
 import { friendHasVisibleFamilyTree } from "../people/familyTreeVisibility";
-import FriendProfileBirthBigThreeStrip from "./FriendProfileBirthBigThreeStrip";
+import {
+  FriendProfileBigThreeRow,
+  FriendProfileBirthdayInline,
+} from "./FriendProfileBirthBigThreeStrip";
 
 const PAGE_SIZE = 10;
 
@@ -765,25 +768,36 @@ export default function FriendProfilePage() {
                       </Text>
                     ) : null}
                   </HStack>
-                  <HStack gap="4" align="flex-start">
-                    <Avatar.Root size="md">
-                      <Avatar.Fallback name={summary.nickname} />
-                      <Avatar.Image src={resolvedProfileAvatarUrl || undefined} />
-                    </Avatar.Root>
-                    <Stack gap="0">
-                      <Text
-                        fontWeight="semibold"
-                        fontSize={APP_TEXT_SIZES.body}
-                      >
-                        {summary.nickname}
-                      </Text>
-                      {summary.email ? (
-                        <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600">
-                          {summary.email}
+                  <Stack gap="3" w="100%">
+                    <HStack gap="4" align="flex-start" w="100%">
+                      <Avatar.Root size="md" flexShrink={0}>
+                        <Avatar.Fallback name={summary.nickname} />
+                        <Avatar.Image src={resolvedProfileAvatarUrl || undefined} />
+                      </Avatar.Root>
+                      <Stack gap="0" flex="1" minW="0">
+                        <Text
+                          fontWeight="semibold"
+                          fontSize={APP_TEXT_SIZES.body}
+                        >
+                          {summary.nickname}
                         </Text>
-                      ) : null}
-                    </Stack>
-                  </HStack>
+                        {summary.email ? (
+                          <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600">
+                            {summary.email}
+                          </Text>
+                        ) : null}
+                      </Stack>
+                      <FriendProfileBirthdayInline birthDate={summary.birth_date} />
+                    </HStack>
+                    {profileSubjectUserId != null ? (
+                      <FriendProfileBigThreeRow
+                        userId={profileSubjectUserId}
+                        sunSign={summary.sun_sign}
+                        moonSign={summary.moon_sign}
+                        risingSign={summary.rising_sign}
+                      />
+                    ) : null}
+                  </Stack>
                 </>
               ) : null}
             </Box>
@@ -963,12 +977,6 @@ export default function FriendProfilePage() {
                 }
                 variant="plain"
               >
-                <FriendProfileBirthBigThreeStrip
-                  birthDate={summary.birth_date}
-                  sunSign={summary.sun_sign}
-                  moonSign={summary.moon_sign}
-                  risingSign={summary.rising_sign}
-                />
                 <Tabs.List {...APP_SHELL_TAB_LIST_PROPS}>
                   {hasAchievements ? (
                     <Tabs.Trigger

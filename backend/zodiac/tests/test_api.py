@@ -320,4 +320,5 @@ class ZodiacApiTests(TestCase):
         self.assertEqual(len(friends), 1)
         self.assertEqual(friends[0]["id"], friend.id)
         self.assertEqual(friends[0]["sun_sign"], "libra")
-        self.assertIn("mercury", friends[0]["natal_chart"]["points"])
+        self.assertIn("sun", friends[0]["natal_chart"]["points"])
+        self.assertIn("ascendant", friends[0]["natal_chart"]["angles"])

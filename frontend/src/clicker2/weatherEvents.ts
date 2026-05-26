@@ -331,7 +331,7 @@ export const WEATHER_CATALOG_GLOBAL_NOTES: readonly string[] = [
   `Spawn interval: ${SPAWN_MIN_MINUTES}–${SPAWN_MAX_MINUTES} minutes after the previous event ends`,
   "On-screen lifetime: 14s, 17s, or 20s by tier (1s fade in, 10–16s hold, 3s fade out)",
   "Spawn position: random % over pond stage (left 10–85%, top 14–72%)",
-  "Persisted in save: next_weather_spawn_at_ms (wall-clock countdown)",
+  "Persisted in save: next_weather_spawn_remaining_ms (play-time countdown)",
   "Rain: 30% total (5% + 10% + 15%); Wind: 30% (5% + 10% + 15%); Sun: 40% (5% + 15% + 20%)",
 ];
 
@@ -355,16 +355,18 @@ export function rollWeatherSpawnDelayMs(): number {
   return WEATHER_SPAWN_MIN_MS + Math.floor(Math.random() * (span + 1));
 }
 
-export function nextWeatherSpawnAtMsFromNow(nowMs = Date.now()): number {
-  return nowMs + rollWeatherSpawnDelayMs();
+/** Fresh random delay for the next weather spawn (5–15 minutes). */
+export function scheduleWeatherSpawnRemainingMs(): number {
+  return rollWeatherSpawnDelayMs();
 }
 
-export function msUntilWeatherSpawn(
-  spawnAtMs: number,
-  nowMs = Date.now(),
+/** Session-time ms left before spawn; used when persisting saves mid-countdown. */
+export function remainingMsUntilWeatherSpawn(
+  deadlinePerfMs: number,
+  nowPerfMs = performance.now(),
 ): number {
-  if (!Number.isFinite(spawnAtMs) || spawnAtMs <= 0) return 0;
-  return Math.max(0, spawnAtMs - nowMs);
+  if (!Number.isFinite(deadlinePerfMs) || deadlinePerfMs <= 0) return 0;
+  return Math.max(0, deadlinePerfMs - nowPerfMs);
 }
 
 export function createWeatherEvent(nowPerfMs = performance.now()): ActiveWeatherEvent {

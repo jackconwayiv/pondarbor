@@ -11,8 +11,9 @@ import { resolveSpecialtyAcquiredAtMs } from "./specialtyAcquiredAt";
 import { DENIZEN_IDS, FIRST_DENIZEN_ID } from "./denizens";
 import { isRetiredWindSpecialtyId } from "./retiredWindEvolutions";
 import { SPECIALTY_IDS } from "./specialties";
+import { rollWeatherSpawnDelayMs } from "./weatherEvents";
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 export const CATALOG_CONTENT_VERSION = 20;
 
 export type Clicker2Statistics = {
@@ -41,8 +42,8 @@ export type Clicker2GameState = {
   pond_started_at_ms: number;
   /** 1-based pond era; increments when the pond resets for a new era. */
   pond_era: number;
-  /** Wall-clock ms when the next weather emoji should spawn (countdown target). */
-  next_weather_spawn_at_ms: number;
+  /** Play-time ms until the next weather emoji spawns (does not tick while away). */
+  next_weather_spawn_remaining_ms: number;
   /** Newest denizen purchase first; one emoji per buy. */
   denizen_purchase_timeline: string[];
   /** Unspent mutagens ready to spend on mutations. */
@@ -69,6 +70,21 @@ export type Clicker2StateResponse = {
   server_time: string;
   clicker2_badges_unlocked?: boolean;
 };
+
+/** Maps save JSON to play-time weather countdown; discards legacy wall-clock targets. */
+export function normalizeNextWeatherSpawnRemaining(
+  raw: Record<string, unknown>,
+): number {
+  const remaining = raw.next_weather_spawn_remaining_ms;
+  if (typeof remaining === "number" && Number.isFinite(remaining) && remaining > 0) {
+    return remaining;
+  }
+  const legacyAt = raw.next_weather_spawn_at_ms;
+  if (typeof legacyAt === "number" && Number.isFinite(legacyAt) && legacyAt > 0) {
+    return rollWeatherSpawnDelayMs();
+  }
+  return 0;
+}
 
 function numField(
   raw: Record<string, unknown>,
@@ -104,7 +120,7 @@ export function createDefaultClicker2State(): Clicker2GameState {
     catalog_version: CATALOG_CONTENT_VERSION,
     pond_started_at_ms: Date.now(),
     pond_era: 1,
-    next_weather_spawn_at_ms: 0,
+    next_weather_spawn_remaining_ms: 0,
     denizen_purchase_timeline: [],
     mutagens_bank: 0,
     total_mutagens_acquired: 0,
@@ -241,12 +257,8 @@ export function normalizeClicker2State(raw: unknown): Clicker2GameState {
 
   const pond_era = Math.max(1, Math.floor(numField(o, "pond_era", 1)));
 
-  const next_weather_spawn_at_ms =
-    typeof o.next_weather_spawn_at_ms === "number" &&
-    Number.isFinite(o.next_weather_spawn_at_ms) &&
-    o.next_weather_spawn_at_ms > 0
-      ? o.next_weather_spawn_at_ms
-      : 0;
+  const next_weather_spawn_remaining_ms =
+    normalizeNextWeatherSpawnRemaining(o);
 
   const statistics = normalizeClicker2Statistics(o.statistics);
 
@@ -293,7 +305,7 @@ export function normalizeClicker2State(raw: unknown): Clicker2GameState {
     catalog_version,
     pond_started_at_ms,
     pond_era,
-    next_weather_spawn_at_ms,
+    next_weather_spawn_remaining_ms,
     denizen_purchase_timeline,
     mutagens_bank,
     total_mutagens_acquired,

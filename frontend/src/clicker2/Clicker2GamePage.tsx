@@ -148,8 +148,8 @@ import {
   createWeatherEvent,
   effectiveEnergyPerSecond,
   epsWeatherMultiplier,
-  msUntilWeatherSpawn,
-  nextWeatherSpawnAtMsFromNow,
+  remainingMsUntilWeatherSpawn,
+  rollWeatherSpawnDelayMs,
   startBlusterBoost,
   startRainBoost,
   weatherFamily,
@@ -268,7 +268,8 @@ export default function Clicker2GamePage() {
   const blusterBoostEndTimeoutRef = useRef(0);
   const lastMilestoneSyncMsRef = useRef(0);
   const weatherSpawnTimeoutRef = useRef(0);
-  const nextWeatherSpawnAtMsRef = useRef(0);
+  const nextWeatherSpawnRemainingMsRef = useRef(0);
+  const weatherSpawnDeadlinePerfMsRef = useRef(0);
   const weatherSpawnArmedForLoadAttemptRef = useRef<number | null>(null);
   const [loadStatus, setLoadStatus] = useState<LoadStatus>("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -386,7 +387,16 @@ export default function Clicker2GamePage() {
     };
   }, []);
 
+  const refreshWeatherSpawnRemainingForSave = useCallback(() => {
+    const deadline = weatherSpawnDeadlinePerfMsRef.current;
+    if (deadline > 0) {
+      nextWeatherSpawnRemainingMsRef.current =
+        remainingMsUntilWeatherSpawn(deadline);
+    }
+  }, []);
+
   const snapshotState = useCallback((): Clicker2GameState => {
+    refreshWeatherSpawnRemainingForSave();
     const sim = simulateGame(
       ownedDenizensRef.current,
       ownedSpecialtiesRef.current,
@@ -410,7 +420,7 @@ export default function Clicker2GamePage() {
       catalog_version: stateRef.current.catalog_version,
       pond_started_at_ms: pondStartedAtMsRef.current,
       pond_era: pondEraRef.current,
-      next_weather_spawn_at_ms: nextWeatherSpawnAtMsRef.current,
+      next_weather_spawn_remaining_ms: nextWeatherSpawnRemainingMsRef.current,
       denizen_purchase_timeline: denizenPurchaseTimelineRef.current,
       mutagens_bank: mutagensBankRef.current,
       total_mutagens_acquired: totalMutagensAcquiredRef.current,
@@ -420,7 +430,7 @@ export default function Clicker2GamePage() {
       milestones_dismissed: milestonesDismissedRef.current,
       statistics: statisticsRef.current,
     };
-  }, []);
+  }, [refreshWeatherSpawnRemainingForSave]);
 
   const persistLocalSave = useCallback(() => {
     const userId = userIdRef.current;
@@ -720,9 +730,9 @@ export default function Clicker2GamePage() {
   }, []);
 
   const armWeatherSpawnTimer = useCallback(
-    (spawnAtMs: number) => {
+    (remainingMs: number) => {
       window.clearTimeout(weatherSpawnTimeoutRef.current);
-      const remaining = msUntilWeatherSpawn(spawnAtMs);
+      const remaining = Math.max(0, remainingMs);
       weatherSpawnTimeoutRef.current = window.setTimeout(
         trySpawnWeatherFromTimer,
         remaining,
@@ -732,10 +742,11 @@ export default function Clicker2GamePage() {
   );
 
   const scheduleNextWeatherSpawn = useCallback(() => {
-    const spawnAtMs = nextWeatherSpawnAtMsFromNow();
-    nextWeatherSpawnAtMsRef.current = spawnAtMs;
+    const remaining = rollWeatherSpawnDelayMs();
+    nextWeatherSpawnRemainingMsRef.current = remaining;
+    weatherSpawnDeadlinePerfMsRef.current = performance.now() + remaining;
     markGameDirty();
-    armWeatherSpawnTimer(spawnAtMs);
+    armWeatherSpawnTimer(remaining);
   }, [armWeatherSpawnTimer, markGameDirty]);
 
   const handleBlusterBoostEnd = useCallback(
@@ -807,6 +818,7 @@ export default function Clicker2GamePage() {
     }, delay);
   }, []);
 
+  refreshWeatherSpawnRemainingForSave();
   stateRef.current = {
     energy: computeEffectiveEnergy(
       energy,
@@ -820,7 +832,7 @@ export default function Clicker2GamePage() {
     catalog_version: stateRef.current.catalog_version,
     pond_started_at_ms: pondStartedAtMs,
     pond_era: pondEra,
-    next_weather_spawn_at_ms: nextWeatherSpawnAtMsRef.current,
+    next_weather_spawn_remaining_ms: nextWeatherSpawnRemainingMsRef.current,
     denizen_purchase_timeline: denizenPurchaseTimelineRef.current,
     mutagens_bank: mutagensBank,
     total_mutagens_acquired: totalMutagensAcquired,
@@ -847,20 +859,21 @@ export default function Clicker2GamePage() {
         const loadedState = finalizeClicker2LoadState(res, local);
         const loadNowMs = Date.parse(res.server_time) || Date.now();
         const mutagenBoot = bootstrapMutagenPipelineOnLoad(loadedState, loadNowMs);
-        let nextWeatherSpawnAt =
-          loadedState.next_weather_spawn_at_ms > 0
-            ? loadedState.next_weather_spawn_at_ms
-            : nextWeatherSpawnAtMsFromNow();
+        let nextWeatherSpawnRemaining =
+          loadedState.next_weather_spawn_remaining_ms > 0
+            ? loadedState.next_weather_spawn_remaining_ms
+            : rollWeatherSpawnDelayMs();
         const { completedCount: mutagenSettledCount, ...mutagenState } =
           mutagenBoot;
         const stateWithWeather = {
           ...loadedState,
           ...mutagenState,
-          next_weather_spawn_at_ms: nextWeatherSpawnAt,
+          next_weather_spawn_remaining_ms: nextWeatherSpawnRemaining,
         };
         saveDirtyRef.current =
           loadedState.pond_started_at_ms !== merged.pond_started_at_ms ||
-          loadedState.next_weather_spawn_at_ms !== nextWeatherSpawnAt ||
+          loadedState.next_weather_spawn_remaining_ms !==
+            nextWeatherSpawnRemaining ||
           mutagenSettledCount > 0 ||
           specialtyAcquiredMigrationPending(
             res.state,
@@ -907,7 +920,9 @@ export default function Clicker2GamePage() {
         setPondEra(stateWithWeather.pond_era);
         pondEraRef.current = stateWithWeather.pond_era;
         statisticsPassiveAnchorMsRef.current = performance.now();
-        nextWeatherSpawnAtMsRef.current = nextWeatherSpawnAt;
+        nextWeatherSpawnRemainingMsRef.current = nextWeatherSpawnRemaining;
+        weatherSpawnDeadlinePerfMsRef.current =
+          performance.now() + nextWeatherSpawnRemaining;
         stateRef.current = stateToSave;
         writeClicker2LocalSave(userId, stateToSave);
         setLoadStatus("ready");
@@ -940,7 +955,7 @@ export default function Clicker2GamePage() {
       return;
     }
     weatherSpawnArmedForLoadAttemptRef.current = loadAttempt;
-    armWeatherSpawnTimer(nextWeatherSpawnAtMsRef.current);
+    armWeatherSpawnTimer(nextWeatherSpawnRemainingMsRef.current);
   }, [loadStatus, loadAttempt, armWeatherSpawnTimer]);
 
   useEffect(() => {

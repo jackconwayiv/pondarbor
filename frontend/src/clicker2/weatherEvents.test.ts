@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   clickWeatherMultiplier,
   epsWeatherMultiplier,
+  remainingMsUntilWeatherSpawn,
+  scheduleWeatherSpawnRemainingMs,
   shopSurfaceForWeather,
   startBlusterBoost,
   SUNSHINE_SHOP_BACKGROUND,
@@ -11,6 +13,8 @@ import {
   WEATHER_FADE_IN_MS,
   WEATHER_FADE_OUT_MS,
   WEATHER_SPAWN_CHANCES_PERCENT,
+  WEATHER_SPAWN_MAX_MS,
+  WEATHER_SPAWN_MIN_MS,
   WEATHER_VARIANT_IDS,
   WEATHER_VARIANTS,
   WEATHER_VISIBLE_MS_14,
@@ -19,6 +23,20 @@ import {
   weatherVisibleFadeTier,
   type WeatherVariantId,
 } from "./weatherEvents";
+
+describe("weather spawn scheduling", () => {
+  it("rolls delay within 5–15 minutes", () => {
+    const remaining = scheduleWeatherSpawnRemainingMs();
+    expect(remaining).toBeGreaterThanOrEqual(WEATHER_SPAWN_MIN_MS);
+    expect(remaining).toBeLessThanOrEqual(WEATHER_SPAWN_MAX_MS);
+  });
+
+  it("computes session remaining from performance deadline", () => {
+    const now = 10_000;
+    expect(remainingMsUntilWeatherSpawn(now + 5_000, now)).toBe(5_000);
+    expect(remainingMsUntilWeatherSpawn(now - 1, now)).toBe(0);
+  });
+});
 
 describe("weather variant catalog", () => {
   it("spawn chances sum to 100%", () => {

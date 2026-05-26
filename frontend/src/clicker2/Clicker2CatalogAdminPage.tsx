@@ -75,6 +75,11 @@ import {
 } from "./pairingEvolutions";
 import { formatEnergyAmount, formatEnergyRate, formatShopCost } from "./formatEnergy";
 import { specialtyTierGradient } from "./specialtyTierColors";
+import {
+  formatWindUnlockSummary,
+  WIND_EVOLUTION_EMOJI,
+  WIND_SPECIALTY_DENIZEN_ID,
+} from "./windEvolutions";
 import { POLLINATOR_SPECIALTY_DENIZEN_ID } from "./pollinatorEvolutions";
 import {
   CLICK_SPECIALTY_DENIZEN_ID,
@@ -117,6 +122,9 @@ function CatalogFramedChrome({ children }: { children: ReactNode }) {
 }
 
 function specialtyUnlockSummary(s: SpecialtyDef): string {
+  if (s.unlockWindEventsClicked != null) {
+    return formatWindUnlockSummary(s);
+  }
   if (s.pairingUnlock) {
     return formatPairingUnlockSummary(s);
   }
@@ -165,9 +173,7 @@ function SpecialtyTierTitleCard({
     >
       <HStack gap="2" align="flex-start">
         <Text fontSize="lg" lineHeight="1" aria-hidden>
-          {def.denizenId === POND_SPECIALTY_DENIZEN_ID
-            ? POND_PRODUCTION_EMOJI
-            : (getDenizenDef(def.denizenId)?.emoji ?? "✨")}
+          {evolutionDisplayEmoji(def)}
         </Text>
         <Stack gap="0.5" flex="1" minW="0">
           <Text fontWeight="bold" fontSize="sm" lineHeight="1.25">
@@ -599,6 +605,7 @@ const CATALOG_DENIZEN_ORDER: readonly string[] = [
   POND_SPECIALTY_DENIZEN_ID,
   CLICK_SPECIALTY_DENIZEN_ID,
   POLLINATOR_SPECIALTY_DENIZEN_ID,
+  WIND_SPECIALTY_DENIZEN_ID,
   ...DENIZENS.map((d) => d.id),
 ];
 
@@ -612,6 +619,7 @@ function specialtyCatalogChainLabel(denizenId: string): string {
   if (denizenId === POND_SPECIALTY_DENIZEN_ID) return "Pond production";
   if (denizenId === CLICK_SPECIALTY_DENIZEN_ID) return "Click reflections";
   if (denizenId === POLLINATOR_SPECIALTY_DENIZEN_ID) return "Pollinators";
+  if (denizenId === WIND_SPECIALTY_DENIZEN_ID) return "Wind";
   if (denizenId === PAIRING_SPECIALTY_DENIZEN_ID) return "Pairing";
   return getDenizenDef(denizenId)?.namePlural ?? denizenId;
 }
@@ -620,6 +628,7 @@ function specialtyCatalogChainEmoji(denizenId: string): string {
   if (denizenId === POND_SPECIALTY_DENIZEN_ID) return POND_PRODUCTION_EMOJI;
   if (denizenId === CLICK_SPECIALTY_DENIZEN_ID) return CLICK_CHAIN_EMOJI;
   if (denizenId === POLLINATOR_SPECIALTY_DENIZEN_ID) return "🐝";
+  if (denizenId === WIND_SPECIALTY_DENIZEN_ID) return WIND_EVOLUTION_EMOJI;
   if (denizenId === PAIRING_SPECIALTY_DENIZEN_ID) return PAIRING_EVOLUTION_EMOJI;
   return getDenizenDef(denizenId)?.emoji ?? "✨";
 }

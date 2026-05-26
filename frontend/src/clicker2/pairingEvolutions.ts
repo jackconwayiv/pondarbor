@@ -12,8 +12,8 @@ export const PAIRING_SPECIALTY_DENIZEN_ID = "pairing" as const;
 
 export const PAIRING_SPECIALTY_ID_START = 364;
 
-/** Uniform factor on L/H blend before per-L-tier scaling (legacy base = blend × 10). */
-export const PAIRING_PRICE_MULTIPLIER = 10;
+/** Uniform factor on L/H blend before per-L-tier scaling (was 10; ÷5 as of pairing price rebalance). */
+export const PAIRING_PRICE_MULTIPLIER = 2;
 
 /** Per-L-row multiplier on shipped price: ripples=10×, sediment=11×, … (10 + L ladder index). */
 export function pairingLowerTierPriceScale(lowerDenizenId: string): number {

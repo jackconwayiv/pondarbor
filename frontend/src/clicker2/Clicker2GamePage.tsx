@@ -1196,6 +1196,8 @@ export default function Clicker2GamePage() {
 
   const energyFromClickingDisplay =
     statistics.energy_from_clicking ?? 0;
+  const weatherWindClickedDisplay =
+    statistics.weather_wind_clicked ?? 0;
 
   const visibleSpecialties = useMemo(
     () =>
@@ -1209,6 +1211,8 @@ export default function Clicker2GamePage() {
             effectiveAllTimeEnergyEarnedDisplay,
             energyFromClickingDisplay,
             blossomCount,
+            SPECIALTIES,
+            weatherWindClickedDisplay,
           ),
       ).sort(compareVisibleSpecialtyShopOrder),
     [
@@ -1217,6 +1221,7 @@ export default function Clicker2GamePage() {
       effectiveAllTimeEnergyEarnedDisplay,
       energyFromClickingDisplay,
       blossomCount,
+      weatherWindClickedDisplay,
     ],
   );
 
@@ -1693,6 +1698,8 @@ export default function Clicker2GamePage() {
         statisticsRef.current.energy_from_clicking ?? 0,
         blossomCountRef.current,
         ownedSpecialtiesRef.current,
+        SPECIALTIES,
+        statisticsRef.current.weather_wind_clicked ?? 0,
       )
     ) {
       return;

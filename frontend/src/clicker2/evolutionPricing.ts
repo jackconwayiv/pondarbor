@@ -31,6 +31,7 @@ import {
   type SpecialtyDef,
 } from "./specialties";
 import { denizenHasTier45Insert } from "./tier45Evolutions";
+import { WIND_SPECIALTY_DENIZEN_ID } from "./windEvolutions";
 
 export {
   DENIZEN_EVOLUTION_TIER_MULT,
@@ -539,7 +540,8 @@ export function applyMonotoneChainPrices(
     if (
       denizenId === PAIRING_SPECIALTY_DENIZEN_ID ||
       denizenId === CLICK_SPECIALTY_DENIZEN_ID ||
-      denizenId === POLLINATOR_SPECIALTY_DENIZEN_ID
+      denizenId === POLLINATOR_SPECIALTY_DENIZEN_ID ||
+      denizenId === WIND_SPECIALTY_DENIZEN_ID
     ) {
       continue;
     }
@@ -564,7 +566,10 @@ export function generateSpecialtyPrices(
 ): Record<number, number> {
   const raw: Record<number, number> = {};
   for (const s of specialties) {
-    if (s.denizenId === PAIRING_SPECIALTY_DENIZEN_ID) {
+    if (
+      s.denizenId === PAIRING_SPECIALTY_DENIZEN_ID ||
+      s.denizenId === WIND_SPECIALTY_DENIZEN_ID
+    ) {
       raw[s.id] = s.price;
       continue;
     }
@@ -584,7 +589,8 @@ export function validatePricingTable(
   for (const denizenId of chains) {
     if (
       denizenId === PAIRING_SPECIALTY_DENIZEN_ID ||
-      denizenId === CLICK_SPECIALTY_DENIZEN_ID
+      denizenId === CLICK_SPECIALTY_DENIZEN_ID ||
+      denizenId === WIND_SPECIALTY_DENIZEN_ID
     ) {
       continue;
     }

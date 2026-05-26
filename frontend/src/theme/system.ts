@@ -4,7 +4,6 @@ import {
   defineConfig,
   defineRecipe,
   defineSemanticTokens,
-  defineSlotRecipe,
   defineTokens,
 } from "@chakra-ui/react";
 import { BRAND_COLORS, DESIGN } from "./tokens";
@@ -13,33 +12,6 @@ import { BRAND_COLORS, DESIGN } from "./tokens";
 const pondHeadingRecipe = defineRecipe({
   base: {
     fontWeight: "normal",
-  },
-});
-
-/** Success: lilypad; warning/error: nautical. */
-const pondToastSlotRecipe = defineSlotRecipe({
-  slots: ["root", "title", "description", "indicator", "closeTrigger", "actionTrigger"],
-  base: {
-    root: {
-      "&[data-type=success]": {
-        bg: "lilypad.solid",
-        color: "lilypad.contrast",
-        "--toast-trigger-bg": "{white/10}",
-        "--toast-border-color": "{white/40}",
-      },
-      "&[data-type=warning]": {
-        bg: "nautical.solid",
-        color: "nautical.contrast",
-        "--toast-trigger-bg": "{white/10}",
-        "--toast-border-color": "{white/40}",
-      },
-      "&[data-type=error]": {
-        bg: "nautical.solid",
-        color: "nautical.contrast",
-        "--toast-trigger-bg": "{white/10}",
-        "--toast-border-color": "{white/40}",
-      },
-    },
   },
 });
 
@@ -234,9 +206,6 @@ export const system = createSystem(
       },
       recipes: {
         heading: pondHeadingRecipe,
-      },
-      slotRecipes: {
-        toast: pondToastSlotRecipe,
       },
     },
   }),

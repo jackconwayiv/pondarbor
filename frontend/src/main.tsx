@@ -4,8 +4,6 @@ import { system } from "./theme/system";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider } from "react-router";
-import { AchievementUnlockListener } from "./achievements/AchievementUnlockListener";
-import { AchievementToaster } from "./achievements/achievementToaster";
 import { AppSessionProvider } from "./auth/AppSessionProvider";
 import { getPondarborPublicConfig } from "./auth/publicConfig";
 import { safeAuthReturnTo } from "./auth/safeAuthReturnTo";
@@ -45,8 +43,6 @@ createRoot(document.getElementById("root")!).render(
       <ChakraProvider value={system}>
         <RootErrorBoundary>
           <AppSessionProvider>
-            <AchievementUnlockListener />
-            <AchievementToaster />
             <RouterProvider router={router} />
           </AppSessionProvider>
         </RootErrorBoundary>

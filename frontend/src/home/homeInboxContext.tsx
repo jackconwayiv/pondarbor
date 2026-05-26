@@ -12,6 +12,11 @@ import { useLocation } from "react-router";
 
 import type { SessionUser } from "../auth/AppSessionContext";
 import { useAppSession } from "../auth/AppSessionContext";
+import {
+  achievementInboxId,
+  achievementSlugFromInboxId,
+  deriveUnreadAchievementNotices,
+} from "../achievements/achievementInboxNotice";
 import { fetchClosetActionSummary } from "../closet/api";
 import { fetchFriendsList } from "../friends/api";
 import {
@@ -87,6 +92,35 @@ function persistReadSet(userId: number, ids: Set<string>) {
     localStorage.setItem(
       readStorageKey(userId),
       JSON.stringify([...ids]),
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+function knownAchievementSlugsKey(userId: number): string {
+  return `pondarbor.homeInbox.knownAchievementSlugs.${userId}`;
+}
+
+function loadKnownAchievementSlugs(userId: number): Set<string> {
+  try {
+    const raw = localStorage.getItem(knownAchievementSlugsKey(userId));
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(
+      parsed.filter((x): x is string => typeof x === "string"),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+function persistKnownAchievementSlugs(userId: number, slugs: Set<string>) {
+  try {
+    localStorage.setItem(
+      knownAchievementSlugsKey(userId),
+      JSON.stringify([...slugs]),
     );
   } catch {
     /* ignore */
@@ -257,6 +291,9 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
   const inFlight = useRef<Promise<string[] | null> | null>(null);
   /** One initial fetch per logged-in user so API-backed prompts exist before 90s poll / home visit. */
   const initialInboxRefreshUserId = useRef<number | null>(null);
+  /** Seed existing achievement slugs as read once per user session (mirrors toast skip-first-snapshot). */
+  const achievementReadSeededUserId = useRef<number | null>(null);
+  const [achievementReadSeeded, setAchievementReadSeeded] = useState(false);
 
   const userId = sessionUser?.user?.id;
 
@@ -264,10 +301,44 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
     setInboxInitialSyncComplete(false);
     if (userId == null) {
       setReadIds(new Set());
+      achievementReadSeededUserId.current = null;
+      setAchievementReadSeeded(false);
       return;
     }
     setReadIds(loadReadSet(userId));
+    setAchievementReadSeeded(false);
   }, [userId]);
+
+  useEffect(() => {
+    if (userId == null || sessionUser?.achievements === undefined) {
+      return;
+    }
+    if (achievementReadSeededUserId.current === userId) {
+      return;
+    }
+    achievementReadSeededUserId.current = userId;
+    const currentSlugs = sessionUser.achievements.map((a) => a.slug);
+    const knownSlugs = loadKnownAchievementSlugs(userId);
+
+    setReadIds((prev) => {
+      const next = new Set(prev);
+      if (knownSlugs.size === 0) {
+        for (const slug of currentSlugs) {
+          next.add(achievementInboxId(slug));
+        }
+        persistKnownAchievementSlugs(userId, new Set(currentSlugs));
+      } else {
+        for (const slug of currentSlugs) {
+          if (knownSlugs.has(slug)) {
+            next.add(achievementInboxId(slug));
+          }
+        }
+      }
+      persistReadSet(userId, next);
+      return next;
+    });
+    setAchievementReadSeeded(true);
+  }, [userId, sessionUser?.achievements]);
 
   const refreshInbox = useCallback(async (): Promise<string[] | null> => {
     if (!isAuthenticated || !sessionUser) {
@@ -481,12 +552,22 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
     if (!isAuthenticated || !sessionUser) {
       return { homePrompts: [] as HomePrompt[], homeNoticeItems: [] as HomeNoticeItem[] };
     }
-    return deriveHomeInbox(sessionUser, {
+    const derived = deriveHomeInbox(sessionUser, {
       upcomingBirthdays,
       staffPendingSummary,
       pendingFriendCount,
       closetOutstandingActions,
     });
+    const achievementNotices = achievementReadSeeded
+      ? deriveUnreadAchievementNotices(
+          sessionUser.achievements ?? [],
+          readIds,
+        )
+      : [];
+    return {
+      homePrompts: derived.homePrompts,
+      homeNoticeItems: [...achievementNotices, ...derived.homeNoticeItems],
+    };
   }, [
     isAuthenticated,
     sessionUser,
@@ -494,6 +575,8 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
     staffPendingSummary,
     pendingFriendCount,
     closetOutstandingActions,
+    readIds,
+    achievementReadSeeded,
   ]);
 
   const unreadCount = useMemo(() => {
@@ -513,6 +596,18 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
           ...homePrompts.map((p) => p.id),
           ...homeNoticeItems.map((n) => n.id),
         ];
+      const knownSlugs = loadKnownAchievementSlugs(userId);
+      let knownChanged = false;
+      for (const id of toMark) {
+        const slug = achievementSlugFromInboxId(id);
+        if (slug != null && !knownSlugs.has(slug)) {
+          knownSlugs.add(slug);
+          knownChanged = true;
+        }
+      }
+      if (knownChanged) {
+        persistKnownAchievementSlugs(userId, knownSlugs);
+      }
       setReadIds((prev) => {
         const next = new Set(prev);
         for (const id of toMark) next.add(id);

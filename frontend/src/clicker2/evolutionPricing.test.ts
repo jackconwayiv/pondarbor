@@ -14,9 +14,11 @@ import {
 } from "./evolutionPricing";
 import { DENIZEN_EVOLUTION_TIER_MULT } from "./evolutionTierMults";
 import { getDenizenDef } from "./denizens";
+import { evolutionChainDenizenIds } from "./milestones";
 import { PAIRING_SPECIALTY_DENIZEN_ID } from "./pairingEvolutions";
 import {
   POND_SPECIALTY_DENIZEN_ID,
+  SEDIMENT_CRACIAL_GLAPE_SPECIALTY_ID,
   specialtiesForDenizen,
   specialtyTierIndex,
   SPECIALTIES,
@@ -101,19 +103,33 @@ describe("generateSpecialtyPrices", () => {
     ]);
   });
 
-  it("uses baseCost × tier mult for sediment except tier 3 anchor", () => {
+  it("uses baseCost × tier mult for sediment except tier 3 anchor and tier 4.5", () => {
     const def = getDenizenDef("sediment")!;
     const chain = specialtiesForDenizen("sediment");
-    for (let tier = 0; tier < 5; tier++) {
+    for (let tier = 0; tier < 7; tier++) {
       const s = chain[tier]!;
       expect(prices[s.id]).toBe(denizenEvolutionPrice("sediment", tier));
-      if (tier === 3) continue;
-      const expected = Math.round(def.baseCost * DENIZEN_EVOLUTION_TIER_MULT[tier]!);
+      if (tier === 3 || tier === 4) continue;
+      const multIndex = tier >= 5 ? tier - 1 : tier;
+      const expected = Math.round(
+        def.baseCost * DENIZEN_EVOLUTION_TIER_MULT[multIndex]!,
+      );
       expect(prices[s.id]).toBe(expected);
     }
     expect(prices[chain[0]!.id]).toBe(1_000);
     expect(prices[chain[3]!.id]).toBe(2_500_000);
-    expect(prices[chain[4]!.id]).toBe(500_000_000);
+    expect(prices[chain[4]!.id]).toBe(sedimentEvolutionPrice(4));
+    expect(prices[chain[5]!.id]).toBe(500_000_000);
+    expect(chain[4]!.id).toBe(SEDIMENT_CRACIAL_GLAPE_SPECIALTY_ID);
+    expect(chain[4]!.unlockOwned).toBe(75);
+  });
+
+  it("prices sediment tier 4.5 between tier 3 and tier 4 catalog prices", () => {
+    expect(sedimentEvolutionPrice(4)).toBe(
+      Math.round(Math.sqrt(2_500_000 * 500_000_000)),
+    );
+    expect(sedimentEvolutionPrice(4)).toBeGreaterThan(2_500_000);
+    expect(sedimentEvolutionPrice(4)).toBeLessThan(500_000_000);
   });
 
   it("anchors sediment tier 3 at half the old baseCost×mult price (25× ripple tier 3)", () => {
@@ -139,20 +155,14 @@ describe("generateSpecialtyPrices", () => {
   });
 
   it("prices every denizen chain as baseCost × tier mult", () => {
-    for (const def of SPECIALTIES.map((s) => s.denizenId)) {
-      if (
-        def === POND_SPECIALTY_DENIZEN_ID ||
-        def === "ripples" ||
-        def === PAIRING_SPECIALTY_DENIZEN_ID
-      ) {
+    for (const denizenId of evolutionChainDenizenIds()) {
+      if (denizenId === POND_SPECIALTY_DENIZEN_ID || denizenId === "ripples") {
         continue;
       }
-      const denizen = getDenizenDef(def);
-      expect(denizen).toBeDefined();
-      const chain = specialtiesForDenizen(def);
+      const chain = specialtiesForDenizen(denizenId);
       for (const s of chain) {
         const tier = specialtyTierIndex(s);
-        expect(prices[s.id]).toBe(denizenEvolutionPrice(def, tier));
+        expect(prices[s.id]).toBe(denizenEvolutionPrice(denizenId, tier));
       }
     }
   });

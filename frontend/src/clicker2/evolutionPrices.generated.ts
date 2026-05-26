@@ -654,6 +654,7 @@ export const SPECIALTY_PRICE_BY_ID: Readonly<Record<number, number>> = {
   649: 1e+53,
   650: 1e+56,
   651: 1.0000000000000001e+59,
+  652: 35355339,
 };
 
 export function specialtyCatalogPrice(id: number, fallback = 1): number {

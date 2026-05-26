@@ -184,12 +184,35 @@ export function denizenEvolutionPrice(
   return Math.round(def.baseCost * mult);
 }
 
+/** Sediment tier-4 catalog price (before Cracial Glape half-step). */
+export function sedimentTier4CatalogPrice(): number {
+  const def = getDenizenDef("sediment");
+  if (!def) return 1;
+  return Math.round(def.baseCost * DENIZEN_EVOLUTION_TIER_MULT[4]!);
+}
+
+/** Cracial Glape and other tier-4.5 entries: geometric mean of tier 3 and tier 4 prices. */
+export function sedimentTier45Price(): number {
+  const tier3 = sedimentEvolutionPrice(3);
+  const tier4 = sedimentTier4CatalogPrice();
+  return Math.round(Math.sqrt(tier3 * tier4));
+}
+
 export function sedimentEvolutionPrice(tierIndex: number): number {
   if (tierIndex === 3) {
     return rippleEvolutionPrice(3) * SEDIMENT_TIER_3_RIPPLE_RATIO;
   }
+  if (tierIndex === 4) {
+    return sedimentTier45Price();
+  }
   const def = getDenizenDef("sediment");
   if (!def) return 1;
+  if (tierIndex >= 5) {
+    const mult =
+      DENIZEN_EVOLUTION_TIER_MULT[tierIndex - 1] ??
+      DENIZEN_EVOLUTION_TIER_MULT[DENIZEN_EVOLUTION_TIER_MULT.length - 1]!;
+    return Math.round(def.baseCost * mult);
+  }
   const mult =
     DENIZEN_EVOLUTION_TIER_MULT[tierIndex] ??
     DENIZEN_EVOLUTION_TIER_MULT[DENIZEN_EVOLUTION_TIER_MULT.length - 1]!;

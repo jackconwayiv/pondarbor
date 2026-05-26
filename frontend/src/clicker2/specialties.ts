@@ -133,6 +133,9 @@ const CLICK_SPECIALTY_IDS: readonly number[] = Array.from(
 /** Canonical evolution tier multipliers (price = round(baseCost × mult)). */
 export const DENIZEN_SPECIALTY_COST_MULT = DENIZEN_EVOLUTION_TIER_MULT;
 
+/** Sediment tier 4.5 (between Mud Surface and Dark Muck): unlock 75 owned. */
+export const SEDIMENT_CRACIAL_GLAPE_SPECIALTY_ID = 652;
+
 export function specialtyPriceForDenizenTier(
   baseCost: number,
   tierIndex: number,
@@ -446,7 +449,7 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
     ],
   ),
 
-  ...buildDoubleTier("sediment", 16, [
+  ...buildSedimentChain([
     "Brown leaves and dissolved organics drift in from the shore and settle into a carbon-rich fluff along the margin. Allochthonous particles fuel bottom microbes and begin building fertile muck.",
     "Fine silt carries nitrogen that clings to clay grains, tinting the bed pale brown after each rain. Particles slowly release ammonia and nitrate as bacteria rework the mud.",
     "Phosphate sticks to iron oxides in the mud until oxygen drops and algae can pull it back toward the surface. Adsorbed phosphorus shapes how green the open water can turn.",
@@ -883,6 +886,22 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
 
   ...PAIRING_SPECIALTIES,
 ];
+
+function buildSedimentChain(ecologyNotes: readonly string[]): SpecialtyDef[] {
+  const tiers = buildDoubleTier("sediment", 16, ecologyNotes);
+  return [
+    ...tiers.slice(0, 4),
+    doubleDenizen(
+      SEDIMENT_CRACIAL_GLAPE_SPECIALTY_ID,
+      "Cracial Glape",
+      "sediment",
+      75,
+      specialtyCatalogPrice(SEDIMENT_CRACIAL_GLAPE_SPECIALTY_ID),
+      "Glacial melt presses pale silt into the margin, packing cold fines that thaw slowly and feed the bottom when the pond warms. Cracial glape is muck that remembers ice.",
+    ),
+    ...tiers.slice(4),
+  ];
+}
 
 function buildDoubleTier(
   denizenId: string,

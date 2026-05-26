@@ -76,6 +76,11 @@ export type Clicker2StatsSnapshot = {
   }>;
   energyPerSecond: number;
   energyPerClick: number;
+  /** Ripples passive EpS only (`denizenEps.ripples`); does not match total pond EpS or click-linked term. */
+  ripplesPassiveEps: number;
+  /** Matches `simulateGame`; rain multiplies HUD click but not passive EpS. */
+  energyPerClickSurfaceRingsBaseline: number;
+  energyPerClickFromReflections: number;
   totalClicks: number;
   energyFromClicking: number;
   weatherEventsClicked: number;
@@ -374,6 +379,22 @@ export default function Clicker2StatsModal({
               : "0"
           }
         />
+        {snapshot.energyPerClick > 0 ? (
+          <>
+            <StatsRow
+              label="  · surface & rings (baseline)"
+              value={energyAmount(snapshot.energyPerClickSurfaceRingsBaseline)}
+            />
+            <StatsRow
+              label="  · click reflections (+ % of pond EpS)"
+              value={energyAmount(snapshot.energyPerClickFromReflections)}
+            />
+            <StatsRow
+              label="Ripples passive EpS"
+              value={`${formatEnergyRate(snapshot.ripplesPassiveEps)} ${ENERGY_EMOJI}`}
+            />
+          </>
+        ) : null}
         <StatsRow label="Number of clicks" value={snapshot.totalClicks.toLocaleString()} />
         <StatsRow
           label="Energy from clicking"

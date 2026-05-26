@@ -6,8 +6,12 @@ import { describe, expect, it } from "vitest";
 
 import { getOwnedDenizenCount } from "./denizens";
 import { POLLINATOR_SPECIALTY_ID_START } from "./pollinatorEvolutions";
+import {
+  isRetiredWindSpecialtyId,
+  RETIRED_WIND_SPECIALTY_IDS,
+} from "./retiredWindEvolutions";
 import { PAIRING_SPECIALTY_ID_START } from "./pairingEvolutions";
-import { getSpecialtyDef, SPECIALTIES, specialtiesForDenizen } from "./specialties";
+import { getSpecialtyDef, SPECIALTIES, CLICK_SPECIALTY_ID_START, specialtiesForDenizen } from "./specialties";
 import {
   marginalEpsIfBuySpecialty,
   simulateGame,
@@ -105,6 +109,46 @@ describe("simulation evolution effect wiring", () => {
         before.energyPerSecond / 100,
         8,
       );
+      expect(
+        after.clickBreakdown.clickBaseline +
+          after.clickBreakdown.clickFromEpSPercent,
+      ).toBeCloseTo(after.clickValue, 8);
+    });
+  });
+
+  describe("clickBreakdown aggregation (reflections)", () => {
+    it("clickFromEpSPercent can exceed ripples passive", () => {
+      const owned = { ripples: 50, sediment: 200, fungi: 3_500 };
+      const ownedSpec: Record<number, boolean> = { 1: true, 2: true, 3: true };
+      for (let i = 0; i < 15; i++) {
+        ownedSpec[CLICK_SPECIALTY_ID_START + i] = true;
+      }
+      const sim = simulateGame(owned, ownedSpec);
+      const { clickBreakdown } = sim;
+
+      expect(
+        clickBreakdown.clickBaseline + clickBreakdown.clickFromEpSPercent,
+      ).toBeCloseTo(sim.clickValue, 6);
+      expect(clickBreakdown.clickEpsPercentTotal).toBe(15);
+      expect(clickBreakdown.rippleEfficiencyMultiplier).toBe(8);
+      const rippleEps = sim.denizenEps.ripples ?? 0;
+      expect(sim.clickValue).toBeGreaterThan(rippleEps * 4);
+      expect(clickBreakdown.clickFromEpSPercent).toBeGreaterThan(rippleEps);
+    });
+  });
+
+  describe("retired wind evolutions", () => {
+    it("ignores owned ids 675–678 for effects", () => {
+      const owned = { ripples: 10 };
+      const withoutWind = simulateGame(owned, { 1: true });
+      const withRetiredWind = simulateGame(owned, {
+        1: true,
+        ...Object.fromEntries(RETIRED_WIND_SPECIALTY_IDS.map((id) => [id, true])),
+      });
+      expect(withRetiredWind).toEqual(withoutWind);
+      for (const id of RETIRED_WIND_SPECIALTY_IDS) {
+        expect(isRetiredWindSpecialtyId(id)).toBe(true);
+      }
     });
   });
 

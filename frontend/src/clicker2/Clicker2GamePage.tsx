@@ -43,6 +43,7 @@ import Clicker2PondStage from "./Clicker2PondStage";
 import PondDepthChart from "./PondDepthChart";
 import { prependDenizenPurchase } from "./purchaseTimeline";
 import { specialtyAcquiredMigrationPending } from "./specialtyAcquiredAt";
+import { stripRetiredWindFromOwnedSpecialties } from "./retiredWindEvolutions";
 import { listOwnedEvolutionDefs } from "./clicker2OwnedEvolutions";
 import Clicker2MobilePanels from "./Clicker2MobilePanels";
 import Clicker2MobileHud from "./Clicker2MobileHud";
@@ -868,7 +869,9 @@ export default function Clicker2GamePage() {
         setEnergyAnchorMs(loadedAt);
         setOwnedDenizens(stateWithWeather.owned_denizens);
         setDenizenPurchaseTimeline(stateWithWeather.denizen_purchase_timeline);
-        setOwnedSpecialties(stateWithWeather.owned_specialties);
+        setOwnedSpecialties(
+          stripRetiredWindFromOwnedSpecialties(stateWithWeather.owned_specialties),
+        );
         setSpecialtyAcquiredAtMs(stateWithWeather.specialty_acquired_at_ms);
         setRevealedDenizens(
           mergeNewlyRevealedDenizens(
@@ -1196,8 +1199,6 @@ export default function Clicker2GamePage() {
 
   const energyFromClickingDisplay =
     statistics.energy_from_clicking ?? 0;
-  const weatherWindClickedDisplay =
-    statistics.weather_wind_clicked ?? 0;
 
   const visibleSpecialties = useMemo(
     () =>
@@ -1211,8 +1212,6 @@ export default function Clicker2GamePage() {
             effectiveAllTimeEnergyEarnedDisplay,
             energyFromClickingDisplay,
             blossomCount,
-            SPECIALTIES,
-            weatherWindClickedDisplay,
           ),
       ).sort(compareVisibleSpecialtyShopOrder),
     [
@@ -1221,7 +1220,6 @@ export default function Clicker2GamePage() {
       effectiveAllTimeEnergyEarnedDisplay,
       energyFromClickingDisplay,
       blossomCount,
-      weatherWindClickedDisplay,
     ],
   );
 
@@ -1476,6 +1474,8 @@ export default function Clicker2GamePage() {
       }),
     );
 
+    const clickWx = clickWeatherMultiplier(activeRainBoostRef.current);
+
     setStatsSnapshot({
       energyInPond,
       pondEra: pondEraRef.current,
@@ -1490,8 +1490,12 @@ export default function Clicker2GamePage() {
       blossoms: blossomCountRef.current,
       milestoneStatuses,
       energyPerSecond: displayEps,
-      energyPerClick:
-        sim.clickValue * clickWeatherMultiplier(activeRainBoostRef.current),
+      energyPerClick: sim.clickValue * clickWx,
+      ripplesPassiveEps: sim.denizenEps.ripples ?? 0,
+      energyPerClickSurfaceRingsBaseline:
+        sim.clickBreakdown.clickBaseline * clickWx,
+      energyPerClickFromReflections:
+        sim.clickBreakdown.clickFromEpSPercent * clickWx,
       totalClicks: stats.total_clicks ?? 0,
       energyFromClicking: stats.energy_from_clicking ?? 0,
       weatherEventsClicked: stats.weather_events_clicked ?? 0,
@@ -1698,8 +1702,6 @@ export default function Clicker2GamePage() {
         statisticsRef.current.energy_from_clicking ?? 0,
         blossomCountRef.current,
         ownedSpecialtiesRef.current,
-        SPECIALTIES,
-        statisticsRef.current.weather_wind_clicked ?? 0,
       )
     ) {
       return;

@@ -2,10 +2,6 @@ import { getDenizenDef } from "./denizens";
 import { PAIRING_SPECIALTY_DENIZEN_ID } from "./pairingEvolutions";
 import { POLLINATOR_SPECIALTY_DENIZEN_ID } from "./pollinatorEvolutions";
 import {
-  WIND_EVOLUTION_EMOJI,
-  WIND_SPECIALTY_DENIZEN_ID,
-} from "./windEvolutions";
-import {
   CLICK_SPECIALTY_DENIZEN_ID,
   POND_SPECIALTY_DENIZEN_ID,
   SPECIALTIES,
@@ -29,9 +25,6 @@ export function evolutionDisplayEmoji(def: SpecialtyDef): string {
   }
   if (def.denizenId === PAIRING_SPECIALTY_DENIZEN_ID) {
     return PAIRING_EVOLUTION_EMOJI;
-  }
-  if (def.denizenId === WIND_SPECIALTY_DENIZEN_ID) {
-    return WIND_EVOLUTION_EMOJI;
   }
   return getDenizenDef(def.denizenId)?.emoji ?? "✨";
 }

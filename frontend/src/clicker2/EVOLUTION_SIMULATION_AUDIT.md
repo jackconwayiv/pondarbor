@@ -71,6 +71,31 @@ clickValue = max(0, (1 + ringsBonus) × clickMult)
 Weather (rain/bluster/sun) is applied **outside** `simulateGame` in `Clicker2GamePage`
 (`clickWeatherMultiplier`, `effectiveEnergyPerSecond`).
 
+## `simulateGame().clickBreakdown`
+
+`simulateGame` returns `clickBreakdown` for tooling and stats UI:
+
+| Field | Meaning |
+|-------|---------|
+| `clickBaseline` | `max(0, (1 + ringsBonus) × rippleEfficiencyMult × globalEpsBoost)` |
+| `clickFromEpSPercent` | `energyPerSecond × clickEpsPercentTotal ÷ 100` |
+| `clickEpsPercentTotal` | Sum of owned `click_eps_percent.percent` |
+| `ringsBonus` | Rings coefficient × non-ripple denizen count (debug) |
+| `rippleEfficiencyMult` | Product of ×2 per `double_*` targeting ripples (ripple shop tiers, pairings on ripples, etc.) |
+
+**Identity:** `clickBaseline + clickFromEpSPercent === clickValue` (up to floating point).
+
+## Ripples passive EpS vs energy per click (HUD)
+
+The HUD line **Ripples** is only **`denizenEps.ripples`** (passive production for that species). **Energy per click** combines:
+
+1. **Surface & rings baseline** — scales with ripple efficiency multiplier and pond-wide `globalEpsBoost`.
+2. **Click reflections** — adds a **percentage of total pond EpS** (`click_eps_percent`); grows with sediment, fungi, etc., **not** with the Ripples line alone.
+
+So **large energy-per-click with modest Ripples EpS** is expected when reflections and/or pond-wide EPS are large while the rings add-on dominates ripple passive—or when comparing total click to ripple slice only. Use **Statistics → breakdown under “Energy per click”** to reconcile baseline vs reflections vs ripples passive.
+
+Retired specialty ids **675–678** (removed East/South/West/North Wind cards) are ignored in simulation and stripped from saves on load; see [`retiredWindEvolutions.ts`](./retiredWindEvolutions.ts).
+
 ## Effect sources in catalog
 
 | Chain | Typical effects | Defined in |

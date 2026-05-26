@@ -3,9 +3,6 @@ import { DENIZEN_EVOLUTION_TIER_MULT } from "./evolutionTierMults";
 import { specialtyCatalogPrice } from "./evolutionPrices.generated";
 import { buildPollinatorChain } from "./pollinatorEvolutions";
 import { PAIRING_SPECIALTIES } from "./pairingSpecialties.generated";
-import { buildWindEvolutionChain } from "./windEvolutions";
-
-export { WIND_EVOLUTION_EMOJI, WIND_SPECIALTY_DENIZEN_ID } from "./windEvolutions";
 import {
   DENIZEN_TIER45_COPY,
   DENIZEN_TIER45_UNLOCK_OWNED,
@@ -49,10 +46,6 @@ export type SpecialtyDef = {
   unlockClickEnergy?: number;
   /** Pollinator chain: unlock when milestone-derived blossom count reaches this value. */
   unlockBlossoms?: number;
-  /** Wind evolution chain: lifetime wind weather events clicked. */
-  unlockWindEventsClicked?: number;
-  /** With unlockWindEventsClicked: minimum Ripples owned (not denizenId unlockOwned). */
-  unlockRipplesOwned?: number;
   /** Pollinator shop/catalog emoji (not a denizen id). */
   pollinatorEmoji?: string;
   /** Cross-denizen pairing: all listed owned counts must be met. */
@@ -749,8 +742,6 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
   ),
 
   ...buildPollinatorChain(),
-
-  ...buildWindEvolutionChain(),
 
   ...PAIRING_SPECIALTIES,
 ];

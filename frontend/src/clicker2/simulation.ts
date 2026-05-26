@@ -5,12 +5,28 @@ import {
   type DenizenDef,
 } from "./denizens";
 import { getMutationLevel } from "./mutagens";
+import { isRetiredWindSpecialtyId } from "./retiredWindEvolutions";
 import { getSpecialtyDef, type SpecialtyEffect } from "./specialties";
+
+/** Components of [`clickValue`](#simulateGame): baseline vs EpS-linked click reflections. */
+export type ClickValueBreakdown = {
+  /** `(1 + ringsBonus) × rippleEfficiencyMult × globalEpsBoost` */
+  clickBaseline: number;
+  /** `energyPerSecond × Σ click_eps_percent ÷ 100` */
+  clickFromEpSPercent: number;
+  /** Sum of owned `click_eps_percent.percent` (+1 each tier typically). */
+  clickEpsPercentTotal: number;
+  /** `concentricRingsBonusPerNonRipple × nonRippleCount`; use for debugging. */
+  ringsBonus: number;
+  rippleEfficiencyMultiplier: number;
+  globalEpsBoost: number;
+};
 
 export type SimulationOutput = {
   energyPerSecond: number;
   clickValue: number;
   denizenEps: Record<string, number>;
+  clickBreakdown: ClickValueBreakdown;
 };
 
 /** Stub for future Conditions / Prestige / Weather. */
@@ -54,13 +70,14 @@ function ownedSpecialtyEffects(
   for (const [rawId, owned] of Object.entries(ownedSpecialties)) {
     if (!owned) continue;
     const id = Number(rawId);
+    if (isRetiredWindSpecialtyId(id)) continue;
     const def = getSpecialtyDef(id);
     if (def) out.push(...specialtyEffectsFromDef(def));
   }
   return out;
 }
 
-function rippleEfficiencyMultiplier(effects: SpecialtyEffect[]): number {
+export function rippleEfficiencyMultiplier(effects: SpecialtyEffect[]): number {
   let mult = 1;
   for (const e of effects) {
     if (e.type === "double_click_and_denizen" && e.denizenId === "ripples") {
@@ -216,19 +233,29 @@ export function simulateGame(
     energyPerSecond += eps;
   }
 
-  const clickMult =
-    rippleEfficiencyMultiplier(effects) * globalEpsBoost(effects, blossomCount);
+  const rippleEffMult = rippleEfficiencyMultiplier(effects);
+  const globalBoost = globalEpsBoost(effects, blossomCount);
+  const clickMult = rippleEffMult * globalBoost;
   const ringsBonus =
     concentricRingsBonusPerNonRipple(effects) * nonRippleCount;
   let clickEpsPercent = 0;
   for (const e of effects) {
     if (e.type === "click_eps_percent") clickEpsPercent += e.percent;
   }
-  const clickValue =
-    Math.max(0, (1 + ringsBonus) * clickMult) +
-    (energyPerSecond * clickEpsPercent) / 100;
+  const clickBaseline = Math.max(0, (1 + ringsBonus) * clickMult);
+  const clickFromEpSPercent = (energyPerSecond * clickEpsPercent) / 100;
+  const clickValue = clickBaseline + clickFromEpSPercent;
 
-  return { energyPerSecond, clickValue, denizenEps };
+  const clickBreakdown: ClickValueBreakdown = {
+    clickBaseline,
+    clickFromEpSPercent,
+    clickEpsPercentTotal: clickEpsPercent,
+    ringsBonus,
+    rippleEfficiencyMultiplier: rippleEffMult,
+    globalEpsBoost: globalBoost,
+  };
+
+  return { energyPerSecond, clickValue, denizenEps, clickBreakdown };
 }
 
 export function marginalEpsIfBuyDenizen(

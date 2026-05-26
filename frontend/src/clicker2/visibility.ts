@@ -130,8 +130,6 @@ export function isSpecialtyUnlocked(
     | "unlockAllTimeEnergy"
     | "unlockClickEnergy"
     | "unlockBlossoms"
-    | "unlockWindEventsClicked"
-    | "unlockRipplesOwned"
     | "denizenId"
     | "pairingUnlock"
     | "pairingLowerDenizenId"
@@ -143,15 +141,7 @@ export function isSpecialtyUnlocked(
   blossomCount = 0,
   _ownedSpecialties: Record<number, boolean> = {},
   _allSpecialties: readonly SpecialtyDef[] = SPECIALTIES,
-  weatherWindClicked = 0,
 ): boolean {
-  if (specialty.unlockWindEventsClicked != null) {
-    if (weatherWindClicked < specialty.unlockWindEventsClicked) {
-      return false;
-    }
-    const ripplesRequired = specialty.unlockRipplesOwned ?? 0;
-    return getOwnedDenizenCount(ownedDenizens, "ripples") >= ripplesRequired;
-  }
   if (specialty.pairingUnlock) {
     for (const [denizenId, required] of Object.entries(specialty.pairingUnlock)) {
       if (getOwnedDenizenCount(ownedDenizens, denizenId) < required) {
@@ -184,7 +174,6 @@ export function isSpecialtyShopVisible(
   energyFromClicking = 0,
   blossomCount = 0,
   allSpecialties: readonly SpecialtyDef[] = SPECIALTIES,
-  weatherWindClicked = 0,
 ): boolean {
   if (ownedSpecialties[specialty.id]) return false;
   return isSpecialtyUnlocked(
@@ -195,6 +184,5 @@ export function isSpecialtyShopVisible(
     blossomCount,
     ownedSpecialties,
     allSpecialties,
-    weatherWindClicked,
   );
 }

@@ -9,6 +9,7 @@ import {
 import { resolveDenizenPurchaseTimeline } from "./purchaseTimeline";
 import { resolveSpecialtyAcquiredAtMs } from "./specialtyAcquiredAt";
 import { DENIZEN_IDS, FIRST_DENIZEN_ID } from "./denizens";
+import { isRetiredWindSpecialtyId } from "./retiredWindEvolutions";
 import { SPECIALTY_IDS } from "./specialties";
 
 export const SCHEMA_VERSION = 4;
@@ -205,7 +206,7 @@ export function normalizeClicker2State(raw: unknown): Clicker2GameState {
       o.owned_specialties as Record<string, unknown>,
     )) {
       const id = Number(k);
-      if (!SPECIALTY_IDS.has(id)) continue;
+      if (isRetiredWindSpecialtyId(id) || !SPECIALTY_IDS.has(id)) continue;
       if (v === true) owned_specialties[id] = true;
     }
   }

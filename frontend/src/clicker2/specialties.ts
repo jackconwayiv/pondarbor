@@ -3,6 +3,18 @@ import { DENIZEN_EVOLUTION_TIER_MULT } from "./evolutionTierMults";
 import { specialtyCatalogPrice } from "./evolutionPrices.generated";
 import { buildPollinatorChain } from "./pollinatorEvolutions";
 import { PAIRING_SPECIALTIES } from "./pairingSpecialties.generated";
+import {
+  DENIZEN_TIER45_COPY,
+  DENIZEN_TIER45_UNLOCK_OWNED,
+  SEDIMENT_CRACIAL_GLAPE_SPECIALTY_ID,
+  tier45SpecialtyIdForDenizen,
+} from "./tier45Evolutions";
+
+export {
+  DENIZEN_TIER45_SPECIALTY_IDS,
+  SEDIMENT_CRACIAL_GLAPE_SPECIALTY_ID,
+} from "./tier45Evolutions";
+export { denizenHasTier45Insert } from "./tier45Evolutions";
 
 export type SpecialtyEffect =
   | { type: "double_click_and_denizen"; denizenId: string }
@@ -133,9 +145,6 @@ const CLICK_SPECIALTY_IDS: readonly number[] = Array.from(
 /** Canonical evolution tier multipliers (price = round(baseCost × mult)). */
 export const DENIZEN_SPECIALTY_COST_MULT = DENIZEN_EVOLUTION_TIER_MULT;
 
-/** Sediment tier 4.5 (between Mud Surface and Dark Muck): unlock 75 owned. */
-export const SEDIMENT_CRACIAL_GLAPE_SPECIALTY_ID = 652;
-
 export function specialtyPriceForDenizenTier(
   baseCost: number,
   tierIndex: number,
@@ -254,157 +263,7 @@ function buildClickReflectionChain(
 }
 
 export const SPECIALTIES: readonly SpecialtyDef[] = [
-  rippleClick(
-    1,
-    "Surface Tension",
-    UNLOCK_TIER[0],
-    "Water striders and whirligig beetles skate the film as if the pond were glass. Molecules at the air–water interface cling together, holding droplets and meniscus life in place.",
-  ),
-  rippleClick(
-    2,
-    "Capillary Action",
-    UNLOCK_TIER[1],
-    "You can watch moisture creep up stems and along litter at the shore. Fine pores pull water against gravity, wicking nutrients where roots and microbes can reach them.",
-  ),
-  rippleClick(
-    3,
-    "Wind Ruffles",
-    UNLOCK_TIER[2],
-    "A breeze roughens the still surface and sends rings chasing each other across the pond. The film mixes oxygen into the top millimeters while pollen and dust ride the waves.",
-  ),
-  {
-    id: 4,
-    name: "Concentric Rings",
-    denizenId: "ripples",
-    unlockOwned: UNLOCK_TIER[3],
-    price: specialtyCatalogPrice(4),
-    effect: { type: "concentric_rings" },
-    effectText:
-      "Clicks and Ripples gain +0.1 energy for each non-Ripple object owned",
-    ecologyNote:
-      "Every click sends rings outward—and each new neighbor in the pond adds another edge for exchange. Disturbances stack as the basin fills with life.",
-  },
-  {
-    id: 5,
-    name: "Bottom Seep",
-    denizenId: "ripples",
-    unlockOwned: 50,
-    price: specialtyCatalogPrice(5),
-    effect: { type: "concentric_rings_mult", factor: 5 },
-    effectText: "Multiplies Concentric Rings click and Ripple gains by 5",
-    ecologyNote:
-      "Cold water oozes up through gravel and clay, nudging the surface from below in slow pulses. Groundwater seeps feed the basin and spread subtle rings across the bottom.",
-  },
-  {
-    id: 6,
-    name: "Clear Inlet",
-    denizenId: "ripples",
-    unlockOwned: 100,
-    price: specialtyCatalogPrice(6),
-    effect: { type: "concentric_rings_mult", factor: 10 },
-    effectText: "Multiplies Concentric Rings click and Ripple gains by 10",
-    ecologyNote:
-      "A clean channel from the watershed pours steady inflow that fans into overlapping wave fronts. Each new liter arriving sends ripples crossing the open water.",
-  },
-  {
-    id: 7,
-    name: "Spring Bulge",
-    denizenId: "ripples",
-    unlockOwned: 150,
-    price: specialtyCatalogPrice(7),
-    effect: { type: "concentric_rings_mult", factor: 20 },
-    effectText: "Multiplies Concentric Rings click and Ripple gains by 20",
-    ecologyNote:
-      "Mineral-rich spring water swells the surface into a dome before long-lived rings radiate outward. Upwelling plumes bulge the film and push pulses across the pond.",
-  },
-  {
-    id: 8,
-    name: "Smooth Current",
-    denizenId: "ripples",
-    unlockOwned: 200,
-    price: specialtyCatalogPrice(8),
-    effect: { type: "concentric_rings_mult", factor: 20 },
-    effectText: "Multiplies Concentric Rings click and Ripple gains by 20",
-    ecologyNote:
-      "Glassy parallel currents slide past snags and stems, shedding orderly waves that travel far. Even tiny obstacles in laminar flow send rings to the margin before they fade.",
-  },
-  {
-    id: 9,
-    name: "Gravel Riffle",
-    denizenId: "ripples",
-    unlockOwned: 250,
-    price: specialtyCatalogPrice(9),
-    effect: { type: "concentric_rings_mult", factor: 20 },
-    effectText: "Multiplies Concentric Rings click and Ripple gains by 20",
-    ecologyNote:
-      "Shallow bars sparkle as water tumbles over gravel, throwing trains of small waves shoreward. Each riffle crest stitches the littoral to the open pond with fresh rings.",
-  },
-  {
-    id: 10,
-    name: "Spillway Drum",
-    denizenId: "ripples",
-    unlockOwned: 300,
-    price: specialtyCatalogPrice(10),
-    effect: { type: "concentric_rings_mult", factor: 20 },
-    effectText: "Multiplies Concentric Rings click and Ripple gains by 20",
-    ecologyNote:
-      "Excess flow slips over a low dam and hammers a standing wave that drums through the whole basin. The overfall sends rhythmic pulses and concentric rings across the surface.",
-  },
-  {
-    id: 11,
-    name: "Deep Press",
-    denizenId: "ripples",
-    unlockOwned: 350,
-    price: specialtyCatalogPrice(11),
-    effect: { type: "concentric_rings_mult", factor: 20 },
-    effectText: "Multiplies Concentric Rings click and Ripple gains by 20",
-    ecologyNote:
-      "The weight of the water column presses on mud and roots, nudging the surface when depth shifts. Hydrostatic pressure and seasonal storage make the pond breathe in slow rings.",
-  },
-  {
-    id: 12,
-    name: "Layered Pond",
-    denizenId: "ripples",
-    unlockOwned: 400,
-    price: specialtyCatalogPrice(12),
-    effect: { type: "concentric_rings_mult", factor: 20 },
-    effectText: "Multiplies Concentric Rings click and Ripple gains by 20",
-    ecologyNote:
-      "A warm cap rides over cold deep water until wind or cooling breaks the stack. Thermal overturn sends one heavy surge—and a single set of rings—across the whole pond.",
-  },
-  {
-    id: 13,
-    name: "Sloshing Shore",
-    denizenId: "ripples",
-    unlockOwned: 450,
-    price: specialtyCatalogPrice(13),
-    effect: { type: "concentric_rings_mult", factor: 20 },
-    effectText: "Multiplies Concentric Rings click and Ripple gains by 20",
-    ecologyNote:
-      "Wind piles water against one bank until gravity slings it back, rocking the basin for hours. A seiche sets up overlapping rings that cross and recross the surface.",
-  },
-  {
-    id: 14,
-    name: "Two Streams Meet",
-    denizenId: "ripples",
-    unlockOwned: 500,
-    price: specialtyCatalogPrice(14),
-    effect: { type: "concentric_rings_mult", factor: 20 },
-    effectText: "Multiplies Concentric Rings click and Ripple gains by 20",
-    ecologyNote:
-      "Two drainages mingle at the lip, colliding currents that fan out in multiplied wave patterns. Confluence sends fresh rings racing across the open pond.",
-  },
-  {
-    id: 15,
-    name: "Step Pools",
-    denizenId: "ripples",
-    unlockOwned: 550,
-    price: specialtyCatalogPrice(15),
-    effect: { type: "concentric_rings_mult", factor: 20 },
-    effectText: "Multiplies Concentric Rings click and Ripple gains by 20",
-    ecologyNote:
-      "Terraced pools overflow one into the next, each step tossing a new burst of rings. Cascades below the main basin echo pulses back into the parent pond.",
-  },
+  ...buildRippleChain(),
 
   ...buildPondProductionChain(
     [
@@ -467,7 +326,7 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
     "Buried ancient soils release stored phosphorus and trace metals as groundwater cuts through below the pond. Deep stores feed the surface when the water column turns over.",
   ]),
 
-  ...buildDoubleTier("fungi", 31, [
+  ...buildDenizenChainWithTier45("fungi", 31, [
     "Fine threads probe fallen leaves and wood, secreting enzymes that free sugars locked in cellulose. Hyphae are the first hands that pull apart tough plant litter on the bottom.",
     "Spores hatch in the water film on fresh detritus before competitors crowd the banquet. Blastocladiomycetes colonize new debris at the shoreline edge.",
     "A creeping slime mold slides across submerged leaves, engulfing bacteria and leaving nutrient-rich trails. Benthic slimes stitch microbial hotspots through the litter.",
@@ -485,7 +344,7 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
     "Old fungal communities in deep sediment release nutrients during overturn, as if the bottom exhaled. Primordial plumes feed the surface when the pond mixes.",
   ]),
 
-  ...buildDoubleTier("microbes", 46, [
+  ...buildDenizenChainWithTier45("microbes", 46, [
     "You cannot see them, but the water column hums with bacteria sipping dissolved organics. Free-living heterotrophs respire that carbon and shape the pond's invisible metabolism.",
     "Soft blobs glide over biofilms on stems, swallowing bacteria whole. Amoebas regulate microbial abundance where films thicken on submerged surfaces.",
     "Oval swimmers row with cilia, sweeping bacteria into pellets that sink toward the bottom. Paramecia package microbes into food other animals harvest from the mud.",
@@ -503,7 +362,7 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
     "Archaic lineages in deep mud still breathe chemistry into the water when the pond overturns. Primordial metabolisms shape phosphorus and gases from below.",
   ]),
 
-  ...buildDoubleTier("zooplankton", 61, [
+  ...buildDenizenChainWithTier45("zooplankton", 61, [
     "Wheel-like mouths spin under a microscope, filtering algae into packages fish larvae snap up. Keratella rotifers turn phytoplankton into animal biomass in warm shallows.",
     "Clouds of tiny animals tint the water ivory after a bloom, grazing green cells by the million. Brachionus swarms convert algae into flesh midwater fish chase.",
     "A sticky foot anchors while a collar net catches particles drifting past. Collotheca filter without roaming, harvesting the pond's suspended pantry.",
@@ -521,7 +380,7 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
     "Dense clouds turn the pond into a living filter that decides which algae win each season. Zooplankton biomass shapes green water, clear water, and everything between.",
   ]),
 
-  ...buildDoubleTier("aquatic_plants", 76, [
+  ...buildDenizenChainWithTier45("aquatic_plants", 76, [
     "Green filaments weave a thin mat on mud and stems until grazers or wind tear it apart. Algae and cyanobacteria fix nitrogen and shade the bottom where light still reaches.",
     "Tiny fronds blanket calm corners, doubling so fast the surface looks paved with green coins. Duckweed skims nutrients from the film and cools the water beneath.",
     "Feathery hornwort drifts without roots, branching through the water column while oxygen bubbles from its leaves. Fry shelter in the forest of stems midwater fish avoid.",
@@ -539,7 +398,7 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
     "Roots hold sediment, stems cycle nutrients, and the whole shoreline breathes with the seasons. At climax, plants lock into a self-maintaining matrix that runs the margin.",
   ]),
 
-  ...buildDoubleTier("invertebrates", 91, [
+  ...buildDenizenChainWithTier45("invertebrates", 91, [
     "Snails rasp algae from stones and stems, leaving shiny trails and calcium chips on the bottom. Physids recycle biofilms into food heavier animals can harvest.",
     "Flat ramshorn coils glide through weedy shallows, grazing periphyton and mucus trails bacteria soon colonize. Planorbids turn stem fuzz into fragments midges and fish pick up.",
     "Scuds hop through leaf litter, shredding detritus into pieces the whole bottom can share. Amphipods are the pond's little bulldozers in the litter zone.",
@@ -557,7 +416,7 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
     "Shredders, grazers, filterers, and predators cycle the floor without any one role running away. At maturity the benthic community regulates itself through the seasons.",
   ]),
 
-  ...buildDoubleTier("small_swimmers", 106, [
+  ...buildDenizenChainWithTier45("small_swimmers", 106, [
     "Tiny fry cling to stems in jelly clumps, living on yolk until jaws harden enough to snap at plankton. Sac fry are the pond's first silver sparks in the weeds.",
     "A gulp of air fills an internal balloon so tiny fish can hover without constant fin work. The swim bladder saves energy in warm shallows where every bite counts.",
     "Weedy nurseries shelter fry from chop and jaws, stems damping waves while parents fan oxygen over nests. Quiet littoral corners are kindergarten for the whole food web.",
@@ -575,7 +434,7 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
     "Minnows and silversides weave plankton production into the midwater metabolism larger fish depend on. A forage matrix tunes who thrives in the open pond.",
   ]),
 
-  ...buildDoubleTier("amphibians", 136, [
+  ...buildDenizenChainWithTier45("amphibians", 136, [
     "Gelatinous clutches swell in warm shallows, buoyant rafts anchored to submerged stems until larvae hatch. Egg masses are the pond's first wet constellations each spring.",
     "Feathery gills ruffle from salamander larvae, drawing oxygen straight from the water column. External gills make alien-looking hunters of the open shallows.",
     "Tadpoles graze soft algae from stones and stems, cropping films that would otherwise choke the littoral. Herbivorous larvae clear green fuzz before legs arrive.",
@@ -593,7 +452,7 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
     "Frogs, salamanders, and their larvae couple shoreline hunting to open-water young through the seasons. At climax the pond's amphibian life hums as one saturated chorus.",
   ]),
 
-  ...buildDoubleTier("small_fish", 151, [
+  ...buildDenizenChainWithTier45("small_fish", 151, [
     "Circular craters pit the littoral bottom where parents fan fresh water over guarded eggs. Spawning nests concentrate nutrients in swept cups every spring.",
     "Young fish gulp surface air when warm shallows sag, gill covers sealing the chamber between breaths. The operculum buys time in oxygen-thin nurseries.",
     "Fingerlings dart stem to stem, testing jaws on zooplankton and learning the pond's edges one snap at a time. Cover and hunger teach the rim before open water.",
@@ -611,7 +470,7 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
     "Nursery production and top-down control meet in the littoral fish community through the seasons. Small fish tune who thrives along the pond's weedy edge.",
   ]),
 
-  ...buildDoubleTier("reptiles", 169, [
+  ...buildDenizenChainWithTier45("reptiles", 169, [
     "A sun-warmed log at the edge is the first hard perch where cold blood can soak heat. Every turtle queue starts with someone claiming the prime basking slot.",
     "The belly shell shields against stones and roots while the carapace above catches light. Plastron and carapace pair armor with the slow metabolism of shoreline hunters.",
     "Ribbon snakes thread through shoreline litter, snapping tadpoles and minnows with quick strikes at the rim. They link open-water prey to the bank in silver flashes.",
@@ -629,7 +488,7 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
     "Turtles and snakes couple shoreline hunting to open-water foraging through slow radiant metabolism. At climax the pond's reptiles run on sun, patience, and armor.",
   ]),
 
-  ...buildDoubleTier("large_fish", 184, [
+  ...buildDenizenChainWithTier45("large_fish", 184, [
     "Predators feel pressure waves along their flanks before eyes catch the motion. The lateral line maps prey and danger through murk where sight fails.",
     "A bubble of gas inside the body fine-tunes hover in midwater without constant fin work. The swim bladder saves energy while fins steer through currents.",
     "At dusk bullheads stir soft bottom, barbels tasting detritus while spines warn casual predators away. Brown bullheads are the pond floor's whiskered night shift.",
@@ -647,7 +506,7 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
     "Bass, pike, and catfish couple into a self-regulating midwater community through the seasons. Apex fish tune who survives in the open pond.",
   ]),
 
-  ...buildDoubleTier("waterfowl", 199, [
+  ...buildDenizenChainWithTier45("waterfowl", 199, [
     "Fluffy down traps air against the skin so ducklings ride cold water without losing heat. Down is the first armor against ice-rimmed shores.",
     "Oil from the tail gland spreads through preening until rain and dives roll off feathers instead of soaking through. Waterproofing turns the surface into a raincoat.",
     "Wood ducks nest in tree cavities above the flood line, dropping to flooded timber and lily edges where acorns fuel broods. They stitch forest canopy to pond margin.",
@@ -665,7 +524,7 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
     "Ducks, geese, grebes, and swans couple shoreline grazing to open-water foraging through the seasons. At climax winged life tunes the pond's nutrient metabolism from above.",
   ]),
 
-  ...buildDoubleTier("shore_mammals", 214, [
+  ...buildDenizenChainWithTier45("shore_mammals", 214, [
     "Outer guard hairs shed water and mud so dense underfur stays dry along the saturated rim. Small mammals tunnel, swim, and forage where bank meets pond.",
     "Fleshy rays on a star-shaped nose taste bottom in black water, pinpointing worms faster than eyes could in root-choked shallows. The star-nosed mole reads the mud by touch.",
     "Water shrews hunt along the surface film with frantic metabolism, diving for aquatic insects. They stitch open-water energy into the litter layer at the edge.",
@@ -683,7 +542,7 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
     "Voles, muskrats, mink, raccoons, otters, and beaver couple burrowing to dam-building through the seasons. At climax shoreline mammals engineer the pond's rim.",
   ]),
 
-  ...buildDoubleTier("hunting_birds", 229, [
+  ...buildDenizenChainWithTier45("hunting_birds", 229, [
     "Fine powder frays from feathers during preening until mist and splash roll off dry flight plumage. Powder down is the raincoat behind every dive.",
     "Green herons stalk from low branches and lily pads, coiled necks striking minnows and frogs in still shallows. They fish like patience with a dagger bill.",
     "Kingfishers rattle over open water, hovering before dives that hammer small fish against perches. Belted rattles mark every successful splash.",
@@ -701,7 +560,7 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
     "Herons, kingfishers, terns, harriers, osprey, and eagles couple wading strikes to aerial piracy through the seasons. Hunting birds tune the pond from above and at the rim.",
   ]),
 
-  ...buildDoubleTier("great_mammals", 244, [
+  ...buildDenizenChainWithTier45("great_mammals", 244, [
     "Each spring velvet antlers shed in strips of fuzzy skin, littering trails with calcium snails and mice recycle along the rim. The pond gets a brief gift of bone meal from the deer woods.",
     "Lawn and edge habitat wake at dawn and dusk when deer and fox move between forest and open water in predictable pulses. The crepuscular yard is busiest when humans are still indoors.",
     "White-tailed deer browse willow and jewelweed, clipping bank vegetation and leaving hoof-packed paths that channel runoff toward the inlet. Their trails are the shoreline's soft engineering.",
@@ -719,7 +578,7 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
     "Deer, predators, bears, and moose couple browsing to wallowing through the seasons. At climax large mammals tune the pond's rim metabolism with hoof, appetite, and wallow.",
   ]),
 
-  ...buildDoubleTier("humans", 259, [
+  ...buildDenizenChainWithTier45("humans", 259, [
     "Sapling and bark frames rise at the shore, shelter keeping fire and story near the water without closing the pond to wind and wildlife. A wigwam turns the margin into home.",
     "Birchbark canoes slip along the littoral, poling through lily beds and carrying harvest, trade, and quiet observation across the basin. Each stroke links shore to shore without breaking the surface calm.",
     "Late summer bends wild rice stems into canoes, knocking grain into the hull while roots stay to regrow next year. Harvest is a rhythm that feeds people and leaves the shallows intact.",
@@ -737,7 +596,7 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
     "Indigenous harvest, settler land use, recreation, and science meet on one shoreline where decisions set the pond's future. At climax human care and appetite write the next chapter together.",
   ]),
 
-  ...buildDoubleTier("cryptids", 274, [
+  ...buildDenizenChainWithTier45("cryptids", 274, [
     "Flashlight beams catch green glow at the far shore—deer, raccoon, or something that will not stay in the field guide. Eye shine turns every night walk into a maybe.",
     "Camp stories tell of round heads rocking above the reeds after midnight, wakes too wide for a beaver. Melon-headed silhouettes live where testimony outruns taxonomy.",
     "At dawn, long strides appear in damp sand where no one admits to walking after dark. Night marcher tracks are questions pressed into the margin.",
@@ -755,7 +614,7 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
     "Eye shine, regional monsters, hoaxes, and teaching spirits meet at the margin where mystery keeps the ecosystem narratively alive. The bait-shop ledger is the true field guide.",
   ]),
 
-  ...buildDoubleTier("spirits", 289, [
+  ...buildDenizenChainWithTier45("spirits", 289, [
     "Cool flames drift above wet meadow and bog, luring travelers toward open water while methane and folklore share the same glow. Will-o'-the-wisps are marsh gas wearing an old name.",
     "Blue sheets of light hang over seeps at dusk where decomposition meets air and old timers call it foolish fire. Ignis fatuus dances where the bog exhales.",
     "Owl cries, loon wails, and human shouts return from cliff and tree until direction itself feels uncertain. The pond echo repeats what you wish you had not called.",
@@ -773,7 +632,7 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
     "Marsh lights, drowned voices, place spirits, and sky-mirror omens steer mood and myth through the unseen layer of the basin. Thin places are where the pond listens hardest.",
   ]),
 
-  ...buildDoubleTier("leviathans", 304, [
+  ...buildDenizenChainWithTier45("leviathans", 304, [
     "Whiskered sturgeon nose through soft bottom, armored plates glinting as slow growth ties deep basin energy to rivers upstream. Lake sturgeon make the pond floor feel ancient and deliberate.",
     "Long-jawed gar cruise weed lines, ganoid scales flashing when ambush strikes erupt from shallow cover. Alligator gar remind smaller fish that shadows can bite.",
     "In story and deep water, giant isopods scavenge the floor like roly-poly continents, recycling carrion where light fades to green-black. The bottom has its own heavy cleaners.",
@@ -791,7 +650,7 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
     "Sturgeon, gar, living fossils, and mythic leviathans couple into one deep-water metabolism that owns the pond's heaviest stories. Depth's crown is weight, memory, and appetite below the thermocline.",
   ]),
 
-  ...buildDoubleTier("abyssals", 319, [
+  ...buildDenizenChainWithTier45("abyssals", 319, [
     "Endless flakes of dead plankton and pellets drift down through dark water, snowing nutrients to bottom life. Marine snow is the pond's quiet blizzard below the last sun.",
     "Hagfish knot themselves in slime and rasp carcasses from the floor, turning whale-fall energy into soft-bodied recycling. They are the mop crew of the cold deep.",
     "Tripod fish perch on stiff fin rays, mouths open to whatever the current delivers in patient, energy-starved posture. Waiting is the hunting strategy where food is rare.",
@@ -809,7 +668,7 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
     "Marine snow, vent chemistry, bioluminescent hunters, and hadal extremes couple into one bottom metabolism without sun. Hadal throne is the pond's rule in crushing, patient dark.",
   ]),
 
-  ...buildDoubleTier("celestials", 334, [
+  ...buildDenizenChainWithTier45("celestials", 334, [
     "Fronts and pressure cells decide when rain fills the pond and when wind mixes the surface. Weather wheels turn above the watershed before the first ripple answers.",
     "Sunbeams spear through cloud gaps at dawn and dusk, striping the water and pulling insects and fish into brief golden feeding windows. Crepuscular rays are the pond's spotlight hours.",
     "Electric blue clouds shine after sunset, ice crystals catching summer light while the pond below already holds night. Noctilucent shine is sky refusing to go dark.",
@@ -827,7 +686,7 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
     "Weather, moon, aurora, meteors, and stellar scale link sky to water until light, tide, and myth move together. Sky mirror is the pond holding heaven on its skin.",
   ]),
 
-  ...buildDoubleTier("transcendence", 349, [
+  ...buildDenizenChainWithTier45("transcendence", 349, [
     "Awareness flickers across ripples, roots, and deep water where every denizen tier already hums. The pond begins to notice itself.",
     "Impulse moves without sound through anglers, herons, and microbes like signals in a quiet network. Telepathic conduction is the basin thinking in parallel.",
     "Schools, flocks, and biofilms move as if the whole pond breathes on one schedule. Collective consciousness gathers many lives into a single rhythm.",
@@ -887,20 +746,226 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
   ...PAIRING_SPECIALTIES,
 ];
 
-function buildSedimentChain(ecologyNotes: readonly string[]): SpecialtyDef[] {
-  const tiers = buildDoubleTier("sediment", 16, ecologyNotes);
+type Tier45ChainOverride = {
+  id: number;
+  name: string;
+  ecologyNote: string;
+};
+
+function buildRippleChain(): SpecialtyDef[] {
+  const tiers: SpecialtyDef[] = [
+    rippleClick(
+      1,
+      "Surface Tension",
+      UNLOCK_TIER[0],
+      "Water striders and whirligig beetles skate the film as if the pond were glass. Molecules at the air–water interface cling together, holding droplets and meniscus life in place.",
+    ),
+    rippleClick(
+      2,
+      "Capillary Action",
+      UNLOCK_TIER[1],
+      "You can watch moisture creep up stems and along litter at the shore. Fine pores pull water against gravity, wicking nutrients where roots and microbes can reach them.",
+    ),
+    rippleClick(
+      3,
+      "Wind Ruffles",
+      UNLOCK_TIER[2],
+      "A breeze roughens the still surface and sends rings chasing each other across the pond. The film mixes oxygen into the top millimeters while pollen and dust ride the waves.",
+    ),
+    {
+      id: 4,
+      name: "Concentric Rings",
+      denizenId: "ripples",
+      unlockOwned: UNLOCK_TIER[3],
+      price: specialtyCatalogPrice(4),
+      effect: { type: "concentric_rings" },
+      effectText:
+        "Clicks and Ripples gain +0.1 energy for each non-Ripple object owned",
+      ecologyNote:
+        "Every click sends rings outward—and each new neighbor in the pond adds another edge for exchange. Disturbances stack as the basin fills with life.",
+    },
+    {
+      id: 5,
+      name: "Bottom Seep",
+      denizenId: "ripples",
+      unlockOwned: 50,
+      price: specialtyCatalogPrice(5),
+      effect: { type: "concentric_rings_mult", factor: 5 },
+      effectText: "Multiplies Concentric Rings click and Ripple gains by 5",
+      ecologyNote:
+        "Cold water oozes up through gravel and clay, nudging the surface from below in slow pulses. Groundwater seeps feed the basin and spread subtle rings across the bottom.",
+    },
+    {
+      id: 6,
+      name: "Clear Inlet",
+      denizenId: "ripples",
+      unlockOwned: 100,
+      price: specialtyCatalogPrice(6),
+      effect: { type: "concentric_rings_mult", factor: 10 },
+      effectText: "Multiplies Concentric Rings click and Ripple gains by 10",
+      ecologyNote:
+        "A clean channel from the watershed pours steady inflow that fans into overlapping wave fronts. Each new liter arriving sends ripples crossing the open water.",
+    },
+    {
+      id: 7,
+      name: "Spring Bulge",
+      denizenId: "ripples",
+      unlockOwned: 150,
+      price: specialtyCatalogPrice(7),
+      effect: { type: "concentric_rings_mult", factor: 20 },
+      effectText: "Multiplies Concentric Rings click and Ripple gains by 20",
+      ecologyNote:
+        "Mineral-rich spring water swells the surface into a dome before long-lived rings radiate outward. Upwelling plumes bulge the film and push pulses across the pond.",
+    },
+    {
+      id: 8,
+      name: "Smooth Current",
+      denizenId: "ripples",
+      unlockOwned: 200,
+      price: specialtyCatalogPrice(8),
+      effect: { type: "concentric_rings_mult", factor: 20 },
+      effectText: "Multiplies Concentric Rings click and Ripple gains by 20",
+      ecologyNote:
+        "Glassy parallel currents slide past snags and stems, shedding orderly waves that travel far. Even tiny obstacles in laminar flow send rings to the margin before they fade.",
+    },
+    {
+      id: 9,
+      name: "Gravel Riffle",
+      denizenId: "ripples",
+      unlockOwned: 250,
+      price: specialtyCatalogPrice(9),
+      effect: { type: "concentric_rings_mult", factor: 20 },
+      effectText: "Multiplies Concentric Rings click and Ripple gains by 20",
+      ecologyNote:
+        "Shallow bars sparkle as water tumbles over gravel, throwing trains of small waves shoreward. Each riffle crest stitches the littoral to the open pond with fresh rings.",
+    },
+    {
+      id: 10,
+      name: "Spillway Drum",
+      denizenId: "ripples",
+      unlockOwned: 300,
+      price: specialtyCatalogPrice(10),
+      effect: { type: "concentric_rings_mult", factor: 20 },
+      effectText: "Multiplies Concentric Rings click and Ripple gains by 20",
+      ecologyNote:
+        "Excess flow slips over a low dam and hammers a standing wave that drums through the whole basin. The overfall sends rhythmic pulses and concentric rings across the surface.",
+    },
+    {
+      id: 11,
+      name: "Deep Press",
+      denizenId: "ripples",
+      unlockOwned: 350,
+      price: specialtyCatalogPrice(11),
+      effect: { type: "concentric_rings_mult", factor: 20 },
+      effectText: "Multiplies Concentric Rings click and Ripple gains by 20",
+      ecologyNote:
+        "The weight of the water column presses on mud and roots, nudging the surface when depth shifts. Hydrostatic pressure and seasonal storage make the pond breathe in slow rings.",
+    },
+    {
+      id: 12,
+      name: "Layered Pond",
+      denizenId: "ripples",
+      unlockOwned: 400,
+      price: specialtyCatalogPrice(12),
+      effect: { type: "concentric_rings_mult", factor: 20 },
+      effectText: "Multiplies Concentric Rings click and Ripple gains by 20",
+      ecologyNote:
+        "A warm cap rides over cold deep water until wind or cooling breaks the stack. Thermal overturn sends one heavy surge—and a single set of rings—across the whole pond.",
+    },
+    {
+      id: 13,
+      name: "Sloshing Shore",
+      denizenId: "ripples",
+      unlockOwned: 450,
+      price: specialtyCatalogPrice(13),
+      effect: { type: "concentric_rings_mult", factor: 20 },
+      effectText: "Multiplies Concentric Rings click and Ripple gains by 20",
+      ecologyNote:
+        "Wind piles water against one bank until gravity slings it back, rocking the basin for hours. A seiche sets up overlapping rings that cross and recross the surface.",
+    },
+    {
+      id: 14,
+      name: "Two Streams Meet",
+      denizenId: "ripples",
+      unlockOwned: 500,
+      price: specialtyCatalogPrice(14),
+      effect: { type: "concentric_rings_mult", factor: 20 },
+      effectText: "Multiplies Concentric Rings click and Ripple gains by 20",
+      ecologyNote:
+        "Two drainages mingle at the lip, colliding currents that fan out in multiplied wave patterns. Confluence sends fresh rings racing across the open pond.",
+    },
+    {
+      id: 15,
+      name: "Step Pools",
+      denizenId: "ripples",
+      unlockOwned: 550,
+      price: specialtyCatalogPrice(15),
+      effect: { type: "concentric_rings_mult", factor: 20 },
+      effectText: "Multiplies Concentric Rings click and Ripple gains by 20",
+      ecologyNote:
+        "Terraced pools overflow one into the next, each step tossing a new burst of rings. Cascades below the main basin echo pulses back into the parent pond.",
+    },
+  ];
+  const copy = DENIZEN_TIER45_COPY.ripples!;
+  const tier45Id = tier45SpecialtyIdForDenizen("ripples");
+  return [
+    ...tiers.slice(0, 4),
+    rippleTier45Double(tier45Id, copy.name, copy.ecologyNote),
+    ...tiers.slice(4),
+  ];
+}
+
+function rippleTier45Double(
+  id: number,
+  name: string,
+  ecologyNote: string,
+): SpecialtyDef {
+  return {
+    id,
+    name,
+    denizenId: "ripples",
+    unlockOwned: DENIZEN_TIER45_UNLOCK_OWNED,
+    price: specialtyCatalogPrice(id),
+    effect: { type: "double_click_and_denizen", denizenId: "ripples" },
+    effectText: "Mouse click and Ripples are twice as efficient",
+    ecologyNote,
+  };
+}
+
+function buildDenizenChainWithTier45(
+  denizenId: string,
+  startId: number,
+  ecologyNotes: readonly string[],
+  tier45Override?: Tier45ChainOverride,
+): SpecialtyDef[] {
+  const tiers = buildDoubleTier(denizenId, startId, ecologyNotes);
+  const tier45Id =
+    tier45Override?.id ?? tier45SpecialtyIdForDenizen(denizenId);
+  const copy =
+    tier45Override ??
+    DENIZEN_TIER45_COPY[denizenId as keyof typeof DENIZEN_TIER45_COPY];
+  if (!copy) return tiers;
   return [
     ...tiers.slice(0, 4),
     doubleDenizen(
-      SEDIMENT_CRACIAL_GLAPE_SPECIALTY_ID,
-      "Cracial Glape",
-      "sediment",
-      75,
-      specialtyCatalogPrice(SEDIMENT_CRACIAL_GLAPE_SPECIALTY_ID),
-      "A particular specialty of Middlebury, VT. There was a time when this dense pond scraping was a hot commodity in the local community.",
+      tier45Id,
+      copy.name,
+      denizenId,
+      DENIZEN_TIER45_UNLOCK_OWNED,
+      specialtyCatalogPrice(tier45Id),
+      copy.ecologyNote,
     ),
     ...tiers.slice(4),
   ];
+}
+
+function buildSedimentChain(ecologyNotes: readonly string[]): SpecialtyDef[] {
+  return buildDenizenChainWithTier45("sediment", 16, ecologyNotes, {
+    id: SEDIMENT_CRACIAL_GLAPE_SPECIALTY_ID,
+    name: "Cracial Glape",
+    ecologyNote:
+      "A particular specialty of Middlebury, VT. There was a time when this dense pond scraping was a hot commodity in the local community.",
+  });
 }
 
 function buildDoubleTier(
@@ -1319,7 +1384,7 @@ export function compareVisibleSpecialtyShopOrder(
   return a.id - b.id;
 }
 
-/** Zero-based tier index (0–14) within the denizen's fifteen specialties. */
+/** Zero-based tier index within the denizen's evolution chain (16 when tier-4.5 is present). */
 export function specialtyTierIndex(def: SpecialtyDef): number {
   const idx = specialtiesForDenizen(def.denizenId).findIndex((s) => s.id === def.id);
   return idx >= 0 ? idx : 0;

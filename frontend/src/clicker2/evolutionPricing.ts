@@ -30,6 +30,7 @@ import {
   specialtyTierIndex,
   type SpecialtyDef,
 } from "./specialties";
+import { denizenHasTier45Insert } from "./tier45Evolutions";
 
 export {
   DENIZEN_EVOLUTION_TIER_MULT,
@@ -176,12 +177,38 @@ export function denizenEvolutionPrice(
   if (denizenId === "sediment") {
     return sedimentEvolutionPrice(tierIndex);
   }
+  if (denizenHasTier45Insert(denizenId)) {
+    if (tierIndex === 4) {
+      return denizenTier45Price(denizenId);
+    }
+    const def = getDenizenDef(denizenId);
+    if (!def) return 1;
+    if (tierIndex >= 5) {
+      const mult =
+        DENIZEN_EVOLUTION_TIER_MULT[tierIndex - 1] ??
+        DENIZEN_EVOLUTION_TIER_MULT[DENIZEN_EVOLUTION_TIER_MULT.length - 1]!;
+      return Math.round(def.baseCost * mult);
+    }
+  }
   const def = getDenizenDef(denizenId);
   if (!def) return 1;
   const mult =
     DENIZEN_EVOLUTION_TIER_MULT[tierIndex] ??
     DENIZEN_EVOLUTION_TIER_MULT[DENIZEN_EVOLUTION_TIER_MULT.length - 1]!;
   return Math.round(def.baseCost * mult);
+}
+
+/** Tier-4 catalog price (pre–tier-4.5 insert) for geometric-mean pricing. */
+export function denizenTier4CatalogPrice(denizenId: string): number {
+  if (denizenId === "sediment") {
+    return sedimentTier4CatalogPrice();
+  }
+  if (denizenId === "ripples") {
+    return rippleEvolutionPriceUnshifted(4);
+  }
+  const def = getDenizenDef(denizenId);
+  if (!def) return 1;
+  return Math.round(def.baseCost * DENIZEN_EVOLUTION_TIER_MULT[4]!);
 }
 
 /** Sediment tier-4 catalog price (before Cracial Glape half-step). */
@@ -191,11 +218,28 @@ export function sedimentTier4CatalogPrice(): number {
   return Math.round(def.baseCost * DENIZEN_EVOLUTION_TIER_MULT[4]!);
 }
 
+function denizenTier3PriceForTier45(denizenId: string): number {
+  if (denizenId === "sediment") {
+    return sedimentEvolutionPrice(3);
+  }
+  if (denizenId === "ripples") {
+    return rippleEvolutionPriceUnshifted(3);
+  }
+  const def = getDenizenDef(denizenId);
+  if (!def) return 1;
+  return Math.round(def.baseCost * DENIZEN_EVOLUTION_TIER_MULT[3]!);
+}
+
+/** Tier-4.5 denizen evolutions: geometric mean of tier-3 and tier-4 catalog prices. */
+export function denizenTier45Price(denizenId: string): number {
+  const tier3 = denizenTier3PriceForTier45(denizenId);
+  const tier4 = denizenTier4CatalogPrice(denizenId);
+  return Math.round(Math.sqrt(tier3 * tier4));
+}
+
 /** Cracial Glape and other tier-4.5 entries: geometric mean of tier 3 and tier 4 prices. */
 export function sedimentTier45Price(): number {
-  const tier3 = sedimentEvolutionPrice(3);
-  const tier4 = sedimentTier4CatalogPrice();
-  return Math.round(Math.sqrt(tier3 * tier4));
+  return denizenTier45Price("sediment");
 }
 
 export function sedimentEvolutionPrice(tierIndex: number): number {
@@ -219,7 +263,7 @@ export function sedimentEvolutionPrice(tierIndex: number): number {
   return Math.round(def.baseCost * mult);
 }
 
-export function rippleEvolutionPrice(tierIndex: number): number {
+function rippleEvolutionPriceUnshifted(tierIndex: number): number {
   if (tierIndex < RIPPLE_EARLY_PRICE_ANCHORS.length) {
     return RIPPLE_EARLY_PRICE_ANCHORS[tierIndex]!;
   }
@@ -229,6 +273,16 @@ export function rippleEvolutionPrice(tierIndex: number): number {
     RIPPLE_EVOLUTION_TIER_MULT[tierIndex] ??
     RIPPLE_EVOLUTION_TIER_MULT[RIPPLE_EVOLUTION_TIER_MULT.length - 1]!;
   return Math.round(def.baseCost * mult);
+}
+
+export function rippleEvolutionPrice(tierIndex: number): number {
+  if (tierIndex === 4) {
+    return denizenTier45Price("ripples");
+  }
+  if (tierIndex >= 5) {
+    return rippleEvolutionPriceUnshifted(tierIndex - 1);
+  }
+  return rippleEvolutionPriceUnshifted(tierIndex);
 }
 
 export function rippleAnchoredPrice(tierIndex: number): number {

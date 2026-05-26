@@ -125,9 +125,7 @@ function epsForDenizen(
     }
   }
   if (def.id === "ripples") {
-    const ringsPerCopy =
-      concentricRingsBonusPerNonRipple(effects) * nonRippleCount;
-    perCopy += ringsPerCopy * effMult;
+    perCopy += concentricRingsBonusPerNonRipple(effects) * nonRippleCount;
   }
   if (mutationLevel > 0) {
     perCopy *= 1 + mutationLevel / 100;

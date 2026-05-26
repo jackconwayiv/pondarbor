@@ -36,7 +36,7 @@ For each denizen with `owned > 0`:
 | `denizenEfficiencyMultiplier(id)` | Product of `×2` for each owned `double_denizen` or `double_click_and_denizen` targeting **this** denizen |
 | `globalEpsBoost()` | `1 + (Σ production_percent + Σ eps_percent_per_blossom × blossoms) / 100` |
 | Pairing steps | For each `denizen_eps_percent_per_denizen` where `targetDenizenId === id`: `perCopy × (1 + percent × floor(sourceOwned / sourcePerStep) / 100)` — **multiplicative** across multiple pairing cards |
-| Ripple rings add-on | If `id === ripples`: `+ concentricRingsBonusPerNonRipple × nonRippleCount × effMult` per copy (same efficiency/global boost as base EpS) |
+| Ripple rings add-on | If `id === ripples`: `+ concentricRingsBonusPerNonRipple × nonRippleCount` per copy (additive after mults) |
 | Mutagen | `× (1 + mutationLevel / 100)` |
 | Total row | `owned × perCopy` |
 

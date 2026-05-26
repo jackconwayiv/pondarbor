@@ -166,19 +166,6 @@ describe("simulation evolution effect wiring", () => {
       const rippleGain = after.denizenEps.ripples! - before.denizenEps.ripples!;
       expect(rippleGain).toBeCloseTo(0.1 * nonRipple * 2, 8);
     });
-
-    it("doubles Concentric Rings ripple EpS with ripple efficiency evolutions", () => {
-      const owned = { ripples: 1, sediment: 10 };
-      const withRings = simulateGame(owned, { [ringsId]: true });
-      const withRingsAndDouble = simulateGame(owned, {
-        [ringsId]: true,
-        1: true,
-      });
-      expect(withRingsAndDouble.denizenEps.ripples).toBeCloseTo(
-        withRings.denizenEps.ripples! * 2,
-        8,
-      );
-    });
   });
 
   describe("ownedSpecialtyEffects coverage", () => {

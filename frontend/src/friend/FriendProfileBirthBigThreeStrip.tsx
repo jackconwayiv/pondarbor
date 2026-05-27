@@ -54,7 +54,7 @@ export function FriendProfileBigThreeRow({
     return buildZodiacOverviewTiles({
       sunSign: sunSign?.trim() || "—",
       moonSign: moonSign?.trim() || "—",
-      risingSign: risingSign?.trim() || "—",
+      risingSign: risingSign?.trim() || undefined,
     }).filter((t) => {
       if (t.id === "sun") return Boolean(sunSign?.trim());
       if (t.id === "moon") return Boolean(moonSign?.trim());
@@ -66,9 +66,10 @@ export function FriendProfileBigThreeRow({
   if (tiles.length === 0) return null;
 
   const zodiacUrl = zodiacFriendsTabUrl(userId);
+  const colCount = Math.min(tiles.length, 3);
 
   return (
-    <SimpleGrid columns={{ base: 3 }} gap="3" w="100%">
+    <SimpleGrid columns={{ base: colCount }} gap="3" w="100%">
       {tiles.map((tile) => (
         <RouterLink
           key={tile.id}

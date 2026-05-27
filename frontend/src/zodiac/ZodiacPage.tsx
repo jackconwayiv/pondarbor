@@ -8,7 +8,7 @@ import {
   Tabs,
   Text,
 } from "@chakra-ui/react";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useAppSession } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
@@ -132,7 +132,8 @@ function natalBirthSummaryStack(p: AstroProfileRow): ReactNode {
   );
 }
 
-type ZodiacMainTab = "planets" | "houses" | "aspects" | "natal" | "friends";
+type MainTab = "data" | "interpretation" | "friends";
+type DataSubTab = "planets" | "houses" | "aspects" | "natal";
 
 export default function ZodiacPage() {
   const { sessionUser, getApiAccessToken, resyncSessionSilently } = useAppSession();
@@ -158,7 +159,9 @@ export default function ZodiacPage() {
   const [showAlterBirthForm, setShowAlterBirthForm] = useState(false);
   const [waitingBirthSavedAck, setWaitingBirthSavedAck] = useState(false);
 
-  const [zodiacTab, setZodiacTab] = useState<ZodiacMainTab>("planets");
+  const [mainTab, setMainTab] = useState<MainTab>("data");
+  const [dataSubTab, setDataSubTab] = useState<DataSubTab>("planets");
+  const prevHadImportedChartRef = useRef(false);
   const [placementPaneTile, setPlacementPaneTile] = useState<ZodiacSignCardTile | null>(
     null,
   );
@@ -253,26 +256,33 @@ export default function ZodiacPage() {
   const waitingForStaffChart = profile?.chart_status === "waiting_staff_chart";
 
   const chart = profile?.natal_chart;
-  const hasFullReadyChart = Boolean(
+  const birthTimeUnknown = Boolean(profile?.birth_time_unknown);
+
+  const hasStaffImportedChart = Boolean(
     profile?.chart_status === "ready" &&
       chart &&
       profile.sun_sign &&
       profile.moon_sign &&
-      profile.rising_sign,
+      (birthTimeUnknown || Boolean(profile.rising_sign?.trim())),
   );
 
+  const aspectAnchorBodies = useMemo(() => {
+    if (!birthTimeUnknown) return ZODIAC_ASPECT_ANCHOR_BODIES;
+    return new Set<string>(["sun", "moon", "mercury", "venus", "mars"]);
+  }, [birthTimeUnknown]);
+
   const overviewTiles = useMemo(() => {
-    if (!hasFullReadyChart || !profile || !chart) return [];
+    if (!hasStaffImportedChart || !profile || !chart) return [];
     return buildZodiacOverviewTiles({
       sunSign: profile.sun_sign!,
       moonSign: profile.moon_sign!,
-      risingSign: profile.rising_sign!,
+      risingSign: birthTimeUnknown ? undefined : (profile.rising_sign ?? undefined),
       mercurySign: chart.points.mercury?.sign,
       venusSign: chart.points.venus?.sign,
       marsSign: chart.points.mars?.sign,
       natalChart: chart,
     });
-  }, [hasFullReadyChart, profile, chart]);
+  }, [hasStaffImportedChart, profile, chart, birthTimeUnknown]);
 
   const onMiniPlacementSelect = useCallback((tile: ZodiacSignCardTile) => {
     setCanvasDescriptorSign(null);
@@ -287,10 +297,10 @@ export default function ZodiacPage() {
   const canvasShellSign = canvasDescriptorSign ?? placementPaneTile?.sign ?? null;
 
   useEffect(() => {
-    if (!hasFullReadyChart) {
+    if (!hasStaffImportedChart) {
       setShowAlterBirthForm(false);
     }
-  }, [hasFullReadyChart]);
+  }, [hasStaffImportedChart]);
 
   useEffect(() => {
     if (!waitingForStaffChart) {
@@ -299,17 +309,31 @@ export default function ZodiacPage() {
   }, [waitingForStaffChart]);
 
   useEffect(() => {
-    if (!hasFullReadyChart) {
+    if (!hasStaffImportedChart) {
       setPlacementPaneTile(null);
       setCanvasDescriptorSign(null);
     }
-  }, [hasFullReadyChart]);
+  }, [hasStaffImportedChart]);
 
   useEffect(() => {
-    if (!hasFullReadyChart && showFriendsTab) {
-      setZodiacTab("friends");
+    if (!hasStaffImportedChart && showFriendsTab) {
+      setMainTab("friends");
     }
-  }, [hasFullReadyChart, showFriendsTab]);
+  }, [hasStaffImportedChart, showFriendsTab]);
+
+  useEffect(() => {
+    if (hasStaffImportedChart && !prevHadImportedChartRef.current) {
+      setMainTab("data");
+      setDataSubTab("planets");
+    }
+    prevHadImportedChartRef.current = hasStaffImportedChart;
+  }, [hasStaffImportedChart]);
+
+  useEffect(() => {
+    if (!hasStaffImportedChart && mainTab === "interpretation") {
+      setMainTab("data");
+    }
+  }, [hasStaffImportedChart, mainTab]);
 
   useEffect(() => {
     setPlacementPaneTile(null);
@@ -318,7 +342,7 @@ export default function ZodiacPage() {
 
   const chartIncompleteReady =
     Boolean(profile) &&
-    !hasFullReadyChart &&
+    !hasStaffImportedChart &&
     !waitingForStaffChart &&
     profile?.chart_status === "ready";
 
@@ -586,7 +610,7 @@ export default function ZodiacPage() {
     <>
       {trayShell(
         <>
-          {!hasFullReadyChart ? (
+          {!hasStaffImportedChart ? (
             <Box {...PANEL_ENTRY_CARD_PROPS}>
               <Heading as="h1" size={{ base: "lg", md: "xl" }} mb="2">
                 <HStack as="span" display="inline-flex" gap="2" alignItems="center" flexWrap="wrap">
@@ -611,8 +635,8 @@ export default function ZodiacPage() {
             </Box>
           ) : null}
 
-          {hasFullReadyChart && chart && profile ? (
-            <Box {...PANEL_ENTRY_CARD_PROPS} mt="-1">
+          {hasStaffImportedChart && chart && profile ? (
+            <Box {...PANEL_ENTRY_CARD_PROPS} mt={overviewTiles.length > 0 ? "-1" : undefined}>
               <Stack gap="6" w="100%">
                 <Box
                   borderRadius="xl"
@@ -637,7 +661,9 @@ export default function ZodiacPage() {
                     <ZodiacOverviewCardsStrip
                       sunSign={profile.sun_sign!}
                       moonSign={profile.moon_sign!}
-                      risingSign={profile.rising_sign!}
+                      risingSign={
+                        birthTimeUnknown ? undefined : (profile.rising_sign ?? undefined)
+                      }
                       mercurySign={chart.points.mercury?.sign}
                       venusSign={chart.points.venus?.sign}
                       marsSign={chart.points.mars?.sign}
@@ -646,171 +672,197 @@ export default function ZodiacPage() {
                     />
                   )}
                 </Box>
+              </Stack>
+            </Box>
+          ) : null}
 
-                <Tabs.Root
-                  value={zodiacTab}
-                  onValueChange={(d) => setZodiacTab(d.value as ZodiacMainTab)}
-                  variant="plain"
-                >
-                  <Tabs.List {...APP_SHELL_TAB_LIST_INSET_PROPS}>
-                    <Tabs.Trigger value="planets" {...APP_SHELL_TAB_TRIGGER_PROPS}>
-                      Planets
-                    </Tabs.Trigger>
-                    <Tabs.Trigger value="houses" {...APP_SHELL_TAB_TRIGGER_PROPS}>
-                      Houses
-                    </Tabs.Trigger>
-                    <Tabs.Trigger value="aspects" {...APP_SHELL_TAB_TRIGGER_PROPS}>
-                      Aspects
-                    </Tabs.Trigger>
-                    <Tabs.Trigger value="natal" {...APP_SHELL_TAB_TRIGGER_PROPS}>
-                      Natal
-                    </Tabs.Trigger>
-                    {showFriendsTab ? (
-                      <Tabs.Trigger value="friends" {...APP_SHELL_TAB_TRIGGER_PROPS}>
-                        Friends
-                      </Tabs.Trigger>
-                    ) : null}
-                  </Tabs.List>
-                  <Tabs.Content value="planets" pt="4">
-                    <NatalChartPlanetsTable
-                      chart={chart}
-                      onBodyRowClick={(key) => {
-                        const t = zodiacTileFromChartBodyKey(key, chart);
-                        if (t) openPlacementTile(t);
-                      }}
-                    />
-                  </Tabs.Content>
-                  <Tabs.Content value="houses" pt="4">
-                    <Stack gap="6" w="100%">
-                      <NatalChartWheel chart={chart} />
-                      <NatalChartHousesTable chart={chart} />
-                    </Stack>
-                  </Tabs.Content>
-                  <Tabs.Content value="aspects" pt="4">
-                    <NatalChartAspectsPanel
-                      chart={chart}
-                      anchorBodies={ZODIAC_ASPECT_ANCHOR_BODIES}
-                    />
-                  </Tabs.Content>
-                  <Tabs.Content value="natal" pt="4">
-                    <Stack gap="4" w="100%">
+          <Box {...PANEL_ENTRY_CARD_PROPS} mt={hasStaffImportedChart ? "-1" : undefined}>
+            <Tabs.Root
+              value={mainTab}
+              onValueChange={(d) => setMainTab(d.value as MainTab)}
+              variant="plain"
+            >
+              <Tabs.List {...APP_SHELL_TAB_LIST_INSET_PROPS}>
+                <Tabs.Trigger value="data" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                  Data
+                </Tabs.Trigger>
+                {hasStaffImportedChart ? (
+                  <Tabs.Trigger value="interpretation" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                    Interpretation
+                  </Tabs.Trigger>
+                ) : null}
+                <Tabs.Trigger value="friends" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                  Friends
+                </Tabs.Trigger>
+              </Tabs.List>
+
+              <Tabs.Content value="data" pt="4">
+                <Stack gap="6" w="100%">
+                  {hasStaffImportedChart && chart && profile ? (
+                    <Tabs.Root
+                      value={dataSubTab}
+                      onValueChange={(d) => setDataSubTab(d.value as DataSubTab)}
+                      variant="plain"
+                    >
+                        <Tabs.List {...APP_SHELL_TAB_LIST_INSET_PROPS}>
+                          <Tabs.Trigger value="planets" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                            Planets
+                          </Tabs.Trigger>
+                          <Tabs.Trigger value="houses" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                            Houses
+                          </Tabs.Trigger>
+                          <Tabs.Trigger value="aspects" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                            Aspects
+                          </Tabs.Trigger>
+                          <Tabs.Trigger value="natal" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                            Natal
+                          </Tabs.Trigger>
+                        </Tabs.List>
+                        <Tabs.Content value="planets" pt="4">
+                          <NatalChartPlanetsTable
+                            chart={chart}
+                            hideAngles={birthTimeUnknown}
+                            onBodyRowClick={(key) => {
+                              const t = zodiacTileFromChartBodyKey(key, chart);
+                              if (t) openPlacementTile(t);
+                            }}
+                          />
+                        </Tabs.Content>
+                        <Tabs.Content value="houses" pt="4">
+                          {birthTimeUnknown ? (
+                            <Text
+                              fontSize={APP_TEXT_SIZES.body}
+                              color="fg.muted"
+                              lineHeight="tall"
+                            >
+                              House cusps and the chart wheel are hidden when no reliable birth time
+                              is available. If you obtain a birth time, ask staff to refresh your
+                              chart.
+                            </Text>
+                          ) : (
+                            <Stack gap="6" w="100%">
+                              <NatalChartWheel chart={chart} />
+                              <NatalChartHousesTable chart={chart} />
+                            </Stack>
+                          )}
+                        </Tabs.Content>
+                        <Tabs.Content value="aspects" pt="4">
+                          <NatalChartAspectsPanel
+                            chart={chart}
+                            anchorBodies={aspectAnchorBodies}
+                            excludeAngleBodies={birthTimeUnknown}
+                          />
+                        </Tabs.Content>
+                        <Tabs.Content value="natal" pt="4">
+                          <Stack gap="4" w="100%">
+                            {natalBirthSummaryStack(profile)}
+                            <PondButton
+                              size="sm"
+                              variant="outline"
+                              colorPalette="sky"
+                              alignSelf="flex-start"
+                              onClick={() => setShowAlterBirthForm(true)}
+                            >
+                              Alter details
+                            </PondButton>
+                            {showAlterBirthForm
+                              ? renderBirthInformationCard(cancelAlterBirthForm)
+                              : null}
+                          </Stack>
+                        </Tabs.Content>
+                    </Tabs.Root>
+                  ) : null}
+
+                  {waitingForStaffChart && profile ? (
+                    <Box {...PANEL_ENTRY_CARD_PROPS}>
+                      <Heading as="h2" size="md" mb="3">
+                        Natal
+                      </Heading>
+                      {natalBirthSummaryStack(profile)}
+                      <Stack gap="4" mt="4">
+                        {!showBirthFormWhileWaiting ? (
+                          <PondButton
+                            colorPalette="sky"
+                            onClick={() => {
+                              setWaitingBirthSavedAck(false);
+                              setShowBirthFormWhileWaiting(true);
+                            }}
+                          >
+                            Edit birth details
+                          </PondButton>
+                        ) : null}
+                        <Box
+                          borderRadius="lg"
+                          borderWidth="1px"
+                          borderColor="border"
+                          bg="sky.subtle"
+                          p={{ base: "3", md: "4" }}
+                        >
+                          <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.title}>
+                            Waiting for your chart
+                          </Text>
+                          <Text fontSize={APP_TEXT_SIZES.body} color="fg" mt="2" lineHeight="tall">
+                            We have your birth details. A staff member will import your chart soon —
+                            watch this page for your details.
+                          </Text>
+                        </Box>
+                        {waitingBirthSavedAck ? (
+                          <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall">
+                            Your birth details were updated.
+                          </Text>
+                        ) : null}
+                        {birthFormInWaitingNatalPanel
+                          ? renderBirthInformationCard(cancelWaitingBirthForm)
+                          : null}
+                      </Stack>
+                    </Box>
+                  ) : null}
+
+                  {chartIncompleteReady && profile ? (
+                    <Box {...PANEL_ENTRY_CARD_PROPS}>
+                      <Heading as="h2" size="md" mb="3">
+                        Natal
+                      </Heading>
                       {natalBirthSummaryStack(profile)}
                       <PondButton
+                        mt="4"
                         size="sm"
                         variant="outline"
                         colorPalette="sky"
-                        alignSelf="flex-start"
                         onClick={() => setShowAlterBirthForm(true)}
                       >
                         Alter details
                       </PondButton>
                       {showAlterBirthForm ? renderBirthInformationCard(cancelAlterBirthForm) : null}
-                    </Stack>
-                  </Tabs.Content>
-                  {showFriendsTab ? (
-                    <Tabs.Content value="friends" pt="4">
-                      <ZodiacFriendsTabPanel
-                        friends={visibleFriends}
-                        friendsLoadError={friendsLoadError}
-                      />
-                    </Tabs.Content>
+                    </Box>
                   ) : null}
-                </Tabs.Root>
-              </Stack>
-            </Box>
-          ) : showFriendsTab ? (
-            <Box {...PANEL_ENTRY_CARD_PROPS}>
-              <Tabs.Root
-                value={zodiacTab}
-                onValueChange={(d) => setZodiacTab(d.value as ZodiacMainTab)}
-                variant="plain"
-              >
-                <Tabs.List {...APP_SHELL_TAB_LIST_INSET_PROPS}>
-                  <Tabs.Trigger value="friends" {...APP_SHELL_TAB_TRIGGER_PROPS}>
-                    Friends
-                  </Tabs.Trigger>
-                </Tabs.List>
-                <Tabs.Content value="friends" pt="4">
-                  <ZodiacFriendsTabPanel
-                    friends={visibleFriends}
-                    friendsLoadError={friendsLoadError}
-                  />
+
+                  {showBirthFormAtBottom
+                    ? renderBirthInformationCard(
+                        waitingForStaffChart && showBirthFormWhileWaiting
+                          ? cancelWaitingBirthForm
+                          : undefined,
+                      )
+                    : null}
+                </Stack>
+              </Tabs.Content>
+
+              {hasStaffImportedChart ? (
+                <Tabs.Content value="interpretation" pt="4">
+                  <Text fontSize={APP_TEXT_SIZES.body} color="fg.muted" textAlign="center" py="16">
+                    Coming soon!
+                  </Text>
                 </Tabs.Content>
-              </Tabs.Root>
-            </Box>
-          ) : null}
+              ) : null}
 
-          {waitingForStaffChart && profile ? (
-            <Box {...PANEL_ENTRY_CARD_PROPS}>
-              <Heading as="h2" size="md" mb="3">
-                Natal
-              </Heading>
-              {natalBirthSummaryStack(profile)}
-              <Stack gap="4" mt="4">
-                {!showBirthFormWhileWaiting ? (
-                  <PondButton
-                    colorPalette="sky"
-                    onClick={() => {
-                      setWaitingBirthSavedAck(false);
-                      setShowBirthFormWhileWaiting(true);
-                    }}
-                  >
-                    Edit birth details
-                  </PondButton>
-                ) : null}
-                <Box
-                  borderRadius="lg"
-                  borderWidth="1px"
-                  borderColor="border"
-                  bg="sky.subtle"
-                  p={{ base: "3", md: "4" }}
-                >
-                  <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.title}>
-                    Waiting for your chart
-                  </Text>
-                  <Text fontSize={APP_TEXT_SIZES.body} color="fg" mt="2" lineHeight="tall">
-                    We have your birth details. A staff member will import your chart soon — watch
-                    this page for your details.
-                  </Text>
-                </Box>
-                {waitingBirthSavedAck ? (
-                  <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall">
-                    Your birth details were updated.
-                  </Text>
-                ) : null}
-                {birthFormInWaitingNatalPanel
-                  ? renderBirthInformationCard(cancelWaitingBirthForm)
-                  : null}
-              </Stack>
-            </Box>
-          ) : null}
-
-          {chartIncompleteReady && profile ? (
-            <Box {...PANEL_ENTRY_CARD_PROPS}>
-              <Heading as="h2" size="md" mb="3">
-                Natal
-              </Heading>
-              {natalBirthSummaryStack(profile)}
-              <PondButton
-                mt="4"
-                size="sm"
-                variant="outline"
-                colorPalette="sky"
-                onClick={() => setShowAlterBirthForm(true)}
-              >
-                Alter details
-              </PondButton>
-              {showAlterBirthForm ? renderBirthInformationCard(cancelAlterBirthForm) : null}
-            </Box>
-          ) : null}
-
-          {showBirthFormAtBottom
-            ? renderBirthInformationCard(
-                waitingForStaffChart && showBirthFormWhileWaiting
-                  ? cancelWaitingBirthForm
-                  : undefined,
-              )
-            : null}
+              <Tabs.Content value="friends" pt="4">
+                <ZodiacFriendsTabPanel
+                  friends={visibleFriends}
+                  friendsLoadError={friendsLoadError}
+                />
+              </Tabs.Content>
+            </Tabs.Root>
+          </Box>
         </>,
       )}
 

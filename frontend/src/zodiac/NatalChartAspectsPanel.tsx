@@ -58,6 +58,8 @@ type Props = {
   aspectsPreviewMax?: number;
   /** When set, only aspects where `body_a` or `body_b` is in this set are shown. */
   anchorBodies?: Set<string>;
+  /** Drop aspects involving ascendant or midheaven (e.g. birth time unknown UI). */
+  excludeAngleBodies?: boolean;
 };
 
 type AspectRow = NatalChartPayload["aspects"][number];
@@ -114,10 +116,20 @@ function AspectTable({ title, rows }: { title: string; rows: AspectRow[] }) {
 }
 
 export default function NatalChartAspectsPanel(props: Props) {
-  const { chart, aspectsNote, aspectsPreviewMax, anchorBodies } = props;
+  const {
+    chart,
+    aspectsNote,
+    aspectsPreviewMax,
+    anchorBodies,
+    excludeAngleBodies,
+  } = props;
 
   const { majorRows, minorRows, filteredTotal } = useMemo(() => {
     let raw = [...chart.aspects];
+    if (excludeAngleBodies) {
+      const isAngle = (b: string) => b === "ascendant" || b === "midheaven";
+      raw = raw.filter((a) => !isAngle(a.body_a) && !isAngle(a.body_b));
+    }
     if (anchorBodies?.size) {
       raw = raw.filter(
         (a) => anchorBodies.has(a.body_a) || anchorBodies.has(a.body_b),
@@ -133,7 +145,7 @@ export default function NatalChartAspectsPanel(props: Props) {
       minorRows: sortAspectsByOrb(minor),
       filteredTotal: raw.length,
     };
-  }, [chart.aspects, aspectsPreviewMax, anchorBodies]);
+  }, [chart.aspects, aspectsPreviewMax, anchorBodies, excludeAngleBodies]);
 
   const defaultNote = anchorBodies?.size
     ? `${filteredTotal} aspect${filteredTotal === 1 ? "" : "s"} involving the Sun, Moon, Ascendant, Mercury, Venus, Mars, or Midheaven.`

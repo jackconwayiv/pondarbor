@@ -35,11 +35,18 @@ function inTheNthHousePhrase(house: number | undefined | null): string {
   return `in the ${n}${suffix} House`;
 }
 
-function mergedPointEntries(chart: NatalChartPayload): [string, ChartPoint][] {
+function mergedPointEntries(
+  chart: NatalChartPayload,
+  hideAngles?: boolean,
+): [string, ChartPoint][] {
   const merged: Record<string, ChartPoint> = {
     ...chart.points,
     ...chart.angles,
   };
+  if (hideAngles) {
+    delete merged.ascendant;
+    delete merged.midheaven;
+  }
   const keys = Object.keys(merged).filter((k) => !ZODIAC_MEMBER_PLANET_EXCLUDE_KEYS.has(k));
   const rank = (k: string) => {
     const i = CHART_POINT_ORDER.indexOf(k);
@@ -52,10 +59,12 @@ function mergedPointEntries(chart: NatalChartPayload): [string, ChartPoint][] {
 type Props = {
   chart: NatalChartPayload;
   onBodyRowClick?: (chartKey: string) => void;
+  /** Omit ascendant and midheaven (e.g. birth time unknown). */
+  hideAngles?: boolean;
 };
 
-export default function NatalChartPlanetsTable({ chart, onBodyRowClick }: Props) {
-  const rows = mergedPointEntries(chart);
+export default function NatalChartPlanetsTable({ chart, onBodyRowClick, hideAngles }: Props) {
+  const rows = mergedPointEntries(chart, hideAngles);
 
   const rowKeyActivate = (chartKey: string, e: KeyboardEvent) => {
     if (e.key === "Enter" || e.key === " ") {

@@ -59,9 +59,11 @@ export default function FriendZodiacPlacementsRow({
   const tiles = buildZodiacOverviewTiles({
     sunSign: friend.sun_sign,
     moonSign: friend.moon_sign,
-    risingSign: friend.rising_sign,
+    risingSign: friend.rising_sign ?? undefined,
     natalChart: friend.natal_chart,
   }).filter((t) => BIG_THREE_IDS.includes(t.id as (typeof BIG_THREE_IDS)[number]));
+
+  const n = Math.max(tiles.length, 1);
 
   const placementCards = tiles.map((tile) => (
     <ZodiacSignCard
@@ -84,7 +86,7 @@ export default function FriendZodiacPlacementsRow({
     >
       <Box display={{ base: "none", md: "block" }}>
         <Grid
-          templateColumns="minmax(120px, 0.85fr) repeat(3, minmax(0, 1fr))"
+          templateColumns={`minmax(120px, 0.85fr) repeat(${n}, minmax(0, 1fr))`}
           gap="4"
           w="100%"
           alignItems="stretch"
@@ -95,7 +97,7 @@ export default function FriendZodiacPlacementsRow({
       </Box>
       <Stack gap="4" display={{ base: "flex", md: "none" }} w="100%">
         <FriendIdentity friend={friend} />
-        <SimpleGrid columns={3} gap="3" w="100%">
+        <SimpleGrid columns={{ base: n, md: n }} gap="3" w="100%" maxW="100%">
           {placementCards}
         </SimpleGrid>
       </Stack>

@@ -6,7 +6,8 @@ import ZodiacSignCardsStrip, { type ZodiacSignCardTile } from "./ZodiacSignCards
 export type ZodiacOverviewTileSource = {
   sunSign: string;
   moonSign: string;
-  risingSign: string;
+  /** Omit from the strip when empty (e.g. birth time unknown / no rising). */
+  risingSign?: string | null;
   mercurySign?: string | null;
   venusSign?: string | null;
   marsSign?: string | null;
@@ -40,15 +41,19 @@ export function buildZodiacOverviewTiles(props: ZodiacOverviewTileSource): Zodia
       ...retro("moon"),
       ...house("moon"),
     },
-    {
+  ];
+
+  const rise = props.risingSign?.trim();
+  if (rise) {
+    tiles.push({
       id: "rising",
       label: BIG_THREE_BODY.rising.label,
-      sign: props.risingSign,
+      sign: rise,
       bodyHeading: BIG_THREE_BODY.rising.bodyHeading,
       bodyPhrases: BIG_THREE_BODY.rising.bodyPhrases,
       ...house("rising"),
-    },
-  ];
+    });
+  }
 
   const merc = props.mercurySign?.trim();
   const ven = props.venusSign?.trim();

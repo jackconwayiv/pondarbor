@@ -1,6 +1,7 @@
 import {
   Box,
   Button,
+  Checkbox,
   Collapsible,
   Heading,
   HStack,
@@ -49,6 +50,7 @@ export default function StaffZodiacPage() {
   const [chartText, setChartText] = useState("");
   const [importBusy, setImportBusy] = useState(false);
   const [importMsg, setImportMsg] = useState<string | null>(null);
+  const [birthTimeUnknownImport, setBirthTimeUnknownImport] = useState(false);
   const [undoTarget, setUndoTarget] = useState<StaffImportedChartRow | null>(null);
   const [undoBusy, setUndoBusy] = useState(false);
   const [expandedImportedUserId, setExpandedImportedUserId] = useState<number | null>(
@@ -100,11 +102,14 @@ export default function StaffZodiacPage() {
     setImportMsg(null);
     try {
       const token = await getApiAccessToken();
-      const res = await staffImportChart(token, selectedUserId, chartText);
+      const res = await staffImportChart(token, selectedUserId, chartText, {
+        birthTimeUnknown: birthTimeUnknownImport,
+      });
       const warn =
         res.warnings.length > 0 ? `Warnings: ${res.warnings.slice(0, 8).join("; ")}` : "Imported.";
       setImportMsg(warn);
       setChartText("");
+      setBirthTimeUnknownImport(false);
       await reload();
       await refreshInbox();
     } catch (e: unknown) {
@@ -117,6 +122,7 @@ export default function StaffZodiacPage() {
   const focusPasteForRevise = (userId: number) => {
     setSelectedUserId(userId);
     setChartText("");
+    setBirthTimeUnknownImport(false);
     setImportMsg(null);
     queueMicrotask(() => {
       pasteSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -212,7 +218,7 @@ export default function StaffZodiacPage() {
                         chart &&
                         row.sun_sign &&
                         row.moon_sign &&
-                        row.rising_sign;
+                        (row.rising_sign || row.birth_time_unknown);
                       const isOpen = expandedImportedUserId === row.user_id;
                       return (
                         <Box
@@ -258,8 +264,12 @@ export default function StaffZodiacPage() {
                                   </Text>
                                   {row.email}
                                   <Text as="span" fontWeight="normal" color="fg.muted" ml="2">
-                                    Sun {row.sun_sign ?? "—"} · Moon {row.moon_sign ?? "—"} · Rising{" "}
-                                    {row.rising_sign ?? "—"}
+                                    Sun {row.sun_sign ?? "—"} · Moon {row.moon_sign ?? "—"}
+                                    {row.birth_time_unknown ? (
+                                      <Text as="span"> · Rising hidden (no birth time)</Text>
+                                    ) : (
+                                      <Text as="span"> · Rising {row.rising_sign ?? "—"}</Text>
+                                    )}
                                   </Text>
                                 </Button>
                               </Collapsible.Trigger>
@@ -292,11 +302,17 @@ export default function StaffZodiacPage() {
                               <Box px="3" pb="3" pt="0">
                                 {ready ? (
                                   <Stack gap="6" w="100%">
-                                    <NatalChartWheel chart={chart!} />
+                                    {row.birth_time_unknown ? null : (
+                                      <NatalChartWheel chart={chart!} />
+                                    )}
                                     <ZodiacOverviewCardsStrip
                                       sunSign={row.sun_sign!}
                                       moonSign={row.moon_sign!}
-                                      risingSign={row.rising_sign!}
+                                      risingSign={
+                                        row.birth_time_unknown
+                                          ? undefined
+                                          : (row.rising_sign ?? undefined)
+                                      }
                                       mercurySign={chart!.points.mercury?.sign}
                                       venusSign={chart!.points.venus?.sign}
                                       marsSign={chart!.points.mars?.sign}
@@ -305,6 +321,7 @@ export default function StaffZodiacPage() {
                                     <NatalChartPositions
                                       chart={chart!}
                                       aspectsNote="Stored natal chart JSON (staff import)."
+                                      birthTimeUnknown={row.birth_time_unknown}
                                     />
                                   </Stack>
                                 ) : (
@@ -422,6 +439,22 @@ export default function StaffZodiacPage() {
                 <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted" mb="3">
                   Plain text from your chart software — same parser as the member-facing chart.
                 </Text>
+                <Checkbox.Root
+                  checked={birthTimeUnknownImport}
+                  onCheckedChange={(d) => {
+                    setBirthTimeUnknownImport(d.checked === true);
+                  }}
+                  mb="3"
+                >
+                  <Checkbox.HiddenInput />
+                  <Checkbox.Control flexShrink={0}>
+                    <Checkbox.Indicator />
+                  </Checkbox.Control>
+                  <Checkbox.Label fontSize={APP_TEXT_SIZES.meta} lineHeight="tall">
+                    Member has no reliable birth time (hide houses, wheel, and angle-based aspects
+                    even if the paste includes them).
+                  </Checkbox.Label>
+                </Checkbox.Root>
                 <Textarea
                   rows={14}
                   fontFamily="mono"

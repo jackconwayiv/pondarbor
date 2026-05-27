@@ -37,6 +37,109 @@ _SIGN_INDEX = {s: i for i, s in enumerate(_SIGN_ORDER)}
 _DEG_MIN_RE = re.compile(r"^(?P<deg>\d+)°(?P<min>\d+)'?$")
 _DECIMAL_LON_RE = re.compile(r"^(?P<lon>\d+(\.\d+)?)$")
 
+_HEADING_SKIP_RES = (
+    re.compile(r"^Planets\s+in\s+Houses\*?\s*$", re.I),
+    re.compile(r"^Positions\s+of\s+Houses\s*$", re.I),
+    re.compile(r"^List\s+of\s+Planetary\s+Aspects\s*$", re.I),
+)
+
+
+def _strip_inline_comment(line: str) -> str:
+    """Remove `//`-style pasted suffixes (often errors/warnings pasted with export)."""
+    if "//" in line:
+        line = line.split("//", 1)[0].strip()
+    return line
+
+
+def _should_skip_noise_line(line: str) -> bool:
+    ln = line.strip()
+    if not ln:
+        return True
+    if ln.startswith("#"):
+        return True
+    if ln.startswith("//"):
+        return True
+    for rx in _HEADING_SKIP_RES:
+        if rx.match(ln):
+            return True
+    if ln.startswith("* In keeping with the common practice"):
+        return True
+    return False
+
+
+# Space-separated row: Body D°M' [Я|R] Sign (body may be multiple words, e.g. Part Of Fortune)
+_SPACE_LON_RE = re.compile(
+    r"^(?P<body>.+?)\s+(?P<dm>\d+°\d+'?)\s+(?:(?P<retro>[ЯRr])\s+)?(?P<sign>[A-Za-z]+)\s*$"
+)
+_SPACE_HOUSE_CUSP_RE = re.compile(
+    r"^House\s+(?P<n>\d+)\s+(?P<dm>\d+°\d+'?)\s+(?P<sign>[A-Za-z]+)\s*$",
+    re.I,
+)
+_SPACE_BODY_HOUSE_RE = re.compile(r"^(?P<body>.+?)\s+House\s+(?P<hn>\d+)\s*$", re.I)
+
+
+def _try_parse_space_separated_lon_row(
+    line: str,
+    *,
+    points: dict,
+    angles: dict,
+) -> bool:
+    m = _SPACE_LON_RE.match(line.strip())
+    if not m:
+        return False
+    body_raw = m.group("body").strip()
+    dm = _parse_deg_min(m.group("dm"))
+    if not dm:
+        return False
+    retro = bool(m.group("retro"))
+    sign_raw = m.group("sign")
+    if sign_raw.title() not in _SIGN_TITLE:
+        return False
+    bk = _normalize_body_key(body_raw)
+    if not bk:
+        return False
+    deg, minute = dm
+    lon = _longitude_deg(sign_raw.lower(), deg, minute)
+    sig = sign_raw.lower()
+    pt = {"longitude_deg": lon, "sign": sig, "retrograde": retro}
+    _assign_point_or_angle(bk, pt, points=points, angles=angles)
+    return True
+
+
+def _try_parse_space_separated_house_cusp(
+    line: str,
+    *,
+    cusps: list[float | None],
+) -> bool:
+    m = _SPACE_HOUSE_CUSP_RE.match(line.strip())
+    if not m:
+        return False
+    n = int(m.group("n"))
+    dm = _parse_deg_min(m.group("dm"))
+    sign_raw = m.group("sign")
+    if (
+        not dm
+        or sign_raw.title() not in _SIGN_TITLE
+        or not 1 <= n <= 12
+    ):
+        return False
+    deg, minute = dm
+    cusps[n - 1] = _longitude_deg(sign_raw.lower(), deg, minute)
+    return True
+
+
+def _try_parse_space_separated_body_house(line: str, house_by_body: dict) -> bool:
+    m = _SPACE_BODY_HOUSE_RE.match(line.strip())
+    if not m:
+        return False
+    body_k = _normalize_body_key(m.group("body").strip())
+    hn = int(m.group("hn"))
+    if not body_k or not 1 <= hn <= 12:
+        return False
+    house_by_body[body_k] = hn
+    return True
+
+
 _ASPECT_MAP = {
     "Conjunction": ("conjunction", 0.0),
     "Opposition": ("opposition", 180.0),
@@ -172,7 +275,11 @@ def _normalize_vertical_chart_export(raw: str) -> str:
     body / degree / sign (and multiline aspects / house cusps) into tab-separated
     rows the rest of this parser already understands.
     """
-    lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+    lines: list[str] = []
+    for ln in raw.splitlines():
+        s = _strip_inline_comment(ln.strip())
+        if s and not _should_skip_noise_line(s):
+            lines.append(s)
     if not lines:
         return ""
     out: list[str] = []
@@ -283,8 +390,8 @@ def parse_chart_export_v1(text: str) -> tuple[dict, list[str]]:
     aspects: list[dict] = []
 
     for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
+        line = _strip_inline_comment(raw_line.strip())
+        if _should_skip_noise_line(line):
             continue
 
         asp = _parse_aspect_line(line, warnings)
@@ -302,9 +409,10 @@ def parse_chart_export_v1(text: str) -> tuple[dict, list[str]]:
 
         # House cusp: House N D°M' Sign (first cell may be "House 1")
         if parts[0].startswith("House "):
-            hm = re.match(r"^House\s+(\d+)$", parts[0])
-            if hm and len(parts) >= 3:
-                n = int(hm.group(1))
+            hm_tab = re.match(r"^House\s+(\d+)$", parts[0])
+            house_parsed = False
+            if hm_tab and len(parts) >= 3:
+                n = int(hm_tab.group(1))
                 dm = _parse_deg_min(parts[1])
                 sign_raw = parts[-1]
                 if (
@@ -315,7 +423,13 @@ def parse_chart_export_v1(text: str) -> tuple[dict, list[str]]:
                     deg, minute = dm
                     lon = _longitude_deg(sign_raw.lower(), deg, minute)
                     cusps[n - 1] = lon
-            continue
+                    house_parsed = True
+            elif "\t" not in line and _try_parse_space_separated_house_cusp(
+                line, cusps=cusps
+            ):
+                house_parsed = True
+            if house_parsed:
+                continue
 
         # Body House N — three cells: Sun \t House \t 7
         if len(parts) >= 3 and parts[1] == "House":
@@ -382,6 +496,14 @@ def parse_chart_export_v1(text: str) -> tuple[dict, list[str]]:
                         continue
                     _assign_point_or_angle(bk, pt, points=points, angles=angles)
                     continue
+
+        if "\t" not in line:
+            if _try_parse_space_separated_house_cusp(line, cusps=cusps):
+                continue
+            if _try_parse_space_separated_body_house(line, house_by_body):
+                continue
+            if _try_parse_space_separated_lon_row(line, points=points, angles=angles):
+                continue
 
         warnings.append(f"Unrecognized line: {line[:80]}")
 

@@ -207,3 +207,43 @@ Orb
         self.assertEqual(chart["aspects"][0]["type"], "opposition")
         self.assertEqual(chart["aspects"][0]["body_a"], "uranus")
         self.assertEqual(chart["aspects"][0]["body_b"], "midheaven")
+
+    def test_space_separated_sections_and_warnings_suffix(self):
+        """Real-world messy paste: headings, footnote, space-separated rows, '//' suffix."""
+        text = """
+Planets in Houses*
+Sun 14°10' Leo
+Moon 17°30' Leo
+AS 27°01' Libra
+
+* In keeping with the common practice, we consider that a planet posited within 1 degree...
+
+Positions of Houses
+House 1 27°01' Libra
+House 2 24°59' Scorpio
+House 3 27°10' Sagittarius
+House 4 2°05' Aquarius
+House 5 5°21' Pisces
+House 6 3°47' Aries
+House 7 27°01' Aries
+House 8 24°59' Taurus
+House 9 27°10' Gemini
+House 10 2°05' Leo
+House 11 5°21' Virgo
+House 12 3°47' Libra
+
+Sun House 10
+Moon House 10
+
+List of Planetary Aspects
+Neptune Conjunction AS Orb 0°50' // trailing paste
+Saturn SemiSextile AS Orb 0°49'
+"""
+        chart, warnings = parse_chart_export_v1(text)
+        unrecognized = [w for w in warnings if w.startswith("Unrecognized line")]
+        self.assertEqual(unrecognized, [])
+        self.assertEqual(chart["points"]["sun"]["sign"], "leo")
+        self.assertEqual(chart["points"]["moon"]["house"], 10)
+        self.assertEqual(chart["angles"]["ascendant"]["sign"], "libra")
+        self.assertEqual(len(chart["houses"]["cusps_longitude_deg"]), 12)
+        self.assertTrue(len(chart["aspects"]) >= 2)

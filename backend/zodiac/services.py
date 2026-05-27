@@ -108,6 +108,7 @@ def serialize_astro_profile(profile: AstroProfile) -> dict[str, Any]:
         "sun_sign": profile.sun_sign or None,
         "moon_sign": profile.moon_sign or None,
         "rising_sign": profile.rising_sign or None,
+        "birth_time_unknown": profile.birth_time_unknown,
         "waiting_submitted_at": profile.waiting_submitted_at.isoformat()
         if profile.waiting_submitted_at
         else None,
@@ -117,9 +118,13 @@ def serialize_astro_profile(profile: AstroProfile) -> dict[str, Any]:
     }
 
 
-def signs_from_natal_chart(natal_chart: dict) -> tuple[str, str, str]:
+def signs_from_natal_chart(
+    natal_chart: dict, *, birth_time_unknown: bool = False
+) -> tuple[str, str, str]:
     """Derive sun, moon, rising signs from parsed chart."""
     sun = natal_chart["points"]["sun"]["sign"]
     moon = natal_chart["points"]["moon"]["sign"]
+    if birth_time_unknown:
+        return sun, moon, ""
     rising = natal_chart["angles"]["ascendant"]["sign"]
     return sun, moon, rising

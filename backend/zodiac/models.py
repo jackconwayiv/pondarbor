@@ -34,6 +34,11 @@ class AstroProfile(models.Model):
     sun_sign = models.CharField(max_length=16, blank=True)
     moon_sign = models.CharField(max_length=16, blank=True)
     rising_sign = models.CharField(max_length=16, blank=True)
+    birth_time_unknown = models.BooleanField(
+        default=False,
+        verbose_name="Birth time unknown",
+        help_text="Staff: no reliable birth time; member UI hides houses/angles.",
+    )
 
     waiting_submitted_at = models.DateTimeField(null=True, blank=True)
     chart_ready_at = models.DateTimeField(null=True, blank=True)

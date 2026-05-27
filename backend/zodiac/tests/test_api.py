@@ -198,7 +198,37 @@ class ZodiacApiTests(TestCase):
         self.assertEqual(body["imported"][0]["chart_status"], "ready")
         self.assertIsNotNone(body["imported"][0]["natal_chart"])
 
-    def test_staff_delete_chart_returns_to_waiting(self):
+    def test_staff_import_birth_time_unknown(self):
+        staff = User.objects.create_user(
+            email="staff_btu@example.com", password="secret12345", is_staff=True
+        )
+        staff.account_status = User.AccountStatus.APPROVED
+        staff.save()
+        user = User.objects.create_user(email="u_btu@example.com", password="secret12345")
+        user.account_status = User.AccountStatus.APPROVED
+        user.save()
+        AstroProfile.objects.create(
+            user=user,
+            chart_status=AstroProfile.ChartStatus.WAITING_STAFF_CHART,
+            birth_date=date(1990, 1, 1),
+            birth_time=time(12, 0, 0),
+            country_code="US",
+            locality="Here",
+            admin_area="ST",
+            iana_timezone="",
+        )
+
+        self.client.force_login(staff)
+        response = self.client.post(
+            f"/api/v1/zodiac/staff/users/{user.id}/chart/",
+            {"chart_text": MINIMAL_CHART, "birth_time_unknown": True},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        prof = AstroProfile.objects.get(user=user)
+        self.assertTrue(prof.birth_time_unknown)
+        self.assertEqual(prof.rising_sign, "")
+        self.assertEqual(response.json()["profile"]["birth_time_unknown"], True)
         staff = User.objects.create_user(
             email="staff3@example.com", password="secret12345", is_staff=True
         )
@@ -322,3 +352,48 @@ class ZodiacApiTests(TestCase):
         self.assertEqual(friends[0]["sun_sign"], "libra")
         self.assertIn("sun", friends[0]["natal_chart"]["points"])
         self.assertIn("ascendant", friends[0]["natal_chart"]["angles"])
+
+    def test_zodiac_friends_lists_sun_moon_when_birth_time_unknown(self):
+        from friends.models import FriendRequest
+
+        viewer = User.objects.create_user(email="zvb2@example.com", password="secret12345")
+        viewer.account_status = User.AccountStatus.APPROVED
+        viewer.save()
+        friend = User.objects.create_user(email="zfb2@example.com", password="secret12345")
+        friend.account_status = User.AccountStatus.APPROVED
+        friend.save()
+        friend.profile.display_name = "Z Friend 2"
+        friend.profile.save()
+        FriendRequest.objects.create(requester=viewer, requested=friend, is_accepted=True)
+        FriendRequest.objects.create(requester=friend, requested=viewer, is_accepted=True)
+        AstroProfile.objects.create(
+            user=friend,
+            chart_status=AstroProfile.ChartStatus.WAITING_STAFF_CHART,
+            birth_date=date(1991, 3, 4),
+            birth_time=time(8, 0, 0),
+            country_code="US",
+            admin_area="CA",
+            locality="LA",
+            postal_code="90001",
+        )
+        staff = User.objects.create_user(
+            email="zstaff2@example.com", password="secret12345", is_staff=True
+        )
+        staff.account_status = User.AccountStatus.APPROVED
+        staff.save()
+        self.client.force_login(staff)
+        r = self.client.post(
+            f"/api/v1/zodiac/staff/users/{friend.id}/chart/",
+            {"chart_text": MINIMAL_CHART, "birth_time_unknown": True},
+            format="json",
+        )
+        self.assertEqual(r.status_code, 200)
+
+        self.client.force_login(viewer)
+        resp = self.client.get("/api/v1/zodiac/friends/")
+        self.assertEqual(resp.status_code, 200)
+        friends = resp.json()["friends"]
+        self.assertEqual(len(friends), 1)
+        self.assertEqual(friends[0]["sun_sign"], "libra")
+        self.assertIsNone(friends[0]["rising_sign"])
+        self.assertNotIn("ascendant", friends[0]["natal_chart"]["angles"])

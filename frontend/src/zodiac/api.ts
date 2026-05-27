@@ -29,6 +29,7 @@ export type AstroProfileRow = {
   sun_sign: string | null;
   moon_sign: string | null;
   rising_sign: string | null;
+  birth_time_unknown: boolean;
   waiting_submitted_at: string | null;
   chart_ready_at: string | null;
 };
@@ -147,6 +148,7 @@ export async function staffImportChart(
   accessToken: string | null,
   userId: number,
   chartText: string,
+  options?: { birthTimeUnknown?: boolean },
 ): Promise<{ profile: AstroProfileRow; warnings: string[] }> {
   const response = await fetch(
     `${apiBase()}/api/v1/zodiac/staff/users/${userId}/chart/`,
@@ -154,7 +156,10 @@ export async function staffImportChart(
       method: "POST",
       headers: authHeaders(accessToken),
       credentials: "omit",
-      body: JSON.stringify({ chart_text: chartText }),
+      body: JSON.stringify({
+        chart_text: chartText,
+        birth_time_unknown: Boolean(options?.birthTimeUnknown),
+      }),
     },
   );
   if (!response.ok) {
@@ -174,7 +179,7 @@ export type FriendWithZodiac = {
   avatar_url: string;
   sun_sign: string;
   moon_sign: string;
-  rising_sign: string;
+  rising_sign: string | null;
   natal_chart: NatalChartPayload | null;
 };
 

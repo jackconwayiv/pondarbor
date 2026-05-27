@@ -75,6 +75,7 @@ def user_astro_profile(request):
             profile.sun_sign = ""
             profile.moon_sign = ""
             profile.rising_sign = ""
+            profile.birth_time_unknown = False
             profile.chart_ready_at = None
             profile.staff_imported_by = None
             profile.waiting_submitted_at = timezone.now()
@@ -107,8 +108,8 @@ def zodiac_friends_with_charts(request):
     """
     Friends whose zodiac would appear on the viewer's Zodiac Friends tab.
 
-    Requires ready chart with sun, moon, and rising signs, and the same profile visibility
-    rules as people/friends/.
+    Requires ready chart with sun and moon signs (and rising unless birth time is marked unknown),
+    and the same profile visibility rules as people/friends/.
     """
     err = _require_approved(request)
     if err:
@@ -215,6 +216,7 @@ def staff_user_chart(request, user_id: int):
         profile.sun_sign = ""
         profile.moon_sign = ""
         profile.rising_sign = ""
+        profile.birth_time_unknown = False
         profile.chart_status = AstroProfile.ChartStatus.WAITING_STAFF_CHART
         profile.chart_ready_at = None
         profile.staff_imported_by = None
@@ -237,17 +239,24 @@ def staff_user_chart(request, user_id: int):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    birth_time_unknown = False
+    if isinstance(request.data, dict):
+        birth_time_unknown = bool(request.data.get("birth_time_unknown"))
+
     try:
         natal_chart, warnings = parse_chart_export_v1(text)
     except ValueError as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-    sun_s, moon_s, rising_s = signs_from_natal_chart(natal_chart)
+    sun_s, moon_s, rising_s = signs_from_natal_chart(
+        natal_chart, birth_time_unknown=birth_time_unknown
+    )
 
     profile.natal_chart = natal_chart
     profile.sun_sign = sun_s
     profile.moon_sign = moon_s
     profile.rising_sign = rising_s
+    profile.birth_time_unknown = birth_time_unknown
     profile.chart_status = AstroProfile.ChartStatus.READY
     profile.chart_ready_at = timezone.now()
     profile.staff_imported_by = request.user

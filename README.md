@@ -29,6 +29,17 @@ Do **not** set a separate Appliku **build command** for `npm ci` / `npm run buil
 - **Auth0 login** (Dockerfile deploy): set **`VITE_AUTH0_DOMAIN`**, **`VITE_AUTH0_CLIENT_ID`**, and **`VITE_AUTH0_API_AUDIENCE`** in Environment Variables (or matching `AUTH0_DOMAIN` / `AUTH0_API_AUDIENCE` plus client id). Django injects these into the HTML shell at request time — they are not baked in during `docker build`.
 - **App logs**: production uses `LOGGING` in `backend/config/settings.py` so `500` tracebacks show up in the web process logs.
 
+**Song-a-Day Slack bot (ArborBot)**
+
+Reads `#song-a-day` channel messages (and `/song` slash command), parses song links, and saves submissions via the same backend path as the web app. **No Slack OAuth for users** — link Slack member IDs to PondArbor accounts in Django admin (`Slack identities`), or let email auto-match on first post when Slack profile email matches the PondArbor account.
+
+1. Import [`scripts/arborbot-slack-app-manifest.yaml`](scripts/arborbot-slack-app-manifest.yaml) in [Slack API → Create app → From manifest](https://api.slack.com/apps) (edit production URLs in the file first if not `https://www.pondarbor.com`).
+2. Install the app to your workspace; invite `@ArborBot` to `#song-a-day`.
+3. Set Appliku env vars (see [`appliku.yml`](appliku.yml)): `SLACK_SIGNING_SECRET`, `SLACK_BOT_TOKEN`, `SLACK_PROMPTS_CHANNEL_ID`, `SONGADAY_SLACK_PROMPT_TIMEZONE`. Optional: `SLACK_SONGADAY_CHANNEL_ID` if submissions are not in the prompts channel. Leave `VITE_AUTH0_SLACK_CONNECTION` unset.
+4. Redeploy (script is included in the Docker image), then Appliku **Run Command**: `bash /app/scripts/slack-arborbot-check.sh`
+5. Django admin → **Slack identities** → add `(team_id, slack_user_id, user)` for each member who should submit from Slack.
+6. Smoke test: linked user posts a YouTube/Spotify/Apple Music URL in `#song-a-day` → ephemeral “Saved…”; entry appears on PondArbor Song-a-Day.
+
 **RAM / disk diagnostics (on the server)**
 
 Run Command or SSH (scripts are not in the image):

@@ -1,0 +1,51 @@
+# Slack app manifest for ArborBot (Song-a-Day bot).
+# Import: https://api.slack.com/apps → Create New App → From an app manifest
+#
+# After import:
+# 1. Install app to workspace → copy Bot User OAuth Token (xoxb-…) → SLACK_BOT_TOKEN
+# 2. Basic Information → Signing Secret → SLACK_SIGNING_SECRET
+# 3. Invite @ArborBot to #song-a-day (and prompts channel if separate)
+# 4. Copy #song-a-day channel ID (C…) into SLACK_PROMPTS_CHANNEL_ID
+#    (SLACK_SONGADAY_CHANNEL_ID only if submissions are in a different channel)
+# 5. Set env vars on Appliku (see appliku.yml / README)
+#
+# Replace https://www.pondarbor.com with your production origin before import if different.
+
+_metadata:
+  major_version: 1
+  minor_version: 1
+
+display_information:
+  name: ArborBot
+  description: Saves Song-a-Day picks from Slack into PondArbor
+  background_color: "#1a365d"
+
+features:
+  bot_user:
+    display_name: ArborBot
+    always_online: true
+  slash_commands:
+    - command: /song
+      url: https://www.pondarbor.com/api/v1/slack/commands/
+      description: Submit your Song-a-day pick for today
+      usage_hint: "[youtube, spotify, or apple music url]"
+      should_escape: false
+
+oauth_config:
+  scopes:
+    bot:
+      - chat:write
+      - channels:history
+      - commands
+      - users:read
+      - users:read.email
+
+settings:
+  event_subscriptions:
+    request_url: https://www.pondarbor.com/api/v1/slack/events/
+    bot_events:
+      - message.channels
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false
+  is_hosted: false

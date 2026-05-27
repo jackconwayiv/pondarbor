@@ -34,6 +34,20 @@ build_settings:
       source: manual
     - name: VITE_AUTH0_API_AUDIENCE
       source: manual
+    # ArborBot (Song-a-Day Slack bot). Omit all SLACK_* to disable. Do not use Auth0 Slack OAuth for this.
+    - name: SLACK_SIGNING_SECRET
+      source: manual
+    - name: SLACK_BOT_TOKEN
+      source: manual
+    - name: SLACK_PROMPTS_CHANNEL_ID
+      source: manual
+    - name: SLACK_SONGADAY_CHANNEL_ID
+      source: manual
+      # Optional: events listen channel. Falls back to SLACK_PROMPTS_CHANNEL_ID when unset.
+    - name: SONGADAY_SLACK_PROMPT_TIMEZONE
+      source: manual
+    - name: SLACK_CREATE_ACCOUNT_URL
+      value: "https://www.pondarbor.com/"
 
 services:
   web:

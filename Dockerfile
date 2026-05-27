@@ -41,6 +41,7 @@ WORKDIR /app
 COPY --from=python-deps /usr/local /usr/local
 
 COPY backend/ /app/backend/
+COPY scripts/ /app/scripts/
 COPY run.sh /app/run.sh
 COPY release.sh /app/release.sh
 

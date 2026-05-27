@@ -43,7 +43,7 @@ frontend/Dockerfile
 README.md
 UI_STYLE_GUIDE.md
 **/*.md
-scripts
+# scripts/ included in image for slack-arborbot-check.sh (Run Command on Appliku)
 appliku.yml
 line
 

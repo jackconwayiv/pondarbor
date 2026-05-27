@@ -21,6 +21,9 @@ export type PublicUserSummary = {
   sun_sign?: string;
   moon_sign?: string;
   rising_sign?: string;
+  mercury_sign?: string;
+  venus_sign?: string;
+  mars_sign?: string;
 };
 
 function apiBase(): string {

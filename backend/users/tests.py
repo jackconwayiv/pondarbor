@@ -116,7 +116,14 @@ class UsersApiTests(TestCase):
             sun_sign="cancer",
             moon_sign="leo",
             rising_sign="virgo",
-            natal_chart={"points": {}, "angles": {}},
+            natal_chart={
+                "points": {
+                    "mercury": {"sign": "gemini"},
+                    "venus": {"sign": "taurus"},
+                    "mars": {"sign": "aries"},
+                },
+                "angles": {},
+            },
         )
 
         self.client.force_login(viewer)
@@ -127,6 +134,9 @@ class UsersApiTests(TestCase):
         self.assertEqual(body["sun_sign"], "cancer")
         self.assertEqual(body["moon_sign"], "leo")
         self.assertEqual(body["rising_sign"], "virgo")
+        self.assertEqual(body["mercury_sign"], "gemini")
+        self.assertEqual(body["venus_sign"], "taurus")
+        self.assertEqual(body["mars_sign"], "aries")
 
     def test_public_summary_hides_astro_when_display_astro_off(self):
         from zodiac.models import AstroProfile

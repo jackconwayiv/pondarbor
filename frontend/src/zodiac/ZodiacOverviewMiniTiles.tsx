@@ -1,5 +1,5 @@
-import { Box, Flex, HStack, Text, VStack } from "@chakra-ui/react";
-import type { KeyboardEvent } from "react";
+import { Box, Flex, HStack, SimpleGrid, Text, VStack } from "@chakra-ui/react";
+import type { KeyboardEvent, ReactNode } from "react";
 
 import { bodySymbolForTileId, signSymbolForSign } from "./astroLexicon";
 import { signCardAccent } from "./signCardAccent";
@@ -12,6 +12,10 @@ type Props = {
   onSelect: (tile: ZodiacSignCardTile) => void;
   /** Equal-width cells across the full row (member Zodiac overview). */
   fillRow?: boolean;
+  /** Six placements in a 3×2 grid (friend profile, friends tab, profile preview). */
+  layout?: "wrap" | "row" | "grid";
+  /** Optional wrapper per tile (e.g. router link on friend profile). */
+  tileWrapper?: (tile: ZodiacSignCardTile, node: ReactNode) => ReactNode;
 };
 
 export default function ZodiacOverviewMiniTiles({
@@ -19,7 +23,10 @@ export default function ZodiacOverviewMiniTiles({
   activeTileId,
   onSelect,
   fillRow = false,
+  layout,
+  tileWrapper,
 }: Props) {
+  const resolvedLayout = layout ?? (fillRow ? "row" : "wrap");
   const onKeyDown = (e: KeyboardEvent, tile: ZodiacSignCardTile) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
@@ -97,7 +104,7 @@ export default function ZodiacOverviewMiniTiles({
       <Box
         role="button"
         tabIndex={0}
-        w={fillRow ? "100%" : undefined}
+        w={resolvedLayout === "row" || resolvedLayout === "grid" ? "100%" : undefined}
         aria-label={`${t.label} in ${t.sign}${t.retrograde ? ", retrograde" : ""}`}
         aria-current={active ? "true" : undefined}
         cursor="pointer"
@@ -109,7 +116,7 @@ export default function ZodiacOverviewMiniTiles({
         bg={accent.bg}
         px="1.5"
         py="1.5"
-        minW={fillRow ? "0" : "2.25rem"}
+        minW={resolvedLayout === "row" || resolvedLayout === "grid" ? "0" : "2.25rem"}
         lineHeight="1"
         boxShadow={active ? "md" : "sm"}
         transition="box-shadow 0.12s ease, border-color 0.12s ease"
@@ -129,21 +136,37 @@ export default function ZodiacOverviewMiniTiles({
       </Box>
     );
 
-    if (fillRow) {
+    const wrapped = tileWrapper ? tileWrapper(t, tileBtn) : tileBtn;
+
+    if (resolvedLayout === "row") {
       return (
         <Box key={t.id} flex="1" minW="0" display="flex" justifyContent="stretch">
-          {tileBtn}
+          {wrapped}
         </Box>
       );
     }
     return (
-      <Box key={t.id}>
-        {tileBtn}
+      <Box key={t.id} w={resolvedLayout === "grid" ? "100%" : undefined}>
+        {wrapped}
       </Box>
     );
   });
 
-  if (fillRow) {
+  if (resolvedLayout === "grid") {
+    return (
+      <SimpleGrid
+        columns={3}
+        gap={{ base: "1.5", md: "2" }}
+        w="100%"
+        role="group"
+        aria-label="Placement shortcuts"
+      >
+        {row}
+      </SimpleGrid>
+    );
+  }
+
+  if (resolvedLayout === "row") {
     return (
       <Flex
         w="100%"

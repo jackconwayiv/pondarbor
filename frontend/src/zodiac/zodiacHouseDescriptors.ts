@@ -143,3 +143,17 @@ export function formatHouseRoman(house: number): string | null {
   if (!Number.isInteger(house) || house < 1 || house > 12) return null;
   return HOUSE_ROMAN[house];
 }
+
+/** Ordinal label for interpret copy, e.g. `7th`. */
+export function formatHouseOrdinal(house: number): string | null {
+  if (!Number.isInteger(house) || house < 1 || house > 12) return null;
+  const suffix =
+    house % 10 === 1 && house !== 11
+      ? "st"
+      : house % 10 === 2 && house !== 12
+        ? "nd"
+        : house % 10 === 3 && house !== 13
+          ? "rd"
+          : "th";
+  return `${house}${suffix}`;
+}

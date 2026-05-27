@@ -6,7 +6,7 @@ from typing import Any
 
 from zodiac.models import AstroProfile
 
-BIG_THREE_POINT_KEYS = ("sun", "moon")
+FRIEND_VISIBLE_POINT_KEYS = ("sun", "moon", "mercury", "venus", "mars")
 
 
 def trim_natal_chart_for_friends(
@@ -16,7 +16,7 @@ def trim_natal_chart_for_friends(
         return None
     points = natal_chart.get("points") or {}
     angles = natal_chart.get("angles") or {}
-    trimmed_points = {k: points[k] for k in BIG_THREE_POINT_KEYS if k in points}
+    trimmed_points = {k: points[k] for k in FRIEND_VISIBLE_POINT_KEYS if k in points}
     trimmed_angles: dict[str, Any] = {}
     if not birth_time_unknown and "ascendant" in angles:
         trimmed_angles["ascendant"] = angles["ascendant"]

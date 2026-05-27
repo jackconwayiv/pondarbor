@@ -13,7 +13,7 @@ import {
   Text,
 } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Navigate, useSearchParams } from "react-router";
+import { Link as RouterLink, Navigate, useSearchParams } from "react-router";
 import PondButton from "./PondButton";
 import PondNativeSelect from "./components/PondNativeSelect";
 import { AchievementSummaryCard } from "./achievements/AchievementSummaryCard";
@@ -47,7 +47,9 @@ import {
 } from "./theme/typography";
 import { getSortedIanaTimeZones, timeZoneOptionsForValue } from "./timezones";
 import { FriendsListPanel } from "./friends/FriendsListPanel";
-import { fetchAstroProfile } from "./zodiac/api";
+import { fetchAstroProfile, type AstroProfileRow } from "./zodiac/api";
+import { buildZodiacOverviewTiles } from "./zodiac/ZodiacOverviewCardsStrip";
+import ZodiacPlacementsMiniGrid from "./zodiac/ZodiacPlacementsMiniGrid";
 
 type ProfileTab = "profile" | "friends" | "account";
 
@@ -126,6 +128,7 @@ export default function ProfilePage() {
   const [displayAstro, setDisplayAstro] = useState(true);
   const [displayAstroSaving, setDisplayAstroSaving] = useState(false);
   const [hasZodiacBirthInfo, setHasZodiacBirthInfo] = useState(false);
+  const [astroProfile, setAstroProfile] = useState<AstroProfileRow | null>(null);
   const [savingFields, setSavingFields] = useState<SavingState>({});
   const [saveError, setSaveError] = useState<string | null>(null);
   const [profileAchievements, setProfileAchievements] = useState<
@@ -160,6 +163,7 @@ export default function ProfilePage() {
   useEffect(() => {
     if (!isAuthenticated || !sessionUser?.user.is_approved) {
       setHasZodiacBirthInfo(false);
+      setAstroProfile(null);
       return;
     }
     let cancelled = false;
@@ -168,9 +172,13 @@ export default function ProfilePage() {
         const token = await getApiAccessToken();
         const res = await fetchAstroProfile(token);
         if (cancelled) return;
+        setAstroProfile(res.profile);
         setHasZodiacBirthInfo(Boolean(res.profile?.birth_date?.trim()));
       } catch {
-        if (!cancelled) setHasZodiacBirthInfo(false);
+        if (!cancelled) {
+          setHasZodiacBirthInfo(false);
+          setAstroProfile(null);
+        }
       }
     })();
     return () => {
@@ -564,6 +572,30 @@ export default function ProfilePage() {
     (profile.display_astro ?? true)
       ? "Displaying Astro info on profile"
       : "Hiding Astro info from profile";
+
+  const ownAstroPreviewTiles = useMemo(() => {
+    if (!(profile.display_astro ?? true) || !astroProfile) return [];
+    const row = astroProfile;
+    const chart = row.natal_chart;
+    const birthTimeUnknown = Boolean(row.birth_time_unknown);
+    const hasShareableChart = Boolean(
+      row.chart_status === "ready" &&
+        chart &&
+        row.sun_sign &&
+        row.moon_sign &&
+        (birthTimeUnknown || row.rising_sign?.trim()),
+    );
+    if (!hasShareableChart || !chart) return [];
+    return buildZodiacOverviewTiles({
+      sunSign: row.sun_sign!,
+      moonSign: row.moon_sign!,
+      risingSign: birthTimeUnknown ? undefined : (row.rising_sign ?? undefined),
+      mercurySign: chart.points.mercury?.sign,
+      venusSign: chart.points.venus?.sign,
+      marsSign: chart.points.mars?.sign,
+      natalChart: chart,
+    });
+  }, [astroProfile, profile.display_astro]);
 
   return (
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
@@ -1043,7 +1075,7 @@ export default function ProfilePage() {
                                   Display Astro
                                 </Text>
                                 <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-                                  Show Sun, Moon, and Rising on your friend profile.
+                                  Show your zodiac placements on your friend profile.
                                 </Text>
                               </Stack>
                             </HStack>
@@ -1058,6 +1090,24 @@ export default function ProfilePage() {
                         </Stack>
                       ) : null}
                     </HStack>
+
+                    {!isEditing && ownAstroPreviewTiles.length > 0 ? (
+                      <ZodiacPlacementsMiniGrid
+                        tiles={ownAstroPreviewTiles}
+                        tileWrapper={(_tile, node) => (
+                          <RouterLink
+                            to="/zodiac"
+                            style={{
+                              display: "block",
+                              textDecoration: "none",
+                              color: "inherit",
+                            }}
+                          >
+                            {node}
+                          </RouterLink>
+                        )}
+                      />
+                    ) : null}
 
                     {isEditing ? (
                       <HStack gap="2" pt="2">

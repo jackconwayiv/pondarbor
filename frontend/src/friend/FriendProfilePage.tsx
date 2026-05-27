@@ -795,6 +795,9 @@ export default function FriendProfilePage() {
                         sunSign={summary.sun_sign}
                         moonSign={summary.moon_sign}
                         risingSign={summary.rising_sign}
+                        mercurySign={summary.mercury_sign}
+                        venusSign={summary.venus_sign}
+                        marsSign={summary.mars_sign}
                       />
                     ) : null}
                   </Stack>

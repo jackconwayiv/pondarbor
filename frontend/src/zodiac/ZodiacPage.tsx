@@ -9,6 +9,7 @@ import {
   Text,
 } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useSearchParams } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
@@ -47,6 +48,7 @@ import { signCardAccent } from "./signCardAccent";
 import { ZODIAC_ASPECT_ANCHOR_BODIES } from "./zodiacDisplayConfig";
 import { zodiacTileFromChartBodyKey } from "./zodiacPlacementFromChart";
 import ZodiacFriendsTabPanel from "./ZodiacFriendsTabPanel";
+import ZodiacInterpretTabPanel from "./ZodiacInterpretTabPanel";
 
 /** Normalize for API + stable birthKey comparison (optional time → null). */
 function normalizeBirthTimeForKey(raw: string | null | undefined): string | null {
@@ -132,8 +134,27 @@ function natalBirthSummaryStack(p: AstroProfileRow): ReactNode {
   );
 }
 
-type MainTab = "data" | "interpretation" | "friends";
+type MainTab = "overview" | "interpretation" | "data" | "friends";
 type DataSubTab = "planets" | "houses" | "aspects" | "natal";
+
+function mainTabFromSearchParams(
+  params: URLSearchParams,
+  hasStaffImportedChart: boolean,
+): MainTab | null {
+  const raw = params.get("tab");
+  if (raw === "friends") return "friends";
+  if (raw === "data") return "data";
+  if (raw === "interpretation" && hasStaffImportedChart) return "interpretation";
+  if (raw === "overview" && hasStaffImportedChart) return "overview";
+  return null;
+}
+
+function parseHighlightUserId(params: URLSearchParams): number | null {
+  const raw = params.get("user");
+  if (!raw) return null;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
 
 export default function ZodiacPage() {
   const { sessionUser, getApiAccessToken, resyncSessionSilently } = useAppSession();
@@ -159,16 +180,20 @@ export default function ZodiacPage() {
   const [showAlterBirthForm, setShowAlterBirthForm] = useState(false);
   const [waitingBirthSavedAck, setWaitingBirthSavedAck] = useState(false);
 
+  const [searchParams, setSearchParams] = useSearchParams();
   const [mainTab, setMainTab] = useState<MainTab>("data");
   const [dataSubTab, setDataSubTab] = useState<DataSubTab>("planets");
   const prevHadImportedChartRef = useRef(false);
+  const highlightFriendUserId = useMemo(
+    () => parseHighlightUserId(searchParams),
+    [searchParams],
+  );
   const [placementPaneTile, setPlacementPaneTile] = useState<ZodiacSignCardTile | null>(
     null,
   );
   const [canvasDescriptorSign, setCanvasDescriptorSign] = useState<string | null>(null);
 
   const [friendsWithZodiac, setFriendsWithZodiac] = useState<FriendWithZodiac[]>([]);
-  const [friendsLoaded, setFriendsLoaded] = useState(false);
   const [friendsLoadError, setFriendsLoadError] = useState<string | null>(null);
 
   const viewerUserId = sessionUser?.user.id;
@@ -179,8 +204,6 @@ export default function ZodiacPage() {
         : friendsWithZodiac,
     [friendsWithZodiac, viewerUserId],
   );
-  const showFriendsTab = friendsLoaded && visibleFriends.length > 0;
-
   const applyProfileToForm = useCallback((row: AstroProfileRow | null, prefBirth?: string | null) => {
     if (!row) {
       setBirthDate(prefBirth ?? "");
@@ -227,7 +250,6 @@ export default function ZodiacPage() {
   useEffect(() => {
     if (!sessionUser?.user?.is_approved) return;
     let cancelled = false;
-    setFriendsLoaded(false);
     setFriendsLoadError(null);
     void (async () => {
       try {
@@ -238,8 +260,6 @@ export default function ZodiacPage() {
       } catch (e: unknown) {
         if (cancelled) return;
         setFriendsLoadError(e instanceof Error ? e.message : "Failed to load friends.");
-      } finally {
-        if (!cancelled) setFriendsLoaded(true);
       }
     })();
     return () => {
@@ -316,24 +336,61 @@ export default function ZodiacPage() {
   }, [hasStaffImportedChart]);
 
   useEffect(() => {
-    if (!hasStaffImportedChart && showFriendsTab) {
-      setMainTab("friends");
+    const fromUrl = mainTabFromSearchParams(searchParams, hasStaffImportedChart);
+    if (fromUrl) {
+      setMainTab(fromUrl);
+      return;
     }
-  }, [hasStaffImportedChart, showFriendsTab]);
+    setMainTab(hasStaffImportedChart ? "overview" : "data");
+  }, [searchParams, hasStaffImportedChart]);
 
   useEffect(() => {
     if (hasStaffImportedChart && !prevHadImportedChartRef.current) {
-      setMainTab("data");
+      setMainTab("overview");
       setDataSubTab("planets");
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("tab");
+          next.delete("user");
+          return next;
+        },
+        { replace: true },
+      );
     }
     prevHadImportedChartRef.current = hasStaffImportedChart;
-  }, [hasStaffImportedChart]);
+  }, [hasStaffImportedChart, setSearchParams]);
 
   useEffect(() => {
-    if (!hasStaffImportedChart && mainTab === "interpretation") {
+    if (
+      !hasStaffImportedChart &&
+      (mainTab === "interpretation" || mainTab === "overview")
+    ) {
       setMainTab("data");
     }
   }, [hasStaffImportedChart, mainTab]);
+
+  const onMainTabChange = useCallback(
+    (tab: MainTab) => {
+      setMainTab(tab);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (tab === "overview") {
+            next.delete("tab");
+          } else {
+            next.set("tab", tab);
+          }
+          if (tab !== "friends") {
+            next.delete("user");
+          }
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
 
   useEffect(() => {
     setPlacementPaneTile(null);
@@ -606,98 +663,110 @@ export default function ZodiacPage() {
     );
   }
 
+  const overviewCanvas = hasStaffImportedChart && chart && profile ? (
+    <Box
+      borderRadius="xl"
+      bg={canvasShellSign ? signCardAccent(canvasShellSign).bg : "transparent"}
+      p={canvasShellSign ? { base: "4", md: "5" } : undefined}
+      minH={canvasShellSign ? { base: "240px", md: "260px" } : undefined}
+    >
+      {canvasDescriptorSign ? (
+        <ZodiacComboDescriptorBodyContent signRaw={canvasDescriptorSign} />
+      ) : placementPaneTile ? (
+        <ZodiacPlacementBodyContent
+          tile={placementPaneTile}
+          onOpenModeElementDetail={() => setCanvasDescriptorSign(placementPaneTile.sign)}
+        />
+      ) : (
+        <ZodiacOverviewCardsStrip
+          sunSign={profile.sun_sign!}
+          moonSign={profile.moon_sign!}
+          risingSign={birthTimeUnknown ? undefined : (profile.rising_sign ?? undefined)}
+          mercurySign={chart.points.mercury?.sign}
+          venusSign={chart.points.venus?.sign}
+          marsSign={chart.points.mars?.sign}
+          natalChart={chart}
+          onTileOpen={openPlacementTile}
+        />
+      )}
+    </Box>
+  ) : null;
+
   return (
     <>
       {trayShell(
         <>
-          {!hasStaffImportedChart ? (
-            <Box {...PANEL_ENTRY_CARD_PROPS}>
-              <Heading as="h1" size={{ base: "lg", md: "xl" }} mb="2">
-                <HStack as="span" display="inline-flex" gap="2" alignItems="center" flexWrap="wrap">
-                  <Text as="span" aria-hidden="true">
-                    🌞
-                  </Text>
-                  <Text as="span">Zodiackary</Text>
-                </HStack>
-              </Heading>
-              <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
-                What did the stars say about the moment of your birth?
-              </Text>
-            </Box>
-          ) : overviewTiles.length > 0 ? (
-            <Box {...PANEL_ENTRY_CARD_PROPS}>
-              <ZodiacOverviewMiniTiles
-                fillRow
-                tiles={overviewTiles}
-                activeTileId={placementPaneTile?.id ?? ""}
-                onSelect={onMiniPlacementSelect}
-              />
-            </Box>
-          ) : null}
-
-          {hasStaffImportedChart && chart && profile ? (
-            <Box {...PANEL_ENTRY_CARD_PROPS} mt={overviewTiles.length > 0 ? "-1" : undefined}>
-              <Stack gap="6" w="100%">
-                <Box
-                  borderRadius="xl"
-                  bg={
-                    canvasShellSign
-                      ? signCardAccent(canvasShellSign).bg
-                      : "transparent"
-                  }
-                  p={canvasShellSign ? { base: "4", md: "5" } : undefined}
-                  minH={canvasShellSign ? { base: "240px", md: "260px" } : undefined}
-                >
-                  {canvasDescriptorSign ? (
-                    <ZodiacComboDescriptorBodyContent signRaw={canvasDescriptorSign} />
-                  ) : placementPaneTile ? (
-                    <ZodiacPlacementBodyContent
-                      tile={placementPaneTile}
-                      onOpenModeElementDetail={() =>
-                        setCanvasDescriptorSign(placementPaneTile.sign)
-                      }
-                    />
-                  ) : (
-                    <ZodiacOverviewCardsStrip
-                      sunSign={profile.sun_sign!}
-                      moonSign={profile.moon_sign!}
-                      risingSign={
-                        birthTimeUnknown ? undefined : (profile.rising_sign ?? undefined)
-                      }
-                      mercurySign={chart.points.mercury?.sign}
-                      venusSign={chart.points.venus?.sign}
-                      marsSign={chart.points.mars?.sign}
-                      natalChart={chart}
-                      onTileOpen={openPlacementTile}
-                    />
-                  )}
-                </Box>
-              </Stack>
-            </Box>
-          ) : null}
-
-          <Box {...PANEL_ENTRY_CARD_PROPS} mt={hasStaffImportedChart ? "-1" : undefined}>
+          <Box {...PANEL_ENTRY_CARD_PROPS}>
             <Tabs.Root
               value={mainTab}
-              onValueChange={(d) => setMainTab(d.value as MainTab)}
+              onValueChange={(d) => onMainTabChange(d.value as MainTab)}
               variant="plain"
             >
               <Tabs.List {...APP_SHELL_TAB_LIST_INSET_PROPS}>
+                {hasStaffImportedChart ? (
+                  <Tabs.Trigger value="overview" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                    Overview
+                  </Tabs.Trigger>
+                ) : null}
+                {hasStaffImportedChart ? (
+                  <Tabs.Trigger value="interpretation" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                    Interpret
+                  </Tabs.Trigger>
+                ) : null}
                 <Tabs.Trigger value="data" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                   Data
                 </Tabs.Trigger>
-                {hasStaffImportedChart ? (
-                  <Tabs.Trigger value="interpretation" {...APP_SHELL_TAB_TRIGGER_PROPS}>
-                    Interpretation
-                  </Tabs.Trigger>
-                ) : null}
                 <Tabs.Trigger value="friends" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                   Friends
                 </Tabs.Trigger>
               </Tabs.List>
 
+              {hasStaffImportedChart ? (
+                <Tabs.Content value="overview" pt="4">
+                  <Stack gap="4" w="100%">
+                    {overviewTiles.length > 0 ? (
+                      <ZodiacOverviewMiniTiles
+                        fillRow
+                        tiles={overviewTiles}
+                        activeTileId={placementPaneTile?.id ?? ""}
+                        onSelect={onMiniPlacementSelect}
+                      />
+                    ) : null}
+                    {overviewCanvas}
+                  </Stack>
+                </Tabs.Content>
+              ) : null}
+
+              {hasStaffImportedChart ? (
+                <Tabs.Content value="interpretation" pt="4">
+                  <ZodiacInterpretTabPanel tiles={overviewTiles} />
+                </Tabs.Content>
+              ) : null}
+
               <Tabs.Content value="data" pt="4">
                 <Stack gap="6" w="100%">
+                  {!hasStaffImportedChart ? (
+                    <Box>
+                      <Heading as="h1" size={{ base: "lg", md: "xl" }} mb="2">
+                        <HStack
+                          as="span"
+                          display="inline-flex"
+                          gap="2"
+                          alignItems="center"
+                          flexWrap="wrap"
+                        >
+                          <Text as="span" aria-hidden="true">
+                            🌞
+                          </Text>
+                          <Text as="span">Zodiackary</Text>
+                        </HStack>
+                      </Heading>
+                      <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
+                        What did the stars say about the moment of your birth?
+                      </Text>
+                    </Box>
+                  ) : null}
+
                   {hasStaffImportedChart && chart && profile ? (
                     <Tabs.Root
                       value={dataSubTab}
@@ -847,18 +916,11 @@ export default function ZodiacPage() {
                 </Stack>
               </Tabs.Content>
 
-              {hasStaffImportedChart ? (
-                <Tabs.Content value="interpretation" pt="4">
-                  <Text fontSize={APP_TEXT_SIZES.body} color="fg.muted" textAlign="center" py="16">
-                    Coming soon!
-                  </Text>
-                </Tabs.Content>
-              ) : null}
-
               <Tabs.Content value="friends" pt="4">
                 <ZodiacFriendsTabPanel
                   friends={visibleFriends}
                   friendsLoadError={friendsLoadError}
+                  highlightUserId={highlightFriendUserId}
                 />
               </Tabs.Content>
             </Tabs.Root>

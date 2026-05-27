@@ -351,6 +351,9 @@ class ZodiacApiTests(TestCase):
         self.assertEqual(friends[0]["id"], friend.id)
         self.assertEqual(friends[0]["sun_sign"], "libra")
         self.assertIn("sun", friends[0]["natal_chart"]["points"])
+        self.assertIn("mercury", friends[0]["natal_chart"]["points"])
+        self.assertIn("venus", friends[0]["natal_chart"]["points"])
+        self.assertIn("mars", friends[0]["natal_chart"]["points"])
         self.assertIn("ascendant", friends[0]["natal_chart"]["angles"])
 
     def test_zodiac_friends_lists_sun_moon_when_birth_time_unknown(self):

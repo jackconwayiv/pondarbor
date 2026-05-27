@@ -425,6 +425,16 @@ def _public_user_summary_response(*, request, user):
                 payload["moon_sign"] = astro.moon_sign
             if astro.rising_sign:
                 payload["rising_sign"] = astro.rising_sign
+            nc = astro.natal_chart or {}
+            pts = nc.get("points") or {}
+            for key, sign_field in (
+                ("mercury", "mercury_sign"),
+                ("venus", "venus_sign"),
+                ("mars", "mars_sign"),
+            ):
+                pt = pts.get(key)
+                if isinstance(pt, dict) and pt.get("sign"):
+                    payload[sign_field] = pt["sign"]
     return Response(payload)
 
 

@@ -106,23 +106,7 @@ export default function NatalChartPlanetsTable({ chart, onBodyRowClick, hideAngl
                 }
               >
                 <Table.Cell>
-                  <Text
-                    as="span"
-                    aria-label={v.retrograde ? `${displayName}, retrograde` : displayName}
-                  >
-                    {displayName}
-                    {v.retrograde ? (
-                      <Text
-                        as="span"
-                        ml="1"
-                        color="fg.muted"
-                        fontWeight="normal"
-                        aria-hidden="true"
-                      >
-                        Я
-                      </Text>
-                    ) : null}
-                  </Text>
+                  <Text as="span">{displayName}</Text>
                 </Table.Cell>
                 <Table.Cell>{inSignPhrase(v.sign)}</Table.Cell>
                 <Table.Cell>{inTheNthHousePhrase(v.house)}</Table.Cell>

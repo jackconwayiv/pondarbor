@@ -53,9 +53,9 @@ export function signCardAccent(signRaw: string): SignCardAccent {
     libra: accentLines(DESIGN.grayMediumBase, DESIGN.grayMediumBorder),
     aquarius: accentLines(DESIGN.grayDarkBase, DESIGN.grayDarkBorder, true),
 
-    // Water — light / base / dark blue
+    // Water — light / base / dark blue (Cancer: base sky + light text)
     pisces: accentLines(DESIGN.skyLight, DESIGN.sky),
-    cancer: accentLines(DESIGN.sky, DESIGN.skyDark),
+    cancer: accentLines(DESIGN.sky, DESIGN.skyDark, true),
     scorpio: accentLines(DESIGN.skyDark, "#3D6FA3", true),
 
     // Earth — light / base / dark green

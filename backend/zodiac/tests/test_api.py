@@ -355,6 +355,8 @@ class ZodiacApiTests(TestCase):
         self.assertIn("venus", friends[0]["natal_chart"]["points"])
         self.assertIn("mars", friends[0]["natal_chart"]["points"])
         self.assertIn("ascendant", friends[0]["natal_chart"]["angles"])
+        sun_pt = friends[0]["natal_chart"]["points"].get("sun") or {}
+        self.assertNotIn("retrograde", sun_pt)
 
     def test_zodiac_friends_lists_sun_moon_when_birth_time_unknown(self):
         from friends.models import FriendRequest

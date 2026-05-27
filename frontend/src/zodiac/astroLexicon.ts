@@ -73,6 +73,107 @@ export const PERSONAL_PLANETS_BODY = {
   },
 } as const;
 
+/** Jupiter through Part of Fortune — interpret-tab placement pages only. */
+export const EXTENDED_INTERPRET_PLACEMENT_BODY = {
+  jupiter: {
+    label: "Jupiter",
+    bodyHeading: "Jupiter",
+    bodyPhrases: [
+      "growth, faith, and philosophical outlook",
+      "expansion, opportunity, and where you aim higher",
+      "meaning, optimism, and moral vision",
+      "belief, exploration, and generosity of spirit",
+    ],
+  },
+  saturn: {
+    label: "Saturn",
+    bodyHeading: "Saturn",
+    bodyPhrases: [
+      "structure, discipline, and long-term commitment",
+      "responsibility, boundaries, and what you build over time",
+      "maturity, endurance, and earned authority",
+      "accountability, limits, and lessons with patience",
+    ],
+  },
+  uranus: {
+    label: "Uranus",
+    bodyHeading: "Uranus",
+    bodyPhrases: [
+      "liberation, change, and breaking old patterns",
+      "innovation, disruption, and unconventional thinking",
+      "freedom, originality, and sudden insight",
+      "awakening, independence, and progressive impulse",
+    ],
+  },
+  neptune: {
+    label: "Neptune",
+    bodyHeading: "Neptune",
+    bodyPhrases: [
+      "dreams, imagination, and subtle perception",
+      "spirituality, dissolution, and what's hard to pin down",
+      "compassion, mystery, and idealistic longing",
+      "inspiration, art, and surrender to something larger",
+    ],
+  },
+  pluto: {
+    label: "Pluto",
+    bodyHeading: "Pluto",
+    bodyPhrases: [
+      "transformation, power, and deep renewal",
+      "intensity, shadow work, and what must be released",
+      "regeneration, truth, and psychological depth",
+      "compulsion, catharsis, and evolutionary force",
+    ],
+  },
+  chiron: {
+    label: "Chiron",
+    bodyHeading: "Chiron",
+    bodyPhrases: [
+      "healing wisdom rooted in old wounds",
+      "mentorship, integration, and teaching from experience",
+      "vulnerability as a source of insight",
+      "the bridge between pain and meaningful service",
+    ],
+  },
+  north_node: {
+    label: "North Node",
+    bodyHeading: "North Node",
+    bodyPhrases: [
+      "soul growth and evolutionary direction",
+      "karmic lessons you're moving toward",
+      "unfamiliar qualities you're invited to develop",
+      "destiny, appetite for growth, and future self",
+    ],
+  },
+  part_of_fortune: {
+    label: "Part of Fortune",
+    bodyHeading: "Part of Fortune",
+    bodyPhrases: [
+      "ease, flow, and where life clicks",
+      "natural luck and embodied well-being",
+      "blending body, heart, and circumstance",
+      "simple pleasures and sustainable happiness",
+    ],
+  },
+} as const;
+
+export type ExtendedInterpretPlacementKey = keyof typeof EXTENDED_INTERPRET_PLACEMENT_BODY;
+
+export function interpretPlacementBodyForTileId(
+  tileId: string,
+): { label: string; bodyHeading: string; bodyPhrases: readonly string[] } | null {
+  if (tileId === "sun" || tileId === "moon" || tileId === "rising") {
+    return BIG_THREE_BODY[tileId];
+  }
+  if (tileId in PERSONAL_PLANETS_BODY) {
+    return PERSONAL_PLANETS_BODY[tileId as keyof typeof PERSONAL_PLANETS_BODY];
+  }
+  if (tileId in EXTENDED_INTERPRET_PLACEMENT_BODY) {
+    return EXTENDED_INTERPRET_PLACEMENT_BODY[tileId as ExtendedInterpretPlacementKey];
+  }
+  return null;
+}
+
 const SIGN_KEYS = [
   "aries",
   "taurus",
@@ -359,6 +460,130 @@ export function normalizeZodiacSign(raw: string): ZodiacSignKey | null {
   return SIGN_KEY_SET.has(k) ? (k as ZodiacSignKey) : null;
 }
 
+export function signDisplayName(raw: string): string {
+  const k = normalizeZodiacSign(raw);
+  if (!k) {
+    const t = raw.trim();
+    return t ? t.charAt(0).toUpperCase() + t.slice(1).toLowerCase() : raw;
+  }
+  return k.charAt(0).toUpperCase() + k.slice(1);
+}
+
+/** Modern (outer-planet) sign rulers for interpret house pages. */
+export const SIGN_MODERN_RULING_PLANET: Record<ZodiacSignKey, string> = {
+  aries: "Mars",
+  taurus: "Venus",
+  gemini: "Mercury",
+  cancer: "Moon",
+  leo: "Sun",
+  virgo: "Mercury",
+  libra: "Venus",
+  scorpio: "Pluto",
+  sagittarius: "Jupiter",
+  capricorn: "Saturn",
+  aquarius: "Uranus",
+  pisces: "Neptune",
+};
+
+const RULER_PLANET_TO_CHART_KEY: Record<string, string> = {
+  Mars: "mars",
+  Venus: "venus",
+  Mercury: "mercury",
+  Moon: "moon",
+  Sun: "sun",
+  Jupiter: "jupiter",
+  Saturn: "saturn",
+  Uranus: "uranus",
+  Neptune: "neptune",
+  Pluto: "pluto",
+};
+
+export function modernRulingPlanetForSign(raw: string): string | null {
+  const sign = normalizeZodiacSign(raw);
+  return sign ? SIGN_MODERN_RULING_PLANET[sign] : null;
+}
+
+export function chartKeyForRulerPlanet(planetName: string): string | null {
+  return RULER_PLANET_TO_CHART_KEY[planetName] ?? null;
+}
+
+/** Modern house-ruler planet name for a chart point key (`mercury` → `Mercury`), if any. */
+export function rulerPlanetNameForChartKey(chartKey: string): string | null {
+  const key = chartKey === "rising" ? "ascendant" : chartKey;
+  for (const [planet, k] of Object.entries(RULER_PLANET_TO_CHART_KEY)) {
+    if (k === key) return planet;
+  }
+  return null;
+}
+
+function formatChartPointLabel(chartKey: string): string {
+  const body = interpretPlacementBodyForTileId(
+    chartKey === "ascendant" ? "rising" : chartKey,
+  );
+  if (body) return body.label;
+  return chartKey.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Domain themes for “{Planet} emphasizes …” bullets on interpret house pages. */
+export const PLANET_HOUSE_ACT_PHRASES: Record<string, readonly string[]> = {
+  sun: BIG_THREE_BODY.sun.bodyPhrases,
+  moon: BIG_THREE_BODY.moon.bodyPhrases,
+  mercury: PERSONAL_PLANETS_BODY.mercury.bodyPhrases,
+  venus: PERSONAL_PLANETS_BODY.venus.bodyPhrases,
+  mars: PERSONAL_PLANETS_BODY.mars.bodyPhrases,
+  jupiter: [
+    "growth and faith",
+    "expansion and opportunity",
+    "meaning and optimism",
+    "belief and exploration",
+  ],
+  saturn: [
+    "structure and discipline",
+    "responsibility and limits",
+    "maturity and endurance",
+    "accountability and time",
+  ],
+  uranus: [
+    "liberation and change",
+    "innovation and disruption",
+    "freedom and originality",
+    "awakening and breakthrough",
+  ],
+  neptune: [
+    "dreams and imagination",
+    "spirituality and dissolution",
+    "compassion and mystery",
+    "inspiration and surrender",
+  ],
+  pluto: [
+    "transformation and power",
+    "depth and regeneration",
+    "shadow and rebirth",
+    "intensity and truth",
+  ],
+  chiron: [
+    "healing and woundedness",
+    "mentorship and integration",
+    "vulnerability and wisdom",
+  ],
+  ceres: ["nurturing", "cycles of loss and return", "sustenance and care"],
+  pallas: ["strategy", "pattern recognition", "creative intelligence"],
+  juno: ["commitment", "partnership contracts", "loyalty and equality"],
+  vesta: ["focus", "devotion", "sacred work and retreat"],
+  north_node: ["destiny and growth", "karmic direction", "evolutionary pull"],
+  south_node: ["past patterns", "familiar gifts", "release and habit"],
+  lilith: ["raw instinct", "taboo and autonomy", "unfiltered desire"],
+  part_of_fortune: ["ease and flow", "natural luck", "embodied well-being"],
+};
+
+export function chartPointDisplayLabel(chartKey: string): string {
+  return formatChartPointLabel(chartKey);
+}
+
+export function planetHouseActPhrases(chartKey: string): readonly string[] | null {
+  return PLANET_HOUSE_ACT_PHRASES[chartKey] ?? null;
+}
+
 export function descriptorKeysForSign(
   raw: string,
 ): { mode: ModeDescriptorKey; element: ElementDescriptorKey } | null {
@@ -441,6 +666,14 @@ export function bodySymbolForTileId(id: string): string | null {
     mercury: `\u263F${text}`,
     venus: `\u2640${text}`,
     mars: `\u2642${text}`,
+    jupiter: `\u2643${text}`,
+    saturn: `\u2644${text}`,
+    uranus: `\u2645${text}`,
+    neptune: `\u2646${text}`,
+    pluto: `\u2647${text}`,
+    chiron: `\u26B7${text}`,
+    north_node: `\u260A${text}`,
+    part_of_fortune: `\u2295${text}`,
   };
   return map[id] ?? null;
 }

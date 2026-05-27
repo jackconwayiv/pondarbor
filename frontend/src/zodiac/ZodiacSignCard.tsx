@@ -25,8 +25,7 @@ export default function ZodiacSignCard({
 }: ZodiacSignCardProps) {
   const houseRoman = tile.house != null ? formatHouseRoman(tile.house) : null;
   const ariaHouse = tile.house != null ? ` House ${tile.house}.` : "";
-  const ariaRetro = tile.retrograde ? " Retrograde." : "";
-  const ariaLabel = `${tile.label}: ${tile.sign}.${ariaHouse}${ariaRetro}${
+  const ariaLabel = `${tile.label}: ${tile.sign}.${ariaHouse}${
     interactive ? " Open details." : ""
   }`;
 
@@ -107,19 +106,6 @@ export default function ZodiacSignCard({
           >
             {tile.label}
           </Text>
-          {tile.retrograde ? (
-            <Text
-              as="span"
-              fontSize="sm"
-              color="fg.muted"
-              fontWeight="normal"
-              lineHeight="1"
-              flexShrink={0}
-              aria-hidden="true"
-            >
-              Я
-            </Text>
-          ) : null}
         </Flex>
         <Text
           fontSize="xs"

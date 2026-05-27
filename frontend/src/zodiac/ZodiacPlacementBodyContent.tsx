@@ -56,7 +56,7 @@ export default function ZodiacPlacementBodyContent({
             gap="2"
             flexWrap="wrap"
             w="100%"
-            mb={tile.retrograde ? "2" : "3"}
+            mb="3"
           >
             <Heading
               {...headingProps}
@@ -69,36 +69,7 @@ export default function ZodiacPlacementBodyContent({
               {bodySymbolForTileId(tile.id) ? `${bodySymbolForTileId(tile.id)} ` : ""}
               {tile.bodyHeading}
             </Heading>
-            {tile.retrograde ? (
-              <Text
-                as="span"
-                fontSize="xs"
-                fontWeight="bold"
-                letterSpacing="0.12em"
-                textTransform="uppercase"
-                px="2"
-                py="1"
-                borderRadius="md"
-                bg={modalAccent.bg}
-                color={modalAccent.valueColor}
-                flexShrink={0}
-              >
-                RETROGRADE
-              </Text>
-            ) : null}
           </Flex>
-          {tile.retrograde ? (
-            <Text
-              fontSize={{ base: "xs", md: "md" }}
-              color="fg"
-              lineHeight="tall"
-              mb="3"
-            >
-              {
-                "This retrograde planet's energies are manifested through inward processing before outward expression, which could result in a more reflective, delayed, or unconventional experience of the planet's themes:"
-              }
-            </Text>
-          ) : null}
           <Box as="ul" m="0" pl="5" color="fg" listStyleType="disc" listStylePosition="outside">
             {tile.bodyPhrases.map((phrase) => (
               <Text

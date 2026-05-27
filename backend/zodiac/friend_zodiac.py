@@ -9,6 +9,13 @@ from zodiac.models import AstroProfile
 FRIEND_VISIBLE_POINT_KEYS = ("sun", "moon", "mercury", "venus", "mars")
 
 
+def _strip_retrograde_from_chart_body(body: dict[str, Any]) -> dict[str, Any]:
+    """Friends never receive retrograde flags on shared chart snippets."""
+    if not isinstance(body, dict):
+        return body
+    return {k: v for k, v in body.items() if k != "retrograde"}
+
+
 def trim_natal_chart_for_friends(
     natal_chart: dict[str, Any] | None, *, birth_time_unknown: bool = False
 ) -> dict[str, Any] | None:
@@ -16,10 +23,14 @@ def trim_natal_chart_for_friends(
         return None
     points = natal_chart.get("points") or {}
     angles = natal_chart.get("angles") or {}
-    trimmed_points = {k: points[k] for k in FRIEND_VISIBLE_POINT_KEYS if k in points}
+    trimmed_points = {
+        k: _strip_retrograde_from_chart_body(points[k])
+        for k in FRIEND_VISIBLE_POINT_KEYS
+        if k in points
+    }
     trimmed_angles: dict[str, Any] = {}
     if not birth_time_unknown and "ascendant" in angles:
-        trimmed_angles["ascendant"] = angles["ascendant"]
+        trimmed_angles["ascendant"] = _strip_retrograde_from_chart_body(angles["ascendant"])
     if not trimmed_points and not trimmed_angles:
         return None
     return {"points": trimmed_points, "angles": trimmed_angles}

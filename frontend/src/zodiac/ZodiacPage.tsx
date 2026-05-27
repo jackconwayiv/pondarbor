@@ -737,9 +737,13 @@ export default function ZodiacPage() {
                 </Tabs.Content>
               ) : null}
 
-              {hasStaffImportedChart ? (
+              {hasStaffImportedChart && chart ? (
                 <Tabs.Content value="interpretation" pt="4">
-                  <ZodiacInterpretTabPanel tiles={overviewTiles} />
+                  <ZodiacInterpretTabPanel
+                    chart={chart}
+                    includeHouses={!birthTimeUnknown}
+                    includeRising={!birthTimeUnknown}
+                  />
                 </Tabs.Content>
               ) : null}
 

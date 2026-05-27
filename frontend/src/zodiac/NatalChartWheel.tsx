@@ -272,7 +272,7 @@ export default function NatalChartWheel({ chart }: { chart: NatalChartPayload })
             const plot = plotAngleDeg(lon, ascDeg);
             const { x, y } = xyFromPlotAngle(R_BODY_BASE, plot);
             const glyph = BODY_GLYPH[key] ?? `\u26aa${T}`;
-            const title = `${bodyLabel(key)}${pt.retrograde ? ", retrograde" : ""}`;
+            const title = bodyLabel(key);
             return (
               <g key={key}>
                 <title>{title}</title>
@@ -288,18 +288,6 @@ export default function NatalChartWheel({ chart }: { chart: NatalChartPayload })
                 >
                   {glyph}
                 </text>
-                {pt.retrograde ? (
-                  <text
-                    x={x + 11}
-                    y={y - 9}
-                    fontSize={9}
-                    fill="var(--chakra-colors-fg-muted)"
-                    style={{ userSelect: "none" }}
-                    aria-hidden
-                  >
-                    {"\u211e"}
-                  </text>
-                ) : null}
               </g>
             );
           })}

@@ -2,13 +2,19 @@ import {
   bodySymbolForTileId,
   descriptorKeysForSign,
   ELEMENT_PAIR_PHRASES,
+  interpretPlacementBodyForTileId,
   MODE_PAIR_PHRASES,
-  normalizeZodiacSign,
+  signDisplayName,
   signSymbolForSign,
   traitsForSign,
-  type ElementDescriptorKey,
 } from "./astroLexicon";
+import type { NatalChartPayload } from "./chartTypes";
 import type { ZodiacSignCardTile } from "./ZodiacSignCardsStrip";
+import {
+  houseOnTile,
+  isPlacementTileRetrograde,
+} from "./zodiacPlacementFromChart";
+import { housesRuledByPlacement } from "./buildHouseInterpretWriteup";
 import { formatHouseOrdinal, HOUSE_PLACEMENT_PHRASES } from "./zodiacHouseDescriptors";
 
 export const INTERPRET_TILE_ORDER = [
@@ -18,7 +24,24 @@ export const INTERPRET_TILE_ORDER = [
   "mercury",
   "venus",
   "mars",
+  "jupiter",
+  "saturn",
+  "uranus",
+  "neptune",
+  "pluto",
+  "chiron",
+  "north_node",
+  "part_of_fortune",
 ] as const;
+
+export type InterpretPlanetDomainsLead = {
+  /** Placement body from the page heading (Sun, Moon, Rising, …). */
+  placementPlanet: string;
+  signName: string;
+  isRising: boolean;
+  domainPhrases: readonly string[];
+  adjectivePhrases: readonly string[];
+};
 
 export type InterpretWriteup = {
   planetSymbol: string | null;
@@ -26,11 +49,18 @@ export type InterpretWriteup = {
   signSymbol: string | null;
   signName: string;
   houseOrdinal: string | null;
-  /** Left column — planet domains and house emphasis. */
-  planetHouseParagraphs: string[];
-  /** Right callout — element and modality copy. */
-  signParagraphs: string[];
-  signTraitPhrases: readonly string[];
+  /** True when this placement is retrograde in the member's chart (interpret tab only). */
+  retrograde: boolean;
+  /** Left column — “With your … in …, your … manifest as …”. */
+  planetDomainsLead: InterpretPlanetDomainsLead;
+  /** Left column — house emphasis; links to that house's interpret page when present. */
+  houseFollowUp: { house: number; text: string } | null;
+  /** Houses this body rules as lord of the sign on the cusp (modern rulers). */
+  housesRuled: { house: number; cuspSign: string; text: string }[];
+  /** Right callout — modality, element, verbs, and element descriptors in one sentence. */
+  signCalloutParagraph: string;
+  /** Right callout chips — per-sign adjectives (`SIGN_TRAITS`). */
+  signAdjectivePhrases: readonly string[];
 };
 
 /** Comma-separated list with Oxford comma before the final “and”. */
@@ -41,26 +71,26 @@ export function joinEnglishList(items: readonly string[]): string {
   return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
 }
 
-export function signDisplayName(raw: string): string {
-  const k = normalizeZodiacSign(raw);
-  if (!k) {
-    const t = raw.trim();
-    return t ? t.charAt(0).toUpperCase() + t.slice(1).toLowerCase() : raw;
-  }
-  return k.charAt(0).toUpperCase() + k.slice(1);
-}
-
-function indefiniteArticleForElement(elementKey: ElementDescriptorKey): "a" | "an" {
-  return elementKey === "air" || elementKey === "earth" ? "an" : "a";
-}
-
 function planetLabelForTile(tile: ZodiacSignCardTile): string {
   if (tile.id === "rising") return "Rising";
   return tile.label;
 }
 
+/** Modality + element callout shared by placement sign cards and sign interpret pages. */
+export function buildSignCalloutParagraph(signKey: string): string | null {
+  const signName = signDisplayName(signKey);
+  const keys = descriptorKeysForSign(signKey);
+  if (!keys) return null;
+  const modalityVerbs = joinEnglishList(MODE_PAIR_PHRASES[keys.mode]);
+  const elementDescriptors = joinEnglishList(ELEMENT_PAIR_PHRASES[keys.element]);
+  return `As a ${keys.mode} ${keys.element} sign, the ${signName} influence is to ${modalityVerbs} through ${elementDescriptors}.`;
+}
+
 /** Procedural interpret-tab copy from a placement tile (sign, house, mode, element). */
-export function buildInterpretWriteup(tile: ZodiacSignCardTile): InterpretWriteup | null {
+export function buildInterpretWriteup(
+  tile: ZodiacSignCardTile,
+  chart: NatalChartPayload,
+): InterpretWriteup | null {
   const signName = signDisplayName(tile.sign);
   const keys = descriptorKeysForSign(tile.sign);
   const traits = traitsForSign(tile.sign);
@@ -72,26 +102,17 @@ export function buildInterpretWriteup(tile: ZodiacSignCardTile): InterpretWriteu
   const housePhrases =
     house != null && house >= 1 && house <= 12 ? HOUSE_PLACEMENT_PHRASES[house] : null;
 
-  const elementArticle = indefiniteArticleForElement(keys.element);
-  const elementTraits = joinEnglishList(ELEMENT_PAIR_PHRASES[keys.element]);
-  const modalityVerbs = joinEnglishList(MODE_PAIR_PHRASES[keys.mode]);
-  const domains = joinEnglishList(tile.bodyPhrases);
-  const signAdjectives = joinEnglishList(traits);
+  const signCalloutParagraph = buildSignCalloutParagraph(tile.sign);
+  if (!signCalloutParagraph) return null;
 
-  const planetHouseParagraphs: string[] = [
-    `Your ${domains} are ${signAdjectives}.`,
-  ];
-
-  if (houseOrdinal != null && housePhrases?.length) {
-    planetHouseParagraphs.push(
-      `This ${signName} ${planet} influence is especially felt in matters of the ${houseOrdinal} house: ${joinEnglishList(housePhrases)}.`,
-    );
+  let houseFollowUp: { house: number; text: string } | null = null;
+  if (house != null && houseOrdinal != null && housePhrases?.length) {
+    const houseThemes = joinEnglishList(housePhrases);
+    const placementInSign =
+      tile.id === "rising" ? `Your Rising in ${signName}` : `Your ${planet} in ${signName}`;
+    const text = `${placementInSign} directs its energy into the ${houseOrdinal} House with a focus on ${houseThemes}.`;
+    houseFollowUp = { house, text };
   }
-
-  const signParagraphs = [
-    `As ${elementArticle} ${keys.element} sign, ${signName} brings an emphasis on ${elementTraits}.`,
-    `As a ${keys.mode} sign, ${signName} influences you to ${modalityVerbs}.`,
-  ];
 
   return {
     planetSymbol: bodySymbolForTileId(tile.id),
@@ -99,9 +120,18 @@ export function buildInterpretWriteup(tile: ZodiacSignCardTile): InterpretWriteu
     signSymbol: signSymbolForSign(tile.sign),
     signName,
     houseOrdinal,
-    planetHouseParagraphs,
-    signParagraphs,
-    signTraitPhrases: traits,
+    retrograde: isPlacementTileRetrograde(tile.id, chart),
+    planetDomainsLead: {
+      placementPlanet: planet,
+      signName,
+      isRising: tile.id === "rising",
+      domainPhrases: tile.bodyPhrases,
+      adjectivePhrases: traits,
+    },
+    houseFollowUp,
+    housesRuled: housesRuledByPlacement(chart, tile.id, tile.sign),
+    signCalloutParagraph,
+    signAdjectivePhrases: traits,
   };
 }
 
@@ -110,4 +140,47 @@ export function interpretTilesInOrder(tiles: ZodiacSignCardTile[]): ZodiacSignCa
   return INTERPRET_TILE_ORDER.map((id) => byId.get(id)).filter(
     (t): t is ZodiacSignCardTile => t != null,
   );
+}
+
+function interpretTileFromChart(
+  tileId: (typeof INTERPRET_TILE_ORDER)[number],
+  chart: NatalChartPayload,
+): ZodiacSignCardTile | null {
+  const body = interpretPlacementBodyForTileId(tileId);
+  if (!body) return null;
+
+  if (tileId === "rising") {
+    const sign = chart.angles.ascendant?.sign;
+    if (!sign) return null;
+    return {
+      id: "rising",
+      label: body.label,
+      sign,
+      bodyHeading: body.bodyHeading,
+      bodyPhrases: body.bodyPhrases,
+      ...houseOnTile(chart, "rising"),
+    };
+  }
+
+  const sign = chart.points[tileId]?.sign;
+  if (!sign) return null;
+  return {
+    id: tileId,
+    label: body.label,
+    sign,
+    bodyHeading: body.bodyHeading,
+    bodyPhrases: body.bodyPhrases,
+    ...houseOnTile(chart, tileId),
+  };
+}
+
+/** Placement tiles for the interpret pager (chart-backed; not limited to overview cards). */
+export function buildInterpretPlacementTiles(
+  chart: NatalChartPayload,
+  options: { includeRising: boolean },
+): ZodiacSignCardTile[] {
+  const ids = INTERPRET_TILE_ORDER.filter((id) => id !== "rising" || options.includeRising);
+  return ids
+    .map((id) => interpretTileFromChart(id, chart))
+    .filter((t): t is ZodiacSignCardTile => t != null);
 }

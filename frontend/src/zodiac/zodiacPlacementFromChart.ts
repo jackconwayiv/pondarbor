@@ -24,28 +24,14 @@ export function houseForPlacementTile(tileId: string, chart: NatalChartPayload):
     if (typeof h === "number" && h >= 1 && h <= 12) return h;
     return 1;
   }
-  if (
-    tileId === "sun" ||
-    tileId === "moon" ||
-    tileId === "mercury" ||
-    tileId === "venus" ||
-    tileId === "mars"
-  ) {
-    const h = chart.points[tileId]?.house;
-    if (typeof h === "number" && h >= 1 && h <= 12) return h;
-    return null;
-  }
+  const h = chart.points[tileId]?.house;
+  if (typeof h === "number" && h >= 1 && h <= 12) return h;
   return null;
 }
 
 export function houseOnTile(chart: NatalChartPayload, tileId: string): { house: number } | object {
   const h = houseForPlacementTile(tileId, chart);
   return h != null ? { house: h } : {};
-}
-
-function retroFlag(chart: NatalChartPayload, chartKey: string): { retrograde: true } | object {
-  if (chartKey === "ascendant") return {};
-  return chart.points[chartKey]?.retrograde === true ? { retrograde: true as const } : {};
 }
 
 export function zodiacTileFromChartBodyKey(
@@ -76,7 +62,6 @@ export function zodiacTileFromChartBodyKey(
       sign,
       bodyHeading: BIG_THREE_BODY.sun.bodyHeading,
       bodyPhrases: BIG_THREE_BODY.sun.bodyPhrases,
-      ...retroFlag(chart, "sun"),
       ...houseOnTile(chart, "sun"),
     };
   }
@@ -90,7 +75,6 @@ export function zodiacTileFromChartBodyKey(
       sign,
       bodyHeading: BIG_THREE_BODY.moon.bodyHeading,
       bodyPhrases: BIG_THREE_BODY.moon.bodyPhrases,
-      ...retroFlag(chart, "moon"),
       ...houseOnTile(chart, "moon"),
     };
   }
@@ -106,7 +90,6 @@ export function zodiacTileFromChartBodyKey(
     sign,
     bodyHeading: personal.bodyHeading,
     bodyPhrases: personal.bodyPhrases,
-    ...retroFlag(chart, chartKey),
     ...houseOnTile(chart, chartKey),
   };
 }

@@ -17,7 +17,7 @@ export const HOUSE_PLACEMENT_HEADING: Record<number, string> = {
 
 export const HOUSE_PLACEMENT_PHRASES: Record<number, readonly string[]> = {
   1: [
-    "identity",
+    "your identity",
     "appearance",
     "approach",
     "instinct",
@@ -116,7 +116,7 @@ export const HOUSE_PLACEMENT_PHRASES: Record<number, readonly string[]> = {
     "causes",
   ],
   12: [
-    "subconscious",
+    "the subconscious",
     "solitude",
     "spirituality",
     "endings",
@@ -142,6 +142,48 @@ const HOUSE_ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX",
 export function formatHouseRoman(house: number): string | null {
   if (!Number.isInteger(house) || house < 1 || house > 12) return null;
   return HOUSE_ROMAN[house];
+}
+
+/** Short theme for interpret house page titles (suffix of `HOUSE_PLACEMENT_HEADING`). */
+export const HOUSE_INTERPRET_THEME: Record<number, string> = {
+  1: "Self",
+  2: "Resources",
+  3: "Communication",
+  4: "Foundations",
+  5: "Creation",
+  6: "Service",
+  7: "Partnership",
+  8: "Transformation",
+  9: "Expansion",
+  10: "Achievement",
+  11: "Community",
+  12: "Transcendence",
+};
+
+/** Verbs for “where you seek to …” on interpret house pages. */
+export const HOUSE_INTERPRET_SEEK_VERBS: Record<number, readonly string[]> = {
+  1: ["present", "initiate", "embody", "assert", "express", "define", "meet the world"],
+  2: ["earn", "save", "value", "build", "secure", "stabilize", "provide"],
+  3: ["communicate", "learn", "ask", "connect", "observe", "articulate", "explore locally"],
+  4: ["nurture", "belong", "root", "protect", "settle", "remember", "create sanctuary"],
+  5: ["create", "play", "romance", "perform", "celebrate", "take risks", "express joy"],
+  6: ["serve", "improve", "organize", "heal", "refine", "maintain", "support daily life"],
+  7: ["partner", "commit", "negotiate", "balance", "relate", "cooperate", "mirror others"],
+  8: ["merge", "transform", "share deeply", "trust", "release", "regenerate", "face shadow"],
+  9: ["explore", "teach", "believe", "travel", "expand horizons", "seek meaning", "philosophize"],
+  10: ["achieve", "lead", "build reputation", "strive", "command", "structure", "accomplish"],
+  11: ["network", "collaborate", "envision", "contribute", "ally", "innovate", "belong to community"],
+  12: ["surrender", "reflect", "transcend", "retreat", "imagine", "release", "commune with mystery"],
+};
+
+export function houseInterpretTheme(house: number): string | null {
+  if (!Number.isInteger(house) || house < 1 || house > 12) return null;
+  return HOUSE_INTERPRET_THEME[house] ?? null;
+}
+
+export function houseInterpretSeekVerbs(house: number): readonly string[] | null {
+  if (!Number.isInteger(house) || house < 1 || house > 12) return null;
+  return HOUSE_INTERPRET_SEEK_VERBS[house] ?? null;
 }
 
 /** Ordinal label for interpret copy, e.g. `7th`. */

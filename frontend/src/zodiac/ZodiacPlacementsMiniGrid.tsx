@@ -8,6 +8,7 @@ export type ZodiacPlacementsMiniGridProps = {
   activeTileId?: string;
   onSelect?: (tile: ZodiacSignCardTile) => void;
   tileWrapper?: (tile: ZodiacSignCardTile, node: ReactNode) => ReactNode;
+  density?: "default" | "compact";
 };
 
 /** Six placement shortcuts in a 3×2 grid (friend surfaces, profile preview). */
@@ -16,6 +17,7 @@ export default function ZodiacPlacementsMiniGrid({
   activeTileId = "",
   onSelect,
   tileWrapper,
+  density = "default",
 }: ZodiacPlacementsMiniGridProps) {
   if (tiles.length === 0) return null;
 
@@ -26,6 +28,7 @@ export default function ZodiacPlacementsMiniGrid({
       activeTileId={activeTileId}
       onSelect={onSelect ?? (() => {})}
       tileWrapper={tileWrapper}
+      density={density}
     />
   );
 }

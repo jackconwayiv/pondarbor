@@ -3,8 +3,8 @@ import { useMemo } from "react";
 import { Link as RouterLink } from "react-router";
 
 import { APP_TEXT_SIZES } from "../theme/typography";
+import FriendZodiacPlacementsBlock from "../zodiac/FriendZodiacPlacementsBlock";
 import { buildZodiacOverviewTiles } from "../zodiac/ZodiacOverviewCardsStrip";
-import ZodiacPlacementsMiniGrid from "../zodiac/ZodiacPlacementsMiniGrid";
 import { formatBirthMonthDay } from "../zodiac/birthDateFormat";
 
 export type FriendProfileBirthdayInlineProps = {
@@ -42,7 +42,7 @@ function zodiacFriendsTabUrl(userId: number): string {
   return `/zodiac?tab=friends&user=${userId}`;
 }
 
-/** Placement mini tiles (3×2); each links to Zodiac Friends tab for that friend. */
+/** Placement summary + compact grid; each tile links to Zodiac Friends tab for that friend. */
 export function FriendProfileBigThreeRow({
   userId,
   sunSign,
@@ -79,7 +79,7 @@ export function FriendProfileBigThreeRow({
   const zodiacUrl = zodiacFriendsTabUrl(userId);
 
   return (
-    <ZodiacPlacementsMiniGrid
+    <FriendZodiacPlacementsBlock
       tiles={tiles}
       tileWrapper={(_tile, node) => (
         <RouterLink

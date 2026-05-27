@@ -44,7 +44,12 @@ export default function ZodiacFriendsTabPanel({
           {friendsLoadError}
         </Text>
       ) : null}
-      <Stack gap={{ base: "4", md: "5" }} w="100%">
+      {friends.length > 0 ? (
+        <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" mb="1">
+          Tap a placement for full detail.
+        </Text>
+      ) : null}
+      <Stack gap={{ base: "2", md: "3" }} w="100%">
         {friends.map((friend) => (
           <FriendZodiacPlacementsRow
             key={friend.id}

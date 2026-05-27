@@ -1,9 +1,10 @@
 import { Box, Flex, HStack, SimpleGrid, Text, VStack } from "@chakra-ui/react";
 import type { KeyboardEvent, ReactNode } from "react";
 
-import { bodySymbolForTileId, signSymbolForSign } from "./astroLexicon";
+import { bodySymbolForTileId, signDisplayName, signSymbolForSign } from "./astroLexicon";
 import { signCardAccent } from "./signCardAccent";
 import type { ZodiacSignCardTile } from "./ZodiacSignCardsStrip";
+import { formatHouseRoman } from "./zodiacHouseDescriptors";
 
 type Props = {
   tiles: ZodiacSignCardTile[];
@@ -16,6 +17,8 @@ type Props = {
   layout?: "wrap" | "row" | "grid";
   /** Optional wrapper per tile (e.g. router link on friend profile). */
   tileWrapper?: (tile: ZodiacSignCardTile, node: ReactNode) => ReactNode;
+  /** Friend surfaces: labeled tiles on mobile, tighter padding. */
+  density?: "default" | "compact";
 };
 
 export default function ZodiacOverviewMiniTiles({
@@ -25,8 +28,15 @@ export default function ZodiacOverviewMiniTiles({
   fillRow = false,
   layout,
   tileWrapper,
+  density = "default",
 }: Props) {
+  const compact = density === "compact";
   const resolvedLayout = layout ?? (fillRow ? "row" : "wrap");
+  const labelFontSize = compact ? "0.6rem" : "0.65rem";
+  const tilePx = compact ? "1" : "1.5";
+  const tilePy = compact ? "1" : "1.5";
+  const showTextOnMobile = compact;
+
   const onKeyDown = (e: KeyboardEvent, tile: ZodiacSignCardTile) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
@@ -38,24 +48,27 @@ export default function ZodiacOverviewMiniTiles({
     const accent = signCardAccent(t.sign);
     const bodySym = bodySymbolForTileId(t.id);
     const signSym = signSymbolForSign(t.sign);
+    const signName = signDisplayName(t.sign) ?? t.sign;
+    const houseRoman = t.house != null ? formatHouseRoman(t.house) : null;
     const active = t.id === activeTileId;
     const labelLine = (
       <Flex align="center" justify="center" gap="1" w="100%" minW="0" flexWrap="nowrap">
         <Text
-          fontSize="0.65rem"
+          fontSize={labelFontSize}
           fontWeight="semibold"
           color={accent.labelColor}
           lineHeight="1"
           flexShrink={0}
+          aria-hidden={compact ? true : undefined}
         >
           {bodySym ?? "·"}
         </Text>
         <Text
-          fontSize="0.65rem"
+          fontSize={labelFontSize}
           fontWeight="semibold"
           color={accent.labelColor}
           lineHeight="1"
-          display={{ base: "none", md: "inline" }}
+          display={showTextOnMobile ? "inline" : { base: "none", md: "inline" }}
           truncate
         >
           {t.label}
@@ -65,24 +78,25 @@ export default function ZodiacOverviewMiniTiles({
     const signLine = (
       <Flex align="center" justify="center" gap="1" w="100%" minW="0">
         <Text
-          fontSize="0.65rem"
+          fontSize={labelFontSize}
           fontWeight="normal"
           color={accent.valueColor}
           lineHeight="1"
           flexShrink={0}
+          aria-hidden={compact ? true : undefined}
         >
           {signSym ?? "·"}
         </Text>
         <Text
-          fontSize="0.65rem"
+          fontSize={labelFontSize}
           fontWeight="normal"
           color={accent.valueColor}
           lineHeight="1"
-          display={{ base: "none", md: "inline" }}
+          display={showTextOnMobile ? "inline" : { base: "none", md: "inline" }}
           textTransform="capitalize"
           truncate
         >
-          {t.sign}
+          {signName}
         </Text>
       </Flex>
     );
@@ -91,8 +105,13 @@ export default function ZodiacOverviewMiniTiles({
       <Box
         role="button"
         tabIndex={0}
+        position="relative"
         w={resolvedLayout === "row" || resolvedLayout === "grid" ? "100%" : undefined}
-        aria-label={`${t.label} in ${t.sign}`}
+        aria-label={
+          houseRoman
+            ? `${t.label} in ${signName}, ${houseRoman} House`
+            : `${t.label} in ${signName}`
+        }
         aria-current={active ? "true" : undefined}
         cursor="pointer"
         borderLeftWidth="3px"
@@ -101,8 +120,8 @@ export default function ZodiacOverviewMiniTiles({
         borderColor={active ? "fg" : "border"}
         borderRadius="md"
         bg={accent.bg}
-        px="1.5"
-        py="1.5"
+        px={tilePx}
+        py={tilePy}
         minW={resolvedLayout === "row" || resolvedLayout === "grid" ? "0" : "2.25rem"}
         lineHeight="1"
         boxShadow={active ? "md" : "sm"}
@@ -116,7 +135,22 @@ export default function ZodiacOverviewMiniTiles({
         onClick={() => onSelect(t)}
         onKeyDown={(e) => onKeyDown(e, t)}
       >
-        <VStack gap="0.5" w="100%" align="stretch">
+        {houseRoman ? (
+          <Text
+            position="absolute"
+            top="0.5"
+            right="1"
+            fontSize="0.55rem"
+            fontWeight="medium"
+            fontFamily="heading"
+            color={accent.valueColor}
+            lineHeight="1"
+            aria-hidden="true"
+          >
+            {houseRoman}
+          </Text>
+        ) : null}
+        <VStack gap={compact ? "0.25" : "0.5"} w="100%" align="stretch">
           {labelLine}
           {signLine}
         </VStack>
@@ -139,11 +173,13 @@ export default function ZodiacOverviewMiniTiles({
     );
   });
 
+  const gridGap = compact ? { base: "1", md: "1.5" } : { base: "1.5", md: "2" };
+
   if (resolvedLayout === "grid") {
     return (
       <SimpleGrid
         columns={3}
-        gap={{ base: "1.5", md: "2" }}
+        gap={gridGap}
         w="100%"
         role="group"
         aria-label="Placement shortcuts"
@@ -157,7 +193,7 @@ export default function ZodiacOverviewMiniTiles({
     return (
       <Flex
         w="100%"
-        gap={{ base: "1.5", md: "2" }}
+        gap={gridGap}
         alignItems="stretch"
         role="group"
         aria-label="Placement shortcuts"

@@ -49,7 +49,7 @@ import { getSortedIanaTimeZones, timeZoneOptionsForValue } from "./timezones";
 import { FriendsListPanel } from "./friends/FriendsListPanel";
 import { fetchAstroProfile, type AstroProfileRow } from "./zodiac/api";
 import { buildZodiacOverviewTiles } from "./zodiac/ZodiacOverviewCardsStrip";
-import ZodiacPlacementsMiniGrid from "./zodiac/ZodiacPlacementsMiniGrid";
+import FriendZodiacPlacementsBlock from "./zodiac/FriendZodiacPlacementsBlock";
 
 type ProfileTab = "profile" | "friends" | "account";
 
@@ -1092,7 +1092,7 @@ export default function ProfilePage() {
                     </HStack>
 
                     {!isEditing && ownAstroPreviewTiles.length > 0 ? (
-                      <ZodiacPlacementsMiniGrid
+                      <FriendZodiacPlacementsBlock
                         tiles={ownAstroPreviewTiles}
                         tileWrapper={(_tile, node) => (
                           <RouterLink

@@ -79,18 +79,31 @@ function cuspSignLinkText(
   const lead = rulerLabel
     ? `Your ${ordinal} House cusp is in ${cuspSignName}, ruled by ${rulerLabel}.`
     : `Your ${ordinal} House cusp is in ${cuspSignName}.`;
-  return `${lead} You approach ${themePhrase} with a spirit that is ${traitsPhrase}.`;
+  return `${lead} The sign on your ${ordinal} House cusp adds a ${traitsPhrase} tone to how you approach ${themePhrase}.`;
 }
 
-function occupantSummary(actPhrases: readonly string[]): string {
+/** Sign interpret pages — planet in sign (no house context). */
+function signOccupantSummary(
+  label: string,
+  signKey: string,
+  actPhrases: readonly string[],
+): string {
+  const signName = signDisplayName(signKey);
   const themes = joinEnglishList(actPhrases);
-  return `Emphasizes ${themes}.`;
+  return `With ${label} in ${signName}, the emphasis is on ${themes}.`;
 }
 
 /** Planet card copy on house interpret pages (distinct from cusp “You approach …”). */
-function houseOccupantSummary(themePhrase: string, actPhrases: readonly string[]): string {
-  const themes = joinEnglishList(actPhrases);
-  return `Regarding ${themePhrase}, emphasizes ${themes}.`;
+function houseOccupantSummary(
+  themePhrase: string,
+  signKey: string,
+  actPhrases: readonly string[],
+): string {
+  const traits = traitsForSign(signKey);
+  const traitsPart = traits?.length ? joinEnglishList(traits) : null;
+  const areasPart = joinEnglishList(actPhrases);
+  const yourPhrase = traitsPart ? `${traitsPart} ${areasPart}` : areasPart;
+  return `You approach ${themePhrase} through your ${yourPhrase}.`;
 }
 
 function actPhrasesForOccupant(chartKey: string): readonly string[] | null {
@@ -106,20 +119,21 @@ export function interpretPlacementChartKey(rawKey: string): string {
 function occupantFromPoint(
   chartKey: string,
   sign: string,
-  themePhrase?: string,
+  houseThemePhrase?: string,
 ): InterpretHouseOccupant | null {
   const actPhrases = actPhrasesForOccupant(chartKey);
   if (!actPhrases?.length) return null;
   const trimmedSign = sign.trim();
   if (!trimmedSign) return null;
   const pagerKey = interpretPlacementChartKey(chartKey);
+  const label = chartPointDisplayLabel(pagerKey);
   const summary =
-    themePhrase != null
-      ? houseOccupantSummary(themePhrase, actPhrases)
-      : occupantSummary(actPhrases);
+    houseThemePhrase != null
+      ? houseOccupantSummary(houseThemePhrase, trimmedSign, actPhrases)
+      : signOccupantSummary(label, trimmedSign, actPhrases);
   return {
     chartKey: pagerKey,
-    label: chartPointDisplayLabel(pagerKey),
+    label,
     sign: trimmedSign,
     signName: signDisplayName(trimmedSign),
     summary,
@@ -130,7 +144,7 @@ function houseGovernAndSeekPhrase(house: number): string | null {
   const governPhrases = HOUSE_PLACEMENT_PHRASES[house];
   const seekVerbs = houseInterpretSeekVerbs(house);
   if (!governPhrases?.length || !seekVerbs?.length) return null;
-  return `governs ${joinEnglishList(governPhrases)}—where you seek to ${joinEnglishList(seekVerbs)}`;
+  return `focuses on ${joinEnglishList(governPhrases)}—where you seek to ${joinEnglishList(seekVerbs)}`;
 }
 
 /** Merged govern + seek copy for interpret house pages. */
@@ -159,21 +173,19 @@ export type InterpretPlacementRuledHouse = {
 /** Placement-page card: this planet is modern ruler of the sign on a house cusp. */
 export function placementRuledHouseCardText(
   planetLabel: string,
-  placementSignName: string,
   ruledHouse: number,
 ): string | null {
   const ordinal = formatHouseOrdinal(ruledHouse);
   const housePhrases = HOUSE_PLACEMENT_PHRASES[ruledHouse];
   if (!ordinal || !housePhrases?.length) return null;
   const houseThemes = joinEnglishList(housePhrases);
-  return `Because your ${planetLabel} in ${placementSignName} rules the ${ordinal} House, its influence also manages ${houseThemes}.`;
+  return `As ruler of your ${ordinal} House, your ${planetLabel} also influences areas of ${houseThemes}.`;
 }
 
 /** Houses whose cusp sign is ruled by this placement body (modern rulers only). */
 export function housesRuledByPlacement(
   chart: NatalChartPayload,
   placementChartKey: string,
-  placementSignKey: string,
 ): InterpretPlacementRuledHouse[] {
   const rulerPlanet = rulerPlanetNameForChartKey(placementChartKey);
   if (!rulerPlanet) return [];
@@ -181,8 +193,6 @@ export function housesRuledByPlacement(
   const planetLabel = chartPointDisplayLabel(
     interpretPlacementChartKey(placementChartKey),
   );
-  const placementSignName = signDisplayName(placementSignKey);
-  if (!placementSignName) return [];
 
   const cusps = chart.houses?.cusps_longitude_deg;
   if (!Array.isArray(cusps) || cusps.length < 12) return [];
@@ -193,7 +203,7 @@ export function housesRuledByPlacement(
     if (typeof lon !== "number" || !Number.isFinite(lon)) continue;
     const cuspSignKey = signFromLongitudeDeg(lon);
     if (modernRulingPlanetForSign(cuspSignKey) !== rulerPlanet) continue;
-    const text = placementRuledHouseCardText(planetLabel, placementSignName, house);
+    const text = placementRuledHouseCardText(planetLabel, house);
     if (!text) continue;
     out.push({ house, cuspSign: cuspSignKey, text });
   }
@@ -318,15 +328,15 @@ export function buildHouseInterpretWriteup(
   let emptyHouseParagraph: string | null = null;
   if (occupants.length === 0) {
     if (rulerLabel) {
-      emptyHouseParagraph = `With no planets in your ${ordinal} House in this chart, you often navigate ${themePhrase} with a lighter touch, guided especially by ${rulerLabel}.`;
+      emptyHouseParagraph = `With no planets in your ${ordinal} House, you often navigate ${themePhrase} with a lighter touch, guided especially by ${rulerLabel}.`;
     } else {
-      emptyHouseParagraph = `With no planets in your ${ordinal} House in this chart, you often navigate ${themePhrase} with a lighter touch.`;
+      emptyHouseParagraph = `With no planets in your ${ordinal} House, you often navigate ${themePhrase} with a lighter touch.`;
     }
   }
 
   const occupantsLeadIn =
     occupants.length > 0
-      ? `These planets also play a role in your approach to ${themePhrase}:`
+      ? `These planets in your ${ordinal} House also play a role in your approach to ${themePhrase}:`
       : null;
 
   return {

@@ -129,20 +129,20 @@ export const EXTENDED_INTERPRET_PLACEMENT_BODY = {
     label: "Chiron",
     bodyHeading: "Chiron",
     bodyPhrases: [
-      "healing wisdom rooted in old wounds",
-      "mentorship, integration, and teaching from experience",
-      "vulnerability as a source of insight",
-      "the bridge between pain and meaningful service",
+      "healing insight rooted in lived experience",
+      "mentorship, integration, and teaching from what you've worked through",
+      "vulnerability as a source of wisdom",
+      "bridging hurt and meaningful contribution",
     ],
   },
   north_node: {
     label: "North Node",
     bodyHeading: "North Node",
     bodyPhrases: [
-      "soul growth and evolutionary direction",
-      "karmic lessons you're moving toward",
-      "unfamiliar qualities you're invited to develop",
-      "destiny, appetite for growth, and future self",
+      "growth you're stretching toward over time",
+      "less familiar strengths you're building",
+      "qualities you're invited to practice and develop",
+      "long-term direction and who you're becoming",
     ],
   },
   part_of_fortune: {

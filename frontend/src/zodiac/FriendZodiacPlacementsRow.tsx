@@ -1,12 +1,12 @@
-import { Avatar, Box, Grid, Stack, Text } from "@chakra-ui/react";
+import { Avatar, Box, Flex, Stack, Text } from "@chakra-ui/react";
 import { useMemo } from "react";
 
 import { resolveAvatarUrlForUser, useAppSession } from "../auth/AppSessionContext";
 import FriendProfileLink from "../friend/FriendProfileLink";
 import { APP_TEXT_SIZES } from "../theme/typography";
 import type { FriendWithZodiac } from "./api";
+import FriendZodiacPlacementsBlock from "./FriendZodiacPlacementsBlock";
 import { buildZodiacOverviewTiles } from "./ZodiacOverviewCardsStrip";
-import ZodiacPlacementsMiniGrid from "./ZodiacPlacementsMiniGrid";
 import type { ZodiacSignCardTile } from "./ZodiacSignCardsStrip";
 
 export type FriendZodiacPlacementsRowProps = {
@@ -24,29 +24,26 @@ function FriendIdentity({ friend }: { friend: FriendWithZodiac }) {
 
   return (
     <FriendProfileLink userId={friend.id}>
-      <Stack
+      <Flex
         align="center"
-        justify="center"
         gap="2"
-        h="100%"
-        py={{ base: "1", md: "0" }}
+        minW="0"
         transition="opacity 0.15s ease"
         _hover={{ opacity: 0.9 }}
       >
-        <Avatar.Root size="lg">
+        <Avatar.Root size={{ base: "sm", md: "md" }} flexShrink={0}>
           <Avatar.Fallback name={friend.nickname} />
           {avatarSrc ? <Avatar.Image src={avatarSrc} /> : null}
         </Avatar.Root>
         <Text
           fontWeight="semibold"
           fontSize={APP_TEXT_SIZES.body}
-          textAlign="center"
           lineClamp={2}
-          w="100%"
+          minW="0"
         >
           {friend.nickname}
         </Text>
-      </Stack>
+      </Flex>
     </FriendProfileLink>
   );
 }
@@ -79,19 +76,13 @@ export default function FriendZodiacPlacementsRow({
       borderColor={highlight ? "fg" : "border"}
       borderRadius="xl"
       bg="bg.panel"
-      p={{ base: "3", md: "4" }}
+      p={{ base: "2", md: "3" }}
       boxShadow={highlight ? "md" : "sm"}
       scrollMarginTop="6rem"
     >
-      <Box display={{ base: "none", md: "block" }}>
-        <Grid templateColumns="minmax(120px, 0.85fr) minmax(0, 1fr)" gap="4" w="100%" alignItems="stretch">
-          <FriendIdentity friend={friend} />
-          <ZodiacPlacementsMiniGrid tiles={tiles} onSelect={onPlacementOpen} />
-        </Grid>
-      </Box>
-      <Stack gap="4" display={{ base: "flex", md: "none" }} w="100%">
+      <Stack gap="2" w="100%">
         <FriendIdentity friend={friend} />
-        <ZodiacPlacementsMiniGrid tiles={tiles} onSelect={onPlacementOpen} />
+        <FriendZodiacPlacementsBlock tiles={tiles} onSelect={onPlacementOpen} />
       </Stack>
     </Box>
   );

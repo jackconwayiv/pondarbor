@@ -1,9 +1,11 @@
 import {
   bodySymbolForTileId,
   descriptorKeysForSign,
-  ELEMENT_PAIR_PHRASES,
+  ELEMENT_DESCRIPTOR_LABEL,
+  type ElementDescriptorKey,
   interpretPlacementBodyForTileId,
-  MODE_PAIR_PHRASES,
+  MODE_DESCRIPTOR_LABEL,
+  type ModeDescriptorKey,
   signDisplayName,
   signSymbolForSign,
   traitsForSign,
@@ -76,14 +78,38 @@ function planetLabelForTile(tile: ZodiacSignCardTile): string {
   return tile.label;
 }
 
+/** Readable mode/element clauses for sign callouts (not raw verb lists from `MODE_PAIR_PHRASES`). */
+const SIGN_CALLOUT_MODE: Record<ModeDescriptorKey, string> = {
+  cardinal: "initiative and forward motion",
+  fixed: "steadiness and depth",
+  mutable: "adaptability, change, and flexibility",
+};
+
+const SIGN_CALLOUT_ELEMENT: Record<ElementDescriptorKey, string> = {
+  fire: "passion, courage, and drive",
+  earth: "practicality, patience, and tangible results",
+  air: "ideas, communication, and curiosity",
+  water: "emotion, intuition, and empathy",
+};
+
 /** Modality + element callout shared by placement sign cards and sign interpret pages. */
 export function buildSignCalloutParagraph(signKey: string): string | null {
   const signName = signDisplayName(signKey);
   const keys = descriptorKeysForSign(signKey);
   if (!keys) return null;
-  const modalityVerbs = joinEnglishList(MODE_PAIR_PHRASES[keys.mode]);
-  const elementDescriptors = joinEnglishList(ELEMENT_PAIR_PHRASES[keys.element]);
-  return `As a ${keys.mode} ${keys.element} sign, the ${signName} influence is to ${modalityVerbs} through ${elementDescriptors}.`;
+
+  const modeLabel = MODE_DESCRIPTOR_LABEL[keys.mode];
+  const elementLabel = ELEMENT_DESCRIPTOR_LABEL[keys.element];
+  const modeClause = SIGN_CALLOUT_MODE[keys.mode];
+  const elementClause = SIGN_CALLOUT_ELEMENT[keys.element];
+  const traits = traitsForSign(signKey);
+
+  if (!traits?.length) {
+    return `${signName} is a ${modeLabel} ${elementLabel} sign, with ${modeClause} expressed through ${elementClause}.`;
+  }
+
+  const traitPhrase = joinEnglishList(traits.slice(0, 4));
+  return `${signName} is a ${modeLabel} ${elementLabel} sign—often ${traitPhrase}, with ${modeClause} expressed through ${elementClause}.`;
 }
 
 /** Procedural interpret-tab copy from a placement tile (sign, house, mode, element). */
@@ -106,20 +132,26 @@ export function buildInterpretWriteup(
   if (!signCalloutParagraph) return null;
 
   let houseFollowUp: { house: number; text: string } | null = null;
-  if (house != null && houseOrdinal != null && housePhrases?.length) {
+  if (tile.id === "rising") {
+    const traitPhrase = joinEnglishList(traits);
+    houseFollowUp = {
+      house: 1,
+      text: `Your Rising sign or Ascendant is the sign on your 1st House cusp—the one ascending over the eastern horizon at your birth. ${signName} Rising gives the impression of someone who is ${traitPhrase}.`,
+    };
+  } else if (house != null && houseOrdinal != null && housePhrases?.length) {
     const houseThemes = joinEnglishList(housePhrases);
-    const placementInSign =
-      tile.id === "rising" ? `Your Rising in ${signName}` : `Your ${planet} in ${signName}`;
-    const text = `${placementInSign} directs its energy into the ${houseOrdinal} House with a focus on ${houseThemes}.`;
+    const text = `Your ${planet} in ${signName} directs its energy into the ${houseOrdinal} House with a focus on ${houseThemes}.`;
     houseFollowUp = { house, text };
   }
+
+  const displayHouseOrdinal = tile.id === "rising" ? null : houseOrdinal;
 
   return {
     planetSymbol: bodySymbolForTileId(tile.id),
     planetLabel: planet,
     signSymbol: signSymbolForSign(tile.sign),
     signName,
-    houseOrdinal,
+    houseOrdinal: displayHouseOrdinal,
     retrograde: isPlacementTileRetrograde(tile.id, chart),
     planetDomainsLead: {
       placementPlanet: planet,
@@ -129,7 +161,7 @@ export function buildInterpretWriteup(
       adjectivePhrases: traits,
     },
     houseFollowUp,
-    housesRuled: housesRuledByPlacement(chart, tile.id, tile.sign),
+    housesRuled: housesRuledByPlacement(chart, tile.id),
     signCalloutParagraph,
     signAdjectivePhrases: traits,
   };

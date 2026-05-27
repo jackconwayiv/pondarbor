@@ -18,7 +18,9 @@ import {
 } from "./buildInterpretPages";
 import InterpretHouseOccupantCard from "./InterpretHouseOccupantCard";
 import InterpretPlacementHouseLinkCard from "./InterpretPlacementHouseLinkCard";
+import InterpretSearchSuggestions from "./InterpretSearchSuggestions";
 import InterpretSignLinkCard from "./InterpretSignLinkCard";
+import { buildInterpretSearchSuggestions } from "./buildInterpretSearchSuggestions";
 import { buildSignInterpretWriteup } from "./buildSignInterpretWriteup";
 import {
   buildInterpretWriteup,
@@ -451,7 +453,7 @@ function InterpretSignPageContent({
             color="fg"
             fontWeight="normal"
           >
-            Planetary placements in {writeup.signName}:
+            Your planetary placements in {writeup.signName}:
           </Text>
           <SimpleGrid columns={{ base: 1, sm: 2, md: 3 }} gap="3" w="100%">
             {writeup.occupants.map((occ) => {
@@ -613,12 +615,17 @@ function InterpretPageBody({
           boxShadow="sm"
           p={{ base: "5", md: "6" }}
         >
-          <InterpretPlacementPageContent
-            tile={page.tile}
-            chart={chart}
-            pages={pages}
-            onGoToPage={onGoToPage}
-          />
+          <Stack gap="4" w="100%">
+            <InterpretPlacementPageContent
+              tile={page.tile}
+              chart={chart}
+              pages={pages}
+              onGoToPage={onGoToPage}
+            />
+            <InterpretSearchSuggestions
+              items={buildInterpretSearchSuggestions(page, chart)}
+            />
+          </Stack>
         </Box>
       </Box>
     );
@@ -645,12 +652,17 @@ function InterpretPageBody({
           boxShadow="sm"
           p={{ base: "5", md: "6" }}
         >
-          <InterpretSignPageContent
-            sign={page.sign}
-            chart={chart}
-            pages={pages}
-            onGoToPage={onGoToPage}
-          />
+          <Stack gap="4" w="100%">
+            <InterpretSignPageContent
+              sign={page.sign}
+              chart={chart}
+              pages={pages}
+              onGoToPage={onGoToPage}
+            />
+            <InterpretSearchSuggestions
+              items={buildInterpretSearchSuggestions(page, chart)}
+            />
+          </Stack>
         </Box>
       </Box>
     );
@@ -678,12 +690,17 @@ function InterpretPageBody({
         boxShadow="sm"
         p={{ base: "5", md: "6" }}
       >
-        <InterpretHousePageContent
-          house={page.house}
-          chart={chart}
-          pages={pages}
-          onGoToPage={onGoToPage}
-        />
+        <Stack gap="4" w="100%">
+          <InterpretHousePageContent
+            house={page.house}
+            chart={chart}
+            pages={pages}
+            onGoToPage={onGoToPage}
+          />
+          <InterpretSearchSuggestions
+            items={buildInterpretSearchSuggestions(page, chart)}
+          />
+        </Stack>
       </Box>
     </Box>
   );
@@ -731,7 +748,7 @@ export default function ZodiacInterpretTabPanel({
           disabled={atStart}
           onClick={() => setPageIndex((i) => Math.max(0, i - 1))}
         >
-          Back
+          Previous
         </PondButton>
         <HStack gap="1.5" fontSize={APP_TEXT_SIZES.helper} color="fg.muted" fontWeight="medium">
           {planetSymbol ? (

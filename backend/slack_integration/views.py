@@ -22,7 +22,12 @@ from songaday.submission import (
     create_song_response_from_validated_data,
     validate_song_response_payload,
 )
-from slack_integration.models import SlackEventReceipt, SlackIdentity, SongadaySlackDailyPromptState
+from slack_integration.models import (
+    SlackEventReceipt,
+    SlackIdentity,
+    SlackSongadayIngestTrace,
+    SongadaySlackDailyPromptState,
+)
 from slack_integration.slack_api import (
     slack_chat_post_ephemeral,
     slack_chat_post_message,
@@ -87,6 +92,67 @@ def _slack_ephemeral(text: str) -> JsonResponse:
 
 def _slack_in_channel(text: str) -> JsonResponse:
     return JsonResponse({"response_type": "in_channel", "text": text})
+
+
+def _slack_debug_channel_id() -> str:
+    return (getattr(settings, "SLACK_DEBUG_CHANNEL_ID", None) or "").strip()
+
+
+def _post_debug(*, text: str) -> None:
+    """
+    Optional debug channel message for failures.
+
+    Best-effort: do not raise; do not block the Events API ack.
+    """
+    channel = _slack_debug_channel_id()
+    if not channel:
+        return
+    try:
+        resp = slack_chat_post_message(channel=channel, text=text)
+        if not resp.get("ok"):
+            logger.warning("Slack debug chat.postMessage failed: %s", resp)
+    except Exception:
+        logger.exception("Slack debug chat.postMessage exception")
+
+
+def _truncate(s: str, n: int) -> str:
+    raw = (s or "").strip()
+    if len(raw) <= n:
+        return raw
+    return raw[: max(0, n - 1)] + "…"
+
+
+def _trace(
+    *,
+    outcome: str,
+    event_id: str = "",
+    team_id: str = "",
+    channel_id: str = "",
+    slack_user_id: str = "",
+    raw_text: str = "",
+    extracted_url: str = "",
+    user: User | None = None,
+    song_response_id: int | None = None,
+    detail: str = "",
+) -> None:
+    """
+    Best-effort trace row; must never raise.
+    """
+    try:
+        SlackSongadayIngestTrace.objects.create(
+            outcome=outcome,
+            event_id=_truncate(event_id, 128),
+            team_id=_truncate(team_id, 32),
+            channel_id=_truncate(channel_id, 32),
+            slack_user_id=_truncate(slack_user_id, 32),
+            raw_text=_truncate(raw_text, 512),
+            extracted_url=_truncate(extracted_url, 512),
+            user=user,
+            song_response_id=song_response_id,
+            detail=_truncate(detail, 512),
+        )
+    except Exception:
+        logger.exception("SlackSongadayIngestTrace create failed")
 
 
 def _today_for_songaday_slack() -> datetime.date:
@@ -224,22 +290,25 @@ def slack_events(request):
         return JsonResponse({"challenge": payload.get("challenge")})
 
     # Non-handshake requests must be verified.
+    event_id = (payload.get("event_id") or "").strip()
+    team_id = (payload.get("team_id") or "").strip()
     if not verify_slack_request_signature(
         body=raw_body,
         timestamp=request.headers.get("X-Slack-Request-Timestamp"),
         signature=request.headers.get("X-Slack-Signature"),
     ):
+        _trace(outcome=SlackSongadayIngestTrace.Outcome.signature_invalid, event_id=event_id, team_id=team_id)
         return HttpResponseForbidden("invalid signature")
 
     if payload.get("type") != "event_callback":
         return JsonResponse({"ok": True})
 
-    event_id = (payload.get("event_id") or "").strip()
     if event_id:
         try:
             SlackEventReceipt.objects.create(event_id=event_id)
         except Exception:
             # Likely duplicate (Slack retry) — ack and stop.
+            _trace(outcome=SlackSongadayIngestTrace.Outcome.duplicate_event, event_id=event_id, team_id=team_id)
             return JsonResponse({"ok": True})
 
     event = payload.get("event") or {}
@@ -252,9 +321,26 @@ def slack_events(request):
     # Ignore bots / message edits / joins etc.
     if event.get("subtype"):
         logger.info("slack_events ignored subtype=%s channel=%s", event.get("subtype"), event.get("channel"))
+        _trace(
+            outcome=SlackSongadayIngestTrace.Outcome.ignored_subtype,
+            event_id=event_id,
+            team_id=team_id,
+            channel_id=(event.get("channel") or "").strip(),
+            slack_user_id=(event.get("user") or "").strip(),
+            raw_text=(event.get("text") or "").strip(),
+            detail=str(event.get("subtype") or ""),
+        )
         return JsonResponse({"ok": True})
     if event.get("bot_id"):
         logger.info("slack_events ignored bot_id channel=%s", event.get("channel"))
+        _trace(
+            outcome=SlackSongadayIngestTrace.Outcome.ignored_bot,
+            event_id=event_id,
+            team_id=team_id,
+            channel_id=(event.get("channel") or "").strip(),
+            raw_text=(event.get("text") or "").strip(),
+            detail=str(event.get("bot_id") or ""),
+        )
         return JsonResponse({"ok": True})
 
     channel_id = (event.get("channel") or "").strip()
@@ -263,6 +349,15 @@ def slack_events(request):
     allowed_channel = _slack_songaday_channel_id()
     if allowed_channel and channel_id != allowed_channel:
         logger.info("slack_events ignored channel=%s allowed=%s", channel_id, allowed_channel)
+        _trace(
+            outcome=SlackSongadayIngestTrace.Outcome.ignored_channel,
+            event_id=event_id,
+            team_id=team_id,
+            channel_id=channel_id,
+            slack_user_id=(event.get("user") or "").strip(),
+            raw_text=(event.get("text") or "").strip(),
+            detail=f"allowed_channel={allowed_channel}",
+        )
         return JsonResponse({"ok": True})
 
     slack_user_id = (event.get("user") or "").strip()
@@ -273,11 +368,31 @@ def slack_events(request):
     url = _extract_first_url(text)
     if not url:
         logger.info("slack_events no_url channel=%s user=%s text=%r", channel_id, slack_user_id, text[:200])
+        _trace(
+            outcome=SlackSongadayIngestTrace.Outcome.no_url,
+            event_id=event_id,
+            team_id=team_id,
+            channel_id=channel_id,
+            slack_user_id=slack_user_id,
+            raw_text=text,
+        )
         return JsonResponse({"ok": True})
 
-    team_id = (payload.get("team_id") or "").strip()
     user, err = _resolve_user_for_slack(team_id, slack_user_id)
     if err or not user:
+        _trace(
+            outcome=SlackSongadayIngestTrace.Outcome.unlinked_user,
+            event_id=event_id,
+            team_id=team_id,
+            channel_id=channel_id,
+            slack_user_id=slack_user_id,
+            raw_text=text,
+            extracted_url=url,
+            detail=err or "",
+        )
+        _post_debug(
+            text=f"[songaday_ingest] outcome=unlinked_user event_id={event_id} team={team_id} channel={channel_id} user={slack_user_id} url={url} detail={_truncate(err or '', 120)}"
+        )
         create_url = (getattr(settings, "SLACK_CREATE_ACCOUNT_URL", None) or "").strip()
         if create_url:
             resp = slack_chat_post_ephemeral(
@@ -301,6 +416,19 @@ def slack_events(request):
         return JsonResponse({"ok": True})
 
     if user.account_status != User.AccountStatus.APPROVED:
+        _trace(
+            outcome=SlackSongadayIngestTrace.Outcome.pending_approval,
+            event_id=event_id,
+            team_id=team_id,
+            channel_id=channel_id,
+            slack_user_id=slack_user_id,
+            raw_text=text,
+            extracted_url=url,
+            user=user,
+        )
+        _post_debug(
+            text=f"[songaday_ingest] outcome=pending_approval event_id={event_id} team={team_id} channel={channel_id} user={slack_user_id} pond_user_id={getattr(user, 'id', None)} url={url}"
+        )
         resp = slack_chat_post_ephemeral(
             channel=channel_id,
             user=slack_user_id,
@@ -313,6 +441,24 @@ def slack_events(request):
     today = _today_for_songaday_slack()
     prompt = SongPrompt.objects.filter(month=today.month, day=today.day).first()
     if not prompt:
+        msg = f"No Song-a-Day prompt is configured for {today.isoformat()}."
+        _trace(
+            outcome=SlackSongadayIngestTrace.Outcome.no_prompt_today,
+            event_id=event_id,
+            team_id=team_id,
+            channel_id=channel_id,
+            slack_user_id=slack_user_id,
+            raw_text=text,
+            extracted_url=url,
+            user=user,
+            detail=msg,
+        )
+        _post_debug(
+            text=f"[songaday_ingest] outcome=no_prompt_today event_id={event_id} team={team_id} channel={channel_id} user={slack_user_id} pond_user_id={getattr(user, 'id', None)} today={today.isoformat()} url={url}"
+        )
+        resp = slack_chat_post_ephemeral(channel=channel_id, user=slack_user_id, text=msg)
+        if not resp.get("ok"):
+            logger.warning("Slack postEphemeral failed (no prompt today): %s", resp)
         return JsonResponse({"ok": True})
 
     try:
@@ -322,7 +468,26 @@ def slack_events(request):
             prompt_snapshot=prompt.prompt,
         )
         data = validate_song_response_payload(payload2)
-        create_song_response_from_validated_data(user=user, data=data)
+        row = create_song_response_from_validated_data(user=user, data=data)
+        _trace(
+            outcome=SlackSongadayIngestTrace.Outcome.saved,
+            event_id=event_id,
+            team_id=team_id,
+            channel_id=channel_id,
+            slack_user_id=slack_user_id,
+            raw_text=text,
+            extracted_url=url,
+            user=user,
+            song_response_id=getattr(row, "id", None),
+        )
+        logger.info(
+            "slack_songaday_ingest outcome=saved event_id=%s channel=%s slack_user=%s pond_user=%s response_id=%s",
+            event_id,
+            channel_id,
+            slack_user_id,
+            getattr(user, "id", None),
+            getattr(row, "id", None),
+        )
         resp = slack_chat_post_ephemeral(
             channel=channel_id,
             user=slack_user_id,
@@ -332,11 +497,43 @@ def slack_events(request):
             logger.warning("Slack postEphemeral failed (saved): %s", resp)
     except SongadaySubmissionError as e:
         # Most commonly: already submitted today.
+        outcome = (
+            SlackSongadayIngestTrace.Outcome.already_submitted
+            if getattr(e, "status_code", None) == 409
+            else SlackSongadayIngestTrace.Outcome.validation_error
+        )
+        _trace(
+            outcome=outcome,
+            event_id=event_id,
+            team_id=team_id,
+            channel_id=channel_id,
+            slack_user_id=slack_user_id,
+            raw_text=text,
+            extracted_url=url,
+            user=user,
+            detail=e.message,
+        )
+        _post_debug(
+            text=f"[songaday_ingest] outcome={outcome} event_id={event_id} team={team_id} channel={channel_id} user={slack_user_id} pond_user_id={getattr(user, 'id', None)} url={url} detail={_truncate(e.message, 120)}"
+        )
         resp = slack_chat_post_ephemeral(channel=channel_id, user=slack_user_id, text=e.message)
         if not resp.get("ok"):
             logger.warning("Slack postEphemeral failed (submission error): %s", resp)
     except Exception:
         logger.exception("Slack message URL parse submit failed")
+        _trace(
+            outcome=SlackSongadayIngestTrace.Outcome.exception,
+            event_id=event_id,
+            team_id=team_id,
+            channel_id=channel_id,
+            slack_user_id=slack_user_id,
+            raw_text=text,
+            extracted_url=url,
+            user=user,
+        )
+        _post_debug(
+            text=f"[songaday_ingest] outcome=exception event_id={event_id} team={team_id} channel={channel_id} user={slack_user_id} pond_user_id={getattr(user, 'id', None)} url={url}"
+        )
         resp = slack_chat_post_ephemeral(
             channel=channel_id,
             user=slack_user_id,

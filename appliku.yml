@@ -44,6 +44,9 @@ build_settings:
     - name: SLACK_SONGADAY_CHANNEL_ID
       source: manual
       # Optional: events listen channel. Falls back to SLACK_PROMPTS_CHANNEL_ID when unset.
+    - name: SLACK_DEBUG_CHANNEL_ID
+      source: manual
+      # Optional: private debug channel for ingest failures (ops visibility).
     - name: SONGADAY_SLACK_PROMPT_TIMEZONE
       source: manual
     - name: SLACK_CREATE_ACCOUNT_URL

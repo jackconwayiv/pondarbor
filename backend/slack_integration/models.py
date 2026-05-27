@@ -51,3 +51,62 @@ class SlackEventReceipt(models.Model):
 
     def __str__(self) -> str:
         return f"SlackEventReceipt(event_id={self.event_id!r})"
+
+
+class SlackSongadayIngestTrace(models.Model):
+    """
+    Persist a lightweight trace row for each candidate Song-a-Day Slack message event.
+
+    This is intentionally redundant with logs so production debugging can be done in Django admin
+    even when logs are hard to access.
+    """
+
+    class Outcome(models.TextChoices):
+        signature_invalid = "signature_invalid", "Signature invalid"
+        duplicate_event = "duplicate_event", "Duplicate event"
+        ignored_subtype = "ignored_subtype", "Ignored (subtype)"
+        ignored_bot = "ignored_bot", "Ignored (bot)"
+        ignored_channel = "ignored_channel", "Ignored (wrong channel)"
+        no_url = "no_url", "No URL"
+        unlinked_user = "unlinked_user", "Unlinked user"
+        pending_approval = "pending_approval", "Pending approval"
+        no_prompt_today = "no_prompt_today", "No prompt today"
+        validation_error = "validation_error", "Validation error"
+        already_submitted = "already_submitted", "Already submitted"
+        saved = "saved", "Saved"
+        exception = "exception", "Exception"
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    # Slack metadata
+    event_id = models.CharField(max_length=128, blank=True, default="", db_index=True)
+    team_id = models.CharField(max_length=32, blank=True, default="", db_index=True)
+    channel_id = models.CharField(max_length=32, blank=True, default="", db_index=True)
+    slack_user_id = models.CharField(max_length=32, blank=True, default="", db_index=True)
+
+    # Message content / parse
+    raw_text = models.CharField(max_length=512, blank=True, default="")
+    extracted_url = models.CharField(max_length=512, blank=True, default="", db_index=True)
+
+    # Resolution / result
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="slack_songaday_ingest_traces",
+    )
+    song_response_id = models.IntegerField(null=True, blank=True, db_index=True)
+
+    outcome = models.CharField(max_length=64, choices=Outcome.choices, db_index=True)
+    detail = models.CharField(max_length=512, blank=True, default="")
+
+    def __str__(self) -> str:
+        core = f"SlackSongadayIngestTrace(outcome={self.outcome!r}"
+        if self.event_id:
+            core += f", event_id={self.event_id!r}"
+        if self.channel_id:
+            core += f", channel_id={self.channel_id!r}"
+        if self.slack_user_id:
+            core += f", slack_user_id={self.slack_user_id!r}"
+        return core + ")"

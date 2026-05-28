@@ -34,6 +34,10 @@ export function getBreadcrumbItems(
     return [HOME, { label: "Games" }];
   }
 
+  if (p === "/activity") {
+    return [HOME, { label: "Notifications" }];
+  }
+
   if (p === "/clicker") {
     return [HOME, { ...GAMES }, { label: "PondClicker" }];
   }

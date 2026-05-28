@@ -14,6 +14,7 @@ import type { SessionUser } from "../auth/AppSessionContext";
 import { useAppSession } from "../auth/AppSessionContext";
 import {
   achievementInboxId,
+  achievementSlugFromInboxId,
   deriveUnreadAchievementNotices,
 } from "../achievements/achievementInboxNotice";
 import { fetchClosetActionSummary } from "../closet/api";
@@ -227,6 +228,7 @@ type InboxContextValue = {
   homeNoticeItems: HomeNoticeItem[];
   unreadCount: number;
   refreshInbox: () => Promise<string[] | null>;
+  isInboxItemRead: (id: string) => boolean;
   markInboxViewed: (itemIds?: string[]) => void;
   markAchievementNoticesRead: (slugs: string[]) => Promise<void>;
 };
@@ -544,6 +546,16 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
     return ids.filter((id) => !effectiveRead.has(id)).length;
   }, [userId, homePrompts, homeNoticeItems, readIds, achievementReadSlugs]);
 
+  const isInboxItemRead = useCallback(
+    (id: string) => {
+      if (userId == null) return true;
+      if (readIds.has(id)) return true;
+      const slug = achievementSlugFromInboxId(id);
+      return slug != null ? achievementReadSlugs.has(slug) : false;
+    },
+    [userId, readIds, achievementReadSlugs],
+  );
+
   const markInboxViewed = useCallback(
     (itemIds?: string[]) => {
       if (userId == null) return;
@@ -594,6 +606,7 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
       homeNoticeItems,
       unreadCount,
       refreshInbox,
+      isInboxItemRead,
       markInboxViewed,
       markAchievementNoticesRead,
     }),
@@ -609,6 +622,7 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
       homeNoticeItems,
       unreadCount,
       refreshInbox,
+      isInboxItemRead,
       markInboxViewed,
       markAchievementNoticesRead,
     ],

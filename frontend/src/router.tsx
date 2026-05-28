@@ -22,6 +22,7 @@ import { useAppSession } from "./auth/AppSessionContext";
 
 const QuotesFeedPage = lazy(() => import("./quotes/QuotesFeedPage"));
 const ZodiacPage = lazy(() => import("./zodiac/ZodiacPage"));
+const ActivityCenterPage = lazy(() => import("./activity/ActivityCenterPage"));
 const StaffZodiacPage = lazy(() => import("./staff/StaffZodiacPage"));
 const ClosetPage = lazy(() => import("./closet/ClosetPage"));
 const PeoplePage = lazy(() => import("./people/PeoplePage"));
@@ -175,6 +176,10 @@ export const router = sentryCreateBrowserRouter([
       {
         path: "games",
         element: authedRouteElement(lazyRouteElement(<GamesMenu />)),
+      },
+      {
+        path: "activity",
+        element: authedRouteElement(lazyRouteElement(<ActivityCenterPage />)),
       },
       {
         path: "harbor",

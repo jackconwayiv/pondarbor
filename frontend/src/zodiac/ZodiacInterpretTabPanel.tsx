@@ -995,11 +995,14 @@ export default function ZodiacInterpretTabPanel({
   const nextPage =
     safeRenderIndex < pages.length - 1 ? pages[safeRenderIndex + 1] : null;
 
+  // Track is 300% wide; percent transforms are relative to that width.
+  // Center slot starts at -33.333% (one panel), animates to 0% or -66.666%.
+  const PANEL_SHIFT_PCT = 100 / 3;
   const trackTransformPct = animatePager
     ? pagerDirection === 1
-      ? -200
+      ? -2 * PANEL_SHIFT_PCT
       : 0
-    : -100;
+    : -PANEL_SHIFT_PCT;
 
   const onPagerTransitionEnd = useCallback(() => {
     if (!animatePager) return;

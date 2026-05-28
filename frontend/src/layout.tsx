@@ -12,6 +12,7 @@ import {
   Text,
 } from "@chakra-ui/react";
 import { useEffect, useMemo } from "react";
+import { FaBell } from "react-icons/fa";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 
 import {
@@ -33,8 +34,7 @@ import {
 import PondButton from "./PondButton";
 import { pondarborLogoSrc } from "./publicAsset";
 import BreadcrumbBar from "./BreadcrumbBar";
-import { HomeInboxPopover } from "./components/HomeInboxPopover";
-import { HomeInboxProvider } from "./home/homeInboxContext";
+import { HomeInboxProvider, useHomeInbox } from "./home/homeInboxContext";
 import { APP_SHELL_OUTLET_MIN_HEIGHT_PROPS, useNavCompactLayout } from "./responsive";
 import { APP_SHELL_CONTENT_MAX_PROPS } from "./theme/typography";
 
@@ -50,6 +50,84 @@ const NAV_HSTACK_GAP = "1.5";
 const NAV_APP_LINK_HSTACK_GAP = "2.5";
 /** Extra space between wordmark and first top-nav app link (desktop). */
 const WORDMARK_TO_APP_NAV_PL = { base: "0", md: "3" } as const;
+
+function BellNavButton() {
+  const {
+    homePrompts,
+    homeNoticeItems,
+    inboxError,
+    inboxInitialSyncComplete,
+    unreadCount,
+  } = useHomeInbox();
+  const navigate = useNavigate();
+
+  const totalInboxItems = homePrompts.length + homeNoticeItems.length;
+  /** Hidden until first sync; only show if there is activity to show or an error to read. */
+  const showBell =
+    inboxInitialSyncComplete && (Boolean(inboxError) || totalInboxItems > 0);
+  if (!showBell) return null;
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      aria-label={
+        unreadCount > 0 ? `Activity, ${unreadCount} unread` : "Activity"
+      }
+      position="relative"
+      bg="transparent"
+      color={NAV_HEADER_LINK_TEXT.inactive}
+      _hover={{
+        bg: "transparent",
+        color: "white",
+      }}
+      _active={{ bg: "transparent", color: "white" }}
+      _focus={{ boxShadow: "none" }}
+      _focusVisible={{
+        boxShadow: "none",
+        outline: "2px solid",
+        outlineColor: "white",
+        outlineOffset: "2px",
+      }}
+      px="2"
+      minW="auto"
+      h="auto"
+      lineHeight="1"
+      onClick={() => {
+        void navigate("/activity");
+      }}
+    >
+      <Box as="span" display="block" lineHeight="1" aria-hidden>
+        <FaBell size={16} style={{ display: "block" }} />
+      </Box>
+      {unreadCount > 0 ? (
+        <Box
+          as="span"
+          position="absolute"
+          top="-1px"
+          right="-1px"
+          minW="1rem"
+          h="1rem"
+          px="1"
+          display="inline-flex"
+          alignItems="center"
+          justifyContent="center"
+          borderRadius="full"
+          bg="orange.solid"
+          color="white"
+          fontSize="0.6rem"
+          fontWeight="bold"
+          lineHeight="1"
+          borderWidth="1px"
+          borderColor="navy.solid"
+        >
+          {unreadCount > 9 ? "9+" : unreadCount}
+        </Box>
+      ) : null}
+    </Button>
+  );
+}
 
 /** Nav bar links: no underline; no sticky focus/hover chrome after click. */
 const navBarLinkProps = {
@@ -504,7 +582,7 @@ export default function AppLayout() {
               <HStack gap="0" align="center" flexShrink={0}>
                 {showProfileNav ? (
                   <>
-                    <HomeInboxPopover />
+                    <BellNavButton />
                     {accountMenu}
                   </>
                 ) : (
@@ -641,7 +719,7 @@ export default function AppLayout() {
             <Spacer />
             {showProfileNav ? (
               <HStack gap="0" align="center" flexShrink={0}>
-                <HomeInboxPopover />
+                <BellNavButton />
                 {accountMenu}
               </HStack>
             ) : (

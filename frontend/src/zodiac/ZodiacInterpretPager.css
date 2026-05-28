@@ -1,0 +1,30 @@
+.zodiacInterpretPagerViewport {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  max-width: 100%;
+  touch-action: pan-y;
+}
+
+.zodiacInterpretPagerTrack {
+  display: flex;
+  width: 300%;
+  will-change: transform;
+}
+
+.zodiacInterpretPagerTrack--animate {
+  transition: transform 280ms ease-out;
+}
+
+.zodiacInterpretPagerPanel {
+  width: 33.333333%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zodiacInterpretPagerTrack--animate {
+    transition: none;
+  }
+}
+

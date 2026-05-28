@@ -27,6 +27,7 @@ from achievements.services import achievements_payload_for_user, evaluate_meal_m
 from achievements.models import UserAchievement
 
 from .serializers import (
+    AchievementInboxMarkReadSerializer,
     AchievementVisibilityPatchSerializer,
     LoginSerializer,
     MeSerializer,
@@ -117,6 +118,8 @@ def serialize_me(user):
             "social_publish_visibility": profile.social_publish_visibility,
             "social_read_scope": profile.social_read_scope,
             "songaday_visibility": profile.songaday_visibility,
+            "achievement_inbox_read_slugs": profile.achievement_inbox_read_slugs
+            or [],
         },
         "achievements": achievements_payload_for_user(user, public_only=False),
     }
@@ -608,6 +611,30 @@ def patch_me_achievement_visibility(request, slug: str):
     else:
         ua.visible_to_friends = None
     ua.save(update_fields=["visible_to_friends"])
+    return Response(MeSerializer(serialize_me(request.user)).data)
+
+
+@api_view(["POST"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsAuthenticated])
+def mark_me_achievement_inbox_read(request):
+    """
+    Mark achievement "Unlocked: ..." bell notices as read for the account.
+    Stored on Profile so the state persists across devices.
+    """
+    profile = get_or_create_profile(request.user)
+    serializer = AchievementInboxMarkReadSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    incoming = serializer.validated_data["slugs"]
+
+    existing = set(profile.achievement_inbox_read_slugs or [])
+    before = len(existing)
+    for slug in incoming:
+        if slug:
+            existing.add(slug)
+    if len(existing) != before:
+        profile.achievement_inbox_read_slugs = sorted(existing)
+        profile.save(update_fields=["achievement_inbox_read_slugs"])
     return Response(MeSerializer(serialize_me(request.user)).data)
 
 

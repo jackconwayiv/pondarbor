@@ -31,6 +31,8 @@ export type Profile = {
   social_read_scope?: "approved_users" | "friends_only";
   /** Who can see your Song-a-Day submissions. */
   songaday_visibility?: "private" | "friends_only" | "all_approved";
+  /** Achievement slugs whose bell notices have been acknowledged account-wide. */
+  achievement_inbox_read_slugs?: string[];
 };
 
 export type AppUser = {

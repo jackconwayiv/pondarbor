@@ -178,6 +178,29 @@ export async function patchStaffUserAccountStatus(
   return (await response.json()) as StaffUserRow;
 }
 
+export async function markAchievementInboxRead(
+  accessToken: string,
+  slugs: string[],
+): Promise<unknown> {
+  const response = await fetch(
+    `${apiBase()}/api/v1/users/me/achievement-inbox/mark-read/`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      credentials: "omit",
+      body: JSON.stringify({ slugs }),
+    },
+  );
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Achievement inbox mark-read failed (${response.status}): ${text}`);
+  }
+  return (await response.json()) as unknown;
+}
+
 /** Inbox summary from POST /api/v1/users/bootstrap/ (snake_case from API). */
 export type ApiBootstrapInboxResponse = {
   upcoming_birthdays: UpcomingBirthday[];

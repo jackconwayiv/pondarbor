@@ -61,6 +61,7 @@ export function HomeInboxPopover() {
     unreadCount,
     refreshInbox,
     markInboxViewed,
+    markAchievementNoticesRead,
   } = useHomeInbox();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -92,6 +93,16 @@ export function HomeInboxPopover() {
           const ids = await refreshInbox();
           if (ids !== null) {
             markInboxViewed(ids);
+          }
+          const achievementSlugs = homeNoticeItems
+            .map((n) => n.id)
+            .filter((id) => id.startsWith("achievement-"))
+            .map((id) => id.slice("achievement-".length))
+            .filter(Boolean);
+          try {
+            await markAchievementNoticesRead(achievementSlugs);
+          } catch {
+            // Non-fatal: local optimistic update already cleared unread UI.
           }
         }
       }}

@@ -6,7 +6,7 @@ from urllib.parse import parse_qsl
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.http import HttpResponseForbidden, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
@@ -303,20 +303,52 @@ def slack_events(request):
     if payload.get("type") != "event_callback":
         return JsonResponse({"ok": True})
 
-    if event_id:
-        try:
-            SlackEventReceipt.objects.create(event_id=event_id)
-        except Exception:
-            # Likely duplicate (Slack retry) — ack and stop.
-            _trace(outcome=SlackSongadayIngestTrace.Outcome.duplicate_event, event_id=event_id, team_id=team_id)
-            return JsonResponse({"ok": True})
-
     event = payload.get("event") or {}
     if not isinstance(event, dict):
         return JsonResponse({"ok": True})
 
     if (event.get("type") or "") != "message":
         return JsonResponse({"ok": True})
+
+    # Parse the relevant fields before dedupe so duplicate_event traces are still informative.
+    channel_id = (event.get("channel") or "").strip()
+    slack_user_id = (event.get("user") or "").strip()
+    text = (event.get("text") or "").strip()
+    url = _extract_first_url(text)
+    subtype = str(event.get("subtype") or "").strip()
+    bot_id = str(event.get("bot_id") or "").strip()
+
+    if event_id:
+        try:
+            SlackEventReceipt.objects.create(event_id=event_id)
+        except IntegrityError:
+            _trace(
+                outcome=SlackSongadayIngestTrace.Outcome.duplicate_event,
+                event_id=event_id,
+                team_id=team_id,
+                channel_id=channel_id,
+                slack_user_id=slack_user_id,
+                raw_text=text,
+                extracted_url=url,
+                detail=f"subtype={subtype} bot_id={bot_id}",
+            )
+            return JsonResponse({"ok": True})
+        except Exception as e:
+            # If dedupe fails for non-duplicate reasons, do not continue to avoid double-saves.
+            _trace(
+                outcome=SlackSongadayIngestTrace.Outcome.exception,
+                event_id=event_id,
+                team_id=team_id,
+                channel_id=channel_id,
+                slack_user_id=slack_user_id,
+                raw_text=text,
+                extracted_url=url,
+                detail=f"event_receipt_create_failed: {e!r}",
+            )
+            _post_debug(
+                text=f"[songaday_ingest] outcome=exception event_id={event_id} team={team_id} channel={channel_id} user={slack_user_id} url={url} detail=event_receipt_create_failed"
+            )
+            return JsonResponse({"ok": True})
 
     # Ignore bots / message edits / joins etc.
     if event.get("subtype"):
@@ -325,10 +357,11 @@ def slack_events(request):
             outcome=SlackSongadayIngestTrace.Outcome.ignored_subtype,
             event_id=event_id,
             team_id=team_id,
-            channel_id=(event.get("channel") or "").strip(),
-            slack_user_id=(event.get("user") or "").strip(),
-            raw_text=(event.get("text") or "").strip(),
-            detail=str(event.get("subtype") or ""),
+            channel_id=channel_id,
+            slack_user_id=slack_user_id,
+            raw_text=text,
+            extracted_url=url,
+            detail=subtype,
         )
         return JsonResponse({"ok": True})
     if event.get("bot_id"):
@@ -337,13 +370,14 @@ def slack_events(request):
             outcome=SlackSongadayIngestTrace.Outcome.ignored_bot,
             event_id=event_id,
             team_id=team_id,
-            channel_id=(event.get("channel") or "").strip(),
-            raw_text=(event.get("text") or "").strip(),
-            detail=str(event.get("bot_id") or ""),
+            channel_id=channel_id,
+            slack_user_id=slack_user_id,
+            raw_text=text,
+            extracted_url=url,
+            detail=bot_id,
         )
         return JsonResponse({"ok": True})
 
-    channel_id = (event.get("channel") or "").strip()
     if not channel_id:
         return JsonResponse({"ok": True})
     allowed_channel = _slack_songaday_channel_id()
@@ -354,18 +388,16 @@ def slack_events(request):
             event_id=event_id,
             team_id=team_id,
             channel_id=channel_id,
-            slack_user_id=(event.get("user") or "").strip(),
-            raw_text=(event.get("text") or "").strip(),
+            slack_user_id=slack_user_id,
+            raw_text=text,
+            extracted_url=url,
             detail=f"allowed_channel={allowed_channel}",
         )
         return JsonResponse({"ok": True})
 
-    slack_user_id = (event.get("user") or "").strip()
     if not slack_user_id:
         return JsonResponse({"ok": True})
 
-    text = (event.get("text") or "").strip()
-    url = _extract_first_url(text)
     if not url:
         logger.info("slack_events no_url channel=%s user=%s text=%r", channel_id, slack_user_id, text[:200])
         _trace(

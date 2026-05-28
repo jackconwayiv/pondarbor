@@ -776,6 +776,36 @@ class InboxBootstrapPayloadTests(TestCase):
         self.assertGreaterEqual(user.last_login, before)
 
 
+class AchievementInboxReadTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+    def test_mark_read_persists_on_profile_and_is_returned_in_me(self):
+        user = User.objects.create_user(
+            email="achinbox@example.com", password="secret12345"
+        )
+        user.account_status = User.AccountStatus.APPROVED
+        user.save(update_fields=["account_status"])
+        self.client.force_authenticate(user=user)
+
+        res = self.client.post(
+            "/api/v1/users/me/achievement-inbox/mark-read/",
+            {"slugs": ["pondclicker_tier_1_pond", "pondclicker_tier_2_pond"]},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertIn("profile", body)
+        self.assertIn("achievement_inbox_read_slugs", body["profile"])
+        self.assertIn("pondclicker_tier_1_pond", body["profile"]["achievement_inbox_read_slugs"])
+
+        # Verify /me returns the same state.
+        me_res = self.client.get("/api/v1/users/me/")
+        self.assertEqual(me_res.status_code, 200)
+        me = me_res.json()
+        self.assertIn("pondclicker_tier_2_pond", me["profile"]["achievement_inbox_read_slugs"])
+
+
 class SpaRoutingTests(TestCase):
     def test_spa_index_accepts_catch_all_route_kwarg(self):
         request = RequestFactory().get("/quotes")

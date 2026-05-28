@@ -9,7 +9,14 @@ import {
   Tabs,
   Text,
 } from "@chakra-ui/react";
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import { useHorizontalSwipeNavigate } from "../hooks/useHorizontalSwipeNavigate";
 import PondButton from "../PondButton";
@@ -63,6 +70,8 @@ import {
 import { ZODIAC_RETROGRADE_EXPLANATION } from "./zodiacRetrogradeCopy";
 import { houseEmojiForHouse } from "./zodiacHouseDescriptors";
 
+import "./ZodiacInterpretPager.css";
+
 /** Interpret pager tabs: no gray bar; tighter vertical rhythm than shell defaults. */
 const ZODIAC_INTERPRET_SECTION_TAB_LIST_PROPS = {
   ...APP_SHELL_TAB_LIST_INSET_PROPS,
@@ -95,6 +104,12 @@ const ZODIAC_INTERPRET_SUBTAB_TRIGGER_PROPS = {
   px: "2",
   _hover: { bg: "transparent" },
 } as const;
+
+// Temporarily hide Interpret section/subsection tabs to reduce UI clutter.
+// Flip back to `true` when we're ready to expose the nav again.
+const SHOW_INTERPRET_TABS = false;
+
+type PagerDirection = -1 | 1;
 
 export type ZodiacInterpretTabPanelProps = {
   chart: NatalChartPayload;
@@ -846,30 +861,77 @@ export default function ZodiacInterpretTabPanel({
   includeHouses,
   includeRising,
 }: ZodiacInterpretTabPanelProps) {
+  // Match Clicker2 behavior: avoid waiting on `transitionend` when motion is reduced.
+  const motionPaused = useSyncExternalStore(
+    (cb) => {
+      const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+      mq.addEventListener("change", cb);
+      return () => mq.removeEventListener("change", cb);
+    },
+    () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    () => false,
+  );
+
   const pages = useMemo(
     () => buildInterpretPages(chart, { includeHouses, includeRising }),
     [chart, includeHouses, includeRising],
   );
   const sectionNav = useMemo(() => buildInterpretSectionNav(pages), [pages]);
-  const [pageIndex, setPageIndex] = useState(0);
+  const [renderIndex, setRenderIndex] = useState(0);
+  const [pendingIndex, setPendingIndex] = useState<number | null>(null);
+  const [animatePager, setAnimatePager] = useState(false);
+  const [pagerDirection, setPagerDirection] = useState<PagerDirection>(1);
 
   useEffect(() => {
-    setPageIndex(0);
+    setRenderIndex(0);
+    setPendingIndex(null);
+    setAnimatePager(false);
   }, [pages]);
 
-  const safeIndex = pages.length > 0 ? Math.min(pageIndex, pages.length - 1) : 0;
-  const page = pages[safeIndex];
-  const atStart = safeIndex === 0;
-  const atEnd = pages.length > 0 && safeIndex === pages.length - 1;
+  const safeRenderIndex =
+    pages.length > 0 ? Math.min(renderIndex, pages.length - 1) : 0;
+  const page = pages[safeRenderIndex];
+  const uiIndex = pendingIndex ?? safeRenderIndex;
+  const uiPage = pages[uiIndex];
+  const atStart = uiIndex === 0;
+  const atEnd = pages.length > 0 && uiIndex === pages.length - 1;
   const isMobile = useIsMobile();
 
+  const requestPageChange = useCallback(
+    (nextIndex: number) => {
+      if (pages.length === 0) return;
+      const next = Math.max(0, Math.min(pages.length - 1, nextIndex));
+      const current = safeRenderIndex;
+      if (next === current) {
+        setPendingIndex(null);
+        setAnimatePager(false);
+        return;
+      }
+
+      const delta = next - current;
+      const consecutive = Math.abs(delta) === 1;
+      if (!consecutive || motionPaused) {
+        setRenderIndex(next);
+        setPendingIndex(null);
+        setAnimatePager(false);
+        return;
+      }
+
+      // Consecutive step: slide toward the target, then commit on transition end.
+      setPendingIndex(next);
+      setPagerDirection(delta < 0 ? -1 : 1);
+      setAnimatePager(true);
+    },
+    [motionPaused, pages.length, safeRenderIndex],
+  );
+
   const goPrevious = useCallback(() => {
-    setPageIndex((i) => Math.max(0, i - 1));
-  }, []);
+    requestPageChange(uiIndex - 1);
+  }, [requestPageChange, uiIndex]);
 
   const goNext = useCallback(() => {
-    setPageIndex((i) => Math.min(pages.length - 1, i + 1));
-  }, [pages.length]);
+    requestPageChange(uiIndex + 1);
+  }, [requestPageChange, uiIndex]);
 
   const swipeNavigate = useHorizontalSwipeNavigate({
     enabled: isMobile && pages.length > 0,
@@ -891,7 +953,7 @@ export default function ZodiacInterpretTabPanel({
   const jumpToSection = useCallback(
     (sectionId: string) => {
       const target = sectionNav.find((s) => s.id === sectionId);
-      if (target) setPageIndex(target.startIndex);
+      if (target) requestPageChange(target.startIndex);
     },
     [sectionNav],
   );
@@ -899,12 +961,12 @@ export default function ZodiacInterpretTabPanel({
   const jumpToSubTab = useCallback(
     (value: string) => {
       const target = activeSectionSubTabs.find((t) => t.value === value);
-      if (target) setPageIndex(target.pageIndex);
+      if (target) requestPageChange(target.pageIndex);
     },
     [activeSectionSubTabs],
   );
 
-  if (pages.length === 0 || !page) {
+  if (pages.length === 0 || !page || !uiPage) {
     return (
       <Text fontSize={APP_TEXT_SIZES.body} color="fg.muted" lineHeight="tall">
         Placement data is not available for interpretation yet.
@@ -912,9 +974,9 @@ export default function ZodiacInterpretTabPanel({
     );
   }
 
-  const pagerLabel = interpretPageLabel(page);
+  const pagerLabel = interpretPageLabel(uiPage);
   const planetSymbol =
-    page.kind === "placement" ? bodySymbolForTileId(page.tile.id) : null;
+    uiPage.kind === "placement" ? bodySymbolForTileId(uiPage.tile.id) : null;
 
   const pagerControls = (
     <InterpretPagerControls
@@ -924,17 +986,38 @@ export default function ZodiacInterpretTabPanel({
       onNext={goNext}
       pagerLabel={pagerLabel}
       planetSymbol={planetSymbol}
-      pageIndex={safeIndex}
+      pageIndex={uiIndex}
       pageCount={pages.length}
     />
   );
+
+  const prevPage = safeRenderIndex > 0 ? pages[safeRenderIndex - 1] : null;
+  const nextPage =
+    safeRenderIndex < pages.length - 1 ? pages[safeRenderIndex + 1] : null;
+
+  const trackTransformPct = animatePager
+    ? pagerDirection === 1
+      ? -200
+      : 0
+    : -100;
+
+  const onPagerTransitionEnd = useCallback(() => {
+    if (!animatePager) return;
+    if (pendingIndex == null) {
+      setAnimatePager(false);
+      return;
+    }
+    setAnimatePager(false);
+    setPendingIndex(null);
+    setRenderIndex(pendingIndex);
+  }, [animatePager, pendingIndex]);
 
   return (
     <Stack gap="4" w="100%">
       {pagerControls}
 
       <Stack gap="1" w="100%">
-        {sectionNav.length > 1 && activeSection ? (
+        {SHOW_INTERPRET_TABS && sectionNav.length > 1 && activeSection ? (
           <Tabs.Root
             value={activeSection}
             onValueChange={(d) => jumpToSection(d.value)}
@@ -957,7 +1040,7 @@ export default function ZodiacInterpretTabPanel({
           </Tabs.Root>
         ) : null}
 
-        {activeSectionSubTabs.length > 0 && activeSubTabValue ? (
+        {SHOW_INTERPRET_TABS && activeSectionSubTabs.length > 0 && activeSubTabValue ? (
           <Tabs.Root
             value={activeSubTabValue}
             onValueChange={(d) => jumpToSubTab(d.value)}
@@ -1007,17 +1090,53 @@ export default function ZodiacInterpretTabPanel({
       </Stack>
 
       <Box
+        className="zodiacInterpretPagerViewport"
         w="100%"
-        touchAction="pan-y"
         onTouchStart={swipeNavigate.onTouchStart}
         onTouchEnd={swipeNavigate.onTouchEnd}
       >
-        <InterpretPageBody
-          page={page}
-          chart={chart}
-          pages={pages}
-          onGoToPage={setPageIndex}
-        />
+        <Flex
+          className={
+            animatePager && !motionPaused
+              ? "zodiacInterpretPagerTrack zodiacInterpretPagerTrack--animate"
+              : "zodiacInterpretPagerTrack"
+          }
+          style={{ transform: `translateX(${trackTransformPct}%)` }}
+          onTransitionEnd={onPagerTransitionEnd}
+        >
+          <Box className="zodiacInterpretPagerPanel">
+            {prevPage ? (
+              <InterpretPageBody
+                page={prevPage}
+                chart={chart}
+                pages={pages}
+                onGoToPage={requestPageChange}
+              />
+            ) : (
+              <Box />
+            )}
+          </Box>
+          <Box className="zodiacInterpretPagerPanel">
+            <InterpretPageBody
+              page={page}
+              chart={chart}
+              pages={pages}
+              onGoToPage={requestPageChange}
+            />
+          </Box>
+          <Box className="zodiacInterpretPagerPanel">
+            {nextPage ? (
+              <InterpretPageBody
+                page={nextPage}
+                chart={chart}
+                pages={pages}
+                onGoToPage={requestPageChange}
+              />
+            ) : (
+              <Box />
+            )}
+          </Box>
+        </Flex>
       </Box>
 
       {pagerControls}

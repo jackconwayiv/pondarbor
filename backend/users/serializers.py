@@ -79,6 +79,11 @@ class ProfileSerializer(serializers.Serializer):
     social_publish_visibility = serializers.CharField(required=False, default="all_approved")
     social_read_scope = serializers.CharField(required=False, default="approved_users")
     songaday_visibility = serializers.CharField(required=False, default="all_approved")
+    achievement_inbox_read_slugs = serializers.ListField(
+        child=serializers.SlugField(),
+        required=False,
+        default=list,
+    )
 
 
 class AchievementSummarySerializer(serializers.Serializer):
@@ -96,6 +101,14 @@ class AchievementVisibilityPatchSerializer(serializers.Serializer):
     """True or null -> show to friends (stored as null); false -> hidden from friends."""
 
     visible_to_friends = serializers.BooleanField(allow_null=True, required=True)
+
+
+class AchievementInboxMarkReadSerializer(serializers.Serializer):
+    slugs = serializers.ListField(
+        child=serializers.SlugField(),
+        required=True,
+        allow_empty=True,
+    )
 
 
 class MeSerializer(serializers.Serializer):

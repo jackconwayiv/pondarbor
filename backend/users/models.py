@@ -139,6 +139,10 @@ class Profile(models.Model):
         default=SongadayVisibility.ALL_APPROVED,
     )
 
+    # List of achievement slugs whose "Unlocked: ..." bell notice has been acknowledged
+    # by the account. Stored here (vs localStorage) so dismiss persists across devices.
+    achievement_inbox_read_slugs = models.JSONField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -1098,48 +1098,53 @@ export default function ZodiacInterpretTabPanel({
         onTouchStart={swipeNavigate.onTouchStart}
         onTouchEnd={swipeNavigate.onTouchEnd}
       >
-        <Flex
-          className={
-            animatePager && !motionPaused
-              ? "zodiacInterpretPagerTrack zodiacInterpretPagerTrack--animate"
-              : "zodiacInterpretPagerTrack"
-          }
-          style={{ transform: `translateX(${trackTransformPct}%)` }}
-          onTransitionEnd={onPagerTransitionEnd}
-        >
-          <Box className="zodiacInterpretPagerPanel">
-            {prevPage ? (
+        {animatePager ? (
+          <Flex
+            className={
+              !motionPaused
+                ? "zodiacInterpretPagerTrack zodiacInterpretPagerTrack--animate"
+                : "zodiacInterpretPagerTrack"
+            }
+            style={{ transform: `translateX(${trackTransformPct}%)` }}
+            onTransitionEnd={onPagerTransitionEnd}
+          >
+            <Box className="zodiacInterpretPagerPanel">
+              {prevPage ? (
+                <InterpretPageBody
+                  page={prevPage}
+                  chart={chart}
+                  pages={pages}
+                  onGoToPage={requestPageChange}
+                />
+              ) : null}
+            </Box>
+            <Box className="zodiacInterpretPagerPanel">
               <InterpretPageBody
-                page={prevPage}
+                page={page}
                 chart={chart}
                 pages={pages}
                 onGoToPage={requestPageChange}
               />
-            ) : (
-              <Box />
-            )}
-          </Box>
-          <Box className="zodiacInterpretPagerPanel">
-            <InterpretPageBody
-              page={page}
-              chart={chart}
-              pages={pages}
-              onGoToPage={requestPageChange}
-            />
-          </Box>
-          <Box className="zodiacInterpretPagerPanel">
-            {nextPage ? (
-              <InterpretPageBody
-                page={nextPage}
-                chart={chart}
-                pages={pages}
-                onGoToPage={requestPageChange}
-              />
-            ) : (
-              <Box />
-            )}
-          </Box>
-        </Flex>
+            </Box>
+            <Box className="zodiacInterpretPagerPanel">
+              {nextPage ? (
+                <InterpretPageBody
+                  page={nextPage}
+                  chart={chart}
+                  pages={pages}
+                  onGoToPage={requestPageChange}
+                />
+              ) : null}
+            </Box>
+          </Flex>
+        ) : (
+          <InterpretPageBody
+            page={page}
+            chart={chart}
+            pages={pages}
+            onGoToPage={requestPageChange}
+          />
+        )}
       </Box>
 
       {pagerControls}

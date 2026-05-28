@@ -8,6 +8,7 @@
 
 .zodiacInterpretPagerTrack {
   display: flex;
+  align-items: flex-start;
   width: 300%;
   will-change: transform;
 }

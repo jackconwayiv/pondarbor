@@ -1,25 +1,34 @@
-import { Box, Button, Heading, HStack } from "@chakra-ui/react";
+import HomeActionGrid from "./HomeActionGrid";
+import SquallsActionCard from "./SquallsActionCard";
 
 type Props = {
   onShop: () => void;
   onRest: () => void;
   onSail: () => void;
+  onIsland?: () => void;
+  islandExplorePoints?: number;
 };
 
-const ShipView = ({ onShop, onRest, onSail }: Props) => {
+export default function ShipView({
+  onShop,
+  onRest,
+  onSail,
+  onIsland,
+  islandExplorePoints,
+}: Props) {
   return (
-    <Box>
-      <Heading mb={4}>🚢 Your Ship</Heading>
-
-      <HStack wrap="wrap">
-        <Button onClick={onShop}>Shop</Button>
-        <Button onClick={onRest}>Rest</Button>
-        <Button colorScheme="blue" onClick={onSail}>
-          Sail
-        </Button>
-      </HStack>
-    </Box>
+    <HomeActionGrid>
+      {onIsland ? (
+        <SquallsActionCard
+          emoji="🏝️"
+          label={`Head Ashore (${islandExplorePoints ?? 0})`}
+          accent="teal"
+          onClick={onIsland}
+        />
+      ) : null}
+      <SquallsActionCard emoji="💰" label="Barter" accent="yellow" onClick={onShop} />
+      <SquallsActionCard emoji="🛏️" label="Rest Up" accent="purple" onClick={onRest} />
+      <SquallsActionCard emoji="⛵" label="Set Sail" accent="blue" onClick={onSail} />
+    </HomeActionGrid>
   );
-};
-
-export default ShipView;
+}

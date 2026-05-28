@@ -1,0 +1,11 @@
+/* Attack hand cards: parent is the dnd-kit drag handle (see CombatBattleDnd). */
+.squalls-combat-hand-card--draggable {
+  touch-action: none;
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.squalls-combat-hand-card--draggable:active {
+  cursor: grabbing;
+}

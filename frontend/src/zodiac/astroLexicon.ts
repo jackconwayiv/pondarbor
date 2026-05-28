@@ -469,6 +469,59 @@ export function signDisplayName(raw: string): string {
   return k.charAt(0).toUpperCase() + k.slice(1);
 }
 
+/** Traditional epithet for interpret sign headings (e.g. “the Ram”). */
+export const SIGN_EPITHET: Record<ZodiacSignKey, string> = {
+  aries: "the Ram",
+  taurus: "the Bull",
+  gemini: "the Twins",
+  cancer: "the Crab",
+  leo: "the Lion",
+  virgo: "the Virgin",
+  libra: "the Scales",
+  scorpio: "the Scorpion",
+  sagittarius: "the Archer",
+  capricorn: "the Goat",
+  aquarius: "the Water-Bearer",
+  pisces: "the Fish",
+};
+
+/** Sign emoji shown on interpret sign pages (after the heading). */
+export const SIGN_EMOJI: Record<ZodiacSignKey, string> = {
+  aries: "\u{1F40F}",
+  taurus: "\u{1F402}",
+  gemini: "\u{1F46F}",
+  cancer: "\u{1F980}",
+  leo: "\u{1F981}",
+  virgo: "\u{1F469}",
+  libra: "\u2696\uFE0F",
+  scorpio: "\u{1F982}",
+  sagittarius: "\u{1F3F9}",
+  capricorn: "\u{1F410}",
+  aquarius: "\u{1F3FA}",
+  pisces: "\u{1F41F}",
+};
+
+/** e.g. “Aries the Ram”, “Aquarius the Water-Bearer” for interpret sign page titles. */
+export function signInterpretHeading(raw: string): string | null {
+  const k = normalizeZodiacSign(raw);
+  if (!k) return null;
+  return `${signDisplayName(k)} ${SIGN_EPITHET[k]}`;
+}
+
+export function signEmojiForSign(raw: string): string | null {
+  const k = normalizeZodiacSign(raw);
+  if (!k) return null;
+  return SIGN_EMOJI[k];
+}
+
+/** e.g. “You are a Pisces!” / “You are an Aries!” (Sun sign lead-in). */
+export function youAreSignHeading(signRaw: string): string | null {
+  const name = signDisplayName(signRaw);
+  if (!name.trim()) return null;
+  const article = /^[aeiou]/i.test(name) ? "an" : "a";
+  return `You are ${article} ${name}!`;
+}
+
 /** Modern (outer-planet) sign rulers for interpret house pages. */
 export const SIGN_MODERN_RULING_PLANET: Record<ZodiacSignKey, string> = {
   aries: "Mars",

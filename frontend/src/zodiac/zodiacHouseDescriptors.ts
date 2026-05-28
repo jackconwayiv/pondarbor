@@ -144,6 +144,27 @@ export function formatHouseRoman(house: number): string | null {
   return HOUSE_ROMAN[house];
 }
 
+/** Emoji prefix for interpret house page headings (houses 1–12). */
+export const HOUSE_EMOJI: Record<number, string> = {
+  1: "🤩",
+  2: "💰",
+  3: "📖",
+  4: "🏠",
+  5: "🎨",
+  6: "🛎️",
+  7: "💍",
+  8: "🗝️",
+  9: "🗺️",
+  10: "👔",
+  11: "🌐",
+  12: "🔮",
+};
+
+export function houseEmojiForHouse(house: number): string | null {
+  if (!Number.isInteger(house) || house < 1 || house > 12) return null;
+  return HOUSE_EMOJI[house] ?? null;
+}
+
 /** Short theme for interpret house page titles (suffix of `HOUSE_PLACEMENT_HEADING`). */
 export const HOUSE_INTERPRET_THEME: Record<number, string> = {
   1: "Self",

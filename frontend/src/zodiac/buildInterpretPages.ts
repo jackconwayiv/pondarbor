@@ -1,7 +1,11 @@
+import { bodySymbolForTileId, signDisplayName, signSymbolForSign } from "./astroLexicon";
+import { buildHouseInterpretWriteup } from "./buildHouseInterpretWriteup";
 import { buildInterpretPlacementTiles } from "./buildInterpretWriteup";
 import { buildSignInterpretWriteup } from "./buildSignInterpretWriteup";
 import type { NatalChartPayload } from "./chartTypes";
 import type { ZodiacSignCardTile } from "./ZodiacSignCardsStrip";
+import { interpretSubTabSelectedColors, signCardAccent } from "./signCardAccent";
+import { formatHouseRoman } from "./zodiacHouseDescriptors";
 
 export type InterpretPlacementPage = {
   kind: "placement";
@@ -19,6 +23,38 @@ export type InterpretSignPage = {
 };
 
 export type InterpretPage = InterpretPlacementPage | InterpretHousePage | InterpretSignPage;
+
+export type InterpretSectionId = "planets" | "houses" | "signs";
+
+export function interpretPageSection(page: InterpretPage): InterpretSectionId {
+  if (page.kind === "placement") return "planets";
+  if (page.kind === "house") return "houses";
+  return "signs";
+}
+
+export type InterpretSectionNav = {
+  id: InterpretSectionId;
+  label: string;
+  startIndex: number;
+};
+
+/** First page index per interpret section (only sections present in `pages`). */
+export function buildInterpretSectionNav(pages: readonly InterpretPage[]): InterpretSectionNav[] {
+  const out: InterpretSectionNav[] = [];
+  const planetsIdx = pages.findIndex((p) => p.kind === "placement");
+  if (planetsIdx >= 0) {
+    out.push({ id: "planets", label: "Planets", startIndex: planetsIdx });
+  }
+  const housesIdx = pages.findIndex((p) => p.kind === "house");
+  if (housesIdx >= 0) {
+    out.push({ id: "houses", label: "Houses", startIndex: housesIdx });
+  }
+  const signsIdx = pages.findIndex((p) => p.kind === "sign");
+  if (signsIdx >= 0) {
+    out.push({ id: "signs", label: "Signs", startIndex: signsIdx });
+  }
+  return out;
+}
 
 export function buildInterpretPages(
   chart: NatalChartPayload,
@@ -85,7 +121,7 @@ export function interpretSignPageIndex(pages: InterpretPage[], sign: string): nu
 
 export function interpretPageLabel(page: InterpretPage): string {
   if (page.kind === "placement") return page.tile.label;
-  if (page.kind === "sign") return page.sign.replace(/\b\w/g, (c) => c.toUpperCase());
+  if (page.kind === "sign") return signDisplayName(page.sign);
   const n = page.house;
   const suffix =
     n % 10 === 1 && n % 100 !== 11
@@ -96,4 +132,71 @@ export function interpretPageLabel(page: InterpretPage): string {
           ? "rd"
           : "th";
   return `${n}${suffix} House`;
+}
+
+/** Stable `Tabs.Trigger` value for a page within its section. */
+export function interpretPageSubTabValue(page: InterpretPage): string {
+  if (page.kind === "placement") return page.tile.id;
+  if (page.kind === "house") return `house-${page.house}`;
+  return page.sign;
+}
+
+/** Sign key driving `signCardAccent` for this page (matches interpret page chrome). */
+export function interpretPageAccentSignKey(
+  page: InterpretPage,
+  chart: NatalChartPayload,
+): string {
+  if (page.kind === "placement") return page.tile.sign;
+  if (page.kind === "sign") return page.sign;
+  return buildHouseInterpretWriteup(page.house, chart)?.cuspSign ?? "aries";
+}
+
+export type InterpretPageSubTab = {
+  pageIndex: number;
+  value: string;
+  /** Planet/sign glyph or house roman numeral shown on the tab. */
+  tabLabel: string;
+  /** Full name for `aria-label` / `title` (e.g. Sun, 1st House, Leo). */
+  ariaLabel: string;
+  /** Selected tab fill — matches interpret page outer frame (`accent.bg`). */
+  selectedBg: string;
+  /** Selected tab label color — readable on `selectedBg`. */
+  selectedColor: string;
+  /** Selected tab outline — interpret page border accent. */
+  selectedBorderColor: string;
+};
+
+/** Visible sub-tab glyph: planet symbol, house roman numeral, or sign symbol. */
+export function interpretPageSubTabGlyph(page: InterpretPage): string {
+  if (page.kind === "placement") {
+    return bodySymbolForTileId(page.tile.id) ?? page.tile.label;
+  }
+  if (page.kind === "house") {
+    return formatHouseRoman(page.house) ?? String(page.house);
+  }
+  return signSymbolForSign(page.sign) ?? interpretPageLabel(page);
+}
+
+/** Sub-tabs for one section (planets, houses, or signs), in pager order. */
+export function buildInterpretPageSubTabs(
+  pages: readonly InterpretPage[],
+  sectionId: InterpretSectionId,
+  chart: NatalChartPayload,
+): InterpretPageSubTab[] {
+  const out: InterpretPageSubTab[] = [];
+  pages.forEach((p, pageIndex) => {
+    if (interpretPageSection(p) !== sectionId) return;
+    const accent = signCardAccent(interpretPageAccentSignKey(p, chart));
+    const selected = interpretSubTabSelectedColors(accent);
+    out.push({
+      pageIndex,
+      value: interpretPageSubTabValue(p),
+      tabLabel: interpretPageSubTabGlyph(p),
+      ariaLabel: interpretPageLabel(p),
+      selectedBg: selected.bg,
+      selectedColor: selected.color,
+      selectedBorderColor: selected.borderColor,
+    });
+  });
+  return out;
 }

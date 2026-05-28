@@ -144,6 +144,7 @@ SLUG_ESTATES_MONARCH = "estates_monarch"
 SLUG_ESTATES_ROYAL = "estates_royal"
 SLUG_ESTATES_NOBLE = "estates_noble"
 SLUG_ESTATES_PEASANT = "estates_peasant"
+SLUG_PEER_INTO_THE_STARS = "peer_into_the_stars"
 
 ARCHIVIST_MIN_QUOTES = 10
 FAMILIAL_ARBORIST_MIN_PEOPLE = 10
@@ -243,6 +244,19 @@ def evaluate_clicker2_achievements_for_user(user_id: int, state: dict) -> bool:
         if _try_unlock(user_id, slug):
             any_new = True
     return any_new
+
+
+def evaluate_zodiac_peer_into_stars_for_user(user_id: int) -> None:
+    """Unlock when the member has a staff-imported natal chart at Zodiackary."""
+    from zodiac.friend_zodiac import friend_has_shareable_zodiac
+    from zodiac.models import AstroProfile
+
+    astro = AstroProfile.objects.filter(user_id=user_id).first()
+    if not friend_has_shareable_zodiac(astro):
+        return
+    if not astro.natal_chart:
+        return
+    _try_unlock(user_id, SLUG_PEER_INTO_THE_STARS)
 
 
 def evaluate_people_achievements_for_user(user_id: int) -> None:
@@ -531,6 +545,7 @@ def backfill_all_achievements() -> None:
         evaluate_songaday_month_of_music_for_user(uid)
         evaluate_songaday_music_lover_for_user(uid)
         evaluate_songaday_musically_multiloquent_for_user(uid)
+        evaluate_zodiac_peer_into_stars_for_user(uid)
 
     for row in ClickerGameSave.objects.iterator():
         evaluate_pondclicker_achievements_for_user(row.user_id, row.state or {})

@@ -1,20 +1,47 @@
-import { Box, Flex, Grid, Heading, HStack, SimpleGrid, Stack, Text } from "@chakra-ui/react";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import {
+  Box,
+  Flex,
+  Grid,
+  Heading,
+  HStack,
+  SimpleGrid,
+  Stack,
+  Tabs,
+  Text,
+} from "@chakra-ui/react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
+import { useHorizontalSwipeNavigate } from "../hooks/useHorizontalSwipeNavigate";
 import PondButton from "../PondButton";
+import { useIsMobile } from "../responsive";
+import {
+  APP_SHELL_TAB_LIST_INSET_PROPS,
+  APP_SHELL_TAB_LIST_MEAL_INNER_PROPS,
+  APP_SHELL_TAB_TRIGGER_BASE_PROPS,
+  APP_SHELL_TAB_TRIGGER_PROPS,
+} from "../theme/appShellTabs";
 import { APP_TEXT_SIZES } from "../theme/typography";
-import { bodySymbolForTileId, chartPointDisplayLabel } from "./astroLexicon";
+import {
+  bodySymbolForTileId,
+  chartPointDisplayLabel,
+  youAreSignHeading,
+} from "./astroLexicon";
 import {
   buildHouseInterpretWriteup,
   interpretPlacementChartKey,
 } from "./buildHouseInterpretWriteup";
 import {
+  buildInterpretPageSubTabs,
   buildInterpretPages,
+  buildInterpretSectionNav,
   interpretHousePageIndex,
   interpretPageLabel,
+  interpretPageSection,
+  interpretPageSubTabValue,
   interpretPlacementPageIndex,
   interpretSignPageIndex,
   type InterpretPage,
+  type InterpretSectionId,
 } from "./buildInterpretPages";
 import InterpretHouseOccupantCard from "./InterpretHouseOccupantCard";
 import InterpretPlacementHouseLinkCard from "./InterpretPlacementHouseLinkCard";
@@ -29,12 +56,45 @@ import {
 import { signCardAccent } from "./signCardAccent";
 import type { NatalChartPayload } from "./chartTypes";
 import type { ZodiacSignCardTile } from "./ZodiacSignCardsStrip";
-import ZodiacPhraseCallouts from "./ZodiacPhraseCallouts";
 import {
   INTERPRET_BODY_FONT_SIZE,
   INTERPRET_HEADING_SIZE,
 } from "./interpretTypography";
 import { ZODIAC_RETROGRADE_EXPLANATION } from "./zodiacRetrogradeCopy";
+import { houseEmojiForHouse } from "./zodiacHouseDescriptors";
+
+/** Interpret pager tabs: no gray bar; tighter vertical rhythm than shell defaults. */
+const ZODIAC_INTERPRET_SECTION_TAB_LIST_PROPS = {
+  ...APP_SHELL_TAB_LIST_INSET_PROPS,
+  bg: "transparent",
+  py: "1",
+  gap: "1",
+  borderBottomWidth: "0",
+} as const;
+
+const ZODIAC_INTERPRET_SUBTAB_LIST_PROPS = {
+  ...APP_SHELL_TAB_LIST_MEAL_INNER_PROPS,
+  bg: "transparent",
+  px: 0,
+  py: "1",
+  gap: "1",
+  pb: "0.5",
+  borderBottomWidth: "0",
+  flexWrap: "wrap",
+} as const;
+
+const ZODIAC_INTERPRET_SECTION_TAB_TRIGGER_PROPS = {
+  ...APP_SHELL_TAB_TRIGGER_PROPS,
+  py: "1",
+  _hover: { bg: "transparent" },
+} as const;
+
+const ZODIAC_INTERPRET_SUBTAB_TRIGGER_PROPS = {
+  ...APP_SHELL_TAB_TRIGGER_BASE_PROPS,
+  py: "0.75",
+  px: "2",
+  _hover: { bg: "transparent" },
+} as const;
 
 export type ZodiacInterpretTabPanelProps = {
   chart: NatalChartPayload;
@@ -240,7 +300,22 @@ function InterpretPlacementPageContent({
       w="100%"
     >
       <Stack gap="4" minW="0">
-        <InterpretPlacementTitle writeup={writeup} accent={accent} />
+        <Stack gap="2" w="100%">
+          <InterpretPlacementTitle writeup={writeup} accent={accent} />
+          {tile.id === "sun" && youAreSignHeading(tile.sign) ? (
+            <Heading
+              as="h2"
+              size={INTERPRET_HEADING_SIZE}
+              fontFamily="heading"
+              fontWeight="normal"
+              lineHeight="short"
+              color="fg"
+              mb="0"
+            >
+              {youAreSignHeading(tile.sign)}
+            </Heading>
+          ) : null}
+        </Stack>
         {writeup.retrograde ? (
           <Text
             fontSize={{ base: "xs", md: "sm" }}
@@ -377,7 +452,6 @@ function InterpretSignPageContent({
   onGoToPage: (pageIndex: number) => void;
 }) {
   const writeup = buildSignInterpretWriteup(sign, chart);
-  const accent = signCardAccent(sign);
   if (!writeup) return null;
 
   return (
@@ -396,10 +470,14 @@ function InterpretSignPageContent({
           lineHeight="short"
           color="fg"
           mb="0"
-          textTransform="capitalize"
         >
-          {writeup.signName}
+          {writeup.signHeading}
         </Heading>
+        {writeup.signEmoji ? (
+          <Text fontSize="2xl" lineHeight="1" aria-hidden="true">
+            {writeup.signEmoji}
+          </Text>
+        ) : null}
       </Flex>
 
       {writeup.calloutParagraph ? (
@@ -411,11 +489,6 @@ function InterpretSignPageContent({
           {writeup.calloutParagraph}
         </Text>
       ) : null}
-
-      <ZodiacPhraseCallouts
-        phrases={writeup.adjectivePhrases}
-        accentBorderColor={accent.borderColor}
-      />
 
       {writeup.ruledHouses.length > 0 ? (
         <SimpleGrid
@@ -498,19 +571,28 @@ function InterpretHousePageContent({
   const writeup = buildHouseInterpretWriteup(house, chart);
   if (!writeup) return null;
 
+  const houseEmoji = houseEmojiForHouse(house);
+
   return (
     <Stack gap="4" w="100%">
-      <Heading
-        as="h2"
-        size={INTERPRET_HEADING_SIZE}
-        fontFamily="heading"
-        fontWeight="normal"
-        lineHeight="short"
-        color="fg"
-        mb="0"
-      >
-        {writeup.title}
-      </Heading>
+      <Flex align="center" gap="2" flexWrap="wrap">
+        {houseEmoji ? (
+          <Text fontSize="2xl" lineHeight="1" aria-hidden="true">
+            {houseEmoji}
+          </Text>
+        ) : null}
+        <Heading
+          as="h2"
+          size={INTERPRET_HEADING_SIZE}
+          fontFamily="heading"
+          fontWeight="normal"
+          lineHeight="short"
+          color="fg"
+          mb="0"
+        >
+          {writeup.title}
+        </Heading>
+      </Flex>
       {writeup.staticParagraphs.map((paragraph) => (
         <Text
           key={paragraph}
@@ -706,6 +788,59 @@ function InterpretPageBody({
   );
 }
 
+function InterpretPagerControls({
+  atStart,
+  atEnd,
+  onPrevious,
+  onNext,
+  pagerLabel,
+  planetSymbol,
+  pageIndex,
+  pageCount,
+}: {
+  atStart: boolean;
+  atEnd: boolean;
+  onPrevious: () => void;
+  onNext: () => void;
+  pagerLabel: string;
+  planetSymbol: string | null;
+  pageIndex: number;
+  pageCount: number;
+}) {
+  return (
+    <HStack justify="space-between" align="center" w="100%" flexWrap="wrap" gap="2">
+      <PondButton
+        size="sm"
+        variant="outline"
+        colorPalette="sky"
+        disabled={atStart}
+        onClick={onPrevious}
+      >
+        Previous
+      </PondButton>
+      <HStack gap="1.5" fontSize={APP_TEXT_SIZES.helper} color="fg.muted" fontWeight="medium">
+        {planetSymbol ? (
+          <Text as="span" aria-hidden="true">
+            {planetSymbol}
+          </Text>
+        ) : null}
+        <Text as="span">
+          {pagerLabel} · {pageIndex + 1} of {pageCount}
+        </Text>
+      </HStack>
+      <PondButton
+        size="sm"
+        variant="outline"
+        colorPalette="sky"
+        disabled={atEnd}
+        onClick={onNext}
+      >
+        Next
+      </PondButton>
+    </HStack>
+  );
+}
+
 export default function ZodiacInterpretTabPanel({
   chart,
   includeHouses,
@@ -715,6 +850,7 @@ export default function ZodiacInterpretTabPanel({
     () => buildInterpretPages(chart, { includeHouses, includeRising }),
     [chart, includeHouses, includeRising],
   );
+  const sectionNav = useMemo(() => buildInterpretSectionNav(pages), [pages]);
   const [pageIndex, setPageIndex] = useState(0);
 
   useEffect(() => {
@@ -723,6 +859,50 @@ export default function ZodiacInterpretTabPanel({
 
   const safeIndex = pages.length > 0 ? Math.min(pageIndex, pages.length - 1) : 0;
   const page = pages[safeIndex];
+  const atStart = safeIndex === 0;
+  const atEnd = pages.length > 0 && safeIndex === pages.length - 1;
+  const isMobile = useIsMobile();
+
+  const goPrevious = useCallback(() => {
+    setPageIndex((i) => Math.max(0, i - 1));
+  }, []);
+
+  const goNext = useCallback(() => {
+    setPageIndex((i) => Math.min(pages.length - 1, i + 1));
+  }, [pages.length]);
+
+  const swipeNavigate = useHorizontalSwipeNavigate({
+    enabled: isMobile && pages.length > 0,
+    onSwipeLeft: atEnd ? undefined : goNext,
+    onSwipeRight: atStart ? undefined : goPrevious,
+  });
+
+  const activeSection: InterpretSectionId | null = page
+    ? interpretPageSection(page)
+    : null;
+
+  const activeSectionSubTabs = useMemo(
+    () => (activeSection ? buildInterpretPageSubTabs(pages, activeSection, chart) : []),
+    [pages, activeSection, chart],
+  );
+
+  const activeSubTabValue = page ? interpretPageSubTabValue(page) : null;
+
+  const jumpToSection = useCallback(
+    (sectionId: string) => {
+      const target = sectionNav.find((s) => s.id === sectionId);
+      if (target) setPageIndex(target.startIndex);
+    },
+    [sectionNav],
+  );
+
+  const jumpToSubTab = useCallback(
+    (value: string) => {
+      const target = activeSectionSubTabs.find((t) => t.value === value);
+      if (target) setPageIndex(target.pageIndex);
+    },
+    [activeSectionSubTabs],
+  );
 
   if (pages.length === 0 || !page) {
     return (
@@ -735,48 +915,112 @@ export default function ZodiacInterpretTabPanel({
   const pagerLabel = interpretPageLabel(page);
   const planetSymbol =
     page.kind === "placement" ? bodySymbolForTileId(page.tile.id) : null;
-  const atStart = safeIndex === 0;
-  const atEnd = safeIndex === pages.length - 1;
+
+  const pagerControls = (
+    <InterpretPagerControls
+      atStart={atStart}
+      atEnd={atEnd}
+      onPrevious={goPrevious}
+      onNext={goNext}
+      pagerLabel={pagerLabel}
+      planetSymbol={planetSymbol}
+      pageIndex={safeIndex}
+      pageCount={pages.length}
+    />
+  );
 
   return (
     <Stack gap="4" w="100%">
-      <HStack justify="space-between" align="center" w="100%" flexWrap="wrap" gap="2">
-        <PondButton
-          size="sm"
-          variant="outline"
-          colorPalette="sky"
-          disabled={atStart}
-          onClick={() => setPageIndex((i) => Math.max(0, i - 1))}
-        >
-          Previous
-        </PondButton>
-        <HStack gap="1.5" fontSize={APP_TEXT_SIZES.helper} color="fg.muted" fontWeight="medium">
-          {planetSymbol ? (
-            <Text as="span" aria-hidden="true">
-              {planetSymbol}
-            </Text>
-          ) : null}
-          <Text as="span">
-            {pagerLabel} · {safeIndex + 1} of {pages.length}
-          </Text>
-        </HStack>
-        <PondButton
-          size="sm"
-          variant="outline"
-          colorPalette="sky"
-          disabled={atEnd}
-          onClick={() => setPageIndex((i) => Math.min(pages.length - 1, i + 1))}
-        >
-          Next
-        </PondButton>
-      </HStack>
+      {pagerControls}
 
-      <InterpretPageBody
-        page={page}
-        chart={chart}
-        pages={pages}
-        onGoToPage={setPageIndex}
-      />
+      <Stack gap="1" w="100%">
+        {sectionNav.length > 1 && activeSection ? (
+          <Tabs.Root
+            value={activeSection}
+            onValueChange={(d) => jumpToSection(d.value)}
+            variant="plain"
+          >
+            <Tabs.List
+              {...ZODIAC_INTERPRET_SECTION_TAB_LIST_PROPS}
+              aria-label="Interpret sections"
+            >
+              {sectionNav.map((section) => (
+                <Tabs.Trigger
+                  key={section.id}
+                  value={section.id}
+                  {...ZODIAC_INTERPRET_SECTION_TAB_TRIGGER_PROPS}
+                >
+                  {section.label}
+                </Tabs.Trigger>
+              ))}
+            </Tabs.List>
+          </Tabs.Root>
+        ) : null}
+
+        {activeSectionSubTabs.length > 0 && activeSubTabValue ? (
+          <Tabs.Root
+            value={activeSubTabValue}
+            onValueChange={(d) => jumpToSubTab(d.value)}
+            variant="plain"
+          >
+            <Tabs.List
+              {...ZODIAC_INTERPRET_SUBTAB_LIST_PROPS}
+              aria-label={`${activeSection === "planets" ? "Planets" : activeSection === "houses" ? "Houses" : "Signs"} in this chart`}
+            >
+              {activeSectionSubTabs.map((subTab) => (
+                <Tabs.Trigger
+                  key={subTab.value}
+                  value={subTab.value}
+                  {...ZODIAC_INTERPRET_SUBTAB_TRIGGER_PROPS}
+                  bg="transparent"
+                  borderWidth="1px"
+                  borderColor="transparent"
+                  _selected={{
+                    bg: subTab.selectedBg,
+                    color: subTab.selectedColor,
+                    borderWidth: "1px",
+                    borderColor: subTab.selectedBorderColor,
+                  }}
+                  css={{
+                    "&[data-selected]": {
+                      backgroundColor: subTab.selectedBg,
+                      color: subTab.selectedColor,
+                      borderColor: subTab.selectedBorderColor,
+                    },
+                  }}
+                  display="inline-flex"
+                  alignItems="center"
+                  justifyContent="center"
+                  textAlign="center"
+                  minW="2.25rem"
+                  fontSize="md"
+                  lineHeight="1"
+                  aria-label={subTab.ariaLabel}
+                  title={subTab.ariaLabel}
+                >
+                  {subTab.tabLabel}
+                </Tabs.Trigger>
+              ))}
+            </Tabs.List>
+          </Tabs.Root>
+        ) : null}
+      </Stack>
+
+      <Box
+        w="100%"
+        touchAction="pan-y"
+        onTouchStart={swipeNavigate.onTouchStart}
+        onTouchEnd={swipeNavigate.onTouchEnd}
+      >
+        <InterpretPageBody
+          page={page}
+          chart={chart}
+          pages={pages}
+          onGoToPage={setPageIndex}
+        />
+      </Box>
+
+      {pagerControls}
     </Stack>
   );
 }

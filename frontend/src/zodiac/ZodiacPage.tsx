@@ -49,6 +49,8 @@ import { ZODIAC_ASPECT_ANCHOR_BODIES } from "./zodiacDisplayConfig";
 import { zodiacTileFromChartBodyKey } from "./zodiacPlacementFromChart";
 import ZodiacFriendsTabPanel from "./ZodiacFriendsTabPanel";
 import ZodiacInterpretTabPanel from "./ZodiacInterpretTabPanel";
+import { INTERPRET_HEADING_SIZE } from "./interpretTypography";
+import { youAreSignHeading } from "./astroLexicon";
 
 /** Normalize for API + stable birthKey comparison (optional time → null). */
 function normalizeBirthTimeForKey(raw: string | null | undefined): string | null {
@@ -229,6 +231,9 @@ export default function ZodiacPage() {
       const res = await fetchAstroProfile(token);
       setProfile(res.profile);
       applyProfileToForm(res.profile, sessionUser?.profile?.birth_date ?? null);
+      if (res.profile?.chart_status === "ready" && res.profile.natal_chart) {
+        await resyncSessionSilently();
+      }
     } catch (e: unknown) {
       if (e instanceof Error && e.message === "pending_approval") {
         setLoadError(
@@ -241,7 +246,12 @@ export default function ZodiacPage() {
     } finally {
       setLoading(false);
     }
-  }, [applyProfileToForm, getApiAccessToken, sessionUser?.profile?.birth_date]);
+  }, [
+    applyProfileToForm,
+    getApiAccessToken,
+    resyncSessionSilently,
+    sessionUser?.profile?.birth_date,
+  ]);
 
   useEffect(() => {
     void reload();
@@ -303,6 +313,14 @@ export default function ZodiacPage() {
       natalChart: chart,
     });
   }, [hasStaffImportedChart, profile, chart, birthTimeUnknown]);
+
+  const overviewShowsBigThreeStrip =
+    placementPaneTile == null && canvasDescriptorSign == null;
+
+  const youAreSunSignLine = useMemo(
+    () => (profile?.sun_sign ? youAreSignHeading(profile.sun_sign) : null),
+    [profile?.sun_sign],
+  );
 
   const onMiniPlacementSelect = useCallback((tile: ZodiacSignCardTile) => {
     setCanvasDescriptorSign(null);
@@ -731,6 +749,19 @@ export default function ZodiacPage() {
                         activeTileId={placementPaneTile?.id ?? ""}
                         onSelect={onMiniPlacementSelect}
                       />
+                    ) : null}
+                    {overviewShowsBigThreeStrip && youAreSunSignLine ? (
+                      <Heading
+                        as="h2"
+                        size={INTERPRET_HEADING_SIZE}
+                        fontFamily="heading"
+                        fontWeight="normal"
+                        lineHeight="short"
+                        color="fg"
+                        mb="0"
+                      >
+                        {youAreSunSignLine}
+                      </Heading>
                     ) : null}
                     {overviewCanvas}
                   </Stack>

@@ -6,6 +6,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from friends.services import friends_queryset_for_user, order_users_by_recent_activity
+from achievements.services import evaluate_zodiac_peer_into_stars_for_user
 from users.models import Profile, User
 from users.permissions import IsApprovedUser, IsStaffUser
 from users.social_privacy import owner_publish_visibility, viewer_context
@@ -47,6 +48,7 @@ def user_astro_profile(request):
             profile = AstroProfile.objects.get(user=user)
         except AstroProfile.DoesNotExist:
             return Response({"profile": None}, status=status.HTTP_200_OK)
+        evaluate_zodiac_peer_into_stars_for_user(user.id)
         return Response({"profile": serialize_astro_profile(profile)})
 
     # PUT
@@ -261,6 +263,8 @@ def staff_user_chart(request, user_id: int):
     profile.chart_ready_at = timezone.now()
     profile.staff_imported_by = request.user
     profile.save()
+
+    evaluate_zodiac_peer_into_stars_for_user(target.id)
 
     return Response(
         {

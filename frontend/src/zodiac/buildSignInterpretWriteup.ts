@@ -1,5 +1,7 @@
 import {
   signDisplayName,
+  signEmojiForSign,
+  signInterpretHeading,
   signSymbolForSign,
   traitsForSign,
 } from "./astroLexicon";
@@ -20,9 +22,11 @@ export type InterpretSignRuledHouse = {
 export type InterpretSignWriteup = {
   sign: string;
   signName: string;
+  /** e.g. “Aries the Ram”. */
+  signHeading: string;
+  signEmoji: string | null;
   signSymbol: string | null;
   calloutParagraph: string | null;
-  adjectivePhrases: readonly string[];
   ruledHouses: InterpretSignRuledHouse[];
   occupants: InterpretHouseOccupant[];
 };
@@ -53,17 +57,18 @@ export function buildSignInterpretWriteup(
   chart: NatalChartPayload,
 ): InterpretSignWriteup | null {
   const signName = signDisplayName(signKey);
-  const adjectivePhrases = traitsForSign(signKey);
-  if (!adjectivePhrases?.length) return null;
+  const signHeading = signInterpretHeading(signKey);
+  if (!traitsForSign(signKey)?.length || !signHeading) return null;
 
   const calloutParagraph = buildSignCalloutParagraph(signKey);
 
   return {
     sign: signKey,
     signName,
+    signHeading,
+    signEmoji: signEmojiForSign(signKey),
     signSymbol: signSymbolForSign(signKey),
     calloutParagraph,
-    adjectivePhrases,
     ruledHouses: ruledHousesForSign(chart, signKey),
     occupants: occupantsInSign(chart, signKey),
   };

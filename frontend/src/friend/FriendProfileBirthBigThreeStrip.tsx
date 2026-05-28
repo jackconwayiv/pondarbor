@@ -5,21 +5,31 @@ import { Link as RouterLink } from "react-router";
 import { APP_TEXT_SIZES } from "../theme/typography";
 import FriendZodiacPlacementsBlock from "../zodiac/FriendZodiacPlacementsBlock";
 import { buildZodiacOverviewTiles } from "../zodiac/ZodiacOverviewCardsStrip";
+import { signDisplayName } from "../zodiac/astroLexicon";
 import { formatBirthMonthDay } from "../zodiac/birthDateFormat";
 
 export type FriendProfileBirthdayInlineProps = {
   birthDate?: string | null;
+  /** Present when the friend has astro display on and a ready chart (see public profile API). */
+  sunSign?: string | null;
 };
 
 /** Right-aligned birthday label for the profile identity row. */
-export function FriendProfileBirthdayInline({ birthDate }: FriendProfileBirthdayInlineProps) {
+export function FriendProfileBirthdayInline({
+  birthDate,
+  sunSign,
+}: FriendProfileBirthdayInlineProps) {
   const label = formatBirthMonthDay(birthDate);
   if (!label) return null;
+
+  const headingLabel = sunSign?.trim()
+    ? signDisplayName(sunSign.trim())
+    : "Birthday";
 
   return (
     <Stack gap="0.5" align="flex-end" flexShrink={0} textAlign="right" ml="auto">
       <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" fontWeight="medium">
-        Birthday
+        {headingLabel}
       </Text>
       <Text fontSize={APP_TEXT_SIZES.title} fontWeight="semibold" color="fg">
         {label}

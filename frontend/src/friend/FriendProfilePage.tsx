@@ -787,7 +787,10 @@ export default function FriendProfilePage() {
                           </Text>
                         ) : null}
                       </Stack>
-                      <FriendProfileBirthdayInline birthDate={summary.birth_date} />
+                      <FriendProfileBirthdayInline
+                        birthDate={summary.birth_date}
+                        sunSign={summary.sun_sign}
+                      />
                     </HStack>
                     {profileSubjectUserId != null ? (
                       <FriendProfileBigThreeRow

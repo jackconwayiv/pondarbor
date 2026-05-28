@@ -12,15 +12,20 @@ const TAB_ON_TEAL = {
   color: APP_SHELL_TAB_SELECTED_FG,
 };
 
-/** Spread on `Tabs.Trigger` together with `value` (and optional overrides). */
-export const APP_SHELL_TAB_TRIGGER_PROPS = {
+/** Shared tab trigger chrome without selected-state colors (for per-item `_selected` overrides). */
+export const APP_SHELL_TAB_TRIGGER_BASE_PROPS = {
   borderRadius: "full",
   px: "3",
   py: "2",
   fontWeight: "semibold" as const,
-  _selected: TAB_ON_TEAL,
   _hover: { bg: "bg.muted" },
   transition: APP_TRANSITIONS.backgroundStandard,
+} as const;
+
+/** Spread on `Tabs.Trigger` together with `value` (and optional overrides). */
+export const APP_SHELL_TAB_TRIGGER_PROPS = {
+  ...APP_SHELL_TAB_TRIGGER_BASE_PROPS,
+  _selected: TAB_ON_TEAL,
 } as const;
 
 /**

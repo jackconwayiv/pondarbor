@@ -3,6 +3,8 @@ from datetime import date, time
 from django.test import TestCase
 from rest_framework.test import APIClient
 
+from achievements.models import UserAchievement
+from achievements.services import SLUG_PEER_INTO_THE_STARS
 from users.models import User
 from zodiac.models import AstroProfile
 
@@ -161,6 +163,37 @@ class ZodiacApiTests(TestCase):
         prof = AstroProfile.objects.get(user=user)
         self.assertEqual(prof.chart_status, AstroProfile.ChartStatus.READY)
         self.assertIsNotNone(prof.natal_chart)
+        self.assertTrue(
+            UserAchievement.objects.filter(
+                user=user, achievement__slug=SLUG_PEER_INTO_THE_STARS
+            ).exists()
+        )
+
+    def test_get_profile_awards_peer_into_stars(self):
+        user = User.objects.create_user(email="u_chart@example.com", password="secret12345")
+        user.account_status = User.AccountStatus.APPROVED
+        user.save()
+        AstroProfile.objects.create(
+            user=user,
+            chart_status=AstroProfile.ChartStatus.READY,
+            birth_date=date(1990, 1, 1),
+            birth_time=time(12, 0, 0),
+            country_code="US",
+            admin_area="ST",
+            locality="Here",
+            sun_sign="libra",
+            moon_sign="sagittarius",
+            rising_sign="pisces",
+            natal_chart={"points": {"sun": {"sign": "libra"}}, "angles": {}},
+        )
+        self.client.force_login(user)
+        response = self.client.get("/api/v1/zodiac/profile/")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            UserAchievement.objects.filter(
+                user=user, achievement__slug=SLUG_PEER_INTO_THE_STARS
+            ).exists()
+        )
 
     def test_staff_imported_lists_ready_charts(self):
         staff = User.objects.create_user(

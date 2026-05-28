@@ -40,6 +40,17 @@ function accentLines(
  * Air: three gray *base* columns from the brand grays.
  * Fire: light / base / dark orange. Water: light / base / dark blue. Earth: light / base / dark green.
  */
+/** Selected interpret sub-tab colors aligned with `InterpretPageBody` outer frame (`bg` + `borderColor`). */
+export function interpretSubTabSelectedColors(
+  accent: SignCardAccent,
+): { bg: string; color: string; borderColor: string } {
+  return {
+    bg: accent.bg,
+    color: accent.valueColor === "#FFFFFF" ? accent.valueColor : accent.labelColor,
+    borderColor: accent.borderColor,
+  };
+}
+
 export function signCardAccent(signRaw: string): SignCardAccent {
   const s = signRaw.trim().toLowerCase();
   const map: Record<string, SignCardAccent> = {

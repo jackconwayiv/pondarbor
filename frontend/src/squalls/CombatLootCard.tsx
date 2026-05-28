@@ -74,9 +74,11 @@ export default function CombatLootCard({ item, onClaim }: Props) {
       <Text fontSize="sm" fontWeight="bold" textAlign="center" lineClamp={2} px={1}>
         {amountLabel}
       </Text>
-      <Text fontSize="2xs" color="gray.600" lineClamp={1}>
-        {item.sourceName}
-      </Text>
+      {isItem && item.amount > 1 ? (
+        <Text fontSize="sm" fontWeight="bold" color="gray.700">
+          ×{item.amount}
+        </Text>
+      ) : null}
       {item.claimed ? (
         <Text fontSize="2xs" color="gray.500">
           Claimed

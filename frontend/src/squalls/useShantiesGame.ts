@@ -26,17 +26,18 @@ import {
   spawnEnemy,
 } from "./combatRules";
 import {
-  applyCoconutUse,
   applyBuyItem,
+  applyFoodUse,
   applySellItem,
+  addItemToInventory,
   checkBuyItem,
   checkSellItem,
   checkUseItem,
+  getFoodHealAmount,
   getItemCount,
-  grantLootItemToInventory,
   getItemEnergyCost,
-  COCONUT_HEAL_AMOUNT,
   formatIndoorAreaLabel,
+  isFoodItem,
   ITEM_DEFINITIONS,
   removeItemFromInventory,
 } from "./shantiesItems";
@@ -179,6 +180,7 @@ export function useShantiesGame() {
   const [itemMessage, setItemMessage] = useState<string | null>(null);
   const [shopMessage, setShopMessage] = useState<string | null>(null);
   const [restMessage, setRestMessage] = useState<string | null>(null);
+  const [restComplete, setRestComplete] = useState(false);
   const [encounterModifiers, setEncounterModifiers] =
     useState<ScopedEncounterModifiers>(
       initialSave.encounterModifiers ?? createEmptyScopedEncounterModifiers(),
@@ -307,7 +309,11 @@ export function useShantiesGame() {
     if (item.kind === "item" && item.itemId) {
       setHero((h) => ({
         ...h,
-        inventory: grantLootItemToInventory(h.inventory, item.itemId!),
+        inventory: addItemToInventory(
+          h.inventory,
+          item.itemId!,
+          Math.max(1, item.amount),
+        ),
       }));
     }
   }, []);
@@ -707,7 +713,16 @@ export function useShantiesGame() {
     setActiveEvent(eventToSet);
     setDungeonChestUnlocked(chestUnlocked);
     setChestMessage(null);
-    setEventLoot(isTreasureEvent(drawn) ? generateEventLoot(drawn) : []);
+    setEventLoot(
+      isTreasureEvent(drawn)
+        ? generateEventLoot(drawn, {
+            islandVibe:
+              location === "island" || location === "dungeon"
+                ? (currentIsland?.vibe ?? null)
+                : null,
+          })
+        : [],
+    );
     if (location === "ship" && drawn.type === "discovery") {
       setCurrentIsland(generateIsland());
     }
@@ -1039,6 +1054,12 @@ export function useShantiesGame() {
     setGameState("lobby");
   }, [cancelVictoryDelay, resetAllEncounterModifiers, resetCombatState]);
 
+  const openRest = useCallback(() => {
+    setRestComplete(false);
+    setRestMessage(null);
+    setGameState("rest");
+  }, []);
+
   const healHero = useCallback(() => {
     const check = checkRest(hero);
     if (!check.ok) {
@@ -1046,11 +1067,18 @@ export function useShantiesGame() {
       return;
     }
     setHero((h) => applyRest(h));
-    setRestMessage("Ye wake refreshed and ready for adventure.");
-    setGameState("home");
+    setRestMessage(null);
+    setRestComplete(true);
   }, [hero]);
 
+  const wakeFromRest = useCallback(() => {
+    setRestComplete(false);
+    setRestMessage(null);
+    setGameState("home");
+  }, []);
+
   const leaveRest = useCallback(() => {
+    setRestComplete(false);
     setRestMessage(null);
     setGameState("home");
   }, []);
@@ -1141,9 +1169,11 @@ export function useShantiesGame() {
         setEnergy((e) => e - energyCost);
       }
 
-      if (itemId === "coconut") {
-        setHero((h) => applyCoconutUse(h));
-        setItemMessage(`Ye eat the coconut and recover ${COCONUT_HEAL_AMOUNT} HP.`);
+      if (isFoodItem(itemId)) {
+        const healAmount = getFoodHealAmount(itemId);
+        const foodName = ITEM_DEFINITIONS[itemId].name.toLowerCase();
+        setHero((h) => applyFoodUse(h, itemId));
+        setItemMessage(`Ye eat the ${foodName} and recover ${healAmount} HP.`);
         return;
       }
 
@@ -1232,7 +1262,10 @@ export function useShantiesGame() {
     lobbySaveSummaryLines,
     lobbySavedAtLabel,
     healHero,
+    openRest,
+    wakeFromRest,
     leaveRest,
+    restComplete,
     restMessage,
     illuminatedAreas,
     currentIndoorArea,

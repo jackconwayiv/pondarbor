@@ -4,7 +4,7 @@ import type {
   EquippedGear,
   HeroType,
 } from "./shantiesTypes";
-import { sellPriceFromBuyPrice } from "./shantiesShop";
+import { sellPriceFromBasePrice } from "./shantiesShop";
 
 export const EQUIPMENT_SLOTS: readonly EquipmentSlot[] = [
   "melee",
@@ -152,8 +152,9 @@ export function applyEquipmentMove(
 }
 
 export function getEquipmentSellPrice(equipmentId: EquipmentId): number | null {
-  const buyPrice = getEquipmentBuyPrice(equipmentId);
-  return buyPrice === null ? null : sellPriceFromBuyPrice(buyPrice);
+  const basePrice = getEquipmentBuyPrice(equipmentId);
+  if (basePrice === null) return null;
+  return sellPriceFromBasePrice(basePrice);
 }
 
 export function checkSellEquipment(

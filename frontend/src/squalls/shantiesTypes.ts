@@ -103,7 +103,41 @@ export type CombatLootItem = {
   itemId?: ItemId;
 };
 
-export const ITEM_IDS = ["coconut", "candle", "key"] as const;
+export const FOOD_ITEM_IDS = [
+  "banana",
+  "coconut",
+  "mango",
+  "pineapple",
+  "tea",
+  "rum",
+] as const;
+export type FoodItemId = (typeof FOOD_ITEM_IDS)[number];
+
+export const SHIP_ITEM_IDS = [
+  "wood_plank",
+  "sail_cloth",
+  "water_bucket",
+] as const;
+export type ShipItemId = (typeof SHIP_ITEM_IDS)[number];
+
+export const AMMO_ITEM_IDS = ["ammo_pouch"] as const;
+export type AmmoItemId = (typeof AMMO_ITEM_IDS)[number];
+
+export const MUNITIONS_ITEM_IDS = [
+  "cannonball",
+  "scattershot",
+  "powderkeg",
+] as const;
+export type MunitionsItemId = (typeof MUNITIONS_ITEM_IDS)[number];
+
+export const ITEM_IDS = [
+  ...FOOD_ITEM_IDS,
+  ...SHIP_ITEM_IDS,
+  ...AMMO_ITEM_IDS,
+  ...MUNITIONS_ITEM_IDS,
+  "candle",
+  "key",
+] as const;
 export type ItemId = (typeof ITEM_IDS)[number];
 
 export type Inventory = Partial<Record<ItemId, number>>;
@@ -226,7 +260,10 @@ export type WorldPanelProps = {
   lobbySaveSummaryLines: SaveSummaryLine[];
   lobbySavedAtLabel: string | null;
   healHero: () => void;
+  openRest: () => void;
+  wakeFromRest: () => void;
   leaveRest: () => void;
+  restComplete: boolean;
   restMessage: string | null;
   shopMessage: string | null;
   buyShopItem: (itemId: ItemId) => void;

@@ -1,12 +1,10 @@
 import { Badge, HStack, Text } from "@chakra-ui/react";
 
 import { getDungeonCombatPlaceLabel } from "./dungeonExplore";
-import { formatPlaceLabel } from "./shantiesSaveSummary";
 import type { AdventureStripeProps } from "./shantiesTypes";
 
 function formatStripePlaceLabel(props: AdventureStripeProps): string {
-  const { gameState, location, currentIsland, currentDungeon, renderIslandName, renderDungeonName } =
-    props;
+  const { gameState, location, currentDungeon, renderDungeonName } = props;
   if (gameState === "battle") {
     if (location === "dungeon" && currentDungeon) {
       return getDungeonCombatPlaceLabel(currentDungeon.kind);
@@ -15,13 +13,12 @@ function formatStripePlaceLabel(props: AdventureStripeProps): string {
     if (location === "island") return "Island Combat";
     return "Combat";
   }
-  return formatPlaceLabel(
-    location,
-    currentIsland,
-    renderIslandName,
-    currentDungeon,
-    renderDungeonName,
-  );
+  if (location === "island") return "Island";
+  if (location === "dungeon" && currentDungeon) {
+    return renderDungeonName(currentDungeon);
+  }
+  if (location === "dungeon") return "Dungeon";
+  return "Ship";
 }
 
 function stripePlacePrefix(

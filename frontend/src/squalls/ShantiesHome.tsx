@@ -160,7 +160,10 @@ export default function ShantiesHome() {
             resumeAdventure={game.resumeAdventure}
             restartAdventure={game.restartAdventure}
             healHero={game.healHero}
+            openRest={game.openRest}
+            wakeFromRest={game.wakeFromRest}
             leaveRest={game.leaveRest}
+            restComplete={game.restComplete}
             restMessage={game.restMessage}
             shopMessage={game.shopMessage}
             buyShopItem={game.buyShopItem}

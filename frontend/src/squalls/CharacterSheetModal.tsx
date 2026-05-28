@@ -7,6 +7,7 @@ import {
   APP_SHELL_TAB_TRIGGER_PROPS,
 } from "../theme/appShellTabs";
 import { clampHp } from "./combatRules";
+import CharacterSheetDeck from "./CharacterSheetDeck";
 import CharacterSheetEquipment from "./CharacterSheetEquipment";
 import ItemInventoryCard from "./ItemInventoryCard";
 import {
@@ -24,7 +25,7 @@ import type {
   ItemId,
 } from "./shantiesTypes";
 
-type CharacterSheetTab = "stats" | "inventory";
+type CharacterSheetTab = "stats" | "equipment" | "deck";
 
 type Props = {
   open: boolean;
@@ -112,38 +113,33 @@ export default function CharacterSheetModal({
           <Tabs.Trigger value="stats" {...APP_SHELL_TAB_TRIGGER_PROPS}>
             Stats
           </Tabs.Trigger>
-          <Tabs.Trigger value="inventory" {...APP_SHELL_TAB_TRIGGER_PROPS}>
-            Inventory
+          <Tabs.Trigger value="equipment" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+            Equipment
+          </Tabs.Trigger>
+          <Tabs.Trigger value="deck" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+            Deck
           </Tabs.Trigger>
         </Tabs.List>
 
         <Tabs.Content value="stats" pt={3}>
-          <SimpleGrid columns={2} gap={3}>
-            <StatRow label="Captain" value={hero.name} />
-            <StatRow label="Class" value={hero.class} />
-            <StatRow
-              label="HP"
-              value={`${clampHp(hero.current_hp)} / ${clampHp(hero.max_hp)}`}
-            />
-            <StatRow label="Gold" value={String(hero.gold)} />
-            <StatRow label="Level" value={String(hero.level)} />
-            <StatRow label="XP" value={String(hero.xp)} />
-            <StatRow label="Deck" value={`${hero.deck.length} cards`} />
-            {inCombat && armor > 0 ? (
-              <StatRow label="Armor" value={String(armor)} />
-            ) : null}
-            {inCombat ? (
-              <StatRow label="Energy" value={String(energy)} />
-            ) : null}
-          </SimpleGrid>
-        </Tabs.Content>
-
-        <Tabs.Content value="inventory" pt={3}>
           <VStack align="stretch" gap={4}>
-            <CharacterSheetEquipment
-              hero={hero}
-              onEquipmentChange={onEquipmentChange}
-            />
+            <SimpleGrid columns={2} gap={3}>
+              <StatRow label="Captain" value={hero.name} />
+              <StatRow label="Class" value={hero.class} />
+              <StatRow
+                label="HP"
+                value={`${clampHp(hero.current_hp)} / ${clampHp(hero.max_hp)}`}
+              />
+              <StatRow label="Gold" value={String(hero.gold)} />
+              <StatRow label="Level" value={String(hero.level)} />
+              <StatRow label="XP" value={String(hero.xp)} />
+              {inCombat && armor > 0 ? (
+                <StatRow label="Armor" value={String(armor)} />
+              ) : null}
+              {inCombat ? (
+                <StatRow label="Energy" value={String(energy)} />
+              ) : null}
+            </SimpleGrid>
 
             <Box>
               <Text fontSize="sm" fontWeight="bold" mb={2}>
@@ -184,6 +180,17 @@ export default function CharacterSheetModal({
               ) : null}
             </Box>
           </VStack>
+        </Tabs.Content>
+
+        <Tabs.Content value="equipment" pt={3}>
+          <CharacterSheetEquipment
+            hero={hero}
+            onEquipmentChange={onEquipmentChange}
+          />
+        </Tabs.Content>
+
+        <Tabs.Content value="deck" pt={3}>
+          <CharacterSheetDeck deck={hero.deck} />
         </Tabs.Content>
       </Tabs.Root>
     </AppModal>

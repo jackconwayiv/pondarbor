@@ -1,5 +1,6 @@
+import { combatItemLootCards, rollMonsterItemDrops } from "./monsterDrops";
 import { LOOT_ITEM_COPY_LIMIT, pickRandomItemId } from "./shantiesItems";
-import type { CombatLootItem, EnemyType, EventType, ItemId } from "./shantiesTypes";
+import type { CombatLootItem, EnemyType, EventType, IslandType, ItemId } from "./shantiesTypes";
 
 /** At most one consumable loot card, always quantity 1. */
 export function createRandomItemLootCard(
@@ -58,16 +59,14 @@ export function allLootClaimed(loot: CombatLootItem[]): boolean {
 export const allCombatLootClaimed = allLootClaimed;
 
 export function goldDropForEnemy(enemy: EnemyType): number {
-  const base = enemy.level * 3;
-  const bonus = Math.floor(Math.random() * (enemy.level * 2 + 1));
-  return base + bonus + 1;
+  return enemy.level * 2;
 }
 
 export function xpDropForEnemy(enemy: EnemyType): number {
-  return enemy.level * 5;
+  return enemy.level;
 }
 
-/** One gold card and one XP card with totals from all foes in the victory snapshot. */
+/** One gold card, one XP card, and stacked item cards from per-foe drop rolls. */
 export function generateCombatLoot(enemies: EnemyType[]): CombatLootItem[] {
   const foes = enemies.filter((enemy): enemy is EnemyType => Boolean(enemy));
   if (foes.length === 0) return [];
@@ -79,72 +78,73 @@ export function generateCombatLoot(enemies: EnemyType[]): CombatLootItem[] {
     totalXp += xpDropForEnemy(enemy);
   }
 
-  const sourceName =
-    foes.length === 1 ? foes[0].name : `${foes.length} foes`;
+  const itemCards = combatItemLootCards(rollMonsterItemDrops(foes));
 
-  const itemLoot = createRandomItemLootCard("combat-loot-item", sourceName);
-
-  return capLootToSingleItem([
+  return [
     {
       id: "combat-loot-gold",
       kind: "gold",
       amount: totalGold,
-      sourceName,
+      sourceName: "",
       claimed: false,
     },
     {
       id: "combat-loot-xp",
       kind: "xp",
       amount: totalXp,
-      sourceName,
+      sourceName: "",
       claimed: false,
     },
-    itemLoot,
-  ]);
+    ...itemCards,
+  ];
 }
 
-function rollInRange(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
+function rollD4(): number {
+  return Math.floor(Math.random() * 4) + 1;
 }
 
-const EVENT_TREASURE_REWARDS: Record<
-  string,
-  { gold?: [number, number]; xp?: [number, number] }
-> = {
-  "Floating Chest": { gold: [6, 14], xp: [4, 8] },
-  "Hidden Treasure": { gold: [12, 24], xp: [8, 14] },
-  "Wild Supplies": { gold: [4, 10], xp: [2, 6] },
-  "Temple Offerings": { gold: [2, 8], xp: [12, 20] },
-  "Buried Chest": { gold: [8, 18], xp: [6, 12] },
+/** Roll L d4 (minimum one die) and sum. */
+export function rollLd4(diceCount: number): number {
+  const L = Math.max(1, diceCount);
+  let total = 0;
+  for (let i = 0; i < L; i++) {
+    total += rollD4();
+  }
+  return total;
+}
+
+/** Treasure gold dice from island vibe: Foreboding L+2, Inviting L−1 (min 1 die). */
+export function treasureGoldDiceCount(
+  islandVibe: IslandType["vibe"] | null | undefined,
+  baseL = 1,
+): number {
+  let L = baseL;
+  if (islandVibe === "Foreboding") L += 2;
+  else if (islandVibe === "Inviting") L -= 1;
+  return Math.max(1, L);
+}
+
+export type EventLootContext = {
+  /** Island vibe when treasure is found on an island or its dungeon; omit at sea. */
+  islandVibe?: IslandType["vibe"] | null;
 };
 
-/** Gold, XP, and a random item for a treasure event. */
-export function generateEventLoot(event: EventType): CombatLootItem[] {
-  const table = EVENT_TREASURE_REWARDS[event.name] ?? {
-    gold: [5, 12] as [number, number],
-    xp: [3, 8] as [number, number],
-  };
+/** Gold (Ld4 by island vibe) and a random item for a treasure event (no XP). */
+export function generateEventLoot(
+  event: EventType,
+  context: EventLootContext = {},
+): CombatLootItem[] {
   const slug = event.name.replace(/\s+/g, "-").toLowerCase();
-  const items: CombatLootItem[] = [];
-
-  if (table.gold) {
-    items.push({
+  const goldAmount = rollLd4(treasureGoldDiceCount(context.islandVibe));
+  const items: CombatLootItem[] = [
+    {
       id: `event-${slug}-gold`,
       kind: "gold",
-      amount: rollInRange(table.gold[0], table.gold[1]),
+      amount: goldAmount,
       sourceName: event.name,
       claimed: false,
-    });
-  }
-  if (table.xp) {
-    items.push({
-      id: `event-${slug}-xp`,
-      kind: "xp",
-      amount: rollInRange(table.xp[0], table.xp[1]),
-      sourceName: event.name,
-      claimed: false,
-    });
-  }
+    },
+  ];
 
   const itemLoot = createRandomItemLootCard(`event-${slug}-item`, event.name);
 

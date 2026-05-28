@@ -3,7 +3,6 @@ import {
   DEFEND_CARD_TAGS,
 } from "./combatCardStyle";
 import { capLootToSingleItem, generateCombatLoot, generateEventLoot, isTreasureEvent } from "./combatLoot";
-import { LOOT_ITEM_COPY_LIMIT } from "./shantiesItems";
 import {
   createEmptyScopedEncounterModifiers,
   type EncounterModifiers,
@@ -41,7 +40,7 @@ import {
 } from "./shantiesTypes";
 
 export const SHANTIES_STORAGE_KEY = "pondarbor.squalls.v1";
-export const SHANTIES_SAVE_VERSION = 5;
+export const SHANTIES_SAVE_VERSION = 6;
 
 const attackCard: CombatCard = {
   name: "Attack",
@@ -201,6 +200,58 @@ function finiteNumber(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+/** v5 coconut was the 5 HP snack; v6 renames that role to banana. */
+function migrateV5ToV6(raw: unknown): unknown {
+  if (!isRecord(raw)) return raw;
+  const next: Record<string, unknown> = { ...raw };
+
+  if (isRecord(raw.hero) && isRecord(raw.hero.inventory)) {
+    const inv = { ...raw.hero.inventory };
+    const legacyCoconut = Math.floor(finiteNumber(inv.coconut, 0));
+    if (legacyCoconut > 0) {
+      inv.banana = Math.floor(finiteNumber(inv.banana, 0)) + legacyCoconut;
+      delete inv.coconut;
+    }
+    next.hero = { ...raw.hero, inventory: inv };
+  }
+
+  const migrateLootItemIds = (loot: unknown): unknown => {
+    if (!Array.isArray(loot)) return loot;
+    return loot.map((entry) => {
+      if (!isRecord(entry) || entry.itemId !== "coconut") return entry;
+      return { ...entry, itemId: "banana" };
+    });
+  };
+
+  if ("combatLoot" in raw) {
+    next.combatLoot = migrateLootItemIds(raw.combatLoot);
+  }
+  if ("eventLoot" in raw) {
+    next.eventLoot = migrateLootItemIds(raw.eventLoot);
+  }
+
+  return next;
+}
+
+function resolveSavePayload(parsed: Record<string, unknown>): {
+  data: unknown;
+  savedAtMs: number | null;
+} | null {
+  let version =
+    typeof parsed.version === "number" ? parsed.version : SHANTIES_SAVE_VERSION;
+  let data: unknown = isRecord(parsed.data) ? parsed.data : parsed;
+  const savedAtMs =
+    typeof parsed.savedAtMs === "number" ? parsed.savedAtMs : null;
+
+  if (version === 5) {
+    data = migrateV5ToV6(data);
+    version = 6;
+  }
+
+  if (version !== SHANTIES_SAVE_VERSION) return null;
+  return { data, savedAtMs };
+}
+
 function normalizeCardTargeting(raw: unknown): CardTargeting | null {
   if (!isRecord(raw)) return null;
   const mode = raw.mode === "auto" || raw.mode === "manual" ? raw.mode : null;
@@ -297,7 +348,7 @@ function normalizeHero(raw: unknown): HeroType {
   };
 }
 
-function normalizeCombatLoot(raw: unknown): CombatLootItem[] {
+function normalizeLootStash(raw: unknown): CombatLootItem[] {
   if (!Array.isArray(raw)) return [];
   const items: CombatLootItem[] = [];
   for (const entry of raw) {
@@ -308,31 +359,30 @@ function normalizeCombatLoot(raw: unknown): CombatLootItem[] {
       entry.kind === "item"
         ? entry.kind
         : null;
+    if (!kind) continue;
     const sourceName =
       typeof entry.sourceName === "string"
         ? entry.sourceName
         : typeof entry.enemyName === "string"
           ? entry.enemyName
-          : null;
-    if (!kind || !sourceName) continue;
+          : "";
     const itemId =
       kind === "item" && ITEM_IDS.includes(entry.itemId as ItemId)
         ? (entry.itemId as ItemId)
         : undefined;
     if (kind === "item" && !itemId) continue;
+    const amount = Math.max(0, finiteNumber(entry.amount, 0));
+    if (kind === "item" && amount <= 0) continue;
     items.push({
       id: entry.id,
       kind,
-      amount:
-        kind === "item"
-          ? Math.min(LOOT_ITEM_COPY_LIMIT, Math.max(0, finiteNumber(entry.amount, 0)))
-          : Math.max(0, finiteNumber(entry.amount, 0)),
+      amount,
       sourceName,
       claimed: entry.claimed === true,
       ...(itemId ? { itemId } : {}),
     });
   }
-  return capLootToSingleItem(items);
+  return items;
 }
 
 function normalizeDungeon(raw: unknown): DungeonType | null {
@@ -452,26 +502,32 @@ function normalizeSaveData(raw: unknown): ShantiesSaveData {
         ? enemies
         : [];
 
-  let combatLoot = normalizeCombatLoot(raw.combatLoot);
+  let combatLoot = normalizeLootStash(raw.combatLoot);
   if (combatLoot.length === 0 && combatVictory && resolvedVictoryEnemies.length > 0) {
     combatLoot = generateCombatLoot(resolvedVictoryEnemies);
   }
 
   const activeEvent = normalizeEvent(raw.activeEvent);
-  let eventLoot = normalizeCombatLoot(raw.eventLoot);
+  const currentIsland = normalizeIsland(raw.currentIsland);
+  let eventLoot = capLootToSingleItem(normalizeLootStash(raw.eventLoot));
   if (
     eventLoot.length === 0 &&
     gameState === "event" &&
     activeEvent &&
     isTreasureEvent(activeEvent)
   ) {
-    eventLoot = generateEventLoot(activeEvent);
+    eventLoot = generateEventLoot(activeEvent, {
+      islandVibe:
+        location === "island" || location === "dungeon"
+          ? (currentIsland?.vibe ?? null)
+          : null,
+    });
   }
 
   return {
     gameState,
     location,
-    currentIsland: normalizeIsland(raw.currentIsland),
+    currentIsland,
     currentDungeon: normalizeDungeon(raw.currentDungeon),
     day: Math.max(1, finiteNumber(raw.day, 1)),
     hero: normalizeHero(raw.hero),
@@ -507,16 +563,12 @@ export function readShantiesSaveWithMeta(): {
     const parsed = JSON.parse(raw) as unknown;
     if (!isRecord(parsed)) return null;
 
-    if (isRecord(parsed.data)) {
-      const version =
-        typeof parsed.version === "number" ? parsed.version : SHANTIES_SAVE_VERSION;
-      if (version !== SHANTIES_SAVE_VERSION) return null;
-      const savedAtMs =
-        typeof parsed.savedAtMs === "number" ? parsed.savedAtMs : null;
-      return { data: normalizeSaveData(parsed.data), savedAtMs };
-    }
-
-    return { data: normalizeSaveData(parsed), savedAtMs: null };
+    const resolved = resolveSavePayload(parsed);
+    if (!resolved) return null;
+    return {
+      data: normalizeSaveData(resolved.data),
+      savedAtMs: resolved.savedAtMs,
+    };
   } catch {
     return null;
   }
@@ -529,14 +581,9 @@ export function readShantiesSave(): ShantiesSaveData | null {
     const parsed = JSON.parse(raw) as unknown;
     if (!isRecord(parsed)) return null;
 
-    if (isRecord(parsed.data)) {
-      const version =
-        typeof parsed.version === "number" ? parsed.version : SHANTIES_SAVE_VERSION;
-      if (version !== SHANTIES_SAVE_VERSION) return null;
-      return normalizeSaveData(parsed.data);
-    }
-
-    return normalizeSaveData(parsed);
+    const resolved = resolveSavePayload(parsed);
+    if (!resolved) return null;
+    return normalizeSaveData(resolved.data);
   } catch {
     return null;
   }

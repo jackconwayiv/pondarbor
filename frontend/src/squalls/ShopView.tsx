@@ -7,9 +7,9 @@ import { getEquipmentSellPrice } from "./shantiesEquipment";
 import {
   checkBuyItem,
   checkSellItem,
+  getItemBuyPrice,
   getItemCount,
   getItemSellPrice,
-  ITEM_DEFINITIONS,
   ITEM_IDS,
   SHOP_ITEM_IDS,
 } from "./shantiesItems";
@@ -33,7 +33,9 @@ export default function ShopView({
   onBack,
 }: Props) {
   const ownedConsumables = ITEM_IDS.filter(
-    (itemId) => getItemCount(hero.inventory, itemId) > 0 && getItemSellPrice(itemId) !== null,
+    (itemId) =>
+      getItemCount(hero.inventory, itemId) > 0 &&
+      getItemSellPrice(itemId) !== null,
   );
   const hasSellables =
     ownedConsumables.length > 0 || hero.equipmentInventory.length > 0;
@@ -60,8 +62,8 @@ export default function ShopView({
       </Text>
       <SimpleGrid columns={3} gap={1.5} w="100%" maxW="28rem">
         {SHOP_ITEM_IDS.map((itemId) => {
-          const def = ITEM_DEFINITIONS[itemId];
           const owned = getItemCount(hero.inventory, itemId);
+          const buyPrice = getItemBuyPrice(hero, itemId)!;
           const canBuy = checkBuyItem(hero, itemId).ok;
           return (
             <ItemInventoryCard
@@ -70,7 +72,7 @@ export default function ShopView({
               count={owned}
               countFormat="owned"
               showUse
-              useLabel={`Buy (${def.shopPrice}g)`}
+              useLabel={`Buy (${buyPrice}g)`}
               useDisabled={!canBuy}
               onUse={() => onBuyItem(itemId)}
             />

@@ -28,3 +28,6 @@ export function applyRest(hero: HeroType): HeroType {
     current_hp: clampHp(hero.max_hp),
   };
 }
+
+export const REST_COMPLETE_MESSAGE =
+  "You spend the night resting in your bunk and recover all your HP.";

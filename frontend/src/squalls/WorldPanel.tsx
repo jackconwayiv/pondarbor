@@ -99,7 +99,10 @@ export default function WorldPanel({
   lobbySaveSummaryLines,
   lobbySavedAtLabel,
   healHero,
+  openRest,
+  wakeFromRest,
   leaveRest,
+  restComplete,
   restMessage,
   shopMessage,
   buyShopItem,
@@ -222,7 +225,7 @@ export default function WorldPanel({
           {location === "ship" && (
             <ShipView
               onShop={() => setGameState("shop")}
-              onRest={() => setGameState("rest")}
+              onRest={openRest}
               onSail={startSailFromShip}
               islandExplorePoints={
                 currentIsland !== null
@@ -301,8 +304,10 @@ export default function WorldPanel({
       return (
         <RestView
           hero={hero}
+          restComplete={restComplete}
           restMessage={restMessage}
           onRest={healHero}
+          onWakeUp={wakeFromRest}
           onBack={leaveRest}
         />
       );

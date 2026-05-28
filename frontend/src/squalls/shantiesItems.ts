@@ -1,58 +1,208 @@
 import { clampHp } from "./combatRules";
 import {
+  AMMO_ITEM_IDS,
+  FOOD_ITEM_IDS,
   INDOOR_AREA_KINDS,
   ITEM_IDS,
+  MUNITIONS_ITEM_IDS,
+  SHIP_ITEM_IDS,
+  type AmmoItemId,
   type CombatPhase,
+  type FoodItemId,
   type GameStateTypes,
   type HeroType,
   type IndoorAreaId,
   type IndoorAreaKind,
   type Inventory,
   type ItemId,
+  type MunitionsItemId,
+  type ShipItemId,
 } from "./shantiesTypes";
-import { sellPriceFromBuyPrice } from "./shantiesShop";
+import { sellPriceFromBasePrice, shopBuyPrice } from "./shantiesShop";
 
-export { ITEM_IDS, INDOOR_AREA_KINDS };
+export {
+  AMMO_ITEM_IDS,
+  FOOD_ITEM_IDS,
+  ITEM_IDS,
+  INDOOR_AREA_KINDS,
+  MUNITIONS_ITEM_IDS,
+  SHIP_ITEM_IDS,
+};
 
-export const COCONUT_HEAL_AMOUNT = 5;
+export type ItemKind = "food" | "ship" | "ammo" | "munitions" | "candle" | "key";
 
 export type ItemDefinition = {
   id: ItemId;
+  kind: ItemKind;
   name: string;
   emoji: string;
   description: string;
+  /** HP restored when eaten; food only. */
+  healAmount?: number;
   /** Energy spent when used during combat; omit if not usable in battle. */
   energyCost?: number;
-  /** Gold price at the ship shop; omit if not sold. */
+  /** Gold price at the ship shop; omit if not sold here. */
   shopPrice?: number;
+  /** Reference value for sell price (half, rounded down); food and other loot. */
+  basePrice?: number;
 };
 
-export const SHOP_ITEM_IDS = ["coconut", "candle", "key"] as const satisfies readonly ItemId[];
+export const SHOP_ITEM_IDS = ["candle", "key"] as const satisfies readonly ItemId[];
 
 export const ITEM_DEFINITIONS: Record<ItemId, ItemDefinition> = {
+  banana: {
+    id: "banana",
+    kind: "food",
+    name: "Banana",
+    emoji: "🍌",
+    description: "Restores 5 HP. Costs 1 energy in combat.",
+    healAmount: 5,
+    energyCost: 1,
+    basePrice: 20,
+  },
   coconut: {
     id: "coconut",
+    kind: "food",
     name: "Coconut",
     emoji: "🥥",
-    description: "Restores 5 HP. Costs 1 energy in combat.",
+    description: "Restores 10 HP. Costs 1 energy in combat.",
+    healAmount: 10,
     energyCost: 1,
-    shopPrice: 20,
+    basePrice: 40,
+  },
+  mango: {
+    id: "mango",
+    kind: "food",
+    name: "Mango",
+    emoji: "🥭",
+    description: "Restores 25 HP. Costs 1 energy in combat.",
+    healAmount: 25,
+    energyCost: 1,
+    basePrice: 60,
+  },
+  pineapple: {
+    id: "pineapple",
+    kind: "food",
+    name: "Pineapple",
+    emoji: "🍍",
+    description: "Restores 50 HP. Costs 1 energy in combat.",
+    healAmount: 50,
+    energyCost: 1,
+    basePrice: 80,
+  },
+  tea: {
+    id: "tea",
+    kind: "food",
+    name: "Tea",
+    emoji: "🍵",
+    description: "A steaming cup. No effect yet.",
+    basePrice: 100,
+  },
+  rum: {
+    id: "rum",
+    kind: "food",
+    name: "Rum",
+    emoji: "🥃",
+    description: "A stiff tot. No effect yet.",
+    basePrice: 120,
+  },
+  wood_plank: {
+    id: "wood_plank",
+    kind: "ship",
+    name: "Wood Plank",
+    emoji: "🪵",
+    description: "For patching the hull. No use yet.",
+    basePrice: 10,
+  },
+  sail_cloth: {
+    id: "sail_cloth",
+    kind: "ship",
+    name: "Sail Cloth",
+    emoji: "🧵",
+    description: "For mending sails. No use yet.",
+    basePrice: 30,
+  },
+  water_bucket: {
+    id: "water_bucket",
+    kind: "ship",
+    name: "Water Bucket",
+    emoji: "🪣",
+    description: "For bailing the bilge. No use yet.",
+    basePrice: 20,
+  },
+  ammo_pouch: {
+    id: "ammo_pouch",
+    kind: "ammo",
+    name: "Ammo Pouch",
+    emoji: "👝",
+    description: "Lead for yer sidearm. No use yet.",
+    basePrice: 50,
+  },
+  cannonball: {
+    id: "cannonball",
+    kind: "munitions",
+    name: "Cannonball",
+    emoji: "⚫",
+    description: "Solid shot for the guns. No use yet.",
+    basePrice: 50,
+  },
+  scattershot: {
+    id: "scattershot",
+    kind: "munitions",
+    name: "Scattershot",
+    emoji: "💥",
+    description: "Grape and nails for close work. No use yet.",
+    basePrice: 100,
+  },
+  powderkeg: {
+    id: "powderkeg",
+    kind: "munitions",
+    name: "Powderkeg",
+    emoji: "🛢️",
+    description: "Black powder in a keg. No use yet.",
+    basePrice: 100,
   },
   candle: {
     id: "candle",
+    kind: "candle",
     name: "Candle",
     emoji: "🕯️",
     description: "Permanently lights a Cave, Ruins, or Temple.",
-    shopPrice: 30,
+    shopPrice: 25,
   },
   key: {
     id: "key",
+    kind: "key",
     name: "Key",
     emoji: "🗝️",
     description: "Unlocks a locked chest while delving.",
-    shopPrice: 50,
+    shopPrice: 45,
   },
 };
+
+export function isFoodItem(itemId: ItemId): itemId is FoodItemId {
+  return FOOD_ITEM_IDS.includes(itemId as FoodItemId);
+}
+
+export function isShipItem(itemId: ItemId): itemId is ShipItemId {
+  return SHIP_ITEM_IDS.includes(itemId as ShipItemId);
+}
+
+export function isAmmoItem(itemId: ItemId): itemId is AmmoItemId {
+  return AMMO_ITEM_IDS.includes(itemId as AmmoItemId);
+}
+
+export function isMunitionsItem(itemId: ItemId): itemId is MunitionsItemId {
+  return MUNITIONS_ITEM_IDS.includes(itemId as MunitionsItemId);
+}
+
+export function getFoodHealAmount(itemId: FoodItemId): number {
+  return ITEM_DEFINITIONS[itemId].healAmount ?? 0;
+}
+
+export function isFoodUsable(itemId: FoodItemId): boolean {
+  return getFoodHealAmount(itemId) > 0;
+}
 
 export function getItemEnergyCost(itemId: ItemId): number | null {
   const cost = ITEM_DEFINITIONS[itemId].energyCost;
@@ -124,9 +274,13 @@ export function removeItemFromInventory(
 
 export type UseItemCheck = { ok: true } | { ok: false; message: string };
 
-export function checkUseCoconut(hero: HeroType): UseItemCheck {
-  if (getItemCount(hero.inventory, "coconut") <= 0) {
-    return { ok: false, message: "Ye have no coconuts." };
+export function checkUseFood(hero: HeroType, itemId: FoodItemId): UseItemCheck {
+  const def = ITEM_DEFINITIONS[itemId];
+  if (!isFoodUsable(itemId)) {
+    return { ok: false, message: "That does nothing for ye — not yet, anyway." };
+  }
+  if (getItemCount(hero.inventory, itemId) <= 0) {
+    return { ok: false, message: `Ye have no ${def.name.toLowerCase()}s.` };
   }
   if (hero.current_hp >= hero.max_hp) {
     return { ok: false, message: "Yer HP is already full." };
@@ -171,8 +325,8 @@ export function checkUseItem(
         message: `Not enough energy (needs ${energyCost}).`,
       };
     }
-    if (itemId === "coconut") {
-      return checkUseCoconut(ctx.hero);
+    if (isFoodItem(itemId)) {
+      return checkUseFood(ctx.hero, itemId);
     }
     return { ok: false, message: "Ye can't use that in battle." };
   }
@@ -183,8 +337,26 @@ export function checkUseItem(
       message: "Use a key on a locked chest while delving.",
     };
   }
-  if (itemId === "coconut") {
-    return checkUseCoconut(ctx.hero);
+  if (isShipItem(itemId)) {
+    return {
+      ok: false,
+      message: "Save that for ship repairs — not yet, anyway.",
+    };
+  }
+  if (isAmmoItem(itemId)) {
+    return {
+      ok: false,
+      message: "Save that for yer sidearm — not yet, anyway.",
+    };
+  }
+  if (isMunitionsItem(itemId)) {
+    return {
+      ok: false,
+      message: "Save that for the guns — not yet, anyway.",
+    };
+  }
+  if (isFoodItem(itemId)) {
+    return checkUseFood(ctx.hero, itemId);
   }
   return checkUseCandle(
     ctx.hero.inventory,
@@ -216,15 +388,13 @@ export function checkUseCandle(
 /** @deprecated Use checkUseCandle */
 export const checkUseTorch = checkUseCandle;
 
-export function applyCoconutUse(hero: HeroType): HeroType {
-  const healed = Math.min(
-    hero.max_hp,
-    hero.current_hp + COCONUT_HEAL_AMOUNT,
-  );
+export function applyFoodUse(hero: HeroType, itemId: FoodItemId): HeroType {
+  const healAmount = getFoodHealAmount(itemId);
+  const healed = Math.min(hero.max_hp, hero.current_hp + healAmount);
   return {
     ...hero,
     current_hp: clampHp(healed),
-    inventory: removeItemFromInventory(hero.inventory, "coconut"),
+    inventory: removeItemFromInventory(hero.inventory, itemId),
   };
 }
 
@@ -232,33 +402,26 @@ export function pickRandomItemId(): ItemId {
   return ITEM_IDS[Math.floor(Math.random() * ITEM_IDS.length)]!;
 }
 
-/** Loot never adds more than one of a consumable (combat / treasure). */
+/** Each combat/treasure loot card grants at most one copy (not an inventory cap). */
 export const LOOT_ITEM_COPY_LIMIT = 1;
 
-export function grantLootItemToInventory(
-  inventory: Inventory,
-  itemId: ItemId,
-): Inventory {
-  if (getItemCount(inventory, itemId) >= LOOT_ITEM_COPY_LIMIT) {
-    return inventory;
-  }
-  return addItemToInventory(inventory, itemId, 1);
-}
-
-export function getItemBuyPrice(itemId: ItemId): number | null {
-  const price = ITEM_DEFINITIONS[itemId].shopPrice;
-  return price === undefined ? null : price;
+export function getItemBuyPrice(hero: HeroType, itemId: ItemId): number | null {
+  const basePrice = ITEM_DEFINITIONS[itemId].shopPrice;
+  if (basePrice === undefined) return null;
+  const owned = getItemCount(hero.inventory, itemId);
+  return shopBuyPrice(basePrice, hero.level, owned);
 }
 
 export function getItemSellPrice(itemId: ItemId): number | null {
-  const buyPrice = getItemBuyPrice(itemId);
-  return buyPrice === null ? null : sellPriceFromBuyPrice(buyPrice);
+  const def = ITEM_DEFINITIONS[itemId];
+  const basePrice = def.basePrice ?? def.shopPrice;
+  if (basePrice === undefined) return null;
+  return sellPriceFromBasePrice(basePrice);
 }
 
 export function checkBuyItem(hero: HeroType, itemId: ItemId): UseItemCheck {
-  const def = ITEM_DEFINITIONS[itemId];
-  const price = def.shopPrice;
-  if (price === undefined) {
+  const price = getItemBuyPrice(hero, itemId);
+  if (price === null) {
     return { ok: false, message: "Not for sale here." };
   }
   if (hero.gold < price) {
@@ -268,7 +431,8 @@ export function checkBuyItem(hero: HeroType, itemId: ItemId): UseItemCheck {
 }
 
 export function applyBuyItem(hero: HeroType, itemId: ItemId): HeroType {
-  const price = ITEM_DEFINITIONS[itemId].shopPrice!;
+  const price = getItemBuyPrice(hero, itemId);
+  if (price === null) return hero;
   return {
     ...hero,
     gold: hero.gold - price,

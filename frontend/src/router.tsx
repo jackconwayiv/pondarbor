@@ -121,6 +121,7 @@ const PondsteadCampaignLobbyPage = lazy(
 const PondsteadMapPage = lazy(() => import("./pondstead/PondsteadMapPage"));
 const EstatesPage = lazy(() => import("./estates/EstatesPage"));
 const EstatesPlayPage = lazy(() => import("./estates/EstatesPlayPage"));
+const ShantiesHome = lazy(() => import("./squalls/ShantiesHome"));
 
 /** Runs only after Suspense resolves — lazy chunk loaded successfully; reset stale-deploy reload guard. */
 function LazyRouteLoadedProbe() {
@@ -176,6 +177,10 @@ export const router = sentryCreateBrowserRouter([
       {
         path: "games",
         element: authedRouteElement(lazyRouteElement(<GamesMenu />)),
+      },
+      {
+        path: "squalls",
+        element: authedRouteElement(lazyRouteElement(<ShantiesHome />)),
       },
       {
         path: "activity",

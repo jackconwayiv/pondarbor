@@ -19,9 +19,10 @@ export const GAME_NAV_ITEMS: GameNavItem[] = [
 /** Staff-only tiles on the Games lobby (not shown on the home grid). */
 export const GAMES_MENU_STAFF_ITEMS: GameNavItem[] = [
   { to: "/harbor", label: "Harbormaster", emoji: "⚓" },
+  { to: "/squalls", label: "Squalls & Shanties", emoji: "⛵" },
 ];
 
-const STAFF_ONLY_GAME_PATHS = new Set(["/qff", "/harbor"]);
+const STAFF_ONLY_GAME_PATHS = new Set(["/qff", "/harbor", "/squalls"]);
 
 /** Hidden from non-staff on home and Games lobby (like Meal Maestro in app nav). */
 export function visibleGameNavItems(isStaff: boolean): GameNavItem[] {
@@ -43,7 +44,8 @@ export function canOpenGameTile(to: string, isAuthenticated: boolean): boolean {
     to === "/estates" ||
     to === "/clicker" ||
     to === "/qff" ||
-    to === "/harbor"
+    to === "/harbor" ||
+    to === "/squalls"
   ) {
     return isAuthenticated;
   }

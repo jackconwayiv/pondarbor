@@ -11,7 +11,7 @@ import {
   Spacer,
   Text,
 } from "@chakra-ui/react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { FaBell } from "react-icons/fa";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 
@@ -34,6 +34,10 @@ import {
 import PondButton from "./PondButton";
 import { pondarborLogoSrc } from "./publicAsset";
 import BreadcrumbBar from "./BreadcrumbBar";
+import {
+  getSquallsInGame,
+  subscribeSquallsInGame,
+} from "./squalls/squallsBreadcrumbBridge";
 import { HomeInboxProvider, useHomeInbox } from "./home/homeInboxContext";
 import { APP_SHELL_OUTLET_MIN_HEIGHT_PROPS, useNavCompactLayout } from "./responsive";
 import { APP_SHELL_CONTENT_MAX_PROPS } from "./theme/typography";
@@ -267,6 +271,13 @@ export default function AppLayout() {
   const isWhatIfPlayOrHandRoute =
     location.pathname.startsWith("/whatif/play/") ||
     location.pathname.startsWith("/whatif/hand/");
+  const squallsInGame = useSyncExternalStore(
+    subscribeSquallsInGame,
+    getSquallsInGame,
+    () => false,
+  );
+  const hideSquallsBreadcrumbs =
+    location.pathname === "/squalls" && squallsInGame;
   /** Aligned with `QffLayout` so the app shell is not the default cream. */
   const qffAppShellBg = "#0c0c0c";
   const isHomeIndex = location.pathname === "/";
@@ -739,7 +750,8 @@ export default function AppLayout() {
           : isHarborRoute ||
               isPondsteadRoute ||
               isEstatesPlayRoute ||
-              isClickerPlayRoute
+              isClickerPlayRoute ||
+              hideSquallsBreadcrumbs
             ? { p: 0, bg: "transparent" }
             : {
                 pt: "2px",
@@ -758,7 +770,11 @@ export default function AppLayout() {
           w="100%"
           display="flex"
           flexDirection="column"
-          {...(isClickerRoute || isHarborRoute || isPondsteadRoute || isEstatesPlayRoute
+          {...(isClickerRoute ||
+          isHarborRoute ||
+          isPondsteadRoute ||
+          isEstatesPlayRoute ||
+          hideSquallsBreadcrumbs
             ? { p: 0 }
             : {
                 px: 0,
@@ -776,7 +792,8 @@ export default function AppLayout() {
             isHarborRoute ||
             isPondsteadRoute ||
             isEstatesPlayRoute ||
-            isWhatIfPlayOrHandRoute
+            isWhatIfPlayOrHandRoute ||
+            hideSquallsBreadcrumbs
           ) ? (
             <Box {...APP_SHELL_CONTENT_MAX_PROPS} px={{ base: "2", md: "2" }}>
               <BreadcrumbBar />

@@ -7,12 +7,14 @@ const KIND_PREFIX: Record<DungeonKind, string> = {
   cave: "Cave",
   ruins: "Ruins",
   temple: "Temple",
+  wreck: "Wreck",
 };
 
 const KIND_EMOJI: Record<DungeonKind, string> = {
   cave: "🕳️",
   ruins: "🏛️",
   temple: "⛩️",
+  wreck: "🚢",
 };
 
 export function getDungeonKindLabel(kind: DungeonKind): string {
@@ -36,6 +38,7 @@ export function getDungeonDiscoveryEventName(kind: DungeonKind): string {
     cave: "A Cave Mouth",
     ruins: "Ancient Ruins",
     temple: "A Hidden Temple",
+    wreck: "A Sunken Wreck",
   };
   return labels[kind];
 }
@@ -65,11 +68,13 @@ export function generateDungeon(
     cave: ["Damp", "Echoing", "Collapsed", "Crystal"],
     ruins: ["Crumbling", "Forgotten", "Overgrown", "Sunken"],
     temple: ["Sealed", "Sacred", "Desecrated", "Moonlit"],
+    wreck: ["Flooded", "Barnacled", "Rotting", "Sunken"],
   };
   const nouns: Record<DungeonKind, string[]> = {
     cave: ["Grotto", "Caverns", "Depths", "Warren"],
     ruins: ["Ruins", "Vestiges", "Foundations", "Halls"],
     temple: ["Temple", "Sanctum", "Shrine", "Vault"],
+    wreck: ["Hold", "Hull", "Berth", "Cabin"],
   };
   const pre = prefixes[kind][Math.floor(Math.random() * prefixes[kind].length)]!;
   const noun = nouns[kind][Math.floor(Math.random() * nouns[kind].length)]!;
@@ -89,11 +94,29 @@ export function generateDungeon(
     delvePoints,
     levelFactor,
     areaId: formatIndoorAreaId(kind, areaKey),
+    ...(isIslandDungeonKind(kind) ? { candleUnlocked: false } : {}),
   };
 }
 
+export function isIslandDungeonKind(kind: DungeonKind): boolean {
+  return kind !== "wreck";
+}
+
+export function isDepletedDungeon(dungeon: DungeonType): boolean {
+  return dungeon.delvePoints <= 0;
+}
+
+/** Island home menu: only dungeons the player entered with a candle. */
+export function isActiveIslandDungeon(dungeon: DungeonType): boolean {
+  return (
+    isIslandDungeonKind(dungeon.kind) &&
+    !isDepletedDungeon(dungeon) &&
+    dungeon.candleUnlocked === true
+  );
+}
+
 export function getEnterDungeonLabel(dungeon: DungeonType): string {
-  return `Enter ${KIND_PREFIX[dungeon.kind]} (${Math.max(0, dungeon.delvePoints)})`;
+  return `Enter ${KIND_PREFIX[dungeon.kind]} (${dungeon.delvePoints})`;
 }
 
 export function getDungeonCombatPlaceLabel(kind: DungeonKind): string {

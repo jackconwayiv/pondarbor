@@ -30,7 +30,7 @@ import {
   parseEnemyDropId,
   parseHandCardDragId,
 } from "./combatDnDIds";
-import type { CombatCard } from "./shantiesTypes";
+import type { CombatCard, EquippedGear } from "./shantiesTypes";
 import {
   isAttackCard,
   targetsEnemyManually,
@@ -60,6 +60,7 @@ function useCombatBattleDnd() {
 
 type CombatBattleDndProps = {
   hand: CombatCard[];
+  equipped: EquippedGear;
   isPlayerTurn: boolean;
   viewingHand: boolean;
   energy: number;
@@ -69,6 +70,7 @@ type CombatBattleDndProps = {
 
 export function CombatBattleDnd({
   hand,
+  equipped,
   isPlayerTurn,
   viewingHand,
   energy,
@@ -155,6 +157,7 @@ export function CombatBattleDnd({
             <CombatHandCard
               card={activeCard}
               cost={getCardEnergyCost(activeCard)}
+              equipped={equipped}
               layout="hand"
               fillSlot
               onClick={() => {}}
@@ -170,6 +173,7 @@ type DraggableHandCardSlotProps = {
   handIndex: number;
   card: CombatCard;
   cost: number;
+  equipped: EquippedGear;
   disabled: boolean;
 };
 
@@ -177,6 +181,7 @@ export function DraggableCombatHandCard({
   handIndex,
   card,
   cost,
+  equipped,
   disabled,
 }: DraggableHandCardSlotProps) {
   const { isPlayerTurn, viewingHand, energy } = useCombatBattleDnd();
@@ -209,6 +214,7 @@ export function DraggableCombatHandCard({
       <CombatHandCard
         card={card}
         cost={cost}
+        equipped={equipped}
         layout="hand"
         fillSlot
         dragPassthrough={canDrag}

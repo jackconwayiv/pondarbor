@@ -2,13 +2,14 @@ import { Badge, Box, HStack, chakra, Text } from "@chakra-ui/react";
 
 import { getCardBackground, getCardTags } from "./combatCardStyle";
 import { getCardEffectText } from "./combatRules";
-import type { CombatCard } from "./shantiesTypes";
+import type { CombatCard, EquippedGear } from "./shantiesTypes";
 
 const CardButton = chakra("button");
 
 type Props = {
   card: CombatCard;
   cost: number;
+  equipped?: EquippedGear;
   layout?: "default" | "hand";
   selected?: boolean;
   disabled?: boolean;
@@ -23,6 +24,7 @@ type Props = {
 export default function CombatHandCard({
   card,
   cost,
+  equipped,
   layout = "default",
   selected = false,
   disabled = false,
@@ -31,9 +33,9 @@ export default function CombatHandCard({
   dragPassthrough = false,
   onClick,
 }: Props) {
-  const effectText = getCardEffectText(card);
+  const effectText = getCardEffectText(card, equipped);
   const isHandLayout = layout === "hand";
-  const tags = getCardTags(card);
+  const tags = getCardTags(card, equipped);
   const cardBg = getCardBackground(card);
 
   return (
@@ -123,7 +125,7 @@ export default function CombatHandCard({
           textAlign="center"
           lineClamp={isHandLayout ? 2 : 2}
           lineHeight="short"
-          color="gray.700"
+          color="gray.900"
         >
           {effectText}
         </Text>

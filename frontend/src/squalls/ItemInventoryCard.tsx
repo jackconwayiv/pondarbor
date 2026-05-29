@@ -55,7 +55,7 @@ export default function ItemInventoryCard({
       <Text fontSize="xs" fontWeight="bold" textAlign="center" lineHeight="short" px={1}>
         {def.name}
       </Text>
-      <Text fontSize="xs" color="gray.600">
+      <Text fontSize="xs" color="gray.900">
         {countFormat === "owned" ? `owned: ${count}` : `×${count}`}
       </Text>
       {showUse && onUse ? (

@@ -7,6 +7,8 @@ type Props = {
   onSail: () => void;
   onIsland?: () => void;
   islandExplorePoints?: number;
+  onEnterWreck?: () => void;
+  wreckDelvePoints?: number;
 };
 
 export default function ShipView({
@@ -15,6 +17,8 @@ export default function ShipView({
   onSail,
   onIsland,
   islandExplorePoints,
+  onEnterWreck,
+  wreckDelvePoints,
 }: Props) {
   return (
     <HomeActionGrid>
@@ -24,6 +28,14 @@ export default function ShipView({
           label={`Head Ashore (${islandExplorePoints ?? 0})`}
           accent="teal"
           onClick={onIsland}
+        />
+      ) : null}
+      {onEnterWreck && (wreckDelvePoints ?? 0) > 0 ? (
+        <SquallsActionCard
+          emoji="⛵"
+          label={`Enter Wreck (${wreckDelvePoints})`}
+          accent="orange"
+          onClick={onEnterWreck}
         />
       ) : null}
       <SquallsActionCard emoji="💰" label="Barter" accent="yellow" onClick={onShop} />

@@ -2,20 +2,21 @@ import { Box, SimpleGrid, Text, VStack } from "@chakra-ui/react";
 
 import CombatHandCard from "./CombatHandCard";
 import { getCardEnergyCost } from "./combatRules";
-import type { CombatCard } from "./shantiesTypes";
+import type { CombatCard, EquippedGear } from "./shantiesTypes";
 
 type Props = {
   deck: CombatCard[];
+  equipped: EquippedGear;
 };
 
-export default function CharacterSheetDeck({ deck }: Props) {
+export default function CharacterSheetDeck({ deck, equipped }: Props) {
   return (
     <VStack align="stretch" gap={3}>
-      <Text fontSize="sm" color="fg.muted">
+      <Text fontSize="sm" color="gray.900">
         {deck.length} cards · deck editing coming soon
       </Text>
       {deck.length === 0 ? (
-        <Text fontSize="sm" color="fg.muted">
+        <Text fontSize="sm" color="gray.900">
           Yer deck is empty.
         </Text>
       ) : (
@@ -30,6 +31,7 @@ export default function CharacterSheetDeck({ deck }: Props) {
               <CombatHandCard
                 card={card}
                 cost={getCardEnergyCost(card)}
+                equipped={equipped}
                 viewOnly
                 fillSlot
                 onClick={() => {}}

@@ -1,19 +1,27 @@
+import { getCardDisplayTags } from "./combatEquipment";
 import { isAttackCard, isDefendCard } from "./shantiesTypes";
-import type { CardTag, CombatCard } from "./shantiesTypes";
+import type { CombatCard, CombatTag, EquippedGear } from "./shantiesTypes";
 
-export const ATTACK_CARD_TAGS: readonly [CardTag, CardTag] = [
+/** @deprecated Tags are computed from equipment at display time. */
+export const ATTACK_CARD_TAGS: readonly [CombatTag, CombatTag] = [
   "physical",
   "attack",
 ];
-export const DEFEND_CARD_TAGS: readonly [CardTag, CardTag] = [
+/** @deprecated Tags are computed from equipment at display time. */
+export const DEFEND_CARD_TAGS: readonly [CombatTag, CombatTag] = [
   "physical",
   "defense",
 ];
 
-export function getCardTags(card: CombatCard): readonly CardTag[] {
-  if ("tags" in card && card.tags.length > 0) return card.tags;
-  if (isAttackCard(card)) return ATTACK_CARD_TAGS;
-  if (isDefendCard(card)) return DEFEND_CARD_TAGS;
+export function getCardTags(
+  card: CombatCard,
+  equipped?: EquippedGear,
+): readonly CombatTag[] {
+  if (equipped) {
+    return getCardDisplayTags(card, equipped);
+  }
+  if (isAttackCard(card)) return ["attack"];
+  if (isDefendCard(card)) return ["defense"];
   return [];
 }
 

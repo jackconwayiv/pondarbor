@@ -1,8 +1,26 @@
-import {
-  ATTACK_CARD_TAGS,
-  DEFEND_CARD_TAGS,
-} from "./combatCardStyle";
+import { createStarterDeck } from "./combatDeck";
 import { capLootToSingleItem, generateCombatLoot, generateEventLoot, isTreasureEvent } from "./combatLoot";
+import {
+  generateFloatingSuppliesLoot,
+  isSeaTreasureEvent,
+} from "./floatingSuppliesLoot";
+import {
+  ensureIslandEventDeck,
+  normalizeIslandEventDeck,
+} from "./islandEventDeck";
+import {
+  generateIslandTreasureLoot,
+  isIslandTreasureEvent,
+} from "./islandTreasureLoot";
+import { buildSeaEventDeck, normalizeSeaEventDeck } from "./seaEventDeck";
+import { getMonsterTemplate } from "./monsters";
+import { isIslandDungeonKind } from "./dungeonExplore";
+import {
+  initializeEnemyActionDeck,
+  normalizeEnemyAction,
+  normalizeEnemyActionPile,
+  normalizeEnemyBroadcast,
+} from "./enemyActions";
 import {
   createEmptyScopedEncounterModifiers,
   type EncounterModifiers,
@@ -16,11 +34,13 @@ import {
 import type {
   CardTargeting,
   CombatCard,
+  CombatLogEntry,
+  CombatLogSide,
   CombatLootItem,
   CombatLootKind,
   CombatPhase,
-  EnemyIntent,
   EnemyType,
+  EquipmentId,
   EventType,
   GameLocationTypes,
   GameStateTypes,
@@ -30,41 +50,18 @@ import type {
 } from "./shantiesTypes";
 import {
   DEFEND_TARGETING,
+  EQUIPMENT_IDS,
   INDOOR_AREA_KINDS,
   ITEM_IDS,
-  isAttackCard,
   type IndoorAreaId,
   type IndoorAreaKind,
   type Inventory,
   type ItemId,
+  type ShopVariant,
 } from "./shantiesTypes";
 
 export const SHANTIES_STORAGE_KEY = "pondarbor.squalls.v1";
-export const SHANTIES_SAVE_VERSION = 6;
-
-const attackCard: CombatCard = {
-  name: "Attack",
-  minDamage: 1,
-  maxDamage: 4,
-  tags: ATTACK_CARD_TAGS,
-};
-const strongAttackCard: CombatCard = {
-  name: "Strong Attack",
-  minDamage: 2,
-  maxDamage: 8,
-  tags: ATTACK_CARD_TAGS,
-};
-const defendCard: CombatCard = {
-  name: "Defend",
-  targeting: DEFEND_TARGETING,
-  tags: DEFEND_CARD_TAGS,
-};
-
-const START_DECK: CombatCard[] = [
-  ...Array(10).fill(attackCard),
-  ...Array(4).fill(strongAttackCard),
-  ...Array(6).fill(defendCard),
-];
+export const SHANTIES_SAVE_VERSION = 10;
 
 const GAME_STATES: GameStateTypes[] = [
   "lobby",
@@ -82,8 +79,6 @@ const LOCATIONS: GameLocationTypes[] = ["ship", "island", "dungeon"];
 
 const COMBAT_PHASES: CombatPhase[] = ["player", "enemy"];
 
-const ENEMY_INTENTS: EnemyIntent[] = ["attack", "defend"];
-
 export type ShantiesSaveData = {
   gameState: GameStateTypes;
   location: GameLocationTypes;
@@ -96,8 +91,9 @@ export type ShantiesSaveData = {
   hand: CombatCard[];
   drawPile: CombatCard[];
   discardPile: CombatCard[];
-  combatLog: string[];
+  combatLog: CombatLogEntry[];
   armor: number;
+  heroWeakened: boolean;
   energy: number;
   combatPhase: CombatPhase;
   enemyTurnIndex: number | null;
@@ -116,6 +112,10 @@ export type ShantiesSaveData = {
   encounterModifiers: ScopedEncounterModifiers;
   /** False while a locked dungeon chest awaits key / force-open. */
   dungeonChestUnlocked: boolean;
+  /** Remaining sea event cards (drawn from the end). */
+  seaEventDeck: EventType[];
+  /** Active shop catalog when gameState is shop. */
+  shopVariant: ShopVariant | null;
 };
 
 type ShantiesSavePayload = {
@@ -130,10 +130,10 @@ export function createInitialHero(): HeroType {
     class: "Swashbuckler",
     current_hp: 20,
     max_hp: 20,
-    gold: 50,
+    gold: 0,
     xp: 0,
     level: 1,
-    deck: START_DECK.map((card) => ({ ...card })),
+    deck: createStarterDeck(),
     inventory: {},
     equipped: createStarterEquipped(),
     equipmentInventory: [],
@@ -155,6 +155,7 @@ export function createDefaultSaveData(): ShantiesSaveData {
     discardPile: [],
     combatLog: [],
     armor: 0,
+    heroWeakened: false,
     energy: 3,
     combatPhase: "player",
     enemyTurnIndex: null,
@@ -167,6 +168,8 @@ export function createDefaultSaveData(): ShantiesSaveData {
     currentIndoorArea: null,
     encounterModifiers: createEmptyScopedEncounterModifiers(),
     dungeonChestUnlocked: false,
+    seaEventDeck: [],
+    shopVariant: null,
   };
 }
 
@@ -233,6 +236,18 @@ function migrateV5ToV6(raw: unknown): unknown {
   return next;
 }
 
+function migrateV8ToV9(raw: unknown): unknown {
+  if (!isRecord(raw)) return raw;
+  const next: Record<string, unknown> = { ...raw };
+  if (isRecord(raw.hero)) {
+    next.hero = {
+      ...raw.hero,
+      deck: createStarterDeck(),
+    };
+  }
+  return next;
+}
+
 function resolveSavePayload(parsed: Record<string, unknown>): {
   data: unknown;
   savedAtMs: number | null;
@@ -246,6 +261,23 @@ function resolveSavePayload(parsed: Record<string, unknown>): {
   if (version === 5) {
     data = migrateV5ToV6(data);
     version = 6;
+  }
+
+  if (version === 6) {
+    version = 7;
+  }
+
+  if (version === 7) {
+    version = 8;
+  }
+
+  if (version === 8) {
+    data = migrateV8ToV9(data);
+    version = 9;
+  }
+
+  if (version === 9) {
+    version = 10;
   }
 
   if (version !== SHANTIES_SAVE_VERSION) return null;
@@ -263,27 +295,22 @@ function normalizeCardTargeting(raw: unknown): CardTargeting | null {
 
 function normalizeCombatCard(raw: unknown): CombatCard | null {
   if (!isRecord(raw) || typeof raw.name !== "string") return null;
-  if (raw.name === "Attack") {
-    return {
-      name: "Attack",
-      minDamage: finiteNumber(raw.minDamage, 1),
-      maxDamage: finiteNumber(raw.maxDamage, 4),
-      tags: ATTACK_CARD_TAGS,
-    };
+  if (raw.name === "Attack" || raw.name === "Melee Attack") {
+    return { name: "Melee Attack", attackKind: "melee", strong: false };
   }
-  if (raw.name === "Strong Attack") {
-    return {
-      name: "Strong Attack",
-      minDamage: finiteNumber(raw.minDamage, 2),
-      maxDamage: finiteNumber(raw.maxDamage, 8),
-      tags: ATTACK_CARD_TAGS,
-    };
+  if (raw.name === "Ranged Attack") {
+    return { name: "Ranged Attack", attackKind: "ranged", strong: false };
+  }
+  if (raw.name === "Strong Attack" || raw.name === "Strong Melee Attack") {
+    return { name: "Strong Melee Attack", attackKind: "melee", strong: true };
+  }
+  if (raw.name === "Strong Ranged Attack") {
+    return { name: "Strong Ranged Attack", attackKind: "ranged", strong: true };
   }
   if (raw.name === "Defend") {
     return {
       name: "Defend",
       targeting: normalizeCardTargeting(raw.targeting) ?? DEFEND_TARGETING,
-      tags: DEFEND_CARD_TAGS,
     };
   }
   return null;
@@ -356,7 +383,8 @@ function normalizeLootStash(raw: unknown): CombatLootItem[] {
     const kind: CombatLootKind | null =
       entry.kind === "gold" ||
       entry.kind === "xp" ||
-      entry.kind === "item"
+      entry.kind === "item" ||
+      entry.kind === "equipment"
         ? entry.kind
         : null;
     if (!kind) continue;
@@ -370,16 +398,24 @@ function normalizeLootStash(raw: unknown): CombatLootItem[] {
       kind === "item" && ITEM_IDS.includes(entry.itemId as ItemId)
         ? (entry.itemId as ItemId)
         : undefined;
+    const equipmentId =
+      kind === "equipment" &&
+      EQUIPMENT_IDS.includes(entry.equipmentId as EquipmentId)
+        ? (entry.equipmentId as EquipmentId)
+        : undefined;
     if (kind === "item" && !itemId) continue;
+    if (kind === "equipment" && !equipmentId) continue;
     const amount = Math.max(0, finiteNumber(entry.amount, 0));
     if (kind === "item" && amount <= 0) continue;
+    if (kind === "equipment" && amount <= 0) continue;
     items.push({
       id: entry.id,
       kind,
-      amount,
+      amount: kind === "equipment" ? 1 : amount,
       sourceName,
       claimed: entry.claimed === true,
       ...(itemId ? { itemId } : {}),
+      ...(equipmentId ? { equipmentId } : {}),
     });
   }
   return items;
@@ -388,7 +424,10 @@ function normalizeLootStash(raw: unknown): CombatLootItem[] {
 function normalizeDungeon(raw: unknown): DungeonType | null {
   if (!isRecord(raw)) return null;
   const kind =
-    raw.kind === "cave" || raw.kind === "ruins" || raw.kind === "temple"
+    raw.kind === "cave" ||
+    raw.kind === "ruins" ||
+    raw.kind === "temple" ||
+    raw.kind === "wreck"
       ? raw.kind
       : null;
   if (!kind || typeof raw.name !== "string") return null;
@@ -400,6 +439,7 @@ function normalizeDungeon(raw: unknown): DungeonType | null {
     delvePoints: Math.max(0, finiteNumber(raw.delvePoints, 5)),
     levelFactor: finiteNumber(raw.levelFactor, 0),
     areaId,
+    ...(kind !== "wreck" ? { candleUnlocked: raw.candleUnlocked === true } : {}),
   };
 }
 
@@ -409,13 +449,27 @@ function normalizeIsland(raw: unknown): IslandType | null {
     raw.size === "Small" || raw.size === "Large" ? raw.size : null;
   const vibe =
     raw.vibe === "Inviting" || raw.vibe === "Foreboding" ? raw.vibe : null;
-  return {
+  let eventDeck = normalizeIslandEventDeck(raw.eventDeck);
+  const explorePoints = Math.max(0, finiteNumber(raw.explorePoints, 0));
+  const island: IslandType = {
     name: raw.name,
     size,
     vibe,
-    explorePoints: Math.max(0, finiteNumber(raw.explorePoints, 5)),
+    explorePoints,
     levelFactor: finiteNumber(raw.levelFactor, 0),
+    ...(eventDeck.length > 0 ? { eventDeck } : {}),
   };
+  if (eventDeck.length === 0 && explorePoints > 0) {
+    return ensureIslandEventDeck({ ...island, explorePoints: 0 });
+  }
+  if (eventDeck.length > 0) {
+    return {
+      ...island,
+      eventDeck,
+      explorePoints: eventDeck.length,
+    };
+  }
+  return island;
 }
 
 function normalizeEvent(raw: unknown): EventType | null {
@@ -424,7 +478,8 @@ function normalizeEvent(raw: unknown): EventType | null {
   const dungeonKind =
     raw.dungeonKind === "cave" ||
     raw.dungeonKind === "ruins" ||
-    raw.dungeonKind === "temple"
+    raw.dungeonKind === "temple" ||
+    raw.dungeonKind === "wreck"
       ? raw.dungeonKind
       : undefined;
   return {
@@ -437,19 +492,43 @@ function normalizeEvent(raw: unknown): EventType | null {
 
 function normalizeEnemy(raw: unknown): EnemyType | null {
   if (!isRecord(raw) || typeof raw.name !== "string") return null;
-  const intent = ENEMY_INTENTS.includes(raw.intent as EnemyIntent)
-    ? (raw.intent as EnemyIntent)
-    : "attack";
   const max_hp = Math.max(0, finiteNumber(raw.max_hp, finiteNumber(raw.hp, 1)));
   const hp = Math.max(0, Math.min(max_hp, finiteNumber(raw.hp, max_hp)));
-  return {
+  const template = getMonsterTemplate(raw.name);
+  const traitsFromRaw = Array.isArray(raw.traits)
+    ? raw.traits.filter(
+        (t): t is "evasive" | "shocking" => t === "evasive" || t === "shocking",
+      )
+    : null;
+  const traits =
+    traitsFromRaw && traitsFromRaw.length > 0
+      ? traitsFromRaw
+      : template?.traits;
+  const base = {
     name: raw.name,
     level: Math.max(1, finiteNumber(raw.level, 1)),
     hp,
     max_hp,
-    intent,
     armor: Math.max(0, finiteNumber(raw.armor, 0)),
+    ...(traits && traits.length > 0 ? { traits } : {}),
   };
+
+  const nextAction = normalizeEnemyAction(raw.nextAction);
+  const broadcast = normalizeEnemyBroadcast(raw.broadcast);
+  const actionDrawPile = normalizeEnemyActionPile(raw.actionDrawPile);
+  const actionDiscardPile = normalizeEnemyActionPile(raw.actionDiscardPile);
+
+  if (nextAction && broadcast) {
+    return {
+      ...base,
+      nextAction,
+      broadcast,
+      actionDrawPile,
+      actionDiscardPile,
+    };
+  }
+
+  return initializeEnemyActionDeck(base);
 }
 
 function normalizeEnemies(raw: unknown): EnemyType[] {
@@ -459,9 +538,20 @@ function normalizeEnemies(raw: unknown): EnemyType[] {
     .filter((enemy): enemy is EnemyType => enemy !== null);
 }
 
-function normalizeStringArray(raw: unknown): string[] {
+function normalizeCombatLog(raw: unknown): CombatLogEntry[] {
   if (!Array.isArray(raw)) return [];
-  return raw.filter((item): item is string => typeof item === "string");
+  const entries: CombatLogEntry[] = [];
+  for (const item of raw) {
+    if (typeof item === "string") {
+      entries.push({ text: item, side: "hero" });
+      continue;
+    }
+    if (!isRecord(item) || typeof item.text !== "string") continue;
+    const side: CombatLogSide =
+      item.side === "enemy" ? "enemy" : "hero";
+    entries.push({ text: item.text, side });
+  }
+  return entries;
 }
 
 function normalizeSaveData(raw: unknown): ShantiesSaveData {
@@ -508,36 +598,65 @@ function normalizeSaveData(raw: unknown): ShantiesSaveData {
   }
 
   const activeEvent = normalizeEvent(raw.activeEvent);
+  const normalizedSeaDeck = normalizeSeaEventDeck(raw.seaEventDeck);
+  const seaEventDeck =
+    normalizedSeaDeck.length > 0 ? normalizedSeaDeck : buildSeaEventDeck();
+  const shopVariant: ShopVariant | null =
+    raw.shopVariant === "ship" ||
+    raw.shopVariant === "merchant" ||
+    raw.shopVariant === "island_trader"
+      ? raw.shopVariant
+      : null;
+
+  const hero = normalizeHero(raw.hero);
   const currentIsland = normalizeIsland(raw.currentIsland);
-  let eventLoot = capLootToSingleItem(normalizeLootStash(raw.eventLoot));
+  let eventLoot = normalizeLootStash(raw.eventLoot);
+  if (!activeEvent || !isSeaTreasureEvent(activeEvent)) {
+    eventLoot = capLootToSingleItem(eventLoot);
+  }
   if (
     eventLoot.length === 0 &&
     gameState === "event" &&
     activeEvent &&
     isTreasureEvent(activeEvent)
   ) {
-    eventLoot = generateEventLoot(activeEvent, {
-      islandVibe:
-        location === "island" || location === "dungeon"
-          ? (currentIsland?.vibe ?? null)
-          : null,
-    });
+    eventLoot = isSeaTreasureEvent(activeEvent)
+      ? generateFloatingSuppliesLoot()
+      : isIslandTreasureEvent(activeEvent) && currentIsland
+        ? generateIslandTreasureLoot(activeEvent, hero, currentIsland)
+        : generateEventLoot(activeEvent, {
+            islandVibe:
+              location === "island" || location === "dungeon"
+                ? (currentIsland?.vibe ?? null)
+                : null,
+          });
+  }
+
+  let currentDungeon = normalizeDungeon(raw.currentDungeon);
+  if (
+    location === "island" &&
+    currentDungeon &&
+    isIslandDungeonKind(currentDungeon.kind) &&
+    currentDungeon.candleUnlocked !== true
+  ) {
+    currentDungeon = null;
   }
 
   return {
     gameState,
     location,
     currentIsland,
-    currentDungeon: normalizeDungeon(raw.currentDungeon),
+    currentDungeon,
     day: Math.max(1, finiteNumber(raw.day, 1)),
-    hero: normalizeHero(raw.hero),
+    hero,
     enemies,
     activeEvent,
     hand: normalizeCombatCards(raw.hand),
     drawPile: normalizeCombatCards(raw.drawPile),
     discardPile: normalizeCombatCards(raw.discardPile),
-    combatLog: normalizeStringArray(raw.combatLog),
+    combatLog: normalizeCombatLog(raw.combatLog),
     armor: Math.max(0, finiteNumber(raw.armor, 0)),
+    heroWeakened: raw.heroWeakened === true,
     energy: Math.max(0, finiteNumber(raw.energy, 3)),
     combatPhase,
     enemyTurnIndex,
@@ -550,6 +669,8 @@ function normalizeSaveData(raw: unknown): ShantiesSaveData {
     currentIndoorArea: normalizeIndoorAreaId(raw.currentIndoorArea),
     encounterModifiers: normalizeScopedEncounterModifiers(raw.encounterModifiers),
     dungeonChestUnlocked: raw.dungeonChestUnlocked === true,
+    seaEventDeck,
+    shopVariant,
   };
 }
 
@@ -610,14 +731,4 @@ export function clearShantiesSave(): void {
   }
 }
 
-export function cloneCombatDeck(cards: CombatCard[]): CombatCard[] {
-  return cards.map((card) =>
-    isAttackCard(card)
-      ? { ...card }
-      : {
-          name: "Defend" as const,
-          targeting: { ...DEFEND_TARGETING },
-          tags: DEFEND_CARD_TAGS,
-        },
-  );
-}
+export { cloneCombatDeck } from "./combatDeck";

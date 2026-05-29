@@ -8,12 +8,10 @@ export type MonsterDropDef = {
 
 /** One guaranteed drop slot per monster name; each foe rolls independently. */
 export const MONSTER_DROP_BY_NAME: Record<string, MonsterDropDef> = {
-  Harpy: { itemId: "banana", dropRate: 0.25 },
-  Siren: { itemId: "banana", dropRate: 0.25 },
-  Boar: { itemId: "banana", dropRate: 0.25 },
-  Wolf: { itemId: "banana", dropRate: 0.25 },
-  Bat: { itemId: "banana", dropRate: 0.25 },
-  Skeleton: { itemId: "banana", dropRate: 0.25 },
+  Harpy: { itemId: "raw_fish", dropRate: 0.25 },
+  Siren: { itemId: "siren_gills", dropRate: 0.25 },
+  Boar: { itemId: "boar_meat", dropRate: 0.25 },
+  "Electric Eel": { itemId: "raw_fish", dropRate: 0.35 },
 };
 
 export function rollMonsterItemDrops(

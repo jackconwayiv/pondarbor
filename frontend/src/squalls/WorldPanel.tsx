@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import {
   Box,
   Button,
@@ -16,11 +17,30 @@ import {
   DraggableCombatHandCard,
 } from "./CombatBattleDnd";
 import { isTreasureEvent } from "./combatLoot";
-import { isLockedDungeonTreasure } from "./dungeonTreasure";
+import { isLockedTreasureChest } from "./dungeonTreasure";
+import {
+  isFloatingSuppliesEvent,
+  isSeaTreasureEvent,
+  FLOATING_SUPPLIES_UNLOCKED_INTRO,
+  TREASURE_CHEST_EMOJI,
+} from "./floatingSuppliesLoot";
+import { isIslandTraderEvent, isIslandWeatherEvent } from "./islandEventDeck";
+import {
+  isBuriedTreasureEvent,
+  isSupplyCacheEvent,
+  BURIED_TREASURE_INTRO,
+  SUPPLY_CACHE_INTRO,
+} from "./islandTreasureLoot";
+import {
+  enemyBroadcastColor,
+  formatEnemyBroadcastLabel,
+} from "./enemyActions";
+import { seaWeatherEffectLabel } from "./seaWeather";
 import LockedChestPanel from "./LockedChestPanel";
 import {
   getDungeonKindEmoji,
   getEnterDungeonLabel,
+  isActiveIslandDungeon,
   isDungeonDiscoveryEvent,
 } from "./dungeonExplore";
 import DungeonView from "./DungeonView";
@@ -28,8 +48,8 @@ import CombatHandCard from "./CombatHandCard";
 import LootClaimPanel from "./LootClaimPanel";
 import {
   formatEnemyHp,
-  formatEnemyIntentLabel,
   getCardEnergyCost,
+  getEnemyDisplayTraits,
   isEnemyAlive,
 } from "./combatRules";
 import AdventureStripe from "./AdventureStripe";
@@ -41,7 +61,27 @@ import RestView from "./RestView";
 import ShipView from "./ShipView";
 import ShopView from "./ShopView";
 import SquallsActionCard from "./SquallsActionCard";
-import type { WorldPanelProps } from "./shantiesTypes";
+import { getItemCount } from "./shantiesItems";
+import type { CombatLogSide, EventType, WorldPanelProps } from "./shantiesTypes";
+
+function eventHeadingEmoji(event: EventType | null): string {
+  if (!event) return "⛈️";
+  if (isDungeonDiscoveryEvent(event) && event.dungeonKind) {
+    return getDungeonKindEmoji(event.dungeonKind);
+  }
+  switch (event.type) {
+    case "discovery":
+      return "🏝️";
+    case "merchant":
+      return "🛶";
+    case "shipwreck":
+      return "⛵";
+    case "weather":
+      return "⛈️";
+    default:
+      return "⛈️";
+  }
+}
 
 export default function WorldPanel({
   gameState,
@@ -59,6 +99,7 @@ export default function WorldPanel({
   setDay,
   hero,
   armor,
+  heroWeakened,
   enemies,
   activeEvent,
   setActiveEvent,
@@ -83,11 +124,15 @@ export default function WorldPanel({
   claimCombatLoot,
   claimEventLoot,
   completeTreasureEvent,
+  acknowledgeGenericEvent,
+  acknowledgeWeatherEvent,
   abandonLockedDungeonChest,
   unlockDungeonChestWithKey,
+  pickLockOnChest,
   forceOpenDungeonChest,
   dungeonChestUnlocked,
   chestMessage,
+  forceOpenAttempted,
   dismissCombatVictory,
   playCombatCard,
   endPlayerTurn,
@@ -105,11 +150,17 @@ export default function WorldPanel({
   restComplete,
   restMessage,
   shopMessage,
+  shopVariant,
   buyShopItem,
   sellShopItem,
   sellShopEquipment,
   leaveShop,
+  openShipShop,
+  openMerchantShop,
+  openIslandTraderShop,
+  resolveShipwreckDive,
   onOpenCharacterSheet,
+  isStaff = false,
 }: WorldPanelProps) {
   const isPlayerTurn =
     combatPhase === "player" && !victoryPending && !combatVictory;
@@ -119,20 +170,31 @@ export default function WorldPanel({
   const viewingHand = cardZone === "hand";
   const displayedCards = viewingHand ? hand : discardPile;
 
-  const getCombatLogEntryStyle = (ageFromNewest: number) => {
-    if (ageFromNewest === 0) {
-      return { fontWeight: "bold" as const, color: "gray.900" };
-    }
-    if (ageFromNewest === 1) {
-      return { fontWeight: "normal" as const, color: "gray.700" };
-    }
-    if (ageFromNewest === 2) {
-      return { fontWeight: "normal" as const, color: "gray.600" };
-    }
-    if (ageFromNewest === 3) {
-      return { fontWeight: "normal" as const, color: "gray.500" };
-    }
-    return { fontWeight: "normal" as const, color: "gray.400" };
+  const HERO_LOG_COLORS = [
+    "green.800",
+    "green.700",
+    "green.600",
+    "green.500",
+    "green.400",
+  ] as const;
+  const ENEMY_LOG_COLORS = [
+    "red.800",
+    "red.700",
+    "red.600",
+    "red.500",
+    "red.400",
+  ] as const;
+
+  const getCombatLogEntryStyle = (
+    side: CombatLogSide,
+    ageFromNewest: number,
+  ) => {
+    const palette = side === "hero" ? HERO_LOG_COLORS : ENEMY_LOG_COLORS;
+    const colorIndex = Math.min(ageFromNewest, palette.length - 1);
+    return {
+      fontWeight: ageFromNewest === 0 ? ("bold" as const) : ("normal" as const),
+      color: palette[colorIndex]!,
+    };
   };
 
   const handlePass = () => {
@@ -154,7 +216,7 @@ export default function WorldPanel({
       return (
         <VStack align="start" gap={4} w="100%" maxW="md">
           <Heading>🏴‍☠️ Squalls & Shanties</Heading>
-          <Text color="fg.muted">Yer saved adventure</Text>
+          <Text color="gray.900">Yer saved adventure</Text>
           <Box
             w="100%"
             borderWidth="1px"
@@ -173,7 +235,7 @@ export default function WorldPanel({
                   gap={3}
                   align="baseline"
                 >
-                  <Text fontSize="sm" color="fg.muted" flexShrink={0}>
+                  <Text fontSize="sm" color="gray.900" flexShrink={0}>
                     {line.label}
                   </Text>
                   <Text fontSize="sm" fontWeight="medium" textAlign="right">
@@ -183,7 +245,7 @@ export default function WorldPanel({
               ))}
             </VStack>
             {lobbySavedAtLabel ? (
-              <Text fontSize="xs" color="fg.muted" mt={3}>
+              <Text fontSize="xs" color="gray.900" mt={3}>
                 Last saved {lobbySavedAtLabel}
               </Text>
             ) : null}
@@ -204,8 +266,13 @@ export default function WorldPanel({
             </Button>
           </HStack>
           {!canResumeAdventure ? (
-            <Text fontSize="xs" color="fg.muted">
+            <Text fontSize="xs" color="gray.900">
               No adventure in progress — restart to set sail.
+            </Text>
+          ) : null}
+          {isStaff ? (
+            <Text fontSize="sm">
+              <Link to="/squalls/dm">Game reference (staff)</Link>
             </Text>
           ) : null}
         </VStack>
@@ -224,7 +291,7 @@ export default function WorldPanel({
 
           {location === "ship" && (
             <ShipView
-              onShop={() => setGameState("shop")}
+              onShop={openShipShop}
               onRest={openRest}
               onSail={startSailFromShip}
               islandExplorePoints={
@@ -240,12 +307,22 @@ export default function WorldPanel({
                     }
                   : undefined
               }
+              onEnterWreck={
+                currentDungeon?.kind === "wreck"
+                  ? enterCurrentDungeon
+                  : undefined
+              }
+              wreckDelvePoints={
+                currentDungeon?.kind === "wreck"
+                  ? Math.max(0, currentDungeon.delvePoints)
+                  : undefined
+              }
             />
           )}
 
           {location === "island" && (
             <HomeActionGrid>
-              {currentDungeon ? (
+              {currentDungeon && isActiveIslandDungeon(currentDungeon) ? (
                 <SquallsActionCard
                   emoji={getDungeonKindEmoji(currentDungeon.kind)}
                   label={getEnterDungeonLabel(currentDungeon)}
@@ -273,7 +350,13 @@ export default function WorldPanel({
             <DungeonView
               delvePoints={currentDungeon.delvePoints}
               onDelve={handleSailOrExplore}
-              onReturnToIsland={returnToIslandFromDungeon}
+              onReturn={returnToIslandFromDungeon}
+              returnLabel={
+                currentDungeon.kind === "wreck"
+                  ? "Return to Ship"
+                  : "Return to Island"
+              }
+              returnEmoji={currentDungeon.kind === "wreck" ? "⛵" : "🏝️"}
             />
           )}
 
@@ -292,6 +375,7 @@ export default function WorldPanel({
       return (
         <ShopView
           hero={hero}
+          shopVariant={shopVariant}
           shopMessage={shopMessage}
           onBuyItem={buyShopItem}
           onSellItem={sellShopItem}
@@ -322,15 +406,31 @@ export default function WorldPanel({
 
       if (
         activeEvent &&
-        isLockedDungeonTreasure(activeEvent, location, dungeonChestUnlocked)
+        isLockedTreasureChest(activeEvent, location, dungeonChestUnlocked)
       ) {
         return (
           <LockedChestPanel
             event={activeEvent}
             hero={hero}
             message={chestMessage}
+            headingEmoji={
+              isSeaTreasureEvent(activeEvent)
+                ? TREASURE_CHEST_EMOJI
+                : "🔒"
+            }
+            leaveEmoji={
+              isSeaTreasureEvent(activeEvent) ? "⛵" : undefined
+            }
+            leaveLabel={
+              isSeaTreasureEvent(activeEvent) ? "Sail On" : undefined
+            }
+            leaveAccent={
+              isSeaTreasureEvent(activeEvent) ? "blue" : undefined
+            }
             onUnlockWithKey={unlockDungeonChestWithKey}
+            onPickLock={pickLockOnChest}
             onForceOpen={forceOpenDungeonChest}
+            forceOpenDisabled={forceOpenAttempted}
             onLeave={abandonLockedDungeonChest}
           />
         );
@@ -339,7 +439,23 @@ export default function WorldPanel({
       if (activeEvent && isTreasureEvent(activeEvent)) {
         return (
           <LootClaimPanel
-            title={`💎 ${activeEvent.name}`}
+            title={`${
+              isSeaTreasureEvent(activeEvent)
+                ? TREASURE_CHEST_EMOJI
+                : isBuriedTreasureEvent(activeEvent) ||
+                    isSupplyCacheEvent(activeEvent)
+                  ? "🪎"
+                  : "💎"
+            } ${activeEvent.name}`}
+            intro={
+              isFloatingSuppliesEvent(activeEvent)
+                ? FLOATING_SUPPLIES_UNLOCKED_INTRO
+                : isBuriedTreasureEvent(activeEvent)
+                  ? BURIED_TREASURE_INTRO
+                  : isSupplyCacheEvent(activeEvent)
+                    ? SUPPLY_CACHE_INTRO
+                    : undefined
+            }
             loot={eventLoot}
             allClaimed={allEventLootClaimed}
             returnLabel={eventReturnLabel}
@@ -351,29 +467,37 @@ export default function WorldPanel({
       }
 
       return (
-        <VStack align="start" gap={4}>
-          <Heading>⛈️ {activeEvent?.name}</Heading>
+        <VStack align="stretch" gap={4} w="100%">
+          <Heading>{eventHeadingEmoji(activeEvent)} {activeEvent?.name}</Heading>
 
           {activeEvent && isDungeonDiscoveryEvent(activeEvent) ? (
-            <Box>
+            <Box w="100%">
               <Text mb={4} fontSize="lg">
                 While exploring, ye discover{" "}
                 <strong>{activeEvent.name}</strong>!
               </Text>
-              <HStack gap={2}>
-                <Button
-                  colorPalette="teal"
-                  onClick={() => resolveDungeonDiscovery(true)}
-                >
-                  Enter
-                </Button>
-                <Button onClick={() => resolveDungeonDiscovery(false)}>
-                  Leave it be
-                </Button>
-              </HStack>
+              <Text mb={4} fontSize="sm" color="gray.900">
+                The passage is pitch black — ye'll need a candle to explore it.
+              </Text>
+              <HomeActionGrid>
+                {getItemCount(hero.inventory, "candle") > 0 ? (
+                  <SquallsActionCard
+                    emoji="🕯️"
+                    label="Enter with Candle"
+                    accent="teal"
+                    onClick={() => resolveDungeonDiscovery(true)}
+                  />
+                ) : null}
+                <SquallsActionCard
+                  emoji="🌿"
+                  label="Leave it be"
+                  accent="gray"
+                  onClick={() => resolveDungeonDiscovery(false)}
+                />
+              </HomeActionGrid>
             </Box>
           ) : activeEvent?.type === "discovery" ? (
-            <Box>
+            <Box w="100%">
               <Text mb={4} fontSize="lg">
                 On the horizon, ye spy{" "}
                 <strong>
@@ -383,30 +507,140 @@ export default function WorldPanel({
                 </strong>
                 !
               </Text>
-              <HStack gap={2}>
-                <Button colorPalette="teal" onClick={anchorAtDiscoveredIsland}>
-                  Anchor at Island
-                </Button>
-                <Button onClick={abandonDiscoveredIsland}>Keep Sailing</Button>
-              </HStack>
+              <HomeActionGrid>
+                <SquallsActionCard
+                  emoji="⚓"
+                  label="Anchor at Island"
+                  accent="teal"
+                  onClick={anchorAtDiscoveredIsland}
+                />
+                <SquallsActionCard
+                  emoji="⛵"
+                  label="Keep Sailing"
+                  accent="blue"
+                  onClick={abandonDiscoveredIsland}
+                />
+              </HomeActionGrid>
+            </Box>
+          ) : activeEvent?.type === "merchant" ? (
+            <Box w="100%">
+              <Text mb={4} fontSize="lg">
+                {isIslandTraderEvent(activeEvent)
+                  ? "A local trader beckons ye over, offering island goods for gold."
+                  : "A friendly merchant hails ye from a nearby vessel, offering goods for gold."}
+              </Text>
+              <HomeActionGrid>
+                <SquallsActionCard
+                  emoji="💰"
+                  label="Trade"
+                  accent="yellow"
+                  onClick={
+                    isIslandTraderEvent(activeEvent)
+                      ? openIslandTraderShop
+                      : openMerchantShop
+                  }
+                />
+                <SquallsActionCard
+                  emoji={location === "island" ? "🏝️" : "⛵"}
+                  label={location === "island" ? "Move On" : "Sail on"}
+                  accent="blue"
+                  onClick={() => {
+                    setActiveEvent(null);
+                    setGameState("home");
+                    setDay(day + 1);
+                  }}
+                />
+              </HomeActionGrid>
+            </Box>
+          ) : activeEvent?.type === "shipwreck" ? (
+            <Box w="100%">
+              <Text mb={4} fontSize="lg">
+                Through the swells ye spot a half-sunk hull — barnacles and
+                kelp cling to its timbers. Something worth salvaging may lie
+                below decks, but ye'll need a way to breathe underwater.
+              </Text>
+              {getItemCount(hero.inventory, "siren_gills") <= 0 &&
+              getItemCount(hero.inventory, "dive_helmet") <= 0 ? (
+                <Text mb={4} fontSize="sm" color="gray.900">
+                  You can't breathe underwater yet, so exploring this shipwreck
+                  isn't possible...
+                </Text>
+              ) : null}
+              <HomeActionGrid>
+                {getItemCount(hero.inventory, "siren_gills") > 0 ? (
+                  <SquallsActionCard
+                    emoji="🫁"
+                    label="Explore with Siren Gills"
+                    accent="teal"
+                    onClick={() => resolveShipwreckDive("siren_gills")}
+                  />
+                ) : null}
+                {getItemCount(hero.inventory, "dive_helmet") > 0 ? (
+                  <SquallsActionCard
+                    emoji="🤿"
+                    label="Explore with Dive Helmet"
+                    accent="teal"
+                    onClick={() => resolveShipwreckDive("dive_helmet")}
+                  />
+                ) : null}
+                <SquallsActionCard
+                  emoji="⛵"
+                  label="Sail On"
+                  accent="blue"
+                  onClick={() => resolveShipwreckDive("sail_past")}
+                />
+              </HomeActionGrid>
+            </Box>
+          ) : activeEvent?.type === "weather" ? (
+            <Box w="100%">
+              <Text mb={4}>
+                {location === "island" && isIslandWeatherEvent(activeEvent)
+                  ? activeEvent.name === "Storm!"
+                    ? "Dark clouds gather over the island — rain lashes the shore."
+                    : activeEvent.name === "Wind"
+                      ? "A stiff wind whips through the palms and sand stings yer eyes."
+                      : activeEvent.name === "Heat Wave"
+                        ? "The sun beats down mercilessly — the air shimmers with heat."
+                        : `The island weather turns — ${activeEvent.name}.`
+                  : activeEvent.name === "Storm!"
+                    ? "Lightning splits the sky and waves crash over the rail. The crew weathers it as best they can."
+                    : activeEvent.name === "Fog Bank"
+                      ? "A calm mist settles over the deck — the seas grow gentle and ye catch yer breath."
+                      : `The sea turns rough — ${activeEvent.name}.`}
+              </Text>
+              {location !== "island" && seaWeatherEffectLabel(activeEvent.name) ? (
+                <Text mb={4} fontSize="sm" color="gray.900">
+                  {seaWeatherEffectLabel(activeEvent.name)}
+                </Text>
+              ) : null}
+              <HomeActionGrid>
+                <SquallsActionCard
+                  emoji="✅"
+                  label="Acknowledge"
+                  accent="blue"
+                  onClick={
+                    location === "island" && isIslandWeatherEvent(activeEvent)
+                      ? acknowledgeGenericEvent
+                      : acknowledgeWeatherEvent
+                  }
+                />
+              </HomeActionGrid>
             </Box>
           ) : (
-            <Box>
+            <Box w="100%">
               <Text mb={4}>
                 {activeEvent?.type === "hazard"
                   ? "Danger approaches quickly..."
                   : `Ye have encountered: ${activeEvent?.name}`}
               </Text>
-              <Button
-                colorPalette="blue"
-                onClick={() => {
-                  setGameState("home");
-                  setDay(day + 1);
-                  setActiveEvent(null);
-                }}
-              >
-                Acknowledge
-              </Button>
+              <HomeActionGrid>
+                <SquallsActionCard
+                  emoji="✅"
+                  label="Acknowledge"
+                  accent="blue"
+                  onClick={acknowledgeGenericEvent}
+                />
+              </HomeActionGrid>
             </Box>
           )}
         </VStack>
@@ -434,6 +668,7 @@ export default function WorldPanel({
       return (
         <CombatBattleDnd
           hand={hand}
+          equipped={hero.equipped}
           isPlayerTurn={isPlayerTurn}
           viewingHand={viewingHand}
           energy={energy}
@@ -472,6 +707,7 @@ export default function WorldPanel({
                 hero={hero}
                 gameState="battle"
                 armor={armor}
+                weakened={heroWeakened}
                 onOpenCharacterSheet={onOpenCharacterSheet}
               />
 
@@ -549,14 +785,24 @@ export default function WorldPanel({
                             textAlign="center"
                             color={
                               slain
-                                ? "gray.600"
-                                : enemy.intent === "attack"
-                                  ? "red.700"
-                                  : "blue.700"
+                                ? "gray.900"
+                                : enemyBroadcastColor(enemy.broadcast)
                             }
                           >
-                            {slain ? "Slain" : formatEnemyIntentLabel(enemy.intent)}
+                            {slain
+                              ? "Slain"
+                              : formatEnemyBroadcastLabel(enemy.broadcast)}
                           </Text>
+                          {!slain && getEnemyDisplayTraits(enemy).length > 0 ? (
+                            <Text
+                              fontSize="2xs"
+                              fontWeight="semibold"
+                              textAlign="center"
+                              color="purple.700"
+                            >
+                              {getEnemyDisplayTraits(enemy).join(", ")}
+                            </Text>
+                          ) : null}
                           <Box
                             minH="1.25rem"
                             display="flex"
@@ -565,7 +811,7 @@ export default function WorldPanel({
                             w="100%"
                           >
                             {!slain && enemy.armor > 0 ? (
-                              <Text fontSize="xs" textAlign="center" color="fg.muted">
+                              <Text fontSize="xs" textAlign="center" color="gray.900">
                                 Armor {enemy.armor}
                               </Text>
                             ) : null}
@@ -588,7 +834,7 @@ export default function WorldPanel({
                 py={1}
               >
                 {combatLog.length === 0 ? (
-                  <Text fontSize="xs" color="fg.muted">
+                  <Text fontSize="xs" color="gray.900">
                     {combatVictory
                       ? "Victory!"
                       : combatPhase === "player"
@@ -598,16 +844,19 @@ export default function WorldPanel({
                 ) : (
                   combatLog.map((entry, index) => {
                     const ageFromNewest = combatLog.length - 1 - index;
-                    const entryStyle = getCombatLogEntryStyle(ageFromNewest);
+                    const entryStyle = getCombatLogEntryStyle(
+                      entry.side,
+                      ageFromNewest,
+                    );
                     return (
                       <Text
-                        key={`${index}-${entry}`}
+                        key={`${index}-${entry.text}`}
                         fontSize="xs"
                         lineHeight="short"
                         fontWeight={entryStyle.fontWeight}
                         color={entryStyle.color}
                       >
-                        {entry}
+                        {entry.text}
                       </Text>
                     );
                   })
@@ -703,7 +952,7 @@ export default function WorldPanel({
                         alignItems="center"
                         justifyContent="center"
                         fontSize="xs"
-                        color="fg.muted"
+                        color="gray.900"
                         textAlign="center"
                         px={2}
                         pointerEvents="none"
@@ -726,6 +975,7 @@ export default function WorldPanel({
                               handIndex={index}
                               card={card}
                               cost={getCardEnergyCost(card)}
+                              equipped={hero.equipped}
                               disabled={
                                 !(isPlayerTurn && energy >= getCardEnergyCost(card))
                               }
@@ -734,6 +984,7 @@ export default function WorldPanel({
                             <CombatHandCard
                               card={card}
                               cost={getCardEnergyCost(card)}
+                              equipped={hero.equipped}
                               layout="hand"
                               fillSlot
                               viewOnly
@@ -749,7 +1000,7 @@ export default function WorldPanel({
                   {isPlayerTurn && viewingHand && (
                     <Text
                       fontSize="xs"
-                      color="fg.muted"
+                      color="gray.900"
                       textAlign="center"
                       flexShrink={0}
                       w="100%"

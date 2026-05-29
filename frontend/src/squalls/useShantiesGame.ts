@@ -8,19 +8,23 @@ import {
   isTreasureEvent,
 } from "./combatLoot";
 import {
+  applyWeakenedToDamage,
+  executeEnemyAction,
+  formatEnemyBroadcastLabel,
+  initializeEnemyActionDeck,
+} from "./enemyActions";
+import {
   appendCombatLog,
   applyAttackDamageToEnemy,
   clampHp,
   CARDS_DRAWN_PER_TURN,
+  combatLogLine,
   drawFromPiles,
   formatPlayerAttackLog,
   getCardEnergyCost,
   MAX_ENERGY_PER_TURN,
-  assignEnemyIntents,
   countLivingEnemies,
-  executeEnemyIntent,
   findNextLivingEnemyIndex,
-  formatEnemyIntentLabel,
   isEnemyAlive,
   setupCombatDeck,
   spawnEnemy,
@@ -44,6 +48,7 @@ import {
 import type {
   CombatCard,
   CombatLootItem,
+  CombatLogEntry,
   CombatPhase,
   EnemyType,
   EventType,
@@ -54,6 +59,8 @@ import type {
   DungeonType,
   IslandType,
   ItemId,
+  ShopVariant,
+  WreckUnlockItemId,
 } from "./shantiesTypes";
 import {
   clearShantiesSave,
@@ -66,37 +73,75 @@ import {
 } from "./shantiesLocalSave";
 import {
   generateDungeon,
+  isDepletedDungeon,
+  isIslandDungeonKind,
   renderDungeonName,
 } from "./dungeonExplore";
+import { buildSeaEventDeck, drawSeaEvent } from "./seaEventDeck";
 import {
   applySellEquipment,
+  breakEquippedLockpick,
+  addEquipmentToBag,
   checkSellEquipment,
   EQUIPMENT_DEFINITIONS,
+  heroHasLockpickEquipped,
 } from "./shantiesEquipment";
 import {
   applyRest,
   checkRest,
 } from "./shantiesRest";
 import {
+  generateFloatingSuppliesLoot,
+  isSeaTreasureEvent,
+  isSeaTreasureTemplate,
+  prepareSeaTreasureEvent,
+} from "./floatingSuppliesLoot";
+import {
+  drawIslandEvent,
+  ensureIslandEventDeck,
+} from "./islandEventDeck";
+import {
+  generateIslandTreasureLoot,
+  isIslandTreasureEvent,
+  prepareIslandTreasureEvent,
+} from "./islandTreasureLoot";
+import {
   FORCE_OPEN_FAIL_MESSAGE,
+  PICK_LOCK_FAIL_BROKEN_MESSAGE,
+  PICK_LOCK_SUCCESS_BROKEN_MESSAGE,
   prepareDungeonTreasureEvent,
   rollForceOpenChest,
+  rollPickLock,
 } from "./dungeonTreasure";
 import {
   applyEncounterDrawPenalty,
   createEmptyScopedEncounterModifiers,
   pickDungeonEvent,
-  pickIslandExploreEvent,
-  pickSailEvent,
   type EncounterScope,
   type ScopedEncounterModifiers,
 } from "./encounterProbability";
+import { applySeaWeatherToHero } from "./seaWeather";
 import {
   buildSaveSummaryLines,
   formatSavedAt,
   hasResumableAdventure,
 } from "./shantiesSaveSummary";
 import {
+  formatMissLog,
+  rollAttackDamage,
+  rollDefendArmor,
+  rollMeleeMiss,
+  shockingRetaliationDamage,
+  formatShockingRetaliationLog,
+} from "./combatEquipment";
+import {
+  encounterPoolScopeForDungeonKind,
+  getMonsterTemplate,
+  pickEncounterMonsterNames,
+  type EncounterPoolScope,
+} from "./monsters";
+import {
+  getAttackKind,
   isAttackCard,
   targetsEnemyManually,
   targetsSelfAutomatically,
@@ -112,12 +157,25 @@ function encounterScopeForLocation(
   return "dungeon";
 }
 
-const rollDie = () => Math.random();
-
 const VICTORY_DELAY_MS = 1800;
 
-const rollDamage = (min: number, max: number) =>
-  Math.floor(rollDie() * (max - min + 1)) + min;
+function spawnRegistryMonster(name: string): EnemyType {
+  const template = getMonsterTemplate(name);
+  if (!template) {
+    return spawnEnemy({ name, level: 1, hp: 7 });
+  }
+  return spawnEnemy({
+    name,
+    level: template.level,
+    hp: template.hp,
+    traits: template.traits,
+    armor: template.armor,
+  });
+}
+
+function spawnEncounter(scope: EncounterPoolScope): EnemyType[] {
+  return pickEncounterMonsterNames(scope).map(spawnRegistryMonster);
+}
 
 function loadPersistedSave() {
   return readShantiesSave() ?? createDefaultSaveData();
@@ -148,8 +206,9 @@ export function useShantiesGame() {
   const [discardPile, setDiscardPile] = useState<CombatCard[]>(
     initialSave.discardPile,
   );
-  const [combatLog, setCombatLog] = useState<string[]>(initialSave.combatLog);
+  const [combatLog, setCombatLog] = useState<CombatLogEntry[]>(initialSave.combatLog);
   const [armor, setArmor] = useState(initialSave.armor);
+  const [heroWeakened, setHeroWeakened] = useState(initialSave.heroWeakened);
   const [energy, setEnergy] = useState(initialSave.energy);
   const [combatPhase, setCombatPhase] = useState<CombatPhase>(
     initialSave.combatPhase,
@@ -188,7 +247,19 @@ export function useShantiesGame() {
   const [dungeonChestUnlocked, setDungeonChestUnlocked] = useState(
     initialSave.dungeonChestUnlocked ?? false,
   );
+  const [seaEventDeck, setSeaEventDeck] = useState<EventType[]>(
+    initialSave.seaEventDeck,
+  );
+  const [shopVariant, setShopVariant] = useState<ShopVariant | null>(
+    initialSave.shopVariant,
+  );
   const [chestMessage, setChestMessage] = useState<string | null>(null);
+  const [forceOpenAttempted, setForceOpenAttempted] = useState(false);
+
+  const clearChestInteraction = useCallback(() => {
+    setChestMessage(null);
+    setForceOpenAttempted(false);
+  }, []);
 
   const resetEncounterModifiers = useCallback((scope: EncounterScope) => {
     setEncounterModifiers((prev) => ({ ...prev, [scope]: {} }));
@@ -203,6 +274,7 @@ export function useShantiesGame() {
 
   const heroRef = useRef(hero);
   const armorRef = useRef(armor);
+  const heroWeakenedRef = useRef(heroWeakened);
   const enemiesRef = useRef(enemies);
   const drawPileRef = useRef(drawPile);
   const discardPileRef = useRef(discardPile);
@@ -232,6 +304,9 @@ export function useShantiesGame() {
     armorRef.current = armor;
   }, [armor]);
   useEffect(() => {
+    heroWeakenedRef.current = heroWeakened;
+  }, [heroWeakened]);
+  useEffect(() => {
     enemiesRef.current = enemies;
   }, [enemies]);
   useEffect(() => {
@@ -256,6 +331,7 @@ export function useShantiesGame() {
       discardPile,
       combatLog,
       armor,
+      heroWeakened,
       energy,
       combatPhase,
       enemyTurnIndex,
@@ -268,6 +344,8 @@ export function useShantiesGame() {
       currentIndoorArea,
       encounterModifiers,
       dungeonChestUnlocked,
+      seaEventDeck,
+      shopVariant,
     });
   }, [
     gameState,
@@ -283,6 +361,7 @@ export function useShantiesGame() {
     discardPile,
     combatLog,
     armor,
+    heroWeakened,
     energy,
     combatPhase,
     enemyTurnIndex,
@@ -295,6 +374,8 @@ export function useShantiesGame() {
     currentIndoorArea,
     encounterModifiers,
     dungeonChestUnlocked,
+    seaEventDeck,
+    shopVariant,
   ]);
 
   const grantLootItem = useCallback((item: CombatLootItem) => {
@@ -315,6 +396,10 @@ export function useShantiesGame() {
           Math.max(1, item.amount),
         ),
       }));
+      return;
+    }
+    if (item.kind === "equipment" && item.equipmentId) {
+      setHero((h) => addEquipmentToBag(h, item.equipmentId!));
     }
   }, []);
 
@@ -338,6 +423,7 @@ export function useShantiesGame() {
     setDiscardPile([]);
     setCombatLog([]);
     setArmor(0);
+    setHeroWeakened(false);
     setEnergy(MAX_ENERGY_PER_TURN);
     setCombatPhase("player");
     setEnemyTurnIndex(null);
@@ -358,11 +444,13 @@ export function useShantiesGame() {
     setDiscardPile(discard);
     setHand(openingHand);
     setArmor(0);
+    setHeroWeakened(false);
     setEnergy(MAX_ENERGY_PER_TURN);
     setCombatPhase("player");
     setEnemyTurnIndex(null);
     setEnemyActionMessage(null);
     setCombatLog([]);
+    setEnemies((prev) => prev.map(initializeEnemyActionDeck));
   }, [cancelVictoryDelay]);
 
   const startPlayerTurn = useCallback(() => {
@@ -371,7 +459,6 @@ export function useShantiesGame() {
     setEnemyTurnIndex(null);
     setEnemyActionMessage(null);
     drawCardsForTurn();
-    setEnemies((prev) => assignEnemyIntents(prev));
   }, [drawCardsForTurn]);
 
   startPlayerTurnRef.current = startPlayerTurn;
@@ -430,9 +517,7 @@ export function useShantiesGame() {
     if (sizeRoll < 0.3) size = "Small";
     else if (sizeRoll < 0.6) size = "Large";
 
-    let explorePoints = 5;
-    if (size === "Small") explorePoints -= 2;
-    if (size === "Large") explorePoints += 2;
+    const explorePoints = 0;
 
     let levelFactor = 0;
     if (vibe === "Foreboding") levelFactor += 1;
@@ -473,6 +558,7 @@ export function useShantiesGame() {
       discardPile,
       combatLog,
       armor,
+      heroWeakened,
       energy,
       combatPhase,
       enemyTurnIndex,
@@ -485,6 +571,8 @@ export function useShantiesGame() {
       currentIndoorArea,
       encounterModifiers,
       dungeonChestUnlocked,
+      seaEventDeck,
+      shopVariant,
     }),
     [
       gameState,
@@ -500,6 +588,7 @@ export function useShantiesGame() {
       discardPile,
       combatLog,
       armor,
+      heroWeakened,
       energy,
       combatPhase,
       enemyTurnIndex,
@@ -512,6 +601,8 @@ export function useShantiesGame() {
       currentIndoorArea,
       encounterModifiers,
       dungeonChestUnlocked,
+      seaEventDeck,
+      shopVariant,
     ],
   );
 
@@ -543,6 +634,7 @@ export function useShantiesGame() {
     clearShantiesSave();
     setLocation("ship");
     setCurrentIsland(null);
+    setCurrentDungeon(null);
     setEnemies([]);
     setVictoryEnemies([]);
     setCombatLoot([]);
@@ -555,80 +647,76 @@ export function useShantiesGame() {
     setCurrentIndoorArea(null);
     setItemMessage(null);
     setDungeonChestUnlocked(false);
-    setChestMessage(null);
+    clearChestInteraction();
     resetAllEncounterModifiers();
+    setSeaEventDeck(buildSeaEventDeck());
+    setShopVariant(null);
     resetCombatState();
     setCombatVictory(false);
     setGameState("home");
   }, [cancelVictoryDelay, resetAllEncounterModifiers, resetCombatState]);
 
   const initiateBattle = useCallback(() => {
-    const levelOneMonsterArray = [
-      { name: "Harpy", level: 1, hp: 6 },
-      { name: "Siren", level: 1, hp: 5 },
-    ] as const;
-    const monsterCount = Math.floor(Math.random() * 2) + 1;
-    const selectedMonsters: EnemyType[] = [];
-    for (let i = 0; i < monsterCount; i++) {
-      const randomIndex = Math.floor(
-        Math.random() * levelOneMonsterArray.length,
-      );
-      selectedMonsters.push(spawnEnemy(levelOneMonsterArray[randomIndex]));
-    }
-    setEnemies(selectedMonsters);
+    setEnemies(spawnEncounter("sea"));
     beginCombat([...hero.deck]);
     setGameState("battle");
   }, [beginCombat, hero.deck]);
 
   const initiateIslandBattle = useCallback(() => {
-    const monsterPool = [
-      { name: "Boar", level: 1, hp: 4 },
-      { name: "Wolf", level: 1, hp: 5 },
-    ] as const;
-    const count = Math.floor(Math.random() * 2) + 1;
-    const selected = Array.from({ length: count }, () =>
-      spawnEnemy(monsterPool[Math.floor(Math.random() * monsterPool.length)]),
-    );
-    setEnemies(selected);
+    setEnemies(spawnEncounter("island"));
     beginCombat([...hero.deck]);
     setGameState("battle");
   }, [beginCombat, hero.deck]);
 
   const initiateDungeonBattle = useCallback(() => {
-    const monsterPool = [
-      { name: "Bat", level: 1, hp: 3 },
-      { name: "Skeleton", level: 1, hp: 5 },
-    ] as const;
-    const count = Math.floor(Math.random() * 2) + 1;
-    const selected = Array.from({ length: count }, () =>
-      spawnEnemy(monsterPool[Math.floor(Math.random() * monsterPool.length)]),
-    );
-    setEnemies(selected);
+    setEnemies(spawnEncounter(encounterPoolScopeForDungeonKind(currentDungeon?.kind)));
     beginCombat([...hero.deck]);
     setGameState("battle");
-  }, [beginCombat, hero.deck]);
+  }, [beginCombat, currentDungeon?.kind, hero.deck]);
 
   const enterCurrentDungeon = useCallback(() => {
-    if (!currentDungeon) return;
+    if (!currentDungeon || isDepletedDungeon(currentDungeon)) return;
+    let dungeon = currentDungeon;
+    if (isIslandDungeonKind(dungeon.kind) && !dungeon.candleUnlocked) {
+      if (getItemCount(hero.inventory, "candle") <= 0) {
+        setItemMessage("Ye need a candle to explore the dark interior.");
+        return;
+      }
+      setHero((h) => ({
+        ...h,
+        inventory: removeItemFromInventory(h.inventory, "candle"),
+      }));
+      dungeon = { ...dungeon, candleUnlocked: true };
+      setCurrentDungeon(dungeon);
+    }
     setLocation("dungeon");
-    setCurrentIndoorArea(currentDungeon.areaId);
+    setCurrentIndoorArea(dungeon.areaId);
+    setGameState("home");
+  }, [currentDungeon, hero.inventory]);
+
+  const returnToIslandFromDungeon = useCallback(() => {
+    if (currentDungeon?.kind === "wreck") {
+      setLocation("ship");
+    } else {
+      setLocation("island");
+      if (currentDungeon && isDepletedDungeon(currentDungeon)) {
+        setCurrentDungeon(null);
+      }
+    }
+    setCurrentIndoorArea(null);
     setGameState("home");
   }, [currentDungeon]);
 
-  const returnToIslandFromDungeon = useCallback(() => {
-    setLocation("island");
-    setCurrentIndoorArea(null);
-    setGameState("home");
-  }, []);
-
   const returnToShipFromIsland = useCallback(() => {
     resetEncounterModifiers("island");
+    setSeaEventDeck(buildSeaEventDeck());
     setLocation("ship");
     setGameState("home");
   }, [resetEncounterModifiers]);
 
   const anchorAtDiscoveredIsland = useCallback(() => {
     resetEncounterModifiers("sail");
+    setCurrentIsland((prev) => (prev ? ensureIslandEventDeck(prev) : prev));
     setLocation("island");
     setGameState("home");
     setActiveEvent(null);
@@ -637,6 +725,7 @@ export function useShantiesGame() {
 
   const abandonDiscoveredIsland = useCallback(() => {
     setCurrentIsland(null);
+    setSeaEventDeck(buildSeaEventDeck());
     setGameState("home");
     setActiveEvent(null);
     setDay((d) => d + 1);
@@ -645,34 +734,64 @@ export function useShantiesGame() {
   const resolveDungeonDiscovery = useCallback(
     (enterNow: boolean) => {
       const kind = activeEvent?.dungeonKind;
-      if (!kind) return;
-      const dungeon = generateDungeon(kind, currentIsland);
-      setCurrentDungeon(dungeon);
-      resetEncounterModifiers("dungeon");
+      if (!kind || kind === "wreck") return;
       setActiveEvent(null);
       setEventLoot([]);
       setDay((d) => d + 1);
-      if (enterNow) {
+      if (enterNow && getItemCount(hero.inventory, "candle") > 0) {
+        const dungeon = generateDungeon(kind, currentIsland);
+        resetEncounterModifiers("dungeon");
+        setHero((h) => ({
+          ...h,
+          inventory: removeItemFromInventory(h.inventory, "candle"),
+        }));
+        const unlocked = { ...dungeon, candleUnlocked: true };
+        setCurrentDungeon(unlocked);
         setLocation("dungeon");
-        setCurrentIndoorArea(dungeon.areaId);
+        setCurrentIndoorArea(unlocked.areaId);
       }
       setGameState("home");
     },
-    [activeEvent?.dungeonKind, currentIsland, resetEncounterModifiers],
+    [activeEvent?.dungeonKind, currentIsland, hero.inventory, resetEncounterModifiers],
+  );
+
+  const resolveShipwreckDive = useCallback(
+    (choice: "sail_past" | WreckUnlockItemId) => {
+      if (choice === "sail_past") {
+        setActiveEvent(null);
+        setGameState("home");
+        setDay((d) => d + 1);
+        return;
+      }
+      if (getItemCount(hero.inventory, choice) <= 0) return;
+      const dungeon = generateDungeon("wreck", currentIsland);
+      setHero((h) => ({
+        ...h,
+        inventory: removeItemFromInventory(h.inventory, choice),
+      }));
+      setCurrentDungeon(dungeon);
+      resetEncounterModifiers("dungeon");
+      setLocation("dungeon");
+      setCurrentIndoorArea(dungeon.areaId);
+      setActiveEvent(null);
+      setEventLoot([]);
+      setGameState("home");
+    },
+    [currentIsland, hero.inventory, resetEncounterModifiers],
   );
 
   const handleSailOrExplore = useCallback(() => {
     let dungeonDelveAfter: number | null = null;
 
-    if (location === "island") {
-      if (!currentIsland || currentIsland.explorePoints <= 0) return;
-      setCurrentIsland({
-        ...currentIsland,
-        explorePoints: currentIsland.explorePoints - 1,
-      });
-    }
     if (location === "dungeon") {
       if (!currentDungeon || currentDungeon.delvePoints <= 0) return;
+      if (
+        isIslandDungeonKind(currentDungeon.kind) &&
+        !currentDungeon.candleUnlocked
+      ) {
+        setItemMessage("Ye need a light a candle before delving here.");
+        return;
+      }
       dungeonDelveAfter = currentDungeon.delvePoints - 1;
       setCurrentDungeon({
         ...currentDungeon,
@@ -680,25 +799,85 @@ export function useShantiesGame() {
       });
     }
 
+    if (location === "ship") {
+      const { drawn, remainingDeck } = drawSeaEvent(seaEventDeck);
+      setSeaEventDeck(remainingDeck);
+
+      if (drawn.type === "combat") {
+        initiateBattle();
+        return;
+      }
+
+      if (drawn.type === "discovery") {
+        setCurrentIsland(generateIsland());
+      }
+
+      let eventToSet: EventType = drawn;
+      if (isSeaTreasureTemplate(drawn)) {
+        eventToSet = prepareSeaTreasureEvent(drawn);
+      }
+
+      setActiveEvent(eventToSet);
+      setDungeonChestUnlocked(!eventToSet.locked);
+      clearChestInteraction();
+      setEventLoot(
+        isTreasureEvent(eventToSet)
+          ? isSeaTreasureEvent(eventToSet)
+            ? generateFloatingSuppliesLoot()
+            : generateEventLoot(eventToSet, { islandVibe: null })
+          : [],
+      );
+      setGameState("event");
+      return;
+    }
+
+    if (location === "island") {
+      if (!currentIsland) return;
+      const deck = currentIsland.eventDeck ?? [];
+      if (deck.length === 0) return;
+
+      const drawResult = drawIslandEvent(deck);
+      if (!drawResult) return;
+
+      const { drawn, remainingDeck } = drawResult;
+      setCurrentIsland({
+        ...currentIsland,
+        eventDeck: remainingDeck,
+        explorePoints: remainingDeck.length,
+      });
+
+      if (drawn.type === "combat") {
+        initiateIslandBattle();
+        return;
+      }
+
+      let eventToSet: EventType = drawn;
+      if (isIslandTreasureEvent(drawn)) {
+        eventToSet = prepareIslandTreasureEvent(drawn);
+      }
+
+      setActiveEvent(eventToSet);
+      setDungeonChestUnlocked(!eventToSet.locked);
+      clearChestInteraction();
+      setEventLoot(
+        isTreasureEvent(eventToSet) && isIslandTreasureEvent(eventToSet)
+          ? generateIslandTreasureLoot(eventToSet, hero, currentIsland)
+          : [],
+      );
+      setGameState("event");
+      return;
+    }
+
     if (isBattle()) {
       if (location === "dungeon") {
         initiateDungeonBattle();
-      } else if (location === "island") {
-        initiateIslandBattle();
-      } else {
-        initiateBattle();
       }
       return;
     }
 
     const scope = encounterScopeForLocation(location);
     const scopeModifiers = encounterModifiers[scope];
-    const drawn =
-      scope === "sail"
-        ? pickSailEvent(scopeModifiers)
-        : scope === "island"
-          ? pickIslandExploreEvent(scopeModifiers)
-          : pickDungeonEvent(scopeModifiers);
+    const drawn = pickDungeonEvent(scopeModifiers);
 
     setEncounterModifiers((prev) => ({
       ...prev,
@@ -712,35 +891,33 @@ export function useShantiesGame() {
     const chestUnlocked = !eventToSet.locked;
     setActiveEvent(eventToSet);
     setDungeonChestUnlocked(chestUnlocked);
-    setChestMessage(null);
+    clearChestInteraction();
     setEventLoot(
       isTreasureEvent(drawn)
         ? generateEventLoot(drawn, {
             islandVibe:
-              location === "island" || location === "dungeon"
-                ? (currentIsland?.vibe ?? null)
-                : null,
+              location === "dungeon" ? (currentIsland?.vibe ?? null) : null,
           })
         : [],
     );
-    if (location === "ship" && drawn.type === "discovery") {
-      setCurrentIsland(generateIsland());
-    }
     setGameState("event");
 
     if (dungeonDelveAfter === 0) {
       resetEncounterModifiers("dungeon");
     }
   }, [
+    clearChestInteraction,
     currentDungeon,
     currentIsland,
     encounterModifiers,
     generateIsland,
+    hero,
     initiateBattle,
     initiateDungeonBattle,
     initiateIslandBattle,
     location,
     resetEncounterModifiers,
+    seaEventDeck,
   ]);
 
   const startSailFromShip = useCallback(() => {
@@ -791,20 +968,49 @@ export function useShantiesGame() {
     [grantLootItem],
   );
 
+  const clearDepletedIslandDungeon = useCallback(() => {
+    if (
+      location === "dungeon" &&
+      currentDungeon &&
+      isIslandDungeonKind(currentDungeon.kind) &&
+      isDepletedDungeon(currentDungeon)
+    ) {
+      setCurrentDungeon(null);
+      setCurrentIndoorArea(null);
+      setLocation("island");
+    }
+  }, [currentDungeon, location]);
+
   const completeTreasureEvent = useCallback(() => {
     setActiveEvent(null);
     setEventLoot([]);
     setDungeonChestUnlocked(false);
-    setChestMessage(null);
+    clearChestInteraction();
+    setDay((d) => d + 1);
+    clearDepletedIslandDungeon();
+    setGameState("home");
+  }, [clearDepletedIslandDungeon]);
+
+  const acknowledgeGenericEvent = useCallback(() => {
+    setActiveEvent(null);
+    setDay((d) => d + 1);
+    clearDepletedIslandDungeon();
+    setGameState("home");
+  }, [clearDepletedIslandDungeon]);
+
+  const acknowledgeWeatherEvent = useCallback(() => {
+    if (!activeEvent || activeEvent.type !== "weather") return;
+    setHero((h) => applySeaWeatherToHero(h, activeEvent.name));
+    setActiveEvent(null);
     setDay((d) => d + 1);
     setGameState("home");
-  }, []);
+  }, [activeEvent]);
 
   const abandonLockedDungeonChest = useCallback(() => {
     setActiveEvent(null);
     setEventLoot([]);
     setDungeonChestUnlocked(false);
-    setChestMessage(null);
+    clearChestInteraction();
     setDay((d) => d + 1);
     setGameState("home");
   }, []);
@@ -822,13 +1028,35 @@ export function useShantiesGame() {
     setChestMessage(null);
   }, [hero.inventory]);
 
+  const pickLockOnChest = useCallback(() => {
+    if (!heroHasLockpickEquipped(hero)) {
+      setChestMessage("Ye need a lockpick equipped in yer relic slot.");
+      return;
+    }
+    const result = rollPickLock();
+    if (result.outcome === "success") {
+      setDungeonChestUnlocked(true);
+      setChestMessage(null);
+      return;
+    }
+    setHero((h) => breakEquippedLockpick(h));
+    if (result.outcome === "success_broken") {
+      setDungeonChestUnlocked(true);
+      setChestMessage(PICK_LOCK_SUCCESS_BROKEN_MESSAGE);
+      return;
+    }
+    setChestMessage(PICK_LOCK_FAIL_BROKEN_MESSAGE);
+  }, [hero]);
+
   const forceOpenDungeonChest = useCallback(() => {
+    if (forceOpenAttempted) return;
     const result = rollForceOpenChest();
     if (result.outcome === "success") {
       setDungeonChestUnlocked(true);
       setChestMessage(null);
       return;
     }
+    setForceOpenAttempted(true);
     if (result.outcome === "hurt") {
       setHero((h) => ({
         ...h,
@@ -840,7 +1068,7 @@ export function useShantiesGame() {
       return;
     }
     setChestMessage(FORCE_OPEN_FAIL_MESSAGE);
-  }, []);
+  }, [forceOpenAttempted]);
 
   const dismissCombatVictory = useCallback(() => {
     setCombatVictory(false);
@@ -849,8 +1077,9 @@ export function useShantiesGame() {
     setEnemies([]);
     resetCombatState();
     setDay((d) => d + 1);
+    clearDepletedIslandDungeon();
     setGameState("home");
-  }, [resetCombatState]);
+  }, [clearDepletedIslandDungeon, resetCombatState]);
 
   const playCombatCard = useCallback(
     (handIndex: number, targetIndex?: number) => {
@@ -869,31 +1098,66 @@ export function useShantiesGame() {
       if (energy < cost) return;
 
       let updatedEnemies = [...enemies];
-      const log: string[] = [];
+      const log: CombatLogEntry[] = [];
 
       if (targetsEnemyManually(card)) {
         if (!isAttackCard(card)) return;
         if (targetIndex === undefined) return;
         const target = updatedEnemies[targetIndex];
         if (!target || !isEnemyAlive(target)) return;
-        const damage = rollDamage(card.minDamage, card.maxDamage);
-        const attackResult = applyAttackDamageToEnemy(target, damage);
-        updatedEnemies[targetIndex] = attackResult.enemy;
-        log.push(
-          formatPlayerAttackLog(
-            hero.name,
-            target.name,
-            attackResult.armorBroken,
-            attackResult.damageDealt,
-          ),
-        );
-        if (attackResult.enemy.hp <= 0) {
-          log.push(`${target.name} has been slain!`);
+        if (getAttackKind(card) === "melee" && rollMeleeMiss(target)) {
+          log.push(
+            combatLogLine(formatMissLog(hero.name, target.name), "hero"),
+          );
+        } else {
+          const rawDamage = rollAttackDamage(hero.equipped, card);
+          const damage = applyWeakenedToDamage(rawDamage, heroWeakened);
+          const attackResult = applyAttackDamageToEnemy(target, damage);
+          updatedEnemies[targetIndex] = attackResult.enemy;
+          log.push(
+            combatLogLine(
+              formatPlayerAttackLog(
+                hero.name,
+                target.name,
+                attackResult.armorBroken,
+                attackResult.damageDealt,
+              ),
+              "hero",
+            ),
+          );
+          if (getAttackKind(card) === "melee") {
+            const shockDamage = shockingRetaliationDamage(target);
+            if (shockDamage > 0) {
+              const nextHp = clampHp(hero.current_hp - shockDamage);
+              setHero((h) => ({ ...h, current_hp: nextHp }));
+              log.push(
+                combatLogLine(
+                  formatShockingRetaliationLog(hero.name, target.name, shockDamage),
+                  "enemy",
+                ),
+              );
+              if (nextHp <= 0) {
+                log.push(
+                  combatLogLine(`${hero.name} has been slain!`, "enemy"),
+                );
+                setGameState("dead");
+              }
+            }
+          }
+          if (attackResult.enemy.hp <= 0) {
+            log.push(combatLogLine(`${target.name} has been slain!`, "hero"));
+          }
         }
       } else if (targetsSelfAutomatically(card)) {
-        const nextArmor = armor + 1;
+        const gained = rollDefendArmor(hero.equipped);
+        const nextArmor = armor + gained;
         setArmor(nextArmor);
-        log.push(`${hero.name} gains 1 armor (${nextArmor} total)`);
+        log.push(
+          combatLogLine(
+            `${hero.name} gains ${gained} armor (${nextArmor} total)`,
+            "hero",
+          ),
+        );
       }
 
       setCombatLog((prev) => appendCombatLog(prev, ...log));
@@ -918,6 +1182,9 @@ export function useShantiesGame() {
       energy,
       hand,
       hero.name,
+      hero.equipped,
+      hero.current_hp,
+      heroWeakened,
       combatVictory,
       scheduleCombatVictory,
     ],
@@ -967,7 +1234,7 @@ export function useShantiesGame() {
     }
 
     setEnemyActionMessage(
-      `${enemy.name} — ${formatEnemyIntentLabel(enemy.intent)}…`,
+      `${enemy.name} — ${formatEnemyBroadcastLabel(enemy.broadcast)}…`,
     );
 
     let resolveTimer: number | undefined;
@@ -977,7 +1244,13 @@ export function useShantiesGame() {
 
       const h = heroRef.current;
       const a = armorRef.current;
-      const result = executeEnemyIntent(enemy, h.name, h.current_hp, a);
+      const result = executeEnemyAction(
+        enemy,
+        h.name,
+        h.current_hp,
+        a,
+        heroWeakenedRef.current,
+      );
 
       setEnemies((prev) => {
         const next = [...prev];
@@ -988,12 +1261,15 @@ export function useShantiesGame() {
         return next;
       });
       setArmor(result.playerArmor);
+      setHeroWeakened(result.heroWeakened);
       setHero({
         ...h,
         current_hp: clampHp(result.heroHp),
         max_hp: clampHp(h.max_hp),
       });
-      setCombatLog((prev) => appendCombatLog(prev, result.message));
+      setCombatLog((prev) =>
+        appendCombatLog(prev, combatLogLine(result.message, "enemy")),
+      );
       setEnemyActionMessage(result.message);
 
       resolveTimer = window.setTimeout(() => {
@@ -1001,7 +1277,7 @@ export function useShantiesGame() {
 
         if (result.heroHp <= 0) {
           setCombatLog((prev) =>
-            appendCombatLog(prev, `${h.name} has been slain!`),
+            appendCombatLog(prev, combatLogLine(`${h.name} has been slain!`, "enemy")),
           );
           setGameState("dead");
           setCombatPhase("player");
@@ -1046,7 +1322,7 @@ export function useShantiesGame() {
     setIlluminatedAreas([]);
     setCurrentIndoorArea(null);
     setDungeonChestUnlocked(false);
-    setChestMessage(null);
+    clearChestInteraction();
     resetAllEncounterModifiers();
     resetCombatState();
     setCombatVictory(false);
@@ -1091,19 +1367,39 @@ export function useShantiesGame() {
     setShopMessage(null);
   }, []);
 
+  const openShipShop = useCallback(() => {
+    setShopVariant("ship");
+    setShopMessage(null);
+    setGameState("shop");
+  }, []);
+
+  const openMerchantShop = useCallback(() => {
+    setShopVariant("merchant");
+    setShopMessage(null);
+    setActiveEvent(null);
+    setGameState("shop");
+  }, []);
+
+  const openIslandTraderShop = useCallback(() => {
+    setShopVariant("island_trader");
+    setShopMessage(null);
+    setActiveEvent(null);
+    setGameState("shop");
+  }, []);
+
   const buyShopItem = useCallback(
     (itemId: ItemId) => {
-      const check = checkBuyItem(hero, itemId);
+      const check = checkBuyItem(hero, itemId, shopVariant);
       if (!check.ok) {
         setShopMessage(check.message);
         return;
       }
-      setHero((h) => applyBuyItem(h, itemId));
+      setHero((h) => applyBuyItem(h, itemId, shopVariant));
       setShopMessage(
         `Ye bought a ${ITEM_DEFINITIONS[itemId].name.toLowerCase()}.`,
       );
     },
-    [hero],
+    [hero, shopVariant],
   );
 
   const sellShopItem = useCallback(
@@ -1140,8 +1436,14 @@ export function useShantiesGame() {
 
   const leaveShop = useCallback(() => {
     setShopMessage(null);
+    const advancesDay =
+      shopVariant === "merchant" || shopVariant === "island_trader";
+    setShopVariant(null);
     setGameState("home");
-  }, []);
+    if (advancesDay) {
+      setDay((d) => d + 1);
+    }
+  }, [shopVariant]);
 
   const updateHeroEquipment = useCallback((next: HeroType) => {
     setHero(next);
@@ -1221,6 +1523,7 @@ export function useShantiesGame() {
     discardPile,
     combatLog,
     armor,
+    heroWeakened,
     energy,
     maxEnergy: MAX_ENERGY_PER_TURN,
     combatPhase,
@@ -1234,11 +1537,15 @@ export function useShantiesGame() {
     claimCombatLoot,
     claimEventLoot,
     completeTreasureEvent,
+    acknowledgeGenericEvent,
+    acknowledgeWeatherEvent,
     abandonLockedDungeonChest,
     unlockDungeonChestWithKey,
+    pickLockOnChest,
     forceOpenDungeonChest,
     dungeonChestUnlocked,
     chestMessage,
+    forceOpenAttempted,
     dismissCombatVictory,
     hero,
     generateIsland,
@@ -1252,6 +1559,7 @@ export function useShantiesGame() {
     enterCurrentDungeon,
     returnToIslandFromDungeon,
     resolveDungeonDiscovery,
+    resolveShipwreckDive,
     playCombatCard,
     endPlayerTurn,
     resetToLobby,
@@ -1274,6 +1582,10 @@ export function useShantiesGame() {
     useItem,
     clearItemMessage,
     shopMessage,
+    shopVariant,
+    openShipShop,
+    openMerchantShop,
+    openIslandTraderShop,
     buyShopItem,
     sellShopItem,
     sellShopEquipment,

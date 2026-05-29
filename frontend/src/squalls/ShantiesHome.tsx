@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { useAppSession } from "../auth/AppSessionContext";
 import AdventureStripe from "./AdventureStripe";
 import CharacterSheetModal from "./CharacterSheetModal";
 import GameShell from "./GameShell";
@@ -7,10 +8,13 @@ import PlayerPanel from "./PlayerPanel";
 import { getSceneKey, useSquallsSceneFade } from "./squallsSceneTransition";
 import { setSquallsInGame } from "./squallsBreadcrumbBridge";
 import { useFrozenSceneProps } from "./useFrozenSceneProps";
+import { pickWorldPanelVisuals } from "./worldPanelVisuals";
 import WorldPanel from "./WorldPanel";
 import { useShantiesGame } from "./useShantiesGame";
 
 export default function ShantiesHome() {
+  const { sessionUser } = useAppSession();
+  const isStaff = !!sessionUser?.user?.is_staff;
   const game = useShantiesGame();
   const [characterSheetOpen, setCharacterSheetOpen] = useState(false);
   const sceneKey = getSceneKey(game.gameState, game.location);
@@ -21,39 +25,47 @@ export default function ShantiesHome() {
   const openCharacterSheet = () => setCharacterSheetOpen(true);
 
   const worldVisuals = useMemo(
-    () => ({
-      currentIsland: game.currentIsland,
-      currentDungeon: game.currentDungeon,
-      day: game.day,
-      hero: game.hero,
-      armor: game.armor,
-      enemies: game.battlefieldEnemies,
-      activeEvent: game.activeEvent,
-      hand: game.hand,
-      discardPile: game.discardPile,
-      combatLog: game.combatLog,
-      energy: game.energy,
-      maxEnergy: game.maxEnergy,
-      combatPhase: game.combatPhase,
-      victoryPending: game.victoryPending,
-      combatVictory: game.combatVictory,
-      combatLoot: game.combatLoot,
-      allCombatLootClaimed: game.allCombatLootClaimed,
-      eventLoot: game.eventLoot,
-      allEventLootClaimed: game.allEventLootClaimed,
-      enemyActionMessage: game.enemyActionMessage,
-      canResumeAdventure: game.canResumeAdventure,
-      lobbySaveSummaryLines: game.lobbySaveSummaryLines,
-      lobbySavedAtLabel: game.lobbySavedAtLabel,
-      illuminatedAreas: game.illuminatedAreas,
-      currentIndoorArea: game.currentIndoorArea,
-    }),
+    () =>
+      pickWorldPanelVisuals({
+        currentIsland: game.currentIsland,
+        currentDungeon: game.currentDungeon,
+        day: game.day,
+        hero: game.hero,
+        armor: game.armor,
+        heroWeakened: game.heroWeakened,
+        enemies: game.battlefieldEnemies,
+        activeEvent: game.activeEvent,
+        hand: game.hand,
+        discardPile: game.discardPile,
+        combatLog: game.combatLog,
+        energy: game.energy,
+        maxEnergy: game.maxEnergy,
+        combatPhase: game.combatPhase,
+        victoryPending: game.victoryPending,
+        combatVictory: game.combatVictory,
+        combatLoot: game.combatLoot,
+        allCombatLootClaimed: game.allCombatLootClaimed,
+        eventLoot: game.eventLoot,
+        allEventLootClaimed: game.allEventLootClaimed,
+        enemyActionMessage: game.enemyActionMessage,
+        dungeonChestUnlocked: game.dungeonChestUnlocked,
+        chestMessage: game.chestMessage,
+        forceOpenAttempted: game.forceOpenAttempted,
+        canResumeAdventure: game.canResumeAdventure,
+        lobbySaveSummaryLines: game.lobbySaveSummaryLines,
+        lobbySavedAtLabel: game.lobbySavedAtLabel,
+        restComplete: game.restComplete,
+        restMessage: game.restMessage,
+        shopMessage: game.shopMessage,
+        shopVariant: game.shopVariant,
+      }),
     [
       game.currentIsland,
       game.currentDungeon,
       game.day,
       game.hero,
       game.armor,
+      game.heroWeakened,
       game.battlefieldEnemies,
       game.activeEvent,
       game.hand,
@@ -65,15 +77,20 @@ export default function ShantiesHome() {
       game.victoryPending,
       game.combatVictory,
       game.combatLoot,
-      game.allEventLootClaimed,
-      game.eventLoot,
       game.allCombatLootClaimed,
+      game.eventLoot,
+      game.allEventLootClaimed,
       game.enemyActionMessage,
+      game.dungeonChestUnlocked,
+      game.chestMessage,
+      game.forceOpenAttempted,
       game.canResumeAdventure,
       game.lobbySaveSummaryLines,
       game.lobbySavedAtLabel,
-      game.illuminatedAreas,
-      game.currentIndoorArea,
+      game.restComplete,
+      game.restMessage,
+      game.shopMessage,
+      game.shopVariant,
     ],
   );
 
@@ -88,8 +105,9 @@ export default function ShantiesHome() {
     () => ({
       hero: game.hero,
       armor: game.armor,
+      weakened: game.heroWeakened,
     }),
-    [game.hero, game.armor],
+    [game.hero, game.armor, game.heroWeakened],
   );
 
   const frozenPlayerVisuals = useFrozenSceneProps({
@@ -142,11 +160,12 @@ export default function ShantiesHome() {
             claimCombatLoot={game.claimCombatLoot}
             claimEventLoot={game.claimEventLoot}
             completeTreasureEvent={game.completeTreasureEvent}
+            acknowledgeGenericEvent={game.acknowledgeGenericEvent}
+            acknowledgeWeatherEvent={game.acknowledgeWeatherEvent}
             abandonLockedDungeonChest={game.abandonLockedDungeonChest}
             unlockDungeonChestWithKey={game.unlockDungeonChestWithKey}
+            pickLockOnChest={game.pickLockOnChest}
             forceOpenDungeonChest={game.forceOpenDungeonChest}
-            dungeonChestUnlocked={game.dungeonChestUnlocked}
-            chestMessage={game.chestMessage}
             dismissCombatVictory={game.dismissCombatVictory}
             handleSailOrExplore={game.handleSailOrExplore}
             startSailFromShip={game.startSailFromShip}
@@ -163,14 +182,16 @@ export default function ShantiesHome() {
             openRest={game.openRest}
             wakeFromRest={game.wakeFromRest}
             leaveRest={game.leaveRest}
-            restComplete={game.restComplete}
-            restMessage={game.restMessage}
-            shopMessage={game.shopMessage}
             buyShopItem={game.buyShopItem}
             sellShopItem={game.sellShopItem}
             sellShopEquipment={game.sellShopEquipment}
             leaveShop={game.leaveShop}
+            openShipShop={game.openShipShop}
+            openMerchantShop={game.openMerchantShop}
+            openIslandTraderShop={game.openIslandTraderShop}
+            resolveShipwreckDive={game.resolveShipwreckDive}
             onOpenCharacterSheet={openCharacterSheet}
+            isStaff={isStaff}
             {...frozenWorldVisuals}
           />
         }
@@ -179,6 +200,7 @@ export default function ShantiesHome() {
             hero={frozenPlayerVisuals.hero}
             gameState={sceneFade.gameState}
             armor={frozenPlayerVisuals.armor}
+            weakened={frozenPlayerVisuals.weakened}
             onOpenCharacterSheet={openCharacterSheet}
           />
         }

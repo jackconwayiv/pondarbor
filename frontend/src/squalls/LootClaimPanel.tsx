@@ -11,6 +11,7 @@ type Props = {
   onClaim: (lootId: string) => void;
   onComplete: () => void;
   subtitle?: string;
+  intro?: string;
   fillHeight?: boolean;
   /** Return button on the same row as the title (title left, button right). */
   inlineReturnInHeader?: boolean;
@@ -24,6 +25,7 @@ export default function LootClaimPanel({
   onClaim,
   onComplete,
   subtitle = "Claim yer spoils",
+  intro,
   fillHeight = false,
   inlineReturnInHeader = false,
 }: Props) {
@@ -68,10 +70,20 @@ export default function LootClaimPanel({
           {title}
         </Heading>
       )}
+      {intro ? (
+        <Text
+          fontSize="lg"
+          textAlign={textAlign}
+          flexShrink={0}
+          w="100%"
+        >
+          {intro}
+        </Text>
+      ) : null}
       {loot.length > 0 ? (
         <Text
           fontSize="xs"
-          color="fg.muted"
+          color="gray.900"
           textAlign={textAlign}
           flexShrink={0}
           w="100%"

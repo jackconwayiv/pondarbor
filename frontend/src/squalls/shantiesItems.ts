@@ -6,6 +6,7 @@ import {
   ITEM_IDS,
   MUNITIONS_ITEM_IDS,
   SHIP_ITEM_IDS,
+  WRECK_UNLOCK_ITEM_IDS,
   type AmmoItemId,
   type CombatPhase,
   type FoodItemId,
@@ -16,7 +17,9 @@ import {
   type Inventory,
   type ItemId,
   type MunitionsItemId,
+  type ShopVariant,
   type ShipItemId,
+  type WreckUnlockItemId,
 } from "./shantiesTypes";
 import { sellPriceFromBasePrice, shopBuyPrice } from "./shantiesShop";
 
@@ -27,9 +30,17 @@ export {
   INDOOR_AREA_KINDS,
   MUNITIONS_ITEM_IDS,
   SHIP_ITEM_IDS,
+  WRECK_UNLOCK_ITEM_IDS,
 };
 
-export type ItemKind = "food" | "ship" | "ammo" | "munitions" | "candle" | "key";
+export type ItemKind =
+  | "food"
+  | "ship"
+  | "ammo"
+  | "munitions"
+  | "dive"
+  | "candle"
+  | "key";
 
 export type ItemDefinition = {
   id: ItemId;
@@ -47,7 +58,22 @@ export type ItemDefinition = {
   basePrice?: number;
 };
 
-export const SHOP_ITEM_IDS = ["candle", "key"] as const satisfies readonly ItemId[];
+export const SHOP_ITEM_IDS = ["candle", "key", "orange"] as const satisfies readonly ItemId[];
+
+export const MERCHANT_SHOP_ITEM_IDS = [
+  "banana",
+  "tea",
+  "rum",
+  "sail_cloth",
+  "cannonball",
+  "dive_helmet",
+] as const satisfies readonly ItemId[];
+
+export const ISLAND_TRADER_SHOP_ITEM_IDS = [
+  "wood_plank",
+  "banana",
+  "coconut",
+] as const satisfies readonly ItemId[];
 
 export const ITEM_DEFINITIONS: Record<ItemId, ItemDefinition> = {
   banana: {
@@ -59,6 +85,37 @@ export const ITEM_DEFINITIONS: Record<ItemId, ItemDefinition> = {
     healAmount: 5,
     energyCost: 1,
     basePrice: 20,
+  },
+  orange: {
+    id: "orange",
+    kind: "food",
+    name: "Orange",
+    emoji: "🍊",
+    description: "Restores 5 HP. Costs 1 energy in combat.",
+    healAmount: 5,
+    energyCost: 1,
+    shopPrice: 15,
+    basePrice: 15,
+  },
+  raw_fish: {
+    id: "raw_fish",
+    kind: "food",
+    name: "Raw Fish",
+    emoji: "🐟",
+    description: "Restores 5 HP. Costs 1 energy in combat.",
+    healAmount: 5,
+    energyCost: 1,
+    basePrice: 10,
+  },
+  boar_meat: {
+    id: "boar_meat",
+    kind: "food",
+    name: "Boar Meat",
+    emoji: "🥩",
+    description: "Restores 5 HP. Costs 1 energy in combat.",
+    healAmount: 5,
+    energyCost: 1,
+    basePrice: 10,
   },
   coconut: {
     id: "coconut",
@@ -96,7 +153,7 @@ export const ITEM_DEFINITIONS: Record<ItemId, ItemDefinition> = {
     name: "Tea",
     emoji: "🍵",
     description: "A steaming cup. No effect yet.",
-    basePrice: 100,
+    basePrice: 95,
   },
   rum: {
     id: "rum",
@@ -104,7 +161,7 @@ export const ITEM_DEFINITIONS: Record<ItemId, ItemDefinition> = {
     name: "Rum",
     emoji: "🥃",
     description: "A stiff tot. No effect yet.",
-    basePrice: 120,
+    basePrice: 115,
   },
   wood_plank: {
     id: "wood_plank",
@@ -120,7 +177,7 @@ export const ITEM_DEFINITIONS: Record<ItemId, ItemDefinition> = {
     name: "Sail Cloth",
     emoji: "🧵",
     description: "For mending sails. No use yet.",
-    basePrice: 30,
+    basePrice: 25,
   },
   water_bucket: {
     id: "water_bucket",
@@ -144,7 +201,7 @@ export const ITEM_DEFINITIONS: Record<ItemId, ItemDefinition> = {
     name: "Cannonball",
     emoji: "⚫",
     description: "Solid shot for the guns. No use yet.",
-    basePrice: 50,
+    basePrice: 45,
   },
   scattershot: {
     id: "scattershot",
@@ -161,6 +218,22 @@ export const ITEM_DEFINITIONS: Record<ItemId, ItemDefinition> = {
     emoji: "🛢️",
     description: "Black powder in a keg. No use yet.",
     basePrice: 100,
+  },
+  siren_gills: {
+    id: "siren_gills",
+    kind: "dive",
+    name: "Siren Gills",
+    emoji: "🫁",
+    description: "Breathes underwater long enough to explore a shipwreck.",
+    basePrice: 20,
+  },
+  dive_helmet: {
+    id: "dive_helmet",
+    kind: "dive",
+    name: "Dive Helmet",
+    emoji: "🤿",
+    description: "A brass diving bell for exploring sunken wrecks.",
+    basePrice: 95,
   },
   candle: {
     id: "candle",
@@ -194,6 +267,16 @@ export function isAmmoItem(itemId: ItemId): itemId is AmmoItemId {
 
 export function isMunitionsItem(itemId: ItemId): itemId is MunitionsItemId {
   return MUNITIONS_ITEM_IDS.includes(itemId as MunitionsItemId);
+}
+
+export function isWreckUnlockItem(itemId: ItemId): itemId is WreckUnlockItemId {
+  return WRECK_UNLOCK_ITEM_IDS.includes(itemId as WreckUnlockItemId);
+}
+
+export function heroHasWreckUnlock(hero: HeroType): boolean {
+  return WRECK_UNLOCK_ITEM_IDS.some(
+    (itemId) => getItemCount(hero.inventory, itemId) > 0,
+  );
 }
 
 export function getFoodHealAmount(itemId: FoodItemId): number {
@@ -241,6 +324,7 @@ export function formatIndoorAreaLabel(id: IndoorAreaId): string {
     cave: "Cave",
     ruins: "Ruins",
     temple: "Temple",
+    wreck: "Wreck",
   };
   return labels[parsed.kind];
 }
@@ -405,8 +489,26 @@ export function pickRandomItemId(): ItemId {
 /** Each combat/treasure loot card grants at most one copy (not an inventory cap). */
 export const LOOT_ITEM_COPY_LIMIT = 1;
 
-export function getItemBuyPrice(hero: HeroType, itemId: ItemId): number | null {
-  const basePrice = ITEM_DEFINITIONS[itemId].shopPrice;
+export function getShopCatalogItemIds(
+  shopVariant: ShopVariant | null,
+): readonly ItemId[] {
+  if (shopVariant === "merchant") return MERCHANT_SHOP_ITEM_IDS;
+  if (shopVariant === "island_trader") return ISLAND_TRADER_SHOP_ITEM_IDS;
+  return SHOP_ITEM_IDS;
+}
+
+export function getItemBuyPrice(
+  hero: HeroType,
+  itemId: ItemId,
+  shopVariant: ShopVariant | null = "ship",
+): number | null {
+  const catalog = getShopCatalogItemIds(shopVariant);
+  if (!catalog.includes(itemId as (typeof catalog)[number])) return null;
+  const def = ITEM_DEFINITIONS[itemId];
+  const basePrice =
+    shopVariant === "merchant" || shopVariant === "island_trader"
+      ? def.basePrice
+      : def.shopPrice;
   if (basePrice === undefined) return null;
   const owned = getItemCount(hero.inventory, itemId);
   return shopBuyPrice(basePrice, hero.level, owned);
@@ -419,8 +521,12 @@ export function getItemSellPrice(itemId: ItemId): number | null {
   return sellPriceFromBasePrice(basePrice);
 }
 
-export function checkBuyItem(hero: HeroType, itemId: ItemId): UseItemCheck {
-  const price = getItemBuyPrice(hero, itemId);
+export function checkBuyItem(
+  hero: HeroType,
+  itemId: ItemId,
+  shopVariant: ShopVariant | null = "ship",
+): UseItemCheck {
+  const price = getItemBuyPrice(hero, itemId, shopVariant);
   if (price === null) {
     return { ok: false, message: "Not for sale here." };
   }
@@ -430,8 +536,12 @@ export function checkBuyItem(hero: HeroType, itemId: ItemId): UseItemCheck {
   return { ok: true };
 }
 
-export function applyBuyItem(hero: HeroType, itemId: ItemId): HeroType {
-  const price = getItemBuyPrice(hero, itemId);
+export function applyBuyItem(
+  hero: HeroType,
+  itemId: ItemId,
+  shopVariant: ShopVariant | null = "ship",
+): HeroType {
+  const price = getItemBuyPrice(hero, itemId, shopVariant);
   if (price === null) return hero;
   return {
     ...hero,

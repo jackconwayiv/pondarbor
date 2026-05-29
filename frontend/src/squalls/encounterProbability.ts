@@ -26,19 +26,6 @@ export const SAIL_EVENT_DECK: EventType[] = [
   { name: "Floating Chest", type: "treasure" },
 ];
 
-export const ISLAND_TREASURE_EVENTS: EventType[] = [
-  { name: "Temple Offerings", type: "treasure" },
-  { name: "Hidden Treasure", type: "treasure" },
-  { name: "Wild Supplies", type: "treasure" },
-];
-
-const DUNGEON_KINDS: DungeonKind[] = ["cave", "ruins", "temple"];
-
-export const ISLAND_EXPLORE_EVENT_DECK: EventType[] = [
-  ...ISLAND_TREASURE_EVENTS,
-  ...DUNGEON_KINDS.map((kind) => createDungeonDiscoveryEvent(kind)),
-];
-
 export const DUNGEON_EVENT_DECK: EventType[] = [
   { name: "Smooth Passage", type: "neutral" },
   { name: "Cave-in!", type: "hazard" },
@@ -107,10 +94,13 @@ export function pickSailEvent(modifiers: EncounterModifiers): EventType {
   return pickWeightedEvent(SAIL_EVENT_DECK, modifiers);
 }
 
-export function pickIslandExploreEvent(modifiers: EncounterModifiers): EventType {
-  return pickWeightedEvent(ISLAND_EXPLORE_EVENT_DECK, modifiers);
-}
-
 export function pickDungeonEvent(modifiers: EncounterModifiers): EventType {
   return pickWeightedEvent(DUNGEON_EVENT_DECK, modifiers);
+}
+
+/** @deprecated Island explores use persisted island event decks. */
+export function createIslandDungeonDiscoveryEvent(
+  kind: DungeonKind,
+): EventType {
+  return createDungeonDiscoveryEvent(kind);
 }

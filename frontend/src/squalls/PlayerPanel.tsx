@@ -9,6 +9,7 @@ export default function PlayerPanel({
   hero,
   gameState,
   armor,
+  weakened = false,
   onOpenCharacterSheet,
 }: PlayerPanelProps) {
   const inCombat = gameState === "battle";
@@ -45,7 +46,7 @@ export default function PlayerPanel({
           type="button"
           onClick={onOpenCharacterSheet}
           fontSize="xs"
-          color="fg.muted"
+          color="gray.900"
           bg="transparent"
           border="none"
           p={0}
@@ -61,6 +62,11 @@ export default function PlayerPanel({
         {inCombat && armor > 0 ? (
           <Badge size="sm" colorPalette="cyan" variant="solid">
             🛡 {armor}
+          </Badge>
+        ) : null}
+        {inCombat && weakened ? (
+          <Badge size="sm" colorPalette="orange" variant="solid">
+            Weakened
           </Badge>
         ) : null}
         {showGoldInStripe ? (

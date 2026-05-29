@@ -1,7 +1,17 @@
-import type { CombatCard, EnemyType } from "./shantiesTypes";
+import {
+  initializeEnemyActionDeck,
+} from "./enemyActions";
+import type { CombatCard, CombatLogEntry, CombatLogSide, EnemyType, EquippedGear } from "./shantiesTypes";
+import {
+  countEvasiveStacks,
+  countShockingStacks,
+  getAttackEffectRangeText,
+  getDefendEffectRangeText,
+} from "./combatEquipment";
 import {
   isAttackCard,
   isDefendCard,
+  isStrongAttackCard,
   targetsSelfAutomatically,
 } from "./shantiesTypes";
 
@@ -9,9 +19,16 @@ export const MAX_ENERGY_PER_TURN = 3;
 export const CARDS_DRAWN_PER_TURN = 5;
 export const COMBAT_LOG_MAX_ENTRIES = 5;
 
-export function appendCombatLog(prev: string[], ...entries: string[]): string[] {
+export function appendCombatLog(
+  prev: CombatLogEntry[],
+  ...entries: CombatLogEntry[]
+): CombatLogEntry[] {
   if (entries.length === 0) return prev;
   return [...prev, ...entries].slice(-COMBAT_LOG_MAX_ENTRIES);
+}
+
+export function combatLogLine(text: string, side: CombatLogSide): CombatLogEntry {
+  return { text, side };
 }
 
 export function clampHp(value: number): number {
@@ -23,24 +40,23 @@ export function rollD4(): number {
   return Math.floor(Math.random() * 4) + 1;
 }
 
-export function rollEnemyIntent(): EnemyType["intent"] {
-  return Math.random() < 0.25 ? "defend" : "attack";
-}
-
 export function spawnEnemy(
-  template: Pick<EnemyType, "name" | "level" | "hp"> & {
+  template: Pick<EnemyType, "name" | "level" | "hp" | "traits"> & {
     max_hp?: number;
+    armor?: number;
   },
 ): EnemyType {
   const max_hp = clampHp(template.max_hp ?? template.hp);
-  return {
+  return initializeEnemyActionDeck({
     name: template.name,
     level: template.level,
     hp: clampHp(template.hp),
     max_hp,
-    intent: rollEnemyIntent(),
-    armor: 0,
-  };
+    armor: Math.max(0, template.armor ?? 0),
+    ...(template.traits && template.traits.length > 0
+      ? { traits: template.traits }
+      : {}),
+  });
 }
 
 export function isEnemyAlive(enemy: EnemyType): boolean {
@@ -63,21 +79,40 @@ export function findNextLivingEnemyIndex(
   return null;
 }
 
-export function assignEnemyIntents(enemies: EnemyType[]): EnemyType[] {
-  return enemies.map((enemy) =>
-    isEnemyAlive(enemy)
-      ? { ...enemy, intent: rollEnemyIntent() }
-      : enemy,
-  );
-}
-
 export function formatEnemyHp(enemy: EnemyType): string {
   const max = clampHp(enemy.max_hp ?? enemy.hp);
   return `${clampHp(enemy.hp)}/${max}`;
 }
 
-export function formatEnemyIntentLabel(intent: EnemyType["intent"]): string {
-  return intent === "attack" ? "Attack" : "Defend";
+export { formatEnemyBroadcastLabel } from "./enemyActions";
+
+export function formatEnemyTraitLabel(trait: NonNullable<EnemyType["traits"]>[number]): string {
+  if (trait === "evasive") return "Evasive";
+  if (trait === "shocking") return "Shocking";
+  return trait;
+}
+
+export function formatEvasiveTraitLabel(stacks: number): string {
+  if (stacks <= 0) return "Evasive";
+  return stacks === 1 ? "Evasive" : `Evasive ×${stacks}`;
+}
+
+export function formatShockingTraitLabel(stacks: number): string {
+  if (stacks <= 0) return "Shocking";
+  return stacks === 1 ? "Shocking" : `Shocking ×${stacks}`;
+}
+
+export function getEnemyDisplayTraits(enemy: EnemyType): string[] {
+  const labels: string[] = [];
+  const evasiveStacks = countEvasiveStacks(enemy);
+  if (evasiveStacks > 0) {
+    labels.push(formatEvasiveTraitLabel(evasiveStacks));
+  }
+  const shockingStacks = countShockingStacks(enemy);
+  if (shockingStacks > 0) {
+    labels.push(formatShockingTraitLabel(shockingStacks));
+  }
+  return labels;
 }
 
 /** Player attack: armor absorbs damage first; leftover reduces HP. */
@@ -138,43 +173,6 @@ export function formatEnemyAttackLog(
   return formatAttackLogLine(attackerName, targetName, armorBroken, damageDealt);
 }
 
-export function executeEnemyIntent(
-  enemy: EnemyType,
-  heroName: string,
-  heroHp: number,
-  playerArmor: number,
-): {
-  enemy: EnemyType;
-  heroHp: number;
-  playerArmor: number;
-  message: string;
-} {
-  if (enemy.intent === "defend") {
-    const gained = rollD4();
-    return {
-      enemy: { ...enemy, armor: enemy.armor + gained },
-      heroHp,
-      playerArmor,
-      message: `${enemy.name} defends and gains ${gained} armor.`,
-    };
-  }
-
-  const damage = rollD4();
-  const armorBroken = Math.min(playerArmor, damage);
-  const damageDealt = Math.max(0, damage - armorBroken);
-  return {
-    enemy,
-    heroHp: clampHp(heroHp - damageDealt),
-    playerArmor: playerArmor - armorBroken,
-    message: formatEnemyAttackLog(
-      enemy.name,
-      heroName,
-      armorBroken,
-      damageDealt,
-    ),
-  };
-}
-
 /** Fisher–Yates shuffle on a copy of the deck. */
 export function shuffleCards(cards: CombatCard[]): CombatCard[] {
   const result = [...cards];
@@ -227,15 +225,24 @@ export function drawFromPiles(
 }
 
 export function getCardEnergyCost(card: CombatCard): number {
-  return card.name === "Strong Attack" ? 2 : 1;
+  return isStrongAttackCard(card) ? 2 : 1;
 }
 
-export function getCardEffectText(card: CombatCard): string {
+export function getCardEffectText(
+  card: CombatCard,
+  equipped?: EquippedGear,
+): string {
   if (isAttackCard(card)) {
-    return `${card.minDamage}–${card.maxDamage} damage`;
+    if (equipped) {
+      return getAttackEffectRangeText(equipped, card);
+    }
+    return card.strong ? "Best of 2 × weapon damage" : "Weapon damage";
   }
   if (isDefendCard(card) || targetsSelfAutomatically(card)) {
-    return "Gain 1 armor";
+    if (equipped) {
+      return getDefendEffectRangeText(equipped);
+    }
+    return "Gain armor from equipped gear";
   }
   return "";
 }

@@ -39,7 +39,11 @@ export type IslandType = {
   vibe: "Inviting" | "Foreboding" | null;
   explorePoints: number;
   levelFactor: number;
+  /** Built on first anchor; each card is one explore action. */
+  eventDeck?: EventType[];
 };
+
+export type ShopVariant = "ship" | "merchant" | "island_trader";
 
 export type EventType = {
   name: string;
@@ -50,16 +54,25 @@ export type EventType = {
   locked?: boolean;
 };
 
-export type EnemyIntent = "attack" | "defend";
+export type EnemyAction = "attack" | "defend" | "evade" | "electrify" | "weaken";
+
+export type EnemyBroadcast = "attack" | "defend" | "buff" | "debuff";
+
+export type EnemyTrait = "evasive" | "shocking";
 
 export type EnemyType = {
   name: string;
   level: number;
   hp: number;
   max_hp: number;
-  /** Telegraph for the upcoming enemy phase. */
-  intent: EnemyIntent;
+  /** Attack / Defend / Buff / Debuff telegraph for the player's turn. */
+  broadcast: EnemyBroadcast;
+  /** Queued action for the next enemy phase. */
+  nextAction: EnemyAction;
+  actionDrawPile: EnemyAction[];
+  actionDiscardPile: EnemyAction[];
   armor: number;
+  traits?: readonly EnemyTrait[];
 };
 
 /** How a card picks its target when played. */
@@ -73,24 +86,50 @@ export const DEFEND_TARGETING: CardTargeting = {
   target: "self",
 };
 
-export type CardTag = "physical" | "attack" | "defense";
+export type CombatTag =
+  | "melee"
+  | "sword"
+  | "slashing"
+  | "ranged"
+  | "firearm"
+  | "piercing"
+  | "physical"
+  | "armor"
+  | "attack"
+  | "defense";
+
+/** @deprecated Use CombatTag */
+export type CardTag = CombatTag;
+
+export type AttackKind = "melee" | "ranged";
+
+export type AttackCardName =
+  | "Melee Attack"
+  | "Ranged Attack"
+  | "Strong Melee Attack"
+  | "Strong Ranged Attack";
 
 export type AttackCard = {
-  name: "Attack" | "Strong Attack";
-  minDamage: number;
-  maxDamage: number;
-  tags: readonly [CardTag, CardTag];
+  name: AttackCardName;
+  attackKind: AttackKind;
+  strong: boolean;
 };
 
 export type DefendCard = {
   name: "Defend";
   targeting: CardTargeting;
-  tags: readonly [CardTag, CardTag];
 };
 
 export type CombatCard = AttackCard | DefendCard;
 
-export type CombatLootKind = "gold" | "xp" | "item";
+export type CombatLogSide = "hero" | "enemy";
+
+export type CombatLogEntry = {
+  text: string;
+  side: CombatLogSide;
+};
+
+export type CombatLootKind = "gold" | "xp" | "item" | "equipment";
 
 export type CombatLootItem = {
   id: string;
@@ -101,10 +140,15 @@ export type CombatLootItem = {
   claimed: boolean;
   /** Present when kind is "item". */
   itemId?: ItemId;
+  /** Present when kind is "equipment". */
+  equipmentId?: EquipmentId;
 };
 
 export const FOOD_ITEM_IDS = [
   "banana",
+  "orange",
+  "raw_fish",
+  "boar_meat",
   "coconut",
   "mango",
   "pineapple",
@@ -130,11 +174,15 @@ export const MUNITIONS_ITEM_IDS = [
 ] as const;
 export type MunitionsItemId = (typeof MUNITIONS_ITEM_IDS)[number];
 
+export const WRECK_UNLOCK_ITEM_IDS = ["siren_gills", "dive_helmet"] as const;
+export type WreckUnlockItemId = (typeof WRECK_UNLOCK_ITEM_IDS)[number];
+
 export const ITEM_IDS = [
   ...FOOD_ITEM_IDS,
   ...SHIP_ITEM_IDS,
   ...AMMO_ITEM_IDS,
   ...MUNITIONS_ITEM_IDS,
+  ...WRECK_UNLOCK_ITEM_IDS,
   "candle",
   "key",
 ] as const;
@@ -146,6 +194,7 @@ export const EQUIPMENT_IDS = [
   "rusty_cutlass",
   "sooty_pistol",
   "sailors_garb",
+  "lockpick",
 ] as const;
 export type EquipmentId = (typeof EQUIPMENT_IDS)[number];
 
@@ -153,7 +202,7 @@ export type EquipmentSlot = "melee" | "ranged" | "armor" | "relic";
 
 export type EquippedGear = Record<EquipmentSlot, EquipmentId | null>;
 
-export const INDOOR_AREA_KINDS = ["cave", "ruins", "temple"] as const;
+export const INDOOR_AREA_KINDS = ["cave", "ruins", "temple", "wreck"] as const;
 export type IndoorAreaKind = (typeof INDOOR_AREA_KINDS)[number];
 
 /** Stable id for a specific cave, ruins, or temple instance (e.g. `cave:island-1-main`). */
@@ -167,6 +216,8 @@ export type DungeonType = {
   delvePoints: number;
   levelFactor: number;
   areaId: IndoorAreaId;
+  /** Island dungeons: candle spent to enter; re-entry is free until depleted. */
+  candleUnlocked?: boolean;
 };
 
 export type HeroType = {
@@ -190,6 +241,7 @@ export type PlayerPanelProps = {
   hero: HeroType;
   gameState: GameStateTypes;
   armor: number;
+  weakened?: boolean;
   onOpenCharacterSheet: () => void;
 };
 
@@ -220,12 +272,13 @@ export type WorldPanelProps = {
   setDay: React.Dispatch<React.SetStateAction<number>>;
   hero: HeroType;
   armor: number;
+  heroWeakened: boolean;
   enemies: EnemyType[];
   activeEvent: EventType | null;
   setActiveEvent: React.Dispatch<React.SetStateAction<EventType | null>>;
   hand: CombatCard[];
   discardPile: CombatCard[];
-  combatLog: string[];
+  combatLog: CombatLogEntry[];
   energy: number;
   maxEnergy: number;
   combatPhase: CombatPhase;
@@ -244,11 +297,15 @@ export type WorldPanelProps = {
   claimCombatLoot: (lootId: string) => void;
   claimEventLoot: (lootId: string) => void;
   completeTreasureEvent: () => void;
+  acknowledgeGenericEvent: () => void;
+  acknowledgeWeatherEvent: () => void;
   abandonLockedDungeonChest: () => void;
   unlockDungeonChestWithKey: () => void;
+  pickLockOnChest: () => void;
   forceOpenDungeonChest: () => void;
   dungeonChestUnlocked: boolean;
   chestMessage: string | null;
+  forceOpenAttempted: boolean;
   dismissCombatVictory: () => void;
   playCombatCard: (handIndex: number, targetIndex?: number) => void;
   endPlayerTurn: () => void;
@@ -266,15 +323,34 @@ export type WorldPanelProps = {
   restComplete: boolean;
   restMessage: string | null;
   shopMessage: string | null;
+  shopVariant: ShopVariant | null;
   buyShopItem: (itemId: ItemId) => void;
   sellShopItem: (itemId: ItemId) => void;
   sellShopEquipment: (bagIndex: number) => void;
   leaveShop: () => void;
+  openShipShop: () => void;
+  openMerchantShop: () => void;
+  openIslandTraderShop: () => void;
+  resolveShipwreckDive: (choice: "sail_past" | WreckUnlockItemId) => void;
   onOpenCharacterSheet: () => void;
+  isStaff?: boolean;
 };
 
 export function isAttackCard(card: CombatCard): card is AttackCard {
-  return card.name === "Attack" || card.name === "Strong Attack";
+  return (
+    card.name === "Melee Attack" ||
+    card.name === "Ranged Attack" ||
+    card.name === "Strong Melee Attack" ||
+    card.name === "Strong Ranged Attack"
+  );
+}
+
+export function isStrongAttackCard(card: CombatCard): card is AttackCard {
+  return isAttackCard(card) && card.strong;
+}
+
+export function getAttackKind(card: AttackCard): AttackKind {
+  return card.attackKind;
 }
 
 export function isDefendCard(card: CombatCard): card is DefendCard {

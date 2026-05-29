@@ -27,12 +27,14 @@ export default function RestView({
       <VStack align="stretch" gap={4} w="100%">
         <Heading>💤 Ye Be Resting</Heading>
         <Text fontSize="sm">{REST_COMPLETE_MESSAGE}</Text>
-        <SquallsActionCard
-          emoji="⛵"
-          label="Wake Up"
-          accent="blue"
-          onClick={onWakeUp}
-        />
+        <HomeActionGrid>
+          <SquallsActionCard
+            emoji="⛵"
+            label="Wake Up"
+            accent="blue"
+            onClick={onWakeUp}
+          />
+        </HomeActionGrid>
       </VStack>
     );
   }
@@ -59,7 +61,7 @@ export default function RestView({
         />
       </HomeActionGrid>
       {restMessage ? (
-        <Text fontSize="sm" color="fg.muted">
+        <Text fontSize="sm" color="gray.900">
           {restMessage}
         </Text>
       ) : null}

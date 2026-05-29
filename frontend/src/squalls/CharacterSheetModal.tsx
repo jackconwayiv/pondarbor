@@ -48,7 +48,7 @@ type Props = {
 function StatRow({ label, value }: { label: string; value: string }) {
   return (
     <Box>
-      <Text fontSize="xs" color="fg.muted" textTransform="uppercase" letterSpacing="wide">
+      <Text fontSize="xs" color="gray.900" textTransform="uppercase" letterSpacing="wide">
         {label}
       </Text>
       <Text fontSize="sm" fontWeight="semibold">
@@ -146,12 +146,13 @@ export default function CharacterSheetModal({
                 Consumables
               </Text>
               {ownedItems.length === 0 ? (
-                <Text fontSize="sm" color="fg.muted">
+                <Text fontSize="sm" color="gray.900">
                   Yer pack is empty.
                 </Text>
               ) : (
                 <SimpleGrid columns={3} gap={1.5}>
                   {ownedItems.map((itemId) => {
+                    const canUse = checkUseItem(itemId, useItemContext).ok;
                     const energyCost =
                       inCombat && isItemUsableInCombat(itemId)
                         ? getItemEnergyCost(itemId)
@@ -161,9 +162,8 @@ export default function CharacterSheetModal({
                         key={itemId}
                         itemId={itemId}
                         count={getItemCount(hero.inventory, itemId)}
-                        showUse={showItemUse}
+                        showUse={showItemUse && canUse}
                         useEnergyCost={energyCost}
-                        useDisabled={!checkUseItem(itemId, useItemContext).ok}
                         onUse={() => {
                           onClearItemMessage();
                           onUseItem(itemId);
@@ -174,7 +174,7 @@ export default function CharacterSheetModal({
                 </SimpleGrid>
               )}
               {itemMessage ? (
-                <Text fontSize="xs" color="fg.muted" mt={2}>
+                <Text fontSize="xs" color="gray.900" mt={2}>
                   {itemMessage}
                 </Text>
               ) : null}
@@ -190,7 +190,7 @@ export default function CharacterSheetModal({
         </Tabs.Content>
 
         <Tabs.Content value="deck" pt={3}>
-          <CharacterSheetDeck deck={hero.deck} />
+          <CharacterSheetDeck deck={hero.deck} equipped={hero.equipped} />
         </Tabs.Content>
       </Tabs.Root>
     </AppModal>

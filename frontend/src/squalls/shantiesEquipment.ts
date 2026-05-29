@@ -1,4 +1,5 @@
 import type {
+  CombatTag,
   EquipmentId,
   EquipmentSlot,
   EquippedGear,
@@ -20,6 +21,11 @@ export const EQUIPMENT_SLOT_LABELS: Record<EquipmentSlot, string> = {
   relic: "Relic",
 };
 
+export type EquipmentCombatStats = {
+  min: number;
+  max: number;
+};
+
 export type EquipmentDefinition = {
   id: EquipmentId;
   name: string;
@@ -28,6 +34,8 @@ export type EquipmentDefinition = {
   description: string;
   /** Reference buy value for barter sell price (50% rounded down). */
   shopPrice?: number;
+  tags?: readonly CombatTag[];
+  combat?: EquipmentCombatStats;
 };
 
 export const EQUIPMENT_DEFINITIONS: Record<EquipmentId, EquipmentDefinition> = {
@@ -36,24 +44,38 @@ export const EQUIPMENT_DEFINITIONS: Record<EquipmentId, EquipmentDefinition> = {
     name: "Rusty Cutlass",
     emoji: "🗡️",
     slot: "melee",
-    description: "A salt-crusted blade. No bonus yet.",
+    description: "A salt-crusted blade. 1–5 slashing damage.",
     shopPrice: 20,
+    tags: ["melee", "sword", "slashing"] satisfies readonly CombatTag[],
+    combat: { min: 1, max: 5 },
   },
   sooty_pistol: {
     id: "sooty_pistol",
     name: "Sooty Pistol",
     emoji: "🔫",
     slot: "ranged",
-    description: "Black powder and hope. No bonus yet.",
+    description: "Black powder and hope. 1–4 piercing damage.",
     shopPrice: 40,
+    tags: ["ranged", "firearm", "piercing"] satisfies readonly CombatTag[],
+    combat: { min: 1, max: 4 },
   },
   sailors_garb: {
     id: "sailors_garb",
     name: "Sailor's Garb",
     emoji: "🧥",
     slot: "armor",
-    description: "Well-worn kit. No bonus yet.",
+    description: "Well-worn kit. 1–4 armor when defending.",
     shopPrice: 30,
+    tags: ["physical", "armor"] satisfies readonly CombatTag[],
+    combat: { min: 1, max: 4 },
+  },
+  lockpick: {
+    id: "lockpick",
+    name: "Lockpick",
+    emoji: "🪝",
+    slot: "relic",
+    description: "Pick locked chests. May break on use.",
+    shopPrice: 35,
   },
 };
 
@@ -155,6 +177,28 @@ export function getEquipmentSellPrice(equipmentId: EquipmentId): number | null {
   const basePrice = getEquipmentBuyPrice(equipmentId);
   if (basePrice === null) return null;
   return sellPriceFromBasePrice(basePrice);
+}
+
+export function heroHasLockpickEquipped(hero: HeroType): boolean {
+  return hero.equipped.relic === "lockpick";
+}
+
+export function breakEquippedLockpick(hero: HeroType): HeroType {
+  if (hero.equipped.relic !== "lockpick") return hero;
+  return {
+    ...hero,
+    equipped: { ...hero.equipped, relic: null },
+  };
+}
+
+export function addEquipmentToBag(
+  hero: HeroType,
+  equipmentId: EquipmentId,
+): HeroType {
+  return {
+    ...hero,
+    equipmentInventory: [...hero.equipmentInventory, equipmentId],
+  };
 }
 
 export function checkSellEquipment(

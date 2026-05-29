@@ -63,7 +63,7 @@ function EquipmentSlotDrop({
     >
       <Text
         fontSize="2xs"
-        color="fg.muted"
+        color="gray.900"
         textTransform="uppercase"
         letterSpacing="wide"
         mb={1}
@@ -169,7 +169,7 @@ export default function CharacterSheetEquipment({
                       dragId={equipmentSlotDragId(slot)}
                     />
                   ) : (
-                    <Text fontSize="xs" color="fg.muted" textAlign="center" py={6}>
+                    <Text fontSize="xs" color="gray.900" textAlign="center" py={6}>
                       Empty
                     </Text>
                   )}
@@ -185,7 +185,7 @@ export default function CharacterSheetEquipment({
           </Text>
           <EquipmentInventoryDrop>
             {hero.equipmentInventory.length === 0 ? (
-              <Text fontSize="sm" color="fg.muted" textAlign="center" py={4}>
+              <Text fontSize="sm" color="gray.900" textAlign="center" py={4}>
                 Drag gear here to unequip.
               </Text>
             ) : (

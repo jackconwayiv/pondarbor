@@ -24,17 +24,21 @@ function formatStripePlaceLabel(props: AdventureStripeProps): string {
 function stripePlacePrefix(
   gameState: AdventureStripeProps["gameState"],
   location: AdventureStripeProps["location"],
+  currentDungeon: AdventureStripeProps["currentDungeon"],
 ): string {
   if (gameState === "battle") return "⚔️ ";
-  if (location === "dungeon") return "🕳️ ";
+  if (location === "dungeon") {
+    if (currentDungeon?.kind === "wreck") return "🚢 ";
+    return "🕳️ ";
+  }
   if (location === "ship") return "⛵ ";
   return "🏝️ ";
 }
 
 export default function AdventureStripe(props: AdventureStripeProps) {
-  const { day, gameState, location } = props;
+  const { day, gameState, location, currentDungeon } = props;
   const placeLabel = formatStripePlaceLabel(props);
-  const placePrefix = stripePlacePrefix(gameState, location);
+  const placePrefix = stripePlacePrefix(gameState, location, currentDungeon);
 
   return (
     <HStack w="100%" gap={2} align="center" flexWrap="wrap" minW={0}>

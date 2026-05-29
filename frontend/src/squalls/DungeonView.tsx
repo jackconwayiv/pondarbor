@@ -1,32 +1,38 @@
 import HomeActionGrid from "./HomeActionGrid";
 import SquallsActionCard from "./SquallsActionCard";
+
 type Props = {
   delvePoints: number;
   onDelve: () => void;
-  onReturnToIsland: () => void;
+  onReturn: () => void;
+  returnLabel: string;
+  returnEmoji?: string;
 };
 
 export default function DungeonView({
   delvePoints,
   onDelve,
-  onReturnToIsland,
+  onReturn,
+  returnLabel,
+  returnEmoji = "🏝️",
 }: Props) {
-  const remaining = Math.max(0, delvePoints);
+  const canDelve = delvePoints > 0;
 
   return (
     <HomeActionGrid>
+      {canDelve ? (
+        <SquallsActionCard
+          emoji="⛏️"
+          label={`Delve (${delvePoints})`}
+          accent="teal"
+          onClick={onDelve}
+        />
+      ) : null}
       <SquallsActionCard
-        emoji="⛏️"
-        label={`Delve (${remaining})`}
-        accent="teal"
-        disabled={remaining <= 0}
-        onClick={onDelve}
-      />
-      <SquallsActionCard
-        emoji="🏝️"
-        label="Return to Island"
+        emoji={returnEmoji}
+        label={returnLabel}
         accent="blue"
-        onClick={onReturnToIsland}
+        onClick={onReturn}
       />
     </HomeActionGrid>
   );

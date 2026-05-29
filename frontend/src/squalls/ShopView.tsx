@@ -10,13 +10,14 @@ import {
   getItemBuyPrice,
   getItemCount,
   getItemSellPrice,
+  getShopCatalogItemIds,
   ITEM_IDS,
-  SHOP_ITEM_IDS,
 } from "./shantiesItems";
-import type { HeroType, ItemId } from "./shantiesTypes";
+import type { HeroType, ItemId, ShopVariant } from "./shantiesTypes";
 
 type Props = {
   hero: HeroType;
+  shopVariant: ShopVariant | null;
   shopMessage: string | null;
   onBuyItem: (itemId: ItemId) => void;
   onSellItem: (itemId: ItemId) => void;
@@ -26,30 +27,55 @@ type Props = {
 
 export default function ShopView({
   hero,
+  shopVariant,
   shopMessage,
   onBuyItem,
   onSellItem,
   onSellEquipment,
   onBack,
 }: Props) {
+  const isMerchant = shopVariant === "merchant";
+  const isIslandTrader = shopVariant === "island_trader";
+  const catalogItemIds = getShopCatalogItemIds(shopVariant);
   const ownedConsumables = ITEM_IDS.filter(
     (itemId) =>
       getItemCount(hero.inventory, itemId) > 0 &&
       getItemSellPrice(itemId) !== null,
   );
   const hasSellables =
-    ownedConsumables.length > 0 || hero.equipmentInventory.length > 0;
+    !isMerchant &&
+    !isIslandTrader &&
+    (ownedConsumables.length > 0 || hero.equipmentInventory.length > 0);
 
   return (
     <VStack align="stretch" gap={4} w="100%">
       <HStack w="100%" justify="space-between" align="flex-start" gap={2}>
-        <Heading flex={1} minW={0}>
-          💰 Ye Be Shopping
-        </Heading>
+        <VStack align="start" flex={1} minW={0} gap={1}>
+          <Heading w="100%">
+            {isMerchant
+              ? "🛶 Merchant Ship"
+              : isIslandTrader
+                ? "🏝️ Island Trader"
+                : "💰 Ye Be Shopping"}
+          </Heading>
+          <Text fontSize="sm" color="gray.900">
+            {isMerchant
+              ? "Have a browse of our fine wares."
+              : isIslandTrader
+                ? "A local offers goods from the island."
+                : "What'll ye have today?"}
+          </Text>
+        </VStack>
         <Box flexShrink={0} w="7rem">
           <SquallsActionCard
             emoji="⛵"
-            label="Back to Ship"
+            label={
+              isMerchant
+                ? "Back to open sea"
+                : isIslandTrader
+                  ? "Back to Island"
+                  : "Back to Ship"
+            }
             accent="blue"
             compact
             onClick={onBack}
@@ -61,10 +87,10 @@ export default function ShopView({
         Buy
       </Text>
       <SimpleGrid columns={3} gap={1.5} w="100%" maxW="28rem">
-        {SHOP_ITEM_IDS.map((itemId) => {
+        {catalogItemIds.map((itemId) => {
           const owned = getItemCount(hero.inventory, itemId);
-          const buyPrice = getItemBuyPrice(hero, itemId)!;
-          const canBuy = checkBuyItem(hero, itemId).ok;
+          const buyPrice = getItemBuyPrice(hero, itemId, shopVariant)!;
+          const canBuy = checkBuyItem(hero, itemId, shopVariant).ok;
           return (
             <ItemInventoryCard
               key={itemId}
@@ -118,7 +144,7 @@ export default function ShopView({
       ) : null}
 
       {shopMessage ? (
-        <Text fontSize="sm" color="fg.muted">
+        <Text fontSize="sm" color="gray.900">
           {shopMessage}
         </Text>
       ) : null}

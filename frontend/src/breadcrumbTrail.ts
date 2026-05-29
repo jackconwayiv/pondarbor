@@ -62,6 +62,14 @@ export function getBreadcrumbItems(
   if (p === "/squalls") {
     return [HOME, { ...GAMES }, { label: "Squalls & Shanties" }];
   }
+  if (p === "/squalls/dm") {
+    return [
+      HOME,
+      { ...GAMES },
+      { label: "Squalls & Shanties", to: "/squalls" },
+      { label: "DM Reference" },
+    ];
+  }
 
   if (p === "/create") {
     return [HOME, { label: "QFF", to: "/qff" }, { label: "Create" }];

@@ -122,6 +122,7 @@ const PondsteadMapPage = lazy(() => import("./pondstead/PondsteadMapPage"));
 const EstatesPage = lazy(() => import("./estates/EstatesPage"));
 const EstatesPlayPage = lazy(() => import("./estates/EstatesPlayPage"));
 const ShantiesHome = lazy(() => import("./squalls/ShantiesHome"));
+const SquallsDmPage = lazy(() => import("./squalls/dm/SquallsDmPage"));
 
 /** Runs only after Suspense resolves — lazy chunk loaded successfully; reset stale-deploy reload guard. */
 function LazyRouteLoadedProbe() {
@@ -181,6 +182,10 @@ export const router = sentryCreateBrowserRouter([
       {
         path: "squalls",
         element: authedRouteElement(lazyRouteElement(<ShantiesHome />)),
+      },
+      {
+        path: "squalls/dm",
+        element: authedRouteElement(lazyRouteElement(<SquallsDmPage />)),
       },
       {
         path: "activity",

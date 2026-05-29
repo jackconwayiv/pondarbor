@@ -1,0 +1,100 @@
+import type { EnemyTrait } from "./shantiesTypes";
+
+export type MonsterTemplate = {
+  level: number;
+  hp: number;
+  armor?: number;
+  traits?: readonly EnemyTrait[];
+};
+
+export const MONSTER_TEMPLATES: Record<string, MonsterTemplate> = {
+  Bat: { level: 1, hp: 6, traits: ["evasive"] },
+  Harpy: { level: 1, hp: 7, traits: ["evasive"] },
+  Siren: { level: 1, hp: 7, traits: ["evasive"] },
+  "Electric Eel": { level: 1, hp: 7 },
+  Skeleton: { level: 1, hp: 9 },
+  Boar: { level: 1, hp: 12, armor: 4 },
+  Wolf: { level: 1, hp: 8 },
+};
+
+export const ENCOUNTER_POOLS = {
+  sea: ["Harpy", "Siren"],
+  island: ["Boar", "Wolf"],
+  islandDungeon: ["Bat", "Skeleton"],
+  wreck: ["Siren", "Electric Eel"],
+} as const;
+
+export type EncounterPoolScope = keyof typeof ENCOUNTER_POOLS;
+
+export const ENCOUNTER_POOL_LABELS: Record<EncounterPoolScope, string> = {
+  sea: "Sea",
+  island: "Island",
+  islandDungeon: "Island dungeon (cave, ruins, temple)",
+  wreck: "Shipwreck dungeon",
+};
+
+export function encounterPoolScopeForDungeonKind(
+  kind: string | null | undefined,
+): EncounterPoolScope {
+  return kind === "wreck" ? "wreck" : "islandDungeon";
+}
+
+export const ENCOUNTER_GROUP_SIZES: Record<string, string> = {
+  Harpy: "1–2",
+  Siren: "1",
+  "Electric Eel": "1–2",
+  Wolf: "1–2",
+  Bat: "2",
+  Boar: "1",
+  Skeleton: "1–2",
+};
+
+function rollInRange(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function encounterCountForMonster(name: string): number {
+  switch (name) {
+    case "Harpy":
+    case "Electric Eel":
+    case "Wolf":
+    case "Skeleton":
+      return rollInRange(1, 2);
+    case "Siren":
+    case "Boar":
+      return 1;
+    case "Bat":
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+function pickDistinctMonsterTypes(
+  pool: readonly string[],
+  count: number,
+): string[] {
+  const shuffled = [...pool].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, count);
+}
+
+/** Pick 1–2 monster types, then a per-type quantity for each. */
+export function pickEncounterMonsterNames(scope: EncounterPoolScope): string[] {
+  const pool = ENCOUNTER_POOLS[scope];
+  const typeCount = rollInRange(1, Math.min(2, pool.length));
+  const types = pickDistinctMonsterTypes(pool, typeCount);
+  const names: string[] = [];
+
+  for (const name of types) {
+    const count = encounterCountForMonster(name);
+    for (let i = 0; i < count; i++) {
+      names.push(name);
+    }
+  }
+
+  return names;
+}
+
+export function getMonsterTemplate(name: string): MonsterTemplate | null {
+  return MONSTER_TEMPLATES[name] ?? null;
+}

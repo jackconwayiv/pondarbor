@@ -1,6 +1,33 @@
 import { combatItemLootCards, rollMonsterItemDrops } from "./monsterDrops";
 import { LOOT_ITEM_COPY_LIMIT, pickRandomItemId } from "./shantiesItems";
-import type { CombatLootItem, EnemyType, EventType, IslandType, ItemId } from "./shantiesTypes";
+import type {
+  CombatLootItem,
+  EnemyType,
+  EquipmentId,
+  EventType,
+  IslandType,
+  ItemId,
+} from "./shantiesTypes";
+
+export const LOCKPICK_EQUIPMENT_ID = "lockpick" as const satisfies EquipmentId;
+
+/** Chance the bonus treasure loot card is a lockpick instead of a consumable. */
+export const TREASURE_LOCKPICK_DROP_CHANCE = 0.12;
+
+export function createEquipmentLootCard(
+  id: string,
+  equipmentId: EquipmentId,
+  sourceName: string,
+): CombatLootItem {
+  return {
+    id,
+    kind: "equipment",
+    equipmentId,
+    amount: 1,
+    sourceName,
+    claimed: false,
+  };
+}
 
 /** At most one consumable loot card, always quantity 1. */
 export function createRandomItemLootCard(
@@ -18,19 +45,41 @@ export function createRandomItemLootCard(
   };
 }
 
-/** Keep a single item entry (first wins) with amount capped at 1. */
+/** Keep a single bonus loot card (item or equipment), always quantity 1 for items. */
 export function capLootToSingleItem(loot: CombatLootItem[]): CombatLootItem[] {
-  let seenItem = false;
+  let seenBonus = false;
   return loot.reduce<CombatLootItem[]>((acc, entry) => {
-    if (entry.kind !== "item") {
+    if (entry.kind === "gold" || entry.kind === "xp") {
       acc.push(entry);
       return acc;
     }
-    if (seenItem) return acc;
-    seenItem = true;
-    acc.push({ ...entry, amount: LOOT_ITEM_COPY_LIMIT });
+    if (entry.kind === "item" || entry.kind === "equipment") {
+      if (seenBonus) return acc;
+      seenBonus = true;
+      if (entry.kind === "item") {
+        acc.push({ ...entry, amount: LOOT_ITEM_COPY_LIMIT });
+      } else {
+        acc.push(entry);
+      }
+      return acc;
+    }
+    acc.push(entry);
     return acc;
   }, []);
+}
+
+function rollTreasureBonusLoot(
+  idPrefix: string,
+  sourceName: string,
+): CombatLootItem {
+  if (Math.random() < TREASURE_LOCKPICK_DROP_CHANCE) {
+    return createEquipmentLootCard(
+      `${idPrefix}-lockpick`,
+      LOCKPICK_EQUIPMENT_ID,
+      sourceName,
+    );
+  }
+  return createRandomItemLootCard(idPrefix, sourceName);
 }
 
 export function isTreasureEvent(event: EventType): boolean {
@@ -59,7 +108,7 @@ export function allLootClaimed(loot: CombatLootItem[]): boolean {
 export const allCombatLootClaimed = allLootClaimed;
 
 export function goldDropForEnemy(enemy: EnemyType): number {
-  return enemy.level * 2;
+  return rollLd4(enemy.level);
 }
 
 export function xpDropForEnemy(enemy: EnemyType): number {
@@ -146,7 +195,7 @@ export function generateEventLoot(
     },
   ];
 
-  const itemLoot = createRandomItemLootCard(`event-${slug}-item`, event.name);
+  const itemLoot = rollTreasureBonusLoot(`event-${slug}-bonus`, event.name);
 
   return capLootToSingleItem(items.concat(itemLoot));
 }

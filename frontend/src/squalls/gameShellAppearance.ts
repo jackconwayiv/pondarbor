@@ -1,7 +1,7 @@
 import type { GameLocationTypes, GameStateTypes } from "./shantiesTypes";
 
 const SHIP_GRADIENT =
-  "linear-gradient(180deg, #BEE3F8 0%, #4A3728 100%)";
+  "linear-gradient(180deg, #FFFFFF 0%, #BEE3F8 50%, #4A3728 100%)";
 const SAILING_GRADIENT =
   "linear-gradient(180deg, #BEE3F8 0%, #1A365D 100%)";
 const ISLAND_GRADIENT =
@@ -23,7 +23,7 @@ export function getSceneTopColor(
   if (location === "dungeon") return "#4A5568";
   if (location === "island") return "#BEE3F8";
   if (gameState === "sail" || gameState === "event") return "#BEE3F8";
-  return "#BEE3F8";
+  return "#FFFFFF";
 }
 
 export function getShellAppearance(

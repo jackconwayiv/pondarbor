@@ -1,9 +1,13 @@
-import { Box, Heading, Text, VStack } from "@chakra-ui/react";
+import { Text, VStack } from "@chakra-ui/react";
 
-import HomeActionGrid from "./HomeActionGrid";
-import SquallsActionCard, {
-  type SquallsActionAccent,
-} from "./SquallsActionCard";
+import { SquallsHeading } from "./SquallsHeading";
+
+import {
+  SquallsActionOption,
+  SquallsActionSection,
+  SquallsActionSheet,
+} from "./SquallsActionSheet";
+import { SQUALLS_TEXT_ZONE } from "./squallsTheme";
 import { heroHasLockpickEquipped } from "./shantiesEquipment";
 import { getItemCount } from "./shantiesItems";
 import type { EventType, HeroType } from "./shantiesTypes";
@@ -15,7 +19,7 @@ type Props = {
   headingEmoji?: string;
   leaveEmoji?: string;
   leaveLabel?: string;
-  leaveAccent?: SquallsActionAccent;
+  leaveTone?: "retreat" | "explore";
   onUnlockWithKey: () => void;
   onPickLock: () => void;
   onForceOpen: () => void;
@@ -30,7 +34,7 @@ export default function LockedChestPanel({
   headingEmoji = "🔒",
   leaveEmoji = "🚪",
   leaveLabel = "Leave it",
-  leaveAccent = "gray",
+  leaveTone = "retreat",
   onUnlockWithKey,
   onPickLock,
   onForceOpen,
@@ -43,48 +47,56 @@ export default function LockedChestPanel({
 
   return (
     <VStack align="start" gap={4} w="100%" maxW="md">
-      <Heading size="md">{headingEmoji} {event.name}</Heading>
-      <Text fontSize="lg">
-        The chest is locked. Use a key, pick the lock, or try to break it open.
+      <SquallsHeading size="md">{headingEmoji} {event.name}</SquallsHeading>
+      <Text fontSize="sm" color={SQUALLS_TEXT_ZONE.muted}>
+        The chest is locked tight. Ye can spend tools, risk brute force, or turn away.
       </Text>
-      <HomeActionGrid>
-        {hasKey ? (
-          <SquallsActionCard
-            emoji="🗝️"
-            label="Use Key"
-            accent="teal"
-            onClick={onUnlockWithKey}
+      <SquallsActionSheet title="Chest Tactics">
+        <SquallsActionSection label="Supplies And Services">
+          {hasKey ? (
+            <SquallsActionOption
+              emoji="🗝️"
+              title="Use key"
+              detail="Guaranteed access at the cost of one key."
+              tone="service"
+              onClick={onUnlockWithKey}
+            />
+          ) : null}
+          {hasLockpick ? (
+            <SquallsActionOption
+              emoji="🪝"
+              title="Pick the lock"
+              detail="Use lockpicks and skill to avoid brute force."
+              tone="explore"
+              onClick={onPickLock}
+            />
+          ) : null}
+        </SquallsActionSection>
+        <SquallsActionSection label="Risk And Force">
+          {!forceOpenDisabled ? (
+            <SquallsActionOption
+              emoji="💪"
+              title="Force it open"
+              detail="Risk a rough entry and potential consequences."
+              tone="risk"
+              onClick={onForceOpen}
+            />
+          ) : null}
+        </SquallsActionSection>
+        <SquallsActionSection label="Retreat And Return">
+          <SquallsActionOption
+            emoji={leaveEmoji}
+            title={leaveLabel}
+            detail="Leave the chest and preserve resources."
+            tone={leaveTone}
+            onClick={onLeave}
           />
-        ) : null}
-        {hasLockpick ? (
-          <SquallsActionCard
-            emoji="🪝"
-            label="Pick the Lock"
-            accent="blue"
-            onClick={onPickLock}
-          />
-        ) : null}
-        {!forceOpenDisabled ? (
-          <SquallsActionCard
-            emoji="💪"
-            label="Force Open"
-            accent="orange"
-            onClick={onForceOpen}
-          />
-        ) : null}
-        <SquallsActionCard
-          emoji={leaveEmoji}
-          label={leaveLabel}
-          accent={leaveAccent}
-          onClick={onLeave}
-        />
-      </HomeActionGrid>
+        </SquallsActionSection>
+      </SquallsActionSheet>
       {message ? (
-        <Box w="100%">
-          <Text fontSize="sm" color="gray.900">
-            {message}
-          </Text>
-        </Box>
+        <Text fontSize="sm" color={SQUALLS_TEXT_ZONE.muted}>
+          {message}
+        </Text>
       ) : null}
     </VStack>
   );

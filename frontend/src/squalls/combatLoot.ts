@@ -1,4 +1,5 @@
 import { combatItemLootCards, rollMonsterItemDrops } from "./monsterDrops";
+import { getMonsterTemplate } from "./monsters";
 import { LOOT_ITEM_COPY_LIMIT, pickRandomItemId } from "./shantiesItems";
 import type {
   CombatLootItem,
@@ -167,12 +168,18 @@ export function allLootClaimed(loot: CombatLootItem[]): boolean {
 /** @deprecated Use allLootClaimed */
 export const allCombatLootClaimed = allLootClaimed;
 
+/** Catalog level for loot — not the rolled encounter level on the foe. */
+function lootLevelForEnemy(enemy: EnemyType): number {
+  return getMonsterTemplate(enemy.name)?.level ?? enemy.level;
+}
+
 export function goldDropForEnemy(enemy: EnemyType): number {
-  return rollLd4(enemy.level);
+  return rollLd4(lootLevelForEnemy(enemy));
 }
 
 export function xpDropForEnemy(enemy: EnemyType): number {
-  return enemy.level;
+  const level = lootLevelForEnemy(enemy);
+  return enemy.isBoss ? level * 3 : level;
 }
 
 /** One gold card, one XP card, stacked item cards from per-foe drop rolls. */
@@ -252,6 +259,8 @@ export function treasureGoldDiceCount(
 export type EventLootContext = {
   /** Island vibe when treasure is found on an island or its dungeon; omit at sea. */
   islandVibe?: IslandType["vibe"] | null;
+  heroLevel?: number;
+  levelFactor?: number;
 };
 
 /** Gold (Ld4 by island vibe) and a random item for a treasure event (no XP). */
@@ -260,7 +269,11 @@ export function generateEventLoot(
   context: EventLootContext = {},
 ): CombatLootItem[] {
   const slug = event.name.replace(/\s+/g, "-").toLowerCase();
-  const goldAmount = rollLd4(treasureGoldDiceCount(context.islandVibe));
+  const goldDiceCount =
+    context.heroLevel != null
+      ? Math.max(1, context.heroLevel + (context.levelFactor ?? 0))
+      : treasureGoldDiceCount(context.islandVibe);
+  const goldAmount = rollLd4(goldDiceCount);
   const items: CombatLootItem[] = [
     {
       id: `event-${slug}-gold`,

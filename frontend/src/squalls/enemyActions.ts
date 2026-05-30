@@ -1,4 +1,5 @@
 import { rollD4 } from "./combatRules";
+import { rollHeroEvasiveMiss } from "./combatEquipment";
 import type {
   EnemyAction,
   EnemyBroadcast,
@@ -45,6 +46,40 @@ export function enemyBroadcastColor(broadcast: EnemyBroadcast): string {
     case "debuff":
       return "orange.700";
   }
+}
+
+export function canReadEnemyRollRange(enemy: EnemyType, heroLevel: number): boolean {
+  return enemy.level <= heroLevel;
+}
+
+/** Damage or armor roll numbers for the telegraphed attack/defend action. */
+export function formatEnemyIntentRollRange(
+  enemy: EnemyType,
+  heroLevel: number,
+): string {
+  if (!canReadEnemyRollRange(enemy, heroLevel)) return "???";
+  if (enemy.broadcast === "attack") {
+    const { damageMin, damageMax } = enemy;
+    return damageMin === damageMax ? `${damageMin}` : `${damageMin}–${damageMax}`;
+  }
+  if (enemy.broadcast === "defend") {
+    return "1–4";
+  }
+  return "";
+}
+
+export function formatEnemyBroadcastLine(
+  enemy: EnemyType,
+  heroLevel: number,
+  slain: boolean,
+): string {
+  if (slain) return "Slain";
+  const label = formatEnemyBroadcastLabel(enemy.broadcast);
+  if (enemy.broadcast === "attack" || enemy.broadcast === "defend") {
+    const range = formatEnemyIntentRollRange(enemy, heroLevel);
+    return `${label} ${range}`;
+  }
+  return label;
 }
 
 /** 5 Attack, 3 Defend, 1 Evade, 1 Weaken. */
@@ -218,6 +253,7 @@ export function executeEnemyAction(
   heroHp: number,
   playerArmor: number,
   heroWeakened: boolean,
+  heroEvasiveStacks = 0,
 ): {
   enemy: EnemyType;
   heroHp: number;
@@ -280,7 +316,19 @@ export function executeEnemyAction(
     };
   }
 
-  const damage = rollD4();
+  const spread = Math.max(1, enemy.damageMax - enemy.damageMin + 1);
+  const damage = enemy.damageMin + Math.floor(Math.random() * spread);
+
+  if (rollHeroEvasiveMiss(heroEvasiveStacks)) {
+    return {
+      enemy: cycleEnemyAfterAction(enemy),
+      heroHp,
+      playerArmor,
+      heroWeakened,
+      message: `${enemy.name} attacks ${heroName} but misses!`,
+    };
+  }
+
   const armorBroken = Math.min(playerArmor, damage);
   const damageDealt = Math.max(0, damage - armorBroken);
   return {

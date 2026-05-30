@@ -1,8 +1,10 @@
-import { Box, Heading, HStack, SimpleGrid, Text, VStack } from "@chakra-ui/react";
+import { HStack, SimpleGrid, Text, VStack } from "@chakra-ui/react";
+
+import { SquallsHeading } from "./SquallsHeading";
 
 import EquipmentSellCard from "./EquipmentSellCard";
 import ItemInventoryCard from "./ItemInventoryCard";
-import SquallsActionCard from "./SquallsActionCard";
+import { SquallsPanelBackButton, SquallsTextZone } from "./SquallsActionSheet";
 import { getEquipmentSellPrice } from "./shantiesEquipment";
 import {
   checkBuyItem,
@@ -15,6 +17,30 @@ import {
 } from "./shantiesItems";
 import { shopAllowsSelling } from "./shantiesShop";
 import type { HeroType, ItemId, ShopVariant } from "./shantiesTypes";
+import { SQUALLS_TEXT_ZONE, SQUALLS_WORLD_PANEL } from "./squallsTheme";
+
+function shopBackLabel(shopVariant: ShopVariant | null): string {
+  if (shopVariant === "merchant") return "Return to open sea";
+  if (shopVariant === "island_trader") return "Return to island";
+  if (shopVariant === "port") return "Return to port";
+  return "Return to ship";
+}
+
+function shopHeading(shopVariant: ShopVariant | null): string {
+  if (shopVariant === "merchant") return "Merchant Ship";
+  if (shopVariant === "island_trader") return "Island Trader";
+  if (shopVariant === "port") return "Marketplace";
+  if (shopVariant === "ship") return "Provisions";
+  return "Ye Be Shopping";
+}
+
+function shopSubtitle(shopVariant: ShopVariant | null): string {
+  if (shopVariant === "merchant") return "Have a browse of our fine wares.";
+  if (shopVariant === "island_trader") return "A local offers goods from the island.";
+  if (shopVariant === "port") return "Stock up before ye sail on.";
+  if (shopVariant === "ship") return "Stock up for the voyage.";
+  return "What'll ye have today?";
+}
 
 type Props = {
   hero: HeroType;
@@ -35,10 +61,6 @@ export default function ShopView({
   onSellEquipment,
   onBack,
 }: Props) {
-  const isMerchant = shopVariant === "merchant";
-  const isIslandTrader = shopVariant === "island_trader";
-  const isPort = shopVariant === "port";
-  const isShip = shopVariant === "ship";
   const catalogItemIds = getShopCatalogItemIds(shopVariant);
   const ownedConsumables = ITEM_IDS.filter(
     (itemId) =>
@@ -50,55 +72,21 @@ export default function ShopView({
     (ownedConsumables.length > 0 || hero.equipmentInventory.length > 0);
 
   return (
-    <VStack align="stretch" gap={4} w="100%">
-      <HStack w="100%" justify="space-between" align="flex-start" gap={2}>
+    <VStack align="stretch" gap={4} w="100%" {...SQUALLS_WORLD_PANEL} p={{ base: 3, md: 4 }}>
+      <HStack w="100%" justify="space-between" align="flex-start" gap={3}>
         <VStack align="start" flex={1} minW={0} gap={1}>
-          <Heading w="100%">
-            {isMerchant
-              ? "🛶 Merchant Ship"
-              : isIslandTrader
-                ? "🏝️ Island Trader"
-                : isPort
-                  ? "💰 Marketplace"
-                  : isShip
-                    ? "💰 Provisions"
-                    : "💰 Ye Be Shopping"}
-          </Heading>
-          <Text fontSize="sm" color="gray.900">
-            {isMerchant
-              ? "Have a browse of our fine wares."
-              : isIslandTrader
-                ? "A local offers goods from the island."
-                : isPort
-                  ? "Stock up before ye sail on."
-                  : isShip
-                    ? "Stock up for the voyage."
-                    : "What'll ye have today?"}
+          <SquallsHeading w="100%">{shopHeading(shopVariant)}</SquallsHeading>
+          <Text fontSize="sm" color={SQUALLS_TEXT_ZONE.muted}>
+            {shopSubtitle(shopVariant)}
           </Text>
         </VStack>
-        <Box flexShrink={0} w="7rem">
-          <SquallsActionCard
-            emoji="⛵"
-            label={
-              isMerchant
-                ? "Back to open sea"
-                : isIslandTrader
-                  ? "Back to Island"
-                  : isPort
-                    ? "Back to Port"
-                    : "Back to Ship"
-            }
-            accent="blue"
-            compact
-            onClick={onBack}
-          />
-        </Box>
+        <SquallsPanelBackButton label={shopBackLabel(shopVariant)} onClick={onBack} />
       </HStack>
 
       <Text fontSize="sm" fontWeight="bold">
         Buy
       </Text>
-      <SimpleGrid columns={3} gap={1.5} w="100%" maxW="28rem">
+      <SimpleGrid columns={{ base: 3, md: 3 }} gap={1.5} w="100%" maxW="28rem">
         {catalogItemIds.map((itemId) => {
           const owned = getItemCount(hero.inventory, itemId);
           const buyPrice = getItemBuyPrice(hero, itemId, shopVariant)!;
@@ -123,7 +111,7 @@ export default function ShopView({
           <Text fontSize="sm" fontWeight="bold">
             Sell
           </Text>
-          <SimpleGrid columns={3} gap={1.5} w="100%" maxW="28rem">
+          <SimpleGrid columns={{ base: 3, md: 3 }} gap={1.5} w="100%" maxW="28rem">
             {ownedConsumables.map((itemId) => {
               const sellPrice = getItemSellPrice(itemId)!;
               return (
@@ -156,9 +144,11 @@ export default function ShopView({
       ) : null}
 
       {shopMessage ? (
-        <Text fontSize="sm" color="gray.900">
-          {shopMessage}
-        </Text>
+        <SquallsTextZone>
+          <Text fontSize="sm" color="#5A4732">
+            {shopMessage}
+          </Text>
+        </SquallsTextZone>
       ) : null}
     </VStack>
   );

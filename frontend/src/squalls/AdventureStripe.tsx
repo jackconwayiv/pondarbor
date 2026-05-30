@@ -1,7 +1,7 @@
-import { HStack, Text } from "@chakra-ui/react";
-
+import { Box, Button, HStack, Text } from "@chakra-ui/react";
 import { getDungeonCombatPlaceLabel } from "./dungeonExplore";
 import type { AdventureStripeProps } from "./shantiesTypes";
+import { SQUALLS_HUD_COLORS } from "./squallsTheme";
 
 function formatStripePlaceLabel(props: AdventureStripeProps): string {
   const { gameState, location, currentDungeon, renderDungeonName } = props;
@@ -39,16 +39,55 @@ function stripePlacePrefix(
 }
 
 export default function AdventureStripe(props: AdventureStripeProps) {
-  const { gameState, location, currentDungeon } = props;
+  const {
+    gameState,
+    location,
+    currentDungeon,
+    onOpenCharacterSheet,
+  } = props;
   const placeLabel = formatStripePlaceLabel(props);
   const placePrefix = stripePlacePrefix(gameState, location, currentDungeon);
 
   return (
-    <HStack w="100%" gap={2} align="center" flexWrap="wrap" minW={0}>
-      <Text fontSize="sm" fontWeight="semibold" lineClamp={2} minW={0}>
-        {placePrefix}
-        {placeLabel}
-      </Text>
+    <HStack w="100%" gap={2} align="center" minW={0}>
+      <Box
+        flex={1}
+        minW={0}
+        px={2}
+        py={1}
+        borderRadius="md"
+        bg="rgba(0, 0, 0, 0.16)"
+        borderWidth="1px"
+        borderColor={SQUALLS_HUD_COLORS.panelBorder}
+      >
+        <Text
+          fontSize="sm"
+          fontWeight="semibold"
+          lineClamp={2}
+          minW={0}
+          color={SQUALLS_HUD_COLORS.panelText}
+        >
+          {placePrefix}
+          {placeLabel}
+        </Text>
+      </Box>
+      <Button
+        type="button"
+        size="xs"
+        minW="2rem"
+        h="2rem"
+        px={0}
+        flexShrink={0}
+        variant="ghost"
+        color={SQUALLS_HUD_COLORS.panelText}
+        borderWidth="1px"
+        borderColor={SQUALLS_HUD_COLORS.panelBorder}
+        bg="rgba(0,0,0,0.2)"
+        aria-label="Open character details"
+        onClick={onOpenCharacterSheet}
+      >
+        📜
+      </Button>
     </HStack>
   );
 }

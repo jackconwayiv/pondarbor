@@ -18,6 +18,7 @@ import DmEventsPanel from "./panels/DmEventsPanel";
 import DmItemsPanel from "./panels/DmItemsPanel";
 import DmMonstersPanel from "./panels/DmMonstersPanel";
 import DmRulesPanel from "./panels/DmRulesPanel";
+import { SQUALLS_HUD_COLORS } from "../squallsTheme";
 
 type DmTab = "items" | "equipment" | "monsters" | "events" | "cards" | "rules";
 
@@ -30,7 +31,7 @@ export default function SquallsDmPage() {
   if (isLoading) {
     return (
       <Box maxW="6xl" mx="auto" px={4} py={8}>
-        <Text color="gray.900">Loading…</Text>
+        <Text color={SQUALLS_HUD_COLORS.panelMuted}>Loading…</Text>
       </Box>
     );
   }
@@ -41,7 +42,7 @@ export default function SquallsDmPage() {
         <Heading size="md" mb={3} color="gray.900">
           Squalls DM Reference
         </Heading>
-        <Text color="gray.900" mb={4}>
+        <Text color={SQUALLS_HUD_COLORS.panelMuted} mb={4}>
           Sign in with a staff account to view the game catalog.
         </Text>
         <PondButton
@@ -63,7 +64,7 @@ export default function SquallsDmPage() {
         <Heading size="md" mb={3} color="gray.900">
           Squalls DM Reference
         </Heading>
-        <Text color="gray.900">Staff only.</Text>
+        <Text color={SQUALLS_HUD_COLORS.panelMuted}>Staff only.</Text>
       </Box>
     );
   }
@@ -72,15 +73,23 @@ export default function SquallsDmPage() {
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
       <Box flex="1" bg="bg" px={0} py={{ base: "2", md: "2" }}>
         <Box {...APP_SHELL_TRAY_PROPS}>
-          <Stack gap={{ base: "4", md: "4" }} p={{ base: "2", md: "2" }}>
+          <Stack
+            gap={{ base: "4", md: "4" }}
+            p={{ base: "2", md: "2" }}
+            borderRadius="xl"
+            borderWidth="1px"
+            borderColor={SQUALLS_HUD_COLORS.panelBorder}
+            bg="rgba(10, 24, 35, 0.65)"
+            color={SQUALLS_HUD_COLORS.panelText}
+          >
             <Box>
-              <Heading size="lg" color="gray.900">
+              <Heading size="lg">
                 Squalls DM Reference
               </Heading>
-              <Text fontSize="sm" color="gray.900" mt={1}>
+              <Text fontSize="sm" color={SQUALLS_HUD_COLORS.panelMuted} mt={1}>
                 Read-only catalog of items, monsters, events, cards, and rules.
               </Text>
-              <Text fontSize="sm" mt={2}>
+              <Text fontSize="sm" mt={2} color={SQUALLS_HUD_COLORS.panelMuted}>
                 <RouterLink to="/squalls" style={{ color: "inherit" }}>
                   ← Back to Squalls & Shanties
                 </RouterLink>

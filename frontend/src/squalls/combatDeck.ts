@@ -1,56 +1,31 @@
-import type { AttackCard, CombatCard, DefendCard } from "./shantiesTypes";
-import { DEFEND_TARGETING } from "./shantiesTypes";
+import {
+  buildDeckFromComposition,
+  cloneCombatCard,
+  createCombatCard,
+  STARTER_DECK_COMPOSITION,
+  type CardId,
+} from "./squallsCardCatalog";
+import type { CombatCard } from "./shantiesTypes";
 
-const meleeAttackCard: AttackCard = {
-  name: "Melee Attack",
-  attackKind: "melee",
-  strong: false,
-};
-
-const rangedAttackCard: AttackCard = {
-  name: "Ranged Attack",
-  attackKind: "ranged",
-  strong: false,
-};
-
-const strongMeleeAttackCard: AttackCard = {
-  name: "Strong Melee Attack",
-  attackKind: "melee",
-  strong: true,
-};
-
-const strongRangedAttackCard: AttackCard = {
-  name: "Strong Ranged Attack",
-  attackKind: "ranged",
-  strong: true,
-};
-
-const defendCard: DefendCard = {
-  name: "Defend",
-  targeting: DEFEND_TARGETING,
-};
-
-/** 7 Melee, 7 Ranged, 1 Strong Melee, 1 Strong Ranged, 4 Defend. */
-export function createStarterDeck(): CombatCard[] {
-  return [
-    ...Array.from({ length: 7 }, () => ({ ...meleeAttackCard })),
-    ...Array.from({ length: 7 }, () => ({ ...rangedAttackCard })),
-    { ...strongMeleeAttackCard },
-    { ...strongRangedAttackCard },
-    ...Array.from({ length: 4 }, () => ({ ...defendCard, targeting: { ...DEFEND_TARGETING } })),
-  ];
+export function minDeckSize(level: number): number {
+  return 19 + Math.max(1, Math.floor(level));
 }
 
-export function cloneCombatCard(card: CombatCard): CombatCard {
-  if (card.name === "Defend") {
-    return {
-      name: "Defend",
-      targeting: { ...card.targeting },
-    };
-  }
-  return { ...card };
+/** 4 Melee Attack, 4 Ranged Shot, 4 Defend, 2 Strong Attack, 2 Strong Shot, 1 each Lucky/Hunker. */
+export function createStarterDeck(): CardId[] {
+  return buildDeckFromComposition(STARTER_DECK_COMPOSITION);
 }
 
-export function cloneCombatDeck(cards: CombatCard[]): CombatCard[] {
-  return cards.map(cloneCombatCard);
+export function createStarterCardCollection(): CardId[] {
+  return buildDeckFromComposition(STARTER_DECK_COMPOSITION);
+}
+
+export { cloneCombatCard, createCombatCard };
+
+export function cloneCombatDeck(cards: readonly CardId[]): CardId[] {
+  return cards.map((id) => id);
+}
+
+export function combatDeckAsCards(deck: readonly CardId[]): CombatCard[] {
+  return deck.map((id) => createCombatCard(id));
 }

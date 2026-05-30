@@ -1,5 +1,5 @@
-import { Box, SimpleGrid, Tabs, Text, VStack } from "@chakra-ui/react";
-import { useState } from "react";
+import { Box, Button, SimpleGrid, Tabs, Text, VStack } from "@chakra-ui/react";
+import { useEffect, useState } from "react";
 
 import { AppModal } from "../components/AppModal";
 import {
@@ -10,6 +10,9 @@ import { clampHp } from "./combatRules";
 import CharacterSheetDeck from "./CharacterSheetDeck";
 import CharacterSheetEquipment from "./CharacterSheetEquipment";
 import ItemInventoryCard from "./ItemInventoryCard";
+import { isDeckValid } from "./deckValidation";
+import { SQUALLS_HEADING_FONT_FAMILY } from "./squallsTheme";
+import type { CardId } from "./squallsCardCatalog";
 import {
   checkUseItem,
   getItemCount,
@@ -24,8 +27,9 @@ import type {
   IndoorAreaId,
   ItemId,
 } from "./shantiesTypes";
+import { xpToNextLevel } from "./squallsXpProgression";
 
-type CharacterSheetTab = "stats" | "equipment" | "deck";
+type CharacterSheetTab = "stats" | "equipment" | "deck" | "settings";
 
 type Props = {
   open: boolean;
@@ -37,13 +41,16 @@ type Props = {
   energy: number;
   victoryPending: boolean;
   combatVictory: boolean;
-  armor: number;
   currentIndoorArea: IndoorAreaId | null;
   illuminatedAreas: IndoorAreaId[];
   itemMessage: string | null;
   onUseItem: (itemId: ItemId) => void;
   onClearItemMessage: () => void;
   onEquipmentChange: (hero: HeroType) => void;
+  onDeckChange: (deck: CardId[]) => void;
+  onClearDeckEditRequired: () => void;
+  initialTab?: CharacterSheetTab;
+  onLeaveGame: () => void;
 };
 
 function StatRow({ label, value }: { label: string; value: string }) {
@@ -69,16 +76,20 @@ export default function CharacterSheetModal({
   energy,
   victoryPending,
   combatVictory,
-  armor,
   currentIndoorArea,
   illuminatedAreas,
   itemMessage,
   onUseItem,
   onClearItemMessage,
   onEquipmentChange,
+  onDeckChange,
+  onClearDeckEditRequired,
+  initialTab,
+  onLeaveGame,
 }: Props) {
   const [tab, setTab] = useState<CharacterSheetTab>("stats");
   const inCombat = gameState === "battle";
+  const deckLocked = hero.deckEditRequired === true && !isDeckValid(hero);
   const ownedItems = ITEM_IDS.filter(
     (itemId) => getItemCount(hero.inventory, itemId) > 0,
   );
@@ -86,6 +97,12 @@ export default function CharacterSheetModal({
     gameState !== "lobby" &&
     (gameState !== "battle" ||
       (combatPhase === "player" && !victoryPending && !combatVictory));
+
+  useEffect(() => {
+    if (open && initialTab) {
+      setTab(initialTab);
+    }
+  }, [open, initialTab]);
 
   const useItemContext = {
     gameState,
@@ -98,11 +115,31 @@ export default function CharacterSheetModal({
     combatVictory,
   };
 
+  const xpProgress = xpToNextLevel(hero.xp, hero.level);
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen && deckLocked) return;
+    if (!nextOpen) {
+      onClearItemMessage();
+    }
+    onOpenChange(nextOpen);
+  };
+
   return (
     <AppModal
       open={open}
-      onOpenChange={onOpenChange}
-      title={`${hero.name} · ${hero.class}`}
+      onOpenChange={handleOpenChange}
+      title={
+        <Text
+          as="span"
+          fontFamily={SQUALLS_HEADING_FONT_FAMILY}
+          fontSize="lg"
+          fontWeight="normal"
+          lineHeight="short"
+        >
+          {`${hero.name} · ${hero.class}`}
+        </Text>
+      }
       size="lg"
     >
       <Tabs.Root
@@ -121,31 +158,26 @@ export default function CharacterSheetModal({
           <Tabs.Trigger value="deck" {...APP_SHELL_TAB_TRIGGER_PROPS}>
             Deck
           </Tabs.Trigger>
+          <Tabs.Trigger value="settings" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+            Settings
+          </Tabs.Trigger>
         </Tabs.List>
 
         <Tabs.Content value="stats" pt={3}>
           <VStack align="stretch" gap={4}>
             <SimpleGrid columns={2} gap={3}>
-              <StatRow label="Captain" value={hero.name} />
-              <StatRow label="Class" value={hero.class} />
+              <StatRow label="Hero" value={hero.name} />
               <StatRow
                 label="HP"
                 value={`${clampHp(hero.current_hp)} / ${clampHp(hero.max_hp)}`}
               />
+              <StatRow label="Level" value={String(hero.level)} />
+              <StatRow label="Class" value={hero.class} />
               <StatRow
-                label="Ammo"
-                value={`${hero.ammo} / ${hero.max_ammo}`}
+                label="XP"
+                value={`${xpProgress.current} / ${xpProgress.needed}`}
               />
               <StatRow label="Gold" value={String(hero.gold)} />
-              <StatRow label="Day" value={String(day)} />
-              <StatRow label="Level" value={String(hero.level)} />
-              <StatRow label="XP" value={String(hero.xp)} />
-              {inCombat && armor > 0 ? (
-                <StatRow label="Armor" value={String(armor)} />
-              ) : null}
-              {inCombat ? (
-                <StatRow label="Energy" value={String(energy)} />
-              ) : null}
             </SimpleGrid>
 
             <Box>
@@ -197,7 +229,25 @@ export default function CharacterSheetModal({
         </Tabs.Content>
 
         <Tabs.Content value="deck" pt={3}>
-          <CharacterSheetDeck deck={hero.deck} equipped={hero.equipped} />
+          <CharacterSheetDeck
+            hero={hero}
+            equipped={hero.equipped}
+            deckEditRequired={hero.deckEditRequired}
+            onDeckChange={onDeckChange}
+            onClearDeckEditRequired={onClearDeckEditRequired}
+          />
+        </Tabs.Content>
+
+        <Tabs.Content value="settings" pt={3}>
+          <VStack align="stretch" gap={3}>
+            <StatRow label="Day" value={String(day)} />
+            <Text fontSize="sm" color="gray.900">
+              Manage this voyage.
+            </Text>
+            <Button colorPalette="orange" onClick={onLeaveGame}>
+              Leave game
+            </Button>
+          </VStack>
         </Tabs.Content>
       </Tabs.Root>
     </AppModal>

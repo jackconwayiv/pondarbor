@@ -9,8 +9,9 @@ import {
   SHOP_ITEM_IDS,
 } from "../../shantiesItems";
 import type { ItemId, ShopVariant } from "../../shantiesTypes";
+import { SQUALLS_HUD_COLORS } from "../../squallsTheme";
 import { SHOP_CATALOG_LABELS } from "../squallsDmCatalog";
-import { DmPanelIntro, DmSectionHeading } from "./DmStatRow";
+import { DM_PANEL_CARD_PROPS, DmPanelIntro, DmSectionHeading } from "./DmStatRow";
 
 const ITEM_KIND_ORDER = [
   "food",
@@ -73,9 +74,9 @@ export default function DmItemsPanel() {
             {items.map((itemId) => {
               const catalogs = shopCatalogsForItem(itemId);
               return (
-                <Box key={itemId}>
+                <Box key={itemId} {...DM_PANEL_CARD_PROPS} p={2}>
                   <ItemInventoryCard itemId={itemId} count={1} countFormat="owned" />
-                  <Text fontSize="2xs" color="gray.900" mt={1} px={1}>
+                  <Text fontSize="2xs" color={SQUALLS_HUD_COLORS.panelMuted} mt={1} px={1}>
                     {formatItemMeta(itemId)}
                   </Text>
                   {catalogs.length > 0 ? (
@@ -84,8 +85,9 @@ export default function DmItemsPanel() {
                         <Badge
                           key={catalog}
                           size="sm"
-                          variant="subtle"
-                          colorPalette="teal"
+                          variant="solid"
+                          bg="rgba(46, 141, 118, 0.84)"
+                          color="gray.50"
                           fontSize="2xs"
                         >
                           {SHOP_CATALOG_LABELS[catalog]}

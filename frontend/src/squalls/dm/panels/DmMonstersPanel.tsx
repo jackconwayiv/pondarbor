@@ -16,7 +16,13 @@ import {
   ENCOUNTER_POOLS,
   ENEMY_ACTION_DESCRIPTIONS,
 } from "../squallsDmCatalog";
-import { DmPanelIntro, DmSectionHeading, DmStatRow } from "./DmStatRow";
+import { SQUALLS_HUD_COLORS } from "../../squallsTheme";
+import {
+  DM_PANEL_CARD_PROPS,
+  DmPanelIntro,
+  DmSectionHeading,
+  DmStatRow,
+} from "./DmStatRow";
 
 function actionDeckSummary(): string {
   return formatEnemyActionDeckSummary(createEnemyActionDeckForMonster("Harpy"));
@@ -38,19 +44,15 @@ export default function DmMonstersPanel() {
             (key) => (
               <Box
                 key={key}
-                p={3}
-                borderWidth="1px"
-                borderColor="blackAlpha.200"
-                borderRadius="md"
-                bg="blackAlpha.50"
+                {...DM_PANEL_CARD_PROPS}
               >
-                <Text fontSize="sm" fontWeight="bold" color="gray.900">
+                <Text fontSize="sm" fontWeight="bold" color={SQUALLS_HUD_COLORS.panelText}>
                   {ENCOUNTER_POOL_LABELS[key]}
                 </Text>
-                <Text fontSize="sm" color="gray.900" mt={1}>
+                <Text fontSize="sm" color={SQUALLS_HUD_COLORS.panelMuted} mt={1}>
                   {ENCOUNTER_POOLS[key].join(", ")}
                 </Text>
-                <Text fontSize="xs" color="gray.900" mt={1}>
+                <Text fontSize="xs" color={SQUALLS_HUD_COLORS.panelSubtle} mt={1}>
                   1–2 types per fight; per type:{" "}
                   {ENCOUNTER_POOLS[key]
                     .map((name) => `${name} × ${ENCOUNTER_GROUP_SIZES[name] ?? "?"}`)
@@ -64,7 +66,7 @@ export default function DmMonstersPanel() {
 
       <Box>
         <DmSectionHeading>Default action deck (Harpy / Siren)</DmSectionHeading>
-        <Text fontSize="sm" color="gray.900" mt={1}>
+        <Text fontSize="sm" color={SQUALLS_HUD_COLORS.panelMuted} mt={1}>
           Composition: {actionDeckSummary()}. Shuffled per enemy at combat start; one action
           per turn with telegraphed broadcast. Enemies with a buff card have a{" "}
           {Math.round(BUFF_ON_TOP_START_CHANCE * 100)}% chance to start with buff on top.
@@ -73,15 +75,13 @@ export default function DmMonstersPanel() {
           {ENEMY_ACTION_DESCRIPTIONS.map((row) => (
             <Box
               key={row.action}
+              {...DM_PANEL_CARD_PROPS}
               p={2}
-              borderWidth="1px"
-              borderColor="blackAlpha.200"
-              borderRadius="md"
             >
-              <Text fontSize="sm" fontWeight="semibold" color="gray.900">
+              <Text fontSize="sm" fontWeight="semibold" color={SQUALLS_HUD_COLORS.panelText}>
                 {row.action} → {row.broadcast}
               </Text>
-              <Text fontSize="xs" color="gray.900">
+              <Text fontSize="xs" color={SQUALLS_HUD_COLORS.panelMuted}>
                 {row.effect}
               </Text>
             </Box>
@@ -98,13 +98,9 @@ export default function DmMonstersPanel() {
             return (
               <Box
                 key={name}
-                p={3}
-                borderWidth="1px"
-                borderColor="blackAlpha.200"
-                borderRadius="md"
-                bg="white"
+                {...DM_PANEL_CARD_PROPS}
               >
-                <Text fontSize="md" fontWeight="bold" color="gray.900">
+                <Text fontSize="md" fontWeight="bold" color={SQUALLS_HUD_COLORS.panelText}>
                   {name}
                 </Text>
                 <SimpleGrid columns={2} gap={2} mt={2}>
@@ -115,32 +111,43 @@ export default function DmMonstersPanel() {
                     value={String(template.armor ?? 0)}
                   />
                   <DmStatRow label="Gold" value="Ld4 (level) per kill" />
-                  <DmStatRow label="XP" value={`${template.level} per kill`} />
+                  <DmStatRow
+                    label="XP"
+                    value={
+                      template.isBoss
+                        ? `${template.level * 3} per kill`
+                        : `${template.level} per kill`
+                    }
+                  />
                   <DmStatRow
                     label="Group size"
                     value={ENCOUNTER_GROUP_SIZES[name] ?? "—"}
                   />
+                  <DmStatRow
+                    label="Boss"
+                    value={template.isBoss ? "Yes" : "No"}
+                  />
                 </SimpleGrid>
                 {template.traits && template.traits.length > 0 ? (
-                  <Text fontSize="xs" color="gray.900" mt={2}>
+                  <Text fontSize="xs" color={SQUALLS_HUD_COLORS.panelMuted} mt={2}>
                     Traits: {template.traits.join(", ")}
                     {name !== "Electric Eel" ? " (stacks with Evade)" : ""}
                   </Text>
                 ) : name === "Electric Eel" ? (
-                  <Text fontSize="xs" color="gray.900" mt={2}>
+                  <Text fontSize="xs" color={SQUALLS_HUD_COLORS.panelMuted} mt={2}>
                     Traits: Shocking via Electrify action
                   </Text>
                 ) : (
-                  <Text fontSize="xs" color="gray.900" mt={2}>
+                  <Text fontSize="xs" color={SQUALLS_HUD_COLORS.panelMuted} mt={2}>
                     Traits: none
                   </Text>
                 )}
                 {name === "Electric Eel" ? (
-                  <Text fontSize="xs" color="gray.900" mt={1}>
+                  <Text fontSize="xs" color={SQUALLS_HUD_COLORS.panelMuted} mt={1}>
                     Action deck: {formatEnemyActionDeckSummary(deck)} (Electrify replaces Evade)
                   </Text>
                 ) : (
-                  <Text fontSize="xs" color="gray.900" mt={1}>
+                  <Text fontSize="xs" color={SQUALLS_HUD_COLORS.panelMuted} mt={1}>
                     Action deck: {formatEnemyActionDeckSummary(deck)}
                     {deckHasBuffAction(deck)
                       ? `; ${Math.round(BUFF_ON_TOP_START_CHANCE * 100)}% buff on top at start`
@@ -148,15 +155,20 @@ export default function DmMonstersPanel() {
                   </Text>
                 )}
                 {drop ? (
-                  <Text fontSize="xs" color="gray.900" mt={1}>
+                  <Text fontSize="xs" color={SQUALLS_HUD_COLORS.panelMuted} mt={1}>
                     Drop: {ITEM_DEFINITIONS[drop.itemId].emoji}{" "}
                     {ITEM_DEFINITIONS[drop.itemId].name} ({Math.round(drop.dropRate * 100)}%)
                   </Text>
                 ) : (
-                  <Text fontSize="xs" color="gray.900" mt={1}>
+                  <Text fontSize="xs" color={SQUALLS_HUD_COLORS.panelMuted} mt={1}>
                     Drop: none
                   </Text>
                 )}
+                {template.isBoss ? (
+                  <Text fontSize="xs" color={SQUALLS_HUD_COLORS.panelMuted} mt={1}>
+                    XP rule: 3 × level
+                  </Text>
+                ) : null}
               </Box>
             );
           })}
@@ -165,7 +177,7 @@ export default function DmMonstersPanel() {
 
       <Box>
         <DmSectionHeading>Broadcast labels</DmSectionHeading>
-        <Text fontSize="sm" color="gray.900" mt={1}>
+        <Text fontSize="sm" color={SQUALLS_HUD_COLORS.panelMuted} mt={1}>
           Attack, Defend, {formatEnemyBroadcastLabel("buff")},{" "}
           {formatEnemyBroadcastLabel("debuff")} shown during the player turn.
         </Text>

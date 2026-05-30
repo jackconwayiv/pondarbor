@@ -1,5 +1,8 @@
-import HomeActionGrid from "./HomeActionGrid";
-import SquallsActionCard from "./SquallsActionCard";
+import {
+  SquallsActionOption,
+  SquallsActionSection,
+  SquallsActionSheet,
+} from "./SquallsActionSheet";
 
 type Props = {
   delvePoints: number;
@@ -19,21 +22,26 @@ export default function DungeonView({
   const canDelve = delvePoints > 0;
 
   return (
-    <HomeActionGrid>
-      {canDelve ? (
-        <SquallsActionCard
+    <SquallsActionSheet>
+      <SquallsActionSection label="Explore And Advance">
+        <SquallsActionOption
           emoji="⛏️"
-          label={`Delve (${delvePoints})`}
-          accent="teal"
+          title={`Delve deeper (${delvePoints})`}
+          detail="Press onward through shadows in search of hidden spoils."
+          tone="risk"
+          disabled={!canDelve}
           onClick={onDelve}
         />
-      ) : null}
-      <SquallsActionCard
-        emoji={returnEmoji}
-        label={returnLabel}
-        accent="blue"
-        onClick={onReturn}
-      />
-    </HomeActionGrid>
+      </SquallsActionSection>
+      <SquallsActionSection label="Retreat And Return">
+        <SquallsActionOption
+          emoji={returnEmoji}
+          title={returnLabel}
+          detail="Withdraw from the depths while ye still can."
+          tone="retreat"
+          onClick={onReturn}
+        />
+      </SquallsActionSection>
+    </SquallsActionSheet>
   );
 }

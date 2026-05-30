@@ -1,3 +1,4 @@
+import type { CardClass } from "./squallsCardCatalog";
 import type {
   CombatTag,
   EquipmentId,
@@ -40,6 +41,8 @@ export type EquipmentDefinition = {
   shopPrice?: number;
   tags?: readonly CombatTag[];
   combat?: EquipmentCombatStats;
+  /** Card class pool granted when this item is equipped. */
+  cardClass?: CardClass;
 };
 
 export const EQUIPMENT_DEFINITIONS: Record<EquipmentId, EquipmentDefinition> = {
@@ -50,8 +53,9 @@ export const EQUIPMENT_DEFINITIONS: Record<EquipmentId, EquipmentDefinition> = {
     slot: "melee",
     description: "A salt-crusted blade. 1–5 slashing damage.",
     shopPrice: 20,
-    tags: ["melee", "sword", "slashing"] satisfies readonly CombatTag[],
+    tags: ["melee"] satisfies readonly CombatTag[],
     combat: { min: 1, max: 5 },
+    cardClass: "cutlass",
   },
   sooty_pistol: {
     id: "sooty_pistol",
@@ -60,8 +64,9 @@ export const EQUIPMENT_DEFINITIONS: Record<EquipmentId, EquipmentDefinition> = {
     slot: "ranged",
     description: "Black powder and hope. 1–4 piercing damage.",
     shopPrice: 40,
-    tags: ["ranged", "firearm", "piercing"] satisfies readonly CombatTag[],
+    tags: ["ranged"] satisfies readonly CombatTag[],
     combat: { min: 1, max: 4 },
+    cardClass: "pistol",
   },
   sailors_garb: {
     id: "sailors_garb",
@@ -70,8 +75,8 @@ export const EQUIPMENT_DEFINITIONS: Record<EquipmentId, EquipmentDefinition> = {
     slot: "armor",
     description: "Well-worn kit. 1–4 armor when defending.",
     shopPrice: 30,
-    tags: ["physical", "armor"] satisfies readonly CombatTag[],
     combat: { min: 1, max: 4 },
+    cardClass: "light_armor",
   },
   lockpick: {
     id: "lockpick",
@@ -80,6 +85,7 @@ export const EQUIPMENT_DEFINITIONS: Record<EquipmentId, EquipmentDefinition> = {
     slot: "relic",
     description: "Pick locked chests. May break on use.",
     shopPrice: 35,
+    cardClass: "scoundrel",
   },
 };
 

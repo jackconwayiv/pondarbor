@@ -1,8 +1,9 @@
-import { Box, Button, Heading, HStack, Text, VStack } from "@chakra-ui/react";
+import { Box, Heading, HStack, Text, VStack } from "@chakra-ui/react";
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
+import PondButton from "../PondButton";
 import { fullBleedStackProps } from "../responsive";
 import RestartAdventureConfirmModal from "./RestartAdventureConfirmModal";
 import {
@@ -16,6 +17,7 @@ import {
   hasResumableAdventure,
 } from "./shantiesSaveSummary";
 import { renderPortTownName } from "./portTowns";
+import { SQUALLS_HUD_COLORS } from "./squallsTheme";
 
 export default function SquallsLobbyPage() {
   const navigate = useNavigate();
@@ -44,21 +46,32 @@ export default function SquallsLobbyPage() {
 
   return (
     <Box {...fullBleedStackProps} px={4} py={6} maxW="2xl" mx="auto" w="100%">
-      <VStack align="stretch" gap={5} w="100%">
+      <VStack
+        align="stretch"
+        gap={5}
+        w="100%"
+        borderWidth="1px"
+        borderColor={SQUALLS_HUD_COLORS.panelBorder}
+        borderRadius="xl"
+        bg="rgba(8, 20, 30, 0.72)"
+        color={SQUALLS_HUD_COLORS.panelText}
+        p={5}
+        boxShadow="xl"
+      >
         <Heading>🏴‍☠️ Squalls & Shanties</Heading>
-        <Text color="gray.900">
+        <Text color={SQUALLS_HUD_COLORS.panelMuted}>
           Chart yer course from the harbor — resume a saved voyage or begin anew.
         </Text>
 
         {save ? (
           <>
-            <Text color="gray.900">Yer saved adventure</Text>
+            <Text color={SQUALLS_HUD_COLORS.panelMuted}>Yer saved adventure</Text>
             <Box
               w="100%"
               borderWidth="1px"
-              borderColor="blackAlpha.200"
+              borderColor={SQUALLS_HUD_COLORS.panelBorder}
               borderRadius="md"
-              bg="blackAlpha.50"
+              bg="rgba(0, 0, 0, 0.2)"
               px={4}
               py={3}
             >
@@ -71,7 +84,7 @@ export default function SquallsLobbyPage() {
                     gap={3}
                     align="baseline"
                   >
-                    <Text fontSize="sm" color="gray.900" flexShrink={0}>
+                    <Text fontSize="sm" color={SQUALLS_HUD_COLORS.panelSubtle} flexShrink={0}>
                       {line.label}
                     </Text>
                     <Text fontSize="sm" fontWeight="medium" textAlign="right">
@@ -81,7 +94,7 @@ export default function SquallsLobbyPage() {
                 ))}
               </VStack>
               {lobbySavedAtLabel ? (
-                <Text fontSize="xs" color="gray.900" mt={3}>
+                <Text fontSize="xs" color={SQUALLS_HUD_COLORS.panelSubtle} mt={3}>
                   Last saved {lobbySavedAtLabel}
                 </Text>
               ) : null}
@@ -90,27 +103,29 @@ export default function SquallsLobbyPage() {
         ) : null}
 
         <HStack gap={3} wrap="wrap" w="100%">
-          <Button
-            colorPalette="orange"
+          <PondButton
+            colorPalette="nautical"
             onClick={() => startPlay("resume")}
             disabled={!canResume}
           >
             Resume playing
-          </Button>
-          <Button variant="outline" onClick={() => setRestartConfirmOpen(true)}>
+          </PondButton>
+          <PondButton colorPalette="sky" onClick={() => setRestartConfirmOpen(true)}>
             {canResume ? "Restart adventure" : "Start adventure"}
-          </Button>
+          </PondButton>
         </HStack>
 
         {!canResume ? (
-          <Text fontSize="xs" color="gray.900">
+          <Text fontSize="xs" color={SQUALLS_HUD_COLORS.panelSubtle}>
             No adventure in progress — start a new voyage to set sail.
           </Text>
         ) : null}
 
         {isStaff ? (
-          <Text fontSize="sm">
-            <Link to="/squalls/dm">Game reference (staff)</Link>
+          <Text fontSize="sm" color={SQUALLS_HUD_COLORS.panelMuted}>
+            <Link to="/squalls/dm" style={{ textDecoration: "underline" }}>
+              Game reference (staff)
+            </Link>
           </Text>
         ) : null}
       </VStack>

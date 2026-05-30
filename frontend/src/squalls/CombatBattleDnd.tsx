@@ -34,9 +34,11 @@ import type { CombatCard, EquippedGear } from "./shantiesTypes";
 import {
   cardRequiresAmmo,
   isAttackCard,
+  targetsAllEnemiesAutomatically,
   targetsEnemyManually,
   targetsSelfAutomatically,
 } from "./shantiesTypes";
+import { SQUALLS_HUD_COLORS } from "./squallsTheme";
 import "./squallsCombat.css";
 
 type CombatBattleDndContextValue = {
@@ -93,6 +95,8 @@ export function CombatBattleDnd({
     activeHandIndex !== null ? (hand[activeHandIndex] ?? null) : null;
   const attackDragActive =
     activeCard !== null && targetsEnemyManually(activeCard);
+  const aoeDragActive =
+    activeCard !== null && targetsAllEnemiesAutomatically(activeCard);
   const defendDragActive =
     activeCard !== null && targetsSelfAutomatically(activeCard);
 
@@ -119,13 +123,20 @@ export function CombatBattleDnd({
     const card = hand[handIndex];
     if (
       !card ||
-      (!targetsEnemyManually(card) && !targetsSelfAutomatically(card))
+      (!targetsEnemyManually(card) &&
+        !targetsSelfAutomatically(card) &&
+        !targetsAllEnemiesAutomatically(card))
     ) {
       return;
     }
     if (!isPlayerTurn || !viewingHand) return;
     if (energy < getCardEnergyCost(card)) return;
     if (cardRequiresAmmo(card) && heroAmmo < 1) return;
+
+    if (targetsAllEnemiesAutomatically(card)) {
+      onPlayCard(handIndex);
+      return;
+    }
 
     if (targetsEnemyManually(card)) {
       if (!isAttackCard(card)) return;
@@ -156,7 +167,7 @@ export function CombatBattleDnd({
         {children}
       </CombatBattleDndContext.Provider>
       <DragOverlay dropAnimation={null}>
-        {activeCard && (attackDragActive || defendDragActive) ? (
+        {activeCard && (attackDragActive || defendDragActive || aoeDragActive) ? (
           <Box w="5.5rem" aspectRatio="2.5/3.5" pointerEvents="none">
             <CombatHandCard
               card={activeCard}
@@ -193,7 +204,9 @@ export function DraggableCombatHandCard({
   const { isPlayerTurn, viewingHand, energy } = useCombatBattleDnd();
   const lacksAmmo = cardRequiresAmmo(card) && heroAmmo < 1;
   const canDrag =
-    (targetsEnemyManually(card) || targetsSelfAutomatically(card)) &&
+    (targetsEnemyManually(card) ||
+      targetsSelfAutomatically(card) ||
+      targetsAllEnemiesAutomatically(card)) &&
     isPlayerTurn &&
     viewingHand &&
     !disabled &&
@@ -258,12 +271,10 @@ export function CombatEnemyDropTarget({
       ref={setNodeRef}
       position="relative"
       w="100%"
-      h="100%"
-      minH="3.25rem"
       borderRadius="md"
-      outline={isOver ? "2px solid var(--chakra-colors-orange-400)" : undefined}
+      outline={isOver ? `2px solid ${SQUALLS_HUD_COLORS.focusRing}` : undefined}
       outlineOffset="1px"
-      boxShadow={isOver ? "0 0 0 2px var(--chakra-colors-orange-200)" : undefined}
+      boxShadow={isOver ? "0 0 0 2px rgba(205,170,99,0.25)" : undefined}
     >
       {children}
     </Box>
@@ -287,18 +298,17 @@ export function CombatDefendDropZone({ children }: DefendDropZoneProps) {
   return (
     <Box
       ref={setNodeRef}
-      flex="1"
-      minH={0}
+      flexShrink={0}
       w="100%"
       position="relative"
       borderRadius="md"
       outline={
         isOver && canDrop
-          ? "2px dashed var(--chakra-colors-cyan-400)"
+          ? `2px dashed ${SQUALLS_HUD_COLORS.focusRing}`
           : undefined
       }
       outlineOffset="2px"
-      bg={isOver && canDrop ? "cyan.50" : undefined}
+      bg={isOver && canDrop ? "rgba(205,170,99,0.14)" : undefined}
     >
       {children}
     </Box>

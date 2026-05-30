@@ -1,4 +1,5 @@
 import { Text, chakra } from "@chakra-ui/react";
+import type { ComponentProps } from "react";
 import { useDraggable } from "@dnd-kit/core";
 
 import { EQUIPMENT_DEFINITIONS } from "./shantiesEquipment";
@@ -6,29 +7,17 @@ import type { EquipmentId } from "./shantiesTypes";
 
 const CardRoot = chakra("div");
 
-type Props = {
+type FaceProps = {
   equipmentId: EquipmentId;
-  dragId: string;
-  disabled?: boolean;
+  rootProps?: ComponentProps<typeof CardRoot>;
 };
 
-export default function EquipmentCard({
-  equipmentId,
-  dragId,
-  disabled = false,
-}: Props) {
+/** Static equipment tile (equip tab look, no drag). */
+export function EquipmentCardFace({ equipmentId, rootProps }: FaceProps) {
   const def = EQUIPMENT_DEFINITIONS[equipmentId];
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: dragId,
-    disabled,
-    data: { equipmentId },
-  });
 
   return (
     <CardRoot
-      ref={setNodeRef}
-      {...listeners}
-      {...attributes}
       w="100%"
       aspectRatio="1"
       minH="5.5rem"
@@ -44,10 +33,8 @@ export default function EquipmentCard({
       bg="white"
       color="gray.900"
       boxShadow="sm"
-      cursor={disabled ? "default" : "grab"}
-      opacity={isDragging ? 0.35 : 1}
-      touchAction="none"
       title={def.description}
+      {...rootProps}
     >
       <Text fontSize="xl" lineHeight={1} aria-hidden>
         {def.emoji}
@@ -62,5 +49,37 @@ export default function EquipmentCard({
         {def.name}
       </Text>
     </CardRoot>
+  );
+}
+
+type Props = {
+  equipmentId: EquipmentId;
+  dragId: string;
+  disabled?: boolean;
+};
+
+export default function EquipmentCard({
+  equipmentId,
+  dragId,
+  disabled = false,
+}: Props) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: dragId,
+    disabled,
+    data: { equipmentId },
+  });
+
+  return (
+    <EquipmentCardFace
+      equipmentId={equipmentId}
+      rootProps={{
+        ref: setNodeRef,
+        ...listeners,
+        ...attributes,
+        cursor: disabled ? "default" : "grab",
+        opacity: isDragging ? 0.35 : 1,
+        touchAction: "none",
+      }}
+    />
   );
 }

@@ -91,9 +91,13 @@ export const ENEMY_ACTION_DESCRIPTIONS = [
 ] as const;
 
 export const STARTER_DECK_COMPOSITION = [
-  { label: "Melee Attack", count: 7 },
-  { label: "Ranged Attack", count: 7 },
-  { label: "Strong Melee Attack", count: 1 },
-  { label: "Strong Ranged Attack", count: 1 },
+  { label: "Melee Attack", count: 4 },
+  { label: "Ranged Shot", count: 4 },
   { label: "Defend", count: 4 },
+  { label: "Strong Attack", count: 2 },
+  { label: "Strong Shot", count: 2 },
+  { label: "Hunker Down", count: 1 },
+  { label: "Lucky Attack", count: 1 },
+  { label: "Lucky Shot", count: 1 },
+  { label: "Lucky Block", count: 1 },
 ] as const;

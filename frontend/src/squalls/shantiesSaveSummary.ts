@@ -7,6 +7,7 @@ import type {
   SaveSummaryLine,
 } from "./shantiesTypes";
 import type { ShantiesSaveData } from "./shantiesLocalSave";
+import { minDeckSize } from "./combatDeck";
 
 const GAME_STATE_LABELS: Record<GameStateTypes, string> = {
   lobby: "Lobby",
@@ -22,6 +23,7 @@ const GAME_STATE_LABELS: Record<GameStateTypes, string> = {
   shipwright: "Shipwright",
   cookstove: "Cookstove",
   exploreTest: "Test picker",
+  levelUp: "Level up",
 };
 
 export function formatGameStateLabel(state: GameStateTypes): string {
@@ -38,6 +40,7 @@ export function formatIslandDisplayName(island: IslandType): string {
 
 export function hasResumableAdventure(data: ShantiesSaveData): boolean {
   if (data.resumeGameState !== null) return true;
+  if (data.levelUpPicksRemaining > 0) return true;
   if (data.gameState !== "lobby") return true;
 
   return (
@@ -89,7 +92,7 @@ export function buildSaveSummaryLines(
           ? `Paused (${formatGameStateLabel(resumeGameState)})`
           : formatGameStateLabel(statusState),
     },
-    { label: "Deck", value: `${hero.deck.length} cards` },
+    { label: "Deck", value: `${hero.deck.length} cards (min ${minDeckSize(hero.level)})` },
   ];
 }
 

@@ -2,15 +2,14 @@ import { clampHp } from "./combatRules";
 import type { HeroType } from "./shantiesTypes";
 import type { UseItemCheck } from "./shantiesItems";
 
-export const REST_BASE_GOLD = 50;
-export const REST_GOLD_PER_LEVEL = 10;
+export const REST_COST_MULTIPLIER = 3;
 
-export function getRestCost(level: number): number {
-  return REST_BASE_GOLD + REST_GOLD_PER_LEVEL * Math.max(1, level);
+export function getRestCost(maxHp: number): number {
+  return Math.max(1, maxHp) * REST_COST_MULTIPLIER;
 }
 
 export function checkRest(hero: HeroType): UseItemCheck {
-  const cost = getRestCost(hero.level);
+  const cost = getRestCost(hero.max_hp);
   if (hero.current_hp >= hero.max_hp) {
     return { ok: false, message: "Yer HP is already full." };
   }
@@ -21,7 +20,7 @@ export function checkRest(hero: HeroType): UseItemCheck {
 }
 
 export function applyRest(hero: HeroType): HeroType {
-  const cost = getRestCost(hero.level);
+  const cost = getRestCost(hero.max_hp);
   return {
     ...hero,
     gold: hero.gold - cost,

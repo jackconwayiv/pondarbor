@@ -8,6 +8,7 @@ import { AppSessionProvider } from "./auth/AppSessionProvider";
 import { getPondarborPublicConfig } from "./auth/publicConfig";
 import { safeAuthReturnTo } from "./auth/safeAuthReturnTo";
 import "@fontsource/caprasimo/400.css";
+import "@fontsource/pirata-one/400.css";
 import "@fontsource/spinnaker/400.css";
 import "./index.css";
 import RootErrorBoundary from "./RootErrorBoundary";

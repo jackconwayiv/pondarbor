@@ -8,19 +8,16 @@ import {
   applyLootClaim,
 } from "./combatLoot";
 import {
-  applyWeakenedToDamage,
   executeEnemyAction,
   formatEnemyBroadcastLabel,
   initializeEnemyActionDeck,
 } from "./enemyActions";
 import {
   appendCombatLog,
-  applyAttackDamageToEnemy,
   clampHp,
-  CARDS_DRAWN_PER_TURN,
   combatLogLine,
+  CARDS_DRAWN_PER_TURN,
   drawFromPiles,
-  formatPlayerAttackLog,
   getCardEnergyCost,
   MAX_ENERGY_PER_TURN,
   countLivingEnemies,
@@ -121,14 +118,6 @@ import {
 import { applySeaWeatherToHero } from "./seaWeather";
 import { formatIslandDisplayName } from "./shantiesSaveSummary";
 import {
-  formatMissLog,
-  rollAttackDamage,
-  rollDefendArmor,
-  rollMeleeMiss,
-  shockingRetaliationDamage,
-  formatShockingRetaliationLog,
-} from "./combatEquipment";
-import {
   applyCookAtStove,
   canCookAtStove,
   formatCookResultMessage,
@@ -141,8 +130,10 @@ import {
 import { shopAllowsSelling } from "./shantiesShop";
 import {
   encounterPoolScopeForDungeonKind,
+  getIslandDungeonBossName,
   getMonsterTemplate,
   pickEncounterMonsterNames,
+  type IslandDungeonBossKind,
   type EncounterPoolScope,
 } from "./monsters";
 import {
@@ -150,7 +141,9 @@ import {
   applyRefineTavernCard,
   checkBuyTavernCard,
   checkRefineTavernCard,
-  getTavernCardOffer,
+  applyLevelUpCardPick,
+  levelUpChoicesAsCombatCards,
+  rollLevelUpCardChoices,
 } from "./tavernCards";
 import {
   findExploreTestOption,
@@ -159,11 +152,28 @@ import {
 } from "./exploreTestPicker";
 import {
   cardRequiresAmmo,
-  getAttackKind,
   isAttackCard,
+  targetsAllEnemiesAutomatically,
   targetsEnemyManually,
   targetsSelfAutomatically,
 } from "./shantiesTypes";
+import {
+  applyAllEnemiesAttack,
+  applyMeleeAttackToEnemyIndex,
+  applyRangedAttackToEnemyIndex,
+  applySelfDefendCard,
+} from "./combatPlayHelpers";
+import { isDeckValid } from "./deckValidation";
+import { type CardId } from "./squallsCardCatalog";
+import { CARD_CATALOG } from "./squallsCardCatalog";
+import { heroLevelFromXp } from "./squallsXpProgression";
+import {
+  resolveEncounterBaseLevel,
+  rollEncounterLevel,
+  type EncounterLevelContext,
+} from "./squallsEncounterLevel";
+import { scaleMonsterStats } from "./squallsMonsterScaling";
+import { maxHpForLevel } from "./squallsHeroProgression";
 
 function encounterScopeForLocation(
   location: GameLocationTypes,
@@ -175,22 +185,47 @@ function encounterScopeForLocation(
 
 const VICTORY_DELAY_MS = 1800;
 
-function spawnRegistryMonster(name: string): EnemyType {
+function spawnRegistryMonster(
+  name: string,
+  level: number,
+  isBoss = false,
+): EnemyType {
   const template = getMonsterTemplate(name);
   if (!template) {
-    return spawnEnemy({ name, level: 1, hp: 7 });
+    return spawnEnemy({ name, level, hp: 7, isBoss });
   }
+  const scaled = scaleMonsterStats(template, level);
   return spawnEnemy({
     name,
-    level: template.level,
-    hp: template.hp,
+    level,
+    hp: scaled.hp,
+    damageMin: scaled.damageMin,
+    damageMax: scaled.damageMax,
     traits: template.traits,
-    armor: template.armor,
+    armor: scaled.armor,
+    isBoss: isBoss || template.isBoss === true,
   });
 }
 
-function spawnEncounter(scope: EncounterPoolScope): EnemyType[] {
-  return pickEncounterMonsterNames(scope).map(spawnRegistryMonster);
+function spawnEncounter(
+  scope: EncounterPoolScope,
+  context: EncounterLevelContext,
+): EnemyType[] {
+  return pickEncounterMonsterNames(scope).map((name) => {
+    const baseLevel = resolveEncounterBaseLevel({ ...context, scope });
+    const rolledLevel = rollEncounterLevel(baseLevel);
+    return spawnRegistryMonster(name, rolledLevel);
+  });
+}
+
+function spawnBossEncounter(
+  kind: IslandDungeonBossKind,
+  context: EncounterLevelContext,
+): EnemyType[] {
+  const bossName = getIslandDungeonBossName(kind);
+  const baseLevel = resolveEncounterBaseLevel({ ...context, scope: "islandDungeon" });
+  const rolledLevel = rollEncounterLevel(baseLevel);
+  return [spawnRegistryMonster(bossName, rolledLevel, true)];
 }
 
 function loadPersistedSave() {
@@ -277,6 +312,16 @@ export function useShantiesGame() {
   const [nearPortTown, setNearPortTown] = useState(initialSave.nearPortTown);
   const [exploreTestContext, setExploreTestContext] =
     useState<ExploreTestContext | null>(null);
+  const [levelUpPicksRemaining, setLevelUpPicksRemaining] = useState(
+    initialSave.levelUpPicksRemaining ?? 0,
+  );
+  const [levelUpCardChoiceIds, setLevelUpCardChoiceIds] = useState<CardId[]>(
+    initialSave.levelUpCardChoices ?? [],
+  );
+  const [heroEvasiveStacks, setHeroEvasiveStacks] = useState(0);
+  const [characterSheetRequest, setCharacterSheetRequest] = useState<
+    { tab: "deck" } | null
+  >(null);
   const [chestMessage, setChestMessage] = useState<string | null>(null);
   const [forceOpenAttempted, setForceOpenAttempted] = useState(false);
 
@@ -309,8 +354,11 @@ export function useShantiesGame() {
   );
 
   const heroRef = useRef(hero);
+  const levelUpPicksRemainingRef = useRef(levelUpPicksRemaining);
+  const resumeGameStateRef = useRef(resumeGameState);
   const armorRef = useRef(armor);
   const heroWeakenedRef = useRef(heroWeakened);
+  const heroEvasiveStacksRef = useRef(heroEvasiveStacks);
   const enemiesRef = useRef(enemies);
   const drawPileRef = useRef(drawPile);
   const discardPileRef = useRef(discardPile);
@@ -322,6 +370,36 @@ export function useShantiesGame() {
   const combatLootRef = useRef(combatLoot);
   const eventLootRef = useRef(eventLoot);
   const startPlayerTurnRef = useRef<() => void>(() => {});
+
+  const levelUpCardChoices = useMemo(
+    () => levelUpChoicesAsCombatCards(levelUpCardChoiceIds),
+    [levelUpCardChoiceIds],
+  );
+
+  const requestCharacterSheetDeck = useCallback(() => {
+    setCharacterSheetRequest({ tab: "deck" });
+  }, []);
+
+  const clearCharacterSheetRequest = useCallback(() => {
+    setCharacterSheetRequest(null);
+  }, []);
+
+  const openLevelUpMenu = useCallback(() => {
+    setLevelUpCardChoiceIds(rollLevelUpCardChoices(heroRef.current));
+    setGameState("levelUp");
+  }, []);
+
+  const queueLevelUpPicks = useCallback(
+    (count: number) => {
+      if (count <= 0) return;
+      setLevelUpPicksRemaining((prev) => prev + count);
+      if (gameState !== "levelUp" && gameState !== "battle") {
+        setResumeGameState((prev) => prev ?? gameState);
+        openLevelUpMenu();
+      }
+    },
+    [gameState, openLevelUpMenu],
+  );
 
   const cancelVictoryDelay = useCallback(() => {
     if (victoryTimerRef.current !== null) {
@@ -340,11 +418,20 @@ export function useShantiesGame() {
     heroRef.current = hero;
   }, [hero]);
   useEffect(() => {
+    levelUpPicksRemainingRef.current = levelUpPicksRemaining;
+  }, [levelUpPicksRemaining]);
+  useEffect(() => {
+    resumeGameStateRef.current = resumeGameState;
+  }, [resumeGameState]);
+  useEffect(() => {
     armorRef.current = armor;
   }, [armor]);
   useEffect(() => {
     heroWeakenedRef.current = heroWeakened;
   }, [heroWeakened]);
+  useEffect(() => {
+    heroEvasiveStacksRef.current = heroEvasiveStacks;
+  }, [heroEvasiveStacks]);
   useEffect(() => {
     enemiesRef.current = enemies;
   }, [enemies]);
@@ -360,6 +447,27 @@ export function useShantiesGame() {
   useEffect(() => {
     eventLootRef.current = eventLoot;
   }, [eventLoot]);
+
+  useEffect(() => {
+    if (levelUpPicksRemaining <= 0 || gameState === "levelUp") return;
+    if (gameState === "battle") return;
+    setResumeGameState((prev) => prev ?? gameState);
+    openLevelUpMenu();
+  }, [
+    gameState,
+    levelUpPicksRemaining,
+    openLevelUpMenu,
+  ]);
+
+  useEffect(() => {
+    if (
+      gameState === "levelUp" &&
+      levelUpPicksRemaining > 0 &&
+      levelUpCardChoiceIds.length === 0
+    ) {
+      setLevelUpCardChoiceIds(rollLevelUpCardChoices(heroRef.current));
+    }
+  }, [gameState, levelUpCardChoiceIds.length, levelUpPicksRemaining]);
 
   useEffect(() => {
     writeShantiesSave({
@@ -393,6 +501,8 @@ export function useShantiesGame() {
       seaEventDeck,
       shopVariant,
       nearPortTown,
+      levelUpPicksRemaining,
+      levelUpCardChoices: levelUpCardChoiceIds,
     });
   }, [
     gameState,
@@ -425,6 +535,8 @@ export function useShantiesGame() {
     seaEventDeck,
     shopVariant,
     nearPortTown,
+    levelUpPicksRemaining,
+    levelUpCardChoiceIds,
   ]);
 
   const grantLootItem = useCallback((item: CombatLootItem) => {
@@ -433,7 +545,24 @@ export function useShantiesGame() {
       return;
     }
     if (item.kind === "xp") {
-      setHero((h) => ({ ...h, xp: h.xp + item.amount }));
+      setHero((h) => {
+        const nextXp = h.xp + item.amount;
+        const nextLevel = heroLevelFromXp(nextXp);
+        const gained = Math.max(0, nextLevel - h.level);
+        if (gained > 0) {
+          queueLevelUpPicks(gained);
+        }
+        const nextMaxHp = maxHpForLevel(nextLevel);
+        const hpGain = gained * 5;
+        const nextCurrentHp = Math.min(nextMaxHp, h.current_hp + hpGain);
+        return {
+          ...h,
+          xp: nextXp,
+          level: nextLevel,
+          max_hp: nextMaxHp,
+          current_hp: nextCurrentHp,
+        };
+      });
       return;
     }
     if (item.kind === "item" && item.itemId) {
@@ -450,7 +579,7 @@ export function useShantiesGame() {
     if (item.kind === "equipment" && item.equipmentId) {
       setHero((h) => addEquipmentToBag(h, item.equipmentId!));
     }
-  }, []);
+  }, [queueLevelUpPicks]);
 
   const drawCardsForTurn = useCallback(() => {
     const result = drawFromPiles(
@@ -474,13 +603,14 @@ export function useShantiesGame() {
     setCombatLog([]);
     setArmor(0);
     setHeroWeakened(false);
+    setHeroEvasiveStacks(0);
     setEnergy(MAX_ENERGY_PER_TURN);
     setCombatPhase("player");
     setEnemyTurnIndex(null);
     setEnemyActionMessage(null);
   }, [cancelVictoryDelay]);
 
-  const beginCombat = useCallback((sourceDeck: CombatCard[]) => {
+  const beginCombat = useCallback((sourceDeck: readonly CardId[]) => {
     cancelVictoryDelay();
     combatAmmoSpentRef.current = 0;
     setCombatVictory(false);
@@ -496,6 +626,7 @@ export function useShantiesGame() {
     setHand(openingHand);
     setArmor(0);
     setHeroWeakened(false);
+    setHeroEvasiveStacks(0);
     setEnergy(MAX_ENERGY_PER_TURN);
     setCombatPhase("player");
     setEnemyTurnIndex(null);
@@ -635,28 +766,62 @@ export function useShantiesGame() {
     setSeaEventDeck(buildSeaEventDeck());
     setShopVariant(null);
     setNearPortTown(false);
+    setLevelUpPicksRemaining(0);
+    setLevelUpCardChoiceIds([]);
     resetCombatState();
     setCombatVictory(false);
     setGameState("home");
   }, [cancelVictoryDelay, resetAllEncounterModifiers, resetCombatState]);
 
   const initiateBattle = useCallback(() => {
-    setEnemies(spawnEncounter("sea"));
+    setEnemies(
+      spawnEncounter("sea", {
+        heroLevel: hero.level,
+        scope: "sea",
+        island: currentIsland,
+        dungeon: currentDungeon,
+      }),
+    );
     beginCombat([...hero.deck]);
     setGameState("battle");
-  }, [beginCombat, hero.deck]);
+  }, [beginCombat, currentDungeon, currentIsland, hero.deck, hero.level]);
 
   const initiateIslandBattle = useCallback(() => {
-    setEnemies(spawnEncounter("island"));
+    setEnemies(
+      spawnEncounter("island", {
+        heroLevel: hero.level,
+        scope: "island",
+        island: currentIsland,
+        dungeon: currentDungeon,
+      }),
+    );
     beginCombat([...hero.deck]);
     setGameState("battle");
-  }, [beginCombat, hero.deck]);
+  }, [beginCombat, currentDungeon, currentIsland, hero.deck, hero.level]);
 
   const initiateDungeonBattle = useCallback(() => {
-    setEnemies(spawnEncounter(encounterPoolScopeForDungeonKind(currentDungeon?.kind)));
+    if (currentDungeon && isIslandDungeonKind(currentDungeon.kind) && currentDungeon.delvePoints === 1) {
+      setEnemies(
+        spawnBossEncounter(currentDungeon.kind as IslandDungeonBossKind, {
+          heroLevel: hero.level,
+          scope: "islandDungeon",
+          island: currentIsland,
+          dungeon: currentDungeon,
+        }),
+      );
+    } else {
+      setEnemies(
+        spawnEncounter(encounterPoolScopeForDungeonKind(currentDungeon?.kind), {
+          heroLevel: hero.level,
+          scope: currentDungeon?.kind === "wreck" ? "wreck" : "islandDungeon",
+          island: currentIsland,
+          dungeon: currentDungeon,
+        }),
+      );
+    }
     beginCombat([...hero.deck]);
     setGameState("battle");
-  }, [beginCombat, currentDungeon?.kind, hero.deck]);
+  }, [beginCombat, currentDungeon, currentIsland, hero.deck, hero.level]);
 
   const enterCurrentDungeon = useCallback(() => {
     if (!currentDungeon || isDepletedDungeon(currentDungeon)) return;
@@ -786,8 +951,38 @@ export function useShantiesGame() {
     setGameState("home");
   }, []);
 
+  const chooseLevelUpCard = useCallback(
+    (choiceIndex: number) => {
+      const chosenId = levelUpCardChoiceIds[choiceIndex];
+      if (!chosenId) return;
+      const result = applyLevelUpCardPick(
+        heroRef.current,
+        chosenId,
+        levelUpPicksRemainingRef.current,
+      );
+      if (!result.picked) return;
+      levelUpPicksRemainingRef.current = result.picksRemaining;
+      heroRef.current = result.hero;
+      setHero(result.hero);
+      setLevelUpPicksRemaining(result.picksRemaining);
+      setLevelUpCardChoiceIds(result.nextChoices);
+      if (result.levelUpComplete) {
+        const resume = resumeGameStateRef.current;
+        setGameState(resume === "lobby" || !resume ? "home" : resume);
+        setResumeGameState(null);
+      }
+    },
+    [levelUpCardChoiceIds],
+  );
+
   const openExploreTestPicker = useCallback(
     (context: ExploreTestContext) => {
+      const currentHero = heroRef.current;
+      if (!isDeckValid(currentHero) || currentHero.deckEditRequired) {
+        setItemMessage("Fix yer deck before exploring.");
+        requestCharacterSheetDeck();
+        return;
+      }
       if (context === "island") {
         if (!currentIsland) return;
         const deck = currentIsland.eventDeck ?? [];
@@ -802,11 +997,21 @@ export function useShantiesGame() {
           setItemMessage("Ye need a light a candle before delving here.");
           return;
         }
+        if (
+          isIslandDungeonKind(currentDungeon.kind) &&
+          currentDungeon.delvePoints === 1
+        ) {
+          setCurrentDungeon({ ...currentDungeon, delvePoints: 0 });
+          setGameState("home");
+          initiateDungeonBattle();
+          resetEncounterModifiers("dungeon");
+          return;
+        }
       }
       setExploreTestContext(context);
       setGameState("exploreTest");
     },
-    [currentDungeon, currentIsland],
+    [currentDungeon, currentIsland, initiateDungeonBattle, requestCharacterSheetDeck, resetEncounterModifiers],
   );
 
   const applyExploreTestOutcome = useCallback(
@@ -943,6 +1148,8 @@ export function useShantiesGame() {
           isTreasureEvent(drawn)
             ? generateEventLoot(drawn, {
                 islandVibe: currentIsland?.vibe ?? null,
+                heroLevel: hero.level,
+                levelFactor: currentDungeon.levelFactor,
               })
             : [],
         );
@@ -1182,8 +1389,31 @@ export function useShantiesGame() {
 
       let updatedEnemies = [...enemies];
       const log: CombatLogEntry[] = [];
+      let goldDelta = 0;
 
-      if (targetsEnemyManually(card)) {
+      if (targetsAllEnemiesAutomatically(card)) {
+        if (cardRequiresAmmo(card) && heroRef.current.ammo < 1) return;
+        if (cardRequiresAmmo(card)) {
+          combatAmmoSpentRef.current += 1;
+          setHero((h) => ({ ...h, ammo: Math.max(0, h.ammo - 1) }));
+        }
+        const aoe = applyAllEnemiesAttack(
+          updatedEnemies,
+          hero.equipped,
+          card,
+          hero.name,
+          hero.current_hp,
+          heroWeakened,
+        );
+        updatedEnemies = aoe.updatedEnemies;
+        log.push(...aoe.log);
+        if (aoe.heroHpDelta !== 0) {
+          const nextHp = clampHp(hero.current_hp + aoe.heroHpDelta);
+          setHero((h) => ({ ...h, current_hp: nextHp }));
+          if (aoe.heroSlain) setGameState("dead");
+        }
+        goldDelta += aoe.goldStolen;
+      } else if (targetsEnemyManually(card)) {
         if (!isAttackCard(card)) return;
         if (targetIndex === undefined) return;
         const target = updatedEnemies[targetIndex];
@@ -1193,61 +1423,51 @@ export function useShantiesGame() {
         if (cardRequiresAmmo(card)) {
           combatAmmoSpentRef.current += 1;
           setHero((h) => ({ ...h, ammo: Math.max(0, h.ammo - 1) }));
-        }
-
-        if (getAttackKind(card) === "melee" && rollMeleeMiss(target)) {
-          log.push(
-            combatLogLine(formatMissLog(hero.name, target.name), "hero"),
+          const ranged = applyRangedAttackToEnemyIndex(
+            updatedEnemies,
+            targetIndex,
+            hero.equipped,
+            card,
+            hero.name,
+            heroWeakened,
           );
+          updatedEnemies = ranged.updatedEnemies;
+          log.push(...ranged.log);
         } else {
-          const rawDamage = rollAttackDamage(hero.equipped, card);
-          const damage = applyWeakenedToDamage(rawDamage, heroWeakened);
-          const attackResult = applyAttackDamageToEnemy(target, damage);
-          updatedEnemies[targetIndex] = attackResult.enemy;
-          log.push(
-            combatLogLine(
-              formatPlayerAttackLog(
-                hero.name,
-                target.name,
-                attackResult.armorBroken,
-                attackResult.damageDealt,
-              ),
-              "hero",
-            ),
+          const melee = applyMeleeAttackToEnemyIndex(
+            updatedEnemies,
+            targetIndex,
+            hero.equipped,
+            card,
+            hero.name,
+            hero.current_hp,
+            heroWeakened,
           );
-          if (getAttackKind(card) === "melee") {
-            const shockDamage = shockingRetaliationDamage(target);
-            if (shockDamage > 0) {
-              const nextHp = clampHp(hero.current_hp - shockDamage);
-              setHero((h) => ({ ...h, current_hp: nextHp }));
-              log.push(
-                combatLogLine(
-                  formatShockingRetaliationLog(hero.name, target.name, shockDamage),
-                  "enemy",
-                ),
-              );
-              if (nextHp <= 0) {
-                log.push(
-                  combatLogLine(`${hero.name} has been slain!`, "enemy"),
-                );
-                setGameState("dead");
-              }
-            }
-          }
-          if (attackResult.enemy.hp <= 0) {
-            log.push(combatLogLine(`${target.name} has been slain!`, "hero"));
+          updatedEnemies = melee.updatedEnemies;
+          log.push(...melee.log);
+          goldDelta += melee.goldStolen;
+          if (melee.heroHpDelta !== 0) {
+            const nextHp = clampHp(hero.current_hp + melee.heroHpDelta);
+            setHero((h) => ({ ...h, current_hp: nextHp }));
+            if (melee.heroSlain) setGameState("dead");
           }
         }
       } else if (targetsSelfAutomatically(card)) {
-        const gained = rollDefendArmor(hero.equipped);
-        const nextArmor = armor + gained;
-        setArmor(nextArmor);
-        log.push(
-          combatLogLine(
-            `${hero.name} gains ${gained} armor (${nextArmor} total)`,
-            "hero",
-          ),
+        const defend = applySelfDefendCard(
+          card,
+          hero.equipped,
+          hero.name,
+          armor,
         );
+        setArmor(defend.nextArmor);
+        if (defend.evasiveStacksGained > 0) {
+          setHeroEvasiveStacks((stacks) => stacks + defend.evasiveStacksGained);
+        }
+        log.push(...defend.log);
+      }
+
+      if (goldDelta > 0) {
+        setHero((h) => ({ ...h, gold: h.gold + goldDelta }));
       }
 
       setCombatLog((prev) => appendCombatLog(prev, ...log));
@@ -1348,6 +1568,7 @@ export function useShantiesGame() {
         h.current_hp,
         a,
         heroWeakenedRef.current,
+        heroEvasiveStacksRef.current,
       );
 
       setEnemies((prev) => {
@@ -1425,6 +1646,8 @@ export function useShantiesGame() {
     resetCombatState();
     setCombatVictory(false);
     setResumeGameState(null);
+    setLevelUpPicksRemaining(0);
+    setLevelUpCardChoiceIds([]);
     setGameState("lobby");
   }, [cancelVictoryDelay, resetAllEncounterModifiers, resetCombatState]);
 
@@ -1571,11 +1794,9 @@ export function useShantiesGame() {
         setTavernMessage(check.message);
         return;
       }
-      const offer = getTavernCardOffer(offerId);
+      const label = CARD_CATALOG[offerId as CardId]?.name ?? "card";
       setHero((h) => applyBuyTavernCard(h, offerId, check.price));
-      setTavernMessage(
-        offer ? `Ye bought a ${offer.label.toLowerCase()} card.` : "Card purchased.",
-      );
+      setTavernMessage(`Ye bought a ${label.toLowerCase()} card.`);
     },
     [hero],
   );
@@ -1587,13 +1808,12 @@ export function useShantiesGame() {
         setTavernMessage(check.message);
         return;
       }
-      const removed = hero.deck[deckIndex];
+      const removedId = hero.deck[deckIndex];
+      const removedName = removedId
+        ? CARD_CATALOG[removedId].name
+        : "card";
       setHero((h) => applyRefineTavernCard(h, deckIndex));
-      setTavernMessage(
-        removed
-          ? `Ye refined ${removed.name.toLowerCase()} out of yer deck.`
-          : "Card refined out of yer deck.",
-      );
+      setTavernMessage(`Ye refined ${removedName.toLowerCase()} out of yer deck.`);
     },
     [hero],
   );
@@ -1665,7 +1885,28 @@ export function useShantiesGame() {
   }, [shopVariant]);
 
   const updateHeroEquipment = useCallback((next: HeroType) => {
-    setHero(next);
+    const withFlag: HeroType = {
+      ...next,
+      deckEditRequired: !isDeckValid(next),
+    };
+    setHero(withFlag);
+    if (withFlag.deckEditRequired) {
+      requestCharacterSheetDeck();
+    }
+  }, [requestCharacterSheetDeck]);
+
+  const updateHeroDeck = useCallback((deck: CardId[]) => {
+    setHero((h) => {
+      const next = { ...h, deck };
+      return {
+        ...next,
+        deckEditRequired: !isDeckValid(next),
+      };
+    });
+  }, []);
+
+  const clearDeckEditRequired = useCallback(() => {
+    setHero((h) => ({ ...h, deckEditRequired: false }));
   }, []);
 
   const useItem = useCallback(
@@ -1754,6 +1995,7 @@ export function useShantiesGame() {
     allCombatLootClaimed: allLootClaimed(combatLoot),
     eventLoot,
     allEventLootClaimed: allLootClaimed(eventLoot),
+    levelUpCardChoices,
     enemyActionMessage,
     claimCombatLoot,
     claimEventLoot,
@@ -1827,11 +2069,17 @@ export function useShantiesGame() {
     exploreTestOptions,
     applyExploreTestOutcome,
     cancelExploreTest,
+    chooseLevelUpCard,
     buyShopItem,
     sellShopItem,
     sellShopEquipment,
     leaveShop,
     clearShopMessage,
     updateHeroEquipment,
+    updateHeroDeck,
+    clearDeckEditRequired,
+    characterSheetRequest,
+    clearCharacterSheetRequest,
+    deckValid: isDeckValid(hero),
   };
 }

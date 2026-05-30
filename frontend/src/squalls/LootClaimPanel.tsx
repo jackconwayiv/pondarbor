@@ -1,5 +1,12 @@
-import { Box, Button, Heading, HStack, Text, VStack } from "@chakra-ui/react";
+import { Box, HStack, SimpleGrid, Text, VStack } from "@chakra-ui/react";
 
+import { SquallsHeading } from "./SquallsHeading";
+import {
+  SquallsActionSheet,
+  SquallsPanelBackButton,
+  SquallsTextZone,
+} from "./SquallsActionSheet";
+import { SQUALLS_TEXT_ZONE } from "./squallsTheme";
 import CombatLootCard from "./CombatLootCard";
 import type { CombatLootItem } from "./shantiesTypes";
 
@@ -15,6 +22,7 @@ type Props = {
   fillHeight?: boolean;
   /** Return button on the same row as the title (title left, button right). */
   inlineReturnInHeader?: boolean;
+  titleSize?: "md" | "lg" | "xl" | "2xl";
 };
 
 export default function LootClaimPanel({
@@ -28,98 +36,78 @@ export default function LootClaimPanel({
   intro,
   fillHeight = false,
   inlineReturnInHeader = false,
+  titleSize = "md",
 }: Props) {
-  const align = inlineReturnInHeader ? "stretch" : "center";
-  const textAlign = inlineReturnInHeader ? "left" : "center";
-
   return (
     <VStack
       flex={fillHeight ? "1" : undefined}
       minH={fillHeight ? 0 : undefined}
       w="100%"
-      justify="flex-start"
-      align={align}
+      align="stretch"
       gap={3}
       overflow={fillHeight ? "hidden" : undefined}
       py={fillHeight ? 0 : 2}
     >
-      {inlineReturnInHeader ? (
-        <HStack
-          w="100%"
-          justify="space-between"
-          align="center"
-          gap={2}
-          flexShrink={0}
-        >
-          <Heading size="md" textAlign="left" flex={1} minW={0}>
-            {title}
-          </Heading>
-          {allClaimed ? (
-            <Button
-              colorPalette="orange"
-              flexShrink={0}
-              size="sm"
-              onClick={onComplete}
-            >
-              {returnLabel}
-            </Button>
-          ) : null}
-        </HStack>
-      ) : (
-        <Heading size="md" textAlign={textAlign} flexShrink={0}>
-          {title}
-        </Heading>
-      )}
-      {intro ? (
-        <Text
-          fontSize="lg"
-          textAlign={textAlign}
-          flexShrink={0}
-          w="100%"
-        >
-          {intro}
-        </Text>
-      ) : null}
-      {loot.length > 0 ? (
-        <Text
-          fontSize="xs"
-          color="gray.900"
-          textAlign={textAlign}
-          flexShrink={0}
-          w="100%"
-        >
-          {subtitle}
-        </Text>
-      ) : null}
-      <Box
-        flex={fillHeight ? "1" : undefined}
-        minH={fillHeight ? 0 : undefined}
+      <HStack
         w="100%"
-        maxW="28rem"
-        overflowY="auto"
-        display="grid"
-        gridTemplateColumns="repeat(3, minmax(0, 1fr))"
-        gridAutoRows="minmax(5.5rem, auto)"
-        gap={1.5}
-        alignContent="start"
-        px={1}
+        justify="space-between"
+        align="center"
+        gap={2}
+        flexShrink={0}
       >
-        {loot.map((item) => (
-          <Box key={item.id} minH="5.5rem" h="100%">
-            <CombatLootCard item={item} onClaim={() => onClaim(item.id)} />
-          </Box>
-        ))}
-      </Box>
-      {allClaimed && !inlineReturnInHeader ? (
-        <Button
-          colorPalette="orange"
-          flexShrink={0}
+        <SquallsHeading size={titleSize} textAlign="left" flex={1} minW={0}>
+          {title}
+        </SquallsHeading>
+        {allClaimed && inlineReturnInHeader ? (
+          <SquallsPanelBackButton
+            label={returnLabel}
+            onClick={onComplete}
+            tone="explore"
+          />
+        ) : null}
+      </HStack>
+
+      {intro ? (
+        <SquallsTextZone flexShrink={0}>
+          <Text fontSize="sm" lineHeight="snug">
+            {intro}
+          </Text>
+        </SquallsTextZone>
+      ) : null}
+
+      {loot.length > 0 ? (
+        <Box
+          flex={fillHeight ? "1" : undefined}
+          minH={fillHeight ? 0 : undefined}
           w="100%"
-          maxW="20rem"
-          onClick={onComplete}
+          overflowY={fillHeight ? "auto" : undefined}
         >
-          {returnLabel}
-        </Button>
+          <SquallsActionSheet title={subtitle} variant="white">
+            <SimpleGrid columns={3} gap={1.5} w="100%">
+              {loot.map((item) => (
+                <CombatLootCard
+                  key={item.id}
+                  item={item}
+                  onClaim={() => onClaim(item.id)}
+                />
+              ))}
+            </SimpleGrid>
+          </SquallsActionSheet>
+        </Box>
+      ) : (
+        <SquallsTextZone flexShrink={0}>
+          <Text fontSize="sm" color={SQUALLS_TEXT_ZONE.muted}>
+            No spoils to claim.
+          </Text>
+        </SquallsTextZone>
+      )}
+
+      {allClaimed && !inlineReturnInHeader ? (
+        <SquallsPanelBackButton
+          label={returnLabel}
+          onClick={onComplete}
+          tone="explore"
+        />
       ) : null}
     </VStack>
   );

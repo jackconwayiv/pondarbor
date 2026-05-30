@@ -1,4 +1,15 @@
-import { createStarterDeck } from "./combatDeck";
+import {
+  createStarterDeck,
+  createStarterCardCollection,
+} from "./combatDeck";
+import { isDeckValid } from "./deckValidation";
+import {
+  cardIdFromUnknown,
+  createCombatCard,
+  countCardCopies,
+  isCardId,
+  type CardId,
+} from "./squallsCardCatalog";
 import {
   capLootToSingleItem,
   dedupeEventLootByItemType,
@@ -23,6 +34,8 @@ import { buildSeaEventDeck, normalizeSeaEventDeck } from "./seaEventDeck";
 import { generatePortTown, normalizePortTown } from "./portTowns";
 import { getMonsterTemplate } from "./monsters";
 import { isIslandDungeonKind } from "./dungeonExplore";
+import { heroLevelFromXp } from "./squallsXpProgression";
+import { maxHpForLevel } from "./squallsHeroProgression";
 import {
   initializeEnemyActionDeck,
   normalizeEnemyAction,
@@ -40,7 +53,6 @@ import {
   normalizeEquipmentInventory,
 } from "./shantiesEquipment";
 import type {
-  CardTargeting,
   CombatCard,
   CombatLogEntry,
   CombatLogSide,
@@ -58,7 +70,6 @@ import type {
   PortTownType,
 } from "./shantiesTypes";
 import {
-  DEFEND_TARGETING,
   EQUIPMENT_IDS,
   INDOOR_AREA_KINDS,
   ITEM_IDS,
@@ -70,7 +81,7 @@ import {
 } from "./shantiesTypes";
 
 export const SHANTIES_STORAGE_KEY = "pondarbor.squalls.v1";
-export const SHANTIES_SAVE_VERSION = 15;
+export const SHANTIES_SAVE_VERSION = 18;
 
 const GAME_STATES: GameStateTypes[] = [
   "lobby",
@@ -86,6 +97,7 @@ const GAME_STATES: GameStateTypes[] = [
   "shipwright",
   "exploreTest",
   "cookstove",
+  "levelUp",
 ];
 
 const LOCATIONS: GameLocationTypes[] = ["ship", "island", "dungeon", "port"];
@@ -132,6 +144,8 @@ export type ShantiesSaveData = {
   shopVariant: ShopVariant | null;
   /** Ship is docked near a discovered port town (Return to Town on ship menu). */
   nearPortTown: boolean;
+  levelUpPicksRemaining: number;
+  levelUpCardChoices: CardId[];
 };
 
 type ShantiesSavePayload = {
@@ -141,17 +155,21 @@ type ShantiesSavePayload = {
 };
 
 export function createInitialHero(): HeroType {
+  const level = 1;
+  const max_hp = maxHpForLevel(level);
   return {
     name: "Silver",
     class: "Swashbuckler",
-    current_hp: 20,
-    max_hp: 20,
+    current_hp: max_hp,
+    max_hp,
     ammo: HERO_STARTING_AMMO,
     max_ammo: HERO_STARTING_AMMO,
     gold: 0,
     xp: 0,
-    level: 1,
+    level,
     deck: createStarterDeck(),
+    cardCollection: createStarterCardCollection(),
+    deckEditRequired: false,
     inventory: {},
     equipped: createStarterEquipped(),
     equipmentInventory: [],
@@ -190,6 +208,8 @@ export function createDefaultSaveData(): ShantiesSaveData {
     seaEventDeck: [],
     shopVariant: null,
     nearPortTown: false,
+    levelUpPicksRemaining: 0,
+    levelUpCardChoices: [],
   };
 }
 
@@ -308,6 +328,93 @@ function migrateV14ToV15(raw: unknown): unknown {
   };
 }
 
+function migrateV17ToV18(raw: unknown): unknown {
+  if (!isRecord(raw)) return raw;
+  if (!isRecord(raw.hero)) return raw;
+  const hero = raw.hero;
+  const deck = normalizeDeck(hero.deck);
+  const cardCollection = normalizeCardCollection(
+    hero.cardCollection,
+    hero.unlockedCardIds,
+    deck.length > 0 ? deck : createStarterDeck(),
+  );
+  const nextHero = { ...(hero as unknown as HeroType) };
+  delete (nextHero as Record<string, unknown>).unlockedCardIds;
+  return {
+    ...raw,
+    hero: {
+      ...nextHero,
+      deck: deck.length > 0 ? deck : createStarterDeck(),
+      cardCollection,
+      deckEditRequired: hero.deckEditRequired === true,
+    },
+  };
+}
+
+function migrateV16ToV17(raw: unknown): unknown {
+  if (!isRecord(raw)) return raw;
+  if (!isRecord(raw.hero)) return raw;
+  const hero = raw.hero;
+  const legacyDeck = Array.isArray(hero.deck) ? hero.deck : [];
+  const migratedDeck: CardId[] = [];
+  for (const entry of legacyDeck) {
+    const id = cardIdFromUnknown(entry);
+    if (id) migratedDeck.push(id);
+  }
+  const deck =
+    migratedDeck.length > 0 ? migratedDeck : createStarterDeck();
+  const unlockedSet = new Set<CardId>([
+    ...createStarterCardCollection(),
+    ...deck,
+  ]);
+  const legacyUnlocked = Array.isArray(hero.unlockedCardIds)
+    ? hero.unlockedCardIds
+    : [];
+  for (const entry of legacyUnlocked) {
+    if (typeof entry === "string" && isCardId(entry)) {
+      unlockedSet.add(entry);
+    }
+  }
+  const cardCollection = normalizeCardCollection(
+    null,
+    [...unlockedSet],
+    deck,
+  );
+  const nextHero: HeroType = {
+    ...(hero as unknown as HeroType),
+    deck,
+    cardCollection,
+    deckEditRequired: hero.deckEditRequired === true,
+  };
+  if (!isDeckValid(nextHero)) {
+    nextHero.deckEditRequired = true;
+  }
+  const legacyChoices = Array.isArray(raw.levelUpCardChoices)
+    ? raw.levelUpCardChoices
+    : [];
+  const levelUpCardChoices: CardId[] = [];
+  for (const entry of legacyChoices) {
+    const id = cardIdFromUnknown(entry);
+    if (id && !levelUpCardChoices.includes(id)) {
+      levelUpCardChoices.push(id);
+    }
+  }
+  return {
+    ...raw,
+    hero: nextHero,
+    levelUpCardChoices,
+  };
+}
+
+function migrateV15ToV16(raw: unknown): unknown {
+  if (!isRecord(raw)) return raw;
+  return {
+    ...raw,
+    levelUpPicksRemaining: Math.max(0, finiteNumber(raw.levelUpPicksRemaining, 0)),
+    levelUpCardChoices: normalizeLevelUpCardChoices(raw.levelUpCardChoices),
+  };
+}
+
 function migrateV8ToV9(raw: unknown): unknown {
   if (!isRecord(raw)) return raw;
   const next: Record<string, unknown> = { ...raw };
@@ -374,40 +481,82 @@ function resolveSavePayload(parsed: Record<string, unknown>): {
     version = 15;
   }
 
+  if (version === 15) {
+    data = migrateV15ToV16(data);
+    version = 16;
+  }
+
+  if (version === 16) {
+    data = migrateV16ToV17(data);
+    version = 17;
+  }
+
+  if (version === 17) {
+    data = migrateV17ToV18(data);
+    version = 18;
+  }
+
   if (version !== SHANTIES_SAVE_VERSION) return null;
   return { data, savedAtMs };
 }
 
-function normalizeCardTargeting(raw: unknown): CardTargeting | null {
-  if (!isRecord(raw)) return null;
-  const mode = raw.mode === "auto" || raw.mode === "manual" ? raw.mode : null;
-  const target =
-    raw.target === "self" || raw.target === "enemy" ? raw.target : null;
-  if (!mode || !target) return null;
-  return { mode, target };
+function normalizeCardId(raw: unknown): CardId | null {
+  return cardIdFromUnknown(raw);
+}
+
+function normalizeDeck(raw: unknown): CardId[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => normalizeCardId(item))
+    .filter((id): id is CardId => id !== null);
+}
+
+function ensureCollectionCoversDeck(
+  collection: CardId[],
+  deck: CardId[],
+): CardId[] {
+  const result = [...collection];
+  const deckCounts = new Map<CardId, number>();
+  for (const id of deck) {
+    deckCounts.set(id, (deckCounts.get(id) ?? 0) + 1);
+  }
+  for (const [id, needed] of deckCounts) {
+    let have = countCardCopies(result, id);
+    while (have < needed) {
+      result.push(id);
+      have += 1;
+    }
+  }
+  return result;
+}
+
+function normalizeCardCollection(
+  rawCollection: unknown,
+  legacyUnlocked: unknown,
+  deck: CardId[],
+): CardId[] {
+  const fromRaw = normalizeDeck(rawCollection);
+  if (fromRaw.length > 0) {
+    return ensureCollectionCoversDeck(fromRaw, deck);
+  }
+
+  const collection = [...deck];
+  if (Array.isArray(legacyUnlocked)) {
+    for (const entry of legacyUnlocked) {
+      if (typeof entry === "string" && isCardId(entry)) {
+        if (countCardCopies(collection, entry) === 0) {
+          collection.push(entry);
+        }
+      }
+    }
+  }
+  return ensureCollectionCoversDeck(collection, deck);
 }
 
 function normalizeCombatCard(raw: unknown): CombatCard | null {
-  if (!isRecord(raw) || typeof raw.name !== "string") return null;
-  if (raw.name === "Attack" || raw.name === "Melee Attack") {
-    return { name: "Melee Attack", attackKind: "melee", strong: false };
-  }
-  if (raw.name === "Ranged Attack") {
-    return { name: "Ranged Attack", attackKind: "ranged", strong: false };
-  }
-  if (raw.name === "Strong Attack" || raw.name === "Strong Melee Attack") {
-    return { name: "Strong Melee Attack", attackKind: "melee", strong: true };
-  }
-  if (raw.name === "Strong Ranged Attack") {
-    return { name: "Strong Ranged Attack", attackKind: "ranged", strong: true };
-  }
-  if (raw.name === "Defend") {
-    return {
-      name: "Defend",
-      targeting: normalizeCardTargeting(raw.targeting) ?? DEFEND_TARGETING,
-    };
-  }
-  return null;
+  const id = normalizeCardId(raw);
+  if (!id) return null;
+  return createCombatCard(id);
 }
 
 function normalizeCombatCards(raw: unknown): CombatCard[] {
@@ -415,6 +564,16 @@ function normalizeCombatCards(raw: unknown): CombatCard[] {
   return raw
     .map((item) => normalizeCombatCard(item))
     .filter((card): card is CombatCard => card !== null);
+}
+
+function normalizeLevelUpCardChoices(raw: unknown): CardId[] {
+  if (!Array.isArray(raw)) return [];
+  const choices: CardId[] = [];
+  for (const entry of raw) {
+    const id = normalizeCardId(entry);
+    if (id && !choices.includes(id)) choices.push(id);
+  }
+  return choices.slice(0, 3);
 }
 
 function normalizeInventory(raw: unknown): Inventory {
@@ -452,23 +611,44 @@ function normalizeIlluminatedAreas(raw: unknown): IndoorAreaId[] {
 
 function normalizeHero(raw: unknown): HeroType {
   if (!isRecord(raw)) return createInitialHero();
-  const deck = normalizeCombatCards(raw.deck);
   const defaults = createInitialHero();
-  return {
+  const deckRaw = normalizeDeck(raw.deck);
+  const deck = deckRaw.length > 0 ? deckRaw : defaults.deck;
+  const cardCollection = normalizeCardCollection(
+    raw.cardCollection,
+    raw.unlockedCardIds,
+    deck,
+  );
+  const xp = Math.max(0, finiteNumber(raw.xp, 0));
+  const savedLevel = Math.max(1, finiteNumber(raw.level, 1));
+  const computedLevel = heroLevelFromXp(xp);
+  const level = Math.max(savedLevel, computedLevel);
+  const max_hp = maxHpForLevel(level);
+  const current_hp = Math.max(
+    0,
+    Math.min(max_hp, finiteNumber(raw.current_hp, max_hp)),
+  );
+  const hero: HeroType = {
     name: typeof raw.name === "string" ? raw.name : "Silver",
     class: typeof raw.class === "string" ? raw.class : "Swashbuckler",
-    current_hp: Math.max(0, finiteNumber(raw.current_hp, 20)),
-    max_hp: Math.max(0, finiteNumber(raw.max_hp, 20)),
+    current_hp,
+    max_hp,
     ammo: Math.max(0, finiteNumber(raw.ammo, HERO_STARTING_AMMO)),
     max_ammo: Math.max(1, finiteNumber(raw.max_ammo, HERO_STARTING_AMMO)),
     gold: Math.max(0, finiteNumber(raw.gold, 50)),
-    xp: Math.max(0, finiteNumber(raw.xp, 0)),
-    level: Math.max(1, finiteNumber(raw.level, 1)),
-    deck: deck.length > 0 ? deck : defaults.deck,
+    xp,
+    level,
+    deck,
+    cardCollection,
+    deckEditRequired: raw.deckEditRequired === true,
     inventory: normalizeInventory(raw.inventory),
     equipped: normalizeEquipped(raw.equipped),
     equipmentInventory: normalizeEquipmentInventory(raw.equipmentInventory),
   };
+  if (!isDeckValid(hero)) {
+    hero.deckEditRequired = true;
+  }
+  return hero;
 }
 
 function normalizeLootStash(raw: unknown): CombatLootItem[] {
@@ -591,6 +771,9 @@ function normalizeEnemy(raw: unknown): EnemyType | null {
   if (!isRecord(raw) || typeof raw.name !== "string") return null;
   const max_hp = Math.max(0, finiteNumber(raw.max_hp, finiteNumber(raw.hp, 1)));
   const hp = Math.max(0, Math.min(max_hp, finiteNumber(raw.hp, max_hp)));
+  const level = Math.max(1, finiteNumber(raw.level, 1));
+  const defaultDamageMin = 1 + 2 * (level - 1);
+  const defaultDamageMax = 4 + 2 * (level - 1);
   const template = getMonsterTemplate(raw.name);
   const traitsFromRaw = Array.isArray(raw.traits)
     ? raw.traits.filter(
@@ -603,10 +786,16 @@ function normalizeEnemy(raw: unknown): EnemyType | null {
       : template?.traits;
   const base = {
     name: raw.name,
-    level: Math.max(1, finiteNumber(raw.level, 1)),
+    level,
     hp,
     max_hp,
+    damageMin: Math.max(1, finiteNumber(raw.damageMin, defaultDamageMin)),
+    damageMax: Math.max(
+      Math.max(1, finiteNumber(raw.damageMin, defaultDamageMin)),
+      finiteNumber(raw.damageMax, defaultDamageMax),
+    ),
     armor: Math.max(0, finiteNumber(raw.armor, 0)),
+    ...(raw.isBoss === true ? { isBoss: true } : {}),
     ...(traits && traits.length > 0 ? { traits } : {}),
   };
 
@@ -706,7 +895,19 @@ function normalizeSaveData(raw: unknown): ShantiesSaveData {
       ? raw.shopVariant
       : null;
   const hero = normalizeHero(raw.hero);
+  const savedHeroLevel = isRecord(raw.hero)
+    ? Math.max(1, finiteNumber(raw.hero.level, 1))
+    : hero.level;
+  const levelUpPicksRemaining =
+    Math.max(0, finiteNumber(raw.levelUpPicksRemaining, 0)) +
+    Math.max(0, hero.level - savedHeroLevel);
+  const levelUpCardChoices = normalizeLevelUpCardChoices(raw.levelUpCardChoices);
+  const resolvedGameState =
+    gameState === "levelUp" && levelUpPicksRemaining <= 0
+      ? (resumeGameState ?? "home")
+      : gameState;
   const currentIsland = normalizeIsland(raw.currentIsland);
+  let currentDungeon = normalizeDungeon(raw.currentDungeon);
   let currentPortTown = normalizePortTown(raw.currentPortTown);
   if (location === "port" && !currentPortTown) {
     currentPortTown = generatePortTown();
@@ -733,10 +934,11 @@ function normalizeSaveData(raw: unknown): ShantiesSaveData {
               location === "island" || location === "dungeon"
                 ? (currentIsland?.vibe ?? null)
                 : null,
+            heroLevel: location === "dungeon" ? hero.level : undefined,
+            levelFactor: location === "dungeon" ? (currentDungeon?.levelFactor ?? 0) : undefined,
           });
   }
 
-  let currentDungeon = normalizeDungeon(raw.currentDungeon);
   if (
     location === "island" &&
     currentDungeon &&
@@ -747,7 +949,7 @@ function normalizeSaveData(raw: unknown): ShantiesSaveData {
   }
 
   return {
-    gameState,
+    gameState: resolvedGameState,
     location,
     currentIsland,
     currentPortTown,
@@ -777,6 +979,8 @@ function normalizeSaveData(raw: unknown): ShantiesSaveData {
     seaEventDeck,
     shopVariant,
     nearPortTown,
+    levelUpPicksRemaining,
+    levelUpCardChoices,
   };
 }
 

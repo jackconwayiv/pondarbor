@@ -1,5 +1,8 @@
-import HomeActionGrid from "./HomeActionGrid";
-import SquallsActionCard from "./SquallsActionCard";
+import {
+  SquallsActionOption,
+  SquallsActionSection,
+  SquallsActionSheet,
+} from "./SquallsActionSheet";
 
 type Props = {
   onShop: () => void;
@@ -25,35 +28,70 @@ export default function ShipView({
   onCookstove,
 }: Props) {
   return (
-    <HomeActionGrid>
-      {onIsland ? (
-        <SquallsActionCard
-          emoji="🏝️"
-          label={`Head Ashore (${islandExplorePoints ?? 0})`}
-          accent="teal"
-          onClick={onIsland}
-        />
-      ) : null}
-      {onEnterWreck && (wreckDelvePoints ?? 0) > 0 ? (
-        <SquallsActionCard
+    <SquallsActionSheet>
+      <SquallsActionSection label="Explore And Advance">
+        <SquallsActionOption
           emoji="⛵"
-          label={`Enter Wreck (${wreckDelvePoints})`}
-          accent="orange"
-          onClick={onEnterWreck}
+          title="Set sail for open water"
+          detail="Push onward and face whatever the sea reveals."
+          tone="explore"
+          onClick={onSail}
         />
-      ) : null}
+        {onIsland ? (
+          <SquallsActionOption
+            emoji="🏝️"
+            title={`Head ashore (${islandExplorePoints ?? 0} explores)`}
+            detail="Scout the island for treasure, danger, or opportunities."
+            tone="explore"
+            onClick={onIsland}
+          />
+        ) : null}
+        {onEnterWreck && (wreckDelvePoints ?? 0) > 0 ? (
+          <SquallsActionOption
+            emoji="⛵"
+            title={`Enter the wreck (${wreckDelvePoints} delves)`}
+            detail="Descend into the flooded hull in search of valuables."
+            tone="risk"
+            onClick={onEnterWreck}
+          />
+        ) : null}
+      </SquallsActionSection>
+
+      <SquallsActionSection label="Supplies And Services">
+        <SquallsActionOption
+          emoji="💰"
+          title="Visit ship provisions"
+          detail="Trade gold for supplies before the next encounter."
+          tone="service"
+          onClick={onShop}
+        />
+        <SquallsActionOption
+          emoji="🍳"
+          title="Work the cookstove"
+          detail="Turn raw catch into food if ye have timber to burn."
+          tone="service"
+          onClick={onCookstove}
+        />
+        <SquallsActionOption
+          emoji="🛏️"
+          title="Take rest below deck"
+          detail="Recover before ye tempt the tides again."
+          tone="service"
+          onClick={onRest}
+        />
+      </SquallsActionSection>
+
       {onReturnToPort ? (
-        <SquallsActionCard
-          emoji="⚓"
-          label="Return to Town"
-          accent="blue"
-          onClick={onReturnToPort}
-        />
+        <SquallsActionSection label="Retreat And Return">
+          <SquallsActionOption
+            emoji="⚓"
+            title="Return to port town"
+            detail="Stand down from exploration and dock in safer waters."
+            tone="retreat"
+            onClick={onReturnToPort}
+          />
+        </SquallsActionSection>
       ) : null}
-      <SquallsActionCard emoji="💰" label="Provisions" accent="yellow" onClick={onShop} />
-      <SquallsActionCard emoji="🍳" label="Cookstove" accent="orange" onClick={onCookstove} />
-      <SquallsActionCard emoji="🛏️" label="Rest Up" accent="purple" onClick={onRest} />
-      <SquallsActionCard emoji="⛵" label="Set Sail" accent="blue" onClick={onSail} />
-    </HomeActionGrid>
+    </SquallsActionSheet>
   );
 }

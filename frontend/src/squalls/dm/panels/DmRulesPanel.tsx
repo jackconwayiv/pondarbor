@@ -16,8 +16,16 @@ import {
   SEA_TREASURE_LOCKED_CHANCE,
 } from "../../dungeonTreasure";
 import { shopBuyPrice, sellPriceFromBasePrice } from "../../shantiesShop";
+import { SQUALLS_HUD_COLORS } from "../../squallsTheme";
 import { ENEMY_ACTION_DESCRIPTIONS } from "../squallsDmCatalog";
-import { DmPanelIntro, DmSectionHeading, DmStatRow } from "./DmStatRow";
+import { xpRequiredForLevel } from "../../squallsXpProgression";
+import { minDeckSize } from "../../combatDeck";
+import {
+  DM_PANEL_CARD_PROPS,
+  DmPanelIntro,
+  DmSectionHeading,
+  DmStatRow,
+} from "./DmStatRow";
 
 export default function DmRulesPanel() {
   return (
@@ -37,7 +45,7 @@ export default function DmRulesPanel() {
           />
           <DmStatRow label="Ranged attack cost" value="1 ammo" />
         </SimpleGrid>
-        <Text fontSize="sm" color="gray.900" mt={2}>
+        <Text fontSize="sm" color={SQUALLS_HUD_COLORS.panelMuted} mt={2}>
           After a victorious fight where the hero spent at least 1 ammo, there is
           a {Math.round(AMMO_POUCH_DROP_CHANCE * 100)}% chance an ammo pouch
           appears in combat loot (monster item drops still stack normally). After a
@@ -48,30 +56,30 @@ export default function DmRulesPanel() {
       <Box>
         <DmSectionHeading>Status effects</DmSectionHeading>
         <SimpleGrid columns={{ base: 1, md: 2 }} gap={2} mt={2}>
-          <Box p={2} borderWidth="1px" borderColor="blackAlpha.200" borderRadius="md">
-            <Text fontSize="sm" fontWeight="semibold" color="gray.900">
+          <Box {...DM_PANEL_CARD_PROPS} p={2}>
+            <Text fontSize="sm" fontWeight="semibold" color={SQUALLS_HUD_COLORS.panelText}>
               Weakened
             </Text>
-            <Text fontSize="xs" color="gray.900">
+            <Text fontSize="xs" color={SQUALLS_HUD_COLORS.panelMuted}>
               −1 damage on hero attacks (minimum 1). Lasts until combat ends. Applied by
               enemy Weaken action.
             </Text>
           </Box>
-          <Box p={2} borderWidth="1px" borderColor="blackAlpha.200" borderRadius="md">
-            <Text fontSize="sm" fontWeight="semibold" color="gray.900">
+          <Box {...DM_PANEL_CARD_PROPS} p={2}>
+            <Text fontSize="sm" fontWeight="semibold" color={SQUALLS_HUD_COLORS.panelText}>
               Evasive
             </Text>
-            <Text fontSize="xs" color="gray.900">
+            <Text fontSize="xs" color={SQUALLS_HUD_COLORS.panelMuted}>
               {Math.round(EVASIVE_MISS_CHANCE * 100)}% melee miss chance per stack (×2 ={" "}
               {Math.round(EVASIVE_MISS_CHANCE * 2 * 100)}%). Ranged always hits. Granted
               at spawn (Bat, Harpy, Siren) or by enemy Evade action.
             </Text>
           </Box>
-          <Box p={2} borderWidth="1px" borderColor="blackAlpha.200" borderRadius="md">
-            <Text fontSize="sm" fontWeight="semibold" color="gray.900">
+          <Box {...DM_PANEL_CARD_PROPS} p={2}>
+            <Text fontSize="sm" fontWeight="semibold" color={SQUALLS_HUD_COLORS.panelText}>
               Shocking
             </Text>
-            <Text fontSize="xs" color="gray.900">
+            <Text fontSize="xs" color={SQUALLS_HUD_COLORS.panelMuted}>
               Each Shocking enemy reflects {SHOCKING_RETALIATION_DAMAGE} damage to the hero
               on a successful melee hit (can be lethal). Ranged attacks do not trigger it.
               Granted by Electric Eel Electrify action.
@@ -82,14 +90,14 @@ export default function DmRulesPanel() {
 
       <Box>
         <DmSectionHeading>Enemy actions</DmSectionHeading>
-        <Text fontSize="sm" color="gray.900" mt={1}>
+        <Text fontSize="sm" color={SQUALLS_HUD_COLORS.panelMuted} mt={1}>
           Enemies with a buff card (Evade or Electrify) have a{" "}
           {Math.round(BUFF_ON_TOP_START_CHANCE * 100)}% chance to start combat with that
           buff on top of their deck.
         </Text>
         <VStack align="stretch" gap={1} mt={2}>
           {ENEMY_ACTION_DESCRIPTIONS.map((row) => (
-            <Text key={row.action} fontSize="sm" color="gray.900">
+            <Text key={row.action} fontSize="sm" color={SQUALLS_HUD_COLORS.panelMuted}>
               <Text as="span" fontWeight="semibold">
                 {row.action}
               </Text>{" "}
@@ -119,12 +127,33 @@ export default function DmRulesPanel() {
       </Box>
 
       <Box>
+        <DmSectionHeading>Level progression</DmSectionHeading>
+        <SimpleGrid columns={{ base: 2, md: 4 }} gap={2} mt={2}>
+          <DmStatRow label="L1+" value={`${xpRequiredForLevel(1)} XP`} />
+          <DmStatRow label="L2+" value={`${xpRequiredForLevel(2)} XP`} />
+          <DmStatRow label="L3+" value={`${xpRequiredForLevel(3)} XP`} />
+          <DmStatRow label="L4+" value={`${xpRequiredForLevel(4)} XP`} />
+          <DmStatRow label="L5+" value={`${xpRequiredForLevel(5)} XP`} />
+          <DmStatRow label="L6+" value={`${xpRequiredForLevel(6)} XP`} />
+          <DmStatRow label="L7+" value={`${xpRequiredForLevel(7)} XP`} />
+          <DmStatRow label="Boss XP" value="3 × level" />
+        </SimpleGrid>
+        <Text fontSize="sm" color={SQUALLS_HUD_COLORS.panelMuted} mt={2}>
+          Encounter levels roll 75% on-level, 15% one lower, 10% one higher.
+        </Text>
+        <Text fontSize="sm" color={SQUALLS_HUD_COLORS.panelMuted} mt={1}>
+          Minimum deck size is 19 + level (L1 minimum: {minDeckSize(1)}). Each level
+          gained forces a 1-of-3 card pick to add to the deck.
+        </Text>
+      </Box>
+
+      <Box>
         <DmSectionHeading>Shop pricing</DmSectionHeading>
-        <Text fontSize="sm" color="gray.900" mt={1}>
+        <Text fontSize="sm" color={SQUALLS_HUD_COLORS.panelMuted} mt={1}>
           Buy: base + 5×hero level + 5×copies owned (example level 1, 0 owned: base{" "}
           {shopBuyPrice(15, 1, 0)}g for a 15g item)
         </Text>
-        <Text fontSize="sm" color="gray.900" mt={1}>
+        <Text fontSize="sm" color={SQUALLS_HUD_COLORS.panelMuted} mt={1}>
           Sell: floor(base × 0.5) (example 15g base → {sellPriceFromBasePrice(15)}g)
         </Text>
       </Box>

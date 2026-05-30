@@ -2,7 +2,6 @@ import { useState } from "react";
 import {
   Box,
   Button,
-  Heading,
   HStack,
   SimpleGrid,
   Text,
@@ -15,6 +14,7 @@ import {
   CombatEnemyDropTarget,
   DraggableCombatHandCard,
 } from "./CombatBattleDnd";
+import CombatEnergyGems from "./CombatEnergyGems";
 import { isTreasureEvent } from "./combatLoot";
 import { isLockedTreasureChest } from "./dungeonTreasure";
 import {
@@ -24,16 +24,13 @@ import {
   TREASURE_CHEST_EMOJI,
 } from "./floatingSuppliesLoot";
 import { isIslandTraderEvent, isIslandWeatherEvent } from "./islandEventDeck";
+import { SquallsHeading } from "./SquallsHeading";
 import {
   isBuriedTreasureEvent,
   isSupplyCacheEvent,
   BURIED_TREASURE_INTRO,
   SUPPLY_CACHE_INTRO,
 } from "./islandTreasureLoot";
-import {
-  enemyBroadcastColor,
-  formatEnemyBroadcastLabel,
-} from "./enemyActions";
 import { seaWeatherEffectLabel } from "./seaWeather";
 import CookstoveView from "./CookstoveView";
 import { isCookstoveEvent } from "./cookstove";
@@ -45,18 +42,15 @@ import {
   isDungeonDiscoveryEvent,
 } from "./dungeonExplore";
 import DungeonView from "./DungeonView";
+import CombatEnemyCard from "./CombatEnemyCard";
 import CombatHandCard from "./CombatHandCard";
 import LootClaimPanel from "./LootClaimPanel";
-import {
-  formatEnemyHp,
-  getCardEnergyCost,
-  getEnemyDisplayTraits,
-  isEnemyAlive,
-} from "./combatRules";
+import { getCardEnergyCost, isEnemyAlive, MAX_BATTLEFIELD_ENEMIES } from "./combatRules";
+import { CARD_ASPECT_RATIO, CARD_GRID_3COL_MAX_WIDTH } from "./combatCardStyle";
 import AdventureStripe from "./AdventureStripe";
 import PlayerPanel from "./PlayerPanel";
-import HomeActionGrid from "./HomeActionGrid";
 import ExploreTestPickerView from "./ExploreTestPickerView";
+import LevelUpPickerView from "./LevelUpPickerView";
 import PassEnergyConfirmModal from "./PassEnergyConfirmModal";
 import PortView from "./PortView";
 import ShipwrightView from "./ShipwrightView";
@@ -64,9 +58,14 @@ import TavernView from "./TavernView";
 import RestView from "./RestView";
 import ShipView from "./ShipView";
 import ShopView from "./ShopView";
-import SquallsActionCard from "./SquallsActionCard";
+import {
+  SquallsActionOption,
+  SquallsActionSection,
+  SquallsActionSheet,
+} from "./SquallsActionSheet";
 import { getItemCount } from "./shantiesItems";
 import { cardRequiresAmmo, type CombatLogSide, type EventType, type WorldPanelProps } from "./shantiesTypes";
+import { SQUALLS_HUD_COLORS, SQUALLS_TEXT_ZONE, SQUALLS_WORLD_PANEL } from "./squallsTheme";
 
 function eventHeadingEmoji(event: EventType | null): string {
   if (!event) return "⛈️";
@@ -183,6 +182,8 @@ export default function WorldPanel({
   exploreTestOptions,
   applyExploreTestOutcome,
   cancelExploreTest,
+  levelUpCardChoices,
+  chooseLevelUpCard,
   resolveShipwreckDive,
   onOpenCharacterSheet,
 }: WorldPanelProps) {
@@ -194,18 +195,18 @@ export default function WorldPanel({
   const displayedCards = viewingHand ? hand : discardPile;
 
   const HERO_LOG_COLORS = [
-    "green.800",
-    "green.700",
-    "green.600",
-    "green.500",
-    "green.400",
+    "#D8E7BF",
+    "#BFD5A0",
+    "#A2C27D",
+    "#89AD69",
+    "#75955A",
   ] as const;
   const ENEMY_LOG_COLORS = [
-    "red.800",
-    "red.700",
-    "red.600",
-    "red.500",
-    "red.400",
+    "#F4C2B2",
+    "#E99F8A",
+    "#DB7F68",
+    "#C9644D",
+    "#AD4F3E",
   ] as const;
 
   const getCombatLogEntryStyle = (
@@ -237,16 +238,22 @@ export default function WorldPanel({
   switch (gameState) {
     case "home":
       return (
-        <VStack align="stretch" gap={5} w="100%">
-          <Heading>
+        <VStack
+          align="stretch"
+          gap={{ base: 4, md: 5 }}
+          w="100%"
+          {...SQUALLS_WORLD_PANEL}
+          p={{ base: 3, md: 4 }}
+        >
+          <SquallsHeading>
             {location === "ship"
-              ? "⛵ Ye Be on the Ship"
+              ? "Captain's Orders"
               : location === "port"
-                ? `⚓ ${currentPortTown ? renderPortTownName(currentPortTown) : "Port Town"}`
+                ? `Harbor Briefing${currentPortTown ? ` — ${renderPortTownName(currentPortTown)}` : ""}`
                 : location === "dungeon" && currentDungeon
-                  ? `${getDungeonKindEmoji(currentDungeon.kind)} ${renderDungeonName(currentDungeon)}`
-                  : `🏝️ ${currentIsland ? renderIslandName(currentIsland) : "Unknown Island"}`}
-          </Heading>
+                  ? `Delve Orders — ${renderDungeonName(currentDungeon)}`
+                  : `Island Expedition${currentIsland ? ` — ${renderIslandName(currentIsland)}` : ""}`}
+          </SquallsHeading>
 
           {location === "ship" && (
             <ShipView
@@ -286,37 +293,47 @@ export default function WorldPanel({
           )}
 
           {location === "island" && (
-            <HomeActionGrid>
-              {currentDungeon && isActiveIslandDungeon(currentDungeon) ? (
-                <SquallsActionCard
-                  emoji={getDungeonKindEmoji(currentDungeon.kind)}
-                  label={getEnterDungeonLabel(currentDungeon)}
-                  accent="orange"
-                  onClick={enterCurrentDungeon}
+            <SquallsActionSheet>
+              <SquallsActionSection label="Explore And Advance">
+                <SquallsActionOption
+                  emoji="🧭"
+                  title={`Explore the island (${currentIsland ? Math.max(0, currentIsland.explorePoints) : 0})`}
+                  detail="Push inland for discoveries, danger, and treasure."
+                  tone="explore"
+                  disabled={!currentIsland || currentIsland.explorePoints <= 0}
+                  onClick={handleSailOrExplore}
                 />
-              ) : null}
-              <SquallsActionCard
-                emoji="🧭"
-                label={`Explore Island (${currentIsland ? Math.max(0, currentIsland.explorePoints) : 0})`}
-                accent="teal"
-                disabled={!currentIsland || currentIsland.explorePoints <= 0}
-                onClick={handleSailOrExplore}
-              />
-              {currentIsland?.cookstoveFound ? (
-                <SquallsActionCard
-                  emoji="🍳"
-                  label="Cookstove"
-                  accent="orange"
-                  onClick={openCookstove}
+                {currentDungeon && isActiveIslandDungeon(currentDungeon) ? (
+                  <SquallsActionOption
+                    emoji={getDungeonKindEmoji(currentDungeon.kind)}
+                    title={getEnterDungeonLabel(currentDungeon)}
+                    detail="Enter the discovered site and test yer luck below."
+                    tone="risk"
+                    onClick={enterCurrentDungeon}
+                  />
+                ) : null}
+              </SquallsActionSection>
+              <SquallsActionSection label="Supplies And Services">
+                {currentIsland?.cookstoveFound ? (
+                  <SquallsActionOption
+                    emoji="🍳"
+                    title="Use the cookstove"
+                    detail="Prepare raw provisions before the next battle."
+                    tone="service"
+                    onClick={openCookstove}
+                  />
+                ) : null}
+              </SquallsActionSection>
+              <SquallsActionSection label="Retreat And Return">
+                <SquallsActionOption
+                  emoji="⛵"
+                  title="Return to ship"
+                  detail="Leave the shore and regroup aboard."
+                  tone="retreat"
+                  onClick={returnToShipFromIsland}
                 />
-              ) : null}
-              <SquallsActionCard
-                emoji="⛵"
-                label="Return to Ship"
-                accent="blue"
-                onClick={returnToShipFromIsland}
-              />
-            </HomeActionGrid>
+              </SquallsActionSection>
+            </SquallsActionSheet>
           )}
 
           {location === "port" && (
@@ -342,14 +359,6 @@ export default function WorldPanel({
             />
           )}
 
-          <Box w="100%" maxW="7rem">
-            <SquallsActionCard
-              emoji="🚪"
-              label="Quit Game"
-              accent="gray"
-              onClick={goToLobby}
-            />
-          </Box>
         </VStack>
       );
 
@@ -389,6 +398,15 @@ export default function WorldPanel({
           onCancel={cancelExploreTest}
         />
       ) : null;
+
+    case "levelUp":
+      return (
+        <LevelUpPickerView
+          choices={levelUpCardChoices}
+          equipped={hero.equipped}
+          onChoose={chooseLevelUpCard}
+        />
+      );
 
     case "rest":
       return (
@@ -451,9 +469,7 @@ export default function WorldPanel({
             leaveLabel={
               isSeaTreasureEvent(activeEvent) ? "Sail On" : undefined
             }
-            leaveAccent={
-              isSeaTreasureEvent(activeEvent) ? "blue" : undefined
-            }
+            leaveTone={isSeaTreasureEvent(activeEvent) ? "explore" : undefined}
             onUnlockWithKey={unlockDungeonChestWithKey}
             onPickLock={pickLockOnChest}
             onForceOpen={forceOpenDungeonChest}
@@ -494,206 +510,253 @@ export default function WorldPanel({
       }
 
       return (
-        <VStack align="stretch" gap={4} w="100%">
-          <Heading>{eventHeadingEmoji(activeEvent)} {activeEvent?.name}</Heading>
+        <VStack
+          align="stretch"
+          gap={{ base: 3.5, md: 4 }}
+          w="100%"
+          {...SQUALLS_WORLD_PANEL}
+          p={{ base: 3, md: 4 }}
+        >
+          <SquallsHeading>{eventHeadingEmoji(activeEvent)} {activeEvent?.name}</SquallsHeading>
 
           {activeEvent && isDungeonDiscoveryEvent(activeEvent) ? (
             <Box w="100%">
-              <Text mb={4} fontSize="lg">
-                While exploring, ye discover{" "}
-                <strong>{activeEvent.name}</strong>!
-              </Text>
-              <Text mb={4} fontSize="sm" color="gray.900">
-                The passage is pitch black — ye'll need a candle to explore it.
-              </Text>
-              <HomeActionGrid>
-                {getItemCount(hero.inventory, "candle") > 0 ? (
-                  <SquallsActionCard
-                    emoji="🕯️"
-                    label="Enter with Candle"
-                    accent="teal"
-                    onClick={() => resolveDungeonDiscovery(true)}
+              <VStack align="stretch" gap={2} mb={4} w="100%">
+                <Text fontSize="lg" fontWeight="semibold">
+                  While exploring, ye discover <strong>{activeEvent.name}</strong>.
+                </Text>
+                <Text fontSize="sm" color={SQUALLS_TEXT_ZONE.muted}>
+                  The passage is pitch black and unknown. A candle gives ye a fighting
+                  chance down there.
+                </Text>
+              </VStack>
+              <SquallsActionSheet title="Choose Yer Approach">
+                <SquallsActionSection label="Explore And Advance">
+                  {getItemCount(hero.inventory, "candle") > 0 ? (
+                    <SquallsActionOption
+                      emoji="🕯️"
+                      title="Descend with a candle"
+                      detail="Spend light now to explore what lies below."
+                      tone="explore"
+                      onClick={() => resolveDungeonDiscovery(true)}
+                    />
+                  ) : null}
+                </SquallsActionSection>
+                <SquallsActionSection label="Retreat And Return">
+                  <SquallsActionOption
+                    emoji="🌿"
+                    title="Leave the opening undisturbed"
+                    detail="Mark the location and continue with safer plans."
+                    tone="retreat"
+                    onClick={() => resolveDungeonDiscovery(false)}
                   />
-                ) : null}
-                <SquallsActionCard
-                  emoji="🌿"
-                  label="Leave it be"
-                  accent="gray"
-                  onClick={() => resolveDungeonDiscovery(false)}
-                />
-              </HomeActionGrid>
+                </SquallsActionSection>
+              </SquallsActionSheet>
             </Box>
           ) : activeEvent?.type === "discovery" ? (
             <Box w="100%">
-              <Text mb={4} fontSize="lg">
+              <Text fontSize="lg" fontWeight="semibold" mb={4}>
                 On the horizon, ye spy{" "}
                 <strong>
                   {currentIsland
                     ? renderIslandName(currentIsland)
                     : "an unknown shore"}
                 </strong>
-                !
+                .
               </Text>
-              <HomeActionGrid>
-                <SquallsActionCard
-                  emoji="⚓"
-                  label="Anchor at Island"
-                  accent="teal"
-                  onClick={anchorAtDiscoveredIsland}
-                />
-                <SquallsActionCard
-                  emoji="⛵"
-                  label="Keep Sailing"
-                  accent="blue"
-                  onClick={abandonDiscoveredIsland}
-                />
-              </HomeActionGrid>
+              <SquallsActionSheet title="Captain's Call">
+                <SquallsActionSection label="Explore And Advance">
+                  <SquallsActionOption
+                    emoji="⚓"
+                    title="Drop anchor at the island"
+                    detail="Land a party and seek fortune ashore."
+                    tone="explore"
+                    onClick={anchorAtDiscoveredIsland}
+                  />
+                </SquallsActionSection>
+                <SquallsActionSection label="Retreat And Return">
+                  <SquallsActionOption
+                    emoji="⛵"
+                    title="Keep sailing past"
+                    detail="Ignore the shore and trust the open sea."
+                    tone="retreat"
+                    onClick={abandonDiscoveredIsland}
+                  />
+                </SquallsActionSection>
+              </SquallsActionSheet>
             </Box>
           ) : activeEvent?.type === "port" ? (
             <Box w="100%">
-              <Text mb={4} fontSize="lg">
+              <Text fontSize="lg" fontWeight="semibold" mb={4}>
                 In the distance, ye spy{" "}
                 <strong>
                   {currentPortTown
                     ? renderPortTownName(currentPortTown)
                     : "a port town"}
                 </strong>
-                !
+                .
               </Text>
-              <HomeActionGrid>
-                <SquallsActionCard
-                  emoji="⚓"
-                  label="Dock at Town"
-                  accent="teal"
-                  onClick={dockAtPortTown}
-                />
-                <SquallsActionCard
-                  emoji="⛵"
-                  label="Sail Past"
-                  accent="blue"
-                  onClick={sailPastPortTown}
-                />
-              </HomeActionGrid>
+              <SquallsActionSheet title="Harbor Decision">
+                <SquallsActionSection label="Supplies And Services">
+                  <SquallsActionOption
+                    emoji="⚓"
+                    title="Dock at the port"
+                    detail="Trade, recruit, and resupply behind safer walls."
+                    tone="service"
+                    onClick={dockAtPortTown}
+                  />
+                </SquallsActionSection>
+                <SquallsActionSection label="Explore And Advance">
+                  <SquallsActionOption
+                    emoji="⛵"
+                    title="Sail past the harbor"
+                    detail="Stay on course and risk the next sea event."
+                    tone="explore"
+                    onClick={sailPastPortTown}
+                  />
+                </SquallsActionSection>
+              </SquallsActionSheet>
             </Box>
           ) : activeEvent?.type === "merchant" ? (
             <Box w="100%">
-              <Text mb={4} fontSize="lg">
+              <Text fontSize="lg" fontWeight="semibold" mb={4}>
                 {isIslandTraderEvent(activeEvent)
-                  ? "A local trader beckons ye over, offering island goods for gold."
-                  : "A friendly merchant hails ye from a nearby vessel, offering goods for gold."}
+                  ? "A local trader beckons ye over with island wares and a hard bargain."
+                  : "A merchant vessel hails ye and offers trade in open water."}
               </Text>
-              <HomeActionGrid>
-                <SquallsActionCard
-                  emoji="💰"
-                  label="Trade"
-                  accent="yellow"
-                  onClick={
-                    isIslandTraderEvent(activeEvent)
-                      ? openIslandTraderShop
-                      : openMerchantShop
-                  }
-                />
-                <SquallsActionCard
-                  emoji={location === "island" ? "🏝️" : "⛵"}
-                  label={location === "island" ? "Move On" : "Sail on"}
-                  accent="blue"
-                  onClick={() => {
-                    setActiveEvent(null);
-                    setGameState("home");
-                    setDay(day + 1);
-                  }}
-                />
-              </HomeActionGrid>
+              <SquallsActionSheet title="Trade Or Move">
+                <SquallsActionSection label="Supplies And Services">
+                  <SquallsActionOption
+                    emoji="💰"
+                    title="Parley and trade"
+                    detail="Spend gold now to improve odds later."
+                    tone="service"
+                    onClick={
+                      isIslandTraderEvent(activeEvent)
+                        ? openIslandTraderShop
+                        : openMerchantShop
+                    }
+                  />
+                </SquallsActionSection>
+                <SquallsActionSection label="Explore And Advance">
+                  <SquallsActionOption
+                    emoji={location === "island" ? "🏝️" : "⛵"}
+                    title={location === "island" ? "Move on from the trader" : "Sail on"}
+                    detail="Keep momentum and leave this encounter behind."
+                    tone="explore"
+                    onClick={() => {
+                      setActiveEvent(null);
+                      setGameState("home");
+                      setDay(day + 1);
+                    }}
+                  />
+                </SquallsActionSection>
+              </SquallsActionSheet>
             </Box>
           ) : activeEvent?.type === "shipwreck" ? (
             <Box w="100%">
-              <Text mb={4} fontSize="lg">
-                Through the swells ye spot a half-sunk hull — barnacles and
-                kelp cling to its timbers. Something worth salvaging may lie
-                below decks, but ye'll need a way to breathe underwater.
-              </Text>
+              <VStack align="stretch" gap={2} mb={4} w="100%">
+                <Text fontSize="lg" fontWeight="semibold">
+                  Through the swells ye spot a half-sunk hull, heavy with barnacles and kelp.
+                </Text>
+                <Text fontSize="sm" color={SQUALLS_TEXT_ZONE.muted}>
+                  Something worth salvaging likely waits below deck, if ye can survive the dive.
+                </Text>
+              </VStack>
               {getItemCount(hero.inventory, "siren_gills") <= 0 &&
               getItemCount(hero.inventory, "dive_helmet") <= 0 ? (
-                <Text mb={4} fontSize="sm" color="gray.900">
-                  You can't breathe underwater yet, so exploring this shipwreck
-                  isn't possible...
+                <Text fontSize="sm" color={SQUALLS_TEXT_ZONE.muted} mb={4}>
+                  Ye cannot breathe underwater yet, so a wreck dive is impossible for now.
                 </Text>
               ) : null}
-              <HomeActionGrid>
-                {getItemCount(hero.inventory, "siren_gills") > 0 ? (
-                  <SquallsActionCard
-                    emoji="🫁"
-                    label="Explore with Siren Gills"
-                    accent="teal"
-                    onClick={() => resolveShipwreckDive("siren_gills")}
+              <SquallsActionSheet title="Wreck Approach">
+                <SquallsActionSection label="Explore And Advance">
+                  {getItemCount(hero.inventory, "siren_gills") > 0 ? (
+                    <SquallsActionOption
+                      emoji="🫁"
+                      title="Dive with siren gills"
+                      detail="Risk the depths to reclaim what the sea swallowed."
+                      tone="risk"
+                      onClick={() => resolveShipwreckDive("siren_gills")}
+                    />
+                  ) : null}
+                  {getItemCount(hero.inventory, "dive_helmet") > 0 ? (
+                    <SquallsActionOption
+                      emoji="🤿"
+                      title="Dive with helmet"
+                      detail="A safer descent, but still a gamble in dark waters."
+                      tone="risk"
+                      onClick={() => resolveShipwreckDive("dive_helmet")}
+                    />
+                  ) : null}
+                </SquallsActionSection>
+                <SquallsActionSection label="Retreat And Return">
+                  <SquallsActionOption
+                    emoji="⛵"
+                    title="Sail on"
+                    detail="Leave the wreck untouched and preserve crew strength."
+                    tone="retreat"
+                    onClick={() => resolveShipwreckDive("sail_past")}
                   />
-                ) : null}
-                {getItemCount(hero.inventory, "dive_helmet") > 0 ? (
-                  <SquallsActionCard
-                    emoji="🤿"
-                    label="Explore with Dive Helmet"
-                    accent="teal"
-                    onClick={() => resolveShipwreckDive("dive_helmet")}
-                  />
-                ) : null}
-                <SquallsActionCard
-                  emoji="⛵"
-                  label="Sail On"
-                  accent="blue"
-                  onClick={() => resolveShipwreckDive("sail_past")}
-                />
-              </HomeActionGrid>
+                </SquallsActionSection>
+              </SquallsActionSheet>
             </Box>
           ) : activeEvent?.type === "weather" ? (
             <Box w="100%">
-              <Text mb={4}>
+              <Text fontSize="sm" mb={4}>
                 {location === "island" && isIslandWeatherEvent(activeEvent)
                   ? activeEvent.name === "Storm!"
-                    ? "Dark clouds gather over the island — rain lashes the shore."
+                    ? "Dark clouds gather over the island and rain lashes the shore."
                     : activeEvent.name === "Wind"
-                      ? "A stiff wind whips through the palms and sand stings yer eyes."
+                      ? "A stiff wind tears through palms and sand stings yer eyes."
                       : activeEvent.name === "Heat Wave"
-                        ? "The sun beats down mercilessly — the air shimmers with heat."
-                        : `The island weather turns — ${activeEvent.name}.`
+                        ? "The sun beats down mercilessly and the air shimmers with heat."
+                        : `The island weather turns: ${activeEvent.name}.`
                   : activeEvent.name === "Storm!"
-                    ? "Lightning splits the sky and waves crash over the rail. The crew weathers it as best they can."
+                    ? "Lightning splits the sky while waves crash over the rail."
                     : activeEvent.name === "Fog Bank"
-                      ? "A calm mist settles over the deck — the seas grow gentle and ye catch yer breath."
-                      : `The sea turns rough — ${activeEvent.name}.`}
+                      ? "A calm mist settles over deck and grants a brief breath of peace."
+                      : `The sea turns rough: ${activeEvent.name}.`}
               </Text>
               {location !== "island" && seaWeatherEffectLabel(activeEvent.name) ? (
-                <Text mb={4} fontSize="sm" color="gray.900">
+                <Text fontSize="sm" color={SQUALLS_TEXT_ZONE.muted} mb={4}>
                   {seaWeatherEffectLabel(activeEvent.name)}
                 </Text>
               ) : null}
-              <HomeActionGrid>
-                <SquallsActionCard
-                  emoji="✅"
-                  label="Acknowledge"
-                  accent="blue"
-                  onClick={
-                    location === "island" && isIslandWeatherEvent(activeEvent)
-                      ? acknowledgeGenericEvent
-                      : acknowledgeWeatherEvent
-                  }
-                />
-              </HomeActionGrid>
+              <SquallsActionSheet title="Weather Response">
+                <SquallsActionSection label="Explore And Advance">
+                  <SquallsActionOption
+                    emoji="✅"
+                    title="Weather the change"
+                    detail="Brace the crew and move forward."
+                    tone="explore"
+                    onClick={
+                      location === "island" && isIslandWeatherEvent(activeEvent)
+                        ? acknowledgeGenericEvent
+                        : acknowledgeWeatherEvent
+                    }
+                  />
+                </SquallsActionSection>
+              </SquallsActionSheet>
             </Box>
           ) : (
             <Box w="100%">
-              <Text mb={4}>
+              <Text fontSize="sm" mb={4}>
                 {activeEvent?.type === "hazard"
-                  ? "Danger approaches quickly..."
+                  ? "Danger approaches quickly. Choose with care."
                   : `Ye have encountered: ${activeEvent?.name}`}
               </Text>
-              <HomeActionGrid>
-                <SquallsActionCard
-                  emoji="✅"
-                  label="Acknowledge"
-                  accent="blue"
-                  onClick={acknowledgeGenericEvent}
-                />
-              </HomeActionGrid>
+              <SquallsActionSheet title="Decision">
+                <SquallsActionSection label="Explore And Advance">
+                  <SquallsActionOption
+                    emoji="✅"
+                    title="Face it and continue"
+                    detail="Accept the event and let the journey carry on."
+                    tone="explore"
+                    onClick={acknowledgeGenericEvent}
+                  />
+                </SquallsActionSection>
+              </SquallsActionSheet>
             </Box>
           )}
         </VStack>
@@ -732,12 +795,13 @@ export default function WorldPanel({
             h="100dvh"
             w="100%"
             display="grid"
-            gridTemplateRows="50dvh 50dvh"
+            gridTemplateRows="auto 1fr"
             overflow="hidden"
           >
             {/* Top half: hero, battle header, enemies, log */}
             <Box
               minH={0}
+              flexShrink={0}
               display="flex"
               flexDirection="column"
               gap={2}
@@ -746,15 +810,8 @@ export default function WorldPanel({
               pb={1}
               overflow="hidden"
               borderBottomWidth="1px"
-              borderColor="blackAlpha.200"
+              borderColor={SQUALLS_HUD_COLORS.panelBorder}
             >
-              <PlayerPanel
-                hero={hero}
-                gameState="battle"
-                armor={armor}
-                weakened={heroWeakened}
-                onOpenCharacterSheet={onOpenCharacterSheet}
-              />
               <AdventureStripe
                 location={location}
                 gameState="battle"
@@ -762,6 +819,7 @@ export default function WorldPanel({
                 currentDungeon={currentDungeon}
                 renderIslandName={renderIslandName}
                 renderDungeonName={renderDungeonName}
+                onOpenCharacterSheet={onOpenCharacterSheet}
               />
 
               {enemyActionMessage && !combatVictory && (
@@ -770,9 +828,9 @@ export default function WorldPanel({
                   py={1}
                   px={2}
                   borderRadius="md"
-                  bg="blackAlpha.400"
+                  bg="rgba(12, 28, 37, 0.72)"
                   borderWidth="1px"
-                  borderColor="whiteAlpha.300"
+                  borderColor={SQUALLS_HUD_COLORS.panelBorder}
                   flexShrink={0}
                 >
                   <Text fontSize="xs" fontWeight="medium" lineClamp={2}>
@@ -782,12 +840,16 @@ export default function WorldPanel({
               )}
 
               <CombatDefendDropZone>
-                <Box minH={0} h="100%" overflowY="auto" w="100%">
-                <SimpleGrid columns={3} gap={1.5} w="100%" gridAutoRows="auto">
-                  {Array.from({ length: 9 }, (_, index) => {
+                <SimpleGrid
+                  columns={3}
+                  gap={1.5}
+                  w="100%"
+                  gridTemplateRows="repeat(2, minmax(4.25rem, auto))"
+                >
+                  {Array.from({ length: MAX_BATTLEFIELD_ENEMIES }, (_, index) => {
                     const enemy = enemies[index];
                     if (!enemy) {
-                      return <Box key={`enemy-slot-${index}`} minH={0} />;
+                      return <Box key={`enemy-slot-${index}`} w="100%" aria-hidden />;
                     }
                     const slain = !isEnemyAlive(enemy);
                     return (
@@ -796,85 +858,15 @@ export default function WorldPanel({
                         enemyIndex={index}
                         slain={slain}
                       >
-                        <Box
-                          p={1.5}
-                          minH="3.25rem"
-                          w="100%"
-                          h="100%"
-                          display="flex"
-                          flexDirection="column"
-                          justifyContent="space-between"
-                          gap={0.5}
-                          borderWidth="1px"
-                          borderColor={slain ? "gray.500" : "red.500"}
-                          borderRadius="md"
-                          bg={slain ? "blackAlpha.100" : "blackAlpha.200"}
-                          opacity={slain ? 0.55 : 1}
-                          filter={slain ? "grayscale(1)" : undefined}
-                          pointerEvents={slain ? "none" : undefined}
-                        >
-                          <HStack
-                            w="100%"
-                            justify="space-between"
-                            align="center"
-                            gap={1}
-                            minW={0}
-                          >
-                            <Text
-                              fontWeight="bold"
-                              fontSize="xs"
-                              lineClamp={1}
-                              flex={1}
-                            >
-                              {enemy.name}
-                            </Text>
-                            <Text fontSize="xs" fontWeight="semibold" flexShrink={0}>
-                              {formatEnemyHp(enemy)}
-                            </Text>
-                          </HStack>
-                          <Text
-                            fontSize="xs"
-                            fontWeight="semibold"
-                            textAlign="center"
-                            color={
-                              slain
-                                ? "gray.900"
-                                : enemyBroadcastColor(enemy.broadcast)
-                            }
-                          >
-                            {slain
-                              ? "Slain"
-                              : formatEnemyBroadcastLabel(enemy.broadcast)}
-                          </Text>
-                          {!slain && getEnemyDisplayTraits(enemy).length > 0 ? (
-                            <Text
-                              fontSize="2xs"
-                              fontWeight="semibold"
-                              textAlign="center"
-                              color="purple.700"
-                            >
-                              {getEnemyDisplayTraits(enemy).join(", ")}
-                            </Text>
-                          ) : null}
-                          <Box
-                            minH="1.25rem"
-                            display="flex"
-                            alignItems="center"
-                            justifyContent="center"
-                            w="100%"
-                          >
-                            {!slain && enemy.armor > 0 ? (
-                              <Text fontSize="xs" textAlign="center" color="gray.900">
-                                Armor {enemy.armor}
-                              </Text>
-                            ) : null}
-                          </Box>
-                        </Box>
+                        <CombatEnemyCard
+                          enemy={enemy}
+                          heroLevel={hero.level}
+                          slain={slain}
+                        />
                       </CombatEnemyDropTarget>
                     );
                   })}
                 </SimpleGrid>
-                </Box>
               </CombatDefendDropZone>
 
               <Box
@@ -882,12 +874,12 @@ export default function WorldPanel({
                 flexShrink={0}
                 overflow="hidden"
                 borderRadius="md"
-                bg="blackAlpha.200"
+                bg="rgba(11, 24, 32, 0.6)"
                 px={2}
                 py={1}
               >
                 {combatLog.length === 0 ? (
-                  <Text fontSize="xs" color="gray.900">
+                  <Text fontSize="xs" color={SQUALLS_HUD_COLORS.panelMuted}>
                     {combatVictory
                       ? "Victory!"
                       : combatPhase === "player"
@@ -931,7 +923,8 @@ export default function WorldPanel({
             >
               {combatVictory ? (
                 <LootClaimPanel
-                  title="🏆 Ye Have Won Combat"
+                  title="Ye Have Won Combat"
+                  titleSize="xl"
                   loot={combatLoot}
                   allClaimed={allCombatLootClaimed}
                   returnLabel={returnDestinationLabel}
@@ -942,6 +935,13 @@ export default function WorldPanel({
                 />
               ) : (
                 <>
+                  <PlayerPanel
+                    hero={hero}
+                    gameState="battle"
+                    armor={armor}
+                    weakened={heroWeakened}
+                    onOpenCharacterSheet={onOpenCharacterSheet}
+                  />
                   <HStack
                     w="100%"
                     justify="space-between"
@@ -977,85 +977,72 @@ export default function WorldPanel({
                         Pass
                       </Button>
                     )}
-                    <Text
-                      fontSize="sm"
-                      fontWeight="semibold"
-                      textAlign="right"
-                      flexShrink={0}
-                    >
-                      Energy: {energy}/{maxEnergy}
-                    </Text>
+                    <CombatEnergyGems energy={energy} maxEnergy={maxEnergy} />
                   </HStack>
 
-                  <Box
-                    position="relative"
-                    flex="1"
-                    minH={0}
-                    w="100%"
-                    display="grid"
-                    gridTemplateColumns="repeat(3, minmax(0, 1fr))"
-                    gridTemplateRows={`repeat(${combatHandRows}, minmax(0, 1fr))`}
-                    gap={1.5}
-                  >
-                    {displayedCards.length === 0 && (
-                      <Text
-                        gridColumn="1 / -1"
-                        gridRow="1 / -1"
-                        display="flex"
-                        alignItems="center"
-                        justifyContent="center"
-                        fontSize="xs"
-                        color="gray.900"
-                        textAlign="center"
-                        px={2}
-                        pointerEvents="none"
-                      >
-                        {viewingHand ? "No cards in hand" : "No cards in discard"}
-                      </Text>
-                    )}
-                    {cardSlots.map((card, index) => (
-                      <Box
-                        key={`${cardZone}-slot-${index}`}
-                        position="relative"
-                        minH={0}
-                        minW={0}
-                        h="100%"
-                        w="100%"
-                      >
-                        {card ? (
-                          viewingHand ? (
-                            <DraggableCombatHandCard
-                              handIndex={index}
-                              card={card}
-                              cost={getCardEnergyCost(card)}
-                              equipped={hero.equipped}
-                              heroAmmo={hero.ammo}
-                              disabled={
-                                !(isPlayerTurn && energy >= getCardEnergyCost(card)) ||
-                                (cardRequiresAmmo(card) && hero.ammo < 1)
-                              }
-                            />
-                          ) : (
-                            <CombatHandCard
-                              card={card}
-                              cost={getCardEnergyCost(card)}
-                              equipped={hero.equipped}
-                              layout="hand"
-                              fillSlot
-                              viewOnly
-                              disabled
-                              onClick={() => {}}
-                            />
-                          )
-                        ) : null}
-                      </Box>
-                    ))}
+                  <Box flex="1" minH={0} w="100%" overflowY="auto" overflowX="hidden">
+                    <SimpleGrid
+                      columns={combatHandCols}
+                      gap={1.5}
+                      w="100%"
+                      maxW={CARD_GRID_3COL_MAX_WIDTH}
+                      mx="auto"
+                    >
+                      {displayedCards.length === 0 ? (
+                        <Text
+                          gridColumn="1 / -1"
+                          py={8}
+                          fontSize="xs"
+                          color={SQUALLS_HUD_COLORS.panelMuted}
+                          textAlign="center"
+                          px={2}
+                        >
+                          {viewingHand ? "No cards in hand" : "No cards in discard"}
+                        </Text>
+                      ) : (
+                        cardSlots.map((card, index) => (
+                          <Box
+                            key={`${cardZone}-slot-${index}`}
+                            position="relative"
+                            w="100%"
+                            aspectRatio={CARD_ASPECT_RATIO}
+                          >
+                            {card ? (
+                              viewingHand ? (
+                                <DraggableCombatHandCard
+                                  handIndex={index}
+                                  card={card}
+                                  cost={getCardEnergyCost(card)}
+                                  equipped={hero.equipped}
+                                  heroAmmo={hero.ammo}
+                                  disabled={
+                                    !(isPlayerTurn && energy >= getCardEnergyCost(card)) ||
+                                    (cardRequiresAmmo(card) && hero.ammo < 1)
+                                  }
+                                />
+                              ) : (
+                                <CombatHandCard
+                                  card={card}
+                                  cost={getCardEnergyCost(card)}
+                                  equipped={hero.equipped}
+                                  layout="hand"
+                                  fillSlot
+                                  viewOnly
+                                  disabled
+                                  onClick={() => {}}
+                                />
+                              )
+                            ) : null}
+                          </Box>
+                        ))
+                      )}
+                    </SimpleGrid>
                   </Box>
 
                   {isPlayerTurn && viewingHand && (
                     <Text
                       fontSize="xs"
-                      color="gray.900"
+                      color={SQUALLS_HUD_COLORS.panelMuted}
                       textAlign="center"
                       flexShrink={0}
                       w="100%"
@@ -1073,16 +1060,16 @@ export default function WorldPanel({
 
     case "dead":
       return (
-        <VStack align="start" gap={4}>
-          <Heading>☠️ Ye Are Dead!</Heading>
+        <VStack align="start" gap={4} {...SQUALLS_WORLD_PANEL} p={{ base: 3, md: 4 }}>
+          <SquallsHeading>☠️ Ye Are Dead!</SquallsHeading>
           <Button onClick={resetToLobby}>Return to Lobby</Button>
         </VStack>
       );
 
     default:
       return (
-        <VStack align="start" gap={4}>
-          <Heading>Ye Be Lost at Sea</Heading>
+        <VStack align="start" gap={4} {...SQUALLS_WORLD_PANEL} p={{ base: 3, md: 4 }}>
+          <SquallsHeading>Ye Be Lost at Sea</SquallsHeading>
           <Text>State: {gameState}</Text>
           <Button onClick={goToLobby}>Return Home</Button>
         </VStack>

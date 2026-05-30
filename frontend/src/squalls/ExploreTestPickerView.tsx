@@ -1,4 +1,6 @@
-import { Box, Heading, SimpleGrid, Text, VStack } from "@chakra-ui/react";
+import { Box, SimpleGrid, Text, VStack } from "@chakra-ui/react";
+
+import { SquallsHeading } from "./SquallsHeading";
 
 import { getDungeonKindEmoji, isDungeonDiscoveryEvent } from "./dungeonExplore";
 import SquallsActionCard from "./SquallsActionCard";
@@ -54,9 +56,9 @@ export default function ExploreTestPickerView({
   return (
     <VStack align="stretch" gap={4} w="100%">
       <Box>
-        <Heading size="md" color="gray.900">
+        <SquallsHeading size="md" color="gray.900">
           {exploreTestContextTitle(context)}
-        </Heading>
+        </SquallsHeading>
         <Text fontSize="sm" color="gray.900" mt={1}>
           Placeholder test menu — pick an outcome to trigger it directly.
         </Text>

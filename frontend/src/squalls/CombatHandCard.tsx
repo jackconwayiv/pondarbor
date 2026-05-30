@@ -1,10 +1,21 @@
-import { Badge, Box, HStack, chakra, Text } from "@chakra-ui/react";
+import { Box, Text, chakra } from "@chakra-ui/react";
 
-import { getCardBackground, getCardTags } from "./combatCardStyle";
-import { getCardEffectText } from "./combatRules";
+import { formatCombatTagEmojis } from "./combatTagEmojis";
+import { getCardBorderColor, getCardTags, CARD_ASPECT_RATIO } from "./combatCardStyle";
+import { getCardEffectText, AMMO_COST_TEXT } from "./combatRules";
+import { cardRequiresAmmo, getCardName } from "./shantiesTypes";
 import type { CombatCard, EquippedGear } from "./shantiesTypes";
+import { SQUALLS_HUD_COLORS } from "./squallsTheme";
 
 const CardButton = chakra("button");
+
+const CARD_OUTER_BORDER = "#000000";
+const CARD_INNER_BG = "#FFFFFF";
+const CARD_TITLE_COLOR = "#1A1A1A";
+const CARD_BODY_COLOR = "#4A4A4A";
+/** Halfway between 2xs (0.625rem) and the prior 2× title size. */
+const CARD_NAME_FONT_SIZE = "0.9375rem";
+const CARD_EFFECT_FONT_SIZE = "xs";
 
 type Props = {
   card: CombatCard;
@@ -14,7 +25,7 @@ type Props = {
   selected?: boolean;
   disabled?: boolean;
   viewOnly?: boolean;
-  /** Fill a fixed-aspect grid slot (size comes from the parent cell). */
+  /** Fill a 2.5×3.5 slot; parent must set `aspectRatio` and `position="relative"`. */
   fillSlot?: boolean;
   /** Let a parent drag handle receive touches (attack cards). */
   dragPassthrough?: boolean;
@@ -34,34 +45,37 @@ export default function CombatHandCard({
   onClick,
 }: Props) {
   const effectText = getCardEffectText(card, equipped);
+  const costsAmmo = cardRequiresAmmo(card);
   const isHandLayout = layout === "hand";
   const tags = getCardTags(card, equipped);
-  const cardBg = getCardBackground(card);
+  const tagEmojis = formatCombatTagEmojis(tags);
+  const cardName = getCardName(card);
+  const classStripColor = getCardBorderColor(card);
+  const stripPadding = isHandLayout ? "2px" : "3px";
+  const contentPx = "0.5";
+  const tagPb = isHandLayout ? "0.5" : "0.5";
 
   return (
     <CardButton
       type="button"
       disabled={!viewOnly && disabled}
-      onClick={viewOnly ? undefined : onClick}
-      aria-disabled={viewOnly || disabled}
+      onClick={onClick}
+      aria-disabled={!viewOnly && disabled}
       position={fillSlot ? "absolute" : "relative"}
       inset={fillSlot ? 0 : undefined}
       w="100%"
       maxW="100%"
-      h={fillSlot ? "100%" : undefined}
-      aspectRatio={fillSlot ? undefined : "2.5/3.5"}
-      justifySelf="stretch"
-      flexShrink={1}
-      minW={0}
+      aspectRatio={fillSlot ? undefined : CARD_ASPECT_RATIO}
+      justifySelf="center"
       borderRadius="md"
       borderWidth="2px"
-      borderColor={selected ? "orange.500" : "gray.800"}
-      bg={cardBg}
-      color="gray.900"
-      boxShadow={selected ? "0 0 0 2px var(--chakra-colors-orange-300)" : "sm"}
+      borderColor={selected ? SQUALLS_HUD_COLORS.focusRing : CARD_OUTER_BORDER}
+      bg={classStripColor}
+      p={stripPadding}
+      boxShadow={selected ? "0 0 0 2px rgba(205,170,99,0.45)" : "md"}
       opacity={!viewOnly && disabled ? 0.45 : 1}
-      cursor={viewOnly ? "default" : disabled ? "not-allowed" : "pointer"}
-      transition="transform 0.12s ease, box-shadow 0.12s ease"
+      cursor={viewOnly || disabled ? (viewOnly ? "pointer" : "not-allowed") : "pointer"}
+      transition="transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease"
       _hover={
         viewOnly || disabled
           ? undefined
@@ -71,89 +85,114 @@ export default function CombatHandCard({
             }
       }
       _disabled={{ pointerEvents: "none" }}
+      _focusVisible={{
+        outline: `2px solid ${SQUALLS_HUD_COLORS.focusRing}`,
+        outlineOffset: "2px",
+      }}
       pointerEvents={dragPassthrough ? "none" : undefined}
       tabIndex={dragPassthrough ? -1 : undefined}
       display="flex"
       flexDirection="column"
       overflow="hidden"
     >
-      <Text
-        position="absolute"
-        top={isHandLayout ? "0.5" : "1"}
-        right={isHandLayout ? "0.5" : "1"}
-        fontSize={isHandLayout ? "2xs" : "xs"}
-        fontWeight="bold"
-        lineHeight="1"
-        minW={isHandLayout ? "1rem" : "1.25rem"}
-        textAlign="center"
-        px={isHandLayout ? "0.5" : "1"}
-        py={isHandLayout ? "0.5" : "0.5"}
-        borderRadius="sm"
-        bg="gray.900"
-        color="white"
-        zIndex={1}
-      >
-        {cost}
-      </Text>
-
       <Box
         flex="1"
         display="flex"
         flexDirection="column"
-        alignItems="center"
-        justifyContent="center"
-        px={isHandLayout ? "1" : "1.5"}
-        pt={isHandLayout ? "4" : "6"}
-        pb={isHandLayout ? "0.5" : "1"}
+        bg={CARD_INNER_BG}
+        borderRadius="sm"
+        overflow="hidden"
         minH={0}
-        gap={0.5}
+        position="relative"
+        color={CARD_TITLE_COLOR}
       >
         <Text
-          fontSize={isHandLayout ? "2xs" : "xs"}
+          position="absolute"
+          top={isHandLayout ? "0.5" : "0.5"}
+          right={isHandLayout ? "0.5" : "0.5"}
+          fontSize={isHandLayout ? "2xs" : "2xs"}
           fontWeight="bold"
-          textTransform="uppercase"
+          lineHeight="1"
+          minW="1rem"
           textAlign="center"
-          lineClamp={isHandLayout ? 2 : 4}
-          lineHeight="short"
+          px="0.5"
+          py="0.5"
+          borderRadius="sm"
+          borderWidth="1px"
+          borderColor="#D1D5DB"
+          bg={CARD_INNER_BG}
+          color={CARD_TITLE_COLOR}
+          zIndex={1}
         >
-          {card.name}
+          {cost}
         </Text>
-        <Text
-          w="100%"
-          fontSize="2xs"
-          fontWeight="normal"
-          textAlign="center"
-          lineClamp={isHandLayout ? 2 : 2}
-          lineHeight="short"
-          color="gray.900"
-        >
-          {effectText}
-        </Text>
-      </Box>
 
-      <HStack
-        gap={0.5}
-        justify="center"
-        flexWrap="wrap"
-        px={1}
-        pb={isHandLayout ? 1 : 1.5}
-        pt={0}
-        flexShrink={0}
-      >
-        {tags.map((tag) => (
-          <Badge
-            key={tag}
-            size="sm"
-            variant="subtle"
-            colorPalette="gray"
-            fontSize="2xs"
-            textTransform="capitalize"
-            px={1}
+        <Box
+          flex="1"
+          display="flex"
+          flexDirection="column"
+          alignItems="center"
+          justifyContent="center"
+          px={contentPx}
+          py={1}
+          minH={0}
+          gap="0.5px"
+        >
+          <Text
+            fontSize={CARD_NAME_FONT_SIZE}
+            fontWeight="bold"
+            textTransform="uppercase"
+            textAlign="center"
+            lineHeight="1.1"
+            wordBreak="break-word"
+            color={CARD_TITLE_COLOR}
+            w="100%"
           >
-            {tag}
-          </Badge>
-        ))}
-      </HStack>
+            {cardName}
+          </Text>
+          <Text
+            w="100%"
+            fontSize={CARD_EFFECT_FONT_SIZE}
+            fontWeight="normal"
+            textAlign="center"
+            lineHeight="1.15"
+            wordBreak="break-word"
+            color={CARD_BODY_COLOR}
+            mt="1lh"
+          >
+            {effectText}
+          </Text>
+          {costsAmmo ? (
+            <Text
+              w="100%"
+              fontSize={CARD_EFFECT_FONT_SIZE}
+              fontWeight="normal"
+              textAlign="center"
+              lineHeight="1.15"
+              wordBreak="break-word"
+              color={CARD_BODY_COLOR}
+            >
+              {AMMO_COST_TEXT}
+            </Text>
+          ) : null}
+        </Box>
+
+        {tagEmojis ? (
+          <Text
+            textAlign="center"
+            fontSize={isHandLayout ? "2xs" : "xs"}
+            lineHeight="1"
+            letterSpacing="0.05em"
+            px="0.5"
+            pb={tagPb}
+            pt={0}
+            flexShrink={0}
+            aria-label={tags.join(", ")}
+          >
+            {tagEmojis}
+          </Text>
+        ) : null}
+      </Box>
     </CardButton>
   );
 }

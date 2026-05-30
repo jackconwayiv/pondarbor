@@ -8,17 +8,24 @@ import {
   getAttackEffectRangeText,
   getDefendEffectRangeText,
 } from "./combatEquipment";
+import { getCardDefinition } from "./squallsCardCatalog";
 import {
+  getCardEffect,
   isAttackCard,
-  cardRequiresAmmo,
   isDefendCard,
-  isStrongAttackCard,
+  isSwishCard,
+  targetsAllEnemiesAutomatically,
   targetsSelfAutomatically,
 } from "./shantiesTypes";
+import type { CardId } from "./squallsCardCatalog";
+import { combatDeckAsCards } from "./combatDeck";
 
 export const MAX_ENERGY_PER_TURN = 3;
 export const CARDS_DRAWN_PER_TURN = 5;
 export const COMBAT_LOG_MAX_ENTRIES = 5;
+/** Maximum foes on the battlefield at once (3×2 grid). */
+export const MAX_BATTLEFIELD_ENEMIES = 6;
+export const AMMO_COST_TEXT = "Costs 1 ammo";
 
 export function appendCombatLog(
   prev: CombatLogEntry[],
@@ -45,14 +52,22 @@ export function spawnEnemy(
   template: Pick<EnemyType, "name" | "level" | "hp" | "traits"> & {
     max_hp?: number;
     armor?: number;
+    damageMin?: number;
+    damageMax?: number;
+    isBoss?: boolean;
   },
 ): EnemyType {
   const max_hp = clampHp(template.max_hp ?? template.hp);
+  const damageMin = Math.max(1, template.damageMin ?? 1);
+  const damageMax = Math.max(damageMin, template.damageMax ?? 4);
   return initializeEnemyActionDeck({
     name: template.name,
     level: template.level,
     hp: clampHp(template.hp),
     max_hp,
+    damageMin,
+    damageMax,
+    ...(template.isBoss ? { isBoss: true } : {}),
     armor: Math.max(0, template.armor ?? 0),
     ...(template.traits && template.traits.length > 0
       ? { traits: template.traits }
@@ -185,12 +200,12 @@ export function shuffleCards(cards: CombatCard[]): CombatCard[] {
 }
 
 /** Full deck shuffled into the draw pile; opening hand drawn from the top. */
-export function setupCombatDeck(masterDeck: CombatCard[]): {
+export function setupCombatDeck(masterDeck: readonly CardId[]): {
   drawPile: CombatCard[];
   discardPile: CombatCard[];
   hand: CombatCard[];
 } {
-  const shuffledDrawPile = shuffleCards(masterDeck);
+  const shuffledDrawPile = shuffleCards(combatDeckAsCards(masterDeck));
   const { drawPile, discardPile, drawn } = drawFromPiles(
     shuffledDrawPile,
     [],
@@ -226,28 +241,38 @@ export function drawFromPiles(
 }
 
 export function getCardEnergyCost(card: CombatCard): number {
-  return isStrongAttackCard(card) ? 2 : 1;
+  return getCardDefinition(card.id).energy;
 }
 
 export function getCardEffectText(
   card: CombatCard,
   equipped?: EquippedGear,
 ): string {
+  const effect = getCardEffect(card);
   if (isAttackCard(card)) {
     if (equipped) {
       return getAttackEffectRangeText(equipped, card);
     }
-    const ammoSuffix = cardRequiresAmmo(card) ? " · 1 ammo" : "";
-    return card.strong
-      ? `Best of 2 × weapon damage${ammoSuffix}`
-      : `Weapon damage${ammoSuffix}`;
+    if (effect === "melee_all_enemies") return "Melee vs each foe";
+    if (effect === "ranged_all_enemies") return "Ranged vs each foe";
+    if (effect === "steal") return "Melee damage · steal Ld4 gold if hit";
+    if (effect === "lucky_melee" || effect === "lucky_ranged") {
+      return "Better of two rolls: weapon damage";
+    }
+    if (effect === "strong_melee" || effect === "strong_ranged") {
+      return "2 rolls of weapon damage";
+    }
+    return "Weapon damage";
   }
   if (isDefendCard(card) || targetsSelfAutomatically(card)) {
     if (equipped) {
-      return getDefendEffectRangeText(equipped);
+      return getDefendEffectRangeText(equipped, card);
     }
+    if (isSwishCard(card)) return "Gain armor · Evasive";
     return "Gain armor from equipped gear";
+  }
+  if (targetsAllEnemiesAutomatically(card)) {
+    return getAttackEffectRangeText(equipped ?? { melee: null, ranged: null, armor: null, relic: null, relic2: null, pet: null }, card);
   }
   return "";
 }
-

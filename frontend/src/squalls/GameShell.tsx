@@ -5,6 +5,7 @@ import {
   getShellAppearance,
 } from "./gameShellAppearance";
 import type { GameShellProps } from "./shantiesTypes";
+import { SQUALLS_HUD_COLORS } from "./squallsTheme";
 
 export default function GameShell({
   world,
@@ -12,14 +13,24 @@ export default function GameShell({
   player,
   targetGameState,
   targetLocation,
+  targetDungeonKind,
   displayGameState,
   displayLocation,
+  displayDungeonKind,
   sceneOpacity,
   sceneFadeMs,
   isTransitioning,
 }: GameShellProps) {
-  const displayShell = getShellAppearance(displayGameState, displayLocation);
-  const targetTopColor = getSceneTopColor(targetGameState, targetLocation);
+  const displayShell = getShellAppearance(
+    displayGameState,
+    displayLocation,
+    displayDungeonKind,
+  );
+  const targetTopColor = getSceneTopColor(
+    targetGameState,
+    targetLocation,
+    targetDungeonKind,
+  );
   const inBattle = displayGameState === "battle";
 
   return (
@@ -54,9 +65,12 @@ export default function GameShell({
             w="100%"
             px={3}
             py={2}
-            borderBottom="1px solid rgba(0,0,0,0.08)"
-            bg="blackAlpha.200"
-            backdropFilter="blur(10px)"
+            borderBottom="1px solid"
+            borderColor={SQUALLS_HUD_COLORS.panelBorder}
+            bg={SQUALLS_HUD_COLORS.panelBg}
+            color={SQUALLS_HUD_COLORS.panelText}
+            backdropFilter="blur(12px)"
+            boxShadow="inset 0 -1px 0 rgba(0,0,0,0.2)"
           >
             <VStack gap={1.5} align="stretch" w="100%">
               {player}
@@ -72,9 +86,10 @@ export default function GameShell({
           w="100%"
           display="flex"
           flexDirection="column"
-          p={inBattle ? 0 : 5}
-          pt={inBattle ? 0 : 5}
+          p={inBattle ? 0 : { base: 2, md: 5 }}
+          pt={inBattle ? 0 : { base: 2, md: 5 }}
           overflow={inBattle ? "hidden" : "auto"}
+          position="relative"
         >
           {world}
         </Box>

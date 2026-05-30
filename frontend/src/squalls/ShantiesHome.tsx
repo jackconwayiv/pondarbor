@@ -22,6 +22,24 @@ export default function ShantiesHome({ playIntent = null }: ShantiesHomeProps) {
   const intentHandledRef = useRef(false);
   const game = useShantiesGame();
   const [characterSheetOpen, setCharacterSheetOpen] = useState(false);
+  const [characterSheetTab, setCharacterSheetTab] = useState<
+    "stats" | "equipment" | "deck" | "settings"
+  >("stats");
+
+  useEffect(() => {
+    if (game.characterSheetRequest?.tab === "deck") {
+      setCharacterSheetTab("deck");
+      setCharacterSheetOpen(true);
+      game.clearCharacterSheetRequest();
+    }
+  }, [game.characterSheetRequest, game.clearCharacterSheetRequest]);
+
+  useEffect(() => {
+    if (game.hero.deckEditRequired) {
+      setCharacterSheetTab("deck");
+      setCharacterSheetOpen(true);
+    }
+  }, [game.hero.deckEditRequired]);
   const sceneKey = getSceneKey(game.gameState, game.location);
   const sceneFade = useSquallsSceneFade(sceneKey);
   const shouldFreezeScene =
@@ -52,6 +70,7 @@ export default function ShantiesHome({ playIntent = null }: ShantiesHomeProps) {
         allCombatLootClaimed: game.allCombatLootClaimed,
         eventLoot: game.eventLoot,
         allEventLootClaimed: game.allEventLootClaimed,
+        levelUpCardChoices: game.levelUpCardChoices,
         enemyActionMessage: game.enemyActionMessage,
         dungeonChestUnlocked: game.dungeonChestUnlocked,
         chestMessage: game.chestMessage,
@@ -82,6 +101,7 @@ export default function ShantiesHome({ playIntent = null }: ShantiesHomeProps) {
       game.allCombatLootClaimed,
       game.eventLoot,
       game.allEventLootClaimed,
+      game.levelUpCardChoices,
       game.enemyActionMessage,
       game.dungeonChestUnlocked,
       game.chestMessage,
@@ -166,8 +186,10 @@ export default function ShantiesHome({ playIntent = null }: ShantiesHomeProps) {
       <GameShell
         targetGameState={game.gameState}
         targetLocation={game.location}
+        targetDungeonKind={game.currentDungeon?.kind ?? null}
         displayGameState={sceneFade.gameState}
         displayLocation={sceneFade.location}
+        displayDungeonKind={frozenWorldVisuals.currentDungeon?.kind ?? null}
         sceneOpacity={sceneFade.opacity}
         sceneFadeMs={sceneFade.fadeMs}
         isTransitioning={sceneFade.isTransitioning}
@@ -179,6 +201,7 @@ export default function ShantiesHome({ playIntent = null }: ShantiesHomeProps) {
             currentDungeon={frozenWorldVisuals.currentDungeon}
             renderIslandName={game.renderIslandName}
             renderDungeonName={game.renderDungeonName}
+            onOpenCharacterSheet={openCharacterSheet}
           />
         }
         world={
@@ -248,6 +271,7 @@ export default function ShantiesHome({ playIntent = null }: ShantiesHomeProps) {
             exploreTestOptions={game.exploreTestOptions}
             applyExploreTestOutcome={game.applyExploreTestOutcome}
             cancelExploreTest={game.cancelExploreTest}
+            chooseLevelUpCard={game.chooseLevelUpCard}
             resolveShipwreckDive={game.resolveShipwreckDive}
             onOpenCharacterSheet={openCharacterSheet}
             currentPortTown={game.currentPortTown}
@@ -274,13 +298,16 @@ export default function ShantiesHome({ playIntent = null }: ShantiesHomeProps) {
         energy={game.energy}
         victoryPending={game.victoryPending}
         combatVictory={game.combatVictory}
-        armor={game.armor}
         currentIndoorArea={game.currentIndoorArea}
         illuminatedAreas={game.illuminatedAreas}
         itemMessage={game.itemMessage}
         onUseItem={game.useItem}
         onClearItemMessage={game.clearItemMessage}
         onEquipmentChange={game.updateHeroEquipment}
+        onDeckChange={game.updateHeroDeck}
+        onClearDeckEditRequired={game.clearDeckEditRequired}
+        initialTab={characterSheetTab}
+        onLeaveGame={leaveToSquallsLobby}
       />
     </>
   );

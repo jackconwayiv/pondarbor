@@ -23,6 +23,7 @@ export type WorldPanelVisualProps = Pick<
   | "allCombatLootClaimed"
   | "eventLoot"
   | "allEventLootClaimed"
+  | "levelUpCardChoices"
   | "enemyActionMessage"
   | "dungeonChestUnlocked"
   | "chestMessage"
@@ -58,6 +59,7 @@ export function pickWorldPanelVisuals(source: VisualSource): WorldPanelVisualPro
     allCombatLootClaimed: source.allCombatLootClaimed,
     eventLoot: source.eventLoot,
     allEventLootClaimed: source.allEventLootClaimed,
+    levelUpCardChoices: source.levelUpCardChoices,
     enemyActionMessage: source.enemyActionMessage,
     dungeonChestUnlocked: source.dungeonChestUnlocked,
     chestMessage: source.chestMessage,

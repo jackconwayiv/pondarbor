@@ -20,6 +20,9 @@ export type GameShellProps = {
   /** Scene shown during fade transitions (lags live state while animating). */
   displayGameState: GameStateTypes;
   displayLocation: GameLocationTypes;
+  /** Optional dungeon kind for scene tinting (wreck vs land dungeons). */
+  targetDungeonKind?: IndoorAreaKind | null;
+  displayDungeonKind?: IndoorAreaKind | null;
   sceneOpacity: number;
   sceneFadeMs: number;
   isTransitioning: boolean;
@@ -38,7 +41,8 @@ export type GameStateTypes =
   | "tavern"
   | "shipwright"
   | "exploreTest"
-  | "cookstove";
+  | "cookstove"
+  | "levelUp";
 
 export type GameLocationTypes = "ship" | "island" | "dungeon" | "port";
 
@@ -78,6 +82,9 @@ export type EnemyType = {
   level: number;
   hp: number;
   max_hp: number;
+  damageMin: number;
+  damageMax: number;
+  isBoss?: boolean;
   /** Attack / Defend / Buff / Debuff telegraph for the player's turn. */
   broadcast: EnemyBroadcast;
   /** Queued action for the next enemy phase. */
@@ -102,38 +109,26 @@ export const DEFEND_TARGETING: CardTargeting = {
 export type CombatTag =
   | "melee"
   | "sword"
-  | "slashing"
   | "ranged"
   | "firearm"
-  | "piercing"
-  | "physical"
-  | "armor"
   | "attack"
   | "defense";
 
 /** @deprecated Use CombatTag */
 export type CardTag = CombatTag;
 
+import type { CardId } from "./squallsCardCatalog";
+import {
+  getCardDefinition,
+  type CardEffectKind,
+} from "./squallsCardCatalog";
+
+export type { CardId };
+
 export type AttackKind = "melee" | "ranged";
 
-export type AttackCardName =
-  | "Melee Attack"
-  | "Ranged Attack"
-  | "Strong Melee Attack"
-  | "Strong Ranged Attack";
-
-export type AttackCard = {
-  name: AttackCardName;
-  attackKind: AttackKind;
-  strong: boolean;
-};
-
-export type DefendCard = {
-  name: "Defend";
-  targeting: CardTargeting;
-};
-
-export type CombatCard = AttackCard | DefendCard;
+/** Minimal runtime card instance; resolve display/combat via catalog. */
+export type CombatCard = { id: CardId };
 
 export type CombatLogSide = "hero" | "enemy";
 
@@ -252,7 +247,11 @@ export type HeroType = {
   gold: number;
   xp: number;
   level: number;
-  deck: CombatCard[];
+  deck: CardId[];
+  /** Every owned copy — exact counts per card id (binder inventory). */
+  cardCollection: CardId[];
+  /** Set when loadout change leaves deck illegal until fixed. */
+  deckEditRequired?: boolean;
   inventory: Inventory;
   equipped: EquippedGear;
   /** Unequipped equipment pieces (drag to slots to equip). */
@@ -276,6 +275,7 @@ export type AdventureStripeProps = {
   renderIslandName: (island: IslandType) => string;
   renderDungeonName: (dungeon: DungeonType) => string;
   gameState?: GameStateTypes;
+  onOpenCharacterSheet?: () => void;
 };
 
 export type WorldPanelProps = {
@@ -313,6 +313,7 @@ export type WorldPanelProps = {
   allCombatLootClaimed: boolean;
   eventLoot: CombatLootItem[];
   allEventLootClaimed: boolean;
+  levelUpCardChoices: CombatCard[];
   enemyActionMessage: string | null;
   handleSailOrExplore: () => void;
   startSailFromShip: () => void;
@@ -374,37 +375,91 @@ export type WorldPanelProps = {
   exploreTestOptions: ExploreTestOption[];
   applyExploreTestOutcome: (optionId: string) => void;
   cancelExploreTest: () => void;
+  chooseLevelUpCard: (choiceIndex: number) => void;
   onOpenCharacterSheet: () => void;
 };
 
-export function isAttackCard(card: CombatCard): card is AttackCard {
-  return (
-    card.name === "Melee Attack" ||
-    card.name === "Ranged Attack" ||
-    card.name === "Strong Melee Attack" ||
-    card.name === "Strong Ranged Attack"
-  );
+const MELEE_EFFECTS: readonly CardEffectKind[] = [
+  "melee_attack",
+  "lucky_melee",
+  "strong_melee",
+  "quick_melee",
+  "melee_all_enemies",
+  "steal",
+];
+
+const RANGED_EFFECTS: readonly CardEffectKind[] = [
+  "ranged_attack",
+  "lucky_ranged",
+  "strong_ranged",
+  "cheap_ranged",
+  "ranged_all_enemies",
+];
+
+const DEFEND_EFFECTS: readonly CardEffectKind[] = [
+  "defend",
+  "lucky_armor",
+  "strong_armor",
+  "dodge",
+  "swish",
+];
+
+export function getCardEffect(card: CombatCard): CardEffectKind {
+  return getCardDefinition(card.id).effect;
 }
 
-export function isStrongAttackCard(card: CombatCard): card is AttackCard {
-  return isAttackCard(card) && card.strong;
+export function getCardName(card: CombatCard): string {
+  return getCardDefinition(card.id).name;
 }
 
-export function getAttackKind(card: AttackCard): AttackKind {
-  return card.attackKind;
+export function isAttackCard(card: CombatCard): boolean {
+  return MELEE_EFFECTS.includes(getCardEffect(card)) ||
+    RANGED_EFFECTS.includes(getCardEffect(card));
+}
+
+export function isMeleeAttackCard(card: CombatCard): boolean {
+  return MELEE_EFFECTS.includes(getCardEffect(card));
+}
+
+export function isRangedAttackCard(card: CombatCard): boolean {
+  return RANGED_EFFECTS.includes(getCardEffect(card));
+}
+
+export function isStrongAttackCard(card: CombatCard): boolean {
+  const effect = getCardEffect(card);
+  return effect === "strong_melee" || effect === "strong_ranged";
+}
+
+export function getAttackKind(card: CombatCard): AttackKind {
+  return isRangedAttackCard(card) ? "ranged" : "melee";
 }
 
 export function cardRequiresAmmo(card: CombatCard): boolean {
-  return isAttackCard(card) && getAttackKind(card) === "ranged";
+  return isRangedAttackCard(card);
 }
 
-export function isDefendCard(card: CombatCard): card is DefendCard {
-  return card.name === "Defend";
+export function isDefendCard(card: CombatCard): boolean {
+  return DEFEND_EFFECTS.includes(getCardEffect(card));
 }
 
-/** Resolved targeting for any combat card (attacks implicit until they carry their own). */
+export function isAllEnemiesCard(card: CombatCard): boolean {
+  const effect = getCardEffect(card);
+  return effect === "melee_all_enemies" || effect === "ranged_all_enemies";
+}
+
+export function isStealCard(card: CombatCard): boolean {
+  return getCardEffect(card) === "steal";
+}
+
+export function isSwishCard(card: CombatCard): boolean {
+  return getCardEffect(card) === "swish";
+}
+
+/** Resolved targeting for any combat card. */
 export function getCardTargeting(card: CombatCard): CardTargeting {
-  if (isDefendCard(card)) return card.targeting;
+  const mode = getCardDefinition(card.id).targeting;
+  if (mode === "self") return { mode: "auto", target: "self" };
+  if (mode === "all_enemies") return { mode: "auto", target: "enemy" };
   return { mode: "manual", target: "enemy" };
 }
 
@@ -416,4 +471,8 @@ export function targetsSelfAutomatically(card: CombatCard): boolean {
 export function targetsEnemyManually(card: CombatCard): boolean {
   const { mode, target } = getCardTargeting(card);
   return mode === "manual" && target === "enemy";
+}
+
+export function targetsAllEnemiesAutomatically(card: CombatCard): boolean {
+  return getCardDefinition(card.id).targeting === "all_enemies";
 }

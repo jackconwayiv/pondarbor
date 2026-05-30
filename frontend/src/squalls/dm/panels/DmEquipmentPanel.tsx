@@ -6,18 +6,18 @@ import {
   EQUIPMENT_SLOT_LABELS,
 } from "../../shantiesEquipment";
 import type { EquipmentId } from "../../shantiesTypes";
-import { DmPanelIntro, DmSectionHeading } from "./DmStatRow";
+import { SQUALLS_HUD_COLORS } from "../../squallsTheme";
+import { DM_PANEL_CARD_PROPS, DmPanelIntro, DmSectionHeading } from "./DmStatRow";
 
 function EquipmentReferenceCard({ equipmentId }: { equipmentId: EquipmentId }) {
   const def = EQUIPMENT_DEFINITIONS[equipmentId];
   return (
     <Box
-      p={3}
+      {...DM_PANEL_CARD_PROPS}
       borderRadius="lg"
       borderWidth="2px"
-      borderColor="purple.400"
-      bg="white"
-      color="gray.900"
+      borderColor="rgba(109, 79, 142, 0.8)"
+      color={SQUALLS_HUD_COLORS.panelText}
       minH="8rem"
     >
       <Text fontSize="2xl" textAlign="center">
@@ -26,27 +26,34 @@ function EquipmentReferenceCard({ equipmentId }: { equipmentId: EquipmentId }) {
       <Text fontSize="sm" fontWeight="bold" textAlign="center" mt={1}>
         {def.name}
       </Text>
-      <Text fontSize="xs" color="gray.900" textAlign="center" mt={1}>
+      <Text fontSize="xs" color={SQUALLS_HUD_COLORS.panelMuted} textAlign="center" mt={1}>
         {EQUIPMENT_SLOT_LABELS[def.slot]}
       </Text>
       {def.combat ? (
-        <Text fontSize="xs" color="gray.900" textAlign="center" mt={1}>
+        <Text fontSize="xs" color={SQUALLS_HUD_COLORS.panelMuted} textAlign="center" mt={1}>
           {def.combat.min}–{def.combat.max}
           {def.slot === "armor" ? " armor" : " damage"}
         </Text>
       ) : null}
       <HStack gap={1} flexWrap="wrap" justify="center" mt={2}>
         {(def.tags ?? []).map((tag) => (
-          <Badge key={tag} size="sm" variant="subtle" colorPalette="gray" fontSize="2xs">
+          <Badge
+            key={tag}
+            size="sm"
+            variant="solid"
+            bg="rgba(58, 39, 21, 0.66)"
+            color="gray.50"
+            fontSize="2xs"
+          >
             {tag}
           </Badge>
         ))}
       </HStack>
-      <Text fontSize="2xs" color="gray.900" mt={2} lineClamp={3}>
+      <Text fontSize="2xs" color={SQUALLS_HUD_COLORS.panelMuted} mt={2} lineClamp={3}>
         {def.description}
       </Text>
       {def.shopPrice !== undefined ? (
-        <Text fontSize="2xs" color="gray.900" mt={1}>
+        <Text fontSize="2xs" color={SQUALLS_HUD_COLORS.panelSubtle} mt={1}>
           Shop ref: {def.shopPrice}g
         </Text>
       ) : null}

@@ -222,7 +222,8 @@ const DenizenShopRow = memo(function DenizenShopRow({
             <Text
               fontSize="sm"
               lineHeight="1.1"
-              color="gray.500"
+              fontWeight="bold"
+              color={canAfford ? "lilypad.solid" : "nautical.solid"}
               fontVariantNumeric="tabular-nums"
               truncate
               w="full"

@@ -42,6 +42,7 @@ import {
 import Clicker2PondStage from "./Clicker2PondStage";
 import PondDepthChart from "./PondDepthChart";
 import { prependDenizenPurchase } from "./purchaseTimeline";
+import { rippleVisualStyleFromOwnedSpecialties } from "./rippleVisuals";
 import { specialtyAcquiredMigrationPending } from "./specialtyAcquiredAt";
 import { stripRetiredWindFromOwnedSpecialties } from "./retiredWindEvolutions";
 import { listOwnedEvolutionDefs } from "./clicker2OwnedEvolutions";
@@ -55,8 +56,8 @@ import Clicker2WeatherEvent from "./Clicker2WeatherEvent";
 import DenizenShopList from "./DenizenShopList";
 import { Clicker2HeadlineStrip } from "./Clicker2HeadlineStrip";
 import { Clicker2PondHeadline } from "./Clicker2PondHeadline";
-import { MilestoneCelebrateCard } from "./MilestoneCelebrateCard";
-import { activeHeadlineForEps } from "./headlines";
+import { MilestoneCelebrateCard, MilestoneDismissAllCard } from "./MilestoneCelebrateCard";
+import { useClicker2RotatingHeadline } from "./useClicker2RotatingHeadline";
 import MutagenPanel from "./MutagenPanel";
 import StrataProgressRow from "./StrataProgressRow";
 import {
@@ -146,6 +147,7 @@ import {
   WEATHER_PAGE_BACKGROUND_FADE_MS,
   clickWeatherMultiplier,
   createWeatherEvent,
+  effectiveClickValue,
   effectiveEnergyPerSecond,
   epsWeatherMultiplier,
   remainingMsUntilWeatherSpawn,
@@ -231,6 +233,7 @@ export default function Clicker2GamePage() {
   const [mutagenUiTick, setMutagenUiTick] = useState(0);
   const [savedBannerKey, setSavedBannerKey] = useState(0);
   const savedBannerTimeoutRef = useRef(0);
+  const lastSavedAtMsRef = useRef(0);
   const [pondStartedAtMs, setPondStartedAtMs] = useState(
     () => createDefaultClicker2State().pond_started_at_ms,
   );
@@ -375,7 +378,12 @@ export default function Clicker2GamePage() {
         nowPerf,
       ),
       energyPerSecond: sim.energyPerSecond,
-      energyPerClick: sim.clickValue,
+      energyPerClick: effectiveClickValue(
+        sim.clickBreakdown,
+        activeRainBoostRef.current,
+        activeBlusterBoostRef.current,
+        nowPerf,
+      ),
       totalClicks: statisticsRef.current.total_clicks ?? 0,
       weatherEventsClicked: statisticsRef.current.weather_events_clicked ?? 0,
       weatherSunClicked: statisticsRef.current.weather_sun_clicked ?? 0,
@@ -509,6 +517,7 @@ export default function Clicker2GamePage() {
         saveDirtyRef.current = false;
         saveFailureCountRef.current = 0;
         setSaveError(null);
+        lastSavedAtMsRef.current = Date.now();
         showSavedBanner();
         persistLocalSave();
         if (saveRes.clicker2_badges_unlocked) {
@@ -671,6 +680,11 @@ export default function Clicker2GamePage() {
     [ownedDenizens, ownedSpecialties, denizenMutationLevels, blossomCount],
   );
 
+  const rippleVisualStyle = useMemo(
+    () => rippleVisualStyleFromOwnedSpecialties(ownedSpecialties),
+    [ownedSpecialties],
+  );
+
   const effectiveAllTimeEnergyEarnedDisplay = useMemo(
     () => effectiveAllTimeEnergyEarnedNow(),
     [
@@ -697,7 +711,11 @@ export default function Clicker2GamePage() {
     getDisplayEpsSnapshot,
   );
 
-  const effectiveClickValue = simulation.clickValue * clickMultiplier;
+  const effectiveClickValueDisplay = effectiveClickValue(
+    simulation.clickBreakdown,
+    activeRainBoostRef.current,
+    activeBlusterBoostRef.current,
+  );
 
   const weatherAmbient = weatherAmbientFromBoosts({
     clickMultiplier,
@@ -855,6 +873,12 @@ export default function Clicker2GamePage() {
         if (cancelled) return;
         const userId = sessionUser.user.id;
         const local = readClicker2LocalSave(userId);
+        const serverSavedAtMs = res.updated_at ? Date.parse(res.updated_at) : 0;
+        const localSavedAtMs = local?.savedAtMs ?? 0;
+        lastSavedAtMsRef.current = Math.max(
+          Number.isFinite(serverSavedAtMs) ? serverSavedAtMs : 0,
+          localSavedAtMs,
+        );
         const merged = resolveClicker2LoadState(res, local);
         const loadedState = finalizeClicker2LoadState(res, local);
         const loadNowMs = Date.parse(res.server_time) || Date.now();
@@ -1183,10 +1207,7 @@ export default function Clicker2GamePage() {
     [milestonesReached, milestonesDismissed],
   );
 
-  const activeHeadlineText = useMemo(
-    () => activeHeadlineForEps(displayEnergyPerSecond)?.text ?? "",
-    [displayEnergyPerSecond],
-  );
+  const activeHeadlineText = useClicker2RotatingHeadline(ownedDenizens);
 
   const visibleDenizens = useMemo(
     () => {
@@ -1378,6 +1399,25 @@ export default function Clicker2GamePage() {
     [markGameDirty],
   );
 
+  const handleDismissAllMilestoneCelebrations = useCallback(
+    (ids: readonly string[]) => {
+      if (ids.length < 2) return;
+      let changed = false;
+      const next = { ...milestonesDismissedRef.current };
+      for (const id of ids) {
+        if (milestonesReachedRef.current[id] == null) continue;
+        if (next[id]) continue;
+        next[id] = true;
+        changed = true;
+      }
+      if (!changed) return;
+      milestonesDismissedRef.current = next;
+      setMilestonesDismissed(next);
+      markGameDirty();
+    },
+    [markGameDirty],
+  );
+
   /*
    * CLICKER2_DEV_TOOLS — handlers (staff-gated via showClicker2DevToolsRef).
    *
@@ -1494,7 +1534,6 @@ export default function Clicker2GamePage() {
       }),
     );
 
-    const clickWx = clickWeatherMultiplier(activeRainBoostRef.current);
     const stratumLevel = stratumLevelFromAllTimeEnergy(allTimeEnergyEarned);
 
     setStatsSnapshot({
@@ -1505,6 +1544,7 @@ export default function Clicker2GamePage() {
       stratumLevel,
       energyToNextStratum: energyToNextStratum(allTimeEnergyEarned),
       pondStartedAtMs: pondStartedAtMsRef.current,
+      lastSavedAtMs: lastSavedAtMsRef.current,
       denizensOwned: totalDenizensOwned(ownedDenizensRef.current),
       evolutionsOwned: ownedEvolutionDefs.length,
       ownedEvolutionDefs,
@@ -1513,7 +1553,12 @@ export default function Clicker2GamePage() {
       blossoms: blossomCountRef.current,
       milestoneStatuses,
       energyPerSecond: displayEps,
-      energyPerClick: sim.clickValue * clickWx,
+      energyPerClick: effectiveClickValue(
+        sim.clickBreakdown,
+        activeRainBoostRef.current,
+        activeBlusterBoostRef.current,
+        capturedPerfMs,
+      ),
       totalClicks: stats.total_clicks ?? 0,
       energyFromClicking: stats.energy_from_clicking ?? 0,
       weatherEventsClicked: stats.weather_events_clicked ?? 0,
@@ -1553,10 +1598,14 @@ export default function Clicker2GamePage() {
       denizenMutationLevelsRef.current,
       blossomCountRef.current,
     );
+    const nowPerf = performance.now();
     const gain =
-      sim.clickValue *
-      clickWeatherMultiplier(activeRainBoostRef.current) *
-      clickCount;
+      effectiveClickValue(
+        sim.clickBreakdown,
+        activeRainBoostRef.current,
+        activeBlusterBoostRef.current,
+        nowPerf,
+      ) * clickCount;
     const eps = effectiveEnergyPerSecond(
       sim.energyPerSecond,
       activeBlusterBoostRef.current,
@@ -1807,6 +1856,18 @@ export default function Clicker2GamePage() {
       ) : null}
       <Clicker2HeadlineStrip
         mode={celebrationMilestones.length > 0 ? "milestones" : "headline"}
+        milestoneLeadingAction={
+          celebrationMilestones.length >= 2 ? (
+            <MilestoneDismissAllCard
+              onDismissAll={() =>
+                handleDismissAllMilestoneCelebrations(
+                  celebrationMilestones.map((m) => m.id),
+                )
+              }
+              motionPaused={motionPaused}
+            />
+          ) : undefined
+        }
       >
         {celebrationMilestones.length > 0 ? (
           celebrationMilestones.map((milestone) => (
@@ -1827,7 +1888,9 @@ export default function Clicker2GamePage() {
         <Clicker2PondStage
           denizens={pondDenizens}
           blossomCount={blossomCount}
-          clickValue={effectiveClickValue}
+          clickValue={effectiveClickValueDisplay}
+          rippleOpacityStart={rippleVisualStyle.opacityStart}
+          rippleBorderAlpha={rippleVisualStyle.borderAlpha}
           motionPaused={motionPaused}
           lightClickFx={clickMultiplier > 1}
           onClickPond={onClickPond}

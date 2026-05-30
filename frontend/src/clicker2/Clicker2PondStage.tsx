@@ -99,6 +99,8 @@ function Clicker2PondStage({
   denizens,
   blossomCount = 0,
   clickValue,
+  rippleOpacityStart,
+  rippleBorderAlpha,
   motionPaused = false,
   lightClickFx = false,
   onClickPond,
@@ -107,6 +109,10 @@ function Clicker2PondStage({
   /** Milestone-earned blossoms to draw (0–100); only earned blossoms render. */
   blossomCount?: number;
   clickValue: number;
+  /** Click-ripple animation peak opacity (scales with Ripples / Click evolutions). */
+  rippleOpacityStart: number;
+  /** Click-ripple ring border alpha (scales with Ripples / Click evolutions). */
+  rippleBorderAlpha: number;
   /** When true (hidden tab or prefers-reduced-motion), skip or pause decorative motion. */
   motionPaused?: boolean;
   /** Fewer FX nodes and no ripples during rainstorm-scale click rates. */
@@ -272,6 +278,8 @@ function Clicker2PondStage({
           WebkitClipPath: `url(#${clipId})`,
           background: WATER_STAGE_BACKGROUND,
           filter: "drop-shadow(0 4px 14px rgba(0,0,0,0.22))",
+          ["--pond-ripple-opacity-start" as string]: String(rippleOpacityStart),
+          ["--pond-ripple-border-alpha" as string]: String(rippleBorderAlpha),
         }}
       >
         <Box
@@ -363,7 +371,6 @@ function Clicker2PondStage({
             w="min(140%, 520px)"
             h="min(140%, 520px)"
             borderRadius="full"
-            border="2px solid rgba(255,255,255,0.45)"
             pointerEvents="none"
           />
         ))}

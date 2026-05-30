@@ -200,24 +200,16 @@
     0 0 16px rgba(255, 240, 160, 0.95),
     0 1px 3px rgba(255, 255, 255, 0.65);
   white-space: nowrap;
-  animation: pond2SunshineBanner 2s ease-out forwards;
+  animation: pond2SunshineBannerIn 1s ease-out forwards;
 }
 
-@keyframes pond2SunshineBanner {
+@keyframes pond2SunshineBannerIn {
   0% {
     opacity: 0;
     transform: scale(0.92);
   }
-  18% {
-    opacity: 1;
-    transform: scale(1.04);
-  }
-  72% {
-    opacity: 1;
-    transform: scale(1);
-  }
   100% {
-    opacity: 0;
+    opacity: 1;
     transform: scale(1);
   }
 }
@@ -275,7 +267,8 @@
   }
 
   .pond2SunshineBanner {
-    animation-duration: 0.45s;
+    animation: none;
+    opacity: 1;
   }
 
   .pond2ClickGainPop {

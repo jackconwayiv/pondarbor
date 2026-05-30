@@ -1,4 +1,4 @@
-import { Box, CloseButton, Flex, Stack, Text } from "@chakra-ui/react";
+import { Box, Button, CloseButton, Flex, Stack, Text } from "@chakra-ui/react";
 import { DESIGN } from "../theme/tokens";
 import { milestoneDisplayEmoji, type MilestoneDef } from "./milestones";
 
@@ -9,6 +9,45 @@ type Props = {
   onDismiss: () => void;
   motionPaused?: boolean;
 };
+
+export function MilestoneDismissAllCard({
+  onDismissAll,
+  motionPaused = false,
+}: {
+  onDismissAll: () => void;
+  motionPaused?: boolean;
+}) {
+  return (
+    <Button
+      type="button"
+      unstyled
+      className={`pond2MilestoneCelebrateCard pond2MilestoneDismissAllCard${motionPaused ? " pond2MilestoneCelebrateCard--paused" : ""}`}
+      display="flex"
+      alignItems="center"
+      justifyContent="center"
+      alignSelf="stretch"
+      minW={0}
+      h="100%"
+      w="2.25rem"
+      flexShrink={0}
+      borderRadius="md"
+      borderWidth="2px"
+      borderColor={DESIGN.nautical}
+      bg="nautical.subtle"
+      color="gray.700"
+      shadow="md"
+      cursor="pointer"
+      aria-label="Dismiss all milestones"
+      _hover={{ bg: "blackAlpha.100" }}
+      _active={{ bg: "blackAlpha.200" }}
+      onClick={onDismissAll}
+    >
+      <Text fontSize="xl" lineHeight="1" fontWeight="bold" aria-hidden>
+        ×
+      </Text>
+    </Button>
+  );
+}
 
 export function MilestoneCelebrateCard({
   milestone,
@@ -22,6 +61,7 @@ export function MilestoneCelebrateCard({
       className={`pond2MilestoneCelebrateCard${motionPaused ? " pond2MilestoneCelebrateCard--paused" : ""}`}
       position="relative"
       minW={0}
+      h="full"
       borderRadius="md"
       borderWidth="2px"
       borderColor={DESIGN.nautical}

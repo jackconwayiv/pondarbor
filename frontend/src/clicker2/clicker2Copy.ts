@@ -13,4 +13,12 @@ export const MILESTONE_LABEL = "Milestone";
 export const MILESTONES_LABEL = "Milestones";
 export const STRATUM_LABEL = "Stratum";
 export const STRATA_LABEL = "Strata";
+export const TO_NEXT_STRATA_PHRASE = "to next Strata";
 export const CYCLE_LABEL = "Cycle";
+
+/** Main stratum UI heading — "1 Stratum" or "N Strata". */
+export function stratumCountHeading(level: number): string {
+  const n = Math.max(0, Math.floor(level));
+  if (n === 1) return `1 ${STRATUM_LABEL}`;
+  return `${n.toLocaleString()} ${STRATA_LABEL}`;
+}

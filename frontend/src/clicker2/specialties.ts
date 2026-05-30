@@ -207,7 +207,7 @@ function productionPercentSpecialty(
       "unlockAllTimeEnergy" in unlock ? unlock.unlockAllTimeEnergy : undefined,
     price,
     effect: { type: "production_percent", percent },
-    effectText: `+${percent}% energy production multiplier`,
+    effectText: `Your entire pond is ${percent}% more efficient`,
     ecologyNote,
   };
 }

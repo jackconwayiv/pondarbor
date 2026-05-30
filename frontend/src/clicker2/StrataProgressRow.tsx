@@ -1,6 +1,10 @@
-import { Box, Flex, Text } from "@chakra-ui/react";
+import { Box, Flex, Stack, Text } from "@chakra-ui/react";
 
-import { CYCLE_LABEL, STRATUM_LABEL } from "./clicker2Copy";
+import {
+  CYCLE_LABEL,
+  stratumCountHeading,
+  TO_NEXT_STRATA_PHRASE,
+} from "./clicker2Copy";
 import { ENERGY_EMOJI, formatEnergyAmount } from "./formatEnergy";
 import {
   energyToNextStratum,
@@ -23,7 +27,6 @@ export default function StrataProgressRow({
   const level = stratumLevelFromAllTimeEnergy(allTimeEnergyEarned);
   const progress = stratumProgressToNext(allTimeEnergyEarned);
   const remaining = energyToNextStratum(allTimeEnergyEarned);
-  const nextLevel = level + 1;
   const progressPct = Math.round(progress * 100);
 
   return (
@@ -37,10 +40,10 @@ export default function StrataProgressRow({
       borderRadius="md"
       bg="whiteAlpha.900"
     >
-      <Flex justify="space-between" align="center" gap="2" mb="1">
+      <Stack gap="1" align="stretch">
         <Flex align="center" gap="2" minW="0">
           <Text fontSize="sm" fontWeight="semibold" color="lilypad.emphasized">
-            {STRATUM_LABEL} {level}
+            {stratumCountHeading(level)}
           </Text>
           {pondEra > 1 ? (
             <Text
@@ -63,22 +66,22 @@ export default function StrataProgressRow({
           fontSize="xs"
           color="gray.600"
           fontVariantNumeric="tabular-nums"
-          textAlign="right"
-          flexShrink={0}
+          textAlign="left"
         >
-          {formatEnergyAmount(remaining)} {ENERGY_EMOJI} to {STRATUM_LABEL} {nextLevel}
+          {formatEnergyAmount(remaining)} {ENERGY_EMOJI} {TO_NEXT_STRATA_PHRASE}
         </Text>
-      </Flex>
+      </Stack>
       <Box
         role="progressbar"
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={progressPct}
-        aria-label={`Progress toward ${STRATUM_LABEL} ${nextLevel}`}
+        aria-label={`Progress ${TO_NEXT_STRATA_PHRASE}`}
         h="0.45rem"
         borderRadius="full"
         bg="lilypad.subtle"
         overflow="hidden"
+        mt="1"
       >
         <Box
           h="full"

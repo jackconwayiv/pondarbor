@@ -25,10 +25,10 @@ import { HIDE_SCROLLBAR_CSS } from "../theme/typography";
 import { DESIGN } from "../theme/tokens";
 
 import { evolutionDisplayEmoji } from "./clicker2OwnedEvolutions";
-import { EVOLUTIONS_LABEL, MILESTONES_LABEL, MUTAGENS_LABEL, CYCLE_LABEL, STRATUM_LABEL } from "./clicker2Copy";
+import { EVOLUTIONS_LABEL, MILESTONES_LABEL, MUTAGENS_LABEL, CYCLE_LABEL, STRATA_LABEL, TO_NEXT_STRATA_PHRASE } from "./clicker2Copy";
 import { EvolutionTooltipContent } from "./EvolutionTooltipContent";
 import { ENERGY_EMOJI, formatEnergyAmount, formatEnergyRate } from "./formatEnergy";
-import { formatPondAgeAgo } from "./formatPondAge";
+import { formatLastSaved, formatPondAgeAgo } from "./formatPondAge";
 import {
   compareMilestoneReachedTimes,
   getMilestoneDef,
@@ -65,6 +65,8 @@ export type Clicker2StatsSnapshot = {
   stratumLevel: number;
   energyToNextStratum: number;
   pondStartedAtMs: number;
+  /** Wall-clock epoch ms of the most recent successful save (0 if unknown). */
+  lastSavedAtMs: number;
   denizensOwned: number;
   evolutionsOwned: number;
   ownedEvolutionDefs: readonly SpecialtyDef[];
@@ -321,48 +323,38 @@ export default function Clicker2StatsModal({
       size="md"
     >
       <Stack gap="2.5">
-        <StatsRow label="Energy in pond" value={energyAmount(snapshot.energyInPond)} />
-        {snapshot.stratumLevel >= 1 ? (
-          <>
-            <StatsRow
-              label="Total energy earned (this cycle)"
-              value={energyAmount(snapshot.eraEnergyEarned)}
-            />
-            <StatsRow
-              label="Total energy earned (lifetime)"
-              value={energyAmount(snapshot.allTimeEnergyEarned)}
-            />
-          </>
-        ) : (
-          <StatsRow
-            label="Total energy earned"
-            value={energyAmount(snapshot.allTimeEnergyEarned)}
-          />
-        )}
-        {snapshot.pondEra > 1 ? (
-          <StatsRow
-            label={CYCLE_LABEL}
-            value={snapshot.pondEra.toLocaleString()}
-          />
-        ) : null}
-        {snapshot.stratumLevel >= 1 ? (
-          <StatsRow
-            label={STRATUM_LABEL}
-            value={
-              <>
-                {snapshot.stratumLevel.toLocaleString()}
-                <Text as="span" display="block" fontSize="xs" color="gray.600" fontWeight="normal">
-                  {formatEnergyAmount(snapshot.energyToNextStratum)} {ENERGY_EMOJI} to{" "}
-                  {STRATUM_LABEL} {snapshot.stratumLevel + 1}
-                </Text>
-              </>
-            }
-          />
-        ) : null}
         <StatsRow
           label="Pond started"
           value={formatPondAgeAgo(snapshot.pondStartedAtMs, snapshot.capturedAtWallMs)}
         />
+        <StatsRow
+          label="Last saved"
+          value={formatLastSaved(snapshot.lastSavedAtMs, snapshot.capturedAtWallMs)}
+        />
+        <StatsRow label="Energy in pond" value={energyAmount(snapshot.energyInPond)} />
+        <StatsRow
+          label="Energy per second"
+          value={`${formatEnergyRate(snapshot.energyPerSecond)} ${ENERGY_EMOJI}`}
+        />
+        <StatsRow
+          label="Energy per click"
+          value={
+            snapshot.energyPerClick > 0
+              ? `${formatEnergyAmount(snapshot.energyPerClick)} ${ENERGY_EMOJI}`
+              : "0"
+          }
+        />
+        <StatsRow label="Number of clicks" value={snapshot.totalClicks.toLocaleString()} />
+        <StatsRow
+          label="Energy from clicking"
+          value={energyAmount(snapshot.energyFromClicking)}
+        />
+        {snapshot.stratumLevel < 1 ? (
+          <StatsRow
+            label="Total energy earned"
+            value={energyAmount(snapshot.allTimeEnergyEarned)}
+          />
+        ) : null}
         <StatsRow
           label="Denizens welcomed"
           value={snapshot.denizensOwned.toLocaleString()}
@@ -385,23 +377,6 @@ export default function Clicker2StatsModal({
             value={snapshot.blossoms.toLocaleString()}
           />
         ) : null}
-        <StatsRow
-          label="Energy per second"
-          value={`${formatEnergyRate(snapshot.energyPerSecond)} ${ENERGY_EMOJI}`}
-        />
-        <StatsRow
-          label="Energy per click"
-          value={
-            snapshot.energyPerClick > 0
-              ? `${formatEnergyAmount(snapshot.energyPerClick)} ${ENERGY_EMOJI}`
-              : "0"
-          }
-        />
-        <StatsRow label="Number of clicks" value={snapshot.totalClicks.toLocaleString()} />
-        <StatsRow
-          label="Energy from clicking"
-          value={energyAmount(snapshot.energyFromClicking)}
-        />
         {snapshot.weatherEventsClicked > 0 ? (
           <StatsRow
             label="Weather witnessed"
@@ -413,6 +388,36 @@ export default function Clicker2StatsModal({
             label={`Total ${MUTAGENS_LABEL.toLowerCase()} acquired`}
             value={snapshot.totalMutagensAcquired.toLocaleString()}
           />
+        ) : null}
+        {snapshot.stratumLevel >= 1 ? (
+          <>
+            <StatsRow
+              label="Total energy earned (this cycle)"
+              value={energyAmount(snapshot.eraEnergyEarned)}
+            />
+            <StatsRow
+              label="Total energy earned (lifetime)"
+              value={energyAmount(snapshot.allTimeEnergyEarned)}
+            />
+            {snapshot.pondEra > 1 ? (
+              <StatsRow
+                label={CYCLE_LABEL}
+                value={snapshot.pondEra.toLocaleString()}
+              />
+            ) : null}
+            <StatsRow
+              label={STRATA_LABEL}
+              value={
+                <>
+                  {snapshot.stratumLevel.toLocaleString()}
+                  <Text as="span" display="block" fontSize="xs" color="gray.600" fontWeight="normal">
+                    {formatEnergyAmount(snapshot.energyToNextStratum)} {ENERGY_EMOJI}{" "}
+                    {TO_NEXT_STRATA_PHRASE}
+                  </Text>
+                </>
+              }
+            />
+          </>
         ) : null}
         <StatsCatalogTabs
           evolutionsOwned={snapshot.evolutionsOwned}

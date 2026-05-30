@@ -1,6 +1,7 @@
 import { DESIGN } from "../theme/tokens";
 
 import { formatEnergyAmount } from "./formatEnergy";
+import type { ClickValueBreakdown } from "./simulation";
 
 export type WeatherFamily = "rain" | "bluster" | "sun";
 
@@ -445,6 +446,20 @@ export function effectiveEnergyPerSecond(
   nowPerfMs = performance.now(),
 ): number {
   return baseEnergyPerSecond * epsWeatherMultiplier(blusterBoost, nowPerfMs);
+}
+
+/** Click value with weather: rain multiplies all click energy; wind boosts EpS-linked reflections. */
+export function effectiveClickValue(
+  breakdown: Pick<ClickValueBreakdown, "clickBaseline" | "clickFromEpSPercent">,
+  rainBoost: ActiveRainBoost | null,
+  blusterBoost: ActiveBlusterBoost | null,
+  nowPerfMs = performance.now(),
+): number {
+  const clickWx = clickWeatherMultiplier(rainBoost, nowPerfMs);
+  const epsWx = epsWeatherMultiplier(blusterBoost, nowPerfMs);
+  return (
+    breakdown.clickBaseline + breakdown.clickFromEpSPercent * epsWx
+  ) * clickWx;
 }
 
 export function startRainBoost(

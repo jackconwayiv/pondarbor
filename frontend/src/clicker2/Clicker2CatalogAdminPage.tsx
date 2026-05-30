@@ -86,9 +86,11 @@ import {
 } from "./specialties";
 import {
   HEADLINE_CATALOG_GLOBAL_NOTES,
+  HEADLINE_DENIZEN_IDS,
   HEADLINES,
   headlineDisplayLines,
   headlineUnlockCriteriaText,
+  headlinesForDenizen,
   type HeadlineDef,
 } from "./headlines";
 import {
@@ -444,6 +446,7 @@ function MilestonesCatalogBySection({
 }
 
 function HeadlineCatalogCard({ def }: { def: HeadlineDef }) {
+  const denizen = getDenizenDef(def.denizenId);
   return (
     <Box {...CARD_SHELL_PROPS}>
       <Stack gap="0.5" mb="1">
@@ -462,19 +465,71 @@ function HeadlineCatalogCard({ def }: { def: HeadlineDef }) {
       <Stack gap="1" fontSize="xs">
         <Text>
           <Text as="span" fontWeight="semibold">
+            Denizen:
+          </Text>{" "}
+          {denizen?.emoji} {denizen?.namePlural ?? def.denizenId}
+        </Text>
+        <Text>
+          <Text as="span" fontWeight="semibold">
             Unlock:
           </Text>{" "}
           {headlineUnlockCriteriaText(def)}
         </Text>
         <Text fontSize="2xs" color="gray.600" fontFamily="mono">
-          unlockEps: {def.unlockEps}
+          unlockOwned: {def.unlockOwned}
         </Text>
       </Stack>
     </Box>
   );
 }
 
-function HeadlinesCatalogPanel() {
+function HeadlineDenizenCatalogTabTrigger({ denizenId }: { denizenId: string }) {
+  const def = getDenizenDef(denizenId);
+  const count = headlinesForDenizen(denizenId).length;
+  return (
+    <Tabs.Trigger
+      value={denizenId}
+      {...APP_SHELL_TAB_TRIGGER_PROPS}
+      fontSize={APP_TEXT_SIZES.label}
+    >
+      {def?.emoji} {def?.namePlural ?? denizenId} ({count})
+    </Tabs.Trigger>
+  );
+}
+
+function HeadlinesCatalogDenizenPage({ denizenId }: { denizenId: string }) {
+  const headlines = headlinesForDenizen(denizenId);
+  const def = getDenizenDef(denizenId);
+
+  return (
+    <Stack gap="2">
+      <Heading as="h3" size="sm">
+        {def?.emoji} {def?.namePlural ?? denizenId} ({headlines.length})
+      </Heading>
+      <Grid
+        templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", lg: "repeat(3, 1fr)" }}
+        gap="2"
+      >
+        {headlines.map((headlineDef) => (
+          <HeadlineCatalogCard key={headlineDef.id} def={headlineDef} />
+        ))}
+      </Grid>
+    </Stack>
+  );
+}
+
+function HeadlinesCatalogByDenizen({
+  denizenTab,
+  onDenizenTabChange,
+}: {
+  denizenTab: string;
+  onDenizenTabChange: (denizenId: string) => void;
+}) {
+  const denizenIds = HEADLINE_DENIZEN_IDS;
+  const activeDenizen = denizenIds.includes(denizenTab)
+    ? denizenTab
+    : denizenIds[0]!;
+
   return (
     <Stack gap="3">
       <Box {...CARD_SHELL_PROPS}>
@@ -493,19 +548,44 @@ function HeadlinesCatalogPanel() {
               headlines.ts
             </Text>
             {" · "}
-            {HEADLINES.length} EpS tiers
+            {HEADLINES.length} owned-count tiers across {denizenIds.length}{" "}
+            denizen types
           </Text>
         </Stack>
       </Box>
-      <Grid
-        templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", lg: "repeat(3, 1fr)" }}
-        gap="2"
+      <Tabs.Root
+        value={activeDenizen}
+        variant="plain"
+        w="100%"
+        onValueChange={(details) => onDenizenTabChange(details.value)}
       >
-        {HEADLINES.map((def) => (
-          <HeadlineCatalogCard key={def.id} def={def} />
+        <Tabs.List {...APP_SHELL_TAB_LIST_NESTED_PROPS}>
+          {denizenIds.map((denizenId) => (
+            <HeadlineDenizenCatalogTabTrigger key={denizenId} denizenId={denizenId} />
+          ))}
+        </Tabs.List>
+        {denizenIds.map((denizenId) => (
+          <Tabs.Content key={denizenId} value={denizenId} pt="3">
+            <HeadlinesCatalogDenizenPage denizenId={denizenId} />
+          </Tabs.Content>
         ))}
-      </Grid>
+      </Tabs.Root>
     </Stack>
+  );
+}
+
+function HeadlinesCatalogPanel({
+  denizenTab,
+  onDenizenTabChange,
+}: {
+  denizenTab: string;
+  onDenizenTabChange: (denizenId: string) => void;
+}) {
+  return (
+    <HeadlinesCatalogByDenizen
+      denizenTab={denizenTab}
+      onDenizenTabChange={onDenizenTabChange}
+    />
   );
 }
 
@@ -887,6 +967,9 @@ export default function Clicker2CatalogAdminPage() {
     useState<MilestoneCatalogSectionId>(
       () => MILESTONE_CATALOG_SECTIONS[0]!.id,
     );
+  const [headlineDenizenTab, setHeadlineDenizenTab] = useState(
+    () => HEADLINE_DENIZEN_IDS[0] ?? "ripples",
+  );
 
   const backButton = (
     <PondButton
@@ -1095,7 +1178,10 @@ export default function Clicker2CatalogAdminPage() {
         </Tabs.Content>
 
         <Tabs.Content value="headlines" pt="3">
-          <HeadlinesCatalogPanel />
+          <HeadlinesCatalogPanel
+            denizenTab={headlineDenizenTab}
+            onDenizenTabChange={setHeadlineDenizenTab}
+          />
         </Tabs.Content>
       </Tabs.Root>
     </CatalogFramedChrome>

@@ -34,5 +34,7 @@ export function isStratumSystemUnlocked(allTimeEnergy: number): boolean {
 }
 
 export function stratumProgressLabel(level: number): string {
-  return `Stratum ${Math.max(0, level)}`;
+  const n = Math.max(0, Math.floor(level));
+  if (n === 1) return "1 Stratum";
+  return `${n} Strata`;
 }

@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   clickWeatherMultiplier,
+  effectiveClickValue,
   epsWeatherMultiplier,
   remainingMsUntilWeatherSpawn,
   scheduleWeatherSpawnRemainingMs,
   shopSurfaceForWeather,
   startBlusterBoost,
+  startRainBoost,
   SUNSHINE_SHOP_BACKGROUND,
   sunWeatherBonus,
   weatherAmbientFromBoosts,
@@ -99,6 +101,20 @@ describe("weather variant catalog", () => {
     expect(
       weatherAmbientFromBoosts({ clickMultiplier: 1, epsMultiplier: 10 }),
     ).toBe("bluster");
+  });
+
+  it("wind boosts click-from-EpS reflections without changing click baseline", () => {
+    const breakdown = { clickBaseline: 5, clickFromEpSPercent: 100 };
+    const boost = startBlusterBoost("howling_gale", 1_000);
+    expect(effectiveClickValue(breakdown, null, boost, 2_000)).toBe(1_005);
+    expect(effectiveClickValue(breakdown, null, null, 2_000)).toBe(105);
+  });
+
+  it("rain still multiplies the full click value including wind-boosted EpS reflections", () => {
+    const breakdown = { clickBaseline: 5, clickFromEpSPercent: 100 };
+    const rain = startRainBoost("rainstorm", 1_000);
+    const wind = startBlusterBoost("howling_gale", 1_000);
+    expect(effectiveClickValue(breakdown, rain, wind, 2_000)).toBe(50_250);
   });
 
   it("rain click multiplier is instant full strength during hold", () => {

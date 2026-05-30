@@ -2,9 +2,10 @@
   background: transparent;
   border: none;
   /* One row of two milestone cards; scroll when there are more. */
-  height: 4.75rem;
-  min-height: 4.75rem;
-  max-height: 4.75rem;
+  --pond2-headline-strip-height: 4.75rem;
+  height: var(--pond2-headline-strip-height);
+  min-height: var(--pond2-headline-strip-height);
+  max-height: var(--pond2-headline-strip-height);
   overflow: hidden;
 }
 
@@ -13,6 +14,11 @@
   overflow-x: hidden;
   overflow-y: auto;
   align-content: start;
+  grid-auto-rows: var(--pond2-headline-strip-height);
+}
+
+.pond2HeadlineStripRow {
+  min-width: 0;
 }
 
 .pond2HeadlineStrip--headline {

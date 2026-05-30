@@ -1,7 +1,7 @@
 @keyframes pondRippleExpand {
   from {
     transform: translate(-50%, -50%) scale(0.12);
-    opacity: 0.5;
+    opacity: var(--pond-ripple-opacity-start, 0.5);
   }
   to {
     transform: translate(-50%, -50%) scale(1);
@@ -68,6 +68,7 @@
 
 .pondRipple {
   animation: pondRippleExpand 0.65s ease-out forwards;
+  border: 2px solid rgba(255, 255, 255, var(--pond-ripple-border-alpha, 0.45));
 }
 
 @keyframes pondFloatDenizen {

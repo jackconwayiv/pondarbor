@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import { ENERGY_EMOJI } from "./formatEnergy";
 
 /** Tab title refresh rate (independent of HUD counter animation). */
-export const CLICKER2_TAB_TITLE_TICK_MS = 1000;
+export const CLICKER2_TAB_TITLE_TICK_MS = 2000;
 
 const DEFAULT_BASE_TITLE = "Pond Arbor";
 

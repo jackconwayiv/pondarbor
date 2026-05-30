@@ -17,6 +17,12 @@
   animation-play-state: paused;
 }
 
+.pond2MilestoneDismissAllCard {
+  padding: 0;
+  height: 100%;
+  min-height: 100%;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pond2MilestoneCelebrateCard {
     animation: none;

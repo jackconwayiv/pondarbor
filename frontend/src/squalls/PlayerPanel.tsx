@@ -13,7 +13,8 @@ export default function PlayerPanel({
   onOpenCharacterSheet,
 }: PlayerPanelProps) {
   const inCombat = gameState === "battle";
-  const showGoldInStripe = gameState === "shop" || gameState === "rest";
+  const showGoldInStripe =
+    gameState === "shop" || gameState === "rest" || gameState === "tavern";
 
   return (
     <HStack
@@ -59,6 +60,11 @@ export default function PlayerPanel({
         </IdentityButton>
       </HStack>
       <HStack gap={2} flexShrink={0} flexWrap="wrap" justify="flex-end">
+        {inCombat ? (
+          <Badge size="sm" colorPalette="gray" variant="solid">
+            🔫 {hero.ammo}/{hero.max_ammo}
+          </Badge>
+        ) : null}
         {inCombat && armor > 0 ? (
           <Badge size="sm" colorPalette="cyan" variant="solid">
             🛡 {armor}

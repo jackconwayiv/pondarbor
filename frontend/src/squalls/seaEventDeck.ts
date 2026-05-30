@@ -1,4 +1,5 @@
 import type { EventType } from "./shantiesTypes";
+import { PORT_POOL_CHANCE, PORT_TOWN_EVENT } from "./portEvents";
 
 const SEA_ISLAND_DISCOVERY: EventType = {
   name: "Discover an Island!",
@@ -31,6 +32,15 @@ function shuffle<T>(items: T[]): T[] {
   return deck;
 }
 
+function pickRandomSeaPoolEvent(): EventType {
+  if (Math.random() < PORT_POOL_CHANCE) {
+    return { ...PORT_TOWN_EVENT };
+  }
+  const template =
+    SEA_EVENT_POOL[Math.floor(Math.random() * SEA_EVENT_POOL.length)]!;
+  return { ...template };
+}
+
 /** Build a fresh 10-card sea deck: 4–6 combat, 1–2 island, remainder from the event pool. */
 export function buildSeaEventDeck(): EventType[] {
   const combatCount = randomInt(4, 6);
@@ -38,9 +48,7 @@ export function buildSeaEventDeck(): EventType[] {
   const remainder = 10 - combatCount - islandCount;
   const poolPicks: EventType[] = [];
   for (let i = 0; i < remainder; i++) {
-    const template =
-      SEA_EVENT_POOL[Math.floor(Math.random() * SEA_EVENT_POOL.length)]!;
-    poolPicks.push({ ...template });
+    poolPicks.push(pickRandomSeaPoolEvent());
   }
   const deck: EventType[] = [
     ...Array.from({ length: combatCount }, () => ({ ...SEA_COMBAT })),

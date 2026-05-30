@@ -1,6 +1,11 @@
 import { Box, SimpleGrid, Text, VStack } from "@chakra-ui/react";
 
 import { EVASIVE_MISS_CHANCE, SHOCKING_RETALIATION_DAMAGE } from "../../combatEquipment";
+import {
+  AMMO_POUCH_DROP_CHANCE,
+  HERO_STARTING_AMMO,
+  TREASURE_LOCKPICK_DROP_CHANCE,
+} from "../../combatLoot";
 import { BUFF_ON_TOP_START_CHANCE } from "../../enemyActions";
 import {
   CARDS_DRAWN_PER_TURN,
@@ -10,7 +15,6 @@ import {
   ISLAND_TREASURE_LOCKED_CHANCE,
   SEA_TREASURE_LOCKED_CHANCE,
 } from "../../dungeonTreasure";
-import { TREASURE_LOCKPICK_DROP_CHANCE } from "../../combatLoot";
 import { shopBuyPrice, sellPriceFromBasePrice } from "../../shantiesShop";
 import { ENEMY_ACTION_DESCRIPTIONS } from "../squallsDmCatalog";
 import { DmPanelIntro, DmSectionHeading, DmStatRow } from "./DmStatRow";
@@ -27,7 +31,18 @@ export default function DmRulesPanel() {
           <DmStatRow label="Cards drawn" value={String(CARDS_DRAWN_PER_TURN)} />
           <DmStatRow label="Strong attack cost" value="2 energy" />
           <DmStatRow label="Normal card cost" value="1 energy" />
+          <DmStatRow
+            label="Starting ammo"
+            value={`${HERO_STARTING_AMMO} / ${HERO_STARTING_AMMO}`}
+          />
+          <DmStatRow label="Ranged attack cost" value="1 ammo" />
         </SimpleGrid>
+        <Text fontSize="sm" color="gray.900" mt={2}>
+          After a victorious fight where the hero spent at least 1 ammo, there is
+          a {Math.round(AMMO_POUCH_DROP_CHANCE * 100)}% chance an ammo pouch
+          appears in combat loot (monster item drops still stack normally). After a
+          victorious fight, current ammo refills to max ({HERO_STARTING_AMMO} by default).
+        </Text>
       </Box>
 
       <Box>

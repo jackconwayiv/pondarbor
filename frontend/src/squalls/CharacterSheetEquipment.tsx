@@ -25,8 +25,8 @@ import {
 } from "./equipmentDnDIds";
 import {
   applyEquipmentMove,
-  EQUIPMENT_SLOTS,
   EQUIPMENT_SLOT_LABELS,
+  visibleEquipmentSlots,
   type EquipmentDragTo,
 } from "./shantiesEquipment";
 import type { EquipmentId, EquipmentSlot, HeroType } from "./shantiesTypes";
@@ -139,6 +139,8 @@ export default function CharacterSheetEquipment({
     }
   };
 
+  const equippedSlots = visibleEquipmentSlots(hero);
+
   return (
     <DndContext
       sensors={sensors}
@@ -154,8 +156,8 @@ export default function CharacterSheetEquipment({
           <Text fontSize="sm" fontWeight="bold" mb={2}>
             Equipped
           </Text>
-          <SimpleGrid columns={2} gap={2}>
-            {EQUIPMENT_SLOTS.map((slot) => {
+          <SimpleGrid columns={3} gap={2}>
+            {equippedSlots.map((slot) => {
               const equipmentId = hero.equipped[slot];
               return (
                 <EquipmentSlotDrop

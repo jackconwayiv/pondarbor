@@ -1,6 +1,7 @@
 import {
   createDungeonDiscoveryEvent,
 } from "./dungeonExplore";
+import { COOKSTOVE_EVENT } from "./cookstove";
 import type { DungeonKind, EventType, IslandType } from "./shantiesTypes";
 
 export const ISLAND_COMBAT_EVENT: EventType = {
@@ -26,6 +27,8 @@ export const ISLAND_TRADER_EVENT: EventType = {
   type: "merchant",
 };
 
+export { COOKSTOVE_EVENT };
+
 const ISLAND_DUNGEON_KINDS: DungeonKind[] = ["cave", "ruins", "temple"];
 
 const ISLAND_WEATHER_EVENTS: EventType[] = [
@@ -40,6 +43,7 @@ const ISLAND_EVENT_POOL: EventType[] = [
   SUPPLY_CACHE_EVENT,
   ...ISLAND_WEATHER_EVENTS,
   ISLAND_TRADER_EVENT,
+  { ...COOKSTOVE_EVENT },
 ];
 
 export type IslandSizeCategory = "Small" | "Medium" | "Large";
@@ -203,4 +207,8 @@ export function isIslandWeatherEvent(event: EventType): boolean {
 
 export function isIslandTraderEvent(event: EventType): boolean {
   return event.type === "merchant" && event.name === ISLAND_TRADER_EVENT.name;
+}
+
+export function isIslandCookstoveEvent(event: EventType): boolean {
+  return event.type === "cookstove" && event.name === COOKSTOVE_EVENT.name;
 }

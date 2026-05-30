@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Link } from "react-router";
 import {
   Box,
   Button,
@@ -36,6 +35,8 @@ import {
   formatEnemyBroadcastLabel,
 } from "./enemyActions";
 import { seaWeatherEffectLabel } from "./seaWeather";
+import CookstoveView from "./CookstoveView";
+import { isCookstoveEvent } from "./cookstove";
 import LockedChestPanel from "./LockedChestPanel";
 import {
   getDungeonKindEmoji,
@@ -55,14 +56,17 @@ import {
 import AdventureStripe from "./AdventureStripe";
 import PlayerPanel from "./PlayerPanel";
 import HomeActionGrid from "./HomeActionGrid";
+import ExploreTestPickerView from "./ExploreTestPickerView";
 import PassEnergyConfirmModal from "./PassEnergyConfirmModal";
-import RestartAdventureConfirmModal from "./RestartAdventureConfirmModal";
+import PortView from "./PortView";
+import ShipwrightView from "./ShipwrightView";
+import TavernView from "./TavernView";
 import RestView from "./RestView";
 import ShipView from "./ShipView";
 import ShopView from "./ShopView";
 import SquallsActionCard from "./SquallsActionCard";
 import { getItemCount } from "./shantiesItems";
-import type { CombatLogSide, EventType, WorldPanelProps } from "./shantiesTypes";
+import { cardRequiresAmmo, type CombatLogSide, type EventType, type WorldPanelProps } from "./shantiesTypes";
 
 function eventHeadingEmoji(event: EventType | null): string {
   if (!event) return "⛈️";
@@ -72,6 +76,8 @@ function eventHeadingEmoji(event: EventType | null): string {
   switch (event.type) {
     case "discovery":
       return "🏝️";
+    case "port":
+      return "⚓";
     case "merchant":
       return "🛶";
     case "shipwreck":
@@ -89,8 +95,10 @@ export default function WorldPanel({
   location,
   setLocation,
   currentIsland,
+  currentPortTown,
   currentDungeon,
   renderIslandName,
+  renderPortTownName,
   renderDungeonName,
   enterCurrentDungeon,
   returnToIslandFromDungeon,
@@ -121,6 +129,8 @@ export default function WorldPanel({
   returnToShipFromIsland,
   anchorAtDiscoveredIsland,
   abandonDiscoveredIsland,
+  dockAtPortTown,
+  sailPastPortTown,
   claimCombatLoot,
   claimEventLoot,
   completeTreasureEvent,
@@ -138,17 +148,17 @@ export default function WorldPanel({
   endPlayerTurn,
   resetToLobby,
   goToLobby,
-  resumeAdventure,
-  restartAdventure,
-  canResumeAdventure,
-  lobbySaveSummaryLines,
-  lobbySavedAtLabel,
   healHero,
   openRest,
   wakeFromRest,
   leaveRest,
   restComplete,
   restMessage,
+  openCookstove,
+  leaveCookstove,
+  cookAtStove,
+  dismissCookstoveEncounter,
+  cookMessage,
   shopMessage,
   shopVariant,
   buyShopItem,
@@ -158,15 +168,28 @@ export default function WorldPanel({
   openShipShop,
   openMerchantShop,
   openIslandTraderShop,
+  openPortShop,
+  openShipwright,
+  openTavern,
+  leavePort,
+  returnToPort,
+  nearPortTown,
+  leaveTavern,
+  leaveShipwright,
+  tavernMessage,
+  buyTavernCard,
+  refineTavernCard,
+  exploreTestContext,
+  exploreTestOptions,
+  applyExploreTestOutcome,
+  cancelExploreTest,
   resolveShipwreckDive,
   onOpenCharacterSheet,
-  isStaff = false,
 }: WorldPanelProps) {
   const isPlayerTurn =
     combatPhase === "player" && !victoryPending && !combatVictory;
   const [cardZone, setCardZone] = useState<"hand" | "discard">("hand");
   const [passConfirmOpen, setPassConfirmOpen] = useState(false);
-  const [restartConfirmOpen, setRestartConfirmOpen] = useState(false);
   const viewingHand = cardZone === "hand";
   const displayedCards = viewingHand ? hand : discardPile;
 
@@ -212,81 +235,17 @@ export default function WorldPanel({
 
   const panelContent = (() => {
   switch (gameState) {
-    case "lobby":
-      return (
-        <VStack align="start" gap={4} w="100%" maxW="md">
-          <Heading>🏴‍☠️ Squalls & Shanties</Heading>
-          <Text color="gray.900">Yer saved adventure</Text>
-          <Box
-            w="100%"
-            borderWidth="1px"
-            borderColor="blackAlpha.200"
-            borderRadius="md"
-            bg="blackAlpha.50"
-            px={4}
-            py={3}
-          >
-            <VStack align="stretch" gap={2}>
-              {lobbySaveSummaryLines.map((line) => (
-                <HStack
-                  key={line.label}
-                  w="100%"
-                  justify="space-between"
-                  gap={3}
-                  align="baseline"
-                >
-                  <Text fontSize="sm" color="gray.900" flexShrink={0}>
-                    {line.label}
-                  </Text>
-                  <Text fontSize="sm" fontWeight="medium" textAlign="right">
-                    {line.value}
-                  </Text>
-                </HStack>
-              ))}
-            </VStack>
-            {lobbySavedAtLabel ? (
-              <Text fontSize="xs" color="gray.900" mt={3}>
-                Last saved {lobbySavedAtLabel}
-              </Text>
-            ) : null}
-          </Box>
-          <HStack gap={3} wrap="wrap" w="100%">
-            <Button
-              colorPalette="orange"
-              onClick={resumeAdventure}
-              disabled={!canResumeAdventure}
-            >
-              Resume playing
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => setRestartConfirmOpen(true)}
-            >
-              Restart adventure
-            </Button>
-          </HStack>
-          {!canResumeAdventure ? (
-            <Text fontSize="xs" color="gray.900">
-              No adventure in progress — restart to set sail.
-            </Text>
-          ) : null}
-          {isStaff ? (
-            <Text fontSize="sm">
-              <Link to="/squalls/dm">Game reference (staff)</Link>
-            </Text>
-          ) : null}
-        </VStack>
-      );
-
     case "home":
       return (
         <VStack align="stretch" gap={5} w="100%">
           <Heading>
             {location === "ship"
               ? "⛵ Ye Be on the Ship"
-              : location === "dungeon" && currentDungeon
-                ? `${getDungeonKindEmoji(currentDungeon.kind)} ${renderDungeonName(currentDungeon)}`
-                : `🏝️ ${currentIsland ? renderIslandName(currentIsland) : "Unknown Island"}`}
+              : location === "port"
+                ? `⚓ ${currentPortTown ? renderPortTownName(currentPortTown) : "Port Town"}`
+                : location === "dungeon" && currentDungeon
+                  ? `${getDungeonKindEmoji(currentDungeon.kind)} ${renderDungeonName(currentDungeon)}`
+                  : `🏝️ ${currentIsland ? renderIslandName(currentIsland) : "Unknown Island"}`}
           </Heading>
 
           {location === "ship" && (
@@ -317,6 +276,12 @@ export default function WorldPanel({
                   ? Math.max(0, currentDungeon.delvePoints)
                   : undefined
               }
+              onReturnToPort={
+                nearPortTown
+                  ? returnToPort
+                  : undefined
+              }
+              onCookstove={openCookstove}
             />
           )}
 
@@ -337,6 +302,14 @@ export default function WorldPanel({
                 disabled={!currentIsland || currentIsland.explorePoints <= 0}
                 onClick={handleSailOrExplore}
               />
+              {currentIsland?.cookstoveFound ? (
+                <SquallsActionCard
+                  emoji="🍳"
+                  label="Cookstove"
+                  accent="orange"
+                  onClick={openCookstove}
+                />
+              ) : null}
               <SquallsActionCard
                 emoji="⛵"
                 label="Return to Ship"
@@ -344,6 +317,15 @@ export default function WorldPanel({
                 onClick={returnToShipFromIsland}
               />
             </HomeActionGrid>
+          )}
+
+          {location === "port" && (
+            <PortView
+              onShop={openPortShop}
+              onShipwright={openShipwright}
+              onTavern={openTavern}
+              onReturnToIsland={leavePort}
+            />
           )}
 
           {location === "dungeon" && currentDungeon && (
@@ -384,6 +366,30 @@ export default function WorldPanel({
         />
       );
 
+    case "shipwright":
+      return <ShipwrightView onBack={leaveShipwright} />;
+
+    case "tavern":
+      return (
+        <TavernView
+          hero={hero}
+          tavernMessage={tavernMessage}
+          onBuyCard={buyTavernCard}
+          onRefineCard={refineTavernCard}
+          onBack={leaveTavern}
+        />
+      );
+
+    case "exploreTest":
+      return exploreTestContext ? (
+        <ExploreTestPickerView
+          context={exploreTestContext}
+          options={exploreTestOptions}
+          onSelect={applyExploreTestOutcome}
+          onCancel={cancelExploreTest}
+        />
+      ) : null;
+
     case "rest":
       return (
         <RestView
@@ -396,7 +402,28 @@ export default function WorldPanel({
         />
       );
 
+    case "cookstove":
+      return (
+        <CookstoveView
+          hero={hero}
+          cookMessage={cookMessage}
+          onCook={() => cookAtStove(false)}
+          onDismiss={leaveCookstove}
+        />
+      );
+
     case "event": {
+      if (activeEvent && isCookstoveEvent(activeEvent)) {
+        return (
+          <CookstoveView
+            hero={hero}
+            cookMessage={cookMessage}
+            onCook={() => cookAtStove(true)}
+            onDismiss={dismissCookstoveEncounter}
+          />
+        );
+      }
+
       const eventReturnLabel =
         location === "dungeon"
           ? "Return to Dungeon"
@@ -519,6 +546,32 @@ export default function WorldPanel({
                   label="Keep Sailing"
                   accent="blue"
                   onClick={abandonDiscoveredIsland}
+                />
+              </HomeActionGrid>
+            </Box>
+          ) : activeEvent?.type === "port" ? (
+            <Box w="100%">
+              <Text mb={4} fontSize="lg">
+                In the distance, ye spy{" "}
+                <strong>
+                  {currentPortTown
+                    ? renderPortTownName(currentPortTown)
+                    : "a port town"}
+                </strong>
+                !
+              </Text>
+              <HomeActionGrid>
+                <SquallsActionCard
+                  emoji="⚓"
+                  label="Dock at Town"
+                  accent="teal"
+                  onClick={dockAtPortTown}
+                />
+                <SquallsActionCard
+                  emoji="⛵"
+                  label="Sail Past"
+                  accent="blue"
+                  onClick={sailPastPortTown}
                 />
               </HomeActionGrid>
             </Box>
@@ -672,6 +725,7 @@ export default function WorldPanel({
           isPlayerTurn={isPlayerTurn}
           viewingHand={viewingHand}
           energy={energy}
+          heroAmmo={hero.ammo}
           onPlayCard={playCombatCard}
         >
           <Box
@@ -694,21 +748,20 @@ export default function WorldPanel({
               borderBottomWidth="1px"
               borderColor="blackAlpha.200"
             >
-              <AdventureStripe
-                day={day}
-                location={location}
-                gameState="battle"
-                currentIsland={currentIsland}
-                currentDungeon={currentDungeon}
-                renderIslandName={renderIslandName}
-                renderDungeonName={renderDungeonName}
-              />
               <PlayerPanel
                 hero={hero}
                 gameState="battle"
                 armor={armor}
                 weakened={heroWeakened}
                 onOpenCharacterSheet={onOpenCharacterSheet}
+              />
+              <AdventureStripe
+                location={location}
+                gameState="battle"
+                currentIsland={currentIsland}
+                currentDungeon={currentDungeon}
+                renderIslandName={renderIslandName}
+                renderDungeonName={renderDungeonName}
               />
 
               {enemyActionMessage && !combatVictory && (
@@ -976,8 +1029,10 @@ export default function WorldPanel({
                               card={card}
                               cost={getCardEnergyCost(card)}
                               equipped={hero.equipped}
+                              heroAmmo={hero.ammo}
                               disabled={
-                                !(isPlayerTurn && energy >= getCardEnergyCost(card))
+                                !(isPlayerTurn && energy >= getCardEnergyCost(card)) ||
+                                (cardRequiresAmmo(card) && hero.ammo < 1)
                               }
                             />
                           ) : (
@@ -1044,11 +1099,6 @@ export default function WorldPanel({
         energy={energy}
         maxEnergy={maxEnergy}
         onConfirm={confirmPassWithEnergy}
-      />
-      <RestartAdventureConfirmModal
-        open={restartConfirmOpen}
-        onOpenChange={setRestartConfirmOpen}
-        onConfirm={restartAdventure}
       />
     </>
   );

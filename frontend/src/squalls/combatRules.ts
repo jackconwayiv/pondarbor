@@ -10,6 +10,7 @@ import {
 } from "./combatEquipment";
 import {
   isAttackCard,
+  cardRequiresAmmo,
   isDefendCard,
   isStrongAttackCard,
   targetsSelfAutomatically,
@@ -236,7 +237,10 @@ export function getCardEffectText(
     if (equipped) {
       return getAttackEffectRangeText(equipped, card);
     }
-    return card.strong ? "Best of 2 × weapon damage" : "Weapon damage";
+    const ammoSuffix = cardRequiresAmmo(card) ? " · 1 ammo" : "";
+    return card.strong
+      ? `Best of 2 × weapon damage${ammoSuffix}`
+      : `Weapon damage${ammoSuffix}`;
   }
   if (isDefendCard(card) || targetsSelfAutomatically(card)) {
     if (equipped) {

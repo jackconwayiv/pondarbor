@@ -1,5 +1,10 @@
 import type { ReactNode } from "react";
 
+import type { ExploreTestContext, ExploreTestOption } from "./exploreTestPicker";
+import type { PortTownType } from "./portTowns";
+
+export type { ExploreTestContext, ExploreTestOption };
+
 export type SaveSummaryLine = {
   label: string;
   value: string;
@@ -29,9 +34,13 @@ export type GameStateTypes =
   | "explore"
   | "event"
   | "sail"
-  | "dead";
+  | "dead"
+  | "tavern"
+  | "shipwright"
+  | "exploreTest"
+  | "cookstove";
 
-export type GameLocationTypes = "ship" | "island" | "dungeon";
+export type GameLocationTypes = "ship" | "island" | "dungeon" | "port";
 
 export type IslandType = {
   name: string;
@@ -41,9 +50,13 @@ export type IslandType = {
   levelFactor: number;
   /** Built on first anchor; each card is one explore action. */
   eventDeck?: EventType[];
+  /** Set when a cookstove is discovered while exploring this island. */
+  cookstoveFound?: boolean;
 };
 
-export type ShopVariant = "ship" | "merchant" | "island_trader";
+export type { PortTownType } from "./portTowns";
+
+export type ShopVariant = "ship" | "merchant" | "island_trader" | "port";
 
 export type EventType = {
   name: string;
@@ -148,12 +161,15 @@ export const FOOD_ITEM_IDS = [
   "banana",
   "orange",
   "raw_fish",
-  "boar_meat",
+  "raw_meat",
+  "cooked_fish",
+  "cooked_meat",
   "coconut",
   "mango",
   "pineapple",
   "tea",
   "rum",
+  "grog",
 ] as const;
 export type FoodItemId = (typeof FOOD_ITEM_IDS)[number];
 
@@ -198,7 +214,13 @@ export const EQUIPMENT_IDS = [
 ] as const;
 export type EquipmentId = (typeof EQUIPMENT_IDS)[number];
 
-export type EquipmentSlot = "melee" | "ranged" | "armor" | "relic";
+export type EquipmentSlot =
+  | "melee"
+  | "ranged"
+  | "armor"
+  | "relic"
+  | "relic2"
+  | "pet";
 
 export type EquippedGear = Record<EquipmentSlot, EquipmentId | null>;
 
@@ -225,6 +247,8 @@ export type HeroType = {
   class: string;
   current_hp: number;
   max_hp: number;
+  ammo: number;
+  max_ammo: number;
   gold: number;
   xp: number;
   level: number;
@@ -246,7 +270,6 @@ export type PlayerPanelProps = {
 };
 
 export type AdventureStripeProps = {
-  day: number;
   location: GameLocationTypes;
   currentIsland: IslandType | null;
   currentDungeon: DungeonType | null;
@@ -261,9 +284,11 @@ export type WorldPanelProps = {
   location: GameLocationTypes;
   setLocation: React.Dispatch<React.SetStateAction<GameLocationTypes>>;
   currentIsland: IslandType | null;
+  currentPortTown: PortTownType | null;
   currentDungeon: DungeonType | null;
   setCurrentDungeon: React.Dispatch<React.SetStateAction<DungeonType | null>>;
   renderIslandName: (island: IslandType) => string;
+  renderPortTownName: (port: PortTownType) => string;
   renderDungeonName: (dungeon: DungeonType) => string;
   enterCurrentDungeon: () => void;
   returnToIslandFromDungeon: () => void;
@@ -294,6 +319,8 @@ export type WorldPanelProps = {
   returnToShipFromIsland: () => void;
   anchorAtDiscoveredIsland: () => void;
   abandonDiscoveredIsland: () => void;
+  dockAtPortTown: () => void;
+  sailPastPortTown: () => void;
   claimCombatLoot: (lootId: string) => void;
   claimEventLoot: (lootId: string) => void;
   completeTreasureEvent: () => void;
@@ -311,17 +338,17 @@ export type WorldPanelProps = {
   endPlayerTurn: () => void;
   resetToLobby: () => void;
   goToLobby: () => void;
-  resumeAdventure: () => void;
-  restartAdventure: () => void;
-  canResumeAdventure: boolean;
-  lobbySaveSummaryLines: SaveSummaryLine[];
-  lobbySavedAtLabel: string | null;
   healHero: () => void;
   openRest: () => void;
   wakeFromRest: () => void;
   leaveRest: () => void;
   restComplete: boolean;
   restMessage: string | null;
+  openCookstove: () => void;
+  leaveCookstove: () => void;
+  cookAtStove: (fromIslandEvent?: boolean) => void;
+  dismissCookstoveEncounter: () => void;
+  cookMessage: string | null;
   shopMessage: string | null;
   shopVariant: ShopVariant | null;
   buyShopItem: (itemId: ItemId) => void;
@@ -331,9 +358,23 @@ export type WorldPanelProps = {
   openShipShop: () => void;
   openMerchantShop: () => void;
   openIslandTraderShop: () => void;
+  openPortShop: () => void;
+  openShipwright: () => void;
+  openTavern: () => void;
+  leavePort: () => void;
+  returnToPort: () => void;
+  nearPortTown: boolean;
+  leaveTavern: () => void;
+  leaveShipwright: () => void;
+  tavernMessage: string | null;
+  buyTavernCard: (offerId: string) => void;
+  refineTavernCard: (deckIndex: number) => void;
   resolveShipwreckDive: (choice: "sail_past" | WreckUnlockItemId) => void;
+  exploreTestContext: ExploreTestContext | null;
+  exploreTestOptions: ExploreTestOption[];
+  applyExploreTestOutcome: (optionId: string) => void;
+  cancelExploreTest: () => void;
   onOpenCharacterSheet: () => void;
-  isStaff?: boolean;
 };
 
 export function isAttackCard(card: CombatCard): card is AttackCard {
@@ -351,6 +392,10 @@ export function isStrongAttackCard(card: CombatCard): card is AttackCard {
 
 export function getAttackKind(card: AttackCard): AttackKind {
   return card.attackKind;
+}
+
+export function cardRequiresAmmo(card: CombatCard): boolean {
+  return isAttackCard(card) && getAttackKind(card) === "ranged";
 }
 
 export function isDefendCard(card: CombatCard): card is DefendCard {

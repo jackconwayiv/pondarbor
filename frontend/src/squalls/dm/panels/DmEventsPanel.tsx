@@ -16,6 +16,7 @@ import {
   SEA_DECK_RULES,
   SEA_EVENT_POOL_DISPLAY,
   SEA_FIXED_EVENTS,
+  SEA_PORT_RULES,
 } from "../squallsDmCatalog";
 import { DmPanelIntro, DmSectionHeading } from "./DmStatRow";
 
@@ -66,6 +67,10 @@ export default function DmEventsPanel() {
         <Text fontSize="xs" color="gray.900" mt={1}>
           Sea treasure: {Math.round(SEA_TREASURE_LOCKED_CHANCE * 100)}% Floating Chest
           (locked), remainder Floating Supplies (unlocked)
+        </Text>
+        <Text fontSize="xs" color="gray.900" mt={1}>
+          Port Town: {SEA_PORT_RULES}. Visiting port sets location to port (shop,
+          shipwright, tavern).
         </Text>
       </Box>
 
@@ -123,7 +128,8 @@ export default function DmEventsPanel() {
       <Box>
         <DmSectionHeading>Floating supplies loot pool</DmSectionHeading>
         <Text fontSize="sm" color="gray.900" mt={1}>
-          {FLOATING_SUPPLY_POOL.join(", ")} — rolled 1d4 times per unlocked sea treasure
+          {FLOATING_SUPPLY_POOL.join(", ")} — rolled 1d4 times per unlocked sea treasure;
+          duplicate rolls for the same item are ignored
         </Text>
       </Box>
     </VStack>

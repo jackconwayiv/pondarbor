@@ -89,16 +89,20 @@ function rollSupplyPoolEntry(): SupplyPoolEntry {
   return SUPPLY_POOL[Math.floor(Math.random() * SUPPLY_POOL.length)]!;
 }
 
-/** 1d4 rolls from the supply pool (items stacked; equipment is one card per roll). */
+/** 1d4 rolls from the supply pool; duplicate item/equipment rolls are skipped. */
 export function generateFloatingSuppliesLoot(): CombatLootItem[] {
   const rollCount = rollD4();
-  const counts = new Map<ItemId, number>();
+  const seenItems = new Set<ItemId>();
   const loot: CombatLootItem[] = [];
   let equipmentIndex = 0;
+  let itemIndex = 0;
+  let hasLockpick = false;
 
   for (let i = 0; i < rollCount; i++) {
     const entry = rollSupplyPoolEntry();
     if (entry === "lockpick") {
+      if (hasLockpick) continue;
+      hasLockpick = true;
       loot.push(
         createEquipmentLootCard(
           `floating-supplies-lockpick-${equipmentIndex}`,
@@ -110,17 +114,18 @@ export function generateFloatingSuppliesLoot(): CombatLootItem[] {
       continue;
     }
     const itemId = entry === "fruit" ? rollSpawnFruit() : entry;
-    counts.set(itemId, (counts.get(itemId) ?? 0) + 1);
+    if (seenItems.has(itemId)) continue;
+    seenItems.add(itemId);
+    loot.push({
+      id: `floating-supplies-${itemId}-${itemIndex}`,
+      kind: "item" as const,
+      itemId,
+      amount: 1,
+      sourceName: FLOATING_SUPPLIES_EVENT_NAME,
+      claimed: false,
+    });
+    itemIndex += 1;
   }
 
-  const itemCards = [...counts.entries()].map(([itemId, amount], index) => ({
-    id: `floating-supplies-${itemId}-${index}`,
-    kind: "item" as const,
-    itemId,
-    amount,
-    sourceName: FLOATING_SUPPLIES_EVENT_NAME,
-    claimed: false,
-  }));
-
-  return [...itemCards, ...loot];
+  return loot;
 }

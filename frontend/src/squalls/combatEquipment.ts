@@ -99,11 +99,13 @@ export function getAttackEffectRangeText(
   equipped: EquippedGear,
   card: AttackCard,
 ): string {
-  const { min, max } = getEquippedWeaponStats(equipped, getAttackKind(card));
+  const kind = getAttackKind(card);
+  const { min, max } = getEquippedWeaponStats(equipped, kind);
+  const ammoSuffix = kind === "ranged" ? " · 1 ammo" : "";
   if (card.strong) {
-    return `Best of 2 × ${min}–${max} damage`;
+    return `Best of 2 × ${min}–${max} damage${ammoSuffix}`;
   }
-  return `${min}–${max} damage`;
+  return `${min}–${max} damage${ammoSuffix}`;
 }
 
 export function getDefendEffectRangeText(equipped: EquippedGear): string {

@@ -22,6 +22,8 @@ const ACCENT_BORDER: Record<SquallsActionAccent, string> = {
 type Props = {
   emoji: string;
   label: string;
+  /** Secondary line(s) below the label — disables the square aspect ratio. */
+  subtext?: string;
   onClick: () => void;
   accent?: SquallsActionAccent;
   disabled?: boolean;
@@ -31,25 +33,36 @@ type Props = {
 export default function SquallsActionCard({
   emoji,
   label,
+  subtext,
   onClick,
   accent = "blue",
   disabled = false,
   compact = false,
 }: Props) {
+  const hasSubtext = !!subtext;
+
   return (
     <ActionButton
       type="button"
       disabled={disabled}
       onClick={onClick}
       w="100%"
-      aspectRatio="1"
-      minH={compact ? "4.25rem" : "6rem"}
+      aspectRatio={hasSubtext ? undefined : 1}
+      minH={
+        hasSubtext
+          ? compact
+            ? "7.5rem"
+            : "9rem"
+          : compact
+            ? "4.25rem"
+            : "6rem"
+      }
       p={compact ? 2 : 3}
       display="flex"
       flexDirection="column"
       alignItems="center"
-      justifyContent="center"
-      gap={compact ? 1 : 2}
+      justifyContent={hasSubtext ? "flex-start" : "center"}
+      gap={hasSubtext ? 1 : compact ? 1 : 2}
       borderRadius="lg"
       borderWidth="2px"
       borderColor={ACCENT_BORDER[accent]}
@@ -88,6 +101,18 @@ export default function SquallsActionCard({
       >
         {label}
       </Text>
+      {subtext ? (
+        <Text
+          fontSize="xs"
+          fontWeight="normal"
+          color="gray.700"
+          textAlign="center"
+          lineHeight="snug"
+          px={0.5}
+        >
+          {subtext}
+        </Text>
+      ) : null}
     </ActionButton>
   );
 }

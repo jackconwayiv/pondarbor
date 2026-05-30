@@ -13,7 +13,7 @@ export default function CharacterSheetDeck({ deck, equipped }: Props) {
   return (
     <VStack align="stretch" gap={3}>
       <Text fontSize="sm" color="gray.900">
-        {deck.length} cards · deck editing coming soon
+        {deck.length} cards · edit at a port tavern
       </Text>
       {deck.length === 0 ? (
         <Text fontSize="sm" color="gray.900">

@@ -14,6 +14,11 @@ export const LOCKPICK_EQUIPMENT_ID = "lockpick" as const satisfies EquipmentId;
 /** Chance the bonus treasure loot card is a lockpick instead of a consumable. */
 export const TREASURE_LOCKPICK_DROP_CHANCE = 0.12;
 
+export const HERO_STARTING_AMMO = 6;
+
+/** Chance an ammo pouch drops after combat when the hero spent ammo that fight. */
+export const AMMO_POUCH_DROP_CHANCE = 0.25;
+
 export function createEquipmentLootCard(
   id: string,
   equipmentId: EquipmentId,
@@ -27,6 +32,37 @@ export function createEquipmentLootCard(
     sourceName,
     claimed: false,
   };
+}
+
+/** Event treasure loot: at most one claim card per item or equipment type (amount 1). */
+export function dedupeEventLootByItemType(
+  loot: CombatLootItem[],
+): CombatLootItem[] {
+  const seenItems = new Set<ItemId>();
+  const seenEquipment = new Set<EquipmentId>();
+  const result: CombatLootItem[] = [];
+
+  for (const entry of loot) {
+    if (entry.kind === "gold" || entry.kind === "xp") {
+      result.push(entry);
+      continue;
+    }
+    if (entry.kind === "item" && entry.itemId) {
+      if (seenItems.has(entry.itemId)) continue;
+      seenItems.add(entry.itemId);
+      result.push({ ...entry, amount: LOOT_ITEM_COPY_LIMIT });
+      continue;
+    }
+    if (entry.kind === "equipment" && entry.equipmentId) {
+      if (seenEquipment.has(entry.equipmentId)) continue;
+      seenEquipment.add(entry.equipmentId);
+      result.push(entry);
+      continue;
+    }
+    result.push(entry);
+  }
+
+  return result;
 }
 
 /** At most one consumable loot card, always quantity 1. */
@@ -86,17 +122,41 @@ export function isTreasureEvent(event: EventType): boolean {
   return event.type === "treasure";
 }
 
+/** Pure state transition for claiming loot — grant side effects separately. */
+export function markLootClaimed(
+  prev: CombatLootItem[],
+  lootId: string,
+): { next: CombatLootItem[]; granted: CombatLootItem | null } {
+  const item = prev.find((entry) => entry.id === lootId);
+  if (!item || item.claimed) {
+    return { next: prev, granted: null };
+  }
+  return {
+    granted: item,
+    next: prev.map((entry) =>
+      entry.id === lootId ? { ...entry, claimed: true } : entry,
+    ),
+  };
+}
+
+/** Apply a loot claim synchronously — safe outside React setState updaters. */
+export function applyLootClaim(
+  prev: CombatLootItem[],
+  lootId: string,
+  onGrant: (item: CombatLootItem) => void,
+): CombatLootItem[] {
+  const { next, granted } = markLootClaimed(prev, lootId);
+  if (granted) onGrant(granted);
+  return next;
+}
+
+/** @deprecated Side effects inside setState updaters can double-fire — use applyLootClaim. */
 export function claimLootItem(
   prev: CombatLootItem[],
   lootId: string,
   onGrant: (item: CombatLootItem) => void,
 ): CombatLootItem[] {
-  const item = prev.find((entry) => entry.id === lootId);
-  if (!item || item.claimed) return prev;
-  onGrant(item);
-  return prev.map((entry) =>
-    entry.id === lootId ? { ...entry, claimed: true } : entry,
-  );
+  return applyLootClaim(prev, lootId, onGrant);
 }
 
 export function allLootClaimed(loot: CombatLootItem[]): boolean {
@@ -115,8 +175,11 @@ export function xpDropForEnemy(enemy: EnemyType): number {
   return enemy.level;
 }
 
-/** One gold card, one XP card, and stacked item cards from per-foe drop rolls. */
-export function generateCombatLoot(enemies: EnemyType[]): CombatLootItem[] {
+/** One gold card, one XP card, stacked item cards from per-foe drop rolls. */
+export function generateCombatLoot(
+  enemies: EnemyType[],
+  options: { ammoSpent?: number } = {},
+): CombatLootItem[] {
   const foes = enemies.filter((enemy): enemy is EnemyType => Boolean(enemy));
   if (foes.length === 0) return [];
 
@@ -128,6 +191,19 @@ export function generateCombatLoot(enemies: EnemyType[]): CombatLootItem[] {
   }
 
   const itemCards = combatItemLootCards(rollMonsterItemDrops(foes));
+  if (
+    (options.ammoSpent ?? 0) >= 1 &&
+    Math.random() < AMMO_POUCH_DROP_CHANCE
+  ) {
+    itemCards.push({
+      id: "combat-loot-bonus-ammo_pouch",
+      kind: "item",
+      itemId: "ammo_pouch",
+      amount: 1,
+      sourceName: "",
+      claimed: false,
+    });
+  }
 
   return [
     {

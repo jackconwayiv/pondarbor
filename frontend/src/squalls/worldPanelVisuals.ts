@@ -27,9 +27,6 @@ export type WorldPanelVisualProps = Pick<
   | "dungeonChestUnlocked"
   | "chestMessage"
   | "forceOpenAttempted"
-  | "canResumeAdventure"
-  | "lobbySaveSummaryLines"
-  | "lobbySavedAtLabel"
   | "restComplete"
   | "restMessage"
   | "shopMessage"
@@ -65,9 +62,6 @@ export function pickWorldPanelVisuals(source: VisualSource): WorldPanelVisualPro
     dungeonChestUnlocked: source.dungeonChestUnlocked,
     chestMessage: source.chestMessage,
     forceOpenAttempted: source.forceOpenAttempted,
-    canResumeAdventure: source.canResumeAdventure,
-    lobbySaveSummaryLines: source.lobbySaveSummaryLines,
-    lobbySavedAtLabel: source.lobbySavedAtLabel,
     restComplete: source.restComplete,
     restMessage: source.restMessage,
     shopMessage: source.shopMessage,

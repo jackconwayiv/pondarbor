@@ -32,6 +32,7 @@ import {
 } from "./combatDnDIds";
 import type { CombatCard, EquippedGear } from "./shantiesTypes";
 import {
+  cardRequiresAmmo,
   isAttackCard,
   targetsEnemyManually,
   targetsSelfAutomatically,
@@ -64,6 +65,7 @@ type CombatBattleDndProps = {
   isPlayerTurn: boolean;
   viewingHand: boolean;
   energy: number;
+  heroAmmo: number;
   onPlayCard: (handIndex: number, enemyIndex?: number) => void;
   children: ReactNode;
 };
@@ -74,6 +76,7 @@ export function CombatBattleDnd({
   isPlayerTurn,
   viewingHand,
   energy,
+  heroAmmo,
   onPlayCard,
   children,
 }: CombatBattleDndProps) {
@@ -122,6 +125,7 @@ export function CombatBattleDnd({
     }
     if (!isPlayerTurn || !viewingHand) return;
     if (energy < getCardEnergyCost(card)) return;
+    if (cardRequiresAmmo(card) && heroAmmo < 1) return;
 
     if (targetsEnemyManually(card)) {
       if (!isAttackCard(card)) return;
@@ -174,6 +178,7 @@ type DraggableHandCardSlotProps = {
   card: CombatCard;
   cost: number;
   equipped: EquippedGear;
+  heroAmmo: number;
   disabled: boolean;
 };
 
@@ -182,14 +187,17 @@ export function DraggableCombatHandCard({
   card,
   cost,
   equipped,
+  heroAmmo,
   disabled,
 }: DraggableHandCardSlotProps) {
   const { isPlayerTurn, viewingHand, energy } = useCombatBattleDnd();
+  const lacksAmmo = cardRequiresAmmo(card) && heroAmmo < 1;
   const canDrag =
     (targetsEnemyManually(card) || targetsSelfAutomatically(card)) &&
     isPlayerTurn &&
     viewingHand &&
     !disabled &&
+    !lacksAmmo &&
     energy >= cost;
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({

@@ -3,6 +3,7 @@ import type {
   GameLocationTypes,
   GameStateTypes,
   IslandType,
+  PortTownType,
   SaveSummaryLine,
 } from "./shantiesTypes";
 import type { ShantiesSaveData } from "./shantiesLocalSave";
@@ -17,10 +18,22 @@ const GAME_STATE_LABELS: Record<GameStateTypes, string> = {
   event: "Event",
   sail: "Sailing",
   dead: "Defeated",
+  tavern: "Tavern",
+  shipwright: "Shipwright",
+  cookstove: "Cookstove",
+  exploreTest: "Test picker",
 };
 
 export function formatGameStateLabel(state: GameStateTypes): string {
   return GAME_STATE_LABELS[state] ?? state;
+}
+
+export function formatIslandDisplayName(island: IslandType): string {
+  let fullIslandName = "";
+  if (island.size) fullIslandName += `${island.size}, `;
+  if (island.vibe) fullIslandName += `${island.vibe} `;
+  fullIslandName += island.name;
+  return fullIslandName;
 }
 
 export function hasResumableAdventure(data: ShantiesSaveData): boolean {
@@ -39,9 +52,27 @@ export function hasResumableAdventure(data: ShantiesSaveData): boolean {
 export function buildSaveSummaryLines(
   data: ShantiesSaveData,
   renderIslandName: (island: IslandType) => string,
+  renderPortTownName: (port: PortTownType) => string = (port) =>
+    `${port.size} of ${port.vibe}`,
 ): SaveSummaryLine[] {
-  const { hero, day, location, currentIsland, gameState, resumeGameState } = data;
-  const placeLabel = formatPlaceLabel(location, currentIsland, renderIslandName);
+  const {
+    hero,
+    day,
+    location,
+    currentIsland,
+    currentPortTown,
+    gameState,
+    resumeGameState,
+  } = data;
+  const placeLabel = formatPlaceLabel(
+    location,
+    currentIsland,
+    renderIslandName,
+    null,
+    (d) => d.name,
+    currentPortTown,
+    renderPortTownName,
+  );
   const statusState = resumeGameState ?? gameState;
 
   return [
@@ -68,6 +99,9 @@ export function formatPlaceLabel(
   renderIslandName: (island: IslandType) => string,
   currentDungeon: DungeonType | null = null,
   renderDungeonName: (dungeon: DungeonType) => string = (d) => d.name,
+  currentPortTown: PortTownType | null = null,
+  renderPortTownName: (port: PortTownType) => string = (port) =>
+    `${port.size} of ${port.vibe}`,
 ): string {
   if (location === "dungeon" && currentDungeon) {
     return renderDungeonName(currentDungeon);
@@ -75,7 +109,11 @@ export function formatPlaceLabel(
   if (location === "island" && currentIsland) {
     return renderIslandName(currentIsland);
   }
+  if (location === "port" && currentPortTown) {
+    return renderPortTownName(currentPortTown);
+  }
   if (location === "island") return "Island";
+  if (location === "port") return "Port";
   if (location === "dungeon") return "Dungeon";
   return "Ship";
 }

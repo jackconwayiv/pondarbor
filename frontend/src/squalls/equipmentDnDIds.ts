@@ -1,4 +1,5 @@
 import type { EquipmentSlot } from "./shantiesTypes";
+import { EQUIPMENT_SLOTS } from "./shantiesEquipment";
 
 const SLOT_DROP_PREFIX = "squalls-equip-slot:";
 const INVENTORY_DROP_ID = "squalls-equip-inventory";
@@ -26,13 +27,8 @@ export function parseEquipmentSlotDropId(
 ): EquipmentSlot | null {
   if (!id?.startsWith(SLOT_DROP_PREFIX)) return null;
   const slot = id.slice(SLOT_DROP_PREFIX.length);
-  if (
-    slot === "melee" ||
-    slot === "ranged" ||
-    slot === "armor" ||
-    slot === "relic"
-  ) {
-    return slot;
+  if ((EQUIPMENT_SLOTS as readonly string[]).includes(slot)) {
+    return slot as EquipmentSlot;
   }
   return null;
 }
@@ -51,13 +47,8 @@ export function parseEquipmentDragId(
   if (!id) return null;
   if (id.startsWith(DRAG_SLOT_PREFIX)) {
     const slot = id.slice(DRAG_SLOT_PREFIX.length);
-    if (
-      slot === "melee" ||
-      slot === "ranged" ||
-      slot === "armor" ||
-      slot === "relic"
-    ) {
-      return { source: "slot", slot };
+    if ((EQUIPMENT_SLOTS as readonly string[]).includes(slot)) {
+      return { source: "slot", slot: slot as EquipmentSlot };
     }
     return null;
   }

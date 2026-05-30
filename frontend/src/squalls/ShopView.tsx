@@ -13,6 +13,7 @@ import {
   getShopCatalogItemIds,
   ITEM_IDS,
 } from "./shantiesItems";
+import { shopAllowsSelling } from "./shantiesShop";
 import type { HeroType, ItemId, ShopVariant } from "./shantiesTypes";
 
 type Props = {
@@ -36,6 +37,8 @@ export default function ShopView({
 }: Props) {
   const isMerchant = shopVariant === "merchant";
   const isIslandTrader = shopVariant === "island_trader";
+  const isPort = shopVariant === "port";
+  const isShip = shopVariant === "ship";
   const catalogItemIds = getShopCatalogItemIds(shopVariant);
   const ownedConsumables = ITEM_IDS.filter(
     (itemId) =>
@@ -43,8 +46,7 @@ export default function ShopView({
       getItemSellPrice(itemId) !== null,
   );
   const hasSellables =
-    !isMerchant &&
-    !isIslandTrader &&
+    shopAllowsSelling(shopVariant) &&
     (ownedConsumables.length > 0 || hero.equipmentInventory.length > 0);
 
   return (
@@ -56,14 +58,22 @@ export default function ShopView({
               ? "🛶 Merchant Ship"
               : isIslandTrader
                 ? "🏝️ Island Trader"
-                : "💰 Ye Be Shopping"}
+                : isPort
+                  ? "💰 Marketplace"
+                  : isShip
+                    ? "💰 Provisions"
+                    : "💰 Ye Be Shopping"}
           </Heading>
           <Text fontSize="sm" color="gray.900">
             {isMerchant
               ? "Have a browse of our fine wares."
               : isIslandTrader
                 ? "A local offers goods from the island."
-                : "What'll ye have today?"}
+                : isPort
+                  ? "Stock up before ye sail on."
+                  : isShip
+                    ? "Stock up for the voyage."
+                    : "What'll ye have today?"}
           </Text>
         </VStack>
         <Box flexShrink={0} w="7rem">
@@ -74,7 +84,9 @@ export default function ShopView({
                 ? "Back to open sea"
                 : isIslandTrader
                   ? "Back to Island"
-                  : "Back to Ship"
+                  : isPort
+                    ? "Back to Port"
+                    : "Back to Ship"
             }
             accent="blue"
             compact

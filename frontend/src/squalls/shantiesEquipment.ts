@@ -12,13 +12,17 @@ export const EQUIPMENT_SLOTS: readonly EquipmentSlot[] = [
   "ranged",
   "armor",
   "relic",
+  "relic2",
+  "pet",
 ];
 
 export const EQUIPMENT_SLOT_LABELS: Record<EquipmentSlot, string> = {
-  melee: "Melee Weapon",
-  ranged: "Ranged Weapon",
+  melee: "MELEE",
+  ranged: "RANGED",
   armor: "Armor",
-  relic: "Relic",
+  relic: "Relic 1",
+  relic2: "Relic 2",
+  pet: "Pet",
 };
 
 export type EquipmentCombatStats = {
@@ -79,6 +83,33 @@ export const EQUIPMENT_DEFINITIONS: Record<EquipmentId, EquipmentDefinition> = {
   },
 };
 
+export function heroOwnsRelicGear(hero: HeroType): boolean {
+  if (hero.equipped.relic || hero.equipped.relic2) return true;
+  return hero.equipmentInventory.some((id) => {
+    const slot = EQUIPMENT_DEFINITIONS[id].slot;
+    return slot === "relic" || slot === "relic2";
+  });
+}
+
+export function heroOwnsPetGear(hero: HeroType): boolean {
+  if (hero.equipped.pet) return true;
+  return hero.equipmentInventory.some(
+    (id) => EQUIPMENT_DEFINITIONS[id].slot === "pet",
+  );
+}
+
+/** Equipped grid slots shown in the character sheet (conditional relic/pet rows). */
+export function visibleEquipmentSlots(hero: HeroType): EquipmentSlot[] {
+  const slots: EquipmentSlot[] = ["melee", "ranged", "armor"];
+  if (heroOwnsRelicGear(hero)) {
+    slots.push("relic", "relic2");
+  }
+  if (heroOwnsPetGear(hero)) {
+    slots.push("pet");
+  }
+  return slots;
+}
+
 export function getEquipmentBuyPrice(equipmentId: EquipmentId): number | null {
   const price = EQUIPMENT_DEFINITIONS[equipmentId].shopPrice;
   return price === undefined ? null : price;
@@ -94,6 +125,8 @@ export function createStarterEquipped(): EquippedGear {
     ranged: "sooty_pistol",
     armor: "sailors_garb",
     relic: null,
+    relic2: null,
+    pet: null,
   };
 }
 
@@ -103,6 +136,8 @@ export function createEmptyEquipped(): EquippedGear {
     ranged: null,
     armor: null,
     relic: null,
+    relic2: null,
+    pet: null,
   };
 }
 
@@ -121,6 +156,8 @@ export function normalizeEquipped(raw: unknown): EquippedGear {
     ranged: parse("ranged"),
     armor: parse("armor"),
     relic: parse("relic"),
+    relic2: parse("relic2"),
+    pet: parse("pet"),
   };
 }
 

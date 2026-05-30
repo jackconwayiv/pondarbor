@@ -31,6 +31,7 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   hero: HeroType;
+  day: number;
   gameState: GameStateTypes;
   combatPhase: CombatPhase;
   energy: number;
@@ -62,6 +63,7 @@ export default function CharacterSheetModal({
   open,
   onOpenChange,
   hero,
+  day,
   gameState,
   combatPhase,
   energy,
@@ -130,7 +132,12 @@ export default function CharacterSheetModal({
                 label="HP"
                 value={`${clampHp(hero.current_hp)} / ${clampHp(hero.max_hp)}`}
               />
+              <StatRow
+                label="Ammo"
+                value={`${hero.ammo} / ${hero.max_ammo}`}
+              />
               <StatRow label="Gold" value={String(hero.gold)} />
+              <StatRow label="Day" value={String(day)} />
               <StatRow label="Level" value={String(hero.level)} />
               <StatRow label="XP" value={String(hero.xp)} />
               {inCombat && armor > 0 ? (

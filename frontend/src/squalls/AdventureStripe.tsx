@@ -1,4 +1,4 @@
-import { Badge, HStack, Text } from "@chakra-ui/react";
+import { HStack, Text } from "@chakra-ui/react";
 
 import { getDungeonCombatPlaceLabel } from "./dungeonExplore";
 import type { AdventureStripeProps } from "./shantiesTypes";
@@ -11,8 +11,10 @@ function formatStripePlaceLabel(props: AdventureStripeProps): string {
     }
     if (location === "ship") return "Ship Combat";
     if (location === "island") return "Island Combat";
+    if (location === "port") return "Port Combat";
     return "Combat";
   }
+  if (location === "port") return "Port Town";
   if (location === "island") return "Island";
   if (location === "dungeon" && currentDungeon) {
     return renderDungeonName(currentDungeon);
@@ -32,19 +34,17 @@ function stripePlacePrefix(
     return "🕳️ ";
   }
   if (location === "ship") return "⛵ ";
+  if (location === "port") return "⚓ ";
   return "🏝️ ";
 }
 
 export default function AdventureStripe(props: AdventureStripeProps) {
-  const { day, gameState, location, currentDungeon } = props;
+  const { gameState, location, currentDungeon } = props;
   const placeLabel = formatStripePlaceLabel(props);
   const placePrefix = stripePlacePrefix(gameState, location, currentDungeon);
 
   return (
     <HStack w="100%" gap={2} align="center" flexWrap="wrap" minW={0}>
-      <Badge size="sm" colorPalette="blue" variant="solid" flexShrink={0}>
-        Day {day}
-      </Badge>
       <Text fontSize="sm" fontWeight="semibold" lineClamp={2} minW={0}>
         {placePrefix}
         {placeLabel}

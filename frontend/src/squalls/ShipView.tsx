@@ -9,6 +9,8 @@ type Props = {
   islandExplorePoints?: number;
   onEnterWreck?: () => void;
   wreckDelvePoints?: number;
+  onReturnToPort?: () => void;
+  onCookstove: () => void;
 };
 
 export default function ShipView({
@@ -19,6 +21,8 @@ export default function ShipView({
   islandExplorePoints,
   onEnterWreck,
   wreckDelvePoints,
+  onReturnToPort,
+  onCookstove,
 }: Props) {
   return (
     <HomeActionGrid>
@@ -38,7 +42,16 @@ export default function ShipView({
           onClick={onEnterWreck}
         />
       ) : null}
-      <SquallsActionCard emoji="💰" label="Barter" accent="yellow" onClick={onShop} />
+      {onReturnToPort ? (
+        <SquallsActionCard
+          emoji="⚓"
+          label="Return to Town"
+          accent="blue"
+          onClick={onReturnToPort}
+        />
+      ) : null}
+      <SquallsActionCard emoji="💰" label="Provisions" accent="yellow" onClick={onShop} />
+      <SquallsActionCard emoji="🍳" label="Cookstove" accent="orange" onClick={onCookstove} />
       <SquallsActionCard emoji="🛏️" label="Rest Up" accent="purple" onClick={onRest} />
       <SquallsActionCard emoji="⛵" label="Set Sail" accent="blue" onClick={onSail} />
     </HomeActionGrid>

@@ -231,7 +231,7 @@ export function executeEnemyAction(
     const gained = rollD4();
     const updated = {
       ...enemy,
-      armor: enemy.armor + gained,
+      armor: gained,
     };
     return {
       enemy: cycleEnemyAfterAction(updated),

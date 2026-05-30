@@ -59,8 +59,8 @@ export default function GameShell({
             backdropFilter="blur(10px)"
           >
             <VStack gap={1.5} align="stretch" w="100%">
-              {adventure}
               {player}
+              {adventure}
             </VStack>
           </Box>
         )}

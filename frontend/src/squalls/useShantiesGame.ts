@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   allLootClaimed,
-  claimLootItem,
   generateCombatLoot,
   generateEventLoot,
   isTreasureEvent,
+  applyLootClaim,
 } from "./combatLoot";
 import {
   applyWeakenedToDamage,
@@ -37,9 +37,9 @@ import {
   checkBuyItem,
   checkSellItem,
   checkUseItem,
-  getFoodHealAmount,
-  getItemCount,
   getItemEnergyCost,
+  rollFoodHealAmount,
+  getItemCount,
   formatIndoorAreaLabel,
   isFoodItem,
   ITEM_DEFINITIONS,
@@ -59,6 +59,7 @@ import type {
   DungeonType,
   IslandType,
   ItemId,
+  PortTownType,
   ShopVariant,
   WreckUnlockItemId,
 } from "./shantiesTypes";
@@ -67,9 +68,7 @@ import {
   createDefaultSaveData,
   createInitialHero,
   readShantiesSave,
-  readShantiesSaveWithMeta,
   writeShantiesSave,
-  type ShantiesSaveData,
 } from "./shantiesLocalSave";
 import {
   generateDungeon,
@@ -116,16 +115,11 @@ import {
 import {
   applyEncounterDrawPenalty,
   createEmptyScopedEncounterModifiers,
-  pickDungeonEvent,
   type EncounterScope,
   type ScopedEncounterModifiers,
 } from "./encounterProbability";
 import { applySeaWeatherToHero } from "./seaWeather";
-import {
-  buildSaveSummaryLines,
-  formatSavedAt,
-  hasResumableAdventure,
-} from "./shantiesSaveSummary";
+import { formatIslandDisplayName } from "./shantiesSaveSummary";
 import {
   formatMissLog,
   rollAttackDamage,
@@ -135,19 +129,41 @@ import {
   formatShockingRetaliationLog,
 } from "./combatEquipment";
 import {
+  applyCookAtStove,
+  canCookAtStove,
+  formatCookResultMessage,
+} from "./cookstove";
+import { isPortTownEvent } from "./portEvents";
+import {
+  generatePortTown,
+  renderPortTownName,
+} from "./portTowns";
+import { shopAllowsSelling } from "./shantiesShop";
+import {
   encounterPoolScopeForDungeonKind,
   getMonsterTemplate,
   pickEncounterMonsterNames,
   type EncounterPoolScope,
 } from "./monsters";
 import {
+  applyBuyTavernCard,
+  applyRefineTavernCard,
+  checkBuyTavernCard,
+  checkRefineTavernCard,
+  getTavernCardOffer,
+} from "./tavernCards";
+import {
+  findExploreTestOption,
+  getExploreTestOptions,
+  type ExploreTestContext,
+} from "./exploreTestPicker";
+import {
+  cardRequiresAmmo,
   getAttackKind,
   isAttackCard,
   targetsEnemyManually,
   targetsSelfAutomatically,
 } from "./shantiesTypes";
-
-const isBattle = () => Math.random() < 0.5;
 
 function encounterScopeForLocation(
   location: GameLocationTypes,
@@ -192,6 +208,9 @@ export function useShantiesGame() {
   );
   const [currentIsland, setCurrentIsland] = useState<IslandType | null>(
     initialSave.currentIsland,
+  );
+  const [currentPortTown, setCurrentPortTown] = useState<PortTownType | null>(
+    initialSave.currentPortTown,
   );
   const [currentDungeon, setCurrentDungeon] = useState<DungeonType | null>(
     initialSave.currentDungeon,
@@ -238,8 +257,10 @@ export function useShantiesGame() {
   );
   const [itemMessage, setItemMessage] = useState<string | null>(null);
   const [shopMessage, setShopMessage] = useState<string | null>(null);
+  const [tavernMessage, setTavernMessage] = useState<string | null>(null);
   const [restMessage, setRestMessage] = useState<string | null>(null);
   const [restComplete, setRestComplete] = useState(false);
+  const [cookMessage, setCookMessage] = useState<string | null>(null);
   const [encounterModifiers, setEncounterModifiers] =
     useState<ScopedEncounterModifiers>(
       initialSave.encounterModifiers ?? createEmptyScopedEncounterModifiers(),
@@ -253,6 +274,9 @@ export function useShantiesGame() {
   const [shopVariant, setShopVariant] = useState<ShopVariant | null>(
     initialSave.shopVariant,
   );
+  const [nearPortTown, setNearPortTown] = useState(initialSave.nearPortTown);
+  const [exploreTestContext, setExploreTestContext] =
+    useState<ExploreTestContext | null>(null);
   const [chestMessage, setChestMessage] = useState<string | null>(null);
   const [forceOpenAttempted, setForceOpenAttempted] = useState(false);
 
@@ -272,6 +296,18 @@ export function useShantiesGame() {
   const battlefieldEnemies =
     victoryEnemies.length > 0 ? victoryEnemies : enemies;
 
+  const exploreTestOptions = useMemo(
+    () =>
+      exploreTestContext
+        ? getExploreTestOptions(exploreTestContext, {
+            seaEventDeck,
+            currentIsland,
+            dungeonModifiers: encounterModifiers.dungeon,
+          })
+        : [],
+    [exploreTestContext, seaEventDeck, currentIsland, encounterModifiers.dungeon],
+  );
+
   const heroRef = useRef(hero);
   const armorRef = useRef(armor);
   const heroWeakenedRef = useRef(heroWeakened);
@@ -282,6 +318,9 @@ export function useShantiesGame() {
   const victoryPendingRef = useRef(false);
   /** Bumped when an enemy-turn effect cleans up so stale timers cannot act twice. */
   const enemyTurnRunRef = useRef(0);
+  const combatAmmoSpentRef = useRef(0);
+  const combatLootRef = useRef(combatLoot);
+  const eventLootRef = useRef(eventLoot);
   const startPlayerTurnRef = useRef<() => void>(() => {});
 
   const cancelVictoryDelay = useCallback(() => {
@@ -315,12 +354,19 @@ export function useShantiesGame() {
   useEffect(() => {
     discardPileRef.current = discardPile;
   }, [discardPile]);
+  useEffect(() => {
+    combatLootRef.current = combatLoot;
+  }, [combatLoot]);
+  useEffect(() => {
+    eventLootRef.current = eventLoot;
+  }, [eventLoot]);
 
   useEffect(() => {
     writeShantiesSave({
       gameState,
       location,
       currentIsland,
+      currentPortTown,
       currentDungeon,
       day,
       hero,
@@ -346,11 +392,13 @@ export function useShantiesGame() {
       dungeonChestUnlocked,
       seaEventDeck,
       shopVariant,
+      nearPortTown,
     });
   }, [
     gameState,
     location,
     currentIsland,
+    currentPortTown,
     currentDungeon,
     day,
     hero,
@@ -376,6 +424,7 @@ export function useShantiesGame() {
     dungeonChestUnlocked,
     seaEventDeck,
     shopVariant,
+    nearPortTown,
   ]);
 
   const grantLootItem = useCallback((item: CombatLootItem) => {
@@ -418,6 +467,7 @@ export function useShantiesGame() {
 
   const resetCombatState = useCallback(() => {
     cancelVictoryDelay();
+    combatAmmoSpentRef.current = 0;
     setHand([]);
     setDrawPile([]);
     setDiscardPile([]);
@@ -432,6 +482,7 @@ export function useShantiesGame() {
 
   const beginCombat = useCallback((sourceDeck: CombatCard[]) => {
     cancelVictoryDelay();
+    combatAmmoSpentRef.current = 0;
     setCombatVictory(false);
     setVictoryEnemies([]);
     setCombatLoot([]);
@@ -455,6 +506,8 @@ export function useShantiesGame() {
 
   const startPlayerTurn = useCallback(() => {
     setCombatPhase("player");
+    armorRef.current = 0;
+    setArmor(0);
     setEnergy(MAX_ENERGY_PER_TURN);
     setEnemyTurnIndex(null);
     setEnemyActionMessage(null);
@@ -530,91 +583,20 @@ export function useShantiesGame() {
     return { name, size, explorePoints, levelFactor, vibe };
   }, []);
 
-  const renderIslandName = useCallback((island: IslandType) => {
-    let fullIslandName = "";
-    if (island.size) fullIslandName += `${island.size}, `;
-    if (island.vibe) fullIslandName += `${island.vibe} `;
-    fullIslandName += island.name;
-    return fullIslandName;
-  }, []);
+  const renderIslandName = useCallback(
+    (island: IslandType) => formatIslandDisplayName(island),
+    [],
+  );
+
+  const renderPortTownNameStable = useCallback(
+    (port: PortTownType) => renderPortTownName(port),
+    [],
+  );
 
   const renderDungeonNameStable = useCallback(
     (dungeon: DungeonType) => renderDungeonName(dungeon),
     [],
   );
-
-  const lobbySaveSnapshot = useMemo(
-    (): ShantiesSaveData => ({
-      gameState,
-      location,
-      currentIsland,
-      currentDungeon,
-      day,
-      hero,
-      enemies,
-      activeEvent,
-      hand,
-      drawPile,
-      discardPile,
-      combatLog,
-      armor,
-      heroWeakened,
-      energy,
-      combatPhase,
-      enemyTurnIndex,
-      combatVictory,
-      victoryEnemies,
-      combatLoot,
-      eventLoot,
-      resumeGameState,
-      illuminatedAreas,
-      currentIndoorArea,
-      encounterModifiers,
-      dungeonChestUnlocked,
-      seaEventDeck,
-      shopVariant,
-    }),
-    [
-      gameState,
-      location,
-      currentIsland,
-      currentDungeon,
-      day,
-      hero,
-      enemies,
-      activeEvent,
-      hand,
-      drawPile,
-      discardPile,
-      combatLog,
-      armor,
-      heroWeakened,
-      energy,
-      combatPhase,
-      enemyTurnIndex,
-      combatVictory,
-      victoryEnemies,
-      combatLoot,
-      eventLoot,
-      resumeGameState,
-      illuminatedAreas,
-      currentIndoorArea,
-      encounterModifiers,
-      dungeonChestUnlocked,
-      seaEventDeck,
-      shopVariant,
-    ],
-  );
-
-  const canResumeAdventure = hasResumableAdventure(lobbySaveSnapshot);
-  const lobbySaveSummaryLines = useMemo(
-    () => buildSaveSummaryLines(lobbySaveSnapshot, renderIslandName),
-    [lobbySaveSnapshot, renderIslandName],
-  );
-  const lobbySavedAtLabel = useMemo(() => {
-    const meta = readShantiesSaveWithMeta();
-    return formatSavedAt(meta?.savedAtMs ?? null);
-  }, [lobbySaveSnapshot]);
 
   const goToLobby = useCallback(() => {
     if (gameState !== "lobby") {
@@ -634,6 +616,7 @@ export function useShantiesGame() {
     clearShantiesSave();
     setLocation("ship");
     setCurrentIsland(null);
+    setCurrentPortTown(null);
     setCurrentDungeon(null);
     setEnemies([]);
     setVictoryEnemies([]);
@@ -651,6 +634,7 @@ export function useShantiesGame() {
     resetAllEncounterModifiers();
     setSeaEventDeck(buildSeaEventDeck());
     setShopVariant(null);
+    setNearPortTown(false);
     resetCombatState();
     setCombatVictory(false);
     setGameState("home");
@@ -731,6 +715,23 @@ export function useShantiesGame() {
     setDay((d) => d + 1);
   }, []);
 
+  const dockAtPortTown = useCallback(() => {
+    setNearPortTown(true);
+    setLocation("port");
+    setGameState("home");
+    setActiveEvent(null);
+    setDay((d) => d + 1);
+  }, []);
+
+  const sailPastPortTown = useCallback(() => {
+    setCurrentPortTown(null);
+    setNearPortTown(false);
+    setSeaEventDeck(buildSeaEventDeck());
+    setGameState("home");
+    setActiveEvent(null);
+    setDay((d) => d + 1);
+  }, []);
+
   const resolveDungeonDiscovery = useCallback(
     (enterNow: boolean) => {
       const kind = activeEvent?.dungeonKind;
@@ -780,152 +781,217 @@ export function useShantiesGame() {
     [currentIsland, hero.inventory, resetEncounterModifiers],
   );
 
+  const cancelExploreTest = useCallback(() => {
+    setExploreTestContext(null);
+    setGameState("home");
+  }, []);
+
+  const openExploreTestPicker = useCallback(
+    (context: ExploreTestContext) => {
+      if (context === "island") {
+        if (!currentIsland) return;
+        const deck = currentIsland.eventDeck ?? [];
+        if (deck.length === 0) return;
+      }
+      if (context === "dungeon") {
+        if (!currentDungeon || currentDungeon.delvePoints <= 0) return;
+        if (
+          isIslandDungeonKind(currentDungeon.kind) &&
+          !currentDungeon.candleUnlocked
+        ) {
+          setItemMessage("Ye need a light a candle before delving here.");
+          return;
+        }
+      }
+      setExploreTestContext(context);
+      setGameState("exploreTest");
+    },
+    [currentDungeon, currentIsland],
+  );
+
+  const applyExploreTestOutcome = useCallback(
+    (optionId: string) => {
+      if (!exploreTestContext) return;
+      const option = findExploreTestOption(exploreTestContext, optionId, {
+        seaEventDeck,
+        currentIsland,
+        dungeonModifiers: encounterModifiers.dungeon,
+      });
+      if (!option) return;
+
+      setExploreTestContext(null);
+
+      if (exploreTestContext === "sea") {
+        const { remainingDeck } = drawSeaEvent(seaEventDeck);
+        setSeaEventDeck(remainingDeck);
+
+        if (option.event?.type === "combat") {
+          setGameState("home");
+          initiateBattle();
+          return;
+        }
+
+        if (option.event?.type === "discovery") {
+          setCurrentIsland(generateIsland());
+          setActiveEvent({ ...option.event });
+          setDungeonChestUnlocked(false);
+          clearChestInteraction();
+          setEventLoot([]);
+          setGameState("event");
+          return;
+        }
+
+        if (option.event && isPortTownEvent(option.event)) {
+          setCurrentPortTown(generatePortTown());
+          setActiveEvent({ ...option.event });
+          setDungeonChestUnlocked(false);
+          clearChestInteraction();
+          setEventLoot([]);
+          setGameState("event");
+          return;
+        }
+
+        const drawn = option.event!;
+        let eventToSet: EventType = drawn;
+        if (isSeaTreasureTemplate(drawn)) {
+          eventToSet = prepareSeaTreasureEvent(drawn);
+        }
+
+        setActiveEvent(eventToSet);
+        setDungeonChestUnlocked(!eventToSet.locked);
+        clearChestInteraction();
+        setEventLoot(
+          isTreasureEvent(eventToSet)
+            ? isSeaTreasureEvent(eventToSet)
+              ? generateFloatingSuppliesLoot()
+              : generateEventLoot(eventToSet, { islandVibe: null })
+            : [],
+        );
+        setGameState("event");
+        return;
+      }
+
+      if (exploreTestContext === "island") {
+        if (!currentIsland) return;
+        const deck = currentIsland.eventDeck ?? [];
+        const drawResult = drawIslandEvent(deck);
+        if (!drawResult) return;
+
+        setCurrentIsland({
+          ...currentIsland,
+          eventDeck: drawResult.remainingDeck,
+          explorePoints: drawResult.remainingDeck.length,
+        });
+
+        if (option.event?.type === "combat") {
+          setGameState("home");
+          initiateIslandBattle();
+          return;
+        }
+
+        const drawn = option.event ?? drawResult.drawn;
+        let eventToSet: EventType = drawn;
+        if (isIslandTreasureEvent(drawn)) {
+          eventToSet = prepareIslandTreasureEvent(drawn);
+        }
+
+        setActiveEvent(eventToSet);
+        setDungeonChestUnlocked(!eventToSet.locked);
+        clearChestInteraction();
+        setEventLoot(
+          isTreasureEvent(eventToSet) && isIslandTreasureEvent(eventToSet)
+            ? generateIslandTreasureLoot(eventToSet, hero, currentIsland)
+            : [],
+        );
+        setGameState("event");
+        return;
+      }
+
+      if (exploreTestContext === "dungeon") {
+        if (!currentDungeon || currentDungeon.delvePoints <= 0) return;
+
+        const dungeonDelveAfter = currentDungeon.delvePoints - 1;
+        setCurrentDungeon({
+          ...currentDungeon,
+          delvePoints: dungeonDelveAfter,
+        });
+
+        if (option.forceCombat) {
+          setGameState("home");
+          initiateDungeonBattle();
+          if (dungeonDelveAfter === 0) {
+            resetEncounterModifiers("dungeon");
+          }
+          return;
+        }
+
+        const drawn = option.event!;
+        const scope = encounterScopeForLocation(location);
+        setEncounterModifiers((prev) => ({
+          ...prev,
+          [scope]: applyEncounterDrawPenalty(prev[scope], drawn),
+        }));
+
+        let eventToSet: EventType = drawn;
+        if (isTreasureEvent(drawn)) {
+          eventToSet = prepareDungeonTreasureEvent(drawn);
+        }
+        setActiveEvent(eventToSet);
+        setDungeonChestUnlocked(!eventToSet.locked);
+        clearChestInteraction();
+        setEventLoot(
+          isTreasureEvent(drawn)
+            ? generateEventLoot(drawn, {
+                islandVibe: currentIsland?.vibe ?? null,
+              })
+            : [],
+        );
+        setGameState("event");
+
+        if (dungeonDelveAfter === 0) {
+          resetEncounterModifiers("dungeon");
+        }
+      }
+    },
+    [
+      clearChestInteraction,
+      currentDungeon,
+      currentIsland,
+      encounterModifiers.dungeon,
+      exploreTestContext,
+      generateIsland,
+      hero,
+      initiateBattle,
+      initiateDungeonBattle,
+      initiateIslandBattle,
+      location,
+      resetEncounterModifiers,
+      seaEventDeck,
+    ],
+  );
+
   const handleSailOrExplore = useCallback(() => {
-    let dungeonDelveAfter: number | null = null;
-
-    if (location === "dungeon") {
-      if (!currentDungeon || currentDungeon.delvePoints <= 0) return;
-      if (
-        isIslandDungeonKind(currentDungeon.kind) &&
-        !currentDungeon.candleUnlocked
-      ) {
-        setItemMessage("Ye need a light a candle before delving here.");
-        return;
-      }
-      dungeonDelveAfter = currentDungeon.delvePoints - 1;
-      setCurrentDungeon({
-        ...currentDungeon,
-        delvePoints: dungeonDelveAfter,
-      });
-    }
-
     if (location === "ship") {
-      const { drawn, remainingDeck } = drawSeaEvent(seaEventDeck);
-      setSeaEventDeck(remainingDeck);
-
-      if (drawn.type === "combat") {
-        initiateBattle();
-        return;
-      }
-
-      if (drawn.type === "discovery") {
-        setCurrentIsland(generateIsland());
-      }
-
-      let eventToSet: EventType = drawn;
-      if (isSeaTreasureTemplate(drawn)) {
-        eventToSet = prepareSeaTreasureEvent(drawn);
-      }
-
-      setActiveEvent(eventToSet);
-      setDungeonChestUnlocked(!eventToSet.locked);
-      clearChestInteraction();
-      setEventLoot(
-        isTreasureEvent(eventToSet)
-          ? isSeaTreasureEvent(eventToSet)
-            ? generateFloatingSuppliesLoot()
-            : generateEventLoot(eventToSet, { islandVibe: null })
-          : [],
-      );
-      setGameState("event");
+      openExploreTestPicker("sea");
       return;
     }
-
     if (location === "island") {
-      if (!currentIsland) return;
-      const deck = currentIsland.eventDeck ?? [];
-      if (deck.length === 0) return;
-
-      const drawResult = drawIslandEvent(deck);
-      if (!drawResult) return;
-
-      const { drawn, remainingDeck } = drawResult;
-      setCurrentIsland({
-        ...currentIsland,
-        eventDeck: remainingDeck,
-        explorePoints: remainingDeck.length,
-      });
-
-      if (drawn.type === "combat") {
-        initiateIslandBattle();
-        return;
-      }
-
-      let eventToSet: EventType = drawn;
-      if (isIslandTreasureEvent(drawn)) {
-        eventToSet = prepareIslandTreasureEvent(drawn);
-      }
-
-      setActiveEvent(eventToSet);
-      setDungeonChestUnlocked(!eventToSet.locked);
-      clearChestInteraction();
-      setEventLoot(
-        isTreasureEvent(eventToSet) && isIslandTreasureEvent(eventToSet)
-          ? generateIslandTreasureLoot(eventToSet, hero, currentIsland)
-          : [],
-      );
-      setGameState("event");
+      openExploreTestPicker("island");
       return;
     }
-
-    if (isBattle()) {
-      if (location === "dungeon") {
-        initiateDungeonBattle();
-      }
-      return;
+    if (location === "dungeon") {
+      openExploreTestPicker("dungeon");
     }
-
-    const scope = encounterScopeForLocation(location);
-    const scopeModifiers = encounterModifiers[scope];
-    const drawn = pickDungeonEvent(scopeModifiers);
-
-    setEncounterModifiers((prev) => ({
-      ...prev,
-      [scope]: applyEncounterDrawPenalty(prev[scope], drawn),
-    }));
-
-    let eventToSet: EventType = drawn;
-    if (location === "dungeon" && isTreasureEvent(drawn)) {
-      eventToSet = prepareDungeonTreasureEvent(drawn);
-    }
-    const chestUnlocked = !eventToSet.locked;
-    setActiveEvent(eventToSet);
-    setDungeonChestUnlocked(chestUnlocked);
-    clearChestInteraction();
-    setEventLoot(
-      isTreasureEvent(drawn)
-        ? generateEventLoot(drawn, {
-            islandVibe:
-              location === "dungeon" ? (currentIsland?.vibe ?? null) : null,
-          })
-        : [],
-    );
-    setGameState("event");
-
-    if (dungeonDelveAfter === 0) {
-      resetEncounterModifiers("dungeon");
-    }
-  }, [
-    clearChestInteraction,
-    currentDungeon,
-    currentIsland,
-    encounterModifiers,
-    generateIsland,
-    hero,
-    initiateBattle,
-    initiateDungeonBattle,
-    initiateIslandBattle,
-    location,
-    resetEncounterModifiers,
-    seaEventDeck,
-  ]);
+  }, [location, openExploreTestPicker]);
 
   const startSailFromShip = useCallback(() => {
     setLocation("ship");
     setCurrentIsland(null);
+    setNearPortTown(false);
+    setCurrentPortTown(null);
     resetEncounterModifiers("island");
-    handleSailOrExplore();
-  }, [handleSailOrExplore, resetEncounterModifiers]);
+    openExploreTestPicker("sea");
+  }, [openExploreTestPicker, resetEncounterModifiers]);
 
   const scheduleCombatVictory = useCallback((snapshot?: EnemyType[]) => {
     cancelVictoryDelay();
@@ -939,7 +1005,11 @@ export function useShantiesGame() {
       victoryTimerRef.current = null;
       victoryPendingRef.current = false;
       setVictoryPending(false);
-      setCombatLoot(generateCombatLoot(frozen));
+      setCombatLoot(
+        generateCombatLoot(frozen, {
+          ammoSpent: combatAmmoSpentRef.current,
+        }),
+      );
       setCombatVictory(true);
     }, VICTORY_DELAY_MS);
   }, [cancelVictoryDelay]);
@@ -954,16 +1024,28 @@ export function useShantiesGame() {
 
   const claimCombatLoot = useCallback(
     (lootId: string) => {
-      setCombatLoot((prev) =>
-        claimLootItem(prev, lootId, grantLootItem),
+      const next = applyLootClaim(
+        combatLootRef.current,
+        lootId,
+        grantLootItem,
       );
+      if (next === combatLootRef.current) return;
+      combatLootRef.current = next;
+      setCombatLoot(next);
     },
     [grantLootItem],
   );
 
   const claimEventLoot = useCallback(
     (lootId: string) => {
-      setEventLoot((prev) => claimLootItem(prev, lootId, grantLootItem));
+      const next = applyLootClaim(
+        eventLootRef.current,
+        lootId,
+        grantLootItem,
+      );
+      if (next === eventLootRef.current) return;
+      eventLootRef.current = next;
+      setEventLoot(next);
     },
     [grantLootItem],
   );
@@ -1030,7 +1112,7 @@ export function useShantiesGame() {
 
   const pickLockOnChest = useCallback(() => {
     if (!heroHasLockpickEquipped(hero)) {
-      setChestMessage("Ye need a lockpick equipped in yer relic slot.");
+      setChestMessage("Ye need a lockpick equipped in yer Relic 1 slot.");
       return;
     }
     const result = rollPickLock();
@@ -1076,6 +1158,7 @@ export function useShantiesGame() {
     setCombatLoot([]);
     setEnemies([]);
     resetCombatState();
+    setHero((h) => ({ ...h, ammo: h.max_ammo }));
     setDay((d) => d + 1);
     clearDepletedIslandDungeon();
     setGameState("home");
@@ -1105,6 +1188,13 @@ export function useShantiesGame() {
         if (targetIndex === undefined) return;
         const target = updatedEnemies[targetIndex];
         if (!target || !isEnemyAlive(target)) return;
+        if (cardRequiresAmmo(card) && heroRef.current.ammo < 1) return;
+
+        if (cardRequiresAmmo(card)) {
+          combatAmmoSpentRef.current += 1;
+          setHero((h) => ({ ...h, ammo: Math.max(0, h.ammo - 1) }));
+        }
+
         if (getAttackKind(card) === "melee" && rollMeleeMiss(target)) {
           log.push(
             combatLogLine(formatMissLog(hero.name, target.name), "hero"),
@@ -1217,7 +1307,7 @@ export function useShantiesGame() {
     const isStale = () => enemyTurnRunRef.current !== runId;
 
     const currentEnemies = enemiesRef.current;
-    const enemy = currentEnemies[enemyTurnIndex];
+    let enemy = currentEnemies[enemyTurnIndex];
 
     if (!enemy || !isEnemyAlive(enemy)) {
       const nextLiving = findNextLivingEnemyIndex(
@@ -1231,6 +1321,14 @@ export function useShantiesGame() {
         setEnemyTurnIndex(nextLiving);
       }
       return;
+    }
+
+    if (enemy.armor !== 0) {
+      const stripped = [...currentEnemies];
+      stripped[enemyTurnIndex] = { ...enemy, armor: 0 };
+      enemiesRef.current = stripped;
+      setEnemies(stripped);
+      enemy = stripped[enemyTurnIndex]!;
     }
 
     setEnemyActionMessage(
@@ -1359,6 +1457,51 @@ export function useShantiesGame() {
     setGameState("home");
   }, []);
 
+  const markIslandCookstoveFound = useCallback(() => {
+    setCurrentIsland((prev) =>
+      prev && !prev.cookstoveFound ? { ...prev, cookstoveFound: true } : prev,
+    );
+  }, []);
+
+  const openCookstove = useCallback(() => {
+    setCookMessage(null);
+    setGameState("cookstove");
+  }, []);
+
+  const leaveCookstove = useCallback(() => {
+    setCookMessage(null);
+    setGameState("home");
+  }, []);
+
+  const dismissCookstoveEncounter = useCallback(() => {
+    markIslandCookstoveFound();
+    setActiveEvent(null);
+    setCookMessage(null);
+    setGameState("home");
+    setDay((d) => d + 1);
+  }, [markIslandCookstoveFound]);
+
+  const cookAtStove = useCallback(
+    (fromIslandEvent = false) => {
+      if (!canCookAtStove(hero)) {
+        setCookMessage("Ye need a wood plank and somethin' raw to cook.");
+        return;
+      }
+      const result = applyCookAtStove(hero);
+      setHero(result.hero);
+      setCookMessage(
+        formatCookResultMessage(result.rawFishCooked, result.rawMeatCooked),
+      );
+      if (fromIslandEvent) {
+        markIslandCookstoveFound();
+        setActiveEvent(null);
+        setGameState("home");
+        setDay((d) => d + 1);
+      }
+    },
+    [hero, markIslandCookstoveFound],
+  );
+
   const clearItemMessage = useCallback(() => {
     setItemMessage(null);
   }, []);
@@ -1387,6 +1530,74 @@ export function useShantiesGame() {
     setGameState("shop");
   }, []);
 
+  const openPortShop = useCallback(() => {
+    setShopVariant("port");
+    setShopMessage(null);
+    setGameState("shop");
+  }, []);
+
+  const openShipwright = useCallback(() => {
+    setGameState("shipwright");
+  }, []);
+
+  const openTavern = useCallback(() => {
+    setTavernMessage(null);
+    setGameState("tavern");
+  }, []);
+
+  const leavePort = useCallback(() => {
+    setLocation("ship");
+    setGameState("home");
+  }, []);
+
+  const returnToPort = useCallback(() => {
+    setLocation("port");
+    setGameState("home");
+  }, []);
+
+  const leaveTavern = useCallback(() => {
+    setTavernMessage(null);
+    setGameState("home");
+  }, []);
+
+  const leaveShipwright = useCallback(() => {
+    setGameState("home");
+  }, []);
+
+  const buyTavernCard = useCallback(
+    (offerId: string) => {
+      const check = checkBuyTavernCard(hero, offerId);
+      if (!check.ok) {
+        setTavernMessage(check.message);
+        return;
+      }
+      const offer = getTavernCardOffer(offerId);
+      setHero((h) => applyBuyTavernCard(h, offerId, check.price));
+      setTavernMessage(
+        offer ? `Ye bought a ${offer.label.toLowerCase()} card.` : "Card purchased.",
+      );
+    },
+    [hero],
+  );
+
+  const refineTavernCard = useCallback(
+    (deckIndex: number) => {
+      const check = checkRefineTavernCard(hero, deckIndex);
+      if (!check.ok) {
+        setTavernMessage(check.message);
+        return;
+      }
+      const removed = hero.deck[deckIndex];
+      setHero((h) => applyRefineTavernCard(h, deckIndex));
+      setTavernMessage(
+        removed
+          ? `Ye refined ${removed.name.toLowerCase()} out of yer deck.`
+          : "Card refined out of yer deck.",
+      );
+    },
+    [hero],
+  );
+
   const buyShopItem = useCallback(
     (itemId: ItemId) => {
       const check = checkBuyItem(hero, itemId, shopVariant);
@@ -1404,6 +1615,10 @@ export function useShantiesGame() {
 
   const sellShopItem = useCallback(
     (itemId: ItemId) => {
+      if (!shopAllowsSelling(shopVariant)) {
+        setShopMessage("Ye can't sell that here.");
+        return;
+      }
       const check = checkSellItem(hero, itemId);
       if (!check.ok) {
         setShopMessage(check.message);
@@ -1414,11 +1629,15 @@ export function useShantiesGame() {
         `Ye sold a ${ITEM_DEFINITIONS[itemId].name.toLowerCase()}.`,
       );
     },
-    [hero],
+    [hero, shopVariant],
   );
 
   const sellShopEquipment = useCallback(
     (bagIndex: number) => {
+      if (!shopAllowsSelling(shopVariant)) {
+        setShopMessage("Ye can't sell that here.");
+        return;
+      }
       const check = checkSellEquipment(hero, bagIndex);
       if (!check.ok) {
         setShopMessage(check.message);
@@ -1431,7 +1650,7 @@ export function useShantiesGame() {
         `Ye sold yer ${EQUIPMENT_DEFINITIONS[equipmentId].name.toLowerCase()}.`,
       );
     },
-    [hero],
+    [hero, shopVariant],
   );
 
   const leaveShop = useCallback(() => {
@@ -1472,9 +1691,9 @@ export function useShantiesGame() {
       }
 
       if (isFoodItem(itemId)) {
-        const healAmount = getFoodHealAmount(itemId);
+        const healAmount = rollFoodHealAmount(itemId);
         const foodName = ITEM_DEFINITIONS[itemId].name.toLowerCase();
-        setHero((h) => applyFoodUse(h, itemId));
+        setHero((h) => applyFoodUse(h, itemId, healAmount));
         setItemMessage(`Ye eat the ${foodName} and recover ${healAmount} HP.`);
         return;
       }
@@ -1511,6 +1730,8 @@ export function useShantiesGame() {
     setLocation,
     currentIsland,
     setCurrentIsland,
+    currentPortTown,
+    setCurrentPortTown,
     currentDungeon,
     setCurrentDungeon,
     enemies,
@@ -1550,12 +1771,15 @@ export function useShantiesGame() {
     hero,
     generateIsland,
     renderIslandName,
+    renderPortTownName: renderPortTownNameStable,
     renderDungeonName: renderDungeonNameStable,
     handleSailOrExplore,
     startSailFromShip,
     returnToShipFromIsland,
     anchorAtDiscoveredIsland,
     abandonDiscoveredIsland,
+    dockAtPortTown,
+    sailPastPortTown,
     enterCurrentDungeon,
     returnToIslandFromDungeon,
     resolveDungeonDiscovery,
@@ -1566,15 +1790,17 @@ export function useShantiesGame() {
     goToLobby,
     resumeAdventure,
     restartAdventure,
-    canResumeAdventure,
-    lobbySaveSummaryLines,
-    lobbySavedAtLabel,
     healHero,
     openRest,
     wakeFromRest,
     leaveRest,
     restComplete,
     restMessage,
+    openCookstove,
+    leaveCookstove,
+    cookAtStove,
+    dismissCookstoveEncounter,
+    cookMessage,
     illuminatedAreas,
     currentIndoorArea,
     setCurrentIndoorArea,
@@ -1586,6 +1812,21 @@ export function useShantiesGame() {
     openShipShop,
     openMerchantShop,
     openIslandTraderShop,
+    openPortShop,
+    openShipwright,
+    openTavern,
+    leavePort,
+    returnToPort,
+    nearPortTown,
+    leaveTavern,
+    leaveShipwright,
+    tavernMessage,
+    buyTavernCard,
+    refineTavernCard,
+    exploreTestContext,
+    exploreTestOptions,
+    applyExploreTestOutcome,
+    cancelExploreTest,
     buyShopItem,
     sellShopItem,
     sellShopEquipment,

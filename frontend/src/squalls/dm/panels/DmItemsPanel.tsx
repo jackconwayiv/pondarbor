@@ -5,6 +5,7 @@ import {
   ISLAND_TRADER_SHOP_ITEM_IDS,
   ITEM_DEFINITIONS,
   MERCHANT_SHOP_ITEM_IDS,
+  PORT_SHOP_ITEM_IDS,
   SHOP_ITEM_IDS,
 } from "../../shantiesItems";
 import type { ItemId, ShopVariant } from "../../shantiesTypes";
@@ -30,13 +31,20 @@ function shopCatalogsForItem(itemId: ItemId): ShopVariant[] {
   if ((ISLAND_TRADER_SHOP_ITEM_IDS as readonly ItemId[]).includes(itemId)) {
     catalogs.push("island_trader");
   }
+  if ((PORT_SHOP_ITEM_IDS as readonly ItemId[]).includes(itemId)) {
+    catalogs.push("port");
+  }
   return catalogs;
 }
 
 function formatItemMeta(itemId: ItemId): string {
   const def = ITEM_DEFINITIONS[itemId];
   const parts: string[] = [def.kind];
-  if (def.healAmount !== undefined) parts.push(`${def.healAmount} HP`);
+  if (def.healMin !== undefined && def.healMax !== undefined) {
+    parts.push(`${def.healMin}–${def.healMax} HP`);
+  } else if (def.healAmount !== undefined) {
+    parts.push(`${def.healAmount} HP`);
+  }
   if (def.energyCost !== undefined) parts.push(`${def.energyCost} energy in combat`);
   if (def.shopPrice !== undefined) parts.push(`shop ${def.shopPrice}g`);
   if (def.basePrice !== undefined) parts.push(`base ${def.basePrice}g`);

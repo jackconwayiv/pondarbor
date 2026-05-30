@@ -1,3 +1,5 @@
+import type { ShopVariant } from "./shantiesTypes";
+
 /** Sell price is half the base price, rounded down. */
 export function sellPriceFromBasePrice(basePrice: number): number {
   return Math.floor(basePrice * 0.5);
@@ -10,4 +12,9 @@ export function shopBuyPrice(
   ownedCount: number,
 ): number {
   return basePrice + 5 * heroLevel + 5 * ownedCount;
+}
+
+/** Island traders and port marketplaces buy surplus; ship provisions are buy-only. */
+export function shopAllowsSelling(shopVariant: ShopVariant | null): boolean {
+  return shopVariant === "island_trader" || shopVariant === "port";
 }

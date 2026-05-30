@@ -50,6 +50,9 @@ export type ItemDefinition = {
   description: string;
   /** HP restored when eaten; food only. */
   healAmount?: number;
+  /** Rolled inclusive range when eaten; overrides healAmount. */
+  healMin?: number;
+  healMax?: number;
   /** Energy spent when used during combat; omit if not usable in battle. */
   energyCost?: number;
   /** Gold price at the ship shop; omit if not sold here. */
@@ -64,6 +67,7 @@ export const MERCHANT_SHOP_ITEM_IDS = [
   "banana",
   "tea",
   "rum",
+  "grog",
   "sail_cloth",
   "cannonball",
   "dive_helmet",
@@ -73,6 +77,19 @@ export const ISLAND_TRADER_SHOP_ITEM_IDS = [
   "wood_plank",
   "banana",
   "coconut",
+] as const satisfies readonly ItemId[];
+
+export const PORT_SHOP_ITEM_IDS = [
+  "banana",
+  "tea",
+  "rum",
+  "grog",
+  "candle",
+  "key",
+  "cannonball",
+  "ammo_pouch",
+  "sail_cloth",
+  "wood_plank",
 ] as const satisfies readonly ItemId[];
 
 export const ITEM_DEFINITIONS: Record<ItemId, ItemDefinition> = {
@@ -102,20 +119,44 @@ export const ITEM_DEFINITIONS: Record<ItemId, ItemDefinition> = {
     kind: "food",
     name: "Raw Fish",
     emoji: "🐟",
-    description: "Restores 5 HP. Costs 1 energy in combat.",
-    healAmount: 5,
+    description: "Restores 1–3 HP. Costs 1 energy in combat.",
+    healMin: 1,
+    healMax: 3,
     energyCost: 1,
     basePrice: 10,
   },
-  boar_meat: {
-    id: "boar_meat",
+  raw_meat: {
+    id: "raw_meat",
     kind: "food",
-    name: "Boar Meat",
+    name: "Raw Meat",
     emoji: "🥩",
-    description: "Restores 5 HP. Costs 1 energy in combat.",
-    healAmount: 5,
+    description: "Restores 1–3 HP. Costs 1 energy in combat.",
+    healMin: 1,
+    healMax: 3,
     energyCost: 1,
     basePrice: 10,
+  },
+  cooked_fish: {
+    id: "cooked_fish",
+    kind: "food",
+    name: "Cooked Fish",
+    emoji: "🍣",
+    description: "Restores 5–10 HP. Costs 1 energy in combat.",
+    healMin: 5,
+    healMax: 10,
+    energyCost: 1,
+    basePrice: 25,
+  },
+  cooked_meat: {
+    id: "cooked_meat",
+    kind: "food",
+    name: "Cooked Meat",
+    emoji: "🍖",
+    description: "Restores 5–10 HP. Costs 1 energy in combat.",
+    healMin: 5,
+    healMax: 10,
+    energyCost: 1,
+    basePrice: 25,
   },
   coconut: {
     id: "coconut",
@@ -163,12 +204,20 @@ export const ITEM_DEFINITIONS: Record<ItemId, ItemDefinition> = {
     description: "A stiff tot. No effect yet.",
     basePrice: 115,
   },
+  grog: {
+    id: "grog",
+    kind: "food",
+    name: "Grog",
+    emoji: "🍺",
+    description: "A sailor's ration. No effect yet.",
+    basePrice: 75,
+  },
   wood_plank: {
     id: "wood_plank",
     kind: "ship",
     name: "Wood Plank",
     emoji: "🪵",
-    description: "For patching the hull. No use yet.",
+    description: "Fuel for the cookstove — cooks all raw fish and meat ye carry.",
     basePrice: 10,
   },
   sail_cloth: {
@@ -280,11 +329,40 @@ export function heroHasWreckUnlock(hero: HeroType): boolean {
 }
 
 export function getFoodHealAmount(itemId: FoodItemId): number {
-  return ITEM_DEFINITIONS[itemId].healAmount ?? 0;
+  const def = ITEM_DEFINITIONS[itemId];
+  if (def.healMin !== undefined && def.healMax !== undefined) {
+    return def.healMin;
+  }
+  return def.healAmount ?? 0;
+}
+
+function randomInt(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+export function rollFoodHealAmount(itemId: FoodItemId): number {
+  const def = ITEM_DEFINITIONS[itemId];
+  if (def.healMin !== undefined && def.healMax !== undefined) {
+    return randomInt(def.healMin, def.healMax);
+  }
+  return def.healAmount ?? 0;
+}
+
+export function formatFoodHealRange(itemId: FoodItemId): string {
+  const def = ITEM_DEFINITIONS[itemId];
+  if (def.healMin !== undefined && def.healMax !== undefined) {
+    return `${def.healMin}–${def.healMax}`;
+  }
+  if (def.healAmount !== undefined) return String(def.healAmount);
+  return "0";
 }
 
 export function isFoodUsable(itemId: FoodItemId): boolean {
-  return getFoodHealAmount(itemId) > 0;
+  const def = ITEM_DEFINITIONS[itemId];
+  return (
+    (def.healAmount ?? 0) > 0 ||
+    (def.healMin !== undefined && def.healMax !== undefined)
+  );
 }
 
 export function getItemEnergyCost(itemId: ItemId): number | null {
@@ -472,8 +550,11 @@ export function checkUseCandle(
 /** @deprecated Use checkUseCandle */
 export const checkUseTorch = checkUseCandle;
 
-export function applyFoodUse(hero: HeroType, itemId: FoodItemId): HeroType {
-  const healAmount = getFoodHealAmount(itemId);
+export function applyFoodUse(
+  hero: HeroType,
+  itemId: FoodItemId,
+  healAmount: number = rollFoodHealAmount(itemId),
+): HeroType {
   const healed = Math.min(hero.max_hp, hero.current_hp + healAmount);
   return {
     ...hero,
@@ -494,6 +575,7 @@ export function getShopCatalogItemIds(
 ): readonly ItemId[] {
   if (shopVariant === "merchant") return MERCHANT_SHOP_ITEM_IDS;
   if (shopVariant === "island_trader") return ISLAND_TRADER_SHOP_ITEM_IDS;
+  if (shopVariant === "port") return PORT_SHOP_ITEM_IDS;
   return SHOP_ITEM_IDS;
 }
 
@@ -506,8 +588,10 @@ export function getItemBuyPrice(
   if (!catalog.includes(itemId as (typeof catalog)[number])) return null;
   const def = ITEM_DEFINITIONS[itemId];
   const basePrice =
-    shopVariant === "merchant" || shopVariant === "island_trader"
-      ? def.basePrice
+    shopVariant === "merchant" ||
+    shopVariant === "island_trader" ||
+    shopVariant === "port"
+      ? (def.basePrice ?? def.shopPrice)
       : def.shopPrice;
   if (basePrice === undefined) return null;
   const owned = getItemCount(hero.inventory, itemId);

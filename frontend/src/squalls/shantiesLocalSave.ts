@@ -1,5 +1,12 @@
 import { createStarterDeck } from "./combatDeck";
-import { capLootToSingleItem, generateCombatLoot, generateEventLoot, isTreasureEvent } from "./combatLoot";
+import {
+  capLootToSingleItem,
+  dedupeEventLootByItemType,
+  generateCombatLoot,
+  generateEventLoot,
+  HERO_STARTING_AMMO,
+  isTreasureEvent,
+} from "./combatLoot";
 import {
   generateFloatingSuppliesLoot,
   isSeaTreasureEvent,
@@ -13,6 +20,7 @@ import {
   isIslandTreasureEvent,
 } from "./islandTreasureLoot";
 import { buildSeaEventDeck, normalizeSeaEventDeck } from "./seaEventDeck";
+import { generatePortTown, normalizePortTown } from "./portTowns";
 import { getMonsterTemplate } from "./monsters";
 import { isIslandDungeonKind } from "./dungeonExplore";
 import {
@@ -47,6 +55,7 @@ import type {
   HeroType,
   DungeonType,
   IslandType,
+  PortTownType,
 } from "./shantiesTypes";
 import {
   DEFEND_TARGETING,
@@ -61,7 +70,7 @@ import {
 } from "./shantiesTypes";
 
 export const SHANTIES_STORAGE_KEY = "pondarbor.squalls.v1";
-export const SHANTIES_SAVE_VERSION = 10;
+export const SHANTIES_SAVE_VERSION = 15;
 
 const GAME_STATES: GameStateTypes[] = [
   "lobby",
@@ -73,9 +82,13 @@ const GAME_STATES: GameStateTypes[] = [
   "event",
   "sail",
   "dead",
+  "tavern",
+  "shipwright",
+  "exploreTest",
+  "cookstove",
 ];
 
-const LOCATIONS: GameLocationTypes[] = ["ship", "island", "dungeon"];
+const LOCATIONS: GameLocationTypes[] = ["ship", "island", "dungeon", "port"];
 
 const COMBAT_PHASES: CombatPhase[] = ["player", "enemy"];
 
@@ -83,6 +96,7 @@ export type ShantiesSaveData = {
   gameState: GameStateTypes;
   location: GameLocationTypes;
   currentIsland: IslandType | null;
+  currentPortTown: PortTownType | null;
   currentDungeon: DungeonType | null;
   day: number;
   hero: HeroType;
@@ -116,6 +130,8 @@ export type ShantiesSaveData = {
   seaEventDeck: EventType[];
   /** Active shop catalog when gameState is shop. */
   shopVariant: ShopVariant | null;
+  /** Ship is docked near a discovered port town (Return to Town on ship menu). */
+  nearPortTown: boolean;
 };
 
 type ShantiesSavePayload = {
@@ -130,6 +146,8 @@ export function createInitialHero(): HeroType {
     class: "Swashbuckler",
     current_hp: 20,
     max_hp: 20,
+    ammo: HERO_STARTING_AMMO,
+    max_ammo: HERO_STARTING_AMMO,
     gold: 0,
     xp: 0,
     level: 1,
@@ -145,6 +163,7 @@ export function createDefaultSaveData(): ShantiesSaveData {
     gameState: "lobby",
     location: "ship",
     currentIsland: null,
+    currentPortTown: null,
     currentDungeon: null,
     day: 1,
     hero: createInitialHero(),
@@ -170,6 +189,7 @@ export function createDefaultSaveData(): ShantiesSaveData {
     dungeonChestUnlocked: false,
     seaEventDeck: [],
     shopVariant: null,
+    nearPortTown: false,
   };
 }
 
@@ -236,6 +256,58 @@ function migrateV5ToV6(raw: unknown): unknown {
   return next;
 }
 
+function migrateV13ToV14(raw: unknown): unknown {
+  if (!isRecord(raw)) return raw;
+  const next: Record<string, unknown> = { ...raw };
+
+  const migrateItemId = (itemId: unknown): unknown =>
+    itemId === "boar_meat" ? "raw_meat" : itemId;
+
+  if (isRecord(raw.hero) && isRecord(raw.hero.inventory)) {
+    const inv = { ...raw.hero.inventory };
+    const legacyBoar = Math.floor(finiteNumber(inv.boar_meat, 0));
+    if (legacyBoar > 0) {
+      inv.raw_meat = Math.floor(finiteNumber(inv.raw_meat, 0)) + legacyBoar;
+      delete inv.boar_meat;
+    }
+    next.hero = { ...raw.hero, inventory: inv };
+  }
+
+  const migrateLootItemIds = (loot: unknown): unknown => {
+    if (!Array.isArray(loot)) return loot;
+    return loot.map((entry) => {
+      if (!isRecord(entry)) return entry;
+      return { ...entry, itemId: migrateItemId(entry.itemId) };
+    });
+  };
+
+  if ("combatLoot" in raw) {
+    next.combatLoot = migrateLootItemIds(raw.combatLoot);
+  }
+  if ("eventLoot" in raw) {
+    next.eventLoot = migrateLootItemIds(raw.eventLoot);
+  }
+
+  return next;
+}
+
+function migrateV14ToV15(raw: unknown): unknown {
+  if (!isRecord(raw)) return raw;
+  if (!isRecord(raw.hero)) return raw;
+  const hero = raw.hero;
+  return {
+    ...raw,
+    hero: {
+      ...hero,
+      ammo: Math.max(0, finiteNumber(hero.ammo, HERO_STARTING_AMMO)),
+      max_ammo: Math.max(
+        1,
+        finiteNumber(hero.max_ammo, HERO_STARTING_AMMO),
+      ),
+    },
+  };
+}
+
 function migrateV8ToV9(raw: unknown): unknown {
   if (!isRecord(raw)) return raw;
   const next: Record<string, unknown> = { ...raw };
@@ -278,6 +350,28 @@ function resolveSavePayload(parsed: Record<string, unknown>): {
 
   if (version === 9) {
     version = 10;
+  }
+
+  if (version === 10) {
+    version = 11;
+  }
+
+  if (version === 11) {
+    version = 12;
+  }
+
+  if (version === 12) {
+    version = 13;
+  }
+
+  if (version === 13) {
+    data = migrateV13ToV14(data);
+    version = 14;
+  }
+
+  if (version === 14) {
+    data = migrateV14ToV15(data);
+    version = 15;
   }
 
   if (version !== SHANTIES_SAVE_VERSION) return null;
@@ -365,6 +459,8 @@ function normalizeHero(raw: unknown): HeroType {
     class: typeof raw.class === "string" ? raw.class : "Swashbuckler",
     current_hp: Math.max(0, finiteNumber(raw.current_hp, 20)),
     max_hp: Math.max(0, finiteNumber(raw.max_hp, 20)),
+    ammo: Math.max(0, finiteNumber(raw.ammo, HERO_STARTING_AMMO)),
+    max_ammo: Math.max(1, finiteNumber(raw.max_ammo, HERO_STARTING_AMMO)),
     gold: Math.max(0, finiteNumber(raw.gold, 50)),
     xp: Math.max(0, finiteNumber(raw.xp, 0)),
     level: Math.max(1, finiteNumber(raw.level, 1)),
@@ -457,6 +553,7 @@ function normalizeIsland(raw: unknown): IslandType | null {
     vibe,
     explorePoints,
     levelFactor: finiteNumber(raw.levelFactor, 0),
+    ...(raw.cookstoveFound === true ? { cookstoveFound: true } : {}),
     ...(eventDeck.length > 0 ? { eventDeck } : {}),
   };
   if (eventDeck.length === 0 && explorePoints > 0) {
@@ -604,14 +701,21 @@ function normalizeSaveData(raw: unknown): ShantiesSaveData {
   const shopVariant: ShopVariant | null =
     raw.shopVariant === "ship" ||
     raw.shopVariant === "merchant" ||
-    raw.shopVariant === "island_trader"
+    raw.shopVariant === "island_trader" ||
+    raw.shopVariant === "port"
       ? raw.shopVariant
       : null;
-
   const hero = normalizeHero(raw.hero);
   const currentIsland = normalizeIsland(raw.currentIsland);
+  let currentPortTown = normalizePortTown(raw.currentPortTown);
+  if (location === "port" && !currentPortTown) {
+    currentPortTown = generatePortTown();
+  }
+  const nearPortTown = raw.nearPortTown === true || location === "port";
   let eventLoot = normalizeLootStash(raw.eventLoot);
-  if (!activeEvent || !isSeaTreasureEvent(activeEvent)) {
+  if (activeEvent && isSeaTreasureEvent(activeEvent)) {
+    eventLoot = dedupeEventLootByItemType(eventLoot);
+  } else {
     eventLoot = capLootToSingleItem(eventLoot);
   }
   if (
@@ -646,6 +750,7 @@ function normalizeSaveData(raw: unknown): ShantiesSaveData {
     gameState,
     location,
     currentIsland,
+    currentPortTown,
     currentDungeon,
     day: Math.max(1, finiteNumber(raw.day, 1)),
     hero,
@@ -671,6 +776,7 @@ function normalizeSaveData(raw: unknown): ShantiesSaveData {
     dungeonChestUnlocked: raw.dungeonChestUnlocked === true,
     seaEventDeck,
     shopVariant,
+    nearPortTown,
   };
 }
 

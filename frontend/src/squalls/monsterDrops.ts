@@ -10,7 +10,7 @@ export type MonsterDropDef = {
 export const MONSTER_DROP_BY_NAME: Record<string, MonsterDropDef> = {
   Harpy: { itemId: "raw_fish", dropRate: 0.25 },
   Siren: { itemId: "siren_gills", dropRate: 0.25 },
-  Boar: { itemId: "boar_meat", dropRate: 0.25 },
+  Boar: { itemId: "raw_meat", dropRate: 0.25 },
   "Electric Eel": { itemId: "raw_fish", dropRate: 0.35 },
 };
 

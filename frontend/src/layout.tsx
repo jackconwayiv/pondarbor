@@ -277,7 +277,7 @@ export default function AppLayout() {
     () => false,
   );
   const hideSquallsBreadcrumbs =
-    location.pathname === "/squalls" && squallsInGame;
+    location.pathname === "/squalls/play" && squallsInGame;
   /** Aligned with `QffLayout` so the app shell is not the default cream. */
   const qffAppShellBg = "#0c0c0c";
   const isHomeIndex = location.pathname === "/";

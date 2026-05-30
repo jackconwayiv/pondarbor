@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 
-import { useAppSession } from "../auth/AppSessionContext";
 import AdventureStripe from "./AdventureStripe";
 import CharacterSheetModal from "./CharacterSheetModal";
 import GameShell from "./GameShell";
@@ -11,10 +11,15 @@ import { useFrozenSceneProps } from "./useFrozenSceneProps";
 import { pickWorldPanelVisuals } from "./worldPanelVisuals";
 import WorldPanel from "./WorldPanel";
 import { useShantiesGame } from "./useShantiesGame";
+import type { SquallsPlayIntent } from "./squallsPlayIntent";
 
-export default function ShantiesHome() {
-  const { sessionUser } = useAppSession();
-  const isStaff = !!sessionUser?.user?.is_staff;
+type ShantiesHomeProps = {
+  playIntent?: SquallsPlayIntent | null;
+};
+
+export default function ShantiesHome({ playIntent = null }: ShantiesHomeProps) {
+  const navigate = useNavigate();
+  const intentHandledRef = useRef(false);
   const game = useShantiesGame();
   const [characterSheetOpen, setCharacterSheetOpen] = useState(false);
   const sceneKey = getSceneKey(game.gameState, game.location);
@@ -51,9 +56,6 @@ export default function ShantiesHome() {
         dungeonChestUnlocked: game.dungeonChestUnlocked,
         chestMessage: game.chestMessage,
         forceOpenAttempted: game.forceOpenAttempted,
-        canResumeAdventure: game.canResumeAdventure,
-        lobbySaveSummaryLines: game.lobbySaveSummaryLines,
-        lobbySavedAtLabel: game.lobbySavedAtLabel,
         restComplete: game.restComplete,
         restMessage: game.restMessage,
         shopMessage: game.shopMessage,
@@ -84,9 +86,6 @@ export default function ShantiesHome() {
       game.dungeonChestUnlocked,
       game.chestMessage,
       game.forceOpenAttempted,
-      game.canResumeAdventure,
-      game.lobbySaveSummaryLines,
-      game.lobbySavedAtLabel,
       game.restComplete,
       game.restMessage,
       game.shopMessage,
@@ -118,6 +117,46 @@ export default function ShantiesHome() {
   });
 
   useEffect(() => {
+    if (intentHandledRef.current) return;
+
+    if (playIntent?.restart) {
+      intentHandledRef.current = true;
+      game.restartAdventure();
+      navigate("/squalls/play", { replace: true, state: null });
+      return;
+    }
+
+    if (playIntent?.resume) {
+      intentHandledRef.current = true;
+      game.resumeAdventure();
+      navigate("/squalls/play", { replace: true, state: null });
+      return;
+    }
+
+    if (game.gameState === "lobby") {
+      navigate("/squalls", { replace: true });
+    }
+  }, [
+    playIntent,
+    game.gameState,
+    game.restartAdventure,
+    game.resumeAdventure,
+    navigate,
+  ]);
+
+  const leaveToSquallsLobby = useCallback(() => {
+    game.goToLobby();
+    setSquallsInGame(false);
+    navigate("/squalls");
+  }, [game.goToLobby, navigate]);
+
+  const returnToSquallsLobby = useCallback(() => {
+    game.resetToLobby();
+    setSquallsInGame(false);
+    navigate("/squalls");
+  }, [game.resetToLobby, navigate]);
+
+  useEffect(() => {
     setSquallsInGame(game.gameState !== "lobby");
     return () => setSquallsInGame(false);
   }, [game.gameState]);
@@ -134,7 +173,6 @@ export default function ShantiesHome() {
         isTransitioning={sceneFade.isTransitioning}
         adventure={
           <AdventureStripe
-            day={frozenWorldVisuals.day}
             location={sceneFade.location}
             gameState={sceneFade.gameState}
             currentIsland={frozenWorldVisuals.currentIsland}
@@ -150,6 +188,7 @@ export default function ShantiesHome() {
             location={sceneFade.location}
             setLocation={game.setLocation}
             renderIslandName={game.renderIslandName}
+            renderPortTownName={game.renderPortTownName}
             setCurrentDungeon={game.setCurrentDungeon}
             renderDungeonName={game.renderDungeonName}
             enterCurrentDungeon={game.enterCurrentDungeon}
@@ -172,16 +211,21 @@ export default function ShantiesHome() {
             returnToShipFromIsland={game.returnToShipFromIsland}
             anchorAtDiscoveredIsland={game.anchorAtDiscoveredIsland}
             abandonDiscoveredIsland={game.abandonDiscoveredIsland}
+            dockAtPortTown={game.dockAtPortTown}
+            sailPastPortTown={game.sailPastPortTown}
             playCombatCard={game.playCombatCard}
             endPlayerTurn={game.endPlayerTurn}
-            resetToLobby={game.resetToLobby}
-            goToLobby={game.goToLobby}
-            resumeAdventure={game.resumeAdventure}
-            restartAdventure={game.restartAdventure}
+            resetToLobby={returnToSquallsLobby}
+            goToLobby={leaveToSquallsLobby}
             healHero={game.healHero}
             openRest={game.openRest}
             wakeFromRest={game.wakeFromRest}
             leaveRest={game.leaveRest}
+            openCookstove={game.openCookstove}
+            leaveCookstove={game.leaveCookstove}
+            cookAtStove={game.cookAtStove}
+            dismissCookstoveEncounter={game.dismissCookstoveEncounter}
+            cookMessage={game.cookMessage}
             buyShopItem={game.buyShopItem}
             sellShopItem={game.sellShopItem}
             sellShopEquipment={game.sellShopEquipment}
@@ -189,9 +233,24 @@ export default function ShantiesHome() {
             openShipShop={game.openShipShop}
             openMerchantShop={game.openMerchantShop}
             openIslandTraderShop={game.openIslandTraderShop}
+            openPortShop={game.openPortShop}
+            openShipwright={game.openShipwright}
+            openTavern={game.openTavern}
+            leavePort={game.leavePort}
+            returnToPort={game.returnToPort}
+            nearPortTown={game.nearPortTown}
+            leaveTavern={game.leaveTavern}
+            leaveShipwright={game.leaveShipwright}
+            tavernMessage={game.tavernMessage}
+            buyTavernCard={game.buyTavernCard}
+            refineTavernCard={game.refineTavernCard}
+            exploreTestContext={game.exploreTestContext}
+            exploreTestOptions={game.exploreTestOptions}
+            applyExploreTestOutcome={game.applyExploreTestOutcome}
+            cancelExploreTest={game.cancelExploreTest}
             resolveShipwreckDive={game.resolveShipwreckDive}
             onOpenCharacterSheet={openCharacterSheet}
-            isStaff={isStaff}
+            currentPortTown={game.currentPortTown}
             {...frozenWorldVisuals}
           />
         }
@@ -209,6 +268,7 @@ export default function ShantiesHome() {
         open={characterSheetOpen}
         onOpenChange={setCharacterSheetOpen}
         hero={game.hero}
+        day={game.day}
         gameState={game.gameState}
         combatPhase={game.combatPhase}
         energy={game.energy}

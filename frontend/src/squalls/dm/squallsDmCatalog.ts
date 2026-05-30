@@ -1,12 +1,16 @@
 import type { ShopVariant } from "../shantiesTypes";
 import { ENCOUNTER_GROUP_SIZES, ENCOUNTER_POOLS, ENCOUNTER_POOL_LABELS } from "../monsters";
+import { PORT_POOL_CHANCE } from "../portEvents";
 
-export { ENCOUNTER_POOLS, ENCOUNTER_GROUP_SIZES, ENCOUNTER_POOL_LABELS };
+export { ENCOUNTER_POOLS, ENCOUNTER_GROUP_SIZES, ENCOUNTER_POOL_LABELS, PORT_POOL_CHANCE };
 
 export const SEA_DECK_RULES =
   "4–6 Sea Combat, 1–2 Discover an Island!, remainder from event pool → 10 cards shuffled";
 
+export const SEA_PORT_RULES = `${Math.round(PORT_POOL_CHANCE * 100)}% chance on each random sea pool slot when building the deck`;
+
 export const SEA_EVENT_POOL_DISPLAY = [
+  { name: "Port Town", type: "port" },
   { name: "Storm!", type: "weather" },
   { name: "Fog Bank", type: "weather" },
   { name: "Merchant Ship", type: "merchant" },
@@ -33,6 +37,7 @@ export const ISLAND_EVENT_POOL_DISPLAY = [
   { name: "Wind", type: "weather" },
   { name: "Heat Wave", type: "weather" },
   { name: "Island Trader", type: "merchant" },
+  { name: "Cookstove", type: "cookstove" },
 ] as const;
 
 export const ISLAND_DUNGEON_KINDS = ["cave", "ruins", "temple"] as const;
@@ -67,9 +72,10 @@ export const ISLAND_TREASURE_POOL_DISPLAY = [
 ] as const;
 
 export const SHOP_CATALOG_LABELS: Record<ShopVariant, string> = {
-  ship: "Ship shop",
+  ship: "Provisions",
   merchant: "Merchant ship",
   island_trader: "Island trader",
+  port: "Marketplace",
 };
 
 export const ENEMY_ACTION_DESCRIPTIONS = [

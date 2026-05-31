@@ -31,8 +31,10 @@ import {
 import { PanelBlockSkeleton } from "./components/panelStatus";
 import { PanelErrorState, PanelPageShell } from "./components/panelStatus";
 import { fetchMyImageInventory } from "./closet/api";
-import { uploadClosetImageViaPresign } from "./closet/imageUpload";
+import { uploadClosetImageBlobForField } from "./closet/imageUpload";
 import type { ClosetImageInventoryRow } from "./closet/types";
+import { UploadProgressBar } from "./components/UploadProgressBar";
+import { useR2ImageUpload } from "./lib/useR2ImageUpload";
 import { fullBleedStackProps } from "./responsive";
 import {
   APP_SHELL_TAB_LIST_PROPS,
@@ -403,28 +405,32 @@ export default function ProfilePage() {
     setIsEditing(false);
   }, [commitField]);
 
+  const avatarUpload = useR2ImageUpload({
+    getApiAccessToken,
+    onKeyChange: () => {},
+    uploadFromBlob: uploadClosetImageBlobForField,
+    successMessage: "Avatar updated",
+    onUploadSuccess: async (key) => {
+      const uploadedUrl = avatarUrlFromClosetImageKey(key);
+      if (uploadedUrl) setAvatarUrl(uploadedUrl);
+      await patchMyProfile({ avatar_image_key: key });
+    },
+  });
+
   const onChooseAvatarFile = useCallback(
     async (file: File | null) => {
       if (!file || !sessionUser) return;
       setSaveError(null);
-      setIsAvatarUploading(true);
       try {
-        const key = await uploadClosetImageViaPresign(getApiAccessToken, file);
-        const uploadedUrl = avatarUrlFromClosetImageKey(key);
-        if (uploadedUrl) {
-          setAvatarUrl(uploadedUrl);
-        }
-        await patchMyProfile({ avatar_image_key: key });
+        await avatarUpload.uploadFile(file);
       } catch (err: unknown) {
         setSaveError(
           err instanceof Error ? err.message : "Avatar upload failed",
         );
         setAvatarUrl(sessionUser.profile.avatar_url ?? "");
-      } finally {
-        setIsAvatarUploading(false);
       }
     },
-    [getApiAccessToken, patchMyProfile, sessionUser],
+    [avatarUpload, sessionUser],
   );
 
   const loadUploadedImages = useCallback(async () => {
@@ -555,10 +561,16 @@ export default function ProfilePage() {
 
   const { user, profile } = sessionUser;
   const currentUserAvatarUrl = resolveCurrentUserAvatarUrl(sessionUser, auth0User);
+  const profileAvatarDisplayUrl =
+    isEditing && (avatarUpload.localPreviewUrl || avatarUrl.trim())
+      ? avatarUpload.localPreviewUrl || avatarUrl.trim()
+      : currentUserAvatarUrl;
   const headerDisplayName = (
     isEditing ? displayName : profile.display_name || ""
   ).trim();
   const fieldBusy = (field: EditableField) => !!savingFields[field];
+  const avatarFieldBusy =
+    avatarUpload.busy || isAvatarUploading || fieldBusy("avatar_url");
   const isSavingAny = Object.values(savingFields).some(Boolean);
   const profileFieldLabelProps = isEditing
     ? {
@@ -710,7 +722,7 @@ export default function ProfilePage() {
                       <Avatar.Fallback
                         name={profile.display_name || user.email || "User"}
                       />
-                      <Avatar.Image src={currentUserAvatarUrl || undefined} />
+                      <Avatar.Image src={profileAvatarDisplayUrl || undefined} />
                       <Float placement="bottom-end" offsetX="1" offsetY="1">
                         <Circle
                           bg={
@@ -787,9 +799,7 @@ export default function ProfilePage() {
                               }
                             }}
                             placeholder="https://…"
-                            disabled={
-                              fieldBusy("avatar_url") || isAvatarUploading
-                            }
+                            disabled={avatarFieldBusy}
                             {...PANEL_FIELD_PROPS}
                           />
                           <input
@@ -797,6 +807,7 @@ export default function ProfilePage() {
                             type="file"
                             accept="image/jpeg,image/png,image/webp"
                             style={{ display: "none" }}
+                            disabled={avatarFieldBusy}
                             onChange={(e) => {
                               const file = e.target.files?.[0] ?? null;
                               void onChooseAvatarFile(file);
@@ -807,10 +818,8 @@ export default function ProfilePage() {
                             <PondButton
                               size="sm"
                               colorPalette="sky"
-                              loading={isAvatarUploading}
-                              disabled={
-                                fieldBusy("avatar_url") || isAvatarUploading
-                              }
+                              loading={avatarUpload.busy}
+                              disabled={avatarFieldBusy}
                               onClick={() =>
                                 avatarFileInputRef.current?.click()
                               }
@@ -821,9 +830,7 @@ export default function ProfilePage() {
                               size="sm"
                               colorPalette="lilypad"
                               loading={isImagePickerLoading}
-                              disabled={
-                                fieldBusy("avatar_url") || isAvatarUploading
-                              }
+                              disabled={avatarFieldBusy}
                               onClick={() => {
                                 setIsImagePickerOpen((prev) => !prev);
                                 if (!isImagePickerOpen) {
@@ -834,6 +841,41 @@ export default function ProfilePage() {
                               Select uploaded image
                             </PondButton>
                           </HStack>
+                          {avatarUpload.busy ? (
+                            <Stack gap="1" maxW="16rem">
+                              <UploadProgressBar progress={avatarUpload.progress} />
+                              {avatarUpload.statusMessage ? (
+                                <Text
+                                  fontSize={APP_TEXT_SIZES.helper}
+                                  color="fg.muted"
+                                  aria-live="polite"
+                                >
+                                  {avatarUpload.statusMessage}
+                                </Text>
+                              ) : null}
+                            </Stack>
+                          ) : null}
+                          {!avatarUpload.busy &&
+                          avatarUpload.statusKind === "success" &&
+                          avatarUpload.statusMessage ? (
+                            <Text
+                              fontSize={APP_TEXT_SIZES.helper}
+                              color="lilypad.fg"
+                              fontWeight="medium"
+                              aria-live="polite"
+                            >
+                              {avatarUpload.statusMessage}
+                            </Text>
+                          ) : null}
+                          {avatarUpload.error ? (
+                            <Text
+                              fontSize={APP_TEXT_SIZES.helper}
+                              color="nautical.solid"
+                              role="alert"
+                            >
+                              {avatarUpload.error}
+                            </Text>
+                          ) : null}
                           {isImagePickerOpen ? (
                             <Stack
                               gap="2"

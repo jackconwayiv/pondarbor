@@ -7,7 +7,6 @@ import {
   Input,
   NativeSelectField,
   NativeSelectRoot,
-  Spinner,
   Stack,
   Tag,
   Text,
@@ -21,6 +20,8 @@ import {
   validateClosetTagList,
 } from "../forms/validation";
 import PondButton from "../PondButton";
+import { UploadProgressBar } from "../components/UploadProgressBar";
+import { useR2ImageUpload } from "../lib/useR2ImageUpload";
 import {
   APP_TEXT_SIZES,
   PANEL_ENTRY_CARD_BODY_PROPS,
@@ -47,10 +48,7 @@ import {
   formatNeedByDateLabel,
   sameClosetUserId,
 } from "./closetUtils";
-import {
-  resizeImageFileToJpegBlob,
-  uploadClosetImageBlobViaPresign,
-} from "./imageUpload";
+import { uploadClosetImageBlobForField } from "./imageUpload";
 import { ClosetItemModalTopNav, type ClosetItemModalNav } from "./ClosetItemModalFooter";
 import type { ClosetImageInventoryRow, ClosetItem } from "./types";
 
@@ -101,10 +99,20 @@ export function ClosetOwnerManagePanel({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const confirmDeleteButtonRef = useRef<HTMLButtonElement | null>(null);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
-  const [localImagePreviewUrl, setLocalImagePreviewUrl] = useState<string | null>(null);
-  const localImagePreviewUrlRef = useRef<string | null>(null);
-  localImagePreviewUrlRef.current = localImagePreviewUrl;
   const prevOpenRef = useRef(open);
+
+  const photoUpload = useR2ImageUpload({
+    getApiAccessToken: getToken,
+    onKeyChange: () => {},
+    uploadFromBlob: uploadClosetImageBlobForField,
+    successMessage: "Photo updated",
+    onUploadSuccess: async (key) => {
+      const token = await getToken();
+      const updated = await patchItem(token, item.id, { image_key: key });
+      await onRefreshed(updated);
+      onNotice?.({ kind: "success", message: "Photo updated." });
+    },
+  });
 
   const isOwner = sameClosetUserId(item.owner_user.id, meId);
 
@@ -124,13 +132,6 @@ export function ClosetOwnerManagePanel({
       item.owner_user.id,
     ],
   );
-
-  useEffect(() => {
-    return () => {
-      const u = localImagePreviewUrlRef.current;
-      if (u) URL.revokeObjectURL(u);
-    };
-  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -194,7 +195,7 @@ export function ClosetOwnerManagePanel({
   );
 
   const apiImageUrl = (item.image_url ?? "").trim();
-  const displayImageSrc = apiImageUrl || (localImagePreviewUrl ?? "").trim();
+  const displayImageSrc = apiImageUrl || (photoUpload.localPreviewUrl ?? "").trim();
   const hasHeroImage = Boolean(displayImageSrc);
   const categoryLine = formatCategoryTagsSummaryLine(item);
   const tagParts = item.tags.map((t) => t.trim()).filter(Boolean);
@@ -561,36 +562,17 @@ export function ClosetOwnerManagePanel({
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
                 style={{ display: "none" }}
+                disabled={photoUpload.busy || imageUploadBusy}
                 onChange={(e) => {
                   const f = e.target.files?.[0];
                   e.target.value = "";
                   if (!f) return;
-                  void (async () => {
-                    setError(null);
-                    setImageUploadBusy(true);
-                    let previewUrl: string | null = null;
-                    try {
-                      const blob = await resizeImageFileToJpegBlob(f);
-                      previewUrl = URL.createObjectURL(blob);
-                      setLocalImagePreviewUrl((prev) => {
-                        if (prev) URL.revokeObjectURL(prev);
-                        return previewUrl;
-                      });
-                      const key = await uploadClosetImageBlobViaPresign(getToken, blob);
-                      const token = await getToken();
-                      const updated = await patchItem(token, item.id, { image_key: key });
-                      await onRefreshed(updated);
-                      onNotice?.({ kind: "success", message: "Photo updated." });
-                    } catch (err: unknown) {
-                      if (previewUrl) {
-                        URL.revokeObjectURL(previewUrl);
-                        setLocalImagePreviewUrl((prev) => (prev === previewUrl ? null : prev));
-                      }
-                      setError(err instanceof Error ? err.message : "Failed to upload photo");
-                    } finally {
-                      setImageUploadBusy(false);
-                    }
-                  })();
+                  setError(null);
+                  void photoUpload.uploadFile(f).catch((err: unknown) => {
+                    setError(
+                      err instanceof Error ? err.message : "Failed to upload photo",
+                    );
+                  });
                 }}
               />
               <HStack flexWrap="wrap" gap="2">
@@ -598,7 +580,8 @@ export function ClosetOwnerManagePanel({
                   type="button"
                   size="sm"
                   colorPalette="sky"
-                  loading={imageUploadBusy}
+                  loading={photoUpload.busy}
+                  disabled={photoUpload.busy || imageUploadBusy}
                   onClick={() => photoInputRef.current?.click()}
                 >
                   Upload new photo
@@ -608,7 +591,7 @@ export function ClosetOwnerManagePanel({
                   size="sm"
                   colorPalette="lilypad"
                   loading={imagePickerLoading}
-                  disabled={imageUploadBusy}
+                  disabled={photoUpload.busy || imageUploadBusy}
                   onClick={() => {
                     setImagePickerOpen((prev) => !prev);
                     if (!imagePickerOpen) void loadExistingImageRows();
@@ -629,10 +612,7 @@ export function ClosetOwnerManagePanel({
                         try {
                           const token = await getToken();
                           const updated = await patchItem(token, item.id, { image_key: "" });
-                          setLocalImagePreviewUrl((prev) => {
-                            if (prev) URL.revokeObjectURL(prev);
-                            return null;
-                          });
+                          photoUpload.clearLocalPreview();
                           await onRefreshed(updated);
                           onNotice?.({ kind: "success", message: "Photo removed." });
                         } catch (err: unknown) {
@@ -701,11 +681,36 @@ export function ClosetOwnerManagePanel({
                   )}
                 </Stack>
               ) : null}
-              {imageUploadBusy ? (
-                <HStack gap="2" align="center" color="gray.700">
-                  <Spinner size="sm" colorPalette="lilypad" />
-                  <Text fontSize={APP_TEXT_SIZES.helper}>Uploading photo…</Text>
-                </HStack>
+              {photoUpload.busy ? (
+                <Stack gap="1" maxW="16rem">
+                  <UploadProgressBar progress={photoUpload.progress} />
+                  {photoUpload.statusMessage ? (
+                    <Text
+                      fontSize={APP_TEXT_SIZES.helper}
+                      color="gray.700"
+                      aria-live="polite"
+                    >
+                      {photoUpload.statusMessage}
+                    </Text>
+                  ) : null}
+                </Stack>
+              ) : null}
+              {!photoUpload.busy &&
+              photoUpload.statusKind === "success" &&
+              photoUpload.statusMessage ? (
+                <Text
+                  fontSize={APP_TEXT_SIZES.helper}
+                  color="lilypad.fg"
+                  fontWeight="medium"
+                  aria-live="polite"
+                >
+                  {photoUpload.statusMessage}
+                </Text>
+              ) : null}
+              {photoUpload.error ? (
+                <Text fontSize={APP_TEXT_SIZES.helper} color="nautical.solid" role="alert">
+                  {photoUpload.error}
+                </Text>
               ) : null}
               <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600">
                 JPEG, PNG, or WebP. Images are resized in the browser before upload.

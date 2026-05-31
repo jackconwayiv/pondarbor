@@ -1,12 +1,11 @@
 import { useAuth0 } from "@auth0/auth0-react";
 import {
   Box,
+  Collapsible,
   Flex,
   Heading,
   HStack,
   Image,
-  Link as ChakraLink,
-  SimpleGrid,
   Stack,
   Text,
   Textarea,
@@ -19,7 +18,7 @@ import { useAppSession } from "./auth/AppSessionContext";
 import { auth0LoginAuthorizationParams } from "./auth/auth0LoginParams";
 import SiteFooter from "./components/SiteFooter";
 import PondButton from "./PondButton";
-import { pondarborProfileSrc } from "./publicAsset";
+import { pondarborLogoSrc, pondarborProfileSrc } from "./publicAsset";
 import { fullBleedStackProps, useIsMobile } from "./responsive";
 import {
   APP_SHELL_TRAY_PROPS,
@@ -38,6 +37,7 @@ export default function AboutPage() {
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [brandingOpen, setBrandingOpen] = useState(false);
   const isMobile = useIsMobile();
   const onSubmit = useCallback(async () => {
     const trimmed = message.trim();
@@ -208,151 +208,75 @@ export default function AboutPage() {
             </Box>
 
             <Box {...PANEL_ENTRY_CARD_PROPS}>
-              <Stack gap="4" align="stretch">
-                <Stack gap="1">
-                <Text fontSize={APP_TEXT_SIZES.label} fontWeight="medium">
-                      Typography:
+              <Collapsible.Root
+                open={brandingOpen}
+                onOpenChange={(details) => setBrandingOpen(details.open)}
+              >
+                <Collapsible.Trigger asChild>
+                  <button
+                    type="button"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      width: "100%",
+                      textAlign: "left",
+                      fontSize: "1rem",
+                      fontWeight: 600,
+                      color: "inherit",
+                      cursor: "pointer",
+                      background: "transparent",
+                      border: "none",
+                      padding: 0,
+                      margin: 0,
+                    }}
+                  >
+                    <Text
+                      as="span"
+                      transform={brandingOpen ? "rotate(90deg)" : "rotate(0deg)"}
+                      transition="transform 0.15s ease"
+                      lineHeight="1"
+                      flexShrink={0}
+                    >
+                      ›
                     </Text>
-                </Stack>
-                <SimpleGrid columns={{ base: 1, md: 2 }} gap="3">
-                  <Stack
-                    gap="3"
-                    p={{ base: "3", md: "3.5" }}
-                    minH={{ md: "10.5rem" }}
-                    bg="sky.subtle"
-                    borderRadius="lg"
-                    borderWidth="1px"
-                    borderColor="sky.border"
-                    boxShadow="sm"
-                    justify="space-between"
-                  >
-                    <Stack gap="2">
-                      <Text
-                        fontSize="xs"
-                        fontWeight="medium"
-                        letterSpacing="0.12em"
-                        textTransform="uppercase"
-                        color="sky.emphasized"
-                      >
-                        Titles &amp; Headings
-                      </Text>
-                      <Text
-                        fontFamily="heading"
-                        fontSize={{ base: "2xl", md: "3xl" }}
-                        lineHeight="1.1"
-                        color="fg"
-                      >
-                        Caprasimo
-                      </Text>
-                      <Text
-                        fontFamily="heading"
-                        fontSize={{ base: "md", md: "lg" }}
-                        color="fg.muted"
-                        lineHeight="short"
-                      >
-                        Where will your Pond Arbor adventure take you?
-                      </Text>
-                    </Stack>
-                    <Flex
-                      align="center"
-                      justify="space-between"
-                      gap="2"
-                      pt="2"
-                      borderTopWidth="1px"
-                      borderColor="border.subtle"
-                    >
-                      <ChakraLink
-                        href="https://fonts.google.com/specimen/Caprasimo"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        fontSize={APP_TEXT_SIZES.helper}
-                        fontWeight="medium"
-                        color="sky.emphasized"
-                        textDecoration="underline"
-                        textUnderlineOffset="2px"
-                        _hover={{ color: "sky.solid" }}
-                      >
-                        Caprasimo
-                      </ChakraLink>
-                      <Text
-                        fontFamily="heading"
-                        fontSize="sm"
-                        color="fg.subtle"
-                        aria-hidden
-                      >
-                        Aa Bb Cc · 123
-                      </Text>
+                    <Text as="span" flex="1">
+                      Pond Arbor Branding
+                    </Text>
+                  </button>
+                </Collapsible.Trigger>
+                <Collapsible.Content>
+                  <Stack gap="4" pt="2" align="stretch">
+                    <Flex align="center" w="full" gap="3">
+                      <Box flex="1" minW={0}>
+                        <Heading
+                          as="h2"
+                          fontFamily="heading"
+                          fontSize={{ base: "xl", md: "2xl" }}
+                          fontWeight="normal"
+                          lineHeight="1.2"
+                        >
+                          Headings: Caprasimo
+                        </Heading>
+                      </Box>
+                      <Image
+                        src={pondarborLogoSrc()}
+                        alt="Pond Arbor"
+                        h={{ base: "6.75rem", md: "8.25rem" }}
+                        w="auto"
+                        flexShrink={0}
+                        objectFit="contain"
+                      />
+                      <Box flex="1" minW={0} textAlign="right">
+                        <Text fontFamily="body" fontSize={APP_TEXT_SIZES.body}>
+                          Body Text: Spinnaker
+                        </Text>
+                      </Box>
                     </Flex>
+                    <BrandColorsSection />
                   </Stack>
-                  <Stack
-                    gap="3"
-                    p={{ base: "3", md: "3.5" }}
-                    minH={{ md: "10.5rem" }}
-                    bg="lilypad.subtle"
-                    borderRadius="lg"
-                    borderWidth="1px"
-                    borderColor="lilypad.border"
-                    boxShadow="sm"
-                    justify="space-between"
-                  >
-                    <Stack gap="2">
-                      <Text
-                        fontSize="xs"
-                        fontWeight="medium"
-                        letterSpacing="0.12em"
-                        textTransform="uppercase"
-                        color="lilypad.emphasized"
-                      >
-                        Body Text
-                      </Text>
-                      <Text
-                        fontFamily="body"
-                        fontSize={APP_TEXT_SIZES.body}
-                        lineHeight="tall"
-                        color="fg"
-                      >
-                        In the <b>Spinnaker</b> font, friends and family gather at the pond to share music,
-                        meals, games, and the occasional earth-shattering app
-                        idea.
-                      </Text>
-                    </Stack>
-                    <Flex
-                      align="center"
-                      justify="space-between"
-                      gap="2"
-                      pt="2"
-                      borderTopWidth="1px"
-                      borderColor="border.subtle"
-                    >
-                      <ChakraLink
-                        href="https://fonts.google.com/specimen/Spinnaker"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        fontSize={APP_TEXT_SIZES.helper}
-                        fontWeight="medium"
-                        color="lilypad.emphasized"
-                        textDecoration="underline"
-                        textUnderlineOffset="2px"
-                        _hover={{ color: "lilypad.solid" }}
-                      >
-                        Spinnaker
-                      </ChakraLink>
-                      <Text
-                        fontFamily="body"
-                        fontSize="sm"
-                        color="fg.subtle"
-                        aria-hidden
-                      >
-                        Aa Bb Cc · 123
-                      </Text>
-                    </Flex>
-                  </Stack>
-                </SimpleGrid>
-              </Stack>
-            </Box>
-
-            <Box {...PANEL_ENTRY_CARD_PROPS}>
-              <BrandColorsSection />
+                </Collapsible.Content>
+              </Collapsible.Root>
             </Box>
           </Stack>
         </Box>

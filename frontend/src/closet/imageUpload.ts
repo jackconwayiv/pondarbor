@@ -1,7 +1,16 @@
-import { putPresignedImage } from "../lib/presignedPut";
+import {
+  putPresignedImage,
+  type PutPresignedImageOptions,
+  type UploadProgress,
+} from "../lib/presignedPut";
 import { requestClosetImagePresign } from "./api";
 
 export { putPresignedImage };
+export type { UploadProgress, PutPresignedImageOptions };
+
+export type ClosetImageUploadOptions = {
+  onProgress?: (progress: UploadProgress) => void;
+};
 
 const MAX_EDGE = 1600;
 const JPEG_QUALITY = 0.85;
@@ -45,6 +54,7 @@ export async function uploadClosetImageBlobViaPresign(
   getToken: () => Promise<string>,
   blob: Blob,
   contentType: "image/jpeg" | "image/png" | "image/webp" = "image/jpeg",
+  options?: ClosetImageUploadOptions,
 ): Promise<string> {
   const token = await getToken();
   const meta = await requestClosetImagePresign(token, contentType);
@@ -52,7 +62,10 @@ export async function uploadClosetImageBlobViaPresign(
     const kb = Math.round(meta.max_bytes / 1024);
     throw new Error(`Image must be under ${kb} KB after resizing.`);
   }
-  await putPresignedImage(meta.upload_url, contentType, blob);
+  const putOptions: PutPresignedImageOptions | undefined = options?.onProgress
+    ? { onProgress: options.onProgress }
+    : undefined;
+  await putPresignedImage(meta.upload_url, contentType, blob, putOptions);
   return meta.key;
 }
 
@@ -62,7 +75,18 @@ export async function uploadClosetImageBlobViaPresign(
 export async function uploadClosetImageViaPresign(
   getToken: () => Promise<string>,
   file: File,
+  options?: ClosetImageUploadOptions,
 ): Promise<string> {
+  options?.onProgress?.({ phase: "preparing" });
   const blob = await resizeImageFileToJpegBlob(file);
-  return uploadClosetImageBlobViaPresign(getToken, blob, "image/jpeg");
+  return uploadClosetImageBlobViaPresign(getToken, blob, "image/jpeg", options);
+}
+
+/** Adapter for {@link useR2ImageUpload} (options third, default JPEG). */
+export async function uploadClosetImageBlobForField(
+  getToken: () => Promise<string>,
+  blob: Blob,
+  options?: ClosetImageUploadOptions,
+): Promise<string> {
+  return uploadClosetImageBlobViaPresign(getToken, blob, "image/jpeg", options);
 }

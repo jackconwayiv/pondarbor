@@ -76,16 +76,6 @@ export type BrandColorGroup = {
 /** App-wide brand colors for docs / About page (single source of truth). */
 export const BRAND_COLOR_GROUPS: readonly BrandColorGroup[] = [
   {
-    title: "Core palettes",
-    description:
-      "Lilypad for primary actions, sky for links and secondary UI, nautical for emphasis and alerts.",
-    swatches: [
-      { name: "Lilypad", hex: BRAND_COLORS.lilypad, role: "Primary" },
-      { name: "Sky", hex: BRAND_COLORS.skyBlue, role: "Secondary" },
-      { name: "Nautical", hex: BRAND_COLORS.orange, role: "Emphasis" },
-    ],
-  },
-  {
     title: "Lilypad triad",
     swatches: [
       { name: "Light", hex: DESIGN.lilypadLight },
@@ -117,18 +107,17 @@ export const BRAND_COLOR_GROUPS: readonly BrandColorGroup[] = [
   },
   {
     title: "Structure",
-    description: "Global chrome and text structure.",
     swatches: [
       { name: "Navy", hex: DESIGN.navy },
       { name: "Deep", hex: DESIGN.deep },
       { name: "Text primary", hex: DESIGN.textPrimary },
       { name: "Text secondary", hex: DESIGN.textSecondary },
+      { name: "Surface", hex: DESIGN.surface },
     ],
   },
   {
     title: "Neutrals",
     swatches: [
-      { name: "Surface", hex: DESIGN.surface },
       { name: "Cloud white", hex: DESIGN.cloudWhite },
       { name: "Gray light", hex: DESIGN.grayLightBase },
       { name: "Gray medium", hex: DESIGN.grayMediumBase },

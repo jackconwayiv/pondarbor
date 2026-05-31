@@ -45,16 +45,6 @@ function BrandColorSwatchCard({ name, hex, role }: BrandColorSwatch) {
 export default function BrandColorsSection() {
   return (
     <Stack gap="4" align="stretch">
-      <Stack gap="1">
-        <Text fontSize={APP_TEXT_SIZES.label} fontWeight="medium">
-          Brand colors:
-        </Text>
-        <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" lineHeight="tall">
-          Pond Arbor’s shared palette from the design system. Use these tokens
-          rather than one-off hex values in app UI.
-        </Text>
-      </Stack>
-
       {BRAND_COLOR_GROUPS.map((group) => (
         <Stack key={group.title} gap="2" align="stretch">
           <Stack gap="0.5">

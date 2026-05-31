@@ -6,6 +6,7 @@ import {
   Dialog,
   HStack,
   Heading,
+  Image,
   Input,
   NativeSelectField,
   NativeSelectRoot,
@@ -77,7 +78,10 @@ import {
   sameClosetUserId,
 } from "./closetUtils";
 import { FriendClosetListCard } from "./FriendClosetListCard";
-import { uploadClosetImageViaPresign } from "./imageUpload";
+import { UploadProgressBar } from "../components/UploadProgressBar";
+import { useR2ImageUpload } from "../lib/useR2ImageUpload";
+import { publicUrlForR2ImageKey } from "../meal/imagePublicUrl";
+import { uploadClosetImageBlobForField } from "./imageUpload";
 import type {
   ClosetImageInventoryRow,
   ClosetItem,
@@ -175,8 +179,15 @@ export default function ClosetPage() {
   const [newDescription, setNewDescription] = useState("");
   const [newCategory, setNewCategory] = useState("");
   const [isAddItemOpen, setIsAddItemOpen] = useState(false);
-  const [newItemImageBusy, setNewItemImageBusy] = useState(false);
+  const [newItemSaveBusy, setNewItemSaveBusy] = useState(false);
+  const [newItemPendingImageKey, setNewItemPendingImageKey] = useState("");
   const newItemPhotoInputRef = useRef<HTMLInputElement | null>(null);
+  const newItemPhotoUpload = useR2ImageUpload({
+    getApiAccessToken,
+    onKeyChange: setNewItemPendingImageKey,
+    uploadFromBlob: uploadClosetImageBlobForField,
+    successMessage: "Photo uploaded",
+  });
   const [
     confirmDeleteDeclinedRequestItemId,
     setConfirmDeleteDeclinedRequestItemId,
@@ -986,18 +997,51 @@ export default function ClosetPage() {
                           >
                             Photo (optional):
                           </Text>
+                          {(() => {
+                            const photoPreview =
+                              newItemPhotoUpload.localPreviewUrl ||
+                              (newItemPendingImageKey.trim()
+                                ? publicUrlForR2ImageKey(newItemPendingImageKey)
+                                : "");
+                            return photoPreview ? (
+                              <Box
+                                w="100%"
+                                maxW="8rem"
+                                aspectRatio={1}
+                                borderRadius="md"
+                                borderWidth="1px"
+                                borderColor="border"
+                                overflow="hidden"
+                              >
+                                <Image
+                                  src={photoPreview}
+                                  alt=""
+                                  w="100%"
+                                  h="100%"
+                                  objectFit="cover"
+                                />
+                              </Box>
+                            ) : null;
+                          })()}
                           <input
                             ref={newItemPhotoInputRef}
                             type="file"
                             accept="image/jpeg,image/png,image/webp"
                             style={{ display: "none" }}
+                            disabled={newItemPhotoUpload.busy || newItemSaveBusy}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              e.target.value = "";
+                              newItemPhotoUpload.handleFileInput(file);
+                            }}
                           />
                           <PondButton
                             type="button"
                             size="sm"
                             colorPalette="sky"
                             alignSelf="flex-start"
-                            disabled={newItemImageBusy}
+                            loading={newItemPhotoUpload.busy}
+                            disabled={newItemPhotoUpload.busy || newItemSaveBusy}
                             onClick={() =>
                               newItemPhotoInputRef.current?.click()
                             }
@@ -1011,11 +1055,48 @@ export default function ClosetPage() {
                             JPEG, PNG, or WebP. Resized in the browser before
                             upload.
                           </Text>
-                          {newItemImageBusy ? (
+                          {newItemPhotoUpload.busy ? (
+                            <Stack gap="1" maxW="16rem">
+                              <UploadProgressBar
+                                progress={newItemPhotoUpload.progress}
+                              />
+                              {newItemPhotoUpload.statusMessage ? (
+                                <Text
+                                  fontSize={APP_TEXT_SIZES.helper}
+                                  color="fg.muted"
+                                  aria-live="polite"
+                                >
+                                  {newItemPhotoUpload.statusMessage}
+                                </Text>
+                              ) : null}
+                            </Stack>
+                          ) : null}
+                          {!newItemPhotoUpload.busy &&
+                          newItemPhotoUpload.statusKind === "success" &&
+                          newItemPhotoUpload.statusMessage ? (
+                            <Text
+                              fontSize={APP_TEXT_SIZES.helper}
+                              color="lilypad.fg"
+                              fontWeight="medium"
+                              aria-live="polite"
+                            >
+                              {newItemPhotoUpload.statusMessage}
+                            </Text>
+                          ) : null}
+                          {newItemPhotoUpload.error ? (
+                            <Text
+                              fontSize={APP_TEXT_SIZES.helper}
+                              color="nautical.solid"
+                              role="alert"
+                            >
+                              {newItemPhotoUpload.error}
+                            </Text>
+                          ) : null}
+                          {newItemSaveBusy ? (
                             <HStack gap="2" align="center" color="fg">
                               <Spinner size="sm" colorPalette="lilypad" />
                               <Text fontSize={APP_TEXT_SIZES.helper}>
-                                Uploading photo and saving item…
+                                Saving item…
                               </Text>
                             </HStack>
                           ) : null}
@@ -1023,7 +1104,12 @@ export default function ClosetPage() {
                         <HStack>
                           <PondButton
                             colorPalette="lilypad"
-                            loading={newItemImageBusy}
+                            loading={newItemSaveBusy}
+                            disabled={
+                              !newName.trim() ||
+                              newItemSaveBusy ||
+                              newItemPhotoUpload.busy
+                            }
                             onClick={async () => {
                               setError(null);
                               if (!isAllowedClosetCategory(newCategory)) {
@@ -1055,17 +1141,9 @@ export default function ClosetPage() {
                                 return;
                               }
                               try {
-                                setNewItemImageBusy(true);
+                                setNewItemSaveBusy(true);
                                 const token = await getApiAccessToken();
-                                const file =
-                                  newItemPhotoInputRef.current?.files?.[0];
-                                let imageKey: string | undefined;
-                                if (file) {
-                                  imageKey = await uploadClosetImageViaPresign(
-                                    getApiAccessToken,
-                                    file,
-                                  );
-                                }
+                                const imageKey = newItemPendingImageKey.trim();
                                 const created = await createItem(token, {
                                   name: nn,
                                   description: newDescription,
@@ -1081,6 +1159,7 @@ export default function ClosetPage() {
                                 setNewName("");
                                 setNewDescription("");
                                 setNewCategory("");
+                                setNewItemPendingImageKey("");
                                 if (newItemPhotoInputRef.current) {
                                   newItemPhotoInputRef.current.value = "";
                                 }
@@ -1098,20 +1177,20 @@ export default function ClosetPage() {
                                     : "Failed to create item";
                                 setNotice({ kind: "error", message });
                               } finally {
-                                setNewItemImageBusy(false);
+                                setNewItemSaveBusy(false);
                               }
                             }}
-                            disabled={!newName.trim()}
                           >
                             Save Item
                           </PondButton>
                           <PondButton
                             colorPalette="sky"
-                            disabled={newItemImageBusy}
+                            disabled={newItemSaveBusy || newItemPhotoUpload.busy}
                             onClick={() => {
                               setNewName("");
                               setNewDescription("");
                               setNewCategory("");
+                              setNewItemPendingImageKey("");
                               if (newItemPhotoInputRef.current) {
                                 newItemPhotoInputRef.current.value = "";
                               }

@@ -1,3 +1,4 @@
+import { publicUrlForR2ImageKey } from "../meal/imagePublicUrl";
 import type { PeoplePerson } from "./types";
 
 /** Shared add/edit form state for PeoplePage and the setup wizard. */
@@ -69,6 +70,11 @@ export function applyPersonFormField<K extends keyof PersonFormState>(
   value: PersonFormState[K],
 ): PersonFormState {
   const next = { ...prev, [key]: value };
+  if (key === "imageKey" && typeof value === "string") {
+    const url = publicUrlForR2ImageKey(value);
+    if (url) next.imageUrl = url;
+    else if (!value.trim()) next.imageUrl = "";
+  }
   if (key === "core" && value !== "friend" && prev.suffix.includes("best")) {
     next.suffix = prev.suffix.filter((t) => t !== "best");
   }

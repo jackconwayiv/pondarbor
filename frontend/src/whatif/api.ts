@@ -1,4 +1,4 @@
-import type { WhatIfMySessionsResponse, WhatIfSessionState } from "./types";
+import type { WhatIfFullLifetimeStats, WhatIfMySessionsResponse, WhatIfSessionState } from "./types";
 
 /** Thrown when GET session returns 404 (room code not in this environment's database). */
 export class WhatIfRoomNotFoundError extends Error {
@@ -119,6 +119,40 @@ export async function fetchMyWhatIfSessions(
     throw new Error(`Failed to load your games (${response.status})`);
   }
   return (await response.json()) as WhatIfMySessionsResponse;
+}
+
+/** Best-effort: close open lobbies older than 24 hours. Requires sign-in. */
+export async function closeStaleWhatIfOpenSessions(accessToken: string): Promise<number> {
+  const response = await fetch(`${apiBase()}/api/v1/whatif/sessions/close-stale-open/`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (response.status === 401 || response.status === 403) {
+    return 0;
+  }
+  if (!response.ok) {
+    throw new Error(`Failed to close stale open games (${response.status})`);
+  }
+  const body = (await response.json()) as { closed_count?: number };
+  return typeof body.closed_count === "number" ? body.closed_count : 0;
+}
+
+export async function fetchWhatIfLifetimeStats(
+  accessToken: string,
+): Promise<WhatIfFullLifetimeStats> {
+  const response = await fetch(`${apiBase()}/api/v1/whatif/lifetime-stats/`, {
+    method: "GET",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (response.status === 401 || response.status === 403) {
+    throw new Error("Sign in to view lifetime stats.");
+  }
+  if (!response.ok) {
+    throw new Error(`Failed to load lifetime stats (${response.status})`);
+  }
+  return (await response.json()) as WhatIfFullLifetimeStats;
 }
 
 export async function createWhatIfSession(accessToken: string): Promise<{

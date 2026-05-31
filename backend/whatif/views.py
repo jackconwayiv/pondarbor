@@ -3,7 +3,7 @@ import re
 import string
 from datetime import datetime, timedelta
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import F, Prefetch, Q
 from django.core.exceptions import ObjectDoesNotExist
 from django.shortcuts import get_object_or_404
@@ -26,6 +26,7 @@ from whatif.endgame import (
     current_round_number,
     endgame_stats,
     enrich_final_scores_with_lifetime_lines,
+    full_lifetime_stats_for_user,
     lifetime_stats_for_user,
     record_challenge_started,
     record_question_vetoed,
@@ -35,12 +36,15 @@ from whatif.gameplay import (
     apply_host_complete_game,
     apply_reveal_from_voting_state,
     can_reveal_now,
+    clear_outstanding_question_skip_requests,
+    close_stale_open_lobby_sessions,
     final_scores,
     is_voting_deadline_elapsed,
     is_voting_deadline_passed,
     mark_whatif_completion_for_session_users,
     declare_pending_winner_if_due,
     maybe_declare_pending_winner,
+    normalize_question_skip_requests,
     parse_iso_datetime,
     pause_blocked_for_duel,
     votes_complete_for_round,
@@ -76,6 +80,7 @@ from whatif.session_queries import (
     npcs_ordered as _npcs_ordered,
     players_ordered as _players_ordered,
     reload_session_with_prefetch as _reload_session_with_prefetch,
+    user_seat_taken as _user_seat_taken,
 )
 from whatif.serializers import (
     JoinSessionSerializer,
@@ -358,6 +363,7 @@ def _setup_turn(session: WhatIfSession, *, next_player_id: int) -> bool:
         "voting_paused": False,
         "voting_pause_remaining_seconds": None,
         "pending_question_skip_by_player_id": None,
+        "pending_question_skip_question_id": None,
         "skip_ui_suppressed_for_question_id": None,
         "revealed_at": None,
         "next_turn_not_before": None,
@@ -371,6 +377,7 @@ def _setup_turn(session: WhatIfSession, *, next_player_id: int) -> bool:
 
 def _public_round_state(session: WhatIfSession) -> dict:
     state = dict(session.state or {})
+    normalize_question_skip_requests(state)
     question = _question_for_round(state)
     if question:
         q = WhatIfQuestionPublicSerializer(question).data
@@ -580,11 +587,14 @@ _WHATIF_IN_PROGRESS_STATUSES = frozenset(
 def _serialize_whatif_my_session_row(session: WhatIfSession, user_id: int) -> dict:
     players = list(session.players.all())
     winner_display_name: str | None = None
+    you_won = False
     try:
         res = session.result
         if res is not None:
             w = (res.winner_display_name or "").strip()
             winner_display_name = w or None
+            if res.winner_player_id is not None and res.winner_player.user_id == user_id:
+                you_won = True
     except ObjectDoesNotExist:
         pass
     my_player = next((p for p in players if p.user_id == user_id), None)
@@ -597,19 +607,36 @@ def _serialize_whatif_my_session_row(session: WhatIfSession, user_id: int) -> di
         "is_owner": session.owner_id == user_id,
         "player_names": [p.display_name for p in players],
         "winner_display_name": winner_display_name,
+        "you_won": you_won,
         "player_secret": player_secret,
     }
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def my_lifetime_stats(request):
+    """Lifetime What If stats for the signed-in user (lobby profile)."""
+    return Response(full_lifetime_stats_for_user(int(request.user.id)))
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def close_stale_open_sessions(request):
+    """Close open lobbies older than STALE_OPEN_LOBBY_AGE_HOURS (entry-page housekeeping)."""
+    closed_count = close_stale_open_lobby_sessions()
+    return Response({"closed_count": closed_count}, status=status.HTTP_200_OK)
 
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated, IsApprovedUser])
 def list_my_sessions(request):
     """Sessions the user hosts or joined while logged in; grouped for the Resume tab."""
+    close_stale_open_lobby_sessions()
     uid = int(request.user.id)
     qs = (
         WhatIfSession.objects.filter(Q(owner_id=uid) | Q(players__user_id=uid))
         .distinct()
-        .select_related("result")
+        .select_related("result", "result__winner_player")
         .prefetch_related(
             Prefetch(
                 "players",
@@ -666,13 +693,24 @@ def join_session(request, code: str):
                 {"detail": "That name is already in the room."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if user is not None and _user_seat_taken(session, int(user.id)):
+            return Response(
+                {"detail": "You already have a seat in this room."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         avatar = _pick_avatar_emoji(session)
-        player = WhatIfPlayer.objects.create(
-            session=session,
-            user=user,
-            display_name=display_name,
-            avatar_emoji=avatar,
-        )
+        try:
+            player = WhatIfPlayer.objects.create(
+                session=session,
+                user=user,
+                display_name=display_name,
+                avatar_emoji=avatar,
+            )
+        except IntegrityError:
+            return Response(
+                {"detail": "You already have a seat in this room."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         session.state_version = F("state_version") + 1
         session.save(update_fields=["state_version", "updated_at"])
     session = _reload_session_with_prefetch(session.id)
@@ -942,15 +980,18 @@ def _apply_question_skip_locked(session: WhatIfSession, state: dict, *, requeste
         "voting_paused": False,
         "voting_pause_remaining_seconds": None,
         "pending_question_skip_by_player_id": None,
+        "pending_question_skip_question_id": None,
         "skip_ui_suppressed_for_question_id": None,
         "revealed_at": None,
         "next_turn_not_before": None,
         "final_scores": [],
     }
+    clear_outstanding_question_skip_requests(new_state)
     session.status = WhatIfSession.Status.VOTING
     session.state = new_state
     session.state_version = F("state_version") + 1
     session.save(update_fields=["status", "state", "state_version", "updated_at"])
+    session.refresh_from_db()
 
 
 @api_view(["POST"])
@@ -1157,6 +1198,7 @@ def session_action(request, code: str):
                 state["voting_deadline_at"] = None
                 state["voting_paused"] = False
                 state["voting_pause_remaining_seconds"] = None
+                clear_outstanding_question_skip_requests(state)
                 rows_ids = [p.id for p in _players_ordered(session)]
                 try:
                     seat_idx = rows_ids.index(int(target_id))
@@ -1268,6 +1310,7 @@ def session_action(request, code: str):
                 state["voting_deadline_at"] = None
                 state["voting_paused"] = False
                 state["voting_pause_remaining_seconds"] = None
+                clear_outstanding_question_skip_requests(state)
                 state["marker_index"] = chosen
                 state["last_subject_seat_index"] = chosen
                 _strip_subject_die_keys(state)
@@ -1484,6 +1527,7 @@ def session_action(request, code: str):
                 _apply_question_skip_locked(session, state, requester_id=actor.id)
             else:
                 state["pending_question_skip_by_player_id"] = actor.id
+                state["pending_question_skip_question_id"] = qid
                 session.state = state
                 session.state_version = F("state_version") + 1
                 session.save(update_fields=["state", "state_version", "updated_at"])
@@ -1501,7 +1545,7 @@ def session_action(request, code: str):
                 return Response({"detail": "approve (boolean) is required."}, status=400)
             qid = state.get("question_id")
             if not approve:
-                state["pending_question_skip_by_player_id"] = None
+                clear_outstanding_question_skip_requests(state)
                 state["skip_ui_suppressed_for_question_id"] = qid
                 session.state = state
                 session.state_version = F("state_version") + 1

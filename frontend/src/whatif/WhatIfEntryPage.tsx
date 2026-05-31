@@ -34,6 +34,7 @@ import {
 } from "../theme/typography";
 import {
   bulkImportWhatIfQuestions,
+  closeStaleWhatIfOpenSessions,
   createWhatIfQuestion,
   createWhatIfSession,
   deleteWhatIfQuestion,
@@ -54,6 +55,7 @@ import {
   type WhatIfQuestionListFilter,
 } from "./api";
 import type { WhatIfMySessionRow, WhatIfMySessionsResponse, WhatIfSessionState } from "./types";
+import WhatIfLifetimeStatsPanel from "./WhatIfLifetimeStatsPanel";
 import WhatIfResumeBanners from "./WhatIfResumeBanners";
 import { useWhatIfResumeContext } from "./WhatIfResumeContext";
 import { isWhatIfLobbyStatus } from "./whatifSessionStatus";
@@ -68,10 +70,12 @@ type EntryTab =
   | "new"
   | "continue"
   | "join"
+  | "lifetime"
+  | "propose"
   | "admin-edit"
   | "admin-list"
   | "admin-bulk";
-type PlayerTab = "new" | "continue" | "join";
+type PlayerTab = "new" | "continue" | "join" | "lifetime" | "propose";
 type AdminTab = "admin-edit" | "admin-list" | "admin-bulk";
 type OuterSection = "player" | "admin";
 
@@ -79,6 +83,8 @@ const ENTRY_TAB_VALUES: EntryTab[] = [
   "new",
   "continue",
   "join",
+  "lifetime",
+  "propose",
   "admin-edit",
   "admin-list",
   "admin-bulk",
@@ -153,10 +159,15 @@ export default function WhatIfEntryPage() {
   const isStaff = !!sessionUser?.user?.is_staff;
   const isApprovedUser = !!sessionUser?.user?.is_approved;
   const showJoinOnly = isMobile || !isAuthenticated || !isApprovedUser;
+  const hasLifetimeStats = sessionUser?.profile?.whatif_completed_session ?? false;
+  const showLifetimeStatsTab =
+    isAuthenticated && !isMobile && !showJoinOnly && hasLifetimeStats;
+  const showLifetimeStatsMobileCard = isAuthenticated && isMobile && hasLifetimeStats;
   const canProposeQuestions =
     isAuthenticated &&
     isApprovedUser &&
     (sessionUser?.profile?.whatif_completed_session ?? false);
+  const showProposeTab = canProposeQuestions && !isMobile && !showJoinOnly;
   const [adminBusy, setAdminBusy] = useState(false);
   const [adminError, setAdminError] = useState<string | null>(null);
   const [questions, setQuestions] = useState<WhatIfQuestionAdmin[]>([]);
@@ -226,8 +237,33 @@ export default function WhatIfEntryPage() {
     if (!raw || !ENTRY_TAB_VALUES.includes(raw as EntryTab)) return;
     const tab = raw as EntryTab;
     if (tab.startsWith("admin") && !isStaff) return;
+    if (tab === "lifetime" && !showLifetimeStatsTab) return;
+    if (tab === "propose" && !showProposeTab) return;
     setActiveTab(tab);
-  }, [searchParams, isStaff, showJoinOnly]);
+  }, [searchParams, isStaff, showJoinOnly, showLifetimeStatsTab, showProposeTab]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const token = await getApiAccessToken();
+        if (!token || cancelled) return;
+        await closeStaleWhatIfOpenSessions(token);
+      } catch {
+        /* best-effort housekeeping */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [getApiAccessToken, isAuthenticated]);
+
+  useEffect(() => {
+    if (activeTab === "lifetime" && !showLifetimeStatsTab) {
+      setActiveTab(isMobile ? "join" : "new");
+    }
+  }, [activeTab, showLifetimeStatsTab, isMobile]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -303,7 +339,9 @@ export default function WhatIfEntryPage() {
     if (
       activeTab === "new" ||
       activeTab === "continue" ||
-      activeTab === "join"
+      activeTab === "join" ||
+      activeTab === "lifetime" ||
+      activeTab === "propose"
     ) {
       lastPlayerTabRef.current = activeTab;
     } else if (
@@ -622,7 +660,7 @@ export default function WhatIfEntryPage() {
       await proposeWhatIfQuestion(token, proposeDraft);
       setProposeDraft(EMPTY_PROPOSE);
       setProposeSuccess("Submitted for review. Thanks!");
-      setProposeOpen(false);
+      if (isMobile) setProposeOpen(false);
     } catch (e) {
       setProposeError(e instanceof Error ? e.message : "Could not submit");
     } finally {
@@ -634,7 +672,11 @@ export default function WhatIfEntryPage() {
     ? "admin"
     : "player";
   const playerTabValue: PlayerTab =
-    activeTab === "new" || activeTab === "continue" || activeTab === "join"
+    activeTab === "new" ||
+    activeTab === "continue" ||
+    activeTab === "join" ||
+    activeTab === "lifetime" ||
+    activeTab === "propose"
       ? activeTab
       : lastPlayerTabRef.current;
   const adminTabValue: AdminTab =
@@ -768,6 +810,39 @@ export default function WhatIfEntryPage() {
     joinFormContent
   );
 
+  const proposeFormContent = (
+    <Stack gap="3">
+      <Text fontSize={APP_TEXT_SIZES.body} color="fg">
+        Suggest a prompt for staff to review. Approved questions may appear in
+        future sessions. Type only the part after &quot;What if {"{subject}"}
+        &quot;; only answer text is stored for each option.
+      </Text>
+      {proposeError ? (
+        <Text
+          role="alert"
+          color="nautical.solid"
+          fontSize={APP_TEXT_SIZES.helper}
+          fontWeight="medium"
+        >
+          {proposeError}
+        </Text>
+      ) : null}
+      <WhatIfQuestionFields
+        draft={proposeDraft}
+        onDraftChange={(patch) => setProposeDraft((d) => ({ ...d, ...patch }))}
+      />
+      <PondButton
+        type="button"
+        colorPalette="teal"
+        alignSelf="flex-end"
+        onClick={() => void submitPropose()}
+        loading={proposeBusy}
+      >
+        Submit proposal
+      </PondButton>
+    </Stack>
+  );
+
   const playerTabTriggers = (
     <>
       <Tabs.Trigger
@@ -818,6 +893,42 @@ export default function WhatIfEntryPage() {
       >
         Resume Game
       </Tabs.Trigger>
+      {showLifetimeStatsTab ? (
+        <Tabs.Trigger
+          value="lifetime"
+          bg={playerTabValue === "lifetime" ? "teal.solid" : undefined}
+          color={playerTabValue === "lifetime" ? "black" : undefined}
+          borderTopRadius="md"
+          borderBottomRadius="0"
+          px="2"
+          py="2"
+          fontWeight="medium"
+          _hover={{
+            bg: playerTabValue === "lifetime" ? "teal.solid" : "transparent",
+          }}
+          _selected={{ bg: "teal.solid", color: "black" }}
+        >
+          Lifetime Stats
+        </Tabs.Trigger>
+      ) : null}
+      {showProposeTab ? (
+        <Tabs.Trigger
+          value="propose"
+          bg={playerTabValue === "propose" ? "teal.solid" : undefined}
+          color={playerTabValue === "propose" ? "black" : undefined}
+          borderTopRadius="md"
+          borderBottomRadius="0"
+          px="2"
+          py="2"
+          fontWeight="medium"
+          _hover={{
+            bg: playerTabValue === "propose" ? "teal.solid" : "transparent",
+          }}
+          _selected={{ bg: "teal.solid", color: "black" }}
+        >
+          Propose a question
+        </Tabs.Trigger>
+      ) : null}
     </>
   );
 
@@ -899,16 +1010,40 @@ export default function WhatIfEntryPage() {
           {row.player_names.length > 0 ? row.player_names.join(", ") : "—"}
         </Text>
         {showStatusTag ? (
-          <Badge
-            bg="yellow.200"
-            color="black"
-            borderWidth="1px"
-            borderColor="yellow.400"
-            flexShrink={0}
-            fontWeight="semibold"
-          >
-            {row.winner_display_name ? `Winner: ${row.winner_display_name}` : "Completed"}
-          </Badge>
+          row.you_won ? (
+            <Badge
+              bg="yellow.200"
+              color="black"
+              borderWidth="1px"
+              borderColor="yellow.400"
+              flexShrink={0}
+              fontWeight="semibold"
+            >
+              You won!
+            </Badge>
+          ) : row.winner_display_name ? (
+            <Badge
+              bg="yellow.200"
+              color="black"
+              borderWidth="1px"
+              borderColor="yellow.400"
+              flexShrink={0}
+              fontWeight="semibold"
+            >
+              Winner: {row.winner_display_name}
+            </Badge>
+          ) : (
+            <Badge
+              bg="yellow.200"
+              color="black"
+              borderWidth="1px"
+              borderColor="yellow.400"
+              flexShrink={0}
+              fontWeight="semibold"
+            >
+              Completed
+            </Badge>
+          )
         ) : null}
         <HStack gap="2" flexShrink={0} flexWrap="wrap">
           {showResume ? (
@@ -1064,6 +1199,29 @@ export default function WhatIfEntryPage() {
           ) : null}
         </Stack>
       </Tabs.Content>
+
+      {showLifetimeStatsTab ? (
+        <Tabs.Content value="lifetime" pt="2">
+          <WhatIfLifetimeStatsPanel />
+        </Tabs.Content>
+      ) : null}
+
+      {showProposeTab ? (
+        <Tabs.Content value="propose" pt="2">
+          {proposeSuccess ? (
+            <Text
+              role="status"
+              mb="2"
+              fontSize={APP_TEXT_SIZES.helper}
+              color="teal.solid"
+              fontWeight="medium"
+            >
+              {proposeSuccess}
+            </Text>
+          ) : null}
+          {proposeFormContent}
+        </Tabs.Content>
+      ) : null}
     </>
   );
 
@@ -1477,7 +1635,7 @@ export default function WhatIfEntryPage() {
               </Box>
             ) : null}
 
-            {canProposeQuestions ? (
+            {canProposeQuestions && isMobile ? (
               <Box {...PANEL_ENTRY_CARD_PROPS}>
                 {proposeSuccess ? (
                   <Text
@@ -1535,41 +1693,20 @@ export default function WhatIfEntryPage() {
                     </button>
                   </Collapsible.Trigger>
                   <Collapsible.Content>
-                    <Stack gap="3" pt="2">
-                      <Text fontSize={APP_TEXT_SIZES.body} color="fg">
-                        Suggest a prompt for staff to review. Approved questions
-                        may appear in future sessions. Type only the part after
-                        &quot;What if {"{subject}"}&quot;; only answer text is
-                        stored for each option.
-                      </Text>
-                      {proposeError ? (
-                        <Text
-                          role="alert"
-                          color="nautical.solid"
-                          fontSize={APP_TEXT_SIZES.helper}
-                          fontWeight="medium"
-                        >
-                          {proposeError}
-                        </Text>
-                      ) : null}
-                      <WhatIfQuestionFields
-                        draft={proposeDraft}
-                        onDraftChange={(patch) =>
-                          setProposeDraft((d) => ({ ...d, ...patch }))
-                        }
-                      />
-                      <PondButton
-                        type="button"
-                        colorPalette="teal"
-                        alignSelf="flex-end"
-                        onClick={() => void submitPropose()}
-                        loading={proposeBusy}
-                      >
-                        Submit proposal
-                      </PondButton>
-                    </Stack>
+                    <Stack gap="3" pt="2">{proposeFormContent}</Stack>
                   </Collapsible.Content>
                 </Collapsible.Root>
+              </Box>
+            ) : null}
+
+            {showLifetimeStatsMobileCard ? (
+              <Box {...PANEL_ENTRY_CARD_PROPS}>
+                <Stack gap="3">
+                  <Text fontSize="1rem" fontWeight={600}>
+                    Lifetime Stats
+                  </Text>
+                  <WhatIfLifetimeStatsPanel />
+                </Stack>
               </Box>
             ) : null}
 

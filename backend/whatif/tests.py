@@ -22,6 +22,7 @@ from whatif.endgame import (
     current_round_number,
     empty_player_tally,
     enrich_final_scores_with_lifetime_lines,
+    gold_medal_count_for_user,
     record_challenge_started,
     record_reveal_tallies,
     stamp_endgame_stats,
@@ -40,7 +41,7 @@ from whatif.subject_board import (
     subject_pick_is_degenerate,
 )
 from whatif.validators import validate_question_text_field
-from whatif.views import AVATAR_EMOJIS, _draw_question
+from whatif.constants import STALE_OPEN_LOBBY_AGE_HOURS
 
 
 def _mark_all_players_ready(code: str) -> None:
@@ -457,6 +458,30 @@ class WhatIfApiTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn("already in the room", response.json().get("detail", ""))
+
+    def test_join_rejects_duplicate_authenticated_user_seat(self):
+        code, _host_secret, _host = self._create_session()
+        user = User.objects.create_user(email="pat@example.com", password="secret12345")
+        user.account_status = User.AccountStatus.APPROVED
+        user.save(update_fields=["account_status"])
+        self.client.force_login(user)
+        first = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/join/",
+            {"display_name": "Pat"},
+            format="json",
+        )
+        self.assertEqual(first.status_code, 201)
+        second = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/join/",
+            {"display_name": "PatTwo"},
+            format="json",
+        )
+        self.assertEqual(second.status_code, 400)
+        self.assertIn("already have a seat", second.json().get("detail", "").lower())
+        self.assertEqual(
+            WhatIfPlayer.objects.filter(session__short_code=code, user_id=user.id).count(),
+            1,
+        )
 
     def test_leave_game_removes_player_from_lobby(self):
         code, _host_secret, _user = self._create_session()
@@ -1468,6 +1493,10 @@ class WhatIfApiTests(TestCase):
         maya_id = WhatIfPlayer.objects.get(session__short_code=code, display_name="Maya").id
         self.assertEqual(int(req.json()["state"]["pending_question_skip_by_player_id"]), maya_id)
         self.assertEqual(
+            int(req.json()["state"]["pending_question_skip_question_id"]),
+            int(req.json()["state"]["question_id"]),
+        )
+        self.assertEqual(
             int(req.json()["state"]["active_player_id"]),
             WhatIfPlayer.objects.get(session__short_code=code, display_name="John").id,
         )
@@ -1488,6 +1517,8 @@ class WhatIfApiTests(TestCase):
         self.assertEqual(ok.json()["status"], "voting")
         body = ok.json()
         self.assertEqual(body["state"].get("votes"), {})
+        self.assertIsNone(body["state"].get("pending_question_skip_by_player_id"))
+        self.assertIsNone(body["state"].get("pending_question_skip_question_id"))
         self.assertIsNotNone(body["state"].get("challenge_target_player_id"))
         self.assertEqual(body["state"].get("duel"), None)
         self.assertIsNotNone(body["state"].get("question_id"))
@@ -1546,6 +1577,41 @@ class WhatIfApiTests(TestCase):
         self.assertEqual(after["state"]["duel"]["step"], "voting")
         self.assertEqual(int(after["state"]["duel"]["challenged_player_id"]), maya_id)
         self.assertEqual(after["state"]["votes"], {})
+
+    def test_stale_question_skip_request_hidden_after_new_question(self):
+        """Pending skip from a prior question must not appear once a new question is loaded."""
+        code, host_secret, _owner = self._create_session()
+        p1 = self._join(code, "John")
+        p2 = self._join(code, "Maya")
+        p3 = self._join(code, "Pat")
+        _mark_all_players_ready(code)
+        start = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "start_game"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        self.assertEqual(start.status_code, 200)
+        self._post_pick_subject_die_choice(code, start.json()["state"])
+        old_qid = self.client.get(f"/api/v1/whatif/sessions/{code}/").json()["state"]["question_id"]
+        maya_id = WhatIfPlayer.objects.get(session__short_code=code, display_name="Maya").id
+        req = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "request_question_skip"},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p2,
+        )
+        self.assertEqual(req.status_code, 200, req.json())
+        sess = WhatIfSession.objects.get(short_code=code)
+        st = dict(sess.state or {})
+        st["question_id"] = old_qid + 9999
+        st["pending_question_skip_by_player_id"] = maya_id
+        st["pending_question_skip_question_id"] = old_qid
+        sess.state = st
+        sess.save(update_fields=["state", "updated_at"])
+        polled = self.client.get(f"/api/v1/whatif/sessions/{code}/")
+        self.assertEqual(polled.status_code, 200)
+        self.assertIsNone(polled.json()["state"].get("pending_question_skip_by_player_id"))
 
     def _start_voting_round(self) -> tuple[str, str, str, str]:
         """Helper: create a 2-player session and advance to voting status. Returns (code, host, p1, p2)."""
@@ -2199,6 +2265,70 @@ class WhatIfMySessionsTests(TestCase):
         self.assertEqual(body["completed"][0]["short_code"], code)
         self.assertEqual(body["completed"][0]["status"], WhatIfSession.Status.ENDED)
 
+    def test_close_stale_open_endpoint_closes_old_lobbies(self):
+        host = self._approved("stale-host@example.com")
+        self.client.force_login(host)
+        cr = self.client.post("/api/v1/whatif/sessions/", {}, format="json")
+        self.assertEqual(cr.status_code, 201)
+        code = cr.json()["short_code"]
+        stale_created = timezone.now() - timedelta(hours=STALE_OPEN_LOBBY_AGE_HOURS + 1)
+        WhatIfSession.objects.filter(short_code=code).update(
+            created_at=stale_created,
+            updated_at=stale_created,
+        )
+        guest = self._approved("stale-guest@example.com")
+        self.client.force_login(guest)
+        r = self.client.post("/api/v1/whatif/sessions/close-stale-open/", {}, format="json")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["closed_count"], 1)
+        session = WhatIfSession.objects.get(short_code=code)
+        self.assertEqual(session.status, WhatIfSession.Status.ENDED)
+        self.assertEqual(session.state.get("ended_reason"), "stale_lobby")
+
+    def test_close_stale_open_leaves_fresh_lobby_and_in_progress(self):
+        host = self._approved("fresh-host@example.com")
+        self.client.force_login(host)
+        fresh = self.client.post("/api/v1/whatif/sessions/", {}, format="json")
+        fresh_code = fresh.json()["short_code"]
+        stale = self.client.post("/api/v1/whatif/sessions/", {}, format="json")
+        stale_code = stale.json()["short_code"]
+        stale_created = timezone.now() - timedelta(hours=STALE_OPEN_LOBBY_AGE_HOURS + 2)
+        WhatIfSession.objects.filter(short_code=stale_code).update(
+            created_at=stale_created,
+            updated_at=stale_created,
+        )
+        WhatIfSession.objects.filter(short_code=fresh_code).update(
+            status=WhatIfSession.Status.VOTING,
+        )
+        r = self.client.post("/api/v1/whatif/sessions/close-stale-open/", {}, format="json")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["closed_count"], 1)
+        self.assertEqual(
+            WhatIfSession.objects.get(short_code=fresh_code).status,
+            WhatIfSession.Status.VOTING,
+        )
+        self.assertEqual(
+            WhatIfSession.objects.get(short_code=stale_code).status,
+            WhatIfSession.Status.ENDED,
+        )
+
+    def test_list_my_sessions_closes_stale_open_lobby(self):
+        host = self._approved("mine-stale@example.com")
+        self.client.force_login(host)
+        cr = self.client.post("/api/v1/whatif/sessions/", {}, format="json")
+        code = cr.json()["short_code"]
+        stale_created = timezone.now() - timedelta(hours=STALE_OPEN_LOBBY_AGE_HOURS + 1)
+        WhatIfSession.objects.filter(short_code=code).update(
+            created_at=stale_created,
+            updated_at=stale_created,
+        )
+        r = self.client.get("/api/v1/whatif/sessions/mine/")
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["open_lobby"], [])
+        self.assertEqual(len(body["completed"]), 1)
+        self.assertEqual(body["completed"][0]["short_code"], code)
+
 
 class WhatIfRealtimeTests(WhatIfApiTests):
     def test_session_group_name(self):
@@ -2407,4 +2537,53 @@ class EndgameStatsTests(TestCase):
             {"player_tallies": {str(player.id): empty_player_tally()}},
         )
         self.assertEqual(rows[0]["lifetime_line"], "15 lifetime pts")
+
+    def test_full_lifetime_stats_api(self):
+        User = get_user_model()
+        user = User.objects.create_user(email="sl5@example.com", password="x")
+        past = WhatIfSession.objects.create(short_code="SLMH", owner=user, status=WhatIfSession.Status.ENDED)
+        WhatIfPlayer.objects.create(session=past, user=user, display_name="A", avatar_emoji="🐸", score=10)
+        WhatIfSessionPlacement.objects.create(
+            session=past,
+            player=WhatIfPlayer.objects.get(session=past),
+            user=user,
+            display_name="A",
+            rank=2,
+            score=10,
+        )
+        self.client.force_login(user)
+        resp = self.client.get("/api/v1/whatif/lifetime-stats/")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["games_completed"], 1)
+        self.assertEqual(body["total_points"], 10)
+        self.assertEqual(body["silver_medals"], 1)
+
+    def test_gold_medal_count_requires_linked_winner_player(self):
+        User = get_user_model()
+        user = User.objects.create_user(email="sl6@example.com", password="x")
+        other = User.objects.create_user(email="sl7@example.com", password="x")
+        session = WhatIfSession.objects.create(short_code="SLMI", owner=user, status=WhatIfSession.Status.ENDED)
+        guest_winner = WhatIfPlayer.objects.create(
+            session=session, display_name="Guest", avatar_emoji="🐸", score=10
+        )
+        WhatIfGameResult.objects.create(
+            session=session,
+            winner_player=guest_winner,
+            winner_user=user,
+            winner_display_name="Guest",
+        )
+        self.assertEqual(gold_medal_count_for_user(user.id), 0)
+
+        linked = WhatIfSession.objects.create(short_code="SLMJ", owner=user, status=WhatIfSession.Status.ENDED)
+        linked_winner = WhatIfPlayer.objects.create(
+            session=linked, user=user, display_name="Me", avatar_emoji="🦆", score=12
+        )
+        WhatIfGameResult.objects.create(
+            session=linked,
+            winner_player=linked_winner,
+            winner_user=user,
+            winner_display_name="Me",
+        )
+        self.assertEqual(gold_medal_count_for_user(user.id), 1)
 

@@ -192,8 +192,8 @@ def compute_endgame_awards(session: WhatIfSession, state: dict) -> list[dict]:
     return awards
 
 
-def _collect_past_lifetime_metrics(user_id: int, exclude_session_id: int) -> dict:
-    """Aggregate per-game bests and point totals from ended sessions before this one."""
+def _collect_past_lifetime_metrics(user_id: int, exclude_session_id: int | None = None) -> dict:
+    """Aggregate per-game bests and point totals from ended sessions."""
     metrics = {
         "best_score": 0,
         "best_duel_points": 0,
@@ -202,41 +202,46 @@ def _collect_past_lifetime_metrics(user_id: int, exclude_session_id: int) -> dic
         "best_times_challenged": 0,
         "best_conversion": None,
         "total_points": 0,
+        "total_rounds_scored": 0,
+        "total_duel_points": 0,
+        "total_challenges_issued": 0,
+        "total_times_challenged": 0,
+        "games_completed": 0,
     }
-    past_players = (
-        WhatIfPlayer.objects.filter(
-            user_id=user_id,
-            session__status=WhatIfSession.Status.ENDED,
-        )
-        .exclude(session_id=exclude_session_id)
-        .select_related("session")
-    )
+    past_players = WhatIfPlayer.objects.filter(
+        user_id=user_id,
+        session__status=WhatIfSession.Status.ENDED,
+    ).select_related("session")
+    if exclude_session_id is not None:
+        past_players = past_players.exclude(session_id=exclude_session_id)
     for pp in past_players:
         score = int(pp.score or 0)
+        metrics["games_completed"] += 1
         metrics["total_points"] += score
         metrics["best_score"] = max(metrics["best_score"], score)
         st = pp.session.state or {}
         tally = (st.get("player_tallies") or {}).get(str(pp.id)) or {}
         if not isinstance(tally, dict):
             continue
-        metrics["best_duel_points"] = max(
-            metrics["best_duel_points"],
-            int(tally.get("duel_points") or 0),
-        )
-        metrics["best_rounds_scored"] = max(
-            metrics["best_rounds_scored"],
-            int(tally.get("rounds_scored") or 0),
-        )
+        duel_points = int(tally.get("duel_points") or 0)
+        rounds_scored = int(tally.get("rounds_scored") or 0)
+        challenges_issued = int(tally.get("challenges_issued") or 0)
+        times_challenged = int(tally.get("times_challenged") or 0)
+        metrics["total_duel_points"] += duel_points
+        metrics["total_rounds_scored"] += rounds_scored
+        metrics["total_challenges_issued"] += challenges_issued
+        metrics["total_times_challenged"] += times_challenged
+        metrics["best_duel_points"] = max(metrics["best_duel_points"], duel_points)
+        metrics["best_rounds_scored"] = max(metrics["best_rounds_scored"], rounds_scored)
         metrics["best_challenges_issued"] = max(
             metrics["best_challenges_issued"],
-            int(tally.get("challenges_issued") or 0),
+            challenges_issued,
         )
         metrics["best_times_challenged"] = max(
             metrics["best_times_challenged"],
-            int(tally.get("times_challenged") or 0),
+            times_challenged,
         )
         duel_rounds = int(tally.get("duel_rounds") or 0)
-        duel_points = int(tally.get("duel_points") or 0)
         if duel_rounds >= 1:
             rate = duel_points / duel_rounds
             prev = metrics["best_conversion"]
@@ -272,10 +277,16 @@ def _format_conversion_rate(value: float) -> str:
     return f"{value:.2f}".rstrip("0").rstrip(".")
 
 
+def gold_medal_count_for_user(user_id: int, *, exclude_session_id: int | None = None) -> int:
+    """Wins where the user's linked player row was the declared unique winner."""
+    qs = WhatIfGameResult.objects.filter(winner_player__user_id=user_id)
+    if exclude_session_id is not None:
+        qs = qs.exclude(session_id=exclude_session_id)
+    return qs.count()
+
+
 def _gold_medal_count(user_id: int, *, exclude_session_id: int, is_current_winner: bool) -> int:
-    count = WhatIfGameResult.objects.filter(winner_user_id=user_id).exclude(
-        session_id=exclude_session_id
-    ).count()
+    count = gold_medal_count_for_user(user_id, exclude_session_id=exclude_session_id)
     if is_current_winner:
         count += 1
     return count
@@ -412,7 +423,7 @@ def build_endgame_stats(session: WhatIfSession, state: dict) -> dict:
 
 def lifetime_stats_for_user(user_id: int, *, current_session_score: int | None = None) -> dict:
     ended_filter = {"user_id": user_id, "session__status": WhatIfSession.Status.ENDED}
-    gold_medals = WhatIfGameResult.objects.filter(winner_user_id=user_id).count()
+    gold_medals = gold_medal_count_for_user(user_id)
     silver_medals = WhatIfSessionPlacement.objects.filter(user_id=user_id, rank=2).count()
     agg = WhatIfPlayer.objects.filter(**ended_filter).aggregate(
         total_points=Sum("score"),
@@ -432,6 +443,33 @@ def lifetime_stats_for_user(user_id: int, *, current_session_score: int | None =
         "personal_best_score": personal_best,
         "is_personal_best_this_session": is_personal_best,
     }
+
+
+def full_lifetime_stats_for_user(user_id: int) -> dict:
+    """All lifetime stats for lobby profile (completed games only)."""
+    metrics = _collect_past_lifetime_metrics(user_id)
+    gold_medals = gold_medal_count_for_user(user_id)
+    silver_medals = WhatIfSessionPlacement.objects.filter(user_id=user_id, rank=2).count()
+    bronze_medals = WhatIfSessionPlacement.objects.filter(user_id=user_id, rank=3).count()
+    out: dict = {
+        "gold_medals": gold_medals,
+        "silver_medals": silver_medals,
+        "bronze_medals": bronze_medals,
+        "games_completed": metrics["games_completed"],
+        "total_points": metrics["total_points"],
+        "personal_best_score": metrics["best_score"],
+        "total_rounds_scored": metrics["total_rounds_scored"],
+        "total_duel_points": metrics["total_duel_points"],
+        "total_challenges_issued": metrics["total_challenges_issued"],
+        "total_times_challenged": metrics["total_times_challenged"],
+        "best_duel_points_in_game": metrics["best_duel_points"],
+        "best_rounds_scored_in_game": metrics["best_rounds_scored"],
+        "best_challenges_issued_in_game": metrics["best_challenges_issued"],
+        "best_times_challenged_in_game": metrics["best_times_challenged"],
+    }
+    if metrics["best_conversion"] is not None:
+        out["best_challenge_conversion"] = metrics["best_conversion"]
+    return out
 
 
 def record_session_placements(session: WhatIfSession, state: dict) -> None:

@@ -91,5 +91,13 @@ def display_name_taken(session: WhatIfSession, display_name: str) -> bool:
     return False
 
 
+def user_seat_taken(session: WhatIfSession, user_id: int) -> bool:
+    uid = int(user_id)
+    for player in players_ordered(session):
+        if player.user_id == uid:
+            return True
+    return False
+
+
 def entity_count(session: WhatIfSession) -> int:
     return len(players_ordered(session)) + len(npcs_ordered(session))

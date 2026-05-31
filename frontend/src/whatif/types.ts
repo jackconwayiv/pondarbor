@@ -57,6 +57,7 @@ export type WhatIfRoundState = {
   voting_pause_remaining_seconds?: number | null;
   reveal_flairs?: string[];
   pending_question_skip_by_player_id?: number | null;
+  pending_question_skip_question_id?: number | null;
   skip_ui_suppressed_for_question_id?: number | null;
   /** Times each player id has been the round subject this session. */
   subject_times?: Record<string, number>;
@@ -115,6 +116,25 @@ export type WhatIfLifetimeStats = {
   is_personal_best_this_session?: boolean;
 };
 
+/** GET /api/v1/whatif/lifetime-stats/ — full profile for lobby. */
+export type WhatIfFullLifetimeStats = {
+  gold_medals?: number;
+  silver_medals?: number;
+  bronze_medals?: number;
+  games_completed?: number;
+  total_points?: number;
+  personal_best_score?: number;
+  best_challenge_conversion?: number;
+  best_duel_points_in_game?: number;
+  best_rounds_scored_in_game?: number;
+  best_challenges_issued_in_game?: number;
+  best_times_challenged_in_game?: number;
+  total_rounds_scored?: number;
+  total_duel_points?: number;
+  total_challenges_issued?: number;
+  total_times_challenged?: number;
+};
+
 export type WhatIfSessionState = {
   short_code: string;
   status:
@@ -145,6 +165,8 @@ export type WhatIfMySessionRow = {
   is_owner: boolean;
   player_names: string[];
   winner_display_name?: string | null;
+  /** True when this user's linked player row won the game. */
+  you_won?: boolean;
   /** Present when this user has a player row linked to their account (joined while signed in). */
   player_secret?: string | null;
 };

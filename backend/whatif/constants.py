@@ -23,3 +23,6 @@ VOTING_TIME_UP_GRACE_SECONDS = 6
 
 WHATIF_MAX_ENTITIES = 8
 SUBJECT_DIE_FACES = 6
+
+# Open/pre-lobby sessions older than this are auto-closed when a user visits the WhatIf entry page.
+STALE_OPEN_LOBBY_AGE_HOURS = 24

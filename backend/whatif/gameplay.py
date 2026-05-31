@@ -23,6 +23,24 @@ from whatif.rules import (
 )
 
 
+def clear_outstanding_question_skip_requests(state: dict) -> None:
+    """Remove pending veto/skip UI state (e.g. when loading a new question)."""
+    state["pending_question_skip_by_player_id"] = None
+    state.pop("pending_question_skip_question_id", None)
+    state.pop("skip_ui_suppressed_for_question_id", None)
+
+
+def normalize_question_skip_requests(state: dict) -> None:
+    """Drop skip requests that belong to a prior question."""
+    pending_pid = state.get("pending_question_skip_by_player_id")
+    if not pending_pid:
+        return
+    pending_qid = state.get("pending_question_skip_question_id")
+    current_qid = state.get("question_id")
+    if pending_qid is not None and current_qid is not None and int(pending_qid) != int(current_qid):
+        clear_outstanding_question_skip_requests(state)
+
+
 def parse_iso_datetime(raw: str | None):
     if not raw or not isinstance(raw, str):
         return None
@@ -185,8 +203,7 @@ def apply_reveal_from_voting_state(
     state: dict,
 ) -> None:
     """Mutate `state` and DB; caller holds row lock on session."""
-    state.pop("pending_question_skip_by_player_id", None)
-    state.pop("skip_ui_suppressed_for_question_id", None)
+    clear_outstanding_question_skip_requests(state)
     restore_last_votes_for_timeout_reveal(session, state)
 
     votes = {int(pid): int(choice) for pid, choice in state.get("votes", {}).items()}
@@ -335,6 +352,54 @@ def maybe_declare_pending_winner(session: WhatIfSession) -> WhatIfSession:
 
         notify_whatif_session(locked.short_code, state_version=locked.state_version)
     return locked
+
+
+def apply_close_stale_open_lobby(session: WhatIfSession) -> None:
+    """Close an abandoned open lobby. Caller holds row lock on session."""
+    prev = dict(session.state or {})
+    session.status = WhatIfSession.Status.ENDED
+    session.state = {
+        **prev,
+        "ended_reason": "stale_lobby",
+        "final_scores": final_scores(session),
+        "votes": {},
+        "vote_counts": {},
+        "voted_player_ids": [],
+        "last_votes": {},
+        "duel": None,
+        "voting_deadline_at": None,
+        "voting_paused": False,
+        "voting_pause_remaining_seconds": None,
+    }
+    session.state_version = F("state_version") + 1
+    session.save(update_fields=["status", "state", "state_version", "updated_at"])
+
+
+def close_stale_open_lobby_sessions() -> int:
+    """End open/pre-lobby sessions at least STALE_OPEN_LOBBY_AGE_HOURS old."""
+    from whatif.constants import STALE_OPEN_LOBBY_AGE_HOURS
+
+    cutoff = timezone.now() - timedelta(hours=STALE_OPEN_LOBBY_AGE_HOURS)
+    lobby_statuses = (WhatIfSession.Status.OPEN, WhatIfSession.Status.PRE_LOBBY)
+    stale_ids = WhatIfSession.objects.filter(
+        status__in=lobby_statuses,
+        created_at__lt=cutoff,
+    ).values_list("id", flat=True)
+    closed = 0
+    for session_id in stale_ids.iterator():
+        with transaction.atomic():
+            session = WhatIfSession.objects.select_for_update().get(id=session_id)
+            if session.status not in lobby_statuses:
+                continue
+            if session.created_at >= cutoff:
+                continue
+            apply_close_stale_open_lobby(session)
+            session.refresh_from_db()
+            from whatif.realtime import notify_whatif_session
+
+            notify_whatif_session(session.short_code, state_version=session.state_version)
+            closed += 1
+    return closed
 
 
 def apply_host_complete_game(session: WhatIfSession) -> None:

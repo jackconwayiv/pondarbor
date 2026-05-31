@@ -4,6 +4,7 @@ import uuid
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import Q
 
 
 class WhatIfSession(models.Model):
@@ -153,6 +154,13 @@ class WhatIfPlayer(models.Model):
 
     class Meta:
         ordering = ["created_at", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["session", "user"],
+                condition=Q(user__isnull=False),
+                name="uniq_whatif_session_user_seat",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"WhatIfPlayer({self.id}, {self.display_name})"

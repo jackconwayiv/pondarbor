@@ -18,10 +18,12 @@ from whatif.models import (
     WhatIfSessionPlacement,
 )
 from whatif.endgame import (
+    backfill_whatif_session_placements_from_history,
     compute_endgame_awards,
     current_round_number,
     empty_player_tally,
     enrich_final_scores_with_lifetime_lines,
+    full_lifetime_stats_for_user,
     gold_medal_count_for_user,
     record_challenge_started,
     record_reveal_tallies,
@@ -2558,6 +2560,36 @@ class EndgameStatsTests(TestCase):
         self.assertEqual(body["games_completed"], 1)
         self.assertEqual(body["total_points"], 10)
         self.assertEqual(body["silver_medals"], 1)
+
+    def test_backfill_whatif_session_placements_from_history(self):
+        User = get_user_model()
+        user = User.objects.create_user(email="bf1@example.com", password="x")
+        user2 = User.objects.create_user(email="bf2@example.com", password="x")
+        user3 = User.objects.create_user(email="bf3@example.com", password="x")
+        session = WhatIfSession.objects.create(short_code="BF01", owner=user, status=WhatIfSession.Status.ENDED)
+        WhatIfPlayer.objects.create(session=session, user=user, display_name="First", avatar_emoji="🐸", score=20)
+        WhatIfPlayer.objects.create(session=session, user=user2, display_name="Second", avatar_emoji="🦆", score=15)
+        WhatIfPlayer.objects.create(session=session, user=user3, display_name="Third", avatar_emoji="🐱", score=10)
+        self.assertFalse(WhatIfSessionPlacement.objects.filter(session=session).exists())
+
+        stats = backfill_whatif_session_placements_from_history()
+        self.assertEqual(stats["sessions_processed"], 1)
+        self.assertEqual(stats["placements_created"], 3)
+        placements = {
+            row["rank"]: row["user_id"]
+            for row in WhatIfSessionPlacement.objects.filter(session=session).values("rank", "user_id")
+        }
+        self.assertEqual(placements[1], user.id)
+        self.assertEqual(placements[2], user2.id)
+        self.assertEqual(placements[3], user3.id)
+
+        lifetime = full_lifetime_stats_for_user(user2.id)
+        self.assertEqual(lifetime["silver_medals"], 1)
+        self.assertEqual(lifetime["bronze_medals"], 0)
+
+        stats_again = backfill_whatif_session_placements_from_history()
+        self.assertEqual(stats_again["placements_created"], 0)
+        self.assertEqual(WhatIfSessionPlacement.objects.filter(session=session).count(), 3)
 
     def test_gold_medal_count_requires_linked_winner_player(self):
         User = get_user_model()

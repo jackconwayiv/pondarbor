@@ -472,6 +472,23 @@ def full_lifetime_stats_for_user(user_id: int) -> dict:
     return out
 
 
+def backfill_whatif_session_placements_from_history() -> dict[str, int]:
+    """Create or refresh placement rows for all ended sessions (idempotent)."""
+    sessions_processed = 0
+    placements_written = 0
+    for session in WhatIfSession.objects.filter(status=WhatIfSession.Status.ENDED).iterator():
+        state = dict(session.state or {})
+        before = WhatIfSessionPlacement.objects.filter(session_id=session.id).count()
+        record_session_placements(session, state)
+        after = WhatIfSessionPlacement.objects.filter(session_id=session.id).count()
+        sessions_processed += 1
+        placements_written += max(after - before, 0)
+    return {
+        "sessions_processed": sessions_processed,
+        "placements_created": placements_written,
+    }
+
+
 def record_session_placements(session: WhatIfSession, state: dict) -> None:
     from whatif.gameplay import final_scores
 

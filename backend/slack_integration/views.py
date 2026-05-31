@@ -1,6 +1,5 @@
 import json
 import logging
-import re
 from datetime import datetime
 from urllib.parse import parse_qsl
 from zoneinfo import ZoneInfo
@@ -34,14 +33,12 @@ from slack_integration.slack_api import (
     slack_users_info,
  )
 from slack_integration.slack_verify import verify_slack_request_signature
-from slack_integration.song_from_text import build_serializer_data_from_slack_text
+from slack_integration.song_from_text import build_serializer_data_from_slack_text, extract_first_slack_url
 from users.auth0_backend import Auth0TokenAuthentication
 from users.models import User
 from users.permissions import IsApprovedUser
 
 logger = logging.getLogger(__name__)
-
-_URL_RE = re.compile(r"https?://\S+", re.I)
 
 
 def _slack_songaday_channel_id() -> str:
@@ -52,16 +49,8 @@ def _slack_songaday_channel_id() -> str:
 
 
 def _extract_first_url(text: str) -> str:
-    if not text:
-        return ""
-    # Slack formats links as <https://...|label>
-    m = re.search(r"<(https?://[^|>\\s]+)(?:\\|[^>]+)?>", text, re.I)
-    if m:
-        return m.group(1).strip()
-    m2 = _URL_RE.search(text)
-    if m2:
-        return m2.group(0).strip().rstrip(").,>]")
-    return ""
+    return extract_first_slack_url(text)
+
 
 def _create_account_blocks(*, url: str) -> list[dict]:
     return [

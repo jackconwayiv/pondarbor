@@ -1,6 +1,19 @@
 from django.contrib import admin
 
-from slack_integration.models import SlackIdentity, SlackSongadayIngestTrace, SongadaySlackDailyPromptState
+from slack_integration.models import (
+    SlackEventReceipt,
+    SlackIdentity,
+    SlackSongadayIngestTrace,
+    SongadaySlackDailyPromptState,
+)
+
+
+@admin.register(SlackEventReceipt)
+class SlackEventReceiptAdmin(admin.ModelAdmin):
+    list_display = ("id", "event_id", "created_at")
+    search_fields = ("event_id",)
+    readonly_fields = ("created_at",)
+    ordering = ("-created_at",)
 
 
 @admin.register(SlackIdentity)

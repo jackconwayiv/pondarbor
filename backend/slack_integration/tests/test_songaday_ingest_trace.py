@@ -7,7 +7,8 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.test.utils import override_settings
 
-from slack_integration.models import SlackSongadayIngestTrace
+from slack_integration.models import SlackEventReceipt, SlackSongadayIngestTrace
+from slack_integration.song_from_text import extract_first_slack_url
 from songaday.models import SongPrompt, SongResponse
 
 User = get_user_model()
@@ -140,4 +141,86 @@ class SlackSongadayIngestTraceTests(TestCase):
         self.assertEqual(trace.outcome, SlackSongadayIngestTrace.Outcome.saved)
         self.assertIsNotNone(trace.song_response_id)
         self.assertTrue(SongResponse.objects.filter(id=trace.song_response_id).exists())
+        self.assertTrue(SlackEventReceipt.objects.filter(event_id="Ev5").exists())
+
+    @override_settings(
+        SLACK_SIGNING_SECRET="test_secret",
+        SLACK_PROMPTS_CHANNEL_ID="C_songaday",
+        SLACK_BOT_TOKEN="xoxb-test",
+        SONGADAY_SLACK_PROMPT_TIMEZONE="UTC",
+    )
+    def test_saved_slack_wrapped_youtube_url(self):
+        user = User.objects.create_user(email="u3@example.com", password="pw", account_status=User.AccountStatus.APPROVED)
+        from datetime import datetime, timezone
+
+        today = datetime.now(timezone.utc).date()
+        SongPrompt.objects.create(month=today.month, day=today.day, prompt="Test prompt")
+
+        body = {
+            "team_id": "T1",
+            "event_id": "Ev6",
+            "type": "event_callback",
+            "event": {
+                "type": "message",
+                "channel": "C_songaday",
+                "user": "U_slack",
+                "text": "<https://youtu.be/xwvG3ztYfng?si=TW4BZ|YouTube>",
+            },
+        }
+        with (
+            mock.patch("slack_integration.slack_verify.time.time", return_value=1714060800),
+            mock.patch("slack_integration.views._resolve_user_for_slack", return_value=(user, None)),
+            mock.patch("slack_integration.views.slack_chat_post_ephemeral", return_value={"ok": True}),
+            mock.patch("slack_integration.song_from_text.resolve_from_youtube_video_id", return_value=("", "", "youtube")),
+        ):
+            _post_events_request(client=self.client, body=body, secret="test_secret", timestamp="1714060800")
+
+        trace = SlackSongadayIngestTrace.objects.get(event_id="Ev6")
+        self.assertEqual(trace.outcome, SlackSongadayIngestTrace.Outcome.saved)
+        self.assertEqual(trace.extracted_url, "https://youtu.be/xwvG3ztYfng?si=TW4BZ")
+        self.assertIsNotNone(trace.song_response_id)
+
+    @override_settings(
+        SLACK_SIGNING_SECRET="test_secret",
+        SLACK_PROMPTS_CHANNEL_ID="C_songaday",
+        SLACK_BOT_TOKEN="xoxb-test",
+    )
+    def test_unlinked_user_extracts_slack_wrapped_spotify_url(self):
+        body = {
+            "team_id": "T1",
+            "event_id": "Ev7",
+            "type": "event_callback",
+            "event": {
+                "type": "message",
+                "channel": "C_songaday",
+                "user": "U_slack",
+                "text": "<https://open.spotify.com/track/7J5tyfg3Oabc|Spotify>",
+            },
+        }
+        with (
+            mock.patch("slack_integration.slack_verify.time.time", return_value=1714060800),
+            mock.patch("slack_integration.views.slack_users_info", return_value={"ok": True, "user": {"profile": {"email": "nope@example.com"}}}),
+            mock.patch("slack_integration.views.slack_chat_post_ephemeral", return_value={"ok": True}),
+        ):
+            _post_events_request(client=self.client, body=body, secret="test_secret", timestamp="1714060800")
+        row = SlackSongadayIngestTrace.objects.get(event_id="Ev7")
+        self.assertEqual(row.outcome, SlackSongadayIngestTrace.Outcome.unlinked_user)
+        self.assertEqual(row.extracted_url, "https://open.spotify.com/track/7J5tyfg3Oabc")
+
+
+class ExtractFirstSlackUrlTests(TestCase):
+    def test_slack_wrapped_spotify_url(self):
+        text = "<https://open.spotify.com/track/7J5tyfg3Oabc|Spotify>"
+        self.assertEqual(extract_first_slack_url(text), "https://open.spotify.com/track/7J5tyfg3Oabc")
+
+    def test_slack_wrapped_youtube_with_query(self):
+        text = "<https://youtu.be/xwvG3ztYfng?si=TW4BZ>"
+        self.assertEqual(extract_first_slack_url(text), "https://youtu.be/xwvG3ztYfng?si=TW4BZ")
+
+    def test_slack_wrapped_youtube_with_label(self):
+        text = "<https://youtu.be/abc123?si=xyz|YouTube>"
+        self.assertEqual(extract_first_slack_url(text), "https://youtu.be/abc123?si=xyz")
+
+    def test_plain_url(self):
+        self.assertEqual(extract_first_slack_url("https://youtu.be/abc123"), "https://youtu.be/abc123")
 

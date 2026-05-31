@@ -11,6 +11,25 @@ from songaday.resolve_link import ResolveError, resolve_from_youtube_video_id, r
 from songaday.serializers import _host_allowed
 
 _SLACK_LINK = re.compile(r"^<([^|>\s]+)(?:\|[^>]+)?>$")
+_SLACK_LINK_SEARCH = re.compile(r"<(https?://[^|>\s]+)(?:\|[^>]+)?>", re.I)
+_PLAIN_URL_RE = re.compile(r"https?://\S+", re.I)
+
+
+def extract_first_slack_url(text: str) -> str:
+    """
+    Pull the first http(s) URL from Slack message text.
+
+    Handles Slack link formatting (<https://...|label>) and plain URLs embedded in text.
+    """
+    if not text:
+        return ""
+    m = _SLACK_LINK_SEARCH.search(text)
+    if m:
+        return m.group(1).strip()
+    m2 = _PLAIN_URL_RE.search(text)
+    if m2:
+        return m2.group(0).strip().rstrip(").,>]")
+    return ""
 
 
 def _strip_slack_wrappers(raw: str) -> str:

@@ -34,6 +34,7 @@ type WhatIfTvScoreboardProps = {
   viewerPlayerId: number | null;
   activeChallengeRound: boolean;
   tvMutedColor: string;
+  lifetimeLineByPlayerId?: Record<number, string | null | undefined>;
 };
 
 export function WhatIfTvScoreboard({
@@ -46,6 +47,7 @@ export function WhatIfTvScoreboard({
   viewerPlayerId,
   activeChallengeRound,
   tvMutedColor,
+  lifetimeLineByPlayerId = {},
 }: WhatIfTvScoreboardProps) {
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const rowRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -200,6 +202,7 @@ export function WhatIfTvScoreboard({
               flipClassName=""
               activeChallengeRound={activeChallengeRound}
               tvMutedColor={tvMutedColor}
+              lifetimeLine={lifetimeLineByPlayerId[p.id]}
             />
           );
         })}
@@ -245,6 +248,7 @@ export function WhatIfTvScoreboard({
             flipClassName={effectivePhase === "reorder" ? "whatif-scoreboard-row--flip" : ""}
             activeChallengeRound={activeChallengeRound}
             tvMutedColor={tvMutedColor}
+            lifetimeLine={lifetimeLineByPlayerId[row.id]}
           />
         );
       })}
@@ -266,6 +270,7 @@ type ScoreboardRowProps = {
   flipClassName: string;
   activeChallengeRound: boolean;
   tvMutedColor: string;
+  lifetimeLine?: string | null;
 };
 
 function ScoreboardRow({
@@ -282,6 +287,7 @@ function ScoreboardRow({
   flipClassName,
   activeChallengeRound,
   tvMutedColor,
+  lifetimeLine,
 }: ScoreboardRowProps) {
   return (
     <Box
@@ -295,50 +301,62 @@ function ScoreboardRow({
       py="1"
       className={flipClassName || undefined}
     >
-      <HStack align="center" gap="3" w="100%" minW={0} justify="space-between">
-        <HStack flex="1" minW={0} gap="2" align="center">
-          <WhatIfPlayerFace
-            player={player}
-            viewerPlayerId={viewerPlayerId}
-            seatIndex={seatIndex >= 0 ? seatIndex : undefined}
-            avatarSize="lg"
-          />
+      <Stack gap="0.5" w="100%" minW={0}>
+        <HStack align="center" gap="3" w="100%" minW={0} justify="space-between">
+          <HStack flex="1" minW={0} gap="2" align="center">
+            <WhatIfPlayerFace
+              player={player}
+              viewerPlayerId={viewerPlayerId}
+              seatIndex={seatIndex >= 0 ? seatIndex : undefined}
+              avatarSize="lg"
+            />
+            <Text
+              fontSize="clamp(1.2rem, 3vh, 1.65rem)"
+              fontWeight="semibold"
+              lineHeight="1.25"
+            >
+              {displayName} · {displayScore} pts
+            </Text>
+            {player.paused ? (
+              <Text
+                color={tvMutedColor}
+                fontSize="clamp(0.85rem, 2vh, 1rem)"
+                fontWeight="medium"
+              >
+                (paused)
+              </Text>
+            ) : null}
+          </HStack>
+          <Box minW="3.5rem" display="flex" justifyContent="flex-end" alignItems="center">
+            {showDelta ? (
+              <Text
+                className={[
+                  "whatif-scoreboard-delta",
+                  roundDelta > 0 ? "whatif-scoreboard-delta--positive" : "whatif-scoreboard-delta--negative",
+                  activeChallengeRound && roundDelta < 0
+                    ? "whatif-scoreboard-delta--negative-on-challenge"
+                    : "",
+                  deltaEntering ? "whatif-scoreboard-delta--enter" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              >
+                {formatRoundScoreDelta(roundDelta)}
+              </Text>
+            ) : null}
+          </Box>
+        </HStack>
+        {lifetimeLine ? (
           <Text
-            fontSize="clamp(1.2rem, 3vh, 1.65rem)"
-            fontWeight="semibold"
+            pl="calc(var(--chakra-sizes-10) + var(--chakra-spacing-2))"
+            fontSize="clamp(0.85rem, 1.9vh, 1.05rem)"
+            color={tvMutedColor}
             lineHeight="1.25"
           >
-            {displayName} · {displayScore} pts
+            {lifetimeLine}
           </Text>
-          {player.paused ? (
-            <Text
-              color={tvMutedColor}
-              fontSize="clamp(0.85rem, 2vh, 1rem)"
-              fontWeight="medium"
-            >
-              (paused)
-            </Text>
-          ) : null}
-        </HStack>
-        <Box minW="3.5rem" display="flex" justifyContent="flex-end" alignItems="center">
-          {showDelta ? (
-            <Text
-              className={[
-                "whatif-scoreboard-delta",
-                roundDelta > 0 ? "whatif-scoreboard-delta--positive" : "whatif-scoreboard-delta--negative",
-                activeChallengeRound && roundDelta < 0
-                  ? "whatif-scoreboard-delta--negative-on-challenge"
-                  : "",
-                deltaEntering ? "whatif-scoreboard-delta--enter" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-            >
-              {formatRoundScoreDelta(roundDelta)}
-            </Text>
-          ) : null}
-        </Box>
-      </HStack>
+        ) : null}
+      </Stack>
     </Box>
   );
 }

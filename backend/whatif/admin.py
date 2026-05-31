@@ -6,6 +6,7 @@ from whatif.models import (
     WhatIfQuestion,
     WhatIfQuestionSession,
     WhatIfSession,
+    WhatIfSessionPlacement,
 )
 
 
@@ -36,4 +37,5 @@ class WhatIfSessionAdmin(admin.ModelAdmin):
 admin.site.register(WhatIfPlayer)
 admin.site.register(WhatIfQuestionSession)
 admin.site.register(WhatIfGameResult)
+admin.site.register(WhatIfSessionPlacement)
 

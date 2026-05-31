@@ -12,13 +12,14 @@ from whatif.db_utils import retry_on_db_locked
 from django.utils import timezone
 
 from achievements.services import evaluate_after_whatif_session_ended
-from whatif import constants
+from whatif.endgame import record_reveal_tallies, stamp_endgame_stats
 from whatif.models import WhatIfGameResult, WhatIfPlayer, WhatIfQuestion, WhatIfSession
 from whatif.rules import (
     evaluate_duel_scores,
     evaluate_vote_scores,
     pick_winner_at_or_above_threshold,
     reveal_flairs,
+    vote_breakdown,
 )
 
 
@@ -34,8 +35,8 @@ def parse_iso_datetime(raw: str | None):
         return None
 
 
-def is_voting_deadline_passed(state: dict) -> bool:
-    """True only after the deadline + the configured "Time's up!" grace period.
+def is_voting_deadline_elapsed(state: dict) -> bool:
+    """True once voting_deadline_at has passed (TV shows "Time's up!"; unvote blocked).
 
     Returns False while the round is paused or while no deadline has been set yet
     (the deadline is only stamped once the first vote is cast).
@@ -45,7 +46,37 @@ def is_voting_deadline_passed(state: dict) -> bool:
     dt = parse_iso_datetime(state.get("voting_deadline_at"))
     if dt is None:
         return False
+    return timezone.now() >= dt
+
+
+def is_voting_deadline_passed(state: dict) -> bool:
+    """True only after the deadline + the configured "Time's up!" grace period."""
+    if state.get("voting_paused"):
+        return False
+    dt = parse_iso_datetime(state.get("voting_deadline_at"))
+    if dt is None:
+        return False
     return timezone.now() >= dt + timedelta(seconds=constants.VOTING_TIME_UP_GRACE_SECONDS)
+
+
+def restore_last_votes_for_timeout_reveal(session: WhatIfSession, state: dict) -> None:
+    """Re-count last choices for players who unvoted before time ran out."""
+    if votes_complete_for_round(session, state):
+        return
+    votes = dict(state.get("votes") or {})
+    last_votes = state.get("last_votes") or {}
+    changed = False
+    for pid, choice in last_votes.items():
+        key = str(pid)
+        if key not in votes:
+            votes[key] = int(choice)
+            changed = True
+    if not changed:
+        return
+    state["votes"] = votes
+    normalized = {int(pid): int(choice) for pid, choice in votes.items()}
+    state["vote_counts"] = vote_breakdown(normalized)
+    state["voted_player_ids"] = sorted(normalized.keys())
 
 
 def votes_complete_for_round(session: WhatIfSession, state: dict) -> bool:
@@ -109,7 +140,6 @@ def final_scores(session: WhatIfSession) -> list[dict]:
             url = (row.get("avatar_url") or "").strip()
             if url:
                 avatar_by_uid[int(row["user_id"])] = url
-    # Competition ranking: tied scores share the same rank; next rank skips (e.g. 1,2,2,4,4,6).
     rows: list[dict] = []
     for i, p in enumerate(players):
         if i == 0:
@@ -157,6 +187,7 @@ def apply_reveal_from_voting_state(
     """Mutate `state` and DB; caller holds row lock on session."""
     state.pop("pending_question_skip_by_player_id", None)
     state.pop("skip_ui_suppressed_for_question_id", None)
+    restore_last_votes_for_timeout_reveal(session, state)
 
     votes = {int(pid): int(choice) for pid, choice in state.get("votes", {}).items()}
     active_player_id = int(state["active_player_id"])
@@ -208,6 +239,12 @@ def apply_reveal_from_voting_state(
 
     state["round_scores"] = {str(pid): points for pid, points in round_scores.items()}
     state["reveal_flairs"] = flairs
+    record_reveal_tallies(
+        state,
+        round_scores=round_scores,
+        flairs=flairs,
+        is_duel=duel.get("step") == "voting" and duel.get("challenged_player_id") is not None,
+    )
     revealed_now = timezone.now()
     state["revealed_at"] = revealed_now.isoformat()
     state["next_turn_not_before"] = (
@@ -255,6 +292,7 @@ def apply_declare_pending_winner(session: WhatIfSession) -> None:
 
     winner_id = int(pending_id)
     state["winner_player_id"] = winner_id
+    state = stamp_endgame_stats(session, state)
     session.status = WhatIfSession.Status.ENDED
     session.state = state
     session.state_version = F("state_version") + 1
@@ -314,6 +352,7 @@ def apply_host_complete_game(session: WhatIfSession) -> None:
         "votes": {},
         "vote_counts": {},
         "voted_player_ids": [],
+        "last_votes": {},
         "duel": None,
         "voting_deadline_at": None,
         "voting_paused": False,
@@ -321,6 +360,7 @@ def apply_host_complete_game(session: WhatIfSession) -> None:
         "reveal_flairs": [],
         "round_scores": {},
     }
+    state = stamp_endgame_stats(session, state)
 
     session.status = WhatIfSession.Status.ENDED
     session.state = state

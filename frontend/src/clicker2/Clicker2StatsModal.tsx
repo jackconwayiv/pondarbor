@@ -407,16 +407,18 @@ export default function Clicker2StatsModal({
             ) : null}
             <StatsRow
               label={STRATA_LABEL}
-              value={
-                <>
-                  {snapshot.stratumLevel.toLocaleString()}
-                  <Text as="span" display="block" fontSize="xs" color="gray.600" fontWeight="normal">
-                    {formatEnergyAmount(snapshot.energyToNextStratum)} {ENERGY_EMOJI}{" "}
-                    {TO_NEXT_STRATA_PHRASE}
-                  </Text>
-                </>
-              }
+              value={snapshot.stratumLevel.toLocaleString()}
             />
+            <Text
+              fontSize="xs"
+              color="gray.600"
+              fontVariantNumeric="tabular-nums"
+              textAlign="left"
+              lineHeight="1.4"
+            >
+              {formatEnergyAmount(snapshot.energyToNextStratum)} {ENERGY_EMOJI}{" "}
+              {TO_NEXT_STRATA_PHRASE}
+            </Text>
           </>
         ) : null}
         <StatsCatalogTabs

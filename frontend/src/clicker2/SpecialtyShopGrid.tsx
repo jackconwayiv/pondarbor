@@ -134,7 +134,7 @@ const SpecialtyEmojiButton = memo(function SpecialtyEmojiButton({
             ariaLabel={`${EVOLUTION_LABEL} details: ${def.name}`}
             onOpenChange={(e) => setHelpOpen(e.open)}
           >
-            <EvolutionTooltipContent def={def} />
+            <EvolutionTooltipContent def={def} canAfford={canAfford} />
           </ShopHelpMobilePopover>
         </Flex>
       ) : null}
@@ -155,7 +155,9 @@ const SpecialtyEmojiButton = memo(function SpecialtyEmojiButton({
       <TooltipTrigger asChild>{cell}</TooltipTrigger>
       <TooltipPositioner>
         <TooltipContent {...ecologyTooltipSurfaceProps} maxW="300px">
-          {tooltipDef ? <EvolutionTooltipContent def={tooltipDef} /> : null}
+          {tooltipDef ? (
+            <EvolutionTooltipContent def={tooltipDef} canAfford={canAfford} />
+          ) : null}
         </TooltipContent>
       </TooltipPositioner>
     </TooltipRoot>

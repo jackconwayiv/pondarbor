@@ -226,6 +226,41 @@ class UsersApiTests(TestCase):
         self.assertIn("avatar_url", rows[0])
         self.assertTrue(all(row["email"] != viewer.email for row in rows))
 
+    def test_user_friends_list_ordered_by_recent_activity(self):
+        viewer = User.objects.create_user(email="uf-ord-v@example.com", password="secret12345")
+        viewer.account_status = User.AccountStatus.APPROVED
+        viewer.save(update_fields=["account_status"])
+        target = User.objects.create_user(email="uf-ord-t@example.com", password="secret12345")
+        target.account_status = User.AccountStatus.APPROVED
+        target.save(update_fields=["account_status"])
+        buddy_recent = User.objects.create_user(
+            email="uf-ord-recent@example.com", password="secret12345"
+        )
+        buddy_recent.account_status = User.AccountStatus.APPROVED
+        buddy_recent.save(update_fields=["account_status"])
+        buddy_old = User.objects.create_user(
+            email="uf-ord-old@example.com", password="secret12345"
+        )
+        buddy_old.account_status = User.AccountStatus.APPROVED
+        buddy_old.save(update_fields=["account_status"])
+        for a, b in (
+            (viewer, target),
+            (target, viewer),
+            (target, buddy_recent),
+            (buddy_recent, target),
+            (target, buddy_old),
+            (buddy_old, target),
+        ):
+            FriendRequest.objects.create(requester=a, requested=b, is_accepted=True)
+        now = timezone.now()
+        User.objects.filter(pk=buddy_recent.pk).update(last_login=now - timedelta(days=1))
+        User.objects.filter(pk=buddy_old.pk).update(last_login=now - timedelta(days=10))
+        self.client.force_login(viewer)
+        resp = self.client.get(f"/api/v1/users/{target.id}/friends/")
+        self.assertEqual(resp.status_code, 200)
+        emails = [row["email"] for row in resp.json()]
+        self.assertEqual(emails, [buddy_recent.email, buddy_old.email])
+
     def test_patch_profile_updates_preferences_and_returns_full_me(self):
         user = User.objects.create_user(email="edit@example.com", password="secret12345")
         user.profile.display_name = "Before"

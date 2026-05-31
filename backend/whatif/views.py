@@ -21,11 +21,22 @@ from users.permissions import IsApprovedUser
 
 from whatif import constants
 from whatif.db_utils import retry_on_db_locked
+from whatif.endgame import (
+    carry_tallies_from_prev,
+    current_round_number,
+    endgame_stats,
+    enrich_final_scores_with_lifetime_lines,
+    lifetime_stats_for_user,
+    record_challenge_started,
+    record_question_vetoed,
+    stamp_endgame_stats,
+)
 from whatif.gameplay import (
     apply_host_complete_game,
     apply_reveal_from_voting_state,
     can_reveal_now,
     final_scores,
+    is_voting_deadline_elapsed,
     is_voting_deadline_passed,
     mark_whatif_completion_for_session_users,
     declare_pending_winner_if_due,
@@ -54,6 +65,18 @@ from whatif.subject_board import (
     subject_pick_is_degenerate,
 )
 from whatif.realtime import notify_whatif_session
+from whatif.session_queries import (
+    display_name_taken as _display_name_taken,
+    entity_count as _whatif_entity_count,
+    find_npc_by_id as _find_npc_by_id,
+    find_player_by_id as _find_player_by_id,
+    find_player_by_token as _find_player_by_token,
+    load_session_locked as _load_session_locked,
+    load_session_read as _load_session,
+    npcs_ordered as _npcs_ordered,
+    players_ordered as _players_ordered,
+    reload_session_with_prefetch as _reload_session_with_prefetch,
+)
 from whatif.serializers import (
     JoinSessionSerializer,
     SessionActionSerializer,
@@ -101,28 +124,18 @@ AVATAR_EMOJIS = [
 
 def _pick_avatar_emoji(session: WhatIfSession) -> str:
     """Pick an emoji not yet used in this session (players + NPCs; unique while pool allows)."""
-    used = set(session.players.values_list("avatar_emoji", flat=True))
-    used.update(session.npcs.values_list("avatar_emoji", flat=True))
+    used = {p.avatar_emoji for p in _players_ordered(session)}
+    used.update(n.avatar_emoji for n in _npcs_ordered(session))
     available = [e for e in AVATAR_EMOJIS if e not in used]
     if available:
         return random.choice(available)
     return random.choice(AVATAR_EMOJIS)
 
 
-def _whatif_entity_count(session: WhatIfSession) -> int:
-    return session.players.count() + session.npcs.count()
-
-
-def _display_name_taken(session: WhatIfSession, display_name: str) -> bool:
-    if session.players.filter(display_name__iexact=display_name).exists():
-        return True
-    return session.npcs.filter(display_name__iexact=display_name).exists()
-
-
 def _session_ring_context(session: WhatIfSession) -> tuple[list[int], list[int], list, int, int, int]:
     """player_ids, npc_ids, layout, P, E, L"""
-    rows = list(session.players.all().order_by("created_at", "id"))
-    npc_rows = list(session.npcs.all().order_by("created_at", "id"))
+    rows = _players_ordered(session)
+    npc_rows = _npcs_ordered(session)
     player_ids = [p.id for p in rows]
     npc_ids = [n.id for n in npc_rows]
     layout = build_ring_layout(player_ids, npc_ids)
@@ -185,18 +198,10 @@ def _generate_short_code() -> str:
     raise RuntimeError("Unable to generate unique room code.")
 
 
-def _load_session(code: str) -> WhatIfSession:
-    return get_object_or_404(
-        WhatIfSession.objects.prefetch_related("players", "npcs"),
-        short_code=code.upper(),
-    )
-
-
 def _find_player_for_request(session: WhatIfSession, request) -> WhatIfPlayer | None:
-    token = request.headers.get("X-Whatif-Player-Token", "").strip()
-    if not token:
-        return None
-    return session.players.filter(player_secret=token).first()
+    return _find_player_by_token(
+        session, request.headers.get("X-Whatif-Player-Token", "")
+    )
 
 
 def _question_for_round(state: dict) -> WhatIfQuestion | None:
@@ -228,7 +233,7 @@ def _draw_question(session: WhatIfSession) -> WhatIfQuestion | None:
 
 
 def _player_ids_in_turn_order(session: WhatIfSession) -> list[int]:
-    return [p.id for p in session.players.all().order_by("created_at", "id")]
+    return [p.id for p in _players_ordered(session)]
 
 
 def _next_turn_player_id(session: WhatIfSession, state: dict) -> int | None:
@@ -236,7 +241,7 @@ def _next_turn_player_id(session: WhatIfSession, state: dict) -> int | None:
     ordered = _player_ids_in_turn_order(session)
     if not ordered:
         return None
-    pause_map = {p.id: p.paused for p in session.players.all()}
+    pause_map = {p.id: p.paused for p in _players_ordered(session)}
     current_id = state.get("active_player_id")
     if current_id not in ordered:
         start_idx = 0
@@ -310,10 +315,13 @@ def _setup_turn(session: WhatIfSession, *, next_player_id: int) -> bool:
     question = _draw_question(session)
     if question is None:
         session.status = WhatIfSession.Status.ENDED
-        session.state = {
-            **prev,
-            "ended_reason": "no_more_questions",
-        }
+        session.state = stamp_endgame_stats(
+            session,
+            {
+                **prev,
+                "ended_reason": "no_more_questions",
+            },
+        )
         session.state_version = F("state_version") + 1
         session.save(update_fields=["status", "state", "state_version", "updated_at"])
         session.refresh_from_db()
@@ -322,12 +330,13 @@ def _setup_turn(session: WhatIfSession, *, next_player_id: int) -> bool:
         return False
 
     session.status = WhatIfSession.Status.TURN
-    rows = list(session.players.all().order_by("created_at", "id"))
-    player_ids = [p.id for p in rows]
+    player_ids = [p.id for p in _players_ordered(session)]
     die_block: dict = {"subject_candidate_ids": [], "subject_options": []}
     if session.challenge_mode:
         die_block = _subject_die_state_for_turn(session, prev)
 
+    session_tallies, player_tallies = carry_tallies_from_prev(prev)
+    session_tallies["round_number"] = int(session_tallies.get("rounds_completed") or 0) + 1
     session.state = {
         "active_player_id": next_player_id,
         "question_id": question.id,
@@ -335,11 +344,14 @@ def _setup_turn(session: WhatIfSession, *, next_player_id: int) -> bool:
         "votes": {},
         "vote_counts": {},
         "voted_player_ids": [],
+        "last_votes": {},
         "round_scores": {},
         "reveal_flairs": [],
         "challenge_target_player_id": None,
         "challenge_target_npc_id": None,
         "subject_times": subject_times,
+        "session_tallies": session_tallies,
+        "player_tallies": player_tallies,
         **die_block,
         "duel": None,
         "voting_deadline_at": None,
@@ -381,6 +393,22 @@ def _public_round_state(session: WhatIfSession) -> dict:
         state["votes"] = {}
         state["vote_counts"] = {}
         state["voted_player_ids"] = voted_ids
+    elif session.status == WhatIfSession.Status.ENDED:
+        if not state.get("endgame_stats"):
+            state["endgame_stats"] = endgame_stats(session)
+        if not state.get("endgame_awards"):
+            from whatif.endgame import compute_endgame_awards
+
+            state["endgame_awards"] = compute_endgame_awards(session, dict(session.state or {}))
+        if state.get("final_scores"):
+            state["final_scores"] = enrich_final_scores_with_lifetime_lines(
+                session,
+                list(state["final_scores"]),
+                dict(session.state or {}),
+            )
+    round_number = current_round_number(state)
+    if round_number is not None:
+        state["round_number"] = round_number
     return state
 
 
@@ -392,6 +420,13 @@ def _hand_state(session: WhatIfSession, player: WhatIfPlayer) -> dict:
     ).data
     votes = (session.state or {}).get("votes", {})
     base["your_vote"] = votes.get(str(player.id)) or votes.get(player.id)
+    last_votes = (session.state or {}).get("last_votes", {})
+    base["your_last_vote"] = last_votes.get(str(player.id)) or last_votes.get(player.id)
+    if session.status == WhatIfSession.Status.ENDED and player.user_id:
+        base["your_lifetime"] = lifetime_stats_for_user(
+            int(player.user_id),
+            current_session_score=player.score,
+        )
     return base
 
 
@@ -495,7 +530,10 @@ def create_session(request):
         status=WhatIfSession.Status.OPEN,
         owner=request.user,
     )
-    body = WhatIfSessionPublicSerializer(session).data
+    body = WhatIfSessionPublicSerializer(
+        session,
+        context={"players_ordered": [], "npcs_ordered": [], "whatif_player_avatar_urls": {}},
+    ).data
     body["host_secret"] = str(session.host_secret)
     return Response(body, status=status.HTTP_201_CREATED)
 
@@ -612,10 +650,7 @@ def join_session(request, code: str):
     user = request.user if getattr(request.user, "is_authenticated", False) else None
 
     with transaction.atomic():
-        session = get_object_or_404(
-            WhatIfSession.objects.select_for_update(),
-            short_code=code.upper(),
-        )
+        session = _load_session_locked(code)
         if session.status not in _WHATIF_LOBBY_STATUSES:
             return Response(
                 {"detail": "This game has already started. New players cannot join."},
@@ -640,7 +675,7 @@ def join_session(request, code: str):
         )
         session.state_version = F("state_version") + 1
         session.save(update_fields=["state_version", "updated_at"])
-    session.refresh_from_db()
+    session = _reload_session_with_prefetch(session.id)
     notify_whatif_session(session.short_code, state_version=session.state_version)
 
     return Response(
@@ -667,11 +702,38 @@ def session_state(request, code: str):
     if not_modified is not None:
         return not_modified
 
-    payload = WhatIfSessionPublicSerializer(session).data
+    payload = WhatIfSessionPublicSerializer(
+        session,
+        context={
+            "players_ordered": _players_ordered(session),
+            "npcs_ordered": _npcs_ordered(session),
+        },
+    ).data
     payload["state"] = _public_round_state(session)
     resp = Response(payload, status=status.HTTP_200_OK)
     resp["ETag"] = f'"{session.state_version}"'
     return resp
+
+
+def _session_serializer_context(session: WhatIfSession) -> dict:
+    players = _players_ordered(session)
+    return {
+        "players_ordered": players,
+        "npcs_ordered": _npcs_ordered(session),
+        **whatif_players_serializer_context(players),
+    }
+
+
+def _build_session_action_response(session: WhatIfSession, request) -> dict:
+    payload = WhatIfSessionPublicSerializer(
+        session, context=_session_serializer_context(session)
+    ).data
+    player_for_hand = _find_player_for_request(session, request)
+    if player_for_hand is not None:
+        payload["state"] = _hand_state(session, player_for_hand)
+    else:
+        payload["state"] = _public_round_state(session)
+    return payload
 
 
 @api_view(["GET"])
@@ -689,8 +751,8 @@ def hand_state(request, code: str):
     if not_modified is not None:
         return not_modified
 
-    players_ordered = list(session.players.order_by("created_at", "id"))
-    npcs_ordered = list(session.npcs.order_by("created_at", "id"))
+    players_ordered = _players_ordered(session)
+    npcs_ordered = _npcs_ordered(session)
     payload = {
         "short_code": session.short_code,
         "status": session.status,
@@ -714,6 +776,17 @@ def _require_player(session: WhatIfSession, request) -> WhatIfPlayer | Response:
     if player is None:
         return Response({"detail": "Missing or invalid player token."}, status=status.HTTP_403_FORBIDDEN)
     return player
+
+
+def _actor_paused_response(actor: WhatIfPlayer | None) -> Response | None:
+    if actor is None:
+        return Response({"detail": "Player not found in this session."}, status=400)
+    if actor.paused:
+        return Response(
+            {"detail": "You are paused by the host. Ask them to resume you."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return None
 
 
 def _resolve_actor_for_action(
@@ -787,6 +860,7 @@ def _apply_question_skip_locked(session: WhatIfSession, state: dict, *, requeste
         WhatIfQuestionSession.objects.filter(question_id=question_id, session_id=session.id).update(
             skipped_at=timezone.now()
         )
+        record_question_vetoed(state)
     ap = state.get("active_player_id")
     target_id = state.get("challenge_target_player_id")
     target_npc_id = state.get("challenge_target_npc_id")
@@ -799,7 +873,7 @@ def _apply_question_skip_locked(session: WhatIfSession, state: dict, *, requeste
         return
 
     if target_npc_id is not None:
-        target_npc = session.npcs.filter(id=int(target_npc_id)).first()
+        target_npc = _find_npc_by_id(session, int(target_npc_id))
         if target_npc is None:
             _setup_turn(session, next_player_id=int(ap))
             return
@@ -807,7 +881,7 @@ def _apply_question_skip_locked(session: WhatIfSession, state: dict, *, requeste
         challenge_player_id = None
         challenge_npc_id = int(target_npc_id)
     else:
-        target = session.players.filter(id=int(target_id)).first()
+        target = _find_player_by_id(session, int(target_id))
         if target is None:
             _setup_turn(session, next_player_id=int(ap))
             return
@@ -828,10 +902,13 @@ def _apply_question_skip_locked(session: WhatIfSession, state: dict, *, requeste
     if question is None:
         prev = dict(session.state or {})
         session.status = WhatIfSession.Status.ENDED
-        session.state = {
-            **prev,
-            "ended_reason": "no_more_questions",
-        }
+        session.state = stamp_endgame_stats(
+            session,
+            {
+                **prev,
+                "ended_reason": "no_more_questions",
+            },
+        )
         session.state_version = F("state_version") + 1
         session.save(update_fields=["status", "state", "state_version", "updated_at"])
         session.refresh_from_db()
@@ -840,6 +917,7 @@ def _apply_question_skip_locked(session: WhatIfSession, state: dict, *, requeste
         return
 
     rendered_prompt = _render_question_prompt(question, subject_name=subject_name)
+    session_tallies, player_tallies = carry_tallies_from_prev(state)
     new_state = {
         "active_player_id": int(ap),
         "question_id": question.id,
@@ -847,11 +925,14 @@ def _apply_question_skip_locked(session: WhatIfSession, state: dict, *, requeste
         "votes": {},
         "vote_counts": {},
         "voted_player_ids": [],
+        "last_votes": {},
         "round_scores": {},
         "reveal_flairs": [],
         "challenge_target_player_id": challenge_player_id,
         "challenge_target_npc_id": challenge_npc_id,
         "subject_times": dict(state.get("subject_times") or {}),
+        "session_tallies": session_tallies,
+        "player_tallies": player_tallies,
         "subject_candidate_ids": [],
         "subject_options": [],
         "marker_index": state.get("marker_index"),
@@ -875,24 +956,23 @@ def _apply_question_skip_locked(session: WhatIfSession, state: dict, *, requeste
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def session_action(request, code: str):
-    session = _load_session(code)
-
     serializer = SessionActionSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     action_type = serializer.validated_data["type"]
 
-    actor, actor_err = _resolve_actor_for_action(session, request, action_type)
-    if actor_err is not None:
-        return actor_err
-
+    session_id: int | None = None
     with transaction.atomic():
-        session = WhatIfSession.objects.select_for_update().get(id=session.id)
+        session = _load_session_locked(code)
+        session_id = session.id
+        actor, actor_err = _resolve_actor_for_action(session, request, action_type)
+        if actor_err is not None:
+            return actor_err
         state = dict(session.state or {})
 
         if action_type == "start_game":
             if session.status not in [WhatIfSession.Status.OPEN, WhatIfSession.Status.PRE_LOBBY]:
                 return Response({"detail": "Game already started."}, status=status.HTTP_400_BAD_REQUEST)
-            players_ordered = list(session.players.all().order_by("created_at", "id"))
+            players_ordered = _players_ordered(session)
             if len(players_ordered) < 2:
                 return Response({"detail": "At least two players are required."}, status=status.HTTP_400_BAD_REQUEST)
             session.challenge_mode = len(players_ordered) >= 2
@@ -959,14 +1039,9 @@ def session_action(request, code: str):
         elif action_type == "pick_duel_opponent":
             if session.status != WhatIfSession.Status.TURN:
                 return Response({"detail": "Choosing who to challenge is only allowed during turn state."}, status=400)
-            pick_actor = WhatIfPlayer.objects.select_for_update().filter(id=actor.id, session_id=session.id).first()
-            if pick_actor is None:
-                return Response({"detail": "Player not found in this session."}, status=400)
-            if pick_actor.paused:
-                return Response(
-                    {"detail": "You are paused by the host. Ask them to resume you."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            paused_err = _actor_paused_response(actor)
+            if paused_err is not None:
+                return paused_err
             if state.get("active_player_id") != actor.id:
                 return Response({"detail": "Only the active player can choose who to challenge."}, status=403)
             duel = state.get("duel") or {}
@@ -977,12 +1052,13 @@ def session_action(request, code: str):
                 return Response({"detail": "target_player_id is required."}, status=400)
             if int(target_id) == int(actor.id):
                 return Response({"detail": "You cannot challenge yourself."}, status=400)
-            opp = session.players.filter(id=target_id).first()
+            opp = _find_player_by_id(session, int(target_id))
             if opp is None:
                 return Response({"detail": "Player does not exist in this session."}, status=400)
             if opp.paused:
                 return Response({"detail": "That player is paused."}, status=400)
             state["duel"] = {"step": "pick_subject", "challenged_player_id": int(target_id)}
+            record_challenge_started(state, issuer_id=int(actor.id), challenged_id=int(target_id))
             state.update(_subject_die_state_for_duel_subject_turn(session, state))
             session.state = state
             session.state_version = F("state_version") + 1
@@ -991,14 +1067,9 @@ def session_action(request, code: str):
         elif action_type == "pick_subject":
             if session.status != WhatIfSession.Status.TURN:
                 return Response({"detail": "Subject pick is only allowed during turn state."}, status=400)
-            pick_actor = WhatIfPlayer.objects.select_for_update().filter(id=actor.id, session_id=session.id).first()
-            if pick_actor is None:
-                return Response({"detail": "Player not found in this session."}, status=400)
-            if pick_actor.paused:
-                return Response(
-                    {"detail": "You are paused by the host. Ask them to resume you."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            paused_err = _actor_paused_response(actor)
+            if paused_err is not None:
+                return paused_err
             if not session.challenge_mode:
                 return Response({"detail": "Subject pick is not active for this session."}, status=400)
             if state.get("active_player_id") != actor.id:
@@ -1049,7 +1120,7 @@ def session_action(request, code: str):
                         {"detail": "Choose one of the subject candidates for this round."},
                         status=status.HTTP_400_BAD_REQUEST,
                     )
-                target = session.players.filter(id=target_id).first()
+                target = _find_player_by_id(session, int(target_id))
                 if target is None:
                     return Response({"detail": "Player does not exist in this session."}, status=400)
                 question = _question_for_round(state)
@@ -1074,6 +1145,7 @@ def session_action(request, code: str):
                 state["votes"] = {}
                 state["vote_counts"] = {}
                 state["voted_player_ids"] = []
+                state["last_votes"] = {}
                 state["round_scores"] = {}
                 if duel.get("step") == "pick_subject" and duel.get("challenged_player_id") is not None:
                     state["duel"] = {
@@ -1085,7 +1157,7 @@ def session_action(request, code: str):
                 state["voting_deadline_at"] = None
                 state["voting_paused"] = False
                 state["voting_pause_remaining_seconds"] = None
-                rows_ids = [p.id for p in session.players.all().order_by("created_at", "id")]
+                rows_ids = [p.id for p in _players_ordered(session)]
                 try:
                     seat_idx = rows_ids.index(int(target_id))
                 except ValueError:
@@ -1103,14 +1175,9 @@ def session_action(request, code: str):
                 return Response({"detail": "Subject die choice is only allowed during turn state."}, status=400)
             if not session.challenge_mode:
                 return Response({"detail": "Subject die is not active for this session."}, status=400)
-            pick_actor = WhatIfPlayer.objects.select_for_update().filter(id=actor.id, session_id=session.id).first()
-            if pick_actor is None:
-                return Response({"detail": "Player not found in this session."}, status=400)
-            if pick_actor.paused:
-                return Response(
-                    {"detail": "You are paused by the host. Ask them to resume you."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            paused_err = _actor_paused_response(actor)
+            if paused_err is not None:
+                return paused_err
             if state.get("active_player_id") != actor.id:
                 return Response({"detail": "Only the active player can pick the subject."}, status=403)
             duel = state.get("duel") or {}
@@ -1151,7 +1218,7 @@ def session_action(request, code: str):
                     return Response({"detail": "Invalid subject seat."}, status=500)
                 kind, entity_id = occ
                 if kind == "player":
-                    target = session.players.filter(id=int(entity_id)).first()
+                    target = _find_player_by_id(session, int(entity_id))
                     if target is None:
                         return Response({"detail": "Player does not exist in this session."}, status=400)
                     if target.paused:
@@ -1163,7 +1230,7 @@ def session_action(request, code: str):
                     state["challenge_target_player_id"] = int(entity_id)
                     state["challenge_target_npc_id"] = None
                 else:
-                    npc = session.npcs.filter(id=int(entity_id)).first()
+                    npc = _find_npc_by_id(session, int(entity_id))
                     if npc is None:
                         return Response({"detail": "NPC does not exist in this session."}, status=400)
                     subject_name = npc.display_name
@@ -1189,6 +1256,7 @@ def session_action(request, code: str):
                 state["votes"] = {}
                 state["vote_counts"] = {}
                 state["voted_player_ids"] = []
+                state["last_votes"] = {}
                 state["round_scores"] = {}
                 if duel.get("step") == "pick_subject" and duel.get("challenged_player_id") is not None:
                     state["duel"] = {
@@ -1216,14 +1284,9 @@ def session_action(request, code: str):
                     {"detail": "Voting is paused. Wait for the active player to resume."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            vote_pl = WhatIfPlayer.objects.select_for_update().filter(id=actor.id, session_id=session.id).first()
-            if vote_pl is None:
-                return Response({"detail": "Player not found in this session."}, status=400)
-            if vote_pl.paused:
-                return Response(
-                    {"detail": "You are paused by the host. Ask them to resume you."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            paused_err = _actor_paused_response(actor)
+            if paused_err is not None:
+                return paused_err
             option_index = serializer.validated_data.get("option_index")
             if option_index is None or option_index not in [1, 2, 3, 4, 5, 6]:
                 return Response({"detail": "option_index must be an integer from 1 to 6."}, status=400)
@@ -1236,6 +1299,9 @@ def session_action(request, code: str):
             is_new_vote = str(actor.id) not in votes
             votes[str(actor.id)] = option_index
             state["votes"] = votes
+            last_votes = dict(state.get("last_votes") or {})
+            last_votes[str(actor.id)] = option_index
+            state["last_votes"] = last_votes
             state["vote_counts"] = vote_breakdown(
                 {int(pid): int(choice) for pid, choice in votes.items()}
             )
@@ -1262,17 +1328,20 @@ def session_action(request, code: str):
                     {"detail": "Voting is paused. Wait for the active player to resume."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            uv_pl = WhatIfPlayer.objects.select_for_update().filter(id=actor.id, session_id=session.id).first()
-            if uv_pl is None:
-                return Response({"detail": "Player not found in this session."}, status=400)
-            if uv_pl.paused:
+            if is_voting_deadline_elapsed(state):
                 return Response(
-                    {"detail": "You are paused by the host. Ask them to resume you."},
+                    {"detail": "Time's up — you can no longer change your vote."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            paused_err = _actor_paused_response(actor)
+            if paused_err is not None:
+                return paused_err
             votes = state.get("votes", {})
             if str(actor.id) not in votes:
                 return Response({"detail": "You have no vote to clear."}, status=400)
+            last_votes = dict(state.get("last_votes") or {})
+            last_votes[str(actor.id)] = votes[str(actor.id)]
+            state["last_votes"] = last_votes
             votes.pop(str(actor.id), None)
             state["votes"] = votes
             state["vote_counts"] = vote_breakdown(
@@ -1293,14 +1362,9 @@ def session_action(request, code: str):
         elif action_type == "toggle_voting_pause":
             if session.status != WhatIfSession.Status.VOTING:
                 return Response({"detail": "Pause is only available during voting."}, status=400)
-            tp_pl = WhatIfPlayer.objects.select_for_update().filter(id=actor.id, session_id=session.id).first()
-            if tp_pl is None:
-                return Response({"detail": "Player not found in this session."}, status=400)
-            if tp_pl.paused:
-                return Response(
-                    {"detail": "You are paused by the host. Ask them to resume you."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            paused_err = _actor_paused_response(actor)
+            if paused_err is not None:
+                return paused_err
             if state.get("active_player_id") != actor.id:
                 return Response(
                     {"detail": "Only the active player can pause the round."},
@@ -1332,14 +1396,9 @@ def session_action(request, code: str):
         elif action_type == "reveal":
             if session.status != WhatIfSession.Status.VOTING:
                 return Response({"detail": "Reveal is only allowed during voting."}, status=400)
-            reveal_pl = WhatIfPlayer.objects.select_for_update().filter(id=actor.id, session_id=session.id).first()
-            if reveal_pl is None:
-                return Response({"detail": "Player not found in this session."}, status=400)
-            if reveal_pl.paused:
-                return Response(
-                    {"detail": "You are paused by the host. Ask them to resume you."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            paused_err = _actor_paused_response(actor)
+            if paused_err is not None:
+                return paused_err
             if state.get("active_player_id") != actor.id:
                 return Response({"detail": "Only the active player can reveal votes."}, status=403)
             if not can_reveal_now(session, state):
@@ -1363,16 +1422,9 @@ def session_action(request, code: str):
                         {"detail": "Winner will be declared after the score reveal."},
                         status=400,
                     )
-                next_pl = WhatIfPlayer.objects.select_for_update().filter(
-                    id=actor.id, session_id=session.id
-                ).first()
-                if next_pl is None:
-                    return Response({"detail": "Player not found in this session."}, status=400)
-                if next_pl.paused:
-                    return Response(
-                        {"detail": "You are paused by the host. Ask them to resume you."},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
+                paused_err = _actor_paused_response(actor)
+                if paused_err is not None:
+                    return paused_err
                 if state.get("active_player_id") != actor.id:
                     return Response(
                         {"detail": "Only the active player can advance to next turn."},
@@ -1407,14 +1459,9 @@ def session_action(request, code: str):
         elif action_type == "skip":
             if session.status != WhatIfSession.Status.TURN:
                 return Response({"detail": "Skip is only allowed during turn state."}, status=400)
-            skip_pl = WhatIfPlayer.objects.select_for_update().filter(id=actor.id, session_id=session.id).first()
-            if skip_pl is None:
-                return Response({"detail": "Player not found in this session."}, status=400)
-            if skip_pl.paused:
-                return Response(
-                    {"detail": "You are paused by the host. Ask them to resume you."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            paused_err = _actor_paused_response(actor)
+            if paused_err is not None:
+                return paused_err
             if state.get("active_player_id") != actor.id:
                 return Response({"detail": "Only the active player can skip."}, status=403)
             question_id = state.get("question_id")
@@ -1425,14 +1472,9 @@ def session_action(request, code: str):
         elif action_type == "request_question_skip":
             if session.status != WhatIfSession.Status.VOTING:
                 return Response({"detail": "Skip is only available during voting."}, status=400)
-            skip_pl = WhatIfPlayer.objects.select_for_update().filter(id=actor.id, session_id=session.id).first()
-            if skip_pl is None:
-                return Response({"detail": "Player not found in this session."}, status=400)
-            if skip_pl.paused:
-                return Response(
-                    {"detail": "You are paused by the host. Ask them to resume you."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            paused_err = _actor_paused_response(actor)
+            if paused_err is not None:
+                return paused_err
             qid = state.get("question_id")
             if state.get("skip_ui_suppressed_for_question_id") == qid:
                 return Response({"detail": "Skip is not available for this question."}, status=400)
@@ -1484,11 +1526,7 @@ def session_action(request, code: str):
                 return Response({"detail": "target_player_id is required."}, status=status.HTTP_400_BAD_REQUEST)
             if paused_flag is None:
                 return Response({"detail": "paused (boolean) is required."}, status=status.HTTP_400_BAD_REQUEST)
-            target = (
-                WhatIfPlayer.objects.select_for_update()
-                .filter(id=target_id, session_id=session.id)
-                .first()
-            )
+            target = _find_player_by_id(session, int(target_id))
             if target is None:
                 return Response({"detail": "Player not found in this session."}, status=status.HTTP_400_BAD_REQUEST)
             if paused_flag and (
@@ -1509,17 +1547,11 @@ def session_action(request, code: str):
             session.state_version = F("state_version") + 1
             session.save(update_fields=["state_version", "updated_at"])
 
-    session.refresh_from_db()
+    session = _reload_session_with_prefetch(session_id)
     session = _maybe_auto_reveal_voting(session)
     session = maybe_declare_pending_winner(session)
     notify_whatif_session(session.short_code, state_version=session.state_version)
-    payload = WhatIfSessionPublicSerializer(session).data
-    player_for_hand = _find_player_for_request(session, request)
-    if player_for_hand is not None:
-        payload["state"] = _hand_state(session, player_for_hand)
-    else:
-        payload["state"] = _public_round_state(session)
-    return Response(payload, status=status.HTTP_200_OK)
+    return Response(_build_session_action_response(session, request), status=status.HTTP_200_OK)
 
 
 @api_view(["GET", "POST"])

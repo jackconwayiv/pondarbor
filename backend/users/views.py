@@ -19,7 +19,12 @@ from .auth0_backend import Auth0TokenAuthentication
 from .models import PROFILE_TIMEZONE_DEFAULT, Profile
 from .permissions import IsApprovedUser, IsStaffUser
 from friends.models import FriendRequest
-from friends.services import are_friends, friend_ids_for_user, friends_queryset_for_user
+from friends.services import (
+    are_friends,
+    friend_ids_for_user,
+    friends_queryset_for_user,
+    order_users_by_recent_activity,
+)
 from friends.views import friend_user_row_dict
 from meal.partner import incoming_meal_partner_pending, mutual_meal_pair
 from achievements.services import achievements_payload_for_user, evaluate_meal_maestro_partner_for_user
@@ -455,11 +460,10 @@ def user_friends_list_for_viewer(request, user_id: int):
             {"detail": "You can only view friends of users you are friends with."},
             status=status.HTTP_403_FORBIDDEN,
         )
-    qs = (
+    qs = order_users_by_recent_activity(
         friends_queryset_for_user(user=target)
         .exclude(pk=viewer.pk)
         .select_related("profile")
-        .order_by("profile__display_name", "email")
     )
     return Response([friend_user_row_dict(friend) for friend in qs])
 

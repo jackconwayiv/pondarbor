@@ -60,9 +60,13 @@ export type WhatIfRoundState = {
   skip_ui_suppressed_for_question_id?: number | null;
   /** Times each player id has been the round subject this session. */
   subject_times?: Record<string, number>;
+  /** 1-based play round index (subject pick through reveal). */
+  round_number?: number;
   next_turn_not_before?: string | null;
   /** ISO timestamp when votes were revealed; drives TV scoreboard reveal animation. */
   revealed_at?: string | null;
+  /** Per-player last vote choice; kept after unvote for timeout reveal. */
+  last_votes?: Record<string, number>;
   final_scores?: Array<{
     player_id: number;
     display_name: string;
@@ -70,14 +74,45 @@ export type WhatIfRoundState = {
     avatar_url?: string;
     score: number;
     rank: number;
+    /** Endgame scoreboard: one prestigious lifetime stat for authenticated players. */
+    lifetime_line?: string | null;
   }>;
   winner_player_id?: number | null;
   /** Set on winning reveal; cleared when status becomes ended. */
   pending_winner_player_id?: number | null;
   /** ISO timestamp when server promotes post_results → ended after scoreboard animation. */
   declare_winner_not_before?: string | null;
+  endgame_stats?: WhatIfEndgameStats;
+  endgame_awards?: WhatIfEndgameAward[];
+  your_lifetime?: WhatIfLifetimeStats;
   you?: WhatIfPlayer;
   your_vote?: number | null;
+  /** Last option this player voted for; kept after unvote for timeout reveal / hand grace UI. */
+  your_last_vote?: number | null;
+};
+
+export type WhatIfEndgameStats = {
+  questions_drawn?: number;
+  questions_vetoed?: number;
+  rounds_completed?: number;
+  challenges_started?: number;
+  flairs?: Record<string, number>;
+};
+
+export type WhatIfEndgameAward = {
+  key: string;
+  label: string;
+  value: number;
+  player_ids: number[];
+  player_names: string[];
+};
+
+export type WhatIfLifetimeStats = {
+  gold_medals?: number;
+  silver_medals?: number;
+  total_points?: number;
+  personal_best_score?: number;
+  is_personal_best_this_session?: boolean;
 };
 
 export type WhatIfSessionState = {

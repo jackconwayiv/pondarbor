@@ -1985,6 +1985,7 @@ export default function Clicker2GamePage() {
         <StrataProgressRow
           allTimeEnergyEarned={effectiveAllTimeEnergyEarnedDisplay}
           pondEra={pondEra}
+          canHoverFinePointer={canHoverFinePointer}
         />
         <PondDepthChart
           timeline={denizenPurchaseTimeline}

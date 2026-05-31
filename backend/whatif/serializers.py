@@ -262,9 +262,33 @@ class WhatIfSessionPublicSerializer(serializers.ModelSerializer):
         ]
 
     def to_representation(self, instance: WhatIfSession):
-        players = list(instance.players.order_by("created_at", "id"))
-        self.context.update(whatif_players_serializer_context(players))
-        return super().to_representation(instance)
+        players = self.context.get("players_ordered")
+        if players is None:
+            from whatif.session_queries import players_ordered as _players_ordered
+
+            players = _players_ordered(instance)
+        else:
+            players = list(players)
+        npcs = self.context.get("npcs_ordered")
+        if npcs is None:
+            from whatif.session_queries import npcs_ordered as _npcs_ordered
+
+            npcs = _npcs_ordered(instance)
+        else:
+            npcs = list(npcs)
+        player_ctx = {**self.context, **whatif_players_serializer_context(players)}
+        return {
+            "short_code": instance.short_code,
+            "status": instance.status,
+            "challenge_mode": instance.challenge_mode,
+            "state_version": instance.state_version,
+            "state": instance.state,
+            "players": WhatIfPlayerSerializer(players, many=True, context=player_ctx).data,
+            "npcs": WhatIfNpcSerializer(npcs, many=True).data,
+            "win_score": rules.WIN_SCORE,
+            "created_at": instance.created_at,
+            "updated_at": instance.updated_at,
+        }
 
     def get_win_score(self, _obj: WhatIfSession) -> int:
         return rules.WIN_SCORE

@@ -220,6 +220,11 @@ const AMPHIBIANS_HEADLINES: readonly HeadlineDef[] = [
     1,
     "gelatinous eggs / billow in the sheltered wake / of the shallow muck",
   ),
+  headline(
+    "amphibians",
+    75,
+    "i'm alexander / hamiltoad and i'm not throw- / -in' away my hop!",
+  ),
 ];
 
 const SMALL_FISH_HEADLINES: readonly HeadlineDef[] = [

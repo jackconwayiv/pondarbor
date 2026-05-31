@@ -14,6 +14,8 @@ export const MILESTONES_LABEL = "Milestones";
 export const STRATUM_LABEL = "Stratum";
 export const STRATA_LABEL = "Strata";
 export const TO_NEXT_STRATA_PHRASE = "to next Strata";
+export const STRATA_PANEL_TOOLTIP =
+  "Strata represent the age of your pond and determine how many fossils you begin your next pond cycle with.";
 export const CYCLE_LABEL = "Cycle";
 
 /** Main stratum UI heading — "1 Stratum" or "N Strata". */

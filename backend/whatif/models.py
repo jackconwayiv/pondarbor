@@ -194,3 +194,38 @@ class WhatIfGameResult(models.Model):
     winner_display_name = models.CharField(max_length=80, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
+
+class WhatIfSessionPlacement(models.Model):
+    """Per-player final placement for a completed session (lifetime medal indexing)."""
+
+    session = models.ForeignKey(
+        WhatIfSession,
+        on_delete=models.CASCADE,
+        related_name="placements",
+    )
+    player = models.ForeignKey(
+        WhatIfPlayer,
+        on_delete=models.CASCADE,
+        related_name="placements",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="whatif_placements",
+    )
+    display_name = models.CharField(max_length=80, blank=True, default="")
+    rank = models.PositiveIntegerField()
+    score = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["session", "player"],
+                name="uniq_whatif_session_player_placement",
+            )
+        ]
+        ordering = ["rank", "player_id"]
+

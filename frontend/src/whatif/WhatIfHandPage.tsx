@@ -34,6 +34,7 @@ import {
 } from "./api";
 import { useWhatIfSessionSync } from "./useWhatIfSessionSync";
 import { resolveWhatIfViewerFallbackAvatarUrl } from "./whatifPlayerAvatar";
+import WhatIfEndgameStats from "./WhatIfEndgameStats";
 import WhatIfShell from "./WhatIfShell";
 import { whatifInputProps } from "./whatifFieldProps";
 import type { WhatIfPlayer, WhatIfSessionState } from "./types";
@@ -48,7 +49,7 @@ import { hasChallengeTarget } from "./whatifChallengeTarget";
 import { WhatIfNpcFace, WhatIfPlayerFace } from "./whatifPlayerFace";
 import { whatifPlayerSeatIndex } from "./whatifPlayerSeatColors";
 import { subjectDieSeatHandLabel, subjectDieSeatMeta } from "./whatifSubjectBoardUi";
-import { votingPauseControlsAvailable } from "./whatifVotingTimerRing";
+import { isVotingDeadlineElapsed, votingPauseControlsAvailable } from "./whatifVotingTimerRing";
 
 const DISPLAY_NAME_RE = /^[A-Za-z0-9 ]*$/;
 
@@ -77,6 +78,76 @@ function normalizeWhatIfDisplayNameForCompare(raw: string): string {
 function formatHandTotalScoreLabel(score: number): string {
   if (score === 1) return "1 Point";
   return `${score} Points`;
+}
+
+type WhatIfHandVoteOptionTileProps = {
+  idx: number;
+  answer: string;
+  isSelected: boolean;
+  disabled: boolean;
+  allowUnvote: boolean;
+  onVote: (idx: number) => void;
+  onUnvote: () => void;
+};
+
+function WhatIfHandVoteOptionTile({
+  idx,
+  answer,
+  isSelected,
+  disabled,
+  allowUnvote,
+  onVote,
+  onUnvote,
+}: WhatIfHandVoteOptionTileProps) {
+  return (
+    <PondButton
+      type="button"
+      bg="white"
+      color="black"
+      borderWidth="6px"
+      borderColor={isSelected ? "teal.solid" : "transparent"}
+      borderRadius="lg"
+      h="100%"
+      w="100%"
+      py="1"
+      px="1"
+      whiteSpace="normal"
+      textAlign="center"
+      disabled={disabled}
+      _hover={
+        disabled
+          ? undefined
+          : {
+              bg: "white",
+              color: "black",
+              borderColor: "teal.solid",
+              borderWidth: "6px",
+            }
+      }
+      onClick={() => {
+        if (isSelected) {
+          if (allowUnvote) onUnvote();
+        } else {
+          onVote(idx);
+        }
+      }}
+    >
+      <Stack gap="0.5" align="center" justify="center" maxW="100%">
+        <Text fontSize="xs" opacity={0.25} lineHeight="1">
+          {idx}
+        </Text>
+        <Text
+          fontWeight="semibold"
+          textAlign="center"
+          lineHeight="1.15"
+          fontSize={voteOptionFontSize(answer)}
+          wordBreak="break-word"
+        >
+          {answer}
+        </Text>
+      </Stack>
+    </PondButton>
+  );
 }
 
 /** Human ordinal for place (1st, 2nd, 3rd, 4th, …). */
@@ -506,6 +577,9 @@ export default function WhatIfHandPage() {
 
   const activeId = state?.state?.active_player_id;
   const activeName = playerList.find((p) => p.id === activeId)?.display_name ?? "Active player";
+  const roundNumber = state?.state?.round_number;
+  const roundPossessive = roundNumber != null ? `Round ${roundNumber}'s` : "this round's";
+  const roundLabel = roundNumber != null ? `Round ${roundNumber}` : "this round";
   const answers = state?.state?.question?.answers ?? {};
   const votedIds = state?.state?.voted_player_ids ?? [];
   const eligibleVoterIds = new Set(playerList.filter((p) => !p.paused).map((p) => p.id));
@@ -531,6 +605,11 @@ export default function WhatIfHandPage() {
 
   const imPaused = !!me?.paused;
   const myVote = state?.state?.your_vote ?? null;
+  const myLastVote = state?.state?.your_last_vote ?? null;
+  const votingDeadlineIso = state?.state?.voting_deadline_at ?? null;
+  const votingTimeUp = isVotingDeadlineElapsed(votingDeadlineIso, nowMs, votingPaused);
+  const displayedVote = myVote ?? (votingTimeUp ? myLastVote : null);
+  const canUnvote = myVote != null && !votingTimeUp && !imPaused && !votingPaused;
   const waitUntil = state?.state?.next_turn_not_before ? new Date(state.state.next_turn_not_before).getTime() : 0;
   const canAdvance = nowMs >= waitUntil;
   const finalScores = state?.state?.final_scores ?? [];
@@ -628,6 +707,14 @@ export default function WhatIfHandPage() {
   }, [me, playerList]);
 
   const myPlacementBoxBg = scoreboardRowMedalGradient(myPlacement?.rank) ?? "white";
+
+  const showHandAwardsCard =
+    state?.status === "ended" &&
+    ((me != null &&
+      (state?.state?.endgame_awards ?? []).some(
+        (a) => a.player_names.length > 0 && a.player_ids.includes(me.id),
+      )) ||
+      !!state?.state?.your_lifetime);
 
   const hasHandHeaderCenterAction =
     showPauseGameButton ||
@@ -830,7 +917,7 @@ export default function WhatIfHandPage() {
           {state?.state?.question ? (
             <>
               <Text fontWeight="bold">{state.state.question.prompt}</Text>
-              {state?.status === "ended" && topVoteLine ? (
+              {(state?.status === "post_results" || state?.status === "ended") && topVoteLine ? (
                 <Text
                   fontSize="lg"
                   fontWeight="semibold"
@@ -877,7 +964,7 @@ export default function WhatIfHandPage() {
           ) : null}
           {needSubjectPhaseWaiting && !needPickOpponent && !needDuelSubjectPick && !isActive ? (
             <Text color={headerMutedColor}>
-              Waiting for {activeName} to choose this round's subject…
+              Waiting for {activeName} to choose {roundPossessive} subject…
             </Text>
           ) : null}
           {needSubjectPhaseWaiting &&
@@ -886,14 +973,14 @@ export default function WhatIfHandPage() {
           !needDuelSubjectPick &&
           !needDieSubjectPick &&
           (needNormalSubjectPick || subjectOptions.length > 0) ? (
-            <Text fontWeight="medium">Pick who this round is about:</Text>
+            <Text fontWeight="medium">Pick who {roundLabel} is about:</Text>
           ) : null}
           {needPickOpponent && isActive ? <Text fontWeight="medium">Who do you challenge?</Text> : null}
           {(needDuelSubjectPick || needDieSubjectPick) && isActive ? (
             <Text fontWeight="medium">
               {needDieSubjectPick && dieDegenerate
                 ? "Confirm this landing spot."
-                : "Choose this round's subject…"}
+                : `Choose ${roundPossessive} subject…`}
             </Text>
           ) : null}
           {state?.status === "voting" && votingPaused ? (
@@ -1258,100 +1345,96 @@ export default function WhatIfHandPage() {
 
         {showVoteGrid ? (
           <Box w="75%" maxW="100%" mx="auto">
-            <Grid
-              w="100%"
-              templateColumns="repeat(2, minmax(0, 1fr))"
-              gap="1.5"
-            >
-              {Object.entries(answers)
-                .sort((a, b) => Number(a[0]) - Number(b[0]))
-                .map(([k, answer]) => {
-                  const idx = Number(k);
-                  const isSelected = myVote === idx;
-                  const hasVoted = myVote != null;
-                  const isHiddenAfterVote = hasVoted && !isSelected;
-                  const tileDisabled =
-                    imPaused ||
-                    votingPaused ||
-                    (hasVoted && !isSelected);
-                  return (
-                    <GridItem key={k} minW={0} aspectRatio={1}>
-                      <PondButton
-                        type="button"
-                        bg="white"
-                        color="black"
-                        borderWidth="6px"
-                        borderColor={isSelected ? "teal.solid" : "transparent"}
-                        borderRadius="lg"
-                        h="100%"
-                        w="100%"
-                        py="1"
-                        px="1"
-                        whiteSpace="normal"
-                        textAlign="center"
-                        disabled={tileDisabled}
-                        visibility={isHiddenAfterVote ? "hidden" : "visible"}
-                        pointerEvents={isHiddenAfterVote ? "none" : "auto"}
-                        _hover={{
-                          bg: "white",
-                          color: "black",
-                          borderColor: "teal.solid",
-                          borderWidth: "6px",
-                        }}
-                        onClick={() =>
-                          isSelected
-                            ? void action({ type: "unvote" })
-                            : void action({ type: "vote", option_index: idx })
-                        }
-                      >
-                        <Stack gap="0.5" align="center" justify="center" maxW="100%">
-                          <Text fontSize="xs" opacity={0.25} lineHeight="1">
-                            {idx}
-                          </Text>
-                          <Text
-                            fontWeight="semibold"
-                            textAlign="center"
-                            lineHeight="1.15"
-                            fontSize={voteOptionFontSize(answer)}
-                            wordBreak="break-word"
-                          >
-                            {answer}
-                          </Text>
-                        </Stack>
-                      </PondButton>
-                    </GridItem>
-                  );
-                })}
+            <Grid w="100%" templateColumns="repeat(2, minmax(0, 1fr))" gap="1.5">
+              {displayedVote != null ? (
+                <GridItem colSpan={2} display="flex" justifyContent="center" minW={0}>
+                  <Box
+                    w="100%"
+                    maxW="calc((100% - var(--chakra-spacing-1\\.5)) / 2)"
+                    aspectRatio={1}
+                    minW={0}
+                  >
+                    <WhatIfHandVoteOptionTile
+                      idx={displayedVote}
+                      answer={answers[String(displayedVote)] ?? ""}
+                      isSelected
+                      disabled={imPaused || votingPaused || !canUnvote}
+                      allowUnvote={canUnvote}
+                      onVote={(idx) => void action({ type: "vote", option_index: idx })}
+                      onUnvote={() => void action({ type: "unvote" })}
+                    />
+                  </Box>
+                </GridItem>
+              ) : (
+                Object.entries(answers)
+                  .sort((a, b) => Number(a[0]) - Number(b[0]))
+                  .map(([k, answer]) => {
+                    const idx = Number(k);
+                    return (
+                      <GridItem key={k} minW={0} aspectRatio={1}>
+                        <WhatIfHandVoteOptionTile
+                          idx={idx}
+                          answer={answer}
+                          isSelected={false}
+                          disabled={imPaused || votingPaused}
+                          allowUnvote={false}
+                          onVote={(optionIdx) => void action({ type: "vote", option_index: optionIdx })}
+                          onUnvote={() => void action({ type: "unvote" })}
+                        />
+                      </GridItem>
+                    );
+                  })
+              )}
             </Grid>
           </Box>
         ) : null}
 
         {state?.status === "ended" ? (
-          <Box
-            borderWidth="1px"
-            borderColor="border"
-            borderRadius="xl"
-            p="4"
-            bg={myPlacementBoxBg}
-          >
-            <Stack gap="2">
-              <Text fontWeight="bold" fontSize="xl">
-                {didWin
-                  ? `You won with ${myPlacement?.score ?? me?.score ?? 0} points!`
-                  : showTiedPlacementMessage && myPlacement != null
-                    ? `You tied for ${ordinalPlace(myPlacement.rank)} with ${myPlacement.score} points!`
-                    : `You came in ${myPlacement?.rank != null ? ordinalPlace(myPlacement.rank) : "?"} place with ${myPlacement?.score ?? me?.score ?? 0} points!`}
-              </Text>
-              <PondButton
-                type="button"
-                colorPalette="teal"
-                alignSelf="flex-start"
-                onClick={() => navigate("/whatif?tab=join")}
+          <Stack gap="3">
+            <Box
+              borderWidth="1px"
+              borderColor="border"
+              borderRadius="xl"
+              p="4"
+              bg={myPlacementBoxBg}
+            >
+              <Stack gap="2">
+                <Text fontWeight="bold" fontSize="xl">
+                  {didWin
+                    ? `You won with ${myPlacement?.score ?? me?.score ?? 0} points!`
+                    : showTiedPlacementMessage && myPlacement != null
+                      ? `You tied for ${ordinalPlace(myPlacement.rank)} with ${myPlacement.score} points!`
+                      : `You came in ${myPlacement?.rank != null ? ordinalPlace(myPlacement.rank) : "?"} place with ${myPlacement?.score ?? me?.score ?? 0} points!`}
+                </Text>
+                <PondButton
+                  type="button"
+                  colorPalette="teal"
+                  alignSelf="flex-start"
+                  onClick={() => navigate("/whatif?tab=join")}
+                >
+                  Return to lobby
+                </PondButton>
+              </Stack>
+            </Box>
+            {showHandAwardsCard ? (
+              <Box
+                borderWidth="1px"
+                borderColor="border"
+                borderRadius="xl"
+                p="4"
+                bg="white"
               >
-                Return to lobby
-              </PondButton>
-            </Stack>
-          </Box>
+                <WhatIfEndgameStats
+                  showGameStats={false}
+                  filterAwardsToPlayerId={me?.id ?? null}
+                  awards={state?.state?.endgame_awards}
+                  lifetime={state?.state?.your_lifetime}
+                  players={playerList}
+                  viewerPlayerId={me?.id ?? null}
+                />
+              </Box>
+            ) : null}
+          </Stack>
         ) : null}
       </Stack>
     </WhatIfShell>

@@ -22,6 +22,7 @@ import WhatIfShell from "./WhatIfShell";
 import type { WhatIfPlayer, WhatIfSessionState } from "./types";
 import { WhatIfPlayerFace } from "./whatifPlayerFace";
 import { whatifPlayerSeatIndex } from "./whatifPlayerSeatColors";
+import WhatIfEndgameStats from "./WhatIfEndgameStats";
 import { WhatIfTvScoreboard } from "./WhatIfTvScoreboard";
 import { hasChallengeTarget } from "./whatifChallengeTarget";
 import { WhatIfTvSeatRing } from "./WhatIfTvSeatRing";
@@ -74,6 +75,9 @@ export default function WhatIfPlayPage() {
 
   const activeId = state?.state?.active_player_id;
   const activePlayer = (state?.players ?? []).find((p) => p.id === activeId);
+  const roundNumber = state?.state?.round_number;
+  const roundPossessive =
+    roundNumber != null ? `Round ${roundNumber}'s` : "this round's";
   const duel = state?.state?.duel;
   const challengedId = duel?.challenged_player_id ?? null;
   const duelVoting =
@@ -140,6 +144,16 @@ export default function WhatIfPlayPage() {
       const bonusLabel = playerId === activeId && n > 1 ? " (active player)" : "";
       return { key: `${id}-${n}`, player: p, playerId, n, sign, bonusLabel };
     });
+  const lifetimeLineByPlayerId = useMemo(() => {
+    if (state?.status !== "ended") return {} as Record<number, string | null | undefined>;
+    const map: Record<number, string | null | undefined> = {};
+    for (const row of state?.state?.final_scores ?? []) {
+      if (row.lifetime_line) {
+        map[row.player_id] = row.lifetime_line;
+      }
+    }
+    return map;
+  }, [state?.status, state?.state?.final_scores]);
   const revealFlairsList =
     (state?.status === "post_results" || state?.status === "ended") && !duelPostResults
       ? (state?.state?.reveal_flairs ?? [])
@@ -422,7 +436,7 @@ export default function WhatIfPlayPage() {
                     {activePlayer
                       ? needPickChallengeTarget
                         ? `${activePlayer.display_name} is choosing who to challenge!`
-                        : `${activePlayer.display_name} is choosing this round's subject!`
+                        : `${activePlayer.display_name} is choosing ${roundPossessive} subject!`
                       : "Waiting for game start"}
                   </Text>
                 )}
@@ -465,7 +479,27 @@ export default function WhatIfPlayPage() {
                 ) : null}
               </Stack>
 
-              {state?.state?.question ? (
+              {state?.status === "ended" ? (
+                <Stack
+                  gap="3"
+                  p={{ base: "4", md: "6" }}
+                  borderWidth="1px"
+                  borderColor="border"
+                  borderRadius="xl"
+                  bg={tvCardBg}
+                  color={tvCardColor}
+                >
+                  <WhatIfEndgameStats
+                    layout="split"
+                    stats={state?.state?.endgame_stats}
+                    awards={state?.state?.endgame_awards}
+                    players={state?.players ?? []}
+                    viewerPlayerId={viewerPlayerId}
+                    mutedColor={tvMutedColor}
+                    fontSize="clamp(1rem, 2.2vh, 1.35rem)"
+                  />
+                </Stack>
+              ) : state?.state?.question ? (
                 <Stack
                   gap="3"
                   p={{ base: "4", md: "6" }}
@@ -478,7 +512,7 @@ export default function WhatIfPlayPage() {
                   <Text fontSize="clamp(1.1rem, 2.6vh, 1.75rem)" fontWeight="semibold" lineHeight="1.25">
                     {state.state.question.prompt}
                   </Text>
-                  {state?.status === "ended" && topVoteLine ? (
+                  {state?.status === "post_results" && topVoteLine ? (
                     <Text
                       fontSize="clamp(1rem, 2.2vh, 1.35rem)"
                       fontWeight="semibold"
@@ -689,6 +723,7 @@ export default function WhatIfPlayPage() {
                 viewerPlayerId={viewerPlayerId}
                 activeChallengeRound={activeChallengeRound}
                 tvMutedColor={tvMutedColor}
+                lifetimeLineByPlayerId={lifetimeLineByPlayerId}
               />
             </Stack>
           </GridItem>

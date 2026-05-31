@@ -11,6 +11,8 @@ import {
 
 /** Matches `backend/whatif/constants.py` VOTING_DEADLINE_SECONDS. */
 export const WHATIF_VOTING_DEADLINE_SECONDS = 60;
+/** Matches `backend/whatif/constants.py` VOTING_TIME_UP_GRACE_SECONDS. */
+export const WHATIF_VOTING_TIME_UP_GRACE_SECONDS = 6;
 export const WHATIF_VOTING_TIMER_URGENT_SECONDS = 10;
 
 const TIMER_PROGRESS_COLOR = "var(--chakra-colors-teal-solid, #b7d394)";
@@ -30,9 +32,40 @@ export function votingPauseControlsAvailable(
   return votingPaused || votingTimerHasStarted(deadlineIso);
 }
 
+export function isVotingDeadlineElapsed(
+  deadlineIso: string | null | undefined,
+  nowMs: number,
+  paused: boolean,
+): boolean {
+  if (paused || !votingTimerHasStarted(deadlineIso)) return false;
+  const endMs = new Date(deadlineIso!).getTime();
+  return Number.isFinite(endMs) && nowMs >= endMs;
+}
+
+/** 0 at deadline, 1 when grace ends; null if not in grace. */
+export function getVotingGraceProgress(
+  deadlineIso: string | null | undefined,
+  nowMs: number,
+): number | null {
+  if (!votingTimerHasStarted(deadlineIso)) return null;
+  const endMs = new Date(deadlineIso!).getTime();
+  if (!Number.isFinite(endMs) || nowMs < endMs) return null;
+  const graceMs = WHATIF_VOTING_TIME_UP_GRACE_SECONDS * 1000;
+  const elapsed = nowMs - endMs;
+  if (elapsed >= graceMs) return 1;
+  return elapsed / graceMs;
+}
+
 export type VotingTimerRingState =
   | { visible: false }
-  | { visible: true; progress: number; urgent: boolean; paused: boolean };
+  | {
+      visible: true;
+      progress: number;
+      urgent: boolean;
+      paused: boolean;
+      grace?: boolean;
+      graceProgress?: number;
+    };
 
 function clamp01(n: number): number {
   return Math.min(1, Math.max(0, n));
@@ -72,7 +105,22 @@ export function getVotingTimerRingState(opts: {
     return { visible: false };
   }
   const secsLeft = (endMs - nowMs) / 1000;
-  const progress = secsLeft <= 0 ? 1 : clamp01(1 - secsLeft / WHATIF_VOTING_DEADLINE_SECONDS);
+  const graceProgress = getVotingGraceProgress(deadlineIso, nowMs);
+  if (graceProgress != null) {
+    if (graceProgress < 1) {
+      return {
+        visible: true,
+        progress: 1,
+        urgent: true,
+        paused: false,
+        grace: true,
+        graceProgress,
+      };
+    }
+    // Grace rewind finished — stay hidden until reveal (no full-ring flash).
+    return { visible: false };
+  }
+  const progress = clamp01(1 - secsLeft / WHATIF_VOTING_DEADLINE_SECONDS);
   const urgent = secsLeft > 0 && secsLeft <= WHATIF_VOTING_TIMER_URGENT_SECONDS;
   return { visible: true, progress, urgent, paused: false };
 }
@@ -156,7 +204,11 @@ export function WhatIfTvVotingTimerRing({
   if (!ringState.visible) return null;
 
   const circumference = votingTimerRingCircumference();
-  const filled = ringState.progress * circumference;
+  const inGrace = !!ringState.grace;
+  const graceProgress = ringState.graceProgress ?? 0;
+  const filled = inGrace
+    ? (1 - graceProgress) * circumference
+    : ringState.progress * circumference;
   const progressStroke = ringState.paused
     ? TIMER_PAUSED_COLOR
     : ringState.urgent
@@ -178,7 +230,7 @@ export function WhatIfTvVotingTimerRing({
         strokeLinecap="butt"
         strokeDasharray={`${filled} ${circumference}`}
         transform={rotate}
-        style={{ transition: "stroke 0.25s ease-out" }}
+        style={{ transition: inGrace ? undefined : "stroke 0.25s ease-out" }}
       />
       {ringState.paused ? (
         <text

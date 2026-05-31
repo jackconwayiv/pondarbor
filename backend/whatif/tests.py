@@ -9,7 +9,23 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from whatif import constants
-from whatif.models import WhatIfGameResult, WhatIfNpc, WhatIfPlayer, WhatIfQuestion, WhatIfSession
+from whatif.models import (
+    WhatIfGameResult,
+    WhatIfNpc,
+    WhatIfPlayer,
+    WhatIfQuestion,
+    WhatIfSession,
+    WhatIfSessionPlacement,
+)
+from whatif.endgame import (
+    compute_endgame_awards,
+    current_round_number,
+    empty_player_tally,
+    enrich_final_scores_with_lifetime_lines,
+    record_challenge_started,
+    record_reveal_tallies,
+    stamp_endgame_stats,
+)
 from whatif.rules import evaluate_vote_scores, two_subject_candidate_ids
 from whatif.subject_board import (
     build_ring_layout,
@@ -336,6 +352,27 @@ class WhatIfApiTests(TestCase):
         self.assertEqual(body["players"][0]["display_name"], "Alex")
         self.assertIn("ready_to_start", body["players"][0])
 
+    def test_round_number_starts_at_one_after_start_game(self):
+        code, host_secret, _user = self._create_session()
+        self._join(code, "John")
+        self._join(code, "Maya")
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "start_game"},
+            format="json",
+            HTTP_X_WHATIF_HOST_TOKEN=host_secret,
+        )
+        tv = self.client.get(f"/api/v1/whatif/sessions/{code}/")
+        self.assertEqual(tv.status_code, 200)
+        self.assertEqual(tv.json()["state"]["round_number"], 1)
+        token = self._player_secret_by_id(code, self._ordered_player_ids(code)[0])
+        hand = self.client.get(
+            f"/api/v1/whatif/sessions/{code}/hand/",
+            HTTP_X_WHATIF_PLAYER_TOKEN=token,
+        )
+        self.assertEqual(hand.status_code, 200)
+        self.assertEqual(hand.json()["state"]["round_number"], 1)
+
     def test_hand_state_includes_npcs(self):
         code, host_secret, _user = self._create_session()
         self._join(code, "John")
@@ -626,6 +663,9 @@ class WhatIfApiTests(TestCase):
         self.assertEqual(body["status"], "ended")
         self.assertEqual(body["state"]["ended_reason"], "host_ended")
         self.assertEqual(body["state"]["winner_player_id"], ordered[0])
+        self.assertEqual(body["state"]["endgame_stats"]["questions_drawn"], 1)
+        self.assertIn("rounds_completed", body["state"]["endgame_stats"])
+        self.assertIn("endgame_awards", body["state"])
         fs = body["state"]["final_scores"]
         self.assertEqual(len(fs), 2)
         self.assertEqual(fs[0]["player_id"], ordered[0])
@@ -1681,6 +1721,81 @@ class WhatIfApiTests(TestCase):
         )
         self.assertEqual(resp.status_code, 400)
 
+    def test_unvote_rejected_after_deadline_elapsed(self):
+        code, _host, p1, _p2 = self._start_voting_round()
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 2},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        sess = WhatIfSession.objects.get(short_code=code)
+        st = dict(sess.state or {})
+        st["voting_deadline_at"] = (timezone.now() - timedelta(seconds=1)).isoformat()
+        sess.state = st
+        sess.save(update_fields=["state", "updated_at"])
+
+        resp = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "unvote"},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.assertEqual(resp.status_code, 400, resp.json())
+        self.assertIn("Time's up", resp.json()["detail"])
+
+        polled = self.client.get(f"/api/v1/whatif/sessions/{code}/")
+        self.assertEqual(polled.json()["status"], "voting")
+
+    def test_unvote_preserves_last_vote_for_hand_and_timeout_reveal(self):
+        from whatif import constants
+
+        code, _host, p1, p2 = self._start_voting_round()
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 4},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        uv = self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "unvote"},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.assertEqual(uv.status_code, 200, uv.json())
+        self.assertEqual(uv.json()["state"]["votes"], {})
+        self.assertEqual(list(uv.json()["state"]["last_votes"].values()), [4])
+
+        hand = self.client.get(
+            f"/api/v1/whatif/sessions/{code}/hand/",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+        )
+        self.assertEqual(hand.status_code, 200, hand.json())
+        hand_body = hand.json()
+        self.assertIsNone(hand_body["state"]["your_vote"])
+        self.assertEqual(hand_body["state"]["your_last_vote"], 4)
+
+        # Other player still needs to vote; push past grace so auto-reveal restores p1's last choice.
+        self.client.post(
+            f"/api/v1/whatif/sessions/{code}/action/",
+            {"type": "vote", "option_index": 1},
+            format="json",
+            HTTP_X_WHATIF_PLAYER_TOKEN=p2,
+        )
+        sess = WhatIfSession.objects.get(short_code=code)
+        st = dict(sess.state or {})
+        st["voting_deadline_at"] = (
+            timezone.now() - timedelta(seconds=constants.VOTING_TIME_UP_GRACE_SECONDS + 2)
+        ).isoformat()
+        sess.state = st
+        sess.save(update_fields=["state", "updated_at"])
+
+        polled = self.client.get(f"/api/v1/whatif/sessions/{code}/")
+        self.assertEqual(polled.json()["status"], "post_results")
+        vote_counts = polled.json()["state"].get("vote_counts") or {}
+        self.assertEqual(int(vote_counts.get("4", 0)), 1)
+
     def test_active_player_can_pause_and_resume_voting_preserving_remaining(self):
         code, _host, p1, p2 = self._start_voting_round()
         self.client.post(
@@ -2124,4 +2239,172 @@ class WhatIfRealtimeTests(WhatIfApiTests):
         self.assertFalse(
             _validate_player_token(code, "00000000-0000-0000-0000-000000000001"),
         )
+
+
+class WhatIfQueryBudgetTests(WhatIfApiTests):
+    """Regression ceilings for SQL count per request (see whatif/session_queries.py)."""
+
+    def test_join_query_budget(self):
+        code, _host, _user = self._create_session()
+        with self.assertNumQueries(10):
+            self._join(code, "Alex")
+
+    def test_vote_action_query_budget(self):
+        code, _host, p1, _p2 = self._start_voting_round()
+        with self.assertNumQueries(13):
+            self.client.post(
+                f"/api/v1/whatif/sessions/{code}/action/",
+                {"type": "vote", "option_index": 1},
+                format="json",
+                HTTP_X_WHATIF_PLAYER_TOKEN=p1,
+            )
+
+    def test_start_game_action_query_budget(self):
+        code, host, _owner = self._create_session()
+        self._join(code, "John")
+        self._join(code, "Maya")
+        with self.assertNumQueries(17):
+            self.client.post(
+                f"/api/v1/whatif/sessions/{code}/action/",
+                {"type": "start_game"},
+                format="json",
+                HTTP_X_WHATIF_HOST_TOKEN=host,
+            )
+
+    def test_get_session_query_budget(self):
+        code, _host, _user = self._create_session()
+        self._join(code, "Alex")
+        with self.assertNumQueries(4):
+            self.client.get(f"/api/v1/whatif/sessions/{code}/")
+
+
+class EndgameStatsTests(TestCase):
+    def test_current_round_number(self):
+        self.assertIsNone(current_round_number({}))
+        self.assertEqual(
+            current_round_number({"session_tallies": {"round_number": 3}}),
+            3,
+        )
+        self.assertEqual(
+            current_round_number({"session_tallies": {"rounds_completed": 1}, "question_id": 5}),
+            2,
+        )
+
+    def test_record_reveal_and_challenge_tallies(self):
+        state: dict = {"session_tallies": {}, "player_tallies": {}}
+        record_challenge_started(state, issuer_id=1, challenged_id=2)
+        record_reveal_tallies(
+            state,
+            round_scores={1: 4, 2: 4},
+            flairs=["Splitskies!"],
+            is_duel=True,
+        )
+        self.assertEqual(state["session_tallies"]["challenges_started"], 1)
+        self.assertEqual(state["session_tallies"]["rounds_completed"], 1)
+        self.assertEqual(state["session_tallies"]["flairs"]["Splitskies!"], 1)
+        self.assertEqual(state["player_tallies"]["1"]["challenges_issued"], 1)
+        self.assertEqual(state["player_tallies"]["2"]["times_challenged"], 1)
+        self.assertEqual(state["player_tallies"]["1"]["duel_points"], 4)
+
+    def test_compute_endgame_awards_picks_leader(self):
+        User = get_user_model()
+        user = User.objects.create_user(email="eg1@example.com", password="x")
+        session = WhatIfSession.objects.create(short_code="EGME", owner=user, status=WhatIfSession.Status.ENDED)
+        p1 = WhatIfPlayer.objects.create(session=session, user=user, display_name="A", avatar_emoji="🐸", score=10)
+        p2 = WhatIfPlayer.objects.create(session=session, display_name="B", avatar_emoji="🦆", score=5)
+        state = {
+            "player_tallies": {
+                str(p1.id): {**empty_player_tally(), "rounds_scored": 3},
+                str(p2.id): {**empty_player_tally(), "rounds_scored": 1},
+            }
+        }
+        awards = compute_endgame_awards(session, state)
+        scored = next(a for a in awards if a["key"] == "most_rounds_scored")
+        self.assertEqual(scored["player_ids"], [p1.id])
+        self.assertEqual(scored["value"], 3)
+
+    def test_stamp_endgame_creates_placements(self):
+        User = get_user_model()
+        user = User.objects.create_user(email="eg2@example.com", password="x")
+        session = WhatIfSession.objects.create(short_code="EGMZ", owner=user, status=WhatIfSession.Status.VOTING)
+        p1 = WhatIfPlayer.objects.create(session=session, user=user, display_name="A", avatar_emoji="🐸", score=12)
+        WhatIfPlayer.objects.create(session=session, display_name="B", avatar_emoji="🦆", score=7)
+        state = stamp_endgame_stats(session, {"session_tallies": {"rounds_completed": 2}})
+        self.assertEqual(state["endgame_stats"]["rounds_completed"], 2)
+        self.assertTrue(WhatIfSessionPlacement.objects.filter(session=session, player=p1, rank=1).exists())
+
+    def test_scoreboard_lifetime_line_medals_by_rank(self):
+        User = get_user_model()
+        user = User.objects.create_user(email="sl1@example.com", password="x")
+        user2 = User.objects.create_user(email="sl2@example.com", password="x")
+        user3 = User.objects.create_user(email="sl3@example.com", password="x")
+
+        past_win = WhatIfSession.objects.create(short_code="SLMA", owner=user, status=WhatIfSession.Status.ENDED)
+        WhatIfGameResult.objects.create(
+            session=past_win,
+            winner_player=WhatIfPlayer.objects.create(
+                session=past_win, user=user, display_name="Past", avatar_emoji="🐸", score=20
+            ),
+            winner_user=user,
+            winner_display_name="Past",
+        )
+        past_silver = WhatIfSession.objects.create(short_code="SLMB", owner=user, status=WhatIfSession.Status.ENDED)
+        past_silver_player = WhatIfPlayer.objects.create(
+            session=past_silver, user=user2, display_name="Past2", avatar_emoji="🦆", score=8
+        )
+        WhatIfSessionPlacement.objects.create(
+            session=past_silver,
+            player=past_silver_player,
+            user=user2,
+            display_name="Past2",
+            rank=2,
+            score=8,
+        )
+
+        current = WhatIfSession.objects.create(short_code="SLMC", owner=user, status=WhatIfSession.Status.VOTING)
+        p1 = WhatIfPlayer.objects.create(session=current, user=user, display_name="Win", avatar_emoji="🐸", score=25)
+        p2 = WhatIfPlayer.objects.create(session=current, user=user2, display_name="Second", avatar_emoji="🦆", score=18)
+        p3 = WhatIfPlayer.objects.create(session=current, user=user3, display_name="Third", avatar_emoji="🐱", score=12)
+        WhatIfPlayer.objects.create(session=current, display_name="Fourth", avatar_emoji="🐶", score=5)
+        state = stamp_endgame_stats(
+            current,
+            {
+                "winner_player_id": p1.id,
+                "player_tallies": {},
+                "session_tallies": {"rounds_completed": 1},
+            },
+        )
+        fs = {row["player_id"]: row for row in state["final_scores"]}
+        self.assertEqual(fs[p1.id]["lifetime_line"], "2 gold medals")
+        self.assertEqual(fs[p2.id]["lifetime_line"], "2 silver medals")
+        self.assertEqual(fs[p3.id]["lifetime_line"], "1 bronze medal")
+        self.assertIsNone(fs[next(p.id for p in current.players.all() if not p.user_id)]["lifetime_line"])
+
+    def test_scoreboard_lifetime_line_rank_four_new_high_score(self):
+        User = get_user_model()
+        user = User.objects.create_user(email="sl3@example.com", password="x")
+        past = WhatIfSession.objects.create(short_code="SLMD", owner=user, status=WhatIfSession.Status.ENDED)
+        WhatIfPlayer.objects.create(session=past, user=user, display_name="Old", avatar_emoji="🐸", score=10)
+        current = WhatIfSession.objects.create(short_code="SLME", owner=user, status=WhatIfSession.Status.ENDED)
+        player = WhatIfPlayer.objects.create(session=current, user=user, display_name="New", avatar_emoji="🦆", score=15)
+        rows = enrich_final_scores_with_lifetime_lines(
+            current,
+            [{"player_id": player.id, "display_name": "New", "avatar_emoji": "🦆", "score": 15, "rank": 4}],
+            {"player_tallies": {str(player.id): empty_player_tally()}},
+        )
+        self.assertEqual(rows[0]["lifetime_line"], "New high score: 15 pts")
+
+    def test_scoreboard_lifetime_line_fallback_total_points(self):
+        User = get_user_model()
+        user = User.objects.create_user(email="sl4@example.com", password="x")
+        past = WhatIfSession.objects.create(short_code="SLMF", owner=user, status=WhatIfSession.Status.ENDED)
+        WhatIfPlayer.objects.create(session=past, user=user, display_name="Old", avatar_emoji="🐸", score=10)
+        current = WhatIfSession.objects.create(short_code="SLMG", owner=user, status=WhatIfSession.Status.ENDED)
+        player = WhatIfPlayer.objects.create(session=current, user=user, display_name="Mid", avatar_emoji="🦆", score=5)
+        rows = enrich_final_scores_with_lifetime_lines(
+            current,
+            [{"player_id": player.id, "display_name": "Mid", "avatar_emoji": "🦆", "score": 5, "rank": 4}],
+            {"player_tallies": {str(player.id): empty_player_tally()}},
+        )
+        self.assertEqual(rows[0]["lifetime_line"], "15 lifetime pts")
 

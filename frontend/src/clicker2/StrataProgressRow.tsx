@@ -1,7 +1,21 @@
-import { Box, Flex, Stack, Text } from "@chakra-ui/react";
+import {
+  Box,
+  Flex,
+  Text,
+  TooltipContent,
+  TooltipPositioner,
+  TooltipRoot,
+  TooltipTrigger,
+} from "@chakra-ui/react";
+
+import {
+  ecologyTooltipRootBaseProps,
+  ecologyTooltipSurfaceProps,
+} from "../clicker/ecologyUi.constants";
 
 import {
   CYCLE_LABEL,
+  STRATA_PANEL_TOOLTIP,
   stratumCountHeading,
   TO_NEXT_STRATA_PHRASE,
 } from "./clicker2Copy";
@@ -16,9 +30,11 @@ import {
 export default function StrataProgressRow({
   allTimeEnergyEarned,
   pondEra,
+  canHoverFinePointer = true,
 }: {
   allTimeEnergyEarned: number;
   pondEra: number;
+  canHoverFinePointer?: boolean;
 }) {
   if (!isStratumSystemUnlocked(allTimeEnergyEarned)) {
     return null;
@@ -29,7 +45,7 @@ export default function StrataProgressRow({
   const remaining = energyToNextStratum(allTimeEnergyEarned);
   const progressPct = Math.round(progress * 100);
 
-  return (
+  const panel = (
     <Box
       w="full"
       mb="2"
@@ -39,8 +55,9 @@ export default function StrataProgressRow({
       borderColor="lilypad.muted"
       borderRadius="md"
       bg="whiteAlpha.900"
+      cursor={canHoverFinePointer ? "help" : undefined}
     >
-      <Stack gap="1" align="stretch">
+      <Flex align="center" justify="space-between" gap="2" minW="0">
         <Flex align="center" gap="2" minW="0">
           <Text fontSize="sm" fontWeight="semibold" color="lilypad.emphasized">
             {stratumCountHeading(level)}
@@ -66,11 +83,12 @@ export default function StrataProgressRow({
           fontSize="xs"
           color="gray.600"
           fontVariantNumeric="tabular-nums"
-          textAlign="left"
+          textAlign="right"
+          flexShrink={0}
         >
           {formatEnergyAmount(remaining)} {ENERGY_EMOJI} {TO_NEXT_STRATA_PHRASE}
         </Text>
-      </Stack>
+      </Flex>
       <Box
         role="progressbar"
         aria-valuemin={0}
@@ -92,5 +110,24 @@ export default function StrataProgressRow({
         />
       </Box>
     </Box>
+  );
+
+  if (!canHoverFinePointer) {
+    return panel;
+  }
+
+  return (
+    <TooltipRoot
+      {...ecologyTooltipRootBaseProps}
+      openDelay={400}
+      positioning={{ placement: "top" }}
+    >
+      <TooltipTrigger asChild>{panel}</TooltipTrigger>
+      <TooltipPositioner>
+        <TooltipContent {...ecologyTooltipSurfaceProps} maxW="280px">
+          {STRATA_PANEL_TOOLTIP}
+        </TooltipContent>
+      </TooltipPositioner>
+    </TooltipRoot>
   );
 }

@@ -16,4 +16,5 @@ cryptography
 requests
 beautifulsoup4
 boto3
+emoji
 sentry-sdk[django]

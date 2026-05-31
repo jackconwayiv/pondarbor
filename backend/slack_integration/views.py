@@ -33,7 +33,11 @@ from slack_integration.slack_api import (
     slack_users_info,
  )
 from slack_integration.slack_verify import verify_slack_request_signature
-from slack_integration.song_from_text import build_serializer_data_from_slack_text, extract_first_slack_url
+from slack_integration.song_from_text import (
+    build_serializer_data_from_slack_text,
+    extract_first_slack_url,
+    extract_slack_message_notes,
+)
 from users.auth0_backend import Auth0TokenAuthentication
 from users.models import User
 from users.permissions import IsApprovedUser
@@ -224,10 +228,14 @@ def slack_commands(request):
         return _slack_ephemeral("There is no Song-a-day prompt for today's calendar entry.")
 
     try:
+        url = extract_first_slack_url(text)
+        link_text = url or (text or "").strip()
+        notes = extract_slack_message_notes(text, url=url)
         payload = build_serializer_data_from_slack_text(
-            text=text,
+            text=link_text,
             entry_date=today,
             prompt_snapshot=prompt.prompt,
+            notes=notes,
         )
         data = validate_song_response_payload(payload)
         create_song_response_from_validated_data(user=user, data=data)
@@ -483,10 +491,12 @@ def slack_events(request):
         return JsonResponse({"ok": True})
 
     try:
+        notes = extract_slack_message_notes(text, url=url)
         payload2 = build_serializer_data_from_slack_text(
             text=url,
             entry_date=today,
             prompt_snapshot=prompt.prompt,
+            notes=notes,
         )
         data = validate_song_response_payload(payload2)
         row = create_song_response_from_validated_data(user=user, data=data)

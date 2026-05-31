@@ -4,8 +4,11 @@ Parse /song command text into fields compatible with SongResponseCreateSerialize
 
 from __future__ import annotations
 
+import html
 import re
 from urllib.parse import parse_qs, urlparse
+
+import emoji
 
 from songaday.resolve_link import ResolveError, resolve_from_youtube_video_id, resolve_song_link_metadata
 from songaday.serializers import _host_allowed
@@ -13,6 +16,11 @@ from songaday.serializers import _host_allowed
 _SLACK_LINK = re.compile(r"^<([^|>\s]+)(?:\|[^>]+)?>$")
 _SLACK_LINK_SEARCH = re.compile(r"<(https?://[^|>\s]+)(?:\|[^>]+)?>", re.I)
 _PLAIN_URL_RE = re.compile(r"https?://\S+", re.I)
+_SLACK_MENTION = re.compile(r"<@[^>]+>")
+_SLACK_CHANNEL = re.compile(r"<#[^>]+>")
+_SLACK_SPECIAL = re.compile(r"<![^>]+>")
+_SLACK_EMOJI_TOKEN = re.compile(r":([a-z0-9_+-]+):", re.I)
+_MAX_NOTES_LEN = 10000
 
 
 def extract_first_slack_url(text: str) -> str:
@@ -30,6 +38,41 @@ def extract_first_slack_url(text: str) -> str:
     if m2:
         return m2.group(0).strip().rstrip(").,>]")
     return ""
+
+
+def _normalize_notes_whitespace(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "").strip())
+
+
+def _render_slack_emoji(text: str) -> str:
+    rendered = emoji.emojize(text, language="alias")
+    return _SLACK_EMOJI_TOKEN.sub(" ", rendered)
+
+
+def extract_slack_message_notes(message_text: str, *, url: str = "") -> str:
+    """
+    Pull comment prose from a Slack message, omitting song links and mention tokens.
+
+    Decodes HTML entities and converts standard Slack :emoji: aliases to Unicode.
+    Unrecognized :custom_emoji: tokens are removed.
+    """
+    s = (message_text or "").strip()
+    if not s:
+        return ""
+
+    s = _SLACK_LINK_SEARCH.sub(" ", s)
+    s = _PLAIN_URL_RE.sub(" ", s)
+    if url:
+        s = s.replace(url, " ")
+    s = _SLACK_MENTION.sub(" ", s)
+    s = _SLACK_CHANNEL.sub(" ", s)
+    s = _SLACK_SPECIAL.sub(" ", s)
+    s = html.unescape(s)
+    s = _render_slack_emoji(s)
+    s = _normalize_notes_whitespace(s)
+    if len(s) > _MAX_NOTES_LEN:
+        return s[:_MAX_NOTES_LEN]
+    return s
 
 
 def _strip_slack_wrappers(raw: str) -> str:
@@ -65,7 +108,9 @@ def _youtube_id_from_url(url: str) -> str:
     return ""
 
 
-def build_serializer_data_from_slack_text(*, text: str, entry_date, prompt_snapshot: str) -> dict:
+def build_serializer_data_from_slack_text(
+    *, text: str, entry_date, prompt_snapshot: str, notes: str = ""
+) -> dict:
     """
     Returns a dict suitable for SongResponseCreateSerializer (date objects, not strings).
     """
@@ -113,7 +158,7 @@ def build_serializer_data_from_slack_text(*, text: str, entry_date, prompt_snaps
     return {
         "entry_date": entry_date,
         "prompt_snapshot": prompt_snapshot,
-        "notes": "",
+        "notes": (notes or "").strip(),
         "artist": artist or "",
         "title": title or "",
         "raw_label": raw_label or "",

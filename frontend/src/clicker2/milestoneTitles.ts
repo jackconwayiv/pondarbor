@@ -106,6 +106,20 @@ export const EVOLUTION_COUNT_TITLES: Readonly<
   ...evo("abyssals", { title: "Twilight Trench" }, "Pressure-Cooker Plankton", "Trench-Titan's Throne", "Zenith of the Void"),
   ...evo("celestials", { title: "Star-Reflected Surface" }, "Orbiting Lily-Pad Array", "Quasar-Quagmire Pulse", "Event Horizon Equilibrium"),
   ...evo("transcendence", { title: "Awakening Ripple" }, "Boundary-Less Basin", "Consciousness Current", "Zenith of Unity"),
+  ...evo(
+    "tree",
+    { id: "a_tree_grows", title: "A Tree Grows" },
+    "Shady Shore",
+    "Wooded Wetland",
+    "Treebeard",
+  ),
+  ...evo(
+    "cloud",
+    { id: "cloudwatching", title: "Cloudwatching" },
+    "Fluffy and White",
+    "Clouding Up",
+    "Meteorology Maestro",
+  ),
 };
 
 /** Pollinator evolution-count titles keyed by `pollinator_${threshold}` (includes 20). */

@@ -1,7 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import { DENIZENS, denizenFirstWelcomeDescription } from "./denizens";
+import {
+  EL_NINO_SPECIALTY_ID,
+  FOSSIL_RECORD_SPECIALTY_ID,
+  GATHERING_CLOUDS_SPECIALTY_ID,
+  RIPPLES_OF_ETERNITY_SPECIALTY_ID,
+  STRATIFIED_POND_SPECIALTY_ID,
+  WOODED_SHORE_SPECIALTY_ID,
+} from "./fossilShop";
 import { POLLINATOR_SPECIALTY_DENIZEN_ID } from "./pollinatorEvolutions";
+import {
+  CLOUD_SPECIALTY_DENIZEN_ID,
+  TREE_SPECIALTY_DENIZEN_ID,
+} from "./treeCloudEvolutions";
 import { specialtiesForDenizen } from "./specialties";
 import {
   buildDenizenFirstMilestones,
@@ -18,6 +30,8 @@ import {
   compareMilestoneReachedTimes,
   evaluateNewMilestones,
   GLOBAL_MILESTONES,
+  FOSSIL_SHOP_MILESTONES,
+  POND_CYCLE_MILESTONES,
   isMilestoneMet,
   milestoneDisplayEmoji,
   MILESTONE_MILLION,
@@ -47,6 +61,7 @@ function ctx(overrides: Partial<MilestoneEvalContext> = {}): MilestoneEvalContex
     ownedSpecialties: {},
     ownedDenizens: {},
     denizenMutationLevels: {},
+    pondEra: 1,
     ...overrides,
   };
 }
@@ -83,8 +98,12 @@ describe("milestones catalog", () => {
     expect(WEATHER_CLICK_MILESTONES).toHaveLength(
       WEATHER_CLICK_THRESHOLDS.length * 4,
     );
+    expect(POND_CYCLE_MILESTONES).toHaveLength(7);
+    expect(FOSSIL_SHOP_MILESTONES).toHaveLength(6);
     expect(MILESTONES).toHaveLength(
       GLOBAL_MILESTONES.length +
+        POND_CYCLE_MILESTONES.length +
+        FOSSIL_SHOP_MILESTONES.length +
         WEATHER_CLICK_MILESTONES.length +
         chainCount * 4 +
         5 +
@@ -403,6 +422,39 @@ describe("isMilestoneMet", () => {
     expect(isMilestoneMet(def, ctx({ ownedSpecialties: owned }))).toBe(true);
   });
 
+  it("a tree grows when one tree evolution is owned", () => {
+    const def = MILESTONES.find((m) => m.id === "a_tree_grows")!;
+    const chain = specialtiesForDenizen(TREE_SPECIALTY_DENIZEN_ID);
+    expect(def.description).toBe("Evolve a tree.");
+    expect(
+      isMilestoneMet(def, ctx({ ownedSpecialties: { [chain[0]!.id]: true } })),
+    ).toBe(true);
+  });
+
+  it("treebeard requires fifteen tree evolutions", () => {
+    const def = MILESTONES.find((m) => m.id === "evolution_count_tree_15")!;
+    expect(def.title).toBe("Treebeard");
+    const chain = specialtiesForDenizen(TREE_SPECIALTY_DENIZEN_ID);
+    expect(chain).toHaveLength(15);
+    const owned = Object.fromEntries(chain.map((s) => [s.id, true]));
+    expect(isMilestoneMet(def, ctx({ ownedSpecialties: owned }))).toBe(true);
+  });
+
+  it("cloudwatching and meteorology maestro for cloud chain", () => {
+    const one = MILESTONES.find((m) => m.id === "cloudwatching")!;
+    const chain = specialtiesForDenizen(CLOUD_SPECIALTY_DENIZEN_ID);
+    expect(
+      isMilestoneMet(one, ctx({ ownedSpecialties: { [chain[0]!.id]: true } })),
+    ).toBe(true);
+
+    const fifteen = MILESTONES.find((m) => m.id === "evolution_count_cloud_15")!;
+    expect(fifteen.title).toBe("Meteorology Maestro");
+    const owned = Object.fromEntries(chain.map((s) => [s.id, true]));
+    expect(isMilestoneMet(fifteen, ctx({ ownedSpecialties: owned }))).toBe(
+      true,
+    );
+  });
+
   it("get clicking at 100 clicks", () => {
     const def = GLOBAL_MILESTONES.find((m) => m.id === "get_clicking")!;
     expect(isMilestoneMet(def, ctx({ totalClicks: 99 }))).toBe(false);
@@ -562,9 +614,171 @@ describe("isMilestoneMet", () => {
     expect(isMilestoneMet(def, ctx({ weatherEventsClicked: 999 }))).toBe(false);
     expect(isMilestoneMet(def, ctx({ weatherEventsClicked: 1000 }))).toBe(true);
   });
+
+  it("pond cyclist after the first pond cycle", () => {
+    const def = MILESTONES.find((m) => m.id === "pond_cyclist")!;
+    expect(def.title).toBe("Pond Cyclist");
+    expect(def.description).toBe("Cycle your pond.");
+    expect(isMilestoneMet(def, ctx({ pondEra: 1 }))).toBe(false);
+    expect(isMilestoneMet(def, ctx({ pondEra: 2 }))).toBe(true);
+    expect(milestoneDisplayEmoji(def)).toBe("🔁");
+  });
+
+  it("cycle-angelo after the second pond cycle", () => {
+    const def = MILESTONES.find((m) => m.id === "cycle_angelo")!;
+    expect(def.title).toBe("Cycle-angelo");
+    expect(isMilestoneMet(def, ctx({ pondEra: 2 }))).toBe(false);
+    expect(isMilestoneMet(def, ctx({ pondEra: 3 }))).toBe(true);
+  });
+
+  it("set it in stone when stratified pond is owned", () => {
+    const def = MILESTONES.find((m) => m.id === "set_it_in_stone")!;
+    expect(def.title).toBe("Set it in Stone");
+    expect(isMilestoneMet(def, ctx())).toBe(false);
+    expect(
+      isMilestoneMet(
+        def,
+        ctx({ ownedSpecialties: { [STRATIFIED_POND_SPECIALTY_ID]: true } }),
+      ),
+    ).toBe(true);
+    expect(milestoneDisplayEmoji(def)).toBe("🦴");
+  });
+
+  it("dino d-n-a when fossil record is owned", () => {
+    const def = MILESTONES.find((m) => m.id === "dino_dna")!;
+    expect(def.title).toBe("Dino D-N-A!");
+    expect(def.description).toBe("Buy Fossil Record from the fossil shop.");
+    expect(isMilestoneMet(def, ctx())).toBe(false);
+    expect(
+      isMilestoneMet(
+        def,
+        ctx({ ownedSpecialties: { [FOSSIL_RECORD_SPECIALTY_ID]: true } }),
+      ),
+    ).toBe(true);
+  });
+
+  it("into the woods and clouds above when fossil gates are owned", () => {
+    const woods = MILESTONES.find((m) => m.id === "into_the_woods")!;
+    expect(woods.title).toBe("Into the Woods");
+    expect(woods.description).toBe("Buy Wooded Shore at the fossil shop.");
+    expect(
+      isMilestoneMet(
+        woods,
+        ctx({ ownedSpecialties: { [WOODED_SHORE_SPECIALTY_ID]: true } }),
+      ),
+    ).toBe(true);
+
+    const clouds = MILESTONES.find((m) => m.id === "clouds_above")!;
+    expect(clouds.title).toBe("Clouds Above");
+    expect(
+      isMilestoneMet(
+        clouds,
+        ctx({ ownedSpecialties: { [GATHERING_CLOUDS_SPECIALTY_ID]: true } }),
+      ),
+    ).toBe(true);
+  });
+
+  it("perpetual motion and at weather's whim when ripples and el niño are owned", () => {
+    const ripples = MILESTONES.find((m) => m.id === "perpetual_motion")!;
+    expect(ripples.title).toBe("Perpetual Motion");
+    expect(ripples.description).toBe(
+      "Buy Ripples of Eternity from the fossil shop.",
+    );
+    expect(
+      isMilestoneMet(
+        ripples,
+        ctx({
+          ownedSpecialties: { [RIPPLES_OF_ETERNITY_SPECIALTY_ID]: true },
+        }),
+      ),
+    ).toBe(true);
+
+    const elNino = MILESTONES.find((m) => m.id === "at_weathers_whim")!;
+    expect(elNino.title).toBe("At Weather's Whim");
+    expect(
+      isMilestoneMet(
+        elNino,
+        ctx({ ownedSpecialties: { [EL_NINO_SPECIALTY_ID]: true } }),
+      ),
+    ).toBe(true);
+  });
+
+  it("pentacycle and pondclicker addict at era boundaries", () => {
+    const five = MILESTONES.find((m) => m.id === "pentacycle")!;
+    expect(five.description).toBe("Cycle your pond 5 times.");
+    expect(isMilestoneMet(five, ctx({ pondEra: 5 }))).toBe(false);
+    expect(isMilestoneMet(five, ctx({ pondEra: 6 }))).toBe(true);
+
+    const addict = MILESTONES.find((m) => m.id === "pondclicker_addict")!;
+    expect(addict.title).toBe("PondClicker Addict");
+    expect(isMilestoneMet(addict, ctx({ pondEra: 100 }))).toBe(false);
+    expect(isMilestoneMet(addict, ctx({ pondEra: 101 }))).toBe(true);
+  });
 });
 
 describe("evaluateNewMilestones", () => {
+  it("awards set it in stone when stratified pond is purchased", () => {
+    expect(
+      evaluateNewMilestones(
+        ctx({ ownedSpecialties: { [STRATIFIED_POND_SPECIALTY_ID]: true } }),
+        {},
+      ),
+    ).toContain("set_it_in_stone");
+  });
+
+  it("awards dino d-n-a when fossil record is purchased", () => {
+    expect(
+      evaluateNewMilestones(
+        ctx({ ownedSpecialties: { [FOSSIL_RECORD_SPECIALTY_ID]: true } }),
+        {},
+      ),
+    ).toContain("dino_dna");
+  });
+
+  it("awards into the woods and clouds above when fossil gates are purchased", () => {
+    expect(
+      evaluateNewMilestones(
+        ctx({ ownedSpecialties: { [WOODED_SHORE_SPECIALTY_ID]: true } }),
+        {},
+      ),
+    ).toContain("into_the_woods");
+    expect(
+      evaluateNewMilestones(
+        ctx({ ownedSpecialties: { [GATHERING_CLOUDS_SPECIALTY_ID]: true } }),
+        {},
+      ),
+    ).toContain("clouds_above");
+  });
+
+  it("awards perpetual motion and at weather's whim when ripples and el niño are purchased", () => {
+    expect(
+      evaluateNewMilestones(
+        ctx({
+          ownedSpecialties: { [RIPPLES_OF_ETERNITY_SPECIALTY_ID]: true },
+        }),
+        {},
+      ),
+    ).toContain("perpetual_motion");
+    expect(
+      evaluateNewMilestones(
+        ctx({ ownedSpecialties: { [EL_NINO_SPECIALTY_ID]: true } }),
+        {},
+      ),
+    ).toContain("at_weathers_whim");
+  });
+
+  it("awards pond cycle milestones when pond era crosses thresholds", () => {
+    expect(
+      evaluateNewMilestones(ctx({ pondEra: 2 }), {}),
+    ).toContain("pond_cyclist");
+    expect(
+      evaluateNewMilestones(ctx({ pondEra: 2 }), {}),
+    ).not.toContain("cycle_angelo");
+    expect(
+      evaluateNewMilestones(ctx({ pondEra: 3 }), { pond_cyclist: 1 }),
+    ).toEqual(["cycle_angelo"]);
+  });
+
   it("returns each id only once", () => {
     const first = evaluateNewMilestones(
       ctx({ ownedDenizens: { ripples: 1 } }),

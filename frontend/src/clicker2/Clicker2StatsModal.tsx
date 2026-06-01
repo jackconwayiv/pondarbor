@@ -5,17 +5,12 @@ import {
   Stack,
   Tabs,
   Text,
-  TooltipContent,
-  TooltipPositioner,
-  TooltipRoot,
-  TooltipTrigger,
+  useMediaQuery,
 } from "@chakra-ui/react";
 import { useState, type ReactNode } from "react";
 
-import {
-  ecologyTooltipRootBaseProps,
-  ecologyTooltipSurfaceProps,
-} from "../clicker/ecologyUi.constants";
+import { useIsMobile } from "../responsive";
+
 import { AppModal } from "../components/AppModal";
 import {
   APP_SHELL_TAB_LIST_NESTED_PROPS,
@@ -24,9 +19,21 @@ import {
 import { HIDE_SCROLLBAR_CSS } from "../theme/typography";
 import { DESIGN } from "../theme/tokens";
 
-import { evolutionDisplayEmoji } from "./clicker2OwnedEvolutions";
-import { EVOLUTIONS_LABEL, MILESTONES_LABEL, MUTAGENS_LABEL, CYCLE_LABEL, STRATA_LABEL, TO_NEXT_STRATA_PHRASE } from "./clicker2Copy";
-import { EvolutionTooltipContent } from "./EvolutionTooltipContent";
+import { EvolutionShopCard, EvolutionShopCardGrid } from "./EvolutionShopCard";
+import {
+  CYCLE_LABEL,
+  EVOLUTIONS_LABEL,
+  FOSSILIZED_STRATA_LABEL,
+  FOSSILS_LABEL,
+  FOSSIL_SHOP_LABEL,
+  MILESTONES_LABEL,
+  MUTAGENS_LABEL,
+  STRATA_LABEL,
+  TO_NEXT_STRATA_PHRASE,
+  UNFOSSILIZED_STRATA_LABEL,
+} from "./clicker2Copy";
+import { formatFossilCost } from "./FossilShopSection";
+import { FOSSIL_EMOJI } from "./fossilShop";
 import { ENERGY_EMOJI, formatEnergyAmount, formatEnergyRate } from "./formatEnergy";
 import { formatLastSaved, formatPondAgeAgo } from "./formatPondAge";
 import {
@@ -34,7 +41,12 @@ import {
   getMilestoneDef,
   milestoneDisplayEmoji,
 } from "./milestones";
+import ResetPondSaveSection from "./ResetPondSaveSection";
 import type { SpecialtyDef } from "./specialties";
+import {
+  FOSSIL_SHOP_CARD_BORDER_WIDTH,
+  FOSSIL_SHOP_CARD_GRADIENT,
+} from "./specialtyTierColors";
 
 function StatsRow({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -64,12 +76,18 @@ export type Clicker2StatsSnapshot = {
   /** 0 before 1T lifetime energy; derived from all-time total. */
   stratumLevel: number;
   energyToNextStratum: number;
+  fossilizedStrata: number;
+  unfossilizedStrata: number;
+  fossils: number;
+  totalFossilsEarned: number;
   pondStartedAtMs: number;
   /** Wall-clock epoch ms of the most recent successful save (0 if unknown). */
   lastSavedAtMs: number;
   denizensOwned: number;
   evolutionsOwned: number;
   ownedEvolutionDefs: readonly SpecialtyDef[];
+  fossilShopOwned: number;
+  ownedFossilShopDefs: readonly SpecialtyDef[];
   milestonesReached: number;
   blossoms: number;
   milestoneStatuses: Array<{
@@ -91,38 +109,6 @@ export type Clicker2StatsSnapshot = {
 
 function energyAmount(value: number): ReactNode {
   return `${formatEnergyAmount(value)} ${ENERGY_EMOJI}`;
-}
-
-function EvolutionOwnedRow({ def }: { def: SpecialtyDef }) {
-  const emoji = evolutionDisplayEmoji(def);
-
-  return (
-    <TooltipRoot {...ecologyTooltipRootBaseProps} openDelay={300}>
-      <TooltipTrigger asChild>
-        <Flex
-          gap="1.5"
-          align="center"
-          fontSize="sm"
-          lineHeight="1.35"
-          minW="0"
-          w="full"
-          cursor="default"
-        >
-          <Text lineHeight="1.2" aria-hidden flexShrink={0}>
-            {emoji}
-          </Text>
-          <Text fontWeight="medium" lineHeight="1.3" truncate>
-            {def.name}
-          </Text>
-        </Flex>
-      </TooltipTrigger>
-      <TooltipPositioner>
-        <TooltipContent {...ecologyTooltipSurfaceProps} maxW="300px">
-          <EvolutionTooltipContent def={def} owned />
-        </TooltipContent>
-      </TooltipPositioner>
-    </TooltipRoot>
-  );
 }
 
 function MilestoneStatusRow({
@@ -173,14 +159,26 @@ function MilestoneStatusRow({
   );
 }
 
+const STATS_EVOLUTION_GRID_COLUMNS_DESKTOP = 4;
+const STATS_EVOLUTION_GRID_COLUMNS_MOBILE = 3;
+
 function EvolutionsOwnedPanel({
   ownedEvolutionDefs,
 }: {
   ownedEvolutionDefs: readonly SpecialtyDef[];
 }) {
+  const isMobile = useIsMobile();
+  const [canHoverFinePointer] = useMediaQuery(
+    ["(hover: hover) and (pointer: fine)"],
+    { ssr: false, fallback: [false] },
+  );
+  const columns = isMobile
+    ? STATS_EVOLUTION_GRID_COLUMNS_MOBILE
+    : STATS_EVOLUTION_GRID_COLUMNS_DESKTOP;
+
   return (
     <Box
-      maxH="10rem"
+      maxH="14rem"
       overflowY="auto"
       borderWidth="1px"
       borderColor="border"
@@ -188,12 +186,65 @@ function EvolutionsOwnedPanel({
       bg="bg.subtle"
       px="2"
       py="1.5"
+      css={{ ...HIDE_SCROLLBAR_CSS, WebkitOverflowScrolling: "touch" }}
     >
-      <Grid templateColumns="repeat(2, minmax(0, 1fr))" gap="1.5">
+      <EvolutionShopCardGrid gap="0.5" columns={columns}>
         {ownedEvolutionDefs.map((def) => (
-          <EvolutionOwnedRow key={def.id} def={def} />
+          <EvolutionShopCard
+            key={def.id}
+            def={def}
+            canHoverFinePointer={canHoverFinePointer}
+            owned
+          />
         ))}
-      </Grid>
+      </EvolutionShopCardGrid>
+    </Box>
+  );
+}
+
+function FossilShopOwnedPanel({
+  ownedFossilShopDefs,
+}: {
+  ownedFossilShopDefs: readonly SpecialtyDef[];
+}) {
+  const isMobile = useIsMobile();
+  const [canHoverFinePointer] = useMediaQuery(
+    ["(hover: hover) and (pointer: fine)"],
+    { ssr: false, fallback: [false] },
+  );
+  const columns = isMobile
+    ? STATS_EVOLUTION_GRID_COLUMNS_MOBILE
+    : STATS_EVOLUTION_GRID_COLUMNS_DESKTOP;
+
+  return (
+    <Box
+      maxH="14rem"
+      overflowY="auto"
+      borderWidth="1px"
+      borderColor="border"
+      borderRadius="md"
+      bg="bg.subtle"
+      px="2"
+      py="1.5"
+      css={{ ...HIDE_SCROLLBAR_CSS, WebkitOverflowScrolling: "touch" }}
+    >
+      <EvolutionShopCardGrid gap="0.5" columns={columns}>
+        {ownedFossilShopDefs.map((def) => (
+          <EvolutionShopCard
+            key={def.id}
+            def={def}
+            canHoverFinePointer={canHoverFinePointer}
+            owned
+            backgroundGradient={FOSSIL_SHOP_CARD_GRADIENT}
+            borderWidth={FOSSIL_SHOP_CARD_BORDER_WIDTH}
+            costLabel={
+              def.priceFossils != null
+                ? formatFossilCost(def.priceFossils)
+                : undefined
+            }
+          />
+        ))}
+      </EvolutionShopCardGrid>
     </Box>
   );
 }
@@ -208,16 +259,23 @@ function MilestonesStatusPanel({
     .sort(compareMilestoneReachedTimes);
 
   return (
-    <Stack
-      gap="1.5"
+    <Box
       maxH="14rem"
       overflowY="auto"
+      borderWidth="1px"
+      borderColor="border"
+      borderRadius="md"
+      bg="bg.subtle"
+      px="2"
+      py="1.5"
       css={{ ...HIDE_SCROLLBAR_CSS, WebkitOverflowScrolling: "touch" }}
     >
-      {earned.map((m) => (
-        <MilestoneStatusRow key={m.id} {...m} />
-      ))}
-    </Stack>
+      <Grid templateColumns="repeat(2, minmax(0, 1fr))" gap="1.5">
+        {earned.map((m) => (
+          <MilestoneStatusRow key={m.id} {...m} />
+        ))}
+      </Grid>
+    </Box>
   );
 }
 
@@ -225,45 +283,75 @@ function statsCatalogTabLabel(base: string, count: number): string {
   return `${base} (${count.toLocaleString()})`;
 }
 
+type StatsCatalogTabId = "evolutions" | "milestones" | "fossilShop";
+
 function StatsCatalogTabs({
   evolutionsOwned,
   milestonesReached,
+  fossilShopOwned,
   ownedEvolutionDefs,
+  ownedFossilShopDefs,
   milestoneStatuses,
 }: {
   evolutionsOwned: number;
   milestonesReached: number;
+  fossilShopOwned: number;
   ownedEvolutionDefs: readonly SpecialtyDef[];
+  ownedFossilShopDefs: readonly SpecialtyDef[];
   milestoneStatuses: Clicker2StatsSnapshot["milestoneStatuses"];
 }) {
   const showEvolutions = evolutionsOwned > 0;
   const showMilestones = milestonesReached > 0;
-  const [tab, setTab] = useState("evolutions");
+  const showFossilShop = fossilShopOwned > 0;
+  const [tab, setTab] = useState<StatsCatalogTabId>("evolutions");
 
-  if (!showEvolutions && !showMilestones) return null;
+  if (!showEvolutions && !showMilestones && !showFossilShop) return null;
 
-  const evolutionsTabLabel = statsCatalogTabLabel(
-    `${EVOLUTIONS_LABEL} acquired`,
-    evolutionsOwned,
-  );
+  const evolutionsTabLabel = statsCatalogTabLabel(EVOLUTIONS_LABEL, evolutionsOwned);
   const milestonesTabLabel = statsCatalogTabLabel(
-    `${MILESTONES_LABEL} reached`,
+    MILESTONES_LABEL,
     milestonesReached,
   );
+  const fossilShopTabLabel = statsCatalogTabLabel(
+    FOSSIL_SHOP_LABEL,
+    fossilShopOwned,
+  );
 
-  const activeTab =
-    showEvolutions && showMilestones
-      ? tab
-      : showEvolutions
+  const tabCount =
+    (showEvolutions ? 1 : 0) + (showMilestones ? 1 : 0) + (showFossilShop ? 1 : 0);
+
+  const defaultTab: StatsCatalogTabId = showEvolutions
+    ? "evolutions"
+    : showMilestones
+      ? "milestones"
+      : "fossilShop";
+
+  const activeTab: StatsCatalogTabId =
+    tabCount > 1
+      ? tab === "evolutions" && showEvolutions
         ? "evolutions"
-        : "milestones";
+        : tab === "milestones" && showMilestones
+          ? "milestones"
+          : tab === "fossilShop" && showFossilShop
+            ? "fossilShop"
+            : defaultTab
+      : defaultTab;
 
   const panel =
     activeTab === "evolutions" ? (
       <EvolutionsOwnedPanel ownedEvolutionDefs={ownedEvolutionDefs} />
-    ) : (
+    ) : activeTab === "milestones" ? (
       <MilestonesStatusPanel milestoneStatuses={milestoneStatuses} />
+    ) : (
+      <FossilShopOwnedPanel ownedFossilShopDefs={ownedFossilShopDefs} />
     );
+
+  const activeTabLabel =
+    activeTab === "evolutions"
+      ? evolutionsTabLabel
+      : activeTab === "milestones"
+        ? milestonesTabLabel
+        : fossilShopTabLabel;
 
   return (
     <Stack
@@ -273,20 +361,43 @@ function StatsCatalogTabs({
       borderTopWidth="1px"
       borderColor="border"
     >
-      {showEvolutions && showMilestones ? (
+      {tabCount > 1 ? (
         <Tabs.Root
           value={activeTab}
           variant="plain"
           w="100%"
-          onValueChange={(details) => setTab(details.value)}
+          onValueChange={(details) =>
+            setTab(details.value as StatsCatalogTabId)
+          }
         >
           <Tabs.List {...APP_SHELL_TAB_LIST_NESTED_PROPS}>
-            <Tabs.Trigger value="evolutions" {...APP_SHELL_TAB_TRIGGER_PROPS} fontSize="xs">
-              {evolutionsTabLabel}
-            </Tabs.Trigger>
-            <Tabs.Trigger value="milestones" {...APP_SHELL_TAB_TRIGGER_PROPS} fontSize="xs">
-              {milestonesTabLabel}
-            </Tabs.Trigger>
+            {showEvolutions ? (
+              <Tabs.Trigger
+                value="evolutions"
+                {...APP_SHELL_TAB_TRIGGER_PROPS}
+                fontSize="xs"
+              >
+                {evolutionsTabLabel}
+              </Tabs.Trigger>
+            ) : null}
+            {showMilestones ? (
+              <Tabs.Trigger
+                value="milestones"
+                {...APP_SHELL_TAB_TRIGGER_PROPS}
+                fontSize="xs"
+              >
+                {milestonesTabLabel}
+              </Tabs.Trigger>
+            ) : null}
+            {showFossilShop ? (
+              <Tabs.Trigger
+                value="fossilShop"
+                {...APP_SHELL_TAB_TRIGGER_PROPS}
+                fontSize="xs"
+              >
+                {fossilShopTabLabel}
+              </Tabs.Trigger>
+            ) : null}
           </Tabs.List>
           <Tabs.Content value={activeTab} pt="2">
             {panel}
@@ -295,7 +406,7 @@ function StatsCatalogTabs({
       ) : (
         <Stack gap="2">
           <Text fontSize="xs" fontWeight="semibold" color="gray.600">
-            {activeTab === "evolutions" ? evolutionsTabLabel : milestonesTabLabel}
+            {activeTabLabel}
           </Text>
           {panel}
         </Stack>
@@ -308,10 +419,16 @@ export default function Clicker2StatsModal({
   open,
   onOpenChange,
   snapshot,
+  resetPondBusy,
+  resetPondError,
+  onResetPondSave,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   snapshot: Clicker2StatsSnapshot | null;
+  resetPondBusy: boolean;
+  resetPondError: string | null;
+  onResetPondSave: () => void | Promise<void>;
 }) {
   if (!snapshot) return null;
 
@@ -365,6 +482,12 @@ export default function Clicker2StatsModal({
             value={snapshot.evolutionsOwned.toLocaleString()}
           />
         ) : null}
+        {snapshot.fossilShopOwned > 0 ? (
+          <StatsRow
+            label={FOSSIL_SHOP_LABEL}
+            value={snapshot.fossilShopOwned.toLocaleString()}
+          />
+        ) : null}
         {snapshot.milestonesReached > 0 ? (
           <StatsRow
             label={`${MILESTONES_LABEL} reached`}
@@ -409,6 +532,30 @@ export default function Clicker2StatsModal({
               label={STRATA_LABEL}
               value={snapshot.stratumLevel.toLocaleString()}
             />
+            {snapshot.pondEra > 1 ? (
+              <>
+                <StatsRow
+                  label={FOSSILIZED_STRATA_LABEL}
+                  value={snapshot.fossilizedStrata.toLocaleString()}
+                />
+                <StatsRow
+                  label={UNFOSSILIZED_STRATA_LABEL}
+                  value={snapshot.unfossilizedStrata.toLocaleString()}
+                />
+              </>
+            ) : null}
+            {snapshot.totalFossilsEarned > 0 ? (
+              <>
+                <StatsRow
+                  label={FOSSILS_LABEL}
+                  value={`${snapshot.fossils.toLocaleString()} ${FOSSIL_EMOJI}`}
+                />
+                <StatsRow
+                  label={`${FOSSILS_LABEL} earned (lifetime)`}
+                  value={`${snapshot.totalFossilsEarned.toLocaleString()} ${FOSSIL_EMOJI}`}
+                />
+              </>
+            ) : null}
             <Text
               fontSize="xs"
               color="gray.600"
@@ -424,8 +571,16 @@ export default function Clicker2StatsModal({
         <StatsCatalogTabs
           evolutionsOwned={snapshot.evolutionsOwned}
           milestonesReached={snapshot.milestonesReached}
+          fossilShopOwned={snapshot.fossilShopOwned}
           ownedEvolutionDefs={snapshot.ownedEvolutionDefs}
+          ownedFossilShopDefs={snapshot.ownedFossilShopDefs}
           milestoneStatuses={snapshot.milestoneStatuses}
+        />
+        <ResetPondSaveSection
+          key={open ? "open" : "closed"}
+          busy={resetPondBusy}
+          error={resetPondError}
+          onReset={onResetPondSave}
         />
       </Stack>
     </AppModal>

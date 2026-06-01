@@ -13,3 +13,9 @@ export const CLICKER2_SHOP_SECTION_HEADING_PROPS = {
   color: "lilypad.solid",
   lineHeight: "1.2",
 } as const;
+
+/** Fossil Shop collapsible heading (brand orange / nautical). */
+export const FOSSIL_SHOP_SECTION_HEADING_PROPS = {
+  ...CLICKER2_SHOP_SECTION_HEADING_PROPS,
+  color: "nautical.solid",
+} as const;

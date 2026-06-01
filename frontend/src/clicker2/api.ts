@@ -13,8 +13,8 @@ import { isRetiredWindSpecialtyId } from "./retiredWindEvolutions";
 import { SPECIALTY_IDS } from "./specialties";
 import { rollWeatherSpawnDelayMs } from "./weatherEvents";
 
-export const SCHEMA_VERSION = 5;
-export const CATALOG_CONTENT_VERSION = 20;
+export const SCHEMA_VERSION = 6;
+export const CATALOG_CONTENT_VERSION = 21;
 
 export type Clicker2Statistics = {
   total_clicks: number;
@@ -58,6 +58,12 @@ export type Clicker2GameState = {
   milestones_reached: Record<string, number>;
   /** Milestone celebration dismissed after reach. */
   milestones_dismissed: Record<string, true>;
+  /** Spendable fossils (bone currency) from cycling strata. */
+  fossils: number;
+  /** Lifetime fossils earned; unlocks Fossil Shop once ≥ 1. */
+  total_fossils_earned: number;
+  /** Strata levels locked in across pond cycles. */
+  fossilized_strata: number;
   statistics: Clicker2Statistics;
 };
 
@@ -128,6 +134,9 @@ export function createDefaultClicker2State(): Clicker2GameState {
     denizen_mutation_levels: {},
     milestones_reached: {},
     milestones_dismissed: {},
+    fossils: 0,
+    total_fossils_earned: 0,
+    fossilized_strata: 0,
     statistics: createDefaultClicker2Statistics(),
   };
 }
@@ -296,6 +305,12 @@ export function normalizeClicker2State(raw: unknown): Clicker2GameState {
   const milestones_dismissed = normalizeMilestonesDismissed(
     o.milestones_dismissed,
   );
+
+  const fossils = Math.floor(numField(o, "fossils", 0));
+  let total_fossils_earned = Math.floor(numField(o, "total_fossils_earned", 0));
+  if (total_fossils_earned < fossils) total_fossils_earned = fossils;
+  const fossilized_strata = Math.floor(numField(o, "fossilized_strata", 0));
+
   return {
     energy,
     owned_denizens,
@@ -313,6 +328,9 @@ export function normalizeClicker2State(raw: unknown): Clicker2GameState {
     denizen_mutation_levels,
     milestones_reached,
     milestones_dismissed,
+    fossils,
+    total_fossils_earned,
+    fossilized_strata,
     statistics,
   };
 }

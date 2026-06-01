@@ -1,5 +1,6 @@
 import { DESIGN } from "../theme/tokens";
 
+import { weatherSpawnDelayScale } from "./fossilShop";
 import { formatEnergyAmount } from "./formatEnergy";
 import type { ClickValueBreakdown } from "./simulation";
 
@@ -354,6 +355,26 @@ export function rollWeatherEventKind(): WeatherFamily {
 export function rollWeatherSpawnDelayMs(): number {
   const span = WEATHER_SPAWN_MAX_MS - WEATHER_SPAWN_MIN_MS;
   return WEATHER_SPAWN_MIN_MS + Math.floor(Math.random() * (span + 1));
+}
+
+/** Scale base spawn delay by fossil-shop weather frequency bonuses (e.g. El Niño). */
+export function scaleWeatherSpawnDelayMs(
+  baseDelayMs: number,
+  ownedSpecialties: Record<number, boolean>,
+): number {
+  return Math.max(
+    1,
+    Math.floor(baseDelayMs * weatherSpawnDelayScale(ownedSpecialties)),
+  );
+}
+
+export function rollWeatherSpawnDelayMsForOwned(
+  ownedSpecialties: Record<number, boolean>,
+): number {
+  return scaleWeatherSpawnDelayMs(
+    rollWeatherSpawnDelayMs(),
+    ownedSpecialties,
+  );
 }
 
 /** Fresh random delay for the next weather spawn (5–15 minutes). */

@@ -21,10 +21,6 @@ import {
   PANEL_ENTRY_CARD_PROPS,
 } from "../theme/typography";
 import { createDefaultClickerState, saveClickerState } from "./api";
-import {
-  createDefaultClicker2State,
-  saveClicker2State,
-} from "../clicker2/api";
 
 function ClickerEntryChrome({ children }: { children: ReactNode }) {
   return (
@@ -112,8 +108,6 @@ function GameChoiceCard({
   );
 }
 
-type ResetTarget = "legacy" | "redux" | null;
-
 export default function ClickerLobbyPage() {
   const { loginWithRedirect } = useAuth0();
   const navigate = useNavigate();
@@ -124,41 +118,36 @@ export default function ClickerLobbyPage() {
     error: sessionError,
     getApiAccessToken,
   } = useAppSession();
-  const [confirmReset, setConfirmReset] = useState<ResetTarget>(null);
+  const [confirmLegacyReset, setConfirmLegacyReset] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
-  const confirmResetButtonRef = useRef<HTMLButtonElement | null>(null);
+  const confirmLegacyResetButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
-    if (!confirmReset) return;
+    if (!confirmLegacyReset) return;
     const onPointerDown = (e: PointerEvent) => {
-      const btn = confirmResetButtonRef.current;
+      const btn = confirmLegacyResetButtonRef.current;
       if (btn && e.target instanceof Node && btn.contains(e.target)) return;
-      setConfirmReset(null);
+      setConfirmLegacyReset(false);
     };
     document.addEventListener("pointerdown", onPointerDown, true);
     return () =>
       document.removeEventListener("pointerdown", onPointerDown, true);
-  }, [confirmReset]);
+  }, [confirmLegacyReset]);
 
-  const performReset = useCallback(async () => {
-    if (!confirmReset) return;
+  const performLegacyReset = useCallback(async () => {
     setResetBusy(true);
     setResetError(null);
     try {
       const token = await getApiAccessToken();
-      if (confirmReset === "legacy") {
-        await saveClickerState(token, createDefaultClickerState());
-      } else {
-        await saveClicker2State(token, createDefaultClicker2State());
-      }
-      setConfirmReset(null);
+      await saveClickerState(token, createDefaultClickerState());
+      setConfirmLegacyReset(false);
     } catch (e) {
       setResetError(e instanceof Error ? e.message : "Reset failed");
     } finally {
       setResetBusy(false);
     }
-  }, [confirmReset, getApiAccessToken]);
+  }, [getApiAccessToken]);
 
   if (!isAuthenticated) {
     return (
@@ -275,69 +264,52 @@ export default function ClickerLobbyPage() {
             {resetError}
           </Text>
         ) : null}
+        {isStaff ? (
+          <Flex w="full" flexWrap="wrap" gap="2" align="center" mb="3">
+            <PondButton
+              type="button"
+              size="md"
+              variant="outline"
+              colorPalette="gray"
+              onClick={() => navigate("/clicker/dev/redux-catalog")}
+            >
+              View Redux catalog
+            </PondButton>
+            <PondButton
+              type="button"
+              size="md"
+              variant="outline"
+              colorPalette="gray"
+              onClick={() => navigate("/clicker/dev/catalog")}
+            >
+              View Legacy catalog
+            </PondButton>
+          </Flex>
+        ) : null}
         <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600" mb="3">
-          Reset only the save for the game you choose. This cannot be undone.
+          Reset only your Legacy PondClicker save. This cannot be undone. To
+          reset PondClicker Redux, open Stats while playing.
         </Text>
         <Flex w="full" flexWrap="wrap" gap="2" align="center">
-          {isStaff ? (
-            <>
-              <PondButton
-                type="button"
-                size="md"
-                variant="outline"
-                colorPalette="gray"
-                onClick={() => navigate("/clicker/dev/redux-catalog")}
-              >
-                View Redux catalog
-              </PondButton>
-              <PondButton
-                type="button"
-                size="md"
-                variant="outline"
-                colorPalette="gray"
-                onClick={() => navigate("/clicker/dev/catalog")}
-              >
-                View Legacy catalog
-              </PondButton>
-            </>
-          ) : null}
           <PondButton
-            ref={confirmResetButtonRef}
-            type="button"
-            size="md"
-            colorPalette="orange"
-            loading={resetBusy && confirmReset === "redux"}
-            disabled={resetBusy}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (confirmReset !== "redux") {
-                setConfirmReset("redux");
-                setResetError(null);
-                return;
-              }
-              void performReset();
-            }}
-          >
-            {confirmReset === "redux" ? "Confirm Redux reset" : "Reset Redux"}
-          </PondButton>
-          <PondButton
+            ref={confirmLegacyResetButtonRef}
             type="button"
             size="md"
             colorPalette="orange"
             variant="outline"
-            loading={resetBusy && confirmReset === "legacy"}
+            loading={resetBusy}
             disabled={resetBusy}
             onClick={(e) => {
               e.stopPropagation();
-              if (confirmReset !== "legacy") {
-                setConfirmReset("legacy");
+              if (!confirmLegacyReset) {
+                setConfirmLegacyReset(true);
                 setResetError(null);
                 return;
               }
-              void performReset();
+              void performLegacyReset();
             }}
           >
-            {confirmReset === "legacy" ? "Confirm Legacy reset" : "Reset Legacy"}
+            {confirmLegacyReset ? "Confirm Legacy reset" : "Reset Legacy"}
           </PondButton>
         </Flex>
       </Box>

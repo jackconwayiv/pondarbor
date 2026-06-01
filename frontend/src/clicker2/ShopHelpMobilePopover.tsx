@@ -18,10 +18,13 @@ import { CLICKER_SURFACES } from "../clicker/clickerTheme";
 
 export function ShopHelpMobilePopover({
   ariaLabel,
+  bodyBg,
   onOpenChange,
   children,
 }: {
   ariaLabel: string;
+  /** Popover panel fill (e.g. fossil shop sandy brown). */
+  bodyBg?: string;
   onOpenChange?: (details: { open: boolean }) => void;
   children: ReactNode;
 }) {
@@ -57,10 +60,16 @@ export function ShopHelpMobilePopover({
         <PopoverPositioner {...shopHelpPopoverPositionerProps}>
           <PopoverContent
             {...ecologyPopoverContentProps}
+            {...(bodyBg != null ? { bg: bodyBg } : {})}
             {...shopHelpPopoverPositionerProps}
             w={{ base: "calc(100vw - 2rem)", md: "auto" }}
           >
-            <PopoverBody bg={CLICKER_SURFACES.active} color="black" p="3" border="none">
+            <PopoverBody
+              bg={bodyBg ?? CLICKER_SURFACES.active}
+              color="black"
+              p="3"
+              border="none"
+            >
               {children}
             </PopoverBody>
           </PopoverContent>

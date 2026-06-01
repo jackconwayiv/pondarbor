@@ -105,7 +105,11 @@ Retired specialty ids **675–678** (removed East/South/West/North Wind cards) a
 | Pond production | `production_percent` (+1% / +2% per tier) | `specialties.ts` `buildPondProductionChain` |
 | Click reflection | `click_eps_percent` (+1% per tier) | `specialties.ts` |
 | Pollinator | `eps_percent_per_blossom` | `pollinatorEvolutions.ts` |
+| Fossil / strata | `strata_effect_fraction` (+ Stratified Pond gate) | `specialties.ts` `buildStrataEffectChain`, `fossilShop.ts` |
+| Fossil shop (permanent) | `production_percent`, `cycle_start_denizen`, `weather_spawn_frequency_bonus` | `fossilShop.ts`, `pondCycle.ts`, `weatherEvents.ts` |
 | Pairing | `double_denizen` (L) + `denizen_eps_percent_per_denizen` (H) | `pairingEvolutions.ts` → generated |
+
+**Strata levels effect:** Requires **Stratified Pond** (Fossil Shop). `globalEpsBoost` adds `fossilized_strata × max(strata_effect_fraction) × 1%` EpS (fraction 0 until an energy-tier fossil evolution is owned). `fossilized_strata` persists across pond cycles; unfossilized strata are derived from lifetime stratum level minus fossilized count.
 
 Pairing cards use `effects[]`; `ownedSpecialtyEffects` expands both `effect` and `effects`.
 

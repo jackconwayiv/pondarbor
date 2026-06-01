@@ -29,6 +29,19 @@ import {
 import { POND_PRODUCTION_EMOJI } from "./clicker2OwnedEvolutions";
 import { POLLINATOR_SPECIALTY_DENIZEN_ID } from "./pollinatorEvolutions";
 import {
+  EL_NINO_SPECIALTY_ID,
+  FOSSIL_EMOJI,
+  FOSSIL_RECORD_SPECIALTY_ID,
+  GATHERING_CLOUDS_SPECIALTY_ID,
+  RIPPLES_OF_ETERNITY_SPECIALTY_ID,
+  STRATIFIED_POND_SPECIALTY_ID,
+  WOODED_SHORE_SPECIALTY_ID,
+} from "./fossilShop";
+import {
+  CLOUD_SPECIALTY_DENIZEN_ID,
+  TREE_SPECIALTY_DENIZEN_ID,
+} from "./treeCloudEvolutions";
+import {
   POND_SPECIALTY_DENIZEN_ID,
   specialtiesForDenizen,
 } from "./specialties";
@@ -51,7 +64,9 @@ export type MilestoneKind =
   | "evolution_count"
   | "denizen_first"
   | "denizen_count"
-  | "mutation";
+  | "mutation"
+  | "pond_cycle"
+  | "fossil_shop_purchase";
 
 export type MilestoneDef = {
   id: string;
@@ -61,6 +76,8 @@ export type MilestoneDef = {
   /** Short unlock rule for staff catalog and locked stats rows. */
   criteriaText: string;
   denizenId?: string;
+  /** Fossil shop specialty id (`fossil_shop_purchase` kind). */
+  specialtyId?: number;
   /** For denizen_count / mutation kinds. */
   /** Pond spendable energy threshold (`pond_energy` kind). */
   threshold?: number;
@@ -363,6 +380,8 @@ export type MilestoneEvalContext = {
   ownedSpecialties: Record<number, boolean>;
   ownedDenizens: Record<string, number>;
   denizenMutationLevels: Record<string, number>;
+  /** 1-based pond era; increments each time the pond is cycled. */
+  pondEra: number;
 };
 
 function weatherClickCountPhrase(threshold: number): string {
@@ -452,7 +471,11 @@ function countOwnedEvolutionsInChain(
 }
 
 export function evolutionChainDenizenIds(): readonly string[] {
-  const ids: string[] = [POND_SPECIALTY_DENIZEN_ID];
+  const ids: string[] = [
+    POND_SPECIALTY_DENIZEN_ID,
+    TREE_SPECIALTY_DENIZEN_ID,
+    CLOUD_SPECIALTY_DENIZEN_ID,
+  ];
   for (const def of DENIZENS) {
     if (specialtiesForDenizen(def.id).length > 0) {
       ids.push(def.id);
@@ -470,6 +493,12 @@ function evolutionChainNames(denizenId: string): {
   }
   if (denizenId === POLLINATOR_SPECIALTY_DENIZEN_ID) {
     return { prose: "pollinators", criteria: "Pollinator" };
+  }
+  if (denizenId === TREE_SPECIALTY_DENIZEN_ID) {
+    return { prose: "trees", criteria: "Tree" };
+  }
+  if (denizenId === CLOUD_SPECIALTY_DENIZEN_ID) {
+    return { prose: "clouds", criteria: "Cloud" };
   }
   const def = getDenizenDef(denizenId);
   if (!def) return { prose: denizenId, criteria: denizenId };
@@ -490,6 +519,14 @@ const EVOLUTION_COUNT_MILESTONE_OVERRIDES: Partial<
     title: "Sludge Trudger",
     description: "Evolve your sediment.",
     criteriaText: "Evolve your Sediment",
+  },
+  tree_1: {
+    description: "Evolve a tree.",
+    criteriaText: "Evolve a Tree",
+  },
+  cloud_1: {
+    description: "Evolve a cloud.",
+    criteriaText: "Evolve a Cloud",
   },
 };
 
@@ -730,12 +767,116 @@ export const GLOBAL_MILESTONES: readonly MilestoneDef[] = [
   ...ENERGY_PER_CLICK_MILESTONES,
 ];
 
+function pondCycleCountCopy(cycleCount: number): {
+  description: string;
+  criteriaText: string;
+} {
+  if (cycleCount === 1) {
+    return {
+      description: "Cycle your pond.",
+      criteriaText: "Cycle your pond",
+    };
+  }
+  if (cycleCount === 2) {
+    return {
+      description: "Cycle your pond twice.",
+      criteriaText: "Cycle your pond twice",
+    };
+  }
+  const n = cycleCount.toLocaleString("en-US");
+  return {
+    description: `Cycle your pond ${n} times.`,
+    criteriaText: `Cycle your pond ${n} times`,
+  };
+}
+
+function pondCycleMilestone(
+  id: string,
+  title: string,
+  cycleCount: number,
+): MilestoneDef {
+  const copy = pondCycleCountCopy(cycleCount);
+  return {
+    id,
+    kind: "pond_cycle",
+    title,
+    description: copy.description,
+    criteriaText: copy.criteriaText,
+    /** `pond_era` after the Nth cycle (starts at 1). */
+    threshold: cycleCount + 1,
+  };
+}
+
+/** Earned when `pond_era` reaches the threshold (2 = first cycle, 3 = second, …). */
+export const POND_CYCLE_MILESTONES: readonly MilestoneDef[] = [
+  pondCycleMilestone("pond_cyclist", "Pond Cyclist", 1),
+  pondCycleMilestone("cycle_angelo", "Cycle-angelo", 2),
+  pondCycleMilestone("pentacycle", "Pentacycle", 5),
+  pondCycleMilestone("ten_ages_hence", "Ten Ages Hence", 10),
+  pondCycleMilestone("quarter_cycler", "Quarter Cycler", 25),
+  pondCycleMilestone("not_to_fifty", "Not to Fifty!", 50),
+  pondCycleMilestone("pondclicker_addict", "PondClicker Addict", 100),
+];
+
+export const FOSSIL_SHOP_MILESTONES: readonly MilestoneDef[] = [
+  {
+    id: "set_it_in_stone",
+    kind: "fossil_shop_purchase",
+    title: "Set it in Stone",
+    description: "Buy Stratified Pond at the fossil shop.",
+    criteriaText: "Buy Stratified Pond at the fossil shop",
+    specialtyId: STRATIFIED_POND_SPECIALTY_ID,
+  },
+  {
+    id: "dino_dna",
+    kind: "fossil_shop_purchase",
+    title: "Dino D-N-A!",
+    description: "Buy Fossil Record from the fossil shop.",
+    criteriaText: "Buy Fossil Record from the fossil shop",
+    specialtyId: FOSSIL_RECORD_SPECIALTY_ID,
+  },
+  {
+    id: "into_the_woods",
+    kind: "fossil_shop_purchase",
+    title: "Into the Woods",
+    description: "Buy Wooded Shore at the fossil shop.",
+    criteriaText: "Buy Wooded Shore at the fossil shop",
+    specialtyId: WOODED_SHORE_SPECIALTY_ID,
+  },
+  {
+    id: "clouds_above",
+    kind: "fossil_shop_purchase",
+    title: "Clouds Above",
+    description: "Buy Gathering Clouds at the fossil shop.",
+    criteriaText: "Buy Gathering Clouds at the fossil shop",
+    specialtyId: GATHERING_CLOUDS_SPECIALTY_ID,
+  },
+  {
+    id: "perpetual_motion",
+    kind: "fossil_shop_purchase",
+    title: "Perpetual Motion",
+    description: "Buy Ripples of Eternity from the fossil shop.",
+    criteriaText: "Buy Ripples of Eternity from the fossil shop",
+    specialtyId: RIPPLES_OF_ETERNITY_SPECIALTY_ID,
+  },
+  {
+    id: "at_weathers_whim",
+    kind: "fossil_shop_purchase",
+    title: "At Weather's Whim",
+    description: "Buy El Niño from the fossil shop.",
+    criteriaText: "Buy El Niño from the fossil shop",
+    specialtyId: EL_NINO_SPECIALTY_ID,
+  },
+];
+
 export function buildDenizenFirstMilestones(): MilestoneDef[] {
   return DENIZENS.map(denizenFirstMilestone);
 }
 
 export const MILESTONES: readonly MilestoneDef[] = [
   ...GLOBAL_MILESTONES,
+  ...POND_CYCLE_MILESTONES,
+  ...FOSSIL_SHOP_MILESTONES,
   ...WEATHER_CLICK_MILESTONES,
   ...buildEvolutionCountMilestones(),
   ...buildPollinatorEvolutionCountMilestones(),
@@ -758,7 +899,9 @@ export type MilestoneCatalogSectionId =
   | "denizen_first"
   | "denizen_count"
   | "mutation"
-  | "lifetime_energy";
+  | "lifetime_energy"
+  | "pond_cycle"
+  | "fossil_shop_purchase";
 
 export type MilestoneCatalogSection = {
   id: MilestoneCatalogSectionId;
@@ -846,6 +989,18 @@ export const MILESTONE_CATALOG_SECTIONS: readonly MilestoneCatalogSection[] = [
     emoji: "⚡",
     blurb: "All-time energy earned across the pond.",
   },
+  {
+    id: "pond_cycle",
+    label: "Pond cycle",
+    emoji: "🔁",
+    blurb: "Start a new pond era by cycling the pond.",
+  },
+  {
+    id: "fossil_shop_purchase",
+    label: "Fossil shop",
+    emoji: FOSSIL_EMOJI,
+    blurb: "Buy a specialty from the Fossil Shop.",
+  },
 ];
 
 export function milestonesInCatalogSection(
@@ -909,6 +1064,7 @@ const WEATHER_MILESTONE_EMOJI = "🌦️";
 const WEATHER_SUN_MILESTONE_EMOJI = "☀️";
 const WEATHER_WIND_MILESTONE_EMOJI = "💨";
 const WEATHER_RAIN_MILESTONE_EMOJI = "🌧️";
+const POND_CYCLE_MILESTONE_EMOJI = "🔁";
 
 function usesEnergyEmoji(def: MilestoneDef): boolean {
   return (
@@ -928,6 +1084,8 @@ export function milestoneDisplayEmoji(def: MilestoneDef): string | undefined {
   if (def.kind === "weather_sun_clicked") return WEATHER_SUN_MILESTONE_EMOJI;
   if (def.kind === "weather_wind_clicked") return WEATHER_WIND_MILESTONE_EMOJI;
   if (def.kind === "weather_rain_clicked") return WEATHER_RAIN_MILESTONE_EMOJI;
+  if (def.kind === "pond_cycle") return POND_CYCLE_MILESTONE_EMOJI;
+  if (def.kind === "fossil_shop_purchase") return FOSSIL_EMOJI;
   if (def.denizenId === POND_SPECIALTY_DENIZEN_ID) return POND_PRODUCTION_EMOJI;
   if (def.denizenId === POLLINATOR_SPECIALTY_DENIZEN_ID) {
     return POLLINATOR_CHAIN_MILESTONE_EMOJI;
@@ -981,6 +1139,13 @@ export function isMilestoneMet(def: MilestoneDef, ctx: MilestoneEvalContext): bo
         def.threshold
       );
     }
+    case "pond_cycle":
+      return def.threshold != null && ctx.pondEra >= def.threshold;
+    case "fossil_shop_purchase":
+      return (
+        def.specialtyId != null &&
+        ctx.ownedSpecialties[def.specialtyId] === true
+      );
     default:
       return false;
   }

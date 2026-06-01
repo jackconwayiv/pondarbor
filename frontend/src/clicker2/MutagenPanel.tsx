@@ -95,24 +95,13 @@ export default function MutagenPanel({
               Collect
             </PondButton>
           </Flex>
-        ) : mutagenFormingStartedAtMs > 0 ? (
-          <Stack gap="0.5">
-            <Text fontSize="sm" lineHeight="1.4" color={DESIGN.textPrimary}>
-              {MUTAGEN_EMOJI} {mutagenFormingStatusMessage(msLeft)}
-            </Text>
-            <Text fontSize="sm" lineHeight="1.4" color={DESIGN.textPrimary}>
-              {mutagenReadyInMessage(msLeft)}
-            </Text>
-          </Stack>
         ) : (
-          <Stack gap="0.5">
-            <Text fontSize="sm" lineHeight="1.4" color={DESIGN.textPrimary}>
-              {MUTAGEN_EMOJI} First {MUTAGEN_LABEL.toLowerCase()} forming…
-            </Text>
-            <Text fontSize="sm" lineHeight="1.4" color={DESIGN.textPrimary}>
-              {mutagenReadyInMessage(msLeft)}
-            </Text>
-          </Stack>
+          <Text fontSize="sm" lineHeight="1.4" color={DESIGN.textPrimary}>
+            {MUTAGEN_EMOJI}{" "}
+            {mutagenFormingStartedAtMs > 0
+              ? `${mutagenFormingStatusMessage(msLeft)} ${mutagenReadyInMessage(msLeft)}`
+              : `First ${MUTAGEN_LABEL.toLowerCase()} forming… ${mutagenReadyInMessage(msLeft)}`}
+          </Text>
         )}
       </Stack>
     </Box>

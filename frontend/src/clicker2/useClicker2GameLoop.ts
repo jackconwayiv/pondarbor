@@ -33,6 +33,7 @@ export type Clicker2GameLoopRefs = {
   ownedSpecialties: MutableRefObject<Record<number, boolean>>;
   denizenMutationLevels: MutableRefObject<Record<string, number>>;
   blossomCount: MutableRefObject<number>;
+  fossilizedStrata: MutableRefObject<number>;
   energy: MutableRefObject<number>;
   energyAnchorMs: MutableRefObject<number>;
   activeBlusterBoost: MutableRefObject<ActiveBlusterBoost | null>;
@@ -54,6 +55,7 @@ function runGameLoopTick(
     refs.ownedSpecialties.current,
     refs.denizenMutationLevels.current,
     refs.blossomCount.current,
+    refs.fossilizedStrata.current,
   );
   const eps = effectiveEnergyPerSecond(
     sim.energyPerSecond,
@@ -186,6 +188,7 @@ export function snapClicker2CounterToEffective(
     refs.ownedSpecialties.current,
     refs.denizenMutationLevels.current,
     refs.blossomCount.current,
+    refs.fossilizedStrata.current,
   );
   const eps = effectiveEnergyPerSecond(
     sim.energyPerSecond,
@@ -251,6 +254,7 @@ export function snapClicker2CounterAtBlusterEnd(
     | "ownedSpecialties"
     | "denizenMutationLevels"
     | "blossomCount"
+    | "fossilizedStrata"
     | "activeBlusterBoost"
     | "displayValue"
     | "lastShownCounterInt"
@@ -264,6 +268,7 @@ export function snapClicker2CounterAtBlusterEnd(
     refs.ownedSpecialties.current,
     refs.denizenMutationLevels.current,
     refs.blossomCount.current,
+    refs.fossilizedStrata.current,
   );
   const target = computeEffectiveEnergyAtBlusterEnd(
     refs.energy.current,

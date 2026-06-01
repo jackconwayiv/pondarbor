@@ -20,6 +20,27 @@ export const SPECIALTY_TIER_COLORS: readonly string[] = [
 /** When tier index − 1 is missing (tier 1), gradient starts here. */
 export const SPECIALTY_TIER_GRADIENT_START_FALLBACK = "#ffffff";
 
+/** Sandy light brown — fossil shop cards and purchase tooltips. */
+export const FOSSIL_SHOP_SAND = "#EDE4D3";
+export const FOSSIL_SHOP_SAND_MID = "#E3D4BC";
+export const FOSSIL_SHOP_SAND_DEEP = "#D9C7A8";
+
+/** Fossil Shop card background (shop + stats). */
+export const FOSSIL_SHOP_CARD_GRADIENT = `linear-gradient(to bottom right, ${FOSSIL_SHOP_SAND} 0%, ${FOSSIL_SHOP_SAND_MID} 50%, ${FOSSIL_SHOP_SAND_DEEP} 100%)`;
+
+/** Fossil Shop card outline (shop + stats). */
+export const FOSSIL_SHOP_CARD_BORDER_WIDTH = "6px";
+
+/** Hover / mobile help tooltips for fossil-shop purchases. */
+export const FOSSIL_SHOP_TOOLTIP_SURFACE_PROPS = {
+  bg: FOSSIL_SHOP_SAND,
+  color: "black",
+  borderWidth: "1px",
+  borderColor: "black",
+  borderStyle: "solid" as const,
+  boxShadow: "0 2px 8px rgba(0, 0, 0, 0.12)",
+} as const;
+
 export function specialtyTierColor(tierIndex: number): string {
   const clamped = Math.max(0, Math.min(14, tierIndex));
   return SPECIALTY_TIER_COLORS[clamped] ?? SPECIALTY_TIER_COLORS[0]!;

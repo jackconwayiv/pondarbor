@@ -134,14 +134,20 @@ export function isSpecialtyUnlocked(
     | "pairingUnlock"
     | "pairingLowerDenizenId"
     | "pairingHigherDenizenId"
+    | "requiresOwnedSpecialtyId"
   >,
   ownedDenizens: Record<string, number>,
   allTimeEnergyEarned: number,
   energyFromClicking = 0,
   blossomCount = 0,
-  _ownedSpecialties: Record<number, boolean> = {},
+  ownedSpecialties: Record<number, boolean> = {},
   _allSpecialties: readonly SpecialtyDef[] = SPECIALTIES,
 ): boolean {
+  if (specialty.requiresOwnedSpecialtyId != null) {
+    if (!ownedSpecialties[specialty.requiresOwnedSpecialtyId]) {
+      return false;
+    }
+  }
   if (specialty.pairingUnlock) {
     for (const [denizenId, required] of Object.entries(specialty.pairingUnlock)) {
       if (getOwnedDenizenCount(ownedDenizens, denizenId) < required) {
@@ -165,7 +171,7 @@ export function isSpecialtyUnlocked(
   );
 }
 
-/** Visible when unowned and its unlock threshold is met (not gated by prior tiers owned). */
+/** Visible when unowned and unlock thresholds are met (including requiresOwnedSpecialtyId). */
 export function isSpecialtyShopVisible(
   specialty: SpecialtyDef,
   ownedDenizens: Record<string, number>,
@@ -175,6 +181,7 @@ export function isSpecialtyShopVisible(
   blossomCount = 0,
   allSpecialties: readonly SpecialtyDef[] = SPECIALTIES,
 ): boolean {
+  if (specialty.fossilShopOnly) return false;
   if (ownedSpecialties[specialty.id]) return false;
   return isSpecialtyUnlocked(
     specialty,

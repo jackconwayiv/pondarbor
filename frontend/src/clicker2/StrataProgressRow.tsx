@@ -1,5 +1,6 @@
 import {
   Box,
+  Button,
   Flex,
   Text,
   TooltipContent,
@@ -15,35 +16,43 @@ import {
 
 import {
   CYCLE_LABEL,
+  CYCLE_POND_BUTTON,
+  FOSSILS_LABEL,
   STRATA_PANEL_TOOLTIP,
   stratumCountHeading,
   TO_NEXT_STRATA_PHRASE,
 } from "./clicker2Copy";
+import { FOSSIL_EMOJI } from "./fossilShop";
 import { ENERGY_EMOJI, formatEnergyAmount } from "./formatEnergy";
 import {
   energyToNextStratum,
   isStratumSystemUnlocked,
-  stratumLevelFromAllTimeEnergy,
   stratumProgressToNext,
 } from "./strata";
 
 export default function StrataProgressRow({
   allTimeEnergyEarned,
   pondEra,
+  unfossilizedStrata,
+  fossils,
+  onCycleClick,
   canHoverFinePointer = true,
 }: {
   allTimeEnergyEarned: number;
   pondEra: number;
+  unfossilizedStrata: number;
+  fossils: number;
+  onCycleClick: () => void;
   canHoverFinePointer?: boolean;
 }) {
   if (!isStratumSystemUnlocked(allTimeEnergyEarned)) {
     return null;
   }
 
-  const level = stratumLevelFromAllTimeEnergy(allTimeEnergyEarned);
   const progress = stratumProgressToNext(allTimeEnergyEarned);
   const remaining = energyToNextStratum(allTimeEnergyEarned);
   const progressPct = Math.round(progress * 100);
+  const canCycle = unfossilizedStrata > 0;
 
   const panel = (
     <Box
@@ -57,10 +66,10 @@ export default function StrataProgressRow({
       bg="whiteAlpha.900"
       cursor={canHoverFinePointer ? "help" : undefined}
     >
-      <Flex align="center" justify="space-between" gap="2" minW="0">
+      <Flex align="center" justify="space-between" gap="2" minW="0" flexWrap="wrap">
         <Flex align="center" gap="2" minW="0">
           <Text fontSize="sm" fontWeight="semibold" color="lilypad.emphasized">
-            {stratumCountHeading(level)}
+            {stratumCountHeading(unfossilizedStrata)}
           </Text>
           {pondEra > 1 ? (
             <Text
@@ -78,16 +87,69 @@ export default function StrataProgressRow({
               {CYCLE_LABEL} {pondEra}
             </Text>
           ) : null}
+          {fossils > 0 ? (
+            <Text
+              fontSize="xs"
+              color="gray.600"
+              flexShrink={0}
+              fontVariantNumeric="tabular-nums"
+            >
+              {fossils.toLocaleString()} {FOSSILS_LABEL} {FOSSIL_EMOJI}
+            </Text>
+          ) : null}
         </Flex>
-        <Text
-          fontSize="xs"
-          color="gray.600"
-          fontVariantNumeric="tabular-nums"
-          textAlign="right"
-          flexShrink={0}
-        >
-          {formatEnergyAmount(remaining)} {ENERGY_EMOJI} {TO_NEXT_STRATA_PHRASE}
-        </Text>
+        <Flex align="center" gap="2" flexShrink={0}>
+          <Text
+            fontSize="xs"
+            color="gray.600"
+            fontVariantNumeric="tabular-nums"
+            textAlign="right"
+          >
+            {formatEnergyAmount(remaining)} {ENERGY_EMOJI} {TO_NEXT_STRATA_PHRASE}
+          </Text>
+          <Button
+            type="button"
+            size="xs"
+            flexShrink={0}
+            disabled={!canCycle}
+            variant={canCycle ? "solid" : "outline"}
+            colorPalette={canCycle ? "sky" : "gray"}
+            fontWeight={canCycle ? "semibold" : "normal"}
+            bg={canCycle ? "sky.solid" : "gray.50"}
+            borderWidth="1px"
+            borderColor={canCycle ? "sky.emphasized" : "gray.300"}
+            color={canCycle ? "white" : "gray.500"}
+            opacity={canCycle ? 1 : 0.55}
+            boxShadow={canCycle ? "0 1px 3px rgba(74, 134, 184, 0.35)" : "none"}
+            _hover={
+              canCycle
+                ? {
+                    bg: "sky.emphasized",
+                    borderColor: "sky.emphasized",
+                  }
+                : undefined
+            }
+            _active={
+              canCycle
+                ? {
+                    bg: "sky.emphasized",
+                    borderColor: "sky.emphasized",
+                  }
+                : undefined
+            }
+            _disabled={{
+              opacity: 0.55,
+              cursor: "not-allowed",
+              boxShadow: "none",
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (canCycle) onCycleClick();
+            }}
+          >
+            {CYCLE_POND_BUTTON}
+          </Button>
+        </Flex>
       </Flex>
       <Box
         role="progressbar"

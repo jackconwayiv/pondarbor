@@ -23,6 +23,10 @@ import { getDenizenDef } from "./denizens";
 import { evolutionChainDenizenIds } from "./milestones";
 import { PAIRING_SPECIALTY_DENIZEN_ID } from "./pairingEvolutions";
 import {
+  CLOUD_SPECIALTY_DENIZEN_ID,
+  TREE_SPECIALTY_DENIZEN_ID,
+} from "./treeCloudEvolutions";
+import {
   POND_SPECIALTY_DENIZEN_ID,
   SEDIMENT_CRACIAL_GLAPE_SPECIALTY_ID,
   specialtiesForDenizen,
@@ -174,7 +178,12 @@ describe("generateSpecialtyPrices", () => {
 
   it("prices every denizen chain as baseCost × tier mult", () => {
     for (const denizenId of evolutionChainDenizenIds()) {
-      if (denizenId === POND_SPECIALTY_DENIZEN_ID || denizenId === "ripples") {
+      if (
+        denizenId === POND_SPECIALTY_DENIZEN_ID ||
+        denizenId === "ripples" ||
+        denizenId === TREE_SPECIALTY_DENIZEN_ID ||
+        denizenId === CLOUD_SPECIALTY_DENIZEN_ID
+      ) {
         continue;
       }
       const chain = specialtiesForDenizen(denizenId);

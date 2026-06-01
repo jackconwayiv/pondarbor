@@ -22,13 +22,13 @@ export const DENIZEN_DEPTH_ORDER: readonly string[] = [
   "spirits",
   // air, shore, and land–water margin
   "hunting_birds",
+  "waterfowl",
   "cryptids",
   "humans",
   "great_mammals",
   "shore_mammals",
   "amphibians",
   "reptiles",
-  "waterfowl",
   // surface film and upper water column
   "ripples",
   "zooplankton",

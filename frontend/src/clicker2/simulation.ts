@@ -6,6 +6,7 @@ import {
 } from "./denizens";
 import { getMutationLevel } from "./mutagens";
 import { isRetiredWindSpecialtyId } from "./retiredWindEvolutions";
+import { isStratifiedPondOwned } from "./fossilShop";
 import { getSpecialtyDef, type SpecialtyEffect } from "./specialties";
 
 /** Components of [`clickValue`](#simulateGame): baseline vs EpS-linked click reflections. */
@@ -29,10 +30,34 @@ export type SimulationOutput = {
   clickBreakdown: ClickValueBreakdown;
 };
 
-/** Stub for future Conditions / Prestige / Weather. */
+/** Max strata effect fraction from owned energy-tier fossil evolutions (0 if none). */
+export function strataEffectFraction(effects: SpecialtyEffect[]): number {
+  let fraction = 0;
+  for (const e of effects) {
+    if (e.type === "strata_effect_fraction" && e.fraction > 0) {
+      fraction = Math.max(fraction, e.fraction);
+    }
+  }
+  return fraction;
+}
+
+/** +1% EpS per fossilized stratum per 100% of strata effect (requires Stratified Pond). */
+export function strataLevelsEpsBonusPercent(
+  effects: SpecialtyEffect[],
+  fossilizedStrata: number,
+  ownsStratifiedPond: boolean,
+): number {
+  if (!ownsStratifiedPond || fossilizedStrata <= 0) return 0;
+  const fraction = strataEffectFraction(effects);
+  if (fraction <= 0) return 0;
+  return fossilizedStrata * fraction;
+}
+
 export function globalEpsBoost(
   effects: SpecialtyEffect[],
   blossomCount = 0,
+  fossilizedStrata = 0,
+  ownsStratifiedPond = false,
 ): number {
   let bonusPercent = 0;
   const blossoms = Math.max(0, blossomCount);
@@ -44,6 +69,11 @@ export function globalEpsBoost(
       bonusPercent += e.percent;
     }
   }
+  bonusPercent += strataLevelsEpsBonusPercent(
+    effects,
+    fossilizedStrata,
+    ownsStratifiedPond,
+  );
   return 1 + bonusPercent / 100;
 }
 
@@ -125,11 +155,13 @@ function epsForDenizen(
   nonRippleCount: number,
   mutationLevel: number,
   blossomCount: number,
+  fossilizedStrata: number,
+  ownsStratifiedPond: boolean,
 ): number {
   if (owned <= 0) return 0;
   const effMult =
     denizenEfficiencyMultiplier(def.id, effects) *
-    globalEpsBoost(effects, blossomCount);
+    globalEpsBoost(effects, blossomCount, fossilizedStrata, ownsStratifiedPond);
   let perCopy = def.baseEps * effMult;
   for (const e of effects) {
     if (
@@ -157,8 +189,10 @@ export function denizenEpsPerCopy(
   ownedSpecialties: Record<number, boolean>,
   denizenMutationLevels: Record<string, number> = {},
   blossomCount = 0,
+  fossilizedStrata = 0,
 ): number {
   const effects = ownedSpecialtyEffects(ownedSpecialties);
+  const ownsStratifiedPond = isStratifiedPondOwned(ownedSpecialties);
   const nonRippleCount = countNonRippleObjects(ownedDenizens);
   const mutationLevel = getMutationLevel(denizenMutationLevels, def.id);
   const owned = getOwnedDenizenCount(ownedDenizens, def.id);
@@ -172,6 +206,8 @@ export function denizenEpsPerCopy(
         nonRippleCount,
         mutationLevel,
         blossomCount,
+        fossilizedStrata,
+        ownsStratifiedPond,
       ) / owned
     );
   }
@@ -183,6 +219,8 @@ export function denizenEpsPerCopy(
     nonRippleCount,
     mutationLevel,
     blossomCount,
+    fossilizedStrata,
+    ownsStratifiedPond,
   );
 }
 
@@ -192,6 +230,7 @@ export function denizenPerCopyEpsMap(
   ownedSpecialties: Record<number, boolean>,
   denizenMutationLevels: Record<string, number> = {},
   blossomCount = 0,
+  fossilizedStrata = 0,
 ): Record<string, number> {
   const map: Record<string, number> = {};
   for (const def of DENIZENS) {
@@ -201,6 +240,7 @@ export function denizenPerCopyEpsMap(
       ownedSpecialties,
       denizenMutationLevels,
       blossomCount,
+      fossilizedStrata,
     );
   }
   return map;
@@ -211,8 +251,10 @@ export function simulateGame(
   ownedSpecialties: Record<number, boolean>,
   denizenMutationLevels: Record<string, number> = {},
   blossomCount = 0,
+  fossilizedStrata = 0,
 ): SimulationOutput {
   const effects = ownedSpecialtyEffects(ownedSpecialties);
+  const ownsStratifiedPond = isStratifiedPondOwned(ownedSpecialties);
   const nonRippleCount = countNonRippleObjects(ownedDenizens);
   const denizenEps: Record<string, number> = {};
   let energyPerSecond = 0;
@@ -228,13 +270,20 @@ export function simulateGame(
       nonRippleCount,
       mutationLevel,
       blossomCount,
+      fossilizedStrata,
+      ownsStratifiedPond,
     );
     denizenEps[def.id] = eps;
     energyPerSecond += eps;
   }
 
   const rippleEffMult = rippleEfficiencyMultiplier(effects);
-  const globalBoost = globalEpsBoost(effects, blossomCount);
+  const globalBoost = globalEpsBoost(
+    effects,
+    blossomCount,
+    fossilizedStrata,
+    ownsStratifiedPond,
+  );
   const clickMult = rippleEffMult * globalBoost;
   const ringsBonus =
     concentricRingsBonusPerNonRipple(effects) * nonRippleCount;
@@ -264,12 +313,14 @@ export function marginalEpsIfBuyDenizen(
   ownedSpecialties: Record<number, boolean>,
   denizenMutationLevels: Record<string, number> = {},
   blossomCount = 0,
+  fossilizedStrata = 0,
 ): number {
   const cur = simulateGame(
     ownedDenizens,
     ownedSpecialties,
     denizenMutationLevels,
     blossomCount,
+    fossilizedStrata,
   );
   const owned = getOwnedDenizenCount(ownedDenizens, def.id);
   if (nextDenizenCost(def, owned) === null) return 0;
@@ -278,6 +329,7 @@ export function marginalEpsIfBuyDenizen(
     ownedSpecialties,
     denizenMutationLevels,
     blossomCount,
+    fossilizedStrata,
   );
   return next.energyPerSecond - cur.energyPerSecond;
 }
@@ -288,6 +340,7 @@ export function marginalEpsIfBuySpecialty(
   ownedSpecialties: Record<number, boolean>,
   denizenMutationLevels: Record<string, number> = {},
   blossomCount = 0,
+  fossilizedStrata = 0,
 ): number {
   if (ownedSpecialties[specialtyId]) return 0;
   const cur = simulateGame(
@@ -295,6 +348,7 @@ export function marginalEpsIfBuySpecialty(
     ownedSpecialties,
     denizenMutationLevels,
     blossomCount,
+    fossilizedStrata,
   );
   const next = simulateGame(
     ownedDenizens,
@@ -304,6 +358,7 @@ export function marginalEpsIfBuySpecialty(
     },
     denizenMutationLevels,
     blossomCount,
+    fossilizedStrata,
   );
   return next.energyPerSecond - cur.energyPerSecond;
 }
@@ -314,6 +369,7 @@ export function marginalClickIfBuySpecialty(
   ownedSpecialties: Record<number, boolean>,
   denizenMutationLevels: Record<string, number> = {},
   blossomCount = 0,
+  fossilizedStrata = 0,
 ): number {
   if (ownedSpecialties[specialtyId]) return 0;
   const cur = simulateGame(
@@ -321,6 +377,7 @@ export function marginalClickIfBuySpecialty(
     ownedSpecialties,
     denizenMutationLevels,
     blossomCount,
+    fossilizedStrata,
   );
   const def = getSpecialtyDef(specialtyId);
   if (!def) return 0;
@@ -332,6 +389,7 @@ export function marginalClickIfBuySpecialty(
     },
     denizenMutationLevels,
     blossomCount,
+    fossilizedStrata,
   );
   return next.clickValue - cur.clickValue;
 }

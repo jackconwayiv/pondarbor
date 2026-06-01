@@ -1,0 +1,58 @@
+.pondCycleFadeOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2200;
+  background: #fff;
+  pointer-events: auto;
+}
+
+.pondCycleFadeOverlay--fadeIn {
+  opacity: 0;
+  animation: pondCycleFadeIn var(--pond-cycle-fade-in-ms, 1000ms) ease-in forwards;
+}
+
+.pondCycleFadeOverlay--hold {
+  opacity: 1;
+}
+
+.pondCycleFadeOverlay--fadeOut {
+  opacity: 1;
+  animation: pondCycleFadeOut var(--pond-cycle-fade-out-ms, 1000ms) ease-out forwards;
+}
+
+.pondCycleFadeOverlay--instant {
+  opacity: 1;
+}
+
+@keyframes pondCycleFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pondCycleFadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pondCycleFadeOverlay--fadeIn,
+  .pondCycleFadeOverlay--fadeOut {
+    animation: none;
+  }
+
+  .pondCycleFadeOverlay--fadeIn {
+    opacity: 1;
+  }
+
+  .pondCycleFadeOverlay--fadeOut {
+    opacity: 0;
+  }
+}

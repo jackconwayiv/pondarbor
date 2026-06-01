@@ -77,6 +77,8 @@ describe("simulation evolution effect wiring", () => {
 
   describe("pond production_percent", () => {
     const pondTier0Id = 166;
+    const treeTier0Id = 690;
+    const cloudTier0Id = 705;
 
     it("scales all denizen EpS and click baseline by +1%", () => {
       const owned = { ...BASE_OWNED };
@@ -93,6 +95,22 @@ describe("simulation evolution effect wiring", () => {
       }
 
       expect(after.clickValue).toBeCloseTo(before.clickValue * mult, 8);
+    });
+
+    it("tree and cloud tiers stack pond-wide production_percent", () => {
+      const owned = { ...BASE_OWNED };
+      const before = simulateGame(owned, {});
+      const afterTree = simulateGame(owned, { [treeTier0Id]: true });
+      const afterCloud = simulateGame(owned, { [cloudTier0Id]: true });
+
+      expect(afterTree.energyPerSecond).toBeCloseTo(
+        before.energyPerSecond * 1.01,
+        8,
+      );
+      expect(afterCloud.energyPerSecond).toBeCloseTo(
+        before.energyPerSecond * 1.01,
+        8,
+      );
     });
   });
 

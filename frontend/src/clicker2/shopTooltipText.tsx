@@ -5,9 +5,11 @@ import type { ComponentProps, ReactNode } from "react";
 export function ShopTooltipHeader({
   children,
   price,
+  priceColor,
 }: {
   children: ReactNode;
   price?: ReactNode;
+  priceColor?: ComponentProps<typeof Text>["color"];
 }) {
   return (
     <HStack gap="2" align="baseline" justify="space-between" w="full">
@@ -15,7 +17,7 @@ export function ShopTooltipHeader({
         {children}
       </ShopNameText>
       {price != null ? (
-        <ShopPriceText flexShrink={0} textAlign="right">
+        <ShopPriceText flexShrink={0} textAlign="right" color={priceColor}>
           {price}
         </ShopPriceText>
       ) : null}

@@ -2,6 +2,11 @@ import { denizenDoubleEfficiencyEffectText, getDenizenDef } from "./denizens";
 import { DENIZEN_EVOLUTION_TIER_MULT } from "./evolutionTierMults";
 import { specialtyCatalogPrice } from "./evolutionPrices.generated";
 import { buildPollinatorChain } from "./pollinatorEvolutions";
+import {
+  buildCloudChain,
+  buildTreeChain,
+  buildTreeCloudFossilGates,
+} from "./treeCloudEvolutions";
 import { PAIRING_SPECIALTIES } from "./pairingSpecialties.generated";
 import {
   DENIZEN_TIER45_COPY,
@@ -30,7 +35,10 @@ export type SpecialtyEffect =
   | { type: "concentric_rings_mult"; factor: number }
   | { type: "production_percent"; percent: number }
   | { type: "click_eps_percent"; percent: number }
-  | { type: "eps_percent_per_blossom"; percentPerBlossom: number };
+  | { type: "eps_percent_per_blossom"; percentPerBlossom: number }
+  | { type: "strata_effect_fraction"; fraction: number }
+  | { type: "cycle_start_denizen"; denizenId: string; count: number }
+  | { type: "weather_spawn_frequency_bonus"; percent: number };
 
 export type PairingUnlockRequirements = Readonly<Record<string, number>>;
 
@@ -53,6 +61,12 @@ export type SpecialtyDef = {
   pairingLowerDenizenId?: string;
   pairingHigherDenizenId?: string;
   price: number;
+  /** Fossil shop cost (bone currency); when set, item is not sold for energy. */
+  priceFossils?: number;
+  /** Only visible in the Fossil Shop (not the energy evolution grid). */
+  fossilShopOnly?: boolean;
+  /** Requires owning another specialty (e.g. Stratified Pond for strata tiers). */
+  requiresOwnedSpecialtyId?: number;
   effect: SpecialtyEffect;
   /** When set, all effects apply (pairing cards). */
   effects?: readonly SpecialtyEffect[];
@@ -111,6 +125,18 @@ const UNLOCK_TIER = DENIZEN_SPECIALTY_UNLOCK_TIER;
 
 /** Pond-wide production specialties (not tied to a denizen owned count). */
 export const POND_SPECIALTY_DENIZEN_ID = "pond" as const;
+
+/** Fossil shop and strata-level effect chain. */
+export const FOSSIL_SPECIALTY_DENIZEN_ID = "fossil" as const;
+
+export const STRATA_EFFECT_SPECIALTY_IDS = [
+  679, 680, 681, 682, 683, 684,
+] as const;
+
+/** Energy-shop strata chain (Embedded Fossils → Natural History Museum). */
+export const STRATA_ENERGY_SPECIALTY_IDS = [
+  680, 681, 682, 683, 684,
+] as const;
 
 /** Click reflection chain: +1% of EpS per click per tier (unlocked by click energy earned). */
 export const CLICK_SPECIALTY_DENIZEN_ID = "click" as const;
@@ -196,6 +222,7 @@ function productionPercentSpecialty(
   price: number,
   ecologyNote: string,
   unlock: { unlockOwned: number } | { unlockAllTimeEnergy: number },
+  requiresOwnedSpecialtyId?: number,
 ): SpecialtyDef {
   const percent = pondProductionPercentForTierIndex(tierIndex);
   return {
@@ -205,6 +232,7 @@ function productionPercentSpecialty(
     unlockOwned: "unlockOwned" in unlock ? unlock.unlockOwned : 0,
     unlockAllTimeEnergy:
       "unlockAllTimeEnergy" in unlock ? unlock.unlockAllTimeEnergy : undefined,
+    requiresOwnedSpecialtyId,
     price,
     effect: { type: "production_percent", percent },
     effectText: `Your entire pond is ${percent}% more efficient`,
@@ -225,6 +253,7 @@ function buildPondProductionChain(
       specialtyCatalogPrice(POND_PRODUCTION_IDS[i]!),
       ecologyNotes[i] ?? "",
       { unlockAllTimeEnergy },
+      i === 0 ? undefined : POND_PRODUCTION_IDS[i - 1]!,
     ),
   );
 }
@@ -743,8 +772,145 @@ export const SPECIALTIES: readonly SpecialtyDef[] = [
 
   ...buildPollinatorChain(),
 
+  ...buildStrataEffectChain(),
+
+  ...buildTreeCloudFossilGates(),
+  ...buildTreeChain(),
+  ...buildCloudChain(),
+
   ...PAIRING_SPECIALTIES,
 ];
+
+function buildStrataEffectChain(): SpecialtyDef[] {
+  const stratifiedPondId = STRATA_EFFECT_SPECIALTY_IDS[0]!;
+  const tiers: {
+    id: number;
+    name: string;
+    price: number;
+    fraction: number;
+    ecologyNote: string;
+  }[] = [
+    {
+      id: 680,
+      name: "Embedded Fossils",
+      price: 100,
+      fraction: 0.1,
+      ecologyNote:
+        "Bones and shells press into the basin floor—your fossilized strata begin to bend production in earnest.",
+    },
+    {
+      id: 681,
+      name: "Paleontological Survey",
+      price: 10_000,
+      fraction: 0.25,
+      ecologyNote:
+        "A careful map of every locked layer reveals how much buried age still feeds the living pond.",
+    },
+    {
+      id: 682,
+      name: "Excavation Site",
+      price: 100_000,
+      fraction: 0.5,
+      ecologyNote:
+        "Trenches cut through old cycles; half the strata signal now reaches the open water.",
+    },
+    {
+      id: 683,
+      name: "Research Center",
+      price: 1_000_000,
+      fraction: 0.75,
+      ecologyNote:
+        "Catalogs and cores tie fossil beds to present-day flow—most of the strata bonus is online.",
+    },
+    {
+      id: 684,
+      name: "Natural History Museum",
+      price: 1_000_000_000,
+      fraction: 1,
+      ecologyNote:
+        "Every fossilized stratum is on display; the full +1% EpS per stratum level hums through the pond.",
+    },
+  ];
+
+  const stratifiedPond: SpecialtyDef = {
+    id: stratifiedPondId,
+    name: "Stratified Pond",
+    denizenId: FOSSIL_SPECIALTY_DENIZEN_ID,
+    unlockOwned: 0,
+    price: 0,
+    priceFossils: 1,
+    fossilShopOnly: true,
+    effect: { type: "strata_effect_fraction", fraction: 0 },
+    effectText:
+      "+1% EpS per fossilized stratum at full strength",
+    ecologyNote:
+      "Layered beds lock your pond's age in place—fossilized strata can now amplify energy across every cycle.",
+  };
+
+  const fossilRecordId = 685;
+  const fossilRecord: SpecialtyDef = {
+    id: fossilRecordId,
+    name: "Fossil Record",
+    denizenId: FOSSIL_SPECIALTY_DENIZEN_ID,
+    unlockOwned: 0,
+    price: 0,
+    priceFossils: 3,
+    fossilShopOnly: true,
+    requiresOwnedSpecialtyId: stratifiedPondId,
+    effect: { type: "production_percent", percent: 10 },
+    effectText: "Your pond is forever 10% more efficient.",
+    ecologyNote: "Your pondly deeds will be permanently etched in the fossil record, waiting for someone enterprising to discover them.",
+  };
+
+  const ripplesOfEternityId = 686;
+  const ripplesOfEternity: SpecialtyDef = {
+    id: ripplesOfEternityId,
+    name: "Ripples of Eternity",
+    denizenId: FOSSIL_SPECIALTY_DENIZEN_ID,
+    unlockOwned: 0,
+    price: 0,
+    priceFossils: 50,
+    fossilShopOnly: true,
+    requiresOwnedSpecialtyId: stratifiedPondId,
+    effect: { type: "cycle_start_denizen", denizenId: "ripples", count: 10 },
+    effectText: "You start each pond cycle with 10 ripples.",
+    ecologyNote: "Just a wee little splash to get you started on your next cycle.",
+    pollinatorEmoji: "💦",
+  };
+
+  const elNinoId = 687;
+  const elNino: SpecialtyDef = {
+    id: elNinoId,
+    name: "El Niño",
+    denizenId: FOSSIL_SPECIALTY_DENIZEN_ID,
+    unlockOwned: 0,
+    price: 0,
+    priceFossils: 75,
+    fossilShopOnly: true,
+    requiresOwnedSpecialtyId: stratifiedPondId,
+    effect: { type: "weather_spawn_frequency_bonus", percent: 5 },
+    effectText: "Weather events are 5% more frequent.",
+    ecologyNote: "They say it's every 2 to 7 years, but that number seems to change every year.",
+    pollinatorEmoji: "⛈️",
+  };
+
+  const energyTiers: SpecialtyDef[] = tiers.map((t, index) => ({
+    id: t.id,
+    name: t.name,
+    denizenId: FOSSIL_SPECIALTY_DENIZEN_ID,
+    unlockOwned: 0,
+    unlockAllTimeEnergy: 0,
+    /** Embedded Fossils → Stratified Pond; each later tier requires the previous evolution. */
+    requiresOwnedSpecialtyId:
+      index === 0 ? stratifiedPondId : tiers[index - 1]!.id,
+    price: t.price,
+    effect: { type: "strata_effect_fraction", fraction: t.fraction },
+    effectText: `You now have ${Math.round(t.fraction * 100)}% of your Stratified Pond effect (+1% EpS per fossilized stratum)`,
+    ecologyNote: t.ecologyNote,
+  }));
+
+  return [stratifiedPond, fossilRecord, ripplesOfEternity, elNino, ...energyTiers];
+}
 
 type Tier45ChainOverride = {
   id: number;

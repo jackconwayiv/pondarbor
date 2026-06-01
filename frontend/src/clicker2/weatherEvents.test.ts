@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
+import { EL_NINO_SPECIALTY_ID } from "./fossilShop";
 import {
   clickWeatherMultiplier,
   effectiveClickValue,
   epsWeatherMultiplier,
   remainingMsUntilWeatherSpawn,
+  scaleWeatherSpawnDelayMs,
   scheduleWeatherSpawnRemainingMs,
   shopSurfaceForWeather,
   startBlusterBoost,
@@ -31,6 +33,14 @@ describe("weather spawn scheduling", () => {
     const remaining = scheduleWeatherSpawnRemainingMs();
     expect(remaining).toBeGreaterThanOrEqual(WEATHER_SPAWN_MIN_MS);
     expect(remaining).toBeLessThanOrEqual(WEATHER_SPAWN_MAX_MS);
+  });
+
+  it("scales spawn delay with El Niño owned", () => {
+    const base = 600_000;
+    expect(scaleWeatherSpawnDelayMs(base, {})).toBe(base);
+    expect(
+      scaleWeatherSpawnDelayMs(base, { [EL_NINO_SPECIALTY_ID]: true }),
+    ).toBe(Math.floor(base * 0.95));
   });
 
   it("computes session remaining from performance deadline", () => {

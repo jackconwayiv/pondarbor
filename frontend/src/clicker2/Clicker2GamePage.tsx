@@ -45,7 +45,10 @@ import { prependDenizenPurchase } from "./purchaseTimeline";
 import { rippleVisualStyleFromOwnedSpecialties } from "./rippleVisuals";
 import { specialtyAcquiredMigrationPending } from "./specialtyAcquiredAt";
 import { stripRetiredWindFromOwnedSpecialties } from "./retiredWindEvolutions";
-import { listOwnedEvolutionDefs } from "./clicker2OwnedEvolutions";
+import {
+  listOwnedEvolutionDefs,
+  listOwnedFossilShopDefs,
+} from "./clicker2OwnedEvolutions";
 import Clicker2MobilePanels from "./Clicker2MobilePanels";
 import Clicker2MobileHud from "./Clicker2MobileHud";
 import Clicker2MobileShopPanels from "./Clicker2MobileShopPanels";
@@ -59,6 +62,13 @@ import { Clicker2PondHeadline } from "./Clicker2PondHeadline";
 import { MilestoneCelebrateCard, MilestoneDismissAllCard } from "./MilestoneCelebrateCard";
 import { useClicker2RotatingHeadline } from "./useClicker2RotatingHeadline";
 import MutagenPanel from "./MutagenPanel";
+import CyclePondConfirmModal from "./CyclePondConfirmModal";
+import FossilShopSection from "./FossilShopSection";
+import PondCycleFadeOverlay from "./PondCycleFadeOverlay";
+import {
+  isFossilShopUnlocked,
+} from "./fossilShop";
+import { applyPondCycle, unfossilizedStrataCount } from "./pondCycle";
 import StrataProgressRow from "./StrataProgressRow";
 import {
   celebrationMilestoneDefs,
@@ -76,6 +86,7 @@ import {
 import {
   captureClicker2TabTitleBase,
   restoreClicker2TabTitle,
+  syncClicker2TabTitle,
   useClicker2TabTitleInterval,
 } from "./clicker2TabTitle";
 import { ENERGY_EMOJI, formatEnergyAmountHud, formatEnergyRate } from "./formatEnergy";
@@ -111,7 +122,6 @@ import {
 } from "./clicker2DisplayEps";
 import {
   snapClicker2CounterAtBlusterEnd,
-  snapClicker2CounterDisplay,
   snapClicker2CounterToEffective,
   useClicker2GameLoop,
   type Clicker2GameLoopRefs,
@@ -151,7 +161,7 @@ import {
   effectiveEnergyPerSecond,
   epsWeatherMultiplier,
   remainingMsUntilWeatherSpawn,
-  rollWeatherSpawnDelayMs,
+  rollWeatherSpawnDelayMsForOwned,
   startBlusterBoost,
   startRainBoost,
   weatherFamily,
@@ -238,6 +248,18 @@ export default function Clicker2GamePage() {
     () => createDefaultClicker2State().pond_started_at_ms,
   );
   const [pondEra, setPondEra] = useState(() => createDefaultClicker2State().pond_era);
+  const [fossils, setFossils] = useState(0);
+  const [totalFossilsEarned, setTotalFossilsEarned] = useState(0);
+  const [fossilizedStrata, setFossilizedStrata] = useState(0);
+  const [cyclePondModalOpen, setCyclePondModalOpen] = useState(false);
+  const [pondCycleFadeActive, setPondCycleFadeActive] = useState(false);
+  const pondCycleFadeActiveRef = useRef(false);
+  /** Frozen HUD counter for the white fade (game loop paused until fade ends). */
+  const [pondCycleCounterFrozenText, setPondCycleCounterFrozenText] = useState<
+    string | null
+  >(null);
+  const [resetPondBusy, setResetPondBusy] = useState(false);
+  const [resetPondError, setResetPondError] = useState<string | null>(null);
   const [statsModalOpen, setStatsModalOpen] = useState(false);
   const [statsSnapshot, setStatsSnapshot] = useState<Clicker2StatsSnapshot | null>(
     null,
@@ -301,6 +323,8 @@ export default function Clicker2GamePage() {
   const lastShownCounterIntRef = useRef(0);
   const pendingPondClicksRef = useRef(0);
   const pondClickFlushRafRef = useRef(0);
+  /** Bumped on pond cycle so deferred click flushes cannot restore pre-cycle energy. */
+  const pondEnergyEpochRef = useRef(0);
   const flushPondClicksSyncRef = useRef<() => void>(() => {});
   const affordThresholdsRef = useRef<number[]>([]);
   const [shopAffordRevision, setShopAffordRevision] = useState(0);
@@ -338,13 +362,18 @@ export default function Clicker2GamePage() {
   const milestonesReachedRef = useRef(milestonesReached);
   milestonesReachedRef.current = milestonesReached;
   const blossomCountRef = useRef(0);
-  blossomCountRef.current = blossomCountFromMilestones(milestonesReached);
   const milestonesDismissedRef = useRef(milestonesDismissed);
   milestonesDismissedRef.current = milestonesDismissed;
   const pondStartedAtMsRef = useRef(pondStartedAtMs);
   pondStartedAtMsRef.current = pondStartedAtMs;
   const pondEraRef = useRef(pondEra);
   pondEraRef.current = pondEra;
+  const fossilsRef = useRef(fossils);
+  fossilsRef.current = fossils;
+  const totalFossilsEarnedRef = useRef(totalFossilsEarned);
+  totalFossilsEarnedRef.current = totalFossilsEarned;
+  const fossilizedStrataRef = useRef(fossilizedStrata);
+  fossilizedStrataRef.current = fossilizedStrata;
   const energyRef = useRef(energy);
   energyRef.current = energy;
   const stateRef = useRef<Clicker2GameState>(createDefaultClicker2State());
@@ -357,6 +386,7 @@ export default function Clicker2GamePage() {
       ownedSpecialtiesRef.current,
       denizenMutationLevelsRef.current,
       blossomCountRef.current,
+      fossilizedStrataRef.current,
     );
     const nowPerf = performance.now();
     const boostedEps = effectiveEnergyPerSecond(
@@ -392,6 +422,7 @@ export default function Clicker2GamePage() {
       ownedSpecialties: ownedSpecialtiesRef.current,
       ownedDenizens: ownedDenizensRef.current,
       denizenMutationLevels: denizenMutationLevelsRef.current,
+      pondEra: pondEraRef.current,
     };
   }, []);
 
@@ -410,6 +441,7 @@ export default function Clicker2GamePage() {
       ownedSpecialtiesRef.current,
       denizenMutationLevelsRef.current,
       blossomCountRef.current,
+      fossilizedStrataRef.current,
     );
     const eps = effectiveEnergyPerSecond(
       sim.energyPerSecond,
@@ -436,6 +468,9 @@ export default function Clicker2GamePage() {
       denizen_mutation_levels: denizenMutationLevelsRef.current,
       milestones_reached: milestonesReachedRef.current,
       milestones_dismissed: milestonesDismissedRef.current,
+      fossils: fossilsRef.current,
+      total_fossils_earned: totalFossilsEarnedRef.current,
+      fossilized_strata: fossilizedStrataRef.current,
       statistics: statisticsRef.current,
     };
   }, [refreshWeatherSpawnRemainingForSave]);
@@ -558,6 +593,7 @@ export default function Clicker2GamePage() {
     ownedSpecialties: ownedSpecialtiesRef,
     denizenMutationLevels: denizenMutationLevelsRef,
     blossomCount: blossomCountRef,
+    fossilizedStrata: fossilizedStrataRef,
     energy: energyRef,
     energyAnchorMs: energyAnchorMsRef,
     activeBlusterBoost: activeBlusterBoostRef,
@@ -595,6 +631,8 @@ export default function Clicker2GamePage() {
         ownedDenizensRef.current,
         ownedSpecialtiesRef.current,
         denizenMutationLevelsRef.current,
+        blossomCountRef.current,
+        fossilizedStrataRef.current,
       );
       const eps = effectiveEnergyPerSecond(
         sim.energyPerSecond,
@@ -608,9 +646,7 @@ export default function Clicker2GamePage() {
         now,
       );
       bumpShopAffordIfBoundaryCrossed(prevSpendable, nextSpendable);
-      publishCounterHud(
-        snapClicker2CounterDisplay(gameLoopRefsBox.current, eps, now),
-      );
+      snapClicker2CounterToEffective(gameLoopRefsBox, publishCounterHud, now);
       setEnergy(nextSynced);
       setEnergyAnchorMs(now);
     },
@@ -623,6 +659,7 @@ export default function Clicker2GamePage() {
       ownedSpecialtiesRef.current,
       denizenMutationLevelsRef.current,
       blossomCountRef.current,
+      fossilizedStrataRef.current,
     );
     const eps = effectiveEnergyPerSecond(
       sim.energyPerSecond,
@@ -635,9 +672,13 @@ export default function Clicker2GamePage() {
     );
   }, []);
 
-  useClicker2TabTitleInterval(loadStatus === "ready", () =>
-    formatEnergyAmountHud(Math.round(effectiveEnergyNow())),
+  useClicker2TabTitleInterval(
+    loadStatus === "ready" && !pondCycleFadeActive,
+    () => formatEnergyAmountHud(Math.round(effectiveEnergyNow())),
   );
+
+  const pondCycleHudDisplayText =
+    pondCycleCounterFrozenText ?? loopCounterText;
 
   const effectiveAllTimeEnergyEarnedNow = useCallback(() => {
     const sim = simulateGame(
@@ -645,6 +686,7 @@ export default function Clicker2GamePage() {
       ownedSpecialtiesRef.current,
       denizenMutationLevelsRef.current,
       blossomCountRef.current,
+      fossilizedStrataRef.current,
     );
     const nowPerf = performance.now();
     const boostedEps = effectiveEnergyPerSecond(
@@ -668,6 +710,7 @@ export default function Clicker2GamePage() {
     () => blossomCountFromMilestones(milestonesReached),
     [milestonesReached],
   );
+  blossomCountRef.current = blossomCount;
 
   const simulation = useMemo(
     () =>
@@ -676,8 +719,15 @@ export default function Clicker2GamePage() {
         ownedSpecialties,
         denizenMutationLevels,
         blossomCount,
+        fossilizedStrata,
       ),
-    [ownedDenizens, ownedSpecialties, denizenMutationLevels, blossomCount],
+    [
+      ownedDenizens,
+      ownedSpecialties,
+      denizenMutationLevels,
+      blossomCount,
+      fossilizedStrata,
+    ],
   );
 
   const rippleVisualStyle = useMemo(
@@ -695,6 +745,17 @@ export default function Clicker2GamePage() {
       passiveAccrualDisplayTick,
     ],
   );
+
+  const unfossilizedStrataDisplay = useMemo(
+    () =>
+      unfossilizedStrataCount(
+        effectiveAllTimeEnergyEarnedDisplay,
+        fossilizedStrata,
+      ),
+    [effectiveAllTimeEnergyEarnedDisplay, fossilizedStrata],
+  );
+
+  const fossilShopVisible = isFossilShopUnlocked(totalFossilsEarned);
 
   const mutagenUnlocked = isMutagenSystemUnlocked(
     effectiveAllTimeEnergyEarnedDisplay,
@@ -760,7 +821,9 @@ export default function Clicker2GamePage() {
   );
 
   const scheduleNextWeatherSpawn = useCallback(() => {
-    const remaining = rollWeatherSpawnDelayMs();
+    const remaining = rollWeatherSpawnDelayMsForOwned(
+      ownedSpecialtiesRef.current,
+    );
     nextWeatherSpawnRemainingMsRef.current = remaining;
     weatherSpawnDeadlinePerfMsRef.current = performance.now() + remaining;
     markGameDirty();
@@ -777,6 +840,8 @@ export default function Clicker2GamePage() {
         ownedDenizensRef.current,
         ownedSpecialtiesRef.current,
         denizenMutationLevelsRef.current,
+        blossomCountRef.current,
+        fossilizedStrataRef.current,
       );
       const frozen = computeEffectiveEnergyAtBlusterEnd(
         energyRef.current,
@@ -858,6 +923,9 @@ export default function Clicker2GamePage() {
     denizen_mutation_levels: denizenMutationLevels,
     milestones_reached: milestonesReached,
     milestones_dismissed: milestonesDismissed,
+    fossils,
+    total_fossils_earned: totalFossilsEarned,
+    fossilized_strata: fossilizedStrata,
     statistics,
   };
 
@@ -886,7 +954,11 @@ export default function Clicker2GamePage() {
         let nextWeatherSpawnRemaining =
           loadedState.next_weather_spawn_remaining_ms > 0
             ? loadedState.next_weather_spawn_remaining_ms
-            : rollWeatherSpawnDelayMs();
+            : rollWeatherSpawnDelayMsForOwned(
+                stripRetiredWindFromOwnedSpecialties(
+                  loadedState.owned_specialties,
+                ),
+              );
         const { completedCount: mutagenSettledCount, ...mutagenState } =
           mutagenBoot;
         const stateWithWeather = {
@@ -943,6 +1015,12 @@ export default function Clicker2GamePage() {
         setPondStartedAtMs(pondStart);
         setPondEra(stateWithWeather.pond_era);
         pondEraRef.current = stateWithWeather.pond_era;
+        setFossils(stateWithWeather.fossils);
+        fossilsRef.current = stateWithWeather.fossils;
+        setTotalFossilsEarned(stateWithWeather.total_fossils_earned);
+        totalFossilsEarnedRef.current = stateWithWeather.total_fossils_earned;
+        setFossilizedStrata(stateWithWeather.fossilized_strata);
+        fossilizedStrataRef.current = stateWithWeather.fossilized_strata;
         statisticsPassiveAnchorMsRef.current = performance.now();
         nextWeatherSpawnRemainingMsRef.current = nextWeatherSpawnRemaining;
         weatherSpawnDeadlinePerfMsRef.current =
@@ -1013,10 +1091,13 @@ export default function Clicker2GamePage() {
   useEffect(() => {
     if (!isAuthenticated || loadStatus !== "ready") return;
     const id = window.setInterval(() => {
+      if (pondCycleFadeActiveRef.current) return;
       const sim = simulateGame(
         ownedDenizensRef.current,
         ownedSpecialtiesRef.current,
         denizenMutationLevelsRef.current,
+        blossomCountRef.current,
+        fossilizedStrataRef.current,
       );
       const passiveEps = effectiveEnergyPerSecond(
         sim.energyPerSecond,
@@ -1286,8 +1367,15 @@ export default function Clicker2GamePage() {
         ownedSpecialties,
         denizenMutationLevels,
         blossomCount,
+        fossilizedStrata,
       ),
-    [ownedDenizens, ownedSpecialties, denizenMutationLevels, blossomCount],
+    [
+      ownedDenizens,
+      ownedSpecialties,
+      denizenMutationLevels,
+      blossomCount,
+      fossilizedStrata,
+    ],
   );
 
   const getDenizenTooltipSnapshot = useCallback<GetDenizenShopTooltipSnapshot>(
@@ -1308,7 +1396,7 @@ export default function Clicker2GamePage() {
   );
 
   useClicker2GameLoop(
-    loadStatus === "ready",
+    loadStatus === "ready" && !pondCycleFadeActive,
     gameLoopRefsBox,
     publishCounterHud,
     () => setShopAffordRevision((n) => n + 1),
@@ -1327,21 +1415,9 @@ export default function Clicker2GamePage() {
 
   useEffect(() => {
     if (loadStatus !== "ready") return;
-    publishCounterHud(
-      snapClicker2CounterDisplay(
-        gameLoopRefsBox.current,
-        effectiveEnergyPerSecond(
-          simulateGame(
-            ownedDenizensRef.current,
-            ownedSpecialtiesRef.current,
-            denizenMutationLevelsRef.current,
-            blossomCountRef.current,
-          ).energyPerSecond,
-          activeBlusterBoostRef.current,
-        ),
-      ),
-    );
-  }, [loadStatus, energy, energyAnchorMs, publishCounterHud]);
+    snapClicker2CounterToEffective(gameLoopRefsBox, publishCounterHud);
+    setShopAffordRevision((n) => n + 1);
+  }, [loadStatus, loadAttempt, energy, energyAnchorMs, publishCounterHud]);
 
   const handleCollectMutagen = useCallback(() => {
     const nowMs = Date.now();
@@ -1491,6 +1567,7 @@ export default function Clicker2GamePage() {
       ownedSpecialtiesRef.current,
       denizenMutationLevelsRef.current,
       blossomCountRef.current,
+      fossilizedStrataRef.current,
     );
     const stats = statisticsRef.current;
     const capturedWallMs = Date.now();
@@ -1523,6 +1600,10 @@ export default function Clicker2GamePage() {
       ownedSpecialtiesRef.current,
       specialtyAcquiredAtMsRef.current,
     );
+    const ownedFossilShopDefs = listOwnedFossilShopDefs(
+      ownedSpecialtiesRef.current,
+      specialtyAcquiredAtMsRef.current,
+    );
 
     const milestoneStatuses = milestoneStatusList(milestonesReachedRef.current).map(
       ({ def, reachedAtMs }) => ({
@@ -1535,7 +1616,9 @@ export default function Clicker2GamePage() {
     );
 
     const stratumLevel = stratumLevelFromAllTimeEnergy(allTimeEnergyEarned);
+    const fossilized = fossilizedStrataRef.current;
 
+    setResetPondError(null);
     setStatsSnapshot({
       energyInPond,
       pondEra: pondEraRef.current,
@@ -1543,11 +1626,20 @@ export default function Clicker2GamePage() {
       allTimeEnergyEarned,
       stratumLevel,
       energyToNextStratum: energyToNextStratum(allTimeEnergyEarned),
+      fossilizedStrata: fossilized,
+      unfossilizedStrata: unfossilizedStrataCount(
+        allTimeEnergyEarned,
+        fossilized,
+      ),
+      fossils: fossilsRef.current,
+      totalFossilsEarned: totalFossilsEarnedRef.current,
       pondStartedAtMs: pondStartedAtMsRef.current,
       lastSavedAtMs: lastSavedAtMsRef.current,
       denizensOwned: totalDenizensOwned(ownedDenizensRef.current),
       evolutionsOwned: ownedEvolutionDefs.length,
       ownedEvolutionDefs,
+      fossilShopOwned: ownedFossilShopDefs.length,
+      ownedFossilShopDefs,
       milestonesReached: milestoneStatuses.filter((m) => m.reachedAtMs != null)
         .length,
       blossoms: blossomCountRef.current,
@@ -1597,6 +1689,7 @@ export default function Clicker2GamePage() {
       ownedSpecialtiesRef.current,
       denizenMutationLevelsRef.current,
       blossomCountRef.current,
+      fossilizedStrataRef.current,
     );
     const nowPerf = performance.now();
     const gain =
@@ -1630,7 +1723,9 @@ export default function Clicker2GamePage() {
     stats.energy_from_clicking = (stats.energy_from_clicking ?? 0) + gain;
     saveDirtyRef.current = true;
 
+    const flushEpoch = pondEnergyEpochRef.current;
     startTransition(() => {
+      if (flushEpoch !== pondEnergyEpochRef.current) return;
       setEnergy(nextEnergy);
       setEnergyAnchorMs(now);
       setStatistics({ ...stats });
@@ -1640,6 +1735,7 @@ export default function Clicker2GamePage() {
   }, [bumpShopAffordIfBoundaryCrossed, scheduleLocalSave, syncMilestones]);
 
   const onClickPond = useCallback(() => {
+    if (pondCycleFadeActiveRef.current) return;
     pendingPondClicksRef.current += 1;
     if (pondClickFlushRafRef.current) return;
     pondClickFlushRafRef.current = requestAnimationFrame(flushPondClicks);
@@ -1661,6 +1757,7 @@ export default function Clicker2GamePage() {
   }, [flushPendingPondClicksNow]);
 
   const onWeatherEventActivate = useCallback(() => {
+    if (pondCycleFadeActiveRef.current) return;
     const event = activeWeatherRef.current;
     if (!event || performance.now() >= event.expiresAtPerfMs) return;
 
@@ -1669,6 +1766,7 @@ export default function Clicker2GamePage() {
       ownedSpecialtiesRef.current,
       denizenMutationLevelsRef.current,
       blossomCountRef.current,
+      fossilizedStrataRef.current,
     );
     const pondEnergy = effectiveEnergyNow();
 
@@ -1789,6 +1887,178 @@ export default function Clicker2GamePage() {
     syncMilestones,
   ]);
 
+  const buyFossilShopSpecialty = useCallback(
+    (def: SpecialtyDef) => {
+      if (!def.fossilShopOnly || def.priceFossils == null) return;
+      if (ownedSpecialtiesRef.current[def.id]) return;
+      if (
+        !isSpecialtyUnlocked(
+          def,
+          ownedDenizensRef.current,
+          effectiveAllTimeEnergyEarnedNow(),
+          statisticsRef.current.energy_from_clicking ?? 0,
+          blossomCountRef.current,
+          ownedSpecialtiesRef.current,
+        )
+      ) {
+        return;
+      }
+      const cost = def.priceFossils;
+      if (fossilsRef.current < cost) return;
+      fossilsRef.current -= cost;
+      setFossils(fossilsRef.current);
+      const acquiredAt = Date.now();
+      setOwnedSpecialties((o) => ({ ...o, [def.id]: true }));
+      setSpecialtyAcquiredAtMs((m) => ({ ...m, [def.id]: acquiredAt }));
+      markGameDirty();
+      syncMilestones();
+    },
+    [
+      effectiveAllTimeEnergyEarnedNow,
+      markGameDirty,
+      syncMilestones,
+    ],
+  );
+
+  const applyPondCycleState = useCallback(() => {
+    flushPendingPondClicksNow();
+    refreshWeatherSpawnRemainingForSave();
+    const nowMs = Date.now();
+    const cycled = applyPondCycle(snapshotState(), nowMs);
+
+    window.clearTimeout(rainBoostEndTimeoutRef.current);
+    window.clearTimeout(blusterBoostEndTimeoutRef.current);
+    rainBoostEndTimeoutRef.current = 0;
+    blusterBoostEndTimeoutRef.current = 0;
+    activeRainBoostRef.current = null;
+    activeBlusterBoostRef.current = null;
+    setActiveRainBoost(null);
+    setActiveBlusterBoost(null);
+    setActiveWeather(null);
+    setBoostBannerVariantId(null);
+    setSunshineBannerVariantId(null);
+
+    const perfNow = performance.now();
+
+    setOwnedDenizens(cycled.owned_denizens);
+    ownedDenizensRef.current = cycled.owned_denizens;
+    setOwnedSpecialties(cycled.owned_specialties);
+    ownedSpecialtiesRef.current = cycled.owned_specialties;
+    setSpecialtyAcquiredAtMs(cycled.specialty_acquired_at_ms);
+    setRevealedDenizens(cycled.revealed_denizens);
+    setDenizenPurchaseTimeline(cycled.denizen_purchase_timeline);
+    setStatistics(cycled.statistics);
+    statisticsRef.current = cycled.statistics;
+    setPondEra(cycled.pond_era);
+    pondEraRef.current = cycled.pond_era;
+    setPondStartedAtMs(cycled.pond_started_at_ms);
+    pondStartedAtMsRef.current = cycled.pond_started_at_ms;
+    setFossils(cycled.fossils);
+    fossilsRef.current = cycled.fossils;
+    setTotalFossilsEarned(cycled.total_fossils_earned);
+    totalFossilsEarnedRef.current = cycled.total_fossils_earned;
+    setFossilizedStrata(cycled.fossilized_strata);
+    fossilizedStrataRef.current = cycled.fossilized_strata;
+    setMutagenFormingStartedAtMs(cycled.mutagen_forming_started_at_ms);
+    mutagenFormingStartedAtMsRef.current = cycled.mutagen_forming_started_at_ms;
+    statisticsPassiveAnchorMsRef.current = perfNow;
+    nextWeatherSpawnRemainingMsRef.current = 0;
+    stateRef.current = cycled;
+
+    scheduleNextWeatherSpawn();
+    syncMilestones();
+    commitSyncedEnergy(0);
+    pondEnergyEpochRef.current += 1;
+    pendingPondClicksRef.current = 0;
+    if (pondClickFlushRafRef.current) {
+      cancelAnimationFrame(pondClickFlushRafRef.current);
+      pondClickFlushRafRef.current = 0;
+    }
+    stateRef.current = { ...cycled, energy: 0 };
+    setShopAffordRevision((n) => n + 1);
+    markGameDirty();
+    flushStatisticsToState();
+    persistLocalSave();
+  }, [
+    commitSyncedEnergy,
+    flushPendingPondClicksNow,
+    refreshWeatherSpawnRemainingForSave,
+    snapshotState,
+    scheduleNextWeatherSpawn,
+    markGameDirty,
+    flushStatisticsToState,
+    persistLocalSave,
+    syncMilestones,
+  ]);
+
+  const beginPondCycle = useCallback(() => {
+    if (motionPaused) {
+      applyPondCycleState();
+      return;
+    }
+    flushPendingPondClicksNow();
+    snapClicker2CounterToEffective(gameLoopRefsBox, publishCounterHud);
+    const frozenHud = formatEnergyAmountHud(
+      Math.round(spendableEnergyRef.current),
+    );
+    setPondCycleCounterFrozenText(frozenHud);
+    syncClicker2TabTitle(frozenHud);
+    pondCycleFadeActiveRef.current = true;
+    setPondCycleFadeActive(true);
+  }, [
+    motionPaused,
+    applyPondCycleState,
+    flushPendingPondClicksNow,
+    publishCounterHud,
+  ]);
+
+  const snapCounterWhileScreenWhite = useCallback(() => {
+    setPondCycleCounterFrozenText(null);
+    snapClicker2CounterToEffective(gameLoopRefsBox, publishCounterHud);
+    syncClicker2TabTitle(
+      formatEnergyAmountHud(Math.round(spendableEnergyRef.current)),
+    );
+    setShopAffordRevision((n) => n + 1);
+  }, [publishCounterHud]);
+
+  const handlePondCycleFullyWhite = useCallback(() => {
+    applyPondCycleState();
+    snapCounterWhileScreenWhite();
+  }, [applyPondCycleState, snapCounterWhileScreenWhite]);
+
+  const handlePondCycleFadeComplete = useCallback(() => {
+    pondCycleFadeActiveRef.current = false;
+    setPondCycleFadeActive(false);
+  }, []);
+
+  const handleResetPondSave = useCallback(async () => {
+    setResetPondBusy(true);
+    setResetPondError(null);
+    try {
+      const token = await getApiAccessToken();
+      const fresh = createDefaultClicker2State();
+      const saveRes = await saveClicker2State(token, fresh);
+      const userId = sessionUser?.user.id;
+      if (userId != null) {
+        writeClicker2LocalSave(userId, fresh);
+      }
+      const serverSavedAtMs = saveRes.updated_at
+        ? Date.parse(saveRes.updated_at)
+        : Date.now();
+      lastSavedAtMsRef.current = Number.isFinite(serverSavedAtMs)
+        ? serverSavedAtMs
+        : Date.now();
+      saveDirtyRef.current = false;
+      setStatsModalOpen(false);
+      setCyclePondModalOpen(false);
+      setLoadAttempt((n) => n + 1);
+    } catch (e) {
+      setResetPondError(e instanceof Error ? e.message : "Reset failed");
+    } finally {
+      setResetPondBusy(false);
+    }
+  }, [getApiAccessToken, sessionUser]);
+
   if (!isAuthenticated && !sessionLoading) {
     return <Navigate to="/clicker" replace />;
   }
@@ -1847,10 +2117,12 @@ export default function Clicker2GamePage() {
             syncedEnergy={energy}
             energyPerSecond={displayEnergyPerSecond}
             anchorMs={energyAnchorMs}
-            displayText={loopCounterText}
+            displayText={pondCycleHudDisplayText}
           />
           <Text fontSize="sm" color="gray.700">
-            {formatEnergyRate(displayEnergyPerSecond)} {ENERGY_EMOJI} per second
+            {pondCycleFadeActive
+              ? "—"
+              : `${formatEnergyRate(displayEnergyPerSecond)} ${ENERGY_EMOJI} per second`}
           </Text>
         </>
       ) : null}
@@ -1891,7 +2163,7 @@ export default function Clicker2GamePage() {
           clickValue={effectiveClickValueDisplay}
           rippleOpacityStart={rippleVisualStyle.opacityStart}
           rippleBorderAlpha={rippleVisualStyle.borderAlpha}
-          motionPaused={motionPaused}
+          motionPaused={motionPaused || pondCycleFadeActive}
           lightClickFx={clickMultiplier > 1}
           onClickPond={onClickPond}
         />
@@ -1985,8 +2257,21 @@ export default function Clicker2GamePage() {
         <StrataProgressRow
           allTimeEnergyEarned={effectiveAllTimeEnergyEarnedDisplay}
           pondEra={pondEra}
+          unfossilizedStrata={unfossilizedStrataDisplay}
+          fossils={fossils}
+          onCycleClick={() => setCyclePondModalOpen(true)}
           canHoverFinePointer={canHoverFinePointer}
         />
+        <Box mb="2" w="full">
+          <MutagenPanel
+            allTimeEnergyEarned={effectiveAllTimeEnergyEarnedDisplay}
+            mutagensBank={mutagensBank}
+            mutagenFormingStartedAtMs={mutagenFormingStartedAtMs}
+            nowMs={Date.now()}
+            onCollect={handleCollectMutagen}
+            canHoverFinePointer={canHoverFinePointer}
+          />
+        </Box>
         <PondDepthChart
           timeline={denizenPurchaseTimeline}
           ownedDenizens={ownedDenizens}
@@ -2022,7 +2307,78 @@ export default function Clicker2GamePage() {
     </PondButton>
   );
 
-  const shopDenizensPanel = (
+  /*
+   * CLICKER2_DEV_TOOLS — staff-only UI (import BLOSSOM_RING_MAX when re-enabled).
+   *
+   * const shopDevToolsPanel = showClicker2DevTools ? (
+   *   <Flex
+   *     gap="1"
+   *     flexWrap="wrap"
+   *     align="center"
+   *     borderWidth="1px"
+   *     borderStyle="dashed"
+   *     borderColor="gray.400"
+   *     borderRadius="md"
+   *     p="1.5"
+   *   >
+   *     <Text fontSize="2xs" color="gray.600" flex="1" minW="6rem">
+   *       TEMP dev tools
+   *     </Text>
+   *     <PondButton
+   *       type="button"
+   *       size="xs"
+   *       variant="outline"
+   *       colorPalette="gray"
+   *       onClick={handleDevSetBlossoms100}
+   *       disabled={blossomCount >= BLOSSOM_RING_MAX}
+   *     >
+   *       Set blossoms to 100
+   *     </PondButton>
+   *     <PondButton
+   *       type="button"
+   *       size="xs"
+   *       variant="outline"
+   *       colorPalette="gray"
+   *       onClick={handleDevRevertBlossomsToEarned}
+   *       disabled={devBlossomOverride === null}
+   *     >
+   *       Revert blossoms to earned
+   *     </PondButton>
+   *     <PondButton
+   *       type="button"
+   *       size="xs"
+   *       variant="outline"
+   *       colorPalette="gray"
+   *       onClick={handleDevGainOneOfEachDenizen}
+   *     >
+   *       +1 of each denizen
+   *     </PondButton>
+   *     <PondButton
+   *       type="button"
+   *       size="xs"
+   *       variant="outline"
+   *       colorPalette="gray"
+   *       onClick={handleDevGrantMutagenUnlockEnergy}
+   *       disabled={
+   *         effectiveAllTimeEnergyEarnedDisplay >= MUTAGEN_UNLOCK_ALL_TIME_ENERGY
+   *       }
+   *     >
+   *       +1B lifetime
+   *     </PondButton>
+   *     <PondButton
+   *       type="button"
+   *       size="xs"
+   *       variant="outline"
+   *       colorPalette="gray"
+   *       onClick={handleDevGrantMutagen}
+   *     >
+   *       +1 mutagen
+   *     </PondButton>
+   *   </Flex>
+   * ) : null;
+   */
+
+  const shopDenizensList = (
     <DenizenShopList
       denizens={visibleDenizens}
       spendableEnergy={spendableEnergy}
@@ -2037,16 +2393,10 @@ export default function Clicker2GamePage() {
     />
   );
 
+  const shopDenizensPanel = shopDenizensList;
+
   const shopEvolutionsPanel = (
     <Stack gap="3">
-      <MutagenPanel
-        allTimeEnergyEarned={effectiveAllTimeEnergyEarnedDisplay}
-        mutagensBank={mutagensBank}
-        mutagenFormingStartedAtMs={mutagenFormingStartedAtMs}
-        nowMs={Date.now()}
-        onCollect={handleCollectMutagen}
-        canHoverFinePointer={canHoverFinePointer}
-      />
       <SpecialtyShopGrid
         specialties={visibleSpecialties}
         spendableEnergy={spendableEnergy}
@@ -2054,6 +2404,14 @@ export default function Clicker2GamePage() {
         onBuy={buySpecialty}
         headerTrailing={isMobile ? undefined : shopStatsButton}
       />
+      {fossilShopVisible ? (
+        <FossilShopSection
+          fossils={fossils}
+          ownedSpecialties={ownedSpecialties}
+          canHoverFinePointer={canHoverFinePointer}
+          onBuy={buyFossilShopSpecialty}
+        />
+      ) : null}
     </Stack>
   );
 
@@ -2086,15 +2444,15 @@ export default function Clicker2GamePage() {
             onBuy={buySpecialty}
             headerTrailing={shopStatsButton}
           />
-          <MutagenPanel
-            allTimeEnergyEarned={effectiveAllTimeEnergyEarnedDisplay}
-            mutagensBank={mutagensBank}
-            mutagenFormingStartedAtMs={mutagenFormingStartedAtMs}
-            nowMs={Date.now()}
-            onCollect={handleCollectMutagen}
-            canHoverFinePointer={canHoverFinePointer}
-          />
-          {shopDenizensPanel}
+          {fossilShopVisible ? (
+            <FossilShopSection
+              fossils={fossils}
+              ownedSpecialties={ownedSpecialties}
+              canHoverFinePointer={canHoverFinePointer}
+              onBuy={buyFossilShopSpecialty}
+            />
+          ) : null}
+          {shopDenizensList}
         </Stack>
       )}
     </Box>
@@ -2135,7 +2493,7 @@ export default function Clicker2GamePage() {
               syncedEnergy={energy}
               energyPerSecond={displayEnergyPerSecond}
               anchorMs={energyAnchorMs}
-              displayText={loopCounterText}
+              displayText={pondCycleHudDisplayText}
               statsButton={shopStatsButton}
               savedBannerKey={savedBannerKey}
               ongoingWeatherEmoji={ongoingWeatherHudEmoji}
@@ -2168,6 +2526,21 @@ export default function Clicker2GamePage() {
         open={statsModalOpen}
         onOpenChange={setStatsModalOpen}
         snapshot={statsSnapshot}
+        resetPondBusy={resetPondBusy}
+        resetPondError={resetPondError}
+        onResetPondSave={handleResetPondSave}
+      />
+      <CyclePondConfirmModal
+        open={cyclePondModalOpen}
+        onOpenChange={setCyclePondModalOpen}
+        unfossilizedStrata={unfossilizedStrataDisplay}
+        onConfirm={beginPondCycle}
+      />
+      <PondCycleFadeOverlay
+        active={pondCycleFadeActive}
+        motionPaused={motionPaused}
+        onFullyWhite={handlePondCycleFullyWhite}
+        onComplete={handlePondCycleFadeComplete}
       />
     </ClickerPageShell>
   );

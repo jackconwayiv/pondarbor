@@ -32,6 +32,7 @@ import {
   resolveCardSuit,
   type ZoneName,
 } from "./estatesDropRules";
+import PondButton from "../PondButton";
 import { Card, DraggableHandCard, DragPreviewCard } from "./play/Card";
 import { ESTATES_ACTIONS_PER_PLAYER } from "./play/ActionSockets";
 import { HAND_RETURN_DROP_ID, PlayerBand } from "./play/PlayerBand";
@@ -180,6 +181,10 @@ export type EstatesPlayViewProps = {
   onPlaceCard: (zone: string, cardId: string) => Promise<void>;
   onReorderHand: (cardIds: string[]) => Promise<void>;
   isMyScoringChoice: boolean;
+  towerDiscardEffectActive?: boolean;
+  towerDiscardModes?: Record<string, "keep" | "discard">;
+  onToggleTowerDiscard?: (cardId: string) => void;
+  onConfirmTowerDiscard?: () => Promise<void>;
   scoringZoneCardOwner: "mine" | "opponent" | null;
   scoringTargets: Array<{ zone?: string; cardId: string; modifierLabel: string }>;
   onApplyScoringTarget: (cardId: string, zone: string) => Promise<void>;
@@ -197,6 +202,10 @@ export default function EstatesPlayView({
   onPlaceCard,
   onReorderHand,
   isMyScoringChoice,
+  towerDiscardEffectActive = false,
+  towerDiscardModes = {},
+  onToggleTowerDiscard,
+  onConfirmTowerDiscard,
   scoringZoneCardOwner,
   scoringTargets,
   onApplyScoringTarget,
@@ -271,6 +280,7 @@ export default function EstatesPlayView({
   }, [scoringTargets]);
 
   const scoringApplying = busyAction === "choose-target";
+  const towerDiscardApplying = towerDiscardEffectActive && scoringApplying;
 
   const resolveScoringTarget = useCallback(
     (zone: string | undefined, cardId: string) => {
@@ -311,7 +321,14 @@ export default function EstatesPlayView({
   const isMobile = useIsMobile();
   const usePortraitCanvasScale = isMobile;
   const myHandCards = myPlayerState.hand ?? [];
-  const showHandSixGrid = isMobile && myHandCards.length === 6 && !iHavePlacedThisRound;
+  const handGridLayout: "six" | "seven" | null =
+    isMobile && !iHavePlacedThisRound && !towerDiscardEffectActive
+      ? myHandCards.length === 6
+        ? "six"
+        : myHandCards.length === 7
+          ? "seven"
+          : null
+      : null;
 
   const canDropInZone = useCallback(
     (zone: ZoneName, cardId: string): boolean => {
@@ -432,16 +449,42 @@ export default function EstatesPlayView({
 
   const myHandChips = myHandCards.map((card) => {
     const cardId = String(card.card_id || "");
+    const towerMode = towerDiscardModes[cardId] ?? "keep";
     return (
       <DraggableHandCard
         key={cardId}
         card={card as Record<string, unknown>}
         dragId={handCardDragId(cardId)}
         disabled={!canDragHandCard}
-        scoringTarget={resolveScoringTarget(undefined, cardId)}
+        scoringTarget={
+          towerDiscardEffectActive ? undefined : resolveScoringTarget(undefined, cardId)
+        }
+        towerDiscardChoice={
+          towerDiscardEffectActive && onToggleTowerDiscard
+            ? {
+                mode: towerMode,
+                onToggle: () => onToggleTowerDiscard(cardId),
+                applying: towerDiscardApplying,
+              }
+            : undefined
+        }
       />
     );
   });
+
+  const towerAcceptControl =
+    towerDiscardEffectActive && onConfirmTowerDiscard ? (
+      <PondButton
+        type="button"
+        size="sm"
+        colorPalette="sky"
+        flexShrink={0}
+        disabled={towerDiscardApplying}
+        onClick={() => void onConfirmTowerDiscard()}
+      >
+        Accept
+      </PondButton>
+    ) : null;
 
   const opponentName = opponentPlayerState?.display_name || "Opponent";
   const opponentAvatar = opponentPlayerState?.avatar_url || undefined;
@@ -589,9 +632,18 @@ export default function EstatesPlayView({
                 }
                 enableHandReturn={isMyTurn && !isMyScoringChoice && !placementPending}
                 dragActive={Boolean(activeDrag)}
-                scrollableHand={!showHandSixGrid}
-                handSixGrid={showHandSixGrid}
-                center={myHandChips}
+                scrollableHand={handGridLayout == null}
+                handGridLayout={handGridLayout}
+                center={
+                  towerAcceptControl ? (
+                    <div className="estates-band__hand-row">
+                      {myHandChips}
+                      {towerAcceptControl}
+                    </div>
+                  ) : (
+                    myHandChips
+                  )
+                }
               />
             </div>
           </PlayCanvas>

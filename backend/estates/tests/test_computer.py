@@ -27,7 +27,7 @@ from estates.computer import (
 from estates.constants import COMPUTER_SEAT_INDEX, HUMAN_SEAT_INDEX
 from estates.models import EstatesGame, EstatesPlayerState, EstatesRoundState
 from estates.presence import adjust_presence_connection
-from estates.views import _try_run_computer_step
+from estates.views import _solo_advance_scoring_and_computer, _try_run_computer_step
 
 User = get_user_model()
 
@@ -116,6 +116,51 @@ class EstatesComputerTests(TestCase):
         round_state.is_paused = False
         round_state.save()
         self.assertFalse(_try_run_computer_step(game_id=str(game.pk)))
+
+    def test_easy_computer_plays_when_solo_drive_runs(self):
+        game = self._solo_game(difficulty="easy")
+        adjust_presence_connection(game_id=str(game.pk), seat_index=HUMAN_SEAT_INDEX, delta=1)
+        round_state = EstatesRoundState.objects.get(game=game)
+        computer_state = EstatesPlayerState.objects.get(game=game, seat_index=COMPUTER_SEAT_INDEX)
+        hand_before = len(computer_state.hand or [])
+        self.assertGreater(hand_before, 0)
+        round_state.pending_actor_seat = COMPUTER_SEAT_INDEX
+        round_state.pending_action = "play_card"
+        round_state.phase = EstatesRoundState.Phase.PLACEMENT
+        round_state.is_paused = False
+        round_state.pending_computer_action_at = timezone.now() + timedelta(seconds=30)
+        round_state.save()
+        _progressed, computer_step = _solo_advance_scoring_and_computer(game_id=str(game.pk))
+        self.assertTrue(computer_step, "expected computer to play via solo drive")
+        computer_state.refresh_from_db()
+        self.assertLess(len(computer_state.hand or []), hand_before)
+
+    def test_easy_computer_responds_after_human_place_card(self):
+        game = self._solo_game(difficulty="easy")
+        adjust_presence_connection(game_id=str(game.pk), seat_index=HUMAN_SEAT_INDEX, delta=1)
+        human = EstatesPlayerState.objects.get(game=game, seat_index=HUMAN_SEAT_INDEX)
+        round_state = EstatesRoundState.objects.get(game=game)
+        if round_state.pending_actor_seat != HUMAN_SEAT_INDEX:
+            round_state.pending_actor_seat = HUMAN_SEAT_INDEX
+            round_state.pending_action = "play_card"
+            round_state.is_paused = False
+            round_state.save()
+        card = next(c for c in (human.hand or []) if str(c.get("suit") or "") == "peasant")
+        computer_before = len(
+            EstatesPlayerState.objects.get(game=game, seat_index=COMPUTER_SEAT_INDEX).hand or []
+        )
+        resp = self.client.post(
+            f"/api/v1/estates/games/{game.id}/actions/place-card/",
+            {"card_id": card["card_id"], "zone": "farm"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        round_state.refresh_from_db()
+        if round_state.pending_actor_seat == COMPUTER_SEAT_INDEX:
+            computer_after = len(
+                EstatesPlayerState.objects.get(game=game, seat_index=COMPUTER_SEAT_INDEX).hand or []
+            )
+            self.assertLess(computer_after, computer_before)
 
     def test_rank_placement_moves_legality(self):
         hand = [

@@ -529,8 +529,9 @@ class EstatesLobbyApiTests(TestCase):
         self.assertTrue(progressed)
         host_state.refresh_from_db()
         round_state.refresh_from_db()
-        self.assertEqual(host_state.draw_bonus, 1)
+        self.assertEqual(host_state.draw_bonus, 2)
         self.assertIn("Road", round_state.status_message)
+        self.assertIn("2 extra cards", round_state.status_message)
 
     def test_tower_winner_prompts_discard_choice(self):
         game = EstatesGame.objects.create(
@@ -692,7 +693,7 @@ class EstatesLobbyApiTests(TestCase):
 
         resp = self.host_client.post(
             f"/api/v1/estates/games/{game.id}/actions/choose-effect-target/",
-            {"target_card_id": low_card["card_id"]},
+            {"target_card_ids": [low_card["card_id"]]},
             format="json",
         )
         self.assertEqual(resp.status_code, 200, resp.content)
@@ -707,6 +708,244 @@ class EstatesLobbyApiTests(TestCase):
         scoring = resp.json()["round_state"]["pending_payload"]["scoring"]
         self.assertIsNone(scoring.get("awaiting_choice"))
         self.assertEqual(scoring.get("next_round_start_seat"), 2)
+
+    def test_tower_discard_multiple_cards(self):
+        game = EstatesGame.objects.create(
+            player_1=self.host,
+            player_2=self.guest,
+            status=EstatesGame.Status.ACTIVE,
+            round=1,
+            victory_score=7,
+        )
+        low_card = {
+            "card_id": "peasant-1-1",
+            "suit": "peasant",
+            "rank": 1,
+            "temporary_value_modifier": 0,
+            "permanent_value_bonus": 0,
+        }
+        mid_card = {
+            "card_id": "peasant-2-1",
+            "suit": "peasant",
+            "rank": 2,
+            "temporary_value_modifier": 0,
+            "permanent_value_bonus": 0,
+        }
+        high_card = {
+            "card_id": "peasant-5-1",
+            "suit": "peasant",
+            "rank": 5,
+            "temporary_value_modifier": 0,
+            "permanent_value_bonus": 0,
+        }
+        host_state = EstatesPlayerState.objects.create(
+            game=game,
+            user=self.host,
+            seat_index=1,
+            deck=[],
+            hand=[low_card, mid_card, high_card],
+            discard=[],
+            draw_bonus=0,
+            score=0,
+        )
+        EstatesPlayerState.objects.create(
+            game=game,
+            user=self.guest,
+            seat_index=2,
+            deck=[],
+            hand=[],
+            discard=[],
+            draw_bonus=0,
+            score=0,
+        )
+        tower_card = {
+            "card_id": "royal-4-1",
+            "suit": "royal",
+            "color": "orange",
+            "rank": 4,
+            "temporary_value_modifier": 0,
+            "permanent_value_bonus": 0,
+        }
+        placements = {
+            zone: {"1": None, "2": None}
+            for zone in ("gate", "farm", "road", "tower", "throne")
+        }
+        placements["tower"] = {"1": {"card": tower_card, "confirmed": True}, "2": None}
+        EstatesRoundState.objects.create(
+            game=game,
+            phase=EstatesRoundState.Phase.SCORING,
+            placements_by_zone=placements,
+            pending_payload={
+                "scoring": {
+                    "zone_index": 4,
+                    "waiting_until_ms": 0,
+                    "awaiting_choice": None,
+                    "zone_wins_recorded": ["gate", "throne", "farm", "road"],
+                },
+            },
+            pending_action="resolve_scoring",
+        )
+        round_state = EstatesRoundState.objects.get(game=game)
+        _progress_scoring_if_ready(locked=game, round_state=round_state)
+
+        resp = self.host_client.post(
+            f"/api/v1/estates/games/{game.id}/actions/choose-effect-target/",
+            {"target_card_ids": [low_card["card_id"], mid_card["card_id"]]},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        host_state.refresh_from_db()
+        self.assertEqual(len(host_state.hand), 1)
+        self.assertEqual(host_state.hand[0]["card_id"], high_card["card_id"])
+        self.assertEqual(len(host_state.discard), 2)
+
+    def test_tower_discard_none_keeps_hand(self):
+        game = EstatesGame.objects.create(
+            player_1=self.host,
+            player_2=self.guest,
+            status=EstatesGame.Status.ACTIVE,
+            round=1,
+            victory_score=7,
+        )
+        hand_card = {
+            "card_id": "peasant-3-1",
+            "suit": "peasant",
+            "rank": 3,
+            "temporary_value_modifier": 0,
+            "permanent_value_bonus": 0,
+        }
+        host_state = EstatesPlayerState.objects.create(
+            game=game,
+            user=self.host,
+            seat_index=1,
+            deck=[],
+            hand=[hand_card],
+            discard=[],
+            draw_bonus=0,
+            score=0,
+        )
+        EstatesPlayerState.objects.create(
+            game=game,
+            user=self.guest,
+            seat_index=2,
+            deck=[],
+            hand=[],
+            discard=[],
+            draw_bonus=0,
+            score=0,
+        )
+        tower_card = {
+            "card_id": "royal-4-1",
+            "suit": "royal",
+            "color": "orange",
+            "rank": 4,
+            "temporary_value_modifier": 0,
+            "permanent_value_bonus": 0,
+        }
+        placements = {
+            zone: {"1": None, "2": None}
+            for zone in ("gate", "farm", "road", "tower", "throne")
+        }
+        placements["tower"] = {"1": {"card": tower_card, "confirmed": True}, "2": None}
+        EstatesRoundState.objects.create(
+            game=game,
+            phase=EstatesRoundState.Phase.SCORING,
+            placements_by_zone=placements,
+            pending_payload={
+                "scoring": {
+                    "zone_index": 4,
+                    "waiting_until_ms": 0,
+                    "awaiting_choice": None,
+                    "zone_wins_recorded": ["gate", "throne", "farm", "road"],
+                },
+            },
+            pending_action="resolve_scoring",
+        )
+        round_state = EstatesRoundState.objects.get(game=game)
+        _progress_scoring_if_ready(locked=game, round_state=round_state)
+
+        resp = self.host_client.post(
+            f"/api/v1/estates/games/{game.id}/actions/choose-effect-target/",
+            {"target_card_ids": []},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        host_state.refresh_from_db()
+        self.assertEqual(len(host_state.hand), 1)
+        self.assertEqual(len(host_state.discard), 0)
+        self.assertIn("keeps", resp.json()["round_state"]["status_message"].lower())
+
+    def test_tower_discard_rejects_unknown_card_id(self):
+        game = EstatesGame.objects.create(
+            player_1=self.host,
+            player_2=self.guest,
+            status=EstatesGame.Status.ACTIVE,
+            round=1,
+            victory_score=7,
+        )
+        hand_card = {
+            "card_id": "peasant-3-1",
+            "suit": "peasant",
+            "rank": 3,
+            "temporary_value_modifier": 0,
+            "permanent_value_bonus": 0,
+        }
+        EstatesPlayerState.objects.create(
+            game=game,
+            user=self.host,
+            seat_index=1,
+            deck=[],
+            hand=[hand_card],
+            discard=[],
+            draw_bonus=0,
+            score=0,
+        )
+        EstatesPlayerState.objects.create(
+            game=game,
+            user=self.guest,
+            seat_index=2,
+            deck=[],
+            hand=[],
+            discard=[],
+            draw_bonus=0,
+            score=0,
+        )
+        tower_card = {
+            "card_id": "royal-4-1",
+            "suit": "royal",
+            "color": "orange",
+            "rank": 4,
+            "temporary_value_modifier": 0,
+            "permanent_value_bonus": 0,
+        }
+        placements = {
+            zone: {"1": None, "2": None}
+            for zone in ("gate", "farm", "road", "tower", "throne")
+        }
+        placements["tower"] = {"1": {"card": tower_card, "confirmed": True}, "2": None}
+        EstatesRoundState.objects.create(
+            game=game,
+            phase=EstatesRoundState.Phase.SCORING,
+            placements_by_zone=placements,
+            pending_payload={
+                "scoring": {
+                    "zone_index": 4,
+                    "waiting_until_ms": 0,
+                    "awaiting_choice": None,
+                    "zone_wins_recorded": ["gate", "throne", "farm", "road"],
+                },
+            },
+            pending_action="resolve_scoring",
+        )
+        round_state = EstatesRoundState.objects.get(game=game)
+        _progress_scoring_if_ready(locked=game, round_state=round_state)
+
+        resp = self.host_client.post(
+            f"/api/v1/estates/games/{game.id}/actions/choose-effect-target/",
+            {"target_card_ids": ["not-in-hand"]},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 400, resp.content)
 
     def test_throne_winner_gains_point(self):
         game = EstatesGame.objects.create(

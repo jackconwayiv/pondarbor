@@ -17,7 +17,8 @@ import {
   reorderEstatesHand,
   type EstatesGameState,
 } from "./api";
-import { ESTATES_HOW_TO_PLAY_BODY, ESTATES_HOW_TO_PLAY_TITLE } from "./estatesHowToPlay";
+import { EstatesHowToPlayPanel } from "./EstatesHowToPlayPanel";
+import { ESTATES_HOW_TO_PLAY_TITLE } from "./estatesHowToPlay";
 import { ESTATES_GAME_FONT_FAMILY, ESTATES_PLAY_CANVAS_BG } from "./estatesPlayTheme";
 import { personalizeEstatesStatusMessage } from "./estatesStatusMessage";
 import { connectEstatesWebSocket } from "./estatesWsClient";
@@ -202,18 +203,75 @@ export default function EstatesPlayPage() {
     scoringAwaitingChoice && mySeat && Number(scoringAwaitingChoice.actor_seat || 0) === mySeat,
   );
 
+  const towerDiscardEffectActive = useMemo(() => {
+    if (!scoringAwaitingChoice || !mySeat) return false;
+    return (
+      String(scoringAwaitingChoice.type || "") === "tower_discard" &&
+      Number(scoringAwaitingChoice.actor_seat || 0) === mySeat
+    );
+  }, [mySeat, scoringAwaitingChoice]);
+
+  const [towerDiscardModes, setTowerDiscardModes] = useState<Record<string, "keep" | "discard">>({});
+
+  /** Stable across polling refreshes while the same Tower choice is open. */
+  const towerDiscardSessionKey = useMemo(() => {
+    if (!towerDiscardEffectActive || !game) return null;
+    const zone = String(scoringAwaitingChoice?.source_zone || "tower");
+    const actor = Number(scoringAwaitingChoice?.actor_seat || 0);
+    return `${game.round}:tower_discard:${actor}:${zone}`;
+  }, [game, scoringAwaitingChoice, towerDiscardEffectActive]);
+
+  const towerDiscardHandIdsKey = useMemo(
+    () =>
+      (myPlayerState?.hand ?? [])
+        .map((card) => String(card.card_id || ""))
+        .filter(Boolean)
+        .sort()
+        .join(","),
+    [myPlayerState?.hand],
+  );
+
+  const towerDiscardSessionKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!towerDiscardSessionKey) {
+      towerDiscardSessionKeyRef.current = null;
+      setTowerDiscardModes({});
+      return;
+    }
+
+    const handIds = towerDiscardHandIdsKey ? towerDiscardHandIdsKey.split(",") : [];
+
+    if (towerDiscardSessionKeyRef.current !== towerDiscardSessionKey) {
+      towerDiscardSessionKeyRef.current = towerDiscardSessionKey;
+      const next: Record<string, "keep" | "discard"> = {};
+      for (const cardId of handIds) next[cardId] = "keep";
+      setTowerDiscardModes(next);
+      return;
+    }
+
+    setTowerDiscardModes((prev) => {
+      let changed = false;
+      const next: Record<string, "keep" | "discard"> = {};
+      for (const cardId of handIds) {
+        const mode = prev[cardId] ?? "keep";
+        next[cardId] = mode;
+        if (prev[cardId] === undefined) changed = true;
+      }
+      if (!changed && Object.keys(prev).length === handIds.length) {
+        return prev;
+      }
+      return next;
+    });
+  }, [towerDiscardHandIdsKey, towerDiscardSessionKey]);
+
   const scoringTargets = useMemo<Array<{ zone?: string; cardId: string; modifierLabel: string }>>(() => {
     if (!game || !scoringAwaitingChoice) return [];
     const effectType = String(scoringAwaitingChoice.type || "");
-    if (
-      effectType === "farm_upgrade" ||
-      effectType === "road_upgrade" ||
-      effectType === "tower_discard"
-    ) {
-      const label = effectType === "tower_discard" ? "Discard" : "+1";
+    if (effectType === "farm_upgrade" || effectType === "road_upgrade") {
       return (myPlayerState?.hand ?? []).map((card) => ({
         cardId: String(card.card_id || ""),
-        modifierLabel: label,
+        modifierLabel: "+1",
       }));
     }
     if (effectType === "gate_debuff") {
@@ -259,7 +317,7 @@ export default function EstatesPlayPage() {
       return `You won the ${zoneLabel}! Choose a hand card to permanently gain +1.`;
     }
     if (effectType === "tower_discard") {
-      return "You won the Tower! Choose a hand card to discard. You will go second next round.";
+      return "You won the Tower! Tap cards to mark DISCARD, then Accept. You will go second next round.";
     }
     return "Choose a scoring target.";
   }, [isMyScoringChoice, scoringAwaitingChoice]);
@@ -421,9 +479,7 @@ export default function EstatesPlayPage() {
       const token = await getApiAccessToken();
       const effectType = String(scoringAwaitingChoice.type || "");
       const payload =
-        effectType === "farm_upgrade" ||
-        effectType === "road_upgrade" ||
-        effectType === "tower_discard"
+        effectType === "farm_upgrade" || effectType === "road_upgrade"
           ? { target_card_id: cardId }
           : { target_zone: zone, target_card_id: cardId };
       const updated = await chooseEstatesEffectTarget(token, game.id, payload);
@@ -434,6 +490,32 @@ export default function EstatesPlayPage() {
       setBusyAction(null);
     }
   };
+
+  const onToggleTowerDiscard = useCallback((cardId: string) => {
+    if (!cardId) return;
+    setTowerDiscardModes((prev) => ({
+      ...prev,
+      [cardId]: prev[cardId] === "discard" ? "keep" : "discard",
+    }));
+  }, []);
+
+  const onConfirmTowerDiscard = useCallback(async () => {
+    if (!game || !towerDiscardEffectActive) return;
+    setBusyAction("choose-target");
+    setLoadError(null);
+    try {
+      const token = await getApiAccessToken();
+      const target_card_ids = Object.entries(towerDiscardModes)
+        .filter(([, mode]) => mode === "discard")
+        .map(([cardId]) => cardId);
+      const updated = await chooseEstatesEffectTarget(token, game.id, { target_card_ids });
+      setGame(updated);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Could not apply Tower discard.");
+    } finally {
+      setBusyAction(null);
+    }
+  }, [game, getApiAccessToken, towerDiscardEffectActive, towerDiscardModes]);
 
   if (isLoading) {
     return (
@@ -698,11 +780,13 @@ export default function EstatesPlayPage() {
         title={ESTATES_HOW_TO_PLAY_TITLE}
         size="lg"
         contentProps={{ fontFamily: ESTATES_GAME_FONT_FAMILY }}
-        bodyProps={{ fontFamily: ESTATES_GAME_FONT_FAMILY }}
+        bodyProps={{
+          fontFamily: ESTATES_GAME_FONT_FAMILY,
+          overflowY: "auto",
+          maxH: { base: "min(70vh, 32rem)", md: "min(75vh, 36rem)" },
+        }}
       >
-        <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall" whiteSpace="pre-line">
-          {ESTATES_HOW_TO_PLAY_BODY}
-        </Text>
+        <EstatesHowToPlayPanel compact showTitle={false} />
       </AppModal>
 
       {loadError ? (
@@ -730,6 +814,10 @@ export default function EstatesPlayPage() {
           onPlaceCard={onPlaceCard}
           onReorderHand={onReorderHand}
           isMyScoringChoice={isMyScoringChoice}
+          towerDiscardEffectActive={towerDiscardEffectActive}
+          towerDiscardModes={towerDiscardModes}
+          onToggleTowerDiscard={onToggleTowerDiscard}
+          onConfirmTowerDiscard={onConfirmTowerDiscard}
           scoringZoneCardOwner={scoringZoneCardOwner}
           scoringTargets={scoringTargets}
           onApplyScoringTarget={onApplyScoringTarget}

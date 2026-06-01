@@ -70,6 +70,7 @@ class EffectMove:
     effect_type: str = ""
     target_zone: str = ""
     target_card_id: str = ""
+    target_card_ids: tuple[str, ...] = ()
     go_first: bool | None = None
 
 
@@ -1482,6 +1483,7 @@ def rank_tower_moves(*, computer_hand: list[dict], difficulty: str) -> list[Effe
         EffectMove(
             effect_type="tower_discard",
             target_card_id=str(c.get("card_id") or ""),
+            target_card_ids=(str(c.get("card_id") or ""),),
         )
         for c in ranked
     ]

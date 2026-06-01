@@ -1,4 +1,4 @@
-import type { SVGProps } from "react";
+import { useId, type SVGProps } from "react";
 
 import type { CanonicalSuit } from "../../estatesDropRules";
 import { GlyphSvg, MS } from "../manuscript/shared";
@@ -107,11 +107,12 @@ export function SuitGlyph({
 
 /** Six-point gilt star for permanent bonus indicator. */
 export function PermanentBonusStar({ size = 16, color }: { size?: number; color?: string }) {
-  const starFill = color ? color : "url(#star-gilt)";
+  const gradientId = `star-gilt-${useId().replace(/:/g, "")}`;
+  const starFill = color ? color : `url(#${gradientId})`;
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden>
       <defs>
-        <linearGradient id="star-gilt" x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="var(--gilt-soft)" />
           <stop offset="100%" stopColor="var(--gilt-deep)" />
         </linearGradient>

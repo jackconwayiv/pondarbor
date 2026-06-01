@@ -38,6 +38,7 @@ from .constants import (
     VICTORY_SCORE,
 )
 from .game_setup import (
+    ROAD_DRAW_BONUS,
     SCORING_STEPS_IN_ORDER,
     ZONE_NAMES_IN_SCORING_ORDER,
     card_total_value,
@@ -183,6 +184,50 @@ def _computer_action_due(round_state: EstatesRoundState) -> bool:
     return timezone.now() >= due_at
 
 
+def _pending_payload_with_zone_winners(
+    round_state: EstatesRoundState,
+    winners_by_zone: dict,
+) -> dict:
+    """Keep solo `computer_zone_personas` (and scoring) when updating zone winners."""
+    payload = dict(round_state.pending_payload or {})
+    payload["zone_winners"] = winners_by_zone
+    return payload
+
+
+def _solo_advance_scoring_and_computer(*, game_id: str) -> tuple[bool, bool]:
+    """Run scoring progression first, then an due computer action (solo only)."""
+    with transaction.atomic():
+        locked = EstatesGame.objects.select_for_update().get(pk=game_id)
+        if not locked.is_solo or locked.status != EstatesGame.Status.ACTIVE:
+            return False, False
+        round_state = EstatesRoundState.objects.select_for_update().get(game=locked)
+        progressed = _progress_scoring_if_ready(locked=locked, round_state=round_state)
+        if (
+            not round_state.is_paused
+            and round_state.pending_actor_seat == COMPUTER_SEAT_INDEX
+            and round_state.pending_action in {"play_card", "choose_effect_target"}
+        ):
+            # Human just acted or client is polling — do not wait out the think delay.
+            round_state.pending_computer_action_at = timezone.now()
+            round_state.save(update_fields=["pending_computer_action_at", "updated_at"])
+        computer_step = _try_run_computer_step(game_id=game_id)
+    return progressed, computer_step
+
+
+def _schedule_solo_advance_after_commit(*, game_id: str) -> None:
+    """After a human mutation, progress scoring and run the computer without waiting for polling."""
+
+    def _run() -> None:
+        try:
+            progressed, computer_step = _solo_advance_scoring_and_computer(game_id=game_id)
+            if progressed or computer_step:
+                notify_estates_game(game_id)
+        except Exception:
+            logger.exception("solo computer advance failed game=%s", game_id)
+
+    transaction.on_commit(_run)
+
+
 def _maybe_schedule_computer_after_human_action(
     *,
     locked: EstatesGame,
@@ -238,6 +283,53 @@ def _discard_hand_card(player_state: EstatesPlayerState, *, card_id: str) -> boo
     return False
 
 
+def _discard_hand_cards(player_state: EstatesPlayerState, *, card_ids: list[str]) -> bool:
+    """Discard multiple hand cards in one save. Returns False if any id is missing."""
+    if not card_ids:
+        return True
+    hand = list(player_state.hand or [])
+    discard = list(player_state.discard or [])
+    id_set = set(card_ids)
+    if len(id_set) != len(card_ids):
+        return False
+    remaining = []
+    found: set[str] = set()
+    for card in hand:
+        cid = str(card.get("card_id") or "")
+        if cid in id_set:
+            card_for_discard = dict(card)
+            card_for_discard["temporary_value_modifier"] = 0
+            discard.append(card_for_discard)
+            found.add(cid)
+        else:
+            remaining.append(card)
+    if found != id_set:
+        return False
+    player_state.hand = remaining
+    player_state.discard = discard
+    player_state.save(update_fields=["hand", "discard", "updated_at"])
+    return True
+
+
+def _parse_tower_discard_card_ids(body: dict) -> list[str]:
+    raw_ids = body.get("target_card_ids")
+    if isinstance(raw_ids, list):
+        return [str(cid).strip() for cid in raw_ids if str(cid).strip()]
+    legacy = str(body.get("target_card_id") or "").strip()
+    return [legacy] if legacy else []
+
+
+def _tower_discard_status_suffix(*, winner_name: str, discard_count: int) -> str:
+    if discard_count == 0:
+        return f"{winner_name} keeps their hand (Tower) and will go second next round."
+    if discard_count == 1:
+        return f"{winner_name} discards 1 hand card (Tower) and will go second next round."
+    return (
+        f"{winner_name} discards {discard_count} hand cards (Tower) "
+        "and will go second next round."
+    )
+
+
 def _clear_unconfirmed_for_seat(placements_by_zone: dict, *, seat_key: str) -> None:
     for zone_payload in placements_by_zone.values():
         placed = zone_payload.get(seat_key)
@@ -287,7 +379,7 @@ def _commit_card_placement(
 
     round_state.placements_by_zone = placements
     round_state.actions_taken_by_seat = actions_taken
-    round_state.pending_payload = {"zone_winners": winners_by_zone}
+    round_state.pending_payload = _pending_payload_with_zone_winners(round_state, winners_by_zone)
 
     if total_actions >= 6:
         round_state.phase = EstatesRoundState.Phase.SCORING
@@ -296,15 +388,14 @@ def _commit_card_placement(
         round_state.pending_action = "resolve_scoring"
         round_state.status_message = "All cards are locked in. Scoring starts soon."
         now_ms = int(timezone.now().timestamp() * 1000)
-        round_state.pending_payload = {
-            "zone_winners": winners_by_zone,
-            "scoring": {
-                "zone_index": 0,
-                "waiting_until_ms": now_ms + SCORING_STEP_DELAY_MS,
-                "awaiting_choice": None,
-                "zone_wins_recorded": [],
-            },
+        scoring_payload = _pending_payload_with_zone_winners(round_state, winners_by_zone)
+        scoring_payload["scoring"] = {
+            "zone_index": 0,
+            "waiting_until_ms": now_ms + SCORING_STEP_DELAY_MS,
+            "awaiting_choice": None,
+            "zone_wins_recorded": [],
         }
+        round_state.pending_payload = scoring_payload
     else:
         round_state.pending_actor_seat = next_seat
         round_state.turn_player_seat = next_seat
@@ -683,14 +774,14 @@ def _apply_effect_for_seat(
         if winner_row is None:
             raise ValueError("Missing player state.")
         winner_name = _player_name_for_seat(locked, actor_seat)
-        hand = list(winner_row.hand or [])
-        if hand:
-            if not move.target_card_id:
-                raise ValueError("Target hand card is required.")
-            if not _discard_hand_card(winner_row, card_id=move.target_card_id):
-                raise ValueError("Target hand card not found.")
-        round_state.status_message = (
-            f"{winner_name} discards from hand (Tower) and will go second next round."
+        card_ids = list(move.target_card_ids) if move.target_card_ids else (
+            [move.target_card_id] if move.target_card_id else []
+        )
+        if card_ids and not _discard_hand_cards(winner_row, card_ids=card_ids):
+            raise ValueError("Target hand card not found.")
+        round_state.status_message = _tower_discard_status_suffix(
+            winner_name=winner_name,
+            discard_count=len(card_ids),
         )
     else:
         raise ValueError("Unsupported choice effect.")
@@ -775,37 +866,65 @@ def _try_run_computer_step(*, game_id: str) -> bool:
             opponent_deck_count=len(human_row.deck or []),
             computer_is_starting_player=bool(computer_row.is_starting_player),
         )
+        computer_move_applied = False
         if not ranked:
-            _clear_computer_schedule(round_state)
-            round_state.save(update_fields=["pending_computer_action_at", "updated_at"])
-            return False
-
-        for move in ranked:
-            try:
-                if isinstance(move, PlacementMove):
-                    _place_card_for_seat(
-                        locked=locked,
-                        round_state=round_state,
-                        seat_index=COMPUTER_SEAT_INDEX,
-                        zone=move.zone,
-                        card_id=move.card_id,
-                    )
-                elif isinstance(move, EffectMove):
+            effect_type = str((awaiting or {}).get("type") or "")
+            if (
+                round_state.phase == EstatesRoundState.Phase.SCORING
+                and round_state.pending_action == "choose_effect_target"
+                and effect_type == "tower_discard"
+            ):
+                try:
                     _apply_effect_for_seat(
                         locked=locked,
                         round_state=round_state,
                         seat_index=COMPUTER_SEAT_INDEX,
-                        move=move,
+                        move=EffectMove(effect_type="tower_discard", target_card_ids=()),
                     )
-                else:
+                    computer_move_applied = True
+                except ValueError as exc:
+                    logger.warning(
+                        "computer tower skip failed game=%s: %s", game_id, exc
+                    )
+            if not computer_move_applied:
+                logger.warning(
+                    "computer has no ranked moves game=%s phase=%s action=%s effect=%s",
+                    game_id,
+                    round_state.phase,
+                    round_state.pending_action,
+                    effect_type or None,
+                )
+                _schedule_computer_action(round_state, first_in_sequence=False)
+                round_state.save(update_fields=["pending_computer_action_at", "updated_at"])
+                return False
+
+        if not computer_move_applied:
+            for move in ranked:
+                try:
+                    if isinstance(move, PlacementMove):
+                        _place_card_for_seat(
+                            locked=locked,
+                            round_state=round_state,
+                            seat_index=COMPUTER_SEAT_INDEX,
+                            zone=move.zone,
+                            card_id=move.card_id,
+                        )
+                    elif isinstance(move, EffectMove):
+                        _apply_effect_for_seat(
+                            locked=locked,
+                            round_state=round_state,
+                            seat_index=COMPUTER_SEAT_INDEX,
+                            move=move,
+                        )
+                    else:
+                        continue
+                    break
+                except ValueError as exc:
+                    logger.warning("computer move failed game=%s move=%s: %s", game_id, move, exc)
                     continue
-                break
-            except ValueError as exc:
-                logger.warning("computer move failed game=%s move=%s: %s", game_id, move, exc)
-                continue
-        else:
-            logger.error("computer exhausted moves game=%s", game_id)
-            return False
+            else:
+                logger.error("computer exhausted moves game=%s", game_id)
+                return False
 
         round_state.refresh_from_db()
         locked.refresh_from_db()
@@ -1142,7 +1261,7 @@ def _progress_scoring_if_ready(*, locked: EstatesGame, round_state: EstatesRound
         return True
 
     if zone_name == "road":
-        winner_row.draw_bonus = 1
+        winner_row.draw_bonus = ROAD_DRAW_BONUS
         winner_row.save(update_fields=["draw_bonus", "updated_at"])
         return _schedule_scoring_pause(
             round_state=round_state,
@@ -1150,7 +1269,10 @@ def _progress_scoring_if_ready(*, locked: EstatesGame, round_state: EstatesRound
             payload=payload,
             winners_by_zone=winners_by_zone,
             zone_index=zone_index,
-            status_message=f"{winner_name} wins Road and will draw an extra card next round.",
+            status_message=(
+                f"{winner_name} wins Road and will draw "
+                f"{ROAD_DRAW_BONUS} extra cards next round."
+            ),
         )
 
     if zone_name == "tower":
@@ -1575,12 +1697,13 @@ def games_mine(request):
         progressed = False
         computer_step = False
         try:
-            with transaction.atomic():
-                locked = EstatesGame.objects.select_for_update().get(pk=game.pk)
-                round_state = EstatesRoundState.objects.select_for_update().get(game=locked)
-                if locked.is_solo:
-                    computer_step = _try_run_computer_step(game_id=str(game.pk))
-                progressed = _progress_scoring_if_ready(locked=locked, round_state=round_state)
+            if game.is_solo:
+                progressed, computer_step = _solo_advance_scoring_and_computer(game_id=str(game.pk))
+            else:
+                with transaction.atomic():
+                    locked = EstatesGame.objects.select_for_update().get(pk=game.pk)
+                    round_state = EstatesRoundState.objects.select_for_update().get(game=locked)
+                    progressed = _progress_scoring_if_ready(locked=locked, round_state=round_state)
         except EstatesRoundState.DoesNotExist:
             pass
         game = _game_queryset().get(pk=game.pk)
@@ -1713,6 +1836,8 @@ def game_place_card(request, game_id):
             return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
 
         _maybe_schedule_computer_after_human_action(locked=locked, round_state=round_state)
+        if locked.is_solo:
+            _schedule_solo_advance_after_commit(game_id=str(locked.pk))
 
     refreshed = _game_queryset().get(pk=game.pk)
     notify_estates_game(str(game.pk))
@@ -1933,20 +2058,30 @@ def game_choose_effect_target(request, game_id):
             if winner_row is None:
                 return Response({"detail": "Missing player state."}, status=status.HTTP_400_BAD_REQUEST)
             winner_name = _player_name_for_seat(locked, actor_seat)
-            hand = list(winner_row.hand or [])
-            if hand:
-                if not target_card_id:
-                    return Response(
-                        {"detail": "target_card_id is required."},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                if not _discard_hand_card(winner_row, card_id=target_card_id):
-                    return Response(
-                        {"detail": "Target hand card not found."},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-            round_state.status_message = (
-                f"{winner_name} discards from hand (Tower) and will go second next round."
+            tower_card_ids = _parse_tower_discard_card_ids(body)
+            hand_ids = {
+                str(c.get("card_id") or "")
+                for c in (winner_row.hand or [])
+                if str(c.get("card_id") or "")
+            }
+            if len(tower_card_ids) != len(set(tower_card_ids)):
+                return Response(
+                    {"detail": "Duplicate target_card_ids."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if any(cid not in hand_ids for cid in tower_card_ids):
+                return Response(
+                    {"detail": "Target hand card not found."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if tower_card_ids and not _discard_hand_cards(winner_row, card_ids=tower_card_ids):
+                return Response(
+                    {"detail": "Target hand card not found."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            round_state.status_message = _tower_discard_status_suffix(
+                winner_name=winner_name,
+                discard_count=len(tower_card_ids),
             )
         else:
             return Response({"detail": "Unsupported choice effect."}, status=status.HTTP_400_BAD_REQUEST)
@@ -1973,6 +2108,8 @@ def game_choose_effect_target(request, game_id):
                 "updated_at",
             ]
         )
+        if locked.is_solo:
+            _schedule_solo_advance_after_commit(game_id=str(locked.pk))
 
     refreshed = _game_queryset().get(pk=game.pk)
     notify_estates_game(str(game.pk))

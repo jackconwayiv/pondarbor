@@ -12,6 +12,12 @@ export type CardScoringTarget = {
   applying?: boolean;
 };
 
+export type CardTowerDiscardChoice = {
+  mode: "keep" | "discard";
+  onToggle: () => void;
+  applying?: boolean;
+};
+
 export type CardSize = "default" | "small";
 
 export type CardProps = {
@@ -23,6 +29,7 @@ export type CardProps = {
   zoneLoser?: boolean;
   isDragging?: boolean;
   scoringTarget?: CardScoringTarget;
+  towerDiscardChoice?: CardTowerDiscardChoice;
   /** Dim this card while another card is being chosen in the same pool. */
   dimmed?: boolean;
   draggable?: boolean;
@@ -72,6 +79,7 @@ export function Card(props: CardProps) {
     zoneLoser,
     isDragging,
     scoringTarget,
+    towerDiscardChoice,
     dimmed,
     draggable,
     dragHandleRef,
@@ -148,13 +156,81 @@ export function Card(props: CardProps) {
       ) : null}
 
       {permBonus > 0 ? (
-        <span className="estates-card__perm-star" aria-label={`Permanent bonus +${permBonus}`}>
-          <PermanentBonusStar size={size === "small" ? 12 : 18} />
+        <span
+          className={[
+            "estates-card__perm-stars",
+            permBonus > 2 ? "estates-card__perm-stars--dense" : null,
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          aria-label={`Permanent bonus +${permBonus}`}
+        >
+          {Array.from({ length: permBonus }, (_, index) => (
+            <span key={index} className="estates-card__perm-star" aria-hidden>
+              <PermanentBonusStar
+                size={
+                  size === "small"
+                    ? permBonus > 3
+                      ? 9
+                      : permBonus > 1
+                        ? 10
+                        : 12
+                    : permBonus > 3
+                      ? 13
+                      : permBonus > 1
+                        ? 15
+                        : 18
+                }
+              />
+            </span>
+          ))}
         </span>
       ) : null}
 
       {scoringTarget ? <ScoringTargetButton target={scoringTarget} /> : null}
+      {towerDiscardChoice ? (
+        <TowerDiscardToggle choice={towerDiscardChoice} />
+      ) : null}
     </div>
+  );
+}
+
+function TowerDiscardToggle({ choice }: { choice: CardTowerDiscardChoice }) {
+  const discard = choice.mode === "discard";
+  const className = [
+    "estates-scoring-target",
+    discard ? "estates-scoring-target--discard" : "estates-scoring-target--keep",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const label = discard ? "DISCARD" : "KEEP";
+  const onClick = (e: MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (choice.applying) return;
+    choice.onToggle();
+  };
+  const onKey = (e: KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      e.stopPropagation();
+      if (choice.applying) return;
+      choice.onToggle();
+    }
+  };
+  return (
+    <button
+      type="button"
+      className={className}
+      data-applying={choice.applying ? "true" : "false"}
+      onClick={onClick}
+      onKeyDown={onKey}
+      aria-label={`${label}; tap to switch`}
+      aria-pressed={discard}
+      disabled={Boolean(choice.applying)}
+    >
+      <span className="estates-scoring-target__badge">{label}</span>
+    </button>
   );
 }
 
@@ -202,9 +278,16 @@ export type DraggableHandCardProps = {
   dragId: string;
   disabled?: boolean;
   scoringTarget?: CardScoringTarget;
+  towerDiscardChoice?: CardTowerDiscardChoice;
 };
 
-export function DraggableHandCard({ card, dragId, disabled, scoringTarget }: DraggableHandCardProps) {
+export function DraggableHandCard({
+  card,
+  dragId,
+  disabled,
+  scoringTarget,
+  towerDiscardChoice,
+}: DraggableHandCardProps) {
   const { setNodeRef, listeners, attributes, isDragging } = useDraggable({
     id: dragId,
     disabled,
@@ -218,6 +301,7 @@ export function DraggableHandCard({ card, dragId, disabled, scoringTarget }: Dra
       dragListeners={listeners}
       dragAttributes={attributes}
       scoringTarget={scoringTarget}
+      towerDiscardChoice={towerDiscardChoice}
     />
   );
 }

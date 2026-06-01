@@ -8,48 +8,22 @@ import {
   type ZoneDropBlockReason,
   type ZoneName,
 } from "../estatesDropRules";
+import {
+  ZONE_EFFECT_HINTS,
+  ZONE_LABELS,
+  ZONE_SCORE_ORDER_HINTS,
+  ZONE_SUIT_HINTS,
+} from "../estatesGuideCopy";
 
 import { SuitGlyph } from "./glyphs";
 import { ZoneIllumination } from "./illumination";
 
-const ZONE_LABELS: Record<ZoneName, string> = {
-  farm: "FARM",
-  gate: "GATE",
-  road: "ROAD",
-  throne: "THRONE",
-  tower: "TOWER",
-};
-
-const ZONE_SCORE_ORDER_HINTS: Record<ZoneName, string> = {
-  gate: "Scored 1st",
-  throne: "Scored 2nd",
-  farm: "Scored 3rd",
-  road: "Scored 4th",
-  tower: "Scored 5th",
-};
-
-const ZONE_SUIT_HINTS: Record<ZoneName, string> = {
-  gate: "Any suit",
-  farm: "Peasants only",
-  road: "Peasants or nobles only",
-  tower: "Nobles or royals only",
-  throne: "Royals only",
-};
-
-const ZONE_EFFECT_HINTS: Record<ZoneName, string> = {
-  gate: "Give a card −1 this round",
-  farm: "Permanent +1 to a card in hand",
-  road: "Draw +1 card next turn",
-  tower: "Go second next round; discard a hand card",
-  throne: "Gain 1 point",
-};
-
 const ZONE_INVALID_HINTS: Record<ZoneName, string> = {
-  farm: "Peasants only",
-  gate: "Any suit",
-  road: "Peasants or nobles only",
-  tower: "Nobles or royals only",
-  throne: "Royals only",
+  farm: ZONE_SUIT_HINTS.farm,
+  gate: ZONE_SUIT_HINTS.gate,
+  road: ZONE_SUIT_HINTS.road,
+  tower: ZONE_SUIT_HINTS.tower,
+  throne: ZONE_SUIT_HINTS.throne,
 };
 
 function ZoneHintPanel({ zone }: { zone: ZoneName }) {

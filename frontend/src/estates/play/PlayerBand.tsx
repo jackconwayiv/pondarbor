@@ -21,8 +21,8 @@ export type PlayerBandProps = {
   enableHandReturn?: boolean;
   dragActive?: boolean;
   scrollableHand?: boolean;
-  /** Two rows of three (mobile opening hand before first placement). */
-  handSixGrid?: boolean;
+  /** Fixed grid for large opening hands on mobile (before first placement). */
+  handGridLayout?: "six" | "seven" | null;
 };
 
 function avatarInitial(name: string): string {
@@ -45,7 +45,7 @@ export function PlayerBand({
   enableHandReturn = false,
   dragActive = false,
   scrollableHand = false,
-  handSixGrid = false,
+  handGridLayout = null,
 }: PlayerBandProps) {
   const { setNodeRef: setReturnRef, isOver: isOverReturn } = useDroppable({
     id: HAND_RETURN_DROP_ID,
@@ -59,15 +59,17 @@ export function PlayerBand({
     opponent ? "estates-band--opponent" : "estates-band--mine",
     active ? "estates-band--active" : null,
     returnHover ? "estates-band--return-hover" : null,
-    handSixGrid ? "estates-band--hand-six-grid" : null,
+    handGridLayout === "six" ? "estates-band--hand-six-grid" : null,
+    handGridLayout === "seven" ? "estates-band--hand-seven-grid" : null,
   ]
     .filter(Boolean)
     .join(" ");
 
   const handClass = [
     "estates-band__hand",
-    handSixGrid ? "estates-band__hand--six-grid" : null,
-    scrollableHand && !handSixGrid ? "estates-band__hand--scrollable" : null,
+    handGridLayout === "six" ? "estates-band__hand--six-grid" : null,
+    handGridLayout === "seven" ? "estates-band__hand--seven-grid" : null,
+    scrollableHand && !handGridLayout ? "estates-band__hand--scrollable" : null,
   ]
     .filter(Boolean)
     .join(" ");

@@ -1,0 +1,178 @@
+/* Illustrated how-to-play: palette + layout (card/zone art from playCanvas.css). */
+.estates-how-to-play {
+  --ink: #2a1d10;
+  --ink-soft: #4a3624;
+  --parchment: #f1e7cf;
+  --parchment-deep: #d9c89a;
+  --parchment-dark: #b9a26a;
+  --gilt: #d4a83a;
+  --gilt-deep: #a87a17;
+  --gilt-soft: #f0d27a;
+  --lapis: #1f3d8a;
+  --lapis-wash: #b8c4e0;
+  --vermilion: #b8332a;
+  --royal: #c9a41a;
+  --royal-wash: #f5e9b0;
+  --verdigris: #5d7f4f;
+  --verdigris-wash: #cbdbb7;
+  --stone-light: #c5bfb4;
+  --stone: #a8a299;
+  --stone-medium: #867f73;
+  --stone-dark: #5e574c;
+  --mortar-dark: #3a352c;
+  --mortar: var(--mortar-dark);
+  --brick-a: var(--stone);
+  --brick-b: var(--stone-medium);
+  --estates-font-sans: "Spinnaker", Verdana, Geneva, "DejaVu Sans", sans-serif;
+  font-family: var(--estates-font-sans);
+  color: var(--ink);
+}
+
+.estates-how-to-play--compact {
+  --estates-guide-gap: 0.75rem;
+}
+
+.estates-how-to-play:not(.estates-how-to-play--compact) {
+  --estates-guide-gap: 1rem;
+}
+
+.estates-how-to-play__section {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--estates-guide-gap) * 0.65);
+}
+
+.estates-how-to-play__suit-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--estates-guide-gap);
+  justify-content: center;
+}
+
+.estates-how-to-play__suit-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 1 1 7.5rem;
+  max-width: 9.5rem;
+}
+
+.estates-how-to-play__suit-meta {
+  text-align: center;
+  line-height: 1.35;
+}
+
+.estates-how-to-play__round-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.estates-how-to-play__zone-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
+  gap: var(--estates-guide-gap);
+}
+
+@media (min-width: 48em) {
+  .estates-how-to-play__zone-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .estates-how-to-play__zone-grid .estates-guide-zone:nth-child(4),
+  .estates-how-to-play__zone-grid .estates-guide-zone:nth-child(5) {
+    grid-column: span 1;
+  }
+}
+
+@media (min-width: 62em) {
+  .estates-how-to-play__zone-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
+.estates-guide-zone {
+  display: flex;
+  flex-direction: column;
+  border: 3px solid var(--ink);
+  outline: 2px solid var(--gilt);
+  outline-offset: -6px;
+  background: var(--parchment-deep);
+  box-shadow: inset 0 0 0 1px var(--gilt-soft);
+  overflow: hidden;
+}
+
+.estates-guide-zone__art {
+  position: relative;
+  height: 3.25rem;
+  background: var(--parchment-deep);
+  overflow: hidden;
+}
+
+.estates-guide-zone__art svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  filter: saturate(1.35) brightness(1.05);
+}
+
+.estates-guide-zone__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  padding: 0.25rem 0.5rem;
+  background: linear-gradient(180deg, var(--gilt-soft), var(--gilt) 65%, var(--gilt-deep));
+  border-bottom: 2px solid var(--ink);
+}
+
+.estates-guide-zone__name {
+  font-weight: 800;
+  font-size: 0.65rem;
+  letter-spacing: 0.12em;
+  color: #1a1208;
+  text-transform: uppercase;
+  line-height: 1.1;
+}
+
+.estates-guide-zone__step {
+  flex-shrink: 0;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  background: var(--parchment);
+  border: 1.5px solid var(--ink);
+  border-radius: 999px;
+  padding: 0.05rem 0.35rem;
+  line-height: 1.2;
+}
+
+.estates-guide-zone__glyphs {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.estates-guide-zone__glyphs svg {
+  width: 14px;
+  height: 14px;
+}
+
+.estates-guide-zone__body {
+  padding: 0.4rem 0.5rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.estates-how-to-play--compact .estates-guide-zone__art {
+  height: 2.75rem;
+}
+
+.estates-how-to-play--compact .estates-how-to-play .estates-card--small {
+  width: 58px;
+  height: 81px;
+}

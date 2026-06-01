@@ -8,20 +8,21 @@ import {
   HStack,
   SimpleGrid,
   Stack,
+  Tabs,
   Text,
 } from "@chakra-ui/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
 import { emojiForAchievementSlug } from "../achievements/achievementIcon";
-import { AppModal } from "../components/AppModal";
 import {
   PanelMessageSlot,
   PanelPageShell,
   SessionLoadingCard,
 } from "../components/panelStatus";
 import PondButton from "../PondButton";
+import { APP_SHELL_TAB_LIST_PROPS, APP_SHELL_TAB_TRIGGER_PROPS } from "../theme/appShellTabs";
 import { APP_TEXT_SIZES, PANEL_ENTRY_CARD_PROPS } from "../theme/typography";
 import {
   cancelEstatesLobby,
@@ -40,7 +41,7 @@ import {
   type EstatesMyGamesResponse,
   type EstatesUserStats,
 } from "./api";
-import { ESTATES_HOW_TO_PLAY_BODY, ESTATES_HOW_TO_PLAY_TITLE } from "./estatesHowToPlay";
+import { EstatesHowToPlayPanel } from "./EstatesHowToPlayPanel";
 import EstatesResumeBanners from "./EstatesResumeBanners";
 import { connectEstatesWebSocket } from "./estatesWsClient";
 import { estatesLobbiesWsUrl } from "./estatesWs";
@@ -70,6 +71,10 @@ function opponentNameForMyGameRow(row: EstatesMyGameRow): string | null {
 }
 
 const MY_GAMES_PAGE_SIZE = 10;
+/** Coalesce rapid lobby WebSocket events into one background fetch. */
+const LOBBY_WS_REFRESH_DEBOUNCE_MS = 600;
+
+type EstatesLandingTab = "play" | "help";
 
 function formatStatProgress(current: number, target: number): string {
   return `${current} / ${target}`;
@@ -164,32 +169,55 @@ export default function EstatesPage() {
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [soloDifficulty, setSoloDifficulty] = useState<EstatesComputerDifficulty>("normal");
   const [myGamesPage, setMyGamesPage] = useState(0);
-  const [howToPlayOpen, setHowToPlayOpen] = useState(false);
-
+  const [landingTab, setLandingTab] = useState<EstatesLandingTab>("play");
+  const [hasLoadedLobbyDataOnce, setHasLoadedLobbyDataOnce] = useState(false);
+  const lobbyWsRefreshTimerRef = useRef<number | null>(null);
+  const prevMyGameStatusRef = useRef<EstatesGameState["status"] | null>(null);
   const myUserId = sessionUser?.user.id;
 
-  const loadLobbyData = useCallback(async () => {
-    if (!isAuthenticated) return;
-    setError(null);
-    setMyGamesLoading(true);
-    try {
-      const token = await getApiAccessToken();
-      const [rows, mine, gamesList, stats] = await Promise.all([
-        listOpenEstatesLobbies(token),
-        fetchMyEstatesGame(token),
-        fetchMyEstatesGamesList(token),
-        fetchMyEstatesStats(token),
-      ]);
-      setOpenLobbies(rows);
-      setMyGame(mine);
-      setMyGames(gamesList);
-      setMyStats(stats);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load lobbies.");
-    } finally {
-      setMyGamesLoading(false);
+  const loadLobbyData = useCallback(
+    async (options?: { background?: boolean }) => {
+      if (!isAuthenticated) return;
+      const background = options?.background ?? false;
+      if (!background) {
+        setError(null);
+        setMyGamesLoading(true);
+      }
+      try {
+        const token = await getApiAccessToken();
+        const [rows, mine, gamesList, stats] = await Promise.all([
+          listOpenEstatesLobbies(token),
+          fetchMyEstatesGame(token),
+          fetchMyEstatesGamesList(token),
+          fetchMyEstatesStats(token),
+        ]);
+        setOpenLobbies(rows);
+        setMyGame(mine);
+        setMyGames(gamesList);
+        setMyStats(stats);
+        setHasLoadedLobbyDataOnce(true);
+      } catch (e) {
+        if (!background) {
+          setError(e instanceof Error ? e.message : "Failed to load lobbies.");
+        }
+      } finally {
+        if (!background) {
+          setMyGamesLoading(false);
+        }
+      }
+    },
+    [getApiAccessToken, isAuthenticated],
+  );
+
+  const scheduleBackgroundLobbyRefresh = useCallback(() => {
+    if (lobbyWsRefreshTimerRef.current != null) {
+      window.clearTimeout(lobbyWsRefreshTimerRef.current);
     }
-  }, [getApiAccessToken, isAuthenticated]);
+    lobbyWsRefreshTimerRef.current = window.setTimeout(() => {
+      lobbyWsRefreshTimerRef.current = null;
+      void loadLobbyData({ background: true });
+    }, LOBBY_WS_REFRESH_DEBOUNCE_MS);
+  }, [loadLobbyData]);
 
   const myGamesAllRows = useMemo(() => {
     if (!myGames) return [];
@@ -237,6 +265,21 @@ export default function EstatesPage() {
     void loadLobbyData();
   }, [loadLobbyData]);
 
+  /** When the host starts, move the guest from the lobby card into the play route. */
+  useEffect(() => {
+    const game = myGame;
+    if (!game || !isUserInGame(game, myUserId)) {
+      prevMyGameStatusRef.current = null;
+      return;
+    }
+    const prev = prevMyGameStatusRef.current;
+    const status = game.status;
+    if (status === "active" && prev === "lobby") {
+      navigate(`/estates/play/${game.id}`, { replace: true });
+    }
+    prevMyGameStatusRef.current = status;
+  }, [myGame, myUserId, navigate]);
+
   useEffect(() => {
     return connectEstatesWebSocket({
       getUrl: async () => {
@@ -244,12 +287,21 @@ export default function EstatesPage() {
         return estatesLobbiesWsUrl(token);
       },
       onMessage: (msg) => {
-        if (msg.type === "lobbies_update" || msg.type === "connected") {
-          void loadLobbyData();
+        // Initial fetch runs on mount; WS reconnect "connected" must not flash the UI.
+        if (msg.type === "lobbies_update") {
+          scheduleBackgroundLobbyRefresh();
         }
       },
     });
-  }, [getApiAccessToken, loadLobbyData]);
+  }, [getApiAccessToken, scheduleBackgroundLobbyRefresh]);
+
+  useEffect(() => {
+    return () => {
+      if (lobbyWsRefreshTimerRef.current != null) {
+        window.clearTimeout(lobbyWsRefreshTimerRef.current);
+      }
+    };
+  }, []);
 
   const onCreateLobby = async () => {
     setBusyAction("create");
@@ -346,6 +398,8 @@ export default function EstatesPage() {
   };
 
   const openLobbyGame = myGame && myGame.status === "lobby" ? myGame : null;
+  const myActiveGame =
+    myGame && myGame.status === "active" && isUserInGame(myGame, myUserId) ? myGame : null;
   const amLobbyOwner = Boolean(openLobbyGame && myUserId === openLobbyGame.player_1_id);
 
   function renderMyGameRow(row: EstatesMyGameRow) {
@@ -514,36 +568,68 @@ export default function EstatesPage() {
     <PanelPageShell>
       <Stack gap={{ base: "3", md: "3" }} p={{ base: "2", md: "2" }}>
         <Box {...PANEL_ENTRY_CARD_PROPS}>
-          <HStack align="flex-start" justify="space-between" gap="3" w="full" flexWrap="wrap" mb="2">
-            <Heading as="h1" size={{ base: "lg", md: "xl" }} mb="0">
-              <HStack as="span" display="inline-flex" gap="2" alignItems="center">
-                <Text as="span" aria-hidden="true">
-                  🏰
-                </Text>
-                <Text as="span">Estates</Text>
-              </HStack>
-            </Heading>
-            <PondButton
-              type="button"
-              size="sm"
-              variant="outline"
-              colorPalette="sky"
-              flexShrink={0}
-              alignSelf="flex-start"
-              onClick={() => setHowToPlayOpen(true)}
-            >
-              How to Play
-            </PondButton>
-          </HStack>
+          <Heading as="h1" size={{ base: "lg", md: "xl" }} mb="2">
+            <HStack as="span" display="inline-flex" gap="2" alignItems="center">
+              <Text as="span" aria-hidden="true">
+                🏰
+              </Text>
+              <Text as="span">Estates</Text>
+            </HStack>
+          </Heading>
           <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall">
             Estates is a custom card game designed and developed by Jack! It's a head-to-head card-placing duel. Start a solo game against the computer, or create an open lobby and invite a friend to face you!
           </Text>
-          <EstatesResumeBanners targets={resumeTargets} loading={myGamesLoading} />
+          <EstatesResumeBanners
+            targets={resumeTargets}
+            loading={myGamesLoading && !hasLoadedLobbyDataOnce}
+          />
         </Box>
 
+        <Tabs.Root
+          value={landingTab}
+          lazyMount
+          unmountOnExit
+          variant="plain"
+          onValueChange={(details) => {
+            const next = details.value;
+            if (next === "play" || next === "help") {
+              setLandingTab(next);
+            }
+          }}
+        >
+          <Tabs.List {...APP_SHELL_TAB_LIST_PROPS}>
+            <Tabs.Trigger value="play" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+              Play
+            </Tabs.Trigger>
+            <Tabs.Trigger value="help" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+              How to Play
+            </Tabs.Trigger>
+          </Tabs.List>
+
+          <Tabs.Content value="play" pt="2">
+            <Stack gap={{ base: "3", md: "3" }}>
         <PanelMessageSlot error={error} />
 
-        {openLobbyGame ? (
+        {myActiveGame ? (
+          <Box {...ESTATES_LOBBY_CARD_PROPS}>
+            <Stack gap="3" align="stretch" textAlign="center">
+              <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.label}>
+                Your match has started
+              </Text>
+              <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" lineHeight="tall">
+                {myUserId === myActiveGame.player_1_id
+                  ? "Head to the board to play your cards."
+                  : `${myActiveGame.player_1.display_name} started the game. Join the board when you are ready.`}
+              </Text>
+              <PondButton
+                colorPalette="lilypad"
+                onClick={() => navigate(`/estates/play/${myActiveGame.id}`)}
+              >
+                Begin game
+              </PondButton>
+            </Stack>
+          </Box>
+        ) : openLobbyGame ? (
           <Box {...ESTATES_LOBBY_CARD_PROPS}>
             <Stack gap="3" align="stretch">
               <Text fontWeight="semibold" fontSize={APP_TEXT_SIZES.label}>
@@ -731,7 +817,7 @@ export default function EstatesPage() {
           </>
         )}
 
-        {myGamesTotalCount >= 1 && !myGamesLoading && myGames ? (
+        {myGamesTotalCount >= 1 && myGames ? (
           <Box {...PANEL_ENTRY_CARD_PROPS}>
             <Collapsible.Root
               open={myGamesOpen}
@@ -851,19 +937,17 @@ export default function EstatesPage() {
             </Box>
           </Collapsible.Root>
         ) : null}
+            </Stack>
+          </Tabs.Content>
+
+          <Tabs.Content value="help" p={{ base: "2", md: "2" }} pt="3">
+            <Box {...PANEL_ENTRY_CARD_PROPS}>
+              <EstatesHowToPlayPanel />
+            </Box>
+          </Tabs.Content>
+        </Tabs.Root>
 
       </Stack>
-
-      <AppModal
-        open={howToPlayOpen}
-        onOpenChange={setHowToPlayOpen}
-        title={ESTATES_HOW_TO_PLAY_TITLE}
-        size="lg"
-      >
-        <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall" whiteSpace="pre-line">
-          {ESTATES_HOW_TO_PLAY_BODY}
-        </Text>
-      </AppModal>
     </PanelPageShell>
   );
 }

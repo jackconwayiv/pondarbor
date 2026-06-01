@@ -821,6 +821,41 @@
   height: 292px;
 }
 
+/* Mobile opening hand: 4 + 3 after Road bonus (+2 draw) */
+.estates-band__hand--seven-grid {
+  display: grid;
+  grid-template-columns: repeat(4, auto);
+  grid-template-rows: repeat(2, auto);
+  justify-content: center;
+  align-content: center;
+  gap: 8px;
+  width: 100%;
+  overflow: visible;
+}
+
+.estates-hand-band:has(.estates-band--hand-seven-grid) {
+  height: 292px;
+}
+
+.estates-canvas-stage[data-canvas-mode="portrait"] .estates-hand-band:has(.estates-band--hand-seven-grid) {
+  height: 292px;
+}
+
+.estates-band__hand-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.estates-scoring-target--keep .estates-scoring-target__badge {
+  background: var(--parchment);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+}
+
 /* Card */
 .estates-card {
   position: relative;
@@ -967,20 +1002,38 @@
   color: var(--parchment);
 }
 
-.estates-card__perm-star {
+.estates-card__perm-stars {
   position: absolute;
   top: 4px;
   right: 4px;
-  width: 18px;
-  height: 18px;
+  display: flex;
+  flex-direction: row-reverse;
+  flex-wrap: wrap-reverse;
+  justify-content: flex-start;
+  align-content: flex-start;
+  gap: 1px;
+  max-width: 52%;
   color: var(--gilt-deep);
   z-index: 2;
   pointer-events: none;
 }
 
-.estates-card--small .estates-card__perm-star {
-  width: 12px;
-  height: 12px;
+.estates-card__perm-stars--dense {
+  gap: 0;
+  top: 2px;
+  right: 2px;
+}
+
+.estates-card__perm-star {
+  display: block;
+  flex-shrink: 0;
+  line-height: 0;
+}
+
+.estates-card--small .estates-card__perm-stars {
+  top: 2px;
+  right: 2px;
+  max-width: 58%;
 }
 
 .estates-card__winner-triangle {
@@ -1195,9 +1248,9 @@
   padding: 1px 4px;
 }
 
-.estates-spent-modal .estates-card--small .estates-card__perm-star {
-  width: 10px;
-  height: 10px;
+.estates-spent-modal .estates-card--small .estates-card__perm-stars {
+  top: 1px;
+  right: 1px;
 }
 
 /* Hourglass timer */

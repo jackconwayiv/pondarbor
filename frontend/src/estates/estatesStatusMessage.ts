@@ -22,8 +22,8 @@ export function personalizeEstatesStatusMessage(
   if (rest.startsWith("wins the Throne and gains 1 point.")) {
     return "You won the Throne and gained 1 point.";
   }
-  if (rest.startsWith("wins Road and will draw an extra card next round.")) {
-    return "You won Road and will draw an extra card next round.";
+  if (rest.startsWith("wins Road and will draw 2 extra cards next round.")) {
+    return "You won Road and will draw 2 extra cards next round.";
   }
   if (rest.startsWith("wins ")) {
     return `You won ${rest.slice(5)}`;
@@ -33,6 +33,9 @@ export function personalizeEstatesStatusMessage(
   }
   if (rest.startsWith("permanently upgrades ")) {
     return `You permanently upgraded ${rest.slice(21)}`;
+  }
+  if (rest.startsWith("keeps their hand (Tower)")) {
+    return "You keep your hand (Tower) and will go second next round.";
   }
   if (rest.startsWith("discards ")) {
     return `You discard ${rest.slice(9)}`;

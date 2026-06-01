@@ -372,6 +372,7 @@ export async function concedeEstatesGame(accessToken: string, gameId: string): P
 export type ChooseEstatesEffectTargetPayload = {
   target_zone?: string;
   target_card_id?: string;
+  target_card_ids?: string[];
 };
 
 export async function chooseEstatesEffectTarget(

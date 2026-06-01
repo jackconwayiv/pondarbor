@@ -12,6 +12,9 @@ SUIT_CARD_CONFIG = (
 
 ZONE_NAMES_IN_SCORING_ORDER = ("gate", "throne", "farm", "road", "tower")
 
+# Extra cards drawn at round start after winning Road (added to base hand size 5).
+ROAD_DRAW_BONUS = 2
+
 # Automated scoring pauses: one zone per step in scoring order.
 SCORING_STEPS_IN_ORDER: tuple[tuple[str, ...], ...] = (
     ("gate",),

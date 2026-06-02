@@ -1,0 +1,8 @@
+/* Long-press goal badges: suppress iOS text loupe / selection callout during hold-to-complete. */
+.goals-hold-target,
+.goals-hold-target * {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}

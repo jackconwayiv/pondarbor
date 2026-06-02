@@ -5,18 +5,30 @@ import PondButton from "../PondButton";
 import type { Goal } from "./types";
 import { GOALS_THEME } from "./theme";
 
-const milestonePickerButtonProps = {
+const milestonePickerButtonBase = {
   borderRadius: "xl",
-  border: "2px dashed",
-  borderColor: GOALS_THEME.gold,
-  bg: GOALS_THEME.goldLight,
   px: "3",
   py: "4",
   textAlign: "center" as const,
   fontWeight: "semibold",
   color: GOALS_THEME.textOnLight,
   cursor: "pointer",
+} as const;
+
+const milestonePickerCheckpointButtonProps = {
+  ...milestonePickerButtonBase,
+  border: "2px dashed",
+  borderColor: GOALS_THEME.gold,
+  bg: GOALS_THEME.goldLight,
   _hover: { bg: "#e8d48a" },
+};
+
+const milestonePickerCompleteGoalButtonProps = {
+  ...milestonePickerButtonBase,
+  border: "2px solid",
+  borderColor: GOALS_THEME.patchGoldBorder,
+  bg: GOALS_THEME.patchGoldBg,
+  _hover: { bg: GOALS_THEME.goldLight },
 };
 
 type GoalMilestonePickerModalProps = {
@@ -63,10 +75,7 @@ export function GoalMilestonePickerModal({
             <Box
               as="button"
               width="full"
-              {...milestonePickerButtonProps}
-              bg={GOALS_THEME.patchGoldBg}
-              borderColor={GOALS_THEME.patchGoldBorder}
-              _hover={{ bg: GOALS_THEME.goldLight }}
+              {...milestonePickerCompleteGoalButtonProps}
               onClick={onCompleteGoal}
             >
               Complete this entire goal
@@ -78,7 +87,7 @@ export function GoalMilestonePickerModal({
               <Box
                 key={cp.id}
                 as="button"
-                {...milestonePickerButtonProps}
+                {...milestonePickerCheckpointButtonProps}
                 onClick={() => onPickCheckpoint(cp.id)}
               >
                 {cp.title}
@@ -86,10 +95,7 @@ export function GoalMilestonePickerModal({
             ))}
             <Box
               as="button"
-              {...milestonePickerButtonProps}
-              bg={GOALS_THEME.patchGoldBg}
-              borderColor={GOALS_THEME.patchGoldBorder}
-              _hover={{ bg: GOALS_THEME.goldLight }}
+              {...milestonePickerCompleteGoalButtonProps}
               onClick={onCompleteGoal}
             >
               Complete this entire goal

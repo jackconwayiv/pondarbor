@@ -33,7 +33,7 @@ export const GOALS_THEME = {
 
 /** Stats-tab “Add checkpoint” trigger. Hover only deepens blue. */
 export const GOAL_ADD_MILESTONE_BUTTON_PROPS = {
-  border: "2px dashed",
+  border: "2px solid",
   borderColor: GOALS_THEME.lakeBlue,
   bg: GOALS_THEME.lakeLight,
   color: GOALS_THEME.textOnLight,

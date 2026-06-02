@@ -4,6 +4,7 @@ import type { Goal } from "./types";
 import {
   frequencyLabel,
   goalCompletedMedalLabel,
+  goalHoldProgressDisabled,
   goalLastProgressLabel,
   goalPatchIsComplete,
   goalPatchShellStyle,
@@ -233,6 +234,8 @@ function GoalCardDesktopBadge({ goal, compact }: { goal: Goal; compact: boolean 
 }
 
 export function GoalCard({ goal, onTap, onHoldComplete, compact = false }: GoalCardProps) {
+  const holdDisabled = goalHoldProgressDisabled(goal);
+
   return (
     <>
       <Box display={{ base: "block", md: "none" }} width="full">
@@ -240,7 +243,7 @@ export function GoalCard({ goal, onTap, onHoldComplete, compact = false }: GoalC
           layout="circle"
           onTap={onTap}
           onHoldComplete={onHoldComplete}
-          holdDisabled={goal.status !== "active"}
+          holdDisabled={holdDisabled}
         >
           <GoalCardMobileCircle goal={goal} compact={compact} />
         </GoalLongPressRing>
@@ -250,7 +253,7 @@ export function GoalCard({ goal, onTap, onHoldComplete, compact = false }: GoalC
           layout="badge"
           onTap={onTap}
           onHoldComplete={onHoldComplete}
-          holdDisabled={goal.status !== "active"}
+          holdDisabled={holdDisabled}
         >
           <GoalCardDesktopBadge goal={goal} compact={compact} />
         </GoalLongPressRing>

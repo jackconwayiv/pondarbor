@@ -39,12 +39,11 @@ import { mergeGoalIfNewer } from "./goalMerge";
 import {
   CHECKPOINT_TITLE_MAX,
   clampFrequencyCount,
-  FREQUENCY_COUNT_MAX,
-  FREQUENCY_COUNT_MIN,
   GOAL_DESCRIPTION_MAX,
   GOAL_TITLE_MAX,
 } from "./goalFormLimits";
 import { GOAL_KIND_ONE_TIME_LABEL } from "./goalCopy";
+import { GoalFrequencyCountInput } from "./GoalFrequencyCountInput";
 import { GOAL_ADD_MILESTONE_BUTTON_PROPS, GOALS_THEME } from "./theme";
 
 import "./goalsAddGoalButton.css";
@@ -460,16 +459,11 @@ export function GoalFormModal({
             />
           </Field.Root>
           {(frequencyKind === "times_per_day" || frequencyKind === "times_per_week") ? (
-            <Field.Root width="24">
+            <Field.Root width="full" maxW="11rem">
               <Field.Label>Count</Field.Label>
-              <Input
-                type="number"
-                min={FREQUENCY_COUNT_MIN}
-                max={FREQUENCY_COUNT_MAX}
+              <GoalFrequencyCountInput
                 value={frequencyCount}
-                onChange={(e) =>
-                  setFrequencyCount(clampFrequencyCount(Number(e.target.value) || 1))
-                }
+                onChange={setFrequencyCount}
               />
             </Field.Root>
           ) : null}

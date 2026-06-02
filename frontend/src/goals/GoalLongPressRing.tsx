@@ -4,6 +4,8 @@ import { useCallback, useRef, useState } from "react";
 
 import { GOALS_THEME } from "./theme";
 
+import "./goalsHoldTarget.css";
+
 const HOLD_MS = 1500;
 const MOVE_THRESHOLD_PX = 12;
 /** Presses longer than this (or with visible ring progress) are holds, not taps. */
@@ -104,15 +106,18 @@ export function GoalLongPressRing({
 
   return (
     <Box
+      className="goals-hold-target"
       position="relative"
       width="100%"
       aspectRatio={isBadge ? undefined : 1}
       touchAction="manipulation"
+      userSelect="none"
       cursor="pointer"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
+      onContextMenu={(e) => e.preventDefault()}
     >
       <Box
         position="absolute"

@@ -42,14 +42,15 @@ const GAME_HOME_PATHS = new Set(
 
 function HomeAppNavList({
   isAuthenticated,
+  isApproved,
   isStaff,
 }: {
   isAuthenticated: boolean;
+  isApproved: boolean;
   isStaff: boolean;
 }) {
-  // Hide Meal Maestro and QFF demo from non-staff while those apps are staff-only.
   const baseItems = APP_HOME_APPS.filter(
-    (item) => item.to !== "/meal" || isStaff,
+    (item) => item.to !== "/meal" || (isAuthenticated && isApproved),
   );
   const gameItems = visibleGameNavItems(isStaff);
   const items = isAuthenticated
@@ -255,6 +256,7 @@ function App() {
                   </Text>
                   <HomeAppNavList
                     isAuthenticated={isAuthenticated}
+                    isApproved={!!sessionUser?.user.is_approved}
                     isStaff={!!sessionUser?.user.is_staff}
                   />
                 </Stack>
@@ -274,6 +276,7 @@ function App() {
                   </Text>
                   <HomeAppNavList
                     isAuthenticated={isAuthenticated}
+                    isApproved={!!sessionUser?.user.is_approved}
                     isStaff={!!sessionUser?.user.is_staff}
                   />
                 </Stack>

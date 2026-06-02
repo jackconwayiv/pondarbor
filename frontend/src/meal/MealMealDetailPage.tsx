@@ -215,7 +215,7 @@ export default function MealMealDetailPage() {
         return;
       }
     }
-    navigate("/meal/plan/meals");
+    navigate("/meal/meals");
   }, [isEditing, flushPatch, navigate]);
 
   if (isLoading) return <MealLoading />;
@@ -257,7 +257,7 @@ export default function MealMealDetailPage() {
   return (
     <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP} w="100%">
       <Text fontSize={APP_TEXT_SIZES.helper}>
-        <RouterLink to="/meal/plan/meals">
+        <RouterLink to="/meal/meals">
           <Text as="span" color="teal.solid" fontWeight="bold">
             ← All meals
           </Text>
@@ -322,7 +322,7 @@ export default function MealMealDetailPage() {
                         try {
                           const t = await getApiAccessToken();
                           await deleteMeal(t, meal.id);
-                          navigate("/meal/plan/meals");
+                          navigate("/meal/meals");
                         } catch (e) {
                           setErr(e instanceof Error ? e.message : "Delete failed");
                         } finally {
@@ -520,7 +520,7 @@ export default function MealMealDetailPage() {
                         try {
                           const t = await getApiAccessToken();
                           await deleteMeal(t, meal.id);
-                          navigate("/meal/plan/meals");
+                          navigate("/meal/meals");
                         } catch (e) {
                           setErr(e instanceof Error ? e.message : "Delete failed");
                         } finally {
@@ -629,6 +629,7 @@ export default function MealMealDetailPage() {
         mealTitle={mealTitle}
         weekStartsOn={sessionUser.profile.meal_week_starts_on ?? 0}
         mealSlotLabels={sessionUser.profile.meal_slot_labels}
+        mealSlotsPerDay={sessionUser.profile.meal_slots_per_day}
         getApiAccessToken={getApiAccessToken}
         onPlanUpdated={() => void resyncSessionSilently().catch(() => {})}
         onAddSuccess={setAddToPlanNotice}

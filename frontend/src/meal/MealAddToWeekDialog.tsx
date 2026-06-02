@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppModal } from "../components/AppModal";
 import PondButton from "../PondButton";
 import { APP_TEXT_SIZES } from "../theme/typography";
-import { createInstance, fetchInstances, fetchTemplates, patchInstanceGrid } from "./api";
+import { createInstance, fetchInstances, patchInstanceGrid } from "./api";
 import {
   addDaysIso,
   localDateIso,
@@ -12,8 +12,9 @@ import {
   startOfLocalDay,
   startOfWeek,
 } from "./mealPlanDates";
+import { profileMealSlotsPerDay } from "./mealPlanSlots";
 import { resolveSlotLabels } from "./mealSlotLabels";
-import type { MealPlanInstance, MealPlanTemplate } from "./types";
+import type { MealPlanInstance } from "./types";
 
 /** e.g. "Monday 4/13" (weekday + M/D, no leading zeros on month/day). */
 function formatDayPickerLabel(iso: string): string {
@@ -40,6 +41,7 @@ export type MealAddToWeekDialogProps = {
   mealTitle: string;
   weekStartsOn: number;
   mealSlotLabels: Record<string, string[]> | null | undefined;
+  mealSlotsPerDay?: number;
   getApiAccessToken: () => Promise<string>;
   onPlanUpdated?: () => void;
   /** Called after a successful add so the parent can show an inline notice on the meal card. */
@@ -53,15 +55,14 @@ export function MealAddToWeekDialog({
   mealTitle,
   weekStartsOn,
   mealSlotLabels,
+  mealSlotsPerDay,
   getApiAccessToken,
   onPlanUpdated,
   onAddSuccess,
 }: MealAddToWeekDialogProps) {
   const [instances, setInstances] = useState<MealPlanInstance[]>([]);
-  const [templates, setTemplates] = useState<MealPlanTemplate[]>([]);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [selectedDayIso, setSelectedDayIso] = useState("");
-  const [templateId, setTemplateId] = useState<number | "">("");
   const [mealSlotIndex, setMealSlotIndex] = useState(0);
   const [busy, setBusy] = useState(false);
   const [actionErr, setActionErr] = useState<string | null>(null);
@@ -84,10 +85,7 @@ export function MealAddToWeekDialog({
     setLoadErr(null);
     try {
       const t = await getApiAccessToken();
-      const [instList, tplList] = await Promise.all([fetchInstances(t), fetchTemplates(t)]);
-      setInstances(instList);
-      setTemplates(tplList);
-      setTemplateId((prev) => (prev === "" && tplList.length ? tplList[0].id : prev));
+      setInstances(await fetchInstances(t));
     } catch (e) {
       setLoadErr(e instanceof Error ? e.message : "Load failed");
     }
@@ -109,11 +107,7 @@ export function MealAddToWeekDialog({
     if (open) setActionErr(null);
   }, [open]);
 
-  const chosenInstance = instances.find((i) => i.week_start === weekStartIso);
-  const slotsPerDay = chosenInstance
-    ? Math.max(1, ...chosenInstance.slots.map((s) => s.slot_index + 1))
-    : templates.find((x) => x.id === templateId)?.slots_per_day ?? 3;
-
+  const slotsPerDay = mealSlotsPerDay ?? profileMealSlotsPerDay(undefined);
   const slotLabels = resolveSlotLabels(slotsPerDay, mealSlotLabels);
 
   useEffect(() => {
@@ -123,13 +117,9 @@ export function MealAddToWeekDialog({
   async function resolveInstance(): Promise<MealPlanInstance> {
     const existing = instances.find((i) => i.week_start === weekStartIso);
     if (existing) return existing;
-    const tid = Number(templateId);
-    if (!tid) {
-      throw new Error("Create at least one template before saving week plans.");
-    }
     const t = await getApiAccessToken();
     try {
-      return await createInstance(t, { template_id: tid, week_start: weekStartIso });
+      return await createInstance(t, { week_start: weekStartIso });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
       if (msg.includes("already have a plan") || msg.includes("week")) {
@@ -171,7 +161,6 @@ export function MealAddToWeekDialog({
     }
   }
 
-  const noTemplates = templates.length === 0;
   const titleSafe = mealTitle.trim() || "this meal";
 
   return (
@@ -206,68 +195,42 @@ export function MealAddToWeekDialog({
             </Stack>
           </Box>
         ) : null}
-        {noTemplates ? (
-          <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-            Create at least one template before saving week plans.
-          </Text>
-        ) : (
-          <>
-            <Stack gap="1">
-              <Text fontSize={APP_TEXT_SIZES.helper}>Day</Text>
-              <PondNativeSelect
-                rootProps={{ maxW: "100%", disabled: busy }}
-                fieldProps={{
-                  value: selectedDayIso,
-                  onChange: (e) => setSelectedDayIso(e.target.value),
-                }}
-              >
-                {dayOptions.map((o) => (
-                  <option key={o.iso} value={o.iso}>
-                    {o.label}
-                  </option>
-                ))}
-              </PondNativeSelect>
-            </Stack>
-            {!chosenInstance ? (
-              <Stack gap="1">
-                <Text fontSize={APP_TEXT_SIZES.helper}>Template (for new week)</Text>
-                <PondNativeSelect
-                  rootProps={{ maxW: "100%", disabled: busy }}
-                  fieldProps={{
-                    value: templateId === "" ? "" : String(templateId),
-                    onChange: (e) => setTemplateId(Number(e.target.value)),
-                  }}
-                >
-                  {templates.map((tpl) => (
-                    <option key={tpl.id} value={tpl.id}>
-                      {tpl.name}
-                    </option>
-                  ))}
-                </PondNativeSelect>
-              </Stack>
-            ) : null}
-            <Stack gap="1">
-              <Text fontSize={APP_TEXT_SIZES.helper}>Meal</Text>
-              <PondNativeSelect
-                rootProps={{ maxW: "100%", disabled: busy }}
-                fieldProps={{
-                  value: String(mealSlotIndex),
-                  onChange: (e) => setMealSlotIndex(Number(e.target.value)),
-                }}
-              >
-                {slotLabels.map((label, s) => (
-                  <option key={s} value={String(s)}>
-                    {label}
-                  </option>
-                ))}
-              </PondNativeSelect>
-            </Stack>
-          </>
-        )}
+        <Stack gap="1">
+          <Text fontSize={APP_TEXT_SIZES.helper}>Day</Text>
+          <PondNativeSelect
+            rootProps={{ maxW: "100%", disabled: busy }}
+            fieldProps={{
+              value: selectedDayIso,
+              onChange: (e) => setSelectedDayIso(e.target.value),
+            }}
+          >
+            {dayOptions.map((o) => (
+              <option key={o.iso} value={o.iso}>
+                {o.label}
+              </option>
+            ))}
+          </PondNativeSelect>
+        </Stack>
+        <Stack gap="1">
+          <Text fontSize={APP_TEXT_SIZES.helper}>Meal</Text>
+          <PondNativeSelect
+            rootProps={{ maxW: "100%", disabled: busy }}
+            fieldProps={{
+              value: String(mealSlotIndex),
+              onChange: (e) => setMealSlotIndex(Number(e.target.value)),
+            }}
+          >
+            {slotLabels.map((label, s) => (
+              <option key={s} value={String(s)}>
+                {label}
+              </option>
+            ))}
+          </PondNativeSelect>
+        </Stack>
         <PondButton
           colorPalette="lilypad"
           loading={busy}
-          disabled={busy || noTemplates || !selectedDayIso}
+          disabled={busy || !selectedDayIso}
           onClick={() => void handleAdd()}
         >
           Add to meal

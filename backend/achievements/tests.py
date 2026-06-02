@@ -597,7 +597,6 @@ class AchievementMealMaestroTests(TestCase):
         meal = Meal.objects.create(owner_user=owner, title="Soup")
         inst = MealPlanInstance.objects.create(
             owner_user=owner,
-            source_template=None,
             week_start=date(2026, 4, 6),
         )
         for d in range(7):

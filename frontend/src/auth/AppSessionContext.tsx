@@ -23,6 +23,12 @@ export type Profile = {
   meal_slot_labels?: Record<string, string[]> | null;
   /** Pantry inventory and grocery hints (Meal Maestro). */
   meal_pantry_enabled?: boolean;
+  /** Meal plan rows per day (1–5); adding a row applies to every day. */
+  meal_slots_per_day?: number;
+  /** User finished the Meal Maestro setup wizard. */
+  meal_maestro_setup_completed?: boolean;
+  /** Dietary labels from setup wizard (meal tags + pantry defaults). */
+  meal_dietary_preferences?: string[];
   /** Show Sun/Moon/Rising on friend profile (does not affect /zodiac Friends tab). */
   display_astro?: boolean;
   /** Default audience for newly created social objects (global). */
@@ -91,6 +97,9 @@ export type ProfilePatch = Partial<
     | "meal_crud_partner_id"
     | "meal_slot_labels"
     | "meal_pantry_enabled"
+    | "meal_slots_per_day"
+    | "meal_maestro_setup_completed"
+    | "meal_dietary_preferences"
     | "display_astro"
     | "social_publish_visibility"
     | "social_read_scope"

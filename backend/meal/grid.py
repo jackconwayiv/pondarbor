@@ -1,50 +1,33 @@
 from __future__ import annotations
 
+from django.contrib.auth import get_user_model
+
 from django.db import transaction
 
-from meal.models import MealPlanTemplate, MealPlanTemplateSlot
+from meal.models import MealPlanInstance, MealPlanInstanceSlot
+
+User = get_user_model()
+
+SLOTS_PER_DAY_MIN = 1
+SLOTS_PER_DAY_MAX = 5
 
 
-def rebuild_template_slots(template: MealPlanTemplate) -> None:
-    """Ensure 7 × slots_per_day rows exist; drop meals in removed cells when shrinking."""
-    n = template.slots_per_day
-    if n < 1 or n > 5:
-        raise ValueError("slots_per_day must be 1–5")
-
-    for day in range(7):
-        for slot in range(n):
-            MealPlanTemplateSlot.objects.get_or_create(
-                template=template,
-                day_index=day,
-                slot_index=slot,
-            )
-        MealPlanTemplateSlot.objects.filter(
-            template=template,
-            day_index=day,
-            slot_index__gte=n,
-        ).delete()
+def clamp_slots_per_day(n: int) -> int:
+    return max(SLOTS_PER_DAY_MIN, min(SLOTS_PER_DAY_MAX, int(n)))
 
 
-@transaction.atomic
-def create_template_with_grid(*, owner, name: str, description: str, slots_per_day: int) -> MealPlanTemplate:
-    t = MealPlanTemplate.objects.create(
-        owner_user=owner,
-        name=name,
-        description=description,
-        slots_per_day=slots_per_day,
-    )
-    rebuild_template_slots(t)
-    return t
+def slots_per_day_for_user(user) -> int:
+    from users.views import get_or_create_profile
+
+    profile = get_or_create_profile(user)
+    return clamp_slots_per_day(getattr(profile, "meal_slots_per_day", 3) or 3)
 
 
-def rebuild_instance_slots(instance) -> None:
-    """Match instance slot grid to template's slots_per_day from source_template if present, else owner preference."""
-    from meal.models import MealPlanInstanceSlot
-
-    n = 3
-    st = instance.source_template
-    if st:
-        n = st.slots_per_day
+def rebuild_instance_slots(instance: MealPlanInstance, *, n: int | None = None) -> None:
+    """Ensure visible slot rows (0..n-1 per day) exist. Hidden rows (slot_index >= n) are kept."""
+    if n is None:
+        n = slots_per_day_for_user(instance.owner_user)
+    n = clamp_slots_per_day(n)
     for day in range(7):
         for slot in range(n):
             MealPlanInstanceSlot.objects.get_or_create(
@@ -52,26 +35,20 @@ def rebuild_instance_slots(instance) -> None:
                 day_index=day,
                 slot_index=slot,
             )
-        MealPlanInstanceSlot.objects.filter(
-            instance=instance,
-            day_index=day,
-            slot_index__gte=n,
-        ).delete()
 
 
-def copy_template_to_instance(*, template: MealPlanTemplate, instance) -> None:
-    from meal.models import MealPlanInstanceSlot, MealPlanInstanceSlotMeal
+@transaction.atomic
+def create_instance_with_grid(*, owner, week_start) -> MealPlanInstance:
+    inst = MealPlanInstance.objects.create(
+        owner_user=owner,
+        week_start=week_start,
+    )
+    rebuild_instance_slots(inst)
+    return inst
 
-    instance.source_template = template
-    instance.save(update_fields=["source_template", "updated_at"])
-    MealPlanInstanceSlot.objects.filter(instance=instance).delete()
-    for ts in template.slots.prefetch_related("slot_meals").all():
-        inst_slot = MealPlanInstanceSlot.objects.create(
-            instance=instance,
-            day_index=ts.day_index,
-            slot_index=ts.slot_index,
-        )
-        MealPlanInstanceSlotMeal.objects.bulk_create(
-            [MealPlanInstanceSlotMeal(slot=inst_slot, meal_id=sm.meal_id) for sm in ts.slot_meals.all()],
-            ignore_conflicts=True,
-        )
+
+@transaction.atomic
+def rebuild_all_instances_for_user(*, owner, slots_per_day: int) -> None:
+    n = clamp_slots_per_day(slots_per_day)
+    for inst in MealPlanInstance.objects.filter(owner_user=owner):
+        rebuild_instance_slots(inst, n=n)

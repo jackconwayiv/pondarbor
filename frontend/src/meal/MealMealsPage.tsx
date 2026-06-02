@@ -143,7 +143,17 @@ export default function MealMealsPage() {
   return (
     <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP} w="100%">
       <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-        Build meals with ingredients and directions, then assign them in templates and week plans.
+        Build meals with ingredients and directions, then assign them on the Plan tab.
+      </Text>
+      <Text fontSize={APP_TEXT_SIZES.helper}>
+        <RouterLink to="/meal/shared">
+          <Text as="span" color="teal.solid" fontWeight="bold">
+            Shared meals
+          </Text>
+        </RouterLink>{" "}
+        <Text as="span" color="fg.muted">
+          from your meal partner
+        </Text>
       </Text>
 
       <Stack gap="3" w="100%">
@@ -323,7 +333,7 @@ export default function MealMealsPage() {
                             dismissAddMeal();
                             await refresh();
                             setErr(null);
-                            navigate(`/meal/plan/meals/${created.id}`);
+                            navigate(`/meal/meals/${created.id}`);
                           } catch (e) {
                             setErr(e instanceof Error ? e.message : "Import failed");
                           } finally {
@@ -370,7 +380,7 @@ export default function MealMealsPage() {
                             setErr(null);
                           }
                           if (res.meals.length === 1) {
-                            navigate(`/meal/plan/meals/${res.meals[0].id}`);
+                            navigate(`/meal/meals/${res.meals[0].id}`);
                           }
                         } catch (err) {
                           setErr(err instanceof Error ? err.message : "Paprika import failed");
@@ -475,7 +485,7 @@ function MealListCard({ meal, ownerLabel }: { meal: Meal; ownerLabel: string }) 
   const thumb = (meal.image_url ?? "").trim();
   return (
     <RouterLink
-      to={`/meal/plan/meals/${meal.id}`}
+      to={`/meal/meals/${meal.id}`}
       aria-label={`Open meal: ${mealLabel(meal)}`}
       style={{ textDecoration: "none", color: "inherit", display: "block", height: "100%" }}
     >

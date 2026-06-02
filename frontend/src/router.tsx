@@ -13,7 +13,6 @@ import AboutTermsPage from "./about/AboutTermsPage";
 import FriendProfilePage from "./friend/FriendProfilePage";
 import AppLayout from "./layout";
 import {
-  LegacyRedirectPlansTemplateDetail,
   LegacyRedirectPlansWeekDetail,
 } from "./meal/mealLegacyRedirects";
 import StaffPage from "./staff/StaffPage";
@@ -82,15 +81,18 @@ const MealHomePage = lazy(() => import("./meal/MealHomePage"));
 const MealMealsPage = lazy(() => import("./meal/MealMealsPage"));
 const MealSharedPage = lazy(() => import("./meal/MealSharedPage"));
 const MealMealDetailPage = lazy(() => import("./meal/MealMealDetailPage"));
-const MealTemplatesPage = lazy(() => import("./meal/MealTemplatesPage"));
-const MealTemplateEditPage = lazy(() => import("./meal/MealTemplateEditPage"));
-const MealTodayPage = lazy(() => import("./meal/MealTodayPage"));
+const MealPlanPage = lazy(() => import("./meal/MealPlanPage"));
 const MealWeeksPage = lazy(() => import("./meal/MealWeeksPage"));
 const MealWeekEditPage = lazy(() => import("./meal/MealWeekEditPage"));
 const MealInstanceDetailPage = lazy(
   () => import("./meal/MealInstanceDetailPage"),
 );
-const MealGroceryPage = lazy(() => import("./meal/MealGroceryPage"));
+const MealPantryInventoryPage = lazy(() => import("./meal/MealPantryInventoryPage"));
+const MealPantryRecommendationsPage = lazy(
+  () => import("./meal/MealPantryRecommendationsPage"),
+);
+const MealPantryReadyPage = lazy(() => import("./meal/MealPantryReadyPage"));
+const MealPantryAlmostPage = lazy(() => import("./meal/MealPantryAlmostPage"));
 const GamesMenu = lazy(() => import("./GamesMenu"));
 const HarborLobbyPage = lazy(() => import("./harbor/HarborLobbyPage"));
 const HarborRoute = lazy(() => import("./harbor/HarborRoute"));
@@ -407,23 +409,23 @@ export const router = sentryCreateBrowserRouter([
         children: [
           {
             index: true,
-            element: <Navigate to="/meal/today" replace />,
+            element: <Navigate to="/meal/plan" replace />,
           },
           {
             path: "recipes",
-            element: <Navigate to="/meal/plan/meals" replace />,
+            element: <Navigate to="/meal/meals" replace />,
           },
           {
-            path: "meals",
-            element: <Navigate to="/meal/plan/meals" replace />,
+            path: "today",
+            element: <Navigate to="/meal/plan" replace />,
           },
           {
             path: "templates",
-            element: <Navigate to="/meal/plan/templates" replace />,
+            element: <Navigate to="/meal/plan/overview" replace />,
           },
           {
             path: "weeks",
-            element: <Navigate to="/meal/plan/plans" replace />,
+            element: <Navigate to="/meal/plan/overview" replace />,
           },
           {
             path: "weeks/:id",
@@ -431,20 +433,14 @@ export const router = sentryCreateBrowserRouter([
           },
           {
             path: "templates/:id",
-            element: <LegacyRedirectPlansTemplateDetail />,
-          },
-          {
-            path: "today",
-            element: lazyRouteElement(<MealTodayPage />),
+            element: <Navigate to="/meal/plan/overview" replace />,
           },
           {
             path: "plan",
             children: [
-              {
-                index: true,
-                element: <Navigate to="/meal/plan/plans" replace />,
-              },
-              { path: "plans", element: lazyRouteElement(<MealWeeksPage />) },
+              { index: true, element: lazyRouteElement(<MealPlanPage />) },
+              { path: "overview", element: lazyRouteElement(<MealWeeksPage />) },
+              { path: "plans", element: <Navigate to="/meal/plan/overview" replace /> },
               {
                 path: "plans/new",
                 element: lazyRouteElement(<MealWeekEditPage />),
@@ -453,37 +449,34 @@ export const router = sentryCreateBrowserRouter([
                 path: "plans/:id",
                 element: lazyRouteElement(<MealInstanceDetailPage />),
               },
+            ],
+          },
+          {
+            path: "meals",
+            children: [
+              { index: true, element: lazyRouteElement(<MealMealsPage />) },
               {
-                path: "templates",
-                element: lazyRouteElement(<MealTemplatesPage />),
-              },
-              {
-                path: "templates/:id",
-                element: lazyRouteElement(<MealTemplateEditPage />),
-              },
-              { path: "shared", element: lazyRouteElement(<MealSharedPage />) },
-              { path: "meals", element: lazyRouteElement(<MealMealsPage />) },
-              {
-                path: "meals/:id",
+                path: ":id",
                 element: lazyRouteElement(<MealMealDetailPage />),
               },
             ],
           },
+          { path: "shared", element: lazyRouteElement(<MealSharedPage />) },
           {
             path: "plans/:tab",
-            element: <Navigate to="/meal/plan/plans" replace />,
+            element: <Navigate to="/meal/plan/overview" replace />,
           },
           {
             path: "plans/today",
-            element: <Navigate to="/meal/today" replace />,
+            element: <Navigate to="/meal/plan" replace />,
           },
           {
             path: "plans/weeks",
-            element: <Navigate to="/meal/plan/plans" replace />,
+            element: <Navigate to="/meal/plan/overview" replace />,
           },
           {
             path: "plans/templates",
-            element: <Navigate to="/meal/plan/templates" replace />,
+            element: <Navigate to="/meal/plan/overview" replace />,
           },
           {
             path: "plans/weeks/:id",
@@ -491,11 +484,23 @@ export const router = sentryCreateBrowserRouter([
           },
           {
             path: "plans/templates/:id",
-            element: <LegacyRedirectPlansTemplateDetail />,
+            element: <Navigate to="/meal/plan/overview" replace />,
+          },
+          {
+            path: "plan/shared",
+            element: <Navigate to="/meal/shared" replace />,
+          },
+          {
+            path: "plan/meals",
+            element: <Navigate to="/meal/meals" replace />,
+          },
+          {
+            path: "plan/meals/:id",
+            element: lazyRouteElement(<MealMealDetailPage />),
           },
           {
             path: "menu/meals",
-            element: <Navigate to="/meal/plan/meals" replace />,
+            element: <Navigate to="/meal/meals" replace />,
           },
           {
             path: "menu/meals/:id",
@@ -503,8 +508,19 @@ export const router = sentryCreateBrowserRouter([
           },
           {
             path: "grocery",
+            element: <Navigate to="/meal/pantry/inventory" replace />,
+          },
+          {
+            path: "pantry",
             children: [
-              { index: true, element: lazyRouteElement(<MealGroceryPage />) },
+              { index: true, element: <Navigate to="/meal/pantry/inventory" replace /> },
+              { path: "inventory", element: lazyRouteElement(<MealPantryInventoryPage />) },
+              {
+                path: "recommendations",
+                element: lazyRouteElement(<MealPantryRecommendationsPage />),
+              },
+              { path: "ready", element: lazyRouteElement(<MealPantryReadyPage />) },
+              { path: "almost", element: lazyRouteElement(<MealPantryAlmostPage />) },
             ],
           },
           {

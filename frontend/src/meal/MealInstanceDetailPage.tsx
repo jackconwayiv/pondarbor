@@ -14,6 +14,10 @@ import { formatWeekStartShort } from "./mealPlanDates";
 import { MealEditorBackdropDismiss } from "./MealEditorBackdropDismiss";
 import MealSlotGrid from "./MealSlotGrid";
 import { resolveSlotLabels } from "./mealSlotLabels";
+import { MealPlanSlotControls } from "./MealPlanSlotControls";
+import { profileMealSlotsPerDay } from "./mealPlanSlots";
+import { patchMealSlotsPerDay } from "./mealPlanSlotsChange";
+import { MealGroceryListDialog } from "./MealGroceryListDialog";
 import {
   MealApprovalRequired,
   MealLoading,
@@ -32,6 +36,7 @@ export default function MealInstanceDetailPage() {
     getApiAccessToken,
     refreshSession,
     resyncSessionSilently,
+    patchMyProfile,
   } = useAppSession();
   const [inst, setInst] = useState<MealPlanInstance | null>(null);
   const [meals, setMeals] = useState<Meal[]>([]);
@@ -39,6 +44,7 @@ export default function MealInstanceDetailPage() {
   const [saveBusy, setSaveBusy] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [groceryOpen, setGroceryOpen] = useState(false);
   const confirmDeleteButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const load = useCallback(async () => {
@@ -95,17 +101,16 @@ export default function MealInstanceDetailPage() {
     );
   }
 
-  const slotsPerDay =
-    inst.slots.length > 0 ? Math.max(...inst.slots.map((s) => s.slot_index)) + 1 : 3;
+  const slotsPerDay = profileMealSlotsPerDay(sessionUser.profile);
   const weekStartsOn = sessionUser.profile.meal_week_starts_on ?? 0;
   const slotLabels = resolveSlotLabels(slotsPerDay, sessionUser.profile.meal_slot_labels);
   const weekTitle = `Week of ${formatWeekStartShort(inst.week_start)}`;
 
   return (
-    <MealEditorBackdropDismiss dismissTo="/meal/plan/plans" disabled={saveBusy || deleteBusy}>
+    <MealEditorBackdropDismiss dismissTo="/meal/plan/overview" disabled={saveBusy || deleteBusy}>
     <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP} w="100%">
       <Text fontSize={APP_TEXT_SIZES.helper}>
-        <RouterLink to="/meal/plan/plans">
+        <RouterLink to="/meal/plan/overview">
           <Text as="span" color="teal.solid" fontWeight="bold">
             ← Weekly overview
           </Text>
@@ -134,6 +139,17 @@ export default function MealInstanceDetailPage() {
               {weekTitle}
             </Heading>
             <HStack gap="2" flexShrink={0}>
+              <PondButton
+                colorPalette="sky"
+                variant="outline"
+                disabled={saveBusy || deleteBusy}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setGroceryOpen(true);
+                }}
+              >
+                Grocery list
+              </PondButton>
               <PondButton
                 colorPalette="lilypad"
                 loading={saveBusy}
@@ -180,7 +196,7 @@ export default function MealInstanceDetailPage() {
                     try {
                       const tok = await getApiAccessToken();
                       await deleteInstance(tok, inst.id);
-                      navigate("/meal/plan/plans");
+                      navigate("/meal/plan/overview");
                     } catch (e) {
                       setErr(e instanceof Error ? e.message : "Delete failed");
                     } finally {
@@ -193,6 +209,29 @@ export default function MealInstanceDetailPage() {
               </PondButton>
             </HStack>
           </HStack>
+
+          <MealPlanSlotControls
+            slotsPerDay={slotsPerDay}
+            disabled={saveBusy || deleteBusy}
+            onChange={async (next) => {
+              setSaveBusy(true);
+              try {
+                await patchMealSlotsPerDay(
+                  patchMyProfile,
+                  next,
+                  profileMealSlotsPerDay(sessionUser.profile),
+                );
+                const tok = await getApiAccessToken();
+                const refreshed = await fetchInstance(tok, inst.id);
+                setInst(refreshed);
+                setErr(null);
+              } catch (e) {
+                setErr(e instanceof Error ? e.message : "Could not update meal rows");
+              } finally {
+                setSaveBusy(false);
+              }
+            }}
+          />
 
           <MealSlotGrid
             slots={inst.slots}
@@ -246,6 +285,14 @@ export default function MealInstanceDetailPage() {
           {err}
         </Text>
       ) : null}
+
+      <MealGroceryListDialog
+        open={groceryOpen}
+        onOpenChange={setGroceryOpen}
+        instanceId={inst.id}
+        weekLabel={weekTitle}
+        getApiAccessToken={getApiAccessToken}
+      />
     </Stack>
     </MealEditorBackdropDismiss>
   );

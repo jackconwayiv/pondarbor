@@ -180,6 +180,7 @@ class Ingredient(models.Model):
         related_name="meal_ingredients_vocab",
     )
     name = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         constraints = [
@@ -219,65 +220,11 @@ class MealIngredient(models.Model):
         unique_together = [("meal", "position")]
 
 
-class MealPlanTemplate(models.Model):
-    owner_user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="meal_plan_templates",
-    )
-    name = models.CharField(max_length=255)
-    description = models.TextField(blank=True)
-    slots_per_day = models.PositiveSmallIntegerField(default=3)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["-updated_at", "-created_at"]
-
-    def __str__(self) -> str:
-        return self.name
-
-
-class MealPlanTemplateSlot(models.Model):
-    template = models.ForeignKey(
-        MealPlanTemplate,
-        on_delete=models.CASCADE,
-        related_name="slots",
-    )
-    day_index = models.PositiveSmallIntegerField()
-    slot_index = models.PositiveSmallIntegerField()
-    class Meta:
-        unique_together = [("template", "day_index", "slot_index")]
-
-
-class MealPlanTemplateSlotMeal(models.Model):
-    slot = models.ForeignKey(
-        MealPlanTemplateSlot,
-        on_delete=models.CASCADE,
-        related_name="slot_meals",
-    )
-    meal = models.ForeignKey(
-        Meal,
-        on_delete=models.CASCADE,
-        related_name="template_slot_links",
-    )
-
-    class Meta:
-        unique_together = [("slot", "meal")]
-
-
 class MealPlanInstance(models.Model):
     owner_user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="meal_plan_instances",
-    )
-    source_template = models.ForeignKey(
-        MealPlanTemplate,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="instances",
     )
     week_start = models.DateField(db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -415,11 +362,17 @@ class UserIngredientInventory(models.Model):
         blank=True,
         help_text="When set, use quick have/don’t-have instead of quantity.",
     )
+    location = models.CharField(max_length=120, blank=True, default="")
+    pantry_tags = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Tag lists: food_group, storage, preferred_meal, dietary.",
+    )
 
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=("owner_user", "ingredient"),
-                name="meal_useringredientinventory_owner_ingredient_uniq",
+                fields=("owner_user", "ingredient", "location"),
+                name="meal_useringredientinventory_owner_ingredient_location_uniq",
             ),
         ]

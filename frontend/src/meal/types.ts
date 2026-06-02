@@ -52,23 +52,6 @@ export type MealCreateInput = {
   ingredients?: { raw_line: string; amount?: string; unit?: string; name?: string }[];
 };
 
-export type TemplateSlot = {
-  day_index: number;
-  slot_index: number;
-  meal_ids: number[];
-};
-
-export type MealPlanTemplate = {
-  id: number;
-  owner_user: number;
-  name: string;
-  description: string;
-  slots_per_day: number;
-  slots: TemplateSlot[];
-  created_at: string;
-  updated_at: string;
-};
-
 export type InstanceSlot = {
   day_index: number;
   slot_index: number;
@@ -78,7 +61,6 @@ export type InstanceSlot = {
 export type MealPlanInstance = {
   id: number;
   owner_user: number;
-  source_template: number | null;
   week_start: string;
   slots: InstanceSlot[];
   created_at: string;
@@ -127,11 +109,41 @@ export type SavedGroceryList = {
   saved_at: string;
 };
 
+export type PantryTags = {
+  food_group: string[];
+  storage: string[];
+  preferred_meal: string[];
+  dietary: string[];
+};
+
 export type PantryInventoryRow = {
   id: number;
-  ingredient: { id: number; name: string };
+  ingredient: { id: number; name: string; created_at: string };
   quantity: number;
   simple_have: boolean | null;
+  location: string;
+  pantry_tags?: PantryTags;
+  owner_user_id?: number;
+  /** Partner display name when row belongs to meal partner; empty for own rows. */
+  owner_label?: string;
+};
+
+export type ParsedPantryItem = {
+  raw_line: string;
+  location: string;
+  name: string;
+  quantity: number;
+  skipped: boolean;
+  is_section_header: boolean;
+};
+
+export type PantryParseResponse = {
+  items: ParsedPantryItem[];
+};
+
+export type PantryImportResponse = {
+  imported: number;
+  items: PantryInventoryRow[];
 };
 
 export type PantryHint = {
@@ -144,6 +156,24 @@ export type PantrySuggestionsResponse = {
   enabled: boolean;
   week_start?: string;
   hints: PantryHint[];
+};
+
+export type PantryRecipeMissingIngredient = {
+  ingredient_id: number | null;
+  name: string;
+};
+
+export type PantryRecipeMatch = {
+  meal_id: number;
+  title: string;
+  missing_count: number;
+  missing_ingredients: PantryRecipeMissingIngredient[];
+};
+
+export type PantryRecipesResponse = {
+  enabled: boolean;
+  can_make: PantryRecipeMatch[];
+  almost_make: PantryRecipeMatch[];
 };
 
 export type DisconnectPending = {

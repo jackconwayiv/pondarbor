@@ -1,5 +1,7 @@
 import { Box, Heading, HStack, Stack, Tabs, Text } from "@chakra-ui/react";
+import { useEffect, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router";
+import { useAppSession } from "../auth/AppSessionContext";
 import { fullBleedStackProps } from "../responsive";
 import {
   APP_SHELL_TAB_LIST_MEAL_INNER_PROPS,
@@ -12,50 +14,86 @@ import {
   MAPPED_CLOSET_TAB_STACK_GAP,
   PANEL_ENTRY_CARD_PROPS,
 } from "../theme/typography";
+import { fetchMeals } from "./api";
+import { MealMaestroSetupWizard } from "./wizard/MealMaestroSetupWizard";
+import { isMealWizardAutoOpenDisabled } from "./wizard/mealWizardStorage";
+import type { MealWizardStepId } from "./wizard/mealWizardSteps";
 
-/** Outer tab: Today | Plan | Grocery | Settings. */
+/** Outer tab: Plan | Meals | Pantry | Settings. */
 const MEAL_OUTER_PATH = {
-  today: "/meal/today",
-  plan: "/meal/plan/plans",
-  grocery: "/meal/grocery",
+  plan: "/meal/plan",
+  meals: "/meal/meals",
+  pantry: "/meal/pantry/inventory",
   settings: "/meal/settings",
 } as const;
 
 type MealOuterTab = keyof typeof MEAL_OUTER_PATH;
 
-/** Inner tabs under Plan. */
-const MEAL_PLAN_INNER_PATH = {
-  plans: "/meal/plan/plans",
-  templates: "/meal/plan/templates",
-  meals: "/meal/plan/meals",
-  shared: "/meal/plan/shared",
+/** Inner tabs under Pantry. */
+const MEAL_PANTRY_INNER_PATH = {
+  inventory: "/meal/pantry/inventory",
+  recommendations: "/meal/pantry/recommendations",
+  ready: "/meal/pantry/ready",
+  almost: "/meal/pantry/almost",
 } as const;
 
-type MealPlanInnerTab = keyof typeof MEAL_PLAN_INNER_PATH;
+type MealPantryInnerTab = keyof typeof MEAL_PANTRY_INNER_PATH;
 
 function mealOuterFromPathname(pathname: string): MealOuterTab {
   const p = pathname.replace(/\/$/, "") || "/";
-  if (p.startsWith("/meal/today")) return "today";
+  if (p.startsWith("/meal/meals") || p.startsWith("/meal/shared")) return "meals";
   if (p.startsWith("/meal/plan")) return "plan";
-  if (p.startsWith("/meal/grocery")) return "grocery";
+  if (p.startsWith("/meal/pantry")) return "pantry";
   if (p.startsWith("/meal/settings")) return "settings";
-  return "today";
+  if (p.startsWith("/meal/today")) return "plan";
+  return "plan";
 }
 
-function mealPlanInnerFromPathname(pathname: string): MealPlanInnerTab {
-  if (pathname.startsWith("/meal/plan/templates")) return "templates";
-  if (pathname.startsWith("/meal/plan/shared")) return "shared";
-  if (pathname.startsWith("/meal/plan/meals")) return "meals";
-  return "plans";
+function mealPantryInnerFromPathname(pathname: string): MealPantryInnerTab {
+  if (pathname.startsWith("/meal/pantry/recommendations")) return "recommendations";
+  if (pathname.startsWith("/meal/pantry/ready")) return "ready";
+  if (pathname.startsWith("/meal/pantry/almost")) return "almost";
+  return "inventory";
 }
 
 export default function MealLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const pathname = location.pathname;
+  const {
+    sessionUser,
+    getApiAccessToken,
+    patchMyProfile,
+    resyncSessionSilently,
+  } = useAppSession();
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardInitialStep, setWizardInitialStep] = useState<MealWizardStepId | undefined>();
+  const autoOpenAttemptedRef = useRef(false);
 
   const outer = mealOuterFromPathname(pathname);
-  const planInner = mealPlanInnerFromPathname(pathname);
+  const pantryInner = mealPantryInnerFromPathname(pathname);
+
+  useEffect(() => {
+    if (!sessionUser?.user.is_approved) return;
+    if (autoOpenAttemptedRef.current) return;
+    if (sessionUser.profile.meal_maestro_setup_completed) return;
+    if (isMealWizardAutoOpenDisabled(sessionUser.user.id)) return;
+
+    autoOpenAttemptedRef.current = true;
+    void (async () => {
+      try {
+        const tok = await getApiAccessToken();
+        const meals = await fetchMeals(tok);
+        if (meals.length > 0) return;
+        setWizardInitialStep(
+          sessionUser.profile.meal_partner_incoming_pending ? "partner" : undefined,
+        );
+        setWizardOpen(true);
+      } catch {
+        /* skip auto-open on fetch failure */
+      }
+    })();
+  }, [getApiAccessToken, sessionUser]);
 
   return (
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
@@ -107,14 +145,14 @@ export default function MealLayout() {
             }}
           >
             <Tabs.List {...APP_SHELL_TAB_LIST_PROPS} data-meal-shell-tabs="">
-              <Tabs.Trigger value="today" {...APP_SHELL_TAB_TRIGGER_PROPS}>
-                Today
-              </Tabs.Trigger>
               <Tabs.Trigger value="plan" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                 Plan
               </Tabs.Trigger>
-              <Tabs.Trigger value="grocery" {...APP_SHELL_TAB_TRIGGER_PROPS}>
-                Grocery
+              <Tabs.Trigger value="meals" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                Meals
+              </Tabs.Trigger>
+              <Tabs.Trigger value="pantry" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                Pantry
               </Tabs.Trigger>
               <Tabs.Trigger value="settings" {...APP_SHELL_TAB_TRIGGER_PROPS}>
                 Settings
@@ -122,14 +160,14 @@ export default function MealLayout() {
             </Tabs.List>
           </Tabs.Root>
 
-          {outer === "plan" ? (
+          {outer === "pantry" ? (
             <Box pt="2">
               <Tabs.Root
                 variant="plain"
-                value={planInner}
+                value={pantryInner}
                 onValueChange={(details) => {
-                  const v = details.value as MealPlanInnerTab;
-                  const path = MEAL_PLAN_INNER_PATH[v];
+                  const v = details.value as MealPantryInnerTab;
+                  const path = MEAL_PANTRY_INNER_PATH[v];
                   if (path) navigate(path);
                 }}
               >
@@ -137,20 +175,17 @@ export default function MealLayout() {
                   {...APP_SHELL_TAB_LIST_MEAL_INNER_PROPS}
                   data-meal-shell-tabs=""
                 >
-                  <Tabs.Trigger value="plans" {...APP_SHELL_TAB_TRIGGER_PROPS}>
-                    Weekly
+                  <Tabs.Trigger value="inventory" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                    Inventory
                   </Tabs.Trigger>
-                  <Tabs.Trigger
-                    value="templates"
-                    {...APP_SHELL_TAB_TRIGGER_PROPS}
-                  >
-                    Templates
+                  <Tabs.Trigger value="recommendations" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                    Recommendations
                   </Tabs.Trigger>
-                  <Tabs.Trigger value="meals" {...APP_SHELL_TAB_TRIGGER_PROPS}>
-                    Meals
+                  <Tabs.Trigger value="ready" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                    Ready
                   </Tabs.Trigger>
-                  <Tabs.Trigger value="shared" {...APP_SHELL_TAB_TRIGGER_PROPS}>
-                    Shared
+                  <Tabs.Trigger value="almost" {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                    Almost
                   </Tabs.Trigger>
                 </Tabs.List>
               </Tabs.Root>
@@ -164,6 +199,19 @@ export default function MealLayout() {
           </Box>
         </Box>
       </Box>
+
+      {sessionUser ? (
+        <MealMaestroSetupWizard
+          open={wizardOpen}
+          onOpenChange={setWizardOpen}
+          sessionUser={sessionUser}
+          getApiAccessToken={getApiAccessToken}
+          patchMyProfile={patchMyProfile}
+          resyncSessionSilently={resyncSessionSilently}
+          markAutoOpenDisabledOnClose
+          initialStep={wizardInitialStep}
+        />
+      ) : null}
     </Stack>
   );
 }

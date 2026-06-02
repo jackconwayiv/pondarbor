@@ -8,12 +8,11 @@ import {
   Tabs,
   Text,
 } from "@chakra-ui/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
 import PondNativeSelect from "../components/PondNativeSelect";
-import { fetchFriendsList } from "../friends/api";
 import {
   APP_SHELL_TAB_LIST_NESTED_PROPS,
   APP_SHELL_TAB_TRIGGER_PROPS,
@@ -29,10 +28,10 @@ import {
 import {
   cancelDisconnect,
   confirmDisconnect,
-  declineIncomingPartnerRequest,
   fetchDisconnectPending,
   requestDisconnect,
 } from "./api";
+import { MealPartnerPicker, type MealPartnerPickerNotice } from "./MealPartnerPicker";
 import { WEEKDAY_FULL } from "./mealLabels";
 import { defaultSlotLabelsForCount, MEAL_SLOT_NAME_OPTIONS } from "./mealSlotLabels";
 import {
@@ -40,6 +39,7 @@ import {
   MealLoading,
   MealSessionReconnect,
 } from "./mealPageStates";
+import { MealMaestroSetupWizard } from "./wizard/MealMaestroSetupWizard";
 
 const MEAL_TIME_NAMES_TAB_LIST_PROPS = {
   ...APP_SHELL_TAB_LIST_NESTED_PROPS,
@@ -70,36 +70,19 @@ export default function MealHomePage() {
     refreshSession,
     resyncSessionSilently,
   } = useAppSession();
-  const [friends, setFriends] = useState<
-    Array<{ id: number; label: string; meal_crud_partner_id: number | null }>
-  >([]);
   const [pending, setPending] = useState<Awaited<ReturnType<typeof fetchDisconnectPending>>>(null);
-  const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
+  const [notice, setNotice] = useState<MealPartnerPickerNotice | null>(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const [disconnectConfirmArmed, setDisconnectConfirmArmed] = useState(false);
   const [acceptDisconnectConfirmArmed, setAcceptDisconnectConfirmArmed] = useState(false);
   const disconnectActionRef = useRef<HTMLDivElement | null>(null);
   const acceptDisconnectActionRef = useRef<HTMLDivElement | null>(null);
-  const [partnerQuery, setPartnerQuery] = useState("");
-  const [debouncedPartnerQuery, setDebouncedPartnerQuery] = useState("");
-  const [selectedPartnerId, setSelectedPartnerId] = useState<number | null>(null);
   const [mealSlotDraft, setMealSlotDraft] = useState<Record<string, string[]>>(() =>
     slotDraftFromProfile(null),
   );
   const [mealTimeNamesTab, setMealTimeNamesTab] = useState("3");
   const mealSlotDraftRef = useRef<Record<string, string[]>>(slotDraftFromProfile(null));
   mealSlotDraftRef.current = mealSlotDraft;
-
-  const loadFriends = useCallback(async () => {
-    const token = await getApiAccessToken();
-    const data = await fetchFriendsList(token);
-    setFriends(
-      data.approved_friends.map((f) => ({
-        id: f.id,
-        label: f.nickname,
-        meal_crud_partner_id: f.meal_crud_partner_id ?? null,
-      })),
-    );
-  }, [getApiAccessToken]);
 
   const loadPending = useCallback(async () => {
     const token = await getApiAccessToken();
@@ -112,15 +95,12 @@ export default function MealHomePage() {
       /* ignore initial sync failures; local state still renders */
     });
     const tid = window.setTimeout(() => {
-      void loadFriends().catch(() => {
-        /* ignore */
-      });
       void loadPending().catch(() => {
         /* ignore */
       });
     }, 0);
     return () => window.clearTimeout(tid);
-  }, [sessionUser?.user.is_approved, loadFriends, loadPending, resyncSessionSilently]);
+  }, [sessionUser?.user.is_approved, loadPending, resyncSessionSilently]);
 
   const profile = sessionUser?.profile ?? null;
   const partnerId = profile?.meal_crud_partner_id ?? null;
@@ -151,79 +131,7 @@ export default function MealHomePage() {
   );
 
   const mutual = profile?.meal_pair_mutual ?? false;
-
-  const myId = sessionUser?.user.id ?? -1;
-  const activePartner = partnerId != null ? friends.find((f) => f.id === partnerId) ?? null : null;
-  const incomingRequesters = useMemo(
-    () => friends.filter((f) => f.meal_crud_partner_id === myId && f.id !== partnerId),
-    [friends, myId, partnerId],
-  );
-  const outgoingPending = partnerId != null && !mutual;
-  const showPartnerSelectionCard = !mutual && (!incomingRequesters.length || outgoingPending);
-
-  const partnerOptions = useMemo(
-    () =>
-      friends.filter(
-        (f) =>
-          f.meal_crud_partner_id == null ||
-          f.meal_crud_partner_id === myId ||
-          f.id === partnerId,
-      ),
-    [friends, myId, partnerId],
-  );
-
-  useEffect(() => {
-    const tid = window.setTimeout(() => {
-      setDebouncedPartnerQuery(partnerQuery.trim().toLowerCase());
-    }, 250);
-    return () => window.clearTimeout(tid);
-  }, [partnerQuery]);
-
-  useEffect(() => {
-    if (partnerId == null) {
-      setPartnerQuery("");
-      setSelectedPartnerId(null);
-      return;
-    }
-    const matched = partnerOptions.find((f) => f.id === partnerId);
-    if (!matched) return;
-    setPartnerQuery(matched.label);
-    setSelectedPartnerId(matched.id);
-  }, [partnerId, partnerOptions]);
-
-  const filteredOptions = useMemo(() => {
-    if (!debouncedPartnerQuery) return partnerOptions;
-    return partnerOptions.filter((f) => {
-      const haystack = f.label.toLowerCase();
-      return haystack.includes(debouncedPartnerQuery);
-    });
-  }, [debouncedPartnerQuery, partnerOptions]);
-
-  const submitPartnerSelection = useCallback(async () => {
-    const hasTypedQuery = partnerQuery.trim().length > 0;
-    if (hasTypedQuery && selectedPartnerId == null) {
-      setNotice({
-        tone: "error",
-        text: "Choose a friend from the suggestions before submitting.",
-      });
-      return;
-    }
-    try {
-      await patchMyProfile({ meal_crud_partner_id: selectedPartnerId });
-      setNotice({
-        tone: "success",
-        text:
-          selectedPartnerId == null
-            ? "Meal partner cleared."
-            : "Meal partner selection saved.",
-      });
-    } catch (err) {
-      setNotice({
-        tone: "error",
-        text: err instanceof Error ? err.message : "Could not save meal partner selection.",
-      });
-    }
-  }, [patchMyProfile, partnerQuery, selectedPartnerId]);
+  const partnerLabel = profile?.meal_crud_partner_label?.trim() || "Current partner";
 
   useEffect(() => {
     if (!disconnectConfirmArmed && !acceptDisconnectConfirmArmed) return;
@@ -265,10 +173,15 @@ export default function MealHomePage() {
       <Heading as="h2" size="md">
         Settings
       </Heading>
-      <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-        Week start, names for each meal time, meal partner, and optional disconnect when you share editing
-        with a friend.
-      </Text>
+      <HStack justify="space-between" flexWrap="wrap" gap="2" align="flex-start">
+        <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" flex="1">
+          Week start, names for each meal time, meal partner, and optional disconnect when you share editing
+          with a friend.
+        </Text>
+        <PondButton size="sm" colorPalette="lilypad" onClick={() => setWizardOpen(true)}>
+          Run setup wizard
+        </PondButton>
+      </HStack>
       <Card.Root {...PANEL_ENTRY_CARD_PROPS} p="0">
         <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
           <HStack align="center" flexWrap="wrap" gap="2" w="100%">
@@ -357,180 +270,15 @@ export default function MealHomePage() {
         </Card.Body>
       </Card.Root>
 
-      {showPartnerSelectionCard ? (
-        <Card.Root
-          {...PANEL_ENTRY_CARD_PROPS}
-          p="0"
-          {...(outgoingPending ? { bg: "teal.solid", color: "black" } : {})}
-        >
-          <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
-            <Heading size="sm" mb="2" color={outgoingPending ? "black" : undefined}>
-              Meal partner (optional)
-            </Heading>
-            <Text
-              fontSize={APP_TEXT_SIZES.helper}
-              color={outgoingPending ? "black" : "fg.muted"}
-              mb="2"
-            >
-              Search approved friends by nickname, then submit. Meal sharing activates when
-              both of you select each other.
-            </Text>
-            <Stack gap="2" maxW="lg">
-              {outgoingPending ? (
-                <HStack align="center" gap="2">
-                  <Input
-                    {...PANEL_FIELD_PROPS}
-                    size="sm"
-                    readOnly
-                    color="black"
-                    value={activePartner ? activePartner.label : "Pending partner"}
-                  />
-                  <PondButton
-                    size="sm"
-                    bg="nautical.solid"
-                    color="black"
-                    _hover={{ filter: "brightness(0.95)" }}
-                    onClick={() => {
-                      void (async () => {
-                        try {
-                          await patchMyProfile({ meal_crud_partner_id: null });
-                          await loadFriends();
-                          await resyncSessionSilently();
-                          setNotice({ tone: "success", text: "Partner request canceled." });
-                        } catch (err) {
-                          setNotice({
-                            tone: "error",
-                            text: err instanceof Error ? err.message : "Could not cancel request.",
-                          });
-                        }
-                      })();
-                    }}
-                  >
-                    Cancel request
-                  </PondButton>
-                </HStack>
-              ) : (
-                <>
-                  <HStack align="center" gap="2">
-                    <Input
-                      {...PANEL_FIELD_PROPS}
-                      size="sm"
-                      list="meal-partner-options"
-                      placeholder="Search friend by nickname"
-                      value={partnerQuery}
-                      onChange={(e) => {
-                        const next = e.target.value;
-                        setPartnerQuery(next);
-                        const exact = partnerOptions.find((f) => next === f.label);
-                        setSelectedPartnerId(exact?.id ?? null);
-                      }}
-                    />
-                    <PondButton
-                      size="sm"
-                      colorPalette="lilypad"
-                      onClick={() => void submitPartnerSelection()}
-                    >
-                      Submit
-                    </PondButton>
-                  </HStack>
-                  <datalist id="meal-partner-options">
-                    {filteredOptions.map((f) => (
-                      <option key={f.id} value={f.label} />
-                    ))}
-                  </datalist>
-                </>
-              )}
-              {outgoingPending ? (
-                <Text
-                  fontSize={APP_TEXT_SIZES.helper}
-                  fontWeight="medium"
-                  color="black"
-                  role="status"
-                >
-                  Waiting for your friend to select you as their meal partner.
-                </Text>
-              ) : null}
-            </Stack>
-          </Card.Body>
-        </Card.Root>
-      ) : null}
-
-      {!mutual && incomingRequesters.length > 0 ? (
-        <Card.Root {...PANEL_ENTRY_CARD_PROPS} p="0" bg="teal.solid" color="black">
-          <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
-            <Heading size="sm" mb="2" color="black">
-              Incoming partner request
-            </Heading>
-            <Text fontSize={APP_TEXT_SIZES.helper} color="black" mb="2">
-              {incomingRequesters.length > 1
-                ? `${incomingRequesters.length} friends requested meal sharing.`
-                : "A friend requested meal sharing."}
-            </Text>
-            {incomingRequesters.map((requester) => (
-              <HStack key={requester.id} align="center" gap="2" mb="2">
-                <Input
-                  {...PANEL_FIELD_PROPS}
-                  size="sm"
-                  readOnly
-                  color="black"
-                  value={requester.label}
-                />
-                <PondButton
-                  size="sm"
-                  bg="sky.solid"
-                  color="black"
-                  _hover={{ filter: "brightness(0.95)" }}
-                  onClick={() => {
-                    void (async () => {
-                      try {
-                        await patchMyProfile({ meal_crud_partner_id: requester.id });
-                        await loadFriends();
-                        await resyncSessionSilently();
-                        setNotice({ tone: "success", text: "Meal partner request accepted." });
-                      } catch (err) {
-                        setNotice({
-                          tone: "error",
-                          text: err instanceof Error ? err.message : "Could not accept request.",
-                        });
-                      }
-                    })();
-                  }}
-                >
-                  Accept
-                </PondButton>
-                <PondButton
-                  size="sm"
-                  bg="nautical.solid"
-                  color="black"
-                  _hover={{ filter: "brightness(0.95)" }}
-                  onClick={() => {
-                    void (async () => {
-                      try {
-                        const token = await getApiAccessToken();
-                        await declineIncomingPartnerRequest(token, requester.id);
-                        setNotice({ tone: "success", text: "Meal partner request declined." });
-                        void loadFriends().catch(() => {
-                          /* ignore follow-up refresh errors */
-                        });
-                        void resyncSessionSilently().catch(() => {
-                          /* ignore follow-up refresh errors */
-                        });
-                      } catch (err) {
-                        setNotice({
-                          tone: "error",
-                          text: err instanceof Error ? err.message : "Could not decline request.",
-                        });
-                      }
-                    })();
-                  }}
-                >
-                  Decline
-                </PondButton>
-              </HStack>
-            ))}
-          </Card.Body>
-        </Card.Root>
-      ) : null}
+      <MealPartnerPicker
+        userId={sessionUser.user.id}
+        partnerId={partnerId}
+        mutual={mutual}
+        getApiAccessToken={getApiAccessToken}
+        patchMyProfile={patchMyProfile}
+        resyncSessionSilently={resyncSessionSilently}
+        onNotice={setNotice}
+      />
 
       {mutual ? (
         <Box {...PANEL_NESTED_BLOCK_PROPS} bg="nautical.solid" color="black">
@@ -549,7 +297,7 @@ export default function MealHomePage() {
                   size="sm"
                   readOnly
                   color="black"
-                  value={activePartner ? activePartner.label : "Current partner"}
+                  value={partnerLabel}
                 />
                 {pending.i_am_initiator ? (
                   <PondButton
@@ -625,7 +373,7 @@ export default function MealHomePage() {
                 size="sm"
                 readOnly
                 color="black"
-                value={activePartner ? activePartner.label : "Current partner"}
+                value={partnerLabel}
               />
               <Box ref={disconnectActionRef}>
                 <PondButton
@@ -672,6 +420,15 @@ export default function MealHomePage() {
           {notice.text}
         </Text>
       ) : null}
+
+      <MealMaestroSetupWizard
+        open={wizardOpen}
+        onOpenChange={setWizardOpen}
+        sessionUser={sessionUser}
+        getApiAccessToken={getApiAccessToken}
+        patchMyProfile={patchMyProfile}
+        resyncSessionSilently={resyncSessionSilently}
+      />
     </Stack>
   );
 }

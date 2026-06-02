@@ -11,9 +11,6 @@ from meal.models import (
     MealPlanInstance,
     MealPlanInstanceSlot,
     MealPlanInstanceSlotMeal,
-    MealPlanTemplate,
-    MealPlanTemplateSlot,
-    MealPlanTemplateSlotMeal,
     MealTag,
     MealTagAssignment,
     SavedGroceryList,
@@ -68,9 +65,10 @@ class MealTagAssignmentAdmin(admin.ModelAdmin):
 
 @admin.register(Ingredient)
 class IngredientAdmin(admin.ModelAdmin):
-    list_display = ("id", "owner_user", "name")
+    list_display = ("id", "owner_user", "name", "created_at")
     search_fields = ("name", "owner_user__email")
     autocomplete_fields = ("owner_user",)
+    readonly_fields = ("created_at",)
 
 
 @admin.register(MealIngredient)
@@ -81,32 +79,12 @@ class MealIngredientAdmin(admin.ModelAdmin):
     ordering = ("meal_id", "position", "id")
 
 
-@admin.register(MealPlanTemplate)
-class MealPlanTemplateAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "owner_user", "slots_per_day", "updated_at")
-    search_fields = ("name", "description", "owner_user__email")
-    raw_id_fields = ("owner_user",)
-    readonly_fields = ("created_at", "updated_at")
-
-
-@admin.register(MealPlanTemplateSlot)
-class MealPlanTemplateSlotAdmin(admin.ModelAdmin):
-    list_display = ("id", "template", "day_index", "slot_index")
-    raw_id_fields = ("template",)
-
-
-@admin.register(MealPlanTemplateSlotMeal)
-class MealPlanTemplateSlotMealAdmin(admin.ModelAdmin):
-    list_display = ("id", "slot", "meal")
-    raw_id_fields = ("slot", "meal")
-
-
 @admin.register(MealPlanInstance)
 class MealPlanInstanceAdmin(admin.ModelAdmin):
-    list_display = ("id", "owner_user", "week_start", "source_template", "updated_at")
+    list_display = ("id", "owner_user", "week_start", "updated_at")
     list_filter = ("week_start",)
     search_fields = ("owner_user__email",)
-    raw_id_fields = ("owner_user", "source_template")
+    raw_id_fields = ("owner_user",)
     readonly_fields = ("created_at", "updated_at")
 
 
@@ -148,6 +126,6 @@ class SavedGroceryListAdmin(admin.ModelAdmin):
 
 @admin.register(UserIngredientInventory)
 class UserIngredientInventoryAdmin(admin.ModelAdmin):
-    list_display = ("id", "owner_user", "ingredient", "quantity", "simple_have")
+    list_display = ("id", "owner_user", "ingredient", "quantity", "simple_have", "location")
     search_fields = ("ingredient__name", "owner_user__email")
     raw_id_fields = ("owner_user", "ingredient")

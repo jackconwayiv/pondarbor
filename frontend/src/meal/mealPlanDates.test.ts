@@ -14,7 +14,6 @@ function instance(weekStart: string, id = 1): MealPlanInstance {
   return {
     id,
     owner_user: 1,
-    source_template: null,
     week_start: weekStart,
     slots: [],
     created_at: "",

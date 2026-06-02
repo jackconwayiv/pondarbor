@@ -32,7 +32,7 @@ from friends.services import are_friends, friend_ids_for_user
 from meal.clone import clone_meal_for_user
 from meal.dates import normalize_week_start
 from meal.import_hints import apply_import_hints_to_meal, build_import_hints_from_paprika_category_string
-from meal.grid import copy_template_to_instance, create_template_with_grid, rebuild_template_slots
+from meal.grid import create_instance_with_grid, slots_per_day_for_user
 from meal.grocery_build import generate_grocery_list_for_instance
 from meal.ingredients import ingredient_vocab_qs, repair_null_meal_ingredient_fks, resolve_meal_ingredient_fk
 from meal.meal_updates import apply_meal_validated, attach_upcoming_slot_counts, filter_meals_queryset
@@ -45,8 +45,6 @@ from meal.models import (
     MealIngredient,
     MealPlanInstance,
     MealPlanInstanceSlotMeal,
-    MealPlanTemplate,
-    MealPlanTemplateSlotMeal,
     MealTag,
     SavedGroceryList,
     UserIngredientInventory,
@@ -72,8 +70,6 @@ from meal.serializers import (
     MealCategoryOptionSerializer,
     MealImportFromUrlSerializer,
     MealPlanInstanceSerializer,
-    MealPlanTemplateSerializer,
-    MealPlanTemplateWriteSerializer,
     MealSerializer,
     MealWriteSerializer,
     SavedGroceryListSerializer,
@@ -100,10 +96,6 @@ def _scope_ids(request):
 
 def _meal_qs(request):
     return Meal.objects.filter(owner_user_id__in=_scope_ids(request))
-
-
-def _template_qs(request):
-    return MealPlanTemplate.objects.filter(owner_user_id__in=_scope_ids(request))
 
 
 def _instance_qs(request):
@@ -154,17 +146,6 @@ def _set_meal_ingredients(*, meal: Meal, ingredients_data: list[dict]) -> None:
             name=name,
             ingredient=fk,
         )
-
-
-def _serialize_template(template: MealPlanTemplate):
-    payload = MealPlanTemplateSerializer(template).data
-    by_key: dict[tuple[int, int], list[int]] = {}
-    for link in MealPlanTemplateSlotMeal.objects.filter(slot__template=template).select_related("slot"):
-        key = (link.slot.day_index, link.slot.slot_index)
-        by_key.setdefault(key, []).append(link.meal_id)
-    for slot in payload["slots"]:
-        slot["meal_ids"] = by_key.get((slot["day_index"], slot["slot_index"]), [])
-    return payload
 
 
 def _serialize_instance(inst: MealPlanInstance):
@@ -454,6 +435,31 @@ def meal_tag_vocab(request):
     return Response({"tags": names})
 
 
+@api_view(["POST"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsApprovedUser])
+def meal_tag_seed(request):
+    """Create meal tags for the current user without attaching to a meal."""
+    from meal.tagging import get_or_create_tag_for_owner
+
+    raw = request.data.get("tags") or request.data.get("tag_names") or []
+    if not isinstance(raw, list):
+        raise ValidationError({"tags": "Must be a list of tag names."})
+    created: list[str] = []
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        name = item.strip()
+        if not name:
+            continue
+        get_or_create_tag_for_owner(owner=request.user, name=name)
+        created.append(name)
+    names = list(
+        MealTag.objects.filter(owner_user=request.user).order_by("name").values_list("name", flat=True),
+    )
+    return Response({"tags": names, "seeded": created})
+
+
 @api_view(["GET", "POST"])
 @authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
 @permission_classes([IsApprovedUser])
@@ -533,91 +539,14 @@ def meal_copy_from_friend(request, pk: int):
 @api_view(["GET", "POST"])
 @authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
 @permission_classes([IsApprovedUser])
-def template_list_create(request):
-    if request.method == "GET":
-        qs = _template_qs(request).prefetch_related("slots").order_by("-updated_at")
-        return Response([_serialize_template(t) for t in qs])
-    ser = MealPlanTemplateWriteSerializer(data=request.data)
-    ser.is_valid(raise_exception=True)
-    t = create_template_with_grid(
-        owner=request.user,
-        name=ser.validated_data["name"],
-        description=ser.validated_data.get("description", ""),
-        slots_per_day=ser.validated_data.get("slots_per_day", 3),
-    )
-    t = _template_qs(request).prefetch_related("slots").get(pk=t.pk)
-    return Response(_serialize_template(t), status=status.HTTP_201_CREATED)
-
-
-@api_view(["GET", "PATCH", "DELETE"])
-@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
-@permission_classes([IsApprovedUser])
-def template_detail(request, pk: int):
-    template = get_object_or_404(_template_qs(request).prefetch_related("slots"), pk=pk)
-    if request.method == "GET":
-        return Response(_serialize_template(template))
-    _assert_scope_write(request, template.owner_user_id)
-    if request.method == "DELETE":
-        template.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
-    ser = MealPlanTemplateWriteSerializer(template, data=request.data, partial=True)
-    ser.is_valid(raise_exception=True)
-    old_n = template.slots_per_day
-    for k, v in ser.validated_data.items():
-        setattr(template, k, v)
-    template.save()
-    if "slots_per_day" in ser.validated_data and ser.validated_data["slots_per_day"] != old_n:
-        rebuild_template_slots(template)
-    template = _template_qs(request).prefetch_related("slots").get(pk=template.pk)
-    return Response(_serialize_template(template))
-
-
-@api_view(["PATCH"])
-@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
-@permission_classes([IsApprovedUser])
-def template_grid(request, pk: int):
-    template = get_object_or_404(_template_qs(request).prefetch_related("slots"), pk=pk)
-    _assert_scope_write(request, template.owner_user_id)
-    slots_payload = request.data.get("slots")
-    if not isinstance(slots_payload, list):
-        raise ValidationError({"slots": "Expected a list of {day_index, slot_index, meal_ids}."})
-    n = template.slots_per_day
-    for row in slots_payload:
-        if not isinstance(row, dict):
-            raise ValidationError({"slots": "Each slot must be an object."})
-        d = row.get("day_index")
-        s = row.get("slot_index")
-        mids = row.get("meal_ids")
-        if not isinstance(d, int) or not isinstance(s, int):
-            raise ValidationError({"slots": "day_index and slot_index must be integers."})
-        if d < 0 or d > 6 or s < 0 or s >= n:
-            raise ValidationError({"slots": "Slot out of range for this template."})
-        if not isinstance(mids, list) or not all(isinstance(mid, int) for mid in mids):
-            raise ValidationError({"slots": "meal_ids must be an array of integers."})
-        _validate_meal_refs(request, mids)
-        slot = get_object_or_404(template.slots, day_index=d, slot_index=s)
-        MealPlanTemplateSlotMeal.objects.filter(slot=slot).exclude(meal_id__in=mids).delete()
-        for mid in mids:
-            MealPlanTemplateSlotMeal.objects.get_or_create(slot=slot, meal_id=mid)
-    template.refresh_from_db()
-    template = _template_qs(request).prefetch_related("slots").get(pk=template.pk)
-    return Response(_serialize_template(template))
-
-
-@api_view(["GET", "POST"])
-@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
-@permission_classes([IsApprovedUser])
 def instance_list_create(request):
     if request.method == "GET":
         qs = _instance_qs(request).prefetch_related("slots").order_by("-week_start")
         return Response([_serialize_instance(inst) for inst in qs])
     data = request.data
-    template_id = data.get("template_id")
     week_raw = data.get("week_start")
-    if template_id is None or week_raw is None:
-        raise ValidationError({"detail": "template_id and week_start are required."})
-    template = get_object_or_404(_template_qs(request), pk=int(template_id))
-    _assert_scope_write(request, template.owner_user_id)
+    if week_raw is None:
+        raise ValidationError({"week_start": "Required (ISO date YYYY-MM-DD)."})
     if isinstance(week_raw, str):
         week_d = date.fromisoformat(week_raw)
     else:
@@ -626,12 +555,7 @@ def instance_list_create(request):
     week_start = normalize_week_start(week_d, profile.meal_week_starts_on)
     if MealPlanInstance.objects.filter(owner_user=request.user, week_start=week_start).exists():
         raise ValidationError({"week_start": "You already have a plan instance for this week."})
-    inst = MealPlanInstance.objects.create(
-        owner_user=request.user,
-        source_template=template,
-        week_start=week_start,
-    )
-    copy_template_to_instance(template=template, instance=inst)
+    inst = create_instance_with_grid(owner=request.user, week_start=week_start)
     inst = _instance_qs(request).prefetch_related("slots").get(pk=inst.pk)
     evaluate_meal_maestro_tasty_plans_for_instance(instance_id=inst.pk)
     return Response(_serialize_instance(inst), status=status.HTTP_201_CREATED)
@@ -661,7 +585,7 @@ def instance_grid(request, pk: int):
     slots_payload = request.data.get("slots")
     if not isinstance(slots_payload, list):
         raise ValidationError({"slots": "Expected a list of {day_index, slot_index, meal_ids}."})
-    n = inst.source_template.slots_per_day if inst.source_template_id else 3
+    n = slots_per_day_for_user(inst.owner_user)
     for row in slots_payload:
         if not isinstance(row, dict):
             raise ValidationError({"slots": "Each slot must be an object."})
@@ -858,26 +782,43 @@ def saved_grocery_detail(request, pk: int):
 @authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
 @permission_classes([IsApprovedUser])
 def pantry_inventory_list(request):
-    qs = UserIngredientInventory.objects.filter(owner_user=request.user).select_related("ingredient")
-    return Response(UserIngredientInventorySerializer(qs, many=True).data)
+    from meal.pantry_access import pantry_inventory_queryset
+
+    qs = pantry_inventory_queryset(user=request.user)
+    return Response(
+        UserIngredientInventorySerializer(qs, many=True, context={"request": request}).data,
+    )
 
 
 @api_view(["PUT"])
 @authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
 @permission_classes([IsApprovedUser])
 def pantry_inventory_put(request):
-    """Upsert one inventory row by ingredient_id."""
-    ingredient_id = request.data.get("ingredient_id")
-    if ingredient_id is None:
-        raise ValidationError({"ingredient_id": "Required."})
-    ing = get_object_or_404(Ingredient.objects.filter(owner_user=request.user), pk=int(ingredient_id))
+    """Upsert one inventory row by ingredient_id and optional location, or update by inventory_id."""
+    from meal.pantry_access import apply_pantry_tags_for_user, user_can_access_inventory_row
+
+    location = str(request.data.get("location") or "").strip()[:120]
     qty = request.data.get("quantity")
     simple = request.data.get("simple_have")
-    row, _ = UserIngredientInventory.objects.get_or_create(
-        owner_user=request.user,
-        ingredient=ing,
-        defaults={"quantity": 0},
-    )
+    inventory_id = request.data.get("inventory_id")
+    tags_key_sent = "pantry_tags" in request.data
+    if inventory_id is not None:
+        row = get_object_or_404(UserIngredientInventory.objects.select_related("owner_user"), pk=int(inventory_id))
+        if not user_can_access_inventory_row(user=request.user, row=row):
+            raise PermissionDenied("Not allowed to edit this pantry row.")
+        row.location = location
+        is_create = False
+    else:
+        ingredient_id = request.data.get("ingredient_id")
+        if ingredient_id is None:
+            raise ValidationError({"ingredient_id": "Required."})
+        ing = get_object_or_404(Ingredient.objects.filter(owner_user=request.user), pk=int(ingredient_id))
+        row, is_create = UserIngredientInventory.objects.get_or_create(
+            owner_user=request.user,
+            ingredient=ing,
+            location=location,
+            defaults={"quantity": 0},
+        )
     if qty is not None:
         try:
             row.quantity = max(0, int(qty))
@@ -891,8 +832,94 @@ def pantry_inventory_put(request):
             row.simple_have = False
         else:
             row.simple_have = None
+    apply_pantry_tags_for_user(
+        user=request.user,
+        row=row,
+        client_tags=request.data.get("pantry_tags") if tags_key_sent else None,
+        tags_key_sent=tags_key_sent,
+        on_create=is_create,
+    )
     row.save()
-    return Response(UserIngredientInventorySerializer(row).data)
+    return Response(
+        UserIngredientInventorySerializer(row, context={"request": request}).data,
+    )
+
+
+@api_view(["POST"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsApprovedUser])
+def pantry_inventory_parse(request):
+    from meal.pantry_import import parse_pantry_text, parsed_pantry_items_to_dicts
+
+    text = request.data.get("text")
+    if text is None:
+        raise ValidationError({"text": "Required."})
+    items = parse_pantry_text(str(text))
+    return Response({"items": parsed_pantry_items_to_dicts(items)})
+
+
+@api_view(["POST"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsApprovedUser])
+def pantry_inventory_import(request):
+    from meal.ingredients import ensure_ingredient_for_owner
+    from meal.pantry_import import parse_pantry_text
+
+    text = request.data.get("text")
+    if text is None:
+        raise ValidationError({"text": "Required."})
+    merge = (request.data.get("merge") or "set").strip().lower()
+    if merge not in ("set", "add"):
+        raise ValidationError({"merge": "Must be 'set' or 'add'."})
+
+    items = [it for it in parse_pantry_text(str(text)) if not it.skipped and not it.is_section_header and it.name]
+    saved: list[UserIngredientInventory] = []
+    for item in items:
+        ing = ensure_ingredient_for_owner(owner=request.user, label=item.name)
+        if ing is None:
+            continue
+        location = (item.location or "")[:120]
+        row, _ = UserIngredientInventory.objects.get_or_create(
+            owner_user=request.user,
+            ingredient=ing,
+            location=location,
+            defaults={"quantity": 0},
+        )
+        if merge == "add":
+            row.quantity = row.quantity + item.quantity
+        else:
+            row.quantity = max(0, item.quantity)
+        row.simple_have = None
+        from meal.pantry_access import apply_pantry_tags_for_user
+
+        apply_pantry_tags_for_user(
+            user=request.user,
+            row=row,
+            client_tags=None,
+            tags_key_sent=False,
+            on_create=True,
+        )
+        row.save()
+        saved.append(row)
+
+    qs = UserIngredientInventory.objects.filter(pk__in=[r.pk for r in saved]).select_related(
+        "ingredient",
+        "owner_user",
+        "owner_user__profile",
+    )
+    by_id = {r.id: r for r in qs}
+    ordered = [by_id[r.id] for r in saved if r.id in by_id]
+    return Response(
+        {
+            "imported": len(ordered),
+            "items": UserIngredientInventorySerializer(
+                ordered,
+                many=True,
+                context={"request": request},
+            ).data,
+        },
+        status=status.HTTP_201_CREATED,
+    )
 
 
 @api_view(["GET"])
@@ -926,14 +953,18 @@ def pantry_suggestions(request):
         ):
             planned_ingredient_ids.add(iid)
 
+    from meal.pantry_access import pantry_inventory_queryset
+
     hints = []
-    inv_qs = UserIngredientInventory.objects.filter(owner_user=request.user).select_related("ingredient")
+    seen_ingredient_ids: set[int] = set()
+    inv_qs = pantry_inventory_queryset(user=request.user)
     for row in inv_qs:
         if row.quantity == 0 and row.simple_have is not True:
             continue
         iid = row.ingredient_id
-        if iid in planned_ingredient_ids:
+        if iid in planned_ingredient_ids or iid in seen_ingredient_ids:
             continue
+        seen_ingredient_ids.add(iid)
         mq = _meal_qs(request).filter(ingredients__ingredient_id=iid).distinct().order_by("title")
         if planned_meal_ids:
             mq = mq.exclude(pk__in=planned_meal_ids)
@@ -948,3 +979,40 @@ def pantry_suggestions(request):
         )
 
     return Response({"enabled": True, "week_start": anchor.isoformat(), "hints": hints})
+
+
+@api_view(["GET"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsApprovedUser])
+def pantry_recipes(request):
+    from users.models import Profile
+
+    from meal.pantry_recipes import (
+        match_meals_to_pantry,
+        pantry_available_ingredient_ids,
+        serialize_pantry_recipe_match,
+    )
+
+    profile, _ = Profile.objects.select_related("user").get_or_create(user=request.user)
+    if not profile.meal_pantry_enabled:
+        return Response({"enabled": False, "can_make": [], "almost_make": []})
+
+    repair_null_meal_ingredient_fks(owner_user_ids=meal_partner_user_ids(user=request.user))
+
+    available = pantry_available_ingredient_ids(owner_user_ids=meal_partner_user_ids(user=request.user))
+    meals = list(
+        _meal_qs(request)
+        .prefetch_related("ingredients", "ingredients__ingredient")
+        .order_by("title"),
+    )
+    can_make, almost_make = match_meals_to_pantry(
+        meals=meals,
+        available_ingredient_ids=available,
+    )
+    return Response(
+        {
+            "enabled": True,
+            "can_make": [serialize_pantry_recipe_match(m) for m in can_make],
+            "almost_make": [serialize_pantry_recipe_match(m) for m in almost_make],
+        },
+    )

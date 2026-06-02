@@ -104,6 +104,19 @@ class Profile(models.Model):
         default=False,
         help_text="When true, show pantry inventory and related grocery hints.",
     )
+    meal_slots_per_day = models.PositiveSmallIntegerField(
+        default=3,
+        help_text="Meal plan rows per day (1–5); adding a row applies to every day.",
+    )
+    meal_maestro_setup_completed = models.BooleanField(
+        default=False,
+        help_text="User finished the Meal Maestro setup wizard.",
+    )
+    meal_dietary_preferences = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Dietary labels from setup; seeds meal tags and default pantry dietary tags.",
+    )
 
     class SocialPublishVisibility(models.TextChoices):
         ALL_APPROVED = "all_approved", "All approved users"

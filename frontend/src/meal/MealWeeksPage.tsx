@@ -9,42 +9,32 @@ import {
   MEAL_NAV_LINK_CARD_PROPS,
   PANEL_ENTRY_CARD_PROPS,
 } from "../theme/typography";
-import { fetchInstances, fetchMeals, fetchTemplates } from "./api";
+import { fetchInstances, fetchMeals } from "./api";
 import { MealReadonlyGrid } from "./MealReadonlyGrid";
 import { addDaysIso, formatWeekStartShort, localDateIso, startOfWeek } from "./mealPlanDates";
+import { defaultPlanSlots, profileMealSlotsPerDay } from "./mealPlanSlots";
 import {
   MealApprovalRequired,
   MealLoading,
   MealSessionReconnect,
 } from "./mealPageStates";
-import type { Meal, MealPlanInstance, MealPlanTemplate } from "./types";
+import type { Meal, MealPlanInstance } from "./types";
 
 type BrowseNav =
   | { mode: "future"; pairOffset: number }
   | { mode: "past"; chunkIndex: number };
 
-function slotsPerDayForInstance(
-  inst: MealPlanInstance,
-  templates: MealPlanTemplate[],
-): number {
-  const tpl =
-    inst.source_template != null ? templates.find((t) => t.id === inst.source_template) : undefined;
-  if (tpl) return tpl.slots_per_day;
-  const maxS = inst.slots.reduce((acc, s) => Math.max(acc, s.slot_index + 1), 1);
-  return Math.max(1, maxS);
-}
-
 export default function MealWeeksPage() {
   const { isAuthenticated, isLoading, sessionUser, getApiAccessToken, refreshSession } =
     useAppSession();
   const [instances, setInstances] = useState<MealPlanInstance[]>([]);
-  const [templates, setTemplates] = useState<MealPlanTemplate[]>([]);
   const [meals, setMeals] = useState<Meal[]>([]);
   const [nav, setNav] = useState<BrowseNav>({ mode: "future", pairOffset: 0 });
   const [err, setErr] = useState<string | null>(null);
   const lastFuturePairOffset = useRef(0);
 
   const weekStartsOn = sessionUser?.profile.meal_week_starts_on ?? 0;
+  const slotsPerDay = profileMealSlotsPerDay(sessionUser?.profile);
   const currentWeekStart = useMemo(
     () => localDateIso(startOfWeek(new Date(), weekStartsOn)),
     [weekStartsOn],
@@ -52,9 +42,8 @@ export default function MealWeeksPage() {
 
   const refresh = useCallback(async () => {
     const t = await getApiAccessToken();
-    const [i, tpl, ml] = await Promise.all([fetchInstances(t), fetchTemplates(t), fetchMeals(t)]);
+    const [i, ml] = await Promise.all([fetchInstances(t), fetchMeals(t)]);
     setInstances(i);
-    setTemplates(tpl);
     setMeals(ml);
   }, [getApiAccessToken]);
 
@@ -113,17 +102,12 @@ export default function MealWeeksPage() {
     return <MealApprovalRequired />;
   }
 
-  const defaultSlotsPerDay = Math.max(templates[0]?.slots_per_day ?? 3, 1);
-
   const canGoEarlier =
     nav.mode === "future"
       ? nav.pairOffset > 0 || pastChunks.length > 0
       : nav.chunkIndex < pastChunks.length - 1;
 
-  const canGoLater =
-    nav.mode === "future"
-      ? nav.pairOffset < 2
-      : true;
+  const canGoLater = nav.mode === "future" ? nav.pairOffset < 2 : true;
 
   function goEarlier() {
     if (!canGoEarlier) return;
@@ -160,6 +144,13 @@ export default function MealWeeksPage() {
 
   return (
     <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP} w="100%">
+      <Text fontSize={APP_TEXT_SIZES.helper}>
+        <RouterLink to="/meal/plan">
+          <Text as="span" color="teal.solid" fontWeight="bold">
+            ← Plan
+          </Text>
+        </RouterLink>
+      </Text>
       <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
         Tap a week to edit. Past weeks appear only when you have saved plans for them.
       </Text>
@@ -199,7 +190,7 @@ export default function MealWeeksPage() {
                 <MealReadonlyGrid
                   embeddedInParentCard
                   slots={inst.slots}
-                  slotsPerDay={slotsPerDayForInstance(inst, templates)}
+                  slotsPerDay={slotsPerDay}
                   weekStartsOn={weekStartsOn}
                   mealsById={mealsById}
                   headerMode="dates"
@@ -214,10 +205,7 @@ export default function MealWeeksPage() {
           {[0, 1].map((delta) => {
             const weekStart = addDaysIso(currentWeekStart, (nav.pairOffset + delta) * 7);
             const inst = instanceByWeek.get(weekStart) ?? null;
-            const slotsPerDay = inst
-              ? slotsPerDayForInstance(inst, templates)
-              : defaultSlotsPerDay;
-            const slots = inst?.slots ?? [];
+            const slots = inst?.slots ?? defaultPlanSlots(slotsPerDay);
             const to = inst
               ? `/meal/plan/plans/${inst.id}`
               : `/meal/plan/plans/new?week=${encodeURIComponent(weekStart)}`;

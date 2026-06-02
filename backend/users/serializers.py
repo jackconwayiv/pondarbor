@@ -75,6 +75,12 @@ class ProfileSerializer(serializers.Serializer):
     meal_partner_incoming_pending = serializers.BooleanField()
     meal_slot_labels = serializers.JSONField(allow_null=True, required=False)
     meal_pantry_enabled = serializers.BooleanField()
+    meal_slots_per_day = serializers.IntegerField()
+    meal_maestro_setup_completed = serializers.BooleanField()
+    meal_dietary_preferences = serializers.ListField(
+        child=serializers.CharField(max_length=64),
+        required=False,
+    )
     display_astro = serializers.BooleanField()
     social_publish_visibility = serializers.CharField(required=False, default="all_approved")
     social_read_scope = serializers.CharField(required=False, default="approved_users")
@@ -130,6 +136,13 @@ class ProfileUpdateSerializer(serializers.Serializer):
     meal_crud_partner_id = serializers.IntegerField(allow_null=True, required=False)
     meal_slot_labels = serializers.JSONField(required=False, allow_null=True)
     meal_pantry_enabled = serializers.BooleanField(required=False)
+    meal_slots_per_day = serializers.IntegerField(required=False, min_value=1, max_value=5)
+    meal_maestro_setup_completed = serializers.BooleanField(required=False)
+    meal_dietary_preferences = serializers.ListField(
+        child=serializers.CharField(max_length=64),
+        required=False,
+        allow_empty=True,
+    )
     display_astro = serializers.BooleanField(required=False)
     social_publish_visibility = serializers.ChoiceField(
         choices=["all_approved", "friends_only"],

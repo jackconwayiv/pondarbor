@@ -119,6 +119,9 @@ def serialize_me(user):
             "meal_partner_incoming_pending": incoming_meal_partner_pending(user=user),
             "meal_slot_labels": profile.meal_slot_labels,
             "meal_pantry_enabled": profile.meal_pantry_enabled,
+            "meal_slots_per_day": profile.meal_slots_per_day,
+            "meal_maestro_setup_completed": profile.meal_maestro_setup_completed,
+            "meal_dietary_preferences": profile.meal_dietary_preferences or [],
             "display_astro": profile.display_astro,
             "social_publish_visibility": profile.social_publish_visibility,
             "social_read_scope": profile.social_read_scope,
@@ -583,11 +586,34 @@ def patch_me_profile(request):
             profile.meal_slot_labels = {**(profile.meal_slot_labels or {}), **incoming}
     if "meal_pantry_enabled" in data:
         profile.meal_pantry_enabled = bool(data["meal_pantry_enabled"])
+    if "meal_maestro_setup_completed" in data:
+        profile.meal_maestro_setup_completed = bool(data["meal_maestro_setup_completed"])
+    if "meal_dietary_preferences" in data:
+        from meal.pantry_access import normalize_dietary_preference_list
+
+        profile.meal_dietary_preferences = normalize_dietary_preference_list(
+            data["meal_dietary_preferences"],
+        )
+    slots_per_day_changed = False
+    if "meal_slots_per_day" in data:
+        new_n = int(data["meal_slots_per_day"])
+        if new_n < 1 or new_n > 5:
+            return Response(
+                {"detail": "meal_slots_per_day must be between 1 and 5."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if new_n != profile.meal_slots_per_day:
+            profile.meal_slots_per_day = new_n
+            slots_per_day_changed = True
     if "display_astro" in data:
         profile.display_astro = bool(data["display_astro"])
     if "songaday_visibility" in data:
         profile.songaday_visibility = data["songaday_visibility"]
     profile.save()
+    if slots_per_day_changed:
+        from meal.grid import rebuild_all_instances_for_user
+
+        rebuild_all_instances_for_user(owner=request.user, slots_per_day=profile.meal_slots_per_day)
     if "birth_date" in data:
         from zodiac.birth_sync import sync_birth_date_across_profiles
 

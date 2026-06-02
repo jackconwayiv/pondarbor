@@ -11,6 +11,7 @@ import {
   WrapItem,
 } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link as RouterLink } from "react-router";
 import { AppModal } from "../components/AppModal";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useIsMobile } from "../responsive";
@@ -48,9 +49,13 @@ function mealsMatchingTitle(meals: Meal[], query: string, limit: number): Meal[]
     .slice(0, limit);
 }
 
+export type MealSlotPickerIntent = "assign" | "edit";
+
 export type MealSlotPickerDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** assign = empty slot; edit = slot already has meals (shows recipe links). */
+  intent?: MealSlotPickerIntent;
   /** e.g. weekday name */
   dayLabel: string;
   /** User-facing meal-time name (e.g. Lunch). */
@@ -74,6 +79,7 @@ export type MealSlotPickerDialogProps = {
 export function MealSlotPickerDialog({
   open,
   onOpenChange,
+  intent: intentProp,
   dayLabel,
   slotDisplayName,
   mealIds,
@@ -188,7 +194,12 @@ export function MealSlotPickerDialog({
     [fieldDisabled, selectedIds, runCommit],
   );
 
-  const modalTitle = `Select meals for ${dayLabel} (${slotDisplayName})`;
+  const intent: MealSlotPickerIntent =
+    intentProp ?? (mealIds.length === 0 ? "assign" : "edit");
+  const modalTitle =
+    intent === "assign"
+      ? `Assign meal to ${slotDisplayName}`
+      : `Meals for ${slotDisplayName}`;
   const queryReady = debouncedSearch.trim().length >= MIN_TITLE_QUERY_LEN;
   const showResultsMenu = titleMatches.length > 0 && !searchMenuSuppressed;
 
@@ -421,9 +432,14 @@ export function MealSlotPickerDialog({
     </Stack>
   ) : null;
 
-  const modalDescription = onApplyToAllDays
-    ? "Selected meals appear below. Use Search to find meals by title (menu under the field when there are matches). Use Create to add a new meal. Changes save immediately. After you add meals, use Apply to all days to copy this meal time (e.g. lunch) to every day of the week."
-    : "Selected meals appear below. Use Search to find meals by title (menu under the field when there are matches). Use Create to add a new meal. Changes save immediately.";
+  const modalDescription =
+    intent === "assign"
+      ? onApplyToAllDays
+        ? `${dayLabel}: search or create a meal to assign. Changes save immediately. Use Apply to all days to copy this meal time to every day of the week.`
+        : `${dayLabel}: search or create a meal to assign. Changes save immediately.`
+      : onApplyToAllDays
+        ? `${dayLabel}: change which meals are planned, or open a recipe below. Use Apply to all days to copy this meal time to every day of the week.`
+        : `${dayLabel}: change which meals are planned, or open a recipe below.`;
 
   return (
     <AppModal
@@ -461,6 +477,29 @@ export function MealSlotPickerDialog({
           >
             {createSuccess}
           </Text>
+        ) : null}
+
+        {intent === "edit" && selectedIds.length > 0 ? (
+          <Stack gap="1" mb="2">
+            <Text fontSize={APP_TEXT_SIZES.meta} fontWeight="medium" color="fg.muted">
+              Open recipe
+            </Text>
+            {selectedIds.map((id) => {
+              const m = mealsById.get(id);
+              const label = m ? mealLabel(m) : `Meal #${id}`;
+              return (
+                <RouterLink
+                  key={id}
+                  to={`/meal/meals/${id}`}
+                  style={{ textDecoration: "none" }}
+                >
+                  <Text fontSize={APP_TEXT_SIZES.body} color="teal.solid" fontWeight="semibold">
+                    {label}
+                  </Text>
+                </RouterLink>
+              );
+            })}
+          </Stack>
         ) : null}
 
         {selectedMealsCard}

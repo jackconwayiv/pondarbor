@@ -147,7 +147,7 @@ export default function MealSharedPage() {
                         const t = await getApiAccessToken();
                         const created = await copyFriendMeal(t, m.id);
                         setMeals((prev) => prev.filter((x) => x.id !== m.id));
-                        navigate(`/meal/plan/meals/${created.id}`);
+                        navigate(`/meal/meals/${created.id}`);
                       } catch (e) {
                         setErr(e instanceof Error ? e.message : "Could not save recipe");
                       } finally {

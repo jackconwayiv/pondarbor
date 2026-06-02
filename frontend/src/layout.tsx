@@ -242,12 +242,11 @@ export default function AppLayout() {
 
   // `auth0User` is cleared when the Auth0 client logs out; rely on it so nav stays in sync.
   const showProfileNav = isAuthenticated && !!auth0User;
-  // Meal Maestro is hidden from non-staff (in nav + hamburger) until the app is refactored.
-  // `guestHamburgerNavItems()` already excludes it, so only the authed list needs filtering.
-  const isStaff = !!sessionUser?.user?.is_staff;
+  const isApproved = !!sessionUser?.user?.is_approved;
+  const canAccessMealMaestro = showProfileNav && isApproved;
   const authedNavEntries = useMemo(
-    () => APP_DESKTOP_NAV.filter((item) => item.to !== "/meal" || isStaff),
-    [isStaff],
+    () => APP_DESKTOP_NAV.filter((item) => item.to !== "/meal" || canAccessMealMaestro),
+    [canAccessMealMaestro],
   );
   const desktopNavEntries = useMemo(
     () => (showProfileNav ? authedNavEntries : guestHamburgerNavItems()),

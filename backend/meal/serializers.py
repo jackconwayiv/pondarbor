@@ -10,7 +10,6 @@ from meal.models import (
     MealCategoryOption,
     MealIngredient,
     MealPlanInstance,
-    MealPlanTemplate,
     SavedGroceryList,
     UserIngredientInventory,
 )
@@ -147,41 +146,6 @@ class MealImportFromUrlSerializer(serializers.Serializer):
     url = serializers.URLField(max_length=2048)
 
 
-class TemplateSlotSerializer(serializers.Serializer):
-    day_index = serializers.IntegerField()
-    slot_index = serializers.IntegerField()
-    meal_ids = serializers.ListField(child=serializers.IntegerField(), read_only=True)
-
-
-class MealPlanTemplateSerializer(serializers.ModelSerializer):
-    slots = TemplateSlotSerializer(many=True, read_only=True)
-
-    class Meta:
-        model = MealPlanTemplate
-        fields = (
-            "id",
-            "owner_user",
-            "name",
-            "description",
-            "slots_per_day",
-            "slots",
-            "created_at",
-            "updated_at",
-        )
-        read_only_fields = ("id", "owner_user", "slots", "created_at", "updated_at")
-
-
-class MealPlanTemplateWriteSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = MealPlanTemplate
-        fields = ("name", "description", "slots_per_day")
-
-    def validate_slots_per_day(self, value: int) -> int:
-        if value < 1 or value > 5:
-            raise serializers.ValidationError("slots_per_day must be between 1 and 5.")
-        return value
-
-
 class InstanceSlotSerializer(serializers.Serializer):
     day_index = serializers.IntegerField()
     slot_index = serializers.IntegerField()
@@ -196,7 +160,6 @@ class MealPlanInstanceSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "owner_user",
-            "source_template",
             "week_start",
             "slots",
             "created_at",
@@ -225,7 +188,8 @@ class GroceryListItemSerializer(serializers.ModelSerializer):
 class IngredientBriefSerializer(serializers.ModelSerializer):
     class Meta:
         model = Ingredient
-        fields = ("id", "name")
+        fields = ("id", "name", "created_at")
+        read_only_fields = ("id", "name", "created_at")
 
 
 class SavedGroceryListSerializer(serializers.ModelSerializer):
@@ -237,11 +201,39 @@ class SavedGroceryListSerializer(serializers.ModelSerializer):
 
 class UserIngredientInventorySerializer(serializers.ModelSerializer):
     ingredient = IngredientBriefSerializer(read_only=True)
+    pantry_tags = serializers.JSONField(required=False)
+    owner_user_id = serializers.IntegerField(read_only=True)
+    owner_label = serializers.SerializerMethodField()
 
     class Meta:
         model = UserIngredientInventory
-        fields = ("id", "ingredient", "quantity", "simple_have")
-        read_only_fields = ("id", "ingredient")
+        fields = (
+            "id",
+            "ingredient",
+            "quantity",
+            "simple_have",
+            "location",
+            "pantry_tags",
+            "owner_user_id",
+            "owner_label",
+        )
+        read_only_fields = ("id", "ingredient", "owner_user_id", "owner_label")
+
+    def get_owner_label(self, obj: UserIngredientInventory) -> str:
+        request = self.context.get("request")
+        if request is None:
+            return ""
+        from meal.pantry_access import partner_display_label_for_row
+
+        return partner_display_label_for_row(viewer=request.user, row=obj)
+
+    def to_representation(self, instance):
+        from meal.pantry_tags import normalize_pantry_tags
+
+        data = super().to_representation(instance)
+        data["pantry_tags"] = normalize_pantry_tags(instance.pantry_tags)
+        data["owner_user_id"] = instance.owner_user_id
+        return data
 
 
 class GroceryListSerializer(serializers.ModelSerializer):

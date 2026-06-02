@@ -12,7 +12,6 @@ from meal.models import (
     GroceryListItem,
     Meal,
     MealPlanInstanceSlotMeal,
-    MealPlanTemplateSlotMeal,
 )
 
 User = get_user_model()
@@ -38,14 +37,6 @@ def fork_partner_meals_for_user(*, owner: User, partner: User) -> None:
         cloned = _clone_meal_for_user(meal=m, new_owner=owner)
         meal_map[m.id] = cloned
         return cloned
-
-    # Template slot meal links
-    for slot_meal in MealPlanTemplateSlotMeal.objects.filter(
-        slot__template__owner_user=owner,
-        meal__owner_user_id=partner_id,
-    ).select_related("meal", "slot"):
-        slot_meal.meal = get_clone(slot_meal.meal)
-        slot_meal.save(update_fields=["meal_id"])
 
     # Instance slot meal links
     for slot_meal in MealPlanInstanceSlotMeal.objects.filter(

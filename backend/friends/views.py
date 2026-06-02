@@ -36,7 +36,6 @@ def friend_user_row_dict(user):
     profile = getattr(user, "profile", None) or _profile_for_user(user)
     return {
         "id": user.id,
-        "email": user.email,
         "nickname": (profile.display_name or user.email.split("@")[0]).strip(),
         "avatar_url": profile.avatar_url or "",
         "meal_crud_partner_id": profile.meal_crud_partner_id,

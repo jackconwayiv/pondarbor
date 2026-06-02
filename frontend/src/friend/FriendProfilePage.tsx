@@ -604,15 +604,6 @@ export default function FriendProfilePage() {
                     Connect as friends to see this user's profile or respond to
                     their friend request below.
                   </Text>
-                  {summary?.email ? (
-                    <Text
-                      fontSize={APP_TEXT_SIZES.helper}
-                      color="gray.600"
-                      mt="2"
-                    >
-                      {summary.email}
-                    </Text>
-                  ) : null}
                 </>
               ) : summary ? (
                 <>
@@ -781,7 +772,7 @@ export default function FriendProfilePage() {
                         >
                           {summary.nickname}
                         </Text>
-                        {summary.email ? (
+                        {summary.is_friend && summary.email ? (
                           <Text fontSize={APP_TEXT_SIZES.helper} color="gray.600">
                             {summary.email}
                           </Text>

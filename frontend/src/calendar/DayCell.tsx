@@ -110,7 +110,7 @@ export default function DayCell({
           const color = colorForCheckedUser(ownerId, orderedCheckedUserIds);
           if (color === null) return null;
           const owner = ownersById.get(ownerId);
-          const label = owner?.display_name || owner?.email || "Busy";
+          const label = owner?.display_name || "Busy";
           return (
             <Box
               key={ownerId}

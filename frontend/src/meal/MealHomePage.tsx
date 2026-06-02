@@ -71,7 +71,7 @@ export default function MealHomePage() {
     resyncSessionSilently,
   } = useAppSession();
   const [friends, setFriends] = useState<
-    Array<{ id: number; label: string; email: string; meal_crud_partner_id: number | null }>
+    Array<{ id: number; label: string; meal_crud_partner_id: number | null }>
   >([]);
   const [pending, setPending] = useState<Awaited<ReturnType<typeof fetchDisconnectPending>>>(null);
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
@@ -95,8 +95,7 @@ export default function MealHomePage() {
     setFriends(
       data.approved_friends.map((f) => ({
         id: f.id,
-        label: f.nickname || f.email,
-        email: f.email,
+        label: f.nickname,
         meal_crud_partner_id: f.meal_crud_partner_id ?? null,
       })),
     );
@@ -195,7 +194,7 @@ export default function MealHomePage() {
   const filteredOptions = useMemo(() => {
     if (!debouncedPartnerQuery) return partnerOptions;
     return partnerOptions.filter((f) => {
-      const haystack = `${f.label} ${f.email}`.toLowerCase();
+      const haystack = f.label.toLowerCase();
       return haystack.includes(debouncedPartnerQuery);
     });
   }, [debouncedPartnerQuery, partnerOptions]);
@@ -373,7 +372,7 @@ export default function MealHomePage() {
               color={outgoingPending ? "black" : "fg.muted"}
               mb="2"
             >
-              Search approved friends by nickname or email, then submit. Meal sharing activates when
+              Search approved friends by nickname, then submit. Meal sharing activates when
               both of you select each other.
             </Text>
             <Stack gap="2" maxW="lg">
@@ -384,7 +383,7 @@ export default function MealHomePage() {
                     size="sm"
                     readOnly
                     color="black"
-                    value={activePartner ? `${activePartner.label} (${activePartner.email})` : "Pending partner"}
+                    value={activePartner ? activePartner.label : "Pending partner"}
                   />
                   <PondButton
                     size="sm"
@@ -417,14 +416,12 @@ export default function MealHomePage() {
                       {...PANEL_FIELD_PROPS}
                       size="sm"
                       list="meal-partner-options"
-                      placeholder="Search friend by nickname or email"
+                      placeholder="Search friend by nickname"
                       value={partnerQuery}
                       onChange={(e) => {
                         const next = e.target.value;
                         setPartnerQuery(next);
-                        const exact = partnerOptions.find(
-                          (f) => next === f.label || next === f.email,
-                        );
+                        const exact = partnerOptions.find((f) => next === f.label);
                         setSelectedPartnerId(exact?.id ?? null);
                       }}
                     />
@@ -438,9 +435,7 @@ export default function MealHomePage() {
                   </HStack>
                   <datalist id="meal-partner-options">
                     {filteredOptions.map((f) => (
-                      <option key={f.id} value={f.label}>
-                        {f.email}
-                      </option>
+                      <option key={f.id} value={f.label} />
                     ))}
                   </datalist>
                 </>
@@ -478,7 +473,7 @@ export default function MealHomePage() {
                   size="sm"
                   readOnly
                   color="black"
-                  value={`${requester.label} (${requester.email})`}
+                  value={requester.label}
                 />
                 <PondButton
                   size="sm"
@@ -554,7 +549,7 @@ export default function MealHomePage() {
                   size="sm"
                   readOnly
                   color="black"
-                  value={activePartner ? `${activePartner.label} (${activePartner.email})` : "Current partner"}
+                  value={activePartner ? activePartner.label : "Current partner"}
                 />
                 {pending.i_am_initiator ? (
                   <PondButton
@@ -630,7 +625,7 @@ export default function MealHomePage() {
                 size="sm"
                 readOnly
                 color="black"
-                value={activePartner ? `${activePartner.label} (${activePartner.email})` : "Current partner"}
+                value={activePartner ? activePartner.label : "Current partner"}
               />
               <Box ref={disconnectActionRef}>
                 <PondButton

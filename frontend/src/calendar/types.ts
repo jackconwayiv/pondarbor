@@ -1,6 +1,5 @@
 export type CalendarOwnerRow = {
   id: number;
-  email: string;
   display_name: string;
   avatar_url: string;
 };

@@ -517,24 +517,26 @@ class ApprovedUsersEndpointTests(CalendarTestMixin, TestCase):
         with patch("calendars.views.timezone.localdate", return_value=self.anchor):
             resp = self.alice_client.get("/api/v1/calendars/approved-users/")
         self.assertEqual(resp.status_code, 200)
-        emails = {row["email"] for row in resp.json()["results"]}
-        self.assertIn("alice@example.com", emails)
-        self.assertIn("bob@example.com", emails)
-        self.assertNotIn("pending@example.com", emails)
+        ids = {row["id"] for row in resp.json()["results"]}
+        self.assertIn(self.alice.id, ids)
+        self.assertIn(self.bob.id, ids)
+        self.assertNotIn(self.pending.id, ids)
+        for row in resp.json()["results"]:
+            self.assertNotIn("email", row)
 
     def test_query_param_search(self):
         with patch("calendars.views.timezone.localdate", return_value=self.anchor):
             resp = self.alice_client.get("/api/v1/calendars/approved-users/?q=bob")
-        emails = {row["email"] for row in resp.json()["results"]}
-        self.assertEqual(emails, {"bob@example.com"})
+        ids = {row["id"] for row in resp.json()["results"]}
+        self.assertEqual(ids, {self.bob.id})
 
     def test_excludes_other_with_only_past_events_and_no_linked_calendar(self):
         june = date(2026, 6, 15)
         with patch("calendars.views.timezone.localdate", return_value=june):
             resp = self.alice_client.get("/api/v1/calendars/approved-users/")
         self.assertEqual(resp.status_code, 200)
-        emails = {row["email"] for row in resp.json()["results"]}
-        self.assertEqual(emails, {"alice@example.com"})
+        ids = {row["id"] for row in resp.json()["results"]}
+        self.assertEqual(ids, {self.alice.id})
 
     def test_includes_other_with_linked_calendar_even_if_no_upcoming_events(self):
         june = date(2026, 6, 15)
@@ -546,8 +548,8 @@ class ApprovedUsersEndpointTests(CalendarTestMixin, TestCase):
         )
         with patch("calendars.views.timezone.localdate", return_value=june):
             resp = self.alice_client.get("/api/v1/calendars/approved-users/")
-        emails = {row["email"] for row in resp.json()["results"]}
-        self.assertEqual(emails, {"alice@example.com", "bob@example.com"})
+        ids = {row["id"] for row in resp.json()["results"]}
+        self.assertEqual(ids, {self.alice.id, self.bob.id})
 
     def test_search_does_not_surface_hidden_users(self):
         june = date(2026, 6, 15)
@@ -615,6 +617,6 @@ class CalendarSocialPublishTests(CalendarTestMixin, TestCase):
         with patch("calendars.views.timezone.localdate", return_value=date(2026, 5, 1)):
             resp = self.alice_client.get("/api/v1/calendars/approved-users/")
         self.assertEqual(resp.status_code, 200)
-        emails = {row["email"] for row in resp.json()["results"]}
-        self.assertIn("alice@example.com", emails)
-        self.assertNotIn("bob@example.com", emails)
+        ids = {row["id"] for row in resp.json()["results"]}
+        self.assertIn(self.alice.id, ids)
+        self.assertNotIn(self.bob.id, ids)

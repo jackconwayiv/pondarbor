@@ -224,12 +224,12 @@ class FriendsApiTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertEqual(body["pending_count"], 1)
-        self.assertEqual([r["email"] for r in body["incoming_pending"]], [self.bob.email])
+        self.assertEqual([r["id"] for r in body["incoming_pending"]], [self.bob.id])
         self.assertEqual(
-            [r["email"] for r in body["outgoing_pending"]], [self.charlie.email]
+            [r["id"] for r in body["outgoing_pending"]], [self.charlie.id]
         )
         self.assertEqual(
-            [r["email"] for r in body["approved_friends"]], [self.pending_user.email]
+            [r["id"] for r in body["approved_friends"]], [self.pending_user.id]
         )
         for section in (
             body["incoming_pending"],
@@ -237,6 +237,7 @@ class FriendsApiTests(TestCase):
             body["approved_friends"],
         ):
             for row in section:
+                self.assertNotIn("email", row)
                 self.assertIn("meal_crud_partner_id", row)
 
     def test_friends_search_returns_only_approved_friends(self):
@@ -245,8 +246,10 @@ class FriendsApiTests(TestCase):
 
         resp = self.alice_client.get("/api/v1/friends/search/?q=bo")
         self.assertEqual(resp.status_code, 200)
-        emails = [row["email"] for row in resp.json()]
-        self.assertEqual(emails, [self.bob.email])
+        ids = [row["id"] for row in resp.json()]
+        self.assertEqual(ids, [self.bob.id])
+        for row in resp.json():
+            self.assertNotIn("email", row)
 
     def test_approved_users_search_filters_and_excludes_self(self):
         resp_short = self.alice_client.get("/api/v1/friends/approved-users/search/?q=b")
@@ -255,11 +258,13 @@ class FriendsApiTests(TestCase):
 
         resp = self.alice_client.get("/api/v1/friends/approved-users/search/?q=example")
         self.assertEqual(resp.status_code, 200)
-        emails = {row["email"] for row in resp.json()}
-        self.assertIn(self.bob.email, emails)
-        self.assertIn(self.charlie.email, emails)
-        self.assertNotIn(self.alice.email, emails)
-        self.assertNotIn(self.pending_user.email, emails)
+        ids = {row["id"] for row in resp.json()}
+        self.assertIn(self.bob.id, ids)
+        self.assertIn(self.charlie.id, ids)
+        self.assertNotIn(self.alice.id, ids)
+        self.assertNotIn(self.pending_user.id, ids)
+        for row in resp.json():
+            self.assertNotIn("email", row)
 
     def test_approved_users_list_excludes_self_friends_and_pending(self):
         self._accept_pair(self.alice, self.bob)
@@ -268,12 +273,12 @@ class FriendsApiTests(TestCase):
 
         resp = self.alice_client.get("/api/v1/friends/approved-users/")
         self.assertEqual(resp.status_code, 200)
-        emails = {row["email"] for row in resp.json()}
-        self.assertIn(dave.email, emails)
-        self.assertNotIn(self.alice.email, emails)
-        self.assertNotIn(self.bob.email, emails)
-        self.assertNotIn(self.charlie.email, emails)
-        self.assertNotIn(self.pending_user.email, emails)
+        ids = {row["id"] for row in resp.json()}
+        self.assertIn(dave.id, ids)
+        self.assertNotIn(self.alice.id, ids)
+        self.assertNotIn(self.bob.id, ids)
+        self.assertNotIn(self.charlie.id, ids)
+        self.assertNotIn(self.pending_user.id, ids)
 
     def test_approved_users_list_excludes_hidden_system_accounts(self):
         self._make_user(
@@ -289,23 +294,25 @@ class FriendsApiTests(TestCase):
 
         list_resp = self.alice_client.get("/api/v1/friends/approved-users/")
         self.assertEqual(list_resp.status_code, 200)
-        list_emails = {row["email"] for row in list_resp.json()}
-        self.assertNotIn(ESTATES_COMPUTER_USER_EMAIL, list_emails)
-        self.assertNotIn(settings.CONTACT_INBOX_EMAIL, list_emails)
+        for row in list_resp.json():
+            self.assertNotIn("email", row)
+        nicknames = {row["nickname"] for row in list_resp.json()}
+        self.assertNotIn("Computer", nicknames)
+        self.assertNotIn("PondArbor", nicknames)
 
         search_resp = self.alice_client.get(
             "/api/v1/friends/approved-users/search/?q=estates-computer"
         )
         self.assertEqual(search_resp.status_code, 200)
-        search_emails = {row["email"] for row in search_resp.json()}
-        self.assertNotIn(ESTATES_COMPUTER_USER_EMAIL, search_emails)
+        for row in search_resp.json():
+            self.assertNotIn("email", row)
 
         contact_search = self.alice_client.get(
             f"/api/v1/friends/approved-users/search/?q={settings.CONTACT_INBOX_EMAIL.split('@')[0]}"
         )
         self.assertEqual(contact_search.status_code, 200)
-        contact_emails = {row["email"] for row in contact_search.json()}
-        self.assertNotIn(settings.CONTACT_INBOX_EMAIL, contact_emails)
+        for row in contact_search.json():
+            self.assertNotIn("email", row)
 
     def test_approved_users_list_excludes_friends_only_non_friend(self):
         self.bob.profile.social_publish_visibility = Profile.SocialPublishVisibility.FRIENDS_ONLY
@@ -313,8 +320,8 @@ class FriendsApiTests(TestCase):
 
         resp = self.alice_client.get("/api/v1/friends/approved-users/")
         self.assertEqual(resp.status_code, 200)
-        emails = {row["email"] for row in resp.json()}
-        self.assertNotIn(self.bob.email, emails)
+        ids = {row["id"] for row in resp.json()}
+        self.assertNotIn(self.bob.id, ids)
 
     def test_approved_users_search_still_finds_friends_only(self):
         self.bob.profile.social_publish_visibility = Profile.SocialPublishVisibility.FRIENDS_ONLY
@@ -322,8 +329,8 @@ class FriendsApiTests(TestCase):
 
         resp = self.alice_client.get("/api/v1/friends/approved-users/search/?q=bob")
         self.assertEqual(resp.status_code, 200)
-        emails = {row["email"] for row in resp.json()}
-        self.assertIn(self.bob.email, emails)
+        ids = {row["id"] for row in resp.json()}
+        self.assertIn(self.bob.id, ids)
 
     def test_approved_users_list_ordered_by_recent_activity(self):
         self.bob.profile.social_publish_visibility = Profile.SocialPublishVisibility.FRIENDS_ONLY
@@ -337,8 +344,8 @@ class FriendsApiTests(TestCase):
 
         resp = self.alice_client.get("/api/v1/friends/approved-users/")
         self.assertEqual(resp.status_code, 200)
-        emails = [row["email"] for row in resp.json()]
-        self.assertEqual(emails, [dave.email, self.charlie.email])
+        ids = [row["id"] for row in resp.json()]
+        self.assertEqual(ids, [dave.id, self.charlie.id])
 
     def test_approved_friends_ordered_by_recent_activity(self):
         self._accept_pair(self.alice, self.bob)
@@ -351,8 +358,8 @@ class FriendsApiTests(TestCase):
 
         resp = self.alice_client.get("/api/v1/friends/")
         self.assertEqual(resp.status_code, 200)
-        emails = [row["email"] for row in resp.json()["approved_friends"]]
-        self.assertEqual(emails, [self.bob.email, self.charlie.email])
+        ids = [row["id"] for row in resp.json()["approved_friends"]]
+        self.assertEqual(ids, [self.bob.id, self.charlie.id])
 
     def test_ignore_then_rerequest_does_not_create_false_reverse_incoming(self):
         # A requests B.
@@ -370,8 +377,8 @@ class FriendsApiTests(TestCase):
         b_list = self.bob_client.get("/api/v1/friends/").json()
 
         self.assertEqual(a_list["incoming_pending"], [])
-        self.assertEqual([r["email"] for r in a_list["outgoing_pending"]], [self.bob.email])
-        self.assertEqual([r["email"] for r in b_list["incoming_pending"]], [self.alice.email])
+        self.assertEqual([r["id"] for r in a_list["outgoing_pending"]], [self.bob.id])
+        self.assertEqual([r["id"] for r in b_list["incoming_pending"]], [self.alice.id])
         self.assertEqual(b_list["outgoing_pending"], [])
 
 

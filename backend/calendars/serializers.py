@@ -28,7 +28,6 @@ def _owner_row(user) -> dict:
         display_name = (user.email or "").split("@")[0]
     return {
         "id": user.id,
-        "email": user.email,
         "display_name": display_name,
         "avatar_url": avatar_url,
     }

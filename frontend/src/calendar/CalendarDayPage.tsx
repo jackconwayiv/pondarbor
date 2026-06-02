@@ -310,7 +310,7 @@ export default function CalendarDayPage() {
                     ownersById.get(ownerId) ??
                     eventsForDay.find((ev) => ev.owner.id === ownerId)?.owner;
                   const ownerLabel =
-                    owner?.display_name || owner?.email || `User ${ownerId}`;
+                    owner?.display_name || `User ${ownerId}`;
                   const ownerAvatarUrl = resolveAvatarUrlForUser(
                     owner?.avatar_url,
                     ownerId,

@@ -137,7 +137,7 @@ export default function UserCheckboxList({
                     textOverflow="ellipsis"
                     whiteSpace="nowrap"
                   >
-                    {u.display_name || u.email}
+                    {u.display_name}
                   </Checkbox.Label>
                 </HStack>
               </Checkbox.Root>

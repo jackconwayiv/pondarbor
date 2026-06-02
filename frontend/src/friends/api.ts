@@ -1,6 +1,5 @@
 export type FriendUser = {
   id: number;
-  email: string;
   nickname: string;
   avatar_url: string;
   meal_crud_partner_id: number | null;

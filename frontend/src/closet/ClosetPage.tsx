@@ -580,7 +580,7 @@ export default function ClosetPage() {
         setFriendsForCustody(
           payload.approved_friends.map((f) => ({
             id: f.id,
-            label: f.nickname || f.email,
+            label: f.nickname,
           })),
         );
       } catch {

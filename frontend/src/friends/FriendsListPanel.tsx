@@ -113,10 +113,14 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
     getApiAccessToken,
   ]);
 
-  const canSubmitRequest = useMemo(
-    () => EMAIL_SHAPE.test(requestEmail.trim()),
-    [requestEmail],
-  );
+  const canSubmitRequest = useMemo(() => {
+    const trimmed = requestEmail.trim();
+    if (!trimmed) return false;
+    if (EMAIL_SHAPE.test(trimmed)) return true;
+    return searchResults.some(
+      (row) => row.nickname.toLowerCase() === trimmed.toLowerCase(),
+    );
+  }, [requestEmail, searchResults]);
   const moveToOutgoingPendingLocally = (target: FriendUser) => {
     setOutgoing((prev) => {
       if (prev.some((x) => x.id === target.id)) return prev;
@@ -161,15 +165,13 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
               <Input
                 value={requestEmail}
                 onChange={(e) => setRequestEmail(e.target.value)}
-                placeholder="friend@example.com"
+                placeholder="Nickname or email address"
                 list={`${listId}-friend-suggestions`}
                 {...FIELD_PLACEHOLDER_PROPS}
               />
               <datalist id={`${listId}-friend-suggestions`}>
                 {searchResults.map((row) => (
-                  <option key={`request-suggest-${row.id}`} value={row.email}>
-                    {row.nickname}
-                  </option>
+                  <option key={`request-suggest-${row.id}`} value={row.nickname} />
                 ))}
               </datalist>
             </Stack>
@@ -180,18 +182,23 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
                 void (async () => {
                   setRequestError(null);
                   setRequestSuccess(null);
+                  const trimmed = requestEmail.trim();
+                  const nicknameMatch = searchResults.find(
+                    (row) => row.nickname.toLowerCase() === trimmed.toLowerCase(),
+                  );
                   try {
                     const token = await getApiAccessToken();
-                    await requestFriendByEmail(
-                      token,
-                      requestEmail.trim().toLowerCase(),
-                    );
-                    const targetEmail = requestEmail.trim().toLowerCase();
-                    const target = approvedUsers.find(
-                      (row) => row.email.toLowerCase() === targetEmail,
-                    );
-                    if (target) {
-                      moveToOutgoingPendingLocally(target);
+                    if (nicknameMatch) {
+                      await requestFriendByUserId(token, nicknameMatch.id);
+                      moveToOutgoingPendingLocally(nicknameMatch);
+                    } else if (EMAIL_SHAPE.test(trimmed)) {
+                      await requestFriendByEmail(token, trimmed.toLowerCase());
+                      await loadList();
+                    } else {
+                      setRequestError(
+                        "Enter a valid email or pick a nickname from suggestions.",
+                      );
+                      return;
                     }
                     setRequestEmail("");
                     setRequestSuccess("Friend request sent.");
@@ -261,15 +268,7 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
                         }
                       />
                     </Avatar.Root>
-                    <Stack gap="0">
-                      <Text>{row.nickname}</Text>
-                      <Text
-                        fontSize={APP_TEXT_SIZES.helper}
-                        color="fg.muted"
-                      >
-                        {row.email}
-                      </Text>
-                    </Stack>
+                    <Text>{row.nickname}</Text>
                   </HStack>
                 </Link>
                 <HStack>
@@ -353,18 +352,9 @@ export function FriendsListPanel({ compact = true }: FriendsListPanelProps) {
                       }
                     />
                   </Avatar.Root>
-                  <Stack gap="0">
-                    <Text color="gray.400" fontStyle="italic">
-                      {row.nickname}
-                    </Text>
-                    <Text
-                      fontSize={APP_TEXT_SIZES.helper}
-                      color="gray.400"
-                      fontStyle="italic"
-                    >
-                      {row.email}
-                    </Text>
-                  </Stack>
+                  <Text color="gray.400" fontStyle="italic">
+                    {row.nickname}
+                  </Text>
                 </HStack>
               </Link>
             ))}

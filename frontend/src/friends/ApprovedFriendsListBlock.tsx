@@ -4,7 +4,6 @@ import { Link } from "react-router";
 import PondButton from "../PondButton";
 import { resolveAvatarUrlForUser, useAppSession } from "../auth/AppSessionContext";
 import { PanelEmptyState } from "../components/panelStatus";
-import { APP_TEXT_SIZES } from "../theme/typography";
 import type { FriendUser } from "./api";
 
 export const APPROVED_FRIENDS_ENTRY_CARD_PROPS = {
@@ -111,9 +110,6 @@ export function ApprovedFriendsListBlock({
                 </Avatar.Root>
                 <Stack gap="0" flex="1" minW={0}>
                   <Text>{row.nickname}</Text>
-                  <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-                    {row.email}
-                  </Text>
                 </Stack>
               </HStack>
             </Link>

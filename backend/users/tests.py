@@ -138,6 +138,23 @@ class UsersApiTests(TestCase):
         self.assertEqual(body["venus_sign"], "taurus")
         self.assertEqual(body["mars_sign"], "aries")
 
+    def test_public_summary_non_friend_excludes_email(self):
+        viewer = User.objects.create_user(email="nf-v@example.com", password="secret12345")
+        viewer.account_status = User.AccountStatus.APPROVED
+        viewer.save(update_fields=["account_status"])
+        target = User.objects.create_user(email="nf-t@example.com", password="secret12345")
+        target.account_status = User.AccountStatus.APPROVED
+        target.save(update_fields=["account_status"])
+        target.profile.display_name = "TargetNick"
+        target.profile.save(update_fields=["display_name"])
+
+        self.client.force_login(viewer)
+        resp = self.client.get(f"/api/v1/users/{target.id}/public/")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertNotIn("email", body)
+        self.assertFalse(body["is_friend"])
+
     def test_public_summary_hides_astro_when_display_astro_off(self):
         from zodiac.models import AstroProfile
 
@@ -221,10 +238,11 @@ class UsersApiTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         rows = resp.json()
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["email"], buddy.email)
+        self.assertEqual(rows[0]["id"], buddy.id)
+        self.assertNotIn("email", rows[0])
         self.assertIn("nickname", rows[0])
         self.assertIn("avatar_url", rows[0])
-        self.assertTrue(all(row["email"] != viewer.email for row in rows))
+        self.assertTrue(all(row["id"] != viewer.id for row in rows))
 
     def test_user_friends_list_ordered_by_recent_activity(self):
         viewer = User.objects.create_user(email="uf-ord-v@example.com", password="secret12345")
@@ -258,8 +276,8 @@ class UsersApiTests(TestCase):
         self.client.force_login(viewer)
         resp = self.client.get(f"/api/v1/users/{target.id}/friends/")
         self.assertEqual(resp.status_code, 200)
-        emails = [row["email"] for row in resp.json()]
-        self.assertEqual(emails, [buddy_recent.email, buddy_old.email])
+        ids = [row["id"] for row in resp.json()]
+        self.assertEqual(ids, [buddy_recent.id, buddy_old.id])
 
     def test_patch_profile_updates_preferences_and_returns_full_me(self):
         user = User.objects.create_user(email="edit@example.com", password="secret12345")

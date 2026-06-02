@@ -97,6 +97,13 @@ def card_total_value(card: dict) -> int:
     return rank + permanent + temporary
 
 
+def is_base_rank_one_card(card: dict) -> bool:
+    """True when the card is rank 1 with no permanent upgrades (ignores temporary modifiers)."""
+    rank = coerce_int(card.get("rank"), 0)
+    permanent = coerce_int(card.get("permanent_value_bonus"), 0)
+    return rank == 1 and permanent == 0
+
+
 def normalize_suit_value(suit: str) -> str:
     """Map suit/color alias strings to canonical peasant, noble, or royal."""
     value = str(suit or "").strip().lower()

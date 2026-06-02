@@ -476,8 +476,11 @@ export default function EstatesPlayView({
     towerDiscardEffectActive && onConfirmTowerDiscard ? (
       <PondButton
         type="button"
-        size="sm"
+        size="xl"
         colorPalette="sky"
+        minH="14"
+        px="10"
+        fontSize="xl"
         flexShrink={0}
         disabled={towerDiscardApplying}
         onClick={() => void onConfirmTowerDiscard()}

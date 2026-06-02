@@ -60,7 +60,12 @@ from .serializers import (
     _user_display_name,
     serialize_estates_game_state,
 )
-from .stats import record_estates_game_completed, record_estates_zone_win, serialize_estates_user_stats
+from .stats import (
+    evaluate_estates_stunt_zone_win_achievements,
+    record_estates_game_completed,
+    record_estates_zone_win,
+    serialize_estates_user_stats,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -192,6 +197,23 @@ def _pending_payload_with_zone_winners(
     payload = dict(round_state.pending_payload or {})
     payload["zone_winners"] = winners_by_zone
     return payload
+
+
+def _payload_with_last_placement(
+    payload: dict,
+    *,
+    seat_index: int,
+    zone: str,
+    card: dict,
+) -> dict:
+    merged = dict(payload)
+    merged["last_placement"] = {
+        "seat": seat_index,
+        "zone": zone,
+        "rank": coerce_int(card.get("rank"), 0),
+        "suit": normalize_card_suit(card),
+    }
+    return merged
 
 
 def _solo_advance_scoring_and_computer(*, game_id: str) -> tuple[bool, bool]:
@@ -379,7 +401,14 @@ def _commit_card_placement(
 
     round_state.placements_by_zone = placements
     round_state.actions_taken_by_seat = actions_taken
-    round_state.pending_payload = _pending_payload_with_zone_winners(round_state, winners_by_zone)
+    payload = _pending_payload_with_zone_winners(round_state, winners_by_zone)
+    payload = _payload_with_last_placement(
+        payload,
+        seat_index=seat_index,
+        zone=zone,
+        card=card,
+    )
+    round_state.pending_payload = payload
 
     if total_actions >= 6:
         round_state.phase = EstatesRoundState.Phase.SCORING
@@ -388,7 +417,7 @@ def _commit_card_placement(
         round_state.pending_action = "resolve_scoring"
         round_state.status_message = "All cards are locked in. Scoring starts soon."
         now_ms = int(timezone.now().timestamp() * 1000)
-        scoring_payload = _pending_payload_with_zone_winners(round_state, winners_by_zone)
+        scoring_payload = dict(payload)
         scoring_payload["scoring"] = {
             "zone_index": 0,
             "waiting_until_ms": now_ms + SCORING_STEP_DELAY_MS,
@@ -1078,14 +1107,29 @@ def _record_zone_win_once(
     scoring: dict,
     user_id: int,
     zone_name: str,
+    game: EstatesGame | None = None,
+    winning_card: dict | None = None,
 ) -> None:
     """Increment zone-win stats at most once per zone per scoring round."""
     recorded: list[str] = list(scoring.get("zone_wins_recorded") or [])
     if zone_name in recorded:
         return
     record_estates_zone_win(user_id, zone_name)
+    if game is not None:
+        evaluate_estates_stunt_zone_win_achievements(
+            game=game,
+            user_id=user_id,
+            zone_name=zone_name,
+            winning_card=winning_card,
+        )
     recorded.append(zone_name)
     scoring["zone_wins_recorded"] = recorded
+
+
+def _winning_card_in_zone(zone_payload: dict | None, winner_seat: int) -> dict | None:
+    if not isinstance(zone_payload, dict):
+        return None
+    return _confirmed_card_for_seat(zone_payload, str(winner_seat))
 
 
 def _record_zone_wins_for_scoring_steps(
@@ -1094,6 +1138,7 @@ def _record_zone_wins_for_scoring_steps(
     placements: dict,
     player_rows: dict[int, EstatesPlayerState],
     start_index: int,
+    game: EstatesGame,
 ) -> None:
     """Credit human zone wins for scoring steps skipped after an early Throne victory."""
     winners_by_zone = _recompute_zone_winners(placements)
@@ -1106,10 +1151,17 @@ def _record_zone_wins_for_scoring_steps(
         winner_row = player_rows.get(winner_seat)
         if winner_row is None:
             continue
+        zone_payload = placements.get(zone_name) if isinstance(placements, dict) else None
+        winning_card = _winning_card_in_zone(
+            zone_payload if isinstance(zone_payload, dict) else None,
+            winner_seat,
+        )
         _record_zone_win_once(
             scoring=scoring,
             user_id=winner_row.user_id,
             zone_name=zone_name,
+            game=game,
+            winning_card=winning_card,
         )
 
 
@@ -1176,7 +1228,16 @@ def _progress_scoring_if_ready(*, locked: EstatesGame, round_state: EstatesRound
     if winner_row is None:
         return False
 
-    _record_zone_win_once(scoring=scoring, user_id=winner_row.user_id, zone_name=zone_name)
+    _record_zone_win_once(
+        scoring=scoring,
+        user_id=winner_row.user_id,
+        zone_name=zone_name,
+        game=locked,
+        winning_card=_winning_card_in_zone(
+            zone_payload if isinstance(zone_payload, dict) else None,
+            winner_seat,
+        ),
+    )
     payload["scoring"] = scoring
 
     if zone_name == "gate":
@@ -1270,7 +1331,7 @@ def _progress_scoring_if_ready(*, locked: EstatesGame, round_state: EstatesRound
             winners_by_zone=winners_by_zone,
             zone_index=zone_index,
             status_message=(
-                f"{winner_name} wins Road and will draw "
+                f"{winner_name} wins the Road and will draw "
                 f"{ROAD_DRAW_BONUS} extra cards next round."
             ),
         )
@@ -1326,6 +1387,7 @@ def _progress_scoring_if_ready(*, locked: EstatesGame, round_state: EstatesRound
                 placements=placements,
                 player_rows=player_rows,
                 start_index=zone_index + 1,
+                game=locked,
             )
             payload["zone_winners"] = winners_by_zone
             payload["scoring"] = scoring

@@ -844,7 +844,7 @@
 .estates-band__hand-row {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
   gap: 8px;
   width: 100%;
@@ -1130,15 +1130,39 @@
   letter-spacing: 0.04em;
 }
 
+.estates-scoring-target--tower-discard {
+  animation: none;
+}
+
+.estates-scoring-target--tower-discard .estates-scoring-target__badge {
+  position: absolute;
+  top: 66.67%;
+  left: 0;
+  right: 0;
+  width: fit-content;
+  margin-inline: auto;
+  transform: translateY(-50%);
+  animation: estates-tower-badge-pulse 1.3s ease-in-out infinite;
+}
+
 .estates-scoring-target[data-applying="true"] {
   cursor: wait;
   animation: none;
   opacity: 0.65;
 }
 
+.estates-scoring-target--tower-discard[data-applying="true"] .estates-scoring-target__badge {
+  animation: none;
+}
+
 @keyframes estates-scoring-pulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.08); }
+}
+
+@keyframes estates-tower-badge-pulse {
+  0%, 100% { transform: translateY(-50%) scale(1); }
+  50% { transform: translateY(-50%) scale(1.08); }
 }
 
 /* Hand return overlay zone (within the hand band) */

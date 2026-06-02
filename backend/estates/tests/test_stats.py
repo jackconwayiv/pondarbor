@@ -5,15 +5,19 @@ from django.test import TestCase
 
 from achievements.models import AchievementDefinition, UserAchievement
 from achievements.services import (
+    SLUG_ESTATES_FARMED_YA,
     SLUG_ESTATES_NOBLE,
     SLUG_ESTATES_PEASANT,
     SLUG_ESTATES_ROYAL,
     SLUG_ESTATES_FARMHAND,
+    SLUG_ESTATES_THRONED_YA,
     evaluate_estates_achievements_for_user,
+    evaluate_estates_stunt_zone_win_achievements,
 )
 from estates.models import EstatesGame, EstatesPlayerState, EstatesRoundState, EstatesUserStats
 from estates.stats import (
     backfill_estates_match_stats_from_history,
+    evaluate_estates_stunt_zone_win_achievements as stats_evaluate_stunt,
     record_estates_game_completed,
     record_estates_zone_win,
     serialize_estates_user_stats,
@@ -46,6 +50,8 @@ class EstatesStatsTests(TestCase):
             "estates_royal",
             "estates_noble",
             "estates_peasant",
+            "estates_throned_ya",
+            "estates_farmed_ya",
         ):
             AchievementDefinition.objects.update_or_create(
                 slug=slug,
@@ -168,3 +174,153 @@ class EstatesStatsTests(TestCase):
         payload = serialize_estates_user_stats(None)
         self.assertEqual(payload["games_completed"], 0)
         self.assertEqual(payload["zone_wins"]["road"], 0)
+
+    def test_stunt_achievement_unlocks_on_pvp_value_one_throne(self):
+        game = EstatesGame.objects.create(
+            player_1=self.user,
+            player_2=self.opponent,
+            status=EstatesGame.Status.ACTIVE,
+            is_solo=False,
+        )
+        card = {
+            "card_id": "c1",
+            "rank": 1,
+            "suit": "royal",
+            "permanent_value_bonus": 0,
+            "temporary_value_modifier": 0,
+        }
+        evaluate_estates_stunt_zone_win_achievements(
+            game=game,
+            user_id=self.user.id,
+            zone_name="throne",
+            winning_card=card,
+        )
+        self.assertTrue(
+            UserAchievement.objects.filter(
+                user_id=self.user.id,
+                achievement__slug=SLUG_ESTATES_THRONED_YA,
+            ).exists()
+        )
+
+    def test_stunt_achievement_skips_solo(self):
+        game = EstatesGame.objects.create(
+            player_1=self.user,
+            player_2=self.opponent,
+            status=EstatesGame.Status.ACTIVE,
+            is_solo=True,
+        )
+        card = {"card_id": "c1", "rank": 1, "suit": "royal"}
+        evaluate_estates_stunt_zone_win_achievements(
+            game=game,
+            user_id=self.user.id,
+            zone_name="throne",
+            winning_card=card,
+        )
+        self.assertFalse(
+            UserAchievement.objects.filter(
+                user_id=self.user.id,
+                achievement__slug=SLUG_ESTATES_THRONED_YA,
+            ).exists()
+        )
+
+    def test_stunt_achievement_skips_non_value_one_card(self):
+        game = EstatesGame.objects.create(
+            player_1=self.user,
+            player_2=self.opponent,
+            status=EstatesGame.Status.ACTIVE,
+            is_solo=False,
+        )
+        card = {"card_id": "c1", "rank": 2, "suit": "royal"}
+        stats_evaluate_stunt(
+            game=game,
+            user_id=self.user.id,
+            zone_name="farm",
+            winning_card=card,
+        )
+        self.assertFalse(
+            UserAchievement.objects.filter(
+                user_id=self.user.id,
+                achievement__slug=SLUG_ESTATES_FARMED_YA,
+            ).exists()
+        )
+
+    def test_stunt_achievement_skips_gate_debuffed_two(self):
+        game = EstatesGame.objects.create(
+            player_1=self.user,
+            player_2=self.opponent,
+            status=EstatesGame.Status.ACTIVE,
+            is_solo=False,
+        )
+        card = {
+            "card_id": "c1",
+            "rank": 2,
+            "suit": "royal",
+            "permanent_value_bonus": 0,
+            "temporary_value_modifier": -1,
+        }
+        evaluate_estates_stunt_zone_win_achievements(
+            game=game,
+            user_id=self.user.id,
+            zone_name="throne",
+            winning_card=card,
+        )
+        self.assertFalse(
+            UserAchievement.objects.filter(
+                user_id=self.user.id,
+                achievement__slug=SLUG_ESTATES_THRONED_YA,
+            ).exists()
+        )
+
+    def test_stunt_achievement_skips_upgraded_rank_one(self):
+        game = EstatesGame.objects.create(
+            player_1=self.user,
+            player_2=self.opponent,
+            status=EstatesGame.Status.ACTIVE,
+            is_solo=False,
+        )
+        card = {
+            "card_id": "c1",
+            "rank": 1,
+            "suit": "peasant",
+            "permanent_value_bonus": 1,
+            "temporary_value_modifier": 0,
+        }
+        stats_evaluate_stunt(
+            game=game,
+            user_id=self.user.id,
+            zone_name="farm",
+            winning_card=card,
+        )
+        self.assertFalse(
+            UserAchievement.objects.filter(
+                user_id=self.user.id,
+                achievement__slug=SLUG_ESTATES_FARMED_YA,
+            ).exists()
+        )
+
+    def test_stunt_achievement_unlocks_farm_with_value_one(self):
+        game = EstatesGame.objects.create(
+            player_1=self.user,
+            player_2=self.opponent,
+            status=EstatesGame.Status.ACTIVE,
+            is_solo=False,
+        )
+        card = {
+            "card_id": "c1",
+            "rank": 1,
+            "suit": "peasant",
+            "permanent_value_bonus": 0,
+            "temporary_value_modifier": 0,
+        }
+        stats_evaluate_stunt(
+            game=game,
+            user_id=self.user.id,
+            zone_name="farm",
+            winning_card=card,
+        )
+        self.assertTrue(
+            UserAchievement.objects.filter(
+                user_id=self.user.id,
+                achievement__slug=SLUG_ESTATES_FARMED_YA,
+            ).exists()
+        )

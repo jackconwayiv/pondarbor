@@ -144,6 +144,8 @@ SLUG_ESTATES_MONARCH = "estates_monarch"
 SLUG_ESTATES_ROYAL = "estates_royal"
 SLUG_ESTATES_NOBLE = "estates_noble"
 SLUG_ESTATES_PEASANT = "estates_peasant"
+SLUG_ESTATES_THRONED_YA = "estates_throned_ya"
+SLUG_ESTATES_FARMED_YA = "estates_farmed_ya"
 SLUG_PEER_INTO_THE_STARS = "peer_into_the_stars"
 
 ARCHIVIST_MIN_QUOTES = 10
@@ -469,6 +471,30 @@ def evaluate_estates_achievements_for_user(user_id: int) -> None:
         _try_unlock(user_id, SLUG_ESTATES_NOBLE)
     if stats.solo_wins >= ESTATES_PEASANT_MIN_SOLO_WINS:
         _try_unlock(user_id, SLUG_ESTATES_PEASANT)
+
+
+def evaluate_estates_stunt_zone_win_achievements(
+    *,
+    game,
+    user_id: int,
+    zone_name: str,
+    winning_card: dict | None,
+) -> None:
+    """One-shot PvP achievements for winning Throne or Farm with a base rank-1 card."""
+    from estates.bot_user import is_computer_user
+    from estates.game_setup import is_base_rank_one_card
+
+    if getattr(game, "is_solo", False):
+        return
+    user = User.objects.filter(pk=user_id).first()
+    if user is None or is_computer_user(user):
+        return
+    if winning_card is None or not is_base_rank_one_card(winning_card):
+        return
+    if zone_name == "throne":
+        _try_unlock(user_id, SLUG_ESTATES_THRONED_YA)
+    elif zone_name == "farm":
+        _try_unlock(user_id, SLUG_ESTATES_FARMED_YA)
 
 
 def evaluate_after_whatif_session_ended(session_id: int) -> None:

@@ -42,6 +42,8 @@ const SLUG_TO_EMOJI: Record<string, string> = {
   estates_royal: "🏰",
   estates_noble: "🛡️",
   estates_peasant: "⚒️",
+  estates_throned_ya: "👑",
+  estates_farmed_ya: "🌾",
   peer_into_the_stars: "\u{1F30C}",
 };
 

@@ -20,7 +20,7 @@ import {
 import { EstatesHowToPlayPanel } from "./EstatesHowToPlayPanel";
 import { ESTATES_HOW_TO_PLAY_TITLE } from "./estatesHowToPlay";
 import { ESTATES_GAME_FONT_FAMILY, ESTATES_PLAY_CANVAS_BG } from "./estatesPlayTheme";
-import { personalizeEstatesStatusMessage } from "./estatesStatusMessage";
+import { formatOpponentLastPlacement, personalizeEstatesStatusMessage } from "./estatesStatusMessage";
 import { connectEstatesWebSocket } from "./estatesWsClient";
 import { estatesGameWsUrl } from "./estatesWs";
 import EstatesPlayView from "./EstatesPlayView";
@@ -317,7 +317,7 @@ export default function EstatesPlayPage() {
       return `You won the ${zoneLabel}! Choose a hand card to permanently gain +1.`;
     }
     if (effectType === "tower_discard") {
-      return "You won the Tower! Tap cards to mark DISCARD, then Accept. You will go second next round.";
+      return "You won the Tower! Tap the cards you wish to discard, then click accept. You will go second next round.";
     }
     return "Choose a scoring target.";
   }, [isMyScoringChoice, scoringAwaitingChoice]);
@@ -346,6 +346,17 @@ export default function EstatesPlayPage() {
   );
   const myScore = myPlayerState?.score ?? 0;
   const opponentScore = opponentPlayerState?.score ?? 0;
+  const opponentLastPlayLine = useMemo(() => {
+    if (!game?.round_state || !mySeat) return null;
+    const opponentName =
+      opponentPlayerState?.display_name?.trim() ||
+      (game.is_solo ? "Computer" : "Opponent");
+    return formatOpponentLastPlacement({
+      lastPlacement: game.round_state.pending_payload?.last_placement,
+      mySeat,
+      opponentDisplayName: opponentName,
+    });
+  }, [game?.is_solo, game?.round_state, mySeat, opponentPlayerState?.display_name]);
   const statusMessage = useMemo(() => {
     const rs = game?.round_state;
     if (
@@ -705,13 +716,31 @@ export default function EstatesPlayPage() {
               </Text>
             </>
           ) : isMyTurn ? (
-            <Text fontSize={headerTextSize} fontWeight="bold" color="fg" lineHeight="1.25" {...estatesGameFont}>
-              Your turn!
-            </Text>
+            <Stack gap="0.5" align={{ base: "flex-start", md: "center" }}>
+              {opponentLastPlayLine ? (
+                <Text
+                  fontSize={APP_TEXT_SIZES.helper}
+                  color="fg.muted"
+                  lineClamp={2}
+                  lineHeight="1.25"
+                  {...estatesGameFont}
+                >
+                  {opponentLastPlayLine}
+                </Text>
+              ) : null}
+              <Text
+                fontSize={headerTextSize}
+                fontWeight="bold"
+                color="fg"
+                lineHeight="1.25"
+                {...estatesGameFont}
+              >
+                Your turn!
+              </Text>
+            </Stack>
           ) : isMyScoringChoice ? (
             <Text
               fontSize={headerTextSize}
-              fontWeight="semibold"
               color="fg"
               lineClamp={3}
               lineHeight="1.25"

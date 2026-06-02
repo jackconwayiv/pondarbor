@@ -75,6 +75,20 @@ class EstatesComputerTests(TestCase):
 
     def test_opponent_hand_hidden_in_api(self):
         game = self._solo_game()
+        round_state = EstatesRoundState.objects.get(game=game)
+        # Poll advances solo games when it is the computer's turn; keep human to act so hand counts stay stable.
+        if round_state.pending_actor_seat == COMPUTER_SEAT_INDEX:
+            round_state.pending_actor_seat = HUMAN_SEAT_INDEX
+            round_state.pending_action = "play_card"
+            round_state.pending_computer_action_at = None
+            round_state.save(
+                update_fields=[
+                    "pending_actor_seat",
+                    "pending_action",
+                    "pending_computer_action_at",
+                    "updated_at",
+                ]
+            )
         adjust_presence_connection(game_id=str(game.pk), seat_index=HUMAN_SEAT_INDEX, delta=1)
         resp = self.client.get("/api/v1/estates/games/mine/")
         self.assertEqual(resp.status_code, 200)
@@ -157,6 +171,7 @@ class EstatesComputerTests(TestCase):
         self.assertEqual(resp.status_code, 200, resp.content)
         round_state.refresh_from_db()
         if round_state.pending_actor_seat == COMPUTER_SEAT_INDEX:
+            _solo_advance_scoring_and_computer(game_id=str(game.pk))
             computer_after = len(
                 EstatesPlayerState.objects.get(game=game, seat_index=COMPUTER_SEAT_INDEX).hand or []
             )
@@ -305,7 +320,11 @@ class EstatesComputerTests(TestCase):
             },
         ]
         moves = rank_tower_moves(computer_hand=hand, difficulty="normal")
-        self.assertEqual(moves[0].target_card_id, "noble-2-1")
+        self.assertEqual(len(moves), 1)
+        self.assertEqual(
+            set(moves[0].target_card_ids),
+            {"peasant-1-1", "noble-2-1", "noble-2-2"},
+        )
 
     def test_tower_discard_dumps_value_one_solo_when_pair_is_three_plus(self):
         hand = [
@@ -332,7 +351,8 @@ class EstatesComputerTests(TestCase):
             },
         ]
         moves = rank_tower_moves(computer_hand=hand, difficulty="normal")
-        self.assertEqual(moves[0].target_card_id, "peasant-1-1")
+        self.assertEqual(len(moves), 1)
+        self.assertEqual(moves[0].target_card_ids, ("peasant-1-1",))
 
     def test_tower_discard_by_difficulty(self):
         hand = [
@@ -355,9 +375,114 @@ class EstatesComputerTests(TestCase):
 
         for difficulty in ("easy", "normal", "hard"):
             moves = rank_tower_moves(computer_hand=hand, difficulty=difficulty)
-            self.assertEqual(len(moves), 2)
+            self.assertEqual(len(moves), 1)
             self.assertEqual(moves[0].effect_type, "tower_discard")
-            self.assertEqual(moves[0].target_card_id, "peasant-1-1")
+            self.assertEqual(moves[0].target_card_ids, ("peasant-1-1",))
+
+    def test_tower_discard_easy_batch_two_rank_ones(self):
+        hand = [
+            {
+                "card_id": "peasant-1-1",
+                "suit": "peasant",
+                "rank": 1,
+                "temporary_value_modifier": 0,
+                "permanent_value_bonus": 0,
+            },
+            {
+                "card_id": "noble-1-1",
+                "suit": "noble",
+                "rank": 1,
+                "temporary_value_modifier": 0,
+                "permanent_value_bonus": 0,
+            },
+        ]
+        moves = rank_tower_moves(computer_hand=hand, difficulty="easy")
+        self.assertEqual(len(moves), 1)
+        self.assertEqual(len(moves[0].target_card_ids), 2)
+        self.assertEqual(set(moves[0].target_card_ids), {"peasant-1-1", "noble-1-1"})
+
+    def test_tower_discard_lone_royal_keeps_hand(self):
+        lone_royal = {
+            "card_id": "royal-1-1",
+            "suit": "royal",
+            "rank": 1,
+            "temporary_value_modifier": 0,
+            "permanent_value_bonus": 0,
+        }
+        self.assertEqual(rank_tower_moves(computer_hand=[lone_royal], difficulty="easy"), [])
+        self.assertEqual(rank_tower_moves(computer_hand=[lone_royal], difficulty="normal"), [])
+
+    def test_tower_discard_hand_of_fours_and_fives_keeps_all(self):
+        hand = [
+            {
+                "card_id": "peasant-4-1",
+                "suit": "peasant",
+                "rank": 4,
+                "temporary_value_modifier": 0,
+                "permanent_value_bonus": 0,
+            },
+            {
+                "card_id": "royal-5-1",
+                "suit": "royal",
+                "rank": 5,
+                "temporary_value_modifier": 0,
+                "permanent_value_bonus": 0,
+            },
+        ]
+        for difficulty in ("easy", "normal", "hard"):
+            self.assertEqual(rank_tower_moves(computer_hand=hand, difficulty=difficulty), [])
+
+    def test_tower_discard_hard_conditional_rank_three(self):
+        hand = [
+            {
+                "card_id": "peasant-3-1",
+                "suit": "peasant",
+                "rank": 3,
+                "temporary_value_modifier": 0,
+                "permanent_value_bonus": 0,
+            },
+            {
+                "card_id": "peasant-5-1",
+                "suit": "peasant",
+                "rank": 5,
+                "temporary_value_modifier": 0,
+                "permanent_value_bonus": 0,
+            },
+        ]
+        moves = rank_tower_moves(computer_hand=hand, difficulty="hard")
+        self.assertEqual(len(moves), 1)
+        self.assertEqual(moves[0].target_card_ids, ("peasant-3-1",))
+
+        solo_three = [hand[0]]
+        self.assertEqual(rank_tower_moves(computer_hand=solo_three, difficulty="hard"), [])
+
+    def test_tower_discard_hard_dumps_ones_and_twos(self):
+        hand = [
+            {
+                "card_id": "peasant-1-1",
+                "suit": "peasant",
+                "rank": 1,
+                "temporary_value_modifier": 0,
+                "permanent_value_bonus": 0,
+            },
+            {
+                "card_id": "peasant-2-1",
+                "suit": "peasant",
+                "rank": 2,
+                "temporary_value_modifier": 0,
+                "permanent_value_bonus": 0,
+            },
+            {
+                "card_id": "noble-3-1",
+                "suit": "noble",
+                "rank": 3,
+                "temporary_value_modifier": 0,
+                "permanent_value_bonus": 0,
+            },
+        ]
+        moves = rank_tower_moves(computer_hand=hand, difficulty="hard")
+        self.assertEqual(len(moves), 1)
+        self.assertEqual(set(moves[0].target_card_ids), {"peasant-1-1", "peasant-2-1"})
 
     def test_easy_random_roll(self):
         hand = [
@@ -1089,7 +1214,7 @@ class EstatesComputerTests(TestCase):
         farm_moves = [m for m in moves if m.zone == "farm"]
         self.assertEqual(farm_moves[0].card_id, "peasant-3-1")
 
-    def test_tower_discard_never_dumps_five_when_lower_exists(self):
+    def test_tower_discard_normal_dumps_rank_two_not_five(self):
         hand = [
             {
                 "card_id": "peasant-2-1",
@@ -1107,7 +1232,8 @@ class EstatesComputerTests(TestCase):
             },
         ]
         moves = rank_tower_moves(computer_hand=hand, difficulty="normal")
-        self.assertEqual(moves[0].target_card_id, "peasant-2-1")
+        self.assertEqual(len(moves), 1)
+        self.assertEqual(moves[0].target_card_ids, ("peasant-2-1",))
 
     def test_gate_placement_scores_throne_debuff_over_empty_farm(self):
         """Winning gate is valued by the best debuff tier on another zone, not as its own zone."""

@@ -50,6 +50,23 @@ def record_estates_zone_win(user_id: int, zone_name: str) -> None:
     evaluate_estates_achievements_for_user(user_id)
 
 
+def evaluate_estates_stunt_zone_win_achievements(
+    *,
+    game: EstatesGame,
+    user_id: int,
+    zone_name: str,
+    winning_card: dict | None,
+) -> None:
+    from achievements.services import evaluate_estates_stunt_zone_win_achievements as unlock
+
+    unlock(
+        game=game,
+        user_id=user_id,
+        zone_name=zone_name,
+        winning_card=winning_card,
+    )
+
+
 def record_estates_game_completed(game: EstatesGame) -> None:
     if game.status != EstatesGame.Status.COMPLETED:
         return

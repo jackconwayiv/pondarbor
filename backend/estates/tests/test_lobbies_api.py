@@ -530,7 +530,7 @@ class EstatesLobbyApiTests(TestCase):
         host_state.refresh_from_db()
         round_state.refresh_from_db()
         self.assertEqual(host_state.draw_bonus, 2)
-        self.assertIn("Road", round_state.status_message)
+        self.assertIn("wins the Road", round_state.status_message)
         self.assertIn("2 extra cards", round_state.status_message)
 
     def test_tower_winner_prompts_discard_choice(self):

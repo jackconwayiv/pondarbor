@@ -12,6 +12,7 @@ from .game_setup import (
     SUIT_CARD_CONFIG,
     ZONE_NAMES_IN_SCORING_ORDER,
     card_total_value,
+    coerce_int,
     is_suit_allowed_in_zone,
     normalize_card_suit,
     suit_strength,
@@ -1445,6 +1446,76 @@ def _tower_discard_preserve_solo_suit(cards: list[dict], suit_counts: dict[str, 
     return True
 
 
+def _tower_discard_base_rank(card: dict) -> int:
+    return coerce_int(card.get("rank"), 0)
+
+
+def _tower_discard_is_lone_royal(card: dict, hand: list[dict]) -> bool:
+    if normalize_card_suit(card) != "royal":
+        return False
+    return sum(1 for c in hand if normalize_card_suit(c) == "royal") == 1
+
+
+def _tower_discard_has_higher_same_suit_rank(card: dict, hand: list[dict]) -> bool:
+    suit = normalize_card_suit(card)
+    base_rank = _tower_discard_base_rank(card)
+    card_id = str(card.get("card_id") or "")
+    for other in hand:
+        if str(other.get("card_id") or "") == card_id:
+            continue
+        if normalize_card_suit(other) != suit:
+            continue
+        if _tower_discard_base_rank(other) > base_rank:
+            return True
+    return False
+
+
+def _tower_discard_tier_eligible(card: dict, hand: list[dict], difficulty: str) -> bool:
+    rank = _tower_discard_base_rank(card)
+    if difficulty == "easy":
+        return rank == 1
+    if difficulty == "normal":
+        return rank in (1, 2)
+    if difficulty == "hard":
+        if rank in (1, 2):
+            return True
+        if rank == 3:
+            return _tower_discard_has_higher_same_suit_rank(card, hand)
+        return False
+    return rank == 1
+
+
+def _tower_discard_tier_ids(hand: list[dict], difficulty: str) -> list[str]:
+    cards = [c for c in hand if c.get("card_id")]
+    if not cards:
+        return []
+
+    eligible = [
+        c
+        for c in cards
+        if _tower_discard_tier_eligible(c, cards, difficulty)
+        and not _tower_discard_is_lone_royal(c, cards)
+    ]
+    if not eligible:
+        return []
+
+    suit_counts: dict[str, int] = {}
+    for card in cards:
+        suit = normalize_card_suit(card)
+        suit_counts[suit] = suit_counts.get(suit, 0) + 1
+    preserve_solo = _tower_discard_preserve_solo_suit(cards, suit_counts)
+
+    pool = list(eligible)
+    if difficulty == "easy":
+        random.shuffle(pool)
+
+    ordered = sorted(
+        pool,
+        key=lambda c: _tower_discard_sort_key(c, suit_counts, preserve_solo_suit=preserve_solo),
+    )
+    return [str(c.get("card_id") or "") for c in ordered if c.get("card_id")]
+
+
 def _tower_discard_sort_key(
     card: dict,
     suit_counts: dict[str, int],
@@ -1461,31 +1532,15 @@ def _tower_discard_sort_key(
 
 
 def rank_tower_moves(*, computer_hand: list[dict], difficulty: str) -> list[EffectMove]:
-    cards = [c for c in computer_hand if c.get("card_id")]
-    if not cards:
+    tier_ids = _tower_discard_tier_ids(computer_hand, difficulty)
+    if not tier_ids:
         return []
-    suit_counts: dict[str, int] = {}
-    for card in cards:
-        suit = normalize_card_suit(card)
-        suit_counts[suit] = suit_counts.get(suit, 0) + 1
-
-    preserve_solo = _tower_discard_preserve_solo_suit(cards, suit_counts)
-
-    pool = list(cards)
-    if difficulty == "easy":
-        random.shuffle(pool)
-
-    ranked = sorted(
-        pool,
-        key=lambda c: _tower_discard_sort_key(c, suit_counts, preserve_solo_suit=preserve_solo),
-    )
     return [
         EffectMove(
             effect_type="tower_discard",
-            target_card_id=str(c.get("card_id") or ""),
-            target_card_ids=(str(c.get("card_id") or ""),),
+            target_card_id=tier_ids[0],
+            target_card_ids=tuple(tier_ids),
         )
-        for c in ranked
     ]
 
 

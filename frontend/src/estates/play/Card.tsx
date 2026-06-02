@@ -199,6 +199,7 @@ function TowerDiscardToggle({ choice }: { choice: CardTowerDiscardChoice }) {
   const discard = choice.mode === "discard";
   const className = [
     "estates-scoring-target",
+    "estates-scoring-target--tower-discard",
     discard ? "estates-scoring-target--discard" : "estates-scoring-target--keep",
   ]
     .filter(Boolean)

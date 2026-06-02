@@ -174,6 +174,10 @@ export function getBreadcrumbItems(
     return [HOME, { label: "Quotes" }];
   }
 
+  if (p === "/goals" || p.startsWith("/goals/")) {
+    return [HOME, { label: "Goal-Getter" }];
+  }
+
   if (p === "/profile") {
     if (sp.get("tab") === "friends") {
       return [HOME, { label: "Profile", to: "/profile" }, { label: "Friends" }];

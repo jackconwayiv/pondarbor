@@ -77,6 +77,13 @@ const QUOTES: AppNavItem = {
   blurb: "Archive of user-recorded quotes.",
 };
 
+export const GOALS_APP: AppNavItem = {
+  to: "/goals",
+  emoji: "🏅",
+  label: "Goal-Getter",
+  blurb: "Private goals, checkpoints, and check-ins.",
+};
+
 const ZODIAC: AppNavItem = {
   to: "/zodiac",
   emoji: "🌞",
@@ -100,14 +107,6 @@ const FAMILY_TREE: AppNavItem = {
   blurb: "Your people and how they relate to you.",
 };
 
-const FRIENDS: AppNavItem = {
-  to: "/profile?tab=friends",
-  /** Friends tab on Profile. */
-  emoji: "👥",
-  label: "Friends",
-  blurb: "Find and browse your friends.",
-};
-
 const PROFILE: AppNavItem = {
   to: "/profile",
   /** Matches `ProfilePage` h1 default tab. */
@@ -120,10 +119,10 @@ const PROFILE: AppNavItem = {
 export const APP_HOME_APPS: AppNavItem[] = [
   SONGADAY,
   CALENDAR,
-  FRIENDS,
   PROFILE,
   CLOSET,
   QUOTES,
+  GOALS_APP,
   ZODIAC,
   FAMILY_TREE,
   MEAL,
@@ -134,9 +133,9 @@ export const APP_HOME_APPS: AppNavItem[] = [
 export const APP_DESKTOP_NAV: AppNavItem[] = [
   SONGADAY,
   CALENDAR,
-  FRIENDS,
   CLOSET,
   QUOTES,
+  GOALS_APP,
   ZODIAC,
   FAMILY_TREE,
   MEAL,

@@ -1,0 +1,70 @@
+@keyframes goal-patch-gold-shine-sweep {
+  0%,
+  72%,
+  100% {
+    transform: translateX(-130%) rotate(22deg);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  18% {
+    transform: translateX(130%) rotate(22deg);
+    opacity: 0;
+  }
+}
+
+/* Earned gold badges — static gradient + looping shine. */
+.goal-patch-gold-shimmer {
+  background: linear-gradient(
+    180deg,
+    #fdf0c8 0%,
+    #f0d878 24%,
+    #ddb830 58%,
+    #c9a227 100%
+  ) !important;
+  border: 1px solid #a67c00 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    0 2px 6px rgba(166, 124, 0, 0.28);
+}
+
+.goal-patch-gold-shimmer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+  background: linear-gradient(
+    108deg,
+    transparent 32%,
+    rgba(255, 255, 255, 0.42) 46%,
+    rgba(255, 255, 255, 0.12) 54%,
+    transparent 68%
+  );
+}
+
+.goal-patch-gold-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: -35%;
+  pointer-events: none;
+  z-index: 2;
+  background: linear-gradient(
+    105deg,
+    transparent 38%,
+    rgba(255, 248, 220, 0.25) 44%,
+    rgba(255, 215, 100, 0.92) 50%,
+    rgba(255, 248, 220, 0.25) 56%,
+    transparent 62%
+  );
+  animation: goal-patch-gold-shine-sweep 4.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .goal-patch-gold-shimmer::after {
+    animation: none;
+    opacity: 0;
+  }
+}

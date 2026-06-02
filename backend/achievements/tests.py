@@ -41,8 +41,13 @@ from achievements.services import (
     evaluate_schedule_coordinator_for_user,
     evaluate_whatif_dece_proposer_for_user,
     evaluate_whatif_warrior_for_user,
+    SLUG_GOALS_CHECKPOINT_CHARLIE,
+    SLUG_GOALS_MARATHON_MONTH,
+    SLUG_GOALS_STREAK_WEEK,
+    SLUG_GOALS_TRI_GOAL_ATHLON,
+    evaluate_goals_achievements_for_user,
 )
-from datetime import date
+from datetime import date, timedelta
 
 from calendars.models import CalendarSource
 from calendars.services import SyncResult
@@ -949,5 +954,132 @@ class ScheduleCoordinatorAchievementTests(CalendarTestMixin, TestCase):
         self.assertTrue(
             UserAchievement.objects.filter(
                 user=self.alice, achievement__slug=SLUG_SCHEDULE_COORDINATOR
+            ).exists()
+        )
+
+
+class GoalsAchievementTests(TestCase):
+    def setUp(self):
+        for slug, title, order in (
+            (SLUG_GOALS_TRI_GOAL_ATHLON, "Tri-Goal-Athlon", 230),
+            (SLUG_GOALS_STREAK_WEEK, "Streak Week", 231),
+            (SLUG_GOALS_MARATHON_MONTH, "Marathon Month", 232),
+            (SLUG_GOALS_CHECKPOINT_CHARLIE, "Checkpoint Charlie", 233),
+        ):
+            AchievementDefinition.objects.get_or_create(
+                slug=slug,
+                defaults={
+                    "title": title,
+                    "description": "",
+                    "category": "goals",
+                    "order": order,
+                },
+            )
+        self.user = User.objects.create_user(email="goals-ach@example.com", password="secret12345")
+        self.user.account_status = User.AccountStatus.APPROVED
+        self.user.save(update_fields=["account_status"])
+
+    def test_tri_goal_athlon_requires_three_active(self):
+        from goals.models import Goal
+
+        for i in range(2):
+            Goal.objects.create(
+                owner_user=self.user,
+                title=f"Goal {i}",
+                kind=Goal.Kind.CONTINUOUS,
+                status=Goal.Status.ACTIVE,
+            )
+        evaluate_goals_achievements_for_user(self.user.id)
+        self.assertFalse(
+            UserAchievement.objects.filter(
+                user=self.user, achievement__slug=SLUG_GOALS_TRI_GOAL_ATHLON
+            ).exists()
+        )
+        Goal.objects.create(
+            owner_user=self.user,
+            title="Third",
+            kind=Goal.Kind.CONTINUOUS,
+            status=Goal.Status.ACTIVE,
+        )
+        evaluate_goals_achievements_for_user(self.user.id)
+        self.assertTrue(
+            UserAchievement.objects.filter(
+                user=self.user, achievement__slug=SLUG_GOALS_TRI_GOAL_ATHLON
+            ).exists()
+        )
+
+    def test_tri_goal_athlon_excludes_paused(self):
+        from goals.models import Goal
+
+        for i in range(2):
+            Goal.objects.create(
+                owner_user=self.user,
+                title=f"Active {i}",
+                kind=Goal.Kind.CONTINUOUS,
+                status=Goal.Status.ACTIVE,
+            )
+        Goal.objects.create(
+            owner_user=self.user,
+            title="Paused",
+            kind=Goal.Kind.CONTINUOUS,
+            status=Goal.Status.PAUSED,
+        )
+        evaluate_goals_achievements_for_user(self.user.id)
+        self.assertFalse(
+            UserAchievement.objects.filter(
+                user=self.user, achievement__slug=SLUG_GOALS_TRI_GOAL_ATHLON
+            ).exists()
+        )
+
+    def test_streak_week_unlocks_at_seven_day_streak(self):
+        from goals.models import CheckIn, Goal
+
+        goal = Goal.objects.create(
+            owner_user=self.user,
+            title="Daily habit",
+            kind=Goal.Kind.CONTINUOUS,
+            frequency_kind=Goal.FrequencyKind.DAILY,
+            status=Goal.Status.ACTIVE,
+        )
+        now = timezone.now()
+        for day in range(7):
+            CheckIn.objects.create(
+                goal=goal,
+                owner_user_id=self.user.id,
+                occurred_at=now - timedelta(days=day),
+            )
+        evaluate_goals_achievements_for_user(self.user.id)
+        self.assertTrue(
+            UserAchievement.objects.filter(
+                user=self.user, achievement__slug=SLUG_GOALS_STREAK_WEEK
+            ).exists()
+        )
+        self.assertFalse(
+            UserAchievement.objects.filter(
+                user=self.user, achievement__slug=SLUG_GOALS_MARATHON_MONTH
+            ).exists()
+        )
+
+    def test_checkpoint_charlie_requires_ten_completed(self):
+        from goals.models import Checkpoint, Goal
+
+        goal = Goal.objects.create(
+            owner_user=self.user,
+            title="Project",
+            kind=Goal.Kind.ONE_TIME,
+            status=Goal.Status.ACTIVE,
+        )
+        now = timezone.now()
+        for i in range(10):
+            Checkpoint.objects.create(
+                goal=goal,
+                title=f"Step {i}",
+                sort_order=i,
+                completed_at=now,
+            )
+        evaluate_goals_achievements_for_user(self.user.id)
+        self.assertTrue(
+            UserAchievement.objects.filter(
+                user=self.user, achievement__slug=SLUG_GOALS_CHECKPOINT_CHARLIE
             ).exists()
         )

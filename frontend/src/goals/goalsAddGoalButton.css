@@ -1,0 +1,51 @@
+/* Static shiny gold — no animation (badges use the animated variant). */
+.goals-add-goal-btn,
+.goals-mark-complete-btn {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(
+    180deg,
+    #fdf0c8 0%,
+    #f0d878 24%,
+    #ddb830 58%,
+    #c9a227 100%
+  ) !important;
+  border: 1px solid #a67c00 !important;
+  color: #1b3a2f !important;
+  font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    0 2px 6px rgba(166, 124, 0, 0.28);
+}
+
+.goals-add-goal-btn::before,
+.goals-mark-complete-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    108deg,
+    transparent 32%,
+    rgba(255, 255, 255, 0.42) 46%,
+    rgba(255, 255, 255, 0.12) 54%,
+    transparent 68%
+  );
+}
+
+.goals-add-goal-btn:hover,
+.goals-mark-complete-btn:hover {
+  background: linear-gradient(
+    180deg,
+    #fff6dc 0%,
+    #f5e090 24%,
+    #e8c84a 58%,
+    #d4a017 100%
+  ) !important;
+  border: 1px solid #c9a227 !important;
+  color: #1b3a2f !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 4px 10px rgba(166, 124, 0, 0.35);
+}

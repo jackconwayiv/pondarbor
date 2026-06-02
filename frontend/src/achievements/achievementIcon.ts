@@ -45,6 +45,10 @@ const SLUG_TO_EMOJI: Record<string, string> = {
   estates_throned_ya: "👑",
   estates_farmed_ya: "🌾",
   peer_into_the_stars: "\u{1F30C}",
+  goals_tri_goal_athlon: "\u{1F3C5}",
+  goals_streak_week: "\u{1F5D3}\u{FE0F}",
+  goals_marathon_month: "\u{231B}",
+  goals_checkpoint_charlie: "\u{2611}\u{FE0F}",
 };
 
 const DEFAULT_EMOJI = "🏆";

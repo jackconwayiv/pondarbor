@@ -26,6 +26,7 @@ const ActivityCenterPage = lazy(() => import("./activity/ActivityCenterPage"));
 const StaffZodiacPage = lazy(() => import("./staff/StaffZodiacPage"));
 const ClosetPage = lazy(() => import("./closet/ClosetPage"));
 const PeoplePage = lazy(() => import("./people/PeoplePage"));
+const GoalsPage = lazy(() => import("./goals/GoalsPage"));
 const ClosetItemDetailPage = lazy(
   () => import("./closet/ClosetItemDetailPage"),
 );
@@ -314,6 +315,10 @@ export const router = sentryCreateBrowserRouter([
       {
         path: "quotes",
         element: authedRouteElement(lazyRouteElement(<QuotesFeedPage />)),
+      },
+      {
+        path: "goals",
+        element: authedRouteElement(lazyRouteElement(<GoalsPage />)),
       },
       {
         path: "zodiac",

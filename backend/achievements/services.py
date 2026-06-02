@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.utils import timezone
 
 from closet.models import Item
 from quotes.models import Quote
@@ -147,6 +148,10 @@ SLUG_ESTATES_PEASANT = "estates_peasant"
 SLUG_ESTATES_THRONED_YA = "estates_throned_ya"
 SLUG_ESTATES_FARMED_YA = "estates_farmed_ya"
 SLUG_PEER_INTO_THE_STARS = "peer_into_the_stars"
+SLUG_GOALS_TRI_GOAL_ATHLON = "goals_tri_goal_athlon"
+SLUG_GOALS_STREAK_WEEK = "goals_streak_week"
+SLUG_GOALS_MARATHON_MONTH = "goals_marathon_month"
+SLUG_GOALS_CHECKPOINT_CHARLIE = "goals_checkpoint_charlie"
 
 ARCHIVIST_MIN_QUOTES = 10
 FAMILIAL_ARBORIST_MIN_PEOPLE = 10
@@ -164,6 +169,10 @@ ESTATES_ZONE_BADGE_MIN_WINS = 50
 ESTATES_ROYAL_MIN_PVP_WINS = 5
 ESTATES_NOBLE_MIN_GAMES = 10
 ESTATES_PEASANT_MIN_SOLO_WINS = 5
+GOALS_TRI_GOAL_ATHLON_MIN_ACTIVE = 3
+GOALS_STREAK_WEEK_MIN_BEST = 7
+GOALS_MARATHON_MONTH_MIN_BEST = 30
+GOALS_CHECKPOINT_CHARLIE_MIN_COMPLETED = 10
 
 
 def _filled_meal_instance_slot_count(instance_id: int) -> int:
@@ -449,6 +458,70 @@ def evaluate_whatif_dece_proposer_for_user(user_id: int) -> None:
         _try_unlock(user_id, SLUG_WHATIF_DECE_PROPOSER)
 
 
+def _goals_max_streak_best_for_user(user_id: int) -> int:
+    """Best consecutive period streak across the user's ongoing goals."""
+    from datetime import timedelta
+
+    from goals.models import CheckIn, Goal
+    from goals.stats import compute_goal_stats
+    from users.models import Profile
+
+    profile = Profile.objects.filter(user_id=user_id).first()
+    goals = Goal.objects.filter(
+        owner_user_id=user_id,
+        kind=Goal.Kind.CONTINUOUS,
+    ).prefetch_related("checkpoints")
+    if not goals:
+        return 0
+    since = timezone.now() - timedelta(days=400)
+    goal_ids = [g.id for g in goals]
+    rows = CheckIn.objects.filter(
+        goal_id__in=goal_ids,
+        owner_user_id=user_id,
+        occurred_at__gte=since,
+    ).values_list("goal_id", "occurred_at", "checkpoint_id")
+    by_goal: dict = {}
+    for gid, occurred_at, cp_id in rows:
+        by_goal.setdefault(gid, []).append((occurred_at, cp_id))
+
+    best = 0
+    for goal in goals:
+        occ = by_goal.get(goal.id, [])
+        cp_times = [cp.completed_at for cp in goal.checkpoints.all() if cp.completed_at]
+        stats = compute_goal_stats(goal, occ, cp_times, profile)
+        best = max(best, stats.streak_best)
+    return best
+
+
+def evaluate_goals_achievements_for_user(user_id: int) -> None:
+    """Goal-Getter badges (sticky unlocks via UserAchievement.get_or_create)."""
+    from goals.models import Checkpoint, Goal
+
+    active_count = Goal.objects.filter(
+        owner_user_id=user_id,
+        status=Goal.Status.ACTIVE,
+    ).count()
+    if active_count >= GOALS_TRI_GOAL_ATHLON_MIN_ACTIVE:
+        _try_unlock(user_id, SLUG_GOALS_TRI_GOAL_ATHLON, context={"active_goals": active_count})
+
+    max_streak = _goals_max_streak_best_for_user(user_id)
+    if max_streak >= GOALS_STREAK_WEEK_MIN_BEST:
+        _try_unlock(user_id, SLUG_GOALS_STREAK_WEEK, context={"streak_best": max_streak})
+    if max_streak >= GOALS_MARATHON_MONTH_MIN_BEST:
+        _try_unlock(user_id, SLUG_GOALS_MARATHON_MONTH, context={"streak_best": max_streak})
+
+    completed_checkpoints = Checkpoint.objects.filter(
+        goal__owner_user_id=user_id,
+        completed_at__isnull=False,
+    ).count()
+    if completed_checkpoints >= GOALS_CHECKPOINT_CHARLIE_MIN_COMPLETED:
+        _try_unlock(
+            user_id,
+            SLUG_GOALS_CHECKPOINT_CHARLIE,
+            context={"completed_checkpoints": completed_checkpoints},
+        )
+
+
 def evaluate_estates_achievements_for_user(user_id: int) -> None:
     from estates.models import EstatesUserStats
 
@@ -572,6 +645,7 @@ def backfill_all_achievements() -> None:
         evaluate_songaday_music_lover_for_user(uid)
         evaluate_songaday_musically_multiloquent_for_user(uid)
         evaluate_zodiac_peer_into_stars_for_user(uid)
+        evaluate_goals_achievements_for_user(uid)
 
     for row in ClickerGameSave.objects.iterator():
         evaluate_pondclicker_achievements_for_user(row.user_id, row.state or {})

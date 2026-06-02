@@ -118,6 +118,7 @@ INSTALLED_APPS = [
     "zodiac.apps.ZodiacConfig",
     "people.apps.PeopleConfig",
     "estates.apps.EstatesConfig",
+    "goals.apps.GoalsConfig",
     # allauth
     "allauth",
     "allauth.account",

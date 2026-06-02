@@ -58,10 +58,10 @@ function HomeAppNavList({
   const HOME_APP_ORDER: Record<string, number> = {
     "/songaday": 0,
     "/calendar": 1,
-    "/profile?tab=friends": 2,
-    "/profile": 3,
-    "/closet": 4,
-    "/quotes": 5,
+    "/profile": 2,
+    "/closet": 3,
+    "/quotes": 4,
+    "/goals": 5,
     "/zodiac": 6,
     "/people": 7,
     "/meal": 8,
@@ -73,7 +73,6 @@ function HomeAppNavList({
   };
   // Home-grid-only label overrides; nav/hamburger keep the canonical labels.
   const HOME_APP_LABEL_OVERRIDES: Record<string, string> = {
-    "/profile?tab=friends": "My Friends",
     "/profile": "My Profile",
   };
   const orderedItems = [...items].sort((a, b) => {

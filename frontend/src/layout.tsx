@@ -203,6 +203,8 @@ function isDesktopNavRouteActive(
       return pathname === "/calendar" || pathname.startsWith("/calendar/");
     case "/meal":
       return pathname === "/meal" || pathname.startsWith("/meal/");
+    case "/scorenado":
+      return pathname === "/scorenado" || pathname.startsWith("/scorenado/");
     case "/clicker":
       return pathname === "/clicker" || pathname.startsWith("/clicker/");
     case "/whatif":
@@ -244,9 +246,15 @@ export default function AppLayout() {
   const showProfileNav = isAuthenticated && !!auth0User;
   const isApproved = !!sessionUser?.user?.is_approved;
   const canAccessMealMaestro = showProfileNav && isApproved;
+  const canAccessScorenado = showProfileNav && isApproved;
   const authedNavEntries = useMemo(
-    () => APP_DESKTOP_NAV.filter((item) => item.to !== "/meal" || canAccessMealMaestro),
-    [canAccessMealMaestro],
+    () =>
+      APP_DESKTOP_NAV.filter((item) => {
+        if (item.to === "/meal") return canAccessMealMaestro;
+        if (item.to === "/scorenado") return canAccessScorenado;
+        return true;
+      }),
+    [canAccessMealMaestro, canAccessScorenado],
   );
   const desktopNavEntries = useMemo(
     () => (showProfileNav ? authedNavEntries : guestHamburgerNavItems()),
@@ -270,6 +278,9 @@ export default function AppLayout() {
   const isWhatIfPlayOrHandRoute =
     location.pathname.startsWith("/whatif/play/") ||
     location.pathname.startsWith("/whatif/hand/");
+  const isScorenadoGameRoute = /^\/scorenado\/game\/[^/]+$/.test(
+    location.pathname,
+  );
   const squallsInGame = useSyncExternalStore(
     subscribeSquallsInGame,
     getSquallsInGame,
@@ -750,6 +761,7 @@ export default function AppLayout() {
               isPondsteadRoute ||
               isEstatesPlayRoute ||
               isClickerPlayRoute ||
+              isScorenadoGameRoute ||
               hideSquallsBreadcrumbs
             ? { p: 0, bg: "transparent" }
             : {
@@ -773,6 +785,7 @@ export default function AppLayout() {
           isHarborRoute ||
           isPondsteadRoute ||
           isEstatesPlayRoute ||
+          isScorenadoGameRoute ||
           hideSquallsBreadcrumbs
             ? { p: 0 }
             : {

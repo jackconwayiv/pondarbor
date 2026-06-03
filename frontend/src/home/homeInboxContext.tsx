@@ -19,6 +19,8 @@ import {
 } from "../achievements/achievementInboxNotice";
 import { fetchClosetActionSummary } from "../closet/api";
 import { fetchFriendsList } from "../friends/api";
+import { fetchPendingSeatInvites } from "../scorenado/api";
+import type { ScorenadoSeatInvite } from "../scorenado/types";
 import {
   fetchStaffPendingSummary,
   markAchievementInboxRead,
@@ -107,6 +109,7 @@ type InboxDataSnapshot = {
   staffPendingSummary: StaffPendingSummary | null;
   pendingFriendCount: number;
   closetOutstandingActions: number;
+  scorenadoSeatInvites: ScorenadoSeatInvite[];
 };
 
 function deriveHomeInbox(
@@ -226,6 +229,7 @@ type InboxContextValue = {
   inboxInitialSyncComplete: boolean;
   homePrompts: HomePrompt[];
   homeNoticeItems: HomeNoticeItem[];
+  scorenadoSeatInvites: ScorenadoSeatInvite[];
   unreadCount: number;
   refreshInbox: () => Promise<string[] | null>;
   isInboxItemRead: (id: string) => boolean;
@@ -252,6 +256,9 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
     useState<StaffPendingSummary | null>(null);
   const [pendingFriendCount, setPendingFriendCount] = useState(0);
   const [closetOutstandingActions, setClosetOutstandingActions] = useState(0);
+  const [scorenadoSeatInvites, setScorenadoSeatInvites] = useState<
+    ScorenadoSeatInvite[]
+  >([]);
   const [inboxStatus, setInboxStatus] = useState<
     "idle" | "loading" | "error"
   >("idle");
@@ -355,18 +362,32 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
           }
         });
 
+      const loadScorenadoInvites =
+        approved &&
+        (async () => {
+          try {
+            return await fetchPendingSeatInvites(token);
+          } catch {
+            return [] as ScorenadoSeatInvite[];
+          }
+        });
+
       try {
-        const [b, s, f, c] = await Promise.all([
+        const [b, s, f, c, si] = await Promise.all([
           loadBirthdays ? loadBirthdays() : Promise.resolve([] as UpcomingBirthday[]),
           loadStaff ? loadStaff() : Promise.resolve(null as StaffPendingSummary | null),
           loadFriends ? loadFriends() : Promise.resolve(0),
           loadCloset ? loadCloset() : Promise.resolve(0),
+          loadScorenadoInvites
+            ? loadScorenadoInvites()
+            : Promise.resolve([] as ScorenadoSeatInvite[]),
         ]);
         if (!isAuthenticated) return null;
         setUpcomingBirthdays(b);
         setStaffPendingSummary(s);
         setPendingFriendCount(f);
         setClosetOutstandingActions(c);
+        setScorenadoSeatInvites(si);
         setInboxStatus("idle");
         setInboxInitialSyncComplete(true);
         lastSuccessfulInboxRefreshAt.current = Date.now();
@@ -375,11 +396,13 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
           staffPendingSummary: s,
           pendingFriendCount: f,
           closetOutstandingActions: c,
+          scorenadoSeatInvites: si,
         };
         const derived = deriveHomeInbox(su, snap);
         return [
           ...derived.homePrompts.map((p) => p.id),
           ...derived.homeNoticeItems.map((n) => n.id),
+          ...si.map((inv) => `scorenado-seat-invite-${inv.player_id}`),
         ];
       } catch (err) {
         setInboxError(
@@ -418,6 +441,7 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
         setClosetOutstandingActions(
           bootstrapInboxSnapshot.closetOutstandingActions,
         );
+        setScorenadoSeatInvites(bootstrapInboxSnapshot.scorenadoSeatInvites);
         setInboxStatus("idle");
         setInboxError(null);
         setInboxInitialSyncComplete(true);
@@ -448,6 +472,7 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
       setClosetOutstandingActions(
         bootstrapInboxSnapshot.closetOutstandingActions,
       );
+      setScorenadoSeatInvites(bootstrapInboxSnapshot.scorenadoSeatInvites);
       setInboxStatus("idle");
       setInboxInitialSyncComplete(true);
       lastSuccessfulInboxRefreshAt.current = bootstrapInboxFetchedAt;
@@ -504,6 +529,7 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
       staffPendingSummary,
       pendingFriendCount,
       closetOutstandingActions,
+      scorenadoSeatInvites,
     });
     const achievementReadIds = new Set<string>();
     for (const slug of achievementReadSlugs) {
@@ -527,6 +553,7 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
     staffPendingSummary,
     pendingFriendCount,
     closetOutstandingActions,
+    scorenadoSeatInvites,
     readIds,
     achievementReadSlugs,
   ]);
@@ -536,6 +563,7 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
     const ids = [
       ...homePrompts.map((p) => p.id),
       ...homeNoticeItems.map((n) => n.id),
+      ...scorenadoSeatInvites.map((inv) => `scorenado-seat-invite-${inv.player_id}`),
     ];
     const achievementReadIds = new Set<string>();
     for (const slug of achievementReadSlugs) {
@@ -544,7 +572,7 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
     const effectiveRead = new Set<string>(readIds);
     for (const id of achievementReadIds) effectiveRead.add(id);
     return ids.filter((id) => !effectiveRead.has(id)).length;
-  }, [userId, homePrompts, homeNoticeItems, readIds, achievementReadSlugs]);
+  }, [userId, homePrompts, homeNoticeItems, scorenadoSeatInvites, readIds, achievementReadSlugs]);
 
   const isInboxItemRead = useCallback(
     (id: string) => {
@@ -604,6 +632,7 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
       inboxInitialSyncComplete,
       homePrompts,
       homeNoticeItems,
+      scorenadoSeatInvites,
       unreadCount,
       refreshInbox,
       isInboxItemRead,
@@ -620,6 +649,7 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
       inboxInitialSyncComplete,
       homePrompts,
       homeNoticeItems,
+      scorenadoSeatInvites,
       unreadCount,
       refreshInbox,
       isInboxItemRead,

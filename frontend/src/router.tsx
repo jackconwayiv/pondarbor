@@ -26,6 +26,16 @@ const StaffZodiacPage = lazy(() => import("./staff/StaffZodiacPage"));
 const ClosetPage = lazy(() => import("./closet/ClosetPage"));
 const PeoplePage = lazy(() => import("./people/PeoplePage"));
 const GoalsPage = lazy(() => import("./goals/GoalsPage"));
+const ScorenadoLayout = lazy(() => import("./scorenado/ScorenadoLayout"));
+const ScorenadoPlayPage = lazy(() => import("./scorenado/ScorenadoPlayPage"));
+const ScorenadoTemplatesPage = lazy(() => import("./scorenado/ScorenadoTemplatesPage"));
+const ScorenadoTemplateEditRedirect = lazy(
+  () => import("./scorenado/ScorenadoTemplateEditRedirect"),
+);
+const ScorenadoHistoryPage = lazy(() => import("./scorenado/ScorenadoHistoryPage"));
+const ScorenadoScoreboardPage = lazy(
+  () => import("./scorenado/ScorenadoScoreboardPage"),
+);
 const ClosetItemDetailPage = lazy(
   () => import("./closet/ClosetItemDetailPage"),
 );
@@ -321,6 +331,35 @@ export const router = sentryCreateBrowserRouter([
       {
         path: "goals",
         element: authedRouteElement(lazyRouteElement(<GoalsPage />)),
+      },
+      {
+        path: "scorenado",
+        element: authedRouteElement(lazyRouteElement(<ScorenadoLayout />)),
+        children: [
+          { index: true, element: lazyRouteElement(<ScorenadoPlayPage />) },
+          {
+            path: "templates",
+            element: lazyRouteElement(<ScorenadoTemplatesPage />),
+          },
+          {
+            path: "templates/new",
+            element: lazyRouteElement(
+              <Navigate to="/scorenado/templates?new=1" replace />,
+            ),
+          },
+          {
+            path: "templates/:templateId/edit",
+            element: lazyRouteElement(<ScorenadoTemplateEditRedirect />),
+          },
+          {
+            path: "history",
+            element: lazyRouteElement(<ScorenadoHistoryPage />),
+          },
+          {
+            path: "game/:gameId",
+            element: lazyRouteElement(<ScorenadoScoreboardPage />),
+          },
+        ],
       },
       {
         path: "zodiac",

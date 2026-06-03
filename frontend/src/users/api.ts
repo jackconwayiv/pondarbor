@@ -206,6 +206,13 @@ export type ApiBootstrapInboxResponse = {
   upcoming_birthdays: UpcomingBirthday[];
   staff_pending_summary: StaffPendingSummary | null;
   pending_friend_count: number;
+  pending_scorenado_seat_invites?: Array<{
+    player_id: string;
+    game_id: string;
+    game_title: string;
+    slot_display_name: string;
+    owner_label: string;
+  }>;
   closet: { outstanding_actions_count: number };
 };
 
@@ -215,6 +222,7 @@ export type BootstrapInboxSnapshot = {
   staffPendingSummary: StaffPendingSummary | null;
   pendingFriendCount: number;
   closetOutstandingActions: number;
+  scorenadoSeatInvites: import("../scorenado/types").ScorenadoSeatInvite[];
 };
 
 export function mapApiBootstrapInbox(
@@ -225,6 +233,7 @@ export function mapApiBootstrapInbox(
     staffPendingSummary: inbox.staff_pending_summary ?? null,
     pendingFriendCount: inbox.pending_friend_count ?? 0,
     closetOutstandingActions: inbox.closet?.outstanding_actions_count ?? 0,
+    scorenadoSeatInvites: inbox.pending_scorenado_seat_invites ?? [],
   };
 }
 

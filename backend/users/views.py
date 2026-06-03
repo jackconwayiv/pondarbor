@@ -228,10 +228,12 @@ def inbox_bootstrap_payload(request):
         upcoming = UpcomingBirthdaySerializer(raw_birthdays, many=True).data
         # Deferred import: closet views pull many models; keep users.views import graph light.
         from closet.views import _closet_action_summary_payload
+        from scorenado.inbox import pending_seat_invites_payload
 
         return {
             "upcoming_birthdays": upcoming,
             "pending_friend_count": _pending_incoming_friend_request_count(user),
+            "pending_scorenado_seat_invites": pending_seat_invites_payload(user=user),
             "closet": _closet_action_summary_payload(user),
             "staff_pending_summary": _staff_pending_summary_payload()
             if user.is_staff
@@ -241,6 +243,7 @@ def inbox_bootstrap_payload(request):
     return {
         "upcoming_birthdays": [],
         "pending_friend_count": 0,
+        "pending_scorenado_seat_invites": [],
         "closet": {"outstanding_actions_count": 0},
         "staff_pending_summary": _staff_pending_summary_payload()
         if user.is_staff

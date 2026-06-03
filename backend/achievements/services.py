@@ -152,6 +152,10 @@ SLUG_GOALS_TRI_GOAL_ATHLON = "goals_tri_goal_athlon"
 SLUG_GOALS_STREAK_WEEK = "goals_streak_week"
 SLUG_GOALS_MARATHON_MONTH = "goals_marathon_month"
 SLUG_GOALS_CHECKPOINT_CHARLIE = "goals_checkpoint_charlie"
+SLUG_SCORENADO_GAME_PLAYER = "scorenado_game_player"
+SLUG_SCORENADO_HAT_TRICK = "scorenado_hat_trick"
+SLUG_SCORENADO_DROSSELMEYER = "scorenado_drosselmeyer"
+SLUG_SCORENADO_SCOREKEEPER = "scorenado_scorekeeper"
 
 ARCHIVIST_MIN_QUOTES = 10
 FAMILIAL_ARBORIST_MIN_PEOPLE = 10
@@ -173,6 +177,9 @@ GOALS_TRI_GOAL_ATHLON_MIN_ACTIVE = 3
 GOALS_STREAK_WEEK_MIN_BEST = 7
 GOALS_MARATHON_MONTH_MIN_BEST = 30
 GOALS_CHECKPOINT_CHARLIE_MIN_COMPLETED = 10
+SCORENADO_HAT_TRICK_MIN_WINS = 3
+SCORENADO_DROSSELMEYER_MIN_PUBLISHED = 3
+SCORENADO_SCOREKEEPER_MIN_GAMES = 5
 
 
 def _filled_meal_instance_slot_count(instance_id: int) -> int:
@@ -522,6 +529,128 @@ def evaluate_goals_achievements_for_user(user_id: int) -> None:
         )
 
 
+def _scorenado_user_accepted_invite_on_seat(player, user_id: int) -> bool:
+    from scorenado.models import GamePlayer
+
+    return (
+        player.claimed_user_id == user_id
+        and player.invited_user_id == user_id
+        and player.invite_status == GamePlayer.INVITE_ACCEPTED
+    )
+
+
+def _scorenado_count_finalized_invite_acceptances(user_id: int) -> int:
+    from scorenado.models import GamePlayer
+
+    return GamePlayer.objects.filter(
+        claimed_user_id=user_id,
+        invited_user_id=user_id,
+        invite_status=GamePlayer.INVITE_ACCEPTED,
+        game__is_finalized=True,
+    ).count()
+
+
+def _scorenado_count_finalized_invite_wins(user_id: int) -> int:
+    from scorenado.models import Game, GamePlayer
+    from scorenado.services import player_totals_from_score_rows, winner_player_ids
+
+    wins = 0
+    game_ids = (
+        GamePlayer.objects.filter(
+            claimed_user_id=user_id,
+            invited_user_id=user_id,
+            invite_status=GamePlayer.INVITE_ACCEPTED,
+            game__is_finalized=True,
+        )
+        .values_list("game_id", flat=True)
+        .distinct()
+    )
+    for game in Game.objects.filter(pk__in=game_ids).prefetch_related("players", "categories"):
+        players = list(game.players.all())
+        if not any(_scorenado_user_accepted_invite_on_seat(p, user_id) for p in players):
+            continue
+        categories = list(game.categories.all())
+        totals = player_totals_from_score_rows(game, categories=categories)
+        winner_ids = winner_player_ids(game, players=players, totals=totals)
+        for pid in winner_ids:
+            player = next((p for p in players if str(p.id) == pid), None)
+            if player and player.claimed_user_id == user_id:
+                wins += 1
+                break
+    return wins
+
+
+def _scorenado_count_published_templates(user_id: int) -> int:
+    from scorenado.models import ScoreboardTemplate
+
+    return ScoreboardTemplate.objects.filter(
+        owner_user_id=user_id,
+        is_published=True,
+    ).count()
+
+
+def _scorenado_count_finalized_games_with_friends(user_id: int) -> int:
+    from django.db.models import Q
+
+    from scorenado.models import Game
+
+    games = (
+        Game.objects.filter(is_finalized=True)
+        .filter(Q(owner_user_id=user_id) | Q(players__claimed_user_id=user_id))
+        .distinct()
+        .prefetch_related("players")
+    )
+    count = 0
+    for game in games:
+        players = list(game.players.all())
+        participated = game.owner_user_id == user_id or any(
+            p.claimed_user_id == user_id for p in players
+        )
+        if not participated:
+            continue
+        if not any(
+            p.claimed_user_id is not None and p.claimed_user_id != user_id for p in players
+        ):
+            continue
+        count += 1
+    return count
+
+
+def evaluate_scorenado_achievements_for_user(user_id: int) -> None:
+    """Scorenado badges (sticky unlocks). Invite/wins require finalized games."""
+    invite_acceptances = _scorenado_count_finalized_invite_acceptances(user_id)
+    if invite_acceptances >= 1:
+        _try_unlock(
+            user_id,
+            SLUG_SCORENADO_GAME_PLAYER,
+            context={"finalized_invite_acceptances": invite_acceptances},
+        )
+
+    invite_wins = _scorenado_count_finalized_invite_wins(user_id)
+    if invite_wins >= SCORENADO_HAT_TRICK_MIN_WINS:
+        _try_unlock(
+            user_id,
+            SLUG_SCORENADO_HAT_TRICK,
+            context={"finalized_invite_wins": invite_wins},
+        )
+
+    published_templates = _scorenado_count_published_templates(user_id)
+    if published_templates >= SCORENADO_DROSSELMEYER_MIN_PUBLISHED:
+        _try_unlock(
+            user_id,
+            SLUG_SCORENADO_DROSSELMEYER,
+            context={"published_templates": published_templates},
+        )
+
+    friend_games = _scorenado_count_finalized_games_with_friends(user_id)
+    if friend_games >= SCORENADO_SCOREKEEPER_MIN_GAMES:
+        _try_unlock(
+            user_id,
+            SLUG_SCORENADO_SCOREKEEPER,
+            context={"finalized_games_with_friends": friend_games},
+        )
+
+
 def evaluate_estates_achievements_for_user(user_id: int) -> None:
     from estates.models import EstatesUserStats
 
@@ -646,6 +775,7 @@ def backfill_all_achievements() -> None:
         evaluate_songaday_musically_multiloquent_for_user(uid)
         evaluate_zodiac_peer_into_stars_for_user(uid)
         evaluate_goals_achievements_for_user(uid)
+        evaluate_scorenado_achievements_for_user(uid)
 
     for row in ClickerGameSave.objects.iterator():
         evaluate_pondclicker_achievements_for_user(row.user_id, row.state or {})

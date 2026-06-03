@@ -3,8 +3,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { achievementSlugFromInboxId } from "../achievements/achievementInboxNotice";
+import { useAppSession } from "../auth/AppSessionContext";
 import { useHomeInbox } from "../home/homeInboxContext";
 import PondButton from "../PondButton";
+import { acceptSeatInvite, rejectSeatInvite } from "../scorenado/api";
+import {
+  ScorenadoSeatInviteCard,
+  scorenadoSeatInviteInboxId,
+} from "../scorenado/ScorenadoSeatInviteCard";
 import { APP_TEXT_SIZES } from "../theme/typography";
 
 type NotificationRow =
@@ -90,10 +96,13 @@ function NotificationCard({
 
 export default function ActivityCenterPage() {
   const navigate = useNavigate();
+  const { getApiAccessToken } = useAppSession();
   const [refreshing, setRefreshing] = useState(false);
+  const [inviteBusyId, setInviteBusyId] = useState<string | null>(null);
   const {
     homePrompts,
     homeNoticeItems,
+    scorenadoSeatInvites,
     unreadCount,
     inboxStatus,
     inboxError,
@@ -291,6 +300,45 @@ export default function ActivityCenterPage() {
                 }
               />
             ))}
+          </Stack>
+        ) : null}
+
+        {scorenadoSeatInvites.length > 0 ? (
+          <Stack gap="2" w="100%" role="list" aria-label="Scorenado seat invites">
+            {scorenadoSeatInvites.map((invite) => {
+              const id = scorenadoSeatInviteInboxId(invite.player_id);
+              return (
+                <ScorenadoSeatInviteCard
+                  key={invite.player_id}
+                  invite={invite}
+                  unread={!isInboxItemRead(id)}
+                  busy={inviteBusyId === invite.player_id}
+                  onAccept={async () => {
+                    setInviteBusyId(invite.player_id);
+                    try {
+                      const token = await getApiAccessToken();
+                      const game = await acceptSeatInvite(token, invite.player_id);
+                      markInboxViewed([id]);
+                      await refreshInbox();
+                      void navigate(`/scorenado/game/${game.id}`);
+                    } finally {
+                      setInviteBusyId(null);
+                    }
+                  }}
+                  onDecline={async () => {
+                    setInviteBusyId(invite.player_id);
+                    try {
+                      const token = await getApiAccessToken();
+                      await rejectSeatInvite(token, invite.player_id);
+                      markInboxViewed([id]);
+                      await refreshInbox();
+                    } finally {
+                      setInviteBusyId(null);
+                    }
+                  }}
+                />
+              );
+            })}
           </Stack>
         ) : null}
       </Stack>

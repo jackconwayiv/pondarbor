@@ -4,14 +4,39 @@ import {
   defineConfig,
   defineRecipe,
   defineSemanticTokens,
+  defineSlotRecipe,
   defineTokens,
 } from "@chakra-ui/react";
+import { tabsAnatomy } from "@chakra-ui/react/anatomy";
+import {
+  APP_SHELL_TAB_SELECTED_FG,
+  APP_SHELL_TAB_TRIGGER_BASE_PROPS,
+} from "./appShellTabs";
 import { BRAND_COLORS, DESIGN } from "./tokens";
 
 /** Heading hierarchy uses size + Caprasimo, not bold weight (merges into default heading recipe). */
 const pondHeadingRecipe = defineRecipe({
   base: {
     fontWeight: "normal",
+  },
+});
+
+/** Closet-style pill triggers for `Tabs.Root variant="plain"` (app shell default). */
+const pondTabsRecipe = defineSlotRecipe({
+  slots: tabsAnatomy.keys(),
+  variants: {
+    variant: {
+      plain: {
+        trigger: {
+          ...APP_SHELL_TAB_TRIGGER_BASE_PROPS,
+          color: "fg",
+          _selected: {
+            bg: "teal.solid",
+            color: APP_SHELL_TAB_SELECTED_FG,
+          },
+        },
+      },
+    },
   },
 });
 
@@ -206,6 +231,9 @@ export const system = createSystem(
       },
       recipes: {
         heading: pondHeadingRecipe,
+      },
+      slotRecipes: {
+        tabs: pondTabsRecipe,
       },
     },
   }),

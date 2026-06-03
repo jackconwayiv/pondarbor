@@ -49,9 +49,12 @@ function HomeAppNavList({
   isApproved: boolean;
   isStaff: boolean;
 }) {
-  const baseItems = APP_HOME_APPS.filter(
-    (item) => item.to !== "/meal" || (isAuthenticated && isApproved),
-  );
+  const baseItems = APP_HOME_APPS.filter((item) => {
+    if (item.to === "/meal" || item.to === "/scorenado") {
+      return isAuthenticated && isApproved;
+    }
+    return true;
+  });
   const gameItems = visibleGameNavItems(isStaff);
   const items = isAuthenticated
     ? [...baseItems, ...gameItems]
@@ -66,11 +69,12 @@ function HomeAppNavList({
     "/zodiac": 6,
     "/people": 7,
     "/meal": 8,
-    "/clicker": 9,
-    "/whatif": 10,
-    "/about": 11,
-    "/estates": 12,
-    "/qff": 13,
+    "/scorenado": 9,
+    "/clicker": 10,
+    "/whatif": 11,
+    "/about": 12,
+    "/estates": 13,
+    "/qff": 14,
   };
   // Home-grid-only label overrides; nav/hamburger keep the canonical labels.
   const HOME_APP_LABEL_OVERRIDES: Record<string, string> = {

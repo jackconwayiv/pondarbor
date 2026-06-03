@@ -178,6 +178,23 @@ export function getBreadcrumbItems(
     return [HOME, { label: "Goal-Getter" }];
   }
 
+  if (p.startsWith("/scorenado")) {
+    const scorenado = { label: "Scorenado", to: "/scorenado" };
+    if (p === "/scorenado") {
+      return [HOME, { label: "Scorenado" }];
+    }
+    if (p === "/scorenado/templates") {
+      return [HOME, scorenado, { label: "Templates" }];
+    }
+    if (p === "/scorenado/history") {
+      return [HOME, scorenado, { label: "History" }];
+    }
+    if (/^\/scorenado\/game\/[^/]+$/.test(p)) {
+      return [HOME, scorenado, { label: "Scoreboard" }];
+    }
+    return [HOME, { label: "Scorenado" }];
+  }
+
   if (p === "/profile") {
     if (sp.get("tab") === "friends") {
       return [HOME, { label: "Profile", to: "/profile" }, { label: "Friends" }];

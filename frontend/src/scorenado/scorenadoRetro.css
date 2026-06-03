@@ -1,0 +1,132 @@
+/* Scorenado retro UI — scoped via .scorenado-retro (legacy Press Start / VT323). */
+
+@import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap");
+
+.scorenado-retro .scorenado-pixel-title {
+  font-family: "Press Start 2P", "Courier New", Courier, monospace;
+  letter-spacing: 0.02em;
+  line-height: 1.6;
+  text-transform: uppercase;
+}
+
+.scorenado-retro .scorenado-pixel-body {
+  font-family: "VT323", "Courier New", Courier, monospace;
+  font-size: 1.25rem;
+  line-height: 1.35;
+}
+
+.scorenado-retro .scorenado-board-wrap {
+  width: 100%;
+  max-width: none;
+}
+
+.scorenado-retro .scorenado-scoreboard-table-wrap {
+  width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
+.scorenado-retro .scorenado-scoreboard-table-wrap table {
+  width: 100%;
+  min-width: min(100%, 20rem);
+}
+
+@media (min-width: 48em) {
+  .scorenado-retro .scorenado-board-wrap {
+    max-width: 72rem;
+    margin-inline: auto;
+  }
+
+  .scorenado-retro .scorenado-scoreboard-table-wrap th,
+  .scorenado-retro .scorenado-scoreboard-table-wrap td {
+    padding-inline: 0.5rem;
+    padding-block: 0.35rem;
+  }
+}
+
+.scorenado-retro .scorenado-scoreboard-table-wrap th,
+.scorenado-retro .scorenado-scoreboard-table-wrap td {
+  padding-inline: 0.25rem;
+  padding-block: 0.2rem;
+  font-size: 1.1rem;
+}
+
+@media (min-width: 48em) {
+  .scorenado-retro .scorenado-scoreboard-table-wrap th,
+  .scorenado-retro .scorenado-scoreboard-table-wrap td {
+    font-size: 1.25rem;
+  }
+}
+
+.scorenado-retro .scorenado-category-label {
+  text-transform: uppercase;
+  font-family: "VT323", "Courier New", Courier, monospace;
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.scorenado-retro .scorenado-round-label,
+.scorenado-retro .scorenado-round-header {
+  font-family: "VT323", "Courier New", Courier, monospace;
+  font-size: 1rem;
+}
+
+.scorenado-retro .scorenado-game-title {
+  cursor: pointer;
+  font-size: clamp(0.65rem, 2.5vw, 0.85rem);
+  margin-bottom: 1rem;
+  text-align: left;
+}
+
+.scorenado-retro .scorenado-category-row-even th,
+.scorenado-retro .scorenado-category-row-even td:first-of-type {
+  background-color: var(--chakra-colors-gray-50, #f7fafc);
+}
+
+.scorenado-retro .scorenado-category-row-odd th,
+.scorenado-retro .scorenado-category-row-odd td:first-of-type {
+  background-color: var(--chakra-colors-gray-100, #edf2f7);
+}
+
+.scorenado-retro .scorenado-score-cell {
+  background-color: white;
+}
+
+.scorenado-retro .scorenado-template-row {
+  border: 2px solid black;
+  border-radius: var(--chakra-radii-2xl, 1rem);
+  box-shadow: var(--chakra-shadows-lg);
+}
+
+.scorenado-retro .scorenado-template-meta {
+  border: 2px solid black;
+  border-radius: var(--chakra-radii-2xl, 1rem);
+  box-shadow: var(--chakra-shadows-md);
+}
+
+/* Readable on saturated template row backgrounds */
+.scorenado-retro .scorenado-stepper-btn {
+  background-color: var(--chakra-colors-white, #fff) !important;
+  border-color: var(--chakra-colors-gray-400, #a0aec0) !important;
+}
+
+.scorenado-retro .scorenado-stepper-btn:hover {
+  background-color: var(--chakra-colors-gray-100, #edf2f7) !important;
+  border-color: var(--chakra-colors-gray-500, #718096) !important;
+}
+
+.scorenado-retro [data-scope="checkbox"] [data-part="control"] {
+  background-color: var(--chakra-colors-white, #fff) !important;
+  border-width: 2px !important;
+  border-color: var(--chakra-colors-gray-500, #718096) !important;
+  box-shadow: inset 0 0 0 1px var(--chakra-colors-gray-200, #e2e8f0);
+}
+
+.scorenado-retro [data-scope="checkbox"][data-state="checked"] [data-part="control"] {
+  background-color: var(--chakra-colors-teal-500, #319795) !important;
+  border-color: var(--chakra-colors-black, #000) !important;
+  box-shadow: none;
+}
+
+.scorenado-retro [data-scope="checkbox"][data-state="checked"] [data-part="indicator"] {
+  color: var(--chakra-colors-white, #fff) !important;
+}

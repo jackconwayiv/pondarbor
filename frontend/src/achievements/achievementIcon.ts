@@ -49,6 +49,10 @@ const SLUG_TO_EMOJI: Record<string, string> = {
   goals_streak_week: "\u{1F5D3}\u{FE0F}",
   goals_marathon_month: "\u{231B}",
   goals_checkpoint_charlie: "\u{2611}\u{FE0F}",
+  scorenado_game_player: "\u{1F0CF}",
+  scorenado_hat_trick: "\u{1F3C6}",
+  scorenado_drosselmeyer: "\u{1F9F8}",
+  scorenado_scorekeeper: "\u{1F3B0}",
 };
 
 const DEFAULT_EMOJI = "🏆";

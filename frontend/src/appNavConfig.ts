@@ -100,6 +100,13 @@ const MEAL: AppNavItem = {
   blurb: "Meal plans and recipes.",
 };
 
+const SCORENADO: AppNavItem = {
+  to: "/scorenado",
+  emoji: "♣️",
+  label: "Scorenado",
+  blurb: "Custom scoreboards and live board-game scoring.",
+};
+
 const FAMILY_TREE: AppNavItem = {
   to: "/people",
   emoji: "🌳",
@@ -126,6 +133,7 @@ export const APP_HOME_APPS: AppNavItem[] = [
   ZODIAC,
   FAMILY_TREE,
   MEAL,
+  SCORENADO,
   ABOUT,
 ];
 
@@ -139,6 +147,7 @@ export const APP_DESKTOP_NAV: AppNavItem[] = [
   ZODIAC,
   FAMILY_TREE,
   MEAL,
+  SCORENADO,
   GAMES,
   ABOUT,
 ];

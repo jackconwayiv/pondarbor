@@ -795,6 +795,7 @@ class InboxBootstrapPayloadTests(TestCase):
         payload = inbox_bootstrap_payload(req)
         self.assertIsInstance(payload["upcoming_birthdays"], list)
         self.assertEqual(payload["pending_friend_count"], 0)
+        self.assertEqual(payload["pending_scorenado_seat_invites"], [])
         self.assertEqual(payload["closet"]["outstanding_actions_count"], 0)
         self.assertIsNone(payload["staff_pending_summary"])
 

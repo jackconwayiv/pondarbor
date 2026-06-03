@@ -1,11 +1,17 @@
 /**
- * App shell tab chrome aligned with Community Closet: pill triggers, bottom border
- * on the list row, teal fill when selected. Selected labels use a light color on
- * teal (not black / not `teal.contrast`).
+ * Default PondArbor tab chrome (Community Closet): pill triggers, bottom border on
+ * the list row, teal fill when selected. Use `AppShellTabs*` components or spread
+ * these props or `appShellTabComponents`; `variant="plain"` on `Tabs.Root` also
+ * picks up trigger styles from `theme/system.ts`.
  */
 import { APP_TRANSITIONS } from "./motion";
 
 export const APP_SHELL_TAB_SELECTED_FG = "white" as const;
+
+/** Spread on route-level / page-level `Tabs.Root` (Closet, Meal, Scorenado, …). */
+export const APP_SHELL_TABS_ROOT_PROPS = {
+  variant: "plain" as const,
+} as const;
 
 const TAB_ON_TEAL = {
   bg: "teal.solid" as const,

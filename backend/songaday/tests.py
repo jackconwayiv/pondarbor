@@ -330,3 +330,100 @@ class SongadayApiTests(TestCase):
             "/api/v1/songaday/day-window/?start_date=2026-01-01&end_date=2026-03-01"
         )
         self.assertEqual(r.status_code, 400)
+
+    def test_playlists_browse_lists_own_month_with_count(self):
+        self.alice_client.post(
+            "/api/v1/songaday/responses/",
+            {
+                "entry_date": "2026-03-01",
+                "prompt_snapshot": "M1",
+                "raw_label": "A",
+            },
+            format="json",
+        )
+        self.alice_client.post(
+            "/api/v1/songaday/responses/",
+            {
+                "entry_date": "2026-03-15",
+                "prompt_snapshot": "M2",
+                "raw_label": "B",
+            },
+            format="json",
+        )
+        r = self.alice_client.get("/api/v1/songaday/playlists/browse/")
+        self.assertEqual(r.status_code, 200)
+        rows = r.json()["results"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["user_id"], self.alice.id)
+        self.assertEqual(rows[0]["year"], 2026)
+        self.assertEqual(rows[0]["month"], 3)
+        self.assertEqual(rows[0]["submission_count"], 2)
+        self.assertTrue(rows[0]["display_name"])
+        self.assertIn("avatar_url", rows[0])
+
+    def test_playlists_month_ordered_ascending_by_entry_date(self):
+        self.alice_client.post(
+            "/api/v1/songaday/responses/",
+            {
+                "entry_date": "2026-03-20",
+                "prompt_snapshot": "Later",
+                "raw_label": "Late",
+            },
+            format="json",
+        )
+        self.alice_client.post(
+            "/api/v1/songaday/responses/",
+            {
+                "entry_date": "2026-03-02",
+                "prompt_snapshot": "Earlier",
+                "raw_label": "Early",
+            },
+            format="json",
+        )
+        r = self.alice_client.get("/api/v1/songaday/playlists/month/?year=2026&month=3")
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["year"], 2026)
+        self.assertEqual(body["month"], 3)
+        self.assertEqual(body["user"]["id"], self.alice.id)
+        results = body["results"]
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0]["raw_label"], "Early")
+        self.assertEqual(results[1]["raw_label"], "Late")
+
+    def test_playlists_month_friend_visible(self):
+        self._accept_pair(self.alice, self.bob)
+        self.bob_client.post(
+            "/api/v1/songaday/responses/",
+            {
+                "entry_date": "2025-10-05",
+                "prompt_snapshot": "Bob Oct",
+                "raw_label": "Bob song",
+            },
+            format="json",
+        )
+        r = self.alice_client.get(
+            f"/api/v1/songaday/playlists/month/?user_id={self.bob.id}&year=2025&month=10"
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(r.json()["results"]), 1)
+        self.assertEqual(r.json()["user"]["id"], self.bob.id)
+
+    def test_playlists_month_private_owner_not_found(self):
+        self._accept_pair(self.alice, self.bob)
+        prof = self.alice.profile
+        prof.songaday_visibility = Profile.SongadayVisibility.PRIVATE
+        prof.save(update_fields=["songaday_visibility"])
+        self.alice_client.post(
+            "/api/v1/songaday/responses/",
+            {
+                "entry_date": "2026-04-12",
+                "prompt_snapshot": "Spring song",
+                "raw_label": "Hidden",
+            },
+            format="json",
+        )
+        r = self.bob_client.get(
+            f"/api/v1/songaday/playlists/month/?user_id={self.alice.id}&year=2026&month=4"
+        )
+        self.assertEqual(r.status_code, 404)

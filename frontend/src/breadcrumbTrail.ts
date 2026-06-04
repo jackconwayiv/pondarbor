@@ -122,6 +122,14 @@ export function getBreadcrumbItems(
         { label: "Archive" },
       ];
     }
+    const monthMatch = /^\/songaday\/month\/(\d{4})\/(\d{1,2})$/.exec(p);
+    if (monthMatch) {
+      return [
+        HOME,
+        { label: "Song-a-Day", to: "/songaday" },
+        { label: "Month" },
+      ];
+    }
     if (p.startsWith("/songaday/entries/")) {
       return [
         HOME,

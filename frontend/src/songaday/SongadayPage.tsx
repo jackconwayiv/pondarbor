@@ -47,7 +47,9 @@ import { parseSongPasteInput } from "./parseSongInput";
 import SongadayCommentChatButton from "./SongadayCommentChatButton";
 import SongadayCommentsPanel from "./SongadayCommentsPanel";
 import SongadayListCard from "./SongadayListCard";
+import SongadayBrowsePlaylistsPanel from "./SongadayBrowsePlaylistsPanel";
 import SongadayMonthArchive from "./SongadayMonthArchive";
+import { useOpenSongadayArchiveFromNav } from "./useSongadayBrowseReturn";
 import SongadaySubmissionEditBlock from "./SongadaySubmissionEditBlock";
 import type {
   ParsedSongFields,
@@ -190,12 +192,13 @@ export default function SongadayPage() {
   );
   const [bulkOpen, setBulkOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archiveMonthKey, setArchiveMonthKey] = useState<string | null>(null);
+  useOpenSongadayArchiveFromNav(setArchiveOpen);
   const [archiveSeed, setArchiveSeed] = useState<{
     rows: SongadayResponse[];
     nextPage: number;
     total: number;
   } | null>(null);
-  const archiveSeedFetched = useRef(false);
   const hasLoadedSongadayShellOnceRef = useRef(false);
 
   const [promptPayload, setPromptPayload] =
@@ -338,7 +341,6 @@ export default function SongadayPage() {
         }
         setPromptErrorByDay((prev) => ({ ...prev, ...cleared }));
         setResponsesErrorByDay((prev) => ({ ...prev, ...cleared }));
-        archiveSeedFetched.current = true;
         setArchiveSeed({
           rows: payload.archive_seed.results,
           nextPage: 2,
@@ -360,7 +362,6 @@ export default function SongadayPage() {
         } catch {
           /* ignore */
         }
-        archiveSeedFetched.current = true;
       }
     })();
     return () => {
@@ -800,13 +801,14 @@ export default function SongadayPage() {
               colorPalette="navy"
               color="navy"
               w="full"
-              aria-label="Song archive"
+              aria-label="Browse playlists"
               visibility={showArchiveToggle ? "visible" : "hidden"}
               pointerEvents={showArchiveToggle ? "auto" : "none"}
               _hover={{ color: "navy" }}
               onClick={() => setArchiveOpen((o) => !o)}
+              title="Browse playlists"
             >
-              ☰
+              ♫
             </PondButton>
           </Stack>
 
@@ -853,9 +855,17 @@ export default function SongadayPage() {
         {showArchiveToggle ? (
           <Collapsible.Root open={archiveOpen} onOpenChange={(d) => setArchiveOpen(d.open)}>
             <Collapsible.Content>
-              <Box mt="3">
+              <Stack gap="4" mt="3">
+                <SongadayBrowsePlaylistsPanel
+                  active={archiveOpen}
+                  getApiAccessToken={getApiAccessToken}
+                  returnPath="/songaday"
+                  activeMonthKey={archiveMonthKey}
+                  onActiveMonthKeyChange={setArchiveMonthKey}
+                />
                 <SongadayMonthArchive
                   open={archiveOpen}
+                  activeMonthKey={archiveMonthKey}
                   getApiAccessToken={getApiAccessToken}
                   archiveUserId={null}
                   seed={archiveSeed}
@@ -870,7 +880,7 @@ export default function SongadayPage() {
                     setArchiveOpen(false);
                   }}
                 />
-              </Box>
+              </Stack>
             </Collapsible.Content>
           </Collapsible.Root>
         ) : null}
@@ -1360,6 +1370,7 @@ export default function SongadayPage() {
           </Collapsible.Content>
         </Collapsible.Root>
       ) : null}
+
     </Stack>
   );
 }

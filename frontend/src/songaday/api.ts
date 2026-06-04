@@ -20,6 +20,8 @@ export function buildResolveRequestBody(
 }
 import type {
   SongadayArchiveListResponse,
+  SongadayPlaylistBrowseRow,
+  SongadayPlaylistMonthResponse,
   SongadayPromptPayload,
   SongadayResponse,
   SongPromptCatalogRow,
@@ -186,6 +188,47 @@ export async function fetchResponsesArchive(
     throw new Error(await parseApiError(response));
   }
   const payload = (await response.json()) as SongadayArchiveListResponse;
+  return {
+    ...payload,
+    results: payload.results.map(normalizeSongResponse),
+  };
+}
+
+export async function fetchPlaylistsBrowse(
+  accessToken: string | null,
+): Promise<{ results: SongadayPlaylistBrowseRow[] }> {
+  const response = await fetch(`${apiBase()}/api/v1/songaday/playlists/browse/`, {
+    method: "GET",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
+  }
+  const payload = (await response.json()) as { results?: SongadayPlaylistBrowseRow[] };
+  return { results: Array.isArray(payload.results) ? payload.results : [] };
+}
+
+export async function fetchPlaylistsMonth(
+  accessToken: string | null,
+  params: { userId: number; year: number; month: number },
+): Promise<SongadayPlaylistMonthResponse> {
+  const q = new URLSearchParams();
+  q.set("user_id", String(params.userId));
+  q.set("year", String(params.year));
+  q.set("month", String(params.month));
+  const response = await fetch(
+    `${apiBase()}/api/v1/songaday/playlists/month/?${q.toString()}`,
+    {
+      method: "GET",
+      headers: authHeaders(accessToken),
+      credentials: "omit",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
+  }
+  const payload = (await response.json()) as SongadayPlaylistMonthResponse;
   return {
     ...payload,
     results: payload.results.map(normalizeSongResponse),

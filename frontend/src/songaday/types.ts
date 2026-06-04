@@ -57,3 +57,19 @@ export type SongadayArchiveListResponse = {
   has_next: boolean;
   has_prev: boolean;
 };
+
+export type SongadayPlaylistBrowseRow = {
+  user_id: number;
+  display_name: string;
+  avatar_url: string;
+  year: number;
+  month: number;
+  submission_count: number;
+};
+
+export type SongadayPlaylistMonthResponse = {
+  user: SongadayUserRow;
+  year: number;
+  month: number;
+  results: SongadayResponse[];
+};

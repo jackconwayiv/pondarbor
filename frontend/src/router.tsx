@@ -47,6 +47,9 @@ const SongadayArchivePage = lazy(
 const SongadayEntryDetailPage = lazy(
   () => import("./songaday/SongadayEntryDetailPage"),
 );
+const SongadayMonthPlayerPage = lazy(
+  () => import("./songaday/SongadayMonthPlayerPage"),
+);
 const ClickerLayout = lazy(() => import("./clicker/ClickerLayout"));
 const ClickerLobbyPage = lazy(() => import("./clicker/ClickerLobbyPage"));
 const ClickerGamePage = lazy(() => import("./clicker/ClickerGamePage"));
@@ -435,6 +438,10 @@ export const router = sentryCreateBrowserRouter([
           {
             path: "archive",
             element: lazyRouteElement(<SongadayArchivePage />),
+          },
+          {
+            path: "month/:year/:month",
+            element: lazyRouteElement(<SongadayMonthPlayerPage />),
           },
           {
             path: "entries/:entryId",

@@ -1,6 +1,5 @@
 import { Box, Button, HStack, Stack, Text } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
 import PondButton from "../PondButton";
 import { PanelEmptyState, PanelListRowSkeleton } from "../components/panelStatus";
 import { APP_TEXT_SIZES, PANEL_ENTRY_CARD_PROPS } from "../theme/typography";
@@ -10,6 +9,8 @@ import type { SongadayResponse } from "./types";
 
 type Props = {
   open: boolean;
+  /** `YYYY-MM`, synced with Friends' Playlists month navigation. */
+  activeMonthKey: string | null;
   getApiAccessToken: () => Promise<string>;
   onSelectEntryDate: (entryDateIso: string) => void;
   /** Omit or null = logged-in user’s archive; set to a friend id for their archive. */
@@ -52,28 +53,9 @@ function monthKeyFromIso(raw: string | undefined | null): string | null {
   return `${y}-${String(mo).padStart(2, "0")}`;
 }
 
-function monthLabel(monthKey: string): string {
-  const [y, m] = monthKey.split("-").map(Number);
-  if (!y || !m) return monthKey;
-  const d = new Date(y, m - 1, 1);
-  return d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
-}
-
-/** Month keys in first-seen order (matches archive API: newest rows first). */
-function monthKeysInRowOrder(rows: SongadayResponse[]): string[] {
-  const keys: string[] = [];
-  const seen = new Set<string>();
-  for (const r of rows) {
-    const k = monthKeyFromIso(r.entry_date);
-    if (!k || seen.has(k)) continue;
-    seen.add(k);
-    keys.push(k);
-  }
-  return keys;
-}
-
 export default function SongadayMonthArchive({
   open,
+  activeMonthKey,
   getApiAccessToken,
   onSelectEntryDate,
   archiveUserId = null,
@@ -91,10 +73,6 @@ export default function SongadayMonthArchive({
 
   const hasMore = rows.length < total && rows.length < maxRows;
 
-  const months = useMemo(() => monthKeysInRowOrder(rows), [rows]);
-
-  const [activeMonthKey, setActiveMonthKey] = useState<string | null>(null);
-
   // Seed rows (once) when opening, if provided.
   useEffect(() => {
     if (!open) return;
@@ -104,13 +82,6 @@ export default function SongadayMonthArchive({
     setTotal(seed.total);
     setPage(seed.nextPage);
   }, [open, seed, rows.length]);
-
-  /** Pick default month when opening / when data loads; reset if the selected month is not in `rows`. */
-  useEffect(() => {
-    if (!open || months.length === 0) return;
-    if (activeMonthKey != null && months.includes(activeMonthKey)) return;
-    setActiveMonthKey(months[0] ?? null);
-  }, [open, months, activeMonthKey]);
 
   const visibleRows = useMemo(() => {
     if (!activeMonthKey) return [] as SongadayResponse[];
@@ -187,80 +158,32 @@ export default function SongadayMonthArchive({
     void loadNext();
   }, [open, rows.length, loading, loadNext, seed]);
 
-  const activeIdx = activeMonthKey ? months.indexOf(activeMonthKey) : -1;
-  /** Rows are newest-first, so `months` is e.g. [May, April, March]. Lower index = newer month. */
-  const canGoToOlderMonth =
-    activeIdx >= 0 && activeIdx < months.length - 1;
-  const canGoToNewerMonth = activeIdx > 0;
+  const hasEntriesForActiveMonth = useMemo(() => {
+    if (!activeMonthKey) return false;
+    return rows.some((r) => monthKeyFromIso(r.entry_date) === activeMonthKey);
+  }, [rows, activeMonthKey]);
 
-  const goToNewerMonth = () => {
-    if (!canGoToNewerMonth) return;
-    setActiveMonthKey(months[activeIdx - 1] ?? null);
-  };
-
-  const goToOlderMonth = async () => {
-    if (canGoToOlderMonth) {
-      setActiveMonthKey(months[activeIdx + 1] ?? null);
-      return;
-    }
-    if (!hasMore || activeMonthKey == null) return;
-    const merged = await loadNext();
-    if (!merged?.length) return;
-    const keys = monthKeysInRowOrder(merged);
-    const i = keys.indexOf(activeMonthKey);
-    if (i >= 0 && i < keys.length - 1) {
-      setActiveMonthKey(keys[i + 1] ?? null);
-    }
-  };
+  useEffect(() => {
+    if (!open || !activeMonthKey) return;
+    if (hasEntriesForActiveMonth) return;
+    if (!hasMore || loading) return;
+    void loadNext();
+  }, [
+    open,
+    activeMonthKey,
+    hasEntriesForActiveMonth,
+    hasMore,
+    loading,
+    loadNext,
+  ]);
 
   if (!open) return null;
 
   return (
     <Stack gap="3">
-      <HStack justify="space-between" align="center" flexWrap="wrap" gap="2">
-        <Text fontWeight="bold" fontSize={APP_TEXT_SIZES.label}>
-          Archive
-        </Text>
-        <HStack gap="2">
-          <Box w="2.25rem" display="flex" justifyContent="flex-start">
-            <PondButton
-              type="button"
-              size="sm"
-              variant="ghost"
-              colorPalette="navy"
-              color="navy.solid"
-              onClick={() => void goToOlderMonth()}
-              _hover={{ color: "navy.solid" }}
-              visibility={canGoToOlderMonth || hasMore ? "visible" : "hidden"}
-              pointerEvents={canGoToOlderMonth || hasMore ? "auto" : "none"}
-              aria-label="Older month"
-              aria-hidden={!(canGoToOlderMonth || hasMore)}
-            >
-              ←
-            </PondButton>
-          </Box>
-          <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" minW="10rem" textAlign="center">
-            {activeMonthKey ? monthLabel(activeMonthKey) : "—"}
-          </Text>
-          <Box w="2.25rem" display="flex" justifyContent="flex-end">
-            <PondButton
-              type="button"
-              size="sm"
-              variant="ghost"
-              colorPalette="navy"
-              color="navy.solid"
-              onClick={goToNewerMonth}
-              _hover={{ color: "navy.solid" }}
-              visibility={canGoToNewerMonth ? "visible" : "hidden"}
-              pointerEvents={canGoToNewerMonth ? "auto" : "none"}
-              aria-label="Newer month"
-              aria-hidden={!canGoToNewerMonth}
-            >
-              →
-            </PondButton>
-          </Box>
-        </HStack>
-      </HStack>
+      <Text fontWeight="bold" fontSize={APP_TEXT_SIZES.label}>
+        Your Archive
+      </Text>
 
       {loadError ? (
         <Box {...PANEL_ENTRY_CARD_PROPS}>
@@ -277,7 +200,7 @@ export default function SongadayMonthArchive({
           title="No submissions yet."
           description="Your past Song-a-Day entries will appear here once you’ve posted."
         />
-      ) : visibleRows.length === 0 ? (
+      ) : !activeMonthKey ? null : visibleRows.length === 0 ? (
         <PanelEmptyState title="No entries for this month." />
       ) : (
         <Stack gap="2">

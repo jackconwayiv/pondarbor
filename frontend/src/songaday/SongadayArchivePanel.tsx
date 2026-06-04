@@ -1,4 +1,5 @@
 import { Box, HStack, Stack, Text } from "@chakra-ui/react";
+import { useState } from "react";
 import { Link as RouterLink } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
@@ -8,6 +9,7 @@ import {
   APP_TEXT_SIZES,
   MAPPED_CLOSET_TAB_STACK_GAP,
 } from "../theme/typography";
+import SongadayBrowsePlaylistsPanel from "./SongadayBrowsePlaylistsPanel";
 import SongadayMonthArchive from "./SongadayMonthArchive";
 
 export type SongadayArchivePanelProps = {
@@ -22,6 +24,7 @@ export default function SongadayArchivePanel({
   onSelectArchiveEntryDate,
 }: SongadayArchivePanelProps) {
   const { getApiAccessToken } = useAppSession();
+  const [archiveMonthKey, setArchiveMonthKey] = useState<string | null>(null);
 
   return (
     <Stack flex="1" minH="full" gap="0" {...fullBleedStackProps}>
@@ -44,8 +47,17 @@ export default function SongadayArchivePanel({
               </RouterLink>
             </HStack>
 
+            <SongadayBrowsePlaylistsPanel
+              active
+              getApiAccessToken={getApiAccessToken}
+              returnPath="/songaday/archive"
+              activeMonthKey={archiveMonthKey}
+              onActiveMonthKeyChange={setArchiveMonthKey}
+            />
+
             <SongadayMonthArchive
               open
+              activeMonthKey={archiveMonthKey}
               getApiAccessToken={getApiAccessToken}
               archiveUserId={null}
               onSelectEntryDate={(iso) => onSelectArchiveEntryDate?.(iso)}

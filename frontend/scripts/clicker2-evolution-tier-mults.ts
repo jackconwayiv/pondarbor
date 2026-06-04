@@ -3,7 +3,7 @@
  * Run: npm run clicker2:evolution-tier-mults
  */
 import { getDenizenDef } from "../src/clicker2/denizens";
-import { denizenEvolutionPrice } from "../src/clicker2/evolutionPricing";
+import { denizenEvolutionPrice, rippleEvolutionPrice } from "../src/clicker2/evolutionPricing";
 import {
   DENIZEN_DOUBLING_FIRST_MULT,
   DENIZEN_DOUBLING_SECOND_MULT,
@@ -58,6 +58,14 @@ function main(): void {
   }
   if (p2 !== 10 * p1) {
     errors.push(`fungi tier 2 price ${p2} !== 10× tier 1`);
+  }
+
+  const springBulgeTier = 7;
+  const springBulgePrice = rippleEvolutionPrice(springBulgeTier);
+  if (springBulgePrice !== 45_000_000_000_000) {
+    errors.push(
+      `ripple tier ${springBulgeTier} (Spring Bulge) price ${springBulgePrice} !== 45T legacy anchor`,
+    );
   }
 
   console.log("DENIZEN_EVOLUTION_TIER_MULT");

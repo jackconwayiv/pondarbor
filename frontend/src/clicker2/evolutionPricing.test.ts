@@ -120,6 +120,11 @@ describe("generateSpecialtyPrices", () => {
     expect(RIPPLE_EARLY_PRICE_ANCHORS).toEqual([
       100, 500, 10_000, 100_000, 10_000_000,
     ]);
+    const springBulge = chain.find((s) => s.name === "Spring Bulge")!;
+    expect(prices[springBulge.id]).toBe(45_000_000_000_000);
+    expect(rippleEvolutionPrice(specialtyTierIndex(springBulge))).toBe(
+      45_000_000_000_000,
+    );
   });
 
   it("uses doubling chain for sediment like other non-ripple denizens", () => {

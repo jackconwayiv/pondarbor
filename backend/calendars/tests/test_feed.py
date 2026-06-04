@@ -232,17 +232,6 @@ class CalendarFeedApiTests(CalendarTestMixin, TestCase):
         resp_old = self.anon_client.get("/api/v1/calendars/feed/old-token.ics")
         self.assertEqual(resp_old.status_code, 404)
 
-    def test_post_feed_rejects_friends_only_user_not_visible(self):
-        self.bob.profile.social_publish_visibility = Profile.SocialPublishVisibility.FRIENDS_ONLY
-        self.bob.profile.save(update_fields=["social_publish_visibility"])
-        with patch("calendars.views.timezone.localdate", return_value=date(2026, 5, 1)):
-            resp = self.alice_client.post(
-                "/api/v1/calendars/feed/",
-                {"owner_ids": [self.bob.id]},
-                format="json",
-            )
-        self.assertEqual(resp.status_code, 400)
-
     def test_stale_ical_source_synced_for_subscription_owners(self):
         source = CalendarSource.objects.create(
             owner=self.bob,
@@ -263,3 +252,65 @@ class CalendarFeedApiTests(CalendarTestMixin, TestCase):
             mock_sync.return_value.deleted = 0
             self.anon_client.get("/api/v1/calendars/feed/stale-sync.ics")
         mock_sync.assert_called_once_with(source)
+
+    def test_post_feed_rejects_friends_only_user_not_visible(self):
+        self.bob.profile.social_publish_visibility = Profile.SocialPublishVisibility.FRIENDS_ONLY
+        self.bob.profile.save(update_fields=["social_publish_visibility"])
+        with patch("calendars.views.timezone.localdate", return_value=date(2026, 5, 1)):
+            resp = self.alice_client.post(
+                "/api/v1/calendars/feed/",
+                {"include_all_visible": False, "owner_ids": [self.bob.id]},
+                format="json",
+            )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_post_feed_include_all_visible(self):
+        Event.objects.create(
+            owner=self.bob,
+            source=self.bob_source,
+            start_date=date(2026, 5, 10),
+            end_date=date(2026, 5, 10),
+        )
+        with patch("calendars.views.timezone.localdate", return_value=date(2026, 5, 1)):
+            resp = self.alice_client.post(
+                "/api/v1/calendars/feed/",
+                {"include_all_visible": True},
+                format="json",
+            )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertTrue(body["include_all_visible"])
+        self.assertEqual(body["owner_ids"], [])
+        sub = CalendarSubscription.objects.get(owner=self.alice)
+        self.assertTrue(sub.include_all_visible)
+
+    def test_include_all_visible_feed_adds_newly_visible_user_on_poll(self):
+        from calendars.feed_views import resolve_subscription_owner_ids
+
+        Event.objects.create(
+            owner=self.bob,
+            source=self.bob_source,
+            start_date=date(2026, 5, 10),
+            end_date=date(2026, 5, 10),
+        )
+        sub = CalendarSubscription.objects.create(
+            owner=self.alice,
+            token="all-visible",
+            owner_ids=[],
+            include_all_visible=True,
+        )
+        with patch("calendars.views.timezone.localdate", return_value=date(2026, 5, 1)):
+            ids_before = resolve_subscription_owner_ids(sub)
+        self.assertIn(self.alice.id, ids_before)
+        self.assertIn(self.bob.id, ids_before)
+
+        Event.objects.create(
+            owner=self.bob,
+            source=self.bob_source,
+            start_date=date(2026, 6, 1),
+            end_date=date(2026, 6, 1),
+        )
+        with patch("calendars.views.timezone.localdate", return_value=date(2026, 5, 1)):
+            resp = self.anon_client.get("/api/v1/calendars/feed/all-visible.ics")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("SUMMARY:Bob", resp.content.decode("utf-8"))

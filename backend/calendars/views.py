@@ -46,7 +46,7 @@ def _approved_users_qs():
     )
 
 
-def _visible_calendar_users_qs(request, *, search: str = ""):
+def _visible_calendar_users_qs_for_viewer(viewer, *, search: str = ""):
     today = timezone.localdate()
     linked_sources = CalendarSource.objects.filter(
         owner_id=OuterRef("pk"),
@@ -67,27 +67,31 @@ def _visible_calendar_users_qs(request, *, search: str = ""):
             _has_upcoming=Exists(upcoming_events),
         )
         .filter(
-            Q(pk=request.user.pk)
+            Q(pk=viewer.pk)
             | Q(_has_linked=True)
             | Q(_has_upcoming=True),
         )
     )
-    viewer_profile = getattr(request.user, "profile", None)
+    viewer_profile = getattr(viewer, "profile", None)
     scope = getattr(viewer_profile, "social_read_scope", None) or Profile.SocialReadScope.APPROVED_USERS
     if scope == Profile.SocialReadScope.FRIENDS_ONLY:
         from friends.services import friend_ids_for_user
 
-        fids = friend_ids_for_user(user=request.user)
+        fids = friend_ids_for_user(user=viewer)
         allowed = set(fids or set())
-        allowed.add(request.user.pk)
+        allowed.add(viewer.pk)
         qs = qs.filter(pk__in=list(allowed))
     if search:
         qs = qs.filter(
             Q(email__icontains=search) | Q(profile__display_name__icontains=search)
         )
-    ctx = viewer_context(viewer=request.user)
-    qs = qs.filter(published_user_visibility_q(viewer=request.user, ctx=ctx))
+    ctx = viewer_context(viewer=viewer)
+    qs = qs.filter(published_user_visibility_q(viewer=viewer, ctx=ctx))
     return qs
+
+
+def _visible_calendar_users_qs(request, *, search: str = ""):
+    return _visible_calendar_users_qs_for_viewer(request.user, search=search)
 
 
 def _parse_date_param(raw: str | None) -> date | None:

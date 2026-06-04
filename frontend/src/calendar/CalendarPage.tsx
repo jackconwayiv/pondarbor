@@ -611,7 +611,6 @@ export default function CalendarPage() {
                       orderedCheckedUserIds={orderedCheckedUserIds}
                       onChange={setCheckedUserIds}
                       onExport={() => setExportOpen(true)}
-                      exportDisabled={orderedCheckedUserIds.length === 0}
                     />
                   )}
                   <Box flex="1" minW="0">

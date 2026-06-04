@@ -154,6 +154,10 @@ class CalendarSubscription(models.Model):
     )
     token = models.CharField(max_length=64, unique=True)
     owner_ids = models.JSONField(default=list)
+    include_all_visible = models.BooleanField(
+        default=False,
+        help_text="When true, feed includes everyone visible to the owner (resolved on each poll).",
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

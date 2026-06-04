@@ -26,13 +26,7 @@ export default function SongadayPlaylistRow({ entry, dayLabel }: Props) {
       {...PANEL_NESTED_BLOCK_PROPS}
     >
       <Stack gap="2" w="full" flex="1" minH={0}>
-        <HStack
-          gap="2"
-          align="flex-start"
-          w="full"
-          minH="2.75rem"
-          flexShrink={0}
-        >
+        <HStack gap="2" align="flex-start" w="full" flexShrink={0}>
           <Text
             fontSize={APP_TEXT_SIZES.meta}
             color="fg.muted"
@@ -46,16 +40,27 @@ export default function SongadayPlaylistRow({ entry, dayLabel }: Props) {
           </Text>
           <Text
             fontSize={APP_TEXT_SIZES.helper}
-            fontWeight="semibold"
-            color="fg"
-            lineClamp={2}
+            fontWeight="medium"
             flex="1"
             minW={0}
+            lineClamp={2}
             lineHeight="1.3"
+            title={entry.prompt_snapshot}
           >
-            {title}
+            {entry.prompt_snapshot.trim() || "—"}
           </Text>
         </HStack>
+        <Text
+          fontSize={APP_TEXT_SIZES.helper}
+          fontWeight="semibold"
+          w="full"
+          minW={0}
+          lineClamp={2}
+          lineHeight="1.3"
+          title={title}
+        >
+          {title}
+        </Text>
         <SongadayMediaBlock
           entry={entry}
           compact

@@ -75,5 +75,11 @@ export type CalendarFeedSubscription = {
   subscribe_url: string;
   webcal_url: string;
   owner_ids: number[];
+  include_all_visible: boolean;
   updated_at: string;
+};
+
+export type CalendarFeedUpsertPayload = {
+  include_all_visible: boolean;
+  owner_ids?: number[];
 };

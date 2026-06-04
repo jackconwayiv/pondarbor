@@ -1,4 +1,4 @@
-import { Box, Input, Stack, Text } from "@chakra-ui/react";
+import { Box, HStack, Input, Stack, Text } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AppModal } from "../components/AppModal";
@@ -11,6 +11,8 @@ import {
   upsertCalendarFeed,
 } from "./api";
 import type { CalendarFeedSubscription } from "./types";
+
+type FeedMode = "selected" | "all_visible";
 
 type Props = {
   open: boolean;
@@ -35,15 +37,22 @@ export default function CalendarExportDialog({
   const [subscription, setSubscription] = useState<CalendarFeedSubscription | null>(
     null,
   );
+  const [feedMode, setFeedMode] = useState<FeedMode>("selected");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const selectionChanged = useMemo(() => {
+  const configMismatch = useMemo(() => {
     if (!subscription) return false;
+    if (feedMode === "all_visible") {
+      return !subscription.include_all_visible;
+    }
+    if (subscription.include_all_visible) return true;
     return !sameIdSet(subscription.owner_ids, orderedCheckedUserIds);
-  }, [orderedCheckedUserIds, subscription]);
+  }, [feedMode, orderedCheckedUserIds, subscription]);
+
+  const canSave = feedMode === "all_visible" || orderedCheckedUserIds.length > 0;
 
   const loadSubscription = useCallback(async () => {
     setLoading(true);
@@ -52,6 +61,11 @@ export default function CalendarExportDialog({
       const token = await getApiAccessToken();
       const result = await fetchCalendarFeed(token);
       setSubscription(result);
+      if (result?.include_all_visible) {
+        setFeedMode("all_visible");
+      } else if (result) {
+        setFeedMode("selected");
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not load subscription.");
       setSubscription(null);
@@ -67,11 +81,19 @@ export default function CalendarExportDialog({
   }, [loadSubscription, open]);
 
   const ensureSubscription = async (): Promise<CalendarFeedSubscription> => {
-    if (orderedCheckedUserIds.length === 0) {
-      throw new Error("Select at least one person.");
+    if (feedMode === "selected" && orderedCheckedUserIds.length === 0) {
+      throw new Error("Select at least one person, or choose everyone you can see.");
     }
     const token = await getApiAccessToken();
-    const next = await upsertCalendarFeed(token, orderedCheckedUserIds);
+    const next = await upsertCalendarFeed(
+      token,
+      feedMode === "all_visible"
+        ? { include_all_visible: true, owner_ids: [] }
+        : {
+            include_all_visible: false,
+            owner_ids: orderedCheckedUserIds,
+          },
+    );
     setSubscription(next);
     return next;
   };
@@ -82,7 +104,11 @@ export default function CalendarExportDialog({
     setNotice(null);
     try {
       await ensureSubscription();
-      setNotice("Your subscription now matches the people you checked.");
+      setNotice(
+        feedMode === "all_visible"
+          ? "Subscription now includes everyone you can see (updates automatically)."
+          : "Your subscription now matches the people you checked.",
+      );
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not update subscription.");
     } finally {
@@ -109,9 +135,8 @@ export default function CalendarExportDialog({
     setError(null);
     setNotice(null);
     try {
-      const sub = subscription && !selectionChanged
-        ? subscription
-        : await ensureSubscription();
+      const sub =
+        subscription && !configMismatch ? subscription : await ensureSubscription();
       const blob = await downloadCalendarFeedIcs(sub.subscribe_url);
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
@@ -156,7 +181,7 @@ export default function CalendarExportDialog({
 
   const showUrls =
     subscription !== null &&
-    !selectionChanged &&
+    !configMismatch &&
     subscription.subscribe_url.length > 0;
 
   return (
@@ -164,13 +189,42 @@ export default function CalendarExportDialog({
       open={open}
       onOpenChange={onOpenChange}
       title="Friends Away"
-      description="A live calendar of when the people you checked are busy. Add it to iPhone, or download a snapshot file."
+      description="A live calendar of when people are busy. Add it to iPhone, or download a snapshot file."
       size="md"
     >
       <Stack gap="3">
-        {orderedCheckedUserIds.length === 0 ? (
+        <Stack gap="2" {...PANEL_NESTED_BLOCK_PROPS}>
+          <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="semibold">
+            Who to include
+          </Text>
+          <HStack gap="2" flexWrap="wrap">
+            <PondButton
+              size="sm"
+              colorPalette="lilypad"
+              variant={feedMode === "all_visible" ? "solid" : "outline"}
+              onClick={() => setFeedMode("all_visible")}
+            >
+              Everyone I can see
+            </PondButton>
+            <PondButton
+              size="sm"
+              colorPalette="sky"
+              variant={feedMode === "selected" ? "solid" : "outline"}
+              onClick={() => setFeedMode("selected")}
+            >
+              Only checked people
+            </PondButton>
+          </HStack>
+          <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" lineHeight="tall">
+            {feedMode === "all_visible"
+              ? "Matches the people list in Calendar — new members appear automatically when you can see them. No need to update the link."
+              : "Uses whoever you have checked in the people list right now. Update the subscription if you change checkboxes."}
+          </Text>
+        </Stack>
+
+        {feedMode === "selected" && orderedCheckedUserIds.length === 0 ? (
           <Text fontSize={APP_TEXT_SIZES.helper} color="nautical.solid">
-            Check at least one person in the list, then come back here.
+            Check at least one person in the list, or switch to everyone you can see.
           </Text>
         ) : null}
 
@@ -180,9 +234,9 @@ export default function CalendarExportDialog({
           </Text>
         ) : null}
 
-        {selectionChanged && subscription ? (
+        {configMismatch && subscription ? (
           <Text fontSize={APP_TEXT_SIZES.helper} color="fg" lineHeight="tall">
-            You changed who is checked. Tap{" "}
+            Your link settings changed. Tap{" "}
             <Text as="span" fontWeight="semibold">
               Update subscription
             </Text>{" "}
@@ -254,12 +308,12 @@ export default function CalendarExportDialog({
         ) : null}
 
         <Stack gap="2">
-          {selectionChanged && subscription ? (
+          {configMismatch && subscription ? (
             <PondButton
               size="sm"
               colorPalette="lilypad"
               onClick={() => void handleUpdateSubscription()}
-              disabled={saving || orderedCheckedUserIds.length === 0}
+              disabled={saving || !canSave}
             >
               Update subscription
             </PondButton>
@@ -268,7 +322,7 @@ export default function CalendarExportDialog({
               size="sm"
               colorPalette="lilypad"
               onClick={() => void handleCreateLink()}
-              disabled={saving || loading || orderedCheckedUserIds.length === 0}
+              disabled={saving || loading || !canSave}
             >
               Create subscription link
             </PondButton>
@@ -279,7 +333,7 @@ export default function CalendarExportDialog({
             colorPalette="sky"
             variant="outline"
             onClick={() => void handleDownload()}
-            disabled={saving || loading || orderedCheckedUserIds.length === 0}
+            disabled={saving || loading || !canSave}
           >
             Download snapshot (.ics)
           </PondButton>

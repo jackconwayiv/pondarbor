@@ -2,6 +2,7 @@ import type {
   CalendarBirthdayRow,
   CalendarEvent,
   CalendarFeedSubscription,
+  CalendarFeedUpsertPayload,
   CalendarOwnerRow,
   CalendarSource,
   CalendarSyncSummary,
@@ -363,13 +364,13 @@ export async function fetchCalendarFeed(
 
 export async function upsertCalendarFeed(
   accessToken: string | null,
-  ownerIds: number[],
+  payload: CalendarFeedUpsertPayload,
 ): Promise<CalendarFeedSubscription> {
   const response = await fetch(`${apiBase()}/api/v1/calendars/feed/`, {
     method: "POST",
     headers: authHeaders(accessToken),
     credentials: "omit",
-    body: JSON.stringify({ owner_ids: ownerIds }),
+    body: JSON.stringify(payload),
   });
   if (!response.ok) {
     throw new Error(await parseApiError(response));

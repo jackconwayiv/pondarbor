@@ -6,12 +6,10 @@ import {
   denizenTier45Price,
   denizenTier4CatalogPrice,
   sedimentEvolutionPrice,
-  SEDIMENT_TIER_3_RIPPLE_RATIO,
   generateSpecialtyPrices,
   pondProductionAnchoredPrice,
   rippleEvolutionPrice,
   RIPPLE_EARLY_PRICE_ANCHORS,
-  TRANSCENDENCE_TIER_15_PRICE,
   validatePricingTable,
 } from "./evolutionPricing";
 import {
@@ -124,59 +122,42 @@ describe("generateSpecialtyPrices", () => {
     ]);
   });
 
-  it("uses baseCost × tier mult for sediment except tier 3 anchor and tier 4.5", () => {
+  it("uses doubling chain for sediment like other non-ripple denizens", () => {
     const def = getDenizenDef("sediment")!;
     const chain = specialtiesForDenizen("sediment");
     for (let tier = 0; tier < 7; tier++) {
       const s = chain[tier]!;
       expect(prices[s.id]).toBe(denizenEvolutionPrice("sediment", tier));
-      if (tier === 3 || tier === 4) continue;
-      const multIndex = tier >= 5 ? tier - 1 : tier;
+      if (tier >= 4) continue;
       const expected = Math.round(
-        def.baseCost * DENIZEN_EVOLUTION_TIER_MULT[multIndex]!,
+        def.baseCost * DENIZEN_EVOLUTION_TIER_MULT[tier]!,
       );
       expect(prices[s.id]).toBe(expected);
     }
     expect(prices[chain[0]!.id]).toBe(1_000);
-    expect(prices[chain[3]!.id]).toBe(2_500_000);
+    expect(prices[chain[3]!.id]).toBe(500_000);
     expect(prices[chain[4]!.id]).toBe(sedimentEvolutionPrice(4));
-    expect(prices[chain[5]!.id]).toBe(500_000_000);
+    expect(prices[chain[5]!.id]).toBe(50_000_000);
     expect(chain[4]!.id).toBe(SEDIMENT_CRACIAL_GLAPE_SPECIALTY_ID);
     expect(chain[4]!.unlockOwned).toBe(75);
   });
 
-  it("prices sediment tier 4.5 between tier 3 and tier 4 catalog prices", () => {
-    expect(sedimentEvolutionPrice(4)).toBe(
-      Math.round(Math.sqrt(2_500_000 * 500_000_000)),
-    );
-    expect(sedimentEvolutionPrice(4)).toBeGreaterThan(2_500_000);
-    expect(sedimentEvolutionPrice(4)).toBeLessThan(500_000_000);
+  it("prices sediment tier 4.5 as 10× tier 3 in chain", () => {
+    expect(sedimentEvolutionPrice(4)).toBe(5_000_000);
+    expect(sedimentEvolutionPrice(4)).toBe(10 * sedimentEvolutionPrice(3));
   });
 
-  it("anchors sediment tier 3 at half the old baseCost×mult price (25× ripple tier 3)", () => {
-    const def = getDenizenDef("sediment")!;
-    const legacyTier3 = Math.round(def.baseCost * DENIZEN_EVOLUTION_TIER_MULT[3]!);
-    expect(legacyTier3).toBe(5_000_000);
-    expect(sedimentEvolutionPrice(3)).toBe(2_500_000);
-    expect(sedimentEvolutionPrice(3)).toBe(legacyTier3 / 2);
-    expect(sedimentEvolutionPrice(3) / rippleEvolutionPrice(3)).toBe(
-      SEDIMENT_TIER_3_RIPPLE_RATIO,
-    );
-  });
-
-  it("pins transcendence tier 15 at 25 unvigintillion", () => {
+  it("applies 10× / 5× / 10× doubling chain on transcendence tier 15", () => {
     const chain = specialtiesForDenizen("transcendence");
     expect(chain).toHaveLength(16);
     const tier15 = chain[15]!;
     expect(tier15.id).toBe(363);
-    const expected = denizenEvolutionPrice("transcendence", 15);
-    expect(prices[tier15.id]).toBe(expected);
-    expect(Math.abs(expected / TRANSCENDENCE_TIER_15_PRICE - 1)).toBeLessThan(
-      1e-9,
-    );
+    const tier14 = denizenEvolutionPrice("transcendence", 14);
+    expect(prices[tier15.id]).toBe(denizenEvolutionPrice("transcendence", 15));
+    expect(prices[tier15.id]).toBe(10 * tier14);
   });
 
-  it("prices every denizen chain as baseCost × tier mult", () => {
+  it("prices every denizen chain via denizenEvolutionPrice", () => {
     for (const denizenId of evolutionChainDenizenIds()) {
       if (
         denizenId === POND_SPECIALTY_DENIZEN_ID ||
@@ -228,7 +209,15 @@ describe("tier-4.5 denizen evolutions", () => {
       expect(prices[tier45.id]).toBeGreaterThan(
         denizenTier3PriceForTest(denizenId),
       );
-      expect(prices[tier45.id]).toBeLessThan(denizenTier4CatalogPrice(denizenId));
+      if (denizenId === "ripples") {
+        expect(prices[tier45.id]).toBeLessThan(
+          denizenTier4CatalogPrice(denizenId),
+        );
+      } else {
+        expect(prices[tier45.id]).toBe(
+          10 * denizenEvolutionPrice(denizenId, 3),
+        );
+      }
     },
   );
 
@@ -250,17 +239,27 @@ describe("tier-4.5 denizen evolutions", () => {
     });
   });
 
-  it("prices fungi tier-4.5 as geometric mean of tier 3 and tier 4 catalog", () => {
-    const def = getDenizenDef("fungi")!;
-    const tier3 = Math.round(def.baseCost * DENIZEN_EVOLUTION_TIER_MULT[3]!);
-    const tier4 = Math.round(def.baseCost * DENIZEN_EVOLUTION_TIER_MULT[4]!);
-    expect(denizenTier45Price("fungi")).toBe(Math.round(Math.sqrt(tier3 * tier4)));
+  it("prices fungi tier-4.5 as 10× tier 3 in chain", () => {
+    expect(denizenTier45Price("fungi")).toBe(
+      10 * denizenEvolutionPrice("fungi", 3),
+    );
+    expect(denizenTier45Price("fungi")).toBe(50_000_000);
   });
 });
 
 function denizenTier3PriceForTest(denizenId: string): number {
-  if (denizenId === "sediment") return sedimentEvolutionPrice(3);
   if (denizenId === "ripples") return RIPPLE_EARLY_PRICE_ANCHORS[3]!;
-  const def = getDenizenDef(denizenId);
-  return Math.round(def!.baseCost * DENIZEN_EVOLUTION_TIER_MULT[3]!);
+  return denizenEvolutionPrice(denizenId, 3);
 }
+
+describe("denizen doubling chain pricing", () => {
+  it("uses 10× base, 5× first, then 10× previous for fungi", () => {
+    const def = getDenizenDef("fungi")!;
+    const p0 = denizenEvolutionPrice("fungi", 0);
+    const p1 = denizenEvolutionPrice("fungi", 1);
+    const p2 = denizenEvolutionPrice("fungi", 2);
+    expect(p0).toBe(Math.round(def.baseCost * 10));
+    expect(p1).toBe(5 * p0);
+    expect(p2).toBe(10 * p1);
+  });
+});

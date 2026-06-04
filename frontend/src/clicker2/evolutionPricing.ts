@@ -5,6 +5,7 @@ import {
   getDenizenIndex,
 } from "./denizens";
 import {
+  DENIZEN_DOUBLING_FIRST_MULT,
   DENIZEN_EVOLUTION_TIER_MULT,
   RIPPLE_EARLY_PRICE_ANCHORS,
   RIPPLE_EVOLUTION_TIER_MULT,
@@ -30,14 +31,13 @@ import {
   specialtyTierIndex,
   type SpecialtyDef,
 } from "./specialties";
-import { denizenHasTier45Insert } from "./tier45Evolutions";
-
 export {
+  DENIZEN_DOUBLING_FIRST_MULT,
+  DENIZEN_DOUBLING_SECOND_MULT,
   DENIZEN_EVOLUTION_TIER_MULT,
   RIPPLE_EARLY_PRICE_ANCHORS,
   RIPPLE_EVOLUTION_TIER_MULT,
   RIPPLE_PRICE_ANCHORS,
-  TRANSCENDENCE_TIER_15_PRICE,
 } from "./evolutionTierMults";
 
 /** @deprecated Use DENIZEN_EVOLUTION_TIER_MULT; sediment tier-0 price = 100 × M[0]. */
@@ -165,44 +165,30 @@ export function denizensOwnedAtAllTimeEnergy(
 }
 
 /**
- * Sediment tier 3 vs ripple tier 3 price (ripple anchor = 1× $100k).
- * Design scale was 100 → 50; dollar ratio is 25× ripple tier 3 ($2.5M).
+ * Non-ripple denizen doubling evolution prices:
+ * 1st = 10× baseCost; 2nd = 5× 1st; each later tier = 10× previous in chain.
  */
-export const SEDIMENT_TIER_3_RIPPLE_RATIO = 25;
-
 export function denizenEvolutionPrice(
   denizenId: string,
   tierIndex: number,
 ): number {
-  if (denizenId === "sediment") {
-    return sedimentEvolutionPrice(tierIndex);
-  }
-  if (denizenHasTier45Insert(denizenId)) {
-    if (tierIndex === 4) {
-      return denizenTier45Price(denizenId);
-    }
-    const def = getDenizenDef(denizenId);
-    if (!def) return 1;
-    if (tierIndex >= 5) {
-      const mult =
-        DENIZEN_EVOLUTION_TIER_MULT[tierIndex - 1] ??
-        DENIZEN_EVOLUTION_TIER_MULT[DENIZEN_EVOLUTION_TIER_MULT.length - 1]!;
-      return Math.round(def.baseCost * mult);
-    }
+  if (denizenId === "ripples") {
+    return rippleEvolutionPrice(tierIndex);
   }
   const def = getDenizenDef(denizenId);
   if (!def) return 1;
-  const mult =
-    DENIZEN_EVOLUTION_TIER_MULT[tierIndex] ??
-    DENIZEN_EVOLUTION_TIER_MULT[DENIZEN_EVOLUTION_TIER_MULT.length - 1]!;
-  return Math.round(def.baseCost * mult);
+
+  if (tierIndex === 0) {
+    return Math.round(def.baseCost * DENIZEN_DOUBLING_FIRST_MULT);
+  }
+  if (tierIndex === 1) {
+    return Math.round(5 * denizenEvolutionPrice(denizenId, 0));
+  }
+  return Math.round(10 * denizenEvolutionPrice(denizenId, tierIndex - 1));
 }
 
 /** Tier-4 catalog price (pre–tier-4.5 insert) for geometric-mean pricing. */
 export function denizenTier4CatalogPrice(denizenId: string): number {
-  if (denizenId === "sediment") {
-    return sedimentTier4CatalogPrice();
-  }
   if (denizenId === "ripples") {
     return rippleEvolutionPriceUnshifted(4);
   }
@@ -230,37 +216,23 @@ function denizenTier3PriceForTier45(denizenId: string): number {
   return Math.round(def.baseCost * DENIZEN_EVOLUTION_TIER_MULT[3]!);
 }
 
-/** Tier-4.5 denizen evolutions: geometric mean of tier-3 and tier-4 catalog prices. */
+/** Tier-4.5 denizen evolutions: 10× previous doubling in chain (tier 3). */
 export function denizenTier45Price(denizenId: string): number {
-  const tier3 = denizenTier3PriceForTier45(denizenId);
-  const tier4 = denizenTier4CatalogPrice(denizenId);
-  return Math.round(Math.sqrt(tier3 * tier4));
+  if (denizenId === "ripples") {
+    const tier3 = denizenTier3PriceForTier45("ripples");
+    const tier4 = denizenTier4CatalogPrice("ripples");
+    return Math.round(Math.sqrt(tier3 * tier4));
+  }
+  return denizenEvolutionPrice(denizenId, 4);
 }
 
-/** Cracial Glape and other tier-4.5 entries: geometric mean of tier 3 and tier 4 prices. */
+/** Cracial Glape and other tier-4.5 entries (non-ripple: 10× tier 3 in chain). */
 export function sedimentTier45Price(): number {
   return denizenTier45Price("sediment");
 }
 
 export function sedimentEvolutionPrice(tierIndex: number): number {
-  if (tierIndex === 3) {
-    return rippleEvolutionPrice(3) * SEDIMENT_TIER_3_RIPPLE_RATIO;
-  }
-  if (tierIndex === 4) {
-    return sedimentTier45Price();
-  }
-  const def = getDenizenDef("sediment");
-  if (!def) return 1;
-  if (tierIndex >= 5) {
-    const mult =
-      DENIZEN_EVOLUTION_TIER_MULT[tierIndex - 1] ??
-      DENIZEN_EVOLUTION_TIER_MULT[DENIZEN_EVOLUTION_TIER_MULT.length - 1]!;
-    return Math.round(def.baseCost * mult);
-  }
-  const mult =
-    DENIZEN_EVOLUTION_TIER_MULT[tierIndex] ??
-    DENIZEN_EVOLUTION_TIER_MULT[DENIZEN_EVOLUTION_TIER_MULT.length - 1]!;
-  return Math.round(def.baseCost * mult);
+  return denizenEvolutionPrice("sediment", tierIndex);
 }
 
 function rippleEvolutionPriceUnshifted(tierIndex: number): number {

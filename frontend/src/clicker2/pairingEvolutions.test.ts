@@ -33,10 +33,10 @@ describe("pairingSourcePerStep", () => {
 describe("proposedPairingPrice", () => {
   it("blends 50% L 2nd evolution + 50% H 1st evolution with L-tier scale", () => {
     expect(proposedPairingPrice("ripples", "sediment", catalogPrice)).toBe(15_000);
-    expect(proposedPairingPrice("ripples", "fungi", catalogPrice)).toBe(115_000);
-    expect(proposedPairingPrice("sediment", "fungi", catalogPrice)).toBe(176_000);
+    expect(proposedPairingPrice("ripples", "fungi", catalogPrice)).toBe(105_000);
+    expect(proposedPairingPrice("sediment", "fungi", catalogPrice)).toBe(165_000);
     expect(proposedPairingPrice("sediment", "microbes", catalogPrice)).toBe(
-      1_375_000,
+      1_265_000,
     );
   });
 

@@ -1,23 +1,7 @@
 /**
- * Evolution tier multipliers: denizen baseCost × M[tier], ripple baseCost × R[tier].
- * Late tiers M[5..14] ramp geometrically to pin transcendence tier 15 at 25×10^66.
+ * Evolution tier multipliers: denizen baseCost × M[tier] for non-ripple doubling chains.
+ * M[0]=10, M[1]=5×M[0], M[n]=10×M[n−1] for n≥2. Ripple late tiers follow denizen step ratios.
  */
-
-const NICE_MANTISSAS = [1, 1.2, 1.5, 2, 2.5, 3, 5, 6, 7.5, 10] as const;
-
-const DENIZEN_MULT_LOCKED = [
-  10,
-  50,
-  500,
-  50_000,
-  5_000_000,
-] as const;
-
-/** transcendence.baseCost × M[14] = 25 unvigintillion */
-export const TRANSCENDENCE_TIER_15_PRICE = 25e66;
-
-const TRANSCENDENCE_BASE_COST = 540_000_000_000_000_000_000_000_000;
-const DENIZEN_MULT_END = TRANSCENDENCE_TIER_15_PRICE / TRANSCENDENCE_BASE_COST;
 
 const RIPPLE_BASE_COST = 15;
 
@@ -29,38 +13,19 @@ export const RIPPLE_EARLY_PRICE_ANCHORS = [
   10_000_000,
 ] as const;
 
-function snapToNiceValue(ideal: number, minValue: number): number {
-  if (ideal < 1000) {
-    return Math.max(minValue, Math.round(ideal));
-  }
-  const exp = Math.floor(Math.log10(ideal));
-  const scale = 10 ** exp;
-  const mantissa = ideal / scale;
-  let best: number = NICE_MANTISSAS[0];
-  let bestErr = Infinity;
-  for (const m of NICE_MANTISSAS) {
-    const err = Math.abs(Math.log(mantissa) - Math.log(m));
-    if (err < bestErr) {
-      bestErr = err;
-      best = m;
-    }
-  }
-  return Math.max(minValue, Math.round(best * scale));
-}
+/** First doubling evolution: 10× denizen baseCost. */
+export const DENIZEN_DOUBLING_FIRST_MULT = 10;
 
-/** Geometric ramp from M[4] to pinned M[14] with nice snapping. */
-function buildDenizenLateMults(): number[] {
-  const start = DENIZEN_MULT_LOCKED[4]!;
-  const end = DENIZEN_MULT_END;
-  const steps = 10;
-  const ratio = (end / start) ** (1 / steps);
-  const late: number[] = [];
-  for (let i = 5; i <= 13; i++) {
-    const ideal = start * ratio ** (i - 4);
-    late.push(snapToNiceValue(ideal, (late[late.length - 1] ?? start) + 1));
+/** Second doubling evolution: 5× the first doubling price → 50× baseCost. */
+export const DENIZEN_DOUBLING_SECOND_MULT = 50;
+
+/** Build M[0..length−1]: 10, 50, then ×10 per tier. */
+export function buildDenizenDoublingTierMults(length = 15): number[] {
+  const mults: number[] = [DENIZEN_DOUBLING_FIRST_MULT, DENIZEN_DOUBLING_SECOND_MULT];
+  while (mults.length < length) {
+    mults.push(mults[mults.length - 1]! * 10);
   }
-  late.push(end);
-  return late;
+  return mults;
 }
 
 /** Ripple late mults: same step ratios as denizen ramp applied from R[4]. */
@@ -69,29 +34,15 @@ function buildRippleLateMults(denizenMults: readonly number[]): number[] {
   const late: number[] = [];
   for (let i = 5; i < 14; i++) {
     const stepMult = denizenMults[i]! / denizenMults[i - 1]!;
-    late.push(
-      snapToNiceValue(
-        (late[late.length - 1] ?? r4) * stepMult,
-        (late[late.length - 1] ?? r4) + 1,
-      ),
-    );
+    late.push((late[late.length - 1] ?? r4) * stepMult);
   }
   const lastStep = denizenMults[14]! / denizenMults[13]!;
-  late.push(
-    snapToNiceValue(
-      late[late.length - 1]! * lastStep,
-      late[late.length - 1]! + 1,
-    ),
-  );
+  late.push(late[late.length - 1]! * lastStep);
   return late;
 }
 
-const _denizenLate = buildDenizenLateMults();
-
-export const DENIZEN_EVOLUTION_TIER_MULT: readonly number[] = [
-  ...DENIZEN_MULT_LOCKED,
-  ..._denizenLate,
-] as const;
+export const DENIZEN_EVOLUTION_TIER_MULT: readonly number[] =
+  buildDenizenDoublingTierMults(15);
 
 const _rippleEarlyMult = RIPPLE_EARLY_PRICE_ANCHORS.map(
   (p) => p / RIPPLE_BASE_COST,

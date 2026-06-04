@@ -6,7 +6,9 @@ import {
   formatPlaylistBrowseLabel,
   formatPlaylistUserLabel,
   monthKey,
+  monthPlayerTitle,
   parseMonthKey,
+  possessiveDisplayName,
 } from "./playlistBrowseLabel";
 
 describe("formatPlaylistBrowseLabel", () => {
@@ -34,6 +36,21 @@ describe("formatMonthTabLabel", () => {
 describe("formatPlaylistUserLabel", () => {
   it("formats name and count", () => {
     expect(formatPlaylistUserLabel("Jane", 5)).toBe("Jane (5)");
+  });
+});
+
+describe("monthPlayerTitle", () => {
+  it("formats possessive name month year playlist", () => {
+    expect(monthPlayerTitle(2026, 4, "Jane Doe")).toMatch(/Jane Doe's/);
+    expect(monthPlayerTitle(2026, 4, "Jane Doe")).toMatch(/2026/);
+    expect(monthPlayerTitle(2026, 4, "Jane Doe")).toMatch(/Playlist$/);
+  });
+});
+
+describe("possessiveDisplayName", () => {
+  it("uses apostrophe only for names ending in s", () => {
+    expect(possessiveDisplayName("James")).toBe("James'");
+    expect(possessiveDisplayName("Jane")).toBe("Jane's");
   });
 });
 

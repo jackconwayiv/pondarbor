@@ -1,8 +1,8 @@
-import { Box, HStack, SimpleGrid, Stack, Text } from "@chakra-ui/react";
+import { Avatar, Box, HStack, SimpleGrid, Stack, Text } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 
-import { useAppSession } from "../auth/AppSessionContext";
+import { resolveAvatarUrlForUser, useAppSession } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
 import {
   PanelBlockSkeleton,
@@ -43,6 +43,7 @@ export default function SongadayMonthPlayerPage() {
     error: sessionError,
     refreshSession,
     getApiAccessToken,
+    auth0User,
   } = useAppSession();
 
   const year = parseRouteInt(yearParam);
@@ -51,6 +52,8 @@ export default function SongadayMonthPlayerPage() {
 
   const [entries, setEntries] = useState<SongadayResponse[]>([]);
   const [ownerName, setOwnerName] = useState("");
+  const [ownerAvatarUrl, setOwnerAvatarUrl] = useState("");
+  const [ownerUserId, setOwnerUserId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,6 +80,8 @@ export default function SongadayMonthPlayerPage() {
       });
       setEntries(data.results);
       setOwnerName(data.user.nickname || data.user.email);
+      setOwnerAvatarUrl(data.user.avatar_url || "");
+      setOwnerUserId(data.user.id);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Could not load this month.");
       setEntries([]);
@@ -115,6 +120,16 @@ export default function SongadayMonthPlayerPage() {
       ? monthPlayerTitle(year, month, ownerName)
       : "Month player";
 
+  const ownerAvatarSrc =
+    ownerUserId != null
+      ? resolveAvatarUrlForUser(
+          ownerAvatarUrl,
+          ownerUserId,
+          sessionUser,
+          auth0User,
+        ) || undefined
+      : undefined;
+
   const goBackToBrowse = () => {
     navigate(returnPath, { state: { returnPath, openSongadayArchive: returnPath === "/songaday" } });
   };
@@ -130,9 +145,17 @@ export default function SongadayMonthPlayerPage() {
             pb="4"
           >
             <HStack flexWrap="wrap" gap="3" justify="space-between" align="center" w="full">
-              <Text fontSize={APP_TEXT_SIZES.label} fontWeight="bold" lineClamp={2}>
-                {title}
-              </Text>
+              <HStack gap="2" align="center" flex="1" minW={0}>
+                {ownerName ? (
+                  <Avatar.Root size="md" flexShrink={0}>
+                    <Avatar.Fallback name={ownerName} />
+                    {ownerAvatarSrc ? <Avatar.Image src={ownerAvatarSrc} /> : null}
+                  </Avatar.Root>
+                ) : null}
+                <Text fontSize={APP_TEXT_SIZES.label} fontWeight="bold" lineClamp={2} minW={0}>
+                  {title}
+                </Text>
+              </HStack>
               <PondButton
                 type="button"
                 size="sm"
@@ -167,20 +190,18 @@ export default function SongadayMonthPlayerPage() {
             ) : null}
 
             {!loading && !error && entries.length > 0 ? (
-              <SimpleGrid columns={{ base: 1, md: 3 }} gap={{ base: 1.5, md: 2 }} w="full">
+              <SimpleGrid
+                columns={{ base: 1, md: 3 }}
+                gap={{ base: 1.5, md: 2 }}
+                w="full"
+                alignItems="stretch"
+              >
                 {entries.map((entry) => (
-                  <Box
+                  <SongadayPlaylistRow
                     key={entry.id}
-                    {...PANEL_ENTRY_CARD_PROPS}
-                    px="2"
-                    py="1"
-                    overflow="hidden"
-                  >
-                    <SongadayPlaylistRow
-                      entry={entry}
-                      dayLabel={formatEntryDayLabel(entry.entry_date)}
-                    />
-                  </Box>
+                    entry={entry}
+                    dayLabel={formatEntryDayLabel(entry.entry_date)}
+                  />
                 ))}
               </SimpleGrid>
             ) : null}

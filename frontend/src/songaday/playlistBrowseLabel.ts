@@ -36,10 +36,18 @@ export function formatPlaylistBrowseLabel(
   return `${formatMonthTabLabel(year, month)} ${formatPlaylistUserLabel(displayName, submissionCount)}`;
 }
 
+/** `Jane's` or `James'` for playlist headings. */
+export function possessiveDisplayName(displayName: string): string {
+  const name = displayName.trim() || "User";
+  if (/s$/i.test(name)) return `${name}'`;
+  return `${name}'s`;
+}
+
+/** `Jane's April 2026 Playlist` for the month player header. */
 export function monthPlayerTitle(year: number, month: number, displayName: string): string {
   const d = new Date(year, month - 1, 1);
   const monYear = d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
-  return `${monYear} — ${displayName}`;
+  return `${possessiveDisplayName(displayName)} ${monYear} Playlist`;
 }
 
 export function formatEntryDayLabel(entryDate: string): string {

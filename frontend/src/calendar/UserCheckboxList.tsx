@@ -1,5 +1,6 @@
 import { Box, Checkbox, HStack, Stack, Text } from "@chakra-ui/react";
 
+import PondButton from "../PondButton";
 import { APP_TEXT_SIZES } from "../theme/typography";
 import {
   PanelEmptyState,
@@ -26,6 +27,8 @@ type Props = {
   onChange: (next: number[]) => void;
   /** Optional max height for the scrollable list (default: full height). */
   maxHeight?: string | number;
+  onExport?: () => void;
+  exportDisabled?: boolean;
 };
 
 /**
@@ -41,6 +44,8 @@ export default function UserCheckboxList({
   orderedCheckedUserIds,
   onChange,
   maxHeight,
+  onExport,
+  exportDisabled,
 }: Props) {
   const allChecked =
     approvedUsers.length > 0 &&
@@ -83,9 +88,22 @@ export default function UserCheckboxList({
       minW={{ base: "100%", md: "180px" }}
       maxW={{ base: "100%", md: "220px" }}
     >
-      <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="semibold" color="fg.muted">
-        People
-      </Text>
+      <HStack justify="space-between" align="center" gap="2">
+        <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="semibold" color="fg.muted">
+          People
+        </Text>
+        {onExport ? (
+          <PondButton
+            size="xs"
+            colorPalette="sky"
+            variant="outline"
+            onClick={onExport}
+            disabled={exportDisabled}
+          >
+            Export
+          </PondButton>
+        ) : null}
+      </HStack>
       {!error ? (
         <Checkbox.Root
           checked={allChecked ? true : indeterminate ? "indeterminate" : false}

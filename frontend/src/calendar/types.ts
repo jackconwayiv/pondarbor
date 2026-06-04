@@ -70,3 +70,10 @@ export type CalendarSyncSummary = {
   updated: number;
   deleted: number;
 };
+
+export type CalendarFeedSubscription = {
+  subscribe_url: string;
+  webcal_url: string;
+  owner_ids: number[];
+  updated_at: string;
+};

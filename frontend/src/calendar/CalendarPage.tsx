@@ -33,6 +33,7 @@ import {
   updateCalendarEvent,
 } from "./api";
 import EventFormDialog from "./EventFormDialog";
+import CalendarExportDialog from "./CalendarExportDialog";
 import ImportIcalDialog from "./ImportIcalDialog";
 import MonthGrid from "./MonthGrid";
 import {
@@ -99,6 +100,7 @@ export default function CalendarPage() {
     | null
   >(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [syncingSourceId, setSyncingSourceId] = useState<number | null>(null);
   const [confirmDeleteSourceId, setConfirmDeleteSourceId] = useState<number | null>(
     null,
@@ -578,6 +580,15 @@ export default function CalendarPage() {
                               Filter People
                             </PondButton>
                           </Collapsible.Trigger>
+                          <PondButton
+                            size="sm"
+                            colorPalette="sky"
+                            variant="outline"
+                            onClick={() => setExportOpen(true)}
+                            flex="1"
+                          >
+                            Export
+                          </PondButton>
                         </HStack>
                         <Collapsible.Content>
                           <UserCheckboxList
@@ -599,6 +610,8 @@ export default function CalendarPage() {
                       onRefresh={() => void loadApprovedUsers()}
                       orderedCheckedUserIds={orderedCheckedUserIds}
                       onChange={setCheckedUserIds}
+                      onExport={() => setExportOpen(true)}
+                      exportDisabled={orderedCheckedUserIds.length === 0}
                     />
                   )}
                   <Box flex="1" minW="0">
@@ -728,6 +741,12 @@ export default function CalendarPage() {
         open={importOpen}
         onOpenChange={setImportOpen}
         onSubmit={handleImport}
+      />
+      <CalendarExportDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        orderedCheckedUserIds={orderedCheckedUserIds}
+        getApiAccessToken={getApiAccessToken}
       />
 
       {sourcesError && activeTab === "sources" ? (

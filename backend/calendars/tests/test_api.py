@@ -104,7 +104,7 @@ class EventsApiTests(CalendarTestMixin, TestCase):
             last_synced_at=timezone.now() - timedelta(hours=2),
         )
         with patch(
-            "calendars.views.sync_ical_source",
+            "calendars.feed_sync.sync_ical_source",
             return_value=SyncResult(ok=True, created=2, updated=1, deleted=0),
         ) as mock_sync:
             resp = self.alice_client.post(

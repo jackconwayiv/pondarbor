@@ -142,3 +142,24 @@ class Event(models.Model):
     def __str__(self) -> str:
         label = self.title or "(busy)"
         return f"{label} {self.start_date}–{self.end_date}"
+
+
+class CalendarSubscription(models.Model):
+    """Per-user outbound iCal subscription (secret URL for iPhone Calendar)."""
+
+    owner = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="calendar_subscription",
+    )
+    token = models.CharField(max_length=64, unique=True)
+    owner_ids = models.JSONField(default=list)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["token"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"CalendarSubscription({self.owner_id})"

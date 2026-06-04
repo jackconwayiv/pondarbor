@@ -12,6 +12,7 @@ from rest_framework.response import Response
 from rest_framework import status
 
 from calendars.models import CalendarSource, Event
+from calendars.feed_sync import stale_ical_sources_for_owner_ids, sync_stale_sources_for_owner_ids
 from calendars.serializers import (
     CalendarSourceCreateSerializer,
     CalendarSourceSerializer,
@@ -22,7 +23,6 @@ from calendars.serializers import (
 from calendars.services import (
     IcalFetchError,
     IcalParseError,
-    LAZY_REFRESH_MAX_AGE,
     ensure_manual_source,
     sync_ical_source,
 )
@@ -394,19 +394,10 @@ def _birthday_rows_get(request):
 
 
 def _stale_sync_sources_qs(request):
-    threshold = timezone.now() - LAZY_REFRESH_MAX_AGE
     visible_user_ids = list(_visible_calendar_users_qs(request).values_list("id", flat=True))
     relevant_owner_ids = set(visible_user_ids)
     relevant_owner_ids.add(request.user.id)
-    return (
-        CalendarSource.objects.filter(
-            owner_id__in=relevant_owner_ids,
-            is_active=True,
-            source_type=CalendarSource.SourceType.ICAL,
-        )
-        .filter(Q(last_synced_at__isnull=True) | Q(last_synced_at__lt=threshold))
-        .order_by("last_synced_at")
-    )
+    return stale_ical_sources_for_owner_ids(list(relevant_owner_ids))
 
 
 @api_view(["GET"])
@@ -437,24 +428,13 @@ def calendar_bootstrap(request):
 @api_view(["POST"])
 @permission_classes([IsApprovedUser])
 def calendar_sync_refresh(request):
-    stale_sources = list(_stale_sync_sources_qs(request)[:5])
-
-    processed = 0
-    ok = 0
-    failed = 0
-    created = 0
-    updated = 0
-    deleted = 0
-    for source in stale_sources:
-        processed += 1
-        result = sync_ical_source(source)
-        if result.ok:
-            ok += 1
-            created += result.created
-            updated += result.updated
-            deleted += result.deleted
-        else:
-            failed += 1
+    visible_user_ids = list(_visible_calendar_users_qs(request).values_list("id", flat=True))
+    relevant_owner_ids = set(visible_user_ids)
+    relevant_owner_ids.add(request.user.id)
+    sync_summary = sync_stale_sources_for_owner_ids(
+        list(relevant_owner_ids),
+        limit=5,
+    )
 
     ev = _events_list_get(request)
     if ev.status_code >= 400:
@@ -465,12 +445,12 @@ def calendar_sync_refresh(request):
             "events": ev.data.get("results", []),
             "birthdays": birthdays.data.get("results", []),
             "synced": {
-                "sources_processed": processed,
-                "sources_ok": ok,
-                "sources_failed": failed,
-                "created": created,
-                "updated": updated,
-                "deleted": deleted,
+                "sources_processed": sync_summary.sources_processed,
+                "sources_ok": sync_summary.sources_ok,
+                "sources_failed": sync_summary.sources_failed,
+                "created": sync_summary.created,
+                "updated": sync_summary.updated,
+                "deleted": sync_summary.deleted,
             },
         }
     )

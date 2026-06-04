@@ -1,6 +1,7 @@
 import type {
   CalendarBirthdayRow,
   CalendarEvent,
+  CalendarFeedSubscription,
   CalendarOwnerRow,
   CalendarSource,
   CalendarSyncSummary,
@@ -341,4 +342,62 @@ export async function syncCalendarRefresh(
       deleted: 0,
     },
   };
+}
+
+export async function fetchCalendarFeed(
+  accessToken: string | null,
+): Promise<CalendarFeedSubscription | null> {
+  const response = await fetch(`${apiBase()}/api/v1/calendars/feed/`, {
+    method: "GET",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (response.status === 404) {
+    return null;
+  }
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
+  }
+  return (await response.json()) as CalendarFeedSubscription;
+}
+
+export async function upsertCalendarFeed(
+  accessToken: string | null,
+  ownerIds: number[],
+): Promise<CalendarFeedSubscription> {
+  const response = await fetch(`${apiBase()}/api/v1/calendars/feed/`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify({ owner_ids: ownerIds }),
+  });
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
+  }
+  return (await response.json()) as CalendarFeedSubscription;
+}
+
+export async function resetCalendarFeed(
+  accessToken: string | null,
+): Promise<CalendarFeedSubscription> {
+  const response = await fetch(`${apiBase()}/api/v1/calendars/feed/reset/`, {
+    method: "POST",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
+  }
+  return (await response.json()) as CalendarFeedSubscription;
+}
+
+export async function downloadCalendarFeedIcs(subscribeUrl: string): Promise<Blob> {
+  const response = await fetch(subscribeUrl, {
+    method: "GET",
+    credentials: "omit",
+  });
+  if (!response.ok) {
+    throw new Error(`Download failed (${response.status})`);
+  }
+  return response.blob();
 }

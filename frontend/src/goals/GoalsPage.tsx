@@ -28,7 +28,20 @@ import { GoalsSettingsPanel } from "./GoalsSettingsPanel";
 import { GoalCard } from "./GoalCard";
 import { GoalFormModal } from "./GoalFormModal";
 import { GoalMilestonePickerModal } from "./GoalMilestonePickerModal";
+import {
+  clampGoalsPageIndex,
+  GOALS_GRID_PAGE_SIZE,
+  goalsGridPageCount,
+  paginateGoals,
+  sortGoalsForGrid,
+} from "./goalGridSort";
 import { mergeGoalIfNewer } from "./goalMerge";
+import {
+  optimisticCheckIn,
+  optimisticMarkComplete,
+  optimisticStripeAfterCheckIn,
+} from "./optimisticGoalUpdate";
+import { GOAL_SHIMMER_ADVANCE_MS, goalGoldShimmerAnimate, goldIndexInSortedList } from "./goalShimmer";
 import { GOALS_THEME } from "./theme";
 import { GoalsProgressStripe } from "./GoalsProgressStripe";
 import type { Goal, GoalStatus, GoalsDashboard } from "./types";
@@ -46,6 +59,41 @@ type PageTab = GoalStatus | "settings";
 const SETTINGS_TAB: { value: "settings"; label: string } = {
   value: "settings",
   label: "Settings",
+};
+
+const ACTIVE_HELPER_TEXT =
+  "Click a goal to edit it, or hold it to mark it completed.";
+
+/** Shared typography for notice, helper, and pagination in the top slot. */
+const GOALS_GRID_TOP_SLOT_TEXT_PROPS = {
+  fontSize: APP_TEXT_SIZES.body,
+  lineHeight: "tall",
+} as const;
+
+/** One line of body/tall text — keeps notice, helper, and arrows the same height. */
+const GOALS_GRID_TOP_SLOT_PROPS = {
+  ...GOALS_GRID_TOP_SLOT_TEXT_PROPS,
+  h: "1.625em",
+  mb: "2",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  w: "full",
+  flexShrink: 0,
+} as const;
+
+const paginationArrowButtonProps = {
+  as: "button" as const,
+  type: "button" as const,
+  bg: "transparent",
+  border: "none",
+  p: "0",
+  m: "0",
+  fontSize: "inherit",
+  lineHeight: "inherit",
+  fontFamily: "inherit",
+  fontWeight: "medium",
+  cursor: "pointer",
 };
 
 export default function GoalsPage() {
@@ -69,6 +117,8 @@ export default function GoalsPage() {
   const [milestoneGoal, setMilestoneGoal] = useState<Goal | null>(null);
   const [milestoneOpen, setMilestoneOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [shimmerCursor, setShimmerCursor] = useState(0);
   const [token, setToken] = useState<string | null>(null);
   const editDetailSeq = useRef(0);
   const load = useCallback(
@@ -139,6 +189,19 @@ export default function GoalsPage() {
   }, [statusCounts, totalGoals]);
 
   const listStatus: GoalStatus = pageTab === "settings" ? "active" : pageTab;
+
+  useEffect(() => {
+    setPageIndex(0);
+  }, [listStatus]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const timer = window.setInterval(() => {
+      setShimmerCursor((c) => c + 1);
+    }, GOAL_SHIMMER_ADVANCE_MS);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (loading) return;
@@ -277,25 +340,69 @@ export default function GoalsPage() {
 
   const handleCheckInResult = useCallback(
     async (goalId: string, checkpointId?: string): Promise<Goal> => {
-      const t = await getApiAccessToken();
-      const updated = await checkInGoal(goalId, t, checkpointId);
-      mergeGoalIntoDashboard(updated);
+      const priorGoal = dashboard?.goals.find((g) => g.id === goalId);
+      if (!priorGoal || !dashboard) {
+        throw new Error("Goal not found.");
+      }
+      const priorStripe = dashboard.stripe;
+      const optimistic = optimisticCheckIn(priorGoal, checkpointId);
+      mergeGoalIntoDashboard(optimistic);
+      setDashboard((d) =>
+        d ? { ...d, stripe: optimisticStripeAfterCheckIn(d.stripe, priorGoal) } : d,
+      );
       showNotice(checkpointId ? "Checkpoint logged." : "Checked in for today.");
-      await load({ quiet: true });
-      return updated;
+      const nextGoals = dashboard.goals.map((g) => (g.id === goalId ? optimistic : g));
+      const sorted = sortGoalsForGrid(nextGoals);
+      const goldIndex = goldIndexInSortedList(goalId, sorted);
+      if (goldIndex >= 0) setShimmerCursor(goldIndex);
+
+      try {
+        const t = await getApiAccessToken();
+        const updated = await checkInGoal(goalId, t, checkpointId);
+        mergeGoalIntoDashboard(updated);
+        void load({ quiet: true });
+        return updated;
+      } catch (e: unknown) {
+        mergeGoalIntoDashboard(priorGoal);
+        setDashboard((d) => (d ? { ...d, stripe: priorStripe } : d));
+        throw e;
+      }
     },
-    [getApiAccessToken, load, mergeGoalIntoDashboard, showNotice],
+    [dashboard, getApiAccessToken, load, mergeGoalIntoDashboard, showNotice],
   );
 
   const handleMarkComplete = useCallback(
     async (goalId: string) => {
-      const t = await getApiAccessToken();
-      const updated = await patchGoal(goalId, { status: "completed" }, t);
-      handleGoalUpdated(updated);
+      const priorGoal = dashboard?.goals.find((g) => g.id === goalId);
+      if (!priorGoal || !dashboard) return;
+      const priorStripe = dashboard.stripe;
+      const priorTab = pageTab;
+      const optimistic = optimisticMarkComplete(priorGoal);
+      mergeGoalIntoDashboard(optimistic);
       showNotice("Goal marked complete.");
-      await load({ quiet: true });
+      setPageTab("completed");
+      setPageIndex(0);
+
+      try {
+        const t = await getApiAccessToken();
+        const updated = await patchGoal(goalId, { status: "completed" }, t);
+        mergeGoalIntoDashboard(updated);
+        void load({ quiet: true, status: "completed" });
+      } catch (e: unknown) {
+        mergeGoalIntoDashboard(priorGoal);
+        setDashboard((d) => (d ? { ...d, stripe: priorStripe } : d));
+        setPageTab(priorTab === "settings" ? "active" : priorTab);
+        setError(e instanceof Error ? e.message : "Failed to mark goal complete.");
+      }
     },
-    [getApiAccessToken, handleGoalUpdated, load, showNotice],
+    [
+      dashboard,
+      getApiAccessToken,
+      load,
+      mergeGoalIntoDashboard,
+      pageTab,
+      showNotice,
+    ],
   );
 
   const onHoldComplete = (goal: Goal) => {
@@ -316,6 +423,30 @@ export default function GoalsPage() {
   };
 
   const goals = dashboard?.goals ?? [];
+  const sortedGoals = useMemo(() => sortGoalsForGrid(goals), [goals]);
+  const pageCount = useMemo(
+    () => goalsGridPageCount(sortedGoals.length),
+    [sortedGoals.length],
+  );
+  const clampedPageIndex = useMemo(
+    () => clampGoalsPageIndex(pageIndex, sortedGoals.length),
+    [pageIndex, sortedGoals.length],
+  );
+
+  useEffect(() => {
+    if (clampedPageIndex !== pageIndex) {
+      setPageIndex(clampedPageIndex);
+    }
+  }, [clampedPageIndex, pageIndex]);
+
+  const pageGoals = useMemo(
+    () => paginateGoals(sortedGoals, clampedPageIndex),
+    [sortedGoals, clampedPageIndex],
+  );
+  const showPagination = sortedGoals.length > GOALS_GRID_PAGE_SIZE;
+  const showActiveHelper =
+    !loading && pageTab === "active" && statusCounts.active > 0 && !showPagination;
+
   const stripe = dashboard?.stripe ?? {
     today_actual: 0,
     today_target: 0,
@@ -325,21 +456,81 @@ export default function GoalsPage() {
     month_target: 0,
   };
 
-  const showActiveHelper =
-    !loading && pageTab === "active" && statusCounts.active > 0;
+  const goalsPanelTopSlot = (() => {
+    if (notice) {
+      return (
+        <Text
+          role="status"
+          {...GOALS_GRID_TOP_SLOT_TEXT_PROPS}
+          color={GOALS_THEME.pineGreen}
+          fontWeight="medium"
+          textAlign="center"
+          width="full"
+          lineClamp={1}
+        >
+          {notice}
+        </Text>
+      );
+    }
+    if (showPagination) {
+      return (
+        <HStack gap="8" width="full" justify="center" fontWeight="medium">
+          <Box
+            {...paginationArrowButtonProps}
+            aria-label="Previous page"
+            aria-disabled={clampedPageIndex <= 0}
+            color={clampedPageIndex <= 0 ? "fg.muted" : "fg"}
+            pointerEvents={clampedPageIndex <= 0 ? "none" : "auto"}
+            opacity={clampedPageIndex <= 0 ? 0.45 : 1}
+            onClick={() => setPageIndex((i) => Math.max(0, i - 1))}
+          >
+            ←
+          </Box>
+          <Box
+            {...paginationArrowButtonProps}
+            aria-label="Next page"
+            aria-disabled={clampedPageIndex >= pageCount - 1}
+            color={clampedPageIndex >= pageCount - 1 ? "fg.muted" : "fg"}
+            pointerEvents={clampedPageIndex >= pageCount - 1 ? "none" : "auto"}
+            opacity={clampedPageIndex >= pageCount - 1 ? 0.45 : 1}
+            onClick={() => setPageIndex((i) => Math.min(pageCount - 1, i + 1))}
+          >
+            →
+          </Box>
+        </HStack>
+      );
+    }
+    if (showActiveHelper) {
+      return (
+        <Text
+          {...GOALS_GRID_TOP_SLOT_TEXT_PROPS}
+          color="fg"
+          fontWeight="medium"
+          textAlign="center"
+          width="full"
+          lineClamp={1}
+          title={ACTIVE_HELPER_TEXT}
+        >
+          {ACTIVE_HELPER_TEXT}
+        </Text>
+      );
+    }
+    return (
+      <Text
+        {...GOALS_GRID_TOP_SLOT_TEXT_PROPS}
+        fontWeight="medium"
+        visibility="hidden"
+        aria-hidden
+        lineClamp={1}
+      >
+        {ACTIVE_HELPER_TEXT}
+      </Text>
+    );
+  })();
 
   const goalsPanel = (
     <>
-      {showActiveHelper ? (
-        <Text fontSize={APP_TEXT_SIZES.body} color="fg" lineHeight="tall" py="2">
-          Click a goal to edit it, or hold it to mark it completed.
-        </Text>
-      ) : null}
-      {notice ? (
-        <Text role="status" color={GOALS_THEME.pineGreen} fontWeight="medium">
-          {notice}
-        </Text>
-      ) : null}
+      <Box {...GOALS_GRID_TOP_SLOT_PROPS}>{goalsPanelTopSlot}</Box>
       {error ? (
         <Text role="alert" color="nautical.solid" fontWeight="medium">
           {error}
@@ -353,11 +544,12 @@ export default function GoalsPage() {
         ) : null}
         {goals.length > 0 ? (
           <SimpleGrid columns={{ base: 3, md: 3 }} gap={{ base: 2, md: 3 }} width="full">
-            {goals.map((goal) => (
+            {pageGoals.map((goal) => (
               <GoalCard
                 key={goal.id}
                 goal={goal}
                 compact={listStatus === "active"}
+                goldShimmerAnimate={goalGoldShimmerAnimate(goal, sortedGoals, shimmerCursor)}
                 onTap={() => openEdit(goal)}
                 onHoldComplete={() => onHoldComplete(goal)}
               />

@@ -4,6 +4,7 @@ import type { Goal } from "./types";
 import {
   frequencyLabel,
   goalCompletedMedalLabel,
+  goalContinuousPeriodStreakLabel,
   goalHoldProgressDisabled,
   goalLastProgressLabel,
   goalPatchIsComplete,
@@ -25,6 +26,7 @@ type GoalCardProps = {
   onHoldComplete: () => void;
   /** Active tab: compact patch on mobile, badge row on desktop. */
   compact?: boolean;
+  goldShimmerAnimate?: boolean;
 };
 
 const patchPadding = { px: "2", py: "2", textAlign: "center" as const };
@@ -33,7 +35,37 @@ function goalKindCornerEmoji(kind: Goal["kind"]): string {
   return kind === "continuous" ? "♻️" : "🎯";
 }
 
-function GoalCardMobileCircle({ goal, compact }: { goal: Goal; compact: boolean }) {
+function GoalPatchPeriodLine({ goal, compact }: { goal: Goal; compact: boolean }) {
+  if (goal.status === "completed") {
+    return (
+      <Text fontSize="xs" color={GOALS_THEME.textMuted} textAlign="center">
+        {goalCompletedMedalLabel(goal)}
+      </Text>
+    );
+  }
+  if (compact && goal.kind === "continuous" && goalPatchIsComplete(goal)) {
+    const streak = goalContinuousPeriodStreakLabel(goal);
+    return streak ? (
+      <Text fontSize="xs" color={GOALS_THEME.textMuted} textAlign="center">
+        {streak}
+      </Text>
+    ) : null;
+  }
+  if (compact) {
+    return <GoalPeriodSockets slots={periodSlotsForGoal(goal)} size="sm" />;
+  }
+  return null;
+}
+
+function GoalCardMobileCircle({
+  goal,
+  compact,
+  goldShimmerAnimate,
+}: {
+  goal: Goal;
+  compact: boolean;
+  goldShimmerAnimate: boolean;
+}) {
   const complete = goalPatchIsComplete(goal);
   const patchStyle = goalPatchShellStyle(goal);
 
@@ -41,6 +73,7 @@ function GoalCardMobileCircle({ goal, compact }: { goal: Goal; compact: boolean 
     return (
       <GoalPatchCircle
         goldShimmer={complete}
+        goldShimmerAnimate={goldShimmerAnimate}
         patchStyle={patchStyle}
         width="100%"
         height="100%"
@@ -57,7 +90,7 @@ function GoalCardMobileCircle({ goal, compact }: { goal: Goal; compact: boolean 
           >
             {goal.title}
           </Text>
-          <GoalPeriodSockets slots={periodSlotsForGoal(goal)} size="sm" />
+          <GoalPatchPeriodLine goal={goal} compact={compact} />
         </Stack>
       </GoalPatchCircle>
     );
@@ -66,6 +99,7 @@ function GoalCardMobileCircle({ goal, compact }: { goal: Goal; compact: boolean 
   return (
     <GoalPatchCircle
       goldShimmer={complete}
+      goldShimmerAnimate={goldShimmerAnimate}
       patchStyle={patchStyle}
       width="100%"
       height="100%"
@@ -95,7 +129,15 @@ function GoalCardMobileCircle({ goal, compact }: { goal: Goal; compact: boolean 
   );
 }
 
-function GoalCardDesktopBadge({ goal, compact }: { goal: Goal; compact: boolean }) {
+function GoalCardDesktopBadge({
+  goal,
+  compact,
+  goldShimmerAnimate,
+}: {
+  goal: Goal;
+  compact: boolean;
+  goldShimmerAnimate: boolean;
+}) {
   const complete = goalPatchIsComplete(goal);
   const patchStyle = goalPatchShellStyle(goal);
 
@@ -103,6 +145,7 @@ function GoalCardDesktopBadge({ goal, compact }: { goal: Goal; compact: boolean 
     <HStack align="center" gap="0" width="full">
       <GoalPatchCircle
         goldShimmer={complete}
+        goldShimmerAnimate={goldShimmerAnimate}
         patchStyle={patchStyle}
         position="relative"
         zIndex={1}
@@ -127,6 +170,10 @@ function GoalCardDesktopBadge({ goal, compact }: { goal: Goal; compact: boolean 
           {goal.status === "completed" ? (
             <Text fontSize="xs" color={GOALS_THEME.textMuted} textAlign="center">
               {goalCompletedMedalLabel(goal)}
+            </Text>
+          ) : compact && goal.kind === "continuous" && complete ? (
+            <Text fontSize="xs" color={GOALS_THEME.textMuted} textAlign="center">
+              {goalContinuousPeriodStreakLabel(goal)}
             </Text>
           ) : compact ? (
             <GoalPeriodSockets slots={periodSlotsForGoal(goal)} size="sm" />
@@ -233,7 +280,13 @@ function GoalCardDesktopBadge({ goal, compact }: { goal: Goal; compact: boolean 
   );
 }
 
-export function GoalCard({ goal, onTap, onHoldComplete, compact = false }: GoalCardProps) {
+export function GoalCard({
+  goal,
+  onTap,
+  onHoldComplete,
+  compact = false,
+  goldShimmerAnimate = false,
+}: GoalCardProps) {
   const holdDisabled = goalHoldProgressDisabled(goal);
 
   return (
@@ -245,7 +298,11 @@ export function GoalCard({ goal, onTap, onHoldComplete, compact = false }: GoalC
           onHoldComplete={onHoldComplete}
           holdDisabled={holdDisabled}
         >
-          <GoalCardMobileCircle goal={goal} compact={compact} />
+          <GoalCardMobileCircle
+            goal={goal}
+            compact={compact}
+            goldShimmerAnimate={goldShimmerAnimate}
+          />
         </GoalLongPressRing>
       </Box>
       <Box display={{ base: "none", md: "block" }} width="full">
@@ -255,7 +312,11 @@ export function GoalCard({ goal, onTap, onHoldComplete, compact = false }: GoalC
           onHoldComplete={onHoldComplete}
           holdDisabled={holdDisabled}
         >
-          <GoalCardDesktopBadge goal={goal} compact={compact} />
+          <GoalCardDesktopBadge
+            goal={goal}
+            compact={compact}
+            goldShimmerAnimate={goldShimmerAnimate}
+          />
         </GoalLongPressRing>
       </Box>
     </>

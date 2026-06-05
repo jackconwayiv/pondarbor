@@ -6,7 +6,7 @@ import { GOALS_THEME } from "./theme";
 
 import "./goalsHoldTarget.css";
 
-const HOLD_MS = 1500;
+const HOLD_MS = 1000;
 const MOVE_THRESHOLD_PX = 12;
 /** Presses longer than this (or with visible ring progress) are holds, not taps. */
 const TAP_MAX_DURATION_MS = 280;
@@ -22,7 +22,7 @@ type GoalLongPressRingProps = {
 };
 
 /**
- * Tap opens edit; 1.5s hold with ring animation fires onHoldComplete.
+ * Tap opens edit; 1s hold with ring animation fires onHoldComplete.
  */
 export function GoalLongPressRing({
   children,

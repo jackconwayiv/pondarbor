@@ -46,6 +46,10 @@
 }
 
 .goal-patch-gold-shimmer::after {
+  content: none;
+}
+
+.goal-patch-gold-shimmer-animate::after {
   content: "";
   position: absolute;
   inset: -35%;
@@ -63,7 +67,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .goal-patch-gold-shimmer::after {
+  .goal-patch-gold-shimmer-animate::after {
     animation: none;
     opacity: 0;
   }

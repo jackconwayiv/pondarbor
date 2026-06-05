@@ -7,20 +7,29 @@ import "./goalPatchShimmer.css";
 
 type GoalPatchCircleProps = BoxProps & {
   patchStyle: { borderColor: string; bg: string };
-  /** Ongoing gold shimmer on earned badges. */
+  /** Static gold styling on earned badges. */
   goldShimmer?: boolean;
+  /** Looping shine sweep (subset of gold badges). */
+  goldShimmerAnimate?: boolean;
   children: ReactNode;
 };
 
 /** Circular goal patch with optional ongoing gold badge shimmer. */
 export function GoalPatchCircle({
   goldShimmer = false,
+  goldShimmerAnimate = false,
   patchStyle,
   children,
   className,
   ...rest
 }: GoalPatchCircleProps) {
-  const rootClass = [className, goldShimmer ? "goal-patch-gold-shimmer" : ""].filter(Boolean).join(" ");
+  const rootClass = [
+    className,
+    goldShimmer ? "goal-patch-gold-shimmer" : "",
+    goldShimmer && goldShimmerAnimate ? "goal-patch-gold-shimmer-animate" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <Box

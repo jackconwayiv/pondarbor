@@ -136,6 +136,16 @@ export function goalCompletedMedalLabel(goal: Goal): string | null {
   return formatGoalDate(goal.completed_at) ?? "—";
 }
 
+/** Second line on gold continuous medals (period satisfied, still active). */
+export function goalContinuousPeriodStreakLabel(goal: Goal): string | null {
+  if (goal.kind !== "continuous" || !goalPatchIsComplete(goal)) return null;
+  const n = goal.stats.streak_current;
+  const isWeek =
+    goal.frequency_kind === "weekly" || goal.frequency_kind === "times_per_week";
+  const period = isWeek ? "week" : "day";
+  return `${n} ${period} streak`;
+}
+
 /** Stats modal column heading for ongoing goals (frequency label). */
 export function goalStatsPanelHeading(goal: Goal): string {
   return frequencyLabel(goal);

@@ -3,6 +3,7 @@ import { Box, Stack, Text } from "@chakra-ui/react";
 import type { Goal } from "./types";
 import {
   goalCompletedMedalLabel,
+  goalContinuousPeriodStreakLabel,
   goalPatchIsComplete,
   goalPatchShellStyle,
 } from "./goalCardLabels";
@@ -59,6 +60,10 @@ export function GoalStatsModalBadge({
             {goal.status === "completed" ? (
               <Text fontSize="xs" color={GOALS_THEME.textMuted}>
                 {goalCompletedMedalLabel(goal)}
+              </Text>
+            ) : goal.kind === "continuous" && complete ? (
+              <Text fontSize="xs" color={GOALS_THEME.textMuted}>
+                {goalContinuousPeriodStreakLabel(goal)}
               </Text>
             ) : (
               <GoalPeriodSockets slots={periodSlotsForGoal(goal)} size="sm" />

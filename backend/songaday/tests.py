@@ -332,7 +332,9 @@ class SongadayApiTests(TestCase):
         self.assertEqual(r.status_code, 400)
 
     def test_playlists_browse_lists_own_month_with_count(self):
-        self.alice_client.post(
+        SongPrompt.objects.create(month=3, day=1, prompt="March 1")
+        SongPrompt.objects.create(month=3, day=15, prompt="March 15")
+        r1 = self.alice_client.post(
             "/api/v1/songaday/responses/",
             {
                 "entry_date": "2026-03-01",
@@ -341,7 +343,8 @@ class SongadayApiTests(TestCase):
             },
             format="json",
         )
-        self.alice_client.post(
+        self.assertEqual(r1.status_code, 201)
+        r2 = self.alice_client.post(
             "/api/v1/songaday/responses/",
             {
                 "entry_date": "2026-03-15",
@@ -350,6 +353,7 @@ class SongadayApiTests(TestCase):
             },
             format="json",
         )
+        self.assertEqual(r2.status_code, 201)
         r = self.alice_client.get("/api/v1/songaday/playlists/browse/")
         self.assertEqual(r.status_code, 200)
         rows = r.json()["results"]
@@ -362,7 +366,9 @@ class SongadayApiTests(TestCase):
         self.assertIn("avatar_url", rows[0])
 
     def test_playlists_month_ordered_ascending_by_entry_date(self):
-        self.alice_client.post(
+        SongPrompt.objects.create(month=3, day=2, prompt="March 2")
+        SongPrompt.objects.create(month=3, day=20, prompt="March 20")
+        r1 = self.alice_client.post(
             "/api/v1/songaday/responses/",
             {
                 "entry_date": "2026-03-20",
@@ -371,7 +377,8 @@ class SongadayApiTests(TestCase):
             },
             format="json",
         )
-        self.alice_client.post(
+        self.assertEqual(r1.status_code, 201)
+        r2 = self.alice_client.post(
             "/api/v1/songaday/responses/",
             {
                 "entry_date": "2026-03-02",
@@ -380,6 +387,7 @@ class SongadayApiTests(TestCase):
             },
             format="json",
         )
+        self.assertEqual(r2.status_code, 201)
         r = self.alice_client.get("/api/v1/songaday/playlists/month/?year=2026&month=3")
         self.assertEqual(r.status_code, 200)
         body = r.json()
@@ -393,7 +401,8 @@ class SongadayApiTests(TestCase):
 
     def test_playlists_month_friend_visible(self):
         self._accept_pair(self.alice, self.bob)
-        self.bob_client.post(
+        SongPrompt.objects.create(month=10, day=5, prompt="October 5")
+        r = self.bob_client.post(
             "/api/v1/songaday/responses/",
             {
                 "entry_date": "2025-10-05",
@@ -402,6 +411,7 @@ class SongadayApiTests(TestCase):
             },
             format="json",
         )
+        self.assertEqual(r.status_code, 201)
         r = self.alice_client.get(
             f"/api/v1/songaday/playlists/month/?user_id={self.bob.id}&year=2025&month=10"
         )

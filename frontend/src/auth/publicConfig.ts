@@ -5,6 +5,10 @@ export type PondarborPublicConfig = {
   auth0ClientId: string;
   auth0ApiAudience?: string | null;
   auth0SlackConnection?: string | null;
+  /** Production-only: injected when `DEBUG=false` and `SENTRY_DSN` is set on the server. */
+  sentryDsn?: string | null;
+  sentryEnvironment?: string | null;
+  sentryTracesSampleRate?: string | null;
 };
 
 function readJsonScript(id: string): PondarborPublicConfig | null {

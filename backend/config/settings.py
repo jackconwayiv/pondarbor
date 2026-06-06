@@ -6,6 +6,8 @@ import dj_database_url
 from corsheaders.defaults import default_headers
 from dotenv import load_dotenv
 
+from config.allowed_hosts import build_allowed_hosts
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -38,11 +40,7 @@ else:
         }
     }
 
-ALLOWED_HOSTS = [
-    host.strip()
-    for host in os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
-    if host.strip()
-]
+ALLOWED_HOSTS = build_allowed_hosts(os.getenv("ALLOWED_HOSTS"))
 
 CSRF_TRUSTED_ORIGINS = [
     origin.strip()
@@ -382,7 +380,7 @@ LOGGING = {
 }
 
 _sentry_dsn = os.getenv("SENTRY_DSN", "").strip()
-if _sentry_dsn:
+if _sentry_dsn and not DEBUG:
     import sentry_sdk
     from sentry_sdk.integrations.django import DjangoIntegration
 

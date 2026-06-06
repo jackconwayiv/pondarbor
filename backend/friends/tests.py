@@ -7,7 +7,7 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from estates.constants import ESTATES_COMPUTER_USER_EMAIL
+from estates.bot_user import get_computer_user
 from friends.models import FriendRequest
 from users.models import Profile
 
@@ -281,10 +281,12 @@ class FriendsApiTests(TestCase):
         self.assertNotIn(self.pending_user.id, ids)
 
     def test_approved_users_list_excludes_hidden_system_accounts(self):
-        self._make_user(
-            ESTATES_COMPUTER_USER_EMAIL,
-            approved=True,
-            display_name="Computer",
+        computer = get_computer_user()
+        computer.account_status = User.AccountStatus.APPROVED
+        computer.save(update_fields=["account_status"])
+        Profile.objects.update_or_create(
+            user=computer,
+            defaults={"display_name": "Computer", "avatar_url": ""},
         )
         self._make_user(
             settings.CONTACT_INBOX_EMAIL,

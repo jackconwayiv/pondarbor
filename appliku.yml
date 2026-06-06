@@ -34,6 +34,13 @@ build_settings:
       source: manual
     - name: VITE_AUTH0_API_AUDIENCE
       source: manual
+    # Sentry (optional). Production only (DEBUG=false). Same DSN for Django + browser SPA.
+    - name: SENTRY_DSN
+      source: manual
+    - name: SENTRY_ENVIRONMENT
+      source: manual
+    - name: SENTRY_TRACES_SAMPLE_RATE
+      source: manual
     # ArborBot (Song-a-Day Slack bot). Omit all SLACK_* to disable. Do not use Auth0 Slack OAuth for this.
     - name: SLACK_SIGNING_SECRET
       source: manual

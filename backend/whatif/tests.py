@@ -44,6 +44,7 @@ from whatif.subject_board import (
 )
 from whatif.validators import validate_question_text_field
 from whatif.constants import STALE_OPEN_LOBBY_AGE_HOURS
+from whatif.views import AVATAR_EMOJIS, _draw_question
 
 
 def _mark_all_players_ready(code: str) -> None:
@@ -2566,7 +2567,7 @@ class EndgameStatsTests(TestCase):
         user = User.objects.create_user(email="bf1@example.com", password="x")
         user2 = User.objects.create_user(email="bf2@example.com", password="x")
         user3 = User.objects.create_user(email="bf3@example.com", password="x")
-        session = WhatIfSession.objects.create(short_code="BF01", owner=user, status=WhatIfSession.Status.ENDED)
+        session = WhatIfSession.objects.create(short_code="BFAA", owner=user, status=WhatIfSession.Status.ENDED)
         WhatIfPlayer.objects.create(session=session, user=user, display_name="First", avatar_emoji="🐸", score=20)
         WhatIfPlayer.objects.create(session=session, user=user2, display_name="Second", avatar_emoji="🦆", score=15)
         WhatIfPlayer.objects.create(session=session, user=user3, display_name="Third", avatar_emoji="🐱", score=10)

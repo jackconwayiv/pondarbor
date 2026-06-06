@@ -2,6 +2,7 @@ import * as Sentry from "@sentry/react";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
 import RootErrorFallback from "./RootErrorFallback";
+import { isSentryEnabled } from "./sentryConfig";
 
 type Props = { children: ReactNode };
 
@@ -18,13 +19,15 @@ export default class RootErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: unknown, errorInfo: ErrorInfo): void {
-    Sentry.captureException(error, {
-      contexts: {
-        react: {
-          componentStack: errorInfo.componentStack,
+    if (isSentryEnabled()) {
+      Sentry.captureException(error, {
+        contexts: {
+          react: {
+            componentStack: errorInfo.componentStack,
+          },
         },
-      },
-    });
+      });
+    }
   }
 
   render(): ReactNode {

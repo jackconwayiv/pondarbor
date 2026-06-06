@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/react";
 import type { ReactNode } from "react";
+import { isSentryEnabled } from "./sentryConfig";
 import { lazy, Suspense, useEffect } from "react";
 import { createBrowserRouter, Navigate, Outlet } from "react-router";
 import AboutPage from "./AboutPage";
@@ -179,10 +180,11 @@ function authedRouteElement(element: ReactNode): ReactNode {
   return <RequireAuthenticatedRoute>{element}</RequireAuthenticatedRoute>;
 }
 
-const sentryCreateBrowserRouter =
-  Sentry.wrapCreateBrowserRouterV7(createBrowserRouter);
+const createAppRouter = isSentryEnabled()
+  ? Sentry.wrapCreateBrowserRouterV7(createBrowserRouter)
+  : createBrowserRouter;
 
-export const router = sentryCreateBrowserRouter([
+export const router = createAppRouter([
   {
     path: "/",
     element: <AppLayout />,

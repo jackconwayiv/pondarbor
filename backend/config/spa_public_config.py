@@ -2,6 +2,8 @@
 
 import os
 
+from django.conf import settings
+
 
 def get_spa_public_config() -> dict[str, str | None]:
     domain = (os.getenv("VITE_AUTH0_DOMAIN") or os.getenv("AUTH0_DOMAIN") or "").strip()
@@ -12,9 +14,22 @@ def get_spa_public_config() -> dict[str, str | None]:
         os.getenv("VITE_AUTH0_API_AUDIENCE") or os.getenv("AUTH0_API_AUDIENCE") or ""
     ).strip()
     slack = (os.getenv("VITE_AUTH0_SLACK_CONNECTION") or "").strip()
-    return {
+    config: dict[str, str | None] = {
         "auth0Domain": domain,
         "auth0ClientId": client_id,
         "auth0ApiAudience": audience or None,
         "auth0SlackConnection": slack or None,
     }
+
+    if not settings.DEBUG:
+        sentry_dsn = os.getenv("SENTRY_DSN", "").strip()
+        if sentry_dsn:
+            config["sentryDsn"] = sentry_dsn
+            config["sentryEnvironment"] = (
+                os.getenv("SENTRY_ENVIRONMENT", "").strip() or "production"
+            )
+            config["sentryTracesSampleRate"] = (
+                os.getenv("SENTRY_TRACES_SAMPLE_RATE", "").strip() or "0"
+            )
+
+    return config

@@ -29,8 +29,9 @@ class GoalStatsTests(TestCase):
             title="New habit",
             kind=Goal.Kind.CONTINUOUS,
             frequency_kind=Goal.FrequencyKind.DAILY,
-            created_at=created,
         )
+        Goal.objects.filter(pk=goal.pk).update(created_at=created)
+        goal.refresh_from_db()
         for day_offset in (0, 1, 2):
             CheckIn.objects.create(
                 goal=goal,

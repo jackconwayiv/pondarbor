@@ -46,9 +46,11 @@ def record_check_in(
     checkpoint: Checkpoint | None = None,
 ) -> CheckIn:
     now = timezone.now()
-    if goal.kind == Goal.Kind.CONTINUOUS and checkpoint is not None:
-        raise ValueError("Continuous goals cannot link check-ins to checkpoints.")
-    if goal.kind == Goal.Kind.ONE_TIME:
+    if goal.kind in (Goal.Kind.CONTINUOUS, Goal.Kind.CHORE) and checkpoint is not None:
+        raise ValueError("Ongoing goals and chores cannot link check-ins to checkpoints.")
+    if goal.kind == Goal.Kind.CHORE:
+        event_type = Goal.LastCompletionEventType.CHECK_IN
+    elif goal.kind == Goal.Kind.ONE_TIME:
         if checkpoint is None:
             raise ValueError("Task or project goals must log progress on a checkpoint.")
         if checkpoint.goal_id != goal.id:

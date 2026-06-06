@@ -17,6 +17,9 @@ export const GOALS_THEME = {
   /** Incomplete completable (one-time) patch. */
   patchCompletableBg: "#D6EAF5",
   patchCompletableBorder: "#2E6F9E",
+  /** Incomplete chore patch. */
+  patchChoreBg: "#FFE8CC",
+  patchChoreBorder: "#E07A2F",
   /** Paused or neutral fallback. */
   patchSilverBg: "#E8EDF2",
   patchSilverBorder: "#8B9AAB",

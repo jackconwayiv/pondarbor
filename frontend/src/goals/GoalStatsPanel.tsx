@@ -1,7 +1,7 @@
 import { Badge, HStack, Stack, Text } from "@chakra-ui/react";
 
 import type { Goal } from "./types";
-import { goalStatsPanelHeading } from "./goalCardLabels";
+import { goalStatsPanelHeading, isOngoingKind } from "./goalCardLabels";
 import { GoalMilestoneChecklist } from "./GoalMilestoneChecklist";
 import { GOALS_THEME } from "./theme";
 
@@ -18,7 +18,7 @@ export function GoalStatsPanel({
 }: GoalStatsPanelProps) {
   return (
     <Stack gap="3">
-      {goal.kind === "continuous" ? (
+      {isOngoingKind(goal) ? (
         <>
           <Text fontSize="sm" fontWeight="semibold" color={GOALS_THEME.textOnLight}>
             {goalStatsPanelHeading(goal)}
@@ -30,12 +30,35 @@ export function GoalStatsPanel({
             <Text>
               This week {goal.stats.week_actual}/{goal.stats.week_target || "—"}
             </Text>
+            {goal.stats.month_target > 0 ? (
+              <Text>
+                This month {goal.stats.month_actual}/{goal.stats.month_target}
+              </Text>
+            ) : null}
             <Text>
               Streak {goal.stats.streak_current}
               {goal.stats.streak_best > goal.stats.streak_current
                 ? ` · best ${goal.stats.streak_best}`
                 : ""}
             </Text>
+            {goal.kind === "chore" &&
+            goal.stats.count_completed_on_time +
+              goal.stats.count_completed_overdue +
+              goal.stats.count_missed >
+              0 ? (
+              <>
+                <Text pt="1">
+                  On time {Math.round(goal.stats.pct_completed_on_time)}% · Overdue{" "}
+                  {Math.round(goal.stats.pct_completed_overdue)}% · Missed{" "}
+                  {Math.round(goal.stats.pct_completed_missed)}%
+                </Text>
+                <Text fontSize="xs">
+                  {goal.stats.count_completed_on_time} on time ·{" "}
+                  {goal.stats.count_completed_overdue} overdue · {goal.stats.count_missed}{" "}
+                  missed
+                </Text>
+              </>
+            ) : null}
           </Stack>
         </>
       ) : goal.checkpoints.length > 0 ? (

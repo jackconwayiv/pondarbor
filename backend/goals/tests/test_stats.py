@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import date, datetime, timedelta, timezone as dt_timezone
 from zoneinfo import ZoneInfo
 
 from django.contrib.auth import get_user_model
@@ -75,9 +75,32 @@ class GoalStatsTests(TestCase):
             today_target=0,
             week_actual=0,
             week_target=0,
+            month_actual=0,
+            month_target=0,
             urgency_score=0,
         )
         ordered = sort_goals_for_display(
             [(older, empty_stats), (newer, empty_stats)],
         )
         self.assertEqual([g.id for g, _ in ordered], [newer.id, older.id])
+
+    def test_every_n_months_due_months_from_anchor(self):
+        tz = ZoneInfo("America/Phoenix")
+        created = datetime(2026, 1, 15, 12, 0, tzinfo=dt_timezone.utc)
+        goal = Goal.objects.create(
+            owner_user=self.owner,
+            title="Quarterly",
+            kind=Goal.Kind.CONTINUOUS,
+            frequency_kind=Goal.FrequencyKind.EVERY_N_MONTHS,
+            schedule_interval_months=2,
+        )
+        Goal.objects.filter(pk=goal.pk).update(created_at=created)
+        goal.refresh_from_db()
+        from goals.chore_stats import is_every_n_months_due_month
+        from goals.stats import month_target_for_goal
+
+        self.assertTrue(is_every_n_months_due_month(goal, date(2026, 1, 10), tz))
+        self.assertFalse(is_every_n_months_due_month(goal, date(2026, 2, 1), tz))
+        self.assertTrue(is_every_n_months_due_month(goal, date(2026, 3, 1), tz))
+        self.assertEqual(month_target_for_goal(goal, date(2026, 2, 1), tz), 0)
+        self.assertEqual(month_target_for_goal(goal, date(2026, 3, 1), tz), 1)

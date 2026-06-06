@@ -24,6 +24,7 @@ import {
   fetchGoalsDashboard,
   patchGoal,
 } from "./api";
+import { goalHoldProgressDisabled } from "./goalCardLabels";
 import { GoalsSettingsPanel } from "./GoalsSettingsPanel";
 import { GoalCard } from "./GoalCard";
 import { GoalFormModal } from "./GoalFormModal";
@@ -44,25 +45,46 @@ import {
 import { GOAL_SHIMMER_ADVANCE_MS, goalGoldShimmerAnimate, goldIndexInSortedList } from "./goalShimmer";
 import { GOALS_THEME } from "./theme";
 import { GoalsProgressStripe } from "./GoalsProgressStripe";
-import type { Goal, GoalStatus, GoalsDashboard } from "./types";
+import type { Goal, GoalKind, GoalStatus, GoalsDashboard } from "./types";
 
 import "./goalsAddGoalButton.css";
 
+const KIND_TABS: { value: GoalKind; label: string }[] = [
+  { value: "continuous", label: "Goals" },
+  { value: "chore", label: "Chores" },
+  { value: "one_time", label: "Projects" },
+];
+
 const STATUS_TABS: { value: GoalStatus; label: string }[] = [
-  { value: "active", label: "Active" },
   { value: "completed", label: "Finished" },
   { value: "paused", label: "Paused" },
 ];
 
-type PageTab = GoalStatus | "settings";
+type PageTab = GoalKind | GoalStatus | "settings";
 
 const SETTINGS_TAB: { value: "settings"; label: string } = {
   value: "settings",
   label: "Settings",
 };
 
-const ACTIVE_HELPER_TEXT =
+const EMPTY_KIND_COUNTS: Record<GoalKind, number> = {
+  continuous: 0,
+  chore: 0,
+  one_time: 0,
+};
+
+function isActiveKindTab(tab: PageTab): tab is GoalKind {
+  return tab === "continuous" || tab === "chore" || tab === "one_time";
+}
+
+const GOALS_HELPER_TEXT =
   "Click a goal to edit it, or hold it to mark it completed.";
+const CHORES_HELPER_TEXT =
+  "Click a chore to edit it, or hold it to mark it completed.";
+const CHORES_MANAGER_HELPER_TEXT =
+  "Tap a chore to edit its schedule. Hold is disabled in Chore Manager.";
+const PROJECTS_HELPER_TEXT =
+  "Click a project to edit it, or hold it to mark progress.";
 
 /** Shared typography for notice, helper, and pagination in the top slot. */
 const GOALS_GRID_TOP_SLOT_TEXT_PROPS = {
@@ -107,7 +129,8 @@ export default function GoalsPage() {
     error: sessionError,
   } = useAppSession();
 
-  const [pageTab, setPageTab] = useState<PageTab>("active");
+  const [pageTab, setPageTab] = useState<PageTab>("continuous");
+  const [choresViewMode, setChoresViewMode] = useState<"due" | "manager">("due");
   const [dashboard, setDashboard] = useState<GoalsDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -129,9 +152,14 @@ export default function GoalsPage() {
       try {
         const t = await getApiAccessToken();
         setToken(t);
-        const listStatus =
-          options?.status ?? (pageTab === "settings" ? "active" : pageTab);
-        const data = await fetchGoalsDashboard(t, listStatus);
+        const fetchStatus = options?.status ?? listStatus;
+        const useKindFilter = !options?.status && isActiveKindTab(pageTab);
+        const data = await fetchGoalsDashboard(t, {
+          status: fetchStatus,
+          kind: useKindFilter ? pageTab : undefined,
+          choresDueOnly:
+            useKindFilter && pageTab === "chore" ? choresViewMode === "due" : undefined,
+        });
         setDashboard(data);
         setEditGoal((current) => {
           if (!current) return current;
@@ -145,7 +173,7 @@ export default function GoalsPage() {
         if (!options?.quiet) setLoading(false);
       }
     },
-    [getApiAccessToken, pageTab, sessionUser?.user.is_approved],
+    [choresViewMode, getApiAccessToken, pageTab, sessionUser?.user.is_approved],
   );
 
   useEffect(() => {
@@ -182,17 +210,32 @@ export default function GoalsPage() {
     [statusCounts],
   );
 
-  const pageTabs = useMemo(() => {
-    const status = STATUS_TABS.filter((tab) => statusCounts[tab.value] > 0);
-    if (totalGoals === 0) return status;
-    return [...status, SETTINGS_TAB];
-  }, [statusCounts, totalGoals]);
+  const kindCounts = useMemo(
+    () => dashboard?.kind_counts ?? EMPTY_KIND_COUNTS,
+    [dashboard],
+  );
 
-  const listStatus: GoalStatus = pageTab === "settings" ? "active" : pageTab;
+  const activeTotal = useMemo(
+    () => kindCounts.continuous + kindCounts.chore + kindCounts.one_time,
+    [kindCounts],
+  );
+
+  const pageTabs = useMemo(() => {
+    const kinds = KIND_TABS.filter((tab) => kindCounts[tab.value] > 0);
+    const status = STATUS_TABS.filter((tab) => statusCounts[tab.value] > 0);
+    if (totalGoals === 0) return kinds;
+    return [...kinds, ...status, SETTINGS_TAB];
+  }, [kindCounts, statusCounts, totalGoals]);
+
+  const listStatus: GoalStatus = isActiveKindTab(pageTab)
+    ? "active"
+    : pageTab === "settings"
+      ? "active"
+      : pageTab;
 
   useEffect(() => {
     setPageIndex(0);
-  }, [listStatus]);
+  }, [listStatus, pageTab, choresViewMode]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -206,7 +249,7 @@ export default function GoalsPage() {
   useEffect(() => {
     if (loading) return;
     if (pageTab === "settings" && totalGoals === 0) {
-      setPageTab("active");
+      setPageTab("continuous");
       return;
     }
     const hasTab = pageTabs.some((tab) => tab.value === pageTab);
@@ -215,11 +258,13 @@ export default function GoalsPage() {
       return;
     }
     if (pageTab === "settings") return;
-    if (statusCounts[pageTab] === 0) {
-      const fallback = STATUS_TABS.find((tab) => statusCounts[tab.value] > 0);
+    if (isActiveKindTab(pageTab) && kindCounts[pageTab] === 0) {
+      const fallback =
+        KIND_TABS.find((tab) => kindCounts[tab.value] > 0) ??
+        STATUS_TABS.find((tab) => statusCounts[tab.value] > 0);
       if (fallback) setPageTab(fallback.value);
     }
-  }, [loading, pageTab, pageTabs, statusCounts, totalGoals]);
+  }, [kindCounts, loading, pageTab, pageTabs, statusCounts, totalGoals]);
 
   const handleDeleteAllGoals = useCallback(async () => {
     const t = await getApiAccessToken();
@@ -227,7 +272,7 @@ export default function GoalsPage() {
     setFormOpen(false);
     setEditGoal(null);
     setMilestoneOpen(false);
-    setPageTab("active");
+    setPageTab("continuous");
     showNotice("All goals deleted.");
     await load({ quiet: true });
   }, [getApiAccessToken, load, showNotice]);
@@ -326,7 +371,9 @@ export default function GoalsPage() {
       } else if (updated.status === "paused") {
         setPageTab("paused");
       } else if (updated.status === "active") {
-        setPageTab("active");
+        if (updated.kind === "chore") setPageTab("chore");
+        else if (updated.kind === "one_time") setPageTab("one_time");
+        else setPageTab("continuous");
       }
       void load({ quiet: true, status: updated.status });
     },
@@ -406,7 +453,7 @@ export default function GoalsPage() {
   );
 
   const onHoldComplete = (goal: Goal) => {
-    if (goal.kind === "continuous") {
+    if (goal.kind === "continuous" || goal.kind === "chore") {
       void handleCheckInResult(goal.id).catch((e: unknown) => {
         setError(e instanceof Error ? e.message : "Check-in failed.");
       });
@@ -444,8 +491,27 @@ export default function GoalsPage() {
     [sortedGoals, clampedPageIndex],
   );
   const showPagination = sortedGoals.length > GOALS_GRID_PAGE_SIZE;
-  const showActiveHelper =
-    !loading && pageTab === "active" && statusCounts.active > 0 && !showPagination;
+  const kindHelperText = (() => {
+    if (pageTab === "chore") {
+      return choresViewMode === "manager" ? CHORES_MANAGER_HELPER_TEXT : CHORES_HELPER_TEXT;
+    }
+    if (pageTab === "one_time") return PROJECTS_HELPER_TEXT;
+    if (pageTab === "continuous") return GOALS_HELPER_TEXT;
+    return GOALS_HELPER_TEXT;
+  })();
+
+  const showKindHelper =
+    !loading &&
+    isActiveKindTab(pageTab) &&
+    kindCounts[pageTab] > 0 &&
+    !showPagination &&
+    !notice;
+
+  const showChoreManagerToggle =
+    !loading && pageTab === "chore" && kindCounts.chore > 0 && !notice && !showPagination;
+
+  const choreManagerMode = pageTab === "chore" && choresViewMode === "manager";
+  const addButtonBlue = activeTotal >= 3;
 
   const stripe = dashboard?.stripe ?? {
     today_actual: 0,
@@ -500,7 +566,22 @@ export default function GoalsPage() {
         </HStack>
       );
     }
-    if (showActiveHelper) {
+    if (showChoreManagerToggle) {
+      return (
+        <Box
+          {...paginationArrowButtonProps}
+          width="full"
+          fontWeight="medium"
+          color={GOALS_THEME.lakeBlue}
+          onClick={() =>
+            setChoresViewMode((mode) => (mode === "due" ? "manager" : "due"))
+          }
+        >
+          {choresViewMode === "due" ? "Chore Manager" : "Due today"}
+        </Box>
+      );
+    }
+    if (showKindHelper) {
       return (
         <Text
           {...GOALS_GRID_TOP_SLOT_TEXT_PROPS}
@@ -509,9 +590,9 @@ export default function GoalsPage() {
           textAlign="center"
           width="full"
           lineClamp={1}
-          title={ACTIVE_HELPER_TEXT}
+          title={kindHelperText}
         >
-          {ACTIVE_HELPER_TEXT}
+          {kindHelperText}
         </Text>
       );
     }
@@ -523,7 +604,7 @@ export default function GoalsPage() {
         aria-hidden
         lineClamp={1}
       >
-        {ACTIVE_HELPER_TEXT}
+        {GOALS_HELPER_TEXT}
       </Text>
     );
   })();
@@ -548,7 +629,8 @@ export default function GoalsPage() {
               <GoalCard
                 key={goal.id}
                 goal={goal}
-                compact={listStatus === "active"}
+                compact={isActiveKindTab(pageTab)}
+                holdDisabled={goalHoldProgressDisabled(goal, { managerMode: choreManagerMode })}
                 goldShimmerAnimate={goalGoldShimmerAnimate(goal, sortedGoals, shimmerCursor)}
                 onTap={() => openEdit(goal)}
                 onHoldComplete={() => onHoldComplete(goal)}
@@ -625,15 +707,28 @@ export default function GoalsPage() {
                   </Heading>
                   <PondButton
                     type="button"
-                    className="goals-add-goal-btn"
+                    className={
+                      addButtonBlue
+                        ? "goals-add-goal-btn goals-add-goal-btn--blue"
+                        : "goals-add-goal-btn"
+                    }
                     flexShrink={0}
                     onClick={openAdd}
-                    _hover={{
-                      bg: "transparent",
-                      borderColor: "#c9a227",
-                      borderWidth: "1px",
-                      color: "#1b3a2f",
-                    }}
+                    _hover={
+                      addButtonBlue
+                        ? {
+                            bg: GOALS_THEME.patchCompletableBg,
+                            borderColor: GOALS_THEME.patchCompletableBorder,
+                            borderWidth: "1px",
+                            color: GOALS_THEME.textOnLight,
+                          }
+                        : {
+                            bg: "transparent",
+                            borderColor: "#c9a227",
+                            borderWidth: "1px",
+                            color: "#1b3a2f",
+                          }
+                    }
                   >
                     + Add goal
                   </PondButton>
@@ -647,7 +742,7 @@ export default function GoalsPage() {
             {pageTabs.length > 0 ? (
               <Tabs.Root
                 value={pageTab}
-                onValueChange={(d) => setPageTab((d.value ?? "active") as PageTab)}
+                onValueChange={(d) => setPageTab((d.value ?? "continuous") as PageTab)}
                 variant="plain"
                 display="flex"
                 flexDirection="column"
@@ -666,6 +761,17 @@ export default function GoalsPage() {
                     </Tabs.Trigger>
                   ))}
                 </Tabs.List>
+                {KIND_TABS.filter((tab) => kindCounts[tab.value] > 0).map((tab) => (
+                  <Tabs.Content
+                    key={tab.value}
+                    value={tab.value}
+                    p={{ base: "2", md: "2" }}
+                    flex="1"
+                    minH="0"
+                  >
+                    {goalsPanel}
+                  </Tabs.Content>
+                ))}
                 {STATUS_TABS.filter((tab) => statusCounts[tab.value] > 0).map((tab) => (
                   <Tabs.Content
                     key={tab.value}

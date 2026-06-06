@@ -49,3 +49,31 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.7),
     0 4px 10px rgba(166, 124, 0, 0.35);
 }
+
+.goals-add-goal-btn--blue {
+  background: #d6eaf5 !important;
+  border: 1px solid #2e6f9e !important;
+  color: #1b3a2f !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    0 2px 6px rgba(46, 111, 158, 0.22);
+}
+
+.goals-add-goal-btn--blue::before {
+  background: linear-gradient(
+    108deg,
+    transparent 32%,
+    rgba(255, 255, 255, 0.35) 46%,
+    rgba(255, 255, 255, 0.1) 54%,
+    transparent 68%
+  );
+}
+
+.goals-add-goal-btn--blue:hover {
+  background: #c5e0f0 !important;
+  border: 1px solid #2e6f9e !important;
+  color: #1b3a2f !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.65),
+    0 4px 10px rgba(46, 111, 158, 0.28);
+}

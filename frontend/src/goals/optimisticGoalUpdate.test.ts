@@ -7,22 +7,12 @@ import {
   optimisticStripeAfterCheckIn,
 } from "./optimisticGoalUpdate";
 import type { Goal, GoalsStripe } from "./types";
+import { emptyGoalStats } from "./types";
 
 function makeGoal(
   overrides: Omit<Partial<Goal>, "stats"> & Pick<Goal, "id"> & { stats?: Partial<Goal["stats"]> },
 ): Goal {
-  const baseStats: Goal["stats"] = {
-    streak_current: 2,
-    streak_best: 5,
-    pct_lifetime: 50,
-    pct_last_30_days: 40,
-    days_since_last_progress: 1,
-    today_actual: 0,
-    today_target: 1,
-    week_actual: 0,
-    week_target: 0,
-    urgency_score: 0,
-  };
+  const baseStats: Goal["stats"] = emptyGoalStats();
   const { stats: statsOverrides, ...rest } = overrides;
   return {
     title: "Goal",
@@ -31,6 +21,10 @@ function makeGoal(
     status: "active",
     frequency_kind: "daily",
     frequency_count: 1,
+    schedule_weekday: null,
+    schedule_interval_weeks: 2,
+    schedule_interval_months: 2,
+    schedule_month_day: null,
     completed_at: null,
     last_check_in_at: null,
     created_at: "2026-01-01T00:00:00Z",

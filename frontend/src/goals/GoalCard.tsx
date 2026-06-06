@@ -8,7 +8,10 @@ import {
   goalHoldProgressDisabled,
   goalLastProgressLabel,
   goalPatchIsComplete,
+  goalPatchOverdueLabel,
+  goalPatchOverdueSublabel,
   goalPatchShellStyle,
+  isOngoingKind,
 } from "./goalCardLabels";
 import { GOALS_THEME } from "./theme";
 import { GoalLongPressRing } from "./GoalLongPressRing";
@@ -27,12 +30,21 @@ type GoalCardProps = {
   /** Active tab: compact patch on mobile, badge row on desktop. */
   compact?: boolean;
   goldShimmerAnimate?: boolean;
+  holdDisabled?: boolean;
 };
 
 const patchPadding = { px: "2", py: "2", textAlign: "center" as const };
 
 function goalKindCornerEmoji(kind: Goal["kind"]): string {
+  if (kind === "chore") return "🧹";
   return kind === "continuous" ? "♻️" : "🎯";
+}
+
+function patchOverdueProps(goal: Goal) {
+  return {
+    overdueLabel: goalPatchOverdueLabel(goal),
+    overdueSublabel: goalPatchOverdueSublabel(goal),
+  };
 }
 
 function GoalPatchPeriodLine({ goal, compact }: { goal: Goal; compact: boolean }) {
@@ -43,7 +55,7 @@ function GoalPatchPeriodLine({ goal, compact }: { goal: Goal; compact: boolean }
       </Text>
     );
   }
-  if (compact && goal.kind === "continuous" && goalPatchIsComplete(goal)) {
+  if (compact && isOngoingKind(goal) && goalPatchIsComplete(goal)) {
     const streak = goalContinuousPeriodStreakLabel(goal);
     return streak ? (
       <Text fontSize="xs" color={GOALS_THEME.textMuted} textAlign="center">
@@ -77,6 +89,7 @@ function GoalCardMobileCircle({
         patchStyle={patchStyle}
         width="100%"
         height="100%"
+        {...patchOverdueProps(goal)}
         {...patchPadding}
       >
         <Stack gap="1.5" align="center" width="full" maxW="full">
@@ -103,6 +116,7 @@ function GoalCardMobileCircle({
       patchStyle={patchStyle}
       width="100%"
       height="100%"
+      {...patchOverdueProps(goal)}
       {...patchPadding}
     >
       <Stack gap="1" align="center" width="full">
@@ -155,6 +169,7 @@ function GoalCardDesktopBadge({
         aspectRatio={1}
         px="2"
         py="2"
+        {...patchOverdueProps(goal)}
       >
         <Stack gap="1" align="center" width="full">
           <Text
@@ -171,7 +186,7 @@ function GoalCardDesktopBadge({
             <Text fontSize="xs" color={GOALS_THEME.textMuted} textAlign="center">
               {goalCompletedMedalLabel(goal)}
             </Text>
-          ) : compact && goal.kind === "continuous" && complete ? (
+          ) : compact && isOngoingKind(goal) && complete ? (
             <Text fontSize="xs" color={GOALS_THEME.textMuted} textAlign="center">
               {goalContinuousPeriodStreakLabel(goal)}
             </Text>
@@ -210,7 +225,7 @@ function GoalCardDesktopBadge({
           {goalKindCornerEmoji(goal.kind)}
         </Text>
         <Stack gap="1.5" align="stretch" pr="7">
-          {compact && goal.kind === "continuous" ? (
+          {compact && isOngoingKind(goal) ? (
             <HStack justify="space-between" align="center" gap="2" width="full">
               <Text fontSize="xs" color={GOALS_THEME.textMuted}>
                 {frequencyLabel(goal)}
@@ -236,7 +251,7 @@ function GoalCardDesktopBadge({
           </Text>
           {compact ? (
             <>
-              {goal.kind === "continuous" ? (
+              {isOngoingKind(goal) ? (
                 <Text fontSize="xs" color={GOALS_THEME.textMuted}>
                   Today {goal.stats.today_actual}/{goal.stats.today_target || "—"}
                   {goal.stats.week_target > 0
@@ -286,8 +301,9 @@ export function GoalCard({
   onHoldComplete,
   compact = false,
   goldShimmerAnimate = false,
+  holdDisabled: holdDisabledProp,
 }: GoalCardProps) {
-  const holdDisabled = goalHoldProgressDisabled(goal);
+  const holdDisabled = holdDisabledProp ?? goalHoldProgressDisabled(goal);
 
   return (
     <>

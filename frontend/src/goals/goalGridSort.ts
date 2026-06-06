@@ -1,7 +1,12 @@
 import { goalPatchIsComplete } from "./goalCardLabels";
 import type { Goal } from "./types";
 
-/** Incomplete medals first; gold / period-complete last (stable within each group). */
+function choreSortRank(goal: Goal): number {
+  if (goal.kind !== "chore" || goal.stats.chore_period_state !== "overdue") return 1;
+  return 0;
+}
+
+/** Incomplete medals first (overdue chores first); gold / period-complete last. */
 export function sortGoalsForGrid(goals: Goal[]): Goal[] {
   const incomplete: Goal[] = [];
   const complete: Goal[] = [];
@@ -9,6 +14,7 @@ export function sortGoalsForGrid(goals: Goal[]): Goal[] {
     if (goalPatchIsComplete(goal)) complete.push(goal);
     else incomplete.push(goal);
   }
+  incomplete.sort((a, b) => choreSortRank(a) - choreSortRank(b));
   return [...incomplete, ...complete];
 }
 

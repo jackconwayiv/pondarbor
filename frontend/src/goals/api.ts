@@ -2,6 +2,7 @@ import type {
   Checkpoint,
   Goal,
   GoalCreatePayload,
+  GoalKind,
   GoalPatchPayload,
   GoalsDashboard,
   GoalStatus,
@@ -48,11 +49,22 @@ export async function deleteAllGoals(accessToken: string | null): Promise<void> 
   }
 }
 
+export type FetchGoalsDashboardOptions = {
+  status?: GoalStatus;
+  kind?: GoalKind;
+  choresDueOnly?: boolean;
+};
+
 export async function fetchGoalsDashboard(
   accessToken: string | null,
-  status: GoalStatus = "active",
+  options: FetchGoalsDashboardOptions = {},
 ): Promise<GoalsDashboard> {
+  const status = options.status ?? "active";
   const q = new URLSearchParams({ status });
+  if (options.kind) q.set("kind", options.kind);
+  if (options.kind === "chore" && options.choresDueOnly === false) {
+    q.set("chores_due_only", "false");
+  }
   const response = await fetch(`${apiBase()}/api/v1/goals/dashboard/?${q}`, {
     method: "GET",
     headers: authHeaders(accessToken),

@@ -10,6 +10,7 @@ class Goal(models.Model):
     class Kind(models.TextChoices):
         ONE_TIME = "one_time", "One-time"
         CONTINUOUS = "continuous", "Continuous"
+        CHORE = "chore", "Chore"
 
     class Status(models.TextChoices):
         ACTIVE = "active", "Active"
@@ -21,6 +22,12 @@ class Goal(models.Model):
         WEEKLY = "weekly", "Weekly"
         TIMES_PER_DAY = "times_per_day", "Times per day"
         TIMES_PER_WEEK = "times_per_week", "Times per week"
+        WEEKDAYS = "weekdays", "Weekdays"
+        MONTHLY = "monthly", "Monthly"
+        TIMES_PER_MONTH = "times_per_month", "Times per month"
+        EVERY_N_MONTHS = "every_n_months", "Every N months"
+        ON_WEEKDAY = "on_weekday", "On weekday"
+        ON_MONTH_DAY = "on_month_day", "On month day"
 
     class LastCompletionEventType(models.TextChoices):
         CHECK_IN = "check_in", "Check-in"
@@ -47,6 +54,10 @@ class Goal(models.Model):
         default=FrequencyKind.DAILY,
     )
     frequency_count = models.PositiveSmallIntegerField(default=1)
+    schedule_weekday = models.PositiveSmallIntegerField(null=True, blank=True)
+    schedule_interval_weeks = models.PositiveSmallIntegerField(default=2)
+    schedule_interval_months = models.PositiveSmallIntegerField(default=2)
+    schedule_month_day = models.PositiveSmallIntegerField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     last_check_in_at = models.DateTimeField(null=True, blank=True, db_index=True)
     last_completion_event_at = models.DateTimeField(null=True, blank=True)

@@ -8,7 +8,24 @@ export type PeriodSlots = {
   total: number;
 };
 
-/** How many completions vs target for the goal's current period (day or week). */
+function isWeekPeriodKind(goal: Goal): boolean {
+  return (
+    goal.frequency_kind === "weekly" ||
+    goal.frequency_kind === "times_per_week" ||
+    goal.frequency_kind === "on_weekday"
+  );
+}
+
+function isMonthPeriodKind(goal: Goal): boolean {
+  return (
+    goal.frequency_kind === "monthly" ||
+    goal.frequency_kind === "times_per_month" ||
+    goal.frequency_kind === "every_n_months" ||
+    goal.frequency_kind === "on_month_day"
+  );
+}
+
+/** How many completions vs target for the goal's current period (day, week, or month). */
 export function periodSlotsForGoal(goal: Goal): PeriodSlots {
   if (goal.kind === "one_time") {
     const checkpoints = goal.checkpoints;
@@ -26,9 +43,15 @@ export function periodSlotsForGoal(goal: Goal): PeriodSlots {
     };
   }
 
-  const isWeekPeriod =
-    goal.frequency_kind === "weekly" || goal.frequency_kind === "times_per_week";
-  if (isWeekPeriod) {
+  if (isMonthPeriodKind(goal)) {
+    const total = Math.max(1, goal.stats.month_target);
+    return {
+      filled: Math.min(goal.stats.month_actual, total),
+      total,
+    };
+  }
+
+  if (isWeekPeriodKind(goal)) {
     const total = Math.max(1, goal.stats.week_target);
     return {
       filled: Math.min(goal.stats.week_actual, total),

@@ -292,3 +292,96 @@ class GoalsApiTests(TestCase):
             format="json",
         )
         self.assertEqual(r.status_code, 400)
+
+    def test_create_chore_and_check_in(self):
+        r = self.client.post(
+            "/api/v1/goals/",
+            {
+                "title": "Vacuum",
+                "kind": "chore",
+                "frequency_kind": "weekly",
+            },
+            format="json",
+        )
+        self.assertEqual(r.status_code, 201)
+        goal_id = r.json()["id"]
+        self.assertEqual(r.json()["kind"], "chore")
+        r2 = self.client.post(f"/api/v1/goals/{goal_id}/check-ins/", {}, format="json")
+        self.assertEqual(r2.status_code, 200)
+        self.assertIsNotNone(r2.json()["last_check_in_at"])
+
+    def test_chore_cannot_be_marked_completed(self):
+        r = self.client.post(
+            "/api/v1/goals/",
+            {"title": "Dishes", "kind": "chore", "frequency_kind": "daily"},
+            format="json",
+        )
+        goal_id = r.json()["id"]
+        patched = self.client.patch(
+            f"/api/v1/goals/{goal_id}/",
+            {"status": "completed"},
+            format="json",
+        )
+        self.assertEqual(patched.status_code, 400)
+
+    def test_dashboard_kind_filter_and_counts(self):
+        self.client.post(
+            "/api/v1/goals/",
+            {"title": "Run", "kind": "continuous", "frequency_kind": "daily"},
+            format="json",
+        )
+        self.client.post(
+            "/api/v1/goals/",
+            {"title": "Dishes", "kind": "chore", "frequency_kind": "daily"},
+            format="json",
+        )
+        dash = self.client.get("/api/v1/goals/dashboard/")
+        self.assertEqual(dash.status_code, 200)
+        body = dash.json()
+        self.assertEqual(body["kind_counts"]["continuous"], 1)
+        self.assertEqual(body["kind_counts"]["chore"], 1)
+        chores = self.client.get("/api/v1/goals/dashboard/?kind=chore")
+        self.assertEqual(len(chores.json()["goals"]), 1)
+        self.assertEqual(chores.json()["goals"][0]["kind"], "chore")
+        self.assertIn("month_actual", chores.json()["goals"][0]["stats"])
+        self.assertIn("chore_period_state", chores.json()["goals"][0]["stats"])
+
+    def test_create_on_weekday_chore_requires_schedule_weekday(self):
+        r = self.client.post(
+            "/api/v1/goals/",
+            {
+                "title": "Trash",
+                "kind": "chore",
+                "frequency_kind": "on_weekday",
+            },
+            format="json",
+        )
+        self.assertEqual(r.status_code, 400)
+        r2 = self.client.post(
+            "/api/v1/goals/",
+            {
+                "title": "Trash",
+                "kind": "chore",
+                "frequency_kind": "on_weekday",
+                "schedule_weekday": 1,
+            },
+            format="json",
+        )
+        self.assertEqual(r2.status_code, 201)
+        self.assertEqual(r2.json()["schedule_weekday"], 1)
+        self.assertEqual(r2.json()["schedule_interval_weeks"], 2)
+
+    def test_create_every_n_months_goal(self):
+        r = self.client.post(
+            "/api/v1/goals/",
+            {
+                "title": "Quarterly review",
+                "kind": "continuous",
+                "frequency_kind": "every_n_months",
+                "schedule_interval_months": 3,
+            },
+            format="json",
+        )
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(r.json()["frequency_kind"], "every_n_months")
+        self.assertEqual(r.json()["schedule_interval_months"], 3)

@@ -41,7 +41,18 @@ class GoalStatsSerializer(serializers.Serializer):
     today_target = serializers.IntegerField()
     week_actual = serializers.IntegerField()
     week_target = serializers.IntegerField()
+    month_actual = serializers.IntegerField()
+    month_target = serializers.IntegerField()
     urgency_score = serializers.FloatField()
+    days_overdue = serializers.IntegerField()
+    chore_period_state = serializers.CharField()
+    count_completed_on_time = serializers.IntegerField()
+    count_completed_overdue = serializers.IntegerField()
+    count_missed = serializers.IntegerField()
+    count_completed = serializers.IntegerField()
+    pct_completed_on_time = serializers.FloatField()
+    pct_completed_overdue = serializers.FloatField()
+    pct_completed_missed = serializers.FloatField()
 
 
 def stats_to_dict(stats: GoalStats) -> dict:
@@ -63,6 +74,10 @@ class GoalSerializer(serializers.ModelSerializer):
             "status",
             "frequency_kind",
             "frequency_count",
+            "schedule_weekday",
+            "schedule_interval_weeks",
+            "schedule_interval_months",
+            "schedule_month_day",
             "completed_at",
             "last_check_in_at",
             "created_at",
@@ -116,6 +131,10 @@ class GoalCreateSerializer(serializers.ModelSerializer):
             "kind",
             "frequency_kind",
             "frequency_count",
+            "schedule_weekday",
+            "schedule_interval_weeks",
+            "schedule_interval_months",
+            "schedule_month_day",
             "checkpoints",
         )
 
@@ -146,6 +165,27 @@ class GoalCreateSerializer(serializers.ModelSerializer):
         if kind == Goal.Kind.CONTINUOUS:
             attrs.setdefault("frequency_kind", Goal.FrequencyKind.DAILY)
             attrs.setdefault("frequency_count", 1)
+            attrs.setdefault("schedule_interval_months", 2)
+        elif kind == Goal.Kind.CHORE:
+            attrs.setdefault("frequency_kind", Goal.FrequencyKind.DAILY)
+            attrs.setdefault("frequency_count", 1)
+            attrs.setdefault("schedule_interval_weeks", 2)
+            attrs.setdefault("schedule_interval_months", 2)
+            fk = attrs.get("frequency_kind", Goal.FrequencyKind.DAILY)
+            if fk == Goal.FrequencyKind.ON_WEEKDAY:
+                if attrs.get("schedule_weekday") is None:
+                    raise serializers.ValidationError(
+                        {"schedule_weekday": "Required for on_weekday chores."}
+                    )
+            if fk == Goal.FrequencyKind.ON_MONTH_DAY:
+                if attrs.get("schedule_month_day") is None:
+                    raise serializers.ValidationError(
+                        {"schedule_month_day": "Required for on_month_day chores."}
+                    )
+            if attrs.get("checkpoints"):
+                raise serializers.ValidationError(
+                    {"checkpoints": "Chores cannot have checkpoints."}
+                )
         elif kind == Goal.Kind.ONE_TIME:
             attrs["frequency_kind"] = Goal.FrequencyKind.DAILY
             attrs["frequency_count"] = 1
@@ -178,6 +218,10 @@ class GoalPatchSerializer(serializers.ModelSerializer):
             "status",
             "frequency_kind",
             "frequency_count",
+            "schedule_weekday",
+            "schedule_interval_weeks",
+            "schedule_interval_months",
+            "schedule_month_day",
         )
 
     def validate_title(self, value: str) -> str:
@@ -203,6 +247,21 @@ class GoalPatchSerializer(serializers.ModelSerializer):
         kind = attrs.get("kind", goal.kind)
         if kind == Goal.Kind.ONE_TIME:
             attrs.pop("frequency_kind", None)
+        new_status = attrs.get("status")
+        if goal.kind == Goal.Kind.CHORE and new_status == Goal.Status.COMPLETED:
+            raise serializers.ValidationError(
+                {"status": "Chores cannot be marked completed. Pause or delete instead."}
+            )
+        if kind == Goal.Kind.CHORE and new_status == Goal.Status.COMPLETED:
+            raise serializers.ValidationError(
+                {"status": "Chores cannot be marked completed. Pause or delete instead."}
+            )
+        fk = attrs.get("frequency_kind", goal.frequency_kind)
+        if kind in (Goal.Kind.CONTINUOUS, Goal.Kind.ONE_TIME):
+            if fk in (Goal.FrequencyKind.ON_WEEKDAY, Goal.FrequencyKind.ON_MONTH_DAY):
+                raise serializers.ValidationError(
+                    {"frequency_kind": "Schedule frequencies are for chores only."}
+                )
         return attrs
 
     def update(self, instance: Goal, validated_data):

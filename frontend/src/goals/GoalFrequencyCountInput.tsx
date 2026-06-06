@@ -1,7 +1,6 @@
 import { HStack, IconButton, Input } from "@chakra-ui/react";
 
 import {
-  clampFrequencyCount,
   FREQUENCY_COUNT_MAX,
   FREQUENCY_COUNT_MIN,
 } from "./goalFormLimits";
@@ -10,12 +9,25 @@ import { GOALS_THEME } from "./theme";
 type GoalFrequencyCountInputProps = {
   value: number;
   onChange: (value: number) => void;
+  min?: number;
+  max?: number;
+  disabled?: boolean;
 };
 
+function clampCount(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
 /** Times-per-day/week count with −/+ steppers for easier mobile input. */
-export function GoalFrequencyCountInput({ value, onChange }: GoalFrequencyCountInputProps) {
-  const atMin = value <= FREQUENCY_COUNT_MIN;
-  const atMax = value >= FREQUENCY_COUNT_MAX;
+export function GoalFrequencyCountInput({
+  value,
+  onChange,
+  min = FREQUENCY_COUNT_MIN,
+  max = FREQUENCY_COUNT_MAX,
+  disabled = false,
+}: GoalFrequencyCountInputProps) {
+  const atMin = value <= min;
+  const atMax = value >= max;
 
   return (
     <HStack gap="2" width="full" maxW="11rem">
@@ -31,24 +43,25 @@ export function GoalFrequencyCountInput({ value, onChange }: GoalFrequencyCountI
         lineHeight="1"
         borderColor={GOALS_THEME.cardBodyBorder}
         color={GOALS_THEME.textOnLight}
-        disabled={atMin}
-        onClick={() => onChange(clampFrequencyCount(value - 1))}
+        disabled={disabled || atMin}
+        onClick={() => onChange(clampCount(value - 1, min, max))}
       >
         −
       </IconButton>
       <Input
         type="number"
         inputMode="numeric"
-        min={FREQUENCY_COUNT_MIN}
-        max={FREQUENCY_COUNT_MAX}
+        min={min}
+        max={max}
         value={value}
         flex="1"
         minW="0"
         textAlign="center"
         fontSize="lg"
         py="2.5"
+        disabled={disabled}
         onChange={(e) =>
-          onChange(clampFrequencyCount(Number(e.target.value) || FREQUENCY_COUNT_MIN))
+          onChange(clampCount(Number(e.target.value) || min, min, max))
         }
       />
       <IconButton
@@ -63,8 +76,8 @@ export function GoalFrequencyCountInput({ value, onChange }: GoalFrequencyCountI
         lineHeight="1"
         borderColor={GOALS_THEME.cardBodyBorder}
         color={GOALS_THEME.textOnLight}
-        disabled={atMax}
-        onClick={() => onChange(clampFrequencyCount(value + 1))}
+        disabled={disabled || atMax}
+        onClick={() => onChange(clampCount(value + 1, min, max))}
       >
         +
       </IconButton>

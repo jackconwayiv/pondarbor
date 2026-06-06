@@ -128,12 +128,35 @@ def goals_dashboard(request):
     if status_filter not in (Goal.Status.ACTIVE, Goal.Status.COMPLETED, Goal.Status.PAUSED):
         status_filter = Goal.Status.ACTIVE
 
+    kind_filter = request.query_params.get("kind")
+    if kind_filter not in (None, Goal.Kind.CONTINUOUS, Goal.Kind.CHORE, Goal.Kind.ONE_TIME):
+        kind_filter = None
+
+    chores_due_only = request.query_params.get("chores_due_only", "true").lower() != "false"
+
     all_goals = list(_goals_qs(user))
     profile = _profile_for(user)
     stripe = compute_period_stripe(all_goals, user.id, profile)
 
     filtered = [g for g in all_goals if g.status == status_filter]
+    if kind_filter:
+        filtered = [g for g in filtered if g.kind == kind_filter]
+
     bundle = _build_stats_bundle(filtered, user.id, profile)
+
+    if kind_filter == Goal.Kind.CHORE and chores_due_only and status_filter == Goal.Status.ACTIVE:
+        from goals.chore_stats import chore_visible_in_due_list
+        from goals.stats import _user_tz, _week_starts_on, local_today
+
+        tz = _user_tz(profile)
+        today = local_today(timezone.now(), tz)
+        wso = _week_starts_on(profile)
+        filtered = [
+            g
+            for g in filtered
+            if chore_visible_in_due_list(g, today, tz, wso, bundle[g.id])
+        ]
+
     sorted_pairs = sort_goals_for_display([(g, bundle[g.id]) for g in filtered])
 
     goals_payload = []
@@ -150,6 +173,17 @@ def goals_dashboard(request):
         Goal.Status.COMPLETED: sum(1 for g in all_goals if g.status == Goal.Status.COMPLETED),
         Goal.Status.PAUSED: sum(1 for g in all_goals if g.status == Goal.Status.PAUSED),
     }
+    kind_counts = {
+        Goal.Kind.CONTINUOUS: sum(
+            1 for g in all_goals if g.kind == Goal.Kind.CONTINUOUS and g.status == Goal.Status.ACTIVE
+        ),
+        Goal.Kind.CHORE: sum(
+            1 for g in all_goals if g.kind == Goal.Kind.CHORE and g.status == Goal.Status.ACTIVE
+        ),
+        Goal.Kind.ONE_TIME: sum(
+            1 for g in all_goals if g.kind == Goal.Kind.ONE_TIME and g.status == Goal.Status.ACTIVE
+        ),
+    }
 
     return Response(
         {
@@ -164,6 +198,8 @@ def goals_dashboard(request):
             "goals": goals_payload,
             "status": status_filter,
             "status_counts": status_counts,
+            "kind_counts": kind_counts,
+            "kind": kind_filter,
         }
     )
 

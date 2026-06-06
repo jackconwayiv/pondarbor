@@ -9,22 +9,12 @@ import {
   sortGoalsForGrid,
 } from "./goalGridSort";
 import type { Goal } from "./types";
+import { emptyGoalStats } from "./types";
 
 function makeGoal(
   overrides: Omit<Partial<Goal>, "stats"> & Pick<Goal, "id"> & { stats?: Partial<Goal["stats"]> },
 ): Goal {
-  const baseStats: Goal["stats"] = {
-    streak_current: 0,
-    streak_best: 0,
-    pct_lifetime: 0,
-    pct_last_30_days: 0,
-    days_since_last_progress: 0,
-    today_actual: 0,
-    today_target: 1,
-    week_actual: 0,
-    week_target: 0,
-    urgency_score: 0,
-  };
+  const baseStats: Goal["stats"] = emptyGoalStats();
   const { stats: statsOverrides, ...rest } = overrides;
   return {
     title: "Goal",
@@ -33,6 +23,10 @@ function makeGoal(
     status: "active",
     frequency_kind: "daily",
     frequency_count: 1,
+    schedule_weekday: null,
+    schedule_interval_weeks: 2,
+    schedule_interval_months: 2,
+    schedule_month_day: null,
     completed_at: null,
     last_check_in_at: null,
     created_at: "2026-01-01T00:00:00Z",
@@ -67,6 +61,21 @@ describe("sortGoalsForGrid", () => {
       "3",
       "4",
     ]);
+  });
+
+  it("puts overdue chores before other incomplete goals", () => {
+    const overdue = makeGoal({
+      id: "overdue",
+      kind: "chore",
+      stats: {
+        today_actual: 0,
+        today_target: 1,
+        chore_period_state: "overdue",
+        days_overdue: 2,
+      },
+    });
+    const todo = makeGoal({ id: "todo", stats: { today_actual: 0, today_target: 1 } });
+    expect(sortGoalsForGrid([todo, overdue]).map((g) => g.id)).toEqual(["overdue", "todo"]);
   });
 });
 

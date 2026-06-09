@@ -2,100 +2,50 @@
 
 from __future__ import annotations
 
-import calendar
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from goals.models import Goal
+from goals.schedule import (
+    chore_due_on_date,
+    chore_supports_overdue,
+    is_month_day_interval_due,
+    is_months_interval_active,
+    is_weekday_interval_due,
+    is_weeks_interval_active,
+    scheduled_month_day_for,
+    week_start_for,
+)
 
-
-def week_start_for(d: date, week_starts_on: int) -> date:
-    delta = (d.weekday() - week_starts_on) % 7
-    return d - timedelta(days=delta)
+__all__ = [
+    "ChorePeriodStats",
+    "chore_due_on_date",
+    "chore_supports_overdue",
+    "chore_visible_in_due_list",
+    "compute_chore_period_stats",
+    "is_months_interval_active",
+    "month_index",
+    "months_since_anchor",
+]
 
 
 def month_index(d: date) -> int:
-    return d.year * 12 + (d.month - 1)
+    from goals.schedule import month_index as _month_index
+
+    return _month_index(d)
 
 
 def months_since_anchor(goal: Goal, d: date, tz: ZoneInfo) -> int:
-    anchor = month_index(goal.created_at.astimezone(tz).date().replace(day=1))
-    return month_index(d.replace(day=1)) - anchor
+    from goals.schedule import months_since_anchor as _months_since_anchor
+
+    return _months_since_anchor(goal, d, tz)
 
 
-def is_every_n_months_due_month(goal: Goal, d: date, tz: ZoneInfo) -> bool:
-    interval = max(1, goal.schedule_interval_months or 1)
-    ms = months_since_anchor(goal, d, tz)
-    return ms >= 0 and ms % interval == 0
+def is_months_interval_active(goal: Goal, d: date, tz: ZoneInfo) -> bool:
+    from goals.schedule import is_months_interval_active as _active
 
-
-CHORE_OVERDUE_FREQUENCIES = frozenset(
-    {
-        Goal.FrequencyKind.ON_WEEKDAY,
-        Goal.FrequencyKind.ON_MONTH_DAY,
-        Goal.FrequencyKind.WEEKLY,
-        Goal.FrequencyKind.TIMES_PER_WEEK,
-        Goal.FrequencyKind.WEEKDAYS,
-        Goal.FrequencyKind.MONTHLY,
-        Goal.FrequencyKind.TIMES_PER_MONTH,
-        Goal.FrequencyKind.EVERY_N_MONTHS,
-    }
-)
-
-
-def chore_supports_overdue(goal: Goal) -> bool:
-    if goal.kind != Goal.Kind.CHORE:
-        return False
-    return goal.frequency_kind in CHORE_OVERDUE_FREQUENCIES
-
-
-def effective_month_day(day: int, year: int, month: int) -> int:
-    last = calendar.monthrange(year, month)[1]
-    return min(day, last)
-
-
-def scheduled_month_day_for(goal: Goal, year: int, month: int) -> int:
-    assert goal.schedule_month_day is not None
-    return effective_month_day(goal.schedule_month_day, year, month)
-
-
-def chore_due_on_date(
-    goal: Goal,
-    d: date,
-    tz: ZoneInfo,
-    week_starts_on: int,
-) -> bool:
-    if goal.kind != Goal.Kind.CHORE:
-        return False
-    fk = goal.frequency_kind
-    if fk == Goal.FrequencyKind.ON_WEEKDAY:
-        if goal.schedule_weekday is None:
-            return False
-        if d.weekday() != goal.schedule_weekday:
-            return False
-        interval = max(1, goal.schedule_interval_weeks or 1)
-        if interval == 1:
-            return True
-        anchor = week_start_for(goal.created_at.astimezone(tz).date(), week_starts_on)
-        period_week = week_start_for(d, week_starts_on)
-        weeks_since = (period_week - anchor).days // 7
-        return weeks_since >= 0 and weeks_since % interval == 0
-    if fk == Goal.FrequencyKind.ON_MONTH_DAY:
-        if goal.schedule_month_day is None:
-            return False
-        return d.day == scheduled_month_day_for(goal, d.year, d.month)
-    if fk in (Goal.FrequencyKind.DAILY, Goal.FrequencyKind.TIMES_PER_DAY):
-        return True
-    if fk == Goal.FrequencyKind.WEEKDAYS:
-        return d.weekday() < 5
-    if fk in (Goal.FrequencyKind.WEEKLY, Goal.FrequencyKind.TIMES_PER_WEEK):
-        return True
-    if fk in (Goal.FrequencyKind.MONTHLY, Goal.FrequencyKind.TIMES_PER_MONTH):
-        return True
-    if fk == Goal.FrequencyKind.EVERY_N_MONTHS:
-        return is_every_n_months_due_month(goal, d, tz)
-    return False
+    return _active(goal, d, tz)
 
 
 def _period_due_dates_since(
@@ -105,23 +55,18 @@ def _period_due_dates_since(
     tz: ZoneInfo,
     week_starts_on: int,
 ) -> list[date]:
-    fk = goal.frequency_kind
+    kind = goal.schedule_interval_kind
     out: list[date] = []
-    if fk == Goal.FrequencyKind.ON_WEEKDAY:
+    if kind == Goal.ScheduleIntervalKind.WEEKDAY:
         if goal.schedule_weekday is None:
             return out
-        interval = max(1, goal.schedule_interval_weeks or 1)
-        anchor = week_start_for(goal.created_at.astimezone(tz).date(), week_starts_on)
         d = start
         while d <= end:
-            if d.weekday() == goal.schedule_weekday:
-                period_week = week_start_for(d, week_starts_on)
-                weeks_since = (period_week - anchor).days // 7
-                if weeks_since >= 0 and weeks_since % interval == 0:
-                    out.append(d)
+            if is_weekday_interval_due(goal, d, tz, week_starts_on):
+                out.append(d)
             d += timedelta(days=1)
         return out
-    if fk == Goal.FrequencyKind.ON_MONTH_DAY:
+    if kind == Goal.ScheduleIntervalKind.MONTH_DAY:
         if goal.schedule_month_day is None:
             return out
         y, m = start.year, start.month
@@ -134,34 +79,36 @@ def _period_due_dates_since(
             else:
                 m += 1
         return out
-    if fk in (Goal.FrequencyKind.DAILY, Goal.FrequencyKind.TIMES_PER_DAY, Goal.FrequencyKind.WEEKDAYS):
+    if kind in (
+        Goal.ScheduleIntervalKind.DAY,
+        Goal.ScheduleIntervalKind.WEEKDAYS,
+    ):
         d = start
         while d <= end:
             if chore_due_on_date(goal, d, tz, week_starts_on):
                 out.append(d)
             d += timedelta(days=1)
         return out
-    if fk in (Goal.FrequencyKind.WEEKLY, Goal.FrequencyKind.TIMES_PER_WEEK):
+    if kind == Goal.ScheduleIntervalKind.WEEK:
         w = week_start_for(start, week_starts_on)
         while w <= end:
             out.append(w)
             w += timedelta(days=7)
         return out
-    if fk in (Goal.FrequencyKind.MONTHLY, Goal.FrequencyKind.TIMES_PER_MONTH):
-        y, m = start.year, start.month
-        while date(y, m, 1) <= end:
-            out.append(date(y, m, 1))
-            if m == 12:
-                y, m = y + 1, 1
-            else:
-                m += 1
+    if kind == Goal.ScheduleIntervalKind.WEEKS:
+        w = week_start_for(start, week_starts_on)
+        while w <= end:
+            if is_weeks_interval_active(goal, w, tz, week_starts_on):
+                out.append(w)
+            w += timedelta(days=7)
         return out
-    if fk == Goal.FrequencyKind.EVERY_N_MONTHS:
+    if kind in (Goal.ScheduleIntervalKind.MONTH, Goal.ScheduleIntervalKind.MONTHS):
         y, m = start.year, start.month
         while date(y, m, 1) <= end:
             due = date(y, m, 1)
-            if start <= due <= end and is_every_n_months_due_month(goal, due, tz):
-                out.append(due)
+            if kind == Goal.ScheduleIntervalKind.MONTH or is_months_interval_active(goal, due, tz):
+                if start <= due <= end:
+                    out.append(due)
             if m == 12:
                 y, m = y + 1, 1
             else:

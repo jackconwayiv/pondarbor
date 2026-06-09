@@ -11,8 +11,6 @@ type GoalPatchCircleProps = BoxProps & {
   goldShimmer?: boolean;
   /** Looping shine sweep (subset of gold badges). */
   goldShimmerAnimate?: boolean;
-  overdueLabel?: string | null;
-  overdueSublabel?: string | null;
   children: ReactNode;
 };
 
@@ -21,8 +19,6 @@ export function GoalPatchCircle({
   goldShimmer = false,
   goldShimmerAnimate = false,
   patchStyle,
-  overdueLabel = null,
-  overdueSublabel = null,
   children,
   className,
   ...rest
@@ -55,31 +51,6 @@ export function GoalPatchCircle({
       <Box position="relative" zIndex={1} width="full" display="flex" flexDirection="column" alignItems="center">
         {children}
       </Box>
-      {overdueLabel ? (
-        <Box
-          position="absolute"
-          inset="0"
-          zIndex={2}
-          display="flex"
-          flexDirection="column"
-          alignItems="center"
-          justifyContent="center"
-          bg="rgba(224, 122, 47, 0.82)"
-          borderRadius="full"
-          px="2"
-          textAlign="center"
-          pointerEvents="none"
-        >
-          <Box as="span" fontSize="2xs" fontWeight="bold" color="white" lineHeight="short">
-            {overdueLabel}
-          </Box>
-          {overdueSublabel ? (
-            <Box as="span" fontSize="2xs" color="whiteAlpha.900" lineHeight="short" mt="0.5">
-              {overdueSublabel}
-            </Box>
-          ) : null}
-        </Box>
-      ) : null}
     </Box>
   );
 }

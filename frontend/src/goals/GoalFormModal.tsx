@@ -27,7 +27,7 @@ import {
   patchGoal,
   undoGoal,
 } from "./api";
-import type { FrequencyKind, Goal, GoalKind, GoalStatus } from "./types";
+import type { Goal, GoalKind, GoalStatus, ScheduleIntervalKind } from "./types";
 import {
   isCompletedGoalLocked,
   isGoalModalStatsOnly,
@@ -49,9 +49,9 @@ import {
 } from "./goalCopy";
 import { GoalFrequencyCountInput } from "./GoalFrequencyCountInput";
 import { GoalIntervalMonthsInput } from "./GoalIntervalMonthsInput";
+import { GoalIntervalWeeksInput } from "./GoalIntervalWeeksInput";
 import { GoalMonthDayPicker } from "./GoalMonthDayPicker";
 import { GoalWeekdayPicker } from "./GoalWeekdayPicker";
-import { isTimesPerFrequency } from "./optimisticGoalUpdate";
 import { GOAL_ADD_MILESTONE_BUTTON_PROPS, GOALS_THEME } from "./theme";
 
 import "./goalsAddGoalButton.css";
@@ -78,18 +78,16 @@ const KIND_OPTIONS: { value: GoalKind; label: string }[] = [
   { value: "one_time", label: GOAL_KIND_ONE_TIME_LABEL },
 ];
 
-const FREQ_OPTIONS: { value: FrequencyKind; label: string }[] = [
-  { value: "daily", label: "Daily" },
-  { value: "weekly", label: "Weekly" },
-  { value: "weekdays", label: "Weekdays (Mon–Fri)" },
-  { value: "monthly", label: "Every month" },
-  { value: "every_n_months", label: "Every X months" },
-  { value: "times_per_day", label: "X times per day" },
-  { value: "times_per_week", label: "X times per week" },
-  { value: "times_per_month", label: "X times per month" },
+const INTERVAL_OPTIONS: { value: ScheduleIntervalKind; label: string }[] = [
+  { value: "day", label: "Day" },
+  { value: "weekdays", label: "Weekday (Mon–Fri)" },
+  { value: "week", label: "Week" },
+  { value: "month", label: "Month" },
+  { value: "weekday", label: "Specific day each week" },
+  { value: "weeks", label: "Every N weeks" },
+  { value: "month_day", label: "Specific date each month" },
+  { value: "months", label: "Every N months" },
 ];
-
-type ChoreScheduleMode = "standard" | "on_weekday" | "on_month_day";
 
 const EDIT_TAB_STATS = "stats";
 const EDIT_TAB_EDIT = "edit";
@@ -143,12 +141,13 @@ export function GoalFormModal({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [kind, setKind] = useState<GoalKind>("continuous");
-  const [frequencyKind, setFrequencyKind] = useState<FrequencyKind>("daily");
+  const [scheduleIntervalKind, setScheduleIntervalKind] =
+    useState<ScheduleIntervalKind>("day");
   const [frequencyCount, setFrequencyCount] = useState(1);
   const [scheduleWeekday, setScheduleWeekday] = useState<number | null>(0);
+  const [scheduleIntervalWeeks, setScheduleIntervalWeeks] = useState(1);
   const [scheduleIntervalMonths, setScheduleIntervalMonths] = useState(2);
   const [scheduleMonthDay, setScheduleMonthDay] = useState<number | null>(1);
-  const [choreScheduleMode, setChoreScheduleMode] = useState<ChoreScheduleMode>("standard");
   const [milestones, setMilestones] = useState<string[]>([]);
   const [newMilestone, setNewMilestone] = useState("");
   const [addMilestoneOpen, setAddMilestoneOpen] = useState(false);
@@ -208,29 +207,23 @@ export function GoalFormModal({
       setTitle(goal.title);
       setDescription(goal.description);
       setKind(goal.kind);
-      setFrequencyKind(goal.frequency_kind);
+      setScheduleIntervalKind(goal.schedule_interval_kind);
       setFrequencyCount(goal.frequency_count);
       setScheduleWeekday(goal.schedule_weekday);
+      setScheduleIntervalWeeks(goal.schedule_interval_weeks || 1);
       setScheduleIntervalMonths(goal.schedule_interval_months || 2);
       setScheduleMonthDay(goal.schedule_month_day);
-      if (goal.kind === "chore") {
-        if (goal.frequency_kind === "on_weekday") setChoreScheduleMode("on_weekday");
-        else if (goal.frequency_kind === "on_month_day") setChoreScheduleMode("on_month_day");
-        else setChoreScheduleMode("standard");
-      } else {
-        setChoreScheduleMode("standard");
-      }
       setMilestones([]);
     } else if (mode === "add" && isNewSession) {
       setTitle("");
       setDescription("");
       setKind("continuous");
-      setFrequencyKind("daily");
+      setScheduleIntervalKind("day");
       setFrequencyCount(1);
       setScheduleWeekday(0);
+      setScheduleIntervalWeeks(1);
       setScheduleIntervalMonths(2);
       setScheduleMonthDay(1);
-      setChoreScheduleMode("standard");
       setMilestones([]);
     }
   }, [open, mode, goal]);
@@ -248,34 +241,32 @@ export function GoalFormModal({
   const buildOngoingPayload = useCallback(() => {
     const count = clampFrequencyCount(frequencyCount);
     const payload: {
-      frequency_kind: FrequencyKind;
+      schedule_interval_kind: ScheduleIntervalKind;
       frequency_count: number;
       schedule_weekday?: number | null;
       schedule_interval_weeks?: number;
       schedule_interval_months?: number;
       schedule_month_day?: number | null;
     } = {
-      frequency_kind: frequencyKind,
+      schedule_interval_kind: scheduleIntervalKind,
       frequency_count: count,
     };
-    if (kind === "chore" && choreScheduleMode === "on_weekday") {
-      payload.frequency_kind = "on_weekday";
+    if (scheduleIntervalKind === "weekday") {
       payload.schedule_weekday = scheduleWeekday ?? 0;
-      payload.schedule_interval_weeks = 1;
-    } else if (kind === "chore" && choreScheduleMode === "on_month_day") {
-      payload.frequency_kind = "on_month_day";
-      payload.schedule_month_day = scheduleMonthDay ?? 1;
-    } else if (frequencyKind === "every_n_months") {
-      payload.frequency_kind = "every_n_months";
+      payload.schedule_interval_weeks = scheduleIntervalWeeks;
+    } else if (scheduleIntervalKind === "weeks") {
+      payload.schedule_interval_weeks = scheduleIntervalWeeks;
+    } else if (scheduleIntervalKind === "months") {
       payload.schedule_interval_months = scheduleIntervalMonths;
+    } else if (scheduleIntervalKind === "month_day") {
+      payload.schedule_month_day = scheduleMonthDay ?? 1;
     }
     return payload;
   }, [
-    choreScheduleMode,
     frequencyCount,
-    frequencyKind,
-    kind,
+    scheduleIntervalKind,
     scheduleIntervalMonths,
+    scheduleIntervalWeeks,
     scheduleMonthDay,
     scheduleWeekday,
   ]);
@@ -515,93 +506,58 @@ export function GoalFormModal({
       </Field.Root>
       {kind === "continuous" || kind === "chore" ? (
         <Stack gap="3">
-          {kind === "continuous" ? (
+          <Field.Root width="full" maxW="11rem">
+            <Field.Label>Times per period</Field.Label>
+            <GoalFrequencyCountInput
+              value={frequencyCount}
+              onChange={setFrequencyCount}
+            />
+          </Field.Root>
+          <Field.Root>
+            <Field.Label>Every</Field.Label>
+            <GoalOptionRadios
+              value={scheduleIntervalKind}
+              options={INTERVAL_OPTIONS}
+              onChange={(next) => {
+                setScheduleIntervalKind(next);
+                if (next === "weekday") {
+                  setScheduleWeekday((v) => v ?? 0);
+                  setScheduleIntervalWeeks((w) => w || 1);
+                } else if (next === "weeks") {
+                  setScheduleIntervalWeeks((w) => (w > 1 ? w : 2));
+                } else if (next === "month_day") {
+                  setScheduleMonthDay((v) => v ?? 1);
+                }
+              }}
+            />
+          </Field.Root>
+          {scheduleIntervalKind === "weekday" ? (
             <>
               <Field.Root>
-                <Field.Label>Frequency</Field.Label>
-                <GoalOptionRadios
-                  value={frequencyKind}
-                  options={FREQ_OPTIONS}
-                  onChange={setFrequencyKind}
-                />
+                <Field.Label>Day of week (Mon–Sun)</Field.Label>
+                <GoalWeekdayPicker value={scheduleWeekday} onChange={setScheduleWeekday} />
               </Field.Root>
-              {isTimesPerFrequency(frequencyKind) ? (
-                <Field.Root width="full" maxW="11rem">
-                  <Field.Label>Count</Field.Label>
-                  <GoalFrequencyCountInput
-                    value={frequencyCount}
-                    onChange={setFrequencyCount}
-                  />
-                </Field.Root>
-              ) : null}
-              {frequencyKind === "every_n_months" ? (
-                <GoalIntervalMonthsInput
-                  value={scheduleIntervalMonths}
-                  onChange={setScheduleIntervalMonths}
-                />
-              ) : null}
+              <GoalIntervalWeeksInput
+                value={scheduleIntervalWeeks}
+                onChange={setScheduleIntervalWeeks}
+              />
             </>
-          ) : (
-            <>
-              <Field.Root>
-                <Field.Label>Frequency</Field.Label>
-                <GoalOptionRadios
-                  value={choreScheduleMode === "standard" ? frequencyKind : choreScheduleMode}
-                  options={[
-                    ...FREQ_OPTIONS,
-                    { value: "on_weekday" as FrequencyKind, label: "Specific day each week" },
-                    { value: "on_month_day" as FrequencyKind, label: "Monthly on a date" },
-                  ]}
-                  onChange={(next) => {
-                    if (next === "on_weekday") {
-                      setChoreScheduleMode("on_weekday");
-                      setFrequencyKind("on_weekday");
-                      setScheduleWeekday((v) => v ?? 0);
-                      return;
-                    }
-                    if (next === "on_month_day") {
-                      setChoreScheduleMode("on_month_day");
-                      setFrequencyKind("on_month_day");
-                      setScheduleMonthDay((v) => v ?? 1);
-                      return;
-                    }
-                    setChoreScheduleMode("standard");
-                    setFrequencyKind(next);
-                  }}
-                />
-              </Field.Root>
-              {choreScheduleMode === "standard" && isTimesPerFrequency(frequencyKind) ? (
-                <Field.Root width="full" maxW="11rem">
-                  <Field.Label>Count</Field.Label>
-                  <GoalFrequencyCountInput
-                    value={frequencyCount}
-                    onChange={setFrequencyCount}
-                  />
-                </Field.Root>
-              ) : null}
-              {choreScheduleMode === "standard" && frequencyKind === "every_n_months" ? (
-                <GoalIntervalMonthsInput
-                  value={scheduleIntervalMonths}
-                  onChange={setScheduleIntervalMonths}
-                />
-              ) : null}
-              {choreScheduleMode === "on_weekday" ? (
-                <Field.Root>
-                  <Field.Label>Day of week (Mon–Sun)</Field.Label>
-                  <GoalWeekdayPicker
-                    value={scheduleWeekday}
-                    onChange={setScheduleWeekday}
-                  />
-                </Field.Root>
-              ) : null}
-              {choreScheduleMode === "on_month_day" ? (
-                <GoalMonthDayPicker
-                  value={scheduleMonthDay}
-                  onChange={setScheduleMonthDay}
-                />
-              ) : null}
-            </>
-          )}
+          ) : null}
+          {scheduleIntervalKind === "weeks" ? (
+            <GoalIntervalWeeksInput
+              value={scheduleIntervalWeeks}
+              onChange={setScheduleIntervalWeeks}
+            />
+          ) : null}
+          {scheduleIntervalKind === "months" ? (
+            <GoalIntervalMonthsInput
+              value={scheduleIntervalMonths}
+              onChange={setScheduleIntervalMonths}
+            />
+          ) : null}
+          {scheduleIntervalKind === "month_day" ? (
+            <GoalMonthDayPicker value={scheduleMonthDay} onChange={setScheduleMonthDay} />
+          ) : null}
         </Stack>
       ) : mode === "add" ? (
         <Stack gap="2">

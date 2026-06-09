@@ -17,17 +17,15 @@ class Goal(models.Model):
         COMPLETED = "completed", "Completed"
         PAUSED = "paused", "Paused"
 
-    class FrequencyKind(models.TextChoices):
-        DAILY = "daily", "Daily"
-        WEEKLY = "weekly", "Weekly"
-        TIMES_PER_DAY = "times_per_day", "Times per day"
-        TIMES_PER_WEEK = "times_per_week", "Times per week"
+    class ScheduleIntervalKind(models.TextChoices):
+        DAY = "day", "Day"
         WEEKDAYS = "weekdays", "Weekdays"
-        MONTHLY = "monthly", "Monthly"
-        TIMES_PER_MONTH = "times_per_month", "Times per month"
-        EVERY_N_MONTHS = "every_n_months", "Every N months"
-        ON_WEEKDAY = "on_weekday", "On weekday"
-        ON_MONTH_DAY = "on_month_day", "On month day"
+        WEEKDAY = "weekday", "Weekday"
+        WEEK = "week", "Week"
+        WEEKS = "weeks", "Weeks"
+        MONTH = "month", "Month"
+        MONTHS = "months", "Months"
+        MONTH_DAY = "month_day", "Month day"
 
     class LastCompletionEventType(models.TextChoices):
         CHECK_IN = "check_in", "Check-in"
@@ -48,14 +46,14 @@ class Goal(models.Model):
         choices=Status.choices,
         default=Status.ACTIVE,
     )
-    frequency_kind = models.CharField(
-        max_length=20,
-        choices=FrequencyKind.choices,
-        default=FrequencyKind.DAILY,
+    schedule_interval_kind = models.CharField(
+        max_length=16,
+        choices=ScheduleIntervalKind.choices,
+        default=ScheduleIntervalKind.DAY,
     )
     frequency_count = models.PositiveSmallIntegerField(default=1)
     schedule_weekday = models.PositiveSmallIntegerField(null=True, blank=True)
-    schedule_interval_weeks = models.PositiveSmallIntegerField(default=2)
+    schedule_interval_weeks = models.PositiveSmallIntegerField(default=1)
     schedule_interval_months = models.PositiveSmallIntegerField(default=2)
     schedule_month_day = models.PositiveSmallIntegerField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)

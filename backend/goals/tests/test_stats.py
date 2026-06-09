@@ -28,7 +28,7 @@ class GoalStatsTests(TestCase):
             owner_user=self.owner,
             title="New habit",
             kind=Goal.Kind.CONTINUOUS,
-            frequency_kind=Goal.FrequencyKind.DAILY,
+            schedule_interval_kind=Goal.ScheduleIntervalKind.DAY,
         )
         Goal.objects.filter(pk=goal.pk).update(created_at=created)
         goal.refresh_from_db()
@@ -91,16 +91,68 @@ class GoalStatsTests(TestCase):
             owner_user=self.owner,
             title="Quarterly",
             kind=Goal.Kind.CONTINUOUS,
-            frequency_kind=Goal.FrequencyKind.EVERY_N_MONTHS,
+            schedule_interval_kind=Goal.ScheduleIntervalKind.MONTHS,
             schedule_interval_months=2,
         )
         Goal.objects.filter(pk=goal.pk).update(created_at=created)
         goal.refresh_from_db()
-        from goals.chore_stats import is_every_n_months_due_month
+        from goals.schedule import is_months_interval_active
         from goals.stats import month_target_for_goal
 
-        self.assertTrue(is_every_n_months_due_month(goal, date(2026, 1, 10), tz))
-        self.assertFalse(is_every_n_months_due_month(goal, date(2026, 2, 1), tz))
-        self.assertTrue(is_every_n_months_due_month(goal, date(2026, 3, 1), tz))
+        self.assertTrue(is_months_interval_active(goal, date(2026, 1, 10), tz))
+        self.assertFalse(is_months_interval_active(goal, date(2026, 2, 1), tz))
+        self.assertTrue(is_months_interval_active(goal, date(2026, 3, 1), tz))
         self.assertEqual(month_target_for_goal(goal, date(2026, 2, 1), tz), 0)
         self.assertEqual(month_target_for_goal(goal, date(2026, 3, 1), tz), 1)
+
+    def test_goal_visible_in_due_list_weekdays(self):
+        from goals.stats import compute_goal_stats, goal_visible_in_due_list
+
+        tz = ZoneInfo("America/Phoenix")
+        goal = Goal.objects.create(
+            owner_user=self.owner,
+            title="Weekday only",
+            kind=Goal.Kind.CONTINUOUS,
+            schedule_interval_kind=Goal.ScheduleIntervalKind.WEEKDAYS,
+        )
+        saturday = datetime(2026, 6, 6, 12, 0, tzinfo=dt_timezone.utc)
+        stats = compute_goal_stats(goal, [], [], self.owner.profile, now_utc=saturday)
+        self.assertEqual(stats.today_target, 0)
+        self.assertFalse(goal_visible_in_due_list(goal, stats))
+        friday = datetime(2026, 6, 5, 12, 0, tzinfo=dt_timezone.utc)
+        stats_fri = compute_goal_stats(goal, [], [], self.owner.profile, now_utc=friday)
+        self.assertEqual(stats_fri.today_target, 1)
+        self.assertTrue(goal_visible_in_due_list(goal, stats_fri))
+
+    def test_day_interval_with_count_sets_today_target(self):
+        from goals.stats import day_target_for_goal
+
+        goal = Goal.objects.create(
+            owner_user=self.owner,
+            title="Hydrate",
+            kind=Goal.Kind.CONTINUOUS,
+            schedule_interval_kind=Goal.ScheduleIntervalKind.DAY,
+            frequency_count=3,
+        )
+        tz = ZoneInfo("America/Phoenix")
+        today = date(2026, 6, 4)
+        self.assertEqual(day_target_for_goal(goal, today, tz), 3)
+
+    def test_weekday_biweekly_due_only_on_matching_tuesdays(self):
+        from goals.schedule import is_weekday_interval_due
+
+        tz = ZoneInfo("America/Phoenix")
+        created = datetime(2026, 1, 6, 12, 0, tzinfo=dt_timezone.utc)
+        goal = Goal.objects.create(
+            owner_user=self.owner,
+            title="Biweekly trash",
+            kind=Goal.Kind.CHORE,
+            schedule_interval_kind=Goal.ScheduleIntervalKind.WEEKDAY,
+            schedule_weekday=1,
+            schedule_interval_weeks=2,
+        )
+        Goal.objects.filter(pk=goal.pk).update(created_at=created)
+        goal.refresh_from_db()
+        self.assertTrue(is_weekday_interval_due(goal, date(2026, 1, 6), tz, 0))
+        self.assertFalse(is_weekday_interval_due(goal, date(2026, 1, 13), tz, 0))
+        self.assertTrue(is_weekday_interval_due(goal, date(2026, 1, 20), tz, 0))

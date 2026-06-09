@@ -5,6 +5,7 @@ import type {
   GoalKind,
   GoalPatchPayload,
   GoalsDashboard,
+  GoalsWorkspace,
   GoalStatus,
 } from "./types";
 
@@ -74,6 +75,27 @@ export async function fetchGoalsDashboard(
     throw new Error(`Failed to load goals (${response.status})`);
   }
   return (await response.json()) as GoalsDashboard;
+}
+
+export async function fetchGoalsWorkspace(
+  accessToken: string | null,
+): Promise<GoalsWorkspace> {
+  const response = await fetch(`${apiBase()}/api/v1/goals/dashboard/?scope=all`, {
+    method: "GET",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to load goals (${response.status})`);
+  }
+  const data = (await response.json()) as GoalsDashboard;
+  return {
+    stripe: data.stripe,
+    goals: data.goals,
+    status_counts: data.status_counts,
+    kind_counts: data.kind_counts,
+    kind_totals: data.kind_totals ?? data.kind_counts,
+  };
 }
 
 export async function createGoal(

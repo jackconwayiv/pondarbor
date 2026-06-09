@@ -9,6 +9,18 @@ from zoneinfo import ZoneInfo
 from django.utils import timezone
 
 from goals.models import CheckIn, Goal
+from goals.schedule import (
+    day_target_for_goal,
+    frequency_count,
+    goal_applies_to_stripe_period,
+    is_day_due,
+    is_month_period_active,
+    is_months_interval_active,
+    is_week_period_active,
+    month_target_for_goal,
+    period_bucket_for_interval,
+    week_target_for_goal,
+)
 
 if TYPE_CHECKING:
     from users.models import Profile
@@ -83,92 +95,18 @@ def month_start_for(d: date) -> date:
     return d.replace(day=1)
 
 
-def goal_applies_to_stripe_period(goal: Goal, period: str) -> bool:
-    """Top stripe buckets only aggregate goals on that cadence."""
-    if not _ongoing_kind(goal) or goal.status != Goal.Status.ACTIVE:
-        return False
-    fk = goal.frequency_kind
-    if period == "day":
-        return fk in (
-            Goal.FrequencyKind.DAILY,
-            Goal.FrequencyKind.TIMES_PER_DAY,
-            Goal.FrequencyKind.WEEKDAYS,
-        )
-    if period == "week":
-        return fk in (
-            Goal.FrequencyKind.WEEKLY,
-            Goal.FrequencyKind.TIMES_PER_WEEK,
-            Goal.FrequencyKind.ON_WEEKDAY,
-        )
-    if period == "month":
-        return fk in (
-            Goal.FrequencyKind.MONTHLY,
-            Goal.FrequencyKind.TIMES_PER_MONTH,
-            Goal.FrequencyKind.EVERY_N_MONTHS,
-            Goal.FrequencyKind.ON_MONTH_DAY,
-        )
-    return False
-
-
-def day_target_for_goal(
-    goal: Goal,
-    today: date,
-    tz: ZoneInfo | None = None,
-    week_starts_on: int = 0,
-) -> int:
-    if not _ongoing_kind(goal):
-        return 0
-    fk = goal.frequency_kind
-    count = max(1, goal.frequency_count or 1)
-    if fk == Goal.FrequencyKind.DAILY:
-        return 1
-    if fk == Goal.FrequencyKind.TIMES_PER_DAY:
-        return count
-    if fk == Goal.FrequencyKind.WEEKDAYS:
-        return 1 if today.weekday() < 5 else 0
-    if fk == Goal.FrequencyKind.ON_WEEKDAY and tz is not None:
-        from goals.chore_stats import chore_due_on_date
-
-        return 1 if chore_due_on_date(goal, today, tz, week_starts_on) else 0
-    return 0
-
-
-def week_target_for_goal(goal: Goal) -> int:
-    if not _ongoing_kind(goal):
-        return 0
-    fk = goal.frequency_kind
-    count = max(1, goal.frequency_count or 1)
-    if fk == Goal.FrequencyKind.WEEKLY:
-        return 1
-    if fk == Goal.FrequencyKind.TIMES_PER_WEEK:
-        return count
-    if fk == Goal.FrequencyKind.ON_WEEKDAY:
-        return 1
-    return 0
-
-
-def month_target_for_goal(
-    goal: Goal,
-    today: date | None = None,
-    tz: ZoneInfo | None = None,
-) -> int:
-    if not _ongoing_kind(goal):
-        return 0
-    fk = goal.frequency_kind
-    count = max(1, goal.frequency_count or 1)
-    if fk == Goal.FrequencyKind.MONTHLY:
-        return 1
-    if fk == Goal.FrequencyKind.TIMES_PER_MONTH:
-        return count
-    if fk == Goal.FrequencyKind.ON_MONTH_DAY:
-        return 1
-    if fk == Goal.FrequencyKind.EVERY_N_MONTHS:
-        if today is None or tz is None:
-            return 0
-        from goals.chore_stats import is_every_n_months_due_month
-
-        return 1 if is_every_n_months_due_month(goal, today, tz) else 0
-    return 0
+def goal_visible_in_due_list(goal: Goal, stats: GoalStats) -> bool:
+    """Active continuous goals: show only when the current period has a target."""
+    if goal.kind != Goal.Kind.CONTINUOUS:
+        return True
+    bucket = period_bucket_for_interval(goal.schedule_interval_kind)
+    if bucket == "day":
+        return stats.today_target > 0
+    if bucket == "week":
+        return stats.week_target > 0
+    if bucket == "month":
+        return stats.month_target > 0
+    return True
 
 
 def period_target_for_goal(
@@ -184,7 +122,7 @@ def period_target_for_goal(
             return 0
         return day_target_for_goal(goal, today, tz, week_starts_on)
     if period == "week":
-        return week_target_for_goal(goal)
+        return week_target_for_goal(goal, today, tz, week_starts_on)
     if period == "month":
         return month_target_for_goal(goal, today, tz)
     return 0
@@ -257,15 +195,16 @@ def compute_period_stripe(
 
     since = now_utc - timedelta(days=62)
     by_goal = _checkins_by_goal([g.id for g in active_ongoing], owner_user_id, since)
+    wso = _week_starts_on(profile)
 
     today_a = today_t = week_a = week_t = month_a = month_t = 0
     for g in active_ongoing:
         occ = by_goal.get(g.id, [])
         if goal_applies_to_stripe_period(g, "day"):
-            today_t += period_target_for_goal(g, "day", today)
+            today_t += period_target_for_goal(g, "day", today, tz, wso)
             today_a += _count_checkins_on_date(occ, today, tz)
         if goal_applies_to_stripe_period(g, "week"):
-            week_t += period_target_for_goal(g, "week", today)
+            week_t += period_target_for_goal(g, "week", today, tz, wso)
             week_a += _count_checkins_in_range(occ, wstart, wend, tz)
         if goal_applies_to_stripe_period(g, "month"):
             month_t += period_target_for_goal(g, "month", today, tz)
@@ -305,42 +244,57 @@ def _expected_periods_since(
     end: date,
     goal: Goal,
     tz: ZoneInfo | None = None,
+    week_starts_on: int = 0,
 ) -> int:
     days = max(1, (end - start).days + 1)
-    fk = goal.frequency_kind
-    count = max(1, goal.frequency_count or 1)
-    if goal.kind != Goal.Kind.CONTINUOUS and goal.kind != Goal.Kind.CHORE:
+    count = frequency_count(goal)
+    if goal.kind not in (Goal.Kind.CONTINUOUS, Goal.Kind.CHORE):
         return max(1, days)
-    if fk == Goal.FrequencyKind.DAILY:
-        return days
-    if fk == Goal.FrequencyKind.TIMES_PER_DAY:
+
+    kind = goal.schedule_interval_kind
+    if kind == Goal.ScheduleIntervalKind.DAY:
         return days * count
-    if fk == Goal.FrequencyKind.WEEKLY:
+    if kind == Goal.ScheduleIntervalKind.WEEK:
         return max(1, days // 7 + (1 if days % 7 else 0))
-    if fk == Goal.FrequencyKind.TIMES_PER_WEEK:
-        weeks = max(1, (days + 6) // 7)
-        return weeks * count
-    if fk in (Goal.FrequencyKind.MONTHLY, Goal.FrequencyKind.TIMES_PER_MONTH):
-        from goals.chore_stats import month_index
+    if kind == Goal.ScheduleIntervalKind.WEEKS:
+        if tz is None:
+            return max(1, days // 7)
+        n = 0
+        w = week_start_for(start, week_starts_on)
+        while w <= end:
+            if is_week_period_active(goal, w, tz, week_starts_on):
+                n += count
+            w += timedelta(days=7)
+        return max(1, n)
+    if kind in (Goal.ScheduleIntervalKind.MONTH, Goal.ScheduleIntervalKind.MONTHS):
+        from goals.schedule import month_index
 
-        months = max(1, month_index(end) - month_index(start) + 1)
-        if fk == Goal.FrequencyKind.TIMES_PER_MONTH:
+        if kind == Goal.ScheduleIntervalKind.MONTH:
+            months = max(1, month_index(end) - month_index(start) + 1)
             return months * count
-        return months
-    if fk == Goal.FrequencyKind.EVERY_N_MONTHS and tz is not None:
-        from goals.chore_stats import is_every_n_months_due_month
-
+        if tz is None:
+            return max(1, month_index(end) - month_index(start) + 1)
         due = 0
         y, m = start.year, start.month
         while date(y, m, 1) <= end:
             d = date(y, m, 1)
-            if d >= start.replace(day=1) and is_every_n_months_due_month(goal, d, tz):
-                due += 1
+            if d >= start.replace(day=1) and is_months_interval_active(goal, d, tz):
+                due += count
             if m == 12:
                 y, m = y + 1, 1
             else:
                 m += 1
         return max(1, due)
+    if kind == Goal.ScheduleIntervalKind.WEEKDAY:
+        if tz is None:
+            return days
+        n = 0
+        d = start
+        while d <= end:
+            if is_day_due(goal, d, tz, week_starts_on):
+                n += count
+            d += timedelta(days=1)
+        return max(1, n)
     return days
 
 
@@ -360,20 +314,23 @@ def _compute_streaks(
     if goal.kind != Goal.Kind.CONTINUOUS and goal.kind != Goal.Kind.CHORE:
         return 0, 0
 
-    fk = goal.frequency_kind
+    kind = goal.schedule_interval_kind
     wso = week_starts_on
 
     def day_met(d: date) -> bool:
         target = day_target_for_goal(goal, d, tz, wso)
-        if fk in (Goal.FrequencyKind.WEEKLY, Goal.FrequencyKind.TIMES_PER_WEEK):
-            return False
         if target == 0:
+            return False
+        if kind in (
+            Goal.ScheduleIntervalKind.WEEK,
+            Goal.ScheduleIntervalKind.WEEKS,
+        ):
             return False
         return sum(1 for o, _ in occurrences if o.astimezone(tz).date() == d) >= target
 
     def week_met(wstart: date) -> bool:
         wend = wstart + timedelta(days=6)
-        target = week_target_for_goal(goal)
+        target = week_target_for_goal(goal, wstart, tz, wso)
         if target == 0:
             return False
         actual = _count_checkins_in_range(occurrences, wstart, wend, tz)
@@ -401,11 +358,9 @@ def _compute_streaks(
 
     current = 0
     best = 0
-    if fk in (
-        Goal.FrequencyKind.DAILY,
-        Goal.FrequencyKind.TIMES_PER_DAY,
-        Goal.FrequencyKind.WEEKDAYS,
-    ):
+    bucket = period_bucket_for_interval(kind)
+
+    if bucket == "day":
         d = today
         while day_met(d):
             current += 1
@@ -419,12 +374,7 @@ def _compute_streaks(
             else:
                 run = 0
         best = max(best, current)
-    elif fk in (
-        Goal.FrequencyKind.MONTHLY,
-        Goal.FrequencyKind.TIMES_PER_MONTH,
-        Goal.FrequencyKind.EVERY_N_MONTHS,
-        Goal.FrequencyKind.ON_MONTH_DAY,
-    ):
+    elif bucket == "month":
         m = month_start_for(today)
         while True:
             met = month_met(m)
@@ -489,11 +439,11 @@ def compute_goal_stats(
     today_actual = _count_checkins_on_date(occurrences, today, tz)
     today_target = day_target_for_goal(goal, today, tz, wso)
     week_actual = _count_checkins_in_range(occurrences, wstart, wend, tz)
-    week_target = week_target_for_goal(goal)
+    week_target = week_target_for_goal(goal, today, tz, wso)
     month_actual = _count_checkins_in_range(occurrences, mstart, mend, tz)
     month_target = month_target_for_goal(goal, today, tz)
 
-    lifetime_expected = _expected_periods_since(created_local, today, goal, tz)
+    lifetime_expected = _expected_periods_since(created_local, today, goal, tz, wso)
     lifetime_actual = len(occurrences)
     if goal.kind == Goal.Kind.ONE_TIME:
         cp_done = len(checkpoint_completed_times)
@@ -510,10 +460,9 @@ def compute_goal_stats(
             lifetime_actual = 1 if goal.status == Goal.Status.COMPLETED else 0
 
     thirty_start = today - timedelta(days=29)
-    # Rolling 30d window, but never count days before the goal existed.
     window_start = max(thirty_start, created_local)
     last30_actual = _count_checkins_in_range(occurrences, window_start, today, tz)
-    last30_expected = _expected_periods_since(window_start, today, goal, tz)
+    last30_expected = _expected_periods_since(window_start, today, goal, tz, wso)
 
     streak_current, streak_best = _compute_streaks(
         goal, occurrences, today, tz, wso
@@ -529,9 +478,9 @@ def compute_goal_stats(
         if _ongoing_kind(goal):
             if today_target > 0 and today_actual < today_target:
                 urgency += 100 + (today_target - today_actual) * 10
-            elif fk_week_behind(goal, week_actual, week_target):
+            elif interval_week_behind(goal, week_actual, week_target):
                 urgency += 50
-            elif fk_month_behind(goal, month_actual, month_target):
+            elif interval_month_behind(goal, month_actual, month_target):
                 urgency += 50
             if chore_stats.chore_period_state == "overdue":
                 urgency += 120 + chore_stats.days_overdue * 5
@@ -567,16 +516,21 @@ def compute_goal_stats(
     )
 
 
-def fk_month_behind(goal: Goal, month_actual: int, month_target: int) -> bool:
+def interval_month_behind(goal: Goal, month_actual: int, month_target: int) -> bool:
     if month_target <= 0:
         return False
     return month_actual < month_target
 
 
-def fk_week_behind(goal: Goal, week_actual: int, week_target: int) -> bool:
+def interval_week_behind(goal: Goal, week_actual: int, week_target: int) -> bool:
     if week_target <= 0:
         return False
     return week_actual < week_target
+
+
+# Backward-compatible aliases for any external imports.
+fk_month_behind = interval_month_behind
+fk_week_behind = interval_week_behind
 
 
 def sort_goals_for_display(goals_with_stats: list[tuple[Goal, GoalStats]]) -> list[tuple[Goal, GoalStats]]:

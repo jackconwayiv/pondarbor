@@ -21,7 +21,7 @@ function makeGoal(
     description: "",
     kind: "continuous",
     status: "active",
-    frequency_kind: "daily",
+    schedule_interval_kind: "day",
     frequency_count: 1,
     schedule_weekday: null,
     schedule_interval_weeks: 2,
@@ -33,6 +33,7 @@ function makeGoal(
     updated_at: "2026-01-01T00:00:00Z",
     checkpoints: [],
     can_undo: false,
+    due_today: true,
     ...rest,
     id: overrides.id,
     stats: { ...baseStats, ...statsOverrides },
@@ -76,6 +77,15 @@ describe("sortGoalsForGrid", () => {
     });
     const todo = makeGoal({ id: "todo", stats: { today_actual: 0, today_target: 1 } });
     expect(sortGoalsForGrid([todo, overdue]).map((g) => g.id)).toEqual(["overdue", "todo"]);
+  });
+
+  it("treats zero day target as period complete on rest days", () => {
+    const restDay = makeGoal({
+      id: "rest",
+      schedule_interval_kind: "weekdays",
+      stats: { today_actual: 0, today_target: 0 },
+    });
+    expect(goalPatchIsComplete(restDay)).toBe(true);
   });
 });
 

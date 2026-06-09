@@ -19,7 +19,7 @@ function makeGoal(
     description: "",
     kind: "continuous",
     status: "active",
-    frequency_kind: "daily",
+    schedule_interval_kind: "day",
     frequency_count: 1,
     schedule_weekday: null,
     schedule_interval_weeks: 2,
@@ -31,6 +31,7 @@ function makeGoal(
     updated_at: "2026-01-01T00:00:00Z",
     checkpoints: [],
     can_undo: false,
+    due_today: true,
     ...rest,
     id: overrides.id,
     stats: { ...baseStats, ...statsOverrides },
@@ -59,7 +60,7 @@ describe("optimisticCheckIn", () => {
   it("bumps week_actual for weekly goals", () => {
     const goal = makeGoal({
       id: "g1",
-      frequency_kind: "weekly",
+      schedule_interval_kind: "week",
       stats: { week_actual: 0, week_target: 1, today_actual: 0, today_target: 0 },
     });
     const next = optimisticCheckIn(goal);
@@ -116,7 +117,7 @@ describe("optimisticStripeAfterCheckIn", () => {
   it("increments week stripe for weekly goals", () => {
     const goal = makeGoal({
       id: "g1",
-      frequency_kind: "times_per_week",
+      schedule_interval_kind: "week",
       frequency_count: 2,
       stats: { week_actual: 0, week_target: 2, today_actual: 0, today_target: 0 },
     });

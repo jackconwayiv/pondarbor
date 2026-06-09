@@ -8,14 +8,13 @@ import {
   goalHoldProgressDisabled,
   goalLastProgressLabel,
   goalPatchIsComplete,
-  goalPatchOverdueLabel,
-  goalPatchOverdueSublabel,
   goalPatchShellStyle,
   isOngoingKind,
 } from "./goalCardLabels";
 import { GOALS_THEME } from "./theme";
 import { GoalLongPressRing } from "./GoalLongPressRing";
 import { GoalPatchCircle } from "./GoalPatchCircle";
+import { GoalPatchOverdueHeader } from "./GoalPatchOverdueHeader";
 import { GoalPeriodSockets, periodSlotsForGoal, type PeriodSlots } from "./GoalPeriodSockets";
 
 /** Circle badge on desktop; card body overlaps ~half the patch width. */
@@ -38,13 +37,6 @@ const patchPadding = { px: "2", py: "2", textAlign: "center" as const };
 function goalKindCornerEmoji(kind: Goal["kind"]): string {
   if (kind === "chore") return "🧹";
   return kind === "continuous" ? "♻️" : "🎯";
-}
-
-function patchOverdueProps(goal: Goal) {
-  return {
-    overdueLabel: goalPatchOverdueLabel(goal),
-    overdueSublabel: goalPatchOverdueSublabel(goal),
-  };
 }
 
 function GoalPatchPeriodLine({ goal, compact }: { goal: Goal; compact: boolean }) {
@@ -89,10 +81,10 @@ function GoalCardMobileCircle({
         patchStyle={patchStyle}
         width="100%"
         height="100%"
-        {...patchOverdueProps(goal)}
         {...patchPadding}
       >
         <Stack gap="1.5" align="center" width="full" maxW="full">
+          <GoalPatchOverdueHeader goal={goal} />
           <Text
             fontWeight="bold"
             color={GOALS_THEME.textOnLight}
@@ -116,10 +108,10 @@ function GoalCardMobileCircle({
       patchStyle={patchStyle}
       width="100%"
       height="100%"
-      {...patchOverdueProps(goal)}
       {...patchPadding}
     >
       <Stack gap="1" align="center" width="full">
+        <GoalPatchOverdueHeader goal={goal} />
         <Text
           fontWeight="bold"
           color={GOALS_THEME.textOnLight}
@@ -169,9 +161,9 @@ function GoalCardDesktopBadge({
         aspectRatio={1}
         px="2"
         py="2"
-        {...patchOverdueProps(goal)}
       >
         <Stack gap="1" align="center" width="full">
+          <GoalPatchOverdueHeader goal={goal} />
           <Text
             fontWeight="bold"
             color={GOALS_THEME.textOnLight}

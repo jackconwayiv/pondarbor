@@ -1,49 +1,13 @@
 import { goalPatchIsComplete, isOngoingKind } from "./goalCardLabels";
-import type { FrequencyKind, Goal, GoalsStripe } from "./types";
-
-function isWeekPeriodGoal(goal: Goal): boolean {
-  return (
-    goal.frequency_kind === "weekly" ||
-    goal.frequency_kind === "times_per_week" ||
-    goal.frequency_kind === "on_weekday"
-  );
-}
-
-function isMonthPeriodGoal(goal: Goal): boolean {
-  return (
-    goal.frequency_kind === "monthly" ||
-    goal.frequency_kind === "times_per_month" ||
-    goal.frequency_kind === "every_n_months" ||
-    goal.frequency_kind === "on_month_day"
-  );
-}
-
-function goalAppliesToDayStripe(goal: Goal): boolean {
-  return (
-    isOngoingKind(goal) &&
-    goal.status === "active" &&
-    (goal.frequency_kind === "daily" ||
-      goal.frequency_kind === "times_per_day" ||
-      goal.frequency_kind === "weekdays" ||
-      goal.frequency_kind === "on_weekday")
-  );
-}
-
-function goalAppliesToWeekStripe(goal: Goal): boolean {
-  return (
-    isOngoingKind(goal) &&
-    goal.status === "active" &&
-    (goal.frequency_kind === "weekly" || goal.frequency_kind === "times_per_week")
-  );
-}
-
-function goalAppliesToMonthStripe(goal: Goal): boolean {
-  return (
-    isOngoingKind(goal) &&
-    goal.status === "active" &&
-    isMonthPeriodGoal(goal)
-  );
-}
+import {
+  goalAppliesToDayStripe,
+  goalAppliesToMonthStripe,
+  goalAppliesToWeekStripe,
+  isDayPeriodGoal,
+  isMonthPeriodGoal,
+  isWeekPeriodGoal,
+} from "./schedule";
+import type { Goal, GoalsStripe } from "./types";
 
 /** Apply a check-in locally before the API responds. */
 export function optimisticCheckIn(goal: Goal, checkpointId?: string): Goal {
@@ -78,7 +42,7 @@ export function optimisticCheckIn(goal: Goal, checkpointId?: string): Goal {
     stats.month_actual += 1;
   } else if (isWeekPeriodGoal(goal)) {
     stats.week_actual += 1;
-  } else {
+  } else if (isDayPeriodGoal(goal)) {
     stats.today_actual += 1;
   }
   stats.days_since_last_progress = 0;
@@ -122,8 +86,4 @@ export function optimisticStripeAfterCheckIn(stripe: GoalsStripe, goal: Goal): G
   if (goalAppliesToWeekStripe(goal)) next.week_actual += 1;
   if (goalAppliesToMonthStripe(goal)) next.month_actual += 1;
   return next;
-}
-
-export function isTimesPerFrequency(kind: FrequencyKind): boolean {
-  return kind === "times_per_day" || kind === "times_per_week" || kind === "times_per_month";
 }

@@ -87,8 +87,12 @@ def _serialized_goal_response(request, goal: Goal) -> Response:
         ).values_list("occurred_at", "checkpoint_id")
     )
     stats = compute_goal_stats(goal, occ, _checkpoint_times(goal), profile)
+    due_map = {goal.id: _goal_due_today(goal, stats, profile)}
     return Response(
-        GoalSerializer(goal, context={"stats_bundle": {goal.id: stats}, "profile": profile}).data
+        GoalSerializer(
+            goal,
+            context={"stats_bundle": {goal.id: stats}, "profile": profile, "due_today_map": due_map},
+        ).data
     )
 
 
@@ -117,6 +121,71 @@ def _build_stats_bundle(goals, owner_user_id, profile):
     return bundle
 
 
+def _goal_due_today(goal: Goal, stats, profile: Profile | None) -> bool:
+    if goal.status != Goal.Status.ACTIVE:
+        return False
+    if goal.kind == Goal.Kind.ONE_TIME:
+        return True
+    if goal.kind == Goal.Kind.CONTINUOUS:
+        from goals.stats import goal_visible_in_due_list
+
+        return goal_visible_in_due_list(goal, stats)
+    if goal.kind == Goal.Kind.CHORE:
+        from goals.chore_stats import chore_visible_in_due_list
+        from goals.stats import _user_tz, _week_starts_on, local_today
+
+        tz = _user_tz(profile)
+        today = local_today(timezone.now(), tz)
+        wso = _week_starts_on(profile)
+        return chore_visible_in_due_list(goal, today, tz, wso, stats)
+    return False
+
+
+def _due_today_map(goals, bundle, profile) -> dict:
+    return {g.id: _goal_due_today(g, bundle[g.id], profile) for g in goals}
+
+
+def _serialize_goals(goals, bundle, profile, due_today_map: dict | None = None):
+    if due_today_map is None:
+        due_today_map = _due_today_map(goals, bundle, profile)
+    return [
+        GoalSerializer(
+            g,
+            context={
+                "stats_bundle": {g.id: bundle[g.id]},
+                "profile": profile,
+                "due_today_map": due_today_map,
+            },
+        ).data
+        for g in goals
+    ]
+
+
+def _dashboard_counts(all_goals):
+    status_counts = {
+        Goal.Status.ACTIVE: sum(1 for g in all_goals if g.status == Goal.Status.ACTIVE),
+        Goal.Status.COMPLETED: sum(1 for g in all_goals if g.status == Goal.Status.COMPLETED),
+        Goal.Status.PAUSED: sum(1 for g in all_goals if g.status == Goal.Status.PAUSED),
+    }
+    kind_counts = {
+        Goal.Kind.CONTINUOUS: sum(
+            1 for g in all_goals if g.kind == Goal.Kind.CONTINUOUS and g.status == Goal.Status.ACTIVE
+        ),
+        Goal.Kind.CHORE: sum(
+            1 for g in all_goals if g.kind == Goal.Kind.CHORE and g.status == Goal.Status.ACTIVE
+        ),
+        Goal.Kind.ONE_TIME: sum(
+            1 for g in all_goals if g.kind == Goal.Kind.ONE_TIME and g.status == Goal.Status.ACTIVE
+        ),
+    }
+    kind_totals = {
+        Goal.Kind.CONTINUOUS: sum(1 for g in all_goals if g.kind == Goal.Kind.CONTINUOUS),
+        Goal.Kind.CHORE: sum(1 for g in all_goals if g.kind == Goal.Kind.CHORE),
+        Goal.Kind.ONE_TIME: sum(1 for g in all_goals if g.kind == Goal.Kind.ONE_TIME),
+    }
+    return status_counts, kind_counts, kind_totals
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def goals_dashboard(request):
@@ -124,6 +193,38 @@ def goals_dashboard(request):
     if err:
         return err
     user = request.user
+    scope = request.query_params.get("scope")
+    all_goals = list(_goals_qs(user))
+    profile = _profile_for(user)
+    stripe = compute_period_stripe(all_goals, user.id, profile)
+    status_counts, kind_counts, kind_totals = _dashboard_counts(all_goals)
+
+    stripe_payload = {
+        "today_actual": stripe.today_actual,
+        "today_target": stripe.today_target,
+        "week_actual": stripe.week_actual,
+        "week_target": stripe.week_target,
+        "month_actual": stripe.month_actual,
+        "month_target": stripe.month_target,
+    }
+
+    if scope == "all":
+        bundle = _build_stats_bundle(all_goals, user.id, profile)
+        due_map = _due_today_map(all_goals, bundle, profile)
+        sorted_pairs = sort_goals_for_display([(g, bundle[g.id]) for g in all_goals])
+        sorted_goals = [g for g, _ in sorted_pairs]
+        goals_payload = _serialize_goals(sorted_goals, bundle, profile, due_map)
+        return Response(
+            {
+                "stripe": stripe_payload,
+                "goals": goals_payload,
+                "status_counts": status_counts,
+                "kind_counts": kind_counts,
+                "kind_totals": kind_totals,
+                "scope": "all",
+            }
+        )
+
     status_filter = request.query_params.get("status", Goal.Status.ACTIVE)
     if status_filter not in (Goal.Status.ACTIVE, Goal.Status.COMPLETED, Goal.Status.PAUSED):
         status_filter = Goal.Status.ACTIVE
@@ -133,10 +234,6 @@ def goals_dashboard(request):
         kind_filter = None
 
     chores_due_only = request.query_params.get("chores_due_only", "true").lower() != "false"
-
-    all_goals = list(_goals_qs(user))
-    profile = _profile_for(user)
-    stripe = compute_period_stripe(all_goals, user.id, profile)
 
     filtered = [g for g in all_goals if g.status == status_filter]
     if kind_filter:
@@ -157,48 +254,23 @@ def goals_dashboard(request):
             if chore_visible_in_due_list(g, today, tz, wso, bundle[g.id])
         ]
 
+    if kind_filter == Goal.Kind.CONTINUOUS and status_filter == Goal.Status.ACTIVE:
+        from goals.stats import goal_visible_in_due_list
+
+        filtered = [g for g in filtered if goal_visible_in_due_list(g, bundle[g.id])]
+
     sorted_pairs = sort_goals_for_display([(g, bundle[g.id]) for g in filtered])
-
-    goals_payload = []
-    for g, stats in sorted_pairs:
-        goals_payload.append(
-            GoalSerializer(
-                g,
-                context={"stats_bundle": {g.id: stats}, "profile": profile},
-            ).data
-        )
-
-    status_counts = {
-        Goal.Status.ACTIVE: sum(1 for g in all_goals if g.status == Goal.Status.ACTIVE),
-        Goal.Status.COMPLETED: sum(1 for g in all_goals if g.status == Goal.Status.COMPLETED),
-        Goal.Status.PAUSED: sum(1 for g in all_goals if g.status == Goal.Status.PAUSED),
-    }
-    kind_counts = {
-        Goal.Kind.CONTINUOUS: sum(
-            1 for g in all_goals if g.kind == Goal.Kind.CONTINUOUS and g.status == Goal.Status.ACTIVE
-        ),
-        Goal.Kind.CHORE: sum(
-            1 for g in all_goals if g.kind == Goal.Kind.CHORE and g.status == Goal.Status.ACTIVE
-        ),
-        Goal.Kind.ONE_TIME: sum(
-            1 for g in all_goals if g.kind == Goal.Kind.ONE_TIME and g.status == Goal.Status.ACTIVE
-        ),
-    }
+    sorted_goals = [g for g, _ in sorted_pairs]
+    goals_payload = _serialize_goals(sorted_goals, bundle, profile)
 
     return Response(
         {
-            "stripe": {
-                "today_actual": stripe.today_actual,
-                "today_target": stripe.today_target,
-                "week_actual": stripe.week_actual,
-                "week_target": stripe.week_target,
-                "month_actual": stripe.month_actual,
-                "month_target": stripe.month_target,
-            },
+            "stripe": stripe_payload,
             "goals": goals_payload,
             "status": status_filter,
             "status_counts": status_counts,
             "kind_counts": kind_counts,
+            "kind_totals": kind_totals,
             "kind": kind_filter,
         }
     )

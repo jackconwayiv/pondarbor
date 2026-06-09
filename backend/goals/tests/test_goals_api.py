@@ -31,7 +31,7 @@ class GoalsApiTests(TestCase):
             {
                 "title": "Swim daily",
                 "kind": "continuous",
-                "frequency_kind": "daily",
+                "schedule_interval_kind": "day",
             },
             format="json",
         )
@@ -44,7 +44,7 @@ class GoalsApiTests(TestCase):
     def test_dashboard_stripe(self):
         self.client.post(
             "/api/v1/goals/",
-            {"title": "Run", "kind": "continuous", "frequency_kind": "daily"},
+            {"title": "Run", "kind": "continuous", "schedule_interval_kind": "day"},
             format="json",
         )
         dash = self.client.get("/api/v1/goals/dashboard/")
@@ -56,12 +56,12 @@ class GoalsApiTests(TestCase):
     def test_dashboard_stripe_week_only_counts_weekly_goals(self):
         self.client.post(
             "/api/v1/goals/",
-            {"title": "Run daily", "kind": "continuous", "frequency_kind": "daily"},
+            {"title": "Run daily", "kind": "continuous", "schedule_interval_kind": "day"},
             format="json",
         )
         self.client.post(
             "/api/v1/goals/",
-            {"title": "Reflect", "kind": "continuous", "frequency_kind": "weekly"},
+            {"title": "Reflect", "kind": "continuous", "schedule_interval_kind": "week"},
             format="json",
         )
         stripe = self.client.get("/api/v1/goals/dashboard/").json()["stripe"]
@@ -180,7 +180,7 @@ class GoalsApiTests(TestCase):
     def test_completed_rejects_patch_during_undo_window(self):
         r = self.client.post(
             "/api/v1/goals/",
-            {"title": "Walk", "kind": "continuous", "frequency_kind": "daily"},
+            {"title": "Walk", "kind": "continuous", "schedule_interval_kind": "day"},
             format="json",
         )
         goal_id = r.json()["id"]
@@ -223,7 +223,7 @@ class GoalsApiTests(TestCase):
     def test_undo_within_window(self):
         r = self.client.post(
             "/api/v1/goals/",
-            {"title": "Meditate", "kind": "continuous", "frequency_kind": "daily"},
+            {"title": "Meditate", "kind": "continuous", "schedule_interval_kind": "day"},
             format="json",
         )
         goal_id = r.json()["id"]
@@ -283,7 +283,7 @@ class GoalsApiTests(TestCase):
             owner_user=self.owner,
             title="Yoga",
             kind=Goal.Kind.CONTINUOUS,
-            frequency_kind=Goal.FrequencyKind.DAILY,
+            schedule_interval_kind=Goal.ScheduleIntervalKind.DAY,
         )
         cp = Checkpoint.objects.create(goal=goal, title="Should not")
         r = self.client.post(
@@ -299,7 +299,7 @@ class GoalsApiTests(TestCase):
             {
                 "title": "Vacuum",
                 "kind": "chore",
-                "frequency_kind": "weekly",
+                "schedule_interval_kind": "week",
             },
             format="json",
         )
@@ -313,7 +313,7 @@ class GoalsApiTests(TestCase):
     def test_chore_cannot_be_marked_completed(self):
         r = self.client.post(
             "/api/v1/goals/",
-            {"title": "Dishes", "kind": "chore", "frequency_kind": "daily"},
+            {"title": "Dishes", "kind": "chore", "schedule_interval_kind": "day"},
             format="json",
         )
         goal_id = r.json()["id"]
@@ -327,12 +327,12 @@ class GoalsApiTests(TestCase):
     def test_dashboard_kind_filter_and_counts(self):
         self.client.post(
             "/api/v1/goals/",
-            {"title": "Run", "kind": "continuous", "frequency_kind": "daily"},
+            {"title": "Run", "kind": "continuous", "schedule_interval_kind": "day"},
             format="json",
         )
         self.client.post(
             "/api/v1/goals/",
-            {"title": "Dishes", "kind": "chore", "frequency_kind": "daily"},
+            {"title": "Dishes", "kind": "chore", "schedule_interval_kind": "day"},
             format="json",
         )
         dash = self.client.get("/api/v1/goals/dashboard/")
@@ -352,7 +352,7 @@ class GoalsApiTests(TestCase):
             {
                 "title": "Trash",
                 "kind": "chore",
-                "frequency_kind": "on_weekday",
+                "schedule_interval_kind": "weekday",
             },
             format="json",
         )
@@ -362,14 +362,14 @@ class GoalsApiTests(TestCase):
             {
                 "title": "Trash",
                 "kind": "chore",
-                "frequency_kind": "on_weekday",
+                "schedule_interval_kind": "weekday",
                 "schedule_weekday": 1,
             },
             format="json",
         )
         self.assertEqual(r2.status_code, 201)
         self.assertEqual(r2.json()["schedule_weekday"], 1)
-        self.assertEqual(r2.json()["schedule_interval_weeks"], 2)
+        self.assertEqual(r2.json()["schedule_interval_weeks"], 1)
 
     def test_create_every_n_months_goal(self):
         r = self.client.post(
@@ -377,11 +377,113 @@ class GoalsApiTests(TestCase):
             {
                 "title": "Quarterly review",
                 "kind": "continuous",
-                "frequency_kind": "every_n_months",
+                "schedule_interval_kind": "months",
                 "schedule_interval_months": 3,
             },
             format="json",
         )
         self.assertEqual(r.status_code, 201)
-        self.assertEqual(r.json()["frequency_kind"], "every_n_months")
+        self.assertEqual(r.json()["schedule_interval_kind"], "months")
         self.assertEqual(r.json()["schedule_interval_months"], 3)
+
+    def test_weekdays_goal_hidden_on_weekend_dashboard(self):
+        from datetime import datetime, timezone as dt_timezone
+        from unittest.mock import patch
+
+        self.client.post(
+            "/api/v1/goals/",
+            {
+                "title": "Weekday habit",
+                "kind": "continuous",
+                "schedule_interval_kind": "weekdays",
+            },
+            format="json",
+        )
+        saturday = datetime(2026, 6, 6, 18, 0, tzinfo=dt_timezone.utc)
+        with patch("goals.stats.timezone.now", return_value=saturday):
+            dash = self.client.get("/api/v1/goals/dashboard/?kind=continuous")
+        self.assertEqual(dash.status_code, 200)
+        self.assertEqual(len(dash.json()["goals"]), 0)
+
+    def test_weekdays_goal_visible_on_friday_dashboard(self):
+        from datetime import datetime, timezone as dt_timezone
+        from unittest.mock import patch
+
+        self.client.post(
+            "/api/v1/goals/",
+            {
+                "title": "Weekday habit",
+                "kind": "continuous",
+                "schedule_interval_kind": "weekdays",
+            },
+            format="json",
+        )
+        friday = datetime(2026, 6, 5, 18, 0, tzinfo=dt_timezone.utc)
+        with patch("goals.stats.timezone.now", return_value=friday):
+            dash = self.client.get("/api/v1/goals/dashboard/?kind=continuous")
+        self.assertEqual(dash.status_code, 200)
+        self.assertEqual(len(dash.json()["goals"]), 1)
+
+    def test_workspace_scope_all_includes_due_today(self):
+        from datetime import datetime, timezone as dt_timezone
+        from unittest.mock import patch
+
+        self.client.post(
+            "/api/v1/goals/",
+            {
+                "title": "Weekday habit",
+                "kind": "continuous",
+                "schedule_interval_kind": "weekdays",
+            },
+            format="json",
+        )
+        self.client.post(
+            "/api/v1/goals/",
+            {"title": "Paused run", "kind": "continuous", "schedule_interval_kind": "day"},
+            format="json",
+        )
+        paused_id = self.client.get("/api/v1/goals/dashboard/?scope=all").json()["goals"][-1]["id"]
+        self.client.patch(
+            f"/api/v1/goals/{paused_id}/",
+            {"status": "paused"},
+            format="json",
+        )
+        saturday = datetime(2026, 6, 6, 18, 0, tzinfo=dt_timezone.utc)
+        with patch("goals.stats.timezone.now", return_value=saturday):
+            r = self.client.get("/api/v1/goals/dashboard/?scope=all")
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["scope"], "all")
+        weekday = next(g for g in body["goals"] if g["title"] == "Weekday habit")
+        self.assertFalse(weekday["due_today"])
+        self.assertIn("kind_totals", body)
+        self.assertEqual(body["status_counts"]["paused"], 1)
+
+    def test_workspace_scope_all_includes_due_today(self):
+        from datetime import datetime, timezone as dt_timezone
+        from unittest.mock import patch
+
+        self.client.post(
+            "/api/v1/goals/",
+            {
+                "title": "Weekday habit",
+                "kind": "continuous",
+                "schedule_interval_kind": "weekdays",
+            },
+            format="json",
+        )
+        self.client.post(
+            "/api/v1/goals/",
+            {"title": "Done project", "kind": "one_time", "status": "completed"},
+            format="json",
+        )
+        saturday = datetime(2026, 6, 6, 18, 0, tzinfo=dt_timezone.utc)
+        with patch("goals.stats.timezone.now", return_value=saturday):
+            r = self.client.get("/api/v1/goals/dashboard/?scope=all")
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body["scope"], "all")
+        self.assertGreaterEqual(len(body["goals"]), 2)
+        weekday = next(g for g in body["goals"] if g["title"] == "Weekday habit")
+        self.assertFalse(weekday["due_today"])
+        self.assertIn("kind_totals", body)

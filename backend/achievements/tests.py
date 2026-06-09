@@ -1037,7 +1037,7 @@ class GoalsAchievementTests(TestCase):
             owner_user=self.user,
             title="Daily habit",
             kind=Goal.Kind.CONTINUOUS,
-            frequency_kind=Goal.FrequencyKind.DAILY,
+            schedule_interval_kind=Goal.ScheduleIntervalKind.DAY,
             status=Goal.Status.ACTIVE,
         )
         now = timezone.now()

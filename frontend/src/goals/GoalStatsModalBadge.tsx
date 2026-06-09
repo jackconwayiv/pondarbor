@@ -10,6 +10,7 @@ import {
 import { GOALS_THEME } from "./theme";
 import { GoalLongPressRing } from "./GoalLongPressRing";
 import { GoalPatchCircle } from "./GoalPatchCircle";
+import { GoalPatchOverdueHeader } from "./GoalPatchOverdueHeader";
 import { GoalPeriodSockets, periodSlotsForGoal } from "./GoalPeriodSockets";
 
 const MODAL_PATCH_SIZE = "7.5rem";
@@ -47,6 +48,7 @@ export function GoalStatsModalBadge({
           textAlign="center"
         >
           <Stack gap="1.5" align="center" width="full" maxW="full">
+            <GoalPatchOverdueHeader goal={goal} />
             <Text
               fontWeight="bold"
               color={GOALS_THEME.textOnLight}

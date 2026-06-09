@@ -1,30 +1,22 @@
-import type { FrequencyKind, Goal } from "./types";
+import type { Goal } from "./types";
 import {
   GOAL_KIND_ONE_TIME_LABEL,
   ordinalDay,
   weekdayLabel,
 } from "./goalCopy";
 import { periodSlotsForGoal } from "./GoalPeriodSockets";
+import {
+  choreSupportsOverdue,
+  isWeekPeriodGoal,
+  periodBucketForInterval,
+} from "./schedule";
 import { GOALS_THEME } from "./theme";
-
-const CHORE_OVERDUE_FREQUENCIES = new Set<FrequencyKind>([
-  "on_weekday",
-  "on_month_day",
-  "weekly",
-  "times_per_week",
-  "weekdays",
-  "monthly",
-  "times_per_month",
-  "every_n_months",
-]);
 
 export function isOngoingKind(goal: Goal): boolean {
   return goal.kind === "continuous" || goal.kind === "chore";
 }
 
-export function choreSupportsOverdue(goal: Goal): boolean {
-  return goal.kind === "chore" && CHORE_OVERDUE_FREQUENCIES.has(goal.frequency_kind);
-}
+export { choreSupportsOverdue };
 
 /** Patch/badge shell: gold when complete; green ongoing / orange chore / blue completable when in progress. */
 /** Completed goals are read-only after the 10-minute undo window. */
@@ -47,21 +39,16 @@ export function showMarkGoalCompleteButton(goal: Goal): boolean {
 /** Hold-to-progress on badge (grid or stats modal). */
 export function goalHoldProgressDisabled(
   goal: Goal,
-  options?: { locked?: boolean; busy?: boolean; managerMode?: boolean },
+  options?: { locked?: boolean; busy?: boolean },
 ): boolean {
-  if (options?.busy || options?.locked || options?.managerMode) return true;
+  if (options?.busy || options?.locked) return true;
   if (goal.status !== "active") return true;
   if (isOngoingKind(goal) && goalPatchIsComplete(goal)) return true;
   return false;
 }
 
-function isTimesPerPeriodOngoing(goal: Goal): boolean {
-  return (
-    isOngoingKind(goal) &&
-    (goal.frequency_kind === "times_per_day" ||
-      goal.frequency_kind === "times_per_week" ||
-      goal.frequency_kind === "times_per_month")
-  );
+function isMultiCountOngoing(goal: Goal): boolean {
+  return isOngoingKind(goal) && goal.frequency_count > 1;
 }
 
 function markProgressWithCount(goal: Goal): string {
@@ -73,7 +60,7 @@ function markProgressWithCount(goal: Goal): string {
 /** Gold stats-modal action label (check-in / mark progress). */
 export function goalStatsGoldButtonLabel(goal: Goal): string {
   if (goal.kind === "one_time") return markProgressWithCount(goal);
-  if (isTimesPerPeriodOngoing(goal)) {
+  if (isMultiCountOngoing(goal)) {
     const { filled, total } = periodSlotsForGoal(goal);
     if (total >= 2 && filled < total - 1) return markProgressWithCount(goal);
     return goal.kind === "chore" ? "Complete chore today" : "Mark complete today";
@@ -85,6 +72,7 @@ export function goalPatchIsComplete(goal: Goal): boolean {
   if (goal.status === "completed") return true;
   if (goal.status !== "active") return false;
   const { filled, total } = periodSlotsForGoal(goal);
+  if (total === 0 && isOngoingKind(goal)) return true;
   return total > 0 && filled >= total;
 }
 
@@ -96,7 +84,7 @@ export function goalPatchOverdueLabel(goal: Goal): string | null {
   ) {
     return null;
   }
-  return "Overdue";
+  return "OVERDUE";
 }
 
 export function goalPatchOverdueSublabel(goal: Goal): string | null {
@@ -144,7 +132,7 @@ export function goalIsUrgent(goal: Goal): boolean {
     goal.stats.today_actual < goal.stats.today_target;
   const weekBehind =
     isOngoingKind(goal) &&
-    (goal.frequency_kind === "weekly" || goal.frequency_kind === "times_per_week") &&
+    isWeekPeriodGoal(goal) &&
     goal.stats.week_target > 0 &&
     goal.stats.week_actual < goal.stats.week_target;
   const overdueChore =
@@ -191,22 +179,18 @@ export function goalCompletedMedalLabel(goal: Goal): string | null {
 export function goalContinuousPeriodStreakLabel(goal: Goal): string | null {
   if (!isOngoingKind(goal) || !goalPatchIsComplete(goal)) return null;
   const n = goal.stats.streak_current;
-  const isWeek =
-    goal.frequency_kind === "weekly" ||
-    goal.frequency_kind === "times_per_week" ||
-    goal.frequency_kind === "on_weekday";
-  const isMonth =
-    goal.frequency_kind === "monthly" ||
-    goal.frequency_kind === "times_per_month" ||
-    goal.frequency_kind === "every_n_months" ||
-    goal.frequency_kind === "on_month_day";
-  const period = isMonth ? "month" : isWeek ? "week" : "day";
+  const bucket = periodBucketForInterval(goal.schedule_interval_kind);
+  const period = bucket === "month" ? "month" : bucket === "week" ? "week" : "day";
   return `${n} ${period} streak`;
 }
 
 /** Stats modal column heading for ongoing goals (frequency label). */
 export function goalStatsPanelHeading(goal: Goal): string {
   return frequencyLabel(goal);
+}
+
+function timesLabel(n: number): string {
+  return n === 1 ? "1×" : `${n}×`;
 }
 
 export function frequencyLabel(goal: Goal): string {
@@ -216,37 +200,41 @@ export function frequencyLabel(goal: Goal): string {
     return GOAL_KIND_ONE_TIME_LABEL;
   }
   const n = goal.frequency_count;
-  switch (goal.frequency_kind) {
-    case "daily":
-      return "Daily";
-    case "weekly":
-      return "Weekly";
+  const count = timesLabel(n);
+  switch (goal.schedule_interval_kind) {
+    case "day":
+      return n === 1 ? "Daily" : `${count} every day`;
     case "weekdays":
-      return "Weekdays";
-    case "monthly":
-      return "Every month";
-    case "times_per_day":
-      return `${n}× per day`;
-    case "times_per_week":
-      return `${n}× per week`;
-    case "times_per_month":
-      return `${n}× per month`;
-    case "every_n_months": {
-      const interval = goal.schedule_interval_months || 1;
-      if (interval <= 1) return "Every month";
-      return `Every ${interval} months`;
+      return n === 1 ? "Weekdays" : `${count} weekdays`;
+    case "week":
+      return n === 1 ? "Weekly" : `${count} every week`;
+    case "month":
+      return n === 1 ? "Every month" : `${count} every month`;
+    case "weeks": {
+      const interval = goal.schedule_interval_weeks || 2;
+      if (interval <= 1) return n === 1 ? "Weekly" : `${count} every week`;
+      return `${count} every ${interval} weeks`;
     }
-    case "on_weekday": {
+    case "months": {
+      const interval = goal.schedule_interval_months || 2;
+      if (interval <= 1) return n === 1 ? "Every month" : `${count} every month`;
+      return `${count} every ${interval} months`;
+    }
+    case "weekday": {
       const day = goal.schedule_weekday;
       const interval = goal.schedule_interval_weeks || 1;
       if (day == null) return "Scheduled weekday";
-      if (interval <= 1) return `Every ${weekdayLabel(day)}`;
-      return `Every ${interval} weeks on ${weekdayLabel(day)}`;
+      if (interval <= 1) {
+        return n === 1 ? `Every ${weekdayLabel(day)}` : `${count} every ${weekdayLabel(day)}`;
+      }
+      return `${count} every ${interval} weeks on ${weekdayLabel(day)}`;
     }
-    case "on_month_day": {
+    case "month_day": {
       const dom = goal.schedule_month_day;
       if (dom == null) return "Monthly schedule";
-      return `Monthly on the ${ordinalDay(dom)}`;
+      return n === 1
+        ? `Monthly on the ${ordinalDay(dom)}`
+        : `${count} monthly on the ${ordinalDay(dom)}`;
     }
     default:
       return "";

@@ -1,16 +1,14 @@
 export type GoalKind = "one_time" | "continuous" | "chore";
 export type GoalStatus = "active" | "completed" | "paused";
-export type FrequencyKind =
-  | "daily"
-  | "weekly"
-  | "times_per_day"
-  | "times_per_week"
+export type ScheduleIntervalKind =
+  | "day"
   | "weekdays"
-  | "monthly"
-  | "times_per_month"
-  | "every_n_months"
-  | "on_weekday"
-  | "on_month_day";;
+  | "weekday"
+  | "week"
+  | "weeks"
+  | "month"
+  | "months"
+  | "month_day";
 
 export type ChorePeriodState = "none" | "due" | "overdue";
 
@@ -79,7 +77,7 @@ export type Goal = {
   description: string;
   kind: GoalKind;
   status: GoalStatus;
-  frequency_kind: FrequencyKind;
+  schedule_interval_kind: ScheduleIntervalKind;
   frequency_count: number;
   schedule_weekday: number | null;
   schedule_interval_weeks: number;
@@ -92,6 +90,7 @@ export type Goal = {
   checkpoints: Checkpoint[];
   stats: GoalStats;
   can_undo: boolean;
+  due_today: boolean;
 };
 
 export type GoalsStripe = {
@@ -112,14 +111,24 @@ export type GoalsDashboard = {
   status: GoalStatus;
   status_counts: GoalsStatusCounts;
   kind_counts: GoalsKindCounts;
+  kind_totals?: GoalsKindCounts;
   kind?: GoalKind | null;
+  scope?: "all";
+};
+
+export type GoalsWorkspace = {
+  stripe: GoalsStripe;
+  goals: Goal[];
+  status_counts: GoalsStatusCounts;
+  kind_counts: GoalsKindCounts;
+  kind_totals: GoalsKindCounts;
 };
 
 export type GoalCreatePayload = {
   title: string;
   description?: string;
   kind: GoalKind;
-  frequency_kind?: FrequencyKind;
+  schedule_interval_kind?: ScheduleIntervalKind;
   frequency_count?: number;
   schedule_weekday?: number | null;
   schedule_interval_weeks?: number;
@@ -133,7 +142,7 @@ export type GoalPatchPayload = Partial<{
   description: string;
   kind: GoalKind;
   status: GoalStatus;
-  frequency_kind: FrequencyKind;
+  schedule_interval_kind: ScheduleIntervalKind;
   frequency_count: number;
   schedule_weekday: number | null;
   schedule_interval_weeks: number;

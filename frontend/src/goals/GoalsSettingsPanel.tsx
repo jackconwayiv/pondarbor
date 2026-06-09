@@ -15,12 +15,16 @@ type GoalsSettingsPanelProps = {
   weekStartsOn: number;
   onWeekStartsOnChange: (value: number) => void;
   onDeleteAllGoals: () => Promise<void>;
+  onOpenGoalsManager: () => void;
+  totalGoals: number;
 };
 
 export function GoalsSettingsPanel({
   weekStartsOn,
   onWeekStartsOnChange,
   onDeleteAllGoals,
+  onOpenGoalsManager,
+  totalGoals,
 }: GoalsSettingsPanelProps) {
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -28,6 +32,27 @@ export function GoalsSettingsPanel({
 
   return (
     <Stack gap="4" maxW="lg">
+      <Card.Root {...PANEL_ENTRY_CARD_PROPS} p="0">
+        <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
+          <Stack gap="3">
+            <Text fontSize={APP_TEXT_SIZES.body} fontWeight="semibold" color={GOALS_THEME.textOnLight}>
+              Goals Manager
+            </Text>
+            <Text fontSize={APP_TEXT_SIZES.helper} color={GOALS_THEME.textMuted}>
+              See and edit every goal, chore, and project — including items not due today.
+            </Text>
+            <PondButton
+              colorPalette="sky"
+              alignSelf="flex-start"
+              disabled={totalGoals === 0}
+              onClick={onOpenGoalsManager}
+            >
+              Open Goals Manager
+            </PondButton>
+          </Stack>
+        </Card.Body>
+      </Card.Root>
+
       <Card.Root {...PANEL_ENTRY_CARD_PROPS} p="0">
         <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
           <Stack gap="2">

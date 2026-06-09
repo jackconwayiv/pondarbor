@@ -1,29 +1,13 @@
 import { Box, Flex } from "@chakra-ui/react";
 
 import type { Goal } from "./types";
+import { isDayPeriodGoal, isMonthPeriodGoal, isWeekPeriodGoal } from "./schedule";
 import { GOALS_THEME } from "./theme";
 
 export type PeriodSlots = {
   filled: number;
   total: number;
 };
-
-function isWeekPeriodKind(goal: Goal): boolean {
-  return (
-    goal.frequency_kind === "weekly" ||
-    goal.frequency_kind === "times_per_week" ||
-    goal.frequency_kind === "on_weekday"
-  );
-}
-
-function isMonthPeriodKind(goal: Goal): boolean {
-  return (
-    goal.frequency_kind === "monthly" ||
-    goal.frequency_kind === "times_per_month" ||
-    goal.frequency_kind === "every_n_months" ||
-    goal.frequency_kind === "on_month_day"
-  );
-}
 
 /** How many completions vs target for the goal's current period (day, week, or month). */
 export function periodSlotsForGoal(goal: Goal): PeriodSlots {
@@ -43,27 +27,34 @@ export function periodSlotsForGoal(goal: Goal): PeriodSlots {
     };
   }
 
-  if (isMonthPeriodKind(goal)) {
-    const total = Math.max(1, goal.stats.month_target);
+  if (isMonthPeriodGoal(goal)) {
+    const total = goal.stats.month_target;
+    if (total <= 0) return { filled: 0, total: 0 };
     return {
       filled: Math.min(goal.stats.month_actual, total),
       total,
     };
   }
 
-  if (isWeekPeriodKind(goal)) {
-    const total = Math.max(1, goal.stats.week_target);
+  if (isWeekPeriodGoal(goal)) {
+    const total = goal.stats.week_target;
+    if (total <= 0) return { filled: 0, total: 0 };
     return {
       filled: Math.min(goal.stats.week_actual, total),
       total,
     };
   }
 
-  const total = Math.max(1, goal.stats.today_target);
-  return {
-    filled: Math.min(goal.stats.today_actual, total),
-    total,
-  };
+  if (isDayPeriodGoal(goal)) {
+    const total = goal.stats.today_target;
+    if (total <= 0) return { filled: 0, total: 0 };
+    return {
+      filled: Math.min(goal.stats.today_actual, total),
+      total,
+    };
+  }
+
+  return { filled: 0, total: 0 };
 }
 
 type GoalPeriodSocketsProps = {

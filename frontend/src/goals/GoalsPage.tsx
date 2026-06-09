@@ -117,6 +117,32 @@ function labelForActiveTab(goals: Goal[]): string {
   return "Active";
 }
 
+const GOAL_KIND_TAB_EMOJI: Record<Goal["kind"], string> = {
+  chore: "🧹",
+  continuous: "♻️",
+  one_time: "🎯",
+};
+
+function kindTabLabels(derived: GoalsDerived): {
+  active: string;
+  goals: string;
+  projects: string;
+} {
+  const allThreeKindTabs = derived.showProjectsTab && derived.showGoalsTab;
+  if (allThreeKindTabs) {
+    return {
+      active: GOAL_KIND_TAB_EMOJI.chore,
+      goals: GOAL_KIND_TAB_EMOJI.continuous,
+      projects: GOAL_KIND_TAB_EMOJI.one_time,
+    };
+  }
+  return {
+    active: labelForActiveTab(derived.activeTabGoals),
+    goals: "Goals",
+    projects: "Projects",
+  };
+}
+
 function GoalsPageContent() {
   const { sessionUser, getApiAccessToken, patchMyProfile } = useAppSession();
   const {
@@ -177,11 +203,12 @@ function GoalsPageContent() {
 
   const pageTabs = useMemo(() => {
     if (!derived || totalGoals === 0) return [] as { id: PageTab; label: string }[];
+    const kindLabels = kindTabLabels(derived);
     const tabs: { id: PageTab; label: string }[] = [
-      { id: "active", label: labelForActiveTab(derived.activeTabGoals) },
+      { id: "active", label: kindLabels.active },
     ];
-    if (derived.showProjectsTab) tabs.push({ id: "projects", label: "Projects" });
-    if (derived.showGoalsTab) tabs.push({ id: "goals", label: "Goals" });
+    if (derived.showGoalsTab) tabs.push({ id: "goals", label: kindLabels.goals });
+    if (derived.showProjectsTab) tabs.push({ id: "projects", label: kindLabels.projects });
     if (statusCounts.paused > 0) tabs.push({ id: "paused", label: "Paused" });
     if (derived.showCompletedTab) tabs.push({ id: "completed", label: "Done" });
     tabs.push({ id: "settings", label: "Settings" });

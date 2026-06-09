@@ -107,6 +107,16 @@ function isCompactTab(tab: PageTab): boolean {
   return tab === "active" || tab === "projects" || tab === "goals";
 }
 
+function labelForActiveTab(goals: Goal[]): string {
+  const kinds = new Set(goals.map((g) => g.kind));
+  if (kinds.size !== 1) return "Active";
+  const kind = [...kinds][0];
+  if (kind === "chore") return "Chores";
+  if (kind === "continuous") return "Goals";
+  if (kind === "one_time") return "Projects";
+  return "Active";
+}
+
 function GoalsPageContent() {
   const { sessionUser, getApiAccessToken, patchMyProfile } = useAppSession();
   const {
@@ -167,11 +177,13 @@ function GoalsPageContent() {
 
   const pageTabs = useMemo(() => {
     if (!derived || totalGoals === 0) return [] as { id: PageTab; label: string }[];
-    const tabs: { id: PageTab; label: string }[] = [{ id: "active", label: "Active" }];
-    if (derived.showCompletedTab) tabs.push({ id: "completed", label: "Completed" });
+    const tabs: { id: PageTab; label: string }[] = [
+      { id: "active", label: labelForActiveTab(derived.activeTabGoals) },
+    ];
     if (derived.showProjectsTab) tabs.push({ id: "projects", label: "Projects" });
     if (derived.showGoalsTab) tabs.push({ id: "goals", label: "Goals" });
     if (statusCounts.paused > 0) tabs.push({ id: "paused", label: "Paused" });
+    if (derived.showCompletedTab) tabs.push({ id: "completed", label: "Done" });
     tabs.push({ id: "settings", label: "Settings" });
     return tabs;
   }, [derived, statusCounts.paused, totalGoals]);

@@ -76,7 +76,7 @@ def _checkpoint_times(goal: Goal) -> list:
     return [cp.completed_at for cp in goal.checkpoints.all() if cp.completed_at]
 
 
-def _serialized_goal_response(request, goal: Goal) -> Response:
+def _serialized_goal_response(request, goal: Goal, *, status: int | None = None) -> Response:
     profile = _profile_for(request.user)
     since = timezone.now() - timedelta(days=400)
     occ = list(
@@ -88,11 +88,15 @@ def _serialized_goal_response(request, goal: Goal) -> Response:
     )
     stats = compute_goal_stats(goal, occ, _checkpoint_times(goal), profile)
     due_map = {goal.id: _goal_due_today(goal, stats, profile)}
+    kwargs = {}
+    if status is not None:
+        kwargs["status"] = status
     return Response(
         GoalSerializer(
             goal,
             context={"stats_bundle": {goal.id: stats}, "profile": profile, "due_today_map": due_map},
-        ).data
+        ).data,
+        **kwargs,
     )
 
 
@@ -301,23 +305,13 @@ def goals_collection(request):
         goals = list(_goals_qs(user).filter(status=status_filter))
         profile = _profile_for(user)
         bundle = _build_stats_bundle(goals, user.id, profile)
-        return Response(
-            [
-                GoalSerializer(g, context={"stats_bundle": bundle, "profile": profile}).data
-                for g in goals
-            ]
-        )
+        return Response(_serialize_goals(goals, bundle, profile))
     ser = GoalCreateSerializer(data=request.data, context={"request": request})
     ser.is_valid(raise_exception=True)
     goal = ser.save()
     goal = _goals_qs(user).get(pk=goal.pk)
     _evaluate_goals_achievements(user)
-    profile = _profile_for(user)
-    stats = compute_goal_stats(goal, [], [], profile)
-    return Response(
-        GoalSerializer(goal, context={"stats_bundle": {goal.id: stats}, "profile": profile}).data,
-        status=status.HTTP_201_CREATED,
-    )
+    return _serialized_goal_response(request, goal, status=status.HTTP_201_CREATED)
 
 
 @api_view(["GET", "PATCH", "DELETE"])
@@ -328,17 +322,7 @@ def goals_detail(request, goal_id):
         return err
     goal = get_object_or_404(_goals_qs(request.user), pk=goal_id)
     if request.method == "GET":
-        profile = _profile_for(request.user)
-        since = timezone.now() - timedelta(days=400)
-        occ = list(
-            CheckIn.objects.filter(goal=goal, owner_user=request.user, occurred_at__gte=since).values_list(
-                "occurred_at", "checkpoint_id"
-            )
-        )
-        stats = compute_goal_stats(goal, occ, _checkpoint_times(goal), profile)
-        return Response(
-            GoalSerializer(goal, context={"stats_bundle": {goal.id: stats}, "profile": profile}).data
-        )
+        return _serialized_goal_response(request, goal)
     if request.method == "DELETE":
         locked = _locked_goal_response(goal)
         if locked:
@@ -405,18 +389,8 @@ def goals_undo(request, goal_id):
     except ValueError as e:
         return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
     goal = _goals_qs(request.user).get(pk=goal.pk)
-    profile = _profile_for(request.user)
-    since = timezone.now() - timedelta(days=400)
-    occ = list(
-        CheckIn.objects.filter(goal=goal, owner_user=request.user, occurred_at__gte=since).values_list(
-            "occurred_at", "checkpoint_id"
-        )
-    )
-    stats = compute_goal_stats(goal, occ, _checkpoint_times(goal), profile)
     _evaluate_goals_achievements(request.user)
-    return Response(
-        GoalSerializer(goal, context={"stats_bundle": {goal.id: stats}, "profile": profile}).data
-    )
+    return _serialized_goal_response(request, goal)
 
 
 @api_view(["GET", "POST"])

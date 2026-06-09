@@ -487,3 +487,31 @@ class GoalsApiTests(TestCase):
         weekday = next(g for g in body["goals"] if g["title"] == "Weekday habit")
         self.assertFalse(weekday["due_today"])
         self.assertIn("kind_totals", body)
+
+    def test_goal_detail_due_today_matches_workspace(self):
+        from datetime import datetime, timezone as dt_timezone
+        from unittest.mock import patch
+
+        create = self.client.post(
+            "/api/v1/goals/",
+            {
+                "title": "Daily habit",
+                "kind": "continuous",
+                "schedule_interval_kind": "day",
+            },
+            format="json",
+        )
+        self.assertEqual(create.status_code, 201)
+        goal_id = create.json()["id"]
+
+        wednesday = datetime(2026, 6, 3, 18, 0, tzinfo=dt_timezone.utc)
+        with patch("goals.stats.timezone.now", return_value=wednesday):
+            workspace = self.client.get("/api/v1/goals/dashboard/?scope=all")
+            detail = self.client.get(f"/api/v1/goals/{goal_id}/")
+
+        self.assertEqual(workspace.status_code, 200)
+        self.assertEqual(detail.status_code, 200)
+        ws_goal = next(g for g in workspace.json()["goals"] if g["id"] == goal_id)
+        self.assertTrue(ws_goal["due_today"])
+        self.assertTrue(detail.json()["due_today"])
+        self.assertEqual(ws_goal["due_today"], detail.json()["due_today"])

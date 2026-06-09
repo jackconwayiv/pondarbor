@@ -1,4 +1,4 @@
-import { Box, Card, HStack, Image, Input, SimpleGrid, Stack, Text } from "@chakra-ui/react";
+import { Box, Card, HStack, Input, SimpleGrid, Stack, Text } from "@chakra-ui/react";
 import PondNativeSelect from "../components/PondNativeSelect";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link as RouterLink, Navigate, useNavigate } from "react-router";
@@ -24,7 +24,7 @@ import type { MealListQuery } from "./api";
 import { MealEditorBackdropDismiss } from "./MealEditorBackdropDismiss";
 import { MealEditorForm } from "./MealEditorForm";
 import { MealImageField } from "./MealImageField";
-import { publicUrlForR2ImageKey } from "./imagePublicUrl";
+import PresignedImage from "../lib/PresignedImage";
 import { mealLabel } from "./mealLabels";
 import { mealOwnerLabel } from "./mealOwnerLabel";
 import {
@@ -413,7 +413,7 @@ export default function MealMealsPage() {
                 recipeImage={
                   <MealImageField
                     imageKey={draftImageKey}
-                    imageUrl={draftImageKey.trim() ? publicUrlForR2ImageKey(draftImageKey) : ""}
+                    imageUrl=""
                     onImageKeyChange={setDraftImageKey}
                     getApiAccessToken={getApiAccessToken}
                     disabled={saveBusy || importBusy || paprikaBusy}
@@ -468,6 +468,7 @@ export default function MealMealsPage() {
             key={m.id}
             meal={m}
             ownerLabel={mealOwnerLabel(m.owner_user, sessionUser)}
+            getApiAccessToken={getApiAccessToken}
           />
         ))}
       </SimpleGrid>
@@ -480,7 +481,15 @@ function mealIngredientSummary(meal: Meal): string {
   return `${meal.ingredients.length} ingredients`;
 }
 
-function MealListCard({ meal, ownerLabel }: { meal: Meal; ownerLabel: string }) {
+function MealListCard({
+  meal,
+  ownerLabel,
+  getApiAccessToken,
+}: {
+  meal: Meal;
+  ownerLabel: string;
+  getApiAccessToken: () => Promise<string>;
+}) {
   const ingredientSummary = mealIngredientSummary(meal);
   const thumb = (meal.image_url ?? "").trim();
   return (
@@ -510,10 +519,12 @@ function MealListCard({ meal, ownerLabel }: { meal: Meal; ownerLabel: string }) 
           overflow="hidden"
         >
           {thumb ? (
-            <Image
+            <PresignedImage
               position="absolute"
               inset="0"
               src={thumb}
+              imageKey={meal.image_key}
+              getApiAccessToken={getApiAccessToken}
               alt=""
               w="100%"
               h="100%"

@@ -3,7 +3,6 @@ import {
   Card,
   Collapsible,
   HStack,
-  Image,
   Input,
   NativeSelectField,
   NativeSelectRoot,
@@ -19,6 +18,7 @@ import {
   validateClosetItemName,
   validateClosetTagList,
 } from "../forms/validation";
+import PresignedImage from "../lib/PresignedImage";
 import PondButton from "../PondButton";
 import { UploadProgressBar } from "../components/UploadProgressBar";
 import { useR2ImageUpload } from "../lib/useR2ImageUpload";
@@ -195,7 +195,10 @@ export function ClosetOwnerManagePanel({
   );
 
   const apiImageUrl = (item.image_url ?? "").trim();
-  const displayImageSrc = apiImageUrl || (photoUpload.localPreviewUrl ?? "").trim();
+  const displayImageSrc =
+    apiImageUrl ||
+    (photoUpload.uploadedViewUrl ?? "").trim() ||
+    (photoUpload.localPreviewUrl ?? "").trim();
   const hasHeroImage = Boolean(displayImageSrc);
   const categoryLine = formatCategoryTagsSummaryLine(item);
   const tagParts = item.tags.map((t) => t.trim()).filter(Boolean);
@@ -409,8 +412,10 @@ export function ClosetOwnerManagePanel({
               justifyContent="center"
             >
               {hasHeroImage ? (
-                <Image
+                <PresignedImage
                   src={displayImageSrc}
+                  imageKey={photoUpload.localPreviewUrl ? undefined : item.image_key}
+                  getApiAccessToken={getToken}
                   alt=""
                   w="100%"
                   h="100%"
@@ -666,8 +671,10 @@ export function ClosetOwnerManagePanel({
                             })()
                           }
                         >
-                          <Image
+                          <PresignedImage
                             src={row.image_url}
+                            imageKey={row.image_key}
+                            getApiAccessToken={getToken}
                             alt=""
                             aria-hidden
                             w="84px"

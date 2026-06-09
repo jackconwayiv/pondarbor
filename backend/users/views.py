@@ -16,6 +16,7 @@ from rest_framework.response import Response
 from contact.models import ContactMessage
 
 from .auth0_backend import Auth0TokenAuthentication
+from .avatar_url import profile_avatar_url
 from .models import PROFILE_TIMEZONE_DEFAULT, Profile
 from .permissions import IsApprovedUser, IsStaffUser
 from friends.models import FriendRequest
@@ -108,7 +109,8 @@ def serialize_me(user):
         },
         "profile": {
             "display_name": profile.display_name,
-            "avatar_url": profile.avatar_url,
+            "avatar_url": profile_avatar_url(profile),
+            "avatar_image_key": profile.avatar_image_key or "",
             "timezone": profile.timezone,
             "birth_date": profile.birth_date,
             "whatif_completed_session": profile.whatif_completed_session,
@@ -400,7 +402,7 @@ def _public_user_summary_response(*, request, user):
     payload = {
         "id": user.id,
         "nickname": nickname,
-        "avatar_url": profile.avatar_url or "",
+        "avatar_url": profile_avatar_url(profile),
         "is_friend": bool(is_friend),
         "can_view_full_profile": bool(can_view_full_profile),
         "friendship_status": friendship_status,
@@ -570,6 +572,7 @@ def patch_me_profile(request):
     allowed = {
         "display_name",
         "avatar_url",
+        "avatar_image_key",
         "timezone",
         "birth_date",
         "meal_week_starts_on",

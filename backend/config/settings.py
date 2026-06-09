@@ -216,8 +216,12 @@ MEDIA_ROOT = BASE_DIR / "media"
 # Closet images (Cloudflare R2). Prefix must match uploads_presign keys: {prefix}/{user_id}/...
 _closet_r2_prefix = os.getenv("CLOSET_R2_KEY_PREFIX", "closet").strip().strip("/")
 CLOSET_R2_KEY_PREFIX = _closet_r2_prefix if _closet_r2_prefix else "closet"
-# Public base URL for object reads (e.g. R2 custom domain). No trailing slash. Empty = no image_url in API.
+# Legacy public CDN base (migration only). Reads use presigned GET URLs; do not set in production.
 CLOSET_R2_PUBLIC_BASE_URL = os.getenv("CLOSET_R2_PUBLIC_BASE_URL", "").strip().rstrip("/")
+try:
+    CLOSET_IMAGE_READ_EXPIRES_SECONDS = min(int(os.getenv("CLOSET_IMAGE_READ_EXPIRES_SECONDS", "3600")), 604800)
+except ValueError:
+    CLOSET_IMAGE_READ_EXPIRES_SECONDS = 3600
 # S3 API endpoint for boto3 presign. If unset, uses https://{CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com
 # Use the jurisdiction URL from R2 (e.g. EU) when Cloudflare shows a different host than the default.
 CLOSET_R2_S3_ENDPOINT_URL = os.getenv("CLOSET_R2_S3_ENDPOINT_URL", "").strip().rstrip("/")

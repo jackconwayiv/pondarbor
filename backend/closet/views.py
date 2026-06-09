@@ -43,7 +43,12 @@ from achievements.services import (
     evaluate_closet_return_achievements_for_users,
     evaluate_closet_sharing_is_caring_for_user,
 )
-from common.r2_s3 import build_r2_s3_client, r2_bucket_config_from_env
+from common.r2_s3 import (
+    build_r2_s3_client,
+    r2_bucket_config_from_env,
+    r2_presigned_get_url,
+    r2_read_expires_seconds,
+)
 from meal.r2_storage import expected_meal_image_key_prefix, meal_image_key_owned_by_user
 from users.permissions import IsApprovedUser
 from users.models import Profile
@@ -1029,6 +1034,38 @@ def uploads_presign(request):
         return Response({"detail": detail}, status=502)
 
 
+@api_view(["POST"])
+@permission_classes([IsApprovedUser])
+@cache_control(private=True, no_store=True)
+def uploads_presign_read(request):
+    """Presign R2 GET for an object key owned by the requester."""
+    raw_key = str(request.data.get("key") or "").strip()
+    if not raw_key:
+        return Response({"detail": "key is required."}, status=400)
+    uid = request.user.id
+    if not (
+        closet_image_key_owned_by_user(raw_key, uid)
+        or meal_image_key_owned_by_user(raw_key, uid)
+    ):
+        return Response({"detail": "Image key must belong to your account prefix."}, status=403)
+
+    config, config_error = _r2_client_config_or_response()
+    if config_error:
+        return config_error
+    try:
+        client = _build_r2_client(config)
+    except Exception as exc:
+        logger.exception("uploads_presign_read: boto3 failed")
+        detail = str(exc) if settings.DEBUG else "Storage client failed to initialize."
+        return Response({"detail": detail}, status=503)
+
+    view_url = r2_presigned_get_url(raw_key, client=client)
+    if not view_url:
+        return Response({"detail": "Could not create view URL."}, status=502)
+    expires = r2_read_expires_seconds()
+    return Response({"view_url": view_url, "expires_in_seconds": expires})
+
+
 @api_view(["GET"])
 @permission_classes([IsApprovedUser])
 @cache_control(private=True, no_store=True)
@@ -1081,9 +1118,9 @@ def images_mine(request):
         person_names_by_key[key].append(str(row.get("name") or "").strip() or f"Person {pid}")
     person_db_keys = set(person_ids_by_key.keys())
 
-    profile_avatar_url = (
+    profile_avatar_key = (
         Profile.objects.filter(user=request.user)
-        .values_list("avatar_url", flat=True)
+        .values_list("avatar_image_key", flat=True)
         .first()
         or ""
     ).strip()
@@ -1139,9 +1176,7 @@ def images_mine(request):
         attached_person_ids = sorted(person_ids_by_key.get(key, []))
         attached_person_names = person_names_by_key.get(key, [])
         attached_person_count = len(attached_person_ids)
-        attached_as_avatar = bool(
-            profile_avatar_url and closet_item_image_url(key) == profile_avatar_url
-        )
+        attached_as_avatar = bool(profile_avatar_key and profile_avatar_key == key)
         is_attached = (
             attached_count > 0
             or attached_as_avatar
@@ -1194,8 +1229,8 @@ def image_delete(request):
     ).update(image_key="")
     detached_avatar_count = Profile.objects.filter(
         user=request.user,
-        avatar_url=closet_item_image_url(raw_key),
-    ).update(avatar_url="")
+        avatar_image_key=raw_key,
+    ).update(avatar_image_key="", avatar_url="")
     detached_meal_count = Meal.objects.filter(owner_user=request.user, image_key=raw_key).update(
         image_key="",
     )
@@ -1262,12 +1297,20 @@ def _uploads_presign_response(request):
         },
         ExpiresIn=expires_seconds,
     )
+    read_expires = r2_read_expires_seconds()
+    view_url = client.generate_presigned_url(
+        ClientMethod="get_object",
+        Params={"Bucket": config["bucket"], "Key": key},
+        ExpiresIn=read_expires,
+    )
 
     return Response(
         {
             "key": key,
             "upload_url": presigned_url,
+            "view_url": view_url,
             "expires_in_seconds": expires_seconds,
+            "view_expires_in_seconds": read_expires,
             "max_bytes": max_bytes,
             "allowed_mime_types": ["image/jpeg", "image/png", "image/webp"],
         }

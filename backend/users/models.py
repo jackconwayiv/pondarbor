@@ -77,6 +77,7 @@ class Profile(models.Model):
     )
     display_name = models.CharField(max_length=150, blank=True)
     avatar_url = models.URLField(blank=True, max_length=2048)
+    avatar_image_key = models.CharField(max_length=1024, blank=True, default="")
     timezone = models.CharField(
         max_length=64, default=PROFILE_TIMEZONE_DEFAULT
     )

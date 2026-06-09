@@ -7,16 +7,17 @@ from whatif.validators import validate_display_name, validate_question_text_fiel
 
 def whatif_players_avatar_url_by_user_id(players) -> dict[int, str]:
     """Bulk-load profile avatar URLs for WhatIfPlayer rows (avoids N+1 in list serializers)."""
+    from users.avatar_url import profile_avatar_url
     from users.models import Profile
 
     user_ids = sorted({p.user_id for p in players if getattr(p, "user_id", None)})
     if not user_ids:
         return {}
     out: dict[int, str] = {}
-    for row in Profile.objects.filter(user_id__in=user_ids).values("user_id", "avatar_url"):
-        url = (row.get("avatar_url") or "").strip()
+    for prof in Profile.objects.filter(user_id__in=user_ids):
+        url = profile_avatar_url(prof)
         if url:
-            out[int(row["user_id"])] = url
+            out[int(prof.user_id)] = url
     return out
 
 
@@ -101,10 +102,12 @@ class WhatIfPlayerSerializer(serializers.ModelSerializer):
             return urls.get(int(uid), "") or ""
         from users.models import Profile
 
-        prof = Profile.objects.filter(user_id=uid).only("avatar_url").first()
-        if prof is None or not prof.avatar_url:
+        from users.avatar_url import profile_avatar_url
+
+        prof = Profile.objects.filter(user_id=uid).first()
+        if prof is None:
             return ""
-        return prof.avatar_url.strip()
+        return profile_avatar_url(prof)
 
 
 class WhatIfQuestionPublicSerializer(serializers.ModelSerializer):
@@ -126,9 +129,11 @@ class WhatIfQuestionPublicSerializer(serializers.ModelSerializer):
         prof = Profile.objects.filter(user_id=obj.proposed_by_id).first()
         if prof is None:
             return {"display_name": "", "avatar_url": ""}
+        from users.avatar_url import profile_avatar_url
+
         return {
             "display_name": (prof.display_name or "").strip(),
-            "avatar_url": (prof.avatar_url or "").strip(),
+            "avatar_url": profile_avatar_url(prof),
         }
 
 

@@ -702,6 +702,8 @@ def campaigns_invitee_search(request, game_id: int):
     q = (request.query_params.get("q") or "").strip()
     if len(q) < 2:
         return Response([])
+    from users.avatar_url import profile_avatar_url
+
     rows = []
     for u in _approved_invitee_candidates_qs(owner=request.user, search=q):
         profile = getattr(u, "profile", None)
@@ -711,7 +713,7 @@ def campaigns_invitee_search(request, game_id: int):
                 "id": u.id,
                 "email": u.email,
                 "nickname": nick.strip(),
-                "avatar_url": getattr(profile, "avatar_url", None) or "",
+                "avatar_url": profile_avatar_url(profile) if profile else "",
             }
         )
     return Response(rows)

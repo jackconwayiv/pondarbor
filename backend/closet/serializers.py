@@ -31,11 +31,9 @@ User = get_user_model()
 
 
 def closet_item_image_url(image_key: str) -> str:
-    base = getattr(settings, "CLOSET_R2_PUBLIC_BASE_URL", "") or ""
-    key = (image_key or "").strip()
-    if not base or not key:
-        return ""
-    return f"{base.rstrip('/')}/{key.lstrip('/')}"
+    from common.r2_s3 import r2_presigned_get_url
+
+    return r2_presigned_get_url(image_key)
 
 
 def closet_r2_root_parts() -> list[str]:
@@ -82,12 +80,14 @@ def _validate_closet_image_key_for_user(value, request) -> str:
 
 
 def _user_summary(user):
+    from users.avatar_url import profile_avatar_url
+
     profile = getattr(user, "profile", None)
     return {
         "id": user.id,
         "email": user.email,
         "display_name": (getattr(profile, "display_name", "") or "").strip(),
-        "avatar_url": getattr(profile, "avatar_url", "") or "",
+        "avatar_url": profile_avatar_url(profile) if profile else "",
     }
 
 

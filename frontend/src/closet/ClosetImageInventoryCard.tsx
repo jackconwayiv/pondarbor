@@ -1,4 +1,5 @@
-import { Box, Card, HStack, Image, Stack, Tag, Text } from "@chakra-ui/react";
+import { Box, Card, HStack, Stack, Tag, Text } from "@chakra-ui/react";
+import PresignedImage from "../lib/PresignedImage";
 import type { MouseEvent } from "react";
 import PondButton from "../PondButton";
 import { APP_TEXT_SIZES } from "../theme/typography";
@@ -33,6 +34,7 @@ export type ClosetImageInventoryCardProps = {
   confirmDeleteImageKey: string | null;
   onDeleteClick: (e: MouseEvent) => void;
   deleteButtonRef: (el: HTMLButtonElement | null) => void;
+  getApiAccessToken: () => Promise<string>;
 };
 
 /**
@@ -44,6 +46,7 @@ export function ClosetImageInventoryCard({
   confirmDeleteImageKey,
   onDeleteClick,
   deleteButtonRef,
+  getApiAccessToken,
 }: ClosetImageInventoryCardProps) {
   const summary = usageSummaryLine(row);
   const stranded = row.status === "stranded";
@@ -69,8 +72,10 @@ export function ClosetImageInventoryCard({
         overflow="hidden"
       >
         {row.image_url ? (
-          <Image
+          <PresignedImage
             src={row.image_url}
+            imageKey={row.image_key}
+            getApiAccessToken={getApiAccessToken}
             alt=""
             w="100%"
             h="100%"

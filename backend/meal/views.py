@@ -16,7 +16,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
-from common.r2_s3 import build_r2_s3_client, r2_bucket_config_from_env
+from common.r2_s3 import build_r2_s3_client, r2_bucket_config_from_env, r2_read_expires_seconds
 
 from users.auth0_backend import Auth0TokenAuthentication
 from users.permissions import IsApprovedUser
@@ -375,11 +375,19 @@ def meal_uploads_presign(request):
         },
         ExpiresIn=expires_seconds,
     )
+    read_expires = r2_read_expires_seconds()
+    view_url = client.generate_presigned_url(
+        ClientMethod="get_object",
+        Params={"Bucket": config["bucket"], "Key": key},
+        ExpiresIn=read_expires,
+    )
     return Response(
         {
             "key": key,
             "upload_url": presigned_url,
+            "view_url": view_url,
             "expires_in_seconds": expires_seconds,
+            "view_expires_in_seconds": read_expires,
             "max_bytes": max_bytes,
             "allowed_mime_types": ["image/jpeg", "image/png", "image/webp"],
         }

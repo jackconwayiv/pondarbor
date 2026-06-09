@@ -93,9 +93,11 @@ def user_display_label(user) -> str:
 def serialize_user_summary(user) -> dict | None:
     if user is None:
         return None
+    from users.avatar_url import profile_avatar_url
+
     profile = getattr(user, "profile", None)
     return {
         "id": user.id,
         "display_name": user_display_label(user),
-        "avatar_url": (getattr(profile, "avatar_url", None) or "").strip(),
+        "avatar_url": profile_avatar_url(profile) if profile else "",
     }

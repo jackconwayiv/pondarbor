@@ -6,7 +6,6 @@ import {
   Float,
   Heading,
   HStack,
-  Image,
   Input,
   Stack,
   Tabs,
@@ -34,6 +33,7 @@ import { fetchMyImageInventory } from "./closet/api";
 import { uploadClosetImageBlobForField } from "./closet/imageUpload";
 import type { ClosetImageInventoryRow } from "./closet/types";
 import { UploadProgressBar } from "./components/UploadProgressBar";
+import PresignedImage from "./lib/PresignedImage";
 import { useR2ImageUpload } from "./lib/useR2ImageUpload";
 import { fullBleedStackProps } from "./responsive";
 import {
@@ -87,19 +87,6 @@ const PROFILE_ENTRY_CARD_PROPS = {
   maxW: "100%",
   overflowX: "hidden" as const,
 } as const;
-
-function avatarUrlFromClosetImageKey(imageKey: string): string {
-  const trimmedKey = imageKey.trim();
-  if (!trimmedKey) return "";
-  const base = (
-    import.meta.env.VITE_CLOSET_R2_PUBLIC_BASE_URL ??
-    import.meta.env.VITE_CLOSET_IMAGE_PUBLIC_BASE_URL ??
-    import.meta.env.VITE_API_CLOSET_IMAGE_PUBLIC_BASE_URL ??
-    ""
-  ).trim();
-  if (!base) return "";
-  return `${base.replace(/\/+$/, "")}/${trimmedKey}`;
-}
 
 export default function ProfilePage() {
   const {
@@ -411,9 +398,8 @@ export default function ProfilePage() {
     uploadFromBlob: uploadClosetImageBlobForField,
     successMessage: "Avatar updated",
     onUploadSuccess: async (key) => {
-      const uploadedUrl = avatarUrlFromClosetImageKey(key);
-      if (uploadedUrl) setAvatarUrl(uploadedUrl);
       await patchMyProfile({ avatar_image_key: key });
+      await refreshSession();
     },
   });
 
@@ -562,8 +548,13 @@ export default function ProfilePage() {
   const { user, profile } = sessionUser;
   const currentUserAvatarUrl = resolveCurrentUserAvatarUrl(sessionUser, auth0User);
   const profileAvatarDisplayUrl =
-    isEditing && (avatarUpload.localPreviewUrl || avatarUrl.trim())
-      ? avatarUpload.localPreviewUrl || avatarUrl.trim()
+    isEditing &&
+    (avatarUpload.localPreviewUrl ||
+      (avatarUpload.uploadedViewUrl ?? "").trim() ||
+      avatarUrl.trim())
+      ? avatarUpload.localPreviewUrl ||
+        (avatarUpload.uploadedViewUrl ?? "").trim() ||
+        avatarUrl.trim()
       : currentUserAvatarUrl;
   const headerDisplayName = (
     isEditing ? displayName : profile.display_name || ""
@@ -919,8 +910,10 @@ export default function ProfilePage() {
                                           )
                                         }
                                       >
-                                        <Image
+                                        <PresignedImage
                                           src={row.image_url}
+                                          imageKey={row.image_key}
+                                          getApiAccessToken={getApiAccessToken}
                                           alt=""
                                           aria-hidden
                                           w="84px"

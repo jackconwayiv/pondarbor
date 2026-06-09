@@ -47,6 +47,8 @@ def _validate_youtube_video_id(value: str) -> str:
 
 
 def user_row_for_songaday(user: User) -> dict:
+    from users.avatar_url import profile_avatar_url
+
     profile = getattr(user, "profile", None)
     nickname = (
         (profile.display_name or user.email.split("@")[0]).strip()
@@ -57,7 +59,7 @@ def user_row_for_songaday(user: User) -> dict:
         "id": user.id,
         "email": user.email,
         "nickname": nickname,
-        "avatar_url": (profile.avatar_url or "") if profile else "",
+        "avatar_url": profile_avatar_url(profile) if profile else "",
     }
 
 

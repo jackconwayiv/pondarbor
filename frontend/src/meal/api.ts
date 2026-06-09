@@ -235,7 +235,9 @@ export async function importPaprikaRecipes(
 export type MealImagePresignResponse = {
   key: string;
   upload_url: string;
+  view_url: string;
   expires_in_seconds: number;
+  view_expires_in_seconds?: number;
   max_bytes: number;
   allowed_mime_types: string[];
 };

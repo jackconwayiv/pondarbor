@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { resizeImageFileToJpegBlob } from "../closet/imageUpload";
+import type { R2UploadResult } from "./r2ImageApi";
 import type { UploadProgress } from "./presignedPut";
 import { uploadStatusLabel, type UploadStatusKind } from "./uploadProgressUi";
 
@@ -7,7 +8,7 @@ export type R2ImageUploadFromBlob = (
   getToken: () => Promise<string>,
   blob: Blob,
   options?: { onProgress?: (progress: UploadProgress) => void },
-) => Promise<string>;
+) => Promise<R2UploadResult>;
 
 export type UseR2ImageUploadOptions = {
   getApiAccessToken: () => Promise<string>;
@@ -27,6 +28,7 @@ export function useR2ImageUpload({
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<UploadProgress | null>(null);
   const [localPreviewUrl, setLocalPreviewUrl] = useState<string | null>(null);
+  const [uploadedViewUrl, setUploadedViewUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [statusKind, setStatusKind] = useState<UploadStatusKind>("idle");
   const localPreviewRef = useRef<string | null>(null);
@@ -65,14 +67,15 @@ export function useR2ImageUpload({
         setLocalPreview(previewUrl);
       }
       try {
-        const key = await uploadFromBlob(getApiAccessToken, blob, {
+        const result = await uploadFromBlob(getApiAccessToken, blob, {
           onProgress: setProgress,
         });
-        onKeyChange(key);
-        await onUploadSuccess?.(key);
+        onKeyChange(result.key);
+        setUploadedViewUrl(result.viewUrl);
+        await onUploadSuccess?.(result.key);
         setStatusKind("success");
         setProgress(null);
-        return key;
+        return result;
       } catch (err: unknown) {
         if (previewUrl) {
           revokeLocalPreview(previewUrl);
@@ -107,14 +110,15 @@ export function useR2ImageUpload({
         const blob = await resizeImageFileToJpegBlob(file);
         previewUrl = URL.createObjectURL(blob);
         setLocalPreview(previewUrl);
-        const key = await uploadFromBlob(getApiAccessToken, blob, {
+        const result = await uploadFromBlob(getApiAccessToken, blob, {
           onProgress: setProgress,
         });
-        onKeyChange(key);
-        await onUploadSuccess?.(key);
+        onKeyChange(result.key);
+        setUploadedViewUrl(result.viewUrl);
+        await onUploadSuccess?.(result.key);
         setStatusKind("success");
         setProgress(null);
-        return key;
+        return result;
       } catch (err: unknown) {
         if (previewUrl) {
           revokeLocalPreview(previewUrl);
@@ -154,6 +158,7 @@ export function useR2ImageUpload({
     busy,
     progress,
     localPreviewUrl,
+    uploadedViewUrl,
     error,
     statusKind,
     statusMessage,

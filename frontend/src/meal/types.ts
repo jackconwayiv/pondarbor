@@ -26,7 +26,7 @@ export type Meal = {
   source_url?: string;
   /** R2 object key for recipe photo (same bucket as Closet). */
   image_key?: string;
-  /** Public URL when `CLOSET_R2_PUBLIC_BASE_URL` is set and `image_key` is present. */
+  /** Presigned R2 read URL when `image_key` is present. */
   image_url?: string;
   is_published_to_friends?: boolean;
   tag_names?: string[];

@@ -1,4 +1,5 @@
-import { Box, Card, HStack, Image, Stack, Text } from "@chakra-ui/react";
+import { Box, Card, HStack, Stack, Text } from "@chakra-ui/react";
+import PresignedImage from "../lib/PresignedImage";
 import type { CSSProperties, ReactNode } from "react";
 import { Link } from "react-router";
 
@@ -58,7 +59,7 @@ export default function PersonCard({
   onEdit,
   onActivate,
 }: PersonCardProps) {
-  const { sessionUser } = useAppSession();
+  const { sessionUser, getApiAccessToken } = useAppSession();
   const imageSrc = (person.image_url || "").trim();
   const parentsLine = personParentsLine(person, bundle);
   const relationLine = formatRelationLine(person);
@@ -83,8 +84,10 @@ export default function PersonCard({
       _hover={selfProfileTo ? { opacity: 0.92 } : undefined}
     >
       {imageSrc ? (
-        <Image
+        <PresignedImage
           src={imageSrc}
+          imageKey={person.image_key}
+          getApiAccessToken={getApiAccessToken}
           alt=""
           w="100%"
           h="100%"
@@ -196,8 +199,10 @@ export default function PersonCard({
             _hover={{ opacity: 0.92 }}
           >
             {imageSrc ? (
-              <Image
+              <PresignedImage
                 src={imageSrc}
+                imageKey={person.image_key}
+                getApiAccessToken={getApiAccessToken}
                 alt=""
                 w="100%"
                 h="100%"
@@ -224,8 +229,10 @@ export default function PersonCard({
           justifyContent="center"
         >
           {imageSrc ? (
-            <Image
+            <PresignedImage
               src={imageSrc}
+              imageKey={person.image_key}
+              getApiAccessToken={getApiAccessToken}
               alt=""
               w="100%"
               h="100%"

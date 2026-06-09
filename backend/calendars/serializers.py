@@ -18,12 +18,14 @@ EVENT_MAX_RANGE_DAYS = 366
 
 
 def _owner_row(user) -> dict:
+    from users.avatar_url import profile_avatar_url
+
     profile = getattr(user, "profile", None)
     display_name = ""
     avatar_url = ""
     if profile is not None:
         display_name = (profile.display_name or "").strip()
-        avatar_url = (profile.avatar_url or "").strip()
+        avatar_url = profile_avatar_url(profile)
     if not display_name:
         display_name = (user.email or "").split("@")[0]
     return {

@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from estates.constants import ESTATES_COMPUTER_USER_EMAIL
 from friends.models import FriendRequest
 from friends.services import friends_queryset_for_user, order_users_by_recent_activity
+from users.avatar_url import profile_avatar_url
 from users.models import Profile
 from users.social_privacy import published_user_visibility_q, viewer_context
 
@@ -37,7 +38,7 @@ def friend_user_row_dict(user):
     return {
         "id": user.id,
         "nickname": (profile.display_name or user.email.split("@")[0]).strip(),
-        "avatar_url": profile.avatar_url or "",
+        "avatar_url": profile_avatar_url(profile),
         "meal_crud_partner_id": profile.meal_crud_partner_id,
     }
 

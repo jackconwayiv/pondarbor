@@ -154,10 +154,12 @@ def final_scores(session: WhatIfSession) -> list[dict]:
     user_ids = sorted({p.user_id for p in players if p.user_id})
     avatar_by_uid: dict[int, str] = {}
     if user_ids:
-        for row in Profile.objects.filter(user_id__in=user_ids).values("user_id", "avatar_url"):
-            url = (row.get("avatar_url") or "").strip()
+        from users.avatar_url import profile_avatar_url
+
+        for prof in Profile.objects.filter(user_id__in=user_ids):
+            url = profile_avatar_url(prof)
             if url:
-                avatar_by_uid[int(row["user_id"])] = url
+                avatar_by_uid[int(prof.user_id)] = url
     rows: list[dict] = []
     for i, p in enumerate(players):
         if i == 0:

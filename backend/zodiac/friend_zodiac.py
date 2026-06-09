@@ -52,11 +52,13 @@ def serialize_friend_zodiac_row(*, user, profile, astro: AstroProfile) -> dict[s
         (getattr(profile, "display_name", None) or "").strip()
         or (user.email.split("@")[0] if user.email and "@" in user.email else user.email)
     )
+    from users.avatar_url import profile_avatar_url
+
     trimmed = trim_natal_chart_for_friends(nc, birth_time_unknown=astro.birth_time_unknown)
     return {
         "id": user.id,
         "nickname": nickname.strip(),
-        "avatar_url": (getattr(profile, "avatar_url", None) or "") or "",
+        "avatar_url": profile_avatar_url(profile) if profile else "",
         "sun_sign": astro.sun_sign,
         "moon_sign": astro.moon_sign,
         "rising_sign": astro.rising_sign or None,

@@ -215,8 +215,8 @@ class ClosetItemsApiTests(ClosetTestMixin, TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["pending_custody_user"]["id"], self.borrower.id)
 
-    @override_settings(CLOSET_R2_PUBLIC_BASE_URL="")
-    def test_item_serializer_image_url_empty_without_public_base(self):
+    @patch("common.r2_s3.r2_presigned_get_url", return_value="")
+    def test_item_serializer_image_url_empty_without_r2(self, _presign_mock):
         key = f"closet/{self.owner.id}/20240101/abc.jpg"
         self.make_item(owner=self.owner, holder=self.owner, name="Pic", image_key=key)
         resp = self.owner_client.get("/api/v1/closet/items/")
@@ -225,14 +225,15 @@ class ClosetItemsApiTests(ClosetTestMixin, TestCase):
         self.assertEqual(row["image_key"], key)
         self.assertEqual(row.get("image_url") or "", "")
 
-    @override_settings(CLOSET_R2_PUBLIC_BASE_URL="https://cdn.example.test", CLOSET_R2_KEY_PREFIX="closet")
-    def test_item_serializer_image_url_joins_public_base(self):
+    @patch("common.r2_s3.r2_presigned_get_url", side_effect=lambda key: f"https://signed.example/{key}")
+    @override_settings(CLOSET_R2_KEY_PREFIX="closet")
+    def test_item_serializer_image_url_presigned(self, _presign_mock):
         key = f"closet/{self.owner.id}/20240101/abc.jpg"
         self.make_item(owner=self.owner, holder=self.owner, name="Pic2", image_key=key)
         resp = self.owner_client.get("/api/v1/closet/items/")
         self.assertEqual(resp.status_code, 200)
         row = next(i for i in resp.json()["owned_by_me"] if i["name"] == "Pic2")
-        self.assertEqual(row["image_url"], f"https://cdn.example.test/{key}")
+        self.assertEqual(row["image_url"], f"https://signed.example/{key}")
 
     @override_settings(CLOSET_R2_KEY_PREFIX="closet")
     def test_patch_rejects_image_key_wrong_prefix(self):
@@ -268,15 +269,16 @@ class ClosetItemsApiTests(ClosetTestMixin, TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["image_key"], key)
 
-    @override_settings(CLOSET_R2_KEY_PREFIX="closet", CLOSET_R2_PUBLIC_BASE_URL="https://cdn.example.test")
+    @override_settings(CLOSET_R2_KEY_PREFIX="closet")
+    @patch("common.r2_s3.r2_presigned_get_url", return_value="https://signed.example/view")
     @patch("closet.views._build_r2_client")
-    def test_images_inventory_shows_attached_and_stranded(self, build_client_mock):
+    def test_images_inventory_shows_attached_and_stranded(self, build_client_mock, _presign_mock):
         attached_key = f"closet/{self.owner.id}/20240101/attached.jpg"
         avatar_key = f"closet/{self.owner.id}/20240101/avatar.jpg"
         stranded_key = f"closet/{self.owner.id}/20240101/stranded.jpg"
         self.make_item(owner=self.owner, holder=self.owner, name="Pic", image_key=attached_key)
-        self.owner.profile.avatar_url = f"https://cdn.example.test/{avatar_key}"
-        self.owner.profile.save(update_fields=["avatar_url"])
+        self.owner.profile.avatar_image_key = avatar_key
+        self.owner.profile.save(update_fields=["avatar_image_key"])
         other_user_key = f"closet/{self.borrower.id}/20240101/other.jpg"
 
         client = build_client_mock.return_value
@@ -378,15 +380,12 @@ class ClosetItemsApiTests(ClosetTestMixin, TestCase):
         self.assertEqual(attached.image_key, "")
         client.delete_object.assert_called_once_with(Bucket="bucket", Key=key)
 
-    @override_settings(
-        CLOSET_R2_KEY_PREFIX="closet",
-        CLOSET_R2_PUBLIC_BASE_URL="https://cdn.example.test",
-    )
+    @override_settings(CLOSET_R2_KEY_PREFIX="closet")
     @patch("closet.views._build_r2_client")
-    def test_image_delete_detaches_matching_avatar_url(self, build_client_mock):
+    def test_image_delete_detaches_matching_avatar_image_key(self, build_client_mock):
         key = f"closet/{self.owner.id}/20240101/avatar.jpg"
-        self.owner.profile.avatar_url = f"https://cdn.example.test/{key}"
-        self.owner.profile.save(update_fields=["avatar_url"])
+        self.owner.profile.avatar_image_key = key
+        self.owner.profile.save(update_fields=["avatar_image_key"])
         client = build_client_mock.return_value
         with patch.dict(
             "os.environ",
@@ -401,9 +400,44 @@ class ClosetItemsApiTests(ClosetTestMixin, TestCase):
             resp = self.owner_client.post("/api/v1/closet/images/delete/", {"image_key": key}, format="json")
         self.assertEqual(resp.status_code, 200)
         self.owner.profile.refresh_from_db()
-        self.assertEqual(self.owner.profile.avatar_url, "")
+        self.assertEqual(self.owner.profile.avatar_image_key, "")
         self.assertEqual(resp.json().get("detached_avatar_count"), 1)
         client.delete_object.assert_called_once_with(Bucket="bucket", Key=key)
+
+    @override_settings(CLOSET_R2_KEY_PREFIX="closet")
+    @patch("closet.views._build_r2_client")
+    def test_uploads_presign_read_returns_view_url_for_owner_key(self, build_client_mock):
+        key = f"closet/{self.owner.id}/20240101/read.jpg"
+        client = build_client_mock.return_value
+        client.generate_presigned_url.return_value = "https://signed.example/get"
+        with patch.dict(
+            "os.environ",
+            {
+                "CLOUDFLARE_ACCOUNT_ID": "acct",
+                "CLOSET_R2_BUCKET": "bucket",
+                "CLOSET_R2_ACCESS_KEY_ID": "ak",
+                "CLOSET_R2_SECRET_ACCESS_KEY": "sk",
+            },
+            clear=False,
+        ):
+            resp = self.owner_client.post(
+                "/api/v1/closet/uploads/presign-read/",
+                {"key": key},
+                format="json",
+            )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["view_url"], "https://signed.example/get")
+        self.assertIn("expires_in_seconds", resp.json())
+
+    @override_settings(CLOSET_R2_KEY_PREFIX="closet")
+    def test_uploads_presign_read_rejects_foreign_key(self):
+        bad_key = f"closet/{self.borrower.id}/20240101/nope.jpg"
+        resp = self.owner_client.post(
+            "/api/v1/closet/uploads/presign-read/",
+            {"key": bad_key},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 403)
 
     @override_settings(CLOSET_R2_KEY_PREFIX="closet")
     def test_image_delete_rejects_key_outside_owner_prefix(self):

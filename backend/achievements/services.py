@@ -937,6 +937,7 @@ def _normalize_peer_slugs(slugs: list) -> list[str]:
 
 
 def _user_peer_row(user) -> dict:
+    from users.avatar_url import profile_avatar_url
     from users.models import Profile
 
     profile = getattr(user, "profile", None)
@@ -946,7 +947,7 @@ def _user_peer_row(user) -> dict:
     return {
         "id": user.id,
         "nickname": nickname,
-        "avatar_url": profile.avatar_url or "",
+        "avatar_url": profile_avatar_url(profile),
     }
 
 

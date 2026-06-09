@@ -294,7 +294,9 @@ def people_friends_with_family_trees(request):
             .strip()
             or (friend.email.split("@")[0] if friend.email and "@" in friend.email else friend.email)
         )
-        avatar_url = (getattr(profile, "avatar_url", None) or "") or ""
+        from users.avatar_url import profile_avatar_url
+
+        avatar_url = profile_avatar_url(profile) if profile else ""
 
         out.append(
             {

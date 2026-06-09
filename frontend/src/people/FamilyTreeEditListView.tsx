@@ -1,8 +1,9 @@
-import { Box, HStack, Image, Stack, Text } from "@chakra-ui/react";
+import { Box, HStack, Stack, Text } from "@chakra-ui/react";
 import { useMemo } from "react";
 import { Link } from "react-router";
 
 import { useAppSession } from "../auth/AppSessionContext";
+import PresignedImage from "../lib/PresignedImage";
 import PondButton from "../PondButton";
 import { treeOwnerProfilePath } from "./treeOwnerProfilePath";
 import {
@@ -48,6 +49,7 @@ function PersonEditRowCard({
   viewerUserId?: number;
   onEdit: () => void;
 }) {
+  const { getApiAccessToken } = useAppSession();
   const imageSrc = (person.image_url || "").trim();
   const relationLine = formatRelationLine(person);
   const lifeDates = formatLifeDates(person);
@@ -79,8 +81,10 @@ function PersonEditRowCard({
       overflow="hidden"
     >
       {imageSrc ? (
-        <Image
+        <PresignedImage
           src={imageSrc}
+          imageKey={person.image_key}
+          getApiAccessToken={getApiAccessToken}
           alt=""
           w="100%"
           h="100%"

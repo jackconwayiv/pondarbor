@@ -28,6 +28,7 @@ from closet.views import (
     loan_mark_returned,
     loan_mark_returned_by_borrower,
     uploads_presign,
+    uploads_presign_read,
 )
 
 urlpatterns = [
@@ -58,5 +59,6 @@ urlpatterns = [
     path("loans/<int:loan_id>/mark-returned/", loan_mark_returned),
     path("loans/<int:loan_id>/mark-returned-by-borrower/", loan_mark_returned_by_borrower),
     path("uploads/presign/", uploads_presign),
+    path("uploads/presign-read/", uploads_presign_read),
 ]
 

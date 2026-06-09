@@ -7,6 +7,7 @@ import type { BootstrapInboxSnapshot } from "../users/api";
 export type Profile = {
   display_name: string;
   avatar_url: string;
+  avatar_image_key?: string;
   timezone: string;
   birth_date: string | null;
   /** True after the user has finished at least one WhatIf session (server-set). */

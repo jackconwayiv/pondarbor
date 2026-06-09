@@ -6,7 +6,6 @@ import {
   Dialog,
   HStack,
   Heading,
-  Image,
   Input,
   NativeSelectField,
   NativeSelectRoot,
@@ -80,7 +79,7 @@ import {
 import { FriendClosetListCard } from "./FriendClosetListCard";
 import { UploadProgressBar } from "../components/UploadProgressBar";
 import { useR2ImageUpload } from "../lib/useR2ImageUpload";
-import { publicUrlForR2ImageKey } from "../meal/imagePublicUrl";
+import PresignedImage from "../lib/PresignedImage";
 import { uploadClosetImageBlobForField } from "./imageUpload";
 import type {
   ClosetImageInventoryRow,
@@ -1000,9 +999,7 @@ export default function ClosetPage() {
                           {(() => {
                             const photoPreview =
                               newItemPhotoUpload.localPreviewUrl ||
-                              (newItemPendingImageKey.trim()
-                                ? publicUrlForR2ImageKey(newItemPendingImageKey)
-                                : "");
+                              (newItemPhotoUpload.uploadedViewUrl ?? "").trim();
                             return photoPreview ? (
                               <Box
                                 w="100%"
@@ -1013,8 +1010,14 @@ export default function ClosetPage() {
                                 borderColor="border"
                                 overflow="hidden"
                               >
-                                <Image
+                                <PresignedImage
                                   src={photoPreview}
+                                  imageKey={
+                                    newItemPhotoUpload.localPreviewUrl
+                                      ? undefined
+                                      : newItemPendingImageKey.trim() || undefined
+                                  }
+                                  getApiAccessToken={getApiAccessToken}
                                   alt=""
                                   w="100%"
                                   h="100%"
@@ -2081,6 +2084,7 @@ export default function ClosetPage() {
                         <ClosetImageInventoryCard
                           key={row.image_key}
                           row={row}
+                          getApiAccessToken={getApiAccessToken}
                           deletingImageKey={deletingImageKey}
                           confirmDeleteImageKey={confirmDeleteImageKey}
                           deleteButtonRef={(node: HTMLButtonElement | null) => {

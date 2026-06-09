@@ -1,9 +1,9 @@
-import { Box, Button, HStack, Image, SimpleGrid, Stack, Text } from "@chakra-ui/react";
+import { Box, Button, HStack, SimpleGrid, Stack, Text } from "@chakra-ui/react";
+import PresignedImage from "../lib/PresignedImage";
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { fetchMyImageInventory } from "../closet/api";
 import type { ClosetImageInventoryRow } from "../closet/types";
 import { useR2ImageUpload, type R2ImageUploadFromBlob } from "../lib/useR2ImageUpload";
-import { publicUrlForR2ImageKey } from "../meal/imagePublicUrl";
 import PondButton from "../PondButton";
 import { AppModal } from "./AppModal";
 import { UploadProgressBar } from "./UploadProgressBar";
@@ -46,6 +46,7 @@ export function ImageUploadField({
   const [inventoryRows, setInventoryRows] = useState<ClosetImageInventoryRow[]>([]);
   const [inventoryErr, setInventoryErr] = useState<string | null>(null);
   const [pickerBusy, setPickerBusy] = useState(false);
+  const [pickedViewUrl, setPickedViewUrl] = useState("");
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const upload = useR2ImageUpload({
@@ -58,9 +59,9 @@ export function ImageUploadField({
 
   const remotePreview =
     (imageUrl ?? "").trim() ||
-    (imageKey.trim() ? publicUrlForR2ImageKey(imageKey) : "");
-  const preview =
-    upload.localPreviewUrl || remotePreview || "";
+    (upload.uploadedViewUrl ?? "").trim() ||
+    pickedViewUrl.trim();
+  const preview = upload.localPreviewUrl || remotePreview || "";
 
   const loadInventory = useCallback(async () => {
     setPickerBusy(true);
@@ -108,7 +109,19 @@ export function ImageUploadField({
           flexShrink={0}
         >
           {preview ? (
-            <Image src={preview} alt="" w="100%" h="100%" objectFit="cover" />
+            upload.localPreviewUrl ? (
+              <PresignedImage src={preview} alt="" w="100%" h="100%" objectFit="cover" />
+            ) : (
+              <PresignedImage
+                src={preview}
+                imageKey={imageKey.trim() || undefined}
+                getApiAccessToken={getApiAccessToken}
+                alt=""
+                w="100%"
+                h="100%"
+                objectFit="cover"
+              />
+            )
           ) : (
             <Box w="100%" h="100%" minH={aspectRatio === 1 ? "5rem" : "6rem"} />
           )}
@@ -152,7 +165,10 @@ export function ImageUploadField({
                 colorPalette="nautical"
                 variant="outline"
                 disabled={fieldDisabled}
-                onClick={() => onImageKeyChange("")}
+                onClick={() => {
+                  setPickedViewUrl("");
+                  onImageKeyChange("");
+                }}
               >
                 Remove
               </PondButton>
@@ -218,12 +234,15 @@ export function ImageUploadField({
                 overflow="hidden"
                 onClick={() => {
                   onImageKeyChange(row.image_key);
+                  setPickedViewUrl(row.image_url);
                   setPickerOpen(false);
                 }}
                 _hover={{ borderColor: "sky.border", boxShadow: "sm" }}
               >
-                <Image
+                <PresignedImage
                   src={row.image_url}
+                  imageKey={row.image_key}
+                  getApiAccessToken={getApiAccessToken}
                   alt=""
                   w="100%"
                   aspectRatio={pickerAspect}

@@ -129,12 +129,14 @@ class QuoteSerializer(serializers.ModelSerializer):
         ]
 
     def get_owner(self, obj: Quote):
+        from users.avatar_url import profile_avatar_url
+
         profile = getattr(obj.owner, "profile", None)
         return {
             "id": obj.owner_id,
             "email": obj.owner.email,
             "username": getattr(obj.owner, "username", "") or "",
-            "avatar_url": getattr(profile, "avatar_url", "") or "",
+            "avatar_url": profile_avatar_url(profile) if profile else "",
         }
 
     def get_relationship_to_viewer(self, obj: Quote) -> str:

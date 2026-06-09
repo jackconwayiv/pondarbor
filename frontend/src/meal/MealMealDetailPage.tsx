@@ -3,7 +3,6 @@ import {
   Card,
   Heading,
   HStack,
-  Image,
   Input,
   SimpleGrid,
   Stack,
@@ -32,7 +31,7 @@ import { MealAddToWeekDialog } from "./MealAddToWeekDialog";
 import { MealEditorBackdropDismiss } from "./MealEditorBackdropDismiss";
 import { MealEditorForm } from "./MealEditorForm";
 import { MealImageField } from "./MealImageField";
-import { publicUrlForR2ImageKey } from "./imagePublicUrl";
+import PresignedImage from "../lib/PresignedImage";
 import { mealOwnerLabel } from "./mealOwnerLabel";
 import {
   MealApprovalRequired,
@@ -352,8 +351,10 @@ export default function MealMealDetailPage() {
               ) : null}
               {meal.image_url?.trim() ? (
                 <Box mb="3" maxW="sm" w="100%">
-                  <Image
+                  <PresignedImage
                     src={meal.image_url}
+                    imageKey={meal.image_key}
+                    getApiAccessToken={getApiAccessToken}
                     alt=""
                     maxH="14rem"
                     w="100%"
@@ -457,10 +458,7 @@ export default function MealMealDetailPage() {
               recipeImage={
                 <MealImageField
                   imageKey={draftImageKey}
-                  imageUrl={
-                    (meal.image_url ?? "").trim() ||
-                    (draftImageKey.trim() ? publicUrlForR2ImageKey(draftImageKey) : "")
-                  }
+                  imageUrl={(meal.image_url ?? "").trim()}
                   onImageKeyChange={setDraftImageKey}
                   getApiAccessToken={getApiAccessToken}
                   disabled={deleteBusy || patchBusy}

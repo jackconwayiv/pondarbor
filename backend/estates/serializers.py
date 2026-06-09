@@ -21,8 +21,10 @@ def _user_display_name(user, *, game: EstatesGame | None = None, seat_index: int
 
 
 def _user_avatar_url(user) -> str:
+    from users.avatar_url import profile_avatar_url
+
     profile = getattr(user, "profile", None)
-    return (getattr(profile, "avatar_url", "") or "").strip()
+    return profile_avatar_url(profile) if profile else ""
 
 
 def _player_identity_row(user, seat_index: int, *, game: EstatesGame) -> dict[str, Any]:

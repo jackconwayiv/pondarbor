@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import os
 
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 
 def r2_bucket_config_from_env() -> dict | None:
@@ -32,6 +35,16 @@ def r2_bucket_config_from_env() -> dict | None:
     }
 
 
+def r2_read_expires_seconds() -> int:
+    raw = os.getenv("CLOSET_IMAGE_READ_EXPIRES_SECONDS")
+    if raw is None or not str(raw).strip():
+        return int(getattr(settings, "CLOSET_IMAGE_READ_EXPIRES_SECONDS", 3600))
+    try:
+        return min(int(raw), 604800)
+    except ValueError:
+        return int(getattr(settings, "CLOSET_IMAGE_READ_EXPIRES_SECONDS", 3600))
+
+
 def build_r2_s3_client(config: dict):
     try:
         import boto3
@@ -54,3 +67,23 @@ def build_r2_s3_client(config: dict):
         region_name="auto",
         **extra_kwargs,
     )
+
+
+def r2_presigned_get_url(image_key: str, *, client=None) -> str:
+    """Short-lived presigned GET for a private R2 object. Returns '' if unconfigured or no key."""
+    key = (image_key or "").strip().lstrip("/")
+    if not key:
+        return ""
+    config = r2_bucket_config_from_env()
+    if not config:
+        return ""
+    try:
+        s3 = client or build_r2_s3_client(config)
+        return s3.generate_presigned_url(
+            ClientMethod="get_object",
+            Params={"Bucket": config["bucket"], "Key": key},
+            ExpiresIn=r2_read_expires_seconds(),
+        )
+    except Exception:
+        logger.exception("r2_presigned_get_url failed for key=%s", key)
+        return ""

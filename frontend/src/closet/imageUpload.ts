@@ -3,7 +3,10 @@ import {
   type PutPresignedImageOptions,
   type UploadProgress,
 } from "../lib/presignedPut";
+import type { R2UploadResult } from "../lib/r2ImageApi";
 import { requestClosetImagePresign } from "./api";
+
+export type { R2UploadResult };
 
 export { putPresignedImage };
 export type { UploadProgress, PutPresignedImageOptions };
@@ -55,7 +58,7 @@ export async function uploadClosetImageBlobViaPresign(
   blob: Blob,
   contentType: "image/jpeg" | "image/png" | "image/webp" = "image/jpeg",
   options?: ClosetImageUploadOptions,
-): Promise<string> {
+): Promise<R2UploadResult> {
   const token = await getToken();
   const meta = await requestClosetImagePresign(token, contentType);
   if (blob.size > meta.max_bytes) {
@@ -66,7 +69,7 @@ export async function uploadClosetImageBlobViaPresign(
     ? { onProgress: options.onProgress }
     : undefined;
   await putPresignedImage(meta.upload_url, contentType, blob, putOptions);
-  return meta.key;
+  return { key: meta.key, viewUrl: meta.view_url };
 }
 
 /**
@@ -76,7 +79,7 @@ export async function uploadClosetImageViaPresign(
   getToken: () => Promise<string>,
   file: File,
   options?: ClosetImageUploadOptions,
-): Promise<string> {
+): Promise<R2UploadResult> {
   options?.onProgress?.({ phase: "preparing" });
   const blob = await resizeImageFileToJpegBlob(file);
   return uploadClosetImageBlobViaPresign(getToken, blob, "image/jpeg", options);
@@ -87,6 +90,6 @@ export async function uploadClosetImageBlobForField(
   getToken: () => Promise<string>,
   blob: Blob,
   options?: ClosetImageUploadOptions,
-): Promise<string> {
+): Promise<R2UploadResult> {
   return uploadClosetImageBlobViaPresign(getToken, blob, "image/jpeg", options);
 }

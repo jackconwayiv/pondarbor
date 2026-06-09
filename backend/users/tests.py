@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest.mock import patch
 from urllib.parse import quote
 
 from django.contrib.auth import get_user_model
@@ -473,8 +474,9 @@ class UsersApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()["profile"]["meal_partner_incoming_pending"])
 
-    @override_settings(CLOSET_R2_KEY_PREFIX="closet", CLOSET_R2_PUBLIC_BASE_URL="https://cdn.example.test")
-    def test_patch_profile_accepts_avatar_image_key_for_owner_prefix(self):
+    @override_settings(CLOSET_R2_KEY_PREFIX="closet")
+    @patch("users.avatar_url.r2_presigned_get_url", return_value="https://signed.example/avatar")
+    def test_patch_profile_accepts_avatar_image_key_for_owner_prefix(self, _presign_mock):
         user = User.objects.create_user(email="avatar@example.com", password="secret12345")
         self.client.force_login(user)
         key = f"closet/{user.id}/20240202/a.jpg"
@@ -484,7 +486,9 @@ class UsersApiTests(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["profile"]["avatar_url"], f"https://cdn.example.test/{key}")
+        user.profile.refresh_from_db()
+        self.assertEqual(user.profile.avatar_image_key, key)
+        self.assertEqual(response.json()["profile"]["avatar_url"], "https://signed.example/avatar")
 
     @override_settings(CLOSET_R2_KEY_PREFIX="closet", CLOSET_R2_PUBLIC_BASE_URL="https://cdn.example.test")
     def test_patch_profile_rejects_avatar_image_key_from_other_user_prefix(self):

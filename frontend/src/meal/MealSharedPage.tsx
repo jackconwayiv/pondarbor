@@ -1,4 +1,5 @@
-import { Box, Card, HStack, Image, Input, SimpleGrid, Stack, Text } from "@chakra-ui/react";
+import { Box, Card, HStack, Input, SimpleGrid, Stack, Text } from "@chakra-ui/react";
+import PresignedImage from "../lib/PresignedImage";
 import { useCallback, useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
@@ -115,10 +116,11 @@ export default function MealSharedPage() {
               overflow="hidden"
             >
               {(m.image_url ?? "").trim() ? (
-                <Image
+                <PresignedImage
                   position="absolute"
                   inset="0"
                   src={(m.image_url ?? "").trim()}
+                  onRefresh={refresh}
                   alt=""
                   w="100%"
                   h="100%"

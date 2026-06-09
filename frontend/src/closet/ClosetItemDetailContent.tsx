@@ -2,7 +2,6 @@ import {
   Box,
   Card,
   HStack,
-  Image,
   Input,
   Stack,
   Text,
@@ -13,6 +12,7 @@ import {
   validateClosetFreeText,
   validateIsoDateRequired,
 } from "../forms/validation";
+import PresignedImage from "../lib/PresignedImage";
 import PondButton from "../PondButton";
 import {
   APP_TEXT_SIZES,
@@ -220,8 +220,11 @@ export function ClosetItemDetailContent({
               justifyContent="center"
             >
               {hasHeroImage ? (
-                <Image
+                <PresignedImage
                   src={imageUrl}
+                  imageKey={isOwner ? item.image_key : undefined}
+                  getApiAccessToken={isOwner ? getApiAccessToken : undefined}
+                  onRefresh={!isOwner ? reload : undefined}
                   alt=""
                   w="100%"
                   h="100%"

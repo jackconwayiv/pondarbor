@@ -1,4 +1,5 @@
-import { Box, Card, HStack, Image, Stack, Tag, Text } from "@chakra-ui/react";
+import { Box, Card, HStack, Stack, Tag, Text } from "@chakra-ui/react";
+import PresignedImage from "../lib/PresignedImage";
 import { Link as RouterLink } from "react-router";
 import type { ClosetItem } from "./types";
 import { displayName, itemIsLoanedOut } from "./closetUtils";
@@ -51,7 +52,7 @@ export function FriendClosetListCard({ item, closetReturnTo }: FriendClosetListC
           justifyContent="center"
         >
           {imageUrl ? (
-            <Image
+            <PresignedImage
               src={imageUrl}
               alt=""
               w="100%"

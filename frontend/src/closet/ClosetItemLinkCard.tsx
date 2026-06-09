@@ -1,4 +1,5 @@
-import { Box, HStack, Image, Stack, Text } from "@chakra-ui/react";
+import { Box, HStack, Stack, Text } from "@chakra-ui/react";
+import PresignedImage from "../lib/PresignedImage";
 import type { ReactNode } from "react";
 import { Link as RouterLink } from "react-router";
 import { APP_TEXT_SIZES, MAPPED_LIST_CARD_OUTER_PROPS } from "../theme/typography";
@@ -40,8 +41,9 @@ export function ClosetItemLinkCard({
       >
         <HStack align="stretch" gap="3">
           {imageUrl ? (
-            <Image
+            <PresignedImage
               src={imageUrl}
+              imageKey={item.image_key}
               alt=""
               aria-hidden
               w="64px"

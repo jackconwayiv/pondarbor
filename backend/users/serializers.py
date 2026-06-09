@@ -1,6 +1,6 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
-from closet.serializers import closet_image_key_owned_by_user, closet_item_image_url
+from closet.serializers import closet_image_key_owned_by_user
 
 
 UserModel = get_user_model()
@@ -65,6 +65,7 @@ class SessionUserSerializer(serializers.Serializer):
 class ProfileSerializer(serializers.Serializer):
     display_name = serializers.CharField(allow_blank=True)
     avatar_url = serializers.CharField(allow_blank=True)
+    avatar_image_key = serializers.CharField(allow_blank=True, required=False)
     timezone = serializers.CharField(allow_blank=True)
     birth_date = serializers.DateField(allow_null=True)
     whatif_completed_session = serializers.BooleanField()
@@ -178,7 +179,11 @@ class ProfileUpdateSerializer(serializers.Serializer):
     def validate(self, attrs):
         key = attrs.pop("avatar_image_key", None)
         if key is not None:
-            attrs["avatar_url"] = closet_item_image_url(key) if key else ""
+            attrs["avatar_image_key"] = key
+            if key:
+                attrs["avatar_url"] = ""
+            elif "avatar_url" not in attrs:
+                attrs["avatar_url"] = ""
         return attrs
 
 

@@ -16,7 +16,8 @@ User = get_user_model()
 CALENDAR_NAME = "Friends Away"
 FEED_PAST_DAYS = 30
 FEED_FUTURE_DAYS = 366
-UID_DOMAIN = "pondarbor"
+UID_DOMAIN = "pondarbor.com"
+ICS_LINE_OCTET_LIMIT = 75
 
 
 def new_subscription_token() -> str:
@@ -107,6 +108,48 @@ def _format_ics_date(value: date) -> str:
     return value.strftime("%Y%m%d")
 
 
+def _split_utf8_prefix(text: str, max_octets: int) -> tuple[str, str]:
+    if not text:
+        return "", ""
+    encoded = text.encode("utf-8")
+    if len(encoded) <= max_octets:
+        return text, ""
+    cut = max_octets
+    while cut > 0:
+        try:
+            prefix = encoded[:cut].decode("utf-8")
+            return prefix, text[len(prefix) :]
+        except UnicodeDecodeError:
+            cut -= 1
+    return text, ""
+
+
+def _fold_ics_line(line: str) -> list[str]:
+    if len(line.encode("utf-8")) <= ICS_LINE_OCTET_LIMIT:
+        return [line]
+    folded: list[str] = []
+    remaining = line
+    first = True
+    while remaining:
+        limit = ICS_LINE_OCTET_LIMIT if first else ICS_LINE_OCTET_LIMIT - 1
+        prefix = "" if first else " "
+        chunk, remaining = _split_utf8_prefix(remaining, limit)
+        folded.append(f"{prefix}{chunk}")
+        first = False
+    return folded
+
+
+def _append_ics_property(lines: list[str], property_line: str) -> None:
+    lines.extend(_fold_ics_line(property_line))
+
+
+def _summary_property(summary: str) -> str:
+    escaped = _ics_escape(summary)
+    if summary.isascii():
+        return f"SUMMARY:{escaped}"
+    return f"SUMMARY;CHARSET=UTF-8:{escaped}"
+
+
 def _event_uid(start: date, end: date, names: tuple[str, ...]) -> str:
     payload = f"{start.isoformat()}:{end.isoformat()}:{','.join(names)}"
     digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:32]
@@ -132,18 +175,14 @@ def build_subscription_ics(*, subscriber, owner_ids: list[int]) -> tuple[str, st
         uid = _event_uid(start, end, names)
         # RFC 5545 all-day DTEND is exclusive.
         dtend = end + timedelta(days=1)
-        lines.extend(
-            [
-                "BEGIN:VEVENT",
-                f"UID:{uid}",
-                f"DTSTAMP:{now_stamp}",
-                f"DTSTART;VALUE=DATE:{_format_ics_date(start)}",
-                f"DTEND;VALUE=DATE:{_format_ics_date(dtend)}",
-                f"SUMMARY:{_ics_escape(summary)}",
-                "TRANSP:OPAQUE",
-                "END:VEVENT",
-            ]
-        )
+        lines.append("BEGIN:VEVENT")
+        _append_ics_property(lines, f"UID:{uid}")
+        _append_ics_property(lines, f"DTSTAMP:{now_stamp}")
+        _append_ics_property(lines, f"DTSTART;VALUE=DATE:{_format_ics_date(start)}")
+        _append_ics_property(lines, f"DTEND;VALUE=DATE:{_format_ics_date(dtend)}")
+        _append_ics_property(lines, _summary_property(summary))
+        lines.append("TRANSP:OPAQUE")
+        lines.append("END:VEVENT")
     lines.append("END:VCALENDAR")
     body = "\r\n".join(lines) + "\r\n"
     etag = f'"{hashlib.sha256(body.encode("utf-8")).hexdigest()}"'

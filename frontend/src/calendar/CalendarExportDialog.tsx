@@ -33,6 +33,14 @@ function httpsFeedUrl(url: string): string {
   return url.replace(/^http:\/\//i, "https://");
 }
 
+function webcalFeedUrl(subscription: CalendarFeedSubscription): string {
+  const https = httpsFeedUrl(subscription.subscribe_url);
+  if (subscription.webcal_url.startsWith("webcal://")) {
+    return subscription.webcal_url;
+  }
+  return https.replace(/^https:\/\//i, "webcal://");
+}
+
 export default function CalendarExportDialog({
   open,
   onOpenChange,
@@ -189,7 +197,8 @@ export default function CalendarExportDialog({
     !configMismatch &&
     subscription.subscribe_url.length > 0;
 
-  const iphoneSubscribeUrl = subscription
+  const iphoneSubscribeUrl = subscription ? webcalFeedUrl(subscription) : "";
+  const httpsSubscribeUrl = subscription
     ? httpsFeedUrl(subscription.subscribe_url)
     : "";
 
@@ -276,7 +285,7 @@ export default function CalendarExportDialog({
                 Or: Settings → Calendar → Add Account → Other → Add Subscribed
                 Calendar
               </li>
-              <li>Paste the https link you copy below</li>
+              <li>Paste the webcal link you copy below</li>
             </Text>
             <Input
               readOnly
@@ -295,7 +304,7 @@ export default function CalendarExportDialog({
               Copy link for iPhone
             </PondButton>
             <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" lineHeight="tall">
-              On a Mac or some apps you can{" "}
+              Or paste the{" "}
               <Box
                 as="button"
                 display="inline"
@@ -307,14 +316,13 @@ export default function CalendarExportDialog({
                 border="none"
                 p="0"
                 onClick={() =>
-                  void handleCopy(subscription.webcal_url, "Calendar app link")
+                  void handleCopy(httpsSubscribeUrl, "HTTPS link")
                 }
               >
-                use an alternate link
+                https link
               </Box>{" "}
-              that opens the calendar app directly (same feed as above). Treat
-              the link like a password: anyone with it can see who is away for
-              the people you included.
+              if webcal does not work. Treat the link like a password: anyone
+              with it can see who is away for the people you included.
             </Text>
           </Stack>
         ) : null}

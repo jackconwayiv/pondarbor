@@ -79,6 +79,8 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
 ]
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+# Canonical public origin for outbound links (e.g. calendar subscription feeds).
+PUBLIC_SITE_ORIGIN = os.getenv("PUBLIC_SITE_ORIGIN", "").strip().rstrip("/")
 # Lets embedded players (e.g. YouTube) receive a non-empty referrer; overly strict policies break embeds.
 SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 

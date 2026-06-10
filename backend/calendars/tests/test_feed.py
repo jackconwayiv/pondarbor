@@ -6,7 +6,7 @@ from unittest.mock import patch
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
-from calendars.ical_export import build_subscription_ics
+from calendars.ical_export import UID_DOMAIN, _fold_ics_line, build_subscription_ics
 from calendars.models import CalendarSource, CalendarSubscription, Event
 from calendars.tests.helpers import CalendarTestMixin
 from friends.models import FriendRequest
@@ -28,19 +28,20 @@ class CalendarFeedExportTests(CalendarTestMixin, TestCase):
         )
 
     def test_build_ics_merges_same_day_names(self):
+        busy_day = date.today()
         Event.objects.create(
             owner=self.alice,
             source=self.alice_source,
             title="Secret trip",
-            start_date=date(2026, 5, 10),
-            end_date=date(2026, 5, 10),
+            start_date=busy_day,
+            end_date=busy_day,
         )
         Event.objects.create(
             owner=self.bob,
             source=self.bob_source,
             title="Bob trip",
-            start_date=date(2026, 5, 10),
-            end_date=date(2026, 5, 10),
+            start_date=busy_day,
+            end_date=busy_day,
         )
         body, _etag = build_subscription_ics(
             subscriber=self.alice,
@@ -87,6 +88,42 @@ class CalendarFeedExportTests(CalendarTestMixin, TestCase):
         self.assertEqual(body.count("BEGIN:VEVENT"), 3)
         self.assertIn("SUMMARY:Alice", body)
         self.assertIn("SUMMARY:Alice\\, Bob", body)
+
+    def test_build_ics_uid_uses_fqdn(self):
+        today = date.today()
+        Event.objects.create(
+            owner=self.alice,
+            source=self.alice_source,
+            start_date=today,
+            end_date=today,
+        )
+        body, _etag = build_subscription_ics(
+            subscriber=self.alice,
+            owner_ids=[self.alice.id],
+        )
+        self.assertEqual(UID_DOMAIN, "pondarbor.com")
+        self.assertIn(f"@{UID_DOMAIN}", body)
+
+    def test_fold_ics_line_splits_long_content(self):
+        folded = _fold_ics_line(f"SUMMARY:{'A' * 100}")
+        self.assertGreater(len(folded), 1)
+        self.assertTrue(all(len(line.encode("utf-8")) <= 75 for line in folded))
+        self.assertTrue(folded[1].startswith(" "))
+
+    def test_build_ics_uses_utf8_charset_for_non_ascii_names(self):
+        today = date.today()
+        Profile.objects.filter(user=self.bob).update(display_name="José")
+        Event.objects.create(
+            owner=self.bob,
+            source=self.bob_source,
+            start_date=today,
+            end_date=today,
+        )
+        body, _etag = build_subscription_ics(
+            subscriber=self.alice,
+            owner_ids=[self.bob.id],
+        )
+        self.assertIn("SUMMARY;CHARSET=UTF-8:José", body)
 
 
 class CalendarFeedApiTests(CalendarTestMixin, TestCase):
@@ -181,6 +218,41 @@ class CalendarFeedApiTests(CalendarTestMixin, TestCase):
         self.assertEqual(resp["Content-Type"], "text/calendar; charset=utf-8")
         self.assertEqual(resp.content, b"")
 
+    @patch("calendars.feed_views.sync_stale_sources_for_owner_ids")
+    def test_ics_feed_head_skips_sync(self, mock_sync):
+        CalendarSubscription.objects.create(
+            owner=self.alice,
+            token="feed-token-head-skip",
+            owner_ids=[self.alice.id],
+        )
+        resp = self.anon_client.head(
+            "/api/v1/calendars/feed/feed-token-head-skip.ics"
+        )
+        self.assertEqual(resp.status_code, 200)
+        mock_sync.assert_not_called()
+
+    @override_settings(DEBUG=False, PUBLIC_SITE_ORIGIN="https://www.pondarbor.com")
+    def test_subscribe_url_uses_public_site_origin(self):
+        Event.objects.create(
+            owner=self.bob,
+            source=self.bob_source,
+            start_date=date.today(),
+            end_date=date.today(),
+        )
+        resp = self.alice_client.post(
+            "/api/v1/calendars/feed/",
+            {"owner_ids": [self.alice.id, self.bob.id]},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertTrue(
+            body["subscribe_url"].startswith(
+                "https://www.pondarbor.com/api/v1/calendars/feed/"
+            )
+        )
+        self.assertTrue(body["webcal_url"].startswith("webcal://www.pondarbor.com/"))
+
     @override_settings(DEBUG=False)
     def test_subscribe_url_forced_https_in_production(self):
         Event.objects.create(
@@ -253,11 +325,12 @@ class CalendarFeedApiTests(CalendarTestMixin, TestCase):
         FriendRequest.objects.update_or_create(
             requester=self.bob, requested=self.alice, defaults={"is_accepted": True}
         )
+        busy_day = date.today()
         Event.objects.create(
             owner=self.bob,
             source=self.bob_source,
-            start_date=date(2026, 5, 10),
-            end_date=date(2026, 5, 10),
+            start_date=busy_day,
+            end_date=busy_day,
         )
         body, _ = build_subscription_ics(
             subscriber=self.alice,

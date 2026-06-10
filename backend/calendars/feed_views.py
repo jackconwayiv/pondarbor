@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 import secrets
+from urllib.parse import urlparse, urlunparse
 
 from django.conf import settings
 from django.http import HttpResponse
@@ -15,12 +17,28 @@ from calendars.models import CalendarSubscription
 from calendars.views import _visible_calendar_users_qs, _visible_calendar_users_qs_for_viewer
 from users.permissions import IsApprovedUser
 
+logger = logging.getLogger(__name__)
+
 
 def _feed_urls_for_request(request, token: str) -> dict[str, str]:
     path = f"/api/v1/calendars/feed/{token}.ics"
     subscribe_url = request.build_absolute_uri(path)
     if not settings.DEBUG and subscribe_url.startswith("http://"):
         subscribe_url = "https://" + subscribe_url[len("http://") :]
+    public_origin = (getattr(settings, "PUBLIC_SITE_ORIGIN", "") or "").strip().rstrip("/")
+    if public_origin:
+        parsed_public = urlparse(public_origin)
+        if parsed_public.scheme and parsed_public.netloc:
+            subscribe_url = urlunparse(
+                (
+                    parsed_public.scheme,
+                    parsed_public.netloc,
+                    path,
+                    "",
+                    "",
+                    "",
+                )
+            )
     webcal_url = subscribe_url.replace("https://", "webcal://", 1).replace(
         "http://", "webcal://", 1
     )
@@ -169,7 +187,15 @@ def calendar_feed_ics(request, token: str):
         token=token,
     )
     owner_ids = resolve_subscription_owner_ids(subscription)
-    sync_stale_sources_for_owner_ids(owner_ids)
+    skip_sync = request.method == "HEAD"
+    if not skip_sync:
+        sync_stale_sources_for_owner_ids(owner_ids)
+    logger.info(
+        "calendar_feed_ics method=%s skip_sync=%s ua=%s",
+        request.method,
+        skip_sync,
+        (request.META.get("HTTP_USER_AGENT") or "")[:120],
+    )
     body, etag = build_subscription_ics(
         subscriber=subscription.owner,
         owner_ids=owner_ids,

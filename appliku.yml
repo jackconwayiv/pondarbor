@@ -58,6 +58,8 @@ build_settings:
       source: manual
     - name: SLACK_CREATE_ACCOUNT_URL
       value: "https://www.pondarbor.com/"
+    - name: PUBLIC_SITE_ORIGIN
+      value: "https://www.pondarbor.com"
 
 services:
   web:

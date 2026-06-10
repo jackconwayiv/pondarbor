@@ -7,8 +7,8 @@ from urllib.parse import urlparse, urlunparse
 from django.conf import settings
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
+from django.views.decorators.http import require_http_methods
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from calendars.feed_sync import sync_stale_sources_for_owner_ids
@@ -179,9 +179,13 @@ def calendar_feed_reset(request):
     return Response(_subscription_payload(request, subscription))
 
 
-@api_view(["GET", "HEAD"])
-@permission_classes([AllowAny])
+@require_http_methods(["GET", "HEAD"])
 def calendar_feed_ics(request, token: str):
+    """Plain Django view — not DRF.
+
+    iOS Calendar sends ``Accept: text/calendar``; DRF content negotiation returns
+    406 for that header because only JSON renderers are configured.
+    """
     subscription = get_object_or_404(
         CalendarSubscription.objects.select_related("owner", "owner__profile"),
         token=token,
@@ -191,10 +195,11 @@ def calendar_feed_ics(request, token: str):
     if not skip_sync:
         sync_stale_sources_for_owner_ids(owner_ids)
     logger.info(
-        "calendar_feed_ics method=%s skip_sync=%s ua=%s",
+        "calendar_feed_ics method=%s skip_sync=%s ua=%s accept=%s",
         request.method,
         skip_sync,
         (request.META.get("HTTP_USER_AGENT") or "")[:120],
+        (request.META.get("HTTP_ACCEPT") or "")[:80],
     )
     body, etag = build_subscription_ics(
         subscriber=subscription.owner,
@@ -205,7 +210,10 @@ def calendar_feed_ics(request, token: str):
         response = HttpResponse(status=304)
         response["ETag"] = etag
         return response
-    response = HttpResponse(body, content_type="text/calendar; charset=utf-8")
+    if request.method == "HEAD":
+        response = HttpResponse(status=200, content_type="text/calendar; charset=utf-8")
+    else:
+        response = HttpResponse(body, content_type="text/calendar; charset=utf-8")
     response["ETag"] = etag
     response["Cache-Control"] = "private"
     return response

@@ -201,6 +201,26 @@ class CalendarFeedApiTests(CalendarTestMixin, TestCase):
         )
         self.assertEqual(resp304.status_code, 304)
 
+    def test_ics_feed_accepts_text_calendar_accept_header(self):
+        Event.objects.create(
+            owner=self.alice,
+            source=self.alice_source,
+            start_date=date.today(),
+            end_date=date.today(),
+        )
+        sub = CalendarSubscription.objects.create(
+            owner=self.alice,
+            token="feed-token-accept",
+            owner_ids=[self.alice.id],
+        )
+        resp = self.anon_client.get(
+            f"/api/v1/calendars/feed/{sub.token}.ics",
+            HTTP_ACCEPT="text/calendar",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp["Content-Type"], "text/calendar; charset=utf-8")
+        self.assertIn("BEGIN:VCALENDAR", resp.content.decode("utf-8"))
+
     def test_ics_feed_supports_head(self):
         Event.objects.create(
             owner=self.alice,

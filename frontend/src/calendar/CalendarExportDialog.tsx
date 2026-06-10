@@ -28,12 +28,12 @@ function sameIdSet(a: number[], b: number[]): boolean {
   return sortedA.every((id, idx) => id === sortedB[idx]);
 }
 
-/** iPhone Calendar requires HTTPS subscription URLs. */
+/** Subscription and Safari preview both need https — webcal opens the Calendar app, not the browser. */
 function httpsFeedUrl(url: string): string {
   return url.replace(/^http:\/\//i, "https://");
 }
 
-function webcalFeedUrl(subscription: CalendarFeedSubscription): string {
+function webcalFromSubscription(subscription: CalendarFeedSubscription): string {
   const https = httpsFeedUrl(subscription.subscribe_url);
   if (subscription.webcal_url.startsWith("webcal://")) {
     return subscription.webcal_url;
@@ -197,9 +197,11 @@ export default function CalendarExportDialog({
     !configMismatch &&
     subscription.subscribe_url.length > 0;
 
-  const iphoneSubscribeUrl = subscription ? webcalFeedUrl(subscription) : "";
   const httpsSubscribeUrl = subscription
     ? httpsFeedUrl(subscription.subscribe_url)
+    : "";
+  const webcalSubscribeUrl = subscription
+    ? webcalFromSubscription(subscription)
     : "";
 
   return (
@@ -285,26 +287,28 @@ export default function CalendarExportDialog({
                 Or: Settings → Calendar → Add Account → Other → Add Subscribed
                 Calendar
               </li>
-              <li>Paste the webcal link you copy below</li>
+              <li>Paste the https link you copy below (not webcal)</li>
             </Text>
             <Input
               readOnly
               size="sm"
-              value={iphoneSubscribeUrl}
+              value={httpsSubscribeUrl}
               fontSize={APP_TEXT_SIZES.helper}
-              aria-label="Subscription link for iPhone"
+              aria-label="HTTPS subscription link"
             />
             <PondButton
               size="sm"
               colorPalette="lilypad"
               onClick={() =>
-                void handleCopy(iphoneSubscribeUrl, "Subscription link")
+                void handleCopy(httpsSubscribeUrl, "HTTPS subscription link")
               }
             >
-              Copy link for iPhone
+              Copy https link for iPhone
             </PondButton>
             <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" lineHeight="tall">
-              Or paste the{" "}
+              Use the https link to preview in Safari or subscribe on iPhone.
+              Webcal links open the Calendar app instead of the browser, so they
+              are not useful for checking the feed in Safari. On a Mac you can{" "}
               <Box
                 as="button"
                 display="inline"
@@ -316,13 +320,14 @@ export default function CalendarExportDialog({
                 border="none"
                 p="0"
                 onClick={() =>
-                  void handleCopy(httpsSubscribeUrl, "HTTPS link")
+                  void handleCopy(webcalSubscribeUrl, "Webcal link")
                 }
               >
-                https link
+                copy a webcal link
               </Box>{" "}
-              if webcal does not work. Treat the link like a password: anyone
-              with it can see who is away for the people you included.
+              to add the subscription in Calendar directly. Treat either link
+              like a password: anyone with it can see who is away for the people
+              you included.
             </Text>
           </Stack>
         ) : null}

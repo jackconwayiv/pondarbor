@@ -28,6 +28,11 @@ function sameIdSet(a: number[], b: number[]): boolean {
   return sortedA.every((id, idx) => id === sortedB[idx]);
 }
 
+/** iPhone Calendar requires HTTPS subscription URLs. */
+function httpsFeedUrl(url: string): string {
+  return url.replace(/^http:\/\//i, "https://");
+}
+
 export default function CalendarExportDialog({
   open,
   onOpenChange,
@@ -137,7 +142,7 @@ export default function CalendarExportDialog({
     try {
       const sub =
         subscription && !configMismatch ? subscription : await ensureSubscription();
-      const blob = await downloadCalendarFeedIcs(sub.subscribe_url);
+      const blob = await downloadCalendarFeedIcs(httpsFeedUrl(sub.subscribe_url));
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -183,6 +188,10 @@ export default function CalendarExportDialog({
     subscription !== null &&
     !configMismatch &&
     subscription.subscribe_url.length > 0;
+
+  const iphoneSubscribeUrl = subscription
+    ? httpsFeedUrl(subscription.subscribe_url)
+    : "";
 
   return (
     <AppModal
@@ -262,14 +271,17 @@ export default function CalendarExportDialog({
               Add to iPhone Calendar
             </Text>
             <Text as="ol" fontSize={APP_TEXT_SIZES.helper} color="fg.muted" lineHeight="tall" pl="4">
-              <li>Settings → Calendar → Add Account → Other</li>
-              <li>Add Subscribed Calendar</li>
-              <li>Paste the link you copy below</li>
+              <li>Calendar → Calendars → Add Calendar → Add Subscription Calendar</li>
+              <li>
+                Or: Settings → Calendar → Add Account → Other → Add Subscribed
+                Calendar
+              </li>
+              <li>Paste the https link you copy below</li>
             </Text>
             <Input
               readOnly
               size="sm"
-              value={subscription.subscribe_url}
+              value={iphoneSubscribeUrl}
               fontSize={APP_TEXT_SIZES.helper}
               aria-label="Subscription link for iPhone"
             />
@@ -277,7 +289,7 @@ export default function CalendarExportDialog({
               size="sm"
               colorPalette="lilypad"
               onClick={() =>
-                void handleCopy(subscription.subscribe_url, "Subscription link")
+                void handleCopy(iphoneSubscribeUrl, "Subscription link")
               }
             >
               Copy link for iPhone

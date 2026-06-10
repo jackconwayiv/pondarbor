@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import secrets
 
+from django.conf import settings
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework.decorators import api_view, permission_classes
@@ -17,11 +18,13 @@ from users.permissions import IsApprovedUser
 
 def _feed_urls_for_request(request, token: str) -> dict[str, str]:
     path = f"/api/v1/calendars/feed/{token}.ics"
-    https_url = request.build_absolute_uri(path)
-    webcal_url = https_url.replace("https://", "webcal://", 1).replace(
+    subscribe_url = request.build_absolute_uri(path)
+    if not settings.DEBUG and subscribe_url.startswith("http://"):
+        subscribe_url = "https://" + subscribe_url[len("http://") :]
+    webcal_url = subscribe_url.replace("https://", "webcal://", 1).replace(
         "http://", "webcal://", 1
     )
-    return {"subscribe_url": https_url, "webcal_url": webcal_url}
+    return {"subscribe_url": subscribe_url, "webcal_url": webcal_url}
 
 
 def resolve_subscription_owner_ids(subscription: CalendarSubscription) -> list[int]:
@@ -158,7 +161,7 @@ def calendar_feed_reset(request):
     return Response(_subscription_payload(request, subscription))
 
 
-@api_view(["GET"])
+@api_view(["GET", "HEAD"])
 @permission_classes([AllowAny])
 def calendar_feed_ics(request, token: str):
     subscription = get_object_or_404(

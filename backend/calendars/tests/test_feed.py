@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from unittest.mock import patch
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from calendars.ical_export import build_subscription_ics
@@ -163,6 +163,60 @@ class CalendarFeedApiTests(CalendarTestMixin, TestCase):
             HTTP_IF_NONE_MATCH=etag,
         )
         self.assertEqual(resp304.status_code, 304)
+
+    def test_ics_feed_supports_head(self):
+        Event.objects.create(
+            owner=self.alice,
+            source=self.alice_source,
+            start_date=date(2026, 5, 10),
+            end_date=date(2026, 5, 10),
+        )
+        sub = CalendarSubscription.objects.create(
+            owner=self.alice,
+            token="feed-token-head",
+            owner_ids=[self.alice.id],
+        )
+        resp = self.anon_client.head(f"/api/v1/calendars/feed/{sub.token}.ics")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp["Content-Type"], "text/calendar; charset=utf-8")
+        self.assertEqual(resp.content, b"")
+
+    @override_settings(DEBUG=False)
+    def test_subscribe_url_forced_https_in_production(self):
+        Event.objects.create(
+            owner=self.bob,
+            source=self.bob_source,
+            start_date=date(2026, 5, 10),
+            end_date=date(2026, 5, 10),
+        )
+        with patch("calendars.views.timezone.localdate", return_value=date(2026, 5, 1)):
+            resp = self.alice_client.post(
+                "/api/v1/calendars/feed/",
+                {"owner_ids": [self.alice.id, self.bob.id]},
+                format="json",
+            )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertTrue(body["subscribe_url"].startswith("https://"))
+        self.assertTrue(body["webcal_url"].startswith("webcal://"))
+
+    @override_settings(DEBUG=True)
+    def test_subscribe_url_allows_http_in_debug(self):
+        Event.objects.create(
+            owner=self.bob,
+            source=self.bob_source,
+            start_date=date(2026, 5, 10),
+            end_date=date(2026, 5, 10),
+        )
+        with patch("calendars.views.timezone.localdate", return_value=date(2026, 5, 1)):
+            resp = self.alice_client.post(
+                "/api/v1/calendars/feed/",
+                {"owner_ids": [self.alice.id, self.bob.id]},
+                format="json",
+            )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertTrue(body["subscribe_url"].startswith("http://"))
 
     @patch("calendars.feed_views.sync_stale_sources_for_owner_ids")
     def test_ics_feed_syncs_on_poll(self, mock_sync):

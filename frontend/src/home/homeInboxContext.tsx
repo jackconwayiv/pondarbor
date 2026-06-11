@@ -244,6 +244,7 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
     isAuthenticated,
     sessionUser,
     getApiAccessToken,
+    updateProfileLocally,
     bootstrapInboxSnapshot,
     bootstrapInboxFetchedAt,
   } = useAppSession();
@@ -291,7 +292,11 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (userId == null) return;
     const slugs = sessionUser?.profile?.achievement_inbox_read_slugs ?? [];
-    setAchievementReadSlugs(new Set(slugs));
+    setAchievementReadSlugs((prev) => {
+      const next = new Set(slugs);
+      for (const s of prev) next.add(s);
+      return next;
+    });
   }, [userId, sessionUser?.profile?.achievement_inbox_read_slugs]);
 
   const refreshInbox = useCallback(async (): Promise<string[] | null> => {
@@ -604,9 +609,11 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
 
   const markAchievementNoticesRead = useCallback(
     async (slugs: string[]) => {
-      if (!isAuthenticated || !sessionUser) return;
+      if (!isAuthenticated || !sessionUser || userId == null) return;
       const unique = [...new Set(slugs.map((s) => s.trim()).filter(Boolean))];
       if (unique.length === 0) return;
+
+      const achievementIds = unique.map((s) => achievementInboxId(s));
 
       // Optimistic local update so the bell count clears immediately.
       setAchievementReadSlugs((prev) => {
@@ -614,11 +621,41 @@ export function HomeInboxProvider({ children }: { children: ReactNode }) {
         for (const s of unique) next.add(s);
         return next;
       });
+      setReadIds((prev) => {
+        const next = new Set(prev);
+        for (const id of achievementIds) next.add(id);
+        persistReadSet(userId, next);
+        return next;
+      });
 
-      const token = await getApiAccessToken();
-      await markAchievementInboxRead(token, unique);
+      try {
+        const token = await getApiAccessToken();
+        const data = await markAchievementInboxRead(token, unique);
+        updateProfileLocally({
+          achievement_inbox_read_slugs:
+            data.profile.achievement_inbox_read_slugs ?? [],
+        });
+      } catch {
+        setAchievementReadSlugs((prev) => {
+          const next = new Set(prev);
+          for (const s of unique) next.delete(s);
+          return next;
+        });
+        setReadIds((prev) => {
+          const next = new Set(prev);
+          for (const id of achievementIds) next.delete(id);
+          persistReadSet(userId, next);
+          return next;
+        });
+      }
     },
-    [isAuthenticated, sessionUser, getApiAccessToken],
+    [
+      isAuthenticated,
+      sessionUser,
+      userId,
+      getApiAccessToken,
+      updateProfileLocally,
+    ],
   );
 
   const value = useMemo(

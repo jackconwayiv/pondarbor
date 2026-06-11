@@ -1,3 +1,5 @@
+import type { SessionUser } from "../auth/AppSessionContext";
+
 export type UpcomingBirthday = {
   display_name: string;
   birth_month: number;
@@ -181,7 +183,7 @@ export async function patchStaffUserAccountStatus(
 export async function markAchievementInboxRead(
   accessToken: string,
   slugs: string[],
-): Promise<unknown> {
+): Promise<SessionUser> {
   const response = await fetch(
     `${apiBase()}/api/v1/users/me/achievement-inbox/mark-read/`,
     {
@@ -198,7 +200,7 @@ export async function markAchievementInboxRead(
     const text = await response.text();
     throw new Error(`Achievement inbox mark-read failed (${response.status}): ${text}`);
   }
-  return (await response.json()) as unknown;
+  return (await response.json()) as SessionUser;
 }
 
 /** Inbox summary from POST /api/v1/users/bootstrap/ (snake_case from API). */

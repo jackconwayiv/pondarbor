@@ -13,6 +13,7 @@ import {
 import { useCallback, useState } from "react";
 
 import BrandColorsSection from "./about/BrandColorsSection";
+import TechStackSection from "./about/TechStackSection";
 import { submitContactMessage } from "./about/contactApi";
 import { useAppSession } from "./auth/AppSessionContext";
 import { auth0LoginAuthorizationParams } from "./auth/auth0LoginParams";
@@ -277,6 +278,10 @@ export default function AboutPage() {
                   </Stack>
                 </Collapsible.Content>
               </Collapsible.Root>
+            </Box>
+
+            <Box {...PANEL_ENTRY_CARD_PROPS}>
+              <TechStackSection />
             </Box>
           </Stack>
         </Box>

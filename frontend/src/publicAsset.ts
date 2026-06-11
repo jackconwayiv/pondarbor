@@ -1,3 +1,12 @@
+/**
+ * URL for a file in `frontend/public/`.
+ * Dev: `/file`. Production build (`base: /static/`): `/static/file`.
+ */
+export function publicAssetUrl(path: string): string {
+  const normalized = path.replace(/^\//, "");
+  return `${import.meta.env.BASE_URL}${normalized}`;
+}
+
 /** Vite dev: `public/` is served at `/`. Django+collectstatic: URL comes from the HTML shell. */
 export function pondarborLogoSrc(): string {
   if (import.meta.env.DEV) {

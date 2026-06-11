@@ -3,6 +3,7 @@ from django.urls import path
 from meal import views, views_partner
 
 urlpatterns = [
+    path("bootstrap/", views.meal_bootstrap),
     path("meals/", views.meal_list_create),
     path("meals/shared/", views.meal_shared_list),
     path("meals/import/", views.meal_import_from_url),
@@ -24,12 +25,11 @@ urlpatterns = [
     path("grocery/saved/", views.saved_grocery_list),
     path("grocery/saved/<int:pk>/", views.saved_grocery_detail),
     path("ingredients/", views.ingredient_vocab),
+    path("ingredients/<int:pk>/", views.ingredient_detail),
     path("pantry/inventory/", views.pantry_inventory_list),
     path("pantry/inventory/upsert/", views.pantry_inventory_put),
     path("pantry/inventory/parse/", views.pantry_inventory_parse),
     path("pantry/inventory/import/", views.pantry_inventory_import),
-    path("pantry/suggestions/", views.pantry_suggestions),
-    path("pantry/recipes/", views.pantry_recipes),
     path("partner/disconnect/request/", views_partner.disconnect_request),
     path("partner/disconnect/cancel/", views_partner.disconnect_cancel),
     path("partner/disconnect/confirm/", views_partner.disconnect_confirm),

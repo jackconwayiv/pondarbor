@@ -102,12 +102,8 @@ def disconnect_confirm(request):
     return Response({"ok": True, "status": "disconnected"})
 
 
-@api_view(["GET"])
-@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
-@permission_classes([IsApprovedUser])
-def disconnect_pending(request):
-    """Return pending disconnect involving current user (if any)."""
-    user = request.user
+def disconnect_pending_payload(*, user):
+    """Pending disconnect involving user, or None."""
     req = (
         MealPartnerDisconnectRequest.objects.filter(
             Q(initiator=user) | Q(recipient=user),
@@ -117,16 +113,22 @@ def disconnect_pending(request):
         .first()
     )
     if not req:
-        return Response(None)
-    return Response(
-        {
-            "id": req.id,
-            "status": req.status,
-            "initiator_id": req.initiator_id,
-            "recipient_id": req.recipient_id,
-            "i_am_initiator": req.initiator_id == user.id,
-        }
-    )
+        return None
+    return {
+        "id": req.id,
+        "status": req.status,
+        "initiator_id": req.initiator_id,
+        "recipient_id": req.recipient_id,
+        "i_am_initiator": req.initiator_id == user.id,
+    }
+
+
+@api_view(["GET"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsApprovedUser])
+def disconnect_pending(request):
+    """Return pending disconnect involving current user (if any)."""
+    return Response(disconnect_pending_payload(user=request.user))
 
 
 @api_view(["POST"])

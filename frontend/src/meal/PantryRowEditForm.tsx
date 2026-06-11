@@ -1,8 +1,10 @@
-import { Input, Stack, Text } from "@chakra-ui/react";
+import { HStack, Input, Stack, Text } from "@chakra-ui/react";
 import { useState } from "react";
 import PondButton from "../PondButton";
 import PondNativeSelect from "../components/PondNativeSelect";
 import { APP_TEXT_SIZES, PANEL_FIELD_PROPS } from "../theme/typography";
+import { IngredientFoodGroupSelect } from "./IngredientFoodGroupSelect";
+import { foodGroupDefaultEmoji, PANTRY_INGREDIENT_PLACEHOLDER_EMOJI } from "./pantryIngredientEmoji";
 import { normalizePantryTags } from "./pantryTagVocab";
 import { PantryTagsEditor } from "./PantryTagsEditor";
 import type { PantryInventoryRow, PantryTags } from "./types";
@@ -14,6 +16,8 @@ export type PantryRowSaveBody = {
   location?: string;
   inventory_id?: number;
   pantry_tags?: PantryTags;
+  food_group?: string;
+  display_emoji?: string;
 };
 
 type PantryRowEditFormProps = {
@@ -27,13 +31,23 @@ export function PantryRowEditForm({ row, busy, onSave }: PantryRowEditFormProps)
   const [mode, setMode] = useState<"count" | "simple">(row.simple_have == null ? "count" : "simple");
   const [location, setLocation] = useState(row.location ?? "");
   const [tags, setTags] = useState<PantryTags>(normalizePantryTags(row.pantry_tags));
+  const [foodGroup, setFoodGroup] = useState(row.ingredient.food_group ?? "");
+  const [displayEmoji, setDisplayEmoji] = useState(row.ingredient.display_emoji ?? "");
   const [simpleHave, setSimpleHave] = useState<boolean | null>(row.simple_have);
+
+  const categoryDefaultEmoji = foodGroupDefaultEmoji(foodGroup);
+  const previewEmoji =
+    displayEmoji.trim() ||
+    categoryDefaultEmoji ||
+    PANTRY_INGREDIENT_PLACEHOLDER_EMOJI;
 
   const saveBody = (): PantryRowSaveBody => ({
     ingredient_id: row.ingredient.id,
     inventory_id: row.id,
     location: location.trim(),
     pantry_tags: tags,
+    food_group: foodGroup,
+    display_emoji: displayEmoji.trim(),
   });
 
   return (
@@ -86,6 +100,43 @@ export function PantryRowEditForm({ row, busy, onSave }: PantryRowEditFormProps)
             <option value="0">Don’t have</option>
           </PondNativeSelect>
         )}
+      </Stack>
+
+      <IngredientFoodGroupSelect value={foodGroup} onChange={setFoodGroup} disabled={busy} />
+
+      <Stack gap="2">
+        <Text fontSize={APP_TEXT_SIZES.label}>Emoji</Text>
+        <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted">
+          Optional override for this ingredient&apos;s pantry card.
+          {categoryDefaultEmoji
+            ? ` Category default: ${categoryDefaultEmoji}.`
+            : " Without a category, the basket is used."}
+        </Text>
+        <HStack gap="3" align="center">
+          <Text fontSize="3xl" lineHeight="1" aria-hidden>
+            {previewEmoji}
+          </Text>
+          <Input
+            placeholder={categoryDefaultEmoji ?? PANTRY_INGREDIENT_PLACEHOLDER_EMOJI}
+            value={displayEmoji}
+            onChange={(e) => setDisplayEmoji(e.target.value)}
+            maxLength={32}
+            w="6rem"
+            textAlign="center"
+            fontSize="2xl"
+            {...PANEL_FIELD_PROPS}
+          />
+          {displayEmoji.trim() ? (
+            <PondButton
+              size="sm"
+              variant="ghost"
+              disabled={busy}
+              onClick={() => setDisplayEmoji("")}
+            >
+              Use default
+            </PondButton>
+          ) : null}
+        </HStack>
       </Stack>
 
       <PantryTagsEditor value={tags} onChange={setTags} disabled={busy} />

@@ -396,6 +396,22 @@ class UsersApiTests(TestCase):
         user.profile.refresh_from_db()
         self.assertEqual(user.profile.meal_slot_labels, payload)
 
+    def test_patch_meal_slot_labels_custom_name(self):
+        user = User.objects.create_user(email="slotcustom@example.com", password="secret12345")
+        self.client.force_login(user)
+        payload = {
+            "3": ["Early bite", "Lunch", "Dinner"],
+        }
+        resp = self.client.patch(
+            "/api/v1/users/me/profile/",
+            {"meal_slot_labels": payload},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()["profile"]["meal_slot_labels"], payload)
+        user.profile.refresh_from_db()
+        self.assertEqual(user.profile.meal_slot_labels, payload)
+
     def test_patch_profile_forbidden_when_anonymous(self):
         response = self.client.patch(
             "/api/v1/users/me/profile/",

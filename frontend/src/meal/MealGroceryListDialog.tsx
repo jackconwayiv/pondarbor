@@ -39,6 +39,8 @@ export type MealGroceryListDialogProps = {
   instanceId: number;
   weekLabel: string;
   getApiAccessToken: () => Promise<string>;
+  /** Omit ingredients already in pantry (and staples) when generating. */
+  pantryAware?: boolean;
 };
 
 export function MealGroceryListDialog({
@@ -47,6 +49,7 @@ export function MealGroceryListDialog({
   instanceId,
   weekLabel,
   getApiAccessToken,
+  pantryAware = false,
 }: MealGroceryListDialogProps) {
   const [grocery, setGrocery] = useState<GroceryList | null>(null);
   const [groceryErr, setGroceryErr] = useState<string | null>(null);
@@ -63,9 +66,12 @@ export function MealGroceryListDialog({
     setLoadBusy(true);
     try {
       const t = await getApiAccessToken();
-      let g = await fetchGroceryForInstance(t, instanceId);
-      if (!g) {
-        g = await generateGrocery(t, instanceId);
+      let g: GroceryList;
+      if (pantryAware) {
+        g = await generateGrocery(t, instanceId, { pantry: true });
+      } else {
+        const existing = await fetchGroceryForInstance(t, instanceId);
+        g = existing ?? (await generateGrocery(t, instanceId));
       }
       setGrocery(g);
       setHideChecked(g.hide_checked ?? false);
@@ -74,7 +80,7 @@ export function MealGroceryListDialog({
     } finally {
       setLoadBusy(false);
     }
-  }, [getApiAccessToken, instanceId]);
+  }, [getApiAccessToken, instanceId, pantryAware]);
 
   const refreshSaved = useCallback(async () => {
     const t = await getApiAccessToken();
@@ -145,8 +151,9 @@ export function MealGroceryListDialog({
     >
       <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP}>
         <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted">
-          Matching ingredient lines merge into one row. Regenerate after you change the week or recipes; manual lines
-          you add are kept.
+          {pantryAware
+            ? "Ingredients you already have in pantry (and assumed staples) are omitted. Lines from this week's scheduled meals are merged by ingredient."
+            : "Matching ingredient lines merge into one row. Regenerate after you change the week or recipes; manual lines you add are kept."}
         </Text>
 
         <Stack gap="2">

@@ -15,10 +15,12 @@ from meal.publish import meal_eligible_for_publish
 from meal.tagging import replace_meal_tags, resolve_category_option
 
 
-def attach_upcoming_slot_counts(meals: list[Meal], scope_ids: set[int]) -> None:
+def attach_plan_slot_counts(meals: list[Meal], scope_ids: set[int]) -> None:
+    """Set `_upcoming_slot_count` (today and future) and `_past_slot_count` on each meal."""
     today = timezone.localdate()
     ids = [m.id for m in meals]
-    counts = {i: 0 for i in ids}
+    upcoming = {i: 0 for i in ids}
+    past = {i: 0 for i in ids}
     if not ids:
         return
     for row in MealPlanInstanceSlotMeal.objects.filter(
@@ -27,9 +29,16 @@ def attach_upcoming_slot_counts(meals: list[Meal], scope_ids: set[int]) -> None:
     ).select_related("slot__instance"):
         slot_date = row.slot.instance.week_start + timedelta(days=int(row.slot.day_index))
         if slot_date >= today:
-            counts[row.meal_id] = counts.get(row.meal_id, 0) + 1
+            upcoming[row.meal_id] = upcoming.get(row.meal_id, 0) + 1
+        else:
+            past[row.meal_id] = past.get(row.meal_id, 0) + 1
     for m in meals:
-        m._upcoming_slot_count = counts.get(m.id, 0)
+        m._upcoming_slot_count = upcoming.get(m.id, 0)
+        m._past_slot_count = past.get(m.id, 0)
+
+
+def attach_upcoming_slot_counts(meals: list[Meal], scope_ids: set[int]) -> None:
+    attach_plan_slot_counts(meals, scope_ids)
 
 
 def filter_meals_queryset(request, qs):
@@ -76,9 +85,9 @@ def filter_meals_queryset(request, qs):
             Q(ingredients__raw_line__icontains=ing_q) | Q(ingredients__name__icontains=ing_q),
         ).distinct()
 
-    sort = (request.GET.get("sort") or "updated_at").strip()
-    if sort not in ("title", "updated_at", "upcoming_slot_count"):
-        sort = "updated_at"
+    sort = (request.GET.get("sort") or "pantry_coverage_pct").strip()
+    if sort not in ("title", "updated_at", "upcoming_slot_count", "pantry_coverage_pct"):
+        sort = "pantry_coverage_pct"
     if sort == "title":
         qs = qs.order_by("title", "id")
     elif sort == "upcoming_slot_count":

@@ -1,5 +1,5 @@
 import { Card, Heading, HStack, Input, Stack, Text } from "@chakra-ui/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import PondButton from "../PondButton";
 import { fetchFriendsList } from "../friends/api";
 import {
@@ -20,8 +20,11 @@ type MealPartnerPickerProps = {
   patchMyProfile: (patch: { meal_crud_partner_id: number | null }) => Promise<void>;
   resyncSessionSilently: () => Promise<void>;
   onNotice?: (notice: MealPartnerPickerNotice | null) => void;
+  onPartnerScopeChanged?: () => void | Promise<void>;
   /** Intro copy for wizard vs settings */
   helperText?: string;
+  /** Settings embeds picker inside a parent card; wizard uses standalone cards. */
+  variant?: "default" | "settings";
 };
 
 export function MealPartnerPicker({
@@ -32,8 +35,11 @@ export function MealPartnerPicker({
   patchMyProfile,
   resyncSessionSilently,
   onNotice,
+  onPartnerScopeChanged,
   helperText,
+  variant = "default",
 }: MealPartnerPickerProps) {
+  const embedded = variant === "settings";
   const [friends, setFriends] = useState<
     Array<{ id: number; label: string; meal_crud_partner_id: number | null }>
   >([]);
@@ -113,6 +119,7 @@ export function MealPartnerPicker({
       await patchMyProfile({ meal_crud_partner_id: selectedPartnerId });
       await loadFriends();
       await resyncSessionSilently();
+      await onPartnerScopeChanged?.();
       onNotice?.({
         tone: "success",
         text:
@@ -126,13 +133,21 @@ export function MealPartnerPicker({
         text: err instanceof Error ? err.message : "Could not save meal partner selection.",
       });
     }
-  }, [loadFriends, onNotice, partnerQuery, patchMyProfile, resyncSessionSilently, selectedPartnerId]);
+  }, [
+    loadFriends,
+    onNotice,
+    onPartnerScopeChanged,
+    partnerQuery,
+    patchMyProfile,
+    resyncSessionSilently,
+    selectedPartnerId,
+  ]);
 
   const defaultHelper =
     helperText ??
     "Search approved friends by nickname, then submit. Meal sharing activates when both of you select each other. With a mutual partner, you share one combined pantry.";
 
-  if (mutual && activePartner) {
+  if (mutual && activePartner && !embedded) {
     return (
       <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
         Sharing meals and pantry with{" "}
@@ -144,18 +159,51 @@ export function MealPartnerPicker({
     );
   }
 
+  const selectionShell = (children: ReactNode, opts?: { highlight?: boolean }) => {
+    if (embedded) {
+      return (
+        <Stack
+          gap="2"
+          p={opts?.highlight ? "3" : "0"}
+          borderWidth={opts?.highlight ? "1px" : undefined}
+          borderColor={opts?.highlight ? "border.muted" : undefined}
+          borderRadius={opts?.highlight ? "md" : undefined}
+          bg={opts?.highlight ? "bg.subtle" : undefined}
+        >
+          {children}
+        </Stack>
+      );
+    }
+    return (
+      <Card.Root
+        {...PANEL_ENTRY_CARD_PROPS}
+        p="0"
+        {...(opts?.highlight ? { bg: "teal.solid", color: "black" } : {})}
+      >
+        <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>{children}</Card.Body>
+      </Card.Root>
+    );
+  };
+
   return (
     <Stack gap="3">
+      {mutual && activePartner && embedded ? (
+        <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+          Sharing meals and pantry with{" "}
+          <Text as="span" fontWeight="semibold">
+            {activePartner.label}
+          </Text>
+          .
+        </Text>
+      ) : null}
       {showPartnerSelectionCard ? (
-        <Card.Root
-          {...PANEL_ENTRY_CARD_PROPS}
-          p="0"
-          {...(outgoingPending ? { bg: "teal.solid", color: "black" } : {})}
-        >
-          <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
-            <Heading size="sm" mb="2" color={outgoingPending ? "black" : undefined}>
-              Meal partner (optional)
-            </Heading>
+        selectionShell(
+          <>
+            {!embedded ? (
+              <Heading size="sm" mb="2" color={outgoingPending ? "black" : undefined}>
+                Meal partner (optional)
+              </Heading>
+            ) : null}
             <Text
               fontSize={APP_TEXT_SIZES.helper}
               color={outgoingPending ? "black" : "fg.muted"}
@@ -184,6 +232,7 @@ export function MealPartnerPicker({
                           await patchMyProfile({ meal_crud_partner_id: null });
                           await loadFriends();
                           await resyncSessionSilently();
+                          await onPartnerScopeChanged?.();
                           onNotice?.({ tone: "success", text: "Partner request canceled." });
                         } catch (err) {
                           onNotice?.({
@@ -240,17 +289,22 @@ export function MealPartnerPicker({
                 </Text>
               ) : null}
             </Stack>
-          </Card.Body>
-        </Card.Root>
+          </>,
+          { highlight: outgoingPending || embedded },
+        )
       ) : null}
 
       {!mutual && incomingRequesters.length > 0 ? (
-        <Card.Root {...PANEL_ENTRY_CARD_PROPS} p="0" bg="teal.solid" color="black">
-          <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
-            <Heading size="sm" mb="2" color="black">
+        selectionShell(
+          <>
+            <Heading size="sm" mb="2" color={embedded ? undefined : "black"}>
               Incoming partner request
             </Heading>
-            <Text fontSize={APP_TEXT_SIZES.helper} color="black" mb="2">
+            <Text
+              fontSize={APP_TEXT_SIZES.helper}
+              color={embedded ? "fg.muted" : "black"}
+              mb="2"
+            >
               {incomingRequesters.length > 1
                 ? `${incomingRequesters.length} friends requested meal sharing.`
                 : "A friend requested meal sharing."}
@@ -275,6 +329,7 @@ export function MealPartnerPicker({
                         await patchMyProfile({ meal_crud_partner_id: requester.id });
                         await loadFriends();
                         await resyncSessionSilently();
+                        await onPartnerScopeChanged?.();
                         onNotice?.({ tone: "success", text: "Meal partner request accepted." });
                       } catch (err) {
                         onNotice?.({
@@ -315,8 +370,9 @@ export function MealPartnerPicker({
                 </PondButton>
               </HStack>
             ))}
-          </Card.Body>
-        </Card.Root>
+          </>,
+          { highlight: !embedded },
+        )
       ) : null}
     </Stack>
   );

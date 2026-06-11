@@ -17,6 +17,17 @@ export function dayColumnOrder(weekStartsOn: number): number[] {
   return Array.from({ length: 7 }, (_, i) => (weekStartsOn + i) % 7);
 }
 
+export function mealPlanSlotSummary(
+  meal: Pick<Meal, "upcoming_slot_count" | "past_slot_count">,
+): string | null {
+  const parts: string[] = [];
+  const upcoming = meal.upcoming_slot_count ?? 0;
+  const past = meal.past_slot_count ?? 0;
+  if (upcoming > 0) parts.push(`Upcoming: ${upcoming}`);
+  if (past > 0) parts.push(`Past: ${past}`);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
 export function mealLabel(m: Meal): string {
   const title = (m.title ?? "").trim();
   if (title) return title.length > 48 ? `${title.slice(0, 48)}…` : title;

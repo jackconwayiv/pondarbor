@@ -15,7 +15,11 @@ export const MEAL_SLOT_NAME_OPTIONS = [
 
 export type MealSlotNameOption = (typeof MEAL_SLOT_NAME_OPTIONS)[number];
 
-const OPTION_SET = new Set<string>(MEAL_SLOT_NAME_OPTIONS);
+export const MEAL_SLOT_LABEL_MAX_LEN = 64;
+
+export function normalizeMealSlotLabel(raw: string): string {
+  return raw.trim().slice(0, MEAL_SLOT_LABEL_MAX_LEN);
+}
 
 const DEFAULTS: Record<number, readonly string[]> = {
   1: ["Breakfast"],
@@ -33,7 +37,10 @@ export function defaultSlotLabelsForCount(n: number): string[] {
 
 function isValidCustomRow(n: number, labels: string[]): boolean {
   if (labels.length !== n) return false;
-  return labels.every((s) => OPTION_SET.has(s));
+  return labels.every((s) => {
+    const t = normalizeMealSlotLabel(s);
+    return t.length > 0;
+  });
 }
 
 /**

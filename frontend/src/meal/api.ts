@@ -1,6 +1,7 @@
 import type {
   GroceryList,
   Meal,
+  MealBootstrapResponse,
   MealPlanInstance,
   DisconnectPending,
   MealCategoryBrief,
@@ -8,8 +9,6 @@ import type {
   PantryTags,
   PantryImportResponse,
   PantryParseResponse,
-  PantrySuggestionsResponse,
-  PantryRecipesResponse,
   SavedGroceryList,
   SharedMeal,
 } from "./types";
@@ -72,7 +71,7 @@ export type MealListQuery = {
   ingredient_id?: number;
   /** Substring match on ingredient lines. */
   ingredient_q?: string;
-  sort?: "updated_at" | "title" | "upcoming_slot_count";
+  sort?: "pantry_coverage_pct" | "updated_at" | "title" | "upcoming_slot_count";
 };
 
 function appendMealListQuery(url: string, q?: MealListQuery): string {
@@ -88,6 +87,17 @@ function appendMealListQuery(url: string, q?: MealListQuery): string {
   if (q.sort) sp.set("sort", q.sort);
   const qs = sp.toString();
   return qs ? `${url}?${qs}` : url;
+}
+
+export async function fetchMealBootstrap(
+  accessToken: string | null,
+): Promise<MealBootstrapResponse> {
+  const response = await fetch(`${apiBase()}/api/v1/meal/bootstrap/`, {
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) throw new Error(await parseApiError(response));
+  return response.json() as Promise<MealBootstrapResponse>;
 }
 
 export async function fetchMeals(
@@ -380,10 +390,11 @@ export async function deleteInstance(accessToken: string | null, id: number): Pr
 export async function generateGrocery(
   accessToken: string | null,
   instanceId: number,
+  opts?: { pantry?: boolean },
 ): Promise<GroceryList> {
-  const response = await fetch(
-    `${apiBase()}/api/v1/meal/instances/${instanceId}/grocery/generate/`,
-    {
+  let url = `${apiBase()}/api/v1/meal/instances/${instanceId}/grocery/generate/`;
+  if (opts?.pantry) url += "?pantry=1";
+  const response = await fetch(url, {
       method: "POST",
       headers: authHeaders(accessToken),
       credentials: "omit",
@@ -497,7 +508,7 @@ export async function deleteSavedGroceryList(accessToken: string | null, id: num
 export async function fetchIngredientVocab(
   accessToken: string | null,
   q?: string,
-): Promise<{ id: number; name: string }[]> {
+): Promise<{ id: number; name: string; food_group?: string }[]> {
   const url =
     `${apiBase()}/api/v1/meal/ingredients/` + (q?.trim() ? `?q=${encodeURIComponent(q.trim())}` : "");
   const response = await fetch(url, {
@@ -505,7 +516,28 @@ export async function fetchIngredientVocab(
     credentials: "omit",
   });
   if (!response.ok) throw new Error(await parseApiError(response));
-  return response.json() as Promise<{ id: number; name: string }[]>;
+  return response.json() as Promise<{ id: number; name: string; food_group?: string }[]>;
+}
+
+export async function patchIngredient(
+  accessToken: string | null,
+  ingredientId: number,
+  body: { food_group?: string; display_emoji?: string },
+): Promise<{ id: number; name: string; food_group?: string; display_emoji?: string; created_at: string }> {
+  const response = await fetch(`${apiBase()}/api/v1/meal/ingredients/${ingredientId}/`, {
+    method: "PATCH",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await parseApiError(response));
+  return response.json() as Promise<{
+    id: number;
+    name: string;
+    food_group?: string;
+    display_emoji?: string;
+    created_at: string;
+  }>;
 }
 
 export async function fetchPantryInventory(accessToken: string | null): Promise<PantryInventoryRow[]> {
@@ -526,6 +558,8 @@ export async function upsertPantryInventory(
     location?: string;
     inventory_id?: number;
     pantry_tags?: PantryTags;
+    food_group?: string;
+    display_emoji?: string;
   },
 ): Promise<PantryInventoryRow> {
   const response = await fetch(`${apiBase()}/api/v1/meal/pantry/inventory/upsert/`, {
@@ -564,28 +598,6 @@ export async function importPantryText(
   });
   if (!response.ok) throw new Error(await parseApiError(response));
   return response.json() as Promise<PantryImportResponse>;
-}
-
-export async function fetchPantrySuggestions(
-  accessToken: string | null,
-): Promise<PantrySuggestionsResponse> {
-  const response = await fetch(`${apiBase()}/api/v1/meal/pantry/suggestions/`, {
-    headers: authHeaders(accessToken),
-    credentials: "omit",
-  });
-  if (!response.ok) throw new Error(await parseApiError(response));
-  return response.json() as Promise<PantrySuggestionsResponse>;
-}
-
-export async function fetchPantryRecipes(
-  accessToken: string | null,
-): Promise<PantryRecipesResponse> {
-  const response = await fetch(`${apiBase()}/api/v1/meal/pantry/recipes/`, {
-    headers: authHeaders(accessToken),
-    credentials: "omit",
-  });
-  if (!response.ok) throw new Error(await parseApiError(response));
-  return response.json() as Promise<PantryRecipesResponse>;
 }
 
 export async function requestDisconnect(accessToken: string | null): Promise<void> {

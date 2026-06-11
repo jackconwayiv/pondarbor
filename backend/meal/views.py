@@ -94,6 +94,17 @@ def _scope_ids(request):
     return meal_partner_user_ids(user=request.user)
 
 
+def _maybe_attach_pantry_coverage(request, meals: list[Meal]) -> None:
+    from users.models import Profile
+
+    from meal.pantry_recipes import attach_pantry_coverage
+
+    profile, _ = Profile.objects.get_or_create(user=request.user)
+    if not profile.meal_pantry_enabled:
+        return
+    attach_pantry_coverage(meals=meals, user=request.user)
+
+
 def _meal_qs(request):
     return Meal.objects.filter(owner_user_id__in=_scope_ids(request))
 
@@ -110,6 +121,16 @@ def _assert_scope_write(request, owner_id: int) -> None:
     """Writable if you own the object or it belongs to your mutual meal partner."""
     if owner_id not in _scope_ids(request):
         raise PermissionDenied("You cannot modify this object.")
+
+
+def _meal_readable(request, meal: Meal) -> bool:
+    if meal.owner_user_id in _scope_ids(request):
+        return True
+    return bool(
+        meal.is_published_to_friends
+        and meal_eligible_for_publish(meal)
+        and are_friends(user_a=request.user, user_b=meal.owner_user)
+    )
 
 
 def _validate_meal_refs(request, meal_ids: list[int]) -> None:
@@ -178,10 +199,22 @@ def meal_list_create(request):
         qs, sort = filter_meals_queryset(request, qs)
         meals = list(qs)
         attach_upcoming_slot_counts(meals, _scope_ids(request))
+        _maybe_attach_pantry_coverage(request, meals)
         if sort == "upcoming_slot_count":
             meals.sort(
                 key=lambda m: (
                     -getattr(m, "_upcoming_slot_count", 0),
+                    (m.title or "").lower(),
+                ),
+            )
+        elif sort == "pantry_coverage_pct":
+            meals.sort(
+                key=lambda m: (
+                    -(
+                        getattr(m, "_pantry_coverage_pct", None)
+                        if getattr(m, "_pantry_coverage_pct", None) is not None
+                        else -1
+                    ),
                     (m.title or "").lower(),
                 ),
             )
@@ -399,13 +432,20 @@ def meal_uploads_presign(request):
 @permission_classes([IsApprovedUser])
 def meal_detail(request, pk: int):
     meal = get_object_or_404(
-        _meal_qs(request).prefetch_related(*_meal_detail_prefetch()),
+        Meal.objects.select_related("owner_user", "owner_user__profile").prefetch_related(
+            *_meal_detail_prefetch()
+        ),
         pk=pk,
     )
+    if not _meal_readable(request, meal):
+        raise PermissionDenied("You cannot view this meal.")
     if request.method == "GET":
         scope = _scope_ids(request)
         attach_upcoming_slot_counts([meal], scope)
-        return Response(MealSerializer(meal).data)
+        _maybe_attach_pantry_coverage(request, [meal])
+        if meal.owner_user_id in scope:
+            return Response(MealSerializer(meal).data)
+        return Response(SharedMealSerializer(meal).data)
     _assert_scope_write(request, meal.owner_user_id)
     if request.method == "DELETE":
         meal.delete()
@@ -510,7 +550,9 @@ def meal_shared_list(request):
     q = (request.GET.get("q") or "").strip()
     if q:
         qs = qs.filter(Q(title__icontains=q) | Q(blurb__icontains=q) | Q(directions__icontains=q))
-    return Response(SharedMealSerializer(list(qs), many=True).data)
+    meals = list(qs)
+    _maybe_attach_pantry_coverage(request, meals)
+    return Response(SharedMealSerializer(meals, many=True).data)
 
 
 @api_view(["POST"])
@@ -628,7 +670,21 @@ def grocery_generate(request, pk: int):
         .distinct()
     )
     repair_null_meal_ingredient_fks(meal_ids=list(mids))
-    gl = generate_grocery_list_for_instance(inst)
+    pantry_param = (request.GET.get("pantry") or "").strip().lower()
+    pantry_aware = pantry_param in ("1", "true", "yes")
+    pantry_owner_user_ids = None
+    if pantry_aware:
+        from users.models import Profile
+
+        profile, _ = Profile.objects.get_or_create(user=request.user)
+        if not profile.meal_pantry_enabled:
+            raise ValidationError({"pantry": "Enable pantry tracking to generate a pantry-aware list."})
+        pantry_owner_user_ids = _scope_ids(request)
+    gl = generate_grocery_list_for_instance(
+        inst,
+        pantry_aware=pantry_aware,
+        pantry_owner_user_ids=pantry_owner_user_ids,
+    )
     gl = _grocery_qs(request).prefetch_related("items").get(pk=gl.pk)
     return Response(GroceryListSerializer(gl).data)
 
@@ -740,6 +796,26 @@ def ingredient_vocab(request):
     return Response(IngredientBriefSerializer(rows, many=True).data)
 
 
+@api_view(["PATCH"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsApprovedUser])
+def ingredient_detail(request, pk: int):
+    from meal.ingredient_display_emoji import normalize_display_emoji
+    from meal.ingredient_food_group import normalize_food_group
+
+    ing = get_object_or_404(Ingredient.objects.filter(owner_user=request.user), pk=pk)
+    update_fields: list[str] = []
+    if "food_group" in request.data:
+        ing.food_group = normalize_food_group(request.data.get("food_group"))
+        update_fields.append("food_group")
+    if "display_emoji" in request.data:
+        ing.display_emoji = normalize_display_emoji(request.data.get("display_emoji"))
+        update_fields.append("display_emoji")
+    if update_fields:
+        ing.save(update_fields=update_fields)
+    return Response(IngredientBriefSerializer(ing).data)
+
+
 @api_view(["GET", "POST"])
 @authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
 @permission_classes([IsApprovedUser])
@@ -790,11 +866,29 @@ def saved_grocery_detail(request, pk: int):
 @authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
 @permission_classes([IsApprovedUser])
 def pantry_inventory_list(request):
+    from users.models import Profile
+
     from meal.pantry_access import pantry_inventory_queryset
+    from meal.pantry_recommendations import (
+        attach_pantry_recommendation_hints,
+        in_stock_ingredient_recommendation_hints,
+    )
 
     qs = pantry_inventory_queryset(user=request.user)
+    rows = list(qs)
+    profile, _ = Profile.objects.get_or_create(user=request.user)
+    if profile.meal_pantry_enabled:
+        hints = in_stock_ingredient_recommendation_hints(
+            user=request.user,
+            scope_ids=_scope_ids(request),
+            instance_qs=_instance_qs(request),
+            meal_qs=_meal_qs(request),
+            inventory_qs=qs,
+            week_starts_on=int(profile.meal_week_starts_on),
+        )
+        attach_pantry_recommendation_hints(rows=rows, hints=hints)
     return Response(
-        UserIngredientInventorySerializer(qs, many=True, context={"request": request}).data,
+        UserIngredientInventorySerializer(rows, many=True, context={"request": request}).data,
     )
 
 
@@ -811,7 +905,10 @@ def pantry_inventory_put(request):
     inventory_id = request.data.get("inventory_id")
     tags_key_sent = "pantry_tags" in request.data
     if inventory_id is not None:
-        row = get_object_or_404(UserIngredientInventory.objects.select_related("owner_user"), pk=int(inventory_id))
+        row = get_object_or_404(
+            UserIngredientInventory.objects.select_related("owner_user", "ingredient"),
+            pk=int(inventory_id),
+        )
         if not user_can_access_inventory_row(user=request.user, row=row):
             raise PermissionDenied("Not allowed to edit this pantry row.")
         row.location = location
@@ -827,6 +924,7 @@ def pantry_inventory_put(request):
             location=location,
             defaults={"quantity": 0},
         )
+        row.ingredient = ing
     if qty is not None:
         try:
             row.quantity = max(0, int(qty))
@@ -847,6 +945,22 @@ def pantry_inventory_put(request):
         tags_key_sent=tags_key_sent,
         on_create=is_create,
     )
+    if "food_group" in request.data or "display_emoji" in request.data:
+        from meal.ingredient_display_emoji import normalize_display_emoji
+        from meal.ingredient_food_group import normalize_food_group
+
+        if not user_can_access_inventory_row(user=request.user, row=row):
+            raise PermissionDenied("Not allowed to edit this pantry row.")
+        ing = row.ingredient
+        ing_update_fields: list[str] = []
+        if "food_group" in request.data:
+            ing.food_group = normalize_food_group(request.data.get("food_group"))
+            ing_update_fields.append("food_group")
+        if "display_emoji" in request.data:
+            ing.display_emoji = normalize_display_emoji(request.data.get("display_emoji"))
+            ing_update_fields.append("display_emoji")
+        if ing_update_fields:
+            ing.save(update_fields=ing_update_fields)
     row.save()
     return Response(
         UserIngredientInventorySerializer(row, context={"request": request}).data,
@@ -933,94 +1047,9 @@ def pantry_inventory_import(request):
 @api_view(["GET"])
 @authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
 @permission_classes([IsApprovedUser])
-def pantry_suggestions(request):
-    from users.models import Profile
+def meal_bootstrap(request):
+    """Initial Meal Maestro payload: meals, plans, pantry, vocab, shared browse."""
+    from meal.bootstrap import meal_bootstrap_payload
 
-    profile, _ = Profile.objects.select_related("user").get_or_create(user=request.user)
-    if not profile.meal_pantry_enabled:
-        return Response({"enabled": False, "hints": []})
+    return Response(meal_bootstrap_payload(request=request))
 
-    repair_null_meal_ingredient_fks(owner_user_ids=meal_partner_user_ids(user=request.user))
-
-    from meal.dates import normalize_week_start
-
-    anchor = normalize_week_start(timezone.localdate(), int(profile.meal_week_starts_on))
-    inst = MealPlanInstance.objects.filter(owner_user=request.user, week_start=anchor).first()
-    planned_meal_ids: set[int] = set()
-    planned_ingredient_ids: set[int] = set()
-    if inst:
-        for mid in MealPlanInstanceSlotMeal.objects.filter(slot__instance=inst).values_list(
-            "meal_id", flat=True,
-        ):
-            planned_meal_ids.add(mid)
-        for iid in (
-            MealIngredient.objects.filter(meal_id__in=planned_meal_ids)
-            .exclude(ingredient_id=None)
-            .values_list("ingredient_id", flat=True)
-            .distinct()
-        ):
-            planned_ingredient_ids.add(iid)
-
-    from meal.pantry_access import pantry_inventory_queryset
-
-    hints = []
-    seen_ingredient_ids: set[int] = set()
-    inv_qs = pantry_inventory_queryset(user=request.user)
-    for row in inv_qs:
-        if row.quantity == 0 and row.simple_have is not True:
-            continue
-        iid = row.ingredient_id
-        if iid in planned_ingredient_ids or iid in seen_ingredient_ids:
-            continue
-        seen_ingredient_ids.add(iid)
-        mq = _meal_qs(request).filter(ingredients__ingredient_id=iid).distinct().order_by("title")
-        if planned_meal_ids:
-            mq = mq.exclude(pk__in=planned_meal_ids)
-        meals = mq[:3]
-        meal_list = [{"id": m.id, "title": (m.title or "").strip() or "Untitled"} for m in meals]
-        hints.append(
-            {
-                "ingredient_id": iid,
-                "ingredient_name": row.ingredient.name,
-                "recommended_meals": meal_list,
-            },
-        )
-
-    return Response({"enabled": True, "week_start": anchor.isoformat(), "hints": hints})
-
-
-@api_view(["GET"])
-@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
-@permission_classes([IsApprovedUser])
-def pantry_recipes(request):
-    from users.models import Profile
-
-    from meal.pantry_recipes import (
-        match_meals_to_pantry,
-        pantry_available_ingredient_ids,
-        serialize_pantry_recipe_match,
-    )
-
-    profile, _ = Profile.objects.select_related("user").get_or_create(user=request.user)
-    if not profile.meal_pantry_enabled:
-        return Response({"enabled": False, "can_make": [], "almost_make": []})
-
-    repair_null_meal_ingredient_fks(owner_user_ids=meal_partner_user_ids(user=request.user))
-
-    available = pantry_available_ingredient_ids(owner_user_ids=meal_partner_user_ids(user=request.user))
-    meals = list(
-        _meal_qs(request)
-        .prefetch_related("ingredients", "ingredients__ingredient")
-        .order_by("title"),
-    )
-    can_make, almost_make = match_meals_to_pantry(
-        meals=meals,
-        available_ingredient_ids=available,
-    )
-    return Response(
-        {
-            "enabled": True,
-            "can_make": [serialize_pantry_recipe_match(m) for m in can_make],
-            "almost_make": [serialize_pantry_recipe_match(m) for m in almost_make],
-        },
-    )

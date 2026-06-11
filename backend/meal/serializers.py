@@ -39,6 +39,8 @@ class MealSerializer(serializers.ModelSerializer):
     cuisine = serializers.SerializerMethodField()
     time = serializers.SerializerMethodField()
     upcoming_slot_count = serializers.SerializerMethodField()
+    past_slot_count = serializers.SerializerMethodField()
+    pantry_coverage_pct = serializers.SerializerMethodField()
     can_publish = serializers.SerializerMethodField()
 
     class Meta:
@@ -60,6 +62,8 @@ class MealSerializer(serializers.ModelSerializer):
             "cuisine",
             "time",
             "upcoming_slot_count",
+            "past_slot_count",
+            "pantry_coverage_pct",
             "can_publish",
             "created_at",
             "updated_at",
@@ -97,6 +101,18 @@ class MealSerializer(serializers.ModelSerializer):
         if v is not None:
             return int(v)
         return 0
+
+    def get_past_slot_count(self, obj: Meal) -> int:
+        v = getattr(obj, "_past_slot_count", None)
+        if v is not None:
+            return int(v)
+        return 0
+
+    def get_pantry_coverage_pct(self, obj: Meal) -> int | None:
+        v = getattr(obj, "_pantry_coverage_pct", None)
+        if v is None:
+            return None
+        return int(v)
 
     def get_can_publish(self, obj: Meal) -> bool:
         return meal_eligible_for_publish(obj)
@@ -140,6 +156,15 @@ class SharedMealSerializer(MealSerializer):
 
     def get_upcoming_slot_count(self, obj: Meal) -> int:
         return 0
+
+    def get_past_slot_count(self, obj: Meal) -> int:
+        return 0
+
+    def get_pantry_coverage_pct(self, obj: Meal) -> int | None:
+        v = getattr(obj, "_pantry_coverage_pct", None)
+        if v is None:
+            return None
+        return int(v)
 
 
 class MealImportFromUrlSerializer(serializers.Serializer):
@@ -188,8 +213,8 @@ class GroceryListItemSerializer(serializers.ModelSerializer):
 class IngredientBriefSerializer(serializers.ModelSerializer):
     class Meta:
         model = Ingredient
-        fields = ("id", "name", "created_at")
-        read_only_fields = ("id", "name", "created_at")
+        fields = ("id", "name", "food_group", "display_emoji", "created_at")
+        read_only_fields = ("id", "name", "food_group", "display_emoji", "created_at")
 
 
 class SavedGroceryListSerializer(serializers.ModelSerializer):
@@ -204,6 +229,7 @@ class UserIngredientInventorySerializer(serializers.ModelSerializer):
     pantry_tags = serializers.JSONField(required=False)
     owner_user_id = serializers.IntegerField(read_only=True)
     owner_label = serializers.SerializerMethodField()
+    pantry_recommendation_hint = serializers.SerializerMethodField()
 
     class Meta:
         model = UserIngredientInventory
@@ -216,8 +242,15 @@ class UserIngredientInventorySerializer(serializers.ModelSerializer):
             "pantry_tags",
             "owner_user_id",
             "owner_label",
+            "pantry_recommendation_hint",
         )
-        read_only_fields = ("id", "ingredient", "owner_user_id", "owner_label")
+        read_only_fields = ("id", "ingredient", "owner_user_id", "owner_label", "pantry_recommendation_hint")
+
+    def get_pantry_recommendation_hint(self, obj: UserIngredientInventory) -> str | None:
+        v = getattr(obj, "_pantry_recommendation_hint", None)
+        if v in ("not_scheduled", "no_recipes"):
+            return v
+        return None
 
     def get_owner_label(self, obj: UserIngredientInventory) -> str:
         request = self.context.get("request")

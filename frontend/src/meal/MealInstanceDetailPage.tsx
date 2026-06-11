@@ -1,57 +1,29 @@
-import { Box, Card, Heading, HStack, Stack, Text } from "@chakra-ui/react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Link as RouterLink, Navigate, useNavigate, useParams } from "react-router";
+import { Box, Text } from "@chakra-ui/react";
+import { useCallback, useEffect, useState } from "react";
+import { Navigate, useParams } from "react-router";
 import { useAppSession } from "../auth/AppSessionContext";
-import PondButton from "../PondButton";
-import {
-  APP_TEXT_SIZES,
-  MAPPED_CLOSET_TAB_STACK_GAP,
-  PANEL_ENTRY_CARD_BODY_PROPS,
-  PANEL_ENTRY_CARD_PROPS,
-} from "../theme/typography";
-import { createMeal, deleteInstance, fetchInstance, fetchMeals, patchInstanceGrid } from "./api";
-import { formatWeekStartShort } from "./mealPlanDates";
-import { MealEditorBackdropDismiss } from "./MealEditorBackdropDismiss";
-import MealSlotGrid from "./MealSlotGrid";
-import { resolveSlotLabels } from "./mealSlotLabels";
-import { MealPlanSlotControls } from "./MealPlanSlotControls";
-import { profileMealSlotsPerDay } from "./mealPlanSlots";
-import { patchMealSlotsPerDay } from "./mealPlanSlotsChange";
-import { MealGroceryListDialog } from "./MealGroceryListDialog";
+import { APP_TEXT_SIZES, PANEL_ENTRY_CARD_PROPS } from "../theme/typography";
+import { fetchInstance } from "./api";
 import {
   MealApprovalRequired,
   MealLoading,
   MealSessionReconnect,
 } from "./mealPageStates";
-import type { Meal, MealPlanInstance } from "./types";
+import type { MealPlanInstance } from "./types";
 
+/** Legacy `/meal/plan/plans/:id` → week editor by `week_start`. */
 export default function MealInstanceDetailPage() {
   const { id } = useParams();
   const iid = id ? Number(id) : Number.NaN;
-  const navigate = useNavigate();
-  const {
-    isAuthenticated,
-    isLoading,
-    sessionUser,
-    getApiAccessToken,
-    refreshSession,
-    resyncSessionSilently,
-    patchMyProfile,
-  } = useAppSession();
+  const { isAuthenticated, isLoading, sessionUser, getApiAccessToken, refreshSession } =
+    useAppSession();
   const [inst, setInst] = useState<MealPlanInstance | null>(null);
-  const [meals, setMeals] = useState<Meal[]>([]);
   const [err, setErr] = useState<string | null>(null);
-  const [saveBusy, setSaveBusy] = useState(false);
-  const [deleteBusy, setDeleteBusy] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [groceryOpen, setGroceryOpen] = useState(false);
-  const confirmDeleteButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const load = useCallback(async () => {
     const t = await getApiAccessToken();
-    const [instance, ml] = await Promise.all([fetchInstance(t, iid), fetchMeals(t)]);
+    const instance = await fetchInstance(t, iid);
     setInst(instance);
-    setMeals(ml);
   }, [getApiAccessToken, iid]);
 
   useEffect(() => {
@@ -101,199 +73,10 @@ export default function MealInstanceDetailPage() {
     );
   }
 
-  const slotsPerDay = profileMealSlotsPerDay(sessionUser.profile);
-  const weekStartsOn = sessionUser.profile.meal_week_starts_on ?? 0;
-  const slotLabels = resolveSlotLabels(slotsPerDay, sessionUser.profile.meal_slot_labels);
-  const weekTitle = `Week of ${formatWeekStartShort(inst.week_start)}`;
-
   return (
-    <MealEditorBackdropDismiss dismissTo="/meal/plan/overview" disabled={saveBusy || deleteBusy}>
-    <Stack gap={MAPPED_CLOSET_TAB_STACK_GAP} w="100%">
-      <Text fontSize={APP_TEXT_SIZES.helper}>
-        <RouterLink to="/meal/plan/overview">
-          <Text as="span" color="teal.solid" fontWeight="bold">
-            ← Weekly overview
-          </Text>
-        </RouterLink>
-      </Text>
-      <Card.Root {...PANEL_ENTRY_CARD_PROPS} p="0">
-        <Card.Body
-          {...PANEL_ENTRY_CARD_BODY_PROPS}
-          onPointerDownCapture={(event) => {
-            if (!confirmDelete) return;
-            const target = event.target as Node | null;
-            if (!target) return;
-            if (confirmDeleteButtonRef.current?.contains(target)) return;
-            setConfirmDelete(false);
-          }}
-        >
-          <HStack
-            justify="space-between"
-            align="flex-start"
-            flexWrap="wrap"
-            gap="3"
-            mb="2"
-            w="100%"
-          >
-            <Heading size="sm" flex="1" minW="min(100%, 12rem)">
-              {weekTitle}
-            </Heading>
-            <HStack gap="2" flexShrink={0}>
-              <PondButton
-                colorPalette="sky"
-                variant="outline"
-                disabled={saveBusy || deleteBusy}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setGroceryOpen(true);
-                }}
-              >
-                Grocery list
-              </PondButton>
-              <PondButton
-                colorPalette="lilypad"
-                loading={saveBusy}
-                disabled={saveBusy || deleteBusy}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setConfirmDelete(false);
-                  void (async () => {
-                    setSaveBusy(true);
-                    try {
-                      const tok = await getApiAccessToken();
-                      const payload = inst.slots.map((s) => ({
-                        day_index: s.day_index,
-                        slot_index: s.slot_index,
-                        meal_ids: s.meal_ids,
-                      }));
-                      const next = await patchInstanceGrid(tok, inst.id, payload);
-                      setInst(next);
-                      setErr(null);
-                      void resyncSessionSilently().catch(() => {});
-                    } catch (e) {
-                      setErr(e instanceof Error ? e.message : "Save failed");
-                    } finally {
-                      setSaveBusy(false);
-                    }
-                  })();
-                }}
-              >
-                Save
-              </PondButton>
-              <PondButton
-                ref={confirmDeleteButtonRef}
-                colorPalette="nautical"
-                loading={deleteBusy}
-                disabled={deleteBusy || saveBusy}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (!confirmDelete) {
-                    setConfirmDelete(true);
-                    return;
-                  }
-                  void (async () => {
-                    setDeleteBusy(true);
-                    try {
-                      const tok = await getApiAccessToken();
-                      await deleteInstance(tok, inst.id);
-                      navigate("/meal/plan/overview");
-                    } catch (e) {
-                      setErr(e instanceof Error ? e.message : "Delete failed");
-                    } finally {
-                      setDeleteBusy(false);
-                    }
-                  })();
-                }}
-              >
-                {confirmDelete ? "Confirm Delete" : "Delete"}
-              </PondButton>
-            </HStack>
-          </HStack>
-
-          <MealPlanSlotControls
-            slotsPerDay={slotsPerDay}
-            disabled={saveBusy || deleteBusy}
-            onChange={async (next) => {
-              setSaveBusy(true);
-              try {
-                await patchMealSlotsPerDay(
-                  patchMyProfile,
-                  next,
-                  profileMealSlotsPerDay(sessionUser.profile),
-                );
-                const tok = await getApiAccessToken();
-                const refreshed = await fetchInstance(tok, inst.id);
-                setInst(refreshed);
-                setErr(null);
-              } catch (e) {
-                setErr(e instanceof Error ? e.message : "Could not update meal rows");
-              } finally {
-                setSaveBusy(false);
-              }
-            }}
-          />
-
-          <MealSlotGrid
-            slots={inst.slots}
-            slotsPerDay={slotsPerDay}
-            weekStartsOn={weekStartsOn}
-            weekStartIso={inst.week_start}
-            slotLabels={slotLabels}
-            meals={meals}
-            disabled={saveBusy || deleteBusy}
-            createMeal={async (body) => {
-              const tok = await getApiAccessToken();
-              return createMeal(tok, body);
-            }}
-            onMealCreated={(m) =>
-              setMeals((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]))
-            }
-            onCellChange={async (dayIndex, slotIndex, mealIds) => {
-              try {
-                const tok = await getApiAccessToken();
-                const next = await patchInstanceGrid(tok, inst.id, [
-                  { day_index: dayIndex, slot_index: slotIndex, meal_ids: mealIds },
-                ]);
-                setInst(next);
-                setErr(null);
-                setConfirmDelete(false);
-                void resyncSessionSilently().catch(() => {});
-              } catch (e) {
-                setErr(e instanceof Error ? e.message : "Update failed");
-                throw e;
-              }
-            }}
-            onApplySlotToAllDays={async (slotIndex, mealIds) => {
-              const tok = await getApiAccessToken();
-              const payload = Array.from({ length: 7 }, (_, day_index) => ({
-                day_index,
-                slot_index: slotIndex,
-                meal_ids: mealIds,
-              }));
-              const next = await patchInstanceGrid(tok, inst.id, payload);
-              setInst(next);
-              setErr(null);
-              setConfirmDelete(false);
-              void resyncSessionSilently().catch(() => {});
-            }}
-          />
-        </Card.Body>
-      </Card.Root>
-
-      {err ? (
-        <Text fontSize={APP_TEXT_SIZES.helper} fontWeight="medium" color="nautical.solid" role="alert">
-          {err}
-        </Text>
-      ) : null}
-
-      <MealGroceryListDialog
-        open={groceryOpen}
-        onOpenChange={setGroceryOpen}
-        instanceId={inst.id}
-        weekLabel={weekTitle}
-        getApiAccessToken={getApiAccessToken}
-      />
-    </Stack>
-    </MealEditorBackdropDismiss>
+    <Navigate
+      to={`/meal/plan/plans/new?week=${encodeURIComponent(inst.week_start)}`}
+      replace
+    />
   );
 }

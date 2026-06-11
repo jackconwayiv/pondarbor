@@ -1,4 +1,4 @@
-import { Box, Checkbox, HStack, SimpleGrid, Stack, Tag, Text } from "@chakra-ui/react";
+import { Box, Checkbox, HStack, SimpleGrid, Stack, Text } from "@chakra-ui/react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link as RouterLink } from "react-router";
 import { AppModal } from "../../components/AppModal";
@@ -9,16 +9,16 @@ import { APP_TEXT_SIZES } from "../../theme/typography";
 import {
   cancelDisconnect,
   confirmDisconnect,
-  fetchDisconnectPending,
   seedMealTags,
 } from "../api";
 import { MealPartnerPicker } from "../MealPartnerPicker";
 import { WEEKDAY_FULL } from "../mealLabels";
-import { defaultSlotLabelsForCount, MEAL_SLOT_NAME_OPTIONS } from "../mealSlotLabels";
+import { MealSlotNameEditor } from "../MealSlotNameEditor";
+import { defaultSlotLabelsForCount } from "../mealSlotLabels";
 import { patchMealSlotsPerDay } from "../mealPlanSlotsChange";
 import { profileMealSlotsPerDay } from "../mealPlanSlots";
+import { MealDietaryPreferencesEditor } from "../settings/MealDietaryPreferencesEditor";
 import { MealWizardStepShell } from "./MealWizardStepShell";
-import { MEAL_WIZARD_DIETARY_OPTIONS } from "./mealDietaryOptions";
 import { firstIncompleteMealWizardStep } from "./mealWizardResume";
 import { setMealWizardAutoOpenDisabled } from "./mealWizardStorage";
 import {
@@ -28,7 +28,7 @@ import {
   mealWizardPriorStep,
   type MealWizardStepId,
 } from "./mealWizardSteps";
-import type { DisconnectPending } from "../types";
+import { useMealData } from "../MealDataContext";
 
 export type MealMaestroSetupWizardProps = {
   open: boolean;
@@ -41,6 +41,8 @@ export type MealMaestroSetupWizardProps = {
   markAutoOpenDisabledOnClose?: boolean;
   /** Override first step (e.g. incoming partner). */
   initialStep?: MealWizardStepId;
+  /** Manual launch from Settings — always start at partner. */
+  startAtBeginning?: boolean;
 };
 
 export function MealMaestroSetupWizard({
@@ -52,6 +54,7 @@ export function MealMaestroSetupWizard({
   resyncSessionSilently,
   markAutoOpenDisabledOnClose = false,
   initialStep,
+  startAtBeginning = false,
 }: MealMaestroSetupWizardProps) {
   const profile = sessionUser.profile;
   const [step, setStep] = useState<MealWizardStepId>("partner");
@@ -66,11 +69,13 @@ export function MealMaestroSetupWizard({
   const [weekStart, setWeekStart] = useState(profile.meal_week_starts_on ?? 0);
   const [dietary, setDietary] = useState<string[]>(() => [...(profile.meal_dietary_preferences ?? [])]);
   const [enablePantry, setEnablePantry] = useState(profile.meal_pantry_enabled ?? false);
-  const [pending, setPending] = useState<DisconnectPending | null>(null);
+  const { disconnectPending: pending, setDisconnectPending: setPending, refreshAll } = useMealData();
 
   useEffect(() => {
     if (!open) return;
-    const start = initialStep ?? firstIncompleteMealWizardStep(profile);
+    const start = startAtBeginning
+      ? "partner"
+      : (initialStep ?? firstIncompleteMealWizardStep(profile));
     setStep(start);
     const n = profileMealSlotsPerDay(profile);
     setSlotsCount(n);
@@ -80,19 +85,7 @@ export function MealMaestroSetupWizard({
     setDietary([...(profile.meal_dietary_preferences ?? [])]);
     setEnablePantry(profile.meal_pantry_enabled ?? false);
     setErr(null);
-  }, [open, initialStep, profile]);
-
-  useEffect(() => {
-    if (!open) return;
-    void (async () => {
-      try {
-        const t = await getApiAccessToken();
-        setPending(await fetchDisconnectPending(t));
-      } catch {
-        setPending(null);
-      }
-    })();
-  }, [open, getApiAccessToken, profile.meal_pair_mutual]);
+  }, [open, initialStep, profile, startAtBeginning]);
 
   const closeWizard = useCallback(
     (disableAuto?: boolean) => {
@@ -119,15 +112,6 @@ export function MealMaestroSetupWizard({
     await resyncSessionSilently();
   };
 
-  const toggleDietary = (label: string) => {
-    const fold = label.toLowerCase();
-    setDietary((prev) =>
-      prev.some((t) => t.toLowerCase() === fold)
-        ? prev.filter((t) => t.toLowerCase() !== fold)
-        : [...prev, label],
-    );
-  };
-
   const goNext = async () => {
     setErr(null);
     setBusy(true);
@@ -138,6 +122,16 @@ export function MealMaestroSetupWizard({
         await saveSlotNames();
       } else if (step === "weekStart") {
         await patchMyProfile({ meal_week_starts_on: weekStart });
+        await resyncSessionSilently();
+      } else if (step === "dietary") {
+        const tok = await getApiAccessToken();
+        if (dietary.length > 0) {
+          await seedMealTags(tok, dietary);
+        }
+        await patchMyProfile({ meal_dietary_preferences: dietary });
+        await resyncSessionSilently();
+      } else if (step === "pantry") {
+        await patchMyProfile({ meal_pantry_enabled: enablePantry });
         await resyncSessionSilently();
       }
       const next = mealWizardNextStep(step);
@@ -158,9 +152,7 @@ export function MealMaestroSetupWizard({
         await seedMealTags(tok, dietary);
       }
       await patchMyProfile({
-        meal_dietary_preferences: dietary,
         meal_maestro_setup_completed: true,
-        meal_pantry_enabled: enablePantry,
       });
       await resyncSessionSilently();
       onOpenChange(false);
@@ -172,11 +164,26 @@ export function MealMaestroSetupWizard({
   };
 
   const tourLinks = [
-    { label: "Import recipes", to: "/meal/meals", hint: "URL or Paprika import" },
-    { label: "Create meals", to: "/meal/meals", hint: "Add your own recipes" },
-    { label: "Fill up your pantry", to: "/meal/pantry/inventory", hint: "Bulk import or add items" },
-    { label: "Plan meals", to: "/meal/plan", hint: "Assign meals to your week" },
-    { label: "Grocery list", to: "/meal/plan", hint: "Generate from your plan" },
+    {
+      label: "Plan your week",
+      to: "/meal/plan",
+      hint: "Assign meals to slots; generate a grocery list",
+    },
+    {
+      label: "Build your meal library",
+      to: "/meal/meals",
+      hint: "Import or add recipes; see Pantry % when tracking is on",
+    },
+    {
+      label: "Stock your pantry",
+      to: "/meal/pantry/inventory",
+      hint: "Add items; cards show Not Scheduled or No Recipes hints",
+    },
+    {
+      label: "Adjust settings",
+      to: "/meal/settings",
+      hint: "Partner, plan layout, dietary preferences",
+    },
   ];
 
   let body: ReactNode = null;
@@ -240,6 +247,7 @@ export function MealMaestroSetupWizard({
           getApiAccessToken={getApiAccessToken}
           patchMyProfile={patchMyProfile}
           resyncSessionSilently={resyncSessionSilently}
+          onPartnerScopeChanged={() => void refreshAll()}
         />
       </MealWizardStepShell>
     );
@@ -247,7 +255,7 @@ export function MealMaestroSetupWizard({
     body = (
       <MealWizardStepShell
         stepId="slotsCount"
-        helper="How many meal times do you want to plan each day? You can change this later on the Plan tab."
+        helper="How many meal times do you want to plan each day? You can change this later in Settings under Weekly plan."
       >
         <PondNativeSelect
           fieldProps={{
@@ -265,28 +273,18 @@ export function MealMaestroSetupWizard({
     );
   } else if (step === "slotNames") {
     body = (
-      <MealWizardStepShell stepId="slotNames" helper="These names appear when you assign meals to a time slot.">
-        <Stack gap="2" maxW="md">
-          {slotNames.map((name, i) => (
-            <PondNativeSelect
-              key={i}
-              fieldProps={{
-                value: name,
-                onChange: (e) => {
-                  const next = [...slotNames];
-                  next[i] = e.target.value;
-                  setSlotNames(next);
-                },
-              }}
-            >
-              {MEAL_SLOT_NAME_OPTIONS.map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </PondNativeSelect>
-          ))}
-        </Stack>
+      <MealWizardStepShell
+        stepId="slotNames"
+        helper="These names appear when you assign meals to a time slot. Pick a preset or use the pencil for a custom name."
+      >
+        <MealSlotNameEditor
+          labels={slotNames}
+          onChangeLabel={(index, value) => {
+            const next = [...slotNames];
+            next[index] = value;
+            setSlotNames(next);
+          }}
+        />
       </MealWizardStepShell>
     );
   } else if (step === "weekStart") {
@@ -312,29 +310,31 @@ export function MealMaestroSetupWizard({
         stepId="dietary"
         helper="Optional. We’ll add these to your meal tags and use them as default dietary tags when you add pantry items."
       >
-        <HStack flexWrap="wrap" gap="1">
-          {MEAL_WIZARD_DIETARY_OPTIONS.map((label) => {
-            const active = dietary.some((t) => t.toLowerCase() === label.toLowerCase());
-            return (
-              <Tag.Root
-                key={label}
-                size="sm"
-                colorPalette="lilypad"
-                variant={active ? "solid" : "outline"}
-                cursor="pointer"
-                onClick={() => toggleDietary(label)}
-              >
-                <Tag.Label>{label}</Tag.Label>
-              </Tag.Root>
-            );
-          })}
-        </HStack>
+        <MealDietaryPreferencesEditor value={dietary} onChange={setDietary} />
+      </MealWizardStepShell>
+    );
+  } else if (step === "pantry") {
+    body = (
+      <MealWizardStepShell
+        stepId="pantry"
+        helper="Optional. Track what you have on hand, see hints on pantry cards, and Pantry match % on meal cards."
+      >
+        <Checkbox.Root
+          checked={enablePantry}
+          onCheckedChange={(d) => setEnablePantry(d.checked === true)}
+        >
+          <Checkbox.HiddenInput />
+          <Checkbox.Control>
+            <Checkbox.Indicator />
+          </Checkbox.Control>
+          <Checkbox.Label fontSize={APP_TEXT_SIZES.helper}>Enable pantry tracking</Checkbox.Label>
+        </Checkbox.Root>
       </MealWizardStepShell>
     );
   } else {
     body = (
       <MealWizardStepShell stepId="tour" helper="Jump in anywhere — you can reopen this wizard from Settings.">
-        <SimpleGrid columns={{ base: 1, md: 2 }} gap="2" mb="4">
+        <SimpleGrid columns={{ base: 1, md: 2 }} gap="2">
           {tourLinks.map((item) => (
             <RouterLink key={item.label} to={item.to} onClick={() => onOpenChange(false)}>
               <Box
@@ -354,16 +354,6 @@ export function MealMaestroSetupWizard({
             </RouterLink>
           ))}
         </SimpleGrid>
-        <Checkbox.Root
-          checked={enablePantry}
-          onCheckedChange={(d) => setEnablePantry(d.checked === true)}
-        >
-          <Checkbox.HiddenInput />
-          <Checkbox.Control>
-            <Checkbox.Indicator />
-          </Checkbox.Control>
-          <Checkbox.Label fontSize={APP_TEXT_SIZES.helper}>Enable pantry tracking</Checkbox.Label>
-        </Checkbox.Root>
       </MealWizardStepShell>
     );
   }

@@ -3,10 +3,10 @@ import { useState } from "react";
 import PondButton from "../PondButton";
 import { APP_TEXT_SIZES, PANEL_FIELD_PROPS } from "../theme/typography";
 import {
+  PANTRY_ROW_TAG_DIMENSIONS,
   PANTRY_TAG_DIMENSION_LABELS,
-  PANTRY_TAG_DIMENSIONS,
   PANTRY_TAG_PRESETS,
-  type PantryTagDimension,
+  type PantryRowTagDimension,
 } from "./pantryTagVocab";
 import type { PantryTags } from "./types";
 
@@ -24,15 +24,15 @@ function toggleTag(list: string[], tag: string): string[] {
 }
 
 export function PantryTagsEditor({ value, onChange, disabled }: PantryTagsEditorProps) {
-  const [customByDim, setCustomByDim] = useState<Partial<Record<PantryTagDimension, string>>>({});
+  const [customByDim, setCustomByDim] = useState<Partial<Record<PantryRowTagDimension, string>>>({});
 
-  const setDimension = (dim: PantryTagDimension, tags: string[]) => {
+  const setDimension = (dim: PantryRowTagDimension, tags: string[]) => {
     onChange({ ...value, [dim]: tags });
   };
 
   return (
     <Stack gap="4">
-      {PANTRY_TAG_DIMENSIONS.map((dim) => {
+      {PANTRY_ROW_TAG_DIMENSIONS.map((dim) => {
         const presets = PANTRY_TAG_PRESETS[dim];
         const selected = value[dim];
         const custom = customByDim[dim] ?? "";

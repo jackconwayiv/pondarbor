@@ -34,7 +34,11 @@ export type Meal = {
   cuisine?: MealCategoryBrief | null;
   time?: MealCategoryBrief | null;
   upcoming_slot_count?: number;
+  past_slot_count?: number;
+  pantry_coverage_pct?: number | null;
   can_publish?: boolean;
+  /** Friend-published browse (detail/list); not set on meals you own. */
+  author_display?: string;
   created_at: string;
   updated_at: string;
 };
@@ -116,9 +120,18 @@ export type PantryTags = {
   dietary: string[];
 };
 
+export type IngredientBrief = {
+  id: number;
+  name: string;
+  food_group?: string;
+  /** User override; empty uses category default or basket placeholder. */
+  display_emoji?: string;
+  created_at: string;
+};
+
 export type PantryInventoryRow = {
   id: number;
-  ingredient: { id: number; name: string; created_at: string };
+  ingredient: IngredientBrief;
   quantity: number;
   simple_have: boolean | null;
   location: string;
@@ -126,6 +139,8 @@ export type PantryInventoryRow = {
   owner_user_id?: number;
   /** Partner display name when row belongs to meal partner; empty for own rows. */
   owner_label?: string;
+  /** Set when pantry tracking is on: in-stock item not on this week's plan or unused in library. */
+  pantry_recommendation_hint?: "not_scheduled" | "no_recipes" | null;
 };
 
 export type ParsedPantryItem = {
@@ -146,36 +161,6 @@ export type PantryImportResponse = {
   items: PantryInventoryRow[];
 };
 
-export type PantryHint = {
-  ingredient_id: number;
-  ingredient_name: string;
-  recommended_meals: { id: number; title: string }[];
-};
-
-export type PantrySuggestionsResponse = {
-  enabled: boolean;
-  week_start?: string;
-  hints: PantryHint[];
-};
-
-export type PantryRecipeMissingIngredient = {
-  ingredient_id: number | null;
-  name: string;
-};
-
-export type PantryRecipeMatch = {
-  meal_id: number;
-  title: string;
-  missing_count: number;
-  missing_ingredients: PantryRecipeMissingIngredient[];
-};
-
-export type PantryRecipesResponse = {
-  enabled: boolean;
-  can_make: PantryRecipeMatch[];
-  almost_make: PantryRecipeMatch[];
-};
-
 export type DisconnectPending = {
   id: number;
   status: string;
@@ -183,3 +168,19 @@ export type DisconnectPending = {
   recipient_id: number;
   i_am_initiator: boolean;
 } | null;
+
+export type MealCategoryOptionsByAxis = {
+  meal_type: MealCategoryBrief[];
+  cuisine: MealCategoryBrief[];
+  time: MealCategoryBrief[];
+};
+
+export type MealBootstrapResponse = {
+  meals: Meal[];
+  shared_meals: SharedMeal[];
+  instances: MealPlanInstance[];
+  category_options: MealCategoryOptionsByAxis;
+  tags: string[];
+  pantry_inventory: PantryInventoryRow[] | null;
+  disconnect_pending: DisconnectPending;
+};

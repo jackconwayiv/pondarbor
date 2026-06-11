@@ -4,6 +4,7 @@ export const MEAL_WIZARD_STEP_ORDER = [
   "slotNames",
   "weekStart",
   "dietary",
+  "pantry",
   "tour",
 ] as const;
 
@@ -15,6 +16,7 @@ export const MEAL_WIZARD_STEP_HEADINGS: Record<MealWizardStepId, string> = {
   slotNames: "Name your meal times",
   weekStart: "Week starts on",
   dietary: "Dietary preferences",
+  pantry: "Pantry tracking",
   tour: "What you can do in Meal Maestro",
 };
 

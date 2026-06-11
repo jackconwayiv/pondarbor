@@ -565,6 +565,82 @@ class PantryTagsTests(TestCase):
         self.assertEqual(row["pantry_tags"]["food_group"], ["protein"])
 
 
+class IngredientFoodGroupTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(email="food-group@example.com", password="secret12345")
+        self.user.account_status = User.AccountStatus.APPROVED
+        self.user.save(update_fields=["account_status"])
+        self.client.force_login(self.user)
+
+    def test_patch_ingredient_food_group(self):
+        from meal.models import Ingredient
+
+        ing = Ingredient.objects.create(owner_user=self.user, name="chicken thighs")
+        r = self.client.patch(
+            f"/api/v1/meal/ingredients/{ing.id}/",
+            {"food_group": "meat"},
+            format="json",
+        )
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()["food_group"], "Meat")
+        ing.refresh_from_db()
+        self.assertEqual(ing.food_group, "Meat")
+
+    def test_pantry_upsert_sets_ingredient_food_group(self):
+        from meal.models import Ingredient
+
+        ing = Ingredient.objects.create(owner_user=self.user, name="spinach")
+        r = self.client.put(
+            "/api/v1/meal/pantry/inventory/upsert/",
+            {"ingredient_id": ing.id, "quantity": 1, "food_group": "Vegetables"},
+            format="json",
+        )
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()["ingredient"]["food_group"], "Vegetables")
+        ing.refresh_from_db()
+        self.assertEqual(ing.food_group, "Vegetables")
+
+    def test_patch_ingredient_display_emoji(self):
+        from meal.models import Ingredient
+
+        ing = Ingredient.objects.create(owner_user=self.user, name="salmon", food_group="Seafood")
+        r = self.client.patch(
+            f"/api/v1/meal/ingredients/{ing.id}/",
+            {"display_emoji": "🍣"},
+            format="json",
+        )
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()["display_emoji"], "🍣")
+        ing.refresh_from_db()
+        self.assertEqual(ing.display_emoji, "🍣")
+
+    def test_patch_ingredient_display_emoji_rejects_plain_text(self):
+        from meal.models import Ingredient
+
+        ing = Ingredient.objects.create(owner_user=self.user, name="salt")
+        r = self.client.patch(
+            f"/api/v1/meal/ingredients/{ing.id}/",
+            {"display_emoji": "salt"},
+            format="json",
+        )
+        self.assertEqual(r.status_code, 400, r.content)
+
+    def test_pantry_upsert_sets_ingredient_display_emoji(self):
+        from meal.models import Ingredient
+
+        ing = Ingredient.objects.create(owner_user=self.user, name="rice", food_group="Starch")
+        r = self.client.put(
+            "/api/v1/meal/pantry/inventory/upsert/",
+            {"ingredient_id": ing.id, "quantity": 1, "display_emoji": "🍙"},
+            format="json",
+        )
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()["ingredient"]["display_emoji"], "🍙")
+        ing.refresh_from_db()
+        self.assertEqual(ing.display_emoji, "🍙")
+
+
 class PantryStaplesTests(TestCase):
     def test_assumed_staples_match(self):
         from meal.pantry_staples import is_assumed_pantry_staple
@@ -612,21 +688,16 @@ class PantryStaplesTests(TestCase):
         self.assertEqual(len(almost), 0)
 
 
-class PantryRecipeMatchTests(TestCase):
+class PantryCoverageTests(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.user = User.objects.create_user(email="pantry-recipes@example.com", password="secret12345")
+        self.user = User.objects.create_user(email="pantry-coverage@example.com", password="secret12345")
         self.user.account_status = User.AccountStatus.APPROVED
         self.user.save(update_fields=["account_status"])
         profile, _ = Profile.objects.get_or_create(user=self.user)
         profile.meal_pantry_enabled = True
         profile.save(update_fields=["meal_pantry_enabled"])
         self.client.force_login(self.user)
-
-    def _ingredient(self, name: str):
-        from meal.models import Ingredient
-
-        return Ingredient.objects.create(owner_user=self.user, name=name)
 
     def _meal(self, title: str, lines: list[str]):
         from meal.models import Meal
@@ -642,12 +713,11 @@ class PantryRecipeMatchTests(TestCase):
         self.assertEqual(r.status_code, 201, r.content)
         return Meal.objects.get(pk=r.json()["id"])
 
-    def test_pantry_recipes_can_make_and_almost_make(self):
+    def test_meal_list_includes_pantry_coverage_pct(self):
         from meal.models import UserIngredientInventory
 
         crepes = self._meal("Crepes", ["1 cup flour", "2 eggs", "1 cup milk"])
         shortbread = self._meal("Shortbread", ["1 cup flour", "1 cup sugar", "1 cup butter"])
-        self._meal("Too many gaps", ["saffron", "truffle", "caviar", "foie gras", "wagyu beef"])
 
         for line in crepes.ingredients.all():
             if line.ingredient_id:
@@ -656,7 +726,7 @@ class PantryRecipeMatchTests(TestCase):
                     ingredient_id=line.ingredient_id,
                     quantity=1,
                 )
-        flour_line = shortbread.ingredients.filter(name__icontains="flour").first() or shortbread.ingredients.first()
+        flour_line = shortbread.ingredients.filter(name__icontains="flour").first()
         if flour_line and flour_line.ingredient_id:
             UserIngredientInventory.objects.get_or_create(
                 owner_user=self.user,
@@ -665,28 +735,60 @@ class PantryRecipeMatchTests(TestCase):
                 defaults={"quantity": 1},
             )
 
-        r = self.client.get("/api/v1/meal/pantry/recipes/")
+        r = self.client.get("/api/v1/meal/meals/")
         self.assertEqual(r.status_code, 200, r.content)
-        body = r.json()
-        self.assertTrue(body["enabled"])
-        can_titles = {m["title"] for m in body["can_make"]}
-        almost = {m["title"]: m for m in body["almost_make"]}
-        self.assertIn("Crepes", can_titles)
-        # Butter is an assumed staple; only sugar is missing for shortbread.
-        self.assertIn("Shortbread", almost)
-        self.assertEqual(almost["Shortbread"]["missing_count"], 1)
-        missing_names = {m["name"].casefold() for m in almost["Shortbread"]["missing_ingredients"]}
-        self.assertIn("sugar", missing_names)
-        self.assertNotIn("Too many gaps", almost)
-        self.assertNotIn("Too many gaps", can_titles)
+        by_title = {m["title"]: m for m in r.json()}
+        self.assertEqual(by_title["Crepes"]["pantry_coverage_pct"], 100)
+        # Butter is a staple; flour in pantry → 50% (1 of 2 required).
+        self.assertEqual(by_title["Shortbread"]["pantry_coverage_pct"], 50)
 
-    def test_pantry_recipes_disabled_when_pantry_off(self):
+    def test_pantry_coverage_null_when_pantry_off(self):
         profile = Profile.objects.get(user=self.user)
         profile.meal_pantry_enabled = False
         profile.save(update_fields=["meal_pantry_enabled"])
-        r = self.client.get("/api/v1/meal/pantry/recipes/")
-        self.assertEqual(r.status_code, 200)
-        self.assertFalse(r.json()["enabled"])
+        self._meal("Soup", ["1 onion"])
+        r = self.client.get("/api/v1/meal/meals/")
+        self.assertIsNone(r.json()[0]["pantry_coverage_pct"])
+
+    def test_grocery_generate_pantry_aware_omits_in_stock(self):
+        from meal.models import UserIngredientInventory
+
+        meal = self._meal("Omelette", ["2 eggs", "1 yellow onion"])
+        instance = self.client.post(
+            "/api/v1/meal/instances/",
+            {"week_start": "2026-04-06"},
+            format="json",
+        ).json()
+        self.assertEqual(
+            self.client.patch(
+                f"/api/v1/meal/instances/{instance['id']}/grid/",
+                {"slots": [{"day_index": 0, "slot_index": 0, "meal_ids": [meal.id]}]},
+                format="json",
+            ).status_code,
+            200,
+        )
+        eggs_line = meal.ingredients.filter(name__icontains="egg").first()
+        self.assertIsNotNone(eggs_line)
+        self.assertIsNotNone(eggs_line.ingredient_id)
+        UserIngredientInventory.objects.create(
+            owner_user=self.user,
+            ingredient_id=eggs_line.ingredient_id,
+            quantity=6,
+        )
+
+        full = self.client.post(
+            f"/api/v1/meal/instances/{instance['id']}/grocery/generate/",
+            {},
+            format="json",
+        )
+        self.assertEqual(full.status_code, 200, full.content)
+        pantry = self.client.post(
+            f"/api/v1/meal/instances/{instance['id']}/grocery/generate/?pantry=1",
+            {},
+            format="json",
+        )
+        self.assertEqual(pantry.status_code, 200, pantry.content)
+        self.assertGreater(len(full.json()["items"]), len(pantry.json()["items"]))
 
 
 class PantryPartnerSharingTests(TestCase):
@@ -854,3 +956,47 @@ class MealGridSlotPreservationTests(TestCase):
             s for s in inst["slots"] if s["day_index"] == 0 and s["slot_index"] == 4
         )
         self.assertEqual(slot_row["meal_ids"], [meal["id"]])
+
+
+class MealBootstrapTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(email="meal-bootstrap@example.com", password="secret12345")
+        self.user.account_status = User.AccountStatus.APPROVED
+        self.user.save(update_fields=["account_status"])
+        self.client.force_login(self.user)
+
+    def test_bootstrap_returns_core_payload(self):
+        meal = self.client.post(
+            "/api/v1/meal/meals/",
+            {
+                "title": "Soup",
+                "ingredients": [{"raw_line": "1 onion"}],
+            },
+            format="json",
+        ).json()
+        instance = self.client.post(
+            "/api/v1/meal/instances/",
+            {"week_start": "2026-04-06"},
+            format="json",
+        ).json()
+        resp = self.client.get("/api/v1/meal/bootstrap/")
+        self.assertEqual(resp.status_code, 200, resp.content)
+        data = resp.json()
+        self.assertIn("meals", data)
+        self.assertIn("shared_meals", data)
+        self.assertIn("instances", data)
+        self.assertIn("category_options", data)
+        self.assertIn("tags", data)
+        self.assertIn("disconnect_pending", data)
+        self.assertEqual([m["id"] for m in data["meals"]], [meal["id"]])
+        self.assertEqual([i["id"] for i in data["instances"]], [instance["id"]])
+        self.assertIsNone(data["pantry_inventory"])
+
+    def test_bootstrap_includes_pantry_when_enabled(self):
+        profile = Profile.objects.get(user=self.user)
+        profile.meal_pantry_enabled = True
+        profile.save(update_fields=["meal_pantry_enabled"])
+        resp = self.client.get("/api/v1/meal/bootstrap/")
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertIsInstance(resp.json()["pantry_inventory"], list)

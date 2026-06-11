@@ -1,10 +1,11 @@
 import { Box, Stack, Text } from "@chakra-ui/react";
 import PondNativeSelect from "../components/PondNativeSelect";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppModal } from "../components/AppModal";
 import PondButton from "../PondButton";
 import { APP_TEXT_SIZES } from "../theme/typography";
-import { createInstance, fetchInstances, patchInstanceGrid } from "./api";
+import { createInstance, patchInstanceGrid } from "./api";
+import { useMealData } from "./MealDataContext";
 import {
   addDaysIso,
   localDateIso,
@@ -60,8 +61,7 @@ export function MealAddToWeekDialog({
   onPlanUpdated,
   onAddSuccess,
 }: MealAddToWeekDialogProps) {
-  const [instances, setInstances] = useState<MealPlanInstance[]>([]);
-  const [loadErr, setLoadErr] = useState<string | null>(null);
+  const { instances, patchInstance, refreshInstances, onGridCommitted } = useMealData();
   const [selectedDayIso, setSelectedDayIso] = useState("");
   const [mealSlotIndex, setMealSlotIndex] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -80,21 +80,6 @@ export function MealAddToWeekDialog({
     const d = startOfLocalDay(parseLocalDate(selectedDayIso)).getTime();
     return Math.round((d - ws) / 86400000);
   }, [selectedDayIso, weekStartIso]);
-
-  const load = useCallback(async () => {
-    setLoadErr(null);
-    try {
-      const t = await getApiAccessToken();
-      setInstances(await fetchInstances(t));
-    } catch (e) {
-      setLoadErr(e instanceof Error ? e.message : "Load failed");
-    }
-  }, [getApiAccessToken]);
-
-  useEffect(() => {
-    if (!open) return;
-    void load();
-  }, [open, load]);
 
   useEffect(() => {
     if (!open || !dayOptions.length) return;
@@ -123,8 +108,7 @@ export function MealAddToWeekDialog({
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
       if (msg.includes("already have a plan") || msg.includes("week")) {
-        const instList = await fetchInstances(await getApiAccessToken());
-        setInstances(instList);
+        const instList = await refreshInstances();
         const again = instList.find((i) => i.week_start === weekStartIso);
         if (again) return again;
       }
@@ -149,7 +133,8 @@ export function MealAddToWeekDialog({
       const updated = await patchInstanceGrid(t, inst.id, [
         { day_index: dayIndex, slot_index: mealSlotIndex, meal_ids: mealIds },
       ]);
-      setInstances((prev) => [...prev.filter((x) => x.id !== updated.id), updated]);
+      patchInstance(updated);
+      onGridCommitted();
       onPlanUpdated?.();
       const successMessage = dayLabel ? `Meal added to ${dayLabel}` : "Meal added";
       onAddSuccess?.(successMessage);
@@ -172,7 +157,7 @@ export function MealAddToWeekDialog({
       size="md"
     >
       <Stack gap="3">
-        {loadErr || actionErr ? (
+        {actionErr ? (
           <Box
             w="100%"
             borderWidth="1px"
@@ -182,11 +167,6 @@ export function MealAddToWeekDialog({
             role="alert"
           >
             <Stack gap="1">
-              {loadErr ? (
-                <Text fontSize={APP_TEXT_SIZES.helper} color="nautical.solid" fontWeight="medium">
-                  {loadErr}
-                </Text>
-              ) : null}
               {actionErr ? (
                 <Text fontSize={APP_TEXT_SIZES.helper} color="nautical.solid" fontWeight="medium">
                   {actionErr}

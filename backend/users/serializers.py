@@ -19,6 +19,20 @@ ALLOWED_MEAL_SLOT_NAMES = frozenset(
     }
 )
 MEAL_SLOT_LABEL_COUNT_KEYS = frozenset({"1", "2", "3", "4", "5"})
+MEAL_SLOT_LABEL_MAX_LEN = 64
+
+
+def normalize_meal_slot_label(item: object) -> str:
+    if not isinstance(item, str):
+        raise serializers.ValidationError("Each meal slot label must be a string.")
+    s = item.strip()
+    if not s:
+        raise serializers.ValidationError("Meal slot label cannot be empty.")
+    if len(s) > MEAL_SLOT_LABEL_MAX_LEN:
+        raise serializers.ValidationError(
+            f"Meal slot label must be at most {MEAL_SLOT_LABEL_MAX_LEN} characters.",
+        )
+    return s
 
 
 def validate_meal_slot_labels_payload(value):
@@ -39,11 +53,7 @@ def validate_meal_slot_labels_payload(value):
             raise serializers.ValidationError(
                 f"meal_slot_labels[{key}] must have length {n}, got {len(labels)}."
             )
-        for item in labels:
-            if not isinstance(item, str) or item not in ALLOWED_MEAL_SLOT_NAMES:
-                raise serializers.ValidationError(
-                    "Each meal slot label must be one of the allowed preset names."
-                )
+        value[key] = [normalize_meal_slot_label(item) for item in labels]
     return value
 
 

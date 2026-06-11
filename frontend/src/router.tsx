@@ -93,20 +93,14 @@ const QffDmCombatSimPage = lazy(() => import("./qff/QffDmCombatSimPage"));
 const MealLayout = lazy(() => import("./meal/MealLayout"));
 const MealHomePage = lazy(() => import("./meal/MealHomePage"));
 const MealMealsPage = lazy(() => import("./meal/MealMealsPage"));
-const MealSharedPage = lazy(() => import("./meal/MealSharedPage"));
 const MealMealDetailPage = lazy(() => import("./meal/MealMealDetailPage"));
 const MealPlanPage = lazy(() => import("./meal/MealPlanPage"));
-const MealWeeksPage = lazy(() => import("./meal/MealWeeksPage"));
 const MealWeekEditPage = lazy(() => import("./meal/MealWeekEditPage"));
+const MealPlanSlotDetailPage = lazy(() => import("./meal/MealPlanSlotDetailPage"));
 const MealInstanceDetailPage = lazy(
   () => import("./meal/MealInstanceDetailPage"),
 );
 const MealPantryInventoryPage = lazy(() => import("./meal/MealPantryInventoryPage"));
-const MealPantryRecommendationsPage = lazy(
-  () => import("./meal/MealPantryRecommendationsPage"),
-);
-const MealPantryReadyPage = lazy(() => import("./meal/MealPantryReadyPage"));
-const MealPantryAlmostPage = lazy(() => import("./meal/MealPantryAlmostPage"));
 const GamesMenu = lazy(() => import("./GamesMenu"));
 const HarborLobbyPage = lazy(() => import("./harbor/HarborLobbyPage"));
 const HarborRoute = lazy(() => import("./harbor/HarborRoute"));
@@ -469,11 +463,11 @@ export const router = createAppRouter([
           },
           {
             path: "templates",
-            element: <Navigate to="/meal/plan/overview" replace />,
+            element: <Navigate to="/meal/plan" replace />,
           },
           {
             path: "weeks",
-            element: <Navigate to="/meal/plan/overview" replace />,
+            element: <Navigate to="/meal/plan" replace />,
           },
           {
             path: "weeks/:id",
@@ -481,14 +475,15 @@ export const router = createAppRouter([
           },
           {
             path: "templates/:id",
-            element: <Navigate to="/meal/plan/overview" replace />,
+            element: <Navigate to="/meal/plan" replace />,
           },
           {
             path: "plan",
             children: [
               { index: true, element: lazyRouteElement(<MealPlanPage />) },
-              { path: "overview", element: lazyRouteElement(<MealWeeksPage />) },
-              { path: "plans", element: <Navigate to="/meal/plan/overview" replace /> },
+              { path: "overview", element: <Navigate to="/meal/plan" replace /> },
+              { path: "slot", element: lazyRouteElement(<MealPlanSlotDetailPage />) },
+              { path: "plans", element: <Navigate to="/meal/plan" replace /> },
               {
                 path: "plans/new",
                 element: lazyRouteElement(<MealWeekEditPage />),
@@ -509,10 +504,10 @@ export const router = createAppRouter([
               },
             ],
           },
-          { path: "shared", element: lazyRouteElement(<MealSharedPage />) },
+          { path: "shared", element: <Navigate to="/meal/meals" replace /> },
           {
             path: "plans/:tab",
-            element: <Navigate to="/meal/plan/overview" replace />,
+            element: <Navigate to="/meal/plan" replace />,
           },
           {
             path: "plans/today",
@@ -520,11 +515,11 @@ export const router = createAppRouter([
           },
           {
             path: "plans/weeks",
-            element: <Navigate to="/meal/plan/overview" replace />,
+            element: <Navigate to="/meal/plan" replace />,
           },
           {
             path: "plans/templates",
-            element: <Navigate to="/meal/plan/overview" replace />,
+            element: <Navigate to="/meal/plan" replace />,
           },
           {
             path: "plans/weeks/:id",
@@ -532,11 +527,11 @@ export const router = createAppRouter([
           },
           {
             path: "plans/templates/:id",
-            element: <Navigate to="/meal/plan/overview" replace />,
+            element: <Navigate to="/meal/plan" replace />,
           },
           {
             path: "plan/shared",
-            element: <Navigate to="/meal/shared" replace />,
+            element: <Navigate to="/meal/meals" replace />,
           },
           {
             path: "plan/meals",
@@ -565,10 +560,10 @@ export const router = createAppRouter([
               { path: "inventory", element: lazyRouteElement(<MealPantryInventoryPage />) },
               {
                 path: "recommendations",
-                element: lazyRouteElement(<MealPantryRecommendationsPage />),
+                element: <Navigate to="/meal/pantry/inventory" replace />,
               },
-              { path: "ready", element: lazyRouteElement(<MealPantryReadyPage />) },
-              { path: "almost", element: lazyRouteElement(<MealPantryAlmostPage />) },
+              { path: "ready", element: <Navigate to="/meal/meals" replace /> },
+              { path: "almost", element: <Navigate to="/meal/meals" replace /> },
             ],
           },
           {

@@ -180,6 +180,18 @@ class Ingredient(models.Model):
         related_name="meal_ingredients_vocab",
     )
     name = models.CharField(max_length=255)
+    food_group = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text="Ingredient category (e.g. Meat, Vegetables); shared across pantry, meals, and grocery.",
+    )
+    display_emoji = models.CharField(
+        max_length=32,
+        blank=True,
+        default="",
+        help_text="Optional emoji override for pantry cards; category default when empty.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

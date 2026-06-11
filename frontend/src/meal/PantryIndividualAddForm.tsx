@@ -4,6 +4,7 @@ import PondButton from "../PondButton";
 import PondNativeSelect from "../components/PondNativeSelect";
 import { APP_TEXT_SIZES, PANEL_FIELD_PROPS } from "../theme/typography";
 import { fetchIngredientVocab, upsertPantryInventory } from "./api";
+import { IngredientFoodGroupSelect } from "./IngredientFoodGroupSelect";
 import { emptyPantryTags, normalizePantryTags } from "./pantryTagVocab";
 import { PantryTagsEditor } from "./PantryTagsEditor";
 import type { PantryTags } from "./types";
@@ -26,7 +27,8 @@ export function PantryIndividualAddForm({
   const [qty, setQty] = useState("1");
   const [location, setLocation] = useState("");
   const [tags, setTags] = useState<PantryTags>(emptyPantryTags());
-  const [opts, setOpts] = useState<{ id: number; name: string }[]>([]);
+  const [foodGroup, setFoodGroup] = useState("");
+  const [opts, setOpts] = useState<{ id: number; name: string; food_group?: string }[]>([]);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -66,7 +68,16 @@ export function PantryIndividualAddForm({
           rootProps={{ minW: "10rem" }}
           fieldProps={{
             value: pickId === "" ? "" : String(pickId),
-            onChange: (e) => setPickId(e.target.value ? Number(e.target.value) : ""),
+            onChange: (e) => {
+              const v = e.target.value ? Number(e.target.value) : "";
+              setPickId(v);
+              if (v === "") {
+                setFoodGroup("");
+                return;
+              }
+              const picked = opts.find((o) => o.id === v);
+              setFoodGroup(picked?.food_group ?? "");
+            },
           }}
         >
           <option value="">Pick…</option>
@@ -94,6 +105,8 @@ export function PantryIndividualAddForm({
           {...PANEL_FIELD_PROPS}
         />
       </HStack>
+      <IngredientFoodGroupSelect value={foodGroup} onChange={setFoodGroup} disabled={busy} />
+
       <PantryTagsEditor value={tags} onChange={setTags} disabled={busy} />
       {err ? (
         <Text fontSize={APP_TEXT_SIZES.meta} color="nautical.solid" role="alert">
@@ -117,11 +130,13 @@ export function PantryIndividualAddForm({
                 simple_have: null,
                 location: location.trim(),
                 pantry_tags: normalizePantryTags(tags),
+                food_group: foodGroup,
               });
               setSearch("");
               setPickId("");
               setLocation("");
               setQty("1");
+              setFoodGroup("");
               setTags(emptyPantryTags());
               setOpts([]);
               await onAdded();

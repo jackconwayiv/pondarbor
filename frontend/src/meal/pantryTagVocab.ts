@@ -5,7 +5,15 @@ export const PANTRY_TAG_DIMENSIONS = [
   "dietary",
 ] as const;
 
+/** Pantry row tags only — food group lives on the ingredient vocabulary. */
+export const PANTRY_ROW_TAG_DIMENSIONS = [
+  "storage",
+  "preferred_meal",
+  "dietary",
+] as const;
+
 export type PantryTagDimension = (typeof PANTRY_TAG_DIMENSIONS)[number];
+export type PantryRowTagDimension = (typeof PANTRY_ROW_TAG_DIMENSIONS)[number];
 
 export const PANTRY_TAG_DIMENSION_LABELS: Record<PantryTagDimension, string> = {
   food_group: "Food group",
@@ -14,7 +22,7 @@ export const PANTRY_TAG_DIMENSION_LABELS: Record<PantryTagDimension, string> = {
   dietary: "Dietary",
 };
 
-export const PANTRY_TAG_PRESETS: Record<PantryTagDimension, readonly string[]> = {
+const PANTRY_TAG_PRESET_VALUES: Record<PantryTagDimension, readonly string[]> = {
   food_group: [
     "Bread",
     "Starch",
@@ -32,6 +40,11 @@ export const PANTRY_TAG_PRESETS: Record<PantryTagDimension, readonly string[]> =
   preferred_meal: ["Breakfast", "Brunch", "Lunch", "Dinner", "Snack", "Dessert"],
   dietary: ["Vegan", "Vegetarian", "Gluten-free", "Low FODMAP", "Nut-free", "Dairy-free"],
 };
+
+export const PANTRY_TAG_PRESETS = PANTRY_TAG_PRESET_VALUES;
+
+/** Canonical ingredient category presets (stored on Ingredient.food_group). */
+export const INGREDIENT_FOOD_GROUP_PRESETS = PANTRY_TAG_PRESETS.food_group;
 
 import type { PantryTags } from "./types";
 

@@ -5,6 +5,7 @@ import { APP_TEXT_SIZES, PANEL_NESTED_BLOCK_PROPS } from "../theme/typography";
 import type { Meal, MealCreateInput } from "./types";
 import { WEEKDAY_FULL, WEEKDAY_SHORT, dayColumnOrder, mealLabel } from "./mealLabels";
 import { formatCalendarDayInWeek } from "./mealPlanDates";
+import { MealPlanSlotCell } from "./MealPlanSlotCell";
 import { MealSlotPickerDialog } from "./MealSlotPickerDialog";
 
 function slotDisplayName(slotLabels: string[] | undefined, slotIndex: number): string {
@@ -62,23 +63,10 @@ export default function MealSlotGrid({
     const isEmpty = mids.length === 0;
     const name = slotDisplayName(slotLabels, slotIndex);
     return (
-      <Box
-        role="button"
-        tabIndex={disabled ? -1 : 0}
-        minH="12"
-        px="2"
-        py="2"
-        borderRadius="md"
-        borderWidth="1px"
-        borderColor="border"
-        bg={isEmpty ? "gray.200" : undefined}
-        cursor={disabled ? "not-allowed" : "pointer"}
-        opacity={disabled ? 0.65 : 1}
-        transition="border-color 0.15s, background 0.15s"
-        aria-label={isEmpty ? `Empty ${name}, add meals` : undefined}
-        _hover={
-          disabled ? undefined : { borderColor: "teal.solid", bg: "lilypad.subtle" }
-        }
+      <MealPlanSlotCell
+        variant={isEmpty ? "emptyInput" : "scheduled"}
+        disabled={disabled}
+        aria-label={isEmpty ? `Empty ${name}, add meals` : `${name}: ${mids.length} meal(s)`}
         onClick={() => {
           if (!disabled) setPicker({ dayIndex, slotIndex });
         }}
@@ -90,15 +78,15 @@ export default function MealSlotGrid({
           }
         }}
       >
-        {!isEmpty ? (
-          <Stack gap="1" w="100%" align="stretch">
-            {mids.map((id) => {
+        {!isEmpty
+          ? mids.map((id) => {
               const m = mealsById.get(id);
               const label = m ? mealLabel(m) : `Meal #${id}`;
               return (
                 <Text
                   key={id}
                   fontSize={APP_TEXT_SIZES.helper}
+                  fontWeight="bold"
                   color="fg"
                   lineHeight="short"
                   whiteSpace="normal"
@@ -107,10 +95,9 @@ export default function MealSlotGrid({
                   {label}
                 </Text>
               );
-            })}
-          </Stack>
-        ) : null}
-      </Box>
+            })
+          : undefined}
+      </MealPlanSlotCell>
     );
   }
 

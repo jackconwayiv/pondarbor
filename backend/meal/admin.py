@@ -65,7 +65,7 @@ class MealTagAssignmentAdmin(admin.ModelAdmin):
 
 @admin.register(Ingredient)
 class IngredientAdmin(admin.ModelAdmin):
-    list_display = ("id", "owner_user", "name", "created_at")
+    list_display = ("id", "owner_user", "name", "food_group", "display_emoji", "created_at")
     search_fields = ("name", "owner_user__email")
     autocomplete_fields = ("owner_user",)
     readonly_fields = ("created_at",)

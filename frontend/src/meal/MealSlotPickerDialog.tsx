@@ -6,6 +6,7 @@ import {
   SimpleGrid,
   Stack,
   Tabs,
+  Tag,
   Text,
   Wrap,
   WrapItem,
@@ -32,6 +33,7 @@ import type { Meal, MealCreateInput } from "./types";
 
 const MIN_TITLE_QUERY_LEN = 2;
 const MAX_TITLE_MATCHES = 25;
+const RECENT_MEALS_LIMIT = 10;
 const TITLE_SEARCH_DEBOUNCE_MS = 300;
 
 const MODAL_PAD = "2" as const;
@@ -47,6 +49,17 @@ function mealsMatchingTitle(meals: Meal[], query: string, limit: number): Meal[]
   return meals
     .filter((m) => (m.title ?? "").trim().toLowerCase().includes(q))
     .slice(0, limit);
+}
+
+function mealActivityTime(meal: Meal): number {
+  const updated = Date.parse(meal.updated_at);
+  if (Number.isFinite(updated)) return updated;
+  const created = Date.parse(meal.created_at);
+  return Number.isFinite(created) ? created : 0;
+}
+
+function recentMeals(meals: Meal[], limit: number): Meal[] {
+  return [...meals].sort((a, b) => mealActivityTime(b) - mealActivityTime(a)).slice(0, limit);
 }
 
 export type MealSlotPickerIntent = "assign" | "edit";
@@ -140,6 +153,8 @@ export function MealSlotPickerDialog({
     () => mealsMatchingTitle(meals, debouncedSearch, MAX_TITLE_MATCHES),
     [meals, debouncedSearch],
   );
+
+  const recentMealList = useMemo(() => recentMeals(meals, RECENT_MEALS_LIMIT), [meals]);
 
   const mealsById = useMemo(() => new Map(meals.map((m) => [m.id, m])), [meals]);
 
@@ -351,13 +366,47 @@ export function MealSlotPickerDialog({
             </Box>
           ) : null}
         </Box>
-        <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" mt="2" pb="2">
+        <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted" mt="2">
           {!queryReady
             ? `Enter at least ${MIN_TITLE_QUERY_LEN} letters to search by title.`
             : titleMatches.length === 0
               ? "No meals match that title."
               : `Showing up to ${MAX_TITLE_MATCHES} matches in the menu under the field.`}
         </Text>
+        {!showResultsMenu && recentMealList.length > 0 ? (
+          <Box mt="3" pb="2">
+            <Text fontSize={APP_TEXT_SIZES.meta} fontWeight="medium" color="fg.muted" mb="2">
+              Recent meals
+            </Text>
+            <Wrap gap="2">
+              {recentMealList.map((m) => {
+                const on = selectedIds.includes(m.id);
+                const label = mealLabel(m);
+                return (
+                  <WrapItem key={m.id}>
+                    <Tag.Root
+                      size="sm"
+                      colorPalette="lilypad"
+                      variant={on ? "solid" : "outline"}
+                      cursor={fieldDisabled ? "not-allowed" : "pointer"}
+                      opacity={fieldDisabled ? 0.65 : 1}
+                      aria-pressed={on}
+                      aria-label={
+                        on ? `Remove ${label} from ${slotDisplayName}` : `Add ${label} to ${slotDisplayName}`
+                      }
+                      onClick={() => {
+                        if (fieldDisabled) return;
+                        toggleId(m.id);
+                      }}
+                    >
+                      <Tag.Label>{label}</Tag.Label>
+                    </Tag.Root>
+                  </WrapItem>
+                );
+              })}
+            </Wrap>
+          </Box>
+        ) : null}
       </Box>
     </Stack>
   );

@@ -24,7 +24,9 @@ import {
   PANEL_ENTRY_CARD_PROPS,
   PANEL_FIELD_PROPS,
 } from "../theme/typography";
-import { deleteMeal, fetchMeal, fetchMealCategoryOptions, patchMeal } from "./api";
+import { copyFriendMeal, deleteMeal, fetchMeal, patchMeal } from "./api";
+import { useMealData } from "./MealDataContext";
+import { canWriteMeal } from "./mealMealAccess";
 import { MealCategoryAddEditor } from "./MealCategoryAddEditor";
 import { MealCategorySelect } from "./MealCategorySelect";
 import { MealAddToWeekDialog } from "./MealAddToWeekDialog";
@@ -32,6 +34,9 @@ import { MealEditorBackdropDismiss } from "./MealEditorBackdropDismiss";
 import { MealEditorForm } from "./MealEditorForm";
 import { MealImageField } from "./MealImageField";
 import PresignedImage from "../lib/PresignedImage";
+import { mealPlanSlotSummary } from "./mealLabels";
+import { MealPantryCoverageBadge } from "./MealPantryCoverageBadge";
+import { MealTagsCategoriesChips } from "./MealTagsCategoriesChips";
 import { mealOwnerLabel } from "./mealOwnerLabel";
 import {
   MealApprovalRequired,
@@ -80,6 +85,7 @@ export default function MealMealDetailPage() {
   const [ingredientsText, setIngredientsText] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [copyBusy, setCopyBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [patchBusy, setPatchBusy] = useState(false);
@@ -89,16 +95,22 @@ export default function MealMealDetailPage() {
   const [cuisineId, setCuisineId] = useState("");
   const [timeId, setTimeId] = useState("");
   const [published, setPublished] = useState(false);
-  const [mealTypeOpts, setMealTypeOpts] = useState<{ id: number; name: string }[]>([]);
-  const [cuisineOpts, setCuisineOpts] = useState<{ id: number; name: string }[]>([]);
-  const [timeOpts, setTimeOpts] = useState<{ id: number; name: string }[]>([]);
   const confirmDeleteButtonRef = useRef<HTMLButtonElement | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
+  const {
+    meals: ownedMeals,
+    sharedMeals,
+    categoryOptions,
+    upsertMeal,
+    removeMeal,
+    addCategoryOption,
+  } = useMealData();
 
-  const load = useCallback(async () => {
-    const t = await getApiAccessToken();
-    const m = await fetchMeal(t, mid);
-    setErr(null);
+  const mealTypeOpts = categoryOptions.meal_type.map((o) => ({ id: o.id, name: o.name }));
+  const cuisineOpts = categoryOptions.cuisine.map((o) => ({ id: o.id, name: o.name }));
+  const timeOpts = categoryOptions.time.map((o) => ({ id: o.id, name: o.name }));
+
+  const applyMealToForm = useCallback((m: Meal) => {
     setMeal(m);
     setMealTitle(m.title);
     setBlurb(m.blurb);
@@ -110,26 +122,33 @@ export default function MealMealDetailPage() {
     setCuisineId(m.cuisine ? String(m.cuisine.id) : "");
     setTimeId(m.time ? String(m.time.id) : "");
     setPublished(Boolean(m.is_published_to_friends));
-  }, [getApiAccessToken, mid]);
+  }, []);
 
-  useEffect(() => {
-    if (!sessionUser?.user.is_approved) return;
-    void (async () => {
-      try {
-        const t = await getApiAccessToken();
-        const [mt, cu, tm] = await Promise.all([
-          fetchMealCategoryOptions(t, "meal_type"),
-          fetchMealCategoryOptions(t, "cuisine"),
-          fetchMealCategoryOptions(t, "time"),
-        ]);
-        setMealTypeOpts(mt.map((o) => ({ id: o.id, name: o.name })));
-        setCuisineOpts(cu.map((o) => ({ id: o.id, name: o.name })));
-        setTimeOpts(tm.map((o) => ({ id: o.id, name: o.name })));
-      } catch {
-        // ignore
-      }
-    })();
-  }, [sessionUser?.user.is_approved, getApiAccessToken]);
+  const load = useCallback(async () => {
+    const cached =
+      ownedMeals.find((m) => m.id === mid) ?? sharedMeals.find((m) => m.id === mid) ?? null;
+    if (cached) {
+      setErr(null);
+      applyMealToForm(cached);
+      return;
+    }
+    const t = await getApiAccessToken();
+    const m = await fetchMeal(t, mid);
+    setErr(null);
+    applyMealToForm(m);
+    const inLibrary =
+      m.owner_user === sessionUser?.user.id ||
+      ownedMeals.some((row) => row.owner_user === m.owner_user);
+    if (inLibrary) upsertMeal(m);
+  }, [
+    applyMealToForm,
+    getApiAccessToken,
+    mid,
+    ownedMeals,
+    sessionUser?.user.id,
+    sharedMeals,
+    upsertMeal,
+  ]);
 
   useEffect(() => {
     if (!sessionUser?.user.is_approved || !Number.isFinite(mid)) return;
@@ -183,6 +202,7 @@ export default function MealMealDetailPage() {
         is_published_to_friends: published,
       });
       setMeal(next);
+      upsertMeal(next);
       setErr(null);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Save failed");
@@ -203,6 +223,7 @@ export default function MealMealDetailPage() {
     timeId,
     published,
     getApiAccessToken,
+    upsertMeal,
   ]);
 
   const dismissToMealsList = useCallback(async () => {
@@ -243,6 +264,13 @@ export default function MealMealDetailPage() {
   }
 
   const ownerLabel = mealOwnerLabel(meal.owner_user, sessionUser);
+  const planSlotSummary = mealPlanSlotSummary(meal);
+  const pantryEnabled = sessionUser.profile.meal_pantry_enabled ?? false;
+  const coveragePct = meal.pantry_coverage_pct;
+  const showCoverage =
+    pantryEnabled && coveragePct != null && typeof coveragePct === "number";
+  const canWrite = canWriteMeal(meal, sessionUser);
+  const sharedAuthor = meal.author_display?.trim();
   const hasIngredients = meal.ingredients.length > 0;
   const hasDirections = Boolean(meal.directions?.trim());
   const defaultTab = hasIngredients ? "ingredients" : hasDirections ? "directions" : "details";
@@ -280,58 +308,92 @@ export default function MealMealDetailPage() {
         >
           {!isEditing ? (
             <>
-              <HStack justify="space-between" mb="2" flexWrap="wrap" gap="2">
-                <Heading size="sm">
-                  {mealTitle.trim() || "Meal"}
-                </Heading>
+              <HStack justify="space-between" mb="2" flexWrap="wrap" gap="2" align="flex-start">
+                <Stack gap="0.5" flex="1" minW="min(100%, 12rem)">
+                  <Heading size="sm">{mealTitle.trim() || "Meal"}</Heading>
+                  {sharedAuthor || meal.owner_user !== sessionUser.user.id ? (
+                    <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted">
+                      {sharedAuthor ? `From ${sharedAuthor}` : ownerLabel}
+                    </Text>
+                  ) : null}
+                </Stack>
                 <HStack gap="2" flexWrap="wrap">
-                  <PondButton
-                    colorPalette="sky"
-                    variant="outline"
-                    onClick={() => {
-                      setAddToPlanNotice(null);
-                      setAddToPlanOpen(true);
-                    }}
-                  >
-                    Add to meal plan…
-                  </PondButton>
-                  <PondButton
-                    colorPalette="lilypad"
-                    onClick={() => {
-                      setAddToPlanNotice(null);
-                      setIsEditing(true);
-                    }}
-                  >
-                    Edit
-                  </PondButton>
-                  <PondButton
-                    ref={confirmDeleteButtonRef}
-                    flexShrink={0}
-                    colorPalette="nautical"
-                    loading={deleteBusy}
-                    disabled={deleteBusy}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (!confirmDelete) {
-                        setConfirmDelete(true);
-                        return;
-                      }
-                      void (async () => {
-                        setDeleteBusy(true);
-                        try {
-                          const t = await getApiAccessToken();
-                          await deleteMeal(t, meal.id);
-                          navigate("/meal/meals");
-                        } catch (e) {
-                          setErr(e instanceof Error ? e.message : "Delete failed");
-                        } finally {
-                          setDeleteBusy(false);
-                        }
-                      })();
-                    }}
-                  >
-                    {confirmDelete ? "Confirm Delete" : "Delete"}
-                  </PondButton>
+                  {canWrite ? (
+                    <>
+                      <PondButton
+                        colorPalette="sky"
+                        variant="outline"
+                        onClick={() => {
+                          setAddToPlanNotice(null);
+                          setAddToPlanOpen(true);
+                        }}
+                      >
+                        Add to meal plan…
+                      </PondButton>
+                      <PondButton
+                        colorPalette="lilypad"
+                        onClick={() => {
+                          setAddToPlanNotice(null);
+                          setIsEditing(true);
+                        }}
+                      >
+                        Edit
+                      </PondButton>
+                      <PondButton
+                        ref={confirmDeleteButtonRef}
+                        flexShrink={0}
+                        colorPalette="nautical"
+                        loading={deleteBusy}
+                        disabled={deleteBusy}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!confirmDelete) {
+                            setConfirmDelete(true);
+                            return;
+                          }
+                          void (async () => {
+                            setDeleteBusy(true);
+                            try {
+                              const t = await getApiAccessToken();
+                              await deleteMeal(t, meal.id);
+                              removeMeal(meal.id);
+                              navigate("/meal/meals");
+                            } catch (e) {
+                              setErr(e instanceof Error ? e.message : "Delete failed");
+                            } finally {
+                              setDeleteBusy(false);
+                            }
+                          })();
+                        }}
+                      >
+                        {confirmDelete ? "Confirm Delete" : "Delete"}
+                      </PondButton>
+                    </>
+                  ) : (
+                    <PondButton
+                      colorPalette="lilypad"
+                      loading={copyBusy}
+                      disabled={copyBusy}
+                      onClick={() => {
+                        void (async () => {
+                          setCopyBusy(true);
+                          setErr(null);
+                          try {
+                            const t = await getApiAccessToken();
+                            const created = await copyFriendMeal(t, meal.id);
+                            upsertMeal(created);
+                            navigate(`/meal/meals/${created.id}`, { replace: true });
+                          } catch (e) {
+                            setErr(e instanceof Error ? e.message : "Could not save recipe");
+                          } finally {
+                            setCopyBusy(false);
+                          }
+                        })();
+                      }}
+                    >
+                      Save to my meals
+                    </PondButton>
+                  )}
                 </HStack>
               </HStack>
               {addToPlanNotice ? (
@@ -385,9 +447,21 @@ export default function MealMealDetailPage() {
                   mealTypeOpts={mealTypeOpts}
                   cuisineOpts={cuisineOpts}
                   timeOpts={timeOpts}
-                  setMealTypeOpts={setMealTypeOpts}
-                  setCuisineOpts={setCuisineOpts}
-                  setTimeOpts={setTimeOpts}
+                  setMealTypeOpts={(added) => {
+                    for (const o of added) {
+                      addCategoryOption({ id: o.id, name: o.name, axis: "meal_type" });
+                    }
+                  }}
+                  setCuisineOpts={(added) => {
+                    for (const o of added) {
+                      addCategoryOption({ id: o.id, name: o.name, axis: "cuisine" });
+                    }
+                  }}
+                  setTimeOpts={(added) => {
+                    for (const o of added) {
+                      addCategoryOption({ id: o.id, name: o.name, axis: "time" });
+                    }
+                  }}
                   pickMealType={setMealTypeId}
                   pickCuisine={setCuisineId}
                   pickTime={setTimeId}
@@ -518,6 +592,7 @@ export default function MealMealDetailPage() {
                         try {
                           const t = await getApiAccessToken();
                           await deleteMeal(t, meal.id);
+                          removeMeal(meal.id);
                           navigate("/meal/meals");
                         } catch (e) {
                           setErr(e instanceof Error ? e.message : "Delete failed");
@@ -576,27 +651,19 @@ export default function MealMealDetailPage() {
                   <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted">
                     Owner: {ownerLabel}
                   </Text>
-                  {(meal.tag_names?.length ?? 0) > 0 ? (
-                    <Text fontSize={APP_TEXT_SIZES.body}>
-                      Tags: {meal.tag_names!.join(", ")}
-                    </Text>
-                  ) : null}
-                  {[meal.meal_type, meal.cuisine, meal.time].filter(Boolean).length > 0 ? (
-                    <Text fontSize={APP_TEXT_SIZES.body} color="fg.muted">
-                      {[meal.meal_type?.name, meal.cuisine?.name, meal.time?.name]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </Text>
-                  ) : null}
+                  <MealTagsCategoriesChips meal={meal} />
                   {meal.is_published_to_friends ? (
                     <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted">
                       Published to friends
                     </Text>
                   ) : null}
-                  {(meal.upcoming_slot_count ?? 0) > 0 ? (
+                  {planSlotSummary ? (
                     <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted">
-                      Planned {meal.upcoming_slot_count}× in upcoming weeks
+                      {planSlotSummary}
                     </Text>
+                  ) : null}
+                  {showCoverage ? (
+                    <MealPantryCoverageBadge pct={coveragePct} variant="inline" />
                   ) : null}
                   {meal.source_url?.trim() ? (
                     <Text fontSize={APP_TEXT_SIZES.body}>

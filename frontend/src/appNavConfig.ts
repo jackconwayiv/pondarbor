@@ -298,7 +298,6 @@ export function resolveAppPathFromLocation(
     ["/calendar", "/calendar"],
     ["/closet", "/closet"],
     ["/quotes", "/quotes"],
-    ["/friend", "/quotes"],
     ["/goals", "/goals"],
     ["/zodiac", "/zodiac"],
     ["/meal", "/meal"],

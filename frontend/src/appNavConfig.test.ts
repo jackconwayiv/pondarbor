@@ -5,6 +5,7 @@ import {
   getHomeTrailingApps,
   getOnboardingStarableApps,
   hasUnstarredApps,
+  resolveAppPathFromLocation,
   starAllAccessibleAppPaths,
 } from "./appNavConfig";
 
@@ -49,6 +50,18 @@ describe("hasUnstarredApps", () => {
     expect(
       getHomeTrailingApps(nonStaff, profile).some((item) => item.to === "/explore"),
     ).toBe(false);
+  });
+});
+
+describe("resolveAppPathFromLocation", () => {
+  it("does not resolve friend profiles to a starable app", () => {
+    expect(resolveAppPathFromLocation("/friend/42")).toBeNull();
+    expect(resolveAppPathFromLocation("/users/alice@example.com/public-quotes")).toBeNull();
+  });
+
+  it("resolves quotes routes for starring", () => {
+    expect(resolveAppPathFromLocation("/quotes")).toBe("/quotes");
+    expect(resolveAppPathFromLocation("/quotes/public")).toBe("/quotes");
   });
 });
 

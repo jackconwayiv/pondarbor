@@ -61,7 +61,7 @@ export default function PondsteadWelcomePage() {
 
       <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
         <Link asChild variant="underline" color="fg.muted">
-          <RouterLink to="/games">← All games</RouterLink>
+          <RouterLink to="/">← Home</RouterLink>
         </Link>
       </Text>
     </Stack>

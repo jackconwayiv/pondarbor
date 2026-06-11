@@ -40,3 +40,28 @@ export function timeZoneOptionsForValue(
   }
   return zones;
 }
+
+const timeInZoneFormatters = new Map<string, Intl.DateTimeFormat>();
+
+/** Localized current clock time for an IANA zone, e.g. "2:34 PM". */
+export function formatCurrentTimeInTimeZone(
+  iana: string,
+  now: Date = new Date(),
+): string {
+  const zone = iana.trim();
+  if (!zone) return "";
+  try {
+    let formatter = timeInZoneFormatters.get(zone);
+    if (!formatter) {
+      formatter = new Intl.DateTimeFormat(undefined, {
+        timeZone: zone,
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      timeInZoneFormatters.set(zone, formatter);
+    }
+    return formatter.format(now);
+  } catch {
+    return "";
+  }
+}

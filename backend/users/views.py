@@ -130,6 +130,9 @@ def serialize_me(user):
             "songaday_visibility": profile.songaday_visibility,
             "achievement_inbox_read_slugs": profile.achievement_inbox_read_slugs
             or [],
+            "home_starred_app_paths": profile.home_starred_app_paths,
+            "onboarding_completed": profile.onboarding_completed,
+            "onboarding_step": profile.onboarding_step,
         },
         "achievements": achievements_payload_for_user(user, public_only=False),
     }
@@ -615,6 +618,15 @@ def patch_me_profile(request):
         profile.display_astro = bool(data["display_astro"])
     if "songaday_visibility" in data:
         profile.songaday_visibility = data["songaday_visibility"]
+    if "home_starred_app_paths" in data:
+        profile.home_starred_app_paths = data["home_starred_app_paths"]
+    onboarding_just_completed = False
+    if "onboarding_completed" in data:
+        was_completed = profile.onboarding_completed
+        profile.onboarding_completed = bool(data["onboarding_completed"])
+        onboarding_just_completed = profile.onboarding_completed and not was_completed
+    if "onboarding_step" in data:
+        profile.onboarding_step = int(data["onboarding_step"])
     profile.save()
     if slots_per_day_changed:
         from meal.grid import rebuild_all_instances_for_user
@@ -626,6 +638,10 @@ def patch_me_profile(request):
         sync_birth_date_across_profiles(user=request.user, birth_date=profile.birth_date)
     if "meal_crud_partner_id" in data:
         evaluate_meal_maestro_partner_for_user(request.user.id)
+    if onboarding_just_completed:
+        from achievements.services import evaluate_welcome_to_pond_arbor_for_user
+
+        evaluate_welcome_to_pond_arbor_for_user(request.user.id)
     return Response(MeSerializer(serialize_me(request.user)).data)
 
 

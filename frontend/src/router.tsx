@@ -5,6 +5,7 @@ import { lazy, Suspense, useEffect } from "react";
 import { createBrowserRouter, Navigate, Outlet } from "react-router";
 import AboutPage from "./AboutPage";
 import App from "./App";
+import ExplorePage from "./ExplorePage";
 import NotFoundPage from "./NotFoundPage";
 import ProfilePage from "./ProfilePage";
 import RouteErrorPage, { STALE_CHUNK_RELOAD_KEY } from "./RouteErrorPage";
@@ -16,6 +17,8 @@ import AppLayout from "./layout";
 import {
   LegacyRedirectPlansWeekDetail,
 } from "./meal/mealLegacyRedirects";
+import OnboardingPage from "./onboarding/OnboardingPage";
+import { resolveOnboardingPath } from "./onboarding/onboardingSteps";
 import StaffPage from "./staff/StaffPage";
 import StaffRoute from "./staff/StaffRoute";
 import { useAppSession } from "./auth/AppSessionContext";
@@ -101,7 +104,6 @@ const MealInstanceDetailPage = lazy(
   () => import("./meal/MealInstanceDetailPage"),
 );
 const MealPantryInventoryPage = lazy(() => import("./meal/MealPantryInventoryPage"));
-const GamesMenu = lazy(() => import("./GamesMenu"));
 const HarborLobbyPage = lazy(() => import("./harbor/HarborLobbyPage"));
 const HarborRoute = lazy(() => import("./harbor/HarborRoute"));
 const HarborStaffLayout = lazy(
@@ -174,6 +176,14 @@ function authedRouteElement(element: ReactNode): ReactNode {
   return <RequireAuthenticatedRoute>{element}</RequireAuthenticatedRoute>;
 }
 
+function OnboardingIndexRedirect() {
+  const { isLoading, sessionUser } = useAppSession();
+  if (isLoading) {
+    return <RouteLoadingFallback />;
+  }
+  return <Navigate to={resolveOnboardingPath(sessionUser?.profile)} replace />;
+}
+
 const createAppRouter = isSentryEnabled()
   ? Sentry.wrapCreateBrowserRouterV7(createBrowserRouter)
   : createBrowserRouter;
@@ -189,8 +199,12 @@ export const router = createAppRouter([
         element: <App />,
       },
       {
+        path: "explore",
+        element: authedRouteElement(<ExplorePage />),
+      },
+      {
         path: "games",
-        element: authedRouteElement(lazyRouteElement(<GamesMenu />)),
+        element: <Navigate to="/" replace />,
       },
       {
         path: "squalls",
@@ -311,6 +325,14 @@ export const router = createAppRouter([
       {
         path: "profile",
         element: authedRouteElement(<ProfilePage />),
+      },
+      {
+        path: "onboarding",
+        element: authedRouteElement(<OnboardingIndexRedirect />),
+      },
+      {
+        path: "onboarding/:step",
+        element: authedRouteElement(<OnboardingPage />),
       },
       {
         path: "staff",

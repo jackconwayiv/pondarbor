@@ -45,7 +45,9 @@ from achievements.services import (
     SLUG_GOALS_MARATHON_MONTH,
     SLUG_GOALS_STREAK_WEEK,
     SLUG_GOALS_TRI_GOAL_ATHLON,
+    SLUG_WELCOME_TO_POND_ARBOR,
     evaluate_goals_achievements_for_user,
+    evaluate_welcome_to_pond_arbor_for_user,
 )
 from datetime import date, timedelta
 
@@ -1081,4 +1083,29 @@ class GoalsAchievementTests(TestCase):
             UserAchievement.objects.filter(
                 user=self.user, achievement__slug=SLUG_GOALS_CHECKPOINT_CHARLIE
             ).exists()
+        )
+
+
+class WelcomeToPondArborAchievementTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            email="welcome@example.com",
+            password="secret12345",
+        )
+
+    def test_evaluate_unlocks_once(self):
+        evaluate_welcome_to_pond_arbor_for_user(self.user.id)
+        self.assertTrue(
+            UserAchievement.objects.filter(
+                user=self.user,
+                achievement__slug=SLUG_WELCOME_TO_POND_ARBOR,
+            ).exists()
+        )
+        evaluate_welcome_to_pond_arbor_for_user(self.user.id)
+        self.assertEqual(
+            UserAchievement.objects.filter(
+                user=self.user,
+                achievement__slug=SLUG_WELCOME_TO_POND_ARBOR,
+            ).count(),
+            1,
         )

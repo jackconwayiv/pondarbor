@@ -5,7 +5,6 @@
 export type BreadcrumbItem = { label: string; to?: string };
 
 const HOME: BreadcrumbItem = { label: "Home", to: "/" };
-const GAMES: BreadcrumbItem = { label: "Games", to: "/games" };
 
 function normalizePathname(pathname: string): string {
   const raw = (pathname || "/").split("?")[0] || "/";
@@ -30,8 +29,8 @@ export function getBreadcrumbItems(
     return [{ label: "Home" }];
   }
 
-  if (p === "/games") {
-    return [HOME, { label: "Games" }];
+  if (p === "/explore") {
+    return [HOME, { label: "Explore" }];
   }
 
   if (p === "/activity") {
@@ -39,33 +38,31 @@ export function getBreadcrumbItems(
   }
 
   if (p === "/clicker") {
-    return [HOME, { ...GAMES }, { label: "PondClicker" }];
+    return [HOME, { label: "PondClicker" }];
   }
   if (p.startsWith("/clicker/")) {
     if (p === "/clicker/2") {
       return [
         HOME,
-        { ...GAMES },
         { label: "PondClicker", to: "/clicker" },
         { label: "Redux" },
       ];
     }
-    return [HOME, { ...GAMES }, { label: "PondClicker" }];
+    return [HOME, { label: "PondClicker" }];
   }
   if (p.startsWith("/estates/play/")) {
     return null;
   }
   if (p === "/estates" || p.startsWith("/estates/")) {
-    return [HOME, { ...GAMES }, { label: "Estates" }];
+    return [HOME, { label: "Estates" }];
   }
 
   if (p === "/squalls") {
-    return [HOME, { ...GAMES }, { label: "Squalls & Shanties" }];
+    return [HOME, { label: "Squalls & Shanties" }];
   }
   if (p === "/squalls/play") {
     return [
       HOME,
-      { ...GAMES },
       { label: "Squalls & Shanties", to: "/squalls" },
       { label: "Playing" },
     ];
@@ -73,7 +70,6 @@ export function getBreadcrumbItems(
   if (p === "/squalls/dm") {
     return [
       HOME,
-      { ...GAMES },
       { label: "Squalls & Shanties", to: "/squalls" },
       { label: "DM Reference" },
     ];
@@ -85,12 +81,11 @@ export function getBreadcrumbItems(
 
   if (p.startsWith("/whatif")) {
     if (p === "/whatif") {
-      return [HOME, { ...GAMES }, { label: "WhatIf" }];
+      return [HOME, { label: "WhatIf" }];
     }
     if (p === "/whatif/admin") {
       return [
         HOME,
-        { ...GAMES },
         { label: "WhatIf", to: "/whatif" },
         { label: "Admin" },
       ];
@@ -99,12 +94,11 @@ export function getBreadcrumbItems(
     if (lobby) {
       return [
         HOME,
-        { ...GAMES },
         { label: "WhatIf", to: "/whatif" },
         { label: "Lobby" },
       ];
     }
-    return [HOME, { ...GAMES }, { label: "WhatIf" }];
+    return [HOME, { label: "WhatIf" }];
   }
 
   if (p.startsWith("/meal")) {

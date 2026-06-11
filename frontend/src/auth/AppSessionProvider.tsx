@@ -157,6 +157,9 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
   } = useAuth0();
 
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
+  const [homeStarredAppPaths, setHomeStarredAppPaths] = useState<
+    string[] | null
+  >(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [bootstrapInboxSnapshot, setBootstrapInboxSnapshot] =
     useState<BootstrapInboxSnapshot | null>(null);
@@ -176,6 +179,26 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
    * we still trigger one full `loginWithRedirect` recovery. Without a cap, that can loop forever.
    */
   const tokenRecoveryRedirectCountRef = useRef(0);
+
+  const applySessionUser = useCallback((data: SessionUser) => {
+    setSessionUser(data);
+    setHomeStarredAppPaths(data.profile.home_starred_app_paths ?? null);
+  }, []);
+
+  const persistHomeStarredToCache = useCallback((paths: string[] | null) => {
+    const prev = loadCachedSession();
+    if (!prev?.sessionUser) return;
+    saveCachedSession({
+      ...prev,
+      sessionUser: {
+        ...prev.sessionUser,
+        profile: {
+          ...prev.sessionUser.profile,
+          home_starred_app_paths: paths,
+        },
+      },
+    });
+  }, []);
 
   const bootstrapSession = useCallback(async () => {
     if (!isAuthenticated || !auth0User || isLoggingOutRef.current) return;
@@ -219,7 +242,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       const fetchedAt = Date.now();
 
       setAccessToken(token);
-      setSessionUser(data);
+      applySessionUser(data);
       setBootstrapInboxSnapshot(inboxMapped);
       setBootstrapInboxFetchedAt(fetchedAt);
       saveCachedSession({
@@ -242,6 +265,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     getAccessTokenSilently,
     isAuthenticated,
     loginWithRedirect,
+    applySessionUser,
   ]);
 
   const getApiAccessToken = useCallback(async () => {
@@ -297,6 +321,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
 
     if (!isAuthenticated) {
       setSessionUser(null);
+      setHomeStarredAppPaths(null);
       setAccessToken(null);
       setBootstrapInboxSnapshot(null);
       setBootstrapInboxFetchedAt(null);
@@ -314,6 +339,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       lastAuth0Sub.current !== currentSub
     ) {
       setSessionUser(null);
+      setHomeStarredAppPaths(null);
       setAccessToken(null);
       setBootstrapInboxSnapshot(null);
       setBootstrapInboxFetchedAt(null);
@@ -332,7 +358,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
 
     const cached = loadCachedSession();
     if (cached) {
-      setSessionUser(cached.sessionUser);
+      applySessionUser(cached.sessionUser);
       setAccessToken(cached.accessToken);
       setBootstrapInboxSnapshot(cached.bootstrapInbox ?? null);
       setBootstrapInboxFetchedAt(cached.bootstrapInboxFetchedAt ?? null);
@@ -394,7 +420,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       const data = (await response.json()) as SessionUser;
       const prev = loadCachedSession();
       setAccessToken(token);
-      setSessionUser(data);
+      applySessionUser(data);
       saveCachedSession({
         sessionUser: data,
         accessToken: token,
@@ -404,7 +430,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     } catch {
       /* silent: avoid global loading; caller can log if needed */
     }
-  }, [auth0User, getAccessTokenSilently, isAuthenticated]);
+  }, [auth0User, getAccessTokenSilently, isAuthenticated, applySessionUser]);
 
   const sessionUserRef = useRef<SessionUser | null>(null);
   useEffect(() => {
@@ -474,6 +500,9 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
 
   const updateProfileLocally = useCallback(
     (patch: Partial<Profile>) => {
+      if (patch.home_starred_app_paths !== undefined) {
+        setHomeStarredAppPaths(patch.home_starred_app_paths);
+      }
       setSessionUser((current) => {
         if (!current) return current;
 
@@ -498,8 +527,39 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     [accessToken],
   );
 
+  const patchHomeStarredAppPaths = useCallback(
+    async (paths: string[]) => {
+      let rollback: string[] | null = null;
+      setHomeStarredAppPaths((current) => {
+        rollback = current;
+        return paths;
+      });
+      persistHomeStarredToCache(paths);
+
+      const base = apiBase();
+      const token = await getApiAccessToken();
+      const response = await fetch(`${base}/api/v1/users/me/profile/`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        credentials: "omit",
+        body: JSON.stringify({ home_starred_app_paths: paths }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        setHomeStarredAppPaths(rollback);
+        persistHomeStarredToCache(rollback);
+        throw new Error(`Profile update failed (${response.status}): ${text}`);
+      }
+    },
+    [getApiAccessToken, persistHomeStarredToCache],
+  );
+
   const patchMyProfile = useCallback(
-    async (patch: ProfilePatch) => {
+    async (patch: ProfilePatch, options?: { replaceSession?: boolean }) => {
       const base = apiBase();
       // Always fetch a fresh token for the PATCH request.
       const token = await getApiAccessToken();
@@ -523,8 +583,21 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       }
 
       const data = (await response.json()) as SessionUser;
+      if (options?.replaceSession === false) {
+        const profilePatch: Partial<Profile> = {};
+        for (const key of Object.keys(patch) as (keyof ProfilePatch)[]) {
+          if (key === "avatar_image_key") continue;
+          const value = data.profile[key as keyof Profile];
+          if (value !== undefined) {
+            (profilePatch as Record<string, unknown>)[key] = value;
+          }
+        }
+        updateProfileLocally(profilePatch);
+        return;
+      }
+
       const prev = loadCachedSession();
-      setSessionUser(data);
+      applySessionUser(data);
       saveCachedSession({
         sessionUser: data,
         accessToken: token,
@@ -532,7 +605,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
         bootstrapInboxFetchedAt: prev?.bootstrapInboxFetchedAt,
       });
     },
-    [getApiAccessToken],
+    [getApiAccessToken, updateProfileLocally, applySessionUser],
   );
 
   const patchAchievementVisibility = useCallback(
@@ -561,7 +634,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
 
       const data = (await response.json()) as SessionUser;
       const prev = loadCachedSession();
-      setSessionUser(data);
+      applySessionUser(data);
       saveCachedSession({
         sessionUser: data,
         accessToken: token,
@@ -569,11 +642,12 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
         bootstrapInboxFetchedAt: prev?.bootstrapInboxFetchedAt,
       });
     },
-    [getApiAccessToken],
+    [getApiAccessToken, applySessionUser],
   );
 
   const clearLocalSession = useCallback(() => {
     setSessionUser(null);
+    setHomeStarredAppPaths(null);
     setAccessToken(null);
     setBootstrapInboxSnapshot(null);
     setBootstrapInboxFetchedAt(null);
@@ -628,6 +702,8 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       refreshSession,
       resyncSessionSilently,
       updateProfileLocally,
+      homeStarredAppPaths,
+      patchHomeStarredAppPaths,
       patchMyProfile,
       patchAchievementVisibility,
       logout,
@@ -648,6 +724,8 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       refreshSession,
       resyncSessionSilently,
       updateProfileLocally,
+      homeStarredAppPaths,
+      patchHomeStarredAppPaths,
       patchMyProfile,
       patchAchievementVisibility,
       logout,

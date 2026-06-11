@@ -4,7 +4,7 @@ export type GameNavItem = {
   emoji: string;
 };
 
-/** Shared game icon list used on Home and Games lobby (order matches home grid). */
+/** Shared game icon list for home/explore tiles. */
 export const GAME_NAV_ITEMS: GameNavItem[] = [
   { to: "/clicker", label: "PondClicker", emoji: "🪷" },
   { to: "/whatif", label: "WhatIf", emoji: "🎲" },
@@ -16,7 +16,7 @@ export const GAME_NAV_ITEMS: GameNavItem[] = [
   },
 ];
 
-/** Staff-only tiles on the Games lobby (not shown on the home grid). */
+/** Staff-only game tiles (not shown on the home grid for non-staff). */
 export const GAMES_MENU_STAFF_ITEMS: GameNavItem[] = [
   { to: "/harbor", label: "Harbormaster", emoji: "⚓" },
   { to: "/squalls", label: "Squalls & Shanties", emoji: "⛵" },
@@ -24,19 +24,11 @@ export const GAMES_MENU_STAFF_ITEMS: GameNavItem[] = [
 
 const STAFF_ONLY_GAME_PATHS = new Set(["/qff", "/harbor", "/squalls"]);
 
-/** Hidden from non-staff on home and Games lobby (like Meal Maestro in app nav). */
+/** Hidden from non-staff on home/explore (like Meal Maestro in app nav). */
 export function visibleGameNavItems(isStaff: boolean): GameNavItem[] {
   return GAME_NAV_ITEMS.filter(
     (item) => !STAFF_ONLY_GAME_PATHS.has(item.to) || isStaff,
   );
-}
-
-/** Games lobby grid: shared games plus staff-only extras (e.g. Harbormaster). */
-export function visibleGamesMenuItems(isStaff: boolean): GameNavItem[] {
-  return [
-    ...visibleGameNavItems(isStaff),
-    ...(isStaff ? GAMES_MENU_STAFF_ITEMS : []),
-  ];
 }
 
 export function canOpenGameTile(to: string, isAuthenticated: boolean): boolean {

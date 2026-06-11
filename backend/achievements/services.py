@@ -148,6 +148,7 @@ SLUG_ESTATES_PEASANT = "estates_peasant"
 SLUG_ESTATES_THRONED_YA = "estates_throned_ya"
 SLUG_ESTATES_FARMED_YA = "estates_farmed_ya"
 SLUG_PEER_INTO_THE_STARS = "peer_into_the_stars"
+SLUG_WELCOME_TO_POND_ARBOR = "welcome_to_pond_arbor"
 SLUG_GOALS_TRI_GOAL_ATHLON = "goals_tri_goal_athlon"
 SLUG_GOALS_STREAK_WEEK = "goals_streak_week"
 SLUG_GOALS_MARATHON_MONTH = "goals_marathon_month"
@@ -366,6 +367,11 @@ def evaluate_meal_maestro_smorgasbord_for_user(user_id: int) -> None:
 
     if Meal.objects.filter(owner_user_id=user_id).count() >= SMORGASBORD_MIN_MEALS:
         _try_unlock(user_id, SLUG_SMORGASBORD)
+
+
+def evaluate_welcome_to_pond_arbor_for_user(user_id: int) -> None:
+    """Unlock when the user completes account onboarding."""
+    _try_unlock(user_id, SLUG_WELCOME_TO_POND_ARBOR)
 
 
 def evaluate_meal_maestro_friend_recipe_copy_for_user(user_id: int) -> None:

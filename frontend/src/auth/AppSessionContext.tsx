@@ -40,6 +40,10 @@ export type Profile = {
   songaday_visibility?: "private" | "friends_only" | "all_approved";
   /** Achievement slugs whose bell notices have been acknowledged account-wide. */
   achievement_inbox_read_slugs?: string[];
+  /** App paths starred on home; null = product defaults. */
+  home_starred_app_paths?: string[] | null;
+  onboarding_completed?: boolean;
+  onboarding_step?: number;
 };
 
 export type AppUser = {
@@ -105,6 +109,9 @@ export type ProfilePatch = Partial<
     | "social_publish_visibility"
     | "social_read_scope"
     | "songaday_visibility"
+    | "home_starred_app_paths"
+    | "onboarding_completed"
+    | "onboarding_step"
   >
 > & {
   avatar_image_key?: string;
@@ -130,7 +137,13 @@ export type AppSessionContextValue = {
    */
   resyncSessionSilently: () => Promise<void>;
   updateProfileLocally: (patch: Partial<Profile>) => void;
-  patchMyProfile: (patch: ProfilePatch) => Promise<void>;
+  /** Starred home apps; null = product defaults. Updated without replacing `sessionUser`. */
+  homeStarredAppPaths: string[] | null;
+  patchHomeStarredAppPaths: (paths: string[]) => Promise<void>;
+  patchMyProfile: (
+    patch: ProfilePatch,
+    options?: { replaceSession?: boolean },
+  ) => Promise<void>;
   /** `true` = show to friends (server stores null); `false` = hidden from friends. */
   patchAchievementVisibility: (slug: string, visibleToFriends: boolean) => Promise<void>;
   logout: () => Promise<void>;

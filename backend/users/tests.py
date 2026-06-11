@@ -674,6 +674,51 @@ class UsersApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["app"], "whatif")
 
+    def test_me_includes_onboarding_defaults(self):
+        user = User.objects.create_user(email="onboard@example.com", password="secret12345")
+        self.client.force_login(user)
+        response = self.client.get("/api/v1/users/me/")
+        self.assertEqual(response.status_code, 200)
+        profile = response.json()["profile"]
+        self.assertFalse(profile["onboarding_completed"])
+        self.assertEqual(profile["onboarding_step"], 1)
+
+    def test_patch_onboarding_step_persists(self):
+        user = User.objects.create_user(email="onboard-step@example.com", password="secret12345")
+        self.client.force_login(user)
+        response = self.client.patch(
+            "/api/v1/users/me/profile/",
+            {"onboarding_step": 3},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["profile"]["onboarding_step"], 3)
+        user.profile.refresh_from_db()
+        self.assertEqual(user.profile.onboarding_step, 3)
+
+    def test_patch_onboarding_completed_unlocks_welcome_achievement(self):
+        from achievements.models import UserAchievement
+
+        user = User.objects.create_user(email="onboard-done@example.com", password="secret12345")
+        self.client.force_login(user)
+        response = self.client.patch(
+            "/api/v1/users/me/profile/",
+            {"onboarding_completed": True, "onboarding_step": 7},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body["profile"]["onboarding_completed"])
+        self.assertEqual(body["profile"]["onboarding_step"], 7)
+        user.profile.refresh_from_db()
+        self.assertTrue(user.profile.onboarding_completed)
+        self.assertTrue(
+            UserAchievement.objects.filter(
+                user=user,
+                achievement__slug="welcome_to_pond_arbor",
+            ).exists()
+        )
+
 
 class StaffApiTests(TestCase):
     def setUp(self):

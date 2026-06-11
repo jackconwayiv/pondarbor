@@ -11,13 +11,17 @@ import {
   Text,
 } from "@chakra-ui/react";
 import { Link as RouterLink } from "react-router";
-import { APP_HOME_APPS } from "./appNavConfig";
+import {
+  getExploreGridItems,
+  getHomeGridItems,
+  type AppNavItem,
+} from "./appNavConfig";
 import { useAppSession } from "./auth/AppSessionContext";
 import {
   auth0LoginAuthorizationParams,
   auth0SignupAuthorizationParams,
 } from "./auth/auth0LoginParams";
-import { canOpenGameTile, visibleGameNavItems } from "./gamesNavConfig";
+import { canOpenGameTile } from "./gamesNavConfig";
 import PondButton from "./PondButton";
 import { pondarborProfileSrc } from "./publicAsset";
 import { SessionLoadingCard } from "./components/panelStatus";
@@ -31,60 +35,44 @@ import {
 const HOME_PURPOSE_BLURB =
   "Welcome to Pond Arbor! This is a hobby project by Pond Arbor Workshop (Jack Conway) for friends and family to enjoy a variety of social and lifestyle apps and games.";
 
-const GUEST_HOME_APPS = [
-  { to: "/whatif", emoji: "🎲", label: "WhatIf" },
-  { to: "/about", emoji: "🐢", label: "About" },
-] as const;
+const GUEST_HOME_APPS: AppNavItem[] = [
+  { to: "/whatif", emoji: "🎲", label: "WhatIf", blurb: "" },
+  { to: "/about", emoji: "🐢", label: "About", blurb: "" },
+];
 
-const GAME_HOME_PATHS = new Set(
-  visibleGameNavItems(true).map((item) => item.to),
-);
+const GAME_HOME_PATHS = new Set([
+  "/clicker",
+  "/whatif",
+  "/estates",
+  "/qff",
+  "/harbor",
+  "/squalls",
+]);
 
-function HomeAppNavList({
+export function HomeAppNavList({
   isAuthenticated,
   isApproved,
   isStaff,
+  mode = "home",
+  onStarAll,
 }: {
   isAuthenticated: boolean;
   isApproved: boolean;
   isStaff: boolean;
+  mode?: "home" | "explore";
+  onStarAll?: () => void | Promise<void>;
 }) {
-  const baseItems = APP_HOME_APPS.filter((item) => {
-    if (item.to === "/meal" || item.to === "/scorenado") {
-      return isAuthenticated && isApproved;
-    }
-    return true;
-  });
-  const gameItems = visibleGameNavItems(isStaff);
-  const items = isAuthenticated
-    ? [...baseItems, ...gameItems]
+  const { sessionUser, homeStarredAppPaths } = useAppSession();
+  const access = { isAuthenticated, isApproved, isStaff };
+  const profile = sessionUser
+    ? { ...sessionUser.profile, home_starred_app_paths: homeStarredAppPaths }
+    : undefined;
+  const items: AppNavItem[] = isAuthenticated
+    ? mode === "explore"
+      ? getExploreGridItems(access, profile)
+      : getHomeGridItems(access, profile)
     : [...GUEST_HOME_APPS];
-  const HOME_APP_ORDER: Record<string, number> = {
-    "/songaday": 0,
-    "/calendar": 1,
-    "/profile": 2,
-    "/closet": 3,
-    "/quotes": 4,
-    "/goals": 5,
-    "/zodiac": 6,
-    "/people": 7,
-    "/meal": 8,
-    "/scorenado": 9,
-    "/clicker": 10,
-    "/whatif": 11,
-    "/about": 12,
-    "/estates": 13,
-    "/qff": 14,
-  };
-  // Home-grid-only label overrides; nav/hamburger keep the canonical labels.
-  const HOME_APP_LABEL_OVERRIDES: Record<string, string> = {
-    "/profile": "My Profile",
-  };
-  const orderedItems = [...items].sort((a, b) => {
-    const ai = HOME_APP_ORDER[a.to] ?? Number.MAX_SAFE_INTEGER;
-    const bi = HOME_APP_ORDER[b.to] ?? Number.MAX_SAFE_INTEGER;
-    return ai - bi;
-  });
+
   return (
     <SimpleGrid
       as="ul"
@@ -98,13 +86,12 @@ function HomeAppNavList({
       role="list"
       aria-label="Apps"
     >
-      {orderedItems.map((item) => {
+      {items.map((item) => {
         const canOpen = GAME_HOME_PATHS.has(item.to)
           ? canOpenGameTile(item.to, isAuthenticated)
           : isAuthenticated ||
             item.to === "/about" ||
             item.to === "/whatif";
-        const displayLabel = HOME_APP_LABEL_OVERRIDES[item.to] ?? item.label;
         const cardBody = (
           <Stack
             w="100%"
@@ -132,7 +119,7 @@ function HomeAppNavList({
               lineClamp={2}
               textAlign="center"
             >
-              {displayLabel}
+              {item.label}
             </Text>
           </Stack>
         );
@@ -145,7 +132,7 @@ function HomeAppNavList({
           </RouterLink>
         ) : (
           <Box
-            aria-label={`${displayLabel} (log in to open)`}
+            aria-label={`${item.label} (log in to open)`}
             display="block"
             w="100%"
           >
@@ -165,6 +152,59 @@ function HomeAppNavList({
           </Box>
         );
       })}
+      {onStarAll ? (
+        <Box
+          as="li"
+          w="100%"
+          listStyleType="none"
+          display="flex"
+          justifyContent="center"
+        >
+          <Box asChild w="100%">
+            <button
+              type="button"
+              onClick={() => {
+                void onStarAll();
+              }}
+              aria-label="Star all apps and go to home"
+              style={{
+                width: "100%",
+                background: "transparent",
+                border: "none",
+                padding: 0,
+                cursor: "pointer",
+              }}
+            >
+              <Stack
+                w="100%"
+                align="center"
+                justify="center"
+                gap="1"
+                py="1"
+                px="1"
+                minH="4.5rem"
+                borderRadius="lg"
+                _hover={{ bg: "bg.subtle" }}
+                transition="background 0.12s ease, transform 0.12s ease"
+              >
+                <Text as="span" fontSize="2.2rem" lineHeight="1" aria-hidden>
+                  ⭐
+                </Text>
+                <Text
+                  as="span"
+                  fontSize="sm"
+                  fontWeight="medium"
+                  color="fg"
+                  lineClamp={2}
+                  textAlign="center"
+                >
+                  Star All Apps
+                </Text>
+              </Stack>
+            </button>
+          </Box>
+        </Box>
+      ) : null}
     </SimpleGrid>
   );
 }

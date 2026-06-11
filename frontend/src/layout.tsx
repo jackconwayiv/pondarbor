@@ -3,6 +3,7 @@ import {
   Avatar,
   Box,
   Button,
+  Collapsible,
   Link as ChakraLink,
   Flex,
   HStack,
@@ -26,14 +27,21 @@ import {
   // auth0SlackSignupAuthorizationParams,
 } from "./auth/auth0LoginParams";
 import {
-  APP_DESKTOP_NAV,
+  ABOUT,
+  EXPLORE_APP,
+  getFilteredCategoryItems,
+  hasUnstarredApps,
   guestHamburgerNavItems,
+  NAV_CATEGORIES,
   navLinkLabel,
   NAV_HEADER_LINK_TEXT,
+  type AppNavAccess,
+  type AppNavItem,
 } from "./appNavConfig";
 import PondButton from "./PondButton";
 import { pondarborLogoSrc } from "./publicAsset";
 import BreadcrumbBar from "./BreadcrumbBar";
+import { RequireOnboardingComplete } from "./onboarding/RequireOnboardingComplete";
 import {
   getSquallsInGame,
   subscribeSquallsInGame,
@@ -162,18 +170,6 @@ const navBarLinkProps = {
   },
 } as const;
 
-function isGamesNavTreeActive(pathname: string): boolean {
-  return (
-    pathname === "/games" ||
-    pathname === "/estates" ||
-    pathname.startsWith("/estates/") ||
-    pathname === "/clicker" ||
-    pathname.startsWith("/clicker/") ||
-    pathname === "/whatif" ||
-    pathname.startsWith("/whatif/")
-  );
-}
-
 function isDesktopNavRouteActive(
   loc: { pathname: string; search: string },
   to: string,
@@ -209,13 +205,230 @@ function isDesktopNavRouteActive(
       return pathname === "/clicker" || pathname.startsWith("/clicker/");
     case "/whatif":
       return pathname === "/whatif" || pathname.startsWith("/whatif/");
-    case "/games":
-      return isGamesNavTreeActive(pathname);
     case "/about":
       return pathname === "/about";
+    case "/explore":
+      return pathname === "/explore";
+    case "/goals":
+      return pathname === "/goals" || pathname.startsWith("/goals/");
+    case "/zodiac":
+      return pathname === "/zodiac" || pathname.startsWith("/zodiac/");
+    case "/people":
+      return pathname === "/people" || pathname.startsWith("/people/");
+    case "/estates":
+      return pathname === "/estates" || pathname.startsWith("/estates/");
+    case "/qff":
+      return pathname === "/qff" || pathname.startsWith("/qff/");
+    case "/harbor":
+      return pathname === "/harbor" || pathname.startsWith("/harbor/");
+    case "/squalls":
+      return pathname === "/squalls" || pathname.startsWith("/squalls/");
     default:
       return false;
   }
+}
+
+function isCategoryNavActive(
+  loc: { pathname: string; search: string },
+  items: AppNavItem[],
+): boolean {
+  return items.some((item) => isDesktopNavRouteActive(loc, item.to));
+}
+
+function NavBarLink({
+  to,
+  label,
+  active,
+}: {
+  to: string;
+  label: string;
+  active: boolean;
+}) {
+  return (
+    <ChakraLink
+      asChild
+      colorPalette="gray"
+      variant="plain"
+      {...navBarLinkProps}
+      fontSize={NAV_APP_LINK_FONT_SIZE}
+      fontWeight="normal"
+      color={active ? NAV_HEADER_LINK_TEXT.active : NAV_HEADER_LINK_TEXT.inactive}
+      _visited={{
+        ...navBarLinkProps._visited,
+        color: active ? NAV_HEADER_LINK_TEXT.active : NAV_HEADER_LINK_TEXT.inactive,
+      }}
+      _hover={{
+        ...navBarLinkProps._hover,
+        color: active ? NAV_HEADER_LINK_TEXT.active : "white",
+      }}
+      _active={{
+        ...navBarLinkProps._active,
+        color: active ? NAV_HEADER_LINK_TEXT.active : NAV_HEADER_LINK_TEXT.inactive,
+      }}
+    >
+      <Link to={to}>
+        <Box
+          as="span"
+          position="relative"
+          display="inline-block"
+          lineHeight={NAV_APP_LINK_LINE_HEIGHT}
+          fontSize={NAV_APP_LINK_FONT_SIZE}
+        >
+          <Box as="span" fontWeight="bold" opacity={active ? 1 : 0}>
+            {label}
+          </Box>
+          <Box
+            as="span"
+            position="absolute"
+            top={0}
+            left={0}
+            fontWeight="normal"
+            opacity={active ? 0 : 1}
+          >
+            {label}
+          </Box>
+        </Box>
+      </Link>
+    </ChakraLink>
+  );
+}
+
+function NavCategoryMenu({
+  label,
+  items,
+  loc,
+  navigate,
+}: {
+  label: string;
+  items: AppNavItem[];
+  loc: { pathname: string; search: string };
+  navigate: (to: string) => void;
+}) {
+  const active = isCategoryNavActive(loc, items);
+  return (
+    <Menu.Root positioning={{ placement: "bottom-start", gutter: 4 }}>
+      <Menu.Trigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          {...navBarLinkProps}
+          fontSize={NAV_APP_LINK_FONT_SIZE}
+          lineHeight={NAV_APP_LINK_LINE_HEIGHT}
+          fontWeight="normal"
+          color={active ? NAV_HEADER_LINK_TEXT.active : NAV_HEADER_LINK_TEXT.inactive}
+          bg="transparent"
+          _hover={{
+            ...navBarLinkProps._hover,
+            bg: "transparent",
+            color: active ? NAV_HEADER_LINK_TEXT.active : "white",
+          }}
+          _active={{
+            ...navBarLinkProps._active,
+            bg: "transparent",
+            color: active ? NAV_HEADER_LINK_TEXT.active : NAV_HEADER_LINK_TEXT.inactive,
+          }}
+          px="0"
+          minW="auto"
+          h="auto"
+        >
+          <Box
+            as="span"
+            position="relative"
+            display="inline-block"
+            lineHeight={NAV_APP_LINK_LINE_HEIGHT}
+            fontSize={NAV_APP_LINK_FONT_SIZE}
+          >
+            <Box as="span" fontWeight="bold" opacity={active ? 1 : 0}>
+              {label} ▾
+            </Box>
+            <Box
+              as="span"
+              position="absolute"
+              top={0}
+              left={0}
+              fontWeight="normal"
+              opacity={active ? 0 : 1}
+            >
+              {label} ▾
+            </Box>
+          </Box>
+        </Button>
+      </Menu.Trigger>
+      <Menu.Positioner>
+        <Menu.Content minW="48">
+          {items.map((item) => (
+            <Menu.Item
+              key={item.to}
+              value={item.to.slice(1) || "home"}
+              onSelect={() => {
+                navigate(item.to);
+              }}
+              fontSize="sm"
+            >
+              <HStack gap="2" w="100%">
+                <Text aria-hidden>{item.emoji}</Text>
+                <Text>{navLinkLabel(item)}</Text>
+              </HStack>
+            </Menu.Item>
+          ))}
+        </Menu.Content>
+      </Menu.Positioner>
+    </Menu.Root>
+  );
+}
+
+function HamburgerCategoryCollapsible({
+  label,
+  items,
+  loc,
+  navigate,
+}: {
+  label: string;
+  items: AppNavItem[];
+  loc: { pathname: string; search: string };
+  navigate: (to: string) => void;
+}) {
+  const active = isCategoryNavActive(loc, items);
+  return (
+    <Collapsible.Root defaultOpen={active}>
+      <Collapsible.Trigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          w="100%"
+          justifyContent="flex-start"
+          fontSize="sm"
+          fontWeight={active ? "semibold" : "normal"}
+          borderRadius="sm"
+          px="3"
+          py="2"
+          h="auto"
+          minH="auto"
+        >
+          {label} ▾
+        </Button>
+      </Collapsible.Trigger>
+      <Collapsible.Content>
+        {items.map((item) => (
+          <Menu.Item
+            key={item.to}
+            value={item.to.slice(1) || "home"}
+            onSelect={() => {
+              navigate(item.to);
+            }}
+            fontSize="sm"
+            ps="6"
+          >
+            <HStack gap="2" w="100%">
+              <Text aria-hidden>{item.emoji}</Text>
+              <Text>{navLinkLabel(item)}</Text>
+            </HStack>
+          </Menu.Item>
+        ))}
+      </Collapsible.Content>
+    </Collapsible.Root>
+  );
 }
 
 /** Routes where the document scrollbar is hidden (keeps centered panels from shifting). */
@@ -235,7 +448,7 @@ const HIDE_DOCUMENT_SCROLLBAR_EXACT = ["/whatif"] as const;
 
 export default function AppLayout() {
   const { loginWithRedirect } = useAuth0();
-  const { isAuthenticated, auth0User, sessionUser, logout, switchUser } =
+  const { isAuthenticated, auth0User, sessionUser, homeStarredAppPaths, logout, switchUser } =
     useAppSession();
   const currentUserAvatarUrl = resolveCurrentUserAvatarUrl(sessionUser, auth0User);
   const location = useLocation();
@@ -245,20 +458,22 @@ export default function AppLayout() {
   // `auth0User` is cleared when the Auth0 client logs out; rely on it so nav stays in sync.
   const showProfileNav = isAuthenticated && !!auth0User;
   const isApproved = !!sessionUser?.user?.is_approved;
-  const canAccessMealMaestro = showProfileNav && isApproved;
-  const canAccessScorenado = showProfileNav && isApproved;
-  const authedNavEntries = useMemo(
-    () =>
-      APP_DESKTOP_NAV.filter((item) => {
-        if (item.to === "/meal") return canAccessMealMaestro;
-        if (item.to === "/scorenado") return canAccessScorenado;
-        return true;
-      }),
-    [canAccessMealMaestro, canAccessScorenado],
+  const navAccess = useMemo<AppNavAccess>(
+    () => ({
+      isAuthenticated: showProfileNav,
+      isApproved,
+      isStaff: !!sessionUser?.user?.is_staff,
+    }),
+    [showProfileNav, isApproved, sessionUser?.user?.is_staff],
   );
-  const desktopNavEntries = useMemo(
-    () => (showProfileNav ? authedNavEntries : guestHamburgerNavItems()),
-    [showProfileNav, authedNavEntries],
+  const exploreProfile = sessionUser
+    ? { ...sessionUser.profile, home_starred_app_paths: homeStarredAppPaths }
+    : undefined;
+  const showExploreNav =
+    showProfileNav && hasUnstarredApps(navAccess, exploreProfile);
+  const navLoc = useMemo(
+    () => ({ pathname: location.pathname, search: location.search }),
+    [location.pathname, location.search],
   );
 
   const isClickerRoute =
@@ -290,8 +505,9 @@ export default function AppLayout() {
     location.pathname === "/squalls/play" && squallsInGame;
   /** Aligned with `QffLayout` so the app shell is not the default cream. */
   const qffAppShellBg = "#0c0c0c";
+  const isOnboardingRoute = location.pathname.startsWith("/onboarding");
   const isHomeIndex = location.pathname === "/";
-  const isGamesHubIndex = location.pathname === "/games";
+  const isExploreIndex = location.pathname === "/explore";
   const isAboutIndex = location.pathname === "/about";
 
   useEffect(() => {
@@ -408,6 +624,7 @@ export default function AppLayout() {
       bg={isQffRoute ? qffAppShellBg : "bg"}
       color="fg"
     >
+      {!isOnboardingRoute ? (
       <Flex
         as="header"
         px={{ base: "2", md: "2" }}
@@ -464,21 +681,47 @@ export default function AppLayout() {
                       </Menu.Item>
                       {showProfileNav ? (
                         <>
-                          {authedNavEntries.map((item) => (
+                          {NAV_CATEGORIES.map((category) => {
+                            const items = getFilteredCategoryItems(category, navAccess);
+                            if (items.length === 0) return null;
+                            return (
+                              <HamburgerCategoryCollapsible
+                                key={category.id}
+                                label={category.label}
+                                items={items}
+                                loc={navLoc}
+                                navigate={(to) => {
+                                  navigate(to);
+                                }}
+                              />
+                            );
+                          })}
+                          {showExploreNav ? (
                             <Menu.Item
-                              key={item.to}
-                              value={item.to.slice(1) || "home"}
+                              value="explore"
                               onSelect={() => {
-                                navigate(item.to);
+                                navigate(EXPLORE_APP.to);
                               }}
                               fontSize="sm"
                             >
                               <HStack gap="2" w="100%">
-                                <Text aria-hidden>{item.emoji}</Text>
-                                <Text>{item.label}</Text>
+                                <Text aria-hidden>{EXPLORE_APP.emoji}</Text>
+                                <Text>{EXPLORE_APP.label}</Text>
                               </HStack>
                             </Menu.Item>
-                          ))}
+                          ) : null}
+                          <Menu.Item
+                            value="about"
+                            onSelect={() => {
+                              navigate(ABOUT.to);
+                            }}
+                            fontSize="sm"
+                          >
+                            <HStack gap="2" w="100%">
+                              <Text aria-hidden>{ABOUT.emoji}</Text>
+                              <Text>{ABOUT.label}</Text>
+                            </HStack>
+                          </Menu.Item>
                         </>
                       ) : (
                         <>
@@ -670,71 +913,46 @@ export default function AppLayout() {
                 align="center"
                 pl={WORDMARK_TO_APP_NAV_PL}
               >
-                {desktopNavEntries.map((entry) => {
-                  const active = isDesktopNavRouteActive(
-                    { pathname: location.pathname, search: location.search },
-                    entry.to,
-                  );
-                  const label = navLinkLabel(entry);
-                  return (
-                    <ChakraLink
+                {showProfileNav ? (
+                  <>
+                    {NAV_CATEGORIES.map((category) => {
+                      const items = getFilteredCategoryItems(category, navAccess);
+                      if (items.length === 0) return null;
+                      return (
+                        <NavCategoryMenu
+                          key={category.id}
+                          label={category.label}
+                          items={items}
+                          loc={navLoc}
+                          navigate={(to) => {
+                            navigate(to);
+                          }}
+                        />
+                      );
+                    })}
+                    {showExploreNav ? (
+                      <NavBarLink
+                        to={EXPLORE_APP.to}
+                        label={EXPLORE_APP.label}
+                        active={isDesktopNavRouteActive(navLoc, EXPLORE_APP.to)}
+                      />
+                    ) : null}
+                    <NavBarLink
+                      to={ABOUT.to}
+                      label={ABOUT.label}
+                      active={isDesktopNavRouteActive(navLoc, ABOUT.to)}
+                    />
+                  </>
+                ) : (
+                  guestHamburgerNavItems().map((entry) => (
+                    <NavBarLink
                       key={entry.to}
-                      asChild
-                      colorPalette="gray"
-                      variant="plain"
-                      {...navBarLinkProps}
-                      fontSize={NAV_APP_LINK_FONT_SIZE}
-                      fontWeight="normal"
-                      color={active ? NAV_HEADER_LINK_TEXT.active : NAV_HEADER_LINK_TEXT.inactive}
-                      _visited={{
-                        ...navBarLinkProps._visited,
-                        color: active
-                          ? NAV_HEADER_LINK_TEXT.active
-                          : NAV_HEADER_LINK_TEXT.inactive,
-                      }}
-                      _hover={{
-                        ...navBarLinkProps._hover,
-                        color: active
-                          ? NAV_HEADER_LINK_TEXT.active
-                          : "white",
-                      }}
-                      _active={{
-                        ...navBarLinkProps._active,
-                        color: active
-                          ? NAV_HEADER_LINK_TEXT.active
-                          : NAV_HEADER_LINK_TEXT.inactive,
-                      }}
-                    >
-                      <Link to={entry.to}>
-                        <Box
-                          as="span"
-                          position="relative"
-                          display="inline-block"
-                          lineHeight={NAV_APP_LINK_LINE_HEIGHT}
-                          fontSize={NAV_APP_LINK_FONT_SIZE}
-                        >
-                          <Box
-                            as="span"
-                            fontWeight="bold"
-                            opacity={active ? 1 : 0}
-                          >
-                            {label}
-                          </Box>
-                          <Box
-                            as="span"
-                            position="absolute"
-                            top={0}
-                            left={0}
-                            fontWeight="normal"
-                            opacity={active ? 0 : 1}
-                          >
-                            {label}
-                          </Box>
-                        </Box>
-                      </Link>
-                    </ChakraLink>
-                  );
-                })}
+                      to={entry.to}
+                      label={navLinkLabel(entry)}
+                      active={isDesktopNavRouteActive(navLoc, entry.to)}
+                    />
+                  ))
+                )}
               </HStack>
             </HStack>
             <Spacer />
@@ -749,6 +967,7 @@ export default function AppLayout() {
           </>
         )}
       </Flex>
+      ) : null}
       <Box
         as="main"
         flex="1"
@@ -790,15 +1009,16 @@ export default function AppLayout() {
             ? { p: 0 }
             : {
                 px: 0,
-                // Home / games / about: full-bleed footer; avoid padding below the outlet column.
+                // Home / about: full-bleed footer; avoid padding below the outlet column.
                 pb:
-                  isHomeIndex || isGamesHubIndex || isAboutIndex
+                  isHomeIndex || isExploreIndex || isAboutIndex
                     ? 0
                     : { base: "2", md: "2" },
                 pt: 0,
               })}
         >
           {!(
+            isOnboardingRoute ||
             isQffRoute ||
             isClickerPlayRoute ||
             isHarborRoute ||
@@ -819,7 +1039,9 @@ export default function AppLayout() {
             flexDirection="column"
             {...APP_SHELL_OUTLET_MIN_HEIGHT_PROPS}
           >
-            <Outlet />
+            <RequireOnboardingComplete>
+              <Outlet />
+            </RequireOnboardingComplete>
           </Box>
         </Box>
       </Box>

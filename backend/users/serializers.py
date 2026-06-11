@@ -21,6 +21,27 @@ ALLOWED_MEAL_SLOT_NAMES = frozenset(
 MEAL_SLOT_LABEL_COUNT_KEYS = frozenset({"1", "2", "3", "4", "5"})
 MEAL_SLOT_LABEL_MAX_LEN = 64
 
+# Must match starable app routes in `frontend/src/appNavConfig.ts`.
+STARABLE_HOME_APP_PATHS = frozenset(
+    {
+        "/songaday",
+        "/calendar",
+        "/closet",
+        "/quotes",
+        "/people",
+        "/goals",
+        "/zodiac",
+        "/meal",
+        "/scorenado",
+        "/clicker",
+        "/whatif",
+        "/estates",
+        "/qff",
+        "/harbor",
+        "/squalls",
+    }
+)
+
 
 def normalize_meal_slot_label(item: object) -> str:
     if not isinstance(item, str):
@@ -101,6 +122,13 @@ class ProfileSerializer(serializers.Serializer):
         required=False,
         default=list,
     )
+    home_starred_app_paths = serializers.ListField(
+        child=serializers.CharField(max_length=128),
+        required=False,
+        allow_null=True,
+    )
+    onboarding_completed = serializers.BooleanField()
+    onboarding_step = serializers.IntegerField()
 
 
 class AchievementSummarySerializer(serializers.Serializer):
@@ -170,6 +198,34 @@ class ProfileUpdateSerializer(serializers.Serializer):
     avatar_image_key = serializers.CharField(
         required=False, allow_blank=True, max_length=1024, write_only=True
     )
+    home_starred_app_paths = serializers.ListField(
+        child=serializers.CharField(max_length=128),
+        required=False,
+        allow_null=True,
+    )
+    onboarding_completed = serializers.BooleanField(required=False)
+    onboarding_step = serializers.IntegerField(required=False, min_value=1, max_value=7)
+
+    def validate_home_starred_app_paths(self, value):
+        if value is None:
+            return None
+        if not isinstance(value, list):
+            raise serializers.ValidationError("home_starred_app_paths must be a list or null.")
+        seen = set()
+        normalized = []
+        for path in value:
+            if not isinstance(path, str):
+                raise serializers.ValidationError("Each home starred path must be a string.")
+            p = path.strip()
+            if not p:
+                raise serializers.ValidationError("Home starred path cannot be empty.")
+            if p not in STARABLE_HOME_APP_PATHS:
+                raise serializers.ValidationError(f"Invalid home starred path: {p!r}.")
+            if p in seen:
+                continue
+            seen.add(p)
+            normalized.append(p)
+        return normalized
 
     def validate_meal_slot_labels(self, value):
         return validate_meal_slot_labels_payload(value)

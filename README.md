@@ -31,7 +31,7 @@ Do **not** set a separate Appliku **build command** for `npm ci` / `npm run buil
 
 **Song-a-Day Slack bot (ArborBot)**
 
-Reads `#song-a-day` channel messages (and `/song` slash command), parses song links, and saves submissions via the same backend path as the web app. **No Slack OAuth for users** — link Slack member IDs to PondArbor accounts in Django admin (`Slack identities`), or let email auto-match on first post when Slack profile email matches the PondArbor account.
+Reads `#song-a-day` channel messages (and `/song`, `/prompt`, `/quote`, and `/randomquote` slash commands), parses song links, and saves submissions via the same backend path as the web app. `/quote` saves a private quote to your PondArbor account; use `quote text -name` for attribution (e.g. `/quote here's my quote -billy`). `/randomquote` posts a random published quote from owners who share with all approved PondArbor users. **No Slack OAuth for users** — link Slack member IDs to PondArbor accounts in Django admin (`Slack identities`), or let email auto-match on first post when Slack profile email matches the PondArbor account.
 
 1. Import [`scripts/arborbot-slack-app-manifest.yaml`](scripts/arborbot-slack-app-manifest.yaml) in [Slack API → Create app → From manifest](https://api.slack.com/apps) (edit production URLs in the file first if not `https://www.pondarbor.com`).
 2. Install the app to your workspace; invite `@ArborBot` to `#song-a-day`.

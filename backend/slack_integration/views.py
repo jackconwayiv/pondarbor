@@ -1,6 +1,7 @@
 import json
 import logging
 from datetime import datetime
+from types import SimpleNamespace
 from urllib.parse import parse_qsl
 from zoneinfo import ZoneInfo
 
@@ -15,6 +16,10 @@ from rest_framework.decorators import api_view, authentication_classes, permissi
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 
+from achievements.services import evaluate_quote_achievements_for_user
+from quotes.discoverable import random_discoverable_published_quote
+from quotes.models import Quote
+from quotes.serializers import QuoteCreateSerializer
 from songaday.models import SongPrompt
 from songaday.submission import (
     SongadaySubmissionError,
@@ -33,6 +38,8 @@ from slack_integration.slack_api import (
     slack_users_info,
  )
 from slack_integration.slack_verify import verify_slack_request_signature
+from slack_integration.quote_from_text import parse_slack_quote_command_text
+from slack_integration.quote_slack_format import format_random_quote_slack_message
 from slack_integration.song_from_text import (
     build_serializer_data_from_slack_text,
     extract_first_slack_url,
@@ -157,6 +164,18 @@ def _today_for_songaday_slack() -> datetime.date:
     return datetime.now(tz).date()
 
 
+def _format_songaday_prompt_message(*, today: datetime.date, prompt_text: str) -> str:
+    mmdd = today.strftime("%m/%d")
+    text = (prompt_text or "").strip()
+    return f"Song-a-Day Prompt for {mmdd}: '*{text}*'"
+
+
+def _today_songaday_prompt() -> tuple[datetime.date, SongPrompt | None]:
+    today = _today_for_songaday_slack()
+    prompt = SongPrompt.objects.filter(month=today.month, day=today.day).first()
+    return today, prompt
+
+
 def _resolve_user_for_slack(team_id: str, slack_user_id: str) -> tuple[User | None, str | None]:
     ident = SlackIdentity.objects.filter(team_id=team_id, slack_user_id=slack_user_id).select_related("user").first()
     if ident:
@@ -188,6 +207,124 @@ def _resolve_user_for_slack(team_id: str, slack_user_id: str) -> tuple[User | No
     return user, None
 
 
+def _slack_ephemeral_drf_validation(e: DRFValidationError) -> JsonResponse:
+    detail = e.detail if hasattr(e, "detail") else str(e)
+    if isinstance(detail, dict):
+        parts = [f"{k}: {v}" for k, v in detail.items()]
+        msg = "; ".join(parts) if parts else str(detail)
+    elif isinstance(detail, list):
+        msg = "; ".join(str(x) for x in detail)
+    else:
+        msg = str(detail)
+    return _slack_ephemeral(msg)
+
+
+def _handle_slack_randomquote_command() -> JsonResponse:
+    quote = random_discoverable_published_quote()
+    if quote is None:
+        return _slack_ephemeral("No published quotes are available right now.")
+    return _slack_in_channel(format_random_quote_slack_message(quote))
+
+
+def _handle_slack_prompt_command() -> JsonResponse:
+    today, prompt = _today_songaday_prompt()
+    if prompt is None:
+        return _slack_ephemeral("There is no Song-a-day prompt for today's calendar entry.")
+    return _slack_in_channel(_format_songaday_prompt_message(today=today, prompt_text=prompt.prompt))
+
+
+def _handle_slack_song_command(
+    *,
+    text: str,
+    team_id: str,
+    slack_user_id: str,
+) -> JsonResponse:
+    user, err = _resolve_user_for_slack(team_id, slack_user_id)
+    if err or not user:
+        return _slack_ephemeral(err or "Could not resolve your account.")
+
+    if user.account_status != User.AccountStatus.APPROVED:
+        return _slack_ephemeral("Your PondArbor account is still pending approval.")
+
+    today, prompt = _today_songaday_prompt()
+    if prompt is None:
+        return _slack_ephemeral("There is no Song-a-day prompt for today's calendar entry.")
+
+    try:
+        url = extract_first_slack_url(text)
+        link_text = url or (text or "").strip()
+        notes = extract_slack_message_notes(text, url=url)
+        payload = build_serializer_data_from_slack_text(
+            text=link_text,
+            entry_date=today,
+            prompt_snapshot=prompt.prompt,
+            notes=notes,
+        )
+        data = validate_song_response_payload(payload)
+        create_song_response_from_validated_data(user=user, data=data)
+    except DRFValidationError as e:
+        return _slack_ephemeral_drf_validation(e)
+    except SongadaySubmissionError as e:
+        return _slack_ephemeral(e.message)
+    except ValueError as e:
+        return _slack_ephemeral(str(e))
+    except Exception:
+        logger.exception("Slack /song handler failed")
+        return _slack_ephemeral("Something went wrong saving your song. Try again later.")
+
+    # Success should be visible in the channel so others can discover picks.
+    raw = (text or "").strip() or "(no link provided)"
+    mention = f"<@{slack_user_id}>" if slack_user_id else "Someone"
+    msg = (
+        f":musical_note: {mention} posted their Song-a-day pick for *{today.isoformat()}*.\n"
+        f">{prompt.prompt}\n"
+        f"{raw}"
+    )
+    return _slack_in_channel(msg)
+
+
+def _handle_slack_quote_command(
+    *,
+    text: str,
+    team_id: str,
+    slack_user_id: str,
+) -> JsonResponse:
+    user, err = _resolve_user_for_slack(team_id, slack_user_id)
+    if err or not user:
+        return _slack_ephemeral(err or "Could not resolve your account.")
+
+    body, attribution = parse_slack_quote_command_text(text)
+    if not body:
+        return _slack_ephemeral(
+            "Add quote text after `/quote`, e.g. `/quote here's my quote -billy`."
+        )
+
+    payload: dict = {
+        "body": body,
+        "visibility": Quote.Visibility.PRIVATE.value,
+    }
+    if attribution:
+        payload["labels"] = [{"kind": "attribution", "name": attribution}]
+
+    try:
+        serializer = QuoteCreateSerializer(
+            data=payload,
+            context={"request": SimpleNamespace(user=user)},
+        )
+        serializer.is_valid(raise_exception=True)
+        quote = serializer.save()
+        evaluate_quote_achievements_for_user(quote.owner_id)
+    except DRFValidationError as e:
+        return _slack_ephemeral_drf_validation(e)
+    except Exception:
+        logger.exception("Slack /quote handler failed")
+        return _slack_ephemeral("Something went wrong saving your quote. Try again later.")
+
+    if attribution:
+        return _slack_ephemeral(f"Saved your quote (attributed to {attribution}).")
+    return _slack_ephemeral("Saved your quote.")
+
+
 @csrf_exempt
 @require_POST
 def slack_commands(request):
@@ -212,60 +349,23 @@ def slack_commands(request):
     team_id = (params.get("team_id") or "").strip()
     slack_user_id = (params.get("user_id") or "").strip()
 
-    if command != "/song":
-        return _slack_ephemeral("Unknown command.")
-
-    user, err = _resolve_user_for_slack(team_id, slack_user_id)
-    if err or not user:
-        return _slack_ephemeral(err or "Could not resolve your account.")
-
-    if user.account_status != User.AccountStatus.APPROVED:
-        return _slack_ephemeral("Your PondArbor account is still pending approval.")
-
-    today = _today_for_songaday_slack()
-    prompt = SongPrompt.objects.filter(month=today.month, day=today.day).first()
-    if prompt is None:
-        return _slack_ephemeral("There is no Song-a-day prompt for today's calendar entry.")
-
-    try:
-        url = extract_first_slack_url(text)
-        link_text = url or (text or "").strip()
-        notes = extract_slack_message_notes(text, url=url)
-        payload = build_serializer_data_from_slack_text(
-            text=link_text,
-            entry_date=today,
-            prompt_snapshot=prompt.prompt,
-            notes=notes,
+    if command == "/randomquote":
+        return _handle_slack_randomquote_command()
+    if command == "/quote":
+        return _handle_slack_quote_command(
+            text=text,
+            team_id=team_id,
+            slack_user_id=slack_user_id,
         )
-        data = validate_song_response_payload(payload)
-        create_song_response_from_validated_data(user=user, data=data)
-    except DRFValidationError as e:
-        detail = e.detail if hasattr(e, "detail") else str(e)
-        if isinstance(detail, dict):
-            parts = [f"{k}: {v}" for k, v in detail.items()]
-            msg = "; ".join(parts) if parts else str(detail)
-        elif isinstance(detail, list):
-            msg = "; ".join(str(x) for x in detail)
-        else:
-            msg = str(detail)
-        return _slack_ephemeral(msg)
-    except SongadaySubmissionError as e:
-        return _slack_ephemeral(e.message)
-    except ValueError as e:
-        return _slack_ephemeral(str(e))
-    except Exception:
-        logger.exception("Slack /song handler failed")
-        return _slack_ephemeral("Something went wrong saving your song. Try again later.")
-
-    # Success should be visible in the channel so others can discover picks.
-    raw = (text or "").strip() or "(no link provided)"
-    mention = f"<@{slack_user_id}>" if slack_user_id else "Someone"
-    msg = (
-        f":musical_note: {mention} posted their Song-a-day pick for *{today.isoformat()}*.\n"
-        f">{prompt.prompt}\n"
-        f"{raw}"
-    )
-    return _slack_in_channel(msg)
+    if command == "/prompt":
+        return _handle_slack_prompt_command()
+    if command == "/song":
+        return _handle_slack_song_command(
+            text=text,
+            team_id=team_id,
+            slack_user_id=slack_user_id,
+        )
+    return _slack_ephemeral("Unknown command.")
 
 
 @csrf_exempt
@@ -599,9 +699,7 @@ def songaday_slack_daily_prompt_sync(request):
     if not prompt:
         return Response({"posted": False, "reason": "no_prompt_today"}, status=status.HTTP_200_OK)
 
-    mmdd = today.strftime("%m/%d")
-    prompt_text = (prompt.prompt or "").strip()
-    message = f"Song-a-Day Prompt for {mmdd}: '*{prompt_text}*'"
+    message = _format_songaday_prompt_message(today=today, prompt_text=prompt.prompt)
 
     with transaction.atomic():
         SongadaySlackDailyPromptState.objects.get_or_create(

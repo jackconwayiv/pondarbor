@@ -17,7 +17,7 @@ _metadata:
 
 display_information:
   name: ArborBot
-  description: Saves Song-a-Day picks from Slack into PondArbor
+  description: Song-a-Day and Quotes intake for PondArbor
   background_color: "#1a365d"
 
 features:
@@ -29,6 +29,21 @@ features:
       url: https://www.pondarbor.com/api/v1/slack/commands/
       description: Submit your Song-a-day pick for today
       usage_hint: "[youtube, spotify, or apple music url]"
+      should_escape: false
+    - command: /prompt
+      url: https://www.pondarbor.com/api/v1/slack/commands/
+      description: Post today's Song-a-day prompt to the channel
+      usage_hint: ""
+      should_escape: false
+    - command: /quote
+      url: https://www.pondarbor.com/api/v1/slack/commands/
+      description: Save a quote to your PondArbor account
+      usage_hint: "[quote text] -[attribution]"
+      should_escape: false
+    - command: /randomquote
+      url: https://www.pondarbor.com/api/v1/slack/commands/
+      description: Post a random published quote from PondArbor
+      usage_hint: ""
       should_escape: false
 
 oauth_config:

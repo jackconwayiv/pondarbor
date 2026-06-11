@@ -291,50 +291,29 @@ export function bootstrapMutagenPipelineOnLoad(
 
 const MUTAGEN_FORMING_HOUR_MS = 60 * 60 * 1000;
 
-/** Flavor text for the mutagen panel by hours remaining (20h formation window). */
-export function mutagenFormingStatusMessage(msRemaining: number): string {
-  const ms = Math.max(0, msRemaining);
-  if (ms > 15 * MUTAGEN_FORMING_HOUR_MS) {
-    return "A new mutation is beginning to take shape...";
-  }
-  if (ms > 10 * MUTAGEN_FORMING_HOUR_MS) {
-    return "A new mutation is taking shape...";
-  }
-  if (ms > 5 * MUTAGEN_FORMING_HOUR_MS) {
-    return "A new mutation is nearly here...";
-  }
-  return "A new mutation is imminent...";
-}
-
-/** Countdown copy for the mutagen panel second line while forming. */
-export function mutagenReadyInMessage(msRemaining: number): string {
+/** Mutagen panel countdown while a mutation is forming. */
+export function mutagenFormingReadoutMessage(msRemaining: number): string {
   const ms = Math.max(0, msRemaining);
   if (ms >= MUTAGEN_FORMING_HOUR_MS) {
     const hours = Math.ceil(ms / MUTAGEN_FORMING_HOUR_MS);
-    return hours === 1
-      ? "It will be ready in 1 hour."
-      : `It will be ready in ${hours} hours.`;
+    const time = hours === 1 ? "1 hour" : `${hours} hours`;
+    return `A new mutation will be ready in ${time}.`;
   }
   const minutes = Math.max(1, Math.ceil(ms / (60 * 1000)));
-  return minutes === 1
-    ? "It will be ready in 1 minute."
-    : `It will be ready in ${minutes} minutes.`;
+  const time = minutes === 1 ? "1 minute" : `${minutes} minutes`;
+  return `A new mutation will be ready in ${time}.`;
 }
 
-/** Ms until the forming message phase changes, or until collectible (0). */
+/** Ms until the forming readout countdown display changes. */
 export function msUntilNextMutagenFormingUiTick(msRemaining: number): number {
   const ms = Math.max(0, msRemaining);
   if (ms === 0) return 60_000;
-  const phaseThresholds = [
-    15 * MUTAGEN_FORMING_HOUR_MS,
-    10 * MUTAGEN_FORMING_HOUR_MS,
-    5 * MUTAGEN_FORMING_HOUR_MS,
-    0,
-  ];
-  for (const threshold of phaseThresholds) {
-    if (ms > threshold) {
-      return Math.max(1_000, ms - threshold);
-    }
+  if (ms >= MUTAGEN_FORMING_HOUR_MS) {
+    const displayedHours = Math.ceil(ms / MUTAGEN_FORMING_HOUR_MS);
+    const nextMs = (displayedHours - 1) * MUTAGEN_FORMING_HOUR_MS;
+    return Math.max(1_000, ms - nextMs);
   }
-  return Math.max(1_000, ms);
+  const displayedMinutes = Math.max(1, Math.ceil(ms / (60 * 1000)));
+  const nextMs = (displayedMinutes - 1) * 60 * 1000;
+  return Math.max(1_000, ms - nextMs);
 }

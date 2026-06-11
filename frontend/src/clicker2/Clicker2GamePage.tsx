@@ -22,6 +22,7 @@ import { useIsMobile, viewPortWidthBarProps } from "../responsive";
 import PondButton from "../PondButton";
 import { PanelBlockSkeleton } from "../components/panelStatus";
 import { HIDE_SCROLLBAR_CSS } from "../theme/typography";
+import { DESIGN } from "../theme/tokens";
 
 import "./Clicker2PondStage.css";
 
@@ -55,13 +56,18 @@ import Clicker2MobileShopPanels from "./Clicker2MobileShopPanels";
 import Clicker2StatsModal, {
   type Clicker2StatsSnapshot,
 } from "./Clicker2StatsModal";
+import Clicker2TiledTextureOverlay from "./Clicker2TiledTextureOverlay";
+import {
+  CLICKER2_GRASS_TEXTURE_OPACITY,
+  CLICKER2_GRASS_TEXTURE_SRC,
+} from "./clicker2PlaySurfaceTextures";
 import Clicker2WeatherEvent from "./Clicker2WeatherEvent";
 import DenizenShopList from "./DenizenShopList";
 import { Clicker2HeadlineStrip } from "./Clicker2HeadlineStrip";
 import { Clicker2PondHeadline } from "./Clicker2PondHeadline";
 import { MilestoneCelebrateCard, MilestoneDismissAllCard } from "./MilestoneCelebrateCard";
 import { useClicker2RotatingHeadline } from "./useClicker2RotatingHeadline";
-import MutagenPanel from "./MutagenPanel";
+import MutagenStrataCard from "./MutagenStrataCard";
 import CyclePondConfirmModal from "./CyclePondConfirmModal";
 import FossilShopSection from "./FossilShopSection";
 import PondCycleFadeOverlay from "./PondCycleFadeOverlay";
@@ -69,7 +75,6 @@ import {
   isFossilShopUnlocked,
 } from "./fossilShop";
 import { applyPondCycle, unfossilizedStrataCount } from "./pondCycle";
-import StrataProgressRow from "./StrataProgressRow";
 import {
   celebrationMilestoneDefs,
   evaluateNewMilestones,
@@ -788,6 +793,8 @@ export default function Clicker2GamePage() {
     epsMultiplier,
     sunshinePulseActive: sunshinePulseKey > 0,
   });
+  const showGrassTexture = weatherAmbient === "clear";
+  const showShopGrassTexture = shopBackground === DESIGN.lilypadLight;
   const showWeatherBoostBanner =
     clickMultiplier > 1 || epsMultiplier > 1 || sunshinePulseKey > 0;
   const showBannerSlot = showWeatherBoostBanner;
@@ -2254,24 +2261,18 @@ export default function Clicker2GamePage() {
         maxW={isMobile ? "full" : { base: "full", lg: "calc(100% - 2.5rem)" }}
         mx="auto"
       >
-        <StrataProgressRow
+        <MutagenStrataCard
           allTimeEnergyEarned={effectiveAllTimeEnergyEarnedDisplay}
           pondEra={pondEra}
           unfossilizedStrata={unfossilizedStrataDisplay}
           fossils={fossils}
           onCycleClick={() => setCyclePondModalOpen(true)}
+          mutagensBank={mutagensBank}
+          mutagenFormingStartedAtMs={mutagenFormingStartedAtMs}
+          nowMs={Date.now()}
+          onCollect={handleCollectMutagen}
           canHoverFinePointer={canHoverFinePointer}
         />
-        <Box mb="2" w="full">
-          <MutagenPanel
-            allTimeEnergyEarned={effectiveAllTimeEnergyEarnedDisplay}
-            mutagensBank={mutagensBank}
-            mutagenFormingStartedAtMs={mutagenFormingStartedAtMs}
-            nowMs={Date.now()}
-            onCollect={handleCollectMutagen}
-            canHoverFinePointer={canHoverFinePointer}
-          />
-        </Box>
         <PondDepthChart
           timeline={denizenPurchaseTimeline}
           ownedDenizens={ownedDenizens}
@@ -2279,6 +2280,7 @@ export default function Clicker2GamePage() {
           mutagenUnlocked={mutagenUnlocked}
           mutagensBank={mutagensBank}
           onMutate={handleMutateDenizen}
+          canHoverFinePointer={canHoverFinePointer}
         />
       </Box>
     </Box>
@@ -2417,6 +2419,7 @@ export default function Clicker2GamePage() {
 
   const shopPanel = (
     <Box
+      position="relative"
       flex={isMobile ? "1" : { base: "1", lg: "0 0 360px" }}
       minW={isMobile ? undefined : "0"}
       minH={0}
@@ -2430,6 +2433,12 @@ export default function Clicker2GamePage() {
       transition={`background-color ${WEATHER_PAGE_BACKGROUND_FADE_MS}ms ease`}
       css={isMobile ? undefined : HIDE_SCROLLBAR_CSS}
     >
+      {showShopGrassTexture ? (
+        <Clicker2TiledTextureOverlay
+          src={CLICKER2_GRASS_TEXTURE_SRC}
+          opacity={CLICKER2_GRASS_TEXTURE_OPACITY}
+        />
+      ) : null}
       {isMobile ? (
         <Clicker2MobileShopPanels
           denizensPanel={shopDenizensPanel}
@@ -2462,6 +2471,14 @@ export default function Clicker2GamePage() {
     <ClickerPageShell
       fullWidthContent
       defaultPageBackground={weatherSurfaces.page}
+      pageTextureOverlay={
+        showGrassTexture
+          ? {
+              src: CLICKER2_GRASS_TEXTURE_SRC,
+              opacity: CLICKER2_GRASS_TEXTURE_OPACITY,
+            }
+          : undefined
+      }
       pageBackgroundFadeOutMs={WEATHER_PAGE_BACKGROUND_FADE_MS}
       sunshinePulseKey={
         clickMultiplier > 1 || epsMultiplier > 1 ? 0 : sunshinePulseKey

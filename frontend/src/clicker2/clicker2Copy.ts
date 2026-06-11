@@ -7,6 +7,23 @@ export const EVOLUTION_LABEL = "Evolution";
 export const EVOLUTIONS_LABEL_LOWER = "evolutions";
 export const MUTAGEN_LABEL = "Mutagen";
 export const MUTAGENS_LABEL = "Mutagens";
+
+/** "1 Mutagen" or "N Mutagens" (0 uses plural). */
+export function mutagenCountLabel(count: number): string {
+  const n = Math.max(0, Math.floor(count));
+  const word = n === 1 ? MUTAGEN_LABEL : MUTAGENS_LABEL;
+  return `${n.toLocaleString()} ${word}`;
+}
+
+/** Depth-chart mutate button hover text. */
+export function mutagenLevelUpTooltip(
+  denizenName: string,
+  cost: number,
+  nextLevel: number,
+): string {
+  const word = cost === 1 ? MUTAGEN_LABEL : MUTAGENS_LABEL;
+  return `Spend ${cost.toLocaleString()} ${word} to level ${denizenName} to ${nextLevel}`;
+}
 export const MUTATION_LABEL = "Mutation";
 export const MUTATIONS_LABEL = "Mutations";
 export const MILESTONE_LABEL = "Milestone";
@@ -14,6 +31,7 @@ export const MILESTONES_LABEL = "Milestones";
 export const STRATUM_LABEL = "Stratum";
 export const STRATA_LABEL = "Strata";
 export const TO_NEXT_STRATA_PHRASE = "to next Strata";
+export const TO_NEXT_STRATUM_PHRASE = "to next Stratum";
 export const STRATA_PANEL_TOOLTIP =
   "Strata represent the age of your pond and determine how many fossils you begin your next pond cycle with.";
 export const CYCLE_LABEL = "Cycle";

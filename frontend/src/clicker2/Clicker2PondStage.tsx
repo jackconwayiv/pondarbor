@@ -22,6 +22,11 @@ import {
   MAX_POND_CLICK_POPS_LIGHT,
   MAX_POND_RIPPLES,
 } from "./clicker2PondClickFx";
+import {
+  CLICKER2_POND_RIPPLES_TEXTURE_OPACITY,
+  CLICKER2_POND_RIPPLES_TEXTURE_SRC,
+} from "./clicker2PlaySurfaceTextures";
+import Clicker2TiledTextureOverlay from "./Clicker2TiledTextureOverlay";
 import { formatEnergyAmount, formatEnergyAmountCompact } from "./formatEnergy";
 import {
   blossomRingPlacements,
@@ -282,6 +287,10 @@ function Clicker2PondStage({
           ["--pond-ripple-border-alpha" as string]: String(rippleBorderAlpha),
         }}
       >
+        <Clicker2TiledTextureOverlay
+          src={CLICKER2_POND_RIPPLES_TEXTURE_SRC}
+          opacity={CLICKER2_POND_RIPPLES_TEXTURE_OPACITY}
+        />
         <Box
           position="absolute"
           inset="0"

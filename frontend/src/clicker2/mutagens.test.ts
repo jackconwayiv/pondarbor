@@ -20,8 +20,7 @@ import {
   msUntilMutagenAutoCollect,
   msUntilMutagenCollectible,
   msUntilNextMutagenFormingUiTick,
-  mutagenFormingStatusMessage,
-  mutagenReadyInMessage,
+  mutagenFormingReadoutMessage,
   settleMutagenPipeline,
   totalMutagensSpentForLevel,
 } from "./mutagens";
@@ -113,55 +112,36 @@ describe("mutagens", () => {
     ).toBeNull();
   });
 
-  it("uses phase flavor text instead of a countdown", () => {
-    const hour = 60 * 60 * 1000;
-    expect(mutagenFormingStatusMessage(20 * hour)).toBe(
-      "A new mutation is beginning to take shape...",
-    );
-    expect(mutagenFormingStatusMessage(15 * hour + 1)).toBe(
-      "A new mutation is beginning to take shape...",
-    );
-    expect(mutagenFormingStatusMessage(15 * hour)).toBe(
-      "A new mutation is taking shape...",
-    );
-    expect(mutagenFormingStatusMessage(10 * hour + 1)).toBe(
-      "A new mutation is taking shape...",
-    );
-    expect(mutagenFormingStatusMessage(10 * hour)).toBe(
-      "A new mutation is nearly here...",
-    );
-    expect(mutagenFormingStatusMessage(5 * hour + 1)).toBe(
-      "A new mutation is nearly here...",
-    );
-    expect(mutagenFormingStatusMessage(5 * hour)).toBe(
-      "A new mutation is imminent...",
-    );
-    expect(mutagenFormingStatusMessage(0)).toBe(
-      "A new mutation is imminent...",
-    );
-    expect(msUntilNextMutagenFormingUiTick(20 * hour)).toBe(5 * hour);
-    expect(msUntilNextMutagenFormingUiTick(3 * hour)).toBe(3 * hour);
-  });
-
-  it("formats ready-in countdown for hours and minutes", () => {
+  it("formats forming readout for hours and minutes", () => {
     const hour = 60 * 60 * 1000;
     const minute = 60 * 1000;
-    expect(mutagenReadyInMessage(20 * hour)).toBe(
-      "It will be ready in 20 hours.",
+    expect(mutagenFormingReadoutMessage(20 * hour)).toBe(
+      "A new mutation will be ready in 20 hours.",
     );
-    expect(mutagenReadyInMessage(1 * hour)).toBe("It will be ready in 1 hour.");
-    expect(mutagenReadyInMessage(61 * minute)).toBe(
-      "It will be ready in 2 hours.",
+    expect(mutagenFormingReadoutMessage(1 * hour)).toBe(
+      "A new mutation will be ready in 1 hour.",
     );
-    expect(mutagenReadyInMessage(59 * minute)).toBe(
-      "It will be ready in 59 minutes.",
+    expect(mutagenFormingReadoutMessage(61 * minute)).toBe(
+      "A new mutation will be ready in 2 hours.",
     );
-    expect(mutagenReadyInMessage(1 * minute)).toBe(
-      "It will be ready in 1 minute.",
+    expect(mutagenFormingReadoutMessage(59 * minute)).toBe(
+      "A new mutation will be ready in 59 minutes.",
     );
-    expect(mutagenReadyInMessage(30 * 1000)).toBe(
-      "It will be ready in 1 minute.",
+    expect(mutagenFormingReadoutMessage(1 * minute)).toBe(
+      "A new mutation will be ready in 1 minute.",
     );
+    expect(mutagenFormingReadoutMessage(30 * 1000)).toBe(
+      "A new mutation will be ready in 1 minute.",
+    );
+  });
+
+  it("ticks the forming readout when the displayed countdown changes", () => {
+    const hour = 60 * 60 * 1000;
+    const minute = 60 * 1000;
+    expect(msUntilNextMutagenFormingUiTick(20 * hour)).toBe(hour);
+    expect(msUntilNextMutagenFormingUiTick(3 * hour)).toBe(hour);
+    expect(msUntilNextMutagenFormingUiTick(90 * 1000)).toBe(30 * 1000);
+    expect(msUntilNextMutagenFormingUiTick(1 * minute)).toBe(minute);
   });
 
   it("detects when any mutagen has been spent", () => {

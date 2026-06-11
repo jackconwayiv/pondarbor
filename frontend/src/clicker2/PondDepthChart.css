@@ -93,8 +93,10 @@
 
 .pondDepthChartMutate {
   align-self: flex-start;
-  min-height: 1.35rem;
+  min-height: 1.05rem;
+  padding-block: 0;
   padding-inline: 0.35rem;
+  line-height: 1;
   font-size: 0.65rem;
 }
 

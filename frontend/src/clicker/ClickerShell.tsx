@@ -9,10 +9,16 @@ const DEFAULT_PAGE_BACKGROUND_FADE_MS = 1_000;
 /** Above weather backdrop layers; below game UI (shop, pond, counters). */
 const PAGE_CONTENT_Z_INDEX = 5;
 
+export type ClickerPageTextureOverlay = {
+  src: string;
+  opacity: number;
+};
+
 export function ClickerPageShell({
   titleLeft,
   titleRight,
   defaultPageBackground,
+  pageTextureOverlay,
   pageBackground,
   pageBackgroundFadeOutMs = DEFAULT_PAGE_BACKGROUND_FADE_MS,
   sunshinePulseKey = 0,
@@ -26,6 +32,8 @@ export function ClickerPageShell({
   titleRight?: ReactNode;
   /** Base play-area backdrop (e.g. clear-weather brand tint). */
   defaultPageBackground?: string;
+  /** Optional tiled image over the base backdrop (e.g. grass on lilypad). */
+  pageTextureOverlay?: ClickerPageTextureOverlay;
   /** When set, fills the play area behind game content (e.g. rainstorm sky). */
   pageBackground?: string;
   /** Fade-out duration when `pageBackground` clears (default 1s). */
@@ -110,7 +118,22 @@ export function ClickerPageShell({
           pointerEvents="none"
           bg={defaultPageBackground}
           aria-hidden
-        />
+        >
+          {pageTextureOverlay ? (
+            <Box
+              position="absolute"
+              inset={0}
+              pointerEvents="none"
+              aria-hidden
+              style={{
+                opacity: pageTextureOverlay.opacity,
+                backgroundImage: `url(${pageTextureOverlay.src})`,
+                backgroundRepeat: "repeat",
+                backgroundPosition: "top left",
+              }}
+            />
+          ) : null}
+        </Box>
       ) : null}
       {showSunshinePulse ? (
         <Box

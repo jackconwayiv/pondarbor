@@ -24,6 +24,7 @@ function PondDepthChart({
   mutagenUnlocked,
   mutagensBank,
   onMutate,
+  canHoverFinePointer = true,
 }: {
   timeline: readonly string[];
   ownedDenizens: Record<string, number>;
@@ -31,6 +32,7 @@ function PondDepthChart({
   mutagenUnlocked: boolean;
   mutagensBank: number;
   onMutate: (def: DenizenDef) => void;
+  canHoverFinePointer?: boolean;
 }) {
   const rows = useMemo(
     () => partitionTimelineByDenizen(timeline),
@@ -119,6 +121,8 @@ function PondDepthChart({
                 mutagensBank={mutagensBank}
                 mutagenUnlocked={mutagenUnlocked}
                 onMutate={onMutate}
+                canHoverFinePointer={canHoverFinePointer}
+                compact
                 className="pondDepthChartMutate"
               />
             </Box>

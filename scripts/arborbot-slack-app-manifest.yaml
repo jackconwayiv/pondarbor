@@ -1,4 +1,4 @@
-# Slack app manifest for ArborBot (Song-a-Day bot).
+# Slack app manifest for ArborBot (Song-a-Day + Closet).
 # Import: https://api.slack.com/apps → Create New App → From an app manifest
 #
 # After import:
@@ -13,11 +13,11 @@
 
 _metadata:
   major_version: 1
-  minor_version: 1
+  minor_version: 2
 
 display_information:
   name: ArborBot
-  description: Song-a-Day and Quotes intake for PondArbor
+  description: Song-a-Day, Quotes, and Closet for PondArbor
   background_color: "#1a365d"
 
 features:
@@ -45,6 +45,16 @@ features:
       description: Post a random published quote from PondArbor
       usage_hint: ""
       should_escape: false
+    - command: /closet
+      url: https://www.pondarbor.com/api/v1/slack/commands/
+      description: DM your Closet inbox (pending actions)
+      usage_hint: ""
+      should_escape: false
+    - command: /loans
+      url: https://www.pondarbor.com/api/v1/slack/commands/
+      description: DM your loans and custody holdings summary
+      usage_hint: ""
+      should_escape: false
 
 oauth_config:
   scopes:
@@ -52,10 +62,14 @@ oauth_config:
       - chat:write
       - channels:history
       - commands
+      - im:write
       - users:read
       - users:read.email
 
 settings:
+  interactivity:
+    is_enabled: true
+    request_url: https://www.pondarbor.com/api/v1/slack/interactions/
   event_subscriptions:
     request_url: https://www.pondarbor.com/api/v1/slack/events/
     bot_events:

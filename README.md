@@ -35,7 +35,7 @@ Reads `#song-a-day` channel messages (and `/song`, `/prompt`, `/quote`, and `/ra
 
 1. Import [`scripts/arborbot-slack-app-manifest.yaml`](scripts/arborbot-slack-app-manifest.yaml) in [Slack API → Create app → From manifest](https://api.slack.com/apps) (edit production URLs in the file first if not `https://www.pondarbor.com`).
 2. Install the app to your workspace; invite `@ArborBot` to `#song-a-day`.
-3. Set Appliku env vars (see [`appliku.yml`](appliku.yml)): `SLACK_SIGNING_SECRET`, `SLACK_BOT_TOKEN`, `SLACK_PROMPTS_CHANNEL_ID`, `SONGADAY_SLACK_PROMPT_TIMEZONE`. Optional: `SLACK_SONGADAY_CHANNEL_ID` if submissions are not in the prompts channel. Leave `VITE_AUTH0_SLACK_CONNECTION` unset.
+3. Set Appliku env vars (see [`appliku.yml`](appliku.yml)): `SLACK_SIGNING_SECRET`, `SLACK_BOT_TOKEN`, `SLACK_PROMPTS_CHANNEL_ID`, `SONGADAY_SLACK_PROMPT_TIMEZONE`, `PONDARBOR_ORIGIN`. Optional: `SLACK_SONGADAY_CHANNEL_ID` if submissions are not in the prompts channel; `SLACK_CLOSET_NOTIFICATIONS_ENABLED=false` to disable Closet DMs. Closet slash commands `/closet` and `/loans` require `im:write` and Interactivity URL `/api/v1/slack/interactions/` (see [`scripts/arborbot-slack-app-manifest.yaml`](scripts/arborbot-slack-app-manifest.yaml)). Leave `VITE_AUTH0_SLACK_CONNECTION` unset.
 4. Redeploy (script is included in the Docker image), then Appliku **Run Command**: `bash /app/scripts/slack-arborbot-check.sh`
 5. Django admin → **Slack identities** → add `(team_id, slack_user_id, user)` for each member who should submit from Slack.
 6. Smoke test: linked user posts a YouTube/Spotify/Apple Music URL in `#song-a-day` → ephemeral “Saved…”; entry appears on PondArbor Song-a-Day.

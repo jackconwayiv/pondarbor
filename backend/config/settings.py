@@ -299,6 +299,12 @@ SLACK_DEBUG_CHANNEL_ID = os.getenv("SLACK_DEBUG_CHANNEL_ID", "").strip()
 # Used for Slack “Create account” button. Should point at a page that offers “Sign up with Slack”.
 SLACK_CREATE_ACCOUNT_URL = os.getenv("SLACK_CREATE_ACCOUNT_URL", "https://www.pondarbor.com/").strip()
 SONGADAY_SLACK_PROMPT_TIMEZONE = os.getenv("SONGADAY_SLACK_PROMPT_TIMEZONE", "UTC").strip()
+PONDARBOR_ORIGIN = os.getenv("PONDARBOR_ORIGIN", "https://www.pondarbor.com").strip().rstrip("/")
+SLACK_CLOSET_NOTIFICATIONS_ENABLED = os.getenv("SLACK_CLOSET_NOTIFICATIONS_ENABLED", "true").lower() in (
+    "true",
+    "1",
+    "yes",
+)
 
 # QFF: structured INFO logs per command (exec_ms, sim_ms, session_ms, total_ms) for staging/prod profiling.
 QFF_COMMAND_TIMING_LOG = os.getenv("QFF_COMMAND_TIMING_LOG", "").lower() in ("true", "1", "yes")

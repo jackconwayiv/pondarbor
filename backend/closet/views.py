@@ -39,9 +39,32 @@ from closet.services import (
     owner_eligible_for_closet_publication_q,
 )
 from friends.services import are_friends, friend_ids_for_user
-from achievements.services import (
-    evaluate_closet_return_achievements_for_users,
-    evaluate_closet_sharing_is_caring_for_user,
+from achievements.services import evaluate_closet_sharing_is_caring_for_user
+from closet.actions import (
+    ClosetActionError,
+    accept_custody,
+    approve_borrow_request,
+    confirm_custody_return,
+    confirm_loan_return,
+    decline_borrow_request,
+    mark_custody_returned_by_holder,
+    mark_loan_returned_by_borrower,
+    reject_pending_custody,
+)
+from closet.slack_hooks import schedule_closet_slack_notify
+from closet.slack_notify import (
+    notify_borrow_request_approved_to_requester,
+    notify_borrow_request_canceled_to_owner,
+    notify_borrow_request_declined_to_requester,
+    notify_borrow_request_to_owner,
+    notify_custody_dispute_to_owner,
+    notify_custody_marked_returned_to_owner,
+    notify_custody_offer_canceled_to_holder,
+    notify_custody_offer_rejected_to_owner,
+    notify_custody_offer_to_holder,
+    notify_custody_return_completed_to_holder,
+    notify_loan_marked_returned_to_owner,
+    notify_loan_return_completed_to_borrower,
 )
 from common.r2_s3 import (
     build_r2_s3_client,
@@ -666,12 +689,22 @@ def item_unhide(request, item_id: int):
 @permission_classes([IsApprovedUser])
 def borrow_request_create(request, item_id: int):
     item = get_object_or_404(_item_queryset(), id=item_id)
+    was_pending = _visible_borrow_requests().filter(
+        item=item,
+        requester_user=request.user,
+        status=BorrowRequest.Status.PENDING,
+    ).exists()
     serializer = BorrowRequestCreateSerializer(
         data=request.data,
         context={"request": request, "item": item},
     )
     serializer.is_valid(raise_exception=True)
     row = serializer.save()
+    schedule_closet_slack_notify(
+        notify_borrow_request_to_owner,
+        row=row,
+        is_update=was_pending,
+    )
     return Response(BorrowRequestSerializer(row).data, status=HTTP_201_CREATED)
 
 
@@ -694,42 +727,11 @@ def item_borrow_requests(request, item_id: int):
 @permission_classes([IsApprovedUser])
 @transaction.atomic
 def borrow_request_approve(request, borrow_request_id: int):
-    user = request.user
-    row = get_object_or_404(
-        _visible_borrow_requests().select_related("item", "requester_user", "item__owner_user"),
-        id=borrow_request_id,
-    )
-    if row.item.owner_user_id != user.id:
-        return Response({"detail": "Only owner can approve requests."}, status=403)
-    if row.status != BorrowRequest.Status.PENDING:
-        return Response({"detail": "Request is no longer pending."}, status=400)
-    if _active_loan_for_item(row.item):
-        return Response({"detail": "Item already has an active loan."}, status=400)
-
-    row.status = BorrowRequest.Status.APPROVED
-    row.responded_at = timezone.now()
-    row.save(update_fields=["status", "responded_at", "updated_at"])
-
-    loan = Loan.objects.create(
-        item=row.item,
-        owner_user=row.item.owner_user,
-        borrower_user=row.requester_user,
-        approved_request=row,
-        status=Loan.Status.ACTIVE,
-    )
-    row.item.current_holder_user = row.requester_user
-    row.item.custody_disputed = False
-    row.item.custody_marked_returned_by_holder_at = None
-    row.item.custody_pending_acceptance_user = None
-    row.item.save(
-        update_fields=[
-            "current_holder_user",
-            "custody_disputed",
-            "custody_marked_returned_by_holder_at",
-            "custody_pending_acceptance_user",
-            "updated_at",
-        ]
-    )
+    try:
+        loan = approve_borrow_request(user=request.user, borrow_request_id=borrow_request_id)
+    except ClosetActionError as exc:
+        return Response({"detail": exc.message}, status=exc.status_code)
+    schedule_closet_slack_notify(notify_borrow_request_approved_to_requester, loan=loan)
     return Response(LoanSerializer(loan).data)
 
 
@@ -737,20 +739,18 @@ def borrow_request_approve(request, borrow_request_id: int):
 @permission_classes([IsApprovedUser])
 @transaction.atomic
 def borrow_request_decline(request, borrow_request_id: int):
-    user = request.user
-    row = get_object_or_404(_visible_borrow_requests().select_related("item"), id=borrow_request_id)
-    if row.item.owner_user_id != user.id:
-        return Response({"detail": "Only owner can decline requests."}, status=403)
-    if row.status != BorrowRequest.Status.PENDING:
-        return Response({"detail": "Request is no longer pending."}, status=400)
     decline_message = request.data.get("decline_message", "")
     if decline_message is None:
         decline_message = ""
-    decline_message = str(decline_message).strip()
-    row.status = BorrowRequest.Status.DECLINED
-    row.decline_message = decline_message
-    row.responded_at = timezone.now()
-    row.save(update_fields=["status", "decline_message", "responded_at", "updated_at"])
+    try:
+        row = decline_borrow_request(
+            user=request.user,
+            borrow_request_id=borrow_request_id,
+            decline_message=str(decline_message),
+        )
+    except ClosetActionError as exc:
+        return Response({"detail": exc.message}, status=exc.status_code)
+    schedule_closet_slack_notify(notify_borrow_request_declined_to_requester, row=row)
     return Response(BorrowRequestSerializer(row).data)
 
 
@@ -781,6 +781,7 @@ def borrow_request_cancel(request, borrow_request_id: int):
     row.status = BorrowRequest.Status.CANCELED
     row.responded_at = timezone.now()
     row.save(update_fields=["status", "responded_at", "updated_at"])
+    schedule_closet_slack_notify(notify_borrow_request_canceled_to_owner, row=row)
     return Response(BorrowRequestSerializer(row).data)
 
 
@@ -788,17 +789,12 @@ def borrow_request_cancel(request, borrow_request_id: int):
 @permission_classes([IsApprovedUser])
 @transaction.atomic
 def loan_mark_returned_by_borrower(request, loan_id: int):
-    loan = get_object_or_404(
-        _visible_loans().select_related("item", "borrower_user", "owner_user"),
-        id=loan_id,
-    )
-    if loan.borrower_user_id != request.user.id:
-        return Response({"detail": "Only borrower can mark returned-by-borrower."}, status=403)
-    if loan.status != Loan.Status.ACTIVE:
-        return Response({"detail": "Only active loans can be marked."}, status=400)
-    if loan.marked_returned_by_borrower_at is None:
-        loan.marked_returned_by_borrower_at = timezone.now()
-        loan.save(update_fields=["marked_returned_by_borrower_at"])
+    try:
+        loan, first_mark = mark_loan_returned_by_borrower(user=request.user, loan_id=loan_id)
+    except ClosetActionError as exc:
+        return Response({"detail": exc.message}, status=exc.status_code)
+    if first_mark:
+        schedule_closet_slack_notify(notify_loan_marked_returned_to_owner, loan=loan)
     return Response(LoanSerializer(loan).data)
 
 
@@ -806,38 +802,11 @@ def loan_mark_returned_by_borrower(request, loan_id: int):
 @permission_classes([IsApprovedUser])
 @transaction.atomic
 def loan_mark_returned(request, loan_id: int):
-    loan = get_object_or_404(
-        _visible_loans().select_related("item", "owner_user", "borrower_user"),
-        id=loan_id,
-    )
-    if loan.owner_user_id != request.user.id:
-        return Response({"detail": "Only owner can mark returned."}, status=403)
-    if loan.status != Loan.Status.ACTIVE:
-        return Response({"detail": "Loan is not active."}, status=400)
-
-    now = timezone.now()
-    loan.marked_returned_by_owner_at = now
-    loan.returned_at = now
-    loan.status = Loan.Status.RETURNED
-    loan.save(update_fields=["marked_returned_by_owner_at", "returned_at", "status"])
-
-    loan.item.current_holder_user = loan.owner_user
-    loan.item.custody_disputed = False
-    loan.item.custody_marked_returned_by_holder_at = None
-    loan.item.custody_pending_acceptance_user = None
-    loan.item.save(
-        update_fields=[
-            "current_holder_user",
-            "custody_disputed",
-            "custody_marked_returned_by_holder_at",
-            "custody_pending_acceptance_user",
-            "updated_at",
-        ]
-    )
-    evaluate_closet_return_achievements_for_users(
-        owner_user_id=loan.owner_user_id,
-        borrower_user_id=loan.borrower_user_id,
-    )
+    try:
+        loan = confirm_loan_return(user=request.user, loan_id=loan_id)
+    except ClosetActionError as exc:
+        return Response({"detail": exc.message}, status=exc.status_code)
+    schedule_closet_slack_notify(notify_loan_return_completed_to_borrower, loan=loan)
     return Response(LoanSerializer(loan).data)
 
 
@@ -881,6 +850,7 @@ def item_set_custody(request, item_id: int):
                 "updated_at",
             ]
         )
+        schedule_closet_slack_notify(notify_custody_offer_to_holder, item=item, holder=holder)
     return Response(ItemSerializer(item, context={"request": request}).data)
 
 
@@ -903,6 +873,7 @@ def item_deny_custody(request, item_id: int):
             "updated_at",
         ]
     )
+    schedule_closet_slack_notify(notify_custody_dispute_to_owner, item=item)
     return Response(ItemSerializer(item, context={"request": request}).data)
 
 
@@ -910,25 +881,10 @@ def item_deny_custody(request, item_id: int):
 @permission_classes([IsApprovedUser])
 @transaction.atomic
 def item_accept_custody(request, item_id: int):
-    item = get_object_or_404(_item_queryset(), id=item_id)
-    user = request.user
-    if item.custody_pending_acceptance_user_id != user.id:
-        return Response({"detail": "You do not have a pending custody offer for this item."}, status=403)
-    if not are_friends(user_a=user, user_b=item.owner_user):
-        return Response({"detail": "You can only accept custody from friends."}, status=400)
-    item.current_holder_user = user
-    item.custody_pending_acceptance_user = None
-    item.custody_disputed = False
-    item.custody_marked_returned_by_holder_at = None
-    item.save(
-        update_fields=[
-            "current_holder_user",
-            "custody_pending_acceptance_user",
-            "custody_disputed",
-            "custody_marked_returned_by_holder_at",
-            "updated_at",
-        ]
-    )
+    try:
+        item = accept_custody(user=request.user, item_id=item_id)
+    except ClosetActionError as exc:
+        return Response({"detail": exc.message}, status=exc.status_code)
     return Response(ItemSerializer(item, context={"request": request}).data)
 
 
@@ -940,8 +896,16 @@ def item_reject_pending_custody(request, item_id: int):
     user = request.user
     if item.custody_pending_acceptance_user_id != user.id:
         return Response({"detail": "You do not have a pending custody offer for this item."}, status=403)
-    item.custody_pending_acceptance_user = None
-    item.save(update_fields=["custody_pending_acceptance_user", "updated_at"])
+    holder = item.custody_pending_acceptance_user
+    try:
+        item = reject_pending_custody(user=user, item_id=item_id)
+    except ClosetActionError as exc:
+        return Response({"detail": exc.message}, status=exc.status_code)
+    schedule_closet_slack_notify(
+        notify_custody_offer_rejected_to_owner,
+        item=item,
+        holder=holder,
+    )
     return Response(ItemSerializer(item, context={"request": request}).data)
 
 
@@ -955,8 +919,14 @@ def item_cancel_pending_custody(request, item_id: int):
         return Response({"detail": "Only the owner can cancel a pending custody offer."}, status=403)
     if item.custody_pending_acceptance_user_id is None:
         return Response({"detail": "There is no pending custody offer for this item."}, status=400)
+    holder = item.custody_pending_acceptance_user
     item.custody_pending_acceptance_user = None
     item.save(update_fields=["custody_pending_acceptance_user", "updated_at"])
+    schedule_closet_slack_notify(
+        notify_custody_offer_canceled_to_holder,
+        item=item,
+        holder=holder,
+    )
     return Response(ItemSerializer(item, context={"request": request}).data)
 
 
@@ -964,22 +934,12 @@ def item_cancel_pending_custody(request, item_id: int):
 @permission_classes([IsApprovedUser])
 @transaction.atomic
 def item_mark_custody_returned_by_holder(request, item_id: int):
-    item = get_object_or_404(_item_queryset(), id=item_id)
-    user = request.user
-    if item.current_holder_user_id != user.id:
-        return Response({"detail": "Only the current holder can mark a custody return."}, status=403)
-    if item.owner_user_id == user.id:
-        return Response({"detail": "You already have custody as the owner."}, status=400)
-    if _active_loan_for_item(item):
-        return Response(
-            {"detail": "This item has an active loan. Use the loan return flow instead."},
-            status=400,
-        )
-    if not are_friends(user_a=user, user_b=item.owner_user):
-        return Response({"detail": "You can only update items from friends."}, status=400)
-    if item.custody_marked_returned_by_holder_at is None:
-        item.custody_marked_returned_by_holder_at = timezone.now()
-        item.save(update_fields=["custody_marked_returned_by_holder_at", "updated_at"])
+    try:
+        item, first_mark = mark_custody_returned_by_holder(user=request.user, item_id=item_id)
+    except ClosetActionError as exc:
+        return Response({"detail": exc.message}, status=exc.status_code)
+    if first_mark:
+        schedule_closet_slack_notify(notify_custody_marked_returned_to_owner, item=item)
     return Response(ItemSerializer(item, context={"request": request}).data)
 
 
@@ -987,34 +947,16 @@ def item_mark_custody_returned_by_holder(request, item_id: int):
 @permission_classes([IsApprovedUser])
 @transaction.atomic
 def item_complete_custody_return(request, item_id: int):
-    item = get_object_or_404(_item_queryset(), id=item_id)
-    user = request.user
-    if item.owner_user_id != user.id:
-        return Response({"detail": "Only the owner can confirm a custody return."}, status=403)
-    if _active_loan_for_item(item):
-        return Response(
-            {"detail": "This item has an active loan. Use the loan return flow instead."},
-            status=400,
+    try:
+        item, former_holder = confirm_custody_return(user=request.user, item_id=item_id)
+    except ClosetActionError as exc:
+        return Response({"detail": exc.message}, status=exc.status_code)
+    if former_holder is not None:
+        schedule_closet_slack_notify(
+            notify_custody_return_completed_to_holder,
+            item=item,
+            holder=former_holder,
         )
-    if not item.custody_marked_returned_by_holder_at:
-        return Response({"detail": "The holder has not marked this item as returned yet."}, status=400)
-    if item.current_holder_user_id == item.owner_user_id:
-        item.custody_marked_returned_by_holder_at = None
-        item.save(update_fields=["custody_marked_returned_by_holder_at", "updated_at"])
-        return Response(ItemSerializer(item, context={"request": request}).data)
-    item.current_holder_user = item.owner_user
-    item.custody_disputed = False
-    item.custody_marked_returned_by_holder_at = None
-    item.custody_pending_acceptance_user = None
-    item.save(
-        update_fields=[
-            "current_holder_user",
-            "custody_disputed",
-            "custody_marked_returned_by_holder_at",
-            "custody_pending_acceptance_user",
-            "updated_at",
-        ]
-    )
     return Response(ItemSerializer(item, context={"request": request}).data)
 
 

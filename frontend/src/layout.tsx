@@ -380,11 +380,13 @@ function NavCategoryMenu({
 
 function HamburgerCategoryCollapsible({
   label,
+  emoji,
   items,
   loc,
   navigate,
 }: {
   label: string;
+  emoji: string;
   items: AppNavItem[];
   loc: { pathname: string; search: string };
   navigate: (to: string) => void;
@@ -393,21 +395,17 @@ function HamburgerCategoryCollapsible({
   return (
     <Collapsible.Root defaultOpen={active}>
       <Collapsible.Trigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          w="100%"
-          justifyContent="flex-start"
+        <Menu.Item
+          value={`nav-cat-${label.toLowerCase()}`}
+          closeOnSelect={false}
           fontSize="sm"
           fontWeight={active ? "semibold" : "normal"}
-          borderRadius="sm"
-          px="3"
-          py="2"
-          h="auto"
-          minH="auto"
         >
-          {label} ▾
-        </Button>
+          <HStack gap="2" w="100%">
+            <Text aria-hidden>{emoji}</Text>
+            <Text>{label} ▾</Text>
+          </HStack>
+        </Menu.Item>
       </Collapsible.Trigger>
       <Collapsible.Content>
         {items.map((item) => (
@@ -688,6 +686,7 @@ export default function AppLayout() {
                               <HamburgerCategoryCollapsible
                                 key={category.id}
                                 label={category.label}
+                                emoji={category.emoji}
                                 items={items}
                                 loc={navLoc}
                                 navigate={(to) => {

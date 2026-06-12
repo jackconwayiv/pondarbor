@@ -21,6 +21,7 @@ export type AppNavItem = {
 export type NavCategory = {
   id: "social" | "lifestyle" | "games";
   label: string;
+  emoji: string;
   items: AppNavItem[];
 };
 
@@ -201,16 +202,19 @@ export const NAV_CATEGORIES: NavCategory[] = [
   {
     id: "social",
     label: "Social",
+    emoji: "💬",
     items: [SONGADAY, CALENDAR, CLOSET, QUOTES, FAMILY_TREE],
   },
   {
     id: "lifestyle",
     label: "Lifestyle",
+    emoji: "🌞",
     items: [GOALS_APP, ZODIAC, MEAL],
   },
   {
     id: "games",
     label: "Games",
+    emoji: "🎲",
     items: [SCORENADO, WHATIF, PONDCLICKER, ESTATES, QFF, HARBOR, SQUALLS],
   },
 ];

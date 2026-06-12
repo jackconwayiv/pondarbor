@@ -21,6 +21,7 @@ import {
   auth0LoginWithReturnTo,
 } from "./auth0LoginParams";
 import { auth0ApiAudience } from "./publicConfig";
+import { profileOnboardingConfirmedInCache } from "../onboarding/onboardingGateSync";
 
 type AppSessionProviderProps = {
   children: ReactNode;
@@ -202,10 +203,13 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     });
   }, []);
 
-  const bootstrapSession = useCallback(async () => {
+  const bootstrapSession = useCallback(async (options?: { silent?: boolean }) => {
     if (!isAuthenticated || !auth0User || isLoggingOutRef.current) return;
 
-    setIsBootstrapping(true);
+    const silent = options?.silent ?? false;
+    if (!silent) {
+      setIsBootstrapping(true);
+    }
     setBootstrapError(null);
 
     try {
@@ -263,7 +267,9 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       // Allow the app to proceed with a cache-hydrated session if bootstrap fails.
       setSessionSyncedFromServer(true);
     } finally {
-      setIsBootstrapping(false);
+      if (!silent) {
+        setIsBootstrapping(false);
+      }
     }
   }, [
     auth0User,
@@ -301,6 +307,76 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       throw err;
     }
   }, [getAccessTokenSilently, loginWithRedirect]);
+
+  const resyncSessionSilently = useCallback(async () => {
+    if (!isAuthenticated || !auth0User || isLoggingOutRef.current) return;
+    setBootstrapError(null);
+    try {
+      let token: string;
+      try {
+        token = await getAccessTokenSilently({
+          authorizationParams: {
+            audience: auth0ApiAudience(),
+          },
+        });
+      } catch (err: unknown) {
+        if (shouldRecoverTokenWithRedirect(err)) {
+          return;
+        }
+        throw err;
+      }
+
+      const response = await fetch(
+        `${apiBase()}/api/v1/users/sync-profile/`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          credentials: "omit",
+          body: JSON.stringify({}),
+        },
+      );
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Sync failed (${response.status}): ${text}`);
+      }
+
+      const data = (await response.json()) as SessionUser;
+      const prev = loadCachedSession();
+      setAccessToken(token);
+      applySessionUser(data);
+      saveCachedSession({
+        sessionUser: data,
+        accessToken: token,
+        bootstrapInbox: prev?.bootstrapInbox,
+        bootstrapInboxFetchedAt: prev?.bootstrapInboxFetchedAt,
+      });
+      setSessionSyncedFromServer(true);
+    } catch {
+      setSessionSyncedFromServer(true);
+    }
+  }, [auth0User, getAccessTokenSilently, isAuthenticated, applySessionUser]);
+
+  const runInitialServerSync = useCallback(
+    async (cachedUser: SessionUser | null) => {
+      try {
+        if (cachedUser && !profileOnboardingConfirmedInCache(cachedUser)) {
+          await resyncSessionSilently();
+          hasInitialized.current = true;
+          lastAuth0Sub.current = auth0User?.sub ?? null;
+          void bootstrapSession({ silent: true });
+          return;
+        }
+        await bootstrapSession({ silent: cachedUser != null });
+      } catch {
+        setSessionSyncedFromServer(true);
+      }
+    },
+    [auth0User, bootstrapSession, resyncSessionSilently],
+  );
 
   useEffect(() => {
     if (auth0Loading) return;
@@ -373,6 +449,9 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       setAccessToken(cached.accessToken);
       setBootstrapInboxSnapshot(cached.bootstrapInbox ?? null);
       setBootstrapInboxFetchedAt(cached.bootstrapInboxFetchedAt ?? null);
+      if (profileOnboardingConfirmedInCache(cached.sessionUser)) {
+        setSessionSyncedFromServer(true);
+      }
     }
 
     // After a failed sync, bootstrapError is set; do not hammer the API every effect run.
@@ -383,8 +462,8 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     if (serverSyncStarted.current) return;
 
     serverSyncStarted.current = true;
-    void bootstrapSession();
-  }, [auth0Loading, isAuthenticated, auth0User, bootstrapSession, sessionUser, bootstrapError, applySessionUser]);
+    void runInitialServerSync(cached?.sessionUser ?? null);
+  }, [auth0Loading, isAuthenticated, auth0User, sessionUser, bootstrapError, applySessionUser, runInitialServerSync]);
 
   const refreshSession = useCallback(async () => {
     hasInitialized.current = false;
@@ -394,58 +473,6 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     serverSyncStarted.current = true;
     await bootstrapSession();
   }, [bootstrapSession]);
-
-  const resyncSessionSilently = useCallback(async () => {
-    if (!isAuthenticated || !auth0User || isLoggingOutRef.current) return;
-    setBootstrapError(null);
-    try {
-      let token: string;
-      try {
-        token = await getAccessTokenSilently({
-          authorizationParams: {
-            audience: auth0ApiAudience(),
-          },
-        });
-      } catch (err: unknown) {
-        if (shouldRecoverTokenWithRedirect(err)) {
-          return;
-        }
-        throw err;
-      }
-
-      const response = await fetch(
-        `${apiBase()}/api/v1/users/sync-profile/`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          credentials: "omit",
-          body: JSON.stringify({}),
-        },
-      );
-
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Sync failed (${response.status}): ${text}`);
-      }
-
-      const data = (await response.json()) as SessionUser;
-      const prev = loadCachedSession();
-      setAccessToken(token);
-      applySessionUser(data);
-      saveCachedSession({
-        sessionUser: data,
-        accessToken: token,
-        bootstrapInbox: prev?.bootstrapInbox,
-        bootstrapInboxFetchedAt: prev?.bootstrapInboxFetchedAt,
-      });
-      setSessionSyncedFromServer(true);
-    } catch {
-      /* silent: avoid global loading; caller can log if needed */
-    }
-  }, [auth0User, getAccessTokenSilently, isAuthenticated, applySessionUser]);
 
   const sessionUserRef = useRef<SessionUser | null>(null);
   useEffect(() => {
@@ -706,6 +733,9 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     !sessionUser &&
     !bootstrapError;
 
+  const isLoading =
+    auth0Loading || sessionPending || (isBootstrapping && !sessionUser);
+
   const value: AppSessionContextValue = useMemo(
     () => ({
       sessionUser,
@@ -714,7 +744,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       bootstrapInboxSnapshot,
       bootstrapInboxFetchedAt,
       isAuthenticated,
-      isLoading: auth0Loading || isBootstrapping || sessionPending,
+      isLoading,
       sessionSyncedFromServer,
       error: bootstrapError,
       getApiAccessToken,

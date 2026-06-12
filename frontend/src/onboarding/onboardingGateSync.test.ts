@@ -33,6 +33,16 @@ describe("shouldWaitForOnboardingServerSync", () => {
     ).toBe(true);
   });
 
+  it("does not wait when cache already marks onboarding complete", () => {
+    const completedUser = {
+      ...sessionUser,
+      profile: { ...sessionUser.profile, onboarding_completed: true },
+    };
+    expect(
+      shouldWaitForOnboardingServerSync(true, completedUser, false),
+    ).toBe(false);
+  });
+
   it("does not wait after server sync", () => {
     expect(
       shouldWaitForOnboardingServerSync(true, sessionUser, true),

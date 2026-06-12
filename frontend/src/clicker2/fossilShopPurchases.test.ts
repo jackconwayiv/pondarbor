@@ -4,6 +4,7 @@ import { createDefaultClicker2State } from "./api";
 import {
   compareFossilShopByFossilPrice,
   EL_NINO_SPECIALTY_ID,
+  FAE_PORTAL_SPECIALTY_ID,
   FOSSIL_RECORD_SPECIALTY_ID,
   FOSSIL_SHOP_SPECIALTY_IDS,
   GATHERING_CLOUDS_SPECIALTY_ID,
@@ -32,6 +33,7 @@ describe("fossil shop card emojis", () => {
     [GATHERING_CLOUDS_SPECIALTY_ID, "☁️"],
     [RIPPLES_OF_ETERNITY_SPECIALTY_ID, "💦"],
     [EL_NINO_SPECIALTY_ID, "⛈️"],
+    [FAE_PORTAL_SPECIALTY_ID, "🍥"],
   ] as const)("uses %s for specialty %i", (id, emoji) => {
     expect(evolutionDisplayEmoji(getSpecialtyDef(id)!)).toBe(emoji);
   });
@@ -45,6 +47,7 @@ describe("compareFossilShopByFossilPrice", () => {
 
     expect(forSale.map((d) => d.id)).toEqual([
       FOSSIL_RECORD_SPECIALTY_ID,
+      FAE_PORTAL_SPECIALTY_ID,
       WOODED_SHORE_SPECIALTY_ID,
       GATHERING_CLOUDS_SPECIALTY_ID,
       RIPPLES_OF_ETERNITY_SPECIALTY_ID,
@@ -101,6 +104,33 @@ describe("Ripples of Eternity", () => {
     expect(next.owned_specialties[RIPPLES_OF_ETERNITY_SPECIALTY_ID]).toBe(
       true,
     );
+  });
+});
+
+describe("Fae Portal", () => {
+  const def = () => getSpecialtyDef(FAE_PORTAL_SPECIALTY_ID)!;
+
+  it("is a fossil-shop specialty in the persistent list", () => {
+    expect(FOSSIL_SHOP_SPECIALTY_IDS).toContain(FAE_PORTAL_SPECIALTY_ID);
+    expect(def()).toMatchObject({
+      name: "Fae Portal",
+      priceFossils: 7,
+      fossilShopOnly: true,
+      requiresOwnedSpecialtyId: STRATIFIED_POND_SPECIALTY_ID,
+      effect: { type: "offline_eps_bonus", epsPercent: 5, maxMinutes: 60 },
+      effectText:
+        "Your pond earns 5% of your energy per second for the first hour you're offline.",
+      ecologyNote:
+        "Welcome the fae folk to your pond to work while you're away.",
+    });
+  });
+
+  it("requires stratified pond and is hidden from the energy shop", () => {
+    expect(isFossilShopItemForSale(def(), {})).toBe(false);
+    expect(isFossilShopItemForSale(def(), withPond)).toBe(true);
+    expect(
+      isSpecialtyShopVisible(def(), {}, withPond, 0, 0, 0),
+    ).toBe(false);
   });
 });
 

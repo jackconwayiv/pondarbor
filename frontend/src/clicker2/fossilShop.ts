@@ -25,9 +25,13 @@ export const RIPPLES_OF_ETERNITY_SPECIALTY_ID = 686;
 /** Weather spawn waits ×0.95; requires Stratified Pond. */
 export const EL_NINO_SPECIALTY_ID = 687;
 
+/** 5% EpS for first hour offline; requires Stratified Pond. */
+export const FAE_PORTAL_SPECIALTY_ID = 720;
+
 export const FOSSIL_SHOP_SPECIALTY_IDS: readonly number[] = [
   STRATIFIED_POND_SPECIALTY_ID,
   FOSSIL_RECORD_SPECIALTY_ID,
+  FAE_PORTAL_SPECIALTY_ID,
   RIPPLES_OF_ETERNITY_SPECIALTY_ID,
   EL_NINO_SPECIALTY_ID,
   WOODED_SHORE_SPECIALTY_ID,

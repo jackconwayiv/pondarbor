@@ -13,8 +13,8 @@ import { isRetiredWindSpecialtyId } from "./retiredWindEvolutions";
 import { SPECIALTY_IDS } from "./specialties";
 import { rollWeatherSpawnDelayMs } from "./weatherEvents";
 
-export const SCHEMA_VERSION = 6;
-export const CATALOG_CONTENT_VERSION = 21;
+export const SCHEMA_VERSION = 7;
+export const CATALOG_CONTENT_VERSION = 22;
 
 export type Clicker2Statistics = {
   total_clicks: number;
@@ -64,6 +64,8 @@ export type Clicker2GameState = {
   total_fossils_earned: number;
   /** Strata levels locked in across pond cycles. */
   fossilized_strata: number;
+  /** Wall-clock epoch ms when save was last touched while the game tab was alive (0 = never). */
+  last_active_at_ms: number;
   statistics: Clicker2Statistics;
 };
 
@@ -137,6 +139,7 @@ export function createDefaultClicker2State(): Clicker2GameState {
     fossils: 0,
     total_fossils_earned: 0,
     fossilized_strata: 0,
+    last_active_at_ms: 0,
     statistics: createDefaultClicker2Statistics(),
   };
 }
@@ -310,6 +313,7 @@ export function normalizeClicker2State(raw: unknown): Clicker2GameState {
   let total_fossils_earned = Math.floor(numField(o, "total_fossils_earned", 0));
   if (total_fossils_earned < fossils) total_fossils_earned = fossils;
   const fossilized_strata = Math.floor(numField(o, "fossilized_strata", 0));
+  const last_active_at_ms = numField(o, "last_active_at_ms", 0);
 
   return {
     energy,
@@ -331,6 +335,7 @@ export function normalizeClicker2State(raw: unknown): Clicker2GameState {
     fossils,
     total_fossils_earned,
     fossilized_strata,
+    last_active_at_ms,
     statistics,
   };
 }

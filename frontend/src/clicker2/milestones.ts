@@ -30,6 +30,7 @@ import { POND_PRODUCTION_EMOJI } from "./clicker2OwnedEvolutions";
 import { POLLINATOR_SPECIALTY_DENIZEN_ID } from "./pollinatorEvolutions";
 import {
   EL_NINO_SPECIALTY_ID,
+  FAE_PORTAL_SPECIALTY_ID,
   FOSSIL_EMOJI,
   FOSSIL_RECORD_SPECIALTY_ID,
   GATHERING_CLOUDS_SPECIALTY_ID,
@@ -866,6 +867,14 @@ export const FOSSIL_SHOP_MILESTONES: readonly MilestoneDef[] = [
     description: "Buy El Niño from the fossil shop.",
     criteriaText: "Buy El Niño from the fossil shop",
     specialtyId: EL_NINO_SPECIALTY_ID,
+  },
+  {
+    id: "faerie_nice",
+    kind: "fossil_shop_purchase",
+    title: "Faerie Nice",
+    description: "Buy Fae Portal from the fossil shop.",
+    criteriaText: "Buy Fae Portal from the fossil shop",
+    specialtyId: FAE_PORTAL_SPECIALTY_ID,
   },
 ];
 

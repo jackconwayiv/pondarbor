@@ -66,6 +66,12 @@ import DenizenShopList from "./DenizenShopList";
 import { Clicker2HeadlineStrip } from "./Clicker2HeadlineStrip";
 import { Clicker2PondHeadline } from "./Clicker2PondHeadline";
 import { MilestoneCelebrateCard, MilestoneDismissAllCard } from "./MilestoneCelebrateCard";
+import {
+  AwayReportCelebrateCard,
+  awayReportFaeEnergyMessage,
+  awayReportMutagenMessage,
+  type AwayReportCardId,
+} from "./AwayReportCelebrateCard";
 import { useClicker2RotatingHeadline } from "./useClicker2RotatingHeadline";
 import MutagenStrataCard from "./MutagenStrataCard";
 import CyclePondConfirmModal from "./CyclePondConfirmModal";
@@ -115,12 +121,14 @@ import {
   ensureMutagenPipelineStarted,
   getMutationLevel,
   isMutagenSystemUnlocked,
+  MUTAGEN_EMOJI,
   msUntilMutagenAutoCollect,
   msUntilMutagenCollectible,
   msUntilNextMutagenFormingUiTick,
   settleMutagenPipeline,
 } from "./mutagens";
 import { denizenPerCopyEpsMap, simulateGame } from "./simulation";
+import { settleOfflineEnergyOnLoad } from "./offlineEarnings";
 import {
   getDisplayEpsSnapshot,
   subscribeDisplayEps,
@@ -244,6 +252,13 @@ export default function Clicker2GamePage() {
   >({});
   const [milestonesDismissed, setMilestonesDismissed] = useState<
     Record<string, true>
+  >({});
+  const [awayReport, setAwayReport] = useState<{
+    mutagensAutoCollected: number;
+    faeEnergyGenerated: number;
+  } | null>(null);
+  const [awayReportDismissed, setAwayReportDismissed] = useState<
+    Partial<Record<AwayReportCardId, true>>
   >({});
   const [mutagenUiTick, setMutagenUiTick] = useState(0);
   const [savedBannerKey, setSavedBannerKey] = useState(0);
@@ -476,6 +491,7 @@ export default function Clicker2GamePage() {
       fossils: fossilsRef.current,
       total_fossils_earned: totalFossilsEarnedRef.current,
       fossilized_strata: fossilizedStrataRef.current,
+      last_active_at_ms: Date.now(),
       statistics: statisticsRef.current,
     };
   }, [refreshWeatherSpawnRemainingForSave]);
@@ -933,6 +949,7 @@ export default function Clicker2GamePage() {
     fossils,
     total_fossils_earned: totalFossilsEarned,
     fossilized_strata: fossilizedStrata,
+    last_active_at_ms: Date.now(),
     statistics,
   };
 
@@ -968,21 +985,40 @@ export default function Clicker2GamePage() {
               );
         const { completedCount: mutagenSettledCount, ...mutagenState } =
           mutagenBoot;
-        const stateWithWeather = {
+        const stateWithMutagen = {
           ...loadedState,
           ...mutagenState,
           next_weather_spawn_remaining_ms: nextWeatherSpawnRemaining,
         };
+        const loadSim = simulateGame(
+          stateWithMutagen.owned_denizens,
+          stripRetiredWindFromOwnedSpecialties(stateWithMutagen.owned_specialties),
+          stateWithMutagen.denizen_mutation_levels,
+          blossomCountFromMilestones(stateWithMutagen.milestones_reached),
+          stateWithMutagen.fossilized_strata,
+        );
+        const offlineSettled = settleOfflineEnergyOnLoad(
+          stateWithMutagen,
+          loadSim.energyPerSecond,
+          loadNowMs,
+        );
+        const stateWithWeather = offlineSettled.state;
         saveDirtyRef.current =
           loadedState.pond_started_at_ms !== merged.pond_started_at_ms ||
           loadedState.next_weather_spawn_remaining_ms !==
             nextWeatherSpawnRemaining ||
           mutagenSettledCount > 0 ||
+          offlineSettled.bonusEnergy > 0 ||
           specialtyAcquiredMigrationPending(
             res.state,
             stateWithWeather.owned_specialties,
           ) ||
           (local != null && local.schema_version < SCHEMA_VERSION);
+        setAwayReport({
+          mutagensAutoCollected: mutagenSettledCount,
+          faeEnergyGenerated: offlineSettled.bonusEnergy,
+        });
+        setAwayReportDismissed({});
         setEnergy(stateWithWeather.energy);
         energyRef.current = stateWithWeather.energy;
         const loadedAt = performance.now();
@@ -1295,6 +1331,47 @@ export default function Clicker2GamePage() {
     [milestonesReached, milestonesDismissed],
   );
 
+  const visibleAwayReports = useMemo(() => {
+    if (!awayReport) return [];
+    const cards: Array<{
+      id: AwayReportCardId;
+      message: string;
+      emoji: string;
+    }> = [];
+    if (
+      awayReport.mutagensAutoCollected > 0 &&
+      !awayReportDismissed.mutagen_collected
+    ) {
+      cards.push({
+        id: "mutagen_collected",
+        message: awayReportMutagenMessage(awayReport.mutagensAutoCollected),
+        emoji: MUTAGEN_EMOJI,
+      });
+    }
+    if (
+      awayReport.faeEnergyGenerated > 0 &&
+      !awayReportDismissed.fae_energy
+    ) {
+      cards.push({
+        id: "fae_energy",
+        message: awayReportFaeEnergyMessage(
+          `${formatEnergyAmountHud(awayReport.faeEnergyGenerated)} ${ENERGY_EMOJI}`,
+        ),
+        emoji: "🍥",
+      });
+    }
+    return cards;
+  }, [awayReport, awayReportDismissed]);
+
+  const headlineCardCount =
+    celebrationMilestones.length + visibleAwayReports.length;
+  const headlineStripMode =
+    headlineCardCount > 0 ? ("milestones" as const) : ("headline" as const);
+
+  const handleDismissAwayReport = useCallback((id: AwayReportCardId) => {
+    setAwayReportDismissed((prev) => ({ ...prev, [id]: true }));
+  }, []);
+
   const activeHeadlineText = useClicker2RotatingHeadline(ownedDenizens);
 
   const visibleDenizens = useMemo(
@@ -1482,24 +1559,25 @@ export default function Clicker2GamePage() {
     [markGameDirty],
   );
 
-  const handleDismissAllMilestoneCelebrations = useCallback(
-    (ids: readonly string[]) => {
-      if (ids.length < 2) return;
-      let changed = false;
-      const next = { ...milestonesDismissedRef.current };
-      for (const id of ids) {
-        if (milestonesReachedRef.current[id] == null) continue;
-        if (next[id]) continue;
-        next[id] = true;
-        changed = true;
-      }
-      if (!changed) return;
+  const handleDismissAllHeadlineCards = useCallback(() => {
+    let milestoneChanged = false;
+    const next = { ...milestonesDismissedRef.current };
+    for (const milestone of celebrationMilestones) {
+      if (milestonesReachedRef.current[milestone.id] == null) continue;
+      if (next[milestone.id]) continue;
+      next[milestone.id] = true;
+      milestoneChanged = true;
+    }
+    if (milestoneChanged) {
       milestonesDismissedRef.current = next;
       setMilestonesDismissed(next);
       markGameDirty();
-    },
-    [markGameDirty],
-  );
+    }
+    setAwayReportDismissed({
+      mutagen_collected: true,
+      fae_energy: true,
+    });
+  }, [celebrationMilestones, markGameDirty]);
 
   /*
    * CLICKER2_DEV_TOOLS — handlers (staff-gated via showClicker2DevToolsRef).
@@ -2134,31 +2212,39 @@ export default function Clicker2GamePage() {
         </>
       ) : null}
       <Clicker2HeadlineStrip
-        mode={celebrationMilestones.length > 0 ? "milestones" : "headline"}
+        mode={headlineStripMode}
         milestoneLeadingAction={
-          celebrationMilestones.length >= 2 ? (
+          headlineCardCount >= 2 ? (
             <MilestoneDismissAllCard
-              onDismissAll={() =>
-                handleDismissAllMilestoneCelebrations(
-                  celebrationMilestones.map((m) => m.id),
-                )
-              }
+              onDismissAll={handleDismissAllHeadlineCards}
               motionPaused={motionPaused}
             />
           ) : undefined
         }
       >
-        {celebrationMilestones.length > 0 ? (
-          celebrationMilestones.map((milestone) => (
-            <MilestoneCelebrateCard
-              key={milestone.id}
-              milestone={milestone}
-              onDismiss={() =>
-                handleDismissMilestoneCelebration(milestone.id)
-              }
-              motionPaused={motionPaused}
-            />
-          ))
+        {headlineCardCount > 0 ? (
+          <>
+            {celebrationMilestones.map((milestone) => (
+              <MilestoneCelebrateCard
+                key={milestone.id}
+                milestone={milestone}
+                onDismiss={() =>
+                  handleDismissMilestoneCelebration(milestone.id)
+                }
+                motionPaused={motionPaused}
+              />
+            ))}
+            {visibleAwayReports.map((card) => (
+              <AwayReportCelebrateCard
+                key={card.id}
+                cardId={card.id}
+                message={card.message}
+                emoji={card.emoji}
+                onDismiss={() => handleDismissAwayReport(card.id)}
+                motionPaused={motionPaused}
+              />
+            ))}
+          </>
         ) : activeHeadlineText ? (
           <Clicker2PondHeadline text={activeHeadlineText} />
         ) : null}

@@ -38,7 +38,8 @@ export type SpecialtyEffect =
   | { type: "eps_percent_per_blossom"; percentPerBlossom: number }
   | { type: "strata_effect_fraction"; fraction: number }
   | { type: "cycle_start_denizen"; denizenId: string; count: number }
-  | { type: "weather_spawn_frequency_bonus"; percent: number };
+  | { type: "weather_spawn_frequency_bonus"; percent: number }
+  | { type: "offline_eps_bonus"; epsPercent: number; maxMinutes: number };
 
 export type PairingUnlockRequirements = Readonly<Record<string, number>>;
 
@@ -894,6 +895,24 @@ function buildStrataEffectChain(): SpecialtyDef[] {
     pollinatorEmoji: "⛈️",
   };
 
+  const faePortalId = 720;
+  const faePortal: SpecialtyDef = {
+    id: faePortalId,
+    name: "Fae Portal",
+    denizenId: FOSSIL_SPECIALTY_DENIZEN_ID,
+    unlockOwned: 0,
+    price: 0,
+    priceFossils: 7,
+    fossilShopOnly: true,
+    requiresOwnedSpecialtyId: stratifiedPondId,
+    effect: { type: "offline_eps_bonus", epsPercent: 5, maxMinutes: 60 },
+    effectText:
+      "Your pond earns 5% of your energy per second for the first hour you're offline.",
+    ecologyNote:
+      "Welcome the fae folk to your pond to work while you're away.",
+    pollinatorEmoji: "🍥",
+  };
+
   const energyTiers: SpecialtyDef[] = tiers.map((t, index) => ({
     id: t.id,
     name: t.name,
@@ -909,7 +928,7 @@ function buildStrataEffectChain(): SpecialtyDef[] {
     ecologyNote: t.ecologyNote,
   }));
 
-  return [stratifiedPond, fossilRecord, ripplesOfEternity, elNino, ...energyTiers];
+  return [stratifiedPond, fossilRecord, faePortal, ripplesOfEternity, elNino, ...energyTiers];
 }
 
 type Tier45ChainOverride = {

@@ -1,4 +1,4 @@
-"""Slack Block Kit interaction handler for Closet actions."""
+"""Slack Block Kit interaction handler for PondArbor actions."""
 
 from __future__ import annotations
 
@@ -32,9 +32,17 @@ from closet.slack_notify import (
     notify_loan_return_completed_to_borrower,
     notify_slack_action_confirmation,
 )
+from contact.actions import ContactActionError, acknowledge_contact_message
+from friends.actions import (
+    FriendActionError,
+    accept_incoming_friend_request,
+    decline_incoming_friend_request,
+)
 from slack_integration.slack_verify import verify_slack_request_signature
 from slack_integration.views import _resolve_user_for_slack
 from users.models import User
+from users.staff_actions import StaffActionError, approve_pending_member, reject_pending_member
+from whatif.actions import WhatIfActionError, approve_proposed_whatif, reject_proposed_whatif
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +113,34 @@ def _run_action(*, user: User, action_id: str, value: str) -> None:
             )
         notify_slack_action_confirmation(user=user, text="Return confirmed ✓")
         return
+    if action_id == "friends_accept":
+        accept_incoming_friend_request(user=user, requester_id=int(value))
+        notify_slack_action_confirmation(user=user, text="Friend request accepted ✓")
+        return
+    if action_id == "friends_decline":
+        decline_incoming_friend_request(user=user, requester_id=int(value))
+        notify_slack_action_confirmation(user=user, text="Friend request declined.")
+        return
+    if action_id == "staff_approve_member":
+        approve_pending_member(staff_user=user, user_id=int(value))
+        notify_slack_action_confirmation(user=user, text="Member approved ✓")
+        return
+    if action_id == "staff_reject_member":
+        reject_pending_member(staff_user=user, user_id=int(value))
+        notify_slack_action_confirmation(user=user, text="Member rejected.")
+        return
+    if action_id == "staff_whatif_approve":
+        approve_proposed_whatif(staff_user=user, question_id=int(value))
+        notify_slack_action_confirmation(user=user, text="WhatIf question approved ✓")
+        return
+    if action_id == "staff_whatif_reject":
+        reject_proposed_whatif(staff_user=user, question_id=int(value))
+        notify_slack_action_confirmation(user=user, text="WhatIf question rejected.")
+        return
+    if action_id == "staff_contact_ack":
+        acknowledge_contact_message(staff_user=user, message_id=int(value))
+        notify_slack_action_confirmation(user=user, text="Contact message marked read ✓")
+        return
 
 
 def _handle_block_actions(payload: dict) -> HttpResponse:
@@ -123,10 +159,10 @@ def _handle_block_actions(payload: dict) -> HttpResponse:
 
     try:
         _run_action(user=user, action_id=action_id, value=value)
-    except ClosetActionError as exc:
+    except (ClosetActionError, FriendActionError, StaffActionError, WhatIfActionError, ContactActionError) as exc:
         notify_slack_action_confirmation(user=user, text=exc.message)
     except Exception:
-        logger.exception("Slack closet interaction failed action_id=%s", action_id)
+        logger.exception("Slack interaction failed action_id=%s", action_id)
         notify_slack_action_confirmation(user=user, text="Something went wrong. Try again in PondArbor.")
     return HttpResponse(status=200)
 

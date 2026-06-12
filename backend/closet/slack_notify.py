@@ -277,7 +277,7 @@ def notify_custody_offer_canceled_to_holder(*, item: Item, holder: User) -> None
 
 
 def notify_slack_action_confirmation(*, user: User, text: str) -> None:
-    notify_pondarbor_user_dm(user, text=text)
+    notify_pondarbor_user_dm(user, text=text, rate="immediate")
 
 
 # --- Slash command block builders ---

@@ -10,7 +10,7 @@ from rest_framework.response import Response
 
 from estates.constants import ESTATES_COMPUTER_USER_EMAIL
 from friends.models import FriendRequest
-from friends.services import friends_queryset_for_user, order_users_by_recent_activity
+from friends.services import accept_friend_pair, friends_queryset_for_user, order_users_by_recent_activity
 from users.avatar_url import profile_avatar_url
 from users.models import Profile
 from users.social_privacy import published_user_visibility_q, viewer_context
@@ -48,26 +48,7 @@ class FriendRequestInputSerializer(serializers.Serializer):
 
 
 def _accept_pair(*, user_a, user_b):
-    first, _ = FriendRequest.objects.get_or_create(
-        requester=user_a, requested=user_b, defaults={"is_accepted": True}
-    )
-    second, _ = FriendRequest.objects.get_or_create(
-        requester=user_b, requested=user_a, defaults={"is_accepted": True}
-    )
-    if not first.is_accepted or first.ignored_by_requester or first.ignored_by_requested:
-        first.is_accepted = True
-        first.ignored_by_requester = False
-        first.ignored_by_requested = False
-        first.save(
-            update_fields=["is_accepted", "ignored_by_requester", "ignored_by_requested", "updated_at"]
-        )
-    if not second.is_accepted or second.ignored_by_requester or second.ignored_by_requested:
-        second.is_accepted = True
-        second.ignored_by_requester = False
-        second.ignored_by_requested = False
-        second.save(
-            update_fields=["is_accepted", "ignored_by_requester", "ignored_by_requested", "updated_at"]
-        )
+    accept_friend_pair(user_a=user_a, user_b=user_b)
 
 
 def _request_friend_target(*, requester, requested):
@@ -82,16 +63,31 @@ def _request_friend_target(*, requester, requested):
         _accept_pair(user_a=requester, user_b=requested)
         return Response({"ok": True, "state": "already_friends"})
 
+    should_notify = False
     if direct is None:
         direct = FriendRequest.objects.create(requester=requester, requested=requested)
+        should_notify = True
     elif direct.is_accepted:
         direct.is_accepted = False
         direct.save(update_fields=["is_accepted", "updated_at"])
+        should_notify = True
+    elif direct.ignored_by_requester or direct.ignored_by_requested:
+        should_notify = True
 
     if direct.ignored_by_requester or direct.ignored_by_requested:
         direct.ignored_by_requester = False
         direct.ignored_by_requested = False
         direct.save(update_fields=["ignored_by_requester", "ignored_by_requested", "updated_at"])
+
+    if should_notify:
+        from friends.slack_hooks import schedule_friend_slack_notify
+        from friends.slack_notify import notify_incoming_friend_request
+
+        schedule_friend_slack_notify(
+            notify_incoming_friend_request,
+            requested=requested,
+            requester=requester,
+        )
     return Response({"ok": True, "state": "requested"})
 
 

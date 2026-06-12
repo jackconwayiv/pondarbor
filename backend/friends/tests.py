@@ -1,14 +1,17 @@
 from datetime import timedelta
+from unittest import mock
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from estates.bot_user import get_computer_user
 from friends.models import FriendRequest
+from friends.slack_notify import notify_incoming_friend_request
+from slack_integration.models import SlackIdentity
 from users.models import Profile
 
 User = get_user_model()
@@ -396,4 +399,80 @@ class FriendRequestModelTests(TestCase):
         a = User.objects.create_user(email="a@example.com", password="secret12345")
         with self.assertRaises(IntegrityError):
             FriendRequest.objects.create(requester=a, requested=a)
+
+
+@override_settings(
+    PONDARBOR_ORIGIN="https://www.pondarbor.com",
+    SLACK_FRIEND_NOTIFICATIONS_ENABLED=True,
+    SLACK_BOT_TOKEN="xoxb-test",
+)
+class FriendSlackNotifyTests(TestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user(email="alice@example.com", password="secret12345")
+        self.alice.account_status = User.AccountStatus.APPROVED
+        self.alice.save(update_fields=["account_status"])
+        Profile.objects.update_or_create(user=self.alice, defaults={"display_name": "Alice"})
+
+        self.bob = User.objects.create_user(email="bob@example.com", password="secret12345")
+        self.bob.account_status = User.AccountStatus.APPROVED
+        self.bob.save(update_fields=["account_status"])
+        Profile.objects.update_or_create(user=self.bob, defaults={"display_name": "Bob"})
+        SlackIdentity.objects.create(team_id="T1", slack_user_id="U_bob", user=self.bob)
+
+        self.alice_client = APIClient()
+        self.alice_client.force_login(self.alice)
+
+    @mock.patch("friends.slack_notify.notify_pondarbor_user_dm")
+    def test_new_friend_request_notifies_requested_user(self, mock_dm):
+        mock_dm.return_value = {"ok": True}
+        with self.captureOnCommitCallbacks(execute=True):
+            resp = self.alice_client.post(
+                "/api/v1/friends/request/",
+                {"email": self.bob.email},
+                format="json",
+            )
+        self.assertEqual(resp.status_code, 200)
+        mock_dm.assert_called_once()
+        kwargs = mock_dm.call_args.kwargs
+        self.assertEqual(kwargs["feature"], "friends")
+        self.assertIn("Alice", kwargs["text"])
+        blocks_str = str(kwargs["blocks"])
+        self.assertIn("friends_accept", blocks_str)
+        self.assertIn("friends_decline", blocks_str)
+        self.assertIn("tab=friends", blocks_str)
+
+    @mock.patch("friends.slack_notify.notify_pondarbor_user_dm")
+    def test_duplicate_pending_request_does_not_spam(self, mock_dm):
+        FriendRequest.objects.create(requester=self.alice, requested=self.bob)
+        with self.captureOnCommitCallbacks(execute=True):
+            resp = self.alice_client.post(
+                "/api/v1/friends/request/",
+                {"email": self.bob.email},
+                format="json",
+            )
+        self.assertEqual(resp.status_code, 200)
+        mock_dm.assert_not_called()
+
+    @mock.patch("friends.slack_notify.notify_pondarbor_user_dm")
+    def test_unignore_pending_request_notifies_again(self, mock_dm):
+        mock_dm.return_value = {"ok": True}
+        FriendRequest.objects.create(
+            requester=self.alice,
+            requested=self.bob,
+            ignored_by_requested=True,
+        )
+        with self.captureOnCommitCallbacks(execute=True):
+            resp = self.alice_client.post(
+                "/api/v1/friends/request/",
+                {"email": self.bob.email},
+                format="json",
+            )
+        self.assertEqual(resp.status_code, 200)
+        mock_dm.assert_called_once()
+
+    @mock.patch("friends.slack_notify.notify_pondarbor_user_dm")
+    def test_notify_helper_uses_display_name(self, mock_dm):
+        mock_dm.return_value = {"ok": True}
+        notify_incoming_friend_request(requested=self.bob, requester=self.alice)
+        self.assertIn("Alice", mock_dm.call_args.kwargs["text"])
 

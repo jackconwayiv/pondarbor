@@ -3,7 +3,8 @@ from django.db.models.signals import post_save, pre_delete
 from django.dispatch import receiver
 from django.db.models.deletion import ProtectedError
 
-from .models import PROFILE_TIMEZONE_DEFAULT, Profile
+from .models import PROFILE_TIMEZONE_DEFAULT, Profile, User
+from .staff_slack_hooks import schedule_staff_slack_notify
 
 
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)
@@ -14,6 +15,19 @@ def create_user_profile(sender, instance, created, **kwargs):
             display_name=(instance.email.split("@")[0] if instance.email else ""),
             timezone=PROFILE_TIMEZONE_DEFAULT,
         )
+
+
+@receiver(post_save, sender=settings.AUTH_USER_MODEL)
+def notify_staff_on_new_pending_member(sender, instance, created, **kwargs):
+    if not created:
+        return
+    if instance.account_status != User.AccountStatus.PENDING:
+        return
+    if instance.is_staff:
+        return
+    from slack_integration.staff_notify import notify_staff_new_pending_member
+
+    schedule_staff_slack_notify(notify_staff_new_pending_member, user=instance)
 
 
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)

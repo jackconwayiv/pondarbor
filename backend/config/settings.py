@@ -305,6 +305,22 @@ SLACK_CLOSET_NOTIFICATIONS_ENABLED = os.getenv("SLACK_CLOSET_NOTIFICATIONS_ENABL
     "1",
     "yes",
 )
+SLACK_STAFF_NOTIFICATIONS_ENABLED = os.getenv("SLACK_STAFF_NOTIFICATIONS_ENABLED", "true").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+SLACK_FRIEND_NOTIFICATIONS_ENABLED = os.getenv("SLACK_FRIEND_NOTIFICATIONS_ENABLED", "true").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+SLACK_DM_THROTTLE_ENABLED = os.getenv("SLACK_DM_THROTTLE_ENABLED", "true").lower() in (
+    "true",
+    "1",
+    "yes",
+)
+SLACK_DM_THROTTLE_HOURS = int(os.getenv("SLACK_DM_THROTTLE_HOURS", "24"))
 
 # QFF: structured INFO logs per command (exec_ms, sim_ms, session_ms, total_ms) for staging/prod profiling.
 QFF_COMMAND_TIMING_LOG = os.getenv("QFF_COMMAND_TIMING_LOG", "").lower() in ("true", "1", "yes")

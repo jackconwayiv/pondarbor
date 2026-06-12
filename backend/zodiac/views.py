@@ -13,6 +13,7 @@ from users.social_privacy import owner_publish_visibility, viewer_context
 from zodiac.birth_sync import sync_birth_date_across_profiles
 from zodiac.friend_zodiac import friend_has_shareable_zodiac, serialize_friend_zodiac_row
 from zodiac.models import AstroProfile
+from zodiac.staff_slack_hooks import schedule_zodiac_staff_slack_notify
 from zodiac.parsers.chart_export_v1 import parse_chart_export_v1
 from zodiac.services import (
     apply_birth_payload,
@@ -65,12 +66,14 @@ def user_astro_profile(request):
 
     old_key = birth_key_from_model(profile)
     was_ready = profile.chart_status == AstroProfile.ChartStatus.READY
+    old_status = profile.chart_status
 
     with transaction.atomic():
         apply_birth_payload(profile, fields)
 
         new_key = birth_key_from_model(profile)
 
+        notify_staff = False
         if was_ready and old_key != new_key:
             profile.chart_status = AstroProfile.ChartStatus.WAITING_STAFF_CHART
             profile.natal_chart = None
@@ -81,16 +84,24 @@ def user_astro_profile(request):
             profile.chart_ready_at = None
             profile.staff_imported_by = None
             profile.waiting_submitted_at = timezone.now()
+            notify_staff = True
         elif was_ready and old_key == new_key:
             pass
         else:
             profile.chart_status = AstroProfile.ChartStatus.WAITING_STAFF_CHART
             if created or not profile.waiting_submitted_at:
                 profile.waiting_submitted_at = timezone.now()
+                notify_staff = True
+            elif old_status != AstroProfile.ChartStatus.WAITING_STAFF_CHART:
+                profile.waiting_submitted_at = timezone.now()
+                notify_staff = True
 
         profile.save()
 
         sync_birth_date_across_profiles(user=user, birth_date=profile.birth_date)
+
+    if notify_staff:
+        schedule_zodiac_staff_slack_notify(user=user)
 
     return Response({"profile": serialize_astro_profile(profile)})
 

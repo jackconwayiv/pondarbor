@@ -19,9 +19,17 @@ def closet_notifications_enabled() -> bool:
     return bool(getattr(settings, "SLACK_CLOSET_NOTIFICATIONS_ENABLED", True))
 
 
-def notify_pondarbor_user_dm(user, *, text: str, blocks: list | None = None) -> dict:
-    if not closet_notifications_enabled():
-        return {"ok": False, "skipped": "disabled"}
+def _feature_notifications_enabled(feature: str) -> bool:
+    if feature == "staff":
+        from slack_integration.staff_notify import staff_notifications_enabled
+
+        return staff_notifications_enabled()
+    if feature == "friends":
+        return bool(getattr(settings, "SLACK_FRIEND_NOTIFICATIONS_ENABLED", True))
+    return closet_notifications_enabled()
+
+
+def _send_slack_dm_now(user, *, text: str, blocks: list | None = None) -> dict:
     if not (getattr(settings, "SLACK_BOT_TOKEN", None) or "").strip():
         return {"ok": False, "skipped": "missing_bot_token"}
 
@@ -31,7 +39,7 @@ def notify_pondarbor_user_dm(user, *, text: str, blocks: list | None = None) -> 
         .first()
     )
     if not ident:
-        logger.info("closet_slack_dm skipped: no SlackIdentity for user_id=%s", user.id)
+        logger.info("slack_dm skipped: no SlackIdentity for user_id=%s", user.id)
         return {"ok": False, "skipped": "no_slack_identity"}
 
     resp = slack_chat_post_dm(
@@ -41,9 +49,28 @@ def notify_pondarbor_user_dm(user, *, text: str, blocks: list | None = None) -> 
     )
     if not resp.get("ok"):
         logger.warning(
-            "closet_slack_dm failed user_id=%s slack_user=%s error=%s",
+            "slack_dm failed user_id=%s slack_user=%s error=%s",
             user.id,
             ident.slack_user_id,
             resp.get("error"),
         )
     return resp
+
+
+def notify_pondarbor_user_dm(
+    user,
+    *,
+    text: str,
+    blocks: list | None = None,
+    feature: str = "closet",
+    rate: str = "proactive",
+) -> dict:
+    if not _feature_notifications_enabled(feature):
+        return {"ok": False, "skipped": "disabled"}
+
+    if rate == "immediate":
+        return _send_slack_dm_now(user, text=text, blocks=blocks)
+
+    from slack_integration.dm_throttle import enqueue_or_send_proactive_dm
+
+    return enqueue_or_send_proactive_dm(user, text=text, blocks=blocks, feature=feature)

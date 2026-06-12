@@ -43,3 +43,26 @@ def order_users_by_recent_activity(qs: QuerySet) -> QuerySet:
         "-_activity_at", "email"
     )
 
+
+def accept_friend_pair(*, user_a, user_b) -> None:
+    first, _ = FriendRequest.objects.get_or_create(
+        requester=user_a, requested=user_b, defaults={"is_accepted": True}
+    )
+    second, _ = FriendRequest.objects.get_or_create(
+        requester=user_b, requested=user_a, defaults={"is_accepted": True}
+    )
+    if not first.is_accepted or first.ignored_by_requester or first.ignored_by_requested:
+        first.is_accepted = True
+        first.ignored_by_requester = False
+        first.ignored_by_requested = False
+        first.save(
+            update_fields=["is_accepted", "ignored_by_requester", "ignored_by_requested", "updated_at"]
+        )
+    if not second.is_accepted or second.ignored_by_requester or second.ignored_by_requested:
+        second.is_accepted = True
+        second.ignored_by_requester = False
+        second.ignored_by_requested = False
+        second.save(
+            update_fields=["is_accepted", "ignored_by_requester", "ignored_by_requested", "updated_at"]
+        )
+

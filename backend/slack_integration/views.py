@@ -345,6 +345,14 @@ def slack_commands(request):
     if params.get("ssl_check") == "1":
         return JsonResponse({})
 
+    from slack_integration.dm_digest import dm_throttle_enabled, flush_due_digests
+
+    if dm_throttle_enabled():
+        try:
+            flush_due_digests()
+        except Exception:
+            logger.exception("flush_due_digests at slack_commands entry failed")
+
     command = (params.get("command") or "").strip()
     text = params.get("text") or ""
     team_id = (params.get("team_id") or "").strip()

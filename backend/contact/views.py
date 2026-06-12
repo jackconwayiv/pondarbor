@@ -58,8 +58,13 @@ def contact_submit(request):
             status=status.HTTP_429_TOO_MANY_REQUESTS,
         )
 
-    ContactMessage.objects.create(from_user=user, message=message)
+    cm = ContactMessage.objects.create(from_user=user, message=message)
     logger.info("Contact form: stored message (user_id=%s)", user.id)
+
+    from users.staff_slack_hooks import schedule_staff_slack_notify
+    from slack_integration.staff_notify import notify_staff_contact_message
+
+    schedule_staff_slack_notify(notify_staff_contact_message, contact_message=cm)
 
     return Response({"ok": True}, status=status.HTTP_200_OK)
 

@@ -26,7 +26,7 @@ def handle_slack_closet_command(*, user: User | None, err: str | None) -> JsonRe
     if gate:
         return gate
     blocks, _ = build_closet_inbox_blocks(user)
-    notify_pondarbor_user_dm(user, text="Your Closet inbox.", blocks=blocks)
+    notify_pondarbor_user_dm(user, text="Your Closet inbox.", blocks=blocks, rate="immediate")
     return _slack_ephemeral("Sent your closet inbox.")
 
 
@@ -35,5 +35,5 @@ def handle_slack_loans_command(*, user: User | None, err: str | None) -> JsonRes
     if gate:
         return gate
     blocks, _ = build_loans_summary_blocks(user)
-    notify_pondarbor_user_dm(user, text="Your loans and holdings summary.", blocks=blocks)
+    notify_pondarbor_user_dm(user, text="Your loans and holdings summary.", blocks=blocks, rate="immediate")
     return _slack_ephemeral("Sent your loans summary.")

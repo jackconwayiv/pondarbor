@@ -1673,6 +1673,10 @@ def propose_question(request):
         is_active=False,
         proposed_by=request.user,
     )
+    from users.staff_slack_hooks import schedule_staff_slack_notify
+    from slack_integration.staff_notify import notify_staff_whatif_question_proposed
+
+    schedule_staff_slack_notify(notify_staff_whatif_question_proposed, question=question)
     return Response(WhatIfQuestionAdminSerializer(question).data, status=201)
 
 

@@ -110,3 +110,40 @@ class SlackSongadayIngestTrace(models.Model):
         if self.slack_user_id:
             core += f", slack_user_id={self.slack_user_id!r}"
         return core + ")"
+
+
+class SlackDmState(models.Model):
+    """Per-user proactive Slack DM throttle state."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="slack_dm_state",
+    )
+    last_proactive_sent_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self) -> str:
+        return f"SlackDmState(user_id={self.user_id}, last_proactive_sent_at={self.last_proactive_sent_at!r})"
+
+
+class SlackDmQueueItem(models.Model):
+    """Queued proactive Slack DM payload (batched into digests)."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="slack_dm_queue_items",
+    )
+    feature = models.CharField(max_length=32)
+    text = models.TextField()
+    blocks = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["user", "sent_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"SlackDmQueueItem(user_id={self.user_id}, feature={self.feature!r}, sent_at={self.sent_at!r})"

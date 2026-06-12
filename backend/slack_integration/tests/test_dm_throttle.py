@@ -47,12 +47,12 @@ class SlackDmThrottleTests(TestCase):
         self.user = User.objects.create_user(email="alice@example.com", password="secret12345")
         self.user.account_status = User.AccountStatus.APPROVED
         self.user.save(update_fields=["account_status"])
-        SlackIdentity.objects.create(team_id="T1", slack_user_id="U_alice", user=self.user)
+        SlackIdentity.objects.create(team_id="T1", slack_user_id="U_alice", user=self.user, arborbot_dms_enabled=True)
 
         self.other = User.objects.create_user(email="bob@example.com", password="secret12345")
         self.other.account_status = User.AccountStatus.APPROVED
         self.other.save(update_fields=["account_status"])
-        SlackIdentity.objects.create(team_id="T1", slack_user_id="U_bob", user=self.other)
+        SlackIdentity.objects.create(team_id="T1", slack_user_id="U_bob", user=self.other, arborbot_dms_enabled=True)
 
     @mock.patch("slack_integration.notify._send_slack_dm_now")
     def test_first_proactive_sends_immediately(self, mock_send):
@@ -211,14 +211,14 @@ class SlackSlashFlushTests(TestCase):
         self.user = User.objects.create_user(email="alice@example.com", password="secret12345")
         self.user.account_status = User.AccountStatus.APPROVED
         self.user.save(update_fields=["account_status"])
-        SlackIdentity.objects.create(team_id="T_test", slack_user_id="U_alice", user=self.user)
+        SlackIdentity.objects.create(team_id="T_test", slack_user_id="U_alice", user=self.user, arborbot_dms_enabled=True)
 
     @mock.patch("slack_integration.closet_commands.notify_pondarbor_user_dm")
     @mock.patch("slack_integration.notify._send_slack_dm_now")
     def test_slash_quote_triggers_site_wide_flush(self, mock_send, mock_closet_notify):
         mock_send.return_value = {"ok": True}
         other = User.objects.create_user(email="other@example.com", password="secret12345")
-        SlackIdentity.objects.create(team_id="T_test", slack_user_id="U_other", user=other)
+        SlackIdentity.objects.create(team_id="T_test", slack_user_id="U_other", user=other, arborbot_dms_enabled=True)
         SlackDmState.objects.create(
             user=other,
             last_proactive_sent_at=timezone.now() - timedelta(hours=30),

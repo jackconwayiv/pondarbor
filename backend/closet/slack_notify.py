@@ -12,6 +12,12 @@ from django.db.models import Exists, OuterRef, Q
 from closet.models import BorrowRequest, Item, Loan
 from closet.serializers import _user_summary
 from closet.services import item_fk_owner_publication_eligible_q, owner_eligible_for_closet_publication_q
+from slack_integration.dm_queue import (
+    EVENT_CLOSET_BORROW_REQUEST,
+    EVENT_CLOSET_CUSTODY_OFFER,
+    ref_borrow_request,
+    ref_item,
+)
 from slack_integration.notify import notify_pondarbor_user_dm
 
 logger = logging.getLogger(__name__)
@@ -155,7 +161,13 @@ def notify_borrow_request_to_owner(*, row: BorrowRequest, is_update: bool) -> No
             _action_button(action_id="closet_decline", text="Decline", value=str(row.id)),
         ],
     )
-    notify_pondarbor_user_dm(row.item.owner_user, text=text, blocks=blocks)
+    notify_pondarbor_user_dm(
+        row.item.owner_user,
+        text=text,
+        blocks=blocks,
+        event_type=EVENT_CLOSET_BORROW_REQUEST,
+        ref_key=ref_borrow_request(row.id),
+    )
 
 
 def notify_borrow_request_canceled_to_owner(*, row: BorrowRequest) -> None:
@@ -259,7 +271,13 @@ def notify_custody_offer_to_holder(*, item: Item, holder: User) -> None:
             _action_button(action_id="closet_reject_custody", text="Decline", value=str(item.id)),
         ],
     )
-    notify_pondarbor_user_dm(holder, text=text, blocks=blocks)
+    notify_pondarbor_user_dm(
+        holder,
+        text=text,
+        blocks=blocks,
+        event_type=EVENT_CLOSET_CUSTODY_OFFER,
+        ref_key=ref_item(item.id),
+    )
 
 
 def notify_custody_offer_rejected_to_owner(*, item: Item, holder: User) -> None:

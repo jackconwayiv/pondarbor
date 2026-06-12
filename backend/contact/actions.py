@@ -7,6 +7,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
 from contact.models import ContactMessage
+from slack_integration.dm_queue import EVENT_STAFF_CONTACT, cancel_slack_dm_queue_items, ref_contact
 
 User = get_user_model()
 
@@ -30,4 +31,8 @@ def acknowledge_contact_message(*, staff_user: User, message_id: int) -> Contact
         cm.read_at = timezone.now()
         cm.read_by = staff_user
         cm.save(update_fields=["read_at", "read_by"])
+    cancel_slack_dm_queue_items(
+        event_type=EVENT_STAFF_CONTACT,
+        ref_key=ref_contact(message_id),
+    )
     return cm

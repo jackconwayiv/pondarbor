@@ -781,6 +781,13 @@ def borrow_request_cancel(request, borrow_request_id: int):
     row.status = BorrowRequest.Status.CANCELED
     row.responded_at = timezone.now()
     row.save(update_fields=["status", "responded_at", "updated_at"])
+    from slack_integration.dm_queue import EVENT_CLOSET_BORROW_REQUEST, cancel_slack_dm_queue_items, ref_borrow_request
+
+    cancel_slack_dm_queue_items(
+        user_id=row.item.owner_user_id,
+        event_type=EVENT_CLOSET_BORROW_REQUEST,
+        ref_key=ref_borrow_request(borrow_request_id),
+    )
     schedule_closet_slack_notify(notify_borrow_request_canceled_to_owner, row=row)
     return Response(BorrowRequestSerializer(row).data)
 
@@ -922,6 +929,13 @@ def item_cancel_pending_custody(request, item_id: int):
     holder = item.custody_pending_acceptance_user
     item.custody_pending_acceptance_user = None
     item.save(update_fields=["custody_pending_acceptance_user", "updated_at"])
+    from slack_integration.dm_queue import EVENT_CLOSET_CUSTODY_OFFER, cancel_slack_dm_queue_items, ref_item
+
+    cancel_slack_dm_queue_items(
+        user_id=holder.id,
+        event_type=EVENT_CLOSET_CUSTODY_OFFER,
+        ref_key=ref_item(item_id),
+    )
     schedule_closet_slack_notify(
         notify_custody_offer_canceled_to_holder,
         item=item,

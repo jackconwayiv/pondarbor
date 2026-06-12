@@ -39,6 +39,7 @@ from slack_integration.slack_api import (
  )
 from slack_integration.slack_verify import verify_slack_request_signature
 from slack_integration.closet_commands import handle_slack_closet_command, handle_slack_loans_command
+from slack_integration.pondarbor_commands import handle_slack_pondarbor_command
 from slack_integration.quote_from_text import parse_slack_quote_command_text
 from slack_integration.quote_slack_format import format_random_quote_slack_message
 from slack_integration.song_from_text import (
@@ -358,6 +359,15 @@ def slack_commands(request):
     team_id = (params.get("team_id") or "").strip()
     slack_user_id = (params.get("user_id") or "").strip()
 
+    if command == "/pondarbor":
+        user, err = _resolve_user_for_slack(team_id, slack_user_id)
+        return handle_slack_pondarbor_command(
+            user=user,
+            err=err,
+            team_id=team_id,
+            slack_user_id=slack_user_id,
+            text=text,
+        )
     if command == "/randomquote":
         return _handle_slack_randomquote_command()
     if command == "/quote":

@@ -55,6 +55,11 @@ features:
       description: DM your loans and custody holdings summary
       usage_hint: ""
       should_escape: false
+    - command: /pondarbor
+      url: https://www.pondarbor.com/api/v1/slack/commands/
+      description: Opt in or out of ArborBot DMs
+      usage_hint: "[on|off]"
+      should_escape: false
 
 oauth_config:
   scopes:

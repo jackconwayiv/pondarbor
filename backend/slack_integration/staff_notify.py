@@ -7,6 +7,15 @@ import logging
 from django.conf import settings
 from django.contrib.auth import get_user_model
 
+from slack_integration.dm_queue import (
+    EVENT_STAFF_CONTACT,
+    EVENT_STAFF_PENDING_MEMBER,
+    EVENT_STAFF_WHATIF,
+    EVENT_STAFF_ZODIAC,
+    ref_contact,
+    ref_question,
+    ref_user,
+)
 from slack_integration.models import SlackIdentity
 from slack_integration.notify import notify_pondarbor_user_dm
 
@@ -93,7 +102,13 @@ def staff_users_with_slack() -> list[User]:
     return list(User.objects.filter(id__in=linked_ids))
 
 
-def notify_all_staff(*, text: str, blocks: list[dict] | None = None) -> int:
+def notify_all_staff(
+    *,
+    text: str,
+    blocks: list[dict] | None = None,
+    event_type: str = "",
+    ref_key: str = "",
+) -> int:
     """Best-effort DM to each linked staff user. Returns count sent (ok=True)."""
     if not staff_notifications_enabled():
         return 0
@@ -101,7 +116,14 @@ def notify_all_staff(*, text: str, blocks: list[dict] | None = None) -> int:
         return 0
     sent = 0
     for staff_user in staff_users_with_slack():
-        resp = notify_pondarbor_user_dm(staff_user, text=text, blocks=blocks, feature="staff")
+        resp = notify_pondarbor_user_dm(
+            staff_user,
+            text=text,
+            blocks=blocks,
+            feature="staff",
+            event_type=event_type,
+            ref_key=ref_key,
+        )
         if resp.get("ok"):
             sent += 1
     if sent == 0 and staff_users_with_slack():
@@ -129,7 +151,12 @@ def notify_staff_new_pending_member(*, user: User) -> int:
             _link_button(text="Open Staff", url=staff_page_url()),
         ],
     )
-    return notify_all_staff(text=text, blocks=blocks)
+    return notify_all_staff(
+        text=text,
+        blocks=blocks,
+        event_type=EVENT_STAFF_PENDING_MEMBER,
+        ref_key=ref_user(user.id),
+    )
 
 
 def _zodiac_detail_lines(*, user: User) -> list[str]:
@@ -160,7 +187,12 @@ def notify_staff_zodiac_chart_waiting(*, user: User) -> int:
         line=text,
         elements=[_link_button(text="Import chart in PondArbor", url=staff_zodiac_url())],
     )
-    return notify_all_staff(text=text, blocks=blocks)
+    return notify_all_staff(
+        text=text,
+        blocks=blocks,
+        event_type=EVENT_STAFF_ZODIAC,
+        ref_key=ref_user(user.id),
+    )
 
 
 def _whatif_detail_lines(*, question) -> list[str]:
@@ -209,7 +241,12 @@ def notify_staff_whatif_question_proposed(*, question) -> int:
             _link_button(text="Open WhatIf Admin", url=whatif_admin_url()),
         ],
     )
-    return notify_all_staff(text=text, blocks=blocks)
+    return notify_all_staff(
+        text=text,
+        blocks=blocks,
+        event_type=EVENT_STAFF_WHATIF,
+        ref_key=ref_question(question.id),
+    )
 
 
 def notify_staff_contact_message(*, contact_message) -> int:
@@ -239,4 +276,9 @@ def notify_staff_contact_message(*, contact_message) -> int:
             _link_button(text="Open Contact Inbox", url=staff_contact_url()),
         ],
     )
-    return notify_all_staff(text=text, blocks=blocks)
+    return notify_all_staff(
+        text=text,
+        blocks=blocks,
+        event_type=EVENT_STAFF_CONTACT,
+        ref_key=ref_contact(cm.id),
+    )

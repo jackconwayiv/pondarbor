@@ -275,6 +275,13 @@ def staff_user_chart(request, user_id: int):
     profile.staff_imported_by = request.user
     profile.save()
 
+    from slack_integration.dm_queue import EVENT_STAFF_ZODIAC, cancel_slack_dm_queue_items, ref_user
+
+    cancel_slack_dm_queue_items(
+        event_type=EVENT_STAFF_ZODIAC,
+        ref_key=ref_user(target.id),
+    )
+
     evaluate_zodiac_peer_into_stars_for_user(target.id)
 
     return Response(

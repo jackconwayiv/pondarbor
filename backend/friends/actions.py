@@ -8,6 +8,7 @@ from django.shortcuts import get_object_or_404
 
 from friends.models import FriendRequest
 from friends.services import accept_friend_pair
+from slack_integration.dm_queue import EVENT_FRIENDS_INCOMING, cancel_slack_dm_queue_items, ref_user
 
 User = get_user_model()
 
@@ -40,6 +41,11 @@ def accept_incoming_friend_request(*, user: User, requester_id: int) -> None:
     other = get_object_or_404(User.objects.all(), pk=requester_id)
     _pending_incoming_request(requested=user, requester_id=requester_id)
     accept_friend_pair(user_a=user, user_b=other)
+    cancel_slack_dm_queue_items(
+        user_id=user.id,
+        event_type=EVENT_FRIENDS_INCOMING,
+        ref_key=ref_user(requester_id),
+    )
 
 
 def decline_incoming_friend_request(*, user: User, requester_id: int) -> None:
@@ -50,3 +56,8 @@ def decline_incoming_friend_request(*, user: User, requester_id: int) -> None:
     FriendRequest.objects.filter(
         Q(requester=user, requested=other) | Q(requester=other, requested=user)
     ).delete()
+    cancel_slack_dm_queue_items(
+        user_id=user.id,
+        event_type=EVENT_FRIENDS_INCOMING,
+        ref_key=ref_user(requester_id),
+    )

@@ -6,6 +6,7 @@ from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 
 from whatif.models import WhatIfQuestion
+from slack_integration.dm_queue import EVENT_STAFF_WHATIF, cancel_slack_dm_queue_items, ref_question
 
 User = get_user_model()
 
@@ -40,6 +41,10 @@ def approve_proposed_whatif(*, staff_user: User, question_id: int) -> WhatIfQues
         from achievements.services import evaluate_whatif_dece_proposer_for_user
 
         evaluate_whatif_dece_proposer_for_user(int(question.proposed_by_id))
+    cancel_slack_dm_queue_items(
+        event_type=EVENT_STAFF_WHATIF,
+        ref_key=ref_question(question_id),
+    )
     return question
 
 
@@ -53,4 +58,8 @@ def reject_proposed_whatif(*, staff_user: User, question_id: int) -> WhatIfQuest
     question.review_status = WhatIfQuestion.ReviewStatus.REJECTED
     question.is_active = False
     question.save(update_fields=["review_status", "is_active", "updated_at"])
+    cancel_slack_dm_queue_items(
+        event_type=EVENT_STAFF_WHATIF,
+        ref_key=ref_question(question_id),
+    )
     return question

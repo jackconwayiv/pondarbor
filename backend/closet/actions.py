@@ -9,6 +9,13 @@ from django.utils import timezone
 from achievements.services import evaluate_closet_return_achievements_for_users
 from closet.models import BorrowRequest, Item, Loan
 from friends.services import are_friends
+from slack_integration.dm_queue import (
+    EVENT_CLOSET_BORROW_REQUEST,
+    EVENT_CLOSET_CUSTODY_OFFER,
+    cancel_slack_dm_queue_items,
+    ref_borrow_request,
+    ref_item,
+)
 
 User = get_user_model()
 
@@ -86,6 +93,11 @@ def approve_borrow_request(*, user: User, borrow_request_id: int) -> Loan:
             "updated_at",
         ]
     )
+    cancel_slack_dm_queue_items(
+        user_id=user.id,
+        event_type=EVENT_CLOSET_BORROW_REQUEST,
+        ref_key=ref_borrow_request(borrow_request_id),
+    )
     return loan
 
 
@@ -99,6 +111,11 @@ def decline_borrow_request(*, user: User, borrow_request_id: int, decline_messag
     row.decline_message = (decline_message or "").strip()
     row.responded_at = timezone.now()
     row.save(update_fields=["status", "decline_message", "responded_at", "updated_at"])
+    cancel_slack_dm_queue_items(
+        user_id=user.id,
+        event_type=EVENT_CLOSET_BORROW_REQUEST,
+        ref_key=ref_borrow_request(borrow_request_id),
+    )
     return row
 
 
@@ -121,6 +138,11 @@ def accept_custody(*, user: User, item_id: int) -> Item:
             "updated_at",
         ]
     )
+    cancel_slack_dm_queue_items(
+        user_id=user.id,
+        event_type=EVENT_CLOSET_CUSTODY_OFFER,
+        ref_key=ref_item(item_id),
+    )
     return item
 
 
@@ -130,6 +152,11 @@ def reject_pending_custody(*, user: User, item_id: int) -> Item:
         raise ClosetActionError("You do not have a pending custody offer for this item.", status_code=403)
     item.custody_pending_acceptance_user = None
     item.save(update_fields=["custody_pending_acceptance_user", "updated_at"])
+    cancel_slack_dm_queue_items(
+        user_id=user.id,
+        event_type=EVENT_CLOSET_CUSTODY_OFFER,
+        ref_key=ref_item(item_id),
+    )
     return item
 
 

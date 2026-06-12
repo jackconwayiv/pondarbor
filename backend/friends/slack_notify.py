@@ -5,6 +5,7 @@ from __future__ import annotations
 from django.conf import settings
 from django.contrib.auth import get_user_model
 
+from slack_integration.dm_queue import EVENT_FRIENDS_INCOMING, ref_user
 from slack_integration.notify import notify_pondarbor_user_dm
 from users.models import Profile
 
@@ -74,4 +75,11 @@ def notify_incoming_friend_request(*, requested: User, requester: User) -> dict:
             ],
         },
     ]
-    return notify_pondarbor_user_dm(requested, text=text, blocks=blocks, feature="friends")
+    return notify_pondarbor_user_dm(
+        requested,
+        text=text,
+        blocks=blocks,
+        feature="friends",
+        event_type=EVENT_FRIENDS_INCOMING,
+        ref_key=ref_user(requester.id),
+    )

@@ -29,6 +29,21 @@ def _feature_notifications_enabled(feature: str) -> bool:
     return closet_notifications_enabled()
 
 
+def user_accepts_arborbot_dms(
+    user,
+    *,
+    team_id: str | None = None,
+    slack_user_id: str | None = None,
+) -> bool:
+    """True when the SlackIdentity that would receive proactive DMs has opted in."""
+    qs = SlackIdentity.objects.filter(user_id=user.id)
+    if team_id and slack_user_id:
+        ident = qs.filter(team_id=team_id, slack_user_id=slack_user_id).first()
+    else:
+        ident = qs.order_by("-updated_at").first()
+    return bool(ident and ident.arborbot_dms_enabled)
+
+
 def _send_slack_dm_now(user, *, text: str, blocks: list | None = None) -> dict:
     if not (getattr(settings, "SLACK_BOT_TOKEN", None) or "").strip():
         return {"ok": False, "skipped": "missing_bot_token"}
@@ -64,6 +79,8 @@ def notify_pondarbor_user_dm(
     blocks: list | None = None,
     feature: str = "closet",
     rate: str = "proactive",
+    event_type: str = "",
+    ref_key: str = "",
 ) -> dict:
     if not _feature_notifications_enabled(feature):
         return {"ok": False, "skipped": "disabled"}
@@ -71,6 +88,25 @@ def notify_pondarbor_user_dm(
     if rate == "immediate":
         return _send_slack_dm_now(user, text=text, blocks=blocks)
 
+    if not user_accepts_arborbot_dms(user):
+        from slack_integration.dm_throttle import enqueue_proactive_dm_only
+
+        return enqueue_proactive_dm_only(
+            user,
+            text=text,
+            blocks=blocks,
+            feature=feature,
+            event_type=event_type,
+            ref_key=ref_key,
+        )
+
     from slack_integration.dm_throttle import enqueue_or_send_proactive_dm
 
-    return enqueue_or_send_proactive_dm(user, text=text, blocks=blocks, feature=feature)
+    return enqueue_or_send_proactive_dm(
+        user,
+        text=text,
+        blocks=blocks,
+        feature=feature,
+        event_type=event_type,
+        ref_key=ref_key,
+    )

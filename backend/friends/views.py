@@ -173,6 +173,13 @@ def ignore_friend(request, user_id: int):
     FriendRequest.objects.filter(
         Q(requester=current, requested=other) | Q(requester=other, requested=current)
     ).delete()
+    from slack_integration.dm_queue import EVENT_FRIENDS_INCOMING, cancel_slack_dm_queue_items, ref_user
+
+    cancel_slack_dm_queue_items(
+        user_id=current.id,
+        event_type=EVENT_FRIENDS_INCOMING,
+        ref_key=ref_user(other.id),
+    )
     return Response({"ok": True})
 
 

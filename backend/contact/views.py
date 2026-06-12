@@ -123,6 +123,12 @@ def contact_staff_messages_acknowledge(request):
 @authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
 @permission_classes([IsAuthenticated, IsStaffUser])
 def contact_staff_message_delete(request, pk: int):
+    from slack_integration.dm_queue import EVENT_STAFF_CONTACT, cancel_slack_dm_queue_items, ref_contact
+
     cm = get_object_or_404(ContactMessage.objects.all(), pk=pk)
+    cancel_slack_dm_queue_items(
+        event_type=EVENT_STAFF_CONTACT,
+        ref_key=ref_contact(pk),
+    )
     cm.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)

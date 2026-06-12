@@ -5,6 +5,8 @@ from __future__ import annotations
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 
+from slack_integration.dm_queue import EVENT_STAFF_PENDING_MEMBER, cancel_slack_dm_queue_items, ref_user
+
 User = get_user_model()
 
 
@@ -29,6 +31,10 @@ def approve_pending_member(*, staff_user: User, user_id: int) -> User:
         raise StaffActionError("That member is no longer pending approval.")
     target.account_status = User.AccountStatus.APPROVED
     target.save(update_fields=["account_status"])
+    cancel_slack_dm_queue_items(
+        event_type=EVENT_STAFF_PENDING_MEMBER,
+        ref_key=ref_user(user_id),
+    )
     return target
 
 
@@ -41,4 +47,8 @@ def reject_pending_member(*, staff_user: User, user_id: int) -> User:
         raise StaffActionError("That member is no longer pending approval.")
     target.account_status = User.AccountStatus.REJECTED
     target.save(update_fields=["account_status"])
+    cancel_slack_dm_queue_items(
+        event_type=EVENT_STAFF_PENDING_MEMBER,
+        ref_key=ref_user(user_id),
+    )
     return target

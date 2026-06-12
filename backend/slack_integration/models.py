@@ -12,6 +12,7 @@ class SlackIdentity(models.Model):
     )
     team_id = models.CharField(max_length=32, db_index=True)
     slack_user_id = models.CharField(max_length=32, db_index=True)
+    arborbot_dms_enabled = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -135,6 +136,8 @@ class SlackDmQueueItem(models.Model):
         related_name="slack_dm_queue_items",
     )
     feature = models.CharField(max_length=32)
+    event_type = models.CharField(max_length=64, blank=True, default="")
+    ref_key = models.CharField(max_length=128, blank=True, default="", db_index=True)
     text = models.TextField()
     blocks = models.JSONField(default=list)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -143,6 +146,7 @@ class SlackDmQueueItem(models.Model):
     class Meta:
         indexes = [
             models.Index(fields=["user", "sent_at"]),
+            models.Index(fields=["event_type", "ref_key", "sent_at"]),
         ]
 
     def __str__(self) -> str:

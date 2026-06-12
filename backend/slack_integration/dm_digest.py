@@ -11,6 +11,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from slack_integration.models import SlackDmQueueItem, SlackDmState
+from slack_integration.notify import user_accepts_arborbot_dms
 
 logger = logging.getLogger(__name__)
 
@@ -170,6 +171,8 @@ def flush_due_digests() -> int:
             continue
         user = User.objects.filter(pk=user_id).first()
         if user is None:
+            continue
+        if not user_accepts_arborbot_dms(user):
             continue
         try:
             with transaction.atomic():

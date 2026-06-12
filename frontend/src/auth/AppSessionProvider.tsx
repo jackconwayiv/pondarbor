@@ -168,8 +168,10 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
   >(null);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [isBootstrapping, setIsBootstrapping] = useState(false);
+  const [sessionSyncedFromServer, setSessionSyncedFromServer] = useState(false);
 
   const hasInitialized = useRef(false);
+  const serverSyncStarted = useRef(false);
   const lastAuth0Sub = useRef<string | null>(null);
   const pickAccountHandledRef = useRef(false);
   /** True while local logout runs — Auth0 can still report authenticated until the client clears, which would otherwise retrigger bootstrap and consent redirects. */
@@ -254,9 +256,12 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       hasInitialized.current = true;
       lastAuth0Sub.current = auth0User.sub ?? null;
       tokenRecoveryRedirectCountRef.current = 0;
+      setSessionSyncedFromServer(true);
     } catch (err: unknown) {
       setBootstrapError(getErrorMessage(err));
       hasInitialized.current = false;
+      // Allow the app to proceed with a cache-hydrated session if bootstrap fails.
+      setSessionSyncedFromServer(true);
     } finally {
       setIsBootstrapping(false);
     }
@@ -326,7 +331,9 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       setBootstrapInboxSnapshot(null);
       setBootstrapInboxFetchedAt(null);
       setBootstrapError(null);
+      setSessionSyncedFromServer(false);
       hasInitialized.current = false;
+      serverSyncStarted.current = false;
       lastAuth0Sub.current = null;
       clearCachedSession();
       return;
@@ -344,27 +351,28 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       setBootstrapInboxSnapshot(null);
       setBootstrapInboxFetchedAt(null);
       setBootstrapError(null);
+      setSessionSyncedFromServer(false);
       hasInitialized.current = false;
+      serverSyncStarted.current = false;
       clearCachedSession();
     }
 
     // Recover stale state: ref says initialized but React has no session (e.g. cache cleared).
     if (hasInitialized.current && !sessionUser && !bootstrapError) {
       hasInitialized.current = false;
+      serverSyncStarted.current = false;
+      setSessionSyncedFromServer(false);
       clearCachedSession();
     }
 
     if (hasInitialized.current) return;
 
     const cached = loadCachedSession();
-    if (cached) {
+    if (cached && !sessionUser) {
       applySessionUser(cached.sessionUser);
       setAccessToken(cached.accessToken);
       setBootstrapInboxSnapshot(cached.bootstrapInbox ?? null);
       setBootstrapInboxFetchedAt(cached.bootstrapInboxFetchedAt ?? null);
-      hasInitialized.current = true;
-      lastAuth0Sub.current = currentSub;
-      return;
     }
 
     // After a failed sync, bootstrapError is set; do not hammer the API every effect run.
@@ -372,12 +380,18 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
 
     if (isLoggingOutRef.current) return;
 
+    if (serverSyncStarted.current) return;
+
+    serverSyncStarted.current = true;
     void bootstrapSession();
-  }, [auth0Loading, isAuthenticated, auth0User, bootstrapSession, sessionUser, bootstrapError]);
+  }, [auth0Loading, isAuthenticated, auth0User, bootstrapSession, sessionUser, bootstrapError, applySessionUser]);
 
   const refreshSession = useCallback(async () => {
     hasInitialized.current = false;
+    serverSyncStarted.current = false;
+    setSessionSyncedFromServer(false);
     clearCachedSession();
+    serverSyncStarted.current = true;
     await bootstrapSession();
   }, [bootstrapSession]);
 
@@ -427,6 +441,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
         bootstrapInbox: prev?.bootstrapInbox,
         bootstrapInboxFetchedAt: prev?.bootstrapInboxFetchedAt,
       });
+      setSessionSyncedFromServer(true);
     } catch {
       /* silent: avoid global loading; caller can log if needed */
     }
@@ -604,6 +619,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
         bootstrapInbox: prev?.bootstrapInbox,
         bootstrapInboxFetchedAt: prev?.bootstrapInboxFetchedAt,
       });
+      setSessionSyncedFromServer(true);
     },
     [getApiAccessToken, updateProfileLocally, applySessionUser],
   );
@@ -652,7 +668,9 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
     setBootstrapInboxSnapshot(null);
     setBootstrapInboxFetchedAt(null);
     setBootstrapError(null);
+    setSessionSyncedFromServer(false);
     hasInitialized.current = false;
+    serverSyncStarted.current = false;
     lastAuth0Sub.current = null;
     clearCachedSession();
     tokenRecoveryRedirectCountRef.current = 0;
@@ -697,6 +715,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       bootstrapInboxFetchedAt,
       isAuthenticated,
       isLoading: auth0Loading || isBootstrapping || sessionPending,
+      sessionSyncedFromServer,
       error: bootstrapError,
       getApiAccessToken,
       refreshSession,
@@ -719,6 +738,7 @@ export function AppSessionProvider({ children }: AppSessionProviderProps) {
       auth0Loading,
       isBootstrapping,
       sessionPending,
+      sessionSyncedFromServer,
       bootstrapError,
       getApiAccessToken,
       refreshSession,

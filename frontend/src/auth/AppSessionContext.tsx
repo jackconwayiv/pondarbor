@@ -127,6 +127,8 @@ export type AppSessionContextValue = {
   bootstrapInboxFetchedAt: number | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  /** True after the latest login’s server bootstrap/sync succeeded (or failed with cache fallback). */
+  sessionSyncedFromServer: boolean;
   error: string | null;
   getApiAccessToken: () => Promise<string>;
   /** Full re-bootstrap (clears cache; use for recovery / reconnect). */

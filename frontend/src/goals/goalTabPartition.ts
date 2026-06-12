@@ -1,4 +1,5 @@
 import { goalPatchIsComplete, goalLastProgressAt } from "./goalCardLabels";
+import { goalAppliesToday } from "./schedule";
 import type { Goal } from "./types";
 
 export type TodayTabId = "active" | "completed_overflow" | "projects" | "goals";
@@ -15,7 +16,7 @@ export type PartitionResult = {
 };
 
 export function dueTodayActiveGoals(goals: Goal[]): Goal[] {
-  return goals.filter((g) => g.status === "active" && g.due_today);
+  return goals.filter((g) => g.status === "active" && g.due_today && goalAppliesToday(g));
 }
 
 /** Cascade overflow when due-today active pool exceeds grid capacity. */

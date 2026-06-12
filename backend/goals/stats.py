@@ -95,18 +95,36 @@ def month_start_for(d: date) -> date:
     return d.replace(day=1)
 
 
-def goal_visible_in_due_list(goal: Goal, stats: GoalStats) -> bool:
-    """Active continuous goals: show only when the current period has a target."""
+def goal_applies_today(goal: Goal, stats: GoalStats) -> bool:
+    """Continuous goals: show when today is an actionable day for the schedule."""
     if goal.kind != Goal.Kind.CONTINUOUS:
         return True
-    bucket = period_bucket_for_interval(goal.schedule_interval_kind)
-    if bucket == "day":
+    kind = goal.schedule_interval_kind
+    if kind in (
+        Goal.ScheduleIntervalKind.DAY,
+        Goal.ScheduleIntervalKind.WEEKDAYS,
+        Goal.ScheduleIntervalKind.WEEKDAY,
+        Goal.ScheduleIntervalKind.MONTH_DAY,
+    ):
         return stats.today_target > 0
-    if bucket == "week":
+    if kind in (
+        Goal.ScheduleIntervalKind.WEEK,
+        Goal.ScheduleIntervalKind.WEEKS,
+    ):
         return stats.week_target > 0
-    if bucket == "month":
+    if kind in (
+        Goal.ScheduleIntervalKind.MONTH,
+        Goal.ScheduleIntervalKind.MONTHS,
+    ):
         return stats.month_target > 0
-    return True
+    return False
+
+
+def goal_visible_in_due_list(goal: Goal, stats: GoalStats) -> bool:
+    """Active continuous goals: show only when today is actionable."""
+    if goal.kind != Goal.Kind.CONTINUOUS:
+        return True
+    return goal_applies_today(goal, stats)
 
 
 def period_target_for_goal(

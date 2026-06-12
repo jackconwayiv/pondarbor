@@ -1,7 +1,11 @@
 import { Badge, HStack, Stack, Text } from "@chakra-ui/react";
 
 import type { Goal } from "./types";
-import { goalStatsPanelHeading, isOngoingKind } from "./goalCardLabels";
+import {
+  goalLastProgressLabel,
+  goalStatsPanelHeading,
+  isOngoingKind,
+} from "./goalCardLabels";
 import { GoalMilestoneChecklist } from "./GoalMilestoneChecklist";
 import { GOALS_THEME } from "./theme";
 
@@ -74,6 +78,10 @@ export function GoalStatsPanel({
         </Text>
       )}
 
+      <Text fontSize="sm" color={GOALS_THEME.textMuted}>
+        Last progress {goalLastProgressLabel(goal) ?? "—"}
+      </Text>
+
       <HStack gap="2" flexWrap="wrap">
         <Badge size="sm" bg={GOALS_THEME.pineLight} color={GOALS_THEME.pineGreen}>
           {Math.round(goal.stats.pct_lifetime)}% overall
@@ -81,11 +89,6 @@ export function GoalStatsPanel({
         <Badge size="sm" bg={GOALS_THEME.lakeLight} color={GOALS_THEME.lakeBlue}>
           {Math.round(goal.stats.pct_last_30_days)}% last 30d
         </Badge>
-        {goal.stats.days_since_last_progress > 0 ? (
-          <Badge size="sm" variant="outline" borderColor={GOALS_THEME.textMuted}>
-            {goal.stats.days_since_last_progress} days since progress
-          </Badge>
-        ) : null}
       </HStack>
     </Stack>
   );

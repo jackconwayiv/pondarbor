@@ -42,7 +42,9 @@ from achievements.services import (
     evaluate_whatif_dece_proposer_for_user,
     evaluate_whatif_warrior_for_user,
     SLUG_GOALS_CHECKPOINT_CHARLIE,
+    SLUG_GOALS_LIFES_A_CHORE,
     SLUG_GOALS_MARATHON_MONTH,
+    SLUG_GOALS_ON_TARGET,
     SLUG_GOALS_STREAK_WEEK,
     SLUG_GOALS_TRI_GOAL_ATHLON,
     SLUG_WELCOME_TO_POND_ARBOR,
@@ -966,6 +968,8 @@ class GoalsAchievementTests(TestCase):
             (SLUG_GOALS_STREAK_WEEK, "Streak Week", 231),
             (SLUG_GOALS_MARATHON_MONTH, "Marathon Month", 232),
             (SLUG_GOALS_CHECKPOINT_CHARLIE, "Checkpoint Charlie", 233),
+            (SLUG_GOALS_LIFES_A_CHORE, "Life's a Chore", 234),
+            (SLUG_GOALS_ON_TARGET, "On Target", 235),
         ):
             AchievementDefinition.objects.get_or_create(
                 slug=slug,
@@ -1082,6 +1086,101 @@ class GoalsAchievementTests(TestCase):
         self.assertTrue(
             UserAchievement.objects.filter(
                 user=self.user, achievement__slug=SLUG_GOALS_CHECKPOINT_CHARLIE
+            ).exists()
+        )
+
+    def test_lifes_a_chore_requires_five_chores_same_day(self):
+        from goals.models import CheckIn, Goal
+
+        now = timezone.now()
+        for i in range(4):
+            chore = Goal.objects.create(
+                owner_user=self.user,
+                title=f"Chore {i}",
+                kind=Goal.Kind.CHORE,
+                status=Goal.Status.ACTIVE,
+            )
+            CheckIn.objects.create(
+                goal=chore,
+                owner_user_id=self.user.id,
+                occurred_at=now,
+            )
+        evaluate_goals_achievements_for_user(self.user.id)
+        self.assertFalse(
+            UserAchievement.objects.filter(
+                user=self.user, achievement__slug=SLUG_GOALS_LIFES_A_CHORE
+            ).exists()
+        )
+        fifth = Goal.objects.create(
+            owner_user=self.user,
+            title="Chore 4",
+            kind=Goal.Kind.CHORE,
+            status=Goal.Status.ACTIVE,
+        )
+        CheckIn.objects.create(
+            goal=fifth,
+            owner_user_id=self.user.id,
+            occurred_at=now,
+        )
+        evaluate_goals_achievements_for_user(self.user.id)
+        self.assertTrue(
+            UserAchievement.objects.filter(
+                user=self.user, achievement__slug=SLUG_GOALS_LIFES_A_CHORE
+            ).exists()
+        )
+
+    def test_lifes_a_chore_does_not_count_spread_across_days(self):
+        from goals.models import CheckIn, Goal
+
+        now = timezone.now()
+        for i in range(5):
+            chore = Goal.objects.create(
+                owner_user=self.user,
+                title=f"Chore {i}",
+                kind=Goal.Kind.CHORE,
+                status=Goal.Status.ACTIVE,
+            )
+            CheckIn.objects.create(
+                goal=chore,
+                owner_user_id=self.user.id,
+                occurred_at=now - timedelta(days=i),
+            )
+        evaluate_goals_achievements_for_user(self.user.id)
+        self.assertFalse(
+            UserAchievement.objects.filter(
+                user=self.user, achievement__slug=SLUG_GOALS_LIFES_A_CHORE
+            ).exists()
+        )
+
+    def test_on_target_requires_five_completed_projects(self):
+        from goals.models import Goal
+
+        now = timezone.now()
+        for i in range(4):
+            Goal.objects.create(
+                owner_user=self.user,
+                title=f"Project {i}",
+                kind=Goal.Kind.ONE_TIME,
+                status=Goal.Status.COMPLETED,
+                completed_at=now,
+            )
+        evaluate_goals_achievements_for_user(self.user.id)
+        self.assertFalse(
+            UserAchievement.objects.filter(
+                user=self.user, achievement__slug=SLUG_GOALS_ON_TARGET
+            ).exists()
+        )
+        Goal.objects.create(
+            owner_user=self.user,
+            title="Project 4",
+            kind=Goal.Kind.ONE_TIME,
+            status=Goal.Status.COMPLETED,
+            completed_at=now,
+        )
+        evaluate_goals_achievements_for_user(self.user.id)
+        self.assertTrue(
+            UserAchievement.objects.filter(
+                user=self.user, achievement__slug=SLUG_GOALS_ON_TARGET
             ).exists()
         )
 

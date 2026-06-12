@@ -7,6 +7,7 @@ import {
 import { periodSlotsForGoal } from "./GoalPeriodSockets";
 import {
   choreSupportsOverdue,
+  isDayPeriodGoal,
   isWeekPeriodGoal,
   periodBucketForInterval,
 } from "./schedule";
@@ -94,7 +95,48 @@ export function goalPatchOverdueSublabel(goal: Goal): string | null {
   return `${days} day${days === 1 ? "" : "s"} overdue`;
 }
 
-export function goalPatchShellStyle(goal: Goal): { borderColor: string; bg: string } {
+export type GoalPatchShellStyle = {
+  borderColor: string;
+  bg: string;
+  borderStyle?: "solid" | "dashed";
+  /** Skip drop shadow (paused patches). */
+  flat?: boolean;
+};
+
+/** Checkpoint projects or week/month multi-count goals (not N× per day). */
+export function isCrossPeriodMultiPartGoal(goal: Goal): boolean {
+  if (goal.kind === "one_time") return goal.checkpoints.length > 0;
+  if (!isOngoingKind(goal)) return false;
+  if (isDayPeriodGoal(goal) && goal.frequency_count > 1) return false;
+  const { total } = periodSlotsForGoal(goal);
+  return total >= 2;
+}
+
+function localCalendarDayMs(d: Date): number {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+function calendarDaysSince(at: Date, now: Date): number {
+  return Math.round((localCalendarDayMs(now) - localCalendarDayMs(at)) / 86_400_000);
+}
+
+export function goalPatchHasProgressToday(goal: Goal): boolean {
+  if (goal.stats.today_actual > 0) return true;
+  const at = goalLastProgressAt(goal);
+  if (!at) return false;
+  return calendarDaysSince(at, new Date()) === 0;
+}
+
+export function goalPatchIsSilverProgressToday(goal: Goal): boolean {
+  return (
+    goal.status === "active" &&
+    !goalPatchIsComplete(goal) &&
+    isCrossPeriodMultiPartGoal(goal) &&
+    goalPatchHasProgressToday(goal)
+  );
+}
+
+export function goalPatchShellStyle(goal: Goal): GoalPatchShellStyle {
   if (goalPatchIsComplete(goal)) {
     return {
       borderColor: GOALS_THEME.patchGoldBorder,
@@ -102,6 +144,14 @@ export function goalPatchShellStyle(goal: Goal): { borderColor: string; bg: stri
     };
   }
   if (goal.status === "paused") {
+    return {
+      borderColor: GOALS_THEME.patchPausedBorder,
+      bg: GOALS_THEME.patchPausedBg,
+      borderStyle: "dashed",
+      flat: true,
+    };
+  }
+  if (goalPatchIsSilverProgressToday(goal)) {
     return {
       borderColor: GOALS_THEME.patchSilverBorder,
       bg: GOALS_THEME.patchSilverBg,
@@ -140,6 +190,33 @@ export function goalIsUrgent(goal: Goal): boolean {
   return behind || weekBehind || overdueChore;
 }
 
+/** Local time for progress logged today, e.g. 6:45am. */
+export function formatGoalLocalTime(value: Date): string {
+  const raw = value.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+  return raw.replace(" AM", "am").replace(" PM", "pm");
+}
+
+/** Relative last-progress label (local calendar-day buckets). */
+export function formatGoalLastProgressRelative(at: Date, now = new Date()): string {
+  const days = calendarDaysSince(at, now);
+  if (days <= 0) return formatGoalLocalTime(at);
+  if (days === 1) return "Yesterday";
+  if (days < 7) return `${days} days ago`;
+  if (days < 30) {
+    const weeks = Math.floor(days / 7);
+    return weeks === 1 ? "1 week ago" : `${weeks} weeks ago`;
+  }
+  if (days < 365) {
+    const months = Math.floor(days / 30);
+    return months === 1 ? "1 month ago" : `${months} months ago`;
+  }
+  return "More than a year ago";
+}
+
 /** Local calendar date (MM/DD/YY). */
 export function formatGoalDate(value: Date | string | null): string | null {
   if (!value) return null;
@@ -167,7 +244,9 @@ export function goalLastProgressAt(goal: Goal): Date | null {
 }
 
 export function goalLastProgressLabel(goal: Goal): string | null {
-  return formatGoalDate(goalLastProgressAt(goal));
+  const at = goalLastProgressAt(goal);
+  if (!at) return null;
+  return formatGoalLastProgressRelative(at);
 }
 
 export function goalCompletedMedalLabel(goal: Goal): string | null {

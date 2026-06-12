@@ -153,6 +153,8 @@ SLUG_GOALS_TRI_GOAL_ATHLON = "goals_tri_goal_athlon"
 SLUG_GOALS_STREAK_WEEK = "goals_streak_week"
 SLUG_GOALS_MARATHON_MONTH = "goals_marathon_month"
 SLUG_GOALS_CHECKPOINT_CHARLIE = "goals_checkpoint_charlie"
+SLUG_GOALS_LIFES_A_CHORE = "goals_lifes_a_chore"
+SLUG_GOALS_ON_TARGET = "goals_on_target"
 SLUG_SCORENADO_GAME_PLAYER = "scorenado_game_player"
 SLUG_SCORENADO_HAT_TRICK = "scorenado_hat_trick"
 SLUG_SCORENADO_DROSSELMEYER = "scorenado_drosselmeyer"
@@ -178,6 +180,8 @@ GOALS_TRI_GOAL_ATHLON_MIN_ACTIVE = 3
 GOALS_STREAK_WEEK_MIN_BEST = 7
 GOALS_MARATHON_MONTH_MIN_BEST = 30
 GOALS_CHECKPOINT_CHARLIE_MIN_COMPLETED = 10
+GOALS_LIFES_A_CHORE_MIN_CHORES_SAME_DAY = 5
+GOALS_ON_TARGET_MIN_COMPLETED_PROJECTS = 5
 SCORENADO_HAT_TRICK_MIN_WINS = 3
 SCORENADO_DROSSELMEYER_MIN_PUBLISHED = 3
 SCORENADO_SCOREKEEPER_MIN_GAMES = 5
@@ -506,6 +510,27 @@ def _goals_max_streak_best_for_user(user_id: int) -> int:
     return best
 
 
+def _goals_max_chore_checkins_on_single_day(user_id: int) -> int:
+    """Most chore check-ins on one local calendar day (user timezone)."""
+    from collections import Counter
+    from datetime import date
+
+    from goals.models import CheckIn, Goal
+    from goals.stats import _user_tz
+    from users.models import Profile
+
+    profile = Profile.objects.filter(user_id=user_id).first()
+    tz = _user_tz(profile)
+    rows = CheckIn.objects.filter(
+        owner_user_id=user_id,
+        goal__kind=Goal.Kind.CHORE,
+    ).values_list("occurred_at", flat=True)
+    counts: Counter[date] = Counter()
+    for occurred_at in rows:
+        counts[occurred_at.astimezone(tz).date()] += 1
+    return max(counts.values()) if counts else 0
+
+
 def evaluate_goals_achievements_for_user(user_id: int) -> None:
     """Goal-Getter badges (sticky unlocks via UserAchievement.get_or_create)."""
     from goals.models import Checkpoint, Goal
@@ -532,6 +557,26 @@ def evaluate_goals_achievements_for_user(user_id: int) -> None:
             user_id,
             SLUG_GOALS_CHECKPOINT_CHARLIE,
             context={"completed_checkpoints": completed_checkpoints},
+        )
+
+    max_chores_day = _goals_max_chore_checkins_on_single_day(user_id)
+    if max_chores_day >= GOALS_LIFES_A_CHORE_MIN_CHORES_SAME_DAY:
+        _try_unlock(
+            user_id,
+            SLUG_GOALS_LIFES_A_CHORE,
+            context={"max_chore_checkins_single_day": max_chores_day},
+        )
+
+    completed_projects = Goal.objects.filter(
+        owner_user_id=user_id,
+        kind=Goal.Kind.ONE_TIME,
+        status=Goal.Status.COMPLETED,
+    ).count()
+    if completed_projects >= GOALS_ON_TARGET_MIN_COMPLETED_PROJECTS:
+        _try_unlock(
+            user_id,
+            SLUG_GOALS_ON_TARGET,
+            context={"completed_projects": completed_projects},
         )
 
 

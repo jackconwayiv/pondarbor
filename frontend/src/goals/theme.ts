@@ -20,9 +20,12 @@ export const GOALS_THEME = {
   /** Incomplete chore patch. */
   patchChoreBg: "#FFE8CC",
   patchChoreBorder: "#E07A2F",
-  /** Paused or neutral fallback. */
+  /** Cross-period partial progress today (metallic silver). */
   patchSilverBg: "#E8EDF2",
   patchSilverBorder: "#8B9AAB",
+  /** Paused — flat matte gray, dashed outline. */
+  patchPausedBg: "#ECECEC",
+  patchPausedBorder: "#9A9A9A",
   /** Desktop badge stats card (matches app navy + soft gray). */
   cardBodyBg: "#F3F4F6",
   cardBodyBorder: "#0B2545",

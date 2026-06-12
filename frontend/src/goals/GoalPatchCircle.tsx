@@ -1,12 +1,13 @@
 import { Box, type BoxProps } from "@chakra-ui/react";
 import type { ReactNode } from "react";
 
+import type { GoalPatchShellStyle } from "./goalCardLabels";
 import { GOALS_THEME } from "./theme";
 
 import "./goalPatchShimmer.css";
 
 type GoalPatchCircleProps = BoxProps & {
-  patchStyle: { borderColor: string; bg: string };
+  patchStyle: GoalPatchShellStyle;
   /** Static gold styling on earned badges. */
   goldShimmer?: boolean;
   /** Looping shine sweep (subset of gold badges). */
@@ -37,9 +38,10 @@ export function GoalPatchCircle({
       overflow="hidden"
       borderRadius="full"
       border="2px solid"
+      borderStyle={patchStyle.borderStyle ?? "solid"}
       borderColor={patchStyle.borderColor}
       bg={patchStyle.bg}
-      boxShadow="sm"
+      boxShadow={patchStyle.flat ? "none" : "sm"}
       display="flex"
       alignItems="center"
       justifyContent="center"

@@ -4,6 +4,7 @@ import { emptyGoalStats } from "./types";
 import type { Goal } from "./types";
 import {
   buildCompletedTabGoals,
+  dueTodayActiveGoals,
   partitionDueTodayGoals,
 } from "./goalTabPartition";
 import { GOALS_GRID_PAGE_SIZE } from "./goalGridSort";
@@ -27,12 +28,26 @@ function makeGoal(overrides: Partial<Goal> & { id: string }): Goal {
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
     checkpoints: [],
-    stats: emptyGoalStats(),
+    stats: emptyGoalStats({ today_target: 1 }),
     can_undo: false,
     due_today: true,
     ...rest,
   };
 }
+
+describe("dueTodayActiveGoals", () => {
+  it("excludes continuous goals that do not apply today", () => {
+    const applies = makeGoal({ id: "yes", stats: emptyGoalStats({ today_target: 1 }) });
+    const offDay = makeGoal({
+      id: "no",
+      schedule_interval_kind: "weekday",
+      schedule_weekday: 0,
+      due_today: true,
+      stats: emptyGoalStats({ today_target: 0, week_target: 1 }),
+    });
+    expect(dueTodayActiveGoals([applies, offDay])).toEqual([applies]);
+  });
+});
 
 describe("partitionDueTodayGoals", () => {
   it("keeps all on active when count <= page size", () => {

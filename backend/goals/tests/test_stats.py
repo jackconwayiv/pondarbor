@@ -124,6 +124,26 @@ class GoalStatsTests(TestCase):
         self.assertEqual(stats_fri.today_target, 1)
         self.assertTrue(goal_visible_in_due_list(goal, stats_fri))
 
+    def test_goal_visible_in_due_list_every_monday_off_day(self):
+        from goals.stats import compute_goal_stats, goal_visible_in_due_list
+
+        goal = Goal.objects.create(
+            owner_user=self.owner,
+            title="Every Monday",
+            kind=Goal.Kind.CONTINUOUS,
+            schedule_interval_kind=Goal.ScheduleIntervalKind.WEEKDAY,
+            schedule_weekday=0,
+        )
+        wednesday = datetime(2026, 6, 3, 12, 0, tzinfo=dt_timezone.utc)
+        stats = compute_goal_stats(goal, [], [], self.owner.profile, now_utc=wednesday)
+        self.assertEqual(stats.today_target, 0)
+        self.assertGreater(stats.week_target, 0)
+        self.assertFalse(goal_visible_in_due_list(goal, stats))
+        monday = datetime(2026, 6, 1, 12, 0, tzinfo=dt_timezone.utc)
+        stats_mon = compute_goal_stats(goal, [], [], self.owner.profile, now_utc=monday)
+        self.assertEqual(stats_mon.today_target, 1)
+        self.assertTrue(goal_visible_in_due_list(goal, stats_mon))
+
     def test_day_interval_with_count_sets_today_target(self):
         from goals.stats import day_target_for_goal
 

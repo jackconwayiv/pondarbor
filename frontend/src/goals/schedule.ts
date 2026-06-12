@@ -59,3 +59,15 @@ export function goalAppliesToMonthStripe(goal: Goal): boolean {
     isMonthPeriodGoal(goal)
   );
 }
+
+/** Continuous goals: today is an actionable check-in day (matches backend goal_applies_today). */
+export function goalAppliesToday(goal: Goal): boolean {
+  if (goal.kind !== "continuous") return true;
+  const kind = goal.schedule_interval_kind;
+  if (kind === "day" || kind === "weekdays" || kind === "weekday" || kind === "month_day") {
+    return goal.stats.today_target > 0;
+  }
+  if (kind === "week" || kind === "weeks") return goal.stats.week_target > 0;
+  if (kind === "month" || kind === "months") return goal.stats.month_target > 0;
+  return false;
+}

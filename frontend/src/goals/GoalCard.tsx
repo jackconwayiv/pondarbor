@@ -273,11 +273,6 @@ function GoalCardDesktopBadge({
                 <Badge size="sm" bg={GOALS_THEME.lakeLight} color={GOALS_THEME.lakeBlue}>
                   {Math.round(goal.stats.pct_last_30_days)}% 30d
                 </Badge>
-                {goal.stats.days_since_last_progress > 0 ? (
-                  <Badge size="sm" variant="outline" borderColor={GOALS_THEME.textMuted}>
-                    {goal.stats.days_since_last_progress}d quiet
-                  </Badge>
-                ) : null}
               </HStack>
             </>
           ) : null}

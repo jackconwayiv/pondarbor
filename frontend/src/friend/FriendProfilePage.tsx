@@ -9,7 +9,7 @@ import {
   Text,
 } from "@chakra-ui/react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Navigate, useParams } from "react-router";
+import { Link as RouterLink, Navigate, useParams } from "react-router";
 import { AchievementSummaryCard } from "../achievements/AchievementSummaryCard";
 import {
   fetchPublicAchievementsByUser,
@@ -35,6 +35,7 @@ import {
   unfriend,
   type FriendUser,
 } from "../friends/api";
+import { friendProfilePath } from "./profilePaths";
 import NotFoundPage from "../NotFoundPage";
 import PondButton from "../PondButton";
 import RouteLoadingFallback from "../RouteLoadingFallback";
@@ -1018,22 +1019,42 @@ export default function FriendProfilePage() {
                     <Tabs.Content value="achievements" p={{ base: "2", md: "2" }}>
                       <Stack gap={MAPPED_LIST_STACK_GAP}>
                         {achievements.map((a) => (
-                          <AchievementSummaryCard
+                          <RouterLink
                             key={a.slug}
-                            achievement={a}
-                            peerAvatars={(achievementPeersBySlug[a.slug] ?? []).map(
-                              (p) => ({
-                                userId: p.id,
-                                name: p.nickname,
-                                src: resolveAvatarUrlForUser(
-                                  p.avatar_url,
-                                  p.id,
-                                  sessionUser,
-                                  auth0User,
-                                ),
-                              }),
-                            )}
-                          />
+                            to={`/achievements?slug=${encodeURIComponent(a.slug)}`}
+                            state={
+                              profileSubjectUserId != null
+                                ? {
+                                    achievementReturnTo:
+                                      friendProfilePath(profileSubjectUserId),
+                                  }
+                                : undefined
+                            }
+                            aria-label={`View who has earned ${a.title}`}
+                            style={{
+                              textDecoration: "none",
+                              color: "inherit",
+                              display: "block",
+                            }}
+                          >
+                            <Box _hover={{ "& > *": { borderColor: "teal.solid" } }}>
+                            <AchievementSummaryCard
+                              achievement={a}
+                              peerAvatars={(achievementPeersBySlug[a.slug] ?? []).map(
+                                (p) => ({
+                                  userId: p.id,
+                                  name: p.nickname,
+                                  src: resolveAvatarUrlForUser(
+                                    p.avatar_url,
+                                    p.id,
+                                    sessionUser,
+                                    auth0User,
+                                  ),
+                                }),
+                              )}
+                            />
+                            </Box>
+                          </RouterLink>
                         ))}
                       </Stack>
                     </Tabs.Content>

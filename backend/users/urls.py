@@ -23,6 +23,7 @@ from users.views import (
 )
 from achievements.views import (
     me_achievement_peers,
+    me_achievement_trophy_case,
     user_achievement_peers_for_subject_friends,
     user_public_achievements,
     user_public_achievements_by_id,
@@ -35,6 +36,7 @@ urlpatterns = [
     path("me/", me),
     path("me/profile/", patch_me_profile),
     path("me/achievement-peers/", me_achievement_peers),
+    path("me/achievement-trophy-case/", me_achievement_trophy_case),
     path("me/achievements/<slug:slug>/", patch_me_achievement_visibility),
     path("me/achievement-inbox/mark-read/", mark_me_achievement_inbox_read),
     path("approved-check/", approved_check),

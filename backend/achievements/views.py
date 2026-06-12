@@ -13,6 +13,7 @@ from achievements.services import (
     achievement_definitions_catalog_payload,
     achievement_peers_for_my_friends,
     achievement_peers_for_subject_friends,
+    achievement_trophy_case_payload,
     achievements_payload_for_user,
     viewer_can_view_user_public_achievement_list,
 )
@@ -74,6 +75,13 @@ def _parse_slugs_body(request) -> tuple[list | None, Response | None]:
     if not isinstance(slugs, list):
         return None, Response({"detail": "slugs must be a list of strings."}, status=status.HTTP_400_BAD_REQUEST)
     return slugs, None
+
+
+@api_view(["GET"])
+@authentication_classes([Auth0TokenAuthentication, SessionAuthentication])
+@permission_classes([IsAuthenticated, IsApprovedUser])
+def me_achievement_trophy_case(request):
+    return Response(achievement_trophy_case_payload(request.user))
 
 
 @api_view(["POST"])

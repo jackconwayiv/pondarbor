@@ -1080,3 +1080,87 @@ def achievement_peers_for_subject_friends(*, viewer, subject, slugs: list) -> di
         slugs=slugs,
         candidate_user_ids=candidate_ids,
     )
+
+
+def _trophy_case_sort_key(
+    *,
+    earner_count: int,
+    viewer_has: bool,
+    catalog_order: int,
+    slug: str,
+) -> tuple:
+    if earner_count == 1 and viewer_has:
+        tier = 0
+    elif earner_count == 1 and not viewer_has:
+        tier = 1
+    else:
+        tier = 2
+    count_key = 0 if tier < 2 else earner_count
+    return (tier, count_key, catalog_order, slug)
+
+
+def achievement_trophy_case_payload(viewer) -> dict:
+    """Hall of Fame: full public catalog with earners in the viewer's visible population."""
+    from collections import defaultdict
+
+    from django.db.models import Q
+
+    from achievements.models import AchievementDefinition, UserAchievement
+    from users.social_privacy import visible_user_ids_for_achievement_surfaces
+
+    population_ids = visible_user_ids_for_achievement_surfaces(viewer=viewer)
+    viewer_id = int(viewer.id)
+
+    definitions = list(
+        AchievementDefinition.objects.filter(
+            is_active=True,
+            show_on_public_profile=True,
+        ).order_by("order", "slug")
+    )
+
+    earners_by_slug: dict[str, list[dict]] = defaultdict(list)
+    earner_counts: dict[str, int] = defaultdict(int)
+
+    if population_ids:
+        qs = (
+            UserAchievement.objects.filter(
+                user_id__in=population_ids,
+                achievement__show_on_public_profile=True,
+            )
+            .filter(
+                Q(user_id=viewer_id)
+                | Q(visible_to_friends__isnull=True)
+                | Q(visible_to_friends=True)
+            )
+            .select_related("user", "user__profile", "achievement")
+            .order_by("-unlocked_at", "user_id")
+        )
+
+        for ua in qs:
+            slug = ua.achievement.slug
+            earner_counts[slug] += 1
+            if len(earners_by_slug[slug]) < MAX_ACHIEVEMENT_PEERS_PER_SLUG:
+                row = _user_peer_row(ua.user)
+                row["unlocked_at"] = ua.unlocked_at.isoformat()
+                earners_by_slug[slug].append(row)
+
+    rows: list[dict] = []
+    for defn in definitions:
+        slug = defn.slug
+        count = earner_counts.get(slug, 0)
+        is_earned = count > 0
+        row = {
+            "slug": slug,
+            "category": defn.category or "",
+            "display_group": defn.display_group or "",
+            "display_group_order": defn.display_group_order,
+            "catalog_order": defn.order,
+            "is_earned": is_earned,
+            "earner_count": count,
+            "earners": earners_by_slug.get(slug, []),
+        }
+        row["title"] = defn.title
+        row["description"] = (defn.description or "") if is_earned else ""
+        rows.append(row)
+
+    return {"population_count": len(population_ids), "rows": rows}

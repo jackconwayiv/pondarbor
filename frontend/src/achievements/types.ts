@@ -16,3 +16,35 @@ export type AchievementPeerAvatarRow = {
   nickname: string;
   avatar_url: string;
 };
+
+/** Earner on a Hall of Fame row (`GET …/achievement-trophy-case/`). */
+export type HallOfFameEarner = AchievementPeerAvatarRow & {
+  unlocked_at: string;
+};
+
+/** Row from `GET …/achievement-trophy-case/`. */
+export type HallOfFameRow = {
+  slug: string;
+  title: string;
+  description: string;
+  category: string;
+  display_group: string;
+  display_group_order: number;
+  catalog_order: number;
+  is_earned: boolean;
+  earner_count: number;
+  earners: HallOfFameEarner[];
+};
+
+export type HallOfFameCategoryGroup = {
+  category: string;
+  label: string;
+  emoji: string;
+  earnedRows: HallOfFameRow[];
+  lockedRows: HallOfFameRow[];
+};
+
+export type HallOfFamePayload = {
+  population_count: number;
+  rows: HallOfFameRow[];
+};

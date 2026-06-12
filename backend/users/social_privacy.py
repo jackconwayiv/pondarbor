@@ -134,6 +134,25 @@ def apply_read_scope_filter(
     return qs
 
 
+def visible_user_ids_for_achievement_surfaces(*, viewer) -> set[int]:
+    """
+    User ids whose public achievement unlocks count toward viewer-scoped surfaces
+    (Hall of Fame, etc.): published visibility ("Sees me") plus viewer read scope ("Show me").
+    """
+    ctx = viewer_context(viewer=viewer)
+    if not ctx.is_authenticated or not ctx.viewer_id:
+        return set()
+
+    qs = User.objects.filter(published_user_visibility_q(viewer=viewer, ctx=ctx))
+    scope = getattr(getattr(viewer, "profile", None), "social_read_scope", None)
+    scope = scope or Profile.SocialReadScope.APPROVED_USERS
+    if scope == Profile.SocialReadScope.FRIENDS_ONLY:
+        allowed = set(ctx.friend_ids)
+        allowed.add(ctx.viewer_id)
+        qs = qs.filter(pk__in=list(allowed))
+    return set(qs.values_list("pk", flat=True))
+
+
 def published_owner_visibility_q(
     *,
     viewer,

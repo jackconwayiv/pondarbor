@@ -30,6 +30,7 @@ const StaffZodiacPage = lazy(() => import("./staff/StaffZodiacPage"));
 const ClosetPage = lazy(() => import("./closet/ClosetPage"));
 const PeoplePage = lazy(() => import("./people/PeoplePage"));
 const GoalsPage = lazy(() => import("./goals/GoalsPage"));
+const HallOfFamePage = lazy(() => import("./achievements/HallOfFamePage"));
 const ScorenadoLayout = lazy(() => import("./scorenado/ScorenadoLayout"));
 const ScorenadoPlayPage = lazy(() => import("./scorenado/ScorenadoPlayPage"));
 const ScorenadoTemplatesPage = lazy(() => import("./scorenado/ScorenadoTemplatesPage"));
@@ -325,6 +326,10 @@ export const router = createAppRouter([
       {
         path: "profile",
         element: authedRouteElement(<ProfilePage />),
+      },
+      {
+        path: "achievements",
+        element: authedRouteElement(lazyRouteElement(<HallOfFamePage />)),
       },
       {
         path: "onboarding",

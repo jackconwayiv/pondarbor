@@ -1,4 +1,8 @@
-import type { AchievementPeerAvatarRow, AchievementSummary } from "./types";
+import type {
+  AchievementPeerAvatarRow,
+  AchievementSummary,
+  HallOfFamePayload,
+} from "./types";
 
 function apiBase(): string {
   return import.meta.env.VITE_API_BASE_URL ?? "";
@@ -94,6 +98,22 @@ export async function postAchievementPeersForSubjectFriends(
   }
   const data = (await response.json()) as AchievementPeersResponseBody;
   return data.peers_by_slug ?? {};
+}
+
+/** Viewer-scoped Hall of Fame: earned badges across people you can see. */
+export async function fetchAchievementTrophyCase(
+  accessToken: string | null,
+): Promise<HallOfFamePayload> {
+  const response = await fetch(`${apiBase()}/api/v1/users/me/achievement-trophy-case/`, {
+    method: "GET",
+    headers: bearerJsonHeaders(accessToken),
+    credentials: "omit",
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Achievement trophy case request failed (${response.status}): ${text}`);
+  }
+  return (await response.json()) as HallOfFamePayload;
 }
 
 /** Staff-only: all active achievement definitions as friend-profile-shaped rows (no real unlock date). */

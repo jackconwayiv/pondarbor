@@ -180,6 +180,10 @@ export function getBreadcrumbItems(
     return [HOME, { label: "Goal-Getter" }];
   }
 
+  if (p === "/achievements" || p.startsWith("/achievements/")) {
+    return [HOME, { label: "Hall of Fame" }];
+  }
+
   if (p.startsWith("/scorenado")) {
     const scorenado = { label: "Scorenado", to: "/scorenado" };
     if (p === "/scorenado") {

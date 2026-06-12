@@ -1208,3 +1208,131 @@ class WelcomeToPondArborAchievementTests(TestCase):
             ).count(),
             1,
         )
+
+
+class AchievementTrophyCaseApiTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        from users.models import Profile
+
+        self.viewer = User.objects.create_user(
+            email="hof-viewer@example.com", password="secret12345"
+        )
+        self.friend = User.objects.create_user(
+            email="hof-friend@example.com", password="secret12345"
+        )
+        self.stranger = User.objects.create_user(
+            email="hof-stranger@example.com", password="secret12345"
+        )
+        for u in (self.viewer, self.friend, self.stranger):
+            u.account_status = User.AccountStatus.APPROVED
+            u.save(update_fields=["account_status"])
+
+        prof = self.stranger.profile
+        prof.social_publish_visibility = Profile.SocialPublishVisibility.FRIENDS_ONLY
+        prof.save(update_fields=["social_publish_visibility"])
+
+        self.archivist, _ = AchievementDefinition.objects.get_or_create(
+            slug=SLUG_ARCHIVIST,
+            defaults={
+                "title": "Archivist",
+                "description": "d",
+                "category": "quotes",
+                "order": 10,
+            },
+        )
+        self.town_crier, _ = AchievementDefinition.objects.get_or_create(
+            slug=SLUG_TOWN_CRIER,
+            defaults={
+                "title": "Town Crier",
+                "description": "d",
+                "category": "quotes",
+                "order": 20,
+            },
+        )
+        self.client = APIClient()
+
+    def _accept_pair(self, user_a, user_b):
+        FriendRequest.objects.update_or_create(
+            requester=user_a,
+            requested=user_b,
+            defaults={"is_accepted": True},
+        )
+        FriendRequest.objects.update_or_create(
+            requester=user_b,
+            requested=user_a,
+            defaults={"is_accepted": True},
+        )
+
+    def test_requires_approved_user(self):
+        pending = get_user_model().objects.create_user(
+            email="hof-pending@example.com", password="secret12345"
+        )
+        self.client.force_login(pending)
+        resp = self.client.get("/api/v1/users/me/achievement-trophy-case/")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_excludes_friends_only_stranger_when_not_friends(self):
+        UserAchievement.objects.create(user=self.stranger, achievement=self.archivist)
+        self.client.force_login(self.viewer)
+        resp = self.client.get("/api/v1/users/me/achievement-trophy-case/")
+        self.assertEqual(resp.status_code, 200)
+        archivist = next(r for r in resp.json()["rows"] if r["slug"] == SLUG_ARCHIVIST)
+        self.assertFalse(archivist["is_earned"])
+
+    def test_includes_friends_only_stranger_when_friends(self):
+        self._accept_pair(self.viewer, self.stranger)
+        UserAchievement.objects.create(user=self.stranger, achievement=self.archivist)
+        self.client.force_login(self.viewer)
+        resp = self.client.get("/api/v1/users/me/achievement-trophy-case/")
+        self.assertEqual(resp.status_code, 200)
+        archivist = next(r for r in resp.json()["rows"] if r["slug"] == SLUG_ARCHIVIST)
+        self.assertTrue(archivist["is_earned"])
+
+    def test_respects_viewer_social_read_scope_friends_only(self):
+        from users.models import Profile
+
+        self._accept_pair(self.viewer, self.friend)
+        UserAchievement.objects.create(user=self.friend, achievement=self.archivist)
+        UserAchievement.objects.create(user=self.stranger, achievement=self.town_crier)
+        prof = self.viewer.profile
+        prof.social_read_scope = Profile.SocialReadScope.FRIENDS_ONLY
+        prof.save(update_fields=["social_read_scope"])
+        self.client.force_login(self.viewer)
+        resp = self.client.get("/api/v1/users/me/achievement-trophy-case/")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        by_slug = {row["slug"]: row for row in body["rows"]}
+        self.assertTrue(by_slug[SLUG_ARCHIVIST]["is_earned"])
+        self.assertFalse(by_slug[SLUG_TOWN_CRIER]["is_earned"])
+
+    def test_includes_unearned_catalog_rows(self):
+        self.client.force_login(self.viewer)
+        resp = self.client.get("/api/v1/users/me/achievement-trophy-case/")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        archivist = next(r for r in body["rows"] if r["slug"] == SLUG_ARCHIVIST)
+        self.assertFalse(archivist["is_earned"])
+        self.assertEqual(archivist["earner_count"], 0)
+        self.assertEqual(archivist["title"], "Archivist")
+        self.assertEqual(archivist["earners"], [])
+
+    def test_earned_row_includes_title_and_flag(self):
+        UserAchievement.objects.create(user=self.viewer, achievement=self.archivist)
+        self.client.force_login(self.viewer)
+        resp = self.client.get("/api/v1/users/me/achievement-trophy-case/")
+        self.assertEqual(resp.status_code, 200)
+        archivist = next(r for r in resp.json()["rows"] if r["slug"] == SLUG_ARCHIVIST)
+        self.assertTrue(archivist["is_earned"])
+        self.assertEqual(archivist["title"], "Archivist")
+
+    def test_hidden_friend_badge_excluded_for_non_owner(self):
+        self._accept_pair(self.viewer, self.friend)
+        ua = UserAchievement.objects.create(user=self.friend, achievement=self.archivist)
+        ua.visible_to_friends = False
+        ua.save(update_fields=["visible_to_friends"])
+        self.client.force_login(self.viewer)
+        resp = self.client.get("/api/v1/users/me/achievement-trophy-case/")
+        self.assertEqual(resp.status_code, 200)
+        archivist = next(r for r in resp.json()["rows"] if r["slug"] == SLUG_ARCHIVIST)
+        self.assertFalse(archivist["is_earned"])

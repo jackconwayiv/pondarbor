@@ -35,7 +35,10 @@ export const TO_NEXT_STRATUM_PHRASE = "to next Stratum";
 export const STRATA_PANEL_TOOLTIP =
   "Strata represent the age of your pond and determine how many fossils you begin your next pond cycle with.";
 export const CYCLE_LABEL = "Cycle";
-export const FOSSIL_SHOP_LABEL = "Fossil Shop";
+export const FOSSIL_SHOP_LABEL = "PondClicker Fossil Shop";
+export const FOSSIL_SHOP_STATS_TAB_LABEL = "Fossil Shop";
+export const FOSSIL_SHOP_INTERSTITIAL_INTRO =
+  "Spend your fossils to permanently upgrade your pond through the ages.";
 export const FOSSILS_LABEL = "Fossils";
 export const FOSSILIZED_STRATA_LABEL = "Fossilized strata";
 export const UNFOSSILIZED_STRATA_LABEL = "Unfossilized strata";
@@ -53,6 +56,29 @@ export function CYCLE_POND_CONFIRM_FOSSILIZE(count: number): string {
 }
 export const CYCLE_POND_CYCLE_BUTTON = "Cycle";
 export const CYCLE_POND_NOT_YET_BUTTON = "Not yet";
+
+export const BEGIN_NEW_CYCLE_BUTTON = "Begin new cycle";
+export const BEGIN_NEW_CYCLE_CONFIRM_TITLE = "Begin new cycle?";
+export const BEGIN_NEW_CYCLE_CONFIRM_BODY =
+  "Begin new cycle with fossils remaining?";
+export const BEGIN_NEW_CYCLE_CANCEL_BUTTON = "Cancel";
+export const BEGIN_NEW_CYCLE_CONFIRM_BUTTON = "Cycle";
+export const FOSSIL_SHOP_FOSSILS_HEADER = "FOSSILS";
+export const POND_CYCLE_SAVE_BUSY = "Saving your pond…";
+export const POND_CYCLE_SAVE_RETRY_BUTTON = "Retry save";
+
+export const PETROGLYPH_ETCH_PICKER_TITLE = "Etch an evolution";
+export const PETROGLYPH_ETCH_PICKER_BODY =
+  "Choose one evolution from your last pond cycle to etch into your petroglyph.";
+export const PETROGLYPH_ETCH_CONFIRM_BUTTON = "Etch";
+export const PETROGLYPH_ETCH_CANCEL_BUTTON = "Not now";
+export const PETROGLYPH_BLANK_LABEL = "Blank";
+export const PETROGLYPH_CLICK_TO_ETCH = "Click to Etch";
+export const PETROGLYPH_I_HEADER = "Petroglyph I:";
+export const PETROGLYPH_I_HEADER_WITH_EMOJI = "🪨 Petroglyph I:";
+export const PETROGLYPH_ETCH_BUTTON = "Etch";
+export const PETROGLYPH_NO_ELIGIBLE_HINT =
+  "No evolutions from your last pond cycle to etch";
 
 export const RESET_POND_BUTTON = "Erase pond";
 export const RESET_POND_CONFIRM_BUTTON = "Confirm erase pond";

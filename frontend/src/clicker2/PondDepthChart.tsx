@@ -5,11 +5,10 @@ import "./PondDepthChart.css";
 
 import type { DenizenDef } from "./denizens";
 import { getOwnedDenizenCount } from "./denizens";
-import DenizenMutateButton from "./DenizenMutateButton";
-import {
-  getMutationLevel,
-  shouldShowDenizenMutationLevel,
-} from "./mutagens";
+import DenizenMutateButton, {
+  shouldShowDenizenDepthChartLevel,
+} from "./DenizenMutateButton";
+import { getMutationLevel } from "./mutagens";
 import {
   depthZoneBackground,
   depthZoneLabelOnDark,
@@ -69,10 +68,8 @@ function PondDepthChart({
           denizenMutationLevels,
           row.def.id,
         );
-        const showMutationLevel = shouldShowDenizenMutationLevel(
-          row.def.id,
-          owned,
-          denizenMutationLevels,
+        const showMutationLevel = shouldShowDenizenDepthChartLevel(
+          row.def,
           mutagenUnlocked,
         );
 
@@ -102,18 +99,6 @@ function PondDepthChart({
               >
                 {row.def.namePlural.toUpperCase()}
               </Text>
-              {showMutationLevel ? (
-                <Text
-                  as="span"
-                  className={
-                    onDarkZone
-                      ? "pondDepthChartLevel pondDepthChartLevel--onDark"
-                      : "pondDepthChartLevel"
-                  }
-                >
-                  Level: {mutationLevel}
-                </Text>
-              ) : null}
               <DenizenMutateButton
                 def={row.def}
                 owned={owned}
@@ -122,15 +107,14 @@ function PondDepthChart({
                 mutagenUnlocked={mutagenUnlocked}
                 onMutate={onMutate}
                 canHoverFinePointer={canHoverFinePointer}
-                compact
-                className="pondDepthChartMutate"
+                labelOnDark={onDarkZone}
               />
             </Box>
             <Box className="pondDepthChartTrackWrap">
               <Box className="pondDepthChartGlyphs" aria-hidden>
-                {row.glyphLines
-                  .slice(0, POND_DEPTH_CHART_MAX_VISIBLE_ROWS)
-                  .map((line, lineIndex) => (
+                {Array.from({ length: POND_DEPTH_CHART_MAX_VISIBLE_ROWS }, (_, lineIndex) => {
+                  const line = row.glyphLines[lineIndex] ?? "";
+                  return (
                     <Text
                       key={lineIndex}
                       as="span"
@@ -138,7 +122,8 @@ function PondDepthChart({
                     >
                       {line}
                     </Text>
-                  ))}
+                  );
+                })}
               </Box>
             </Box>
           </Box>

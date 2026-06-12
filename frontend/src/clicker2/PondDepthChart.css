@@ -1,15 +1,15 @@
 .pondDepthChart {
   --pond-depth-glyph-font-size: 1.05rem;
   --pond-depth-glyph-line-height: 1.1;
-  --pond-depth-glyph-row-gap: 0.05rem;
+  --pond-depth-glyph-row-gap: 0.04rem;
   --pond-depth-glyph-visible-rows: 2;
   --pond-depth-glyphs-height: calc(
     var(--pond-depth-glyph-visible-rows) * var(--pond-depth-glyph-line-height) *
       var(--pond-depth-glyph-font-size) + (var(--pond-depth-glyph-visible-rows) - 1) *
       var(--pond-depth-glyph-row-gap)
   );
-  --pond-depth-band-pad-y: 0.3rem;
-  --pond-depth-label-col-height: 2.85rem;
+  --pond-depth-band-pad-y: 0.1rem;
+  --pond-depth-label-col-height: 1.42rem;
   --pond-depth-band-content-height: max(
     var(--pond-depth-glyphs-height),
     var(--pond-depth-label-col-height)
@@ -59,7 +59,7 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 0.12rem;
+  gap: 0.04rem;
   width: 6.75rem;
   min-width: 6.75rem;
 }
@@ -81,23 +81,70 @@
 .pondDepthChartLevel {
   font-size: 0.58rem;
   line-height: 1.15;
-  font-weight: 500;
-  color: rgba(11, 37, 69, 0.48);
+  font-weight: 600;
   letter-spacing: 0.02em;
   user-select: none;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  cursor: default;
 }
 
-.pondDepthChartLevel--onDark {
-  color: rgba(255, 255, 255, 0.55);
+.pondDepthChartLevel--unaffordable {
+  color: #000;
 }
 
-.pondDepthChartMutate {
-  align-self: flex-start;
-  min-height: 1.05rem;
-  padding-block: 0;
-  padding-inline: 0.35rem;
-  line-height: 1;
-  font-size: 0.65rem;
+.pondDepthChartLevel--unaffordable.pondDepthChartLevel--onDark {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.pondDepthChartLevel--affordable {
+  font-weight: 700;
+  cursor: pointer;
+  background: transparent;
+}
+
+.pondDepthChartLevel--affordable:hover .pondDepthChartLevelGradient {
+  animation-duration: 4.5s;
+}
+
+.pondDepthChartLevelGradient {
+  display: inline-block;
+  background-image: linear-gradient(
+    90deg,
+    #c9771e 0%,
+    #f7c78a 18%,
+    #fff0d8 36%,
+    #e9a14a 54%,
+    #f7c78a 72%,
+    #edba72 90%,
+    #c9771e 100%
+  );
+  background-size: 250% 100%;
+  background-repeat: repeat;
+  background-position: 0% 50%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: #e9a14a;
+  -webkit-text-fill-color: transparent;
+  animation: pondDepthChartLevelAffordableFlow 5.5s linear infinite;
+  -webkit-text-stroke: 0.25px rgba(11, 37, 69, 0.35);
+  paint-order: stroke fill;
+}
+
+.pondDepthChartLevel--onDark .pondDepthChartLevelGradient {
+  -webkit-text-stroke: 0.25px rgba(0, 0, 0, 0.45);
+}
+
+@keyframes pondDepthChartLevelAffordableFlow {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 250% 50%;
+  }
 }
 
 .pondDepthChartTrackWrap {
@@ -110,19 +157,24 @@
 }
 
 .pondDepthChartGlyphs {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: repeat(
+    var(--pond-depth-glyph-visible-rows),
+    calc(var(--pond-depth-glyph-line-height) * var(--pond-depth-glyph-font-size))
+  );
   gap: var(--pond-depth-glyph-row-gap);
   height: var(--pond-depth-glyphs-height);
+  min-height: var(--pond-depth-glyphs-height);
   max-height: var(--pond-depth-glyphs-height);
   overflow: hidden;
   user-select: none;
+  align-content: start;
 }
 
 .pondDepthChartGlyphLine {
   display: block;
-  flex: 0 0 calc(var(--pond-depth-glyph-line-height) * var(--pond-depth-glyph-font-size));
-  height: calc(var(--pond-depth-glyph-line-height) * var(--pond-depth-glyph-font-size));
+  height: 100%;
+  min-height: calc(var(--pond-depth-glyph-line-height) * var(--pond-depth-glyph-font-size));
   line-height: var(--pond-depth-glyph-line-height);
   font-size: var(--pond-depth-glyph-font-size);
   letter-spacing: -0.06em;
@@ -134,6 +186,11 @@
   .pondDepthChartBand--new {
     animation: none;
     box-shadow: inset 0 0 0 1px rgba(255, 200, 60, 0.4);
+  }
+
+  .pondDepthChartLevelGradient {
+    animation: none;
+    background-position: 50% 50%;
   }
 }
 

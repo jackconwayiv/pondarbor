@@ -1,80 +1,56 @@
 import { Box } from "@chakra-ui/react";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 
 import "./PondCycleFadeOverlay.css";
 
-import {
-  POND_CYCLE_FADE_IN_MS,
-  POND_CYCLE_FADE_OUT_MS,
-  POND_CYCLE_HOLD_MS,
-} from "./pondCycleFadeTiming";
-
-type PondCycleFadePhase = "fadeIn" | "hold" | "fadeOut";
+import { POND_CYCLE_FADE_IN_MS, POND_CYCLE_FADE_OUT_MS } from "./pondCycleFadeTiming";
 
 export default function PondCycleFadeOverlay({
   active,
+  fadeToWhite,
   motionPaused,
-  onFullyWhite,
-  onComplete,
+  onTransitionComplete,
 }: {
   active: boolean;
+  /** When true, animate to opaque white; when false, animate to transparent. */
+  fadeToWhite: boolean;
   motionPaused: boolean;
-  /** Screen is opaque white — reset game and snap HUD off-screen. */
-  onFullyWhite: () => void;
-  onComplete: () => void;
+  onTransitionComplete: () => void;
 }) {
   const runRef = useRef(0);
-  const [phase, setPhase] = useState<PondCycleFadePhase>("fadeIn");
+  const completeRef = useRef(onTransitionComplete);
+  completeRef.current = onTransitionComplete;
 
   useEffect(() => {
-    if (!active) {
-      setPhase("fadeIn");
-      return;
-    }
+    if (!active) return;
 
     const runId = ++runRef.current;
-    setPhase("fadeIn");
+    const durationMs = motionPaused
+      ? 0
+      : fadeToWhite
+        ? POND_CYCLE_FADE_IN_MS
+        : POND_CYCLE_FADE_OUT_MS;
 
-    const fadeInMs = motionPaused ? 0 : POND_CYCLE_FADE_IN_MS;
-    const holdMs = motionPaused ? 0 : POND_CYCLE_HOLD_MS;
-    const fadeOutMs = motionPaused ? 0 : POND_CYCLE_FADE_OUT_MS;
-
-    let fadeOutStartTimer = 0;
-    let completeTimer = 0;
-
-    const whiteTimer = window.setTimeout(() => {
+    const timer = window.setTimeout(() => {
       if (runRef.current !== runId) return;
-      onFullyWhite();
-      setPhase("hold");
-
-      fadeOutStartTimer = window.setTimeout(() => {
-        if (runRef.current !== runId) return;
-        setPhase("fadeOut");
-
-        completeTimer = window.setTimeout(() => {
-          if (runRef.current !== runId) return;
-          onComplete();
-        }, fadeOutMs);
-      }, holdMs);
-    }, fadeInMs);
+      completeRef.current();
+    }, durationMs);
 
     return () => {
       runRef.current += 1;
-      window.clearTimeout(whiteTimer);
-      window.clearTimeout(fadeOutStartTimer);
-      window.clearTimeout(completeTimer);
+      window.clearTimeout(timer);
     };
-  }, [active, motionPaused, onFullyWhite, onComplete]);
+  }, [active, fadeToWhite, motionPaused]);
 
   if (!active) return null;
 
   const phaseClass = motionPaused
-    ? "pondCycleFadeOverlay--instant"
-    : phase === "fadeIn"
+    ? fadeToWhite
+      ? "pondCycleFadeOverlay--instantWhite"
+      : "pondCycleFadeOverlay--instantClear"
+    : fadeToWhite
       ? "pondCycleFadeOverlay--fadeIn"
-      : phase === "fadeOut"
-        ? "pondCycleFadeOverlay--fadeOut"
-        : "pondCycleFadeOverlay--hold";
+      : "pondCycleFadeOverlay--fadeOut";
 
   return (
     <Box

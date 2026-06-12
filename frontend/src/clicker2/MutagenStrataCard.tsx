@@ -11,7 +11,6 @@ export default function MutagenStrataCard({
   allTimeEnergyEarned,
   pondEra,
   unfossilizedStrata,
-  fossils,
   onCycleClick,
   mutagensBank,
   mutagenFormingStartedAtMs,
@@ -22,7 +21,6 @@ export default function MutagenStrataCard({
   allTimeEnergyEarned: number;
   pondEra: number;
   unfossilizedStrata: number;
-  fossils: number;
   onCycleClick: () => void;
   mutagensBank: number;
   mutagenFormingStartedAtMs: number;
@@ -78,6 +76,8 @@ export default function MutagenStrataCard({
             <Box
               flex={1}
               minW="0"
+              display="flex"
+              flexDirection="column"
               background={FOSSIL_SHOP_CARD_GRADIENT}
               px="2"
               py="1.5"
@@ -88,7 +88,6 @@ export default function MutagenStrataCard({
                 allTimeEnergyEarned={allTimeEnergyEarned}
                 pondEra={pondEra}
                 unfossilizedStrata={unfossilizedStrata}
-                fossils={fossils}
                 onCycleClick={onCycleClick}
                 canHoverFinePointer={canHoverFinePointer}
               />

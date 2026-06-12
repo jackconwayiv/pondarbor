@@ -34,6 +34,8 @@ import {
   FOSSIL_EMOJI,
   FOSSIL_RECORD_SPECIALTY_ID,
   GATHERING_CLOUDS_SPECIALTY_ID,
+  IMPS_SPECIALTY_ID,
+  PIXIES_SPECIALTY_ID,
   RIPPLES_OF_ETERNITY_SPECIALTY_ID,
   STRATIFIED_POND_SPECIALTY_ID,
   WOODED_SHORE_SPECIALTY_ID,
@@ -875,6 +877,22 @@ export const FOSSIL_SHOP_MILESTONES: readonly MilestoneDef[] = [
     description: "Buy Fae Portal from the fossil shop.",
     criteriaText: "Buy Fae Portal from the fossil shop",
     specialtyId: FAE_PORTAL_SPECIALTY_ID,
+  },
+  {
+    id: "pixie_normous",
+    kind: "fossil_shop_purchase",
+    title: "Pixie Normous",
+    description: "Buy Pixies from the fossil shop.",
+    criteriaText: "Buy Pixies from the fossil shop",
+    specialtyId: PIXIES_SPECIALTY_ID,
+  },
+  {
+    id: "imp_ressive_pond",
+    kind: "fossil_shop_purchase",
+    title: "Imp-ressive Pond",
+    description: "Buy Imps from the fossil shop.",
+    criteriaText: "Buy Imps from the fossil shop",
+    specialtyId: IMPS_SPECIALTY_ID,
   },
 ];
 

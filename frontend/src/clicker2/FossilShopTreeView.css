@@ -1,0 +1,25 @@
+.fossilShopTreeView {
+  position: fixed;
+  inset: 0;
+  z-index: 2100;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.fossilShopTreeView__treeScroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.fossilShopTreeConnector {
+  width: 2px;
+  height: 1.25rem;
+  background: var(--chakra-colors-border);
+  border-radius: 1px;
+}
+
+.fossilShopTreeView__faeFork {
+  flex-shrink: 0;
+}

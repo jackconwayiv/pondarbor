@@ -17,16 +17,11 @@ import {
 import {
   CYCLE_LABEL,
   CYCLE_POND_BUTTON,
-  FOSSILS_LABEL,
   STRATA_PANEL_TOOLTIP,
   stratumCountHeading,
   TO_NEXT_STRATUM_PHRASE,
 } from "./clicker2Copy";
-import {
-  CLICKER2_FOSSIL_STAT_CHIP_TEXT_PROPS,
-  FOSSIL_SHOP_SECTION_HEADING_PROPS,
-} from "./clicker2ShopUi";
-import { FOSSIL_EMOJI } from "./fossilShop";
+import { DEPTH_SUMMARY_STRATA_HEADING_PROPS } from "./clicker2ShopUi";
 import { ENERGY_EMOJI, formatEnergyAmountCompact } from "./formatEnergy";
 import {
   FOSSIL_SHOP_CARD_GRADIENT,
@@ -43,7 +38,6 @@ type StrataProgressRowProps = {
   allTimeEnergyEarned: number;
   pondEra: number;
   unfossilizedStrata: number;
-  fossils: number;
   onCycleClick: () => void;
   canHoverFinePointer?: boolean;
   embedded?: boolean;
@@ -53,7 +47,6 @@ function StrataProgressRowContent({
   allTimeEnergyEarned,
   pondEra,
   unfossilizedStrata,
-  fossils,
   onCycleClick,
   canHoverFinePointer = true,
   embedded = false,
@@ -122,13 +115,23 @@ function StrataProgressRowContent({
   );
 
   const content = (
-    <>
+    <Flex
+      direction="column"
+      h={embedded ? "full" : undefined}
+      w="full"
+      minH="0"
+      justify={embedded ? "space-between" : undefined}
+      gap={embedded ? "1" : undefined}
+    >
       <Flex align="center" justify="space-between" gap="2" w="full" minW="0">
         <Text
-          {...(fossilStyled ? FOSSIL_SHOP_SECTION_HEADING_PROPS : undefined)}
-          fontSize={fossilStyled ? undefined : "sm"}
-          fontWeight={fossilStyled ? undefined : "semibold"}
-          color={fossilStyled ? undefined : "lilypad.emphasized"}
+          {...(fossilStyled
+            ? DEPTH_SUMMARY_STRATA_HEADING_PROPS
+            : {
+                fontSize: "sm",
+                fontWeight: "semibold",
+                color: "lilypad.emphasized",
+              })}
           textAlign="left"
           minW="0"
           flexShrink={1}
@@ -153,60 +156,61 @@ function StrataProgressRowContent({
               {CYCLE_LABEL} {pondEra}
             </Text>
           ) : null}
-          {fossils > 0 ? (
-            <Text
-              {...(fossilStyled ? CLICKER2_FOSSIL_STAT_CHIP_TEXT_PROPS : undefined)}
-              fontSize={fossilStyled ? undefined : "xs"}
-              color={fossilStyled ? undefined : "gray.600"}
-              fontWeight={fossilStyled ? undefined : "medium"}
-              fontVariantNumeric="tabular-nums"
-              whiteSpace="nowrap"
-            >
-              {fossils.toLocaleString()} {FOSSILS_LABEL} {FOSSIL_EMOJI}
-            </Text>
-          ) : null}
         </Flex>
       </Flex>
-      <Flex align="center" gap="2" mt="1" w="full" minW="0">
-        <Text
-          flex="1"
-          minW="0"
-          fontSize="xs"
-          color={fossilStyled ? "blackAlpha.700" : "gray.600"}
-          fontVariantNumeric="tabular-nums"
-        >
-          {formatEnergyAmountCompact(remaining)} {ENERGY_EMOJI}{" "}
-          {TO_NEXT_STRATUM_PHRASE}
-        </Text>
+      <Flex
+        align="center"
+        gap="2"
+        w="full"
+        minW="0"
+        mt={embedded ? undefined : "1"}
+      >
+        <Flex direction="column" flex="1" minW="0" gap="1">
+          <Text
+            fontSize="xs"
+            color={fossilStyled ? "blackAlpha.700" : "gray.600"}
+            fontVariantNumeric="tabular-nums"
+            lineHeight="1.2"
+          >
+            {formatEnergyAmountCompact(remaining)} {ENERGY_EMOJI}{" "}
+            {TO_NEXT_STRATUM_PHRASE}
+          </Text>
+          <Box
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progressPct}
+            aria-label={`Progress ${TO_NEXT_STRATUM_PHRASE}`}
+            w="full"
+            h="0.45rem"
+            borderRadius="full"
+            bg={fossilStyled ? FOSSIL_SHOP_SAND_DEEP : "lilypad.subtle"}
+            overflow="hidden"
+            borderWidth={fossilStyled ? "1px" : undefined}
+            borderColor={fossilStyled ? "blackAlpha.200" : undefined}
+          >
+            <Box
+              h="full"
+              w={`${progressPct}%`}
+              borderRadius="full"
+              bg={fossilStyled ? "nautical.solid" : "lilypad.solid"}
+              transition="width 0.35s ease-out"
+            />
+          </Box>
+        </Flex>
         {cycleButton}
       </Flex>
-      <Box
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={progressPct}
-        aria-label={`Progress ${TO_NEXT_STRATUM_PHRASE}`}
-        h="0.45rem"
-        borderRadius="full"
-        bg={fossilStyled ? FOSSIL_SHOP_SAND_DEEP : "lilypad.subtle"}
-        overflow="hidden"
-        mt="1"
-        borderWidth={fossilStyled ? "1px" : undefined}
-        borderColor={fossilStyled ? "blackAlpha.200" : undefined}
-      >
-        <Box
-          h="full"
-          w={`${progressPct}%`}
-          borderRadius="full"
-          bg={fossilStyled ? "nautical.solid" : "lilypad.solid"}
-          transition="width 0.35s ease-out"
-        />
-      </Box>
-    </>
+    </Flex>
   );
 
   const panel = embedded ? (
-    <Box w="full" cursor={canHoverFinePointer ? "help" : undefined}>
+    <Box
+      w="full"
+      h="full"
+      display="flex"
+      flexDirection="column"
+      cursor={canHoverFinePointer ? "help" : undefined}
+    >
       {content}
     </Box>
   ) : (

@@ -24,6 +24,15 @@
   opacity: 1;
 }
 
+.pondCycleFadeOverlay--instantWhite {
+  opacity: 1;
+}
+
+.pondCycleFadeOverlay--instantClear {
+  opacity: 0;
+  pointer-events: none;
+}
+
 @keyframes pondCycleFadeIn {
   from {
     opacity: 0;

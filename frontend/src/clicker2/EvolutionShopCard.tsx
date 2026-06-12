@@ -18,12 +18,19 @@ import {
 
 import { evolutionDisplayEmoji } from "./clicker2OwnedEvolutions";
 import { EVOLUTION_LABEL } from "./clicker2Copy";
+import {
+  FOSSIL_SHOP_CARD_INNER_PADDING,
+} from "./clicker2ShopUi";
 import { EvolutionTooltipContent } from "./EvolutionTooltipContent";
 import {
   SHOW_SPECIALTY_SHOP_CARD_LABELS,
   SpecialtyShopCardLabel,
 } from "./specialtyShopCardLabel";
 import {
+  FOSSIL_SHOP_CARD_INSET_SHADOW,
+  FOSSIL_SHOP_CARD_INSET_SHADOW_ACTIVE,
+  FOSSIL_SHOP_CARD_INSET_SHADOW_HOVER,
+  FOSSIL_SHOP_PETROGLYPH_INNER_BORDER_PROPS,
   FOSSIL_SHOP_TOOLTIP_SURFACE_PROPS,
   specialtyTierGradient,
 } from "./specialtyTierColors";
@@ -48,6 +55,25 @@ export type EvolutionShopCardProps = {
   borderWidth?: string;
   /** Fossil or other non-energy cost in the buy tooltip. */
   costLabel?: string;
+  /** Shown on the card face (e.g. fossil shop tree). */
+  cardPriceLabel?: string;
+  /** Full-color card (not faded). Defaults to owned || canAfford. */
+  emphasized?: boolean;
+  /** Overrides the caption under the emoji. */
+  displayName?: string;
+  /** Overrides the large emoji on the card face. */
+  displayEmoji?: string;
+  /** Small label above the emoji (e.g. etched petroglyph slot name). */
+  cardHeaderLabel?: string;
+  /** Owned-card action (e.g. petroglyph etch). */
+  onActivate?: () => void;
+  /** When true, owned activate cards are not clickable. */
+  activateDisabled?: boolean;
+  /** Accessible name when the owned card is an action button. */
+  activateAriaLabel?: string;
+  /** Hide the caption under the emoji (petroglyph blank stats display). */
+  hideCardLabel?: boolean;
+  borderStyle?: "solid" | "dashed";
 };
 
 export const EvolutionShopCard = memo(function EvolutionShopCard({
@@ -59,13 +85,23 @@ export const EvolutionShopCard = memo(function EvolutionShopCard({
   backgroundGradient,
   borderWidth = "1px",
   costLabel,
+  cardPriceLabel,
+  emphasized,
+  displayName,
+  displayEmoji,
+  cardHeaderLabel,
+  onActivate,
+  activateDisabled = false,
+  activateAriaLabel,
+  hideCardLabel = false,
+  borderStyle = "solid",
 }: EvolutionShopCardProps) {
   const captureSnapshot = useCallback(() => def, [def]);
   const { snapshot: tooltipDef, onOpenChange: onTooltipOpenChange } =
     useShopTooltipSnapshot(captureSnapshot);
   const [helpOpen, setHelpOpen] = useState(false);
 
-  const emoji = evolutionDisplayEmoji(def);
+  const emoji = displayEmoji ?? evolutionDisplayEmoji(def);
   const tierBackground =
     backgroundGradient ??
     specialtyTierGradient(
@@ -74,15 +110,63 @@ export const EvolutionShopCard = memo(function EvolutionShopCard({
         : specialtyTierIndex(def),
     );
 
-  const interactive = !owned && onBuy != null;
-  const showAfford = owned || canAfford;
+  const buyInteractive = !owned && onBuy != null;
+  const activateInteractive = owned && onActivate != null;
+  const interactive = buyInteractive || activateInteractive;
+  const canActivate = activateInteractive && !activateDisabled;
+  const showAfford = emphasized ?? (owned || canAfford);
+  const cardLabel = displayName ?? def.name;
   const fossilShopStyled = def.fossilShopOnly;
+  const isPetroglyphSlot = def.effect.type === "petroglyph_slot";
+  const fossilShopCarved = fossilShopStyled && showAfford;
+  const fossilShopPressFeedback =
+    fossilShopCarved &&
+    canHoverFinePointer &&
+    ((buyInteractive && canAfford) || canActivate);
+  const fossilShopPressHover = fossilShopPressFeedback
+    ? {
+        boxShadow: FOSSIL_SHOP_CARD_INSET_SHADOW_HOVER,
+        transform: "translateY(1px)",
+      }
+    : undefined;
+  const fossilShopPressActive = fossilShopPressFeedback
+    ? {
+        boxShadow: FOSSIL_SHOP_CARD_INSET_SHADOW_ACTIVE,
+        transform: "translateY(2px)",
+      }
+    : undefined;
+  const fossilShopHoverLocked =
+    fossilShopCarved && interactive && !canAfford
+      ? {
+          boxShadow: FOSSIL_SHOP_CARD_INSET_SHADOW,
+          transform: "none",
+        }
+      : undefined;
+  const petroglyphInnerBorder = isPetroglyphSlot ? (
+    <Box {...FOSSIL_SHOP_PETROGLYPH_INNER_BORDER_PROPS} />
+  ) : null;
   const tooltipSurfaceProps = fossilShopStyled
     ? { ...ecologyTooltipSurfaceProps, ...FOSSIL_SHOP_TOOLTIP_SURFACE_PROPS }
     : ecologyTooltipSurfaceProps;
 
   const cardBody = (
     <>
+      {cardHeaderLabel ? (
+        <Text
+          fontSize="2xs"
+          lineHeight="1.1"
+          textAlign="center"
+          w="full"
+          px="0.5"
+          pt="0.5"
+          flexShrink={0}
+          fontWeight="semibold"
+          color="gray.600"
+          aria-hidden
+        >
+          {cardHeaderLabel}
+        </Text>
+      ) : null}
       <Flex
         flex="1"
         align="center"
@@ -106,10 +190,48 @@ export const EvolutionShopCard = memo(function EvolutionShopCard({
           {emoji}
         </Text>
       </Flex>
-      {SHOW_SPECIALTY_SHOP_CARD_LABELS ? (
-        <SpecialtyShopCardLabel name={def.name} muted={!showAfford} />
+      {SHOW_SPECIALTY_SHOP_CARD_LABELS && !hideCardLabel ? (
+        <SpecialtyShopCardLabel name={cardLabel} muted={!showAfford} />
+      ) : null}
+      {cardPriceLabel && !owned ? (
+        <Text
+          fontSize="2xs"
+          lineHeight="1.1"
+          textAlign="center"
+          w="full"
+          px="0.5"
+          pb="0.5"
+          flexShrink={0}
+          fontWeight="bold"
+          color={canAfford ? "gray.800" : "nautical.solid"}
+          fontVariantNumeric="tabular-nums"
+          aria-hidden
+        >
+          {cardPriceLabel}
+        </Text>
       ) : null}
     </>
+  );
+
+  const renderedCardBody = isPetroglyphSlot ? (
+    <Box
+      position="relative"
+      zIndex={1}
+      flex="1"
+      display="flex"
+      flexDirection="column"
+      alignItems="center"
+      justifyContent={
+        SHOW_SPECIALTY_SHOP_CARD_LABELS ? "space-between" : "center"
+      }
+      gap={SHOW_SPECIALTY_SHOP_CARD_LABELS ? "0.5" : undefined}
+      w="full"
+      minH="0"
+    >
+      {cardBody}
+    </Box>
+  ) : (
+    cardBody
   );
 
   const cardChrome = {
@@ -118,13 +240,18 @@ export const EvolutionShopCard = memo(function EvolutionShopCard({
     aspectRatio: "1",
     h: "auto",
     minH: "0",
-    p: SHOW_SPECIALTY_SHOP_CARD_LABELS ? "1" : "0",
+    p: fossilShopStyled
+      ? FOSSIL_SHOP_CARD_INNER_PADDING
+      : SHOW_SPECIALTY_SHOP_CARD_LABELS
+        ? "1"
+        : "0",
     display: "flex",
     flexDirection: "column" as const,
     alignItems: "center",
     justifyContent: SHOW_SPECIALTY_SHOP_CARD_LABELS ? "space-between" : "center",
     gap: SHOW_SPECIALTY_SHOP_CARD_LABELS ? "0.5" : undefined,
     borderWidth,
+    borderStyle,
     borderColor: showAfford ? "blackAlpha.200" : "border",
     borderRadius: "md",
     bg: tierBackground,
@@ -132,7 +259,34 @@ export const EvolutionShopCard = memo(function EvolutionShopCard({
     filter: showAfford ? undefined : "grayscale(0.35)",
     lineHeight: "1",
     overflow: "hidden",
+    ...(isPetroglyphSlot ? { position: "relative" as const } : {}),
+    ...(fossilShopCarved
+      ? {
+          boxShadow: FOSSIL_SHOP_CARD_INSET_SHADOW,
+          transition:
+            "box-shadow 0.15s ease, transform 0.15s ease, filter 0.15s ease, border-color 0.15s ease",
+        }
+      : {}),
   };
+
+  const purchaseHoverProps =
+    fossilShopHoverLocked ??
+    (fossilShopCarved
+      ? fossilShopPressHover
+      : canAfford
+        ? {
+            filter: "brightness(1.05)",
+            borderColor: "blackAlpha.400",
+          }
+        : {});
+
+  const purchaseActiveProps =
+    fossilShopHoverLocked ??
+    (fossilShopCarved
+      ? fossilShopPressActive
+      : canAfford
+        ? { filter: "brightness(0.96)" }
+        : {});
 
   const cell = (
     <Flex gap="0.25" align="stretch" minW="0" w="full">
@@ -147,22 +301,30 @@ export const EvolutionShopCard = memo(function EvolutionShopCard({
           <Button
             type="button"
             {...cardChrome}
-            cursor={canAfford ? "pointer" : "not-allowed"}
-            _hover={
-              canAfford
-                ? { filter: "brightness(1.05)", borderColor: "blackAlpha.400" }
-                : undefined
+            aria-label={canActivate ? activateAriaLabel : undefined}
+            cursor={
+              buyInteractive
+                ? canAfford
+                  ? "pointer"
+                  : "not-allowed"
+                : canActivate
+                  ? "pointer"
+                  : "default"
             }
-            _active={canAfford ? { filter: "brightness(0.96)" } : undefined}
+            _hover={purchaseHoverProps}
+            _active={purchaseActiveProps}
             onClick={() => {
-              if (canAfford) onBuy(def);
+              if (buyInteractive && canAfford) onBuy(def);
+              else if (canActivate) onActivate();
             }}
           >
-            {cardBody}
+            {petroglyphInnerBorder}
+            {renderedCardBody}
           </Button>
         ) : (
-          <Box {...cardChrome} cursor="default">
-            {cardBody}
+          <Box {...cardChrome} cursor="default" _hover={fossilShopPressHover}>
+            {petroglyphInnerBorder}
+            {renderedCardBody}
           </Box>
         )}
       </Box>
@@ -188,6 +350,10 @@ export const EvolutionShopCard = memo(function EvolutionShopCard({
   );
 
   if (!canHoverFinePointer) {
+    return cell;
+  }
+
+  if (!showAfford && !interactive) {
     return cell;
   }
 

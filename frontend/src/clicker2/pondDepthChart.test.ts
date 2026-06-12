@@ -11,7 +11,7 @@ import {
   POND_DEPTH_CHART_MAX_VISIBLE_GLYPHS,
   POND_DEPTH_CHART_WRAP,
   POND_DEPTH_ZONE_COLORS,
-  wrapEmojiGlyphs,
+  wrapEmojiGlyphEntries,
 } from "./pondDepthChartModel";
 
 describe("pondDepthChart", () => {
@@ -65,18 +65,29 @@ describe("pondDepthChart", () => {
     expect(abyssIdx).toBe(leviIdx + 1);
   });
 
-  it("wraps glyphs every 30 code points", () => {
+  it("wraps glyphs every 30 emojis", () => {
     const ripples = getDenizenDef("ripples")!;
-    const glyphs = Array.from({ length: 31 }, () => "🌊").join("");
-    expect(wrapEmojiGlyphs(glyphs)).toEqual([
+    const entries = Array.from({ length: 31 }, () => "🌊");
+    expect(wrapEmojiGlyphEntries(entries)).toEqual([
       Array.from({ length: POND_DEPTH_CHART_WRAP }, () => "🌊").join(""),
       "🌊",
     ]);
-    const rows = partitionTimelineByDenizen(
-      Array.from({ length: 31 }, () => "🌊"),
-    );
+    const rows = partitionTimelineByDenizen(entries);
     expect(rows[0]?.glyphLines).toHaveLength(2);
     expect(rows[0]?.def).toBe(ripples);
+  });
+
+  it("does not split multi-codepoint emojis when wrapping", () => {
+    const human = getDenizenDef("humans")!.emoji;
+    const entries = Array.from({ length: 31 }, () => human);
+    const lines = wrapEmojiGlyphEntries(entries);
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toBe(Array.from({ length: 30 }, () => human).join(""));
+    expect(lines[1]).toBe(human);
+
+    const rows = partitionTimelineByDenizen(entries);
+    expect(rows[0]?.def.id).toBe("humans");
+    expect(rows[0]?.glyphLines).toEqual(lines);
   });
 
   it("lists every denizen id exactly once in depth order", () => {
@@ -122,8 +133,10 @@ describe("pondDepthChart", () => {
     const timeline = Array.from({ length: 80 }, () => "🌊");
     const rows = partitionTimelineByDenizen(timeline);
     expect(rows[0]?.count).toBe(80);
-    expect(Array.from(rows[0]!.glyphsJoined)).toHaveLength(
-      POND_DEPTH_CHART_MAX_VISIBLE_GLYPHS,
+    expect(rows[0]?.glyphsJoined).toBe(
+      Array.from({ length: POND_DEPTH_CHART_MAX_VISIBLE_GLYPHS }, () => "🌊").join(
+        "",
+      ),
     );
     expect(rows[0]?.glyphLines).toHaveLength(2);
     expect(rows[0]?.def).toBe(ripples);

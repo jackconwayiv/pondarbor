@@ -1,8 +1,18 @@
 import { Box, Button, CloseButton, Flex, Stack, Text } from "@chakra-ui/react";
 import { DESIGN } from "../theme/tokens";
 import { milestoneDisplayEmoji, type MilestoneDef } from "./milestones";
+import { FOSSIL_SHOP_CELEBRATE_CARD_CHROME } from "./specialtyTierColors";
+import { MUTAGEN_CELEBRATE_CARD_CHROME } from "./clicker2ShopUi";
 
 import "./MilestoneCelebrateCard.css";
+
+function milestoneUsesFossilShopCelebrateStyle(kind: MilestoneDef["kind"]): boolean {
+  return kind === "pond_cycle" || kind === "fossil_shop_purchase";
+}
+
+function milestoneUsesMutagenCelebrateStyle(kind: MilestoneDef["kind"]): boolean {
+  return kind === "mutation";
+}
 
 type Props = {
   milestone: MilestoneDef;
@@ -55,6 +65,8 @@ export function MilestoneCelebrateCard({
   motionPaused = false,
 }: Props) {
   const emoji = milestoneDisplayEmoji(milestone);
+  const fossilShopStyled = milestoneUsesFossilShopCelebrateStyle(milestone.kind);
+  const mutagenStyled = milestoneUsesMutagenCelebrateStyle(milestone.kind);
 
   return (
     <Box
@@ -63,13 +75,19 @@ export function MilestoneCelebrateCard({
       minW={0}
       h="full"
       borderRadius="md"
-      borderWidth="2px"
-      borderColor={DESIGN.nautical}
-      bg="nautical.subtle"
+      {...(mutagenStyled
+        ? MUTAGEN_CELEBRATE_CARD_CHROME
+        : fossilShopStyled
+          ? FOSSIL_SHOP_CELEBRATE_CARD_CHROME
+          : {
+              borderWidth: "2px",
+              borderColor: DESIGN.nautical,
+              bg: "nautical.subtle",
+              shadow: "md",
+            })}
       color="gray.800"
       px={2.5}
       py={2}
-      shadow="md"
     >
       <CloseButton
         position="absolute"

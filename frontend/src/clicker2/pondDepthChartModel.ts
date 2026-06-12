@@ -144,19 +144,40 @@ export function depthZoneBackground(zoneIndex: number): string {
   return POND_DEPTH_ZONE_COLORS[i]!;
 }
 
-/** Split a glyph string into rows of at most `wrap` code points. */
+/** Split timeline emoji entries into display lines of at most `wrap` emojis each. */
+export function wrapEmojiGlyphEntries(
+  glyphs: readonly string[],
+  wrap: number = POND_DEPTH_CHART_WRAP,
+): string[] {
+  if (glyphs.length === 0) return [];
+  const cap = Math.max(1, Math.floor(wrap));
+  const lines: string[] = [];
+  for (let i = 0; i < glyphs.length; i += cap) {
+    lines.push(glyphs.slice(i, i + cap).join(""));
+  }
+  return lines;
+}
+
+/**
+ * Split a joined glyph string into rows of at most `wrap` grapheme clusters.
+ * Prefer {@link wrapEmojiGlyphEntries} when individual timeline emojis are available.
+ */
 export function wrapEmojiGlyphs(
   glyphs: string,
   wrap: number = POND_DEPTH_CHART_WRAP,
 ): string[] {
   if (!glyphs) return [];
-  const cap = Math.max(1, Math.floor(wrap));
-  const codePoints = Array.from(glyphs);
-  const lines: string[] = [];
-  for (let i = 0; i < codePoints.length; i += cap) {
-    lines.push(codePoints.slice(i, i + cap).join(""));
+  return wrapEmojiGlyphEntries(splitEmojiGraphemes(glyphs), wrap);
+}
+
+function splitEmojiGraphemes(text: string): string[] {
+  if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
+    const segmenter = new Intl.Segmenter(undefined, {
+      granularity: "grapheme",
+    });
+    return [...segmenter.segment(text)].map((part) => part.segment);
   }
-  return lines;
+  return Array.from(text);
 }
 
 function warnUnknownEmojiOnce(emoji: string): void {
@@ -205,7 +226,7 @@ export function partitionTimelineByDenizen(
       def,
       count,
       glyphsJoined,
-      glyphLines: wrapEmojiGlyphs(glyphsJoined),
+      glyphLines: wrapEmojiGlyphEntries(visibleGlyphs),
       zoneIndex: depthZoneForDenizen(def.id),
     });
   }

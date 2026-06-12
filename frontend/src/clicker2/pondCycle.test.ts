@@ -11,7 +11,12 @@ import { FIRST_DENIZEN_ID } from "./denizens";
 import {
   applyPondCycle,
   fossilsGrantedOnCycle,
+  grantFossilsFromUnfossilizedStrata,
+  isPondCycleInterstitial,
+  pondCycleResetStillPending,
   repairEnergyAfterPondCycle,
+  repairCycleStartOwnedDenizens,
+  repairMidCycleInterstitialState,
   unfossilizedStrataCount,
 } from "./pondCycle";
 import { STRATUM_ENERGY_UNIT } from "./strata";
@@ -25,6 +30,29 @@ describe("unfossilizedStrataCount", () => {
 });
 
 describe("applyPondCycle", () => {
+  it("does not double-grant fossils when strata were already fossilized", () => {
+    const oneT = STRATUM_ENERGY_UNIT;
+    const base = createDefaultClicker2State();
+    const state = {
+      ...base,
+      fossils: 0,
+      fossilized_strata: 0,
+      statistics: {
+        ...base.statistics,
+        all_time_energy_earned: oneT * 27,
+      },
+    };
+
+    const afterGrant = grantFossilsFromUnfossilizedStrata(state);
+    expect(afterGrant.fossils).toBe(3);
+    expect(afterGrant.fossilized_strata).toBe(3);
+
+    const afterCycle = applyPondCycle(afterGrant, 1_000_000);
+    expect(afterCycle.fossils).toBe(3);
+    expect(afterCycle.fossilized_strata).toBe(3);
+    expect(afterCycle.total_fossils_earned).toBe(3);
+  });
+
   it("awards one fossil per unfossilized stratum, fossilizes them, and leaves zero unfossilized", () => {
     const oneT = STRATUM_ENERGY_UNIT;
     const base = createDefaultClicker2State();
@@ -361,6 +389,72 @@ describe("fossilized strata across pond cycles", () => {
     expect(afterSecond.fossils).toBe(3);
     expect(afterSecond.total_fossils_earned).toBe(3);
     expect(afterSecond.pond_era).toBe(3);
+  });
+});
+
+describe("repairMidCycleInterstitialState", () => {
+  it("applies pond cycle when interstitial flag is set but run state remains", () => {
+    const oneT = STRATUM_ENERGY_UNIT;
+    const base = createDefaultClicker2State();
+    const broken = {
+      ...base,
+      pond_era: 1,
+      pond_cycle_interstitial: true,
+      owned_denizens: { ripples: 4 },
+      fossils: 2,
+      fossilized_strata: 1,
+      statistics: {
+        ...base.statistics,
+        all_time_energy_earned: oneT * 8,
+        era_energy_earned: oneT,
+      },
+    };
+
+    expect(pondCycleResetStillPending(broken)).toBe(true);
+    const repaired = repairMidCycleInterstitialState(broken, 9_000_000);
+
+    expect(repaired.pond_cycle_interstitial).toBe(true);
+    expect(repaired.pond_era).toBe(2);
+    expect(repaired.owned_denizens).toEqual({});
+    expect(repaired.statistics.era_energy_earned).toBe(0);
+    expect(isPondCycleInterstitial(repaired)).toBe(true);
+  });
+
+  it("leaves already-cycled interstitial saves unchanged", () => {
+    const base = createDefaultClicker2State();
+    const midCycle = {
+      ...applyPondCycle(
+        {
+          ...base,
+          statistics: {
+            ...base.statistics,
+            all_time_energy_earned: STRATUM_ENERGY_UNIT * 8,
+          },
+        },
+        1_000_000,
+      ),
+      pond_cycle_interstitial: true,
+    };
+
+    expect(pondCycleResetStillPending(midCycle)).toBe(false);
+    expect(repairMidCycleInterstitialState(midCycle, 2_000_000)).toEqual(midCycle);
+  });
+});
+
+describe("repairCycleStartOwnedDenizens", () => {
+  it("backfills ripples when Ripples of Eternity is owned but denizens were reset earlier", () => {
+    const base = createDefaultClicker2State();
+    const repaired = repairCycleStartOwnedDenizens({
+      ...base,
+      pond_era: 2,
+      owned_denizens: {},
+      owned_specialties: {
+        [STRATIFIED_POND_SPECIALTY_ID]: true,
+        [FOSSIL_RECORD_SPECIALTY_ID]: true,
+        [RIPPLES_OF_ETERNITY_SPECIALTY_ID]: true,
+      },
+    });
+    expect(repaired.owned_denizens).toEqual({ ripples: 10 });
   });
 });
 

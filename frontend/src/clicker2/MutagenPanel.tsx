@@ -16,10 +16,10 @@ import {
 import PondButton from "../PondButton";
 import { DESIGN } from "../theme/tokens";
 
-import { MUTAGEN_LABEL, mutagenCountLabel, MUTAGENS_LABEL } from "./clicker2Copy";
+import { MUTAGEN_LABEL, mutagenCountLabel } from "./clicker2Copy";
 import {
   CLICKER2_SHOP_SECTION_HEADING_PROPS,
-  CLICKER2_MUTAGEN_STAT_CHIP_TEXT_PROPS,
+  DEPTH_SUMMARY_MUTAGEN_HEADING_PROPS,
   MUTAGEN_WARM_GRADIENT,
 } from "./clicker2ShopUi";
 import {
@@ -60,18 +60,24 @@ function MutagenPanelContent({
       w="full"
       cursor={embedded && canHoverFinePointer ? "help" : undefined}
     >
-      <Flex justify="space-between" align="center" gap="2">
-        <Text {...CLICKER2_SHOP_SECTION_HEADING_PROPS}>{MUTAGENS_LABEL}</Text>
-        {mutagensBank > 0 ? (
-          <Text
-            {...(embedded ? CLICKER2_MUTAGEN_STAT_CHIP_TEXT_PROPS : undefined)}
-            fontSize={embedded ? undefined : "sm"}
-            fontWeight={embedded ? undefined : "medium"}
-            fontVariantNumeric="tabular-nums"
-          >
-            {mutagenCountLabel(mutagensBank)} {MUTAGEN_EMOJI}
-          </Text>
-        ) : null}
+      <Flex align="center" gap="1" minW="0">
+        <Text
+          fontSize={embedded ? "sm" : "xs"}
+          lineHeight="1"
+          aria-hidden
+          flexShrink={0}
+        >
+          {MUTAGEN_EMOJI}
+        </Text>
+        <Text
+          {...(embedded
+            ? DEPTH_SUMMARY_MUTAGEN_HEADING_PROPS
+            : CLICKER2_SHOP_SECTION_HEADING_PROPS)}
+          fontVariantNumeric="tabular-nums"
+          minW="0"
+        >
+          {mutagenCountLabel(mutagensBank)}
+        </Text>
       </Flex>
 
       {collectible ? (

@@ -11,3 +11,11 @@ export const CLICKER2_POND_RIPPLES_TEXTURE_SRC = publicAssetUrl("pond-ripples.we
 
 /** Opacity of the ripple tile layer over the pond water gradient. */
 export const CLICKER2_POND_RIPPLES_TEXTURE_OPACITY = 0.05;
+
+/** Tiled sandstone texture for the fossil shop interstitial panel (public/). */
+export const FOSSIL_SHOP_SANDSTONE_TEXTURE_SRC = publicAssetUrl(
+  "fossil-shop-sandstone.webp",
+);
+
+/** Opacity of the sandstone tile layer inside the fossil shop panel. */
+export const FOSSIL_SHOP_SANDSTONE_TEXTURE_OPACITY = 0.15;

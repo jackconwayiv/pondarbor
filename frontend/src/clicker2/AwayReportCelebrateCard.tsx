@@ -1,11 +1,8 @@
 import { Box, CloseButton, Flex, Stack, Text } from "@chakra-ui/react";
 
-import { MUTAGEN_WARM_GRADIENT } from "./clicker2ShopUi";
+import { MUTAGEN_CELEBRATE_CARD_CHROME } from "./clicker2ShopUi";
 import { MUTAGEN_EMOJI } from "./mutagens";
-import {
-  FOSSIL_SHOP_CARD_BORDER_WIDTH,
-  FOSSIL_SHOP_CARD_GRADIENT,
-} from "./specialtyTierColors";
+import { FOSSIL_SHOP_CELEBRATE_CARD_CHROME } from "./specialtyTierColors";
 
 import "./MilestoneCelebrateCard.css";
 
@@ -30,6 +27,18 @@ export function awayReportFaeEnergyMessage(formattedEnergy: string): string {
   return `Your fae folk generated ${formattedEnergy} while you were away.`;
 }
 
+/** Fae away-report cards are hidden below this amount (energy is still granted). */
+export const AWAY_REPORT_FAE_ENERGY_CARD_MIN = 100;
+
+export function shouldShowAwayReportFaeEnergyCard(
+  faeEnergyGenerated: number,
+): boolean {
+  return (
+    Number.isFinite(faeEnergyGenerated) &&
+    faeEnergyGenerated >= AWAY_REPORT_FAE_ENERGY_CARD_MIN
+  );
+}
+
 export function AwayReportCelebrateCard({
   cardId,
   message,
@@ -46,13 +55,12 @@ export function AwayReportCelebrateCard({
       minW={0}
       h="full"
       borderRadius="md"
-      borderWidth={mutagenStyled ? "1px" : FOSSIL_SHOP_CARD_BORDER_WIDTH}
-      borderColor={mutagenStyled ? "sky.border" : "blackAlpha.300"}
-      background={mutagenStyled ? MUTAGEN_WARM_GRADIENT : FOSSIL_SHOP_CARD_GRADIENT}
+      {...(mutagenStyled
+        ? MUTAGEN_CELEBRATE_CARD_CHROME
+        : FOSSIL_SHOP_CELEBRATE_CARD_CHROME)}
       color="gray.800"
       px={2.5}
       py={2}
-      shadow="md"
     >
       <CloseButton
         position="absolute"
@@ -67,7 +75,7 @@ export function AwayReportCelebrateCard({
       <Stack gap={0.5} pr={5}>
         <Flex gap="1" align="center">
           <Text fontSize="sm" lineHeight="1" aria-hidden flexShrink={0}>
-            {emoji || (mutagenStyled ? MUTAGEN_EMOJI : "🍥")}
+            {emoji || (mutagenStyled ? MUTAGEN_EMOJI : "🌀")}
           </Text>
           <Text fontSize="xs" color="gray.700" fontStyle="italic" lineHeight="1.35">
             {message}

@@ -51,6 +51,7 @@ function DenizenDetails({
   energyProduced,
   cost,
   maxed,
+  costPerEps,
   mutationLevel,
 }: {
   def: DenizenDef;
@@ -61,6 +62,7 @@ function DenizenDetails({
   energyProduced: number;
   cost: number | null;
   maxed: boolean;
+  costPerEps: number | null;
   mutationLevel?: number;
 }) {
   const singularLabel = def.name.toLowerCase();
@@ -91,6 +93,15 @@ function DenizenDetails({
         </ShopEffectText>
         ).
       </Text>
+      {costPerEps != null ? (
+        <Text fontSize="xs" lineHeight="1.35" fontVariantNumeric="tabular-nums">
+          The next copy costs{" "}
+          <ShopEffectText as="span" display="inline" fontVariantNumeric="tabular-nums">
+            {formatEnergyAmount(costPerEps)}
+          </ShopEffectText>{" "}
+          energy per 1 EpS.
+        </Text>
+      ) : null}
       <Text fontSize="xs" lineHeight="1.35" fontVariantNumeric="tabular-nums">
         <ShopEffectText as="span" display="inline" fontVariantNumeric="tabular-nums">
           {formatEnergyAmount(energyProduced)}

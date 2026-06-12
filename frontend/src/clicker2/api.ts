@@ -12,9 +12,16 @@ import { DENIZEN_IDS, FIRST_DENIZEN_ID } from "./denizens";
 import { isRetiredWindSpecialtyId } from "./retiredWindEvolutions";
 import { SPECIALTY_IDS } from "./specialties";
 import { rollWeatherSpawnDelayMs } from "./weatherEvents";
+import {
+  applyPetroglyphsOnCycleStart,
+  normalizePetroglyphEtchPool,
+  normalizePetroglyphSlots,
+  reconcilePetroglyphSlotsWithOwned,
+  type PetroglyphSlot,
+} from "./petroglyphs";
 
-export const SCHEMA_VERSION = 7;
-export const CATALOG_CONTENT_VERSION = 22;
+export const SCHEMA_VERSION = 10;
+export const CATALOG_CONTENT_VERSION = 28;
 
 export type Clicker2Statistics = {
   total_clicks: number;
@@ -66,6 +73,12 @@ export type Clicker2GameState = {
   fossilized_strata: number;
   /** Wall-clock epoch ms when save was last touched while the game tab was alive (0 = never). */
   last_active_at_ms: number;
+  /** Fossil shop petroglyphs and their etched energy-shop evolutions. */
+  petroglyph_slots: readonly PetroglyphSlot[];
+  /** Energy-shop evolutions from the run that just ended; etchable until interstitial ends. */
+  petroglyph_etch_pool: readonly number[];
+  /** Fossil shop interstitial in progress; pond cycle reset is persisted until cleared. */
+  pond_cycle_interstitial: boolean;
   statistics: Clicker2Statistics;
 };
 
@@ -140,6 +153,9 @@ export function createDefaultClicker2State(): Clicker2GameState {
     total_fossils_earned: 0,
     fossilized_strata: 0,
     last_active_at_ms: 0,
+    petroglyph_slots: [],
+    petroglyph_etch_pool: [],
+    pond_cycle_interstitial: false,
     statistics: createDefaultClicker2Statistics(),
   };
 }
@@ -314,12 +330,25 @@ export function normalizeClicker2State(raw: unknown): Clicker2GameState {
   if (total_fossils_earned < fossils) total_fossils_earned = fossils;
   const fossilized_strata = Math.floor(numField(o, "fossilized_strata", 0));
   const last_active_at_ms = numField(o, "last_active_at_ms", 0);
+  const petroglyph_slots = reconcilePetroglyphSlotsWithOwned(
+    owned_specialties,
+    normalizePetroglyphSlots(o.petroglyph_slots),
+  );
+  const petroglyph_etch_pool = normalizePetroglyphEtchPool(
+    o.petroglyph_etch_pool,
+  );
+  const pond_cycle_interstitial = o.pond_cycle_interstitial === true;
+  const petroglyphOwnedGrant = applyPetroglyphsOnCycleStart(
+    owned_specialties,
+    specialty_acquired_at_ms,
+    petroglyph_slots,
+  );
 
   return {
     energy,
     owned_denizens,
-    owned_specialties,
-    specialty_acquired_at_ms,
+    owned_specialties: petroglyphOwnedGrant.owned_specialties,
+    specialty_acquired_at_ms: petroglyphOwnedGrant.specialty_acquired_at_ms,
     revealed_denizens,
     catalog_version,
     pond_started_at_ms,
@@ -336,6 +365,9 @@ export function normalizeClicker2State(raw: unknown): Clicker2GameState {
     total_fossils_earned,
     fossilized_strata,
     last_active_at_ms,
+    petroglyph_slots,
+    petroglyph_etch_pool,
+    pond_cycle_interstitial,
     statistics,
   };
 }

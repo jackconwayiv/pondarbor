@@ -7,7 +7,7 @@ import {
   type Clicker2GameState,
   type Clicker2StateResponse,
 } from "./api";
-import { repairEnergyAfterPondCycle } from "./pondCycle";
+import { repairEnergyAfterPondCycle, repairMidCycleInterstitialState } from "./pondCycle";
 
 const STORAGE_KEY_PREFIX = "pondarbor.clicker2.v1";
 
@@ -84,8 +84,11 @@ export function finalizeClicker2LoadState(
 ): Clicker2GameState {
   const merged = resolveClicker2LoadState(server, local);
   const pondStart = resolvePondStartedAtMs(merged, server.created_at);
-  return repairEnergyAfterPondCycle({
+  const withPondStart = {
     ...merged,
     pond_started_at_ms: pondStart,
-  });
+  };
+  return repairEnergyAfterPondCycle(
+    repairMidCycleInterstitialState(withPondStart, Date.now()),
+  );
 }

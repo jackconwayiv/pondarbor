@@ -25,11 +25,70 @@ export const FOSSIL_SHOP_SAND = "#EDE4D3";
 export const FOSSIL_SHOP_SAND_MID = "#E3D4BC";
 export const FOSSIL_SHOP_SAND_DEEP = "#D9C7A8";
 
+/** Almost-white almond sand — fossil shop interstitial tray. */
+export const FOSSIL_SHOP_ALMOND_BG = "#FAF8F4";
+
+/** Softer sandy surround behind the fossil shop tray. */
+export const FOSSIL_SHOP_BACKDROP_BG = "#EBE4D8";
+
 /** Fossil Shop card background (shop + stats). */
 export const FOSSIL_SHOP_CARD_GRADIENT = `linear-gradient(to bottom right, ${FOSSIL_SHOP_SAND} 0%, ${FOSSIL_SHOP_SAND_MID} 50%, ${FOSSIL_SHOP_SAND_DEEP} 100%)`;
 
+/** Unpurchased fossil shop tree / for-sale cards before ownership. */
+export const FOSSIL_SHOP_CARD_UNPURCHASED_GRADIENT =
+  "linear-gradient(to bottom right, #ECECEC 0%, #DDDDDD 50%, #CECECE 100%)";
+
+/** Unpurchased fossil shop nodes when the player cannot afford the fossil cost. */
+export const FOSSIL_SHOP_CARD_UNAFFORDABLE_GRADIENT =
+  "linear-gradient(to bottom right, #A8A8A8 0%, #888888 50%, #686868 100%)";
+
+export function fossilShopCardBackgroundGradient(
+  owned: boolean,
+  forSale: boolean,
+  canAffordFossils: boolean,
+): string {
+  if (owned) return FOSSIL_SHOP_CARD_GRADIENT;
+  if (forSale && !canAffordFossils) return FOSSIL_SHOP_CARD_UNAFFORDABLE_GRADIENT;
+  return FOSSIL_SHOP_CARD_UNPURCHASED_GRADIENT;
+}
+
 /** Fossil Shop card outline (shop + stats). */
 export const FOSSIL_SHOP_CARD_BORDER_WIDTH = "6px";
+
+/** Headline-strip celebrate cards (fae away reports, pond cycle / fossil shop milestones). */
+export const FOSSIL_SHOP_CELEBRATE_CARD_CHROME = {
+  borderWidth: FOSSIL_SHOP_CARD_BORDER_WIDTH,
+  borderColor: "blackAlpha.300",
+  background: FOSSIL_SHOP_CARD_GRADIENT,
+  shadow: "md",
+} as const;
+
+/** Carved-into-sandstone inset shadows for fossil shop nodes (deepen on hover). */
+export const FOSSIL_SHOP_CARD_INSET_SHADOW =
+  "inset 0 2px 5px rgba(72, 56, 38, 0.2), inset 0 1px 2px rgba(72, 56, 38, 0.14), inset 0 -1px 1px rgba(255, 248, 240, 0.45)";
+
+export const FOSSIL_SHOP_CARD_INSET_SHADOW_HOVER =
+  "inset 0 4px 9px rgba(72, 56, 38, 0.26), inset 0 2px 4px rgba(72, 56, 38, 0.18), inset 0 -1px 1px rgba(255, 248, 240, 0.3)";
+
+export const FOSSIL_SHOP_CARD_INSET_SHADOW_ACTIVE =
+  "inset 0 5px 12px rgba(72, 56, 38, 0.32), inset 0 3px 6px rgba(72, 56, 38, 0.22), inset 0 -1px 1px rgba(255, 248, 240, 0.2)";
+
+/** Lighter fill inside the petroglyph dashed inner frame. */
+export const FOSSIL_SHOP_PETROGLYPH_INNER_BG = FOSSIL_SHOP_ALMOND_BG;
+
+/** Dashed inner frame on petroglyph slot cards, inside the thick fossil border. */
+export const FOSSIL_SHOP_PETROGLYPH_INNER_BORDER_PROPS = {
+  position: "absolute" as const,
+  inset: "4px",
+  zIndex: 0,
+  bg: FOSSIL_SHOP_PETROGLYPH_INNER_BG,
+  borderWidth: "1px",
+  borderStyle: "dashed" as const,
+  borderColor: "black",
+  borderRadius: "sm",
+  pointerEvents: "none" as const,
+  "aria-hidden": true,
+} as const;
 
 /** Hover / mobile help tooltips for fossil-shop purchases. */
 export const FOSSIL_SHOP_TOOLTIP_SURFACE_PROPS = {

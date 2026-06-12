@@ -6,6 +6,7 @@ import {
   buildCloudChain,
   buildTreeChain,
   buildTreeCloudFossilGates,
+  GATHERING_CLOUDS_SPECIALTY_ID,
 } from "./treeCloudEvolutions";
 import { PAIRING_SPECIALTIES } from "./pairingSpecialties.generated";
 import {
@@ -39,7 +40,11 @@ export type SpecialtyEffect =
   | { type: "strata_effect_fraction"; fraction: number }
   | { type: "cycle_start_denizen"; denizenId: string; count: number }
   | { type: "weather_spawn_frequency_bonus"; percent: number }
-  | { type: "offline_eps_bonus"; epsPercent: number; maxMinutes: number };
+  | { type: "offline_eps_bonus"; epsPercent: number; maxMinutes: number }
+  | { type: "offline_eps_bonus_percent_add"; addPercent: number }
+  | { type: "offline_eps_bonus_max_minutes"; maxMinutes: number }
+  | { type: "petroglyph_slot" }
+  | { type: "denizen_yield_cost_tooltip"; throughDenizenId: string };
 
 export type PairingUnlockRequirements = Readonly<Record<string, number>>;
 
@@ -872,11 +877,28 @@ function buildStrataEffectChain(): SpecialtyDef[] {
     price: 0,
     priceFossils: 50,
     fossilShopOnly: true,
-    requiresOwnedSpecialtyId: stratifiedPondId,
+    requiresOwnedSpecialtyId: fossilRecordId,
     effect: { type: "cycle_start_denizen", denizenId: "ripples", count: 10 },
     effectText: "You start each pond cycle with 10 ripples.",
     ecologyNote: "Just a wee little splash to get you started on your next cycle.",
     pollinatorEmoji: "💦",
+  };
+
+  const petroglyphIId = 725;
+  const petroglyphI: SpecialtyDef = {
+    id: petroglyphIId,
+    name: "Petroglyph I",
+    denizenId: FOSSIL_SPECIALTY_DENIZEN_ID,
+    unlockOwned: 0,
+    price: 0,
+    priceFossils: 100,
+    fossilShopOnly: true,
+    requiresOwnedSpecialtyId: ripplesOfEternityId,
+    effect: { type: "petroglyph_slot" },
+    effectText: "Etch one of your owned evolutions into eternity.",
+    ecologyNote:
+      "Carve a symbol into stone so one evolution from this cycle survives every pond reset.",
+    pollinatorEmoji: "🪨",
   };
 
   const elNinoId = 687;
@@ -888,11 +910,83 @@ function buildStrataEffectChain(): SpecialtyDef[] {
     price: 0,
     priceFossils: 75,
     fossilShopOnly: true,
-    requiresOwnedSpecialtyId: stratifiedPondId,
+    requiresOwnedSpecialtyId: GATHERING_CLOUDS_SPECIALTY_ID,
     effect: { type: "weather_spawn_frequency_bonus", percent: 5 },
     effectText: "Weather events are 5% more frequent.",
     ecologyNote: "They say it's every 2 to 7 years, but that number seems to change every year.",
     pollinatorEmoji: "⛈️",
+  };
+
+  const microscopeId = 726;
+  const microscope: SpecialtyDef = {
+    id: microscopeId,
+    name: "Microscope",
+    denizenId: FOSSIL_SPECIALTY_DENIZEN_ID,
+    unlockOwned: 0,
+    price: 0,
+    priceFossils: 10,
+    fossilShopOnly: true,
+    requiresOwnedSpecialtyId: stratifiedPondId,
+    effect: { type: "denizen_yield_cost_tooltip", throughDenizenId: "zooplankton" },
+    effectText:
+      "Shows cost per EpS on denizen tooltips from Ripples through Zooplankton.",
+    ecologyNote:
+      "Peer through glass at the pond's smallest economies—every micron of yield has a price.",
+    pollinatorEmoji: "🔬",
+  };
+
+  const glassesId = 727;
+  const glasses: SpecialtyDef = {
+    id: glassesId,
+    name: "Glasses",
+    denizenId: FOSSIL_SPECIALTY_DENIZEN_ID,
+    unlockOwned: 0,
+    price: 0,
+    priceFossils: 25,
+    fossilShopOnly: true,
+    requiresOwnedSpecialtyId: microscopeId,
+    effect: { type: "denizen_yield_cost_tooltip", throughDenizenId: "large_fish" },
+    effectText:
+      "Shows cost per EpS on denizen tooltips from Ripples through Large Fish.",
+    ecologyNote:
+      "Sharper sight lines reveal which midwater neighbors earn their keep.",
+    pollinatorEmoji: "👓",
+  };
+
+  const binocularsId = 728;
+  const binoculars: SpecialtyDef = {
+    id: binocularsId,
+    name: "Binoculars",
+    denizenId: FOSSIL_SPECIALTY_DENIZEN_ID,
+    unlockOwned: 0,
+    price: 0,
+    priceFossils: 50,
+    fossilShopOnly: true,
+    requiresOwnedSpecialtyId: glassesId,
+    effect: { type: "denizen_yield_cost_tooltip", throughDenizenId: "humans" },
+    effectText:
+      "Shows cost per EpS on denizen tooltips from Ripples through Humans.",
+    ecologyNote:
+      "Scan the far shore and sky edge—big visitors still post a bill per watt of EpS.",
+    pollinatorEmoji: "🥽",
+  };
+
+  const telescopeId = 729;
+  const telescope: SpecialtyDef = {
+    id: telescopeId,
+    name: "Telescope",
+    denizenId: FOSSIL_SPECIALTY_DENIZEN_ID,
+    unlockOwned: 0,
+    price: 0,
+    priceFossils: 100,
+    fossilShopOnly: true,
+    requiresOwnedSpecialtyId: binocularsId,
+    effect: { type: "denizen_yield_cost_tooltip", throughDenizenId: "celestials" },
+    effectText:
+      "Shows cost per EpS on denizen tooltips from Ripples through Celestials.",
+    ecologyNote:
+      "Chart the whole basin to the horizon—celestial tiers included in the ledger.",
+    pollinatorEmoji: "🔭",
   };
 
   const faePortalId = 720;
@@ -902,15 +996,87 @@ function buildStrataEffectChain(): SpecialtyDef[] {
     denizenId: FOSSIL_SPECIALTY_DENIZEN_ID,
     unlockOwned: 0,
     price: 0,
-    priceFossils: 7,
+    priceFossils: 1,
     fossilShopOnly: true,
     requiresOwnedSpecialtyId: stratifiedPondId,
     effect: { type: "offline_eps_bonus", epsPercent: 5, maxMinutes: 60 },
     effectText:
-      "Your pond earns 5% of your energy per second for the first hour you're offline.",
+      "Your pond earns 5% of your energy per second for the first hour you're offline, then 0.5% thereafter.",
     ecologyNote:
       "Welcome the fae folk to your pond to work while you're away.",
-    pollinatorEmoji: "🍥",
+    pollinatorEmoji: "🌀",
+  };
+
+  const pixiesId = 721;
+  const pixies: SpecialtyDef = {
+    id: pixiesId,
+    name: "Pixies",
+    denizenId: FOSSIL_SPECIALTY_DENIZEN_ID,
+    unlockOwned: 0,
+    price: 0,
+    priceFossils: 5,
+    fossilShopOnly: true,
+    requiresOwnedSpecialtyId: faePortalId,
+    effect: { type: "offline_eps_bonus_percent_add", addPercent: 10 },
+    effectText:
+      "Your Fae Portal gains an additional 10% of your EpS while offline.",
+    ecologyNote:
+      "Tiny wings and mischief — the first fae to answer the portal's call.",
+    pollinatorEmoji: "🧚",
+  };
+
+  const impsId = 722;
+  const imps: SpecialtyDef = {
+    id: impsId,
+    name: "Imps",
+    denizenId: FOSSIL_SPECIALTY_DENIZEN_ID,
+    unlockOwned: 0,
+    price: 0,
+    priceFossils: 5,
+    fossilShopOnly: true,
+    requiresOwnedSpecialtyId: faePortalId,
+    effect: { type: "offline_eps_bonus_max_minutes", maxMinutes: 120 },
+    effectText:
+      "Your Fae Portal now gains energy for the first 2 hours you're offline.",
+    ecologyNote:
+      "They linger longer when no one is watching — up to a point.",
+    pollinatorEmoji: "👿",
+  };
+
+  const gnomesId = 723;
+  const gnomes: SpecialtyDef = {
+    id: gnomesId,
+    name: "Gnomes",
+    denizenId: FOSSIL_SPECIALTY_DENIZEN_ID,
+    unlockOwned: 0,
+    price: 0,
+    priceFossils: 50,
+    fossilShopOnly: true,
+    requiresOwnedSpecialtyId: pixiesId,
+    effect: { type: "offline_eps_bonus_percent_add", addPercent: 10 },
+    effectText:
+      "Your Fae Portal gains an additional 10% of your EpS while offline.",
+    ecologyNote:
+      "Garden guardians who know every stone and root in the shallows.",
+    pollinatorEmoji: "🍄‍🟫",
+  };
+
+  const gremlinsId = 724;
+  const gremlins: SpecialtyDef = {
+    id: gremlinsId,
+    name: "Gremlins",
+    denizenId: FOSSIL_SPECIALTY_DENIZEN_ID,
+    unlockOwned: 0,
+    price: 0,
+    priceFossils: 50,
+    fossilShopOnly: true,
+    requiresOwnedSpecialtyId: impsId,
+    effect: { type: "offline_eps_bonus_max_minutes", maxMinutes: 240 },
+    effectText:
+      "Your Fae Portal now gains energy for the first 4 hours you're offline.",
+    ecologyNote:
+      "Night-shift workers who refuse to clock out until dawn — twice over.",
+    pollinatorEmoji: "👺",
   };
 
   const energyTiers: SpecialtyDef[] = tiers.map((t, index) => ({
@@ -928,7 +1094,23 @@ function buildStrataEffectChain(): SpecialtyDef[] {
     ecologyNote: t.ecologyNote,
   }));
 
-  return [stratifiedPond, fossilRecord, faePortal, ripplesOfEternity, elNino, ...energyTiers];
+  return [
+    stratifiedPond,
+    fossilRecord,
+    petroglyphI,
+    microscope,
+    glasses,
+    binoculars,
+    telescope,
+    faePortal,
+    pixies,
+    imps,
+    gnomes,
+    gremlins,
+    ripplesOfEternity,
+    elNino,
+    ...energyTiers,
+  ];
 }
 
 type Tier45ChainOverride = {

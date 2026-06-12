@@ -70,17 +70,37 @@ import {
   AwayReportCelebrateCard,
   awayReportFaeEnergyMessage,
   awayReportMutagenMessage,
+  shouldShowAwayReportFaeEnergyCard,
   type AwayReportCardId,
 } from "./AwayReportCelebrateCard";
 import { useClicker2RotatingHeadline } from "./useClicker2RotatingHeadline";
 import MutagenStrataCard from "./MutagenStrataCard";
 import CyclePondConfirmModal from "./CyclePondConfirmModal";
-import FossilShopSection from "./FossilShopSection";
+import BeginNewCycleConfirmModal from "./BeginNewCycleConfirmModal";
+import FossilShopTreeView from "./FossilShopTreeView";
+import PetroglyphEtchPickerModal from "./PetroglyphEtchPickerModal";
 import PondCycleFadeOverlay from "./PondCycleFadeOverlay";
 import {
-  isFossilShopUnlocked,
-} from "./fossilShop";
-import { applyPondCycle, unfossilizedStrataCount } from "./pondCycle";
+  canBuyFossilShopDuringFlow,
+  isFossilShopInterstitialUiPhase,
+  isPondCycleGameplayPaused,
+  type PondCycleFlowPhase,
+} from "./pondCycleFlow";
+import {
+  applyPondCycle,
+  unfossilizedStrataCount,
+} from "./pondCycle";
+import { PETROGLYPH_I_SPECIALTY_ID, hasAffordableFossilShopPurchase, mergeCycleStartOwnedDenizens } from "./fossilShop";
+import {
+  createBlankPetroglyphSlot,
+  eligiblePetroglyphEvolutionDefs,
+  syncOwnedFromPetroglyphEtch,
+  type PetroglyphSlot,
+} from "./petroglyphs";
+import {
+  POND_CYCLE_SAVE_BUSY,
+  POND_CYCLE_SAVE_RETRY_BUTTON,
+} from "./clicker2Copy";
 import {
   celebrationMilestoneDefs,
   evaluateNewMilestones,
@@ -121,6 +141,7 @@ import {
   ensureMutagenPipelineStarted,
   getMutationLevel,
   isMutagenSystemUnlocked,
+  MUTAGEN_UNLOCK_ALL_TIME_ENERGY,
   MUTAGEN_EMOJI,
   msUntilMutagenAutoCollect,
   msUntilMutagenCollectible,
@@ -128,6 +149,7 @@ import {
   settleMutagenPipeline,
 } from "./mutagens";
 import { denizenPerCopyEpsMap, simulateGame } from "./simulation";
+import { denizenYieldCostTooltipForOwned } from "./denizenYieldCostTooltip";
 import { settleOfflineEnergyOnLoad } from "./offlineEarnings";
 import {
   getDisplayEpsSnapshot,
@@ -139,7 +161,7 @@ import {
   useClicker2GameLoop,
   type Clicker2GameLoopRefs,
 } from "./useClicker2GameLoop";
-import { blossomCountFromMilestones } from "./blossoms";
+import { BLOSSOM_RING_MAX, blossomCountFromMilestones } from "./blossoms";
 import {
   energyToNextStratum,
   stratumLevelFromAllTimeEnergy,
@@ -201,9 +223,9 @@ const SAVED_BANNER_MS = 5000;
  * 1. Uncomment SHOW_CLICKER2_DEV_TOOLS below and set true.
  * 2. Uncomment blocks marked CLICKER2_DEV_TOOLS (state, handlers, UI).
  * 3. Restore imports: BLOSSOM_RING_MAX (blossoms), MUTAGEN_UNLOCK_ALL_TIME_ENERGY (mutagens).
- * Gated at runtime: SHOW_CLICKER2_DEV_TOOLS && sessionUser?.user?.is_staff
+ * Gated at runtime: SHOW_CLICKER2_DEV_TOOLS && (is_staff || Vite dev server)
  */
-// const SHOW_CLICKER2_DEV_TOOLS = true;
+const SHOW_CLICKER2_DEV_TOOLS = false;
 
 type LoadStatus = "loading" | "ready" | "error";
 
@@ -271,10 +293,30 @@ export default function Clicker2GamePage() {
   const [fossils, setFossils] = useState(0);
   const [totalFossilsEarned, setTotalFossilsEarned] = useState(0);
   const [fossilizedStrata, setFossilizedStrata] = useState(0);
+  const [petroglyphSlots, setPetroglyphSlots] = useState<readonly PetroglyphSlot[]>(
+    [],
+  );
+  const [petroglyphEtchPool, setPetroglyphEtchPool] = useState<readonly number[]>(
+    [],
+  );
+  const [petroglyphPickerOpen, setPetroglyphPickerOpen] = useState(false);
+  const [petroglyphPickerSlotIndex, setPetroglyphPickerSlotIndex] = useState<
+    number | null
+  >(null);
   const [cyclePondModalOpen, setCyclePondModalOpen] = useState(false);
-  const [pondCycleFadeActive, setPondCycleFadeActive] = useState(false);
-  const pondCycleFadeActiveRef = useRef(false);
-  /** Frozen HUD counter for the white fade (game loop paused until fade ends). */
+  const [beginNewCycleModalOpen, setBeginNewCycleModalOpen] = useState(false);
+  const [pondCycleFlowPhase, setPondCycleFlowPhase] =
+    useState<PondCycleFlowPhase>("idle");
+  const pondCycleFlowPhaseRef = useRef<PondCycleFlowPhase>("idle");
+  const [pondCycleOverlayActive, setPondCycleOverlayActive] = useState(false);
+  const [pondCycleFadeToWhite, setPondCycleFadeToWhite] = useState(true);
+  const [pondCycleSaveBusy, setPondCycleSaveBusy] = useState(false);
+  const pondCyclePaused = isPondCycleGameplayPaused(pondCycleFlowPhase);
+  const setPondCyclePhase = useCallback((phase: PondCycleFlowPhase) => {
+    pondCycleFlowPhaseRef.current = phase;
+    setPondCycleFlowPhase(phase);
+  }, []);
+  /** Frozen HUD counter while cycle flow is active (game loop paused until flow ends). */
   const [pondCycleCounterFrozenText, setPondCycleCounterFrozenText] = useState<
     string | null
   >(null);
@@ -321,16 +363,14 @@ export default function Clicker2GamePage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
 
-  /*
-   * CLICKER2_DEV_TOOLS — staff-only shop-column QA controls (see SHOW_CLICKER2_DEV_TOOLS).
-   * const showClicker2DevTools =
-   *   SHOW_CLICKER2_DEV_TOOLS && !!sessionUser?.user?.is_staff;
-   * const showClicker2DevToolsRef = useRef(showClicker2DevTools);
-   * showClicker2DevToolsRef.current = showClicker2DevTools;
-   * const [devBlossomOverride, setDevBlossomOverride] = useState<number | null>(
-   *   null,
-   * );
-   */
+  const showClicker2DevTools =
+    SHOW_CLICKER2_DEV_TOOLS &&
+    (!!sessionUser?.user?.is_staff || import.meta.env.DEV);
+  const showClicker2DevToolsRef = useRef(showClicker2DevTools);
+  showClicker2DevToolsRef.current = showClicker2DevTools;
+  const [devBlossomOverride, setDevBlossomOverride] = useState<number | null>(
+    null,
+  );
 
   const saveDirtyRef = useRef(false);
   const saveInFlightRef = useRef(false);
@@ -394,6 +434,10 @@ export default function Clicker2GamePage() {
   totalFossilsEarnedRef.current = totalFossilsEarned;
   const fossilizedStrataRef = useRef(fossilizedStrata);
   fossilizedStrataRef.current = fossilizedStrata;
+  const petroglyphSlotsRef = useRef(petroglyphSlots);
+  petroglyphSlotsRef.current = petroglyphSlots;
+  const petroglyphEtchPoolRef = useRef(petroglyphEtchPool);
+  petroglyphEtchPoolRef.current = petroglyphEtchPool;
   const energyRef = useRef(energy);
   energyRef.current = energy;
   const stateRef = useRef<Clicker2GameState>(createDefaultClicker2State());
@@ -492,6 +536,9 @@ export default function Clicker2GamePage() {
       total_fossils_earned: totalFossilsEarnedRef.current,
       fossilized_strata: fossilizedStrataRef.current,
       last_active_at_ms: Date.now(),
+      petroglyph_slots: petroglyphSlotsRef.current,
+      petroglyph_etch_pool: petroglyphEtchPoolRef.current,
+      pond_cycle_interstitial: stateRef.current.pond_cycle_interstitial === true,
       statistics: statisticsRef.current,
     };
   }, [refreshWeatherSpawnRemainingForSave]);
@@ -555,9 +602,12 @@ export default function Clicker2GamePage() {
   }, []);
 
   const runBackendSave = useCallback(
-    async (fromScheduledRetry = false) => {
-      if (!saveDirtyRef.current) return;
-      if (saveInFlightRef.current) return;
+    async (
+      fromScheduledRetry = false,
+      scheduleRetry = true,
+    ): Promise<boolean> => {
+      if (!saveDirtyRef.current) return true;
+      if (saveInFlightRef.current) return false;
 
       if (!fromScheduledRetry) saveFailureCountRef.current = 0;
 
@@ -579,12 +629,16 @@ export default function Clicker2GamePage() {
         if (saveRes.clicker2_badges_unlocked) {
           void resyncSessionSilently();
         }
+        return true;
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Save failed";
         if (isAuthFailure(msg)) void resyncSessionSilently();
 
         saveFailureCountRef.current += 1;
-        if (saveFailureCountRef.current <= BACKEND_SAVE_MAX_RETRIES) {
+        if (
+          scheduleRetry &&
+          saveFailureCountRef.current <= BACKEND_SAVE_MAX_RETRIES
+        ) {
           scheduledRetry = true;
           saveRetryTimeoutRef.current = window.setTimeout(() => {
             saveRetryTimeoutRef.current = 0;
@@ -595,6 +649,7 @@ export default function Clicker2GamePage() {
           setSaveError(msg);
           saveFailureCountRef.current = 0;
         }
+        return false;
       } finally {
         if (!scheduledRetry) saveInFlightRef.current = false;
       }
@@ -608,6 +663,28 @@ export default function Clicker2GamePage() {
       snapshotState,
     ],
   );
+
+  const runRequiredBackendSave = useCallback(async (): Promise<boolean> => {
+    markGameDirty();
+    persistLocalSave();
+    saveFailureCountRef.current = 0;
+    for (let attempt = 0; attempt <= BACKEND_SAVE_MAX_RETRIES; attempt++) {
+      saveDirtyRef.current = true;
+      while (saveInFlightRef.current) {
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 50);
+        });
+      }
+      const ok = await runBackendSave(attempt > 0, false);
+      if (ok) return true;
+      if (attempt < BACKEND_SAVE_MAX_RETRIES) {
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, BACKEND_SAVE_RETRY_DELAY_MS);
+        });
+      }
+    }
+    return false;
+  }, [markGameDirty, persistLocalSave, runBackendSave]);
 
   const gameLoopRefsBox = useRef<Clicker2GameLoopRefs>({
     ownedDenizens: ownedDenizensRef,
@@ -694,7 +771,7 @@ export default function Clicker2GamePage() {
   }, []);
 
   useClicker2TabTitleInterval(
-    loadStatus === "ready" && !pondCycleFadeActive,
+    loadStatus === "ready" && !pondCyclePaused,
     () => formatEnergyAmountHud(Math.round(effectiveEnergyNow())),
   );
 
@@ -727,10 +804,10 @@ export default function Clicker2GamePage() {
     commitSyncedEnergy(effectiveEnergyNow());
   }, [commitSyncedEnergy, effectiveEnergyNow]);
 
-  const blossomCount = useMemo(
-    () => blossomCountFromMilestones(milestonesReached),
-    [milestonesReached],
-  );
+  const blossomCount = useMemo(() => {
+    const earned = blossomCountFromMilestones(milestonesReached);
+    return devBlossomOverride ?? earned;
+  }, [devBlossomOverride, milestonesReached]);
   blossomCountRef.current = blossomCount;
 
   const simulation = useMemo(
@@ -775,8 +852,6 @@ export default function Clicker2GamePage() {
       ),
     [effectiveAllTimeEnergyEarnedDisplay, fossilizedStrata],
   );
-
-  const fossilShopVisible = isFossilShopUnlocked(totalFossilsEarned);
 
   const mutagenUnlocked = isMutagenSystemUnlocked(
     effectiveAllTimeEnergyEarnedDisplay,
@@ -950,6 +1025,9 @@ export default function Clicker2GamePage() {
     total_fossils_earned: totalFossilsEarned,
     fossilized_strata: fossilizedStrata,
     last_active_at_ms: Date.now(),
+    petroglyph_slots: petroglyphSlots,
+    petroglyph_etch_pool: petroglyphEtchPool,
+    pond_cycle_interstitial: stateRef.current.pond_cycle_interstitial === true,
     statistics,
   };
 
@@ -1005,6 +1083,8 @@ export default function Clicker2GamePage() {
         const stateWithWeather = offlineSettled.state;
         saveDirtyRef.current =
           loadedState.pond_started_at_ms !== merged.pond_started_at_ms ||
+          loadedState.pond_era !== merged.pond_era ||
+          loadedState.pond_cycle_interstitial !== merged.pond_cycle_interstitial ||
           loadedState.next_weather_spawn_remaining_ms !==
             nextWeatherSpawnRemaining ||
           mutagenSettledCount > 0 ||
@@ -1064,12 +1144,21 @@ export default function Clicker2GamePage() {
         totalFossilsEarnedRef.current = stateWithWeather.total_fossils_earned;
         setFossilizedStrata(stateWithWeather.fossilized_strata);
         fossilizedStrataRef.current = stateWithWeather.fossilized_strata;
+        setPetroglyphSlots([...stateWithWeather.petroglyph_slots]);
+        petroglyphSlotsRef.current = [...stateWithWeather.petroglyph_slots];
+        setPetroglyphEtchPool([...stateWithWeather.petroglyph_etch_pool]);
+        petroglyphEtchPoolRef.current = [...stateWithWeather.petroglyph_etch_pool];
         statisticsPassiveAnchorMsRef.current = performance.now();
         nextWeatherSpawnRemainingMsRef.current = nextWeatherSpawnRemaining;
         weatherSpawnDeadlinePerfMsRef.current =
           performance.now() + nextWeatherSpawnRemaining;
         stateRef.current = stateToSave;
         writeClicker2LocalSave(userId, stateToSave);
+        if (stateToSave.pond_cycle_interstitial) {
+          setPondCyclePhase("interstitial");
+          setPondCycleOverlayActive(false);
+          setPondCycleCounterFrozenText(null);
+        }
         setLoadStatus("ready");
       } catch (e) {
         if (!cancelled) {
@@ -1134,7 +1223,7 @@ export default function Clicker2GamePage() {
   useEffect(() => {
     if (!isAuthenticated || loadStatus !== "ready") return;
     const id = window.setInterval(() => {
-      if (pondCycleFadeActiveRef.current) return;
+      if (isPondCycleGameplayPaused(pondCycleFlowPhaseRef.current)) return;
       const sim = simulateGame(
         ownedDenizensRef.current,
         ownedSpecialtiesRef.current,
@@ -1349,19 +1438,20 @@ export default function Clicker2GamePage() {
       });
     }
     if (
-      awayReport.faeEnergyGenerated > 0 &&
-      !awayReportDismissed.fae_energy
+      shouldShowAwayReportFaeEnergyCard(awayReport.faeEnergyGenerated) &&
+      !awayReportDismissed.fae_energy &&
+      !isFossilShopInterstitialUiPhase(pondCycleFlowPhase)
     ) {
       cards.push({
         id: "fae_energy",
         message: awayReportFaeEnergyMessage(
           `${formatEnergyAmountHud(awayReport.faeEnergyGenerated)} ${ENERGY_EMOJI}`,
         ),
-        emoji: "🍥",
+        emoji: "🌀",
       });
     }
     return cards;
-  }, [awayReport, awayReportDismissed]);
+  }, [awayReport, awayReportDismissed, pondCycleFlowPhase]);
 
   const headlineCardCount =
     celebrationMilestones.length + visibleAwayReports.length;
@@ -1463,24 +1553,33 @@ export default function Clicker2GamePage() {
   );
 
   const getDenizenTooltipSnapshot = useCallback<GetDenizenShopTooltipSnapshot>(
-    (defId, owned, cost, maxed) => ({
-      owned,
-      eps: simulation.denizenEps[defId] ?? 0,
-      perCopyEps: denizenPerCopyEps[defId] ?? 0,
-      totalEpS: displayEnergyPerSecond,
-      energyProduced:
-        statisticsRef.current.denizen_energy_earned?.[defId] ?? 0,
-      cost,
-      maxed,
-      mutationLevel: mutagenUnlocked
-        ? getMutationLevel(denizenMutationLevelsRef.current, defId)
-        : undefined,
-    }),
+    (defId, owned, cost, maxed) => {
+      const perCopyEps = denizenPerCopyEps[defId] ?? 0;
+      return {
+        owned,
+        eps: simulation.denizenEps[defId] ?? 0,
+        perCopyEps,
+        totalEpS: displayEnergyPerSecond,
+        energyProduced:
+          statisticsRef.current.denizen_energy_earned?.[defId] ?? 0,
+        cost,
+        maxed,
+        costPerEps: denizenYieldCostTooltipForOwned(
+          ownedSpecialtiesRef.current,
+          defId,
+          cost,
+          perCopyEps,
+        ),
+        mutationLevel: mutagenUnlocked
+          ? getMutationLevel(denizenMutationLevelsRef.current, defId)
+          : undefined,
+      };
+    },
     [simulation.denizenEps, denizenPerCopyEps, displayEnergyPerSecond, mutagenUnlocked],
   );
 
   useClicker2GameLoop(
-    loadStatus === "ready" && !pondCycleFadeActive,
+    loadStatus === "ready" && !pondCyclePaused,
     gameLoopRefsBox,
     publishCounterHud,
     () => setShopAffordRevision((n) => n + 1),
@@ -1490,12 +1589,26 @@ export default function Clicker2GamePage() {
     if (loadStatus !== "ready") return;
     const onVisibility = () => {
       if (document.hidden) return;
+      if (isPondCycleGameplayPaused(pondCycleFlowPhaseRef.current)) {
+        markGameDirty();
+      }
       reanchorEnergyFromEffective();
       snapClicker2CounterToEffective(gameLoopRefsBox, publishCounterHud);
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [loadStatus, reanchorEnergyFromEffective, publishCounterHud]);
+  }, [loadStatus, markGameDirty, reanchorEnergyFromEffective, publishCounterHud]);
+
+  useEffect(() => {
+    if (loadStatus !== "ready") return;
+    if (pondCycleFlowPhase === "idle") return;
+    markGameDirty();
+    const id = window.setInterval(() => {
+      if (pondCycleFlowPhaseRef.current === "idle") return;
+      markGameDirty();
+    }, 60_000);
+    return () => window.clearInterval(id);
+  }, [loadStatus, markGameDirty, pondCycleFlowPhase]);
 
   useEffect(() => {
     if (loadStatus !== "ready") return;
@@ -1579,71 +1692,70 @@ export default function Clicker2GamePage() {
     });
   }, [celebrationMilestones, markGameDirty]);
 
-  /*
-   * CLICKER2_DEV_TOOLS — handlers (staff-gated via showClicker2DevToolsRef).
-   *
-   * const handleDevGrantMutagenUnlockEnergy = useCallback(() => {
-   *   if (!showClicker2DevToolsRef.current) return;
-   *   const stats = statisticsRef.current;
-   *   const current = stats.all_time_energy_earned ?? 0;
-   *   const needed = Math.max(0, MUTAGEN_UNLOCK_ALL_TIME_ENERGY - current);
-   *   if (needed <= 0) return;
-   *   stats.all_time_energy_earned = current + needed;
-   *   setStatistics({ ...stats });
-   *   const nowMs = Date.now();
-   *   const pipeline = ensureMutagenPipelineStarted(
-   *     {
-   *       statistics: stats,
-   *       mutagens_bank: mutagensBankRef.current,
-   *       mutagen_forming_started_at_ms: mutagenFormingStartedAtMsRef.current,
-   *     },
-   *     nowMs,
-   *   );
-   *   mutagenFormingStartedAtMsRef.current = pipeline.mutagen_forming_started_at_ms;
-   *   setMutagenFormingStartedAtMs(pipeline.mutagen_forming_started_at_ms);
-   *   markGameDirty();
-   * }, [markGameDirty]);
-   *
-   * const handleDevGrantMutagen = useCallback(() => {
-   *   if (!showClicker2DevToolsRef.current) return;
-   *   mutagensBankRef.current += 1;
-   *   setMutagensBank(mutagensBankRef.current);
-   *   markGameDirty();
-   * }, [markGameDirty]);
-   *
-   * const handleDevSetBlossoms100 = useCallback(() => {
-   *   if (!showClicker2DevToolsRef.current) return;
-   *   setDevBlossomOverride(BLOSSOM_RING_MAX);
-   * }, []);
-   *
-   * const handleDevRevertBlossomsToEarned = useCallback(() => {
-   *   if (!showClicker2DevToolsRef.current) return;
-   *   setDevBlossomOverride(null);
-   * }, []);
-   *
-   * const handleDevGainOneOfEachDenizen = useCallback(() => {
-   *   if (!showClicker2DevToolsRef.current) return;
-   *   const nextOwned = { ...ownedDenizensRef.current };
-   *   const toPrepend: string[] = [];
-   *   for (const def of DENIZENS) {
-   *     const owned = getOwnedDenizenCount(nextOwned, def.id);
-   *     if (owned >= def.maxOwned) continue;
-   *     nextOwned[def.id] = owned + 1;
-   *     toPrepend.push(def.emoji);
-   *   }
-   *   if (toPrepend.length === 0) return;
-   *   ownedDenizensRef.current = nextOwned;
-   *   setOwnedDenizens(nextOwned);
-   *   let nextTimeline = denizenPurchaseTimelineRef.current;
-   *   for (let i = toPrepend.length - 1; i >= 0; i--) {
-   *     nextTimeline = prependDenizenPurchase(nextTimeline, toPrepend[i]!);
-   *   }
-   *   denizenPurchaseTimelineRef.current = nextTimeline;
-   *   setDenizenPurchaseTimeline(nextTimeline);
-   *   markGameDirty();
-   *   syncMilestones();
-   * }, [markGameDirty, syncMilestones]);
-   */
+  const handleDevGrantMutagenUnlockEnergy = useCallback(() => {
+    if (!showClicker2DevToolsRef.current) return;
+    const current = statisticsRef.current.all_time_energy_earned ?? 0;
+    const needed = Math.max(0, MUTAGEN_UNLOCK_ALL_TIME_ENERGY - current);
+    if (needed <= 0) return;
+    const nextStats = {
+      ...statisticsRef.current,
+      all_time_energy_earned: current + needed,
+    };
+    statisticsRef.current = nextStats;
+    setStatistics(nextStats);
+    const nowMs = Date.now();
+    const pipeline = ensureMutagenPipelineStarted(
+      {
+        statistics: nextStats,
+        mutagens_bank: mutagensBankRef.current,
+        mutagen_forming_started_at_ms: mutagenFormingStartedAtMsRef.current,
+      },
+      nowMs,
+    );
+    mutagenFormingStartedAtMsRef.current = pipeline.mutagen_forming_started_at_ms;
+    setMutagenFormingStartedAtMs(pipeline.mutagen_forming_started_at_ms);
+    markGameDirty();
+  }, [markGameDirty]);
+
+  const handleDevGrantMutagen = useCallback(() => {
+    if (!showClicker2DevToolsRef.current) return;
+    mutagensBankRef.current += 1;
+    setMutagensBank(mutagensBankRef.current);
+    markGameDirty();
+  }, [markGameDirty]);
+
+  const handleDevSetBlossoms100 = useCallback(() => {
+    if (!showClicker2DevToolsRef.current) return;
+    setDevBlossomOverride(BLOSSOM_RING_MAX);
+  }, []);
+
+  const handleDevRevertBlossomsToEarned = useCallback(() => {
+    if (!showClicker2DevToolsRef.current) return;
+    setDevBlossomOverride(null);
+  }, []);
+
+  const handleDevGainOneOfEachDenizen = useCallback(() => {
+    if (!showClicker2DevToolsRef.current) return;
+    const nextOwned = { ...ownedDenizensRef.current };
+    const toPrepend: string[] = [];
+    for (const def of DENIZENS) {
+      const owned = getOwnedDenizenCount(nextOwned, def.id);
+      if (owned >= def.maxOwned) continue;
+      nextOwned[def.id] = owned + 1;
+      toPrepend.push(def.emoji);
+    }
+    if (toPrepend.length === 0) return;
+    ownedDenizensRef.current = nextOwned;
+    setOwnedDenizens(nextOwned);
+    let nextTimeline = denizenPurchaseTimelineRef.current;
+    for (let i = toPrepend.length - 1; i >= 0; i--) {
+      nextTimeline = prependDenizenPurchase(nextTimeline, toPrepend[i]!);
+    }
+    denizenPurchaseTimelineRef.current = nextTimeline;
+    setDenizenPurchaseTimeline(nextTimeline);
+    markGameDirty();
+    syncMilestones();
+  }, [markGameDirty, syncMilestones]);
 
   const openStatsModal = useCallback(() => {
     flushStatisticsToState();
@@ -1725,6 +1837,7 @@ export default function Clicker2GamePage() {
       ownedEvolutionDefs,
       fossilShopOwned: ownedFossilShopDefs.length,
       ownedFossilShopDefs,
+      petroglyphSlots: petroglyphSlotsRef.current,
       milestonesReached: milestoneStatuses.filter((m) => m.reachedAtMs != null)
         .length,
       blossoms: blossomCountRef.current,
@@ -1820,7 +1933,7 @@ export default function Clicker2GamePage() {
   }, [bumpShopAffordIfBoundaryCrossed, scheduleLocalSave, syncMilestones]);
 
   const onClickPond = useCallback(() => {
-    if (pondCycleFadeActiveRef.current) return;
+    if (isPondCycleGameplayPaused(pondCycleFlowPhaseRef.current)) return;
     pendingPondClicksRef.current += 1;
     if (pondClickFlushRafRef.current) return;
     pondClickFlushRafRef.current = requestAnimationFrame(flushPondClicks);
@@ -1842,7 +1955,7 @@ export default function Clicker2GamePage() {
   }, [flushPendingPondClicksNow]);
 
   const onWeatherEventActivate = useCallback(() => {
-    if (pondCycleFadeActiveRef.current) return;
+    if (isPondCycleGameplayPaused(pondCycleFlowPhaseRef.current)) return;
     const event = activeWeatherRef.current;
     if (!event || performance.now() >= event.expiresAtPerfMs) return;
 
@@ -1928,6 +2041,7 @@ export default function Clicker2GamePage() {
   ]);
 
   const buyDenizen = useCallback((def: DenizenDef) => {
+    if (isPondCycleGameplayPaused(pondCycleFlowPhaseRef.current)) return;
     const owned = getOwnedDenizenCount(ownedDenizensRef.current, def.id);
     const cost = nextDenizenCost(def, owned);
     const eff = effectiveEnergyNow();
@@ -1943,6 +2057,7 @@ export default function Clicker2GamePage() {
   }, [commitSyncedEnergy, effectiveEnergyNow, markGameDirty, syncMilestones]);
 
   const buySpecialty = useCallback((def: SpecialtyDef) => {
+    if (isPondCycleGameplayPaused(pondCycleFlowPhaseRef.current)) return;
     if (ownedSpecialtiesRef.current[def.id]) return;
     if (
       !isSpecialtyUnlocked(
@@ -1974,6 +2089,7 @@ export default function Clicker2GamePage() {
 
   const buyFossilShopSpecialty = useCallback(
     (def: SpecialtyDef) => {
+      if (!canBuyFossilShopDuringFlow(pondCycleFlowPhaseRef.current)) return;
       if (!def.fossilShopOnly || def.priceFossils == null) return;
       if (ownedSpecialtiesRef.current[def.id]) return;
       if (
@@ -1993,8 +2109,35 @@ export default function Clicker2GamePage() {
       fossilsRef.current -= cost;
       setFossils(fossilsRef.current);
       const acquiredAt = Date.now();
-      setOwnedSpecialties((o) => ({ ...o, [def.id]: true }));
-      setSpecialtyAcquiredAtMs((m) => ({ ...m, [def.id]: acquiredAt }));
+      ownedSpecialtiesRef.current = {
+        ...ownedSpecialtiesRef.current,
+        [def.id]: true,
+      };
+      specialtyAcquiredAtMsRef.current = {
+        ...specialtyAcquiredAtMsRef.current,
+        [def.id]: acquiredAt,
+      };
+      setOwnedSpecialties(ownedSpecialtiesRef.current);
+      setSpecialtyAcquiredAtMs(specialtyAcquiredAtMsRef.current);
+      if (def.id === PETROGLYPH_I_SPECIALTY_ID) {
+        const nextSlots = [
+          ...petroglyphSlotsRef.current,
+          createBlankPetroglyphSlot(PETROGLYPH_I_SPECIALTY_ID),
+        ];
+        petroglyphSlotsRef.current = nextSlots;
+        setPetroglyphSlots(nextSlots);
+        const slotIndex = nextSlots.length - 1;
+        const eligible = eligiblePetroglyphEvolutionDefs(
+          { ...ownedSpecialtiesRef.current, [def.id]: true },
+          nextSlots,
+          slotIndex,
+          petroglyphEtchPoolRef.current,
+        );
+        if (eligible.length > 0) {
+          setPetroglyphPickerSlotIndex(slotIndex);
+          setPetroglyphPickerOpen(true);
+        }
+      }
       markGameDirty();
       syncMilestones();
     },
@@ -2005,11 +2148,99 @@ export default function Clicker2GamePage() {
     ],
   );
 
-  const applyPondCycleState = useCallback(() => {
+  const openPetroglyphEtchPicker = useCallback((slotIndex: number) => {
+    const slots = petroglyphSlotsRef.current;
+    if (slotIndex < 0 || slotIndex >= slots.length) return;
+    if (slots[slotIndex]?.etched_specialty_id != null) return;
+    setPetroglyphPickerSlotIndex(slotIndex);
+    setPetroglyphPickerOpen(true);
+  }, []);
+
+  const applyPetroglyphOwnershipFromSlots = useCallback(
+    (slots: readonly PetroglyphSlot[]) => {
+      const synced = syncOwnedFromPetroglyphEtch(
+        ownedSpecialtiesRef.current,
+        specialtyAcquiredAtMsRef.current,
+        slots,
+      );
+      setOwnedSpecialties(synced.owned_specialties);
+      ownedSpecialtiesRef.current = synced.owned_specialties;
+      setSpecialtyAcquiredAtMs(synced.specialty_acquired_at_ms);
+      specialtyAcquiredAtMsRef.current = synced.specialty_acquired_at_ms;
+      stateRef.current = {
+        ...stateRef.current,
+        owned_specialties: synced.owned_specialties,
+        specialty_acquired_at_ms: synced.specialty_acquired_at_ms,
+        petroglyph_slots: slots,
+      };
+      setShopAffordRevision((n) => n + 1);
+    },
+    [],
+  );
+
+  const confirmPetroglyphEtch = useCallback(
+    (specialtyId: number) => {
+      const slotIndex = petroglyphPickerSlotIndex;
+      if (slotIndex == null || slotIndex < 0) return;
+      const slots = petroglyphSlotsRef.current;
+      if (slotIndex >= slots.length) return;
+      if (slots[slotIndex]?.etched_specialty_id != null) return;
+      const eligible = eligiblePetroglyphEvolutionDefs(
+        ownedSpecialtiesRef.current,
+        slots,
+        slotIndex,
+        petroglyphEtchPoolRef.current,
+      );
+      if (!eligible.some((def) => def.id === specialtyId)) return;
+      const etchedAt = Date.now();
+      const nextSlots = slots.map((slot, index) =>
+        index === slotIndex
+          ? {
+              ...slot,
+              etched_specialty_id: specialtyId,
+              etched_at_ms: etchedAt,
+            }
+          : slot,
+      );
+      petroglyphSlotsRef.current = nextSlots;
+      setPetroglyphSlots(nextSlots);
+      applyPetroglyphOwnershipFromSlots(nextSlots);
+      markGameDirty();
+    },
+    [applyPetroglyphOwnershipFromSlots, markGameDirty, petroglyphPickerSlotIndex],
+  );
+
+  const petroglyphPickerCandidates = useMemo(() => {
+    if (petroglyphPickerSlotIndex == null) return [];
+    return eligiblePetroglyphEvolutionDefs(
+      ownedSpecialties,
+      petroglyphSlots,
+      petroglyphPickerSlotIndex,
+      petroglyphEtchPool,
+    );
+  }, [
+    ownedSpecialties,
+    petroglyphEtchPool,
+    petroglyphPickerSlotIndex,
+    petroglyphSlots,
+  ]);
+
+  const petroglyphPickerInitialSelectedId = useMemo(() => {
+    if (petroglyphPickerSlotIndex == null) return null;
+    return petroglyphSlots[petroglyphPickerSlotIndex]?.etched_specialty_id ?? null;
+  }, [petroglyphPickerSlotIndex, petroglyphSlots]);
+
+  const enterMidCycleInterstitialState = useCallback(() => {
     flushPendingPondClicksNow();
     refreshWeatherSpawnRemainingForSave();
     const nowMs = Date.now();
     const cycled = applyPondCycle(snapshotState(), nowMs);
+    const next = {
+      ...cycled,
+      energy: 0,
+      pond_cycle_interstitial: true,
+      last_active_at_ms: nowMs,
+    };
 
     window.clearTimeout(rainBoostEndTimeoutRef.current);
     window.clearTimeout(blusterBoostEndTimeoutRef.current);
@@ -2025,30 +2256,34 @@ export default function Clicker2GamePage() {
 
     const perfNow = performance.now();
 
-    setOwnedDenizens(cycled.owned_denizens);
-    ownedDenizensRef.current = cycled.owned_denizens;
-    setOwnedSpecialties(cycled.owned_specialties);
-    ownedSpecialtiesRef.current = cycled.owned_specialties;
-    setSpecialtyAcquiredAtMs(cycled.specialty_acquired_at_ms);
-    setRevealedDenizens(cycled.revealed_denizens);
-    setDenizenPurchaseTimeline(cycled.denizen_purchase_timeline);
-    setStatistics(cycled.statistics);
-    statisticsRef.current = cycled.statistics;
-    setPondEra(cycled.pond_era);
-    pondEraRef.current = cycled.pond_era;
-    setPondStartedAtMs(cycled.pond_started_at_ms);
-    pondStartedAtMsRef.current = cycled.pond_started_at_ms;
-    setFossils(cycled.fossils);
-    fossilsRef.current = cycled.fossils;
-    setTotalFossilsEarned(cycled.total_fossils_earned);
-    totalFossilsEarnedRef.current = cycled.total_fossils_earned;
-    setFossilizedStrata(cycled.fossilized_strata);
-    fossilizedStrataRef.current = cycled.fossilized_strata;
-    setMutagenFormingStartedAtMs(cycled.mutagen_forming_started_at_ms);
-    mutagenFormingStartedAtMsRef.current = cycled.mutagen_forming_started_at_ms;
+    setOwnedDenizens(next.owned_denizens);
+    ownedDenizensRef.current = next.owned_denizens;
+    setOwnedSpecialties(next.owned_specialties);
+    ownedSpecialtiesRef.current = next.owned_specialties;
+    setSpecialtyAcquiredAtMs(next.specialty_acquired_at_ms);
+    setRevealedDenizens(next.revealed_denizens);
+    setDenizenPurchaseTimeline(next.denizen_purchase_timeline);
+    setStatistics(next.statistics);
+    statisticsRef.current = next.statistics;
+    setPondEra(next.pond_era);
+    pondEraRef.current = next.pond_era;
+    setPondStartedAtMs(next.pond_started_at_ms);
+    pondStartedAtMsRef.current = next.pond_started_at_ms;
+    setFossils(next.fossils);
+    fossilsRef.current = next.fossils;
+    setTotalFossilsEarned(next.total_fossils_earned);
+    totalFossilsEarnedRef.current = next.total_fossils_earned;
+    setFossilizedStrata(next.fossilized_strata);
+    fossilizedStrataRef.current = next.fossilized_strata;
+    setPetroglyphSlots([...next.petroglyph_slots]);
+    petroglyphSlotsRef.current = [...next.petroglyph_slots];
+    setPetroglyphEtchPool([...next.petroglyph_etch_pool]);
+    petroglyphEtchPoolRef.current = [...next.petroglyph_etch_pool];
+    setMutagenFormingStartedAtMs(next.mutagen_forming_started_at_ms);
+    mutagenFormingStartedAtMsRef.current = next.mutagen_forming_started_at_ms;
     statisticsPassiveAnchorMsRef.current = perfNow;
     nextWeatherSpawnRemainingMsRef.current = 0;
-    stateRef.current = cycled;
+    stateRef.current = next;
 
     scheduleNextWeatherSpawn();
     syncMilestones();
@@ -2059,11 +2294,11 @@ export default function Clicker2GamePage() {
       cancelAnimationFrame(pondClickFlushRafRef.current);
       pondClickFlushRafRef.current = 0;
     }
-    stateRef.current = { ...cycled, energy: 0 };
     setShopAffordRevision((n) => n + 1);
     markGameDirty();
     flushStatisticsToState();
     persistLocalSave();
+    setAwayReportDismissed((prev) => ({ ...prev, fae_energy: true }));
   }, [
     commitSyncedEnergy,
     flushPendingPondClicksNow,
@@ -2076,26 +2311,26 @@ export default function Clicker2GamePage() {
     syncMilestones,
   ]);
 
-  const beginPondCycle = useCallback(() => {
-    if (motionPaused) {
-      applyPondCycleState();
-      return;
-    }
-    flushPendingPondClicksNow();
-    snapClicker2CounterToEffective(gameLoopRefsBox, publishCounterHud);
-    const frozenHud = formatEnergyAmountHud(
-      Math.round(spendableEnergyRef.current),
+  const clearMidCycleInterstitialFlag = useCallback(() => {
+    applyPetroglyphOwnershipFromSlots(petroglyphSlotsRef.current);
+    petroglyphEtchPoolRef.current = [];
+    setPetroglyphEtchPool([]);
+    const owned_denizens = mergeCycleStartOwnedDenizens(
+      ownedDenizensRef.current,
+      ownedSpecialtiesRef.current,
     );
-    setPondCycleCounterFrozenText(frozenHud);
-    syncClicker2TabTitle(frozenHud);
-    pondCycleFadeActiveRef.current = true;
-    setPondCycleFadeActive(true);
-  }, [
-    motionPaused,
-    applyPondCycleState,
-    flushPendingPondClicksNow,
-    publishCounterHud,
-  ]);
+    ownedDenizensRef.current = owned_denizens;
+    setOwnedDenizens(owned_denizens);
+    stateRef.current = {
+      ...stateRef.current,
+      owned_denizens,
+      pond_cycle_interstitial: false,
+      petroglyph_etch_pool: [],
+      last_active_at_ms: Date.now(),
+    };
+    markGameDirty();
+    persistLocalSave();
+  }, [applyPetroglyphOwnershipFromSlots, markGameDirty, persistLocalSave]);
 
   const snapCounterWhileScreenWhite = useCallback(() => {
     setPondCycleCounterFrozenText(null);
@@ -2106,15 +2341,150 @@ export default function Clicker2GamePage() {
     setShopAffordRevision((n) => n + 1);
   }, [publishCounterHud]);
 
-  const handlePondCycleFullyWhite = useCallback(() => {
-    applyPondCycleState();
-    snapCounterWhileScreenWhite();
-  }, [applyPondCycleState, snapCounterWhileScreenWhite]);
+  const startFadeLeg = useCallback(
+    (fadeToWhite: boolean, nextPhase: PondCycleFlowPhase) => {
+      setPondCycleFadeToWhite(fadeToWhite);
+      setPondCycleOverlayActive(true);
+      setPondCyclePhase(nextPhase);
+    },
+    [setPondCyclePhase],
+  );
 
-  const handlePondCycleFadeComplete = useCallback(() => {
-    pondCycleFadeActiveRef.current = false;
-    setPondCycleFadeActive(false);
-  }, []);
+  const finishPondCycleFlow = useCallback(() => {
+    const nowMs = Date.now();
+    applyPetroglyphOwnershipFromSlots(petroglyphSlotsRef.current);
+    petroglyphEtchPoolRef.current = [];
+    setPetroglyphEtchPool([]);
+    if (stateRef.current.pond_cycle_interstitial) {
+      stateRef.current = {
+        ...stateRef.current,
+        pond_cycle_interstitial: false,
+        petroglyph_etch_pool: [],
+        last_active_at_ms: nowMs,
+      };
+    } else {
+      stateRef.current = {
+        ...stateRef.current,
+        petroglyph_etch_pool: [],
+        last_active_at_ms: nowMs,
+      };
+    }
+    setPondCycleOverlayActive(false);
+    setPondCycleCounterFrozenText(null);
+    setPondCyclePhase("idle");
+    persistLocalSave();
+    markGameDirty();
+  }, [applyPetroglyphOwnershipFromSlots, markGameDirty, persistLocalSave, setPondCyclePhase]);
+
+  const enterInterstitialPhase = useCallback(() => {
+    if (motionPaused) {
+      setPondCyclePhase("interstitial");
+      setPondCycleOverlayActive(false);
+      return;
+    }
+    startFadeLeg(false, "fadeToInterstitialOut");
+  }, [motionPaused, setPondCyclePhase, startFadeLeg]);
+
+  const handlePondCycleOverlayComplete = useCallback(() => {
+    const phase = pondCycleFlowPhaseRef.current;
+    if (phase === "fadeToInterstitialIn") {
+      enterInterstitialPhase();
+      return;
+    }
+    if (phase === "fadeToInterstitialOut") {
+      setPondCycleOverlayActive(false);
+      setPondCyclePhase("interstitial");
+      return;
+    }
+    if (phase === "fadeToApplyIn") {
+      clearMidCycleInterstitialFlag();
+      snapCounterWhileScreenWhite();
+      if (motionPaused) {
+        finishPondCycleFlow();
+        return;
+      }
+      startFadeLeg(false, "fadeToPondOut");
+      return;
+    }
+    if (phase === "fadeToPondOut") {
+      finishPondCycleFlow();
+    }
+  }, [
+    clearMidCycleInterstitialFlag,
+    enterInterstitialPhase,
+    finishPondCycleFlow,
+    motionPaused,
+    setPondCyclePhase,
+    snapCounterWhileScreenWhite,
+    startFadeLeg,
+  ]);
+
+  const beginPondCycleAfterSave = useCallback(() => {
+    enterMidCycleInterstitialState();
+    if (motionPaused) {
+      setPondCyclePhase("interstitial");
+      setPondCycleOverlayActive(false);
+      return;
+    }
+    startFadeLeg(true, "fadeToInterstitialIn");
+  }, [
+    enterMidCycleInterstitialState,
+    motionPaused,
+    setPondCyclePhase,
+    startFadeLeg,
+  ]);
+
+  const beginPondCycle = useCallback(() => {
+    flushPendingPondClicksNow();
+    snapClicker2CounterToEffective(gameLoopRefsBox, publishCounterHud);
+    const frozenHud = formatEnergyAmountHud(
+      Math.round(spendableEnergyRef.current),
+    );
+    setPondCycleCounterFrozenText(frozenHud);
+    syncClicker2TabTitle(frozenHud);
+    setPondCycleSaveBusy(true);
+    setPondCyclePhase("savingBeforeInterstitial");
+
+    void (async () => {
+      const saved = await runRequiredBackendSave();
+      setPondCycleSaveBusy(false);
+      if (!saved) return;
+      beginPondCycleAfterSave();
+    })();
+  }, [
+    beginPondCycleAfterSave,
+    flushPendingPondClicksNow,
+    publishCounterHud,
+    runRequiredBackendSave,
+    setPondCyclePhase,
+  ]);
+
+  const retryPondCycleSave = useCallback(() => {
+    setPondCycleSaveBusy(true);
+    void (async () => {
+      const saved = await runRequiredBackendSave();
+      setPondCycleSaveBusy(false);
+      if (!saved) return;
+      beginPondCycleAfterSave();
+    })();
+  }, [beginPondCycleAfterSave, runRequiredBackendSave]);
+
+  const requestBeginNewCycle = useCallback(() => {
+    if (
+      !hasAffordableFossilShopPurchase(
+        fossilsRef.current,
+        ownedSpecialtiesRef.current,
+      )
+    ) {
+      startFadeLeg(true, "fadeToApplyIn");
+      return;
+    }
+    setBeginNewCycleModalOpen(true);
+  }, [startFadeLeg]);
+
+  const confirmBeginNewCycle = useCallback(() => {
+    startFadeLeg(true, "fadeToApplyIn");
+  }, [startFadeLeg]);
 
   const handleResetPondSave = useCallback(async () => {
     setResetPondBusy(true);
@@ -2205,7 +2575,7 @@ export default function Clicker2GamePage() {
             displayText={pondCycleHudDisplayText}
           />
           <Text fontSize="sm" color="gray.700">
-            {pondCycleFadeActive
+            {pondCyclePaused
               ? "—"
               : `${formatEnergyRate(displayEnergyPerSecond)} ${ENERGY_EMOJI} per second`}
           </Text>
@@ -2256,7 +2626,7 @@ export default function Clicker2GamePage() {
           clickValue={effectiveClickValueDisplay}
           rippleOpacityStart={rippleVisualStyle.opacityStart}
           rippleBorderAlpha={rippleVisualStyle.borderAlpha}
-          motionPaused={motionPaused || pondCycleFadeActive}
+          motionPaused={motionPaused || pondCyclePaused}
           lightClickFx={clickMultiplier > 1}
           onClickPond={onClickPond}
         />
@@ -2338,7 +2708,6 @@ export default function Clicker2GamePage() {
       flexDirection="column"
       alignItems="center"
       overflowY="auto"
-      pt={isMobile ? undefined : { lg: "6" }}
       css={HIDE_SCROLLBAR_CSS}
       py={isMobile ? "1" : undefined}
     >
@@ -2351,7 +2720,6 @@ export default function Clicker2GamePage() {
           allTimeEnergyEarned={effectiveAllTimeEnergyEarnedDisplay}
           pondEra={pondEra}
           unfossilizedStrata={unfossilizedStrataDisplay}
-          fossils={fossils}
           onCycleClick={() => setCyclePondModalOpen(true)}
           mutagensBank={mutagensBank}
           mutagenFormingStartedAtMs={mutagenFormingStartedAtMs}
@@ -2395,76 +2763,72 @@ export default function Clicker2GamePage() {
     </PondButton>
   );
 
-  /*
-   * CLICKER2_DEV_TOOLS — staff-only UI (import BLOSSOM_RING_MAX when re-enabled).
-   *
-   * const shopDevToolsPanel = showClicker2DevTools ? (
-   *   <Flex
-   *     gap="1"
-   *     flexWrap="wrap"
-   *     align="center"
-   *     borderWidth="1px"
-   *     borderStyle="dashed"
-   *     borderColor="gray.400"
-   *     borderRadius="md"
-   *     p="1.5"
-   *   >
-   *     <Text fontSize="2xs" color="gray.600" flex="1" minW="6rem">
-   *       TEMP dev tools
-   *     </Text>
-   *     <PondButton
-   *       type="button"
-   *       size="xs"
-   *       variant="outline"
-   *       colorPalette="gray"
-   *       onClick={handleDevSetBlossoms100}
-   *       disabled={blossomCount >= BLOSSOM_RING_MAX}
-   *     >
-   *       Set blossoms to 100
-   *     </PondButton>
-   *     <PondButton
-   *       type="button"
-   *       size="xs"
-   *       variant="outline"
-   *       colorPalette="gray"
-   *       onClick={handleDevRevertBlossomsToEarned}
-   *       disabled={devBlossomOverride === null}
-   *     >
-   *       Revert blossoms to earned
-   *     </PondButton>
-   *     <PondButton
-   *       type="button"
-   *       size="xs"
-   *       variant="outline"
-   *       colorPalette="gray"
-   *       onClick={handleDevGainOneOfEachDenizen}
-   *     >
-   *       +1 of each denizen
-   *     </PondButton>
-   *     <PondButton
-   *       type="button"
-   *       size="xs"
-   *       variant="outline"
-   *       colorPalette="gray"
-   *       onClick={handleDevGrantMutagenUnlockEnergy}
-   *       disabled={
-   *         effectiveAllTimeEnergyEarnedDisplay >= MUTAGEN_UNLOCK_ALL_TIME_ENERGY
-   *       }
-   *     >
-   *       +1B lifetime
-   *     </PondButton>
-   *     <PondButton
-   *       type="button"
-   *       size="xs"
-   *       variant="outline"
-   *       colorPalette="gray"
-   *       onClick={handleDevGrantMutagen}
-   *     >
-   *       +1 mutagen
-   *     </PondButton>
-   *   </Flex>
-   * ) : null;
-   */
+  const shopDevToolsPanel = showClicker2DevTools ? (
+    <Flex
+      gap="1"
+      flexWrap="wrap"
+      align="center"
+      borderWidth="1px"
+      borderStyle="dashed"
+      borderColor="gray.400"
+      borderRadius="md"
+      p="1.5"
+    >
+      <Text fontSize="2xs" color="gray.600" flex="1" minW="6rem">
+        TEMP dev tools
+      </Text>
+      <PondButton
+        type="button"
+        size="xs"
+        variant="outline"
+        colorPalette="gray"
+        onClick={handleDevSetBlossoms100}
+        disabled={blossomCount >= BLOSSOM_RING_MAX}
+      >
+        Set blossoms to 100
+      </PondButton>
+      <PondButton
+        type="button"
+        size="xs"
+        variant="outline"
+        colorPalette="gray"
+        onClick={handleDevRevertBlossomsToEarned}
+        disabled={devBlossomOverride === null}
+      >
+        Revert blossoms to earned
+      </PondButton>
+      <PondButton
+        type="button"
+        size="xs"
+        variant="outline"
+        colorPalette="gray"
+        onClick={handleDevGainOneOfEachDenizen}
+      >
+        +1 of each denizen
+      </PondButton>
+      <PondButton
+        type="button"
+        size="xs"
+        variant="outline"
+        colorPalette="gray"
+        onClick={handleDevGrantMutagenUnlockEnergy}
+        disabled={
+          effectiveAllTimeEnergyEarnedDisplay >= MUTAGEN_UNLOCK_ALL_TIME_ENERGY
+        }
+      >
+        +1B lifetime
+      </PondButton>
+      <PondButton
+        type="button"
+        size="xs"
+        variant="outline"
+        colorPalette="gray"
+        onClick={handleDevGrantMutagen}
+      >
+        +1 mutagen
+      </PondButton>
+    </Flex>
+  ) : null;
 
   const shopDenizensList = (
     <DenizenShopList
@@ -2481,26 +2845,21 @@ export default function Clicker2GamePage() {
     />
   );
 
-  const shopDenizensPanel = shopDenizensList;
+  const shopDenizensPanel = (
+    <Stack gap="2">
+      {shopDevToolsPanel}
+      {shopDenizensList}
+    </Stack>
+  );
 
   const shopEvolutionsPanel = (
-    <Stack gap="3">
-      <SpecialtyShopGrid
-        specialties={visibleSpecialties}
-        spendableEnergy={spendableEnergy}
-        canHoverFinePointer={canHoverFinePointer}
-        onBuy={buySpecialty}
-        headerTrailing={isMobile ? undefined : shopStatsButton}
-      />
-      {fossilShopVisible ? (
-        <FossilShopSection
-          fossils={fossils}
-          ownedSpecialties={ownedSpecialties}
-          canHoverFinePointer={canHoverFinePointer}
-          onBuy={buyFossilShopSpecialty}
-        />
-      ) : null}
-    </Stack>
+    <SpecialtyShopGrid
+      specialties={visibleSpecialties}
+      spendableEnergy={spendableEnergy}
+      canHoverFinePointer={canHoverFinePointer}
+      onBuy={buySpecialty}
+      headerTrailing={isMobile ? undefined : shopStatsButton}
+    />
   );
 
   const shopPanel = (
@@ -2539,19 +2898,15 @@ export default function Clicker2GamePage() {
             onBuy={buySpecialty}
             headerTrailing={shopStatsButton}
           />
-          {fossilShopVisible ? (
-            <FossilShopSection
-              fossils={fossils}
-              ownedSpecialties={ownedSpecialties}
-              canHoverFinePointer={canHoverFinePointer}
-              onBuy={buyFossilShopSpecialty}
-            />
-          ) : null}
-          {shopDenizensList}
+          {shopDenizensPanel}
         </Stack>
       )}
     </Box>
   );
+
+  const showFossilShopTree = isFossilShopInterstitialUiPhase(pondCycleFlowPhase);
+  const showPondCycleSaveGate =
+    pondCycleFlowPhase === "savingBeforeInterstitial";
 
   return (
     <ClickerPageShell
@@ -2639,11 +2994,73 @@ export default function Clicker2GamePage() {
         unfossilizedStrata={unfossilizedStrataDisplay}
         onConfirm={beginPondCycle}
       />
+      <BeginNewCycleConfirmModal
+        open={beginNewCycleModalOpen}
+        onOpenChange={setBeginNewCycleModalOpen}
+        onConfirm={confirmBeginNewCycle}
+      />
+      {showFossilShopTree ? (
+        <FossilShopTreeView
+          fossils={fossils}
+          ownedSpecialties={ownedSpecialties}
+          petroglyphSlots={petroglyphSlots}
+          petroglyphEtchPool={petroglyphEtchPool}
+          canHoverFinePointer={canHoverFinePointer}
+          onBuy={buyFossilShopSpecialty}
+          onEtchPetroglyph={openPetroglyphEtchPicker}
+          onBeginNewCycle={requestBeginNewCycle}
+        />
+      ) : null}
+      <PetroglyphEtchPickerModal
+        open={petroglyphPickerOpen}
+        onOpenChange={setPetroglyphPickerOpen}
+        candidates={petroglyphPickerCandidates}
+        initialSelectedId={petroglyphPickerInitialSelectedId}
+        onConfirm={confirmPetroglyphEtch}
+      />
+      {showPondCycleSaveGate ? (
+        <Box
+          position="fixed"
+          inset={0}
+          zIndex={2150}
+          bg="blackAlpha.400"
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          px="4"
+        >
+          <Stack
+            align="center"
+            gap="3"
+            bg="white"
+            borderRadius="md"
+            px="6"
+            py="5"
+            maxW="sm"
+            w="full"
+            boxShadow="lg"
+          >
+            <Text fontSize="sm" color="gray.700" textAlign="center">
+              {pondCycleSaveBusy ? POND_CYCLE_SAVE_BUSY : saveError ?? POND_CYCLE_SAVE_BUSY}
+            </Text>
+            {!pondCycleSaveBusy && saveError ? (
+              <PondButton
+                type="button"
+                size="sm"
+                colorPalette="sky"
+                onClick={retryPondCycleSave}
+              >
+                {POND_CYCLE_SAVE_RETRY_BUTTON}
+              </PondButton>
+            ) : null}
+          </Stack>
+        </Box>
+      ) : null}
       <PondCycleFadeOverlay
-        active={pondCycleFadeActive}
+        active={pondCycleOverlayActive}
+        fadeToWhite={pondCycleFadeToWhite}
         motionPaused={motionPaused}
-        onFullyWhite={handlePondCycleFullyWhite}
-        onComplete={handlePondCycleFadeComplete}
+        onTransitionComplete={handlePondCycleOverlayComplete}
       />
     </ClickerPageShell>
   );

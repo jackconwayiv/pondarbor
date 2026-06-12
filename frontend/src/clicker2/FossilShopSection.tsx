@@ -8,22 +8,18 @@ import { FOSSIL_SHOP_SECTION_HEADING_PROPS } from "./clicker2ShopUi";
 import { EvolutionShopCard, EvolutionShopCardGrid } from "./EvolutionShopCard";
 import {
   compareFossilShopByFossilPrice,
-  FOSSIL_EMOJI,
+  formatFossilCost,
   FOSSIL_SHOP_SPECIALTY_IDS,
   isFossilShopItemForSale,
 } from "./fossilShop";
 import { getSpecialtyDef, type SpecialtyDef } from "./specialties";
 import {
   FOSSIL_SHOP_CARD_BORDER_WIDTH,
-  FOSSIL_SHOP_CARD_GRADIENT,
+  fossilShopCardBackgroundGradient,
 } from "./specialtyTierColors";
 
 const GRID_COLUMNS_DESKTOP = 4;
 const GRID_COLUMNS_MOBILE = 3;
-
-export function formatFossilCost(amount: number): string {
-  return `${Math.max(0, Math.floor(amount)).toLocaleString()} ${FOSSIL_EMOJI}`;
-}
 
 export default function FossilShopSection({
   fossils,
@@ -139,9 +135,14 @@ export default function FossilShopSection({
                       def={def}
                       canHoverFinePointer={canHoverFinePointer}
                       canAfford={canAfford}
-                      backgroundGradient={FOSSIL_SHOP_CARD_GRADIENT}
+                      backgroundGradient={fossilShopCardBackgroundGradient(
+                        false,
+                        true,
+                        canAfford,
+                      )}
                       borderWidth={FOSSIL_SHOP_CARD_BORDER_WIDTH}
                       costLabel={formatFossilCost(fossilCost)}
+                      cardPriceLabel={formatFossilCost(fossilCost)}
                       onBuy={() => onBuy(def)}
                     />
                   );

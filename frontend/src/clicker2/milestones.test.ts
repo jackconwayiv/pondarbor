@@ -99,7 +99,7 @@ describe("milestones catalog", () => {
       WEATHER_CLICK_THRESHOLDS.length * 4,
     );
     expect(POND_CYCLE_MILESTONES).toHaveLength(7);
-    expect(FOSSIL_SHOP_MILESTONES).toHaveLength(7);
+    expect(FOSSIL_SHOP_MILESTONES).toHaveLength(9);
     expect(MILESTONES).toHaveLength(
       GLOBAL_MILESTONES.length +
         POND_CYCLE_MILESTONES.length +

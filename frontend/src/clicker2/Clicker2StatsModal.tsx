@@ -20,20 +20,24 @@ import { HIDE_SCROLLBAR_CSS } from "../theme/typography";
 import { DESIGN } from "../theme/tokens";
 
 import { EvolutionShopCard, EvolutionShopCardGrid } from "./EvolutionShopCard";
+import { evolutionDisplayEmoji } from "./clicker2OwnedEvolutions";
 import {
   CYCLE_LABEL,
   EVOLUTIONS_LABEL,
   FOSSILIZED_STRATA_LABEL,
   FOSSILS_LABEL,
   FOSSIL_SHOP_LABEL,
+  FOSSIL_SHOP_STATS_TAB_LABEL,
   MILESTONES_LABEL,
   MUTAGENS_LABEL,
+  PETROGLYPH_I_HEADER,
   STRATA_LABEL,
   TO_NEXT_STRATA_PHRASE,
   UNFOSSILIZED_STRATA_LABEL,
 } from "./clicker2Copy";
-import { formatFossilCost } from "./FossilShopSection";
+import { formatFossilCost } from "./fossilShop";
 import { FOSSIL_EMOJI } from "./fossilShop";
+import { findPetroglyphSlotIndex, type PetroglyphSlot } from "./petroglyphs";
 import { ENERGY_EMOJI, formatEnergyAmount, formatEnergyRate } from "./formatEnergy";
 import { formatLastSaved, formatPondAgeAgo } from "./formatPondAge";
 import {
@@ -42,10 +46,10 @@ import {
   milestoneDisplayEmoji,
 } from "./milestones";
 import ResetPondSaveSection from "./ResetPondSaveSection";
-import type { SpecialtyDef } from "./specialties";
+import { getSpecialtyDef, type SpecialtyDef } from "./specialties";
 import {
   FOSSIL_SHOP_CARD_BORDER_WIDTH,
-  FOSSIL_SHOP_CARD_GRADIENT,
+  fossilShopCardBackgroundGradient,
 } from "./specialtyTierColors";
 
 function StatsRow({ label, value }: { label: string; value: ReactNode }) {
@@ -88,6 +92,7 @@ export type Clicker2StatsSnapshot = {
   ownedEvolutionDefs: readonly SpecialtyDef[];
   fossilShopOwned: number;
   ownedFossilShopDefs: readonly SpecialtyDef[];
+  petroglyphSlots: readonly PetroglyphSlot[];
   milestonesReached: number;
   blossoms: number;
   milestoneStatuses: Array<{
@@ -204,8 +209,10 @@ function EvolutionsOwnedPanel({
 
 function FossilShopOwnedPanel({
   ownedFossilShopDefs,
+  petroglyphSlots,
 }: {
   ownedFossilShopDefs: readonly SpecialtyDef[];
+  petroglyphSlots: readonly PetroglyphSlot[];
 }) {
   const isMobile = useIsMobile();
   const [canHoverFinePointer] = useMediaQuery(
@@ -229,21 +236,49 @@ function FossilShopOwnedPanel({
       css={{ ...HIDE_SCROLLBAR_CSS, WebkitOverflowScrolling: "touch" }}
     >
       <EvolutionShopCardGrid gap="0.5" columns={columns}>
-        {ownedFossilShopDefs.map((def) => (
-          <EvolutionShopCard
-            key={def.id}
-            def={def}
-            canHoverFinePointer={canHoverFinePointer}
-            owned
-            backgroundGradient={FOSSIL_SHOP_CARD_GRADIENT}
-            borderWidth={FOSSIL_SHOP_CARD_BORDER_WIDTH}
-            costLabel={
-              def.priceFossils != null
-                ? formatFossilCost(def.priceFossils)
-                : undefined
-            }
-          />
-        ))}
+        {ownedFossilShopDefs.map((def) => {
+          const isPetroglyph = def.effect.type === "petroglyph_slot";
+          const slotIndex = isPetroglyph
+            ? findPetroglyphSlotIndex(petroglyphSlots, def.id)
+            : -1;
+          const slot = slotIndex >= 0 ? petroglyphSlots[slotIndex] : undefined;
+          const etchedDef =
+            slot?.etched_specialty_id != null
+              ? getSpecialtyDef(slot.etched_specialty_id)
+              : undefined;
+          const petroglyphBlank = isPetroglyph && etchedDef == null;
+
+          return (
+            <EvolutionShopCard
+              key={def.id}
+              def={def}
+              canHoverFinePointer={canHoverFinePointer}
+              owned
+              displayName={isPetroglyph && etchedDef ? etchedDef.name : undefined}
+              displayEmoji={
+                isPetroglyph && etchedDef
+                  ? evolutionDisplayEmoji(etchedDef)
+                  : undefined
+              }
+              hideCardLabel={petroglyphBlank}
+              cardHeaderLabel={
+                isPetroglyph && etchedDef ? PETROGLYPH_I_HEADER : undefined
+              }
+              borderStyle={isPetroglyph && petroglyphBlank ? "dashed" : "solid"}
+              backgroundGradient={fossilShopCardBackgroundGradient(
+                true,
+                false,
+                true,
+              )}
+              borderWidth={FOSSIL_SHOP_CARD_BORDER_WIDTH}
+              costLabel={
+                def.priceFossils != null
+                  ? formatFossilCost(def.priceFossils)
+                  : undefined
+              }
+            />
+          );
+        })}
       </EvolutionShopCardGrid>
     </Box>
   );
@@ -291,6 +326,7 @@ function StatsCatalogTabs({
   fossilShopOwned,
   ownedEvolutionDefs,
   ownedFossilShopDefs,
+  petroglyphSlots,
   milestoneStatuses,
 }: {
   evolutionsOwned: number;
@@ -298,6 +334,7 @@ function StatsCatalogTabs({
   fossilShopOwned: number;
   ownedEvolutionDefs: readonly SpecialtyDef[];
   ownedFossilShopDefs: readonly SpecialtyDef[];
+  petroglyphSlots: readonly PetroglyphSlot[];
   milestoneStatuses: Clicker2StatsSnapshot["milestoneStatuses"];
 }) {
   const showEvolutions = evolutionsOwned > 0;
@@ -313,7 +350,7 @@ function StatsCatalogTabs({
     milestonesReached,
   );
   const fossilShopTabLabel = statsCatalogTabLabel(
-    FOSSIL_SHOP_LABEL,
+    FOSSIL_SHOP_STATS_TAB_LABEL,
     fossilShopOwned,
   );
 
@@ -343,7 +380,10 @@ function StatsCatalogTabs({
     ) : activeTab === "milestones" ? (
       <MilestonesStatusPanel milestoneStatuses={milestoneStatuses} />
     ) : (
-      <FossilShopOwnedPanel ownedFossilShopDefs={ownedFossilShopDefs} />
+      <FossilShopOwnedPanel
+        ownedFossilShopDefs={ownedFossilShopDefs}
+        petroglyphSlots={petroglyphSlots}
+      />
     );
 
   const activeTabLabel =
@@ -574,6 +614,7 @@ export default function Clicker2StatsModal({
           fossilShopOwned={snapshot.fossilShopOwned}
           ownedEvolutionDefs={snapshot.ownedEvolutionDefs}
           ownedFossilShopDefs={snapshot.ownedFossilShopDefs}
+          petroglyphSlots={snapshot.petroglyphSlots}
           milestoneStatuses={snapshot.milestoneStatuses}
         />
         <ResetPondSaveSection

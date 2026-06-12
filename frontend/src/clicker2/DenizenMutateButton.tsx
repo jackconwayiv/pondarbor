@@ -1,37 +1,23 @@
+import { type MouseEvent } from "react";
 import { Box, TooltipContent, TooltipPositioner, TooltipRoot, TooltipTrigger } from "@chakra-ui/react";
 
 import {
   ecologyTooltipRootBaseProps,
   ecologyTooltipSurfaceProps,
 } from "../clicker/ecologyUi.constants";
-import PondButton from "../PondButton";
-import { DESIGN } from "../theme/tokens";
-
 import { mutagenLevelUpTooltip } from "./clicker2Copy";
-import { MUTAGEN_WARM_GRADIENT } from "./clicker2ShopUi";
 import type { DenizenDef } from "./denizens";
 import {
   canMutateDenizen,
   isDenizenMutable,
   mutagenCostForNextLevel,
-  MUTAGEN_EMOJI,
-  MUTAGEN_MAX_LEVEL,
 } from "./mutagens";
 
-export function shouldShowDenizenMutateButton(
+export function shouldShowDenizenDepthChartLevel(
   def: DenizenDef,
-  owned: number,
-  mutationLevel: number,
-  mutagensBank: number,
   mutagenUnlocked: boolean,
 ): boolean {
-  return (
-    mutagenUnlocked &&
-    mutagensBank >= 1 &&
-    isDenizenMutable(def.id) &&
-    owned > 0 &&
-    mutationLevel < MUTAGEN_MAX_LEVEL
-  );
+  return mutagenUnlocked && isDenizenMutable(def.id);
 }
 
 export default function DenizenMutateButton({
@@ -42,7 +28,7 @@ export default function DenizenMutateButton({
   mutagenUnlocked,
   onMutate,
   className,
-  compact = false,
+  labelOnDark = false,
   canHoverFinePointer = true,
 }: {
   def: DenizenDef;
@@ -52,23 +38,14 @@ export default function DenizenMutateButton({
   mutagenUnlocked: boolean;
   onMutate: (def: DenizenDef) => void;
   className?: string;
-  /** Tighter vertical padding (depth chart rows). */
-  compact?: boolean;
+  labelOnDark?: boolean;
   canHoverFinePointer?: boolean;
 }) {
-  if (
-    !shouldShowDenizenMutateButton(
-      def,
-      owned,
-      mutationLevel,
-      mutagensBank,
-      mutagenUnlocked,
-    )
-  ) {
+  if (!shouldShowDenizenDepthChartLevel(def, mutagenUnlocked)) {
     return null;
   }
 
-  const canMutate = canMutateDenizen(def, owned, mutationLevel, mutagensBank);
+  const canAfford = canMutateDenizen(def, owned, mutationLevel, mutagensBank);
   const mutateCost = mutagenCostForNextLevel(mutationLevel);
   const nextLevel = mutationLevel + 1;
   const tooltipLabel = mutagenLevelUpTooltip(
@@ -76,46 +53,45 @@ export default function DenizenMutateButton({
     mutateCost,
     nextLevel,
   );
+  const levelClassName = [
+    "pondDepthChartLevel",
+    labelOnDark ? "pondDepthChartLevel--onDark" : "",
+    canAfford
+      ? "pondDepthChartLevel--affordable"
+      : "pondDepthChartLevel--unaffordable",
+    className,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
-  const button = (
-    <PondButton
-      type="button"
-      size="xs"
-      className={className}
-      py={compact ? "0" : undefined}
-      minH={compact ? "1.05rem" : undefined}
-      h={compact ? "auto" : undefined}
-      lineHeight={compact ? "1" : undefined}
-      variant={canMutate ? "outline" : "solid"}
-      colorPalette={canMutate ? undefined : "gray"}
-      disabled={!canMutate}
-      background={canMutate ? MUTAGEN_WARM_GRADIENT : undefined}
-      color={canMutate ? DESIGN.textPrimary : undefined}
-      borderWidth="1px"
-      borderColor={canMutate ? "border" : undefined}
-      _hover={
-        canMutate
-          ? {
-              background: MUTAGEN_WARM_GRADIENT,
-              bg: "transparent",
-              borderColor: "lilypad.emphasized",
-              color: DESIGN.textPrimary,
-            }
-          : undefined
-      }
-      aria-label={tooltipLabel}
-      onClick={(e) => {
-        e.stopPropagation();
-        if (canMutate) onMutate(def);
-      }}
-    >
-      {MUTAGEN_EMOJI} {mutateCost}
-    </PondButton>
+  const levelText = `Level: ${mutationLevel}`;
+  const levelContent = canAfford ? (
+    <span className="pondDepthChartLevelGradient">{levelText}</span>
+  ) : (
+    levelText
   );
 
-  if (!canHoverFinePointer) {
-    return button;
+  if (!canAfford || !canHoverFinePointer) {
+    return (
+      <Box as="span" className={levelClassName}>
+        {levelContent}
+      </Box>
+    );
   }
+
+  const levelButton = (
+    <Box
+      as="button"
+      className={levelClassName}
+      aria-label={tooltipLabel}
+      onClick={(e: MouseEvent) => {
+        e.stopPropagation();
+        onMutate(def);
+      }}
+    >
+      {levelContent}
+    </Box>
+  );
 
   return (
     <TooltipRoot
@@ -125,7 +101,7 @@ export default function DenizenMutateButton({
     >
       <TooltipTrigger asChild>
         <Box as="span" display="inline-flex" alignSelf="flex-start">
-          {button}
+          {levelButton}
         </Box>
       </TooltipTrigger>
       <TooltipPositioner>

@@ -31,6 +31,7 @@ describe("sortHallOfFameRows", () => {
     const sorted = sortHallOfFameRows(
       [
         row("common", [1, 2, 3], 3),
+        row("pair", [1, 2], 2),
         row("solo_friend", [2]),
         row("solo_viewer", [1]),
       ],
@@ -39,6 +40,7 @@ describe("sortHallOfFameRows", () => {
     expect(sorted.map((r) => r.slug)).toEqual([
       "solo_viewer",
       "solo_friend",
+      "pair",
       "common",
     ]);
   });

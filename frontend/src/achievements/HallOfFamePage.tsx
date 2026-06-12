@@ -1,12 +1,10 @@
-import { Box, Heading, HStack, Stack, Text } from "@chakra-ui/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Box, Heading, HStack, SimpleGrid, Stack, Text } from "@chakra-ui/react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router";
 import { fetchAchievementTrophyCase } from "./api";
-import {
-  groupHallOfFameEarnedByCategory,
-  groupHallOfFameLockedByCategory,
-} from "./groupHallOfFameByCategory";
+import { groupHallOfFameLockedByCategory } from "./groupHallOfFameByCategory";
 import { HallOfFameRow } from "./HallOfFameRow";
+import { sortHallOfFameRows } from "./sortTrophyCase";
 import type { HallOfFameCategoryGroup, HallOfFameRow as HallOfFameRowType } from "./types";
 import { useAppSession } from "../auth/AppSessionContext";
 import { PanelEmptyState, SessionLoadingCard } from "../components/panelStatus";
@@ -20,41 +18,50 @@ import {
 
 const CATEGORY_SECTION_GAP = "4";
 
+const HALL_OF_FAME_CARD_GRID_PROPS = {
+  columns: { base: 1, md: 2 },
+  gap: MAPPED_LIST_STACK_GAP,
+  w: "100%",
+  alignItems: "stretch",
+} as const;
+
+function HallOfFameCardGrid({ children }: { children: ReactNode }) {
+  return <SimpleGrid {...HALL_OF_FAME_CARD_GRID_PROPS}>{children}</SimpleGrid>;
+}
+
 function parseHighlightSlug(params: URLSearchParams): string | null {
   const raw = params.get("slug")?.trim();
   return raw ? raw : null;
 }
 
-function CategoryGroupSection({
+function LockedCategorySection({
   groups,
   viewerId,
   highlightSlug,
-  rowKeyPrefix,
 }: {
   groups: HallOfFameCategoryGroup[];
   viewerId: number | null;
   highlightSlug: string | null;
-  rowKeyPrefix: string;
 }) {
   return (
     <Stack gap={CATEGORY_SECTION_GAP}>
       {groups.map((group) => {
-        const sectionRows =
-          rowKeyPrefix === "earned" ? group.earnedRows : group.lockedRows;
-        if (sectionRows.length === 0) return null;
+        if (group.lockedRows.length === 0) return null;
         return (
-          <Stack key={`${rowKeyPrefix}-${group.category}`} gap={MAPPED_LIST_STACK_GAP}>
+          <Stack key={group.category} gap={MAPPED_LIST_STACK_GAP}>
             <Heading as="h2" size={{ base: "md", md: "lg" }} px="1">
               {group.label}
             </Heading>
-            {sectionRows.map((row) => (
-              <HallOfFameRow
-                key={`${rowKeyPrefix}-${row.slug}`}
-                row={row}
-                viewerId={viewerId}
-                highlighted={highlightSlug === row.slug}
-              />
-            ))}
+            <HallOfFameCardGrid>
+              {group.lockedRows.map((row) => (
+                <HallOfFameRow
+                  key={`locked-${row.slug}`}
+                  row={row}
+                  viewerId={viewerId}
+                  highlighted={highlightSlug === row.slug}
+                />
+              ))}
+            </HallOfFameCardGrid>
           </Stack>
         );
       })}
@@ -76,17 +83,18 @@ export default function HallOfFamePage() {
   const [error, setError] = useState<string | null>(null);
   const didScrollRef = useRef(false);
 
-  const earnedGroups = useMemo(() => {
-    if (viewerId == null) return groupHallOfFameEarnedByCategory(rows, -1);
-    return groupHallOfFameEarnedByCategory(rows, viewerId);
+  const earnedRows = useMemo(() => {
+    const earned = rows.filter((r) => r.is_earned);
+    if (viewerId == null) return sortHallOfFameRows(earned, -1);
+    return sortHallOfFameRows(earned, viewerId);
   }, [rows, viewerId]);
 
-  const lockedGroups = useMemo(() => {
-    if (viewerId == null) return groupHallOfFameLockedByCategory(rows, -1);
-    return groupHallOfFameLockedByCategory(rows, viewerId);
-  }, [rows, viewerId]);
+  const lockedGroups = useMemo(
+    () => groupHallOfFameLockedByCategory(rows),
+    [rows],
+  );
 
-  const hasEarned = earnedGroups.some((g) => g.earnedRows.length > 0);
+  const hasEarned = earnedRows.length > 0;
   const hasLocked = lockedGroups.some((g) => g.lockedRows.length > 0);
 
   useEffect(() => {
@@ -178,21 +186,24 @@ export default function HallOfFamePage() {
             ) : null}
 
             {!loading && hasEarned ? (
-              <CategoryGroupSection
-                groups={earnedGroups}
-                viewerId={viewerId}
-                highlightSlug={highlightSlug}
-                rowKeyPrefix="earned"
-              />
+              <HallOfFameCardGrid>
+                {earnedRows.map((row) => (
+                  <HallOfFameRow
+                    key={`earned-${row.slug}`}
+                    row={row}
+                    viewerId={viewerId}
+                    highlighted={highlightSlug === row.slug}
+                  />
+                ))}
+              </HallOfFameCardGrid>
             ) : null}
 
             {!loading && hasLocked ? (
               <Stack gap={CATEGORY_SECTION_GAP} pt={hasEarned ? "2" : undefined}>
-                <CategoryGroupSection
+                <LockedCategorySection
                   groups={lockedGroups}
                   viewerId={viewerId}
                   highlightSlug={highlightSlug}
-                  rowKeyPrefix="locked"
                 />
               </Stack>
             ) : null}

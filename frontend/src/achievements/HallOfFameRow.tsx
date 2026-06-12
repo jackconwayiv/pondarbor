@@ -60,6 +60,7 @@ export function HallOfFameRow({
     <Box
       id={`hall-of-fame-${row.slug}`}
       {...MAPPED_LIST_CARD_OUTER_PROPS}
+      h="100%"
       bg={isEarned ? "white" : "gray.100"}
       borderWidth="1px"
       borderColor={highlighted ? "teal.solid" : "border"}

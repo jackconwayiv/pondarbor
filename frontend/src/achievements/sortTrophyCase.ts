@@ -1,18 +1,21 @@
 import type { HallOfFameRow } from "./types";
 
-function trophySortKey(row: HallOfFameRow, viewerId: number): [number, number, number, string] {
-  const viewerHas = row.earners.some((e) => e.id === viewerId);
+function trophySortKey(
+  row: HallOfFameRow,
+  viewerId: number,
+): [number, number, number, string] {
   const count = row.earner_count;
+  const viewerHas = row.earners.some((e) => e.id === viewerId);
   let tier: number;
   if (count === 1 && viewerHas) {
     tier = 0;
-  } else if (count === 1 && !viewerHas) {
+  } else if (count === 1) {
     tier = 1;
   } else {
     tier = 2;
   }
   const countKey = tier < 2 ? 0 : count;
-  return [tier, countKey, 0, row.slug];
+  return [tier, countKey, row.catalog_order, row.slug];
 }
 
 /** Rarity-first ordering (matches backend `achievement_trophy_case_payload`). */

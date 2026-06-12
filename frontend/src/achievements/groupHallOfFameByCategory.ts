@@ -1,5 +1,4 @@
 import { achievementCategoryMeta } from "./achievementCategoryLabels";
-import { sortHallOfFameRows } from "./sortTrophyCase";
 import type { HallOfFameCategoryGroup, HallOfFameRow } from "./types";
 
 function categorySortKey(rows: HallOfFameRow[]): number {
@@ -14,18 +13,14 @@ function sortLockedRows(rows: HallOfFameRow[]): HallOfFameRow[] {
   );
 }
 
-function buildCategoryGroups(
+/** Unearned catalog rows grouped by app category (catalog order within each). */
+export function groupHallOfFameLockedByCategory(
   rows: HallOfFameRow[],
-  viewerId: number,
-  mode: "earned" | "locked",
 ): HallOfFameCategoryGroup[] {
-  const filtered =
-    mode === "earned"
-      ? rows.filter((r) => r.is_earned)
-      : rows.filter((r) => !r.is_earned);
+  const locked = rows.filter((r) => !r.is_earned);
 
   const byCategory = new Map<string, HallOfFameRow[]>();
-  for (const row of filtered) {
+  for (const row of locked) {
     const cat = row.category.trim() || "_general";
     const list = byCategory.get(cat) ?? [];
     list.push(row);
@@ -39,33 +34,14 @@ function buildCategoryGroups(
       category,
       label: meta.label,
       emoji: meta.emoji,
-      earnedRows:
-        mode === "earned" ? sortHallOfFameRows(catRows, viewerId) : [],
-      lockedRows: mode === "locked" ? sortLockedRows(catRows) : [],
+      earnedRows: [],
+      lockedRows: sortLockedRows(catRows),
     });
   }
 
-  groups.sort((a, b) => {
-    const aRows = mode === "earned" ? a.earnedRows : a.lockedRows;
-    const bRows = mode === "earned" ? b.earnedRows : b.lockedRows;
-    return categorySortKey(aRows) - categorySortKey(bRows);
-  });
+  groups.sort(
+    (a, b) => categorySortKey(a.lockedRows) - categorySortKey(b.lockedRows),
+  );
 
   return groups;
-}
-
-/** Earned badges grouped by category (rarity order within each). */
-export function groupHallOfFameEarnedByCategory(
-  rows: HallOfFameRow[],
-  viewerId: number,
-): HallOfFameCategoryGroup[] {
-  return buildCategoryGroups(rows, viewerId, "earned");
-}
-
-/** Unearned catalog rows grouped by category (catalog order within each). */
-export function groupHallOfFameLockedByCategory(
-  rows: HallOfFameRow[],
-  viewerId: number,
-): HallOfFameCategoryGroup[] {
-  return buildCategoryGroups(rows, viewerId, "locked");
 }

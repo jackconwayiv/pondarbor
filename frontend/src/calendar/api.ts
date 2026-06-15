@@ -9,6 +9,7 @@ import type {
   EventWritePayload,
   SourceCreatePayload,
   SourceSyncSummary,
+  SourceUpdatePayload,
 } from "./types";
 
 function apiBase(): string {
@@ -184,6 +185,26 @@ export async function createCalendarSource(
     source: CalendarSource;
     synced: SourceSyncSummary;
   };
+}
+
+export async function updateCalendarSource(
+  accessToken: string | null,
+  sourceId: number,
+  payload: SourceUpdatePayload,
+): Promise<CalendarSource> {
+  const response = await fetch(
+    `${apiBase()}/api/v1/calendars/sources/${sourceId}/`,
+    {
+      method: "PATCH",
+      headers: authHeaders(accessToken),
+      credentials: "omit",
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
+  }
+  return (await response.json()) as CalendarSource;
 }
 
 export async function syncCalendarSource(

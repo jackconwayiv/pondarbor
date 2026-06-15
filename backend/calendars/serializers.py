@@ -28,10 +28,14 @@ def _owner_row(user) -> dict:
         avatar_url = profile_avatar_url(profile)
     if not display_name:
         display_name = (user.email or "").split("@")[0]
+    calendar_display_source_names = False
+    if profile is not None:
+        calendar_display_source_names = bool(profile.calendar_display_source_names)
     return {
         "id": user.id,
         "display_name": display_name,
         "avatar_url": avatar_url,
+        "calendar_display_source_names": calendar_display_source_names,
     }
 
 
@@ -99,6 +103,21 @@ class CalendarSourceCreateSerializer(serializers.Serializer):
         return trimmed
 
 
+class CalendarSourceUpdateSerializer(serializers.Serializer):
+    display_name = serializers.CharField(max_length=120, required=False)
+
+    def validate_display_name(self, value: str) -> str:
+        trimmed = (value or "").strip()
+        if not trimmed:
+            raise serializers.ValidationError("Display name is required.")
+        return trimmed
+
+    def validate(self, attrs):
+        if not attrs:
+            raise serializers.ValidationError("No fields to update.")
+        return attrs
+
+
 class EventSerializer(serializers.ModelSerializer):
     """Read serializer for events.
 
@@ -109,6 +128,10 @@ class EventSerializer(serializers.ModelSerializer):
     """
 
     owner = serializers.SerializerMethodField()
+    source_id = serializers.IntegerField(read_only=True)
+    source_display_name = serializers.CharField(
+        source="source.display_name", read_only=True
+    )
     source_type = serializers.CharField(source="source.source_type", read_only=True)
     title = serializers.SerializerMethodField()
     is_manual = serializers.SerializerMethodField()
@@ -118,6 +141,8 @@ class EventSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "owner",
+            "source_id",
+            "source_display_name",
             "source_type",
             "is_manual",
             "title",

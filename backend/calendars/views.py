@@ -16,6 +16,7 @@ from calendars.feed_sync import stale_ical_sources_for_owner_ids, sync_stale_sou
 from calendars.serializers import (
     CalendarSourceCreateSerializer,
     CalendarSourceSerializer,
+    CalendarSourceUpdateSerializer,
     EventSerializer,
     EventWriteSerializer,
     _owner_row,
@@ -320,10 +321,21 @@ def _create_source(request):
     )
 
 
-@api_view(["DELETE", "POST"])
+@api_view(["DELETE", "POST", "PATCH"])
 @permission_classes([IsApprovedUser])
 def source_detail(request, source_id: int):
     source = get_object_or_404(CalendarSource, pk=source_id, owner=request.user)
+    if request.method == "PATCH":
+        if source.source_type != CalendarSource.SourceType.ICAL:
+            return Response(
+                {"detail": "Only imported calendars can be edited."},
+                status=400,
+            )
+        serializer = CalendarSourceUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        source.display_name = serializer.validated_data["display_name"]
+        source.save(update_fields=["display_name", "updated_at"])
+        return Response(CalendarSourceSerializer(source).data)
     if request.method == "DELETE":
         if source.source_type == CalendarSource.SourceType.MANUAL:
             return Response(

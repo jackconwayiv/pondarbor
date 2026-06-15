@@ -114,6 +114,7 @@ class ProfileSerializer(serializers.Serializer):
         required=False,
     )
     display_astro = serializers.BooleanField()
+    calendar_display_source_names = serializers.BooleanField()
     social_publish_visibility = serializers.CharField(required=False, default="all_approved")
     social_read_scope = serializers.CharField(required=False, default="approved_users")
     songaday_visibility = serializers.CharField(required=False, default="all_approved")
@@ -183,6 +184,7 @@ class ProfileUpdateSerializer(serializers.Serializer):
         allow_empty=True,
     )
     display_astro = serializers.BooleanField(required=False)
+    calendar_display_source_names = serializers.BooleanField(required=False)
     social_publish_visibility = serializers.ChoiceField(
         choices=["all_approved", "friends_only"],
         required=False,

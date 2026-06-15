@@ -316,11 +316,22 @@ class EventPrivacyTests(CalendarTestMixin, TestCase):
         # Whitelist the keys the API may return for an event.
         self.assertEqual(
             set(imported_row.keys()),
-            {"id", "owner", "source_type", "is_manual", "title", "start_date", "end_date"},
+            {
+                "id",
+                "owner",
+                "source_id",
+                "source_display_name",
+                "source_type",
+                "is_manual",
+                "title",
+                "start_date",
+                "end_date",
+            },
         )
         # Critically: title is null for shared/iCal events.
         self.assertIsNone(imported_row["title"])
         self.assertEqual(imported_row["source_type"], "ical")
+        self.assertEqual(imported_row["source_display_name"], "Bob's import")
         self.assertFalse(imported_row["is_manual"])
         self.assertEqual(imported_row["start_date"], "2026-05-10")
         self.assertEqual(imported_row["end_date"], "2026-05-10")
@@ -437,6 +448,36 @@ class SourcesApiTests(CalendarTestMixin, TestCase):
                 "display_name": "Trips 2",
                 "ical_url": "https://calendar.google.com/calendar/ical/x/basic.ics",
             },
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_patch_ical_source_display_name(self):
+        source = CalendarSource.objects.create(
+            owner=self.alice,
+            source_type=CalendarSource.SourceType.ICAL,
+            display_name="Trips",
+            ical_url="https://calendar.google.com/calendar/ical/x/basic.ics",
+        )
+        resp = self.alice_client.patch(
+            f"/api/v1/calendars/sources/{source.id}/",
+            {"display_name": "Travel"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["display_name"], "Travel")
+        source.refresh_from_db()
+        self.assertEqual(source.display_name, "Travel")
+
+    def test_cannot_patch_manual_source_display_name(self):
+        source = CalendarSource.objects.create(
+            owner=self.alice,
+            source_type=CalendarSource.SourceType.MANUAL,
+            display_name="Manual events",
+        )
+        resp = self.alice_client.patch(
+            f"/api/v1/calendars/sources/{source.id}/",
+            {"display_name": "Other"},
             format="json",
         )
         self.assertEqual(resp.status_code, 400)

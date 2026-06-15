@@ -2,6 +2,7 @@ export type CalendarOwnerRow = {
   id: number;
   display_name: string;
   avatar_url: string;
+  calendar_display_source_names?: boolean;
 };
 
 export type CalendarColor = "lilypad" | "sky" | "nautical" | "gray";
@@ -29,6 +30,8 @@ export type CalendarSource = {
 export type CalendarEvent = {
   id: number;
   owner: CalendarOwnerRow;
+  source_id: number;
+  source_display_name: string;
   source_type: CalendarSourceType;
   is_manual: boolean;
   title: string | null;
@@ -53,6 +56,10 @@ export type SourceCreatePayload = {
   display_name: string;
   ical_url: string;
   color?: CalendarColor;
+};
+
+export type SourceUpdatePayload = {
+  display_name: string;
 };
 
 export type SourceSyncSummary = {

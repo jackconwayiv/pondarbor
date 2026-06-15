@@ -3,7 +3,9 @@ import {
   Collapsible,
   HStack,
   Heading,
+  Input,
   Stack,
+  Switch,
   Tabs,
   Text,
 } from "@chakra-ui/react";
@@ -18,7 +20,7 @@ import {
   APP_SHELL_TAB_LIST_PROPS,
   APP_SHELL_TAB_TRIGGER_PROPS,
 } from "../theme/appShellTabs";
-import { APP_SHELL_TRAY_PROPS, APP_TEXT_SIZES, PANEL_ENTRY_CARD_PROPS } from "../theme/typography";
+import { APP_SHELL_TRAY_PROPS, APP_TEXT_SIZES, PANEL_ENTRY_CARD_PROPS, PANEL_FIELD_PROPS } from "../theme/typography";
 import {
   createCalendarEvent,
   createCalendarSource,
@@ -30,6 +32,7 @@ import {
   fetchCalendarSources,
   syncCalendarRefresh,
   syncCalendarSource,
+  updateCalendarSource,
   updateCalendarEvent,
 } from "./api";
 import EventFormDialog from "./EventFormDialog";
@@ -73,6 +76,7 @@ export default function CalendarPage() {
     getApiAccessToken,
     refreshSession,
     resyncSessionSilently,
+    patchMyProfile,
     error: sessionError,
   } = useAppSession();
 
@@ -106,6 +110,10 @@ export default function CalendarPage() {
     null,
   );
   const [peopleOpen, setPeopleOpen] = useState(false);
+  const [calendarDisplaySaving, setCalendarDisplaySaving] = useState(false);
+  const [savingLabelSourceId, setSavingLabelSourceId] = useState<number | null>(null);
+  const [editingLabelSourceId, setEditingLabelSourceId] = useState<number | null>(null);
+  const [labelDrafts, setLabelDrafts] = useState<Record<number, string>>({});
   const hasLoadedOnceRef = useRef(false);
   const syncRunRef = useRef(0);
 
@@ -122,10 +130,6 @@ export default function CalendarPage() {
   );
 
   const monthRange = useMemo(() => monthGridDateRange(anchor), [anchor]);
-  const ownersById = useMemo(
-    () => new Map(approvedUsers.map((u) => [u.id, u])),
-    [approvedUsers],
-  );
   useEffect(() => {
     setPeopleOpen(!isMobile);
   }, [isMobile]);
@@ -358,12 +362,89 @@ export default function CalendarPage() {
         message: `Removed ${source.display_name}.`,
       });
       setConfirmDeleteSourceId(null);
+      setLabelDrafts((prev) => {
+        const next = { ...prev };
+        delete next[source.id];
+        return next;
+      });
       await Promise.all([loadSources(), loadEvents()]);
     } catch (err: unknown) {
       setNotice({
         kind: "error",
         message: err instanceof Error ? err.message : "Failed to delete source.",
       });
+    }
+  };
+
+  const beginEditSourceLabel = (source: CalendarSource) => {
+    setEditingLabelSourceId(source.id);
+    setLabelDrafts((prev) => ({ ...prev, [source.id]: source.display_name }));
+  };
+
+  const cancelEditSourceLabel = (source: CalendarSource) => {
+    setEditingLabelSourceId((current) => (current === source.id ? null : current));
+    setLabelDrafts((prev) => {
+      const next = { ...prev };
+      delete next[source.id];
+      return next;
+    });
+  };
+
+  const handleSaveSourceLabel = async (source: CalendarSource) => {
+    const draft = (labelDrafts[source.id] ?? source.display_name).trim();
+    setEditingLabelSourceId((current) => (current === source.id ? null : current));
+    if (!draft || draft === source.display_name) {
+      setLabelDrafts((prev) => {
+        const next = { ...prev };
+        delete next[source.id];
+        return next;
+      });
+      return;
+    }
+
+    setSavingLabelSourceId(source.id);
+    try {
+      const token = await getApiAccessToken();
+      const updated = await updateCalendarSource(token, source.id, {
+        display_name: draft,
+      });
+      setSources((prev) =>
+        prev.map((row) => (row.id === updated.id ? updated : row)),
+      );
+      setEvents((prev) =>
+        prev.map((ev) =>
+          ev.source_id === updated.id
+            ? { ...ev, source_display_name: updated.display_name }
+            : ev,
+        ),
+      );
+    } catch (err: unknown) {
+      setNotice({
+        kind: "error",
+        message: err instanceof Error ? err.message : "Failed to save label.",
+      });
+    } finally {
+      setSavingLabelSourceId(null);
+      setLabelDrafts((prev) => {
+        const next = { ...prev };
+        delete next[source.id];
+        return next;
+      });
+    }
+  };
+
+  const handleCalendarDisplayToggle = async (checked: boolean) => {
+    setCalendarDisplaySaving(true);
+    try {
+      await patchMyProfile({ calendar_display_source_names: checked });
+      await loadEvents();
+    } catch (err: unknown) {
+      setNotice({
+        kind: "error",
+        message: err instanceof Error ? err.message : "Failed to save setting.",
+      });
+    } finally {
+      setCalendarDisplaySaving(false);
     }
   };
 
@@ -620,7 +701,6 @@ export default function CalendarPage() {
                       birthdays={birthdays}
                       orderedCheckedUserIds={orderedCheckedUserIds}
                       isDefaultAll={isDefaultAll}
-                      ownersById={ownersById}
                       onDayClick={handleDayClick}
                     />
                     {eventsError ? (
@@ -635,6 +715,27 @@ export default function CalendarPage() {
 
             <Tabs.Content value="sources" p={{ base: "2", md: "2" }}>
               <Stack gap="3">
+                <HStack gap="3" align="center" flexWrap="wrap">
+                  <Switch.Root
+                    checked={
+                      sessionUser.profile.calendar_display_source_names ?? false
+                    }
+                    onCheckedChange={(details) =>
+                      void handleCalendarDisplayToggle(!!details.checked)
+                    }
+                    disabled={calendarDisplaySaving}
+                    colorPalette="teal"
+                  >
+                    <Switch.HiddenInput />
+                    <Switch.Control>
+                      <Switch.Thumb />
+                    </Switch.Control>
+                  </Switch.Root>
+                  <Text fontSize={APP_TEXT_SIZES.helper}>
+                    Show calendar labels as Name: Label in the shared calendar
+                    and iCal feed.
+                  </Text>
+                </HStack>
                 <HStack justify="space-between" align="center" flexWrap="wrap" gap="2">
                   <Text fontSize={APP_TEXT_SIZES.body}>
                     Your imported calendars auto-refresh every
@@ -676,8 +777,40 @@ export default function CalendarPage() {
                   >
                     <Stack gap="2">
                       <HStack justify="space-between" align="start" gap="2" flexWrap="wrap">
-                        <Stack gap="0">
-                          <Text fontWeight="semibold">{source.display_name}</Text>
+                        <Stack gap="0" flex="1" minW="0">
+                          {editingLabelSourceId === source.id ? (
+                            <Input
+                              autoFocus
+                              value={labelDrafts[source.id] ?? source.display_name}
+                              onChange={(e) =>
+                                setLabelDrafts((prev) => ({
+                                  ...prev,
+                                  [source.id]: e.target.value,
+                                }))
+                              }
+                              onBlur={() => void handleSaveSourceLabel(source)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.currentTarget.blur();
+                                } else if (e.key === "Escape") {
+                                  cancelEditSourceLabel(source);
+                                }
+                              }}
+                              maxLength={120}
+                              disabled={savingLabelSourceId === source.id}
+                              {...PANEL_FIELD_PROPS}
+                            />
+                          ) : (
+                            <Text
+                              fontWeight="semibold"
+                              cursor="pointer"
+                              lineClamp={1}
+                              onClick={() => beginEditSourceLabel(source)}
+                              _hover={{ textDecoration: "underline" }}
+                            >
+                              {source.display_name}
+                            </Text>
+                          )}
                           <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted">
                             {source.last_synced_at
                               ? `Last synced ${new Date(source.last_synced_at).toLocaleString()}`

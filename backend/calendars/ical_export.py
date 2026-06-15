@@ -28,6 +28,14 @@ def _display_name_for_user(user) -> str:
     return _owner_row(user)["display_name"]
 
 
+def _busy_label_for_event(event) -> str:
+    owner_name = _display_name_for_user(event.owner)
+    profile = getattr(event.owner, "profile", None)
+    if profile and profile.calendar_display_source_names:
+        return f"{owner_name}: {event.source.display_name}"
+    return owner_name
+
+
 def _feed_date_window(*, today: date | None = None) -> tuple[date, date]:
     today = today or date.today()
     start = today - timedelta(days=FEED_PAST_DAYS)
@@ -59,7 +67,7 @@ def events_for_subscription(
         return Event.objects.none()
     ctx = viewer_context(viewer=subscriber)
     return (
-        Event.objects.select_related("owner", "owner__profile")
+        Event.objects.select_related("owner", "owner__profile", "source")
         .filter(owner_id__in=kept)
         .filter(start_date__lte=end_date, end_date__gte=start_date)
         .filter(published_owner_visibility_q(viewer=subscriber, owner_fk_field="owner", ctx=ctx))
@@ -70,7 +78,7 @@ def events_for_subscription(
 def _names_by_day_from_events(events) -> dict[date, set[str]]:
     by_day: dict[date, set[str]] = {}
     for event in events:
-        name = _display_name_for_user(event.owner)
+        name = _busy_label_for_event(event)
         day = event.start_date
         while day <= event.end_date:
             by_day.setdefault(day, set()).add(name)

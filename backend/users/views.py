@@ -131,6 +131,7 @@ def serialize_me(user):
             "achievement_inbox_read_slugs": profile.achievement_inbox_read_slugs
             or [],
             "home_starred_app_paths": profile.home_starred_app_paths,
+            "calendar_display_source_names": profile.calendar_display_source_names,
             "onboarding_completed": profile.onboarding_completed,
             "onboarding_step": profile.onboarding_step,
         },
@@ -616,6 +617,10 @@ def patch_me_profile(request):
             slots_per_day_changed = True
     if "display_astro" in data:
         profile.display_astro = bool(data["display_astro"])
+    if "calendar_display_source_names" in data:
+        profile.calendar_display_source_names = bool(
+            data["calendar_display_source_names"]
+        )
     if "songaday_visibility" in data:
         profile.songaday_visibility = data["songaday_visibility"]
     if "home_starred_app_paths" in data:

@@ -33,6 +33,10 @@ import {
   updateCalendarEvent,
 } from "./api";
 import EventFormDialog from "./EventFormDialog";
+import {
+  buildDayBusySections,
+  uniqueBusyOwnerIds,
+} from "./calendarBusyBars";
 import { eventCoversDay, parseIsoDate } from "./monthMath";
 import type {
   CalendarEvent,
@@ -130,15 +134,21 @@ export default function CalendarDayPage() {
   }, [birthdays, dayIso]);
 
   /** Owner ids busy this day, restricted to checked users, in checked-order. */
-  const busyOwnerIds = useMemo(() => {
-    const busySet = new Set(eventsForDay.map((ev) => ev.owner.id));
-    if (isDefaultAll && orderedCheckedUserIds.length === 0 && eventsForDay.length > 0) {
-      const ids = Array.from(busySet);
-      ids.sort((a, b) => a - b);
-      return ids;
-    }
-    return orderedCheckedUserIds.filter((id) => busySet.has(id));
-  }, [eventsForDay, isDefaultAll, orderedCheckedUserIds]);
+  const busyOwnerIds = useMemo(
+    () =>
+      uniqueBusyOwnerIds(eventsForDay, orderedCheckedUserIds, isDefaultAll),
+    [eventsForDay, isDefaultAll, orderedCheckedUserIds],
+  );
+  const busySections = useMemo(
+    () => {
+      const effectiveCheckedUserIds =
+        isDefaultAll && orderedCheckedUserIds.length === 0 && eventsForDay.length > 0
+          ? busyOwnerIds
+          : orderedCheckedUserIds;
+      return buildDayBusySections(eventsForDay, effectiveCheckedUserIds);
+    },
+    [busyOwnerIds, eventsForDay, isDefaultAll, orderedCheckedUserIds],
+  );
 
   const handleSaveEdit = async (payload: EventWritePayload) => {
     if (!editing) return;
@@ -300,7 +310,8 @@ export default function CalendarDayPage() {
                     </Text>
                   </Box>
                 ))}
-                {busyOwnerIds.map((ownerId) => {
+                {busySections.map((section) => {
+                  const ownerId = section.ownerId;
                   const color = colorForCheckedUser(
                     ownerId,
                     orderedCheckedUserIds,
@@ -308,17 +319,13 @@ export default function CalendarDayPage() {
                   if (color === null) return null;
                   const owner =
                     ownersById.get(ownerId) ??
-                    eventsForDay.find((ev) => ev.owner.id === ownerId)?.owner;
-                  const ownerLabel =
-                    owner?.display_name || `User ${ownerId}`;
+                    section.events.find((ev) => ev.owner.id === ownerId)?.owner;
+                  const ownerLabel = section.label;
                   const ownerAvatarUrl = resolveAvatarUrlForUser(
                     owner?.avatar_url,
                     ownerId,
                     sessionUser,
                     auth0User,
-                  );
-                  const ownerEvents = eventsForDay.filter(
-                    (ev) => ev.owner.id === ownerId,
                   );
                   const isSelf =
                     currentUserId !== null && ownerId === currentUserId;
@@ -341,7 +348,7 @@ export default function CalendarDayPage() {
                   );
                   return (
                     <Box
-                      key={ownerId}
+                      key={section.key}
                       borderWidth="1px"
                       borderColor="border"
                       borderRadius="md"
@@ -383,7 +390,7 @@ export default function CalendarDayPage() {
                         )}
                       </Box>
                       <Stack gap="1" p="2">
-                        {ownerEvents.map((ev) => {
+                        {section.events.map((ev) => {
                           const isOwnManual =
                             ev.is_manual && ev.owner.id === currentUserId;
                           const titleText = ev.title ?? "";

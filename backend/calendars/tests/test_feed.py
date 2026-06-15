@@ -54,32 +54,40 @@ class CalendarFeedExportTests(CalendarTestMixin, TestCase):
         self.assertEqual(body.count("BEGIN:VEVENT"), 1)
 
     def test_build_ics_coalesces_consecutive_days_with_same_names(self):
+        start = date.today()
+        end = start + timedelta(days=2)
         Event.objects.create(
             owner=self.alice,
             source=self.alice_source,
-            start_date=date(2026, 5, 10),
-            end_date=date(2026, 5, 12),
+            start_date=start,
+            end_date=end,
         )
         body, _etag = build_subscription_ics(
             subscriber=self.alice,
             owner_ids=[self.alice.id],
         )
-        self.assertIn("DTSTART;VALUE=DATE:20260510", body)
-        self.assertIn("DTEND;VALUE=DATE:20260513", body)
+        self.assertIn(f"DTSTART;VALUE=DATE:{start.strftime('%Y%m%d')}", body)
+        self.assertIn(
+            f"DTEND;VALUE=DATE:{(end + timedelta(days=1)).strftime('%Y%m%d')}",
+            body,
+        )
         self.assertEqual(body.count("BEGIN:VEVENT"), 1)
 
     def test_build_ics_splits_when_name_set_changes(self):
+        start = date.today()
+        mid = start + timedelta(days=1)
+        end = start + timedelta(days=2)
         Event.objects.create(
             owner=self.alice,
             source=self.alice_source,
-            start_date=date(2026, 5, 10),
-            end_date=date(2026, 5, 12),
+            start_date=start,
+            end_date=end,
         )
         Event.objects.create(
             owner=self.bob,
             source=self.bob_source,
-            start_date=date(2026, 5, 11),
-            end_date=date(2026, 5, 11),
+            start_date=mid,
+            end_date=mid,
         )
         body, _etag = build_subscription_ics(
             subscriber=self.alice,
@@ -124,6 +132,31 @@ class CalendarFeedExportTests(CalendarTestMixin, TestCase):
             owner_ids=[self.bob.id],
         )
         self.assertIn("SUMMARY;CHARSET=UTF-8:José", body)
+
+    def test_build_ics_uses_source_prefixed_labels_when_enabled(self):
+        busy_day = date.today()
+        Profile.objects.filter(user=self.alice).update(
+            calendar_display_source_names=True
+        )
+        travel_source = CalendarSource.objects.create(
+            owner=self.alice,
+            source_type=CalendarSource.SourceType.ICAL,
+            display_name="Travel",
+            ical_url="https://calendar.google.com/calendar/ical/travel/basic.ics",
+        )
+        Event.objects.create(
+            owner=self.alice,
+            source=travel_source,
+            external_uid="travel-1",
+            start_date=busy_day,
+            end_date=busy_day,
+        )
+        body, _etag = build_subscription_ics(
+            subscriber=self.bob,
+            owner_ids=[self.alice.id],
+        )
+        self.assertIn("SUMMARY:Alice: Travel", body)
+        self.assertNotIn("SUMMARY:Alice\\n", body)
 
 
 class CalendarFeedApiTests(CalendarTestMixin, TestCase):

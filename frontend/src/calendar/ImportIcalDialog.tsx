@@ -107,7 +107,7 @@ export default function ImportIcalDialog({ open, onOpenChange, onSubmit }: Props
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             maxLength={120}
-            placeholder="e.g. Travel, Family"
+            placeholder="Label"
             {...PANEL_FIELD_PROPS}
           />
         </Stack>

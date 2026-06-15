@@ -316,6 +316,21 @@ class UsersApiTests(TestCase):
         self.assertEqual(user.profile.social_publish_visibility, "friends_only")
         self.assertEqual(user.profile.social_read_scope, "friends_only")
 
+    def test_patch_profile_updates_calendar_display_source_names(self):
+        user = User.objects.create_user(
+            email="calendar@example.com", password="secret12345"
+        )
+        self.client.force_login(user)
+        response = self.client.patch(
+            "/api/v1/users/me/profile/",
+            {"calendar_display_source_names": True},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["profile"]["calendar_display_source_names"])
+        user.profile.refresh_from_db()
+        self.assertTrue(user.profile.calendar_display_source_names)
+
     def test_patch_profile_syncs_astro_birth_date(self):
         from zodiac.models import AstroProfile
 

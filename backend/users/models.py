@@ -157,6 +157,7 @@ class Profile(models.Model):
     # by the account. Stored here (vs localStorage) so dismiss persists across devices.
     achievement_inbox_read_slugs = models.JSONField(null=True, blank=True)
     home_starred_app_paths = models.JSONField(null=True, blank=True)
+    calendar_display_source_names = models.BooleanField(default=False)
     onboarding_completed = models.BooleanField(default=False)
     onboarding_step = models.PositiveSmallIntegerField(default=1)
 

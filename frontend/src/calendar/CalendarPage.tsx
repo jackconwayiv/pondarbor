@@ -732,8 +732,7 @@ export default function CalendarPage() {
                     </Switch.Control>
                   </Switch.Root>
                   <Text fontSize={APP_TEXT_SIZES.helper}>
-                    Show calendar labels as Name: Label in the shared calendar
-                    and iCal feed.
+                    Display my calendars with custom labels.
                   </Text>
                 </HStack>
                 <HStack justify="space-between" align="center" flexWrap="wrap" gap="2">

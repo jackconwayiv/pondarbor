@@ -12,8 +12,7 @@ export type DayBusySection = {
 export function busyLabelForEvent(ev: CalendarEvent): string {
   const ownerName = ev.owner.display_name || "Busy";
   if (ev.owner.calendar_display_source_names) {
-    const sourceName = ev.source_display_name || ownerName;
-    return `${ownerName}: ${sourceName}`;
+    return ev.source_display_name || ownerName;
   }
   return ownerName;
 }

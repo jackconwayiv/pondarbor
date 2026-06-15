@@ -47,7 +47,7 @@ describe("busyLabelForEvent", () => {
       source_id: 10,
       source_display_name: "Travel",
     });
-    expect(busyLabelForEvent(ev)).toBe("Alice: Travel");
+    expect(busyLabelForEvent(ev)).toBe("Travel");
   });
 });
 
@@ -85,7 +85,7 @@ describe("buildBusyBarsForDay", () => {
       new Set([1]),
       [1],
     );
-    expect(bars.map((bar) => bar.label)).toEqual(["Alice: Travel", "Alice: Work"]);
+    expect(bars.map((bar) => bar.label)).toEqual(["Travel", "Work"]);
   });
 
   it("orders owners by checked list and sources alphabetically", () => {
@@ -109,11 +109,7 @@ describe("buildBusyBarsForDay", () => {
       new Set([1, 2]),
       [2, 1],
     );
-    expect(bars.map((bar) => bar.label)).toEqual([
-      "Bob",
-      "Alice: Travel",
-      "Alice: Work",
-    ]);
+    expect(bars.map((bar) => bar.label)).toEqual(["Bob", "Travel", "Work"]);
   });
 });
 
@@ -134,6 +130,6 @@ describe("buildDayBusySections", () => {
     );
     expect(sections).toHaveLength(2);
     expect(sections[0]?.events).toHaveLength(1);
-    expect(sections[0]?.label).toBe("Alice: Travel");
+    expect(sections[0]?.label).toBe("Travel");
   });
 });

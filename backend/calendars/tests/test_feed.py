@@ -155,8 +155,8 @@ class CalendarFeedExportTests(CalendarTestMixin, TestCase):
             subscriber=self.bob,
             owner_ids=[self.alice.id],
         )
-        self.assertIn("SUMMARY:Alice: Travel", body)
-        self.assertNotIn("SUMMARY:Alice\\n", body)
+        self.assertIn("SUMMARY:Travel", body)
+        self.assertNotIn("SUMMARY:Alice", body)
 
 
 class CalendarFeedApiTests(CalendarTestMixin, TestCase):

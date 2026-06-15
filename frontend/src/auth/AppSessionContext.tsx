@@ -42,7 +42,7 @@ export type Profile = {
   achievement_inbox_read_slugs?: string[];
   /** App paths starred on home; null = product defaults. */
   home_starred_app_paths?: string[] | null;
-  /** Label busy time as display_name: calendar_title in shared calendar and iCal feed. */
+  /** Label busy time with calendar source labels in shared calendar and iCal feed. */
   calendar_display_source_names?: boolean;
   onboarding_completed?: boolean;
   onboarding_step?: number;

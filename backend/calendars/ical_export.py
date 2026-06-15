@@ -32,7 +32,7 @@ def _busy_label_for_event(event) -> str:
     owner_name = _display_name_for_user(event.owner)
     profile = getattr(event.owner, "profile", None)
     if profile and profile.calendar_display_source_names:
-        return f"{owner_name}: {event.source.display_name}"
+        return event.source.display_name or owner_name
     return owner_name
 
 

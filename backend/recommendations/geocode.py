@@ -17,6 +17,29 @@ _COORD_RE = re.compile(
 )
 
 
+def _google_maps_api_key() -> str:
+    """Server geocode key, with Vite env fallback for local dev."""
+    return (
+        (os.getenv("GOOGLE_MAPS_SERVER_API_KEY") or "").strip()
+        or (os.getenv("VITE_GOOGLE_MAPS_API_KEY") or "").strip()
+    )
+
+
+def _has_google_maps_api_key() -> bool:
+    return bool(_google_maps_api_key())
+
+
+def _geocode_error_hint(status: str | None) -> str:
+    if status == "REQUEST_DENIED":
+        return (
+            "Server geocode was denied (browser-restricted keys cannot geocode from the server). "
+            "The app will retry in your browser when possible."
+        )
+    if status == "OVER_QUERY_LIMIT":
+        return "Geocode quota exceeded — try again later or post without map coordinates."
+    return "Could not geocode this address — you can still post without map coordinates."
+
+
 def split_name_and_address(raw: str) -> tuple[str, str]:
     """
     Split "Business Name, 123 Main St, City, ST 12345" into title + address.
@@ -46,30 +69,61 @@ def try_parse_coordinates(raw: str) -> tuple[str, str] | None:
     return str(lat), str(lng)
 
 
-def _google_reverse_geocode(lat: str, lng: str) -> dict[str, Any] | None:
-    api_key = (os.getenv("GOOGLE_MAPS_SERVER_API_KEY") or "").strip()
-    if not api_key:
+def _parse_geocode_top(top: dict) -> dict[str, Any] | None:
+    location = (top.get("geometry") or {}).get("location") or {}
+    lat = location.get("lat")
+    lng = location.get("lng")
+    if lat is None or lng is None:
         return None
+    try:
+        lat_dec = normalize_coordinate(lat, kind="latitude")
+        lng_dec = normalize_coordinate(lng, kind="longitude")
+    except ValueError:
+        return None
+    if lat_dec is None or lng_dec is None:
+        return None
+    return {
+        "lat": str(lat_dec),
+        "lng": str(lng_dec),
+        "formatted_address": (top.get("formatted_address") or "").strip(),
+        "place_id": (top.get("place_id") or "").strip(),
+    }
+
+
+def _google_geocode_request(params: dict[str, str]) -> tuple[dict[str, Any] | None, str | None]:
+    api_key = _google_maps_api_key()
+    if not api_key:
+        return None, None
     try:
         resp = requests.get(
             "https://maps.googleapis.com/maps/api/geocode/json",
-            params={"latlng": f"{lat},{lng}", "key": api_key},
+            params={**params, "key": api_key},
             headers={"User-Agent": _USER_AGENT},
             timeout=GEOCODE_TIMEOUT,
         )
         resp.raise_for_status()
         payload = resp.json()
     except requests.RequestException:
-        return None
-    if payload.get("status") != "OK":
-        return None
+        return None, None
+    status = payload.get("status")
+    if status != "OK":
+        return None, status if isinstance(status, str) else None
     results = payload.get("results") or []
     if not results:
+        return None, status if isinstance(status, str) else None
+    parsed = _parse_geocode_top(results[0])
+    if parsed is None:
+        return None, "ZERO_RESULTS"
+    return parsed, None
+
+
+def _google_reverse_geocode(lat: str, lng: str) -> dict[str, Any] | None:
+    parsed, _status = _google_geocode_request({"latlng": f"{lat},{lng}"})
+    if not parsed:
         return None
-    top = results[0]
     return {
-        "formatted_address": (top.get("formatted_address") or "").strip(),
-        "place_id": (top.get("place_id") or "").strip(),
+        "formatted_address": parsed.get("formatted_address") or "",
+        "place_id": parsed.get("place_id") or "",
     }
 
 
@@ -86,85 +140,21 @@ def _google_geocode_place_id(place_id: str) -> dict[str, Any] | None:
     pid = (place_id or "").strip()
     if not pid:
         return None
-    api_key = (os.getenv("GOOGLE_MAPS_SERVER_API_KEY") or "").strip()
-    if not api_key:
+    parsed, _status = _google_geocode_request({"place_id": pid})
+    if not parsed:
         return None
-    try:
-        resp = requests.get(
-            "https://maps.googleapis.com/maps/api/geocode/json",
-            params={"place_id": pid, "key": api_key},
-            headers={"User-Agent": _USER_AGENT},
-            timeout=GEOCODE_TIMEOUT,
-        )
-        resp.raise_for_status()
-        payload = resp.json()
-    except requests.RequestException:
-        return None
-    if payload.get("status") != "OK":
-        return None
-    results = payload.get("results") or []
-    if not results:
-        return None
-    top = results[0]
-    location = (top.get("geometry") or {}).get("location") or {}
-    lat = location.get("lat")
-    lng = location.get("lng")
-    if lat is None or lng is None:
-        return None
-    try:
-        lat_dec = normalize_coordinate(lat, kind="latitude")
-        lng_dec = normalize_coordinate(lng, kind="longitude")
-    except ValueError:
-        return None
-    if lat_dec is None or lng_dec is None:
-        return None
-    return {
-        "lat": str(lat_dec),
-        "lng": str(lng_dec),
-        "formatted_address": (top.get("formatted_address") or "").strip(),
-        "place_id": (top.get("place_id") or pid).strip(),
-    }
+    if not parsed.get("place_id"):
+        parsed["place_id"] = pid
+    return parsed
 
 
 def _google_geocode(query: str) -> dict[str, Any] | None:
-    api_key = (os.getenv("GOOGLE_MAPS_SERVER_API_KEY") or "").strip()
-    if not api_key:
-        return None
-    try:
-        resp = requests.get(
-            "https://maps.googleapis.com/maps/api/geocode/json",
-            params={"address": query, "key": api_key},
-            headers={"User-Agent": _USER_AGENT},
-            timeout=GEOCODE_TIMEOUT,
-        )
-        resp.raise_for_status()
-        payload = resp.json()
-    except requests.RequestException:
-        return None
-    if payload.get("status") != "OK":
-        return None
-    results = payload.get("results") or []
-    if not results:
-        return None
-    top = results[0]
-    location = (top.get("geometry") or {}).get("location") or {}
-    lat = location.get("lat")
-    lng = location.get("lng")
-    if lat is None or lng is None:
-        return None
-    try:
-        lat_dec = normalize_coordinate(lat, kind="latitude")
-        lng_dec = normalize_coordinate(lng, kind="longitude")
-    except ValueError:
-        return None
-    if lat_dec is None or lng_dec is None:
-        return None
-    return {
-        "lat": str(lat_dec),
-        "lng": str(lng_dec),
-        "formatted_address": (top.get("formatted_address") or "").strip(),
-        "place_id": (top.get("place_id") or "").strip(),
-    }
+    parsed, _status = _google_geocode_request({"address": query})
+    return parsed
+
+
+def _google_geocode_with_status(query: str) -> tuple[dict[str, Any] | None, str | None]:
+    return _google_geocode_request({"address": query})
 
 
 def resolve_place_query(query: str) -> dict:
@@ -188,7 +178,7 @@ def resolve_place_query(query: str) -> dict:
         "partial": False,
     }
 
-    geocoded = _google_geocode(geocode_query)
+    geocoded, geocode_status = _google_geocode_with_status(geocode_query)
     if geocoded:
         result["latitude"] = geocoded["lat"]
         result["longitude"] = geocoded["lng"]
@@ -211,10 +201,10 @@ def resolve_place_query(query: str) -> dict:
         hints.append("Saved the address — add a title on the next step if needed.")
     result["location_label"] = _infer_location_label(raw, title, result["address"])
     result["partial"] = True
-    if not os.getenv("GOOGLE_MAPS_SERVER_API_KEY"):
+    if not _has_google_maps_api_key():
         hints.append("Set GOOGLE_MAPS_SERVER_API_KEY to geocode addresses automatically.")
     else:
-        hints.append("Could not geocode this address — you can still post without map coordinates.")
+        hints.append(_geocode_error_hint(geocode_status))
     return result
 
 
@@ -251,6 +241,6 @@ def resolve_coordinates_pair(lat: str, lng: str) -> dict:
         else:
             hints.append("Found an address for these coordinates.")
         result["partial"] = False
-    elif not os.getenv("GOOGLE_MAPS_SERVER_API_KEY"):
+    elif not _has_google_maps_api_key():
         hints.append("Set GOOGLE_MAPS_SERVER_API_KEY to look up city from coordinates.")
     return result

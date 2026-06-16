@@ -7,10 +7,11 @@ import {
   Text,
   Textarea,
 } from "@chakra-ui/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppModal } from "../components/AppModal";
 import PondButton from "../PondButton";
 import { useAppSession } from "../auth/AppSessionContext";
+import { googleMapsApiKey } from "../auth/publicConfig";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import {
   createCategory,
@@ -30,6 +31,11 @@ import {
   mediaEntryCanSubmit,
   resolveMediaTitleForSubmit,
 } from "./mediaFormConfig";
+import {
+  clientGeocodeErrorHint,
+  geocodeAddressClient,
+  reverseGeocodeClient,
+} from "./googleGeocodeClient";
 import { looksLikeMapsLink, parsePinPaste } from "./parsePinPaste";
 import StarRatingInput from "./StarRatingInput";
 import { formatCoordinateForApi, normalizeRatingInput } from "./utils";
@@ -47,6 +53,13 @@ type WizardStep = 1 | 2;
 const RESOLVE_DEBOUNCE_MS = 600;
 
 const PLACES_HINTS_TO_HIDE = new Set(["Found this place on the map."]);
+
+const SERVER_GEOCODE_HINT_PREFIXES = [
+  "Could not geocode",
+  "Server geocode was denied",
+  "Set GOOGLE_MAPS_SERVER_API_KEY",
+  "Geocode quota exceeded",
+];
 
 const emptyForm = () => ({
   title: "",
@@ -103,6 +116,7 @@ export default function AddRecommendationModal({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [resolving, setResolving] = useState(false);
+  const resolveGenerationRef = useRef(0);
 
   const selectedCategory = useMemo(
     () => categories.find((c) => c.slug === categorySlug),
@@ -174,6 +188,91 @@ export default function AddRecommendationModal({
       if (result.longitude) setLongitude(formatCoordinateForApi(result.longitude));
     },
     [effectiveMediaSlug],
+  );
+
+  const tryClientGeocodeFallback = useCallback(
+    async (
+      result: ResolveLinkResult,
+      raw: string,
+      parsedPin: ReturnType<typeof parsePinPaste>,
+      generation: number,
+    ) => {
+      const mapsKey = googleMapsApiKey();
+      if (!mapsKey) return false;
+
+      const isStale = () => generation !== resolveGenerationRef.current;
+
+      const hasCoords = Boolean(result.latitude && result.longitude);
+      const addressQuery = (result.address || raw).trim();
+      const serverGeocodeFailed = result.hints.some((hint) =>
+        SERVER_GEOCODE_HINT_PREFIXES.some((prefix) => hint.startsWith(prefix)),
+      );
+
+      const applyClientGeocodeSuccess = (geo: {
+        lat: number;
+        lng: number;
+        formattedAddress: string;
+        placeId: string;
+      }) => {
+        if (isStale()) return;
+        setLatitude(formatCoordinateForApi(geo.lat));
+        setLongitude(formatCoordinateForApi(geo.lng));
+        if (geo.formattedAddress) setAddress(geo.formattedAddress);
+        if (geo.placeId) setGooglePlaceId((prev) => prev || geo.placeId);
+        if (geo.formattedAddress) {
+          setTitle((prev) => prev || geo.formattedAddress.split(",")[0]?.trim() || "");
+        }
+        setHints((prev) => [
+          ...prev.filter(
+            (hint) =>
+              !SERVER_GEOCODE_HINT_PREFIXES.some((prefix) => hint.startsWith(prefix)),
+          ),
+          "Found this place on the map.",
+        ]);
+      };
+
+      const applyClientGeocodeFailure = (status: string) => {
+        if (isStale() || !serverGeocodeFailed) return;
+        setHints((prev) => [
+          ...prev.filter(
+            (hint) =>
+              !SERVER_GEOCODE_HINT_PREFIXES.some((prefix) => hint.startsWith(prefix)),
+          ),
+          clientGeocodeErrorHint(status),
+        ]);
+      };
+
+      if (!hasCoords && addressQuery && (result.partial || serverGeocodeFailed)) {
+        const geo = await geocodeAddressClient(addressQuery, mapsKey);
+        if (geo.ok) {
+          applyClientGeocodeSuccess(geo.result);
+          return true;
+        }
+        applyClientGeocodeFailure(geo.status);
+        return false;
+      }
+
+      if (parsedPin && !result.address?.trim()) {
+        const geo = await reverseGeocodeClient(parsedPin.lat, parsedPin.lng, mapsKey);
+        if (geo.ok) {
+          if (isStale()) return true;
+          if (geo.result.formattedAddress) setAddress(geo.result.formattedAddress);
+          if (geo.result.placeId) setGooglePlaceId((prev) => prev || geo.result.placeId);
+          setHints((prev) => [
+            ...prev.filter((hint) => !hint.startsWith("Set GOOGLE_MAPS_SERVER_API_KEY")),
+            geo.result.formattedAddress
+              ? "Found an address for these coordinates."
+              : "Using pasted coordinates.",
+          ]);
+          return true;
+        }
+        applyClientGeocodeFailure(geo.status);
+        return false;
+      }
+
+      return false;
+    },
+    [],
   );
 
   useEffect(() => {
@@ -252,9 +351,14 @@ export default function AddRecommendationModal({
       }
 
       setResolving(true);
+      const generation = ++resolveGenerationRef.current;
       try {
         const token = await getApiAccessToken();
-        applyResolveResult(await resolveRecommendationLink(token, trimmed));
+        const result = await resolveRecommendationLink(token, trimmed);
+        if (generation !== resolveGenerationRef.current) return;
+        applyResolveResult(result);
+        await tryClientGeocodeFallback(result, trimmed, parsed ?? null, generation);
+        if (generation !== resolveGenerationRef.current) return;
         if (looksLikeMapsLink(trimmed) || looksLikeHttpUrl(trimmed)) {
           setLink(trimmed);
         }
@@ -268,7 +372,7 @@ export default function AddRecommendationModal({
         setResolving(false);
       }
     },
-    [applyParsedPin, applyResolveResult, getApiAccessToken],
+    [applyParsedPin, applyResolveResult, getApiAccessToken, tryClientGeocodeFallback],
   );
 
   const resolveMediaLink = useCallback(

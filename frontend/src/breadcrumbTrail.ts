@@ -178,7 +178,7 @@ export function getBreadcrumbItems(
 
   if (p === "/recommendations" || p.startsWith("/recommendations/")) {
     if (p === "/recommendations") {
-      return [HOME, { label: "Recommendations" }];
+      return [HOME, { label: "Recommenda" }];
     }
     const parts = p.split("/").filter(Boolean);
     if (parts.length >= 2 && parts[0] === "recommendations") {
@@ -186,19 +186,19 @@ export function getBreadcrumbItems(
       if (parts.length === 2) {
         return [
           HOME,
-          { label: "Recommendations", to: "/recommendations" },
+          { label: "Recommenda", to: "/recommendations" },
           { label: slug.replace(/-/g, " ") },
         ];
       }
       if (parts[2] === "new") {
         return [
           HOME,
-          { label: "Recommendations", to: "/recommendations" },
+          { label: "Recommenda", to: "/recommendations" },
           { label: "New" },
         ];
       }
     }
-    return [HOME, { label: "Recommendations" }];
+    return [HOME, { label: "Recommenda" }];
   }
 
   if (p === "/goals" || p.startsWith("/goals/")) {

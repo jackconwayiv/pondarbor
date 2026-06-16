@@ -1041,7 +1041,7 @@ export default function FriendProfilePage() {
                       value="recommendations"
                       {...APP_SHELL_TAB_TRIGGER_PROPS}
                     >
-                      Recommendations
+                      Recommenda
                     </Tabs.Trigger>
                   ) : null}
                   {hasClosetTab ? (

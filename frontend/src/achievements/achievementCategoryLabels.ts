@@ -13,7 +13,7 @@ const CATEGORY_META: Record<string, { label: string; emoji: string; to: string }
   pondclicker: { label: "PondClicker", emoji: "🪷", to: "/clicker" },
   estates: { label: "Estates", emoji: "🏰", to: "/estates" },
   onboarding: { label: "Pond Arbor", emoji: "👋", to: "/" },
-  recommendations: { label: "Recommendations", emoji: "👍", to: "/recommendations" },
+  recommendations: { label: "Recommenda", emoji: "👍", to: "/recommendations" },
 };
 
 const GENERAL_META = { label: "Pond Arbor", emoji: "🏆", to: "/" };

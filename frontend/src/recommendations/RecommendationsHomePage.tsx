@@ -53,7 +53,7 @@ export default function RecommendationsHomePage() {
     <Stack gap={6} maxW="4xl" mx="auto">
       <Stack gap={2}>
         <HStack justify="space-between" align="start" flexWrap="wrap" gap={3} w="100%">
-          <Heading size="lg">🧭 Recommendations</Heading>
+          <Heading size="lg">🧭 Recommenda</Heading>
           <PondButton
             size="sm"
             flexShrink={0}

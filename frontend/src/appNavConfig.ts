@@ -110,8 +110,8 @@ const QUOTES: AppNavItem = {
 const RECOMMENDATIONS: AppNavItem = {
   to: "/recommendations",
   emoji: "🧭",
-  label: "Recommendations",
-  blurb: "Share places and media recommendations with friends.",
+  label: "Recommenda",
+  blurb: "Share places and media with friends.",
 };
 
 export const GOALS_APP: AppNavItem = {

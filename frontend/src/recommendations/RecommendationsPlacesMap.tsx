@@ -1,4 +1,4 @@
-import { Box, Stack, Text } from "@chakra-ui/react";
+import { Box, Text } from "@chakra-ui/react";
 import { useMemo } from "react";
 import { googleMapsApiKey } from "../auth/publicConfig";
 import { buildStaticMapUrl, entriesWithGeo } from "./geoMapUtils";
@@ -15,7 +15,6 @@ export default function RecommendationsPlacesMap({ entries }: RecommendationsPla
     () => (mapsKey ? buildStaticMapUrl(geoEntries, mapsKey) : null),
     [geoEntries, mapsKey],
   );
-  const missingGeoCount = entries.length - geoEntries.length;
 
   if (!mapsKey) {
     return (
@@ -42,21 +41,13 @@ export default function RecommendationsPlacesMap({ entries }: RecommendationsPla
   if (!mapUrl) return null;
 
   return (
-    <Stack gap={2}>
-      <Box borderRadius="md" overflow="hidden" bg="bg.muted">
-        <img
-          src={mapUrl}
-          alt={`Map showing ${geoEntries.length} recommended place${geoEntries.length === 1 ? "" : "s"}`}
-          style={{ width: "100%", height: "320px", objectFit: "cover", display: "block" }}
-          loading="lazy"
-        />
-      </Box>
-      <Text fontSize="sm" color="fg.muted">
-        {geoEntries.length} place{geoEntries.length === 1 ? "" : "s"} on the map
-        {missingGeoCount > 0
-          ? ` · ${missingGeoCount} without coordinates (list only)`
-          : ""}
-      </Text>
-    </Stack>
+    <Box borderRadius="md" overflow="hidden" bg="bg.muted">
+      <img
+        src={mapUrl}
+        alt={`Map showing ${geoEntries.length} recommended place${geoEntries.length === 1 ? "" : "s"}`}
+        style={{ width: "100%", height: "320px", objectFit: "cover", display: "block" }}
+        loading="lazy"
+      />
+    </Box>
   );
 }

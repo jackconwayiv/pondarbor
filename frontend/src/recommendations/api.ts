@@ -187,10 +187,6 @@ export async function resolveRecommendationLink(
   return (await response.json()) as ResolveLinkResult;
 }
 
-export function googleMapsApiKey(): string {
-  return (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined) ?? "";
-}
-
 export async function fetchFriendRecommendationsByOwner(
   accessToken: string | null,
   ownerUserId: number,

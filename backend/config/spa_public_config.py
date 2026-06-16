@@ -14,12 +14,15 @@ def get_spa_public_config() -> dict[str, str | None]:
         os.getenv("VITE_AUTH0_API_AUDIENCE") or os.getenv("AUTH0_API_AUDIENCE") or ""
     ).strip()
     slack = (os.getenv("VITE_AUTH0_SLACK_CONNECTION") or "").strip()
+    google_maps_api_key = (os.getenv("VITE_GOOGLE_MAPS_API_KEY") or "").strip()
     config: dict[str, str | None] = {
         "auth0Domain": domain,
         "auth0ClientId": client_id,
         "auth0ApiAudience": audience or None,
         "auth0SlackConnection": slack or None,
     }
+    if google_maps_api_key:
+        config["googleMapsApiKey"] = google_maps_api_key
 
     if not settings.DEBUG:
         sentry_dsn = os.getenv("SENTRY_DSN", "").strip()

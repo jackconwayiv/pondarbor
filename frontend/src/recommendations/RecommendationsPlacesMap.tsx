@@ -1,6 +1,6 @@
 import { Box, Stack, Text } from "@chakra-ui/react";
 import { useMemo } from "react";
-import { googleMapsApiKey } from "./api";
+import { googleMapsApiKey } from "../auth/publicConfig";
 import { buildStaticMapUrl, entriesWithGeo } from "./geoMapUtils";
 import type { RecommendationEntry } from "./types";
 
@@ -21,8 +21,8 @@ export default function RecommendationsPlacesMap({ entries }: RecommendationsPla
     return (
       <Box bg="bg.muted" borderRadius="md" p={4}>
         <Text fontSize="sm" color="fg.muted">
-          Set <code>VITE_GOOGLE_MAPS_API_KEY</code> to enable the map. You can still browse
-          recommendations in the list below.
+          Set <code>VITE_GOOGLE_MAPS_API_KEY</code> (local) or the same variable on the server
+          (production) to enable the map. You can still browse recommendations in the list below.
         </Text>
       </Box>
     );

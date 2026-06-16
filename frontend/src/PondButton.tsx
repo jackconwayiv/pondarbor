@@ -12,7 +12,7 @@ type PondButtonProps = ButtonProps & {
 
 /**
  * App-wide button styling:
- * - defaults to `variant="solid"`
+ * - defaults to `variant="solid"` with `colorPalette="lilypad"` (primary actions)
  * - on hover, visually transitions to an "outline-like" look
  *   using the currently selected `colorPalette`.
  */
@@ -31,43 +31,47 @@ const PondButton = forwardRef<HTMLButtonElement, PondButtonProps>(
     },
     ref,
   ) => {
-    const isSolid = (variant ?? "solid") === "solid";
+    const resolvedVariant = variant ?? "solid";
+    const isSolid = resolvedVariant === "solid";
     const isFilterButton = uiClass === "filter";
+    const resolvedPalette =
+      colorPalette ?? (isFilterButton ? undefined : isSolid ? "lilypad" : undefined);
     const wantsWhiteText =
       isSolid &&
-      (colorPalette === "orange" ||
-        colorPalette === "nautical" ||
-        colorPalette === "forest" ||
-        colorPalette === "sky" ||
-        colorPalette === "teal" ||
-        colorPalette === "lilypad");
+      resolvedPalette !== undefined &&
+      (resolvedPalette === "lilypad" ||
+        resolvedPalette === "teal" ||
+        resolvedPalette === "orange" ||
+        resolvedPalette === "nautical" ||
+        resolvedPalette === "navy" ||
+        resolvedPalette === "deep");
     const filterStyles = isFilterButton
       ? uiActive
         ? {
             variant: "outline" as const,
-            colorPalette: "gray" as const,
+            colorPalette: "sky" as const,
             bg: "white",
-            color: "gray.600",
-            borderColor: "gray.300",
+            color: "sky.fg",
+            borderColor: "sky.border",
             borderWidth: "1px",
             _hover: {
-              bg: "gray.50",
-              color: "gray.600",
-              borderColor: "gray.300",
+              bg: "sky.subtle",
+              color: "sky.fg",
+              borderColor: "sky.border",
               ..._hover,
             },
           }
         : {
             variant: "solid" as const,
-            colorPalette: "gray" as const,
-            bg: "gray.400",
+            colorPalette: "sky" as const,
+            bg: "sky.solid",
             color: "white",
-            borderColor: "gray.400",
+            borderColor: "sky.solid",
             borderWidth: "1px",
             _hover: {
-              bg: "gray.300",
+              bg: "sky.emphasized",
               color: "white",
-              borderColor: "gray.300",
+              borderColor: "sky.emphasized",
               ..._hover,
             },
           }
@@ -75,10 +79,10 @@ const PondButton = forwardRef<HTMLButtonElement, PondButtonProps>(
     return (
       <ChakraButton
         ref={ref}
-        variant={filterStyles?.variant ?? (variant ?? "solid")}
+        variant={filterStyles?.variant ?? resolvedVariant}
         size={size ?? "md"}
         borderRadius={borderRadius ?? "xl"}
-        colorPalette={filterStyles?.colorPalette ?? colorPalette}
+        colorPalette={filterStyles?.colorPalette ?? resolvedPalette}
         bg={filterStyles?.bg}
         borderColor={filterStyles?.borderColor}
         borderWidth={filterStyles?.borderWidth}

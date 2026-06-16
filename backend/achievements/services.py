@@ -155,6 +155,9 @@ SLUG_GOALS_MARATHON_MONTH = "goals_marathon_month"
 SLUG_GOALS_CHECKPOINT_CHARLIE = "goals_checkpoint_charlie"
 SLUG_GOALS_LIFES_A_CHORE = "goals_lifes_a_chore"
 SLUG_GOALS_ON_TARGET = "goals_on_target"
+SLUG_RECOMMENDATIONS_TEN_TEN_NO_NOTES = "recommendations_ten_ten_no_notes"
+SLUG_RECOMMENDATIONS_AND_ALSO = "recommendations_and_also"
+SLUG_RECOMMENDATIONS_FIVE_STARS = "recommendations_five_stars"
 SLUG_SCORENADO_GAME_PLAYER = "scorenado_game_player"
 SLUG_SCORENADO_HAT_TRICK = "scorenado_hat_trick"
 SLUG_SCORENADO_DROSSELMEYER = "scorenado_drosselmeyer"
@@ -182,6 +185,7 @@ GOALS_MARATHON_MONTH_MIN_BEST = 30
 GOALS_CHECKPOINT_CHARLIE_MIN_COMPLETED = 10
 GOALS_LIFES_A_CHORE_MIN_CHORES_SAME_DAY = 5
 GOALS_ON_TARGET_MIN_COMPLETED_PROJECTS = 5
+RECOMMENDATIONS_FIVE_STARS_MIN_RATINGS = 5
 SCORENADO_HAT_TRICK_MIN_WINS = 3
 SCORENADO_DROSSELMEYER_MIN_PUBLISHED = 3
 SCORENADO_SCOREKEEPER_MIN_GAMES = 5
@@ -580,6 +584,47 @@ def evaluate_goals_achievements_for_user(user_id: int) -> None:
         )
 
 
+def evaluate_recommendations_share_for_user(user_id: int) -> None:
+    """Unlock when the user shares a recommendation via the add flow."""
+    _try_unlock(user_id, SLUG_RECOMMENDATIONS_TEN_TEN_NO_NOTES)
+
+
+def evaluate_recommendations_comment_on_other_for_user(
+    user_id: int,
+    *,
+    entry_creator_id: int,
+) -> None:
+    if entry_creator_id != user_id:
+        _try_unlock(user_id, SLUG_RECOMMENDATIONS_AND_ALSO)
+
+
+def evaluate_recommendations_five_stars_for_user(user_id: int) -> None:
+    from recommendations.services import active_reviews_qs
+
+    review_count = active_reviews_qs().filter(reviewer_id=user_id).count()
+    if review_count >= RECOMMENDATIONS_FIVE_STARS_MIN_RATINGS:
+        _try_unlock(
+            user_id,
+            SLUG_RECOMMENDATIONS_FIVE_STARS,
+            context={"review_count": review_count},
+        )
+
+
+def evaluate_recommendations_achievements_for_user(user_id: int) -> None:
+    """Backfill helper for Recommendations badges."""
+    from recommendations.models import Entry
+    from recommendations.services import active_reviews_qs
+
+    reviews = active_reviews_qs().filter(reviewer_id=user_id)
+    if reviews.filter(entry__created_by_id=user_id).exists():
+        _try_unlock(user_id, SLUG_RECOMMENDATIONS_TEN_TEN_NO_NOTES)
+    elif Entry.objects.filter(created_by_id=user_id).exists():
+        _try_unlock(user_id, SLUG_RECOMMENDATIONS_TEN_TEN_NO_NOTES)
+    if reviews.exclude(entry__created_by_id=user_id).exists():
+        _try_unlock(user_id, SLUG_RECOMMENDATIONS_AND_ALSO)
+    evaluate_recommendations_five_stars_for_user(user_id)
+
+
 def _scorenado_user_accepted_invite_on_seat(player, user_id: int) -> bool:
     from scorenado.models import GamePlayer
 
@@ -826,6 +871,7 @@ def backfill_all_achievements() -> None:
         evaluate_songaday_musically_multiloquent_for_user(uid)
         evaluate_zodiac_peer_into_stars_for_user(uid)
         evaluate_goals_achievements_for_user(uid)
+        evaluate_recommendations_achievements_for_user(uid)
         evaluate_scorenado_achievements_for_user(uid)
 
     for row in ClickerGameSave.objects.iterator():

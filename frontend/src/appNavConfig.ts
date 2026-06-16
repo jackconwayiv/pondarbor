@@ -41,6 +41,7 @@ export const DEFAULT_STARRED_APP_PATHS = [
   "/people",
   "/clicker",
   "/whatif",
+  "/recommendations",
 ] as const;
 
 const STARABLE_APP_PATHS = new Set<string>([
@@ -59,6 +60,7 @@ const STARABLE_APP_PATHS = new Set<string>([
   "/qff",
   "/harbor",
   "/squalls",
+  "/recommendations",
 ]);
 
 const STAFF_ONLY_GAME_PATHS = new Set(["/qff", "/harbor", "/squalls"]);
@@ -103,6 +105,13 @@ const QUOTES: AppNavItem = {
   emoji: "📜",
   label: "Quotes",
   blurb: "Archive of noteworthy quotes.",
+};
+
+const RECOMMENDATIONS: AppNavItem = {
+  to: "/recommendations",
+  emoji: "🧭",
+  label: "Recommendations",
+  blurb: "Share places and media recommendations with friends.",
 };
 
 export const GOALS_APP: AppNavItem = {
@@ -203,7 +212,7 @@ export const NAV_CATEGORIES: NavCategory[] = [
     id: "social",
     label: "Social",
     emoji: "💬",
-    items: [SONGADAY, CALENDAR, CLOSET, QUOTES, FAMILY_TREE],
+    items: [SONGADAY, CALENDAR, CLOSET, QUOTES, RECOMMENDATIONS, FAMILY_TREE],
   },
   {
     id: "lifestyle",
@@ -302,6 +311,7 @@ export function resolveAppPathFromLocation(
     ["/calendar", "/calendar"],
     ["/closet", "/closet"],
     ["/quotes", "/quotes"],
+    ["/recommendations", "/recommendations"],
     ["/goals", "/goals"],
     ["/zodiac", "/zodiac"],
     ["/meal", "/meal"],

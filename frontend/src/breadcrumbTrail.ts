@@ -176,6 +176,31 @@ export function getBreadcrumbItems(
     return [HOME, { label: "Quotes" }];
   }
 
+  if (p === "/recommendations" || p.startsWith("/recommendations/")) {
+    if (p === "/recommendations") {
+      return [HOME, { label: "Recommendations" }];
+    }
+    const parts = p.split("/").filter(Boolean);
+    if (parts.length >= 2 && parts[0] === "recommendations") {
+      const slug = parts[1];
+      if (parts.length === 2) {
+        return [
+          HOME,
+          { label: "Recommendations", to: "/recommendations" },
+          { label: slug.replace(/-/g, " ") },
+        ];
+      }
+      if (parts[2] === "new") {
+        return [
+          HOME,
+          { label: "Recommendations", to: "/recommendations" },
+          { label: "New" },
+        ];
+      }
+    }
+    return [HOME, { label: "Recommendations" }];
+  }
+
   if (p === "/goals" || p.startsWith("/goals/")) {
     return [HOME, { label: "Goal-Getter" }];
   }

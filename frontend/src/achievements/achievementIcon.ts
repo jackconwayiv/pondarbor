@@ -56,6 +56,9 @@ const SLUG_TO_EMOJI: Record<string, string> = {
   scorenado_drosselmeyer: "\u{1F9F8}",
   scorenado_scorekeeper: "\u{1F3B0}",
   welcome_to_pond_arbor: "👋",
+  recommendations_ten_ten_no_notes: "👍",
+  recommendations_and_also: "👌",
+  recommendations_five_stars: "⭐",
 };
 
 const DEFAULT_EMOJI = "🏆";

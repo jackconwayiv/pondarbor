@@ -39,6 +39,7 @@ STARABLE_HOME_APP_PATHS = frozenset(
         "/qff",
         "/harbor",
         "/squalls",
+        "/recommendations",
     }
 )
 

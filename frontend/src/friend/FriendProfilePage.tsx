@@ -25,6 +25,9 @@ import {
 import { fetchFriendItemsByOwner } from "../closet/api";
 import { FriendClosetListCard } from "../closet/FriendClosetListCard";
 import type { ClosetItem } from "../closet/types";
+import { fetchFriendRecommendationsByOwner } from "../recommendations/api";
+import FriendRecommendationListCard from "../recommendations/FriendRecommendationListCard";
+import type { FriendRecommendationRow } from "../recommendations/types";
 import { ApprovedFriendsListBlock } from "../friends/ApprovedFriendsListBlock";
 import {
   acceptFriend,
@@ -88,6 +91,7 @@ type FriendProfileBundleCache = {
   achievements: AchievementSummary[];
   theirFriends: FriendUser[];
   closetItems: ClosetItem[];
+  friendRecommendations: FriendRecommendationRow[];
   summary: PublicUserSummary;
   fetchedAt: number;
 };
@@ -180,6 +184,9 @@ export default function FriendProfilePage() {
   >({});
   const [theirFriends, setTheirFriends] = useState<FriendUser[]>([]);
   const [closetItems, setClosetItems] = useState<ClosetItem[]>([]);
+  const [friendRecommendations, setFriendRecommendations] = useState<FriendRecommendationRow[]>(
+    [],
+  );
   const [summary, setSummary] = useState<PublicUserSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -190,7 +197,7 @@ export default function FriendProfilePage() {
   const [confirmUnfriend, setConfirmUnfriend] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
   const [profileTab, setProfileTab] = useState<
-    "friends" | "achievements" | "quotes" | "closet" | "people"
+    "friends" | "achievements" | "quotes" | "closet" | "recommendations" | "people"
   >("achievements");
   const [reloadKey, setReloadKey] = useState(0);
   const unfriendBoxRef = useRef<HTMLDivElement | null>(null);
@@ -257,6 +264,7 @@ export default function FriendProfilePage() {
           setAchievements(hit.achievements);
           setTheirFriends(hit.theirFriends);
           setClosetItems(hit.closetItems);
+          setFriendRecommendations(hit.friendRecommendations);
           setSummary(hit.summary);
           setError(null);
           setNotFound(false);
@@ -296,6 +304,13 @@ export default function FriendProfilePage() {
                 profileSubjectId,
               ).catch(() => [] as ClosetItem[])
             : [];
+        const recommendationRows =
+          summaryData.can_view_full_profile && profileSubjectId !== null
+            ? await fetchFriendRecommendationsByOwner(
+                accessToken,
+                profileSubjectId,
+              ).catch(() => [] as FriendRecommendationRow[])
+            : [];
         let friendsRows: FriendUser[] = [];
         if (
           summaryData.can_view_full_profile &&
@@ -320,6 +335,7 @@ export default function FriendProfilePage() {
         setAchievements(achSorted);
         setTheirFriends(friendsRows);
         setClosetItems(closetRows);
+        setFriendRecommendations(recommendationRows);
         setSummary(summaryData);
         if (cacheKey) {
           friendProfileBundleCache.set(cacheKey, {
@@ -327,6 +343,7 @@ export default function FriendProfilePage() {
             achievements: achSorted,
             theirFriends: friendsRows,
             closetItems: closetRows,
+            friendRecommendations: recommendationRows,
             summary: summaryData,
             fetchedAt: Date.now(),
           });
@@ -380,6 +397,8 @@ export default function FriendProfilePage() {
   const hasQuotes = quotes.length > 0;
   const hasClosetTab =
     Boolean(summary?.can_view_full_profile) && closetItems.length > 0;
+  const hasRecommendationsTab =
+    Boolean(summary?.can_view_full_profile) && friendRecommendations.length > 0;
   const hasFamilyTreeTab = friendHasVisibleFamilyTree({
     canViewFullProfile,
     peopleCount: summary?.people_count,
@@ -387,15 +406,23 @@ export default function FriendProfilePage() {
   const friendshipStatus = summary?.friendship_status ?? "none";
   const canManageFriendshipById = lookup.kind === "id";
   const leftmostVisibleTab = useMemo<
-    "friends" | "achievements" | "quotes" | "closet" | "people" | null
+    "friends" | "achievements" | "quotes" | "closet" | "recommendations" | "people" | null
   >(() => {
     if (hasAchievements) return "achievements";
     if (canViewFullProfile) return "friends";
     if (hasQuotes) return "quotes";
+    if (hasRecommendationsTab) return "recommendations";
     if (hasClosetTab) return "closet";
     if (hasFamilyTreeTab) return "people";
     return null;
-  }, [canViewFullProfile, hasAchievements, hasQuotes, hasClosetTab, hasFamilyTreeTab]);
+  }, [
+    canViewFullProfile,
+    hasAchievements,
+    hasQuotes,
+    hasRecommendationsTab,
+    hasClosetTab,
+    hasFamilyTreeTab,
+  ]);
 
   useEffect(() => {
     if (!leftmostVisibleTab) return;
@@ -404,6 +431,7 @@ export default function FriendProfilePage() {
       (profileTab === "achievements" && hasAchievements) ||
       (profileTab === "quotes" && hasQuotes) ||
       (profileTab === "closet" && hasClosetTab) ||
+      (profileTab === "recommendations" && hasRecommendationsTab) ||
       (profileTab === "people" && hasFamilyTreeTab);
     if (!tabVisible) {
       setProfileTab(leftmostVisibleTab);
@@ -414,6 +442,7 @@ export default function FriendProfilePage() {
     hasAchievements,
     hasQuotes,
     hasClosetTab,
+    hasRecommendationsTab,
     hasFamilyTreeTab,
     leftmostVisibleTab,
   ]);
@@ -487,7 +516,7 @@ export default function FriendProfilePage() {
     sessionUser?.achievements,
   ]);
 
-  const closetReturnTo = useMemo(() => {
+  const profileReturnTo = useMemo(() => {
     if (lookup.kind === "id") return `/friend/${lookup.id}`;
     if (lookup.kind === "email") {
       return `/users/${encodeURIComponent(lookup.email)}/public-quotes`;
@@ -970,6 +999,7 @@ export default function FriendProfilePage() {
                       | "achievements"
                       | "quotes"
                       | "closet"
+                      | "recommendations"
                       | "people",
                   )
                 }
@@ -1004,6 +1034,14 @@ export default function FriendProfilePage() {
                       {...APP_SHELL_TAB_TRIGGER_PROPS}
                     >
                       Quotes
+                    </Tabs.Trigger>
+                  ) : null}
+                  {hasRecommendationsTab ? (
+                    <Tabs.Trigger
+                      value="recommendations"
+                      {...APP_SHELL_TAB_TRIGGER_PROPS}
+                    >
+                      Recommendations
                     </Tabs.Trigger>
                   ) : null}
                   {hasClosetTab ? (
@@ -1139,6 +1177,28 @@ export default function FriendProfilePage() {
                       </Stack>
                     </Tabs.Content>
                   ) : null}
+                {hasRecommendationsTab ? (
+                    <Tabs.Content value="recommendations" p={{ base: "2", md: "2" }}>
+                      <Stack gap={MAPPED_LIST_STACK_GAP}>
+                        <Text fontSize={APP_TEXT_SIZES.helper}>
+                          Open a recommendation for details and to add your own review.
+                        </Text>
+                        <SimpleGrid
+                          columns={{ base: 1, md: 2 }}
+                          gap={MAPPED_LIST_STACK_GAP}
+                          w="100%"
+                        >
+                          {friendRecommendations.map((row) => (
+                            <FriendRecommendationListCard
+                              key={`friend-rec-${row.id}`}
+                              row={row}
+                              recommendationsReturnTo={profileReturnTo}
+                            />
+                          ))}
+                        </SimpleGrid>
+                      </Stack>
+                    </Tabs.Content>
+                  ) : null}
                 {hasClosetTab ? (
                     <Tabs.Content value="closet" p={{ base: "2", md: "2" }}>
                       <Stack gap={MAPPED_LIST_STACK_GAP}>
@@ -1154,7 +1214,7 @@ export default function FriendProfilePage() {
                             <FriendClosetListCard
                               key={`friend-closet-${item.id}`}
                               item={item}
-                              closetReturnTo={closetReturnTo}
+                              closetReturnTo={profileReturnTo}
                             />
                           ))}
                         </SimpleGrid>

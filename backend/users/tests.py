@@ -209,6 +209,36 @@ class UsersApiTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["closet_items_count"], 1)
 
+    def test_public_summary_friend_includes_recommendations_count(self):
+        viewer = User.objects.create_user(email="rv@example.com", password="secret12345")
+        viewer.account_status = User.AccountStatus.APPROVED
+        viewer.save(update_fields=["account_status"])
+        target = User.objects.create_user(email="rt@example.com", password="secret12345")
+        target.account_status = User.AccountStatus.APPROVED
+        target.save(update_fields=["account_status"])
+        FriendRequest.objects.create(requester=viewer, requested=target, is_accepted=True)
+        from recommendations.models import Entry, RecommendationCategory, Review
+
+        films = RecommendationCategory.objects.get(slug="films")
+        entry = Entry.objects.create(
+            category=films,
+            title="Film",
+            link="",
+            link_normalized="",
+            created_by=target,
+        )
+        Review.objects.create(
+            entry=entry,
+            reviewer=target,
+            rating="4",
+            body="Good",
+            date_recommended="2026-01-01",
+        )
+        self.client.force_login(viewer)
+        resp = self.client.get(f"/api/v1/users/{target.id}/public/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["recommendations_count"], 1)
+
     def test_user_friends_list_non_friend_forbidden(self):
         viewer = User.objects.create_user(email="uf-nf-v@example.com", password="secret12345")
         viewer.account_status = User.AccountStatus.APPROVED

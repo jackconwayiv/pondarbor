@@ -425,6 +425,9 @@ def _public_user_summary_response(*, request, user):
             .filter(owner_eligible_for_closet_publication_q())
             .count()
         )
+        from recommendations.services import active_reviews_qs
+
+        payload["recommendations_count"] = active_reviews_qs().filter(reviewer=user).count()
     if can_view_full_profile:
         from people.models import Person
         from zodiac.models import AstroProfile

@@ -120,6 +120,7 @@ INSTALLED_APPS = [
     "estates.apps.EstatesConfig",
     "goals.apps.GoalsConfig",
     "scorenado.apps.ScorenadoConfig",
+    "recommendations.apps.RecommendationsConfig",
     # allauth
     "allauth",
     "allauth.account",

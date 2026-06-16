@@ -14,6 +14,8 @@ export type PublicUserSummary = {
   email?: string;
   /** Listed closet items visible to friends (only present when viewer is a friend, not self). */
   closet_items_count?: number;
+  /** Active recommendation reviews by this friend (only present when viewer is a friend, not self). */
+  recommendations_count?: number;
   /** Active family tree members including self (when viewer may see full profile). */
   people_count?: number;
   /** ISO date; only when viewer may see full profile and friend set a birthday. */

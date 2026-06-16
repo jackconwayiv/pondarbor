@@ -204,22 +204,18 @@ export function ClosetItemDetailContent({
         <Card.Body {...PANEL_ENTRY_CARD_BODY_PROPS}>
           <Stack gap="4" w="100%">
             {itemNav ? <ClosetItemModalTopNav itemNav={itemNav} /> : null}
-            <Box
-              w="100%"
-              minH={
-                hasHeroImage
-                  ? { base: "min(48vh, 400px)", md: "min(45vh, 480px)" }
-                  : { base: "112px", md: "140px" }
-              }
-              maxH={hasHeroImage ? "70vh" : { base: "160px", md: "200px" }}
-              bg="bg.subtle"
-              borderRadius="md"
-              overflow="hidden"
-              display="flex"
-              alignItems="center"
-              justifyContent="center"
-            >
-              {hasHeroImage ? (
+            {hasHeroImage ? (
+              <Box
+                w="100%"
+                minH={{ base: "min(48vh, 400px)", md: "min(45vh, 480px)" }}
+                maxH="70vh"
+                bg="bg.subtle"
+                borderRadius="md"
+                overflow="hidden"
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+              >
                 <PresignedImage
                   src={imageUrl}
                   imageKey={isOwner ? item.image_key : undefined}
@@ -232,12 +228,8 @@ export function ClosetItemDetailContent({
                   objectPosition="center"
                   draggable={false}
                 />
-              ) : (
-                <Text fontSize={{ base: "4xl", md: "5xl" }} fontWeight="bold" color="fg.muted">
-                  {(item.name.trim().slice(0, 1) || "?").toUpperCase()}
-                </Text>
-              )}
-            </Box>
+              </Box>
+            ) : null}
 
             <HStack w="100%" align="flex-start" justify="space-between" gap="3" flexWrap="wrap">
               <Stack gap="2" flex="1" minW="0">

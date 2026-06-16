@@ -23,6 +23,20 @@ import StaffPage from "./staff/StaffPage";
 import StaffRoute from "./staff/StaffRoute";
 import { useAppSession } from "./auth/AppSessionContext";
 
+const RecommendationsLayout = lazy(
+  () => import("./recommendations/RecommendationsLayout"),
+);
+const RecommendationsHomePage = lazy(
+  () => import("./recommendations/RecommendationsHomePage"),
+);
+const RecommendationsCategoryPage = lazy(
+  () => import("./recommendations/RecommendationsCategoryPage"),
+);
+const EntryDetailPage = lazy(() => import("./recommendations/EntryDetailPage"));
+const AddReviewPage = lazy(() => import("./recommendations/AddReviewPage"));
+const RecommendationsAddRedirect = lazy(
+  () => import("./recommendations/RecommendationsAddRedirect"),
+);
 const QuotesFeedPage = lazy(() => import("./quotes/QuotesFeedPage"));
 const ZodiacPage = lazy(() => import("./zodiac/ZodiacPage"));
 const ActivityCenterPage = lazy(() => import("./activity/ActivityCenterPage"));
@@ -353,6 +367,41 @@ export const router = createAppRouter([
       {
         path: "quotes",
         element: authedRouteElement(lazyRouteElement(<QuotesFeedPage />)),
+      },
+      {
+        path: "recommendations",
+        element: authedRouteElement(lazyRouteElement(<RecommendationsLayout />)),
+        children: [
+          { index: true, element: lazyRouteElement(<RecommendationsHomePage />) },
+          {
+            path: "map",
+            element: <Navigate to="/recommendations?group=places" replace />,
+          },
+          {
+            path: "places",
+            element: <Navigate to="/recommendations?group=places" replace />,
+          },
+          {
+            path: "media",
+            element: <Navigate to="/recommendations?group=media" replace />,
+          },
+          {
+            path: ":categorySlug/new",
+            element: lazyRouteElement(<RecommendationsAddRedirect />),
+          },
+          {
+            path: ":categorySlug/:entryId/edit",
+            element: lazyRouteElement(<AddReviewPage />),
+          },
+          {
+            path: ":categorySlug/:entryId",
+            element: lazyRouteElement(<EntryDetailPage />),
+          },
+          {
+            path: ":categorySlug",
+            element: lazyRouteElement(<RecommendationsCategoryPage />),
+          },
+        ],
       },
       {
         path: "goals",

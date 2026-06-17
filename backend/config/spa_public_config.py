@@ -15,6 +15,7 @@ def get_spa_public_config() -> dict[str, str | None]:
     ).strip()
     slack = (os.getenv("VITE_AUTH0_SLACK_CONNECTION") or "").strip()
     google_maps_api_key = (os.getenv("VITE_GOOGLE_MAPS_API_KEY") or "").strip()
+    google_maps_map_id = (os.getenv("VITE_GOOGLE_MAPS_MAP_ID") or "").strip()
     config: dict[str, str | None] = {
         "auth0Domain": domain,
         "auth0ClientId": client_id,
@@ -23,6 +24,8 @@ def get_spa_public_config() -> dict[str, str | None]:
     }
     if google_maps_api_key:
         config["googleMapsApiKey"] = google_maps_api_key
+    if google_maps_map_id:
+        config["googleMapsMapId"] = google_maps_map_id
 
     if not settings.DEBUG:
         sentry_dsn = os.getenv("SENTRY_DSN", "").strip()

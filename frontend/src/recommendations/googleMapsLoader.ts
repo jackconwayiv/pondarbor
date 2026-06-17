@@ -13,28 +13,25 @@ export type GoogleLatLngBounds = {
   getCenter: () => LatLngLiteral;
 };
 
-export type GoogleMarkerInstance = {
-  setMap: (map: GoogleMapInstance | null) => void;
+export type GoogleAdvancedMarkerInstance = {
+  map: GoogleMapInstance | null;
   addListener: (event: string, handler: () => void) => { remove: () => void };
 };
 
 export type GoogleInfoWindowInstance = {
   setContent: (content: string | HTMLElement) => void;
-  open: (options: { map: GoogleMapInstance; anchor?: GoogleMarkerInstance }) => void;
+  open: (options: { map: GoogleMapInstance; anchor?: GoogleAdvancedMarkerInstance }) => void;
   close: () => void;
 };
+
+type GoogleInfoWindowCtor = new (options?: Record<string, unknown>) => GoogleInfoWindowInstance;
 
 type GoogleMapsNamespace = {
   Map: new (
     element: HTMLElement,
     options: Record<string, unknown>,
   ) => GoogleMapInstance;
-  Marker: new (options: {
-    position: LatLngLiteral;
-    map?: GoogleMapInstance | null;
-    title?: string;
-  }) => GoogleMarkerInstance;
-  InfoWindow: new () => GoogleInfoWindowInstance;
+  InfoWindow: GoogleInfoWindowCtor;
   LatLngBounds: new () => GoogleLatLngBounds;
   importLibrary?: (name: string) => Promise<Record<string, unknown>>;
 };
@@ -91,3 +88,29 @@ export function getGoogleMaps(): GoogleMapsNamespace {
   }
   return window.google.maps;
 }
+
+type AdvancedMarkerCtor = new (options: {
+  map: GoogleMapInstance;
+  position: LatLngLiteral;
+  title?: string;
+}) => GoogleAdvancedMarkerInstance;
+
+export async function createAdvancedMarker(
+  options: {
+    map: GoogleMapInstance;
+    position: LatLngLiteral;
+    title?: string;
+  },
+): Promise<GoogleAdvancedMarkerInstance> {
+  const maps = getGoogleMaps();
+  if (maps.importLibrary) {
+    const { AdvancedMarkerElement } = (await maps.importLibrary("marker")) as {
+      AdvancedMarkerElement: AdvancedMarkerCtor;
+    };
+    return new AdvancedMarkerElement(options);
+  }
+  throw new Error("Google Maps marker library is not available");
+}
+
+/** Google's documented dev fallback; production should set VITE_GOOGLE_MAPS_MAP_ID. */
+export const GOOGLE_MAPS_DEMO_MAP_ID = "DEMO_MAP_ID";

@@ -5,8 +5,10 @@ export type PondarborPublicConfig = {
   auth0ClientId: string;
   auth0ApiAudience?: string | null;
   auth0SlackConnection?: string | null;
-  /** Recommendations map (Maps Static API). Injected at runtime on production. */
+  /** Recommendations map (Maps JavaScript API). Injected at runtime on production. */
   googleMapsApiKey?: string | null;
+  /** Vector map ID for Advanced Markers; optional (falls back to DEMO_MAP_ID). */
+  googleMapsMapId?: string | null;
   /** Production-only: injected when `DEBUG=false` and `SENTRY_DSN` is set on the server. */
   sentryDsn?: string | null;
   sentryEnvironment?: string | null;
@@ -27,6 +29,9 @@ function fromViteEnv(): PondarborPublicConfig {
   const googleMapsApiKey = (
     import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined
   )?.trim();
+  const googleMapsMapId = (
+    import.meta.env.VITE_GOOGLE_MAPS_MAP_ID as string | undefined
+  )?.trim();
   return {
     auth0Domain: (import.meta.env.VITE_AUTH0_DOMAIN as string | undefined) ?? "",
     auth0ClientId: (import.meta.env.VITE_AUTH0_CLIENT_ID as string | undefined) ?? "",
@@ -35,6 +40,7 @@ function fromViteEnv(): PondarborPublicConfig {
       | string
       | undefined,
     googleMapsApiKey: googleMapsApiKey || undefined,
+    googleMapsMapId: googleMapsMapId || undefined,
   };
 }
 
@@ -56,10 +62,19 @@ export function auth0SlackConnectionName(): string | undefined {
   return t || undefined;
 }
 
-/** Maps Static API key: Django shell at runtime (prod) or `VITE_GOOGLE_MAPS_API_KEY` (local dev). */
+/** Maps JavaScript API key: Django shell at runtime (prod) or `VITE_GOOGLE_MAPS_API_KEY` (local dev). */
 export function googleMapsApiKey(): string {
   const fromShell = getPondarborPublicConfig().googleMapsApiKey;
   if (typeof fromShell === "string" && fromShell.trim()) return fromShell.trim();
   const fromVite = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
   return fromVite?.trim() ?? "";
+}
+
+/** Map ID for Advanced Markers (vector map). Falls back to Google's DEMO_MAP_ID. */
+export function googleMapsMapId(): string {
+  const fromShell = getPondarborPublicConfig().googleMapsMapId;
+  if (typeof fromShell === "string" && fromShell.trim()) return fromShell.trim();
+  const fromVite = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID as string | undefined;
+  if (fromVite?.trim()) return fromVite.trim();
+  return "DEMO_MAP_ID";
 }

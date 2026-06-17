@@ -34,8 +34,10 @@ build_settings:
       source: manual
     - name: VITE_AUTH0_API_AUDIENCE
       source: manual
-    # Recommendations map (Maps Static API). Runtime env — injected into HTML shell (not Vite build).
+    # Recommenda map (Maps JavaScript API + Advanced Markers). Runtime env — HTML shell injection.
     - name: VITE_GOOGLE_MAPS_API_KEY
+      source: manual
+    - name: VITE_GOOGLE_MAPS_MAP_ID
       source: manual
     # Recommendations geocode (Geocoding API). Server IP–restricted key recommended.
     - name: GOOGLE_MAPS_SERVER_API_KEY

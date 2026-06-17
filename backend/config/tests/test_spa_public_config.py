@@ -51,6 +51,21 @@ class SpaPublicConfigSentryTests(TestCase):
         self.assertEqual(config["sentryEnvironment"], "production")
         self.assertEqual(config["sentryTracesSampleRate"], "0")
 
+    def test_includes_google_maps_map_id_when_set(self):
+        env = {
+            "VITE_GOOGLE_MAPS_MAP_ID": "pondarbor-places-map",
+        }
+        with mock.patch.dict("os.environ", env, clear=False):
+            config = get_spa_public_config()
+
+        self.assertEqual(config["googleMapsMapId"], "pondarbor-places-map")
+
+    def test_omits_google_maps_map_id_when_unset(self):
+        with mock.patch.dict("os.environ", {}, clear=True):
+            config = get_spa_public_config()
+
+        self.assertNotIn("googleMapsMapId", config)
+
     def test_includes_google_maps_api_key_when_set(self):
         env = {"VITE_GOOGLE_MAPS_API_KEY": "browser-maps-key"}
         with mock.patch.dict("os.environ", env, clear=False):

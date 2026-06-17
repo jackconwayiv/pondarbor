@@ -3,10 +3,30 @@ import type { RecommendationEntry } from "./types";
 
 export function buildMapInfoWindowElement(
   entry: RecommendationEntry,
-  onViewDetails: (entryId: number) => void,
+  onSelect: (entryId: number) => void,
 ): HTMLElement {
-  const root = document.createElement("div");
-  root.style.cssText = "max-width:260px;font-family:system-ui,sans-serif;line-height:1.4;";
+  const root = document.createElement("button");
+  root.type = "button";
+  root.setAttribute("aria-label", `Open ${entry.title}`);
+  root.style.cssText = [
+    "display:block",
+    "max-width:260px",
+    "font-family:system-ui,sans-serif",
+    "line-height:1.4",
+    "text-align:left",
+    "cursor:pointer",
+    "background:none",
+    "border:none",
+    "padding:0",
+    "margin:0",
+    "color:inherit",
+  ].join(";");
+
+  const openEntry = () => onSelect(entry.id);
+  root.addEventListener("click", (event) => {
+    event.preventDefault();
+    openEntry();
+  });
 
   const titleRow = document.createElement("div");
   titleRow.style.cssText = "display:flex;gap:6px;align-items:flex-start;margin-bottom:4px;";
@@ -26,27 +46,16 @@ export function buildMapInfoWindowElement(
   if (secondary) {
     const line = document.createElement("div");
     line.textContent = secondary;
-    line.style.cssText = "font-size:13px;color:#5f6368;margin-bottom:6px;";
+    line.style.cssText = "font-size:13px;color:#5f6368;margin-bottom:4px;";
     root.append(line);
   }
 
   if (entry.review_count > 0 && entry.average_rating != null) {
     const rating = document.createElement("div");
     rating.textContent = `${formatRatingSigFigs(entry.average_rating)} ★ · ${entry.review_count} review${entry.review_count === 1 ? "" : "s"}`;
-    rating.style.cssText = "font-size:13px;color:#5f6368;margin-bottom:8px;";
+    rating.style.cssText = "font-size:13px;color:#5f6368;";
     root.append(rating);
   }
-
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = "View details";
-  button.style.cssText =
-    "font-size:13px;font-weight:600;color:#1a73e8;background:none;border:none;padding:0;cursor:pointer;";
-  button.addEventListener("click", (event) => {
-    event.preventDefault();
-    onViewDetails(entry.id);
-  });
-  root.append(button);
 
   return root;
 }

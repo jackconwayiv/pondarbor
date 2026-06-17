@@ -1,13 +1,14 @@
 import { Box, Text } from "@chakra-ui/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { googleMapsApiKey } from "../auth/publicConfig";
+import { googleMapsApiKey, googleMapsMapId } from "../auth/publicConfig";
 import { entriesWithGeo, geoEntryLatLng } from "./geoMapUtils";
 import {
+  createAdvancedMarker,
   getGoogleMaps,
   loadGoogleMaps,
+  type GoogleAdvancedMarkerInstance,
   type GoogleInfoWindowInstance,
   type GoogleMapInstance,
-  type GoogleMarkerInstance,
 } from "./googleMapsLoader";
 import { buildMapInfoWindowElement } from "./mapInfoWindowContent";
 import type { RecommendationEntry } from "./types";
@@ -22,7 +23,7 @@ type RecommendationsPlacesMapProps = {
 };
 
 type MarkerBinding = {
-  marker: GoogleMarkerInstance;
+  marker: GoogleAdvancedMarkerInstance;
   listener: { remove: () => void };
 };
 
@@ -31,6 +32,7 @@ export default function RecommendationsPlacesMap({
   onEntrySelect,
 }: RecommendationsPlacesMapProps) {
   const mapsKey = googleMapsApiKey();
+  const mapId = googleMapsMapId();
   const geoEntries = useMemo(() => entriesWithGeo(entries), [entries]);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<GoogleMapInstance | null>(null);
@@ -53,7 +55,7 @@ export default function RecommendationsPlacesMap({
     const clearMarkers = () => {
       for (const binding of markersRef.current) {
         binding.listener.remove();
-        binding.marker.setMap(null);
+        binding.marker.map = null;
       }
       markersRef.current = [];
     };
@@ -66,14 +68,18 @@ export default function RecommendationsPlacesMap({
         const maps = getGoogleMaps();
         if (!mapRef.current) {
           mapRef.current = new maps.Map(mapContainerRef.current, {
+            mapId,
+            mapTypeId: "roadmap",
             disableDefaultUI: false,
-            mapTypeControl: true,
-            fullscreenControl: true,
+            mapTypeControl: false,
+            fullscreenControl: false,
             streetViewControl: false,
             scrollwheel: true,
             gestureHandling: "auto",
           });
-          infoWindowRef.current = new maps.InfoWindow();
+          infoWindowRef.current = new maps.InfoWindow({
+            headerDisabled: true,
+          });
         }
 
         const map = mapRef.current;
@@ -89,9 +95,9 @@ export default function RecommendationsPlacesMap({
           const position = geoEntryLatLng(entry);
           if (!position) continue;
 
-          const marker = new maps.Marker({
-            position,
+          const marker = await createAdvancedMarker({
             map,
+            position,
             title: entry.title,
           });
 
@@ -127,7 +133,7 @@ export default function RecommendationsPlacesMap({
       infoWindowRef.current?.close();
       clearMarkers();
     };
-  }, [geoEntries, mapsKey]);
+  }, [geoEntries, mapId, mapsKey]);
 
   if (!mapsKey) {
     return (

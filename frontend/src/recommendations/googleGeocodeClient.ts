@@ -1,5 +1,7 @@
 /** Client-side geocode via Maps JavaScript API (works with referrer-restricted browser keys). */
 
+import { getGoogleMaps, loadGoogleMaps } from "./googleMapsLoader";
+
 export type ClientGeocodeResult = {
   lat: number;
   lng: number;
@@ -27,20 +29,6 @@ type GoogleGeocoderInstance = {
     callback?: (results: GoogleGeocoderResult[] | null, status: string) => void,
   ) => Promise<{ results: GoogleGeocoderResult[] }> | void;
 };
-
-declare global {
-  interface Window {
-    google?: {
-      maps: {
-        Geocoder: new () => GoogleGeocoderInstance;
-        importLibrary?: (name: string) => Promise<{ Geocoder: new () => GoogleGeocoderInstance }>;
-      };
-    };
-  }
-}
-
-let loaderPromise: Promise<void> | null = null;
-let loadedApiKey: string | null = null;
 
 function readCoord(location: GoogleGeocoderLocation, axis: "lat" | "lng"): number {
   const value = location[axis];
@@ -78,47 +66,16 @@ export function clientGeocodeErrorHint(status: string): string {
   return "Could not geocode in the browser — you can still post without map coordinates.";
 }
 
-function loadGoogleMaps(apiKey: string): Promise<void> {
-  if (loaderPromise && loadedApiKey === apiKey && window.google?.maps) {
-    return loaderPromise;
-  }
-
-  loadedApiKey = apiKey;
-  loaderPromise = new Promise((resolve, reject) => {
-    if (window.google?.maps) {
-      resolve();
-      return;
-    }
-
-    const callbackName = `_pondarborMapsInit_${Date.now()}`;
-    (window as unknown as Record<string, unknown>)[callbackName] = () => {
-      delete (window as unknown as Record<string, unknown>)[callbackName];
-      if (window.google?.maps) resolve();
-      else reject(new Error("Google Maps loaded but maps namespace is missing"));
-    };
-
-    const script = document.createElement("script");
-    script.src =
-      `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}` +
-      `&loading=async&callback=${callbackName}`;
-    script.async = true;
-    script.onerror = () => {
-      delete (window as unknown as Record<string, unknown>)[callbackName];
-      reject(new Error("Failed to load Google Maps JavaScript API"));
-    };
-    document.head.appendChild(script);
-  });
-
-  return loaderPromise;
-}
-
 async function createGeocoder(): Promise<GoogleGeocoderInstance> {
-  const importLibrary = window.google?.maps?.importLibrary;
+  const maps = getGoogleMaps();
+  const importLibrary = maps.importLibrary;
   if (importLibrary) {
-    const geocoding = await importLibrary("geocoding");
+    const geocoding = (await importLibrary("geocoding")) as {
+      Geocoder: new () => GoogleGeocoderInstance;
+    };
     return new geocoding.Geocoder();
   }
-  return new window.google!.maps.Geocoder();
+  return new (maps as unknown as { Geocoder: new () => GoogleGeocoderInstance }).Geocoder();
 }
 
 function runGeocode(

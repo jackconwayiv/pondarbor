@@ -1,4 +1,4 @@
-import { Box, Card, HStack, Link, Stack, Text } from "@chakra-ui/react";
+import { Card, HStack, Link, Stack, Text } from "@chakra-ui/react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import {
@@ -13,6 +13,7 @@ import {
   PANEL_ENTRY_CARD_PROPS,
 } from "../theme/typography";
 import EntryReviewList from "./EntryReviewList";
+import RecommendationEntryHeroImage, { entryImageUrl } from "./RecommendationEntryHeroImage";
 import StarRatingDisplay, { ReviewerAvatarRow } from "./StarRatingDisplay";
 import WriteReviewModal from "./WriteReviewModal";
 import { formatEntrySecondaryLine } from "./utils";
@@ -37,7 +38,7 @@ export default function EntryDetailContent({
 
   const slug = entry.category.slug;
   const secondaryLine = formatEntrySecondaryLine(entry);
-  const hasHeroImage = Boolean(entry.image_url?.trim());
+  const heroImageUrl = entryImageUrl(entry.image_url);
   const viewerReviewId = entry.viewer_review_id;
   const isOwner = entry.created_by.id === sessionUser?.user.id;
 
@@ -54,29 +55,8 @@ export default function EntryDetailContent({
           <Stack gap="4" w="100%">
             {entryNav ? <ClosetItemModalTopNav itemNav={entryNav} /> : null}
 
-            {hasHeroImage ? (
-              <Box
-                w="100%"
-                minH={{ base: "min(48vh, 400px)", md: "min(45vh, 480px)" }}
-                maxH="70vh"
-                bg="bg.subtle"
-                borderRadius="md"
-                overflow="hidden"
-                display="flex"
-                alignItems="center"
-                justifyContent="center"
-              >
-                <img
-                  src={entry.image_url}
-                  alt=""
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "contain",
-                    objectPosition: "center",
-                  }}
-                />
-              </Box>
+            {heroImageUrl ? (
+              <RecommendationEntryHeroImage src={heroImageUrl} alt={entry.title} />
             ) : null}
 
             <Stack gap="2">

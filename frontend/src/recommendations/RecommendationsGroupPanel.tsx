@@ -70,7 +70,7 @@ export default function RecommendationsGroupPanel({ groupId }: RecommendationsGr
     [entries, enabledSlugs],
   );
 
-  const { selectedEntryId, entryQueryInvalid, entryModalNav, closeExpanded } =
+  const { selectedEntryId, entryQueryInvalid, entryModalNav, closeExpanded, setSelectedEntryId } =
     useRecommendationEntryModal(filteredEntries);
 
   if (isLoading) return <SessionLoadingCard />;
@@ -88,7 +88,9 @@ export default function RecommendationsGroupPanel({ groupId }: RecommendationsGr
         onCheckedChange={handleCheckedChange}
       />
 
-      {groupId === "places" ? <RecommendationsPlacesMap entries={filteredEntries} /> : null}
+      {groupId === "places" ? (
+        <RecommendationsPlacesMap entries={filteredEntries} onEntrySelect={setSelectedEntryId} />
+      ) : null}
 
       {loading ? <SessionLoadingCard /> : null}
       {error ? <Text color="red.500">{error}</Text> : null}

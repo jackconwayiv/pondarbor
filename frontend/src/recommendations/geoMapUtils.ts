@@ -1,48 +1,36 @@
 import type { RecommendationEntry } from "./types";
 
+export type LatLngPair = { lat: number; lng: number };
+
 export function parseCoord(value: string | null): number | null {
   if (value == null || value === "") return null;
   const n = Number.parseFloat(String(value));
   return Number.isFinite(n) ? n : null;
 }
 
-export function entriesWithGeo(entries: RecommendationEntry[]): RecommendationEntry[] {
-  return entries.filter((e) => {
-    const lat = parseCoord(e.latitude);
-    const lng = parseCoord(e.longitude);
-    return lat !== null && lng !== null && !(lat === 0 && lng === 0);
-  });
+export function geoEntryLatLng(entry: RecommendationEntry): LatLngPair | null {
+  const lat = parseCoord(entry.latitude);
+  const lng = parseCoord(entry.longitude);
+  if (lat === null || lng === null) return null;
+  if (lat === 0 && lng === 0) return null;
+  return { lat, lng };
 }
 
-/** Build a Google Static Maps URL with a marker per geo entry. */
-export function buildStaticMapUrl(geoEntries: RecommendationEntry[], apiKey: string): string | null {
-  if (geoEntries.length === 0 || !apiKey.trim()) return null;
+export function entriesWithGeo(entries: RecommendationEntry[]): RecommendationEntry[] {
+  return entries.filter((e) => geoEntryLatLng(e) !== null);
+}
 
-  const points = geoEntries
-    .map((e) => {
-      const lat = parseCoord(e.latitude);
-      const lng = parseCoord(e.longitude);
-      if (lat === null || lng === null) return null;
-      return `${lat},${lng}`;
-    })
-    .filter((p): p is string => p != null);
+export function latLngPairsForGeoEntries(entries: RecommendationEntry[]): LatLngPair[] {
+  return entries
+    .map((entry) => geoEntryLatLng(entry))
+    .filter((pair): pair is LatLngPair => pair !== null);
+}
 
-  if (points.length === 0) return null;
-
-  const params = new URLSearchParams({
-    size: "640x320",
-    scale: "2",
-    maptype: "roadmap",
-    key: apiKey.trim(),
-  });
-
-  if (points.length === 1) {
-    params.set("center", points[0]!);
-    params.set("zoom", "14");
-  } else {
-    params.set("visible", points.join("|"));
-  }
-
-  params.set("markers", points.join("|"));
-  return `https://maps.googleapis.com/maps/api/staticmap?${params.toString()}`;
+/** Simple centroid for tests and single-map center fallback. */
+export function boundsCenterFromPairs(pairs: LatLngPair[]): LatLngPair | null {
+  if (pairs.length === 0) return null;
+  if (pairs.length === 1) return pairs[0]!;
+  const lat = pairs.reduce((sum, pair) => sum + pair.lat, 0) / pairs.length;
+  const lng = pairs.reduce((sum, pair) => sum + pair.lng, 0) / pairs.length;
+  return { lat, lng };
 }

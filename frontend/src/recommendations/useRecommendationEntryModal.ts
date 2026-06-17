@@ -64,6 +64,7 @@ export function useRecommendationEntryModal(orderedEntries: RecommendationEntry[
     entryQueryInvalid,
     entryModalNav,
     closeExpanded,
+    setSelectedEntryId,
     currentIndex,
   };
 }

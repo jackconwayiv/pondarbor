@@ -37,10 +37,12 @@ import {
   buildHouseInterpretWriteup,
   interpretPlacementChartKey,
 } from "./buildHouseInterpretWriteup";
+import { buildAspectInterpretWriteup } from "./buildAspectInterpretWriteup";
 import {
   buildInterpretPageSubTabs,
   buildInterpretPages,
   buildInterpretSectionNav,
+  interpretAspectPageIndex,
   interpretHousePageIndex,
   interpretPageLabel,
   interpretPageSection,
@@ -50,7 +52,13 @@ import {
   type InterpretPage,
   type InterpretSectionId,
 } from "./buildInterpretPages";
+import InterpretAspectHeading, {
+  buildAspectHeadingParts,
+  buildTightestPlacementAspectNote,
+} from "./InterpretAspectHeading";
 import InterpretHouseOccupantCard from "./InterpretHouseOccupantCard";
+import InterpretAspectSummary from "./InterpretAspectSummary";
+import InterpretPlacementAspectList from "./InterpretPlacementAspectList";
 import InterpretPlacementHouseLinkCard from "./InterpretPlacementHouseLinkCard";
 import InterpretSearchSuggestions from "./InterpretSearchSuggestions";
 import InterpretSignLinkCard from "./InterpretSignLinkCard";
@@ -63,6 +71,8 @@ import {
 import { signCardAccent } from "./signCardAccent";
 import type { NatalChartPayload } from "./chartTypes";
 import type { ZodiacSignCardTile } from "./ZodiacSignCardsStrip";
+import type { ChartAspectRow } from "./zodiacAspectFilters";
+import { normalizedAspectFocus, type ZodiacChartFocus } from "./zodiacChartFocus";
 import {
   INTERPRET_BODY_FONT_SIZE,
   INTERPRET_HEADING_SIZE,
@@ -115,6 +125,13 @@ export type ZodiacInterpretTabPanelProps = {
   chart: NatalChartPayload;
   includeHouses: boolean;
   includeRising: boolean;
+  birthTimeUnknown: boolean;
+  /** When set, jump to this aspect page once pages are built. */
+  aspectFocus?: Extract<ZodiacChartFocus, { kind: "aspect" }> | null;
+  onAspectFocusConsumed?: () => void;
+  /** When set, jump to this placement page once pages are built. */
+  placementFocus?: Extract<ZodiacChartFocus, { kind: "body" }> | null;
+  onPlacementFocusConsumed?: () => void;
 };
 
 /** Oxford-comma list; first item semibold, rest regular weight. */
@@ -195,6 +212,8 @@ function InterpretPlanetDomainsLeadText({
     >
       {lead.isRising ? (
         <>With {lead.signName} Rising, your </>
+      ) : lead.isMidheaven ? (
+        <>With {lead.signName} Midheaven, your </>
       ) : (
         <>
           With your {lead.placementPlanet} in {lead.signName}, your{" "}
@@ -288,11 +307,13 @@ function InterpretPlacementPageContent({
   tile,
   chart,
   pages,
+  birthTimeUnknown,
   onGoToPage,
 }: {
   tile: ZodiacSignCardTile;
   chart: NatalChartPayload;
   pages: InterpretPage[];
+  birthTimeUnknown: boolean;
   onGoToPage: (pageIndex: number) => void;
 }) {
   const writeup = buildInterpretWriteup(tile, chart);
@@ -306,6 +327,7 @@ function InterpretPlacementPageContent({
       : null;
   const signPageIdx = interpretSignPageIndex(pages, tile.sign);
   const signInteractive = signPageIdx != null;
+  const tightAspectNote = buildTightestPlacementAspectNote(tile.id, chart, { birthTimeUnknown });
 
   return (
     <Grid
@@ -339,6 +361,16 @@ function InterpretPlacementPageContent({
             fontStyle="italic"
           >
             {ZODIAC_RETROGRADE_EXPLANATION}
+          </Text>
+        ) : null}
+        {tightAspectNote ? (
+          <Text
+            fontSize={{ base: "xs", md: "sm" }}
+            color="fg.muted"
+            lineHeight="tall"
+            fontStyle="italic"
+          >
+            {tightAspectNote}
           </Text>
         ) : null}
         <InterpretPlanetDomainsLeadText lead={writeup.planetDomainsLead} />
@@ -684,15 +716,59 @@ function InterpretHousePageContent({
   );
 }
 
+function InterpretAspectPageContent({
+  aspect,
+  chart,
+  pages,
+  onGoToPage,
+}: {
+  aspect: ChartAspectRow;
+  chart: NatalChartPayload;
+  pages: InterpretPage[];
+  onGoToPage: (pageIndex: number) => void;
+}) {
+  const writeup = buildAspectInterpretWriteup(aspect, chart);
+  const headingParts = buildAspectHeadingParts(aspect, chart);
+  if (!writeup || !headingParts) return null;
+
+  return (
+    <Stack gap="4" w="100%">
+      <Flex align="center" justify="space-between" gap="2" flexWrap="wrap" w="100%">
+        <InterpretAspectHeading parts={headingParts} headingAs="h2" />
+        <Text fontSize={APP_TEXT_SIZES.meta} color="fg.muted" whiteSpace="nowrap">
+          orb {writeup.orbDisplay}
+        </Text>
+      </Flex>
+      <InterpretAspectSummary paragraphs={writeup.paragraphs} />
+      <SimpleGrid columns={{ base: 1, md: 2 }} gap="3" w="100%">
+        {writeup.occupants.map((occ) => {
+          const placementIdx = interpretPlacementPageIndex(pages, occ.chartKey);
+          return (
+            <InterpretHouseOccupantCard
+              key={occ.chartKey}
+              occupant={occ}
+              onOpen={
+                placementIdx != null ? () => onGoToPage(placementIdx) : undefined
+              }
+            />
+          );
+        })}
+      </SimpleGrid>
+    </Stack>
+  );
+}
+
 function InterpretPageBody({
   page,
   chart,
   pages,
+  birthTimeUnknown,
   onGoToPage,
 }: {
   page: InterpretPage;
   chart: NatalChartPayload;
   pages: InterpretPage[];
+  birthTimeUnknown: boolean;
   onGoToPage: (pageIndex: number) => void;
 }) {
   if (page.kind === "placement") {
@@ -717,6 +793,14 @@ function InterpretPageBody({
               tile={page.tile}
               chart={chart}
               pages={pages}
+              birthTimeUnknown={birthTimeUnknown}
+              onGoToPage={onGoToPage}
+            />
+            <InterpretPlacementAspectList
+              tileId={page.tile.id}
+              chart={chart}
+              pages={pages}
+              birthTimeUnknown={birthTimeUnknown}
               onGoToPage={onGoToPage}
             />
             <InterpretSearchSuggestions
@@ -765,42 +849,84 @@ function InterpretPageBody({
     );
   }
 
-  const houseWriteup = buildHouseInterpretWriteup(page.house, chart);
-  const accent = signCardAccent(houseWriteup?.cuspSign ?? "aries");
-
-  return (
-    <Box
-      borderRadius="xl"
-      borderWidth="1px"
-      borderColor={accent.borderColor}
-      bg={accent.bg}
-      p={{ base: "4", md: "5" }}
-      minH={{ base: "240px", md: "260px" }}
-    >
+  if (page.kind === "aspect") {
+    const writeup = buildAspectInterpretWriteup(page.aspect, chart);
+    const accent = signCardAccent(writeup?.accentSignKey ?? "aries");
+    return (
       <Box
-        bg="bg.panel"
-        borderWidth="1px"
-        borderColor="border"
-        borderLeftWidth="3px"
-        borderLeftColor={accent.borderColor}
         borderRadius="xl"
-        boxShadow="sm"
-        p={{ base: "5", md: "6" }}
+        borderWidth="1px"
+        borderColor={accent.borderColor}
+        bg={accent.bg}
+        p={{ base: "4", md: "5" }}
+        minH={{ base: "240px", md: "260px" }}
       >
-        <Stack gap="4" w="100%">
-          <InterpretHousePageContent
-            house={page.house}
-            chart={chart}
-            pages={pages}
-            onGoToPage={onGoToPage}
-          />
-          <InterpretSearchSuggestions
-            items={buildInterpretSearchSuggestions(page, chart)}
-          />
-        </Stack>
+        <Box
+          bg="bg.panel"
+          borderWidth="1px"
+          borderColor="border"
+          borderLeftWidth="3px"
+          borderLeftColor={accent.borderColor}
+          borderRadius="xl"
+          boxShadow="sm"
+          p={{ base: "5", md: "6" }}
+        >
+          <Stack gap="4" w="100%">
+            <InterpretAspectPageContent
+              aspect={page.aspect}
+              chart={chart}
+              pages={pages}
+              onGoToPage={onGoToPage}
+            />
+            <InterpretSearchSuggestions
+              items={buildInterpretSearchSuggestions(page, chart)}
+            />
+          </Stack>
+        </Box>
       </Box>
-    </Box>
-  );
+    );
+  }
+
+  if (page.kind === "house") {
+    const houseWriteup = buildHouseInterpretWriteup(page.house, chart);
+    const accent = signCardAccent(houseWriteup?.cuspSign ?? "aries");
+
+    return (
+      <Box
+        borderRadius="xl"
+        borderWidth="1px"
+        borderColor={accent.borderColor}
+        bg={accent.bg}
+        p={{ base: "4", md: "5" }}
+        minH={{ base: "240px", md: "260px" }}
+      >
+        <Box
+          bg="bg.panel"
+          borderWidth="1px"
+          borderColor="border"
+          borderLeftWidth="3px"
+          borderLeftColor={accent.borderColor}
+          borderRadius="xl"
+          boxShadow="sm"
+          p={{ base: "5", md: "6" }}
+        >
+          <Stack gap="4" w="100%">
+            <InterpretHousePageContent
+              house={page.house}
+              chart={chart}
+              pages={pages}
+              onGoToPage={onGoToPage}
+            />
+            <InterpretSearchSuggestions
+              items={buildInterpretSearchSuggestions(page, chart)}
+            />
+          </Stack>
+        </Box>
+      </Box>
+    );
+  }
+
+  return null;
 }
 
 function InterpretPagerControls({
@@ -860,6 +986,11 @@ export default function ZodiacInterpretTabPanel({
   chart,
   includeHouses,
   includeRising,
+  birthTimeUnknown,
+  aspectFocus,
+  onAspectFocusConsumed,
+  placementFocus,
+  onPlacementFocusConsumed,
 }: ZodiacInterpretTabPanelProps) {
   // Match Clicker2 behavior: avoid waiting on `transitionend` when motion is reduced.
   const motionPaused = useSyncExternalStore(
@@ -887,6 +1018,36 @@ export default function ZodiacInterpretTabPanel({
     setPendingIndex(null);
     setAnimatePager(false);
   }, [pages]);
+
+  useEffect(() => {
+    if (!aspectFocus || pages.length === 0) return;
+    const match = pages.find((p) => {
+      if (p.kind !== "aspect") return false;
+      const focus = normalizedAspectFocus(p.aspect.body_a, p.aspect.body_b, p.aspect.type);
+      return (
+        focus.bodyLo === aspectFocus.bodyLo &&
+        focus.bodyHi === aspectFocus.bodyHi &&
+        focus.type === aspectFocus.type
+      );
+    });
+    if (!match || match.kind !== "aspect") return;
+    const idx = interpretAspectPageIndex(pages, match.aspect);
+    if (idx == null) return;
+    setRenderIndex(idx);
+    setPendingIndex(null);
+    setAnimatePager(false);
+    onAspectFocusConsumed?.();
+  }, [aspectFocus, onAspectFocusConsumed, pages]);
+
+  useEffect(() => {
+    if (!placementFocus || pages.length === 0) return;
+    const idx = interpretPlacementPageIndex(pages, placementFocus.chartKey);
+    if (idx == null) return;
+    setRenderIndex(idx);
+    setPendingIndex(null);
+    setAnimatePager(false);
+    onPlacementFocusConsumed?.();
+  }, [placementFocus, onPlacementFocusConsumed, pages]);
 
   const safeRenderIndex =
     pages.length > 0 ? Math.min(renderIndex, pages.length - 1) : 0;
@@ -974,7 +1135,7 @@ export default function ZodiacInterpretTabPanel({
     );
   }
 
-  const pagerLabel = interpretPageLabel(uiPage);
+  const pagerLabel = interpretPageLabel(uiPage, chart);
   const planetSymbol =
     uiPage.kind === "placement" ? bodySymbolForTileId(uiPage.tile.id) : null;
 
@@ -1051,7 +1212,7 @@ export default function ZodiacInterpretTabPanel({
           >
             <Tabs.List
               {...ZODIAC_INTERPRET_SUBTAB_LIST_PROPS}
-              aria-label={`${activeSection === "planets" ? "Planets" : activeSection === "houses" ? "Houses" : "Signs"} in this chart`}
+              aria-label={`${activeSection === "planets" ? "Planets" : activeSection === "houses" ? "Houses" : activeSection === "aspects" ? "Aspects" : "Signs"} in this chart`}
             >
               {activeSectionSubTabs.map((subTab) => (
                 <Tabs.Trigger
@@ -1114,6 +1275,7 @@ export default function ZodiacInterpretTabPanel({
                   page={prevPage}
                   chart={chart}
                   pages={pages}
+                  birthTimeUnknown={birthTimeUnknown}
                   onGoToPage={requestPageChange}
                 />
               ) : null}
@@ -1123,6 +1285,7 @@ export default function ZodiacInterpretTabPanel({
                 page={page}
                 chart={chart}
                 pages={pages}
+                birthTimeUnknown={birthTimeUnknown}
                 onGoToPage={requestPageChange}
               />
             </Box>
@@ -1132,6 +1295,7 @@ export default function ZodiacInterpretTabPanel({
                   page={nextPage}
                   chart={chart}
                   pages={pages}
+                  birthTimeUnknown={birthTimeUnknown}
                   onGoToPage={requestPageChange}
                 />
               ) : null}
@@ -1142,6 +1306,7 @@ export default function ZodiacInterpretTabPanel({
             page={page}
             chart={chart}
             pages={pages}
+            birthTimeUnknown={birthTimeUnknown}
             onGoToPage={requestPageChange}
           />
         )}

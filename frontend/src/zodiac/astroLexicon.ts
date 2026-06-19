@@ -39,6 +39,18 @@ export const BIG_THREE_BODY = {
   },
 } as const;
 
+/** Midheaven / MC — interpret-tab placement page only (not overview tiles). */
+export const MIDHEAVEN_BODY = {
+  label: "Midheaven",
+  bodyHeading: "Midheaven / MC",
+  bodyPhrases: [
+    "career path and public reputation",
+    "vocation and long-term ambitions",
+    "how you're seen professionally",
+    "legacy and achievement in the world",
+  ],
+} as const;
+
 /** Mercury, Venus, Mars — same modal pattern as big three; placement uses `SIGN_TRAITS`. */
 export const PERSONAL_PLANETS_BODY = {
   mercury: {
@@ -164,6 +176,9 @@ export function interpretPlacementBodyForTileId(
 ): { label: string; bodyHeading: string; bodyPhrases: readonly string[] } | null {
   if (tileId === "sun" || tileId === "moon" || tileId === "rising") {
     return BIG_THREE_BODY[tileId];
+  }
+  if (tileId === "midheaven") {
+    return MIDHEAVEN_BODY;
   }
   if (tileId in PERSONAL_PLANETS_BODY) {
     return PERSONAL_PLANETS_BODY[tileId as keyof typeof PERSONAL_PLANETS_BODY];
@@ -522,7 +537,7 @@ export function youAreSignHeading(signRaw: string): string | null {
   return `You are ${article} ${name}!`;
 }
 
-/** Modern (outer-planet) sign rulers for interpret house pages. */
+/** Sign rulers for house cusps (Pluto→Scorpio, Uranus→Aquarius, not Mars/Saturn). */
 export const SIGN_MODERN_RULING_PLANET: Record<ZodiacSignKey, string> = {
   aries: "Mars",
   taurus: "Venus",
@@ -627,6 +642,7 @@ export const PLANET_HOUSE_ACT_PHRASES: Record<string, readonly string[]> = {
   south_node: ["past patterns", "familiar gifts", "release and habit"],
   lilith: ["raw instinct", "taboo and autonomy", "unfiltered desire"],
   part_of_fortune: ["ease and flow", "natural luck", "embodied well-being"],
+  midheaven: MIDHEAVEN_BODY.bodyPhrases,
 };
 
 export function chartPointDisplayLabel(chartKey: string): string {
@@ -716,6 +732,7 @@ export function bodySymbolForTileId(id: string): string | null {
     sun: `\u2609${text}`,
     moon: `\u263D${text}`,
     rising: "AC",
+    midheaven: "MC",
     mercury: `\u263F${text}`,
     venus: `\u2640${text}`,
     mars: `\u2642${text}`,

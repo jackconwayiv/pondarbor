@@ -1,5 +1,9 @@
+import { Box, Flex, Stack, Text } from "@chakra-ui/react";
+import type { KeyboardEvent } from "react";
+
 import { BIG_THREE_BODY, PERSONAL_PLANETS_BODY } from "./astroLexicon";
 import type { NatalChartPayload } from "./chartTypes";
+import { signCardAccent } from "./signCardAccent";
 import { houseOnTile } from "./zodiacPlacementFromChart";
 import ZodiacSignCardsStrip, { type ZodiacSignCardTile } from "./ZodiacSignCardsStrip";
 
@@ -86,15 +90,83 @@ export function buildZodiacOverviewTiles(props: ZodiacOverviewTileSource): Zodia
 }
 
 export default function ZodiacOverviewCardsStrip(
-  props: ZodiacOverviewTileSource & { onTileOpen?: (tile: ZodiacSignCardTile) => void },
+  props: ZodiacOverviewTileSource & {
+    onTileOpen?: (tile: ZodiacSignCardTile) => void;
+    onInterpretClick?: () => void;
+  },
 ) {
   const tiles = buildZodiacOverviewTiles(props);
+  const interpretAccent = signCardAccent(props.sunSign);
+
+  const onInterpretKeyDown = (e: KeyboardEvent) => {
+    if (!props.onInterpretClick) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      props.onInterpretClick();
+    }
+  };
 
   return (
-    <ZodiacSignCardsStrip
-      tiles={tiles}
-      gridColumns={{ base: 2, md: 3 }}
-      onTileOpen={props.onTileOpen}
-    />
+    <Stack gap="4" w="100%">
+      <ZodiacSignCardsStrip
+        tiles={tiles}
+        gridColumns={{ base: 2, md: 3 }}
+        onTileOpen={props.onTileOpen}
+      />
+      {props.onInterpretClick ? (
+        <Box
+          as="button"
+          w="100%"
+          borderRadius="xl"
+          borderWidth="1px"
+          borderColor={interpretAccent.borderColor}
+          borderLeftWidth="4px"
+          borderLeftColor={interpretAccent.borderColor}
+          bg={interpretAccent.bg}
+          py={{ base: "4", md: "5" }}
+          px={{ base: "4", md: "6" }}
+          textAlign="center"
+          cursor="pointer"
+          transition="box-shadow 0.15s ease, transform 0.15s ease"
+          boxShadow="sm"
+          _hover={{
+            boxShadow: "md",
+            transform: "translateY(-1px)",
+          }}
+          _active={{
+            transform: "translateY(0)",
+            boxShadow: "sm",
+          }}
+          _focusVisible={{
+            outline: "2px solid",
+            outlineColor: "fg",
+            outlineOffset: "2px",
+          }}
+          onClick={props.onInterpretClick}
+          onKeyDown={onInterpretKeyDown}
+        >
+          <Flex align="center" justify="center" gap="2">
+            <Text
+              as="span"
+              fontSize={{ base: "xl", md: "2xl" }}
+              lineHeight="1"
+              color={interpretAccent.labelColor}
+              aria-hidden="true"
+            >
+              ›
+            </Text>
+            <Text
+              fontSize={{ base: "lg", md: "xl" }}
+              fontFamily="heading"
+              fontWeight="normal"
+              lineHeight="short"
+              color={interpretAccent.labelColor}
+            >
+              Interpret your chart
+            </Text>
+          </Flex>
+        </Box>
+      ) : null}
+    </Stack>
   );
 }

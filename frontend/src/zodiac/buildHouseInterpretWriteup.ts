@@ -1,5 +1,6 @@
 import {
   BIG_THREE_BODY,
+  MIDHEAVEN_BODY,
   chartKeyForRulerPlanet,
   chartPointDisplayLabel,
   modernRulingPlanetForSign,
@@ -108,6 +109,7 @@ function houseOccupantSummary(
 
 function actPhrasesForOccupant(chartKey: string): readonly string[] | null {
   if (chartKey === "rising") return BIG_THREE_BODY.rising.bodyPhrases;
+  if (chartKey === "midheaven") return MIDHEAVEN_BODY.bodyPhrases;
   return planetHouseActPhrases(chartKey);
 }
 

@@ -1,6 +1,7 @@
 import { Box, Flex, Heading, Stack, Text } from "@chakra-ui/react";
 import type { KeyboardEvent } from "react";
 
+import PondButton from "../PondButton";
 import {
   bodySymbolForTileId,
   modeElementLabelForSign,
@@ -26,12 +27,15 @@ export default function ZodiacPlacementBodyContent({
   tile,
   showCardChrome = true,
   onOpenModeElementDetail,
+  onLearnMore,
 }: {
   tile: ZodiacSignCardTile;
   /** When false, omit panel chrome for embedding in a parent canvas (member Zodiac page). */
   showCardChrome?: boolean;
   /** When set, `(Cardinal Air)` (etc.) is one interactive control that opens the combo descriptor in the parent canvas. */
   onOpenModeElementDetail?: () => void;
+  /** When set, shows a right-aligned control that opens full interpret copy for this placement. */
+  onLearnMore?: () => void;
 }) {
   const modalAccent = signCardAccent(tile.sign);
   const placementTraits = traitsForSign(tile.sign);
@@ -52,7 +56,7 @@ export default function ZodiacPlacementBodyContent({
         <Box>
           <Flex
             align="center"
-            justify="flex-start"
+            justify="space-between"
             gap="2"
             flexWrap="wrap"
             w="100%"
@@ -61,6 +65,8 @@ export default function ZodiacPlacementBodyContent({
             <Heading
               {...headingProps}
               mb="0"
+              flex="1"
+              minW="0"
               maxW="100%"
               overflow="hidden"
               textOverflow="ellipsis"
@@ -69,6 +75,16 @@ export default function ZodiacPlacementBodyContent({
               {bodySymbolForTileId(tile.id) ? `${bodySymbolForTileId(tile.id)} ` : ""}
               {tile.bodyHeading}
             </Heading>
+            {onLearnMore ? (
+              <PondButton
+                size="sm"
+                variant="outline"
+                flexShrink={0}
+                onClick={onLearnMore}
+              >
+                Learn More
+              </PondButton>
+            ) : null}
           </Flex>
           <Box as="ul" m="0" pl="5" color="fg" listStyleType="disc" listStylePosition="outside">
             {tile.bodyPhrases.map((phrase) => (

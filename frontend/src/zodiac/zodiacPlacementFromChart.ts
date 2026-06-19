@@ -13,7 +13,7 @@ export const PLACEMENT_PANE_CHART_KEYS = new Set([
 
 /** True when chart marks this overview/placement tile as retrograde (not ascendant). */
 export function isPlacementTileRetrograde(tileId: string, chart: NatalChartPayload): boolean {
-  if (tileId === "rising") return false;
+  if (tileId === "rising" || tileId === "midheaven") return false;
   return chart.points[tileId]?.retrograde === true;
 }
 
@@ -23,6 +23,11 @@ export function houseForPlacementTile(tileId: string, chart: NatalChartPayload):
     const h = chart.angles.ascendant?.house;
     if (typeof h === "number" && h >= 1 && h <= 12) return h;
     return 1;
+  }
+  if (tileId === "midheaven") {
+    const h = chart.angles.midheaven?.house;
+    if (typeof h === "number" && h >= 1 && h <= 12) return h;
+    return 10;
   }
   const h = chart.points[tileId]?.house;
   if (typeof h === "number" && h >= 1 && h <= 12) return h;

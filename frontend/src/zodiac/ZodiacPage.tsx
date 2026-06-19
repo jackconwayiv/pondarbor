@@ -35,7 +35,11 @@ import {
   type FriendWithZodiac,
 } from "./api";
 import { formatBirthDateLong } from "./birthDateFormat";
+import type { NatalChartPayload } from "./chartTypes";
 import NatalChartAspectsPanel from "./NatalChartAspectsPanel";
+import { buildAspectInterpretWriteup } from "./buildAspectInterpretWriteup";
+import { filterAspectsForInterpret } from "./zodiacAspectFilters";
+import { normalizedAspectFocus, type ZodiacChartFocus } from "./zodiacChartFocus";
 import NatalChartHousesTable from "./NatalChartHousesTable";
 import NatalChartPlanetsTable from "./NatalChartPlanetsTable";
 import NatalChartWheel from "./NatalChartWheel";
@@ -45,7 +49,6 @@ import ZodiacOverviewMiniTiles from "./ZodiacOverviewMiniTiles";
 import ZodiacPlacementBodyContent from "./ZodiacPlacementBodyContent";
 import type { ZodiacSignCardTile } from "./ZodiacSignCardsStrip";
 import { signCardAccent } from "./signCardAccent";
-import { ZODIAC_ASPECT_ANCHOR_BODIES } from "./zodiacDisplayConfig";
 import { zodiacTileFromChartBodyKey } from "./zodiacPlacementFromChart";
 import ZodiacFriendsTabPanel from "./ZodiacFriendsTabPanel";
 import ZodiacInterpretTabPanel from "./ZodiacInterpretTabPanel";
@@ -194,6 +197,12 @@ export default function ZodiacPage() {
     null,
   );
   const [canvasDescriptorSign, setCanvasDescriptorSign] = useState<string | null>(null);
+  const [interpretAspectFocus, setInterpretAspectFocus] = useState<
+    Extract<ZodiacChartFocus, { kind: "aspect" }> | null
+  >(null);
+  const [interpretPlacementFocus, setInterpretPlacementFocus] = useState<
+    Extract<ZodiacChartFocus, { kind: "body" }> | null
+  >(null);
 
   const [friendsWithZodiac, setFriendsWithZodiac] = useState<FriendWithZodiac[]>([]);
   const [friendsLoadError, setFriendsLoadError] = useState<string | null>(null);
@@ -296,10 +305,24 @@ export default function ZodiacPage() {
       (birthTimeUnknown || Boolean(profile.rising_sign?.trim())),
   );
 
-  const aspectAnchorBodies = useMemo(() => {
-    if (!birthTimeUnknown) return ZODIAC_ASPECT_ANCHOR_BODIES;
-    return new Set<string>(["sun", "moon", "mercury", "venus", "mars"]);
-  }, [birthTimeUnknown]);
+  const interpretableSextileKeys = useMemo(() => {
+    const keys = new Set<string>();
+    if (!chart) return keys;
+    for (const aspect of filterAspectsForInterpret(chart.aspects, { birthTimeUnknown })) {
+      if (!buildAspectInterpretWriteup(aspect, chart)) continue;
+      const focus = normalizedAspectFocus(aspect.body_a, aspect.body_b, aspect.type);
+      keys.add(`${focus.bodyLo}|${focus.bodyHi}|${focus.type}`);
+    }
+    return keys;
+  }, [chart, birthTimeUnknown]);
+
+  const isAspectInterpretable = useCallback(
+    (aspect: NatalChartPayload["aspects"][number]) => {
+      const focus = normalizedAspectFocus(aspect.body_a, aspect.body_b, aspect.type);
+      return interpretableSextileKeys.has(`${focus.bodyLo}|${focus.bodyHi}|${focus.type}`);
+    },
+    [interpretableSextileKeys],
+  );
 
   const overviewTiles = useMemo(() => {
     if (!hasStaffImportedChart || !profile || !chart) return [];
@@ -408,6 +431,25 @@ export default function ZodiacPage() {
       );
     },
     [setSearchParams],
+  );
+
+  const openPlacementInInterpret = useCallback(
+    (chartKey: string) => {
+      onMainTabChange("interpretation");
+      setInterpretPlacementFocus({ kind: "body", chartKey });
+    },
+    [onMainTabChange],
+  );
+
+  const openAspectInInterpret = useCallback(
+    (aspect: NatalChartPayload["aspects"][number]) => {
+      if (!isAspectInterpretable(aspect)) return;
+      onMainTabChange("interpretation");
+      setInterpretAspectFocus(
+        normalizedAspectFocus(aspect.body_a, aspect.body_b, aspect.type),
+      );
+    },
+    [isAspectInterpretable, onMainTabChange],
   );
 
   useEffect(() => {
@@ -694,6 +736,7 @@ export default function ZodiacPage() {
         <ZodiacPlacementBodyContent
           tile={placementPaneTile}
           onOpenModeElementDetail={() => setCanvasDescriptorSign(placementPaneTile.sign)}
+          onLearnMore={() => openPlacementInInterpret(placementPaneTile.id)}
         />
       ) : (
         <ZodiacOverviewCardsStrip
@@ -705,6 +748,7 @@ export default function ZodiacPage() {
           marsSign={chart.points.mars?.sign}
           natalChart={chart}
           onTileOpen={openPlacementTile}
+          onInterpretClick={() => onMainTabChange("interpretation")}
         />
       )}
     </Box>
@@ -774,6 +818,11 @@ export default function ZodiacPage() {
                     chart={chart}
                     includeHouses={!birthTimeUnknown}
                     includeRising={!birthTimeUnknown}
+                    birthTimeUnknown={birthTimeUnknown}
+                    aspectFocus={interpretAspectFocus}
+                    onAspectFocusConsumed={() => setInterpretAspectFocus(null)}
+                    placementFocus={interpretPlacementFocus}
+                    onPlacementFocusConsumed={() => setInterpretPlacementFocus(null)}
                   />
                 </Tabs.Content>
               ) : null}
@@ -853,8 +902,9 @@ export default function ZodiacPage() {
                         <Tabs.Content value="aspects" pt="4">
                           <NatalChartAspectsPanel
                             chart={chart}
-                            anchorBodies={aspectAnchorBodies}
                             excludeAngleBodies={birthTimeUnknown}
+                            onAspectRowClick={openAspectInInterpret}
+                            isAspectInterpretable={isAspectInterpretable}
                           />
                         </Tabs.Content>
                         <Tabs.Content value="natal" pt="4">

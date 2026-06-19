@@ -31,6 +31,7 @@ export const INTERPRET_TILE_ORDER = [
   "uranus",
   "neptune",
   "pluto",
+  "midheaven",
   "chiron",
   "north_node",
   "part_of_fortune",
@@ -41,6 +42,7 @@ export type InterpretPlanetDomainsLead = {
   placementPlanet: string;
   signName: string;
   isRising: boolean;
+  isMidheaven: boolean;
   domainPhrases: readonly string[];
   adjectivePhrases: readonly string[];
 };
@@ -75,6 +77,7 @@ export function joinEnglishList(items: readonly string[]): string {
 
 function planetLabelForTile(tile: ZodiacSignCardTile): string {
   if (tile.id === "rising") return "Rising";
+  if (tile.id === "midheaven") return "Midheaven";
   return tile.label;
 }
 
@@ -138,13 +141,20 @@ export function buildInterpretWriteup(
       house: 1,
       text: `Your Rising sign or Ascendant is the sign on your 1st House cusp—the one ascending over the eastern horizon at your birth. ${signName} Rising gives the impression of someone who is ${traitPhrase}.`,
     };
+  } else if (tile.id === "midheaven") {
+    const traitPhrase = joinEnglishList(traits);
+    houseFollowUp = {
+      house: 10,
+      text: `Your Midheaven or MC is the sign at the top of your chart—the cusp of your 10th House. ${signName} Midheaven shapes how you meet the world through career and public life, giving a ${traitPhrase} cast to your reputation and ambitions.`,
+    };
   } else if (house != null && houseOrdinal != null && housePhrases?.length) {
     const houseThemes = joinEnglishList(housePhrases);
     const text = `Your ${planet} in ${signName} directs its energy into the ${houseOrdinal} House with a focus on ${houseThemes}.`;
     houseFollowUp = { house, text };
   }
 
-  const displayHouseOrdinal = tile.id === "rising" ? null : houseOrdinal;
+  const displayHouseOrdinal =
+    tile.id === "rising" || tile.id === "midheaven" ? null : houseOrdinal;
 
   return {
     planetSymbol: bodySymbolForTileId(tile.id),
@@ -157,6 +167,7 @@ export function buildInterpretWriteup(
       placementPlanet: planet,
       signName,
       isRising: tile.id === "rising",
+      isMidheaven: tile.id === "midheaven",
       domainPhrases: tile.bodyPhrases,
       adjectivePhrases: traits,
     },
@@ -164,6 +175,51 @@ export function buildInterpretWriteup(
     housesRuled: housesRuledByPlacement(chart, tile.id),
     signCalloutParagraph,
     signAdjectivePhrases: traits,
+  };
+}
+
+/** Plain-text placement lead paragraph (matches `InterpretPlanetDomainsLeadText` on placement pages). */
+export function formatPlanetDomainsLeadText(lead: InterpretPlanetDomainsLead): string {
+  const domains = joinEnglishList(lead.domainPhrases);
+  const adjectives = joinEnglishList(lead.adjectivePhrases);
+  if (lead.isRising) {
+    return `With ${lead.signName} Rising, your ${domains} manifest as ${adjectives}.`;
+  }
+  if (lead.isMidheaven) {
+    return `With ${lead.signName} Midheaven, your ${domains} manifest as ${adjectives}.`;
+  }
+  return `With your ${lead.placementPlanet} in ${lead.signName}, your ${domains} manifest as ${adjectives}.`;
+}
+
+export function interpretPlacementTileForId(
+  tileId: string,
+  chart: NatalChartPayload,
+): ZodiacSignCardTile | null {
+  if (!(INTERPRET_TILE_ORDER as readonly string[]).includes(tileId)) return null;
+  return interpretTileFromChart(tileId as (typeof INTERPRET_TILE_ORDER)[number], chart);
+}
+
+/** Full placement-page lead copy for a chart-backed interpret tile id (`pluto`, `rising`, …). */
+export function interpretPlacementLeadSummaryForTileId(
+  tileId: string,
+  chart: NatalChartPayload,
+): {
+  chartKey: string;
+  label: string;
+  sign: string;
+  signName: string;
+  summary: string;
+} | null {
+  const tile = interpretPlacementTileForId(tileId, chart);
+  if (!tile) return null;
+  const writeup = buildInterpretWriteup(tile, chart);
+  if (!writeup) return null;
+  return {
+    chartKey: tile.id,
+    label: writeup.planetLabel,
+    sign: tile.sign,
+    signName: writeup.signName,
+    summary: formatPlanetDomainsLeadText(writeup.planetDomainsLead),
   };
 }
 
@@ -194,6 +250,19 @@ function interpretTileFromChart(
     };
   }
 
+  if (tileId === "midheaven") {
+    const sign = chart.angles.midheaven?.sign;
+    if (!sign) return null;
+    return {
+      id: "midheaven",
+      label: body.label,
+      sign,
+      bodyHeading: body.bodyHeading,
+      bodyPhrases: body.bodyPhrases,
+      ...houseOnTile(chart, "midheaven"),
+    };
+  }
+
   const sign = chart.points[tileId]?.sign;
   if (!sign) return null;
   return {
@@ -211,7 +280,10 @@ export function buildInterpretPlacementTiles(
   chart: NatalChartPayload,
   options: { includeRising: boolean },
 ): ZodiacSignCardTile[] {
-  const ids = INTERPRET_TILE_ORDER.filter((id) => id !== "rising" || options.includeRising);
+  const ids = INTERPRET_TILE_ORDER.filter((id) => {
+    if (id === "rising" || id === "midheaven") return options.includeRising;
+    return true;
+  });
   return ids
     .map((id) => interpretTileFromChart(id, chart))
     .filter((t): t is ZodiacSignCardTile => t != null);

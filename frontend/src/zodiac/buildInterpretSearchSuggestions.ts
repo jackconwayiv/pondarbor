@@ -1,3 +1,4 @@
+import { buildAspectInterpretWriteup } from "./buildAspectInterpretWriteup";
 import {
   buildHouseInterpretWriteup,
   interpretPlacementChartKey,
@@ -7,6 +8,7 @@ import { buildInterpretWriteup } from "./buildInterpretWriteup";
 import { buildSignInterpretWriteup } from "./buildSignInterpretWriteup";
 import { chartPointDisplayLabel, signDisplayName } from "./astroLexicon";
 import type { NatalChartPayload } from "./chartTypes";
+import { aspectHeadingLabel } from "./zodiacAspectCopy";
 import { formatHouseOrdinal } from "./zodiacHouseDescriptors";
 
 function pushUnique(out: string[], phrase: string) {
@@ -31,18 +33,17 @@ export function buildInterpretSearchSuggestions(
     if (tile.id === "rising") {
       pushUnique(out, `${signName} rising`);
       pushUnique(out, `rising in ${signName}`);
-      pushUnique(out, "1st house");
-      pushUnique(out, `${signName} sign`);
+    } else if (tile.id === "midheaven") {
+      pushUnique(out, `${signName} midheaven`);
+      pushUnique(out, `midheaven in ${signName}`);
     } else {
       const planet = tile.label.toLowerCase();
       pushUnique(out, `${planet} in ${signName}`);
-      pushUnique(out, `${signName} sign`);
 
       if (tile.house != null) {
         const ord = formatHouseOrdinal(tile.house);
         if (ord) {
           pushUnique(out, `${planet} in ${ord} house`);
-          pushUnique(out, `${ord} house`);
         }
       }
 
@@ -50,9 +51,25 @@ export function buildInterpretSearchSuggestions(
         for (const ruled of writeup.housesRuled) {
           const ruledOrd = formatHouseOrdinal(ruled.house);
           if (!ruledOrd) continue;
-          pushUnique(out, `${ruledOrd} house`);
           pushUnique(out, `${planet} rules ${ruledOrd} house`);
         }
+      }
+    }
+    return out;
+  }
+
+  if (page.kind === "aspect") {
+    const writeup = buildAspectInterpretWriteup(page.aspect, chart);
+    if (writeup) {
+      pushUnique(out, writeup.title.toLowerCase());
+      if (writeup.occupants.length >= 2) {
+        const aspectWord = aspectHeadingLabel(page.aspect.type).toLowerCase();
+        const first = writeup.occupants[0]!.label.toLowerCase();
+        const second = writeup.occupants[1]!.label.toLowerCase();
+        pushUnique(out, `${first} ${aspectWord} ${second}`);
+      }
+      for (const occ of writeup.occupants) {
+        pushUnique(out, `${occ.label.toLowerCase()} in ${occ.signName.toLowerCase()}`);
       }
     }
     return out;
@@ -63,7 +80,6 @@ export function buildInterpretSearchSuggestions(
     if (!writeup) return out;
 
     const ord = formatHouseOrdinal(page.house);
-    if (ord) pushUnique(out, `${ord} house`);
 
     if (writeup.cuspSign && ord) {
       const cuspName = signDisplayName(writeup.cuspSign).toLowerCase();
@@ -77,8 +93,6 @@ export function buildInterpretSearchSuggestions(
         ).toLowerCase();
         const rulerSign = signDisplayName(link.sign).toLowerCase();
         pushUnique(out, `${label} in ${rulerSign}`);
-      } else {
-        pushUnique(out, `${signDisplayName(link.sign).toLowerCase()} sign`);
       }
     }
 
@@ -89,8 +103,6 @@ export function buildInterpretSearchSuggestions(
   }
 
   const signName = signDisplayName(page.sign).toLowerCase();
-  pushUnique(out, signName);
-  pushUnique(out, `${signName} sign`);
 
   const writeup = buildSignInterpretWriteup(page.sign, chart);
   if (!writeup) return out;

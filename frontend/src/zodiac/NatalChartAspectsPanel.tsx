@@ -60,11 +60,23 @@ type Props = {
   anchorBodies?: Set<string>;
   /** Drop aspects involving ascendant or midheaven (e.g. birth time unknown UI). */
   excludeAngleBodies?: boolean;
+  /** When set, interpretable aspect rows are clickable. */
+  onAspectRowClick?: (aspect: NatalChartPayload["aspects"][number]) => void;
+  /** Return true when this aspect has an interpret page (controls click affordance). */
+  isAspectInterpretable?: (aspect: NatalChartPayload["aspects"][number]) => boolean;
 };
 
 type AspectRow = NatalChartPayload["aspects"][number];
 
-function AspectRows({ rows }: { rows: AspectRow[] }) {
+function AspectRows({
+  rows,
+  onAspectRowClick,
+  isAspectInterpretable,
+}: {
+  rows: AspectRow[];
+  onAspectRowClick?: (aspect: AspectRow) => void;
+  isAspectInterpretable?: (aspect: AspectRow) => boolean;
+}) {
   if (rows.length === 0) {
     return (
       <Table.Row>
@@ -78,19 +90,38 @@ function AspectRows({ rows }: { rows: AspectRow[] }) {
   }
   return (
     <>
-      {rows.map((a, idx) => (
-        <Table.Row key={`${a.body_a}-${a.type}-${a.body_b}-${idx}`}>
-          <Table.Cell>{formatUpperSnake(a.body_a)}</Table.Cell>
-          <Table.Cell>{formatAspectType(a.type)}</Table.Cell>
-          <Table.Cell>{formatUpperSnake(a.body_b)}</Table.Cell>
-          <Table.Cell whiteSpace="nowrap">{formatOrbAsDegMin(a.orb_deg)}</Table.Cell>
-        </Table.Row>
-      ))}
+      {rows.map((a, idx) => {
+        const interactive =
+          onAspectRowClick != null && (isAspectInterpretable?.(a) ?? true);
+        return (
+          <Table.Row
+            key={`${a.body_a}-${a.type}-${a.body_b}-${idx}`}
+            cursor={interactive ? "pointer" : undefined}
+            onClick={interactive ? () => onAspectRowClick(a) : undefined}
+            _hover={interactive ? { bg: "bg.subtle" } : undefined}
+          >
+            <Table.Cell>{formatUpperSnake(a.body_a)}</Table.Cell>
+            <Table.Cell>{formatAspectType(a.type)}</Table.Cell>
+            <Table.Cell>{formatUpperSnake(a.body_b)}</Table.Cell>
+            <Table.Cell whiteSpace="nowrap">{formatOrbAsDegMin(a.orb_deg)}</Table.Cell>
+          </Table.Row>
+        );
+      })}
     </>
   );
 }
 
-function AspectTable({ title, rows }: { title: string; rows: AspectRow[] }) {
+function AspectTable({
+  title,
+  rows,
+  onAspectRowClick,
+  isAspectInterpretable,
+}: {
+  title: string;
+  rows: AspectRow[];
+  onAspectRowClick?: (aspect: AspectRow) => void;
+  isAspectInterpretable?: (aspect: AspectRow) => boolean;
+}) {
   return (
     <Box>
       <Heading as="h3" size="sm" mb="2">
@@ -107,7 +138,11 @@ function AspectTable({ title, rows }: { title: string; rows: AspectRow[] }) {
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            <AspectRows rows={rows} />
+            <AspectRows
+              rows={rows}
+              onAspectRowClick={onAspectRowClick}
+              isAspectInterpretable={isAspectInterpretable}
+            />
           </Table.Body>
         </Table.Root>
       </Box>
@@ -122,6 +157,8 @@ export default function NatalChartAspectsPanel(props: Props) {
     aspectsPreviewMax,
     anchorBodies,
     excludeAngleBodies,
+    onAspectRowClick,
+    isAspectInterpretable,
   } = props;
 
   const { majorRows, minorRows, filteredTotal } = useMemo(() => {
@@ -157,8 +194,18 @@ export default function NatalChartAspectsPanel(props: Props) {
         {aspectsNote ?? defaultNote}
       </Text>
       <Stack gap="6" w="100%">
-        <AspectTable title="Major Aspects" rows={majorRows} />
-        <AspectTable title="Minor Aspects" rows={minorRows} />
+        <AspectTable
+          title="Major Aspects"
+          rows={majorRows}
+          onAspectRowClick={onAspectRowClick}
+          isAspectInterpretable={isAspectInterpretable}
+        />
+        <AspectTable
+          title="Minor Aspects"
+          rows={minorRows}
+          onAspectRowClick={onAspectRowClick}
+          isAspectInterpretable={isAspectInterpretable}
+        />
       </Stack>
     </>
   );

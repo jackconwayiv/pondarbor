@@ -101,7 +101,7 @@ export default function RecommendationsPlacesMap({
             title: entry.title,
           });
 
-          const listener = marker.addListener("click", () => {
+          const listener = marker.addListener("gmp-click", () => {
             const content = buildMapInfoWindowElement(entry, (entryId) => {
               infoWindow.close();
               onEntrySelectRef.current?.(entryId);

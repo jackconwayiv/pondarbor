@@ -12,7 +12,7 @@ import {
   Text,
 } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link as RouterLink, Navigate, useSearchParams } from "react-router";
+import { Link as RouterLink, Navigate, useNavigate, useSearchParams } from "react-router";
 import PondButton from "./PondButton";
 import PondNativeSelect from "./components/PondNativeSelect";
 import { AchievementSummaryCard } from "./achievements/AchievementSummaryCard";
@@ -88,7 +88,10 @@ const PROFILE_ENTRY_CARD_PROPS = {
   overflowX: "hidden" as const,
 } as const;
 
+const CLOSET_IMAGE_MANAGER_PATH = "/closet?tab=images";
+
 export default function ProfilePage() {
+  const navigate = useNavigate();
   const {
     sessionUser,
     auth0User,
@@ -638,33 +641,47 @@ export default function ProfilePage() {
               pb="2"
             >
               <Box {...PROFILE_ENTRY_CARD_PROPS}>
-                <Heading
-                  as="h1"
-                  size={{ base: "lg", md: "xl" }}
+                <HStack
+                  justify="space-between"
+                  align="flex-start"
+                  gap="3"
+                  flexWrap="wrap"
                   mb="2"
                 >
-                  <HStack
-                    as="span"
-                    display="inline-flex"
-                    gap="2"
-                    alignItems="center"
-                  >
-                    <Text as="span" aria-hidden="true">
-                      {activeTab === "friends"
-                        ? "👥"
-                        : activeTab === "account"
-                          ? "🔐"
-                          : "👤"}
-                    </Text>
-                    <Text as="span">
-                      {activeTab === "friends"
-                        ? "Friends"
-                        : activeTab === "account"
-                          ? "Account"
-                          : "Profile"}
-                    </Text>
-                  </HStack>
-                </Heading>
+                  <Heading as="h1" size={{ base: "lg", md: "xl" }} mb="0">
+                    <HStack
+                      as="span"
+                      display="inline-flex"
+                      gap="2"
+                      alignItems="center"
+                    >
+                      <Text as="span" aria-hidden="true">
+                        {activeTab === "friends"
+                          ? "👥"
+                          : activeTab === "account"
+                            ? "🔐"
+                            : "👤"}
+                      </Text>
+                      <Text as="span">
+                        {activeTab === "friends"
+                          ? "Friends"
+                          : activeTab === "account"
+                            ? "Account"
+                            : "Profile"}
+                      </Text>
+                    </HStack>
+                  </Heading>
+                  {activeTab === "profile" && user.is_approved ? (
+                    <PondButton
+                      size="sm"
+                      variant="outline"
+                      colorPalette="sky"
+                      onClick={() => navigate(CLOSET_IMAGE_MANAGER_PATH)}
+                    >
+                      Image Manager
+                    </PondButton>
+                  ) : null}
+                </HStack>
                 {activeTab === "friends" ? (
                   <Text
                     fontSize={APP_TEXT_SIZES.body}

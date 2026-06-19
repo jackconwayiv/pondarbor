@@ -384,8 +384,10 @@ class ClosetItemsApiTests(ClosetTestMixin, TestCase):
     @patch("closet.views._build_r2_client")
     def test_image_delete_detaches_matching_avatar_image_key(self, build_client_mock):
         key = f"closet/{self.owner.id}/20240101/avatar.jpg"
+        google_url = "https://lh3.googleusercontent.com/a/example"
         self.owner.profile.avatar_image_key = key
-        self.owner.profile.save(update_fields=["avatar_image_key"])
+        self.owner.profile.avatar_url = google_url
+        self.owner.profile.save(update_fields=["avatar_image_key", "avatar_url"])
         client = build_client_mock.return_value
         with patch.dict(
             "os.environ",
@@ -401,6 +403,34 @@ class ClosetItemsApiTests(ClosetTestMixin, TestCase):
         self.assertEqual(resp.status_code, 200)
         self.owner.profile.refresh_from_db()
         self.assertEqual(self.owner.profile.avatar_image_key, "")
+        self.assertEqual(self.owner.profile.avatar_url, google_url)
+        self.assertEqual(resp.json().get("detached_avatar_count"), 1)
+        client.delete_object.assert_called_once_with(Bucket="bucket", Key=key)
+
+    @override_settings(CLOSET_R2_KEY_PREFIX="closet")
+    @patch("users.avatar_url.idp_picture_for_request", return_value="https://lh3.googleusercontent.com/a/restored")
+    @patch("closet.views._build_r2_client")
+    def test_image_delete_restores_idp_avatar_when_fallback_empty(self, build_client_mock, _picture_mock):
+        key = f"closet/{self.owner.id}/20240101/avatar-empty.jpg"
+        self.owner.profile.avatar_image_key = key
+        self.owner.profile.avatar_url = ""
+        self.owner.profile.save(update_fields=["avatar_image_key", "avatar_url"])
+        client = build_client_mock.return_value
+        with patch.dict(
+            "os.environ",
+            {
+                "CLOUDFLARE_ACCOUNT_ID": "acct",
+                "CLOSET_R2_BUCKET": "bucket",
+                "CLOSET_R2_ACCESS_KEY_ID": "ak",
+                "CLOSET_R2_SECRET_ACCESS_KEY": "sk",
+            },
+            clear=False,
+        ):
+            resp = self.owner_client.post("/api/v1/closet/images/delete/", {"image_key": key}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.owner.profile.refresh_from_db()
+        self.assertEqual(self.owner.profile.avatar_image_key, "")
+        self.assertEqual(self.owner.profile.avatar_url, "https://lh3.googleusercontent.com/a/restored")
         self.assertEqual(resp.json().get("detached_avatar_count"), 1)
         client.delete_object.assert_called_once_with(Bucket="bucket", Key=key)
 

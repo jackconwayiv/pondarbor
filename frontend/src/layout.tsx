@@ -577,6 +577,16 @@ export default function AppLayout() {
               Friends List
             </Menu.Item>
           ) : null}
+          {sessionUser?.user?.is_approved ? (
+            <Menu.Item
+              value="image-manager"
+              onSelect={() => {
+                navigate("/closet?tab=images");
+              }}
+            >
+              Image Manager
+            </Menu.Item>
+          ) : null}
           <Menu.Item
             value="logout"
             onSelect={() => {

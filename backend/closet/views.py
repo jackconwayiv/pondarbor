@@ -1186,7 +1186,12 @@ def image_delete(request):
     detached_avatar_count = Profile.objects.filter(
         user=request.user,
         avatar_image_key=raw_key,
-    ).update(avatar_image_key="", avatar_url="")
+    ).update(avatar_image_key="")
+    if detached_avatar_count:
+        from users.avatar_url import idp_picture_for_request, restore_idp_avatar_url_if_empty
+
+        profile = Profile.objects.get(user=request.user)
+        restore_idp_avatar_url_if_empty(profile, picture=idp_picture_for_request(request))
     detached_meal_count = Meal.objects.filter(owner_user=request.user, image_key=raw_key).update(
         image_key="",
     )

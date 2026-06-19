@@ -2107,6 +2107,7 @@ export default function ClosetPage() {
                                   "Image deleted from storage and detached from items, recipes, or avatar.",
                               });
                               await refreshAll();
+                              await refreshSession();
                             } catch (err: unknown) {
                               setImagesNotice({
                                 kind: "error",

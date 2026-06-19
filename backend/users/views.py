@@ -16,7 +16,7 @@ from rest_framework.response import Response
 from contact.models import ContactMessage
 
 from .auth0_backend import Auth0TokenAuthentication
-from .avatar_url import profile_avatar_url
+from .avatar_url import idp_picture_for_request, profile_avatar_url, restore_idp_avatar_url_if_empty
 from .models import PROFILE_TIMEZONE_DEFAULT, Profile
 from .permissions import IsApprovedUser, IsStaffUser
 from friends.models import FriendRequest
@@ -635,7 +635,12 @@ def patch_me_profile(request):
         onboarding_just_completed = profile.onboarding_completed and not was_completed
     if "onboarding_step" in data:
         profile.onboarding_step = int(data["onboarding_step"])
+    avatar_key_cleared = (
+        "avatar_image_key" in data and not (data.get("avatar_image_key") or "").strip()
+    )
     profile.save()
+    if avatar_key_cleared:
+        restore_idp_avatar_url_if_empty(profile, picture=idp_picture_for_request(request))
     if slots_per_day_changed:
         from meal.grid import rebuild_all_instances_for_user
 

@@ -565,6 +565,49 @@ class UsersApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("avatar_image_key", response.json())
 
+    @override_settings(CLOSET_R2_KEY_PREFIX="closet")
+    @patch("users.avatar_url.r2_presigned_get_url", return_value="https://signed.example/avatar")
+    def test_patch_profile_preserves_google_avatar_url_when_setting_avatar_image_key(self, _presign_mock):
+        user = User.objects.create_user(email="avatar-google@example.com", password="secret12345")
+        google_url = "https://lh3.googleusercontent.com/a/example"
+        user.profile.avatar_url = google_url
+        user.profile.save(update_fields=["avatar_url"])
+        self.client.force_login(user)
+        key = f"closet/{user.id}/20240202/a.jpg"
+        response = self.client.patch(
+            "/api/v1/users/me/profile/",
+            {"avatar_image_key": key},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        user.profile.refresh_from_db()
+        self.assertEqual(user.profile.avatar_image_key, key)
+        self.assertEqual(user.profile.avatar_url, google_url)
+        self.assertEqual(response.json()["profile"]["avatar_url"], "https://signed.example/avatar")
+
+    @override_settings(CLOSET_R2_KEY_PREFIX="closet")
+    @patch("users.views.idp_picture_for_request", return_value="https://lh3.googleusercontent.com/a/restored")
+    def test_patch_profile_clearing_avatar_image_key_restores_idp_picture(self, _picture_mock):
+        user = User.objects.create_user(email="avatar-clear@example.com", password="secret12345")
+        key = f"closet/{user.id}/20240202/a.jpg"
+        user.profile.avatar_image_key = key
+        user.profile.avatar_url = ""
+        user.profile.save(update_fields=["avatar_image_key", "avatar_url"])
+        self.client.force_login(user)
+        response = self.client.patch(
+            "/api/v1/users/me/profile/",
+            {"avatar_image_key": ""},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        user.profile.refresh_from_db()
+        self.assertEqual(user.profile.avatar_image_key, "")
+        self.assertEqual(user.profile.avatar_url, "https://lh3.googleusercontent.com/a/restored")
+        self.assertEqual(
+            response.json()["profile"]["avatar_url"],
+            "https://lh3.googleusercontent.com/a/restored",
+        )
+
     def test_approved_check_forbidden_when_pending(self):
         user = User.objects.create_user(email="pend@example.com", password="secret12345")
         self.client.force_login(user)

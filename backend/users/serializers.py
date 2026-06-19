@@ -249,10 +249,6 @@ class ProfileUpdateSerializer(serializers.Serializer):
         key = attrs.pop("avatar_image_key", None)
         if key is not None:
             attrs["avatar_image_key"] = key
-            if key:
-                attrs["avatar_url"] = ""
-            elif "avatar_url" not in attrs:
-                attrs["avatar_url"] = ""
         return attrs
 
 

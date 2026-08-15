@@ -40,6 +40,7 @@ STARABLE_HOME_APP_PATHS = frozenset(
         "/harbor",
         "/squalls",
         "/recommendations",
+        "/books",
     }
 )
 
@@ -131,6 +132,7 @@ class ProfileSerializer(serializers.Serializer):
     )
     onboarding_completed = serializers.BooleanField()
     onboarding_step = serializers.IntegerField()
+    goodreads_user_id = serializers.CharField(allow_blank=True, required=False)
 
 
 class AchievementSummarySerializer(serializers.Serializer):

@@ -297,6 +297,22 @@ def fetch_shelf_books(user_id: str, shelf: str) -> list[dict[str, Any]]:
     return parse_shelf_rss(xml_text)
 
 
+def fetch_shelf_books_cached(
+    user_id: str,
+    shelf: str,
+    *,
+    use_cache: bool = True,
+) -> list[dict[str, Any]]:
+    cache_key = f"books:goodreads:shelf:{user_id}:{shelf}"
+    if use_cache:
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+    books = fetch_shelf_books(user_id, shelf)
+    cache.set(cache_key, books, CACHE_TTL_SEC)
+    return books
+
+
 def fetch_all_shelves(user_id: str, *, use_cache: bool = True) -> dict[str, Any]:
     cache_key = f"books:goodreads:shelves:{user_id}"
     if use_cache:
@@ -308,7 +324,7 @@ def fetch_all_shelves(user_id: str, *, use_cache: bool = True) -> dict[str, Any]
     shelves: list[dict[str, Any]] = []
     for slug in slugs:
         try:
-            books = fetch_shelf_books(user_id, slug)
+            books = fetch_shelf_books_cached(user_id, slug, use_cache=use_cache)
         except ValidationError:
             # Skip shelves that error (private/missing); keep others.
             continue
@@ -332,3 +348,5 @@ def fetch_all_shelves(user_id: str, *, use_cache: bool = True) -> dict[str, Any]
 
 def invalidate_shelves_cache(user_id: str) -> None:
     cache.delete(f"books:goodreads:shelves:{user_id}")
+    for shelf in STANDARD_SHELVES:
+        cache.delete(f"books:goodreads:shelf:{user_id}:{shelf}")

@@ -157,3 +157,125 @@ class BooksApiTests(TestCase):
         self.assertFalse(resp.data["linked"])
         profile.refresh_from_db()
         self.assertEqual(profile.goodreads_user_id, "")
+
+
+class BooksSocialPrivacyTests(TestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user(
+            email="alice@example.com",
+            password="password123",
+            account_status=User.AccountStatus.APPROVED,
+        )
+        self.bob = User.objects.create_user(
+            email="bob@example.com",
+            password="password123",
+            account_status=User.AccountStatus.APPROVED,
+        )
+        self.carol = User.objects.create_user(
+            email="carol@example.com",
+            password="password123",
+            account_status=User.AccountStatus.APPROVED,
+        )
+        from users.models import Profile
+
+        for user, name, gr in (
+            (self.alice, "Alice", "111"),
+            (self.bob, "Bob", "222"),
+            (self.carol, "Carol", "333"),
+        ):
+            Profile.objects.update_or_create(
+                user=user,
+                defaults={
+                    "display_name": name,
+                    "goodreads_user_id": gr,
+                },
+            )
+        self.alice_client = APIClient()
+        self.alice_client.force_authenticate(user=self.alice)
+
+    def test_readers_includes_linked_approved_by_default(self):
+        resp = self.alice_client.get("/api/v1/books/readers/")
+        self.assertEqual(resp.status_code, 200)
+        ids = {row["id"] for row in resp.data["results"]}
+        self.assertEqual(ids, {self.alice.id, self.bob.id, self.carol.id})
+
+    def test_friends_only_publish_hides_from_non_friend(self):
+        from users.models import Profile
+
+        bob_profile = self.bob.profile
+        bob_profile.social_publish_visibility = Profile.SocialPublishVisibility.FRIENDS_ONLY
+        bob_profile.save(update_fields=["social_publish_visibility"])
+        resp = self.alice_client.get("/api/v1/books/readers/")
+        ids = {row["id"] for row in resp.data["results"]}
+        self.assertIn(self.alice.id, ids)
+        self.assertNotIn(self.bob.id, ids)
+        self.assertIn(self.carol.id, ids)
+
+    def test_friends_only_publish_visible_to_friend(self):
+        from friends.models import FriendRequest
+        from users.models import Profile
+
+        bob_profile = self.bob.profile
+        bob_profile.social_publish_visibility = Profile.SocialPublishVisibility.FRIENDS_ONLY
+        bob_profile.save(update_fields=["social_publish_visibility"])
+        FriendRequest.objects.create(
+            requester=self.alice, requested=self.bob, is_accepted=True
+        )
+        FriendRequest.objects.create(
+            requester=self.bob, requested=self.alice, is_accepted=True
+        )
+        resp = self.alice_client.get("/api/v1/books/readers/")
+        ids = {row["id"] for row in resp.data["results"]}
+        self.assertIn(self.bob.id, ids)
+
+    def test_viewer_read_scope_friends_only(self):
+        from friends.models import FriendRequest
+        from users.models import Profile
+
+        alice_profile = self.alice.profile
+        alice_profile.social_read_scope = Profile.SocialReadScope.FRIENDS_ONLY
+        alice_profile.save(update_fields=["social_read_scope"])
+        FriendRequest.objects.create(
+            requester=self.alice, requested=self.bob, is_accepted=True
+        )
+        FriendRequest.objects.create(
+            requester=self.bob, requested=self.alice, is_accepted=True
+        )
+        resp = self.alice_client.get("/api/v1/books/readers/")
+        ids = {row["id"] for row in resp.data["results"]}
+        self.assertEqual(ids, {self.alice.id, self.bob.id})
+        self.assertNotIn(self.carol.id, ids)
+
+    def test_unlinked_users_excluded(self):
+        self.carol.profile.goodreads_user_id = ""
+        self.carol.profile.save(update_fields=["goodreads_user_id"])
+        resp = self.alice_client.get("/api/v1/books/readers/")
+        ids = {row["id"] for row in resp.data["results"]}
+        self.assertNotIn(self.carol.id, ids)
+
+    @mock.patch("books.social.fetch_shelf_books_cached")
+    def test_community_returns_books_for_visible_readers(self, fetch_mock):
+        fetch_mock.return_value = [
+            {"title": "Joe Country", "author_name": "Mick Herron", "book_id": "1"},
+        ]
+        resp = self.alice_client.get("/api/v1/books/community/?shelf=currently-reading")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data["shelf"], "currently-reading")
+        self.assertEqual(len(resp.data["results"]), 3)
+        self.assertEqual(resp.data["results"][0]["books"][0]["title"], "Joe Country")
+        self.assertEqual(fetch_mock.call_count, 3)
+
+    def test_community_rejects_invalid_shelf(self):
+        resp = self.alice_client.get("/api/v1/books/community/?shelf=custom-shelf")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_pending_user_cannot_access_community(self):
+        pending = User.objects.create_user(
+            email="pending@example.com",
+            password="password123",
+            account_status=User.AccountStatus.PENDING,
+        )
+        client = APIClient()
+        client.force_authenticate(user=pending)
+        resp = client.get("/api/v1/books/community/")
+        self.assertEqual(resp.status_code, 403)

@@ -126,7 +126,7 @@ const BOOKS: AppNavItem = {
   to: "/books",
   emoji: "📚",
   label: "Books",
-  blurb: "Your Goodreads shelves: currently reading, finished, and more.",
+  blurb: "Goodreads shelves and what friends are reading.",
 };
 
 const ZODIAC: AppNavItem = {

@@ -1,8 +1,10 @@
 import type { SessionUser } from "../auth/AppSessionContext";
 import type {
+  BooksCommunityResponse,
   BooksLinkResponse,
   BooksShelvesResponse,
   BooksStatusResponse,
+  CommunityShelfSlug,
 } from "./types";
 
 function apiBase(): string {
@@ -100,4 +102,24 @@ export async function unlinkGoodreadsProfile(
     throw new Error(errorMessage(text, "Could not unlink Goodreads profile."));
   }
   return JSON.parse(text) as { linked: false; session?: SessionUser };
+}
+
+export async function fetchBooksCommunity(
+  accessToken: string | null,
+  opts?: { shelf?: CommunityShelfSlug; refresh?: boolean },
+): Promise<BooksCommunityResponse> {
+  const params = new URLSearchParams();
+  if (opts?.shelf) params.set("shelf", opts.shelf);
+  if (opts?.refresh) params.set("refresh", "1");
+  const q = params.toString() ? `?${params.toString()}` : "";
+  const response = await fetch(`${apiBase()}/api/v1/books/community/${q}`, {
+    method: "GET",
+    headers: authHeaders(accessToken),
+    credentials: "omit",
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(errorMessage(text, "Could not load community reading."));
+  }
+  return JSON.parse(text) as BooksCommunityResponse;
 }

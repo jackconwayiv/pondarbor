@@ -38,3 +38,27 @@ export type BooksStatusResponse = {
   goodreads_user_id: string | null;
   profile_url: string | null;
 };
+
+export type BooksReader = {
+  id: number;
+  display_name: string;
+  avatar_url: string;
+  goodreads_user_id: string | null;
+  profile_url: string | null;
+};
+
+export type BooksCommunityEntry = {
+  user: BooksReader;
+  shelf: string;
+  book_count: number;
+  books: GoodreadsBook[];
+  error: string | null;
+};
+
+export type BooksCommunityResponse = {
+  shelf: string;
+  shelf_label: string;
+  results: BooksCommunityEntry[];
+};
+
+export type CommunityShelfSlug = "currently-reading" | "read" | "to-read";

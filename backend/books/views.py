@@ -9,8 +9,15 @@ from books.goodreads import (
     invalidate_shelves_cache,
     parse_goodreads_user_id,
 )
-from users.views import get_or_create_profile, serialize_me
+from books.social import (
+    COMMUNITY_SHELVES,
+    community_shelf_payload,
+    reader_row,
+    visible_books_users_qs,
+)
+from users.permissions import IsApprovedUser
 from users.serializers import MeSerializer
+from users.views import get_or_create_profile, serialize_me
 
 UserModel = get_user_model()
 
@@ -97,3 +104,45 @@ def books_shelves(request):
     )
     payload = fetch_all_shelves(user_id, use_cache=not refresh)
     return Response({**payload, "linked": True})
+
+
+@api_view(["GET"])
+@permission_classes([IsApprovedUser])
+def books_readers(request):
+    """People with linked Goodreads visible under Sees me / Show me."""
+    search = (request.query_params.get("q") or "").strip()
+    qs = visible_books_users_qs(request.user, search=search)[:200]
+    return Response({"results": [reader_row(u) for u in qs]})
+
+
+@api_view(["GET"])
+@permission_classes([IsApprovedUser])
+def books_community(request):
+    """
+    Aggregate shelf books for privacy-visible linked readers.
+
+    Query params:
+    - shelf: currently-reading | read | to-read (default currently-reading)
+    - refresh: force bypass Goodreads cache
+    """
+    shelf = (request.query_params.get("shelf") or "currently-reading").strip().lower()
+    if shelf not in COMMUNITY_SHELVES:
+        return Response(
+            {
+                "detail": (
+                    "Invalid shelf. Use currently-reading, read, or to-read."
+                ),
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    refresh = str(request.query_params.get("refresh", "")).lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    payload = community_shelf_payload(
+        request.user,
+        shelf=shelf,
+        use_cache=not refresh,
+    )
+    return Response(payload)

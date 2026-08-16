@@ -256,6 +256,7 @@ def _parse_book_item(item: ET.Element) -> dict[str, Any] | None:
         "num_pages": num_pages,
         "user_rating": user_rating,
         "user_read_at": _xml_text(_first_child(item, "user_read_at")),
+        "user_started_at": _xml_text(_first_child(item, "user_started_at")),
         "user_date_added": _xml_text(_first_child(item, "user_date_added")),
         "average_rating": _xml_text(_first_child(item, "average_rating")),
         "book_published": _xml_text(_first_child(item, "book_published")),

@@ -27,6 +27,7 @@ SAMPLE_RSS = """<?xml version="1.0" encoding="UTF-8"?>
       <isbn>1641291338</isbn>
       <user_rating>4</user_rating>
       <user_read_at><![CDATA[Thu, 6 Feb 2025 00:00:00 +0000]]></user_read_at>
+      <user_started_at><![CDATA[Mon, 3 Feb 2025 00:00:00 +0000]]></user_started_at>
       <user_date_added><![CDATA[Thu, 06 Feb 2025 17:56:54 -0800]]></user_date_added>
       <average_rating>4.25</average_rating>
       <book_published>2019</book_published>
@@ -79,6 +80,8 @@ class GoodreadsParseTests(TestCase):
         self.assertEqual(books[0]["author_name"], "Mick Herron")
         self.assertEqual(books[0]["user_rating"], 4)
         self.assertEqual(books[0]["num_pages"], "337")
+        self.assertEqual(books[0]["user_started_at"], "Mon, 3 Feb 2025 00:00:00 +0000")
+        self.assertEqual(books[0]["user_read_at"], "Thu, 6 Feb 2025 00:00:00 +0000")
 
     @mock.patch("books.goodreads._fetch_text")
     def test_discover_shelves_orders_standard_first(self, fetch_mock):

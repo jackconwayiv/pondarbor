@@ -42,6 +42,7 @@ export const DEFAULT_STARRED_APP_PATHS = [
   "/clicker",
   "/whatif",
   "/recommendations",
+  "/books",
 ] as const;
 
 const STARABLE_APP_PATHS = new Set<string>([

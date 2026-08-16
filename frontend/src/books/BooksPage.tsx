@@ -5,6 +5,8 @@ import {
   HStack,
   Image,
   Input,
+  Link,
+  SimpleGrid,
   Stack,
   Tabs,
   Text,
@@ -14,16 +16,32 @@ import { Link as RouterLink } from "react-router";
 
 import { useAppSession, type SessionUser } from "../auth/AppSessionContext";
 import PondButton from "../PondButton";
-import { PanelSessionReconnect, SessionLoadingCard } from "../components/panelStatus";
+import { AppModal } from "../components/AppModal";
 import {
-  APP_SHELL_TABS_ROOT_PROPS,
-  APP_SHELL_TAB_LIST_INSET_PROPS,
+  PanelEmptyState,
+  PanelErrorState,
+  PanelListRowSkeleton,
+  PanelSessionReconnect,
+  SessionLoadingCard,
+} from "../components/panelStatus";
+import FriendProfileLink from "../friend/FriendProfileLink";
+import { friendProfilePath } from "../friend/profilePaths";
+import { APP_PANEL_PAGE_MIN_HEIGHT_PROPS, fullBleedStackProps } from "../responsive";
+import {
+  APP_SHELL_TAB_LIST_PROPS,
   APP_SHELL_TAB_TRIGGER_PROPS,
 } from "../theme/appShellTabs";
-import { APP_TEXT_SIZES, MAPPED_LIST_STACK_GAP, PANEL_ENTRY_CARD_PROPS } from "../theme/typography";
+import {
+  APP_SHELL_TRAY_PROPS,
+  APP_TEXT_SIZES,
+  MAPPED_LIST_CARD_OUTER_PROPS,
+  MAPPED_LIST_STACK_GAP,
+  PANEL_ENTRY_CARD_PROPS,
+  PANEL_FIELD_PROPS,
+  PANEL_NESTED_BLOCK_PROPS,
+} from "../theme/typography";
 import {
   fetchBooksCommunity,
-  fetchBooksShelves,
   linkGoodreadsProfile,
   unlinkGoodreadsProfile,
 } from "./api";
@@ -31,10 +49,7 @@ import type {
   BooksCommunityEntry,
   CommunityShelfSlug,
   GoodreadsBook,
-  GoodreadsShelf,
 } from "./types";
-
-type PageTab = "community" | "mine";
 
 const COMMUNITY_SHELF_OPTIONS: { value: CommunityShelfSlug; label: string }[] = [
   { value: "currently-reading", label: "Currently Reading" },
@@ -42,17 +57,130 @@ const COMMUNITY_SHELF_OPTIONS: { value: CommunityShelfSlug; label: string }[] = 
   { value: "to-read", label: "Want to Read" },
 ];
 
+const MAPPED_CARD_PROPS = {
+  bg: "bg.panel",
+  borderWidth: "1px",
+  borderColor: "border",
+  borderRadius: "xl",
+  w: "100%",
+  minW: 0,
+  ...MAPPED_LIST_CARD_OUTER_PROPS,
+} as const;
+
+const BOOK_CARD_GRID_PROPS = {
+  columns: { base: 1, md: 2 },
+  gap: "2",
+  w: "100%",
+  alignItems: "start",
+} as const;
+
+function shelfLabelFromSlug(slug: string): string {
+  const known = COMMUNITY_SHELF_OPTIONS.find((opt) => opt.value === slug);
+  if (known) return known.label;
+  return slug.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+const MONTH_ABBR_TO_NUM: Record<string, string> = {
+  jan: "01",
+  feb: "02",
+  mar: "03",
+  apr: "04",
+  may: "05",
+  jun: "06",
+  jul: "07",
+  aug: "08",
+  sep: "09",
+  oct: "10",
+  nov: "11",
+  dec: "12",
+};
+
+function pad2(value: number | string): string {
+  return String(value).padStart(2, "0");
+}
+
+/** Calendar date only (no time/zone). Returns sortable key + MM/DD/YY label. */
+function formatBookDateMdY(raw: string | undefined): { key: string; label: string } | null {
+  const s = (raw ?? "").trim();
+  if (!s) return null;
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (iso) {
+    const [, year, month, day] = iso;
+    return { key: `${year}-${month}-${day}`, label: `${month}/${day}/${year.slice(-2)}` };
+  }
+  const rfc =
+    /(?:\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),?\s+)?(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{4})/i.exec(
+      s,
+    );
+  if (!rfc) return null;
+  const day = pad2(rfc[1]);
+  const month = MONTH_ABBR_TO_NUM[rfc[2].slice(0, 3).toLowerCase()];
+  const year = rfc[3];
+  if (!month) return null;
+  return { key: `${year}-${month}-${day}`, label: `${month}/${day}/${year.slice(-2)}` };
+}
+
+function formatReadLabel(book: GoodreadsBook): string | null {
+  const finish = formatBookDateMdY(book.user_read_at);
+  if (!finish) return null;
+  const start =
+    formatBookDateMdY(book.user_started_at) ?? formatBookDateMdY(book.user_date_added);
+  if (start && start.key !== finish.key) {
+    const [earlier, later] = start.key < finish.key ? [start, finish] : [finish, start];
+    return `Read ${earlier.label} - ${later.label}`;
+  }
+  return `Read ${finish.label}`;
+}
+
 function stars(rating: number): string {
   if (!rating || rating < 1) return "";
   const n = Math.min(5, Math.max(0, Math.round(rating)));
   return "★".repeat(n) + "☆".repeat(5 - n);
 }
 
-function BookRow({ book }: { book: GoodreadsBook }) {
-  const cover = book.book_image_url?.trim();
+function BookRow({
+  book,
+  nested = false,
+  ownerName,
+  ownerUserId,
+  ownerAvatarUrl,
+  shelfLabel,
+}: {
+  book: GoodreadsBook;
+  nested?: boolean;
+  ownerName: string;
+  ownerUserId?: number;
+  ownerAvatarUrl?: string;
+  shelfLabel: string;
+}) {
+  const cover = (book.book_large_image_url || book.book_image_url).trim();
   const rating = stars(book.user_rating);
-  return (
-    <HStack align="start" gap={3} {...PANEL_ENTRY_CARD_PROPS} w="100%">
+  const readLabel = formatReadLabel(book);
+  const title = book.link ? (
+    <Link href={book.link} target="_blank" rel="noreferrer">
+      {book.title}
+    </Link>
+  ) : (
+    book.title
+  );
+  const ownerAvatar = (
+    <Avatar.Root size="xs" flexShrink={0}>
+      {ownerAvatarUrl ? <Avatar.Image src={ownerAvatarUrl} alt="" /> : null}
+      <Avatar.Fallback name={ownerName} />
+    </Avatar.Root>
+  );
+  const ownerBlock =
+    ownerUserId != null ? (
+      <Box flexShrink={0} title={ownerName} aria-label={ownerName}>
+        <FriendProfileLink userId={ownerUserId}>{ownerAvatar}</FriendProfileLink>
+      </Box>
+    ) : (
+      <Box flexShrink={0} title={ownerName} aria-label={ownerName}>
+        {ownerAvatar}
+      </Box>
+    );
+  const row = (
+    <HStack align="start" gap="2" w="100%">
       {cover ? (
         <Image
           src={cover}
@@ -60,111 +188,126 @@ function BookRow({ book }: { book: GoodreadsBook }) {
           w="56px"
           h="84px"
           objectFit="cover"
-          borderRadius="sm"
+          borderRadius="md"
           flexShrink={0}
         />
       ) : (
-        <Box w="56px" h="84px" bg="blackAlpha.100" borderRadius="sm" flexShrink={0} />
+        <Box w="56px" h="84px" bg="bg.muted" borderRadius="md" flexShrink={0} />
       )}
-      <Stack gap={1} minW={0} flex="1">
-        <Text fontWeight="semibold" lineClamp={2}>
-          {book.link ? (
-            <a href={book.link} target="_blank" rel="noreferrer">
-              {book.title}
-            </a>
-          ) : (
-            book.title
-          )}
-        </Text>
-        {book.author_name ? (
-          <Text color="fg.muted" fontSize={APP_TEXT_SIZES.helper}>
-            {book.author_name}
+      <Stack gap="1" minW={0} flex="1">
+        <HStack align="start" justify="space-between" gap="2" w="100%">
+          <Text fontWeight="semibold" lineClamp={2} minW={0} flex="1">
+            {title}
           </Text>
-        ) : null}
-        <HStack gap={3} flexWrap="wrap" color="fg.muted" fontSize={APP_TEXT_SIZES.helper}>
+          {ownerBlock}
+        </HStack>
+        <HStack align="start" justify="space-between" gap="2" w="100%">
+          <Text
+            color="fg.muted"
+            fontSize={APP_TEXT_SIZES.helper}
+            lineClamp={1}
+            minW={0}
+            flex="1"
+          >
+            {book.author_name || "\u00a0"}
+          </Text>
+          <Text
+            color="fg.muted"
+            fontSize={APP_TEXT_SIZES.helper}
+            fontStyle="italic"
+            lineClamp={1}
+            flexShrink={0}
+            textAlign="right"
+            maxW="48%"
+          >
+            {shelfLabel}
+          </Text>
+        </HStack>
+        <HStack gap="2" flexWrap="wrap" color="fg.muted" fontSize={APP_TEXT_SIZES.helper}>
           {rating ? <Text aria-label={`${book.user_rating} stars`}>{rating}</Text> : null}
-          {book.user_read_at ? <Text>Read {book.user_read_at}</Text> : null}
+          {readLabel ? <Text>{readLabel}</Text> : null}
           {book.book_published ? <Text>{book.book_published}</Text> : null}
         </HStack>
       </Stack>
     </HStack>
   );
-}
-
-function ShelfPanel({ shelf }: { shelf: GoodreadsShelf }) {
-  if (!shelf.books.length) {
+  if (nested) {
     return (
-      <Text color="fg.muted" py={4}>
-        No books on this shelf (or the shelf is empty in the public RSS feed, which only
-        includes up to about 100 recent titles).
-      </Text>
+      <Box w="100%" minW={0} {...PANEL_NESTED_BLOCK_PROPS}>
+        {row}
+      </Box>
     );
   }
-  return (
-    <Stack gap={MAPPED_LIST_STACK_GAP}>
-      {shelf.books.map((book) => (
-        <BookRow
-          key={`${shelf.slug}-${book.book_id || book.title}-${book.link}`}
-          book={book}
-        />
-      ))}
-    </Stack>
-  );
+  return <Box {...MAPPED_CARD_PROPS}>{row}</Box>;
 }
 
 function CommunityReaderCard({ entry }: { entry: BooksCommunityEntry }) {
   return (
-    <Stack gap={3} {...PANEL_ENTRY_CARD_PROPS} w="100%">
-      <HStack gap={3} justify="space-between" flexWrap="wrap">
-        <HStack gap={3} minW={0}>
-          <Avatar.Root size="sm">
-            {entry.user.avatar_url ? (
-              <Avatar.Image src={entry.user.avatar_url} alt="" />
-            ) : null}
-            <Avatar.Fallback name={entry.user.display_name} />
-          </Avatar.Root>
-          <Stack gap={0} minW={0}>
-            <Text fontWeight="semibold" asChild>
-              <RouterLink to={`/friend/${entry.user.id}`}>
-                {entry.user.display_name}
-              </RouterLink>
-            </Text>
-            <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-              {entry.book_count
-                ? `${entry.book_count} book${entry.book_count === 1 ? "" : "s"}`
-                : "No books on this shelf"}
-            </Text>
-          </Stack>
-        </HStack>
-        {entry.user.profile_url ? (
-          <Text fontSize={APP_TEXT_SIZES.helper}>
-            <a href={entry.user.profile_url} target="_blank" rel="noreferrer">
+    <Box {...MAPPED_CARD_PROPS}>
+      <Stack gap="2">
+        <HStack gap="2" justify="space-between" flexWrap="wrap">
+          <HStack gap="2" minW={0}>
+            <FriendProfileLink userId={entry.user.id}>
+              <Avatar.Root size="sm">
+                {entry.user.avatar_url ? (
+                  <Avatar.Image src={entry.user.avatar_url} alt="" />
+                ) : null}
+                <Avatar.Fallback name={entry.user.display_name} />
+              </Avatar.Root>
+            </FriendProfileLink>
+            <Stack gap="0" minW={0}>
+              <Text fontWeight="semibold" asChild>
+                <RouterLink to={friendProfilePath(entry.user.id)}>
+                  {entry.user.display_name}
+                </RouterLink>
+              </Text>
+              <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+                {entry.book_count
+                  ? `${entry.book_count} book${entry.book_count === 1 ? "" : "s"}`
+                  : "No books on this shelf"}
+              </Text>
+            </Stack>
+          </HStack>
+          {entry.user.profile_url ? (
+            <Link
+              href={entry.user.profile_url}
+              target="_blank"
+              rel="noreferrer"
+              fontSize={APP_TEXT_SIZES.helper}
+            >
               Goodreads
-            </a>
+            </Link>
+          ) : null}
+        </HStack>
+        {entry.error ? (
+          <Text color="nautical.solid" fontSize={APP_TEXT_SIZES.helper} fontWeight="medium" role="alert">
+            Could not load this shelf right now.
           </Text>
         ) : null}
-      </HStack>
-      {entry.error ? (
-        <Text color="fg.muted" fontSize={APP_TEXT_SIZES.helper}>
-          Could not load this shelf right now.
-        </Text>
-      ) : null}
-      {entry.books.length ? (
-        <Stack gap={MAPPED_LIST_STACK_GAP}>
-          {entry.books.slice(0, 8).map((book) => (
-            <BookRow
-              key={`${entry.user.id}-${book.book_id || book.title}-${book.link}`}
-              book={book}
-            />
-          ))}
-          {entry.books.length > 8 ? (
-            <Text color="fg.muted" fontSize={APP_TEXT_SIZES.helper}>
-              +{entry.books.length - 8} more
-            </Text>
-          ) : null}
-        </Stack>
-      ) : null}
-    </Stack>
+        {entry.books.length ? (
+          <Stack gap={MAPPED_LIST_STACK_GAP}>
+            <SimpleGrid {...BOOK_CARD_GRID_PROPS}>
+              {entry.books.slice(0, 8).map((book) => (
+                <BookRow
+                  key={`${entry.user.id}-${book.book_id || book.title}-${book.link}`}
+                  book={book}
+                  nested
+                  ownerName={entry.user.display_name}
+                  ownerUserId={entry.user.id}
+                  ownerAvatarUrl={entry.user.avatar_url}
+                  shelfLabel={shelfLabelFromSlug(entry.shelf)}
+                />
+              ))}
+            </SimpleGrid>
+            {entry.books.length > 8 ? (
+              <Text color="fg.muted" fontSize={APP_TEXT_SIZES.helper}>
+                +{entry.books.length - 8} more
+              </Text>
+            ) : null}
+          </Stack>
+        ) : null}
+      </Stack>
+    </Box>
   );
 }
 
@@ -181,15 +324,12 @@ export default function BooksPage() {
   const isApproved = Boolean(sessionUser?.user.is_approved);
   const savedId = (sessionUser?.profile.goodreads_user_id ?? "").trim();
 
-  const [pageTab, setPageTab] = useState<PageTab>("community");
+  const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [profileUrl, setProfileUrl] = useState(
     savedId ? `https://www.goodreads.com/user/show/${savedId}` : "",
   );
-  const [shelves, setShelves] = useState<GoodreadsShelf[]>([]);
-  const [activeShelf, setActiveShelf] = useState<string>("currently-reading");
-  const [mineBusy, setMineBusy] = useState(false);
-  const [mineError, setMineError] = useState<string | null>(null);
-  const [mineLoaded, setMineLoaded] = useState(false);
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
 
   const [communityShelf, setCommunityShelf] =
     useState<CommunityShelfSlug>("currently-reading");
@@ -206,20 +346,6 @@ export default function BooksPage() {
       });
     },
     [updateProfileLocally],
-  );
-
-  const loadShelves = useCallback(
-    async (opts?: { refresh?: boolean }) => {
-      const token = await getApiAccessToken();
-      const data = await fetchBooksShelves(token, opts);
-      setShelves(data.shelves);
-      setActiveShelf((prev) => {
-        if (data.shelves.some((s) => s.slug === prev)) return prev;
-        return data.shelves[0]?.slug ?? "currently-reading";
-      });
-      setMineLoaded(true);
-    },
-    [getApiAccessToken],
   );
 
   const loadCommunity = useCallback(
@@ -260,76 +386,45 @@ export default function BooksPage() {
     };
   }, [isLoading, sessionError, isApproved, communityLoaded, loadCommunity]);
 
-  useEffect(() => {
-    if (isLoading || sessionError || !savedId || mineLoaded || pageTab !== "mine") return;
-    let cancelled = false;
-    (async () => {
-      setMineBusy(true);
-      setMineError(null);
-      try {
-        await loadShelves();
-      } catch (e) {
-        if (!cancelled) {
-          setMineError(e instanceof Error ? e.message : "Could not load shelves.");
-          setMineLoaded(true);
-        }
-      } finally {
-        if (!cancelled) setMineBusy(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [isLoading, sessionError, savedId, mineLoaded, pageTab, loadShelves]);
+  const openLinkModal = () => {
+    setLinkError(null);
+    setProfileUrl(savedId ? `https://www.goodreads.com/user/show/${savedId}` : "");
+    setLinkModalOpen(true);
+  };
 
   const onLink = async () => {
-    setMineBusy(true);
-    setMineError(null);
+    setLinkBusy(true);
+    setLinkError(null);
     try {
       const token = await getApiAccessToken();
       const data = await linkGoodreadsProfile(token, profileUrl.trim());
       applySession(data.session as SessionUser | undefined);
-      setShelves(data.shelves);
-      setActiveShelf(data.shelves[0]?.slug ?? "currently-reading");
-      setMineLoaded(true);
       setCommunityLoaded(false);
       if (data.goodreads_user_id) {
         setProfileUrl(`https://www.goodreads.com/user/show/${data.goodreads_user_id}`);
       }
+      setLinkModalOpen(false);
     } catch (e) {
-      setMineError(e instanceof Error ? e.message : "Could not link profile.");
+      setLinkError(e instanceof Error ? e.message : "Could not link profile.");
     } finally {
-      setMineBusy(false);
+      setLinkBusy(false);
     }
   };
 
   const onUnlink = async () => {
-    setMineBusy(true);
-    setMineError(null);
+    setLinkBusy(true);
+    setLinkError(null);
     try {
       const token = await getApiAccessToken();
       const data = await unlinkGoodreadsProfile(token);
       applySession(data.session as SessionUser | undefined);
-      setShelves([]);
-      setMineLoaded(false);
       setProfileUrl("");
       setCommunityLoaded(false);
+      setLinkModalOpen(false);
     } catch (e) {
-      setMineError(e instanceof Error ? e.message : "Could not unlink profile.");
+      setLinkError(e instanceof Error ? e.message : "Could not unlink profile.");
     } finally {
-      setMineBusy(false);
-    }
-  };
-
-  const onRefreshMine = async () => {
-    setMineBusy(true);
-    setMineError(null);
-    try {
-      await loadShelves({ refresh: true });
-    } catch (e) {
-      setMineError(e instanceof Error ? e.message : "Could not refresh shelves.");
-    } finally {
-      setMineBusy(false);
+      setLinkBusy(false);
     }
   };
 
@@ -369,186 +464,211 @@ export default function BooksPage() {
     );
   }
 
+  const headingBusy = communityBusy && !communityEntries.length;
+  const linkButtonLabel = savedId ? "Edit Goodreads" : "Link Goodreads";
+
   return (
-    <Stack gap={6} maxW="4xl" mx="auto" w="100%">
-      <Stack gap={2}>
-        <Heading size="lg">📚 Books</Heading>
-        <Text color="fg.muted">
-          Link your public Goodreads profile once, then keep updating books on Goodreads.
-          Community reading uses the same Sees me / Show me privacy settings as the rest of
-          the site.
-        </Text>
-      </Stack>
+    <Stack
+      flex="1"
+      gap="0"
+      {...APP_PANEL_PAGE_MIN_HEIGHT_PROPS}
+      {...fullBleedStackProps}
+    >
+      <Box flex="1" bg="bg" px={0} py={{ base: "2", md: "2" }}>
+        <Box {...APP_SHELL_TRAY_PROPS}>
+          <Stack
+            gap={{ base: "4", md: "4" }}
+            px={{ base: "2", md: "2" }}
+            pt={{ base: "2", md: "2" }}
+            pb="2"
+          >
+            <Box {...PANEL_ENTRY_CARD_PROPS}>
+              <Heading as="h1" size={{ base: "lg", md: "xl" }} mb="2">
+                <HStack as="span" display="inline-flex" gap="2" alignItems="center" flexWrap="wrap">
+                  <Text as="span" aria-hidden="true">
+                    📚
+                  </Text>
+                  <Text as="span">Books</Text>
+                  {headingBusy ? (
+                    <Text
+                      as="span"
+                      fontSize={APP_TEXT_SIZES.helper}
+                      color="fg.muted"
+                      fontWeight="medium"
+                      aria-live="polite"
+                    >
+                      Loading…
+                    </Text>
+                  ) : null}
+                </HStack>
+              </Heading>
+              <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
+                See what your friends are reading!
+              </Text>
+            </Box>
+          </Stack>
 
-      <Tabs.Root
-        {...APP_SHELL_TABS_ROOT_PROPS}
-        value={pageTab}
-        onValueChange={(details) => setPageTab(details.value as PageTab)}
-      >
-        <Tabs.List {...APP_SHELL_TAB_LIST_INSET_PROPS}>
-          <Tabs.Trigger value="community" {...APP_SHELL_TAB_TRIGGER_PROPS}>
-            Community
-          </Tabs.Trigger>
-          <Tabs.Trigger value="mine" {...APP_SHELL_TAB_TRIGGER_PROPS}>
-            My shelves
-          </Tabs.Trigger>
-        </Tabs.List>
-
-        <Tabs.Content value="community" pt={4}>
-          {!isApproved ? (
-            <Text color="fg.muted">
-              Community reading is available after your account is approved.
-            </Text>
-          ) : (
-            <Stack gap={4}>
-              <HStack justify="space-between" align="start" flexWrap="wrap" gap={3}>
-                <Tabs.Root
-                  value={communityShelf}
-                  variant="plain"
-                  size="sm"
-                  onValueChange={(details) =>
-                    void onChangeCommunityShelf(details.value as CommunityShelfSlug)
-                  }
-                >
-                  <Tabs.List gap={1} flexWrap="wrap">
-                    {COMMUNITY_SHELF_OPTIONS.map((opt) => (
-                      <Tabs.Trigger key={opt.value} value={opt.value} px={3} py={1}>
-                        {opt.label}
-                      </Tabs.Trigger>
-                    ))}
-                  </Tabs.List>
-                </Tabs.Root>
+          <Tabs.Root
+            value={communityShelf}
+            variant="plain"
+            onValueChange={(details) =>
+              void onChangeCommunityShelf(details.value as CommunityShelfSlug)
+            }
+          >
+            <HStack {...APP_SHELL_TAB_LIST_PROPS} justify="space-between" align="center">
+              <Tabs.List
+                gap="2"
+                flexWrap="wrap"
+                alignItems="center"
+                borderBottomWidth="0"
+                bg="transparent"
+                px="0"
+                py="0"
+                w="auto"
+              >
+                {COMMUNITY_SHELF_OPTIONS.map((opt) => (
+                  <Tabs.Trigger key={opt.value} value={opt.value} {...APP_SHELL_TAB_TRIGGER_PROPS}>
+                    {opt.label}
+                  </Tabs.Trigger>
+                ))}
+              </Tabs.List>
+              <HStack gap="2" flexShrink={0} flexWrap="wrap">
                 <PondButton
                   size="sm"
+                  colorPalette={savedId ? "sky" : "lilypad"}
+                  variant={savedId ? "outline" : "solid"}
+                  onClick={openLinkModal}
+                >
+                  {linkButtonLabel}
+                </PondButton>
+                <PondButton
+                  size="sm"
+                  colorPalette="sky"
                   variant="outline"
                   onClick={() => void onRefreshCommunity()}
-                  disabled={communityBusy}
+                  loading={communityBusy}
+                  disabled={communityBusy || !isApproved}
                 >
                   Refresh
                 </PondButton>
               </HStack>
+            </HStack>
+          </Tabs.Root>
 
-              {communityError ? (
-                <Text color="red.500" fontSize={APP_TEXT_SIZES.helper}>
-                  {communityError}
-                </Text>
-              ) : null}
-              {communityBusy && !communityEntries.length ? (
-                <Text color="fg.muted">Loading what people are reading…</Text>
-              ) : null}
-              {!communityBusy && communityLoaded && !communityEntries.length && !communityError ? (
-                <Text color="fg.muted">
-                  Nobody visible has linked Goodreads yet. Link yours under My shelves, or
-                  check Profile privacy if friends set Sees me to friends only.
-                </Text>
-              ) : null}
-              <Stack gap={MAPPED_LIST_STACK_GAP}>
-                {communityEntries.map((entry) => (
-                  <CommunityReaderCard key={entry.user.id} entry={entry} />
-                ))}
-              </Stack>
-            </Stack>
-          )}
-        </Tabs.Content>
-
-        <Tabs.Content value="mine" pt={4}>
-          <Stack gap={4}>
-            <Stack gap={3} {...PANEL_ENTRY_CARD_PROPS}>
-              <Text fontWeight="medium">Goodreads profile</Text>
-              <Input
-                value={profileUrl}
-                onChange={(e) => setProfileUrl(e.target.value)}
-                placeholder="https://www.goodreads.com/user/show/12345678"
-                aria-label="Goodreads profile URL"
+          <Box p={{ base: "2", md: "2" }}>
+            {!isApproved ? (
+              <PanelEmptyState
+                title="Approval required."
+                description="Community reading is available after your account is approved."
               />
-              <HStack gap={2} flexWrap="wrap">
-                <PondButton
-                  size="sm"
-                  onClick={() => void onLink()}
-                  disabled={mineBusy || !profileUrl.trim()}
-                >
-                  {savedId ? "Update & load" : "Link & load"}
-                </PondButton>
-                {savedId ? (
-                  <>
-                    <PondButton
-                      size="sm"
-                      variant="outline"
-                      onClick={() => void onRefreshMine()}
-                      disabled={mineBusy}
-                    >
-                      Refresh
-                    </PondButton>
-                    <PondButton
-                      size="sm"
-                      variant="outline"
-                      onClick={() => void onUnlink()}
-                      disabled={mineBusy}
-                    >
-                      Unlink
-                    </PondButton>
-                  </>
+            ) : (
+              <Stack gap="2">
+                {communityError ? (
+                  <PanelErrorState
+                    title="Could not load community reading."
+                    description={communityError}
+                    actionLabel="Retry"
+                    onAction={() => void onRefreshCommunity()}
+                  />
                 ) : null}
-              </HStack>
-              {savedId ? (
-                <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-                  Linked as user {savedId}.{" "}
-                  <a
-                    href={`https://www.goodreads.com/user/show/${savedId}`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Open on Goodreads
-                  </a>
-                </Text>
-              ) : null}
-              {mineError ? (
-                <Text color="red.500" fontSize={APP_TEXT_SIZES.helper}>
-                  {mineError}
-                </Text>
-              ) : null}
-            </Stack>
-
-            {mineBusy && !shelves.length ? (
-              <Text color="fg.muted">Loading shelves from Goodreads…</Text>
-            ) : null}
-
-            {shelves.length > 0 ? (
-              <Tabs.Root
-                {...APP_SHELL_TABS_ROOT_PROPS}
-                value={activeShelf}
-                lazyMount
-                unmountOnExit
-                onValueChange={(details) => setActiveShelf(details.value)}
-              >
-                <Tabs.List {...APP_SHELL_TAB_LIST_INSET_PROPS}>
-                  {shelves.map((shelf) => (
-                    <Tabs.Trigger
-                      key={shelf.slug}
-                      value={shelf.slug}
-                      {...APP_SHELL_TAB_TRIGGER_PROPS}
-                    >
-                      {shelf.label}
-                      {shelf.book_count ? ` (${shelf.book_count})` : ""}
-                    </Tabs.Trigger>
+                {communityBusy && !communityEntries.length ? (
+                  <Box {...PANEL_ENTRY_CARD_PROPS}>
+                    <PanelListRowSkeleton rows={4} />
+                  </Box>
+                ) : null}
+                {!communityBusy &&
+                communityLoaded &&
+                !communityEntries.length &&
+                !communityError ? (
+                  <PanelEmptyState
+                    title="Nobody visible has linked Goodreads yet."
+                    description="Link yours with Link Goodreads, or check Profile privacy if friends set Sees me to friends only."
+                    actionLabel={linkButtonLabel}
+                    onAction={openLinkModal}
+                  />
+                ) : null}
+                <Stack gap={MAPPED_LIST_STACK_GAP}>
+                  {communityEntries.map((entry) => (
+                    <CommunityReaderCard key={entry.user.id} entry={entry} />
                   ))}
-                </Tabs.List>
-                {shelves.map((shelf) => (
-                  <Tabs.Content key={shelf.slug} value={shelf.slug} pt={4}>
-                    <ShelfPanel shelf={shelf} />
-                  </Tabs.Content>
-                ))}
-              </Tabs.Root>
-            ) : null}
+                </Stack>
+              </Stack>
+            )}
+          </Box>
+        </Box>
+      </Box>
 
-            {!mineBusy && mineLoaded && savedId && shelves.length === 0 && !mineError ? (
-              <Text color="fg.muted">
-                No public shelves returned. Make sure your Goodreads profile is public.
-              </Text>
+      <AppModal
+        open={linkModalOpen}
+        onOpenChange={(open) => {
+          if (!open && linkBusy) return;
+          setLinkModalOpen(open);
+        }}
+        title={linkButtonLabel}
+        description="Paste your public Goodreads profile URL. Keep updating books on Goodreads after you link."
+        size="md"
+      >
+        <Stack gap="2">
+          <Input
+            value={profileUrl}
+            onChange={(e) => setProfileUrl(e.target.value)}
+            placeholder="https://www.goodreads.com/user/show/12345678"
+            aria-label="Goodreads profile URL"
+            {...PANEL_FIELD_PROPS}
+          />
+          {savedId ? (
+            <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+              Linked as user {savedId}.{" "}
+              <Link
+                href={`https://www.goodreads.com/user/show/${savedId}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open on Goodreads
+              </Link>
+            </Text>
+          ) : null}
+          {linkError ? (
+            <Text
+              color="nautical.solid"
+              fontSize={APP_TEXT_SIZES.helper}
+              fontWeight="medium"
+              role="alert"
+            >
+              {linkError}
+            </Text>
+          ) : null}
+          <HStack gap="2" flexWrap="wrap" justify="flex-end" pt="1">
+            {savedId ? (
+              <PondButton
+                size="sm"
+                colorPalette="nautical"
+                onClick={() => void onUnlink()}
+                disabled={linkBusy}
+              >
+                Unlink
+              </PondButton>
             ) : null}
-          </Stack>
-        </Tabs.Content>
-      </Tabs.Root>
+            <PondButton
+              size="sm"
+              colorPalette="sky"
+              variant="outline"
+              onClick={() => setLinkModalOpen(false)}
+              disabled={linkBusy}
+            >
+              Cancel
+            </PondButton>
+            <PondButton
+              size="sm"
+              onClick={() => void onLink()}
+              loading={linkBusy}
+              disabled={linkBusy || !profileUrl.trim()}
+            >
+              {savedId ? "Update & load" : "Link & load"}
+            </PondButton>
+          </HStack>
+        </Stack>
+      </AppModal>
     </Stack>
   );
 }

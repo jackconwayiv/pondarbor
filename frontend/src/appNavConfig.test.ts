@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Profile } from "./auth/AppSessionContext";
 import {
+  DEFAULT_STARRED_APP_PATHS,
   getHomeTrailingApps,
   getOnboardingStarableApps,
   hasUnstarredApps,
@@ -29,6 +30,12 @@ describe("getOnboardingStarableApps", () => {
     expect(paths).toContain("/qff");
     expect(paths).toContain("/harbor");
     expect(paths).toContain("/squalls");
+  });
+
+  it("includes Books for starring on the homepage", () => {
+    const paths = getOnboardingStarableApps(nonStaff).map((item) => item.to);
+    expect(paths).toContain("/books");
+    expect([...DEFAULT_STARRED_APP_PATHS]).toContain("/books");
   });
 });
 

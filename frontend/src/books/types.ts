@@ -9,6 +9,7 @@ export type GoodreadsBook = {
   num_pages: string;
   user_rating: number;
   user_read_at: string;
+  user_started_at?: string;
   user_date_added: string;
   average_rating: string;
   book_published: string;

@@ -42,6 +42,7 @@ export const DEFAULT_STARRED_APP_PATHS = [
   "/clicker",
   "/whatif",
   "/recommendations",
+  "/books",
 ] as const;
 
 const STARABLE_APP_PATHS = new Set<string>([
@@ -61,6 +62,7 @@ const STARABLE_APP_PATHS = new Set<string>([
   "/harbor",
   "/squalls",
   "/recommendations",
+  "/books",
 ]);
 
 const STAFF_ONLY_GAME_PATHS = new Set(["/qff", "/harbor", "/squalls"]);
@@ -119,6 +121,13 @@ export const GOALS_APP: AppNavItem = {
   emoji: "🏅",
   label: "Goal-Getter",
   blurb: "Private goals, checkpoints, and check-ins.",
+};
+
+const BOOKS: AppNavItem = {
+  to: "/books",
+  emoji: "📚",
+  label: "Books",
+  blurb: "Goodreads shelves and what friends are reading.",
 };
 
 const ZODIAC: AppNavItem = {
@@ -218,7 +227,7 @@ export const NAV_CATEGORIES: NavCategory[] = [
     id: "lifestyle",
     label: "Lifestyle",
     emoji: "🌞",
-    items: [GOALS_APP, ZODIAC, MEAL],
+    items: [GOALS_APP, BOOKS, ZODIAC, MEAL],
   },
   {
     id: "games",
@@ -313,6 +322,7 @@ export function resolveAppPathFromLocation(
     ["/quotes", "/quotes"],
     ["/recommendations", "/recommendations"],
     ["/goals", "/goals"],
+    ["/books", "/books"],
     ["/zodiac", "/zodiac"],
     ["/meal", "/meal"],
     ["/scorenado", "/scorenado"],

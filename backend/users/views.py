@@ -134,6 +134,7 @@ def serialize_me(user):
             "calendar_display_source_names": profile.calendar_display_source_names,
             "onboarding_completed": profile.onboarding_completed,
             "onboarding_step": profile.onboarding_step,
+            "goodreads_user_id": profile.goodreads_user_id or "",
         },
         "achievements": achievements_payload_for_user(user, public_only=False),
     }

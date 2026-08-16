@@ -205,6 +205,10 @@ export function getBreadcrumbItems(
     return [HOME, { label: "Goal-Getter" }];
   }
 
+  if (p === "/books" || p.startsWith("/books/")) {
+    return [HOME, { label: "Books" }];
+  }
+
   if (p === "/achievements" || p.startsWith("/achievements/")) {
     return [HOME, { label: "Hall of Fame" }];
   }

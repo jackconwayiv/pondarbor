@@ -46,6 +46,8 @@ export type Profile = {
   calendar_display_source_names?: boolean;
   onboarding_completed?: boolean;
   onboarding_step?: number;
+  /** Numeric Goodreads user id linked in the Books app. */
+  goodreads_user_id?: string;
 };
 
 export type AppUser = {

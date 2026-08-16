@@ -160,6 +160,8 @@ class Profile(models.Model):
     calendar_display_source_names = models.BooleanField(default=False)
     onboarding_completed = models.BooleanField(default=False)
     onboarding_step = models.PositiveSmallIntegerField(default=1)
+    # Numeric Goodreads user id from a public profile share URL (Books app).
+    goodreads_user_id = models.CharField(max_length=32, blank=True, default="")
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

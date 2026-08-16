@@ -215,6 +215,8 @@ function isDesktopNavRouteActive(
       return pathname === "/zodiac" || pathname.startsWith("/zodiac/");
     case "/people":
       return pathname === "/people" || pathname.startsWith("/people/");
+    case "/books":
+      return pathname === "/books" || pathname.startsWith("/books/");
     case "/estates":
       return pathname === "/estates" || pathname.startsWith("/estates/");
     case "/qff":
@@ -437,6 +439,7 @@ const HIDE_DOCUMENT_SCROLLBAR_PREFIXES = [
   "/calendar",
   "/meal",
   "/people",
+  "/books",
   "/friend",
   "/pondstead",
   "/estates/play",

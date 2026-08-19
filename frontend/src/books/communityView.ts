@@ -17,6 +17,7 @@ export const COMMUNITY_SHELF_OPTIONS: {
 ];
 
 export const BOOKS_PAGE_SIZE = 8;
+export const BOOKS_PAGE_SIZE_DESKTOP = 10;
 
 export type BooksListSort = "user" | "title" | "date";
 
@@ -189,17 +190,18 @@ export function visibleCommunityBooks(
   );
 }
 
-export function booksPageCount(total: number): number {
-  return Math.max(1, Math.ceil(total / BOOKS_PAGE_SIZE));
+export function booksPageCount(total: number, pageSize: number = BOOKS_PAGE_SIZE): number {
+  return Math.max(1, Math.ceil(total / pageSize));
 }
 
 export function paginateBooks(
   rows: CommunityBookRow[],
   page: number,
+  pageSize: number = BOOKS_PAGE_SIZE,
 ): CommunityBookRow[] {
   if (!rows.length) return [];
-  const totalPages = booksPageCount(rows.length);
+  const totalPages = booksPageCount(rows.length, pageSize);
   const safe = Math.min(Math.max(1, page), totalPages);
-  const start = (safe - 1) * BOOKS_PAGE_SIZE;
-  return rows.slice(start, start + BOOKS_PAGE_SIZE);
+  const start = (safe - 1) * pageSize;
+  return rows.slice(start, start + pageSize);
 }

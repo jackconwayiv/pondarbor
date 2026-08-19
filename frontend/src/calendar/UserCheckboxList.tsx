@@ -1,4 +1,4 @@
-import { Box, Checkbox, HStack, SimpleGrid, Stack, Text } from "@chakra-ui/react";
+import { Avatar, Box, Checkbox, HStack, SimpleGrid, Stack, Text } from "@chakra-ui/react";
 
 import PondButton from "../PondButton";
 import { APP_TEXT_SIZES } from "../theme/typography";
@@ -20,11 +20,13 @@ type Props = {
   error?: string | null;
   onRefresh?: () => void;
   /**
-   * Currently checked user ids. Color swatches are assigned from
-   * {@link approvedUsers} display order, not this list.
+   * Currently checked user ids. For color markers, swatches follow
+   * {@link approvedUsers} display order.
    */
   orderedCheckedUserIds: number[];
   onChange: (next: number[]) => void;
+  /** Color swatch (calendar) or avatar (books). Default: color. */
+  rowMarker?: "color" | "avatar";
   /** Optional max height for the scrollable list (default: full height). */
   maxHeight?: string | number;
   onExport?: () => void;
@@ -32,10 +34,9 @@ type Props = {
 };
 
 /**
- * Vertical, scrollable list of approved users with a checkbox per row. Each
- * person keeps a stable color from their place in this list; unchecking hides
- * the swatch without reassigning others. A "Check all / Check none" toggle
- * sits above the list.
+ * Vertical, scrollable list of approved users with a checkbox per row.
+ * Calendar rows use a stable color swatch; books rows can show avatars instead.
+ * A "Check all / Check none" toggle sits above the list.
  */
 export default function UserCheckboxList({
   approvedUsers,
@@ -44,6 +45,7 @@ export default function UserCheckboxList({
   onRefresh,
   orderedCheckedUserIds,
   onChange,
+  rowMarker = "color",
   maxHeight,
   onExport,
   exportDisabled,
@@ -137,7 +139,10 @@ export default function UserCheckboxList({
           <SimpleGrid columns={{ base: 2, md: 1 }} gap="1" w="100%">
             {approvedUsers.map((u) => {
               const checked = orderedCheckedUserIds.includes(u.id);
-              const color = colorForCheckedUser(u.id, orderedCheckedUserIds, colorUserIds);
+              const color =
+                rowMarker === "color"
+                  ? colorForCheckedUser(u.id, orderedCheckedUserIds, colorUserIds)
+                  : null;
               return (
                 <Checkbox.Root
                   key={u.id}
@@ -150,7 +155,14 @@ export default function UserCheckboxList({
                   <Checkbox.HiddenInput />
                   <Checkbox.Control />
                   <HStack gap="2" align="center" w="100%" minW="0">
-                    <ColorSwatch color={color} />
+                    {rowMarker === "avatar" ? (
+                      <Avatar.Root size="xs" flexShrink={0}>
+                        {u.avatar_url ? <Avatar.Image src={u.avatar_url} alt="" /> : null}
+                        <Avatar.Fallback name={u.display_name} />
+                      </Avatar.Root>
+                    ) : (
+                      <ColorSwatch color={color} />
+                    )}
                     <Checkbox.Label
                       fontSize={APP_TEXT_SIZES.helper}
                       overflow="hidden"

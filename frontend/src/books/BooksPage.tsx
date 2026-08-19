@@ -53,7 +53,7 @@ import {
 } from "./api";
 import {
   blendedBooksForShelf,
-  BOOKS_PAGE_SIZE,
+  BOOKS_PAGE_SIZE_DESKTOP,
   booksPageCount,
   communityPeople,
   COMMUNITY_SHELF_OPTIONS,
@@ -79,17 +79,55 @@ const MAPPED_CARD_PROPS = {
   ...MAPPED_LIST_CARD_OUTER_PROPS,
 } as const;
 
+/** Desktop card/row height so paginated grids stay the same size page to page. */
+const BOOK_CARD_DESKTOP_H = "7rem";
+
 const BOOK_CARD_GRID_PROPS = {
   columns: { base: 1, md: 2 },
   gap: "2",
   w: "100%",
-  alignItems: "start",
+  alignItems: "stretch",
 } as const;
+
+function BooksSortSelect({
+  value,
+  onChange,
+}: {
+  value: BooksListSort;
+  onChange: (next: BooksListSort) => void;
+}) {
+  return (
+    <HStack align="center" gap="2" flexShrink={0}>
+      <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
+        Sort
+      </Text>
+      <PondNativeSelect
+        rootProps={{ size: "sm", w: "auto", minW: "7.5rem" }}
+        fieldProps={{
+          value,
+          "aria-label": "Sort books",
+          onChange: (e) => onChange(e.target.value as BooksListSort),
+        }}
+      >
+        <option value="user">User</option>
+        <option value="title">Title</option>
+        <option value="date">Date</option>
+      </PondNativeSelect>
+    </HStack>
+  );
+}
 
 function stars(rating: number): string {
   if (!rating || rating < 1) return "";
   const n = Math.min(5, Math.max(0, Math.round(rating)));
   return "★".repeat(n) + "☆".repeat(5 - n);
+}
+
+const BOOK_TITLE_MAX_CHARS = 80;
+
+function displayBookTitle(title: string): string {
+  if (title.length <= BOOK_TITLE_MAX_CHARS) return title;
+  return `${title.slice(0, BOOK_TITLE_MAX_CHARS)}…`;
 }
 
 function BookRow({
@@ -106,12 +144,13 @@ function BookRow({
   const cover = (book.book_large_image_url || book.book_image_url).trim();
   const rating = stars(book.user_rating);
   const readLabel = formatReadLabel(book);
+  const displayTitle = displayBookTitle(book.title);
   const title = book.link ? (
-    <Link href={book.link} target="_blank" rel="noreferrer">
-      {book.title}
+    <Link href={book.link} target="_blank" rel="noreferrer" title={book.title}>
+      {displayTitle}
     </Link>
   ) : (
-    book.title
+    displayTitle
   );
   const ownerAvatar = (
     <Avatar.Root size="xs" flexShrink={0}>
@@ -130,8 +169,13 @@ function BookRow({
       </Box>
     );
   return (
-    <Box {...MAPPED_CARD_PROPS}>
-      <HStack align="stretch" gap="2" w="100%">
+    <Box
+      {...MAPPED_CARD_PROPS}
+      h={{ md: BOOK_CARD_DESKTOP_H }}
+      minH={{ md: BOOK_CARD_DESKTOP_H }}
+      overflow={{ md: "hidden" }}
+    >
+      <HStack align="stretch" gap="2" w="100%" h="100%">
         {cover ? (
           <Image
             src={cover}
@@ -148,12 +192,23 @@ function BookRow({
         <Stack gap="1" minW={0} flex="1" justify="space-between">
           <Stack gap="1" minW={0}>
             <HStack align="start" justify="space-between" gap="2" w="100%">
-              <Text fontWeight="semibold" lineClamp={2} minW={0} flex="1">
+              <Text
+                fontWeight="semibold"
+                fontSize="sm"
+                lineClamp={2}
+                minW={0}
+                flex="1"
+                title={book.title}
+              >
                 {title}
               </Text>
               {ownerBlock}
             </HStack>
-            <Text color="fg.muted" fontSize={APP_TEXT_SIZES.helper} lineClamp={1}>
+            <Text
+              color="fg.muted"
+              fontSize={{ base: "2xs", md: "xs" }}
+              lineClamp={1}
+            >
               {book.author_name || "\u00a0"}
             </Text>
           </Stack>
@@ -163,7 +218,7 @@ function BookRow({
             alignItems="baseline"
             columnGap="2"
             color="fg.muted"
-            fontSize={APP_TEXT_SIZES.helper}
+            fontSize={{ base: "2xs", md: "xs" }}
           >
             <Text minW={0} textAlign="left">
               {book.book_published || "\u00a0"}
@@ -175,12 +230,7 @@ function BookRow({
             >
               {rating || "\u00a0"}
             </Text>
-            <Text
-              minW={0}
-              textAlign="right"
-              fontSize={{ base: "2xs", md: "xs" }}
-              lineClamp={1}
-            >
+            <Text minW={0} textAlign="right" fontSize="2xs" lineClamp={1}>
               {readLabel || "\u00a0"}
             </Text>
           </Grid>
@@ -294,13 +344,16 @@ export default function BooksPage() {
     () => viewerShelfError(communityEntries, communityShelf, viewerUserId),
     [communityEntries, communityShelf, viewerUserId],
   );
-  const totalPages = booksPageCount(visibleRows.length);
+  const totalPages = booksPageCount(visibleRows.length, BOOKS_PAGE_SIZE_DESKTOP);
   const safePage = Math.min(Math.max(1, listPage), totalPages);
   const pageRows = useMemo(
-    () => paginateBooks(visibleRows, safePage),
-    [visibleRows, safePage],
+    () =>
+      isMobile
+        ? visibleRows
+        : paginateBooks(visibleRows, safePage, BOOKS_PAGE_SIZE_DESKTOP),
+    [isMobile, visibleRows, safePage],
   );
-  const showPager = visibleRows.length > BOOKS_PAGE_SIZE;
+  const showPager = !isMobile && visibleRows.length > BOOKS_PAGE_SIZE_DESKTOP;
 
   useEffect(() => {
     setListPage(1);
@@ -385,31 +438,44 @@ export default function BooksPage() {
             gap={{ base: "4", md: "4" }}
             px={{ base: "2", md: "2" }}
             pt={{ base: "2", md: "2" }}
-            pb="2"
+            pb={{ base: "0", md: "2" }}
           >
             <Box {...PANEL_ENTRY_CARD_PROPS}>
-              <Heading as="h1" size={{ base: "lg", md: "xl" }} mb="2">
-                <HStack as="span" display="inline-flex" gap="2" alignItems="center" flexWrap="wrap">
-                  <Text as="span" aria-hidden="true">
-                    📚
+              <HStack align="start" justify="space-between" gap="2" w="100%">
+                <Stack gap="2" minW="0" flex="1">
+                  <Heading as="h1" size={{ base: "lg", md: "xl" }}>
+                    <HStack as="span" display="inline-flex" gap="2" alignItems="center" flexWrap="wrap">
+                      <Text as="span" aria-hidden="true">
+                        📚
+                      </Text>
+                      <Text as="span">Books</Text>
+                      {headingBusy ? (
+                        <Text
+                          as="span"
+                          fontSize={APP_TEXT_SIZES.helper}
+                          color="fg.muted"
+                          fontWeight="medium"
+                          aria-live="polite"
+                        >
+                          Loading…
+                        </Text>
+                      ) : null}
+                    </HStack>
+                  </Heading>
+                  <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
+                    See what your friends are reading!
                   </Text>
-                  <Text as="span">Books</Text>
-                  {headingBusy ? (
-                    <Text
-                      as="span"
-                      fontSize={APP_TEXT_SIZES.helper}
-                      color="fg.muted"
-                      fontWeight="medium"
-                      aria-live="polite"
-                    >
-                      Loading…
-                    </Text>
-                  ) : null}
-                </HStack>
-              </Heading>
-              <Text fontSize={APP_TEXT_SIZES.body} lineHeight="tall" color="fg">
-                See what your friends are reading!
-              </Text>
+                </Stack>
+                <PondButton
+                  size="sm"
+                  flexShrink={0}
+                  colorPalette={savedId ? "sky" : "lilypad"}
+                  variant={savedId ? "outline" : "solid"}
+                  onClick={openLinkModal}
+                >
+                  {linkButtonLabel}
+                </PondButton>
+              </HStack>
             </Box>
           </Stack>
 
@@ -421,16 +487,25 @@ export default function BooksPage() {
               setListPage(1);
             }}
           >
-            <HStack {...APP_SHELL_TAB_LIST_PROPS} justify="space-between" align="center">
+            <HStack
+              {...APP_SHELL_TAB_LIST_PROPS}
+              align="center"
+              gap="2"
+              flexWrap="nowrap"
+              pt={{ base: "0", md: "2" }}
+            >
               <Tabs.List
                 gap="2"
-                flexWrap="wrap"
+                flexWrap="nowrap"
                 alignItems="center"
                 borderBottomWidth="0"
                 bg="transparent"
                 px="0"
                 py="0"
-                w="auto"
+                w={{ base: "100%", md: "auto" }}
+                minW="0"
+                flex="1"
+                overflowX="auto"
               >
                 {COMMUNITY_SHELF_OPTIONS.map((opt) => (
                   <Tabs.Trigger key={opt.value} value={opt.value} {...APP_SHELL_TAB_TRIGGER_PROPS}>
@@ -443,14 +518,9 @@ export default function BooksPage() {
                   </Tabs.Trigger>
                 ))}
               </Tabs.List>
-              <PondButton
-                size="sm"
-                colorPalette={savedId ? "sky" : "lilypad"}
-                variant={savedId ? "outline" : "solid"}
-                onClick={openLinkModal}
-              >
-                {linkButtonLabel}
-              </PondButton>
+              <Box display={{ base: "none", md: "block" }} flexShrink={0}>
+                <BooksSortSelect value={listSort} onChange={setListSort} />
+              </Box>
             </HStack>
           </Tabs.Root>
 
@@ -508,22 +578,35 @@ export default function BooksPage() {
                         onOpenChange={(details) => setPeopleOpen(details.open)}
                       >
                         <Stack gap="2">
-                          <Collapsible.Trigger asChild>
-                            <PondButton
-                              size="sm"
-                              uiClass="filter"
-                              uiActive={peopleOpen}
-                              justifyContent="center"
-                            >
-                              Filter People
-                            </PondButton>
-                          </Collapsible.Trigger>
+                          <HStack
+                            justify="space-between"
+                            align="center"
+                            gap="2"
+                            w="100%"
+                          >
+                            <Collapsible.Trigger asChild>
+                              <PondButton
+                                size="sm"
+                                uiClass="filter"
+                                uiActive={peopleOpen}
+                                justifyContent="center"
+                                flexShrink={0}
+                              >
+                                Filter People
+                              </PondButton>
+                            </Collapsible.Trigger>
+                            <BooksSortSelect
+                              value={listSort}
+                              onChange={setListSort}
+                            />
+                          </HStack>
                           <Collapsible.Content>
                             <UserCheckboxList
                               approvedUsers={peopleForFilter}
                               loading={communityBusy && !communityEntries.length}
                               orderedCheckedUserIds={orderedCheckedUserIds}
                               onChange={setCheckedUserIds}
+                              rowMarker="avatar"
                             />
                           </Collapsible.Content>
                         </Stack>
@@ -534,28 +617,11 @@ export default function BooksPage() {
                         loading={communityBusy && !communityEntries.length}
                         orderedCheckedUserIds={orderedCheckedUserIds}
                         onChange={setCheckedUserIds}
+                        rowMarker="avatar"
                       />
                     )}
                     <Box flex="1" minW="0">
                       <Stack gap="2">
-                        <HStack justify="flex-end" align="center" gap="2">
-                          <Text fontSize={APP_TEXT_SIZES.helper} color="fg.muted">
-                            Sort
-                          </Text>
-                          <PondNativeSelect
-                            rootProps={{ size: "sm", w: "auto", minW: "8.5rem" }}
-                            fieldProps={{
-                              value: listSort,
-                              "aria-label": "Sort books",
-                              onChange: (e) =>
-                                setListSort(e.target.value as BooksListSort),
-                            }}
-                          >
-                            <option value="user">User</option>
-                            <option value="title">Title</option>
-                            <option value="date">Date</option>
-                          </PondNativeSelect>
-                        </HStack>
                         {!communityBusy &&
                         communityLoaded &&
                         unfilteredRows.length === 0 &&
@@ -591,6 +657,20 @@ export default function BooksPage() {
                                   ownerAvatarUrl={row.owner.avatar_url}
                                 />
                               ))}
+                              {showPager
+                                ? Array.from(
+                                    { length: BOOKS_PAGE_SIZE_DESKTOP - pageRows.length },
+                                    (_, i) => (
+                                      <Box
+                                        key={`book-grid-pad-${i}`}
+                                        display={{ base: "none", md: "block" }}
+                                        h={BOOK_CARD_DESKTOP_H}
+                                        minH={BOOK_CARD_DESKTOP_H}
+                                        aria-hidden
+                                      />
+                                    ),
+                                  )
+                                : null}
                             </SimpleGrid>
                             {showPager ? (
                               <HStack justify="space-between">

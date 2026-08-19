@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   blendedBooksForShelf,
   BOOKS_PAGE_SIZE,
+  BOOKS_PAGE_SIZE_DESKTOP,
   communityPeople,
   filterBooksByOwners,
   formatReadLabel,
@@ -128,6 +129,18 @@ describe("paginateBooks", () => {
     }));
     expect(paginateBooks(rows, 1)).toHaveLength(BOOKS_PAGE_SIZE);
     expect(paginateBooks(rows, 2)).toHaveLength(1);
+  });
+
+  it("pages ten at a time when asked", () => {
+    const owner = reader(1, "Ada");
+    const rows = Array.from({ length: BOOKS_PAGE_SIZE_DESKTOP + 1 }, (_, i) => ({
+      book: book(`Book ${String(i + 1).padStart(2, "0")}`),
+      owner,
+    }));
+    expect(paginateBooks(rows, 1, BOOKS_PAGE_SIZE_DESKTOP)).toHaveLength(
+      BOOKS_PAGE_SIZE_DESKTOP,
+    );
+    expect(paginateBooks(rows, 2, BOOKS_PAGE_SIZE_DESKTOP)).toHaveLength(1);
   });
 });
 
